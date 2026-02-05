@@ -9,6 +9,7 @@ import {
   approveDevice,
   approvePairingRequest,
   ensureGateway,
+  extractGatewayEnvOverrides,
   getClawdbotVersion,
   getGatewayStatus,
   invokeGatewayTool,
@@ -20,6 +21,23 @@ import {
 } from '../sandbox/process';
 
 const v1 = new Hono<{ Bindings: OpenClawEnv }>();
+
+const INSTANCE_ID_HEADERS = [
+  'x-oa-instance-id',
+  'x-openclaw-instance-id',
+  'x-oa-tenant-key',
+  'x-oa-user-id',
+];
+
+function resolveInstanceId(headers: Headers): string | undefined {
+  for (const header of INSTANCE_ID_HEADERS) {
+    const value = headers.get(header);
+    if (!value) continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
 
 function parsePositiveInt(value: string | null): number | undefined {
   if (!value) return undefined;
@@ -81,19 +99,21 @@ function extractGatewayResponseHeaders(headers: Headers): Record<string, string>
 }
 
 v1.get('/status', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   let gatewayStatus = await getGatewayStatus(sandbox);
 
   if (gatewayStatus === 'stopped') {
     try {
-      await ensureGateway(sandbox, c.env);
+      await ensureGateway(sandbox, c.env, gateway);
       gatewayStatus = 'running';
     } catch {
       gatewayStatus = 'error';
     }
   }
 
-  const lastBackup = await getLastBackup(c.env);
+  const lastBackup = await getLastBackup(c.env, instanceId);
   const version = await getClawdbotVersion(sandbox, c.env);
   const instanceType = c.env.OPENCLAW_INSTANCE_TYPE ?? 'standard-4';
 
@@ -108,9 +128,11 @@ v1.get('/status', async (c) => {
 });
 
 v1.post('/gateway/restart', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   try {
-    await restartGateway(sandbox, c.env);
+    await restartGateway(sandbox, c.env, gateway);
     return c.json(ok({ message: 'restarting' }));
   } catch (error) {
     return c.json(err('internal_error', 'failed to restart gateway', { message: String(error) }), 500);
@@ -118,7 +140,8 @@ v1.post('/gateway/restart', async (c) => {
 });
 
 v1.post('/gateway/stop', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   try {
     await stopGateway(sandbox);
     return c.json(ok({ stopped: true }));
@@ -128,9 +151,10 @@ v1.post('/gateway/stop', async (c) => {
 });
 
 v1.post('/storage/backup', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   try {
-    const lastBackup = await backupToR2(sandbox, c.env);
+    const lastBackup = await backupToR2(sandbox, c.env, instanceId);
     return c.json(ok({ lastBackup }));
   } catch (error) {
     return c.json(err('internal_error', 'failed to backup', { message: String(error) }), 500);
@@ -138,9 +162,11 @@ v1.post('/storage/backup', async (c) => {
 });
 
 v1.get('/devices', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   try {
-    const devices = await listDevices(sandbox, c.env);
+    const devices = await listDevices(sandbox, c.env, gateway);
     return c.json(ok(devices));
   } catch (error) {
     return c.json(err('internal_error', 'failed to list devices', { message: String(error) }), 500);
@@ -148,7 +174,9 @@ v1.get('/devices', async (c) => {
 });
 
 v1.post('/devices/:requestId/approve', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   const requestId = c.req.param('requestId');
 
   if (!requestId) {
@@ -156,7 +184,7 @@ v1.post('/devices/:requestId/approve', async (c) => {
   }
 
   try {
-    const result = await approveDevice(sandbox, c.env, requestId);
+    const result = await approveDevice(sandbox, c.env, requestId, gateway);
     return c.json(ok({ approved: result.approved, requestId: result.requestId }));
   } catch (error) {
     return c.json(err('internal_error', 'failed to approve device', { message: String(error) }), 500);
@@ -164,7 +192,9 @@ v1.post('/devices/:requestId/approve', async (c) => {
 });
 
 v1.get('/pairing/:channel', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   const channel = c.req.param('channel');
 
   if (!channel) {
@@ -172,7 +202,7 @@ v1.get('/pairing/:channel', async (c) => {
   }
 
   try {
-    const requests = await listPairingRequests(sandbox, c.env, channel);
+    const requests = await listPairingRequests(sandbox, c.env, channel, gateway);
     return c.json(ok(requests));
   } catch (error) {
     return c.json(
@@ -183,7 +213,9 @@ v1.get('/pairing/:channel', async (c) => {
 });
 
 v1.post('/pairing/:channel/approve', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   const channel = c.req.param('channel');
 
   if (!channel) {
@@ -198,7 +230,7 @@ v1.post('/pairing/:channel/approve', async (c) => {
   const notify = typeof body?.notify === 'boolean' ? body.notify : undefined;
 
   try {
-    const result = await approvePairingRequest(sandbox, c.env, channel, code, notify);
+    const result = await approvePairingRequest(sandbox, c.env, channel, code, notify, gateway);
     return c.json(ok(result));
   } catch (error) {
     return c.json(
@@ -209,7 +241,9 @@ v1.post('/pairing/:channel/approve', async (c) => {
 });
 
 v1.post('/tools/invoke', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || typeof body !== 'object') {
     return c.json(err('invalid_request', 'invalid json body'), 400);
@@ -246,6 +280,7 @@ v1.post('/tools/invoke', async (c) => {
       sessionKey,
       headers,
       dryRun,
+      gateway,
     });
     if (!response.ok) {
       const message = response.error?.message ?? 'tool invocation failed';
@@ -263,7 +298,9 @@ v1.post('/tools/invoke', async (c) => {
 });
 
 v1.get('/sessions', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   const url = new URL(c.req.url);
   const limit = parsePositiveInt(url.searchParams.get('limit'));
   const activeMinutes = parsePositiveInt(url.searchParams.get('activeMinutes'));
@@ -280,6 +317,7 @@ v1.get('/sessions', async (c) => {
     const { response, status } = await invokeGatewayTool(sandbox, c.env, {
       tool: 'sessions_list',
       args: Object.keys(args).length > 0 ? args : undefined,
+      gateway,
     });
     if (!response.ok) {
       const message = response.error?.message ?? 'failed to list sessions';
@@ -297,7 +335,9 @@ v1.get('/sessions', async (c) => {
 });
 
 v1.get('/sessions/:sessionKey/history', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   const sessionKey = c.req.param('sessionKey');
   if (!sessionKey) {
     return c.json(err('invalid_request', 'sessionKey is required'), 400);
@@ -316,6 +356,7 @@ v1.get('/sessions/:sessionKey/history', async (c) => {
       tool: 'sessions_history',
       args,
       sessionKey,
+      gateway,
     });
     if (!response.ok) {
       const message = response.error?.message ?? 'failed to fetch session history';
@@ -333,7 +374,9 @@ v1.get('/sessions/:sessionKey/history', async (c) => {
 });
 
 v1.post('/sessions/:sessionKey/send', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   const sessionKey = c.req.param('sessionKey');
   if (!sessionKey) {
     return c.json(err('invalid_request', 'sessionKey is required'), 400);
@@ -368,6 +411,7 @@ v1.post('/sessions/:sessionKey/send', async (c) => {
       args,
       sessionKey,
       timeoutMs,
+      gateway,
     });
     if (!response.ok) {
       const messageText = response.error?.message ?? 'failed to send session message';
@@ -385,7 +429,9 @@ v1.post('/sessions/:sessionKey/send', async (c) => {
 });
 
 v1.post('/responses', async (c) => {
-  const sandbox = getOpenClawSandbox(c.env);
+  const instanceId = resolveInstanceId(c.req.raw.headers);
+  const gateway = { instanceId, envOverrides: extractGatewayEnvOverrides(c.req.raw.headers) };
+  const sandbox = getOpenClawSandbox(c.env, undefined, instanceId);
   let bodyText = '';
   try {
     bodyText = await c.req.text();
@@ -404,6 +450,7 @@ v1.post('/responses', async (c) => {
       body: bodyText,
       headers,
       signal: c.req.raw.signal,
+      gateway,
     });
     return new Response(stream, {
       status: 200,

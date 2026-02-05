@@ -18,16 +18,47 @@ const ENV_ALLOWLIST = [
   'OPENROUTER_API_KEY',
   'ANTHROPIC_API_KEY',
   'OPENCLAW_GATEWAY_TOKEN',
+  'OPENCLAW_DEFAULT_MODEL',
   'OPENCLAW_BIND_MODE',
   'OPENCLAW_DEV_MODE',
 ];
 
-function buildGatewayEnv(env: OpenClawEnv): Record<string, string> {
+type GatewayOptions = {
+  instanceId?: string;
+  envOverrides?: Record<string, string>;
+};
+
+const GATEWAY_ENV_HEADER_MAP: Array<{ header: string; envKey: string }> = [
+  { header: 'x-openclaw-openai-key', envKey: 'OPENAI_API_KEY' },
+  { header: 'x-openclaw-openrouter-key', envKey: 'OPENROUTER_API_KEY' },
+  { header: 'x-openclaw-anthropic-key', envKey: 'ANTHROPIC_API_KEY' },
+  { header: 'x-openclaw-default-model', envKey: 'OPENCLAW_DEFAULT_MODEL' },
+];
+
+export function extractGatewayEnvOverrides(headers: Headers): Record<string, string> {
+  const overrides: Record<string, string> = {};
+  for (const { header, envKey } of GATEWAY_ENV_HEADER_MAP) {
+    const value = headers.get(header);
+    if (value && value.trim()) {
+      overrides[envKey] = value.trim();
+    }
+  }
+  return overrides;
+}
+
+function buildGatewayEnv(env: OpenClawEnv, overrides?: Record<string, string>): Record<string, string> {
   const envVars: Record<string, string> = {};
   for (const key of ENV_ALLOWLIST) {
     const value = env[key as keyof OpenClawEnv];
     if (typeof value === 'string' && value.length > 0) {
       envVars[key] = value;
+    }
+  }
+  if (overrides) {
+    for (const [key, value] of Object.entries(overrides)) {
+      if (!ENV_ALLOWLIST.includes(key)) continue;
+      const trimmed = value.trim();
+      if (trimmed) envVars[key] = trimmed;
     }
   }
   const hasProviderKey =
@@ -80,7 +111,11 @@ export async function getGatewayStatus(sandbox: Sandbox): Promise<'running' | 's
   }
 }
 
-export async function ensureGateway(sandbox: Sandbox, env: OpenClawEnv): Promise<Process> {
+export async function ensureGateway(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  opts?: GatewayOptions,
+): Promise<Process> {
   await ensureContainerStarted(sandbox);
   const existing = await findGatewayProcess(sandbox);
   if (existing) {
@@ -89,12 +124,12 @@ export async function ensureGateway(sandbox: Sandbox, env: OpenClawEnv): Promise
   }
 
   try {
-    await restoreFromR2(sandbox, env);
+    await restoreFromR2(sandbox, env, opts?.instanceId);
   } catch (error) {
     console.log('Restore skipped or failed:', error instanceof Error ? error.message : error);
   }
 
-  const envVars = buildGatewayEnv(env);
+  const envVars = buildGatewayEnv(env, opts?.envOverrides);
   const proc = await sandbox.startProcess(GATEWAY_START_COMMAND, {
     env: Object.keys(envVars).length > 0 ? envVars : undefined,
   });
@@ -118,7 +153,11 @@ export async function ensureGateway(sandbox: Sandbox, env: OpenClawEnv): Promise
   return proc;
 }
 
-export async function restartGateway(sandbox: Sandbox, env: OpenClawEnv): Promise<void> {
+export async function restartGateway(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  opts?: GatewayOptions,
+): Promise<void> {
   const existing = await findGatewayProcess(sandbox);
   if (existing) {
     try {
@@ -127,7 +166,7 @@ export async function restartGateway(sandbox: Sandbox, env: OpenClawEnv): Promis
       console.log('Failed to kill gateway process:', error instanceof Error ? error.message : error);
     }
   }
-  await ensureGateway(sandbox, env);
+  await ensureGateway(sandbox, env, opts);
 }
 
 export async function stopGateway(sandbox: Sandbox): Promise<void> {
@@ -196,9 +235,13 @@ async function execCli(sandbox: Sandbox, command: string): Promise<ExecResult> {
   return sandbox.exec(command, { timeout: CLI_TIMEOUT_MS });
 }
 
-export async function listDevices(sandbox: Sandbox, env: OpenClawEnv): Promise<{ pending: unknown[]; paired: unknown[] }> {
+export async function listDevices(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  opts?: GatewayOptions,
+): Promise<{ pending: unknown[]; paired: unknown[] }> {
   try {
-    await ensureGateway(sandbox, env);
+    await ensureGateway(sandbox, env, opts);
   } catch (error) {
     console.log('listDevices ensureGateway failed:', error instanceof Error ? error.message : String(error));
     return { pending: [], paired: [] };
@@ -220,8 +263,13 @@ export async function listDevices(sandbox: Sandbox, env: OpenClawEnv): Promise<{
   return { pending: parsed.pending, paired: parsed.paired };
 }
 
-export async function approveDevice(sandbox: Sandbox, env: OpenClawEnv, requestId: string): Promise<{ approved: boolean; requestId: string; stdout?: string; stderr?: string }> {
-  await ensureGateway(sandbox, env);
+export async function approveDevice(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  requestId: string,
+  opts?: GatewayOptions,
+): Promise<{ approved: boolean; requestId: string; stdout?: string; stderr?: string }> {
+  await ensureGateway(sandbox, env, opts);
   const result = await execCli(sandbox, `openclaw devices approve ${requestId} --url ${GATEWAY_WS_URL}`);
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
@@ -233,12 +281,13 @@ export async function listPairingRequests(
   sandbox: Sandbox,
   env: OpenClawEnv,
   channel: string,
+  opts?: GatewayOptions,
 ): Promise<{ channel: string; requests: PairingRequest[] }> {
   const trimmed = channel.trim();
   if (!trimmed) {
     throw new Error('channel is required');
   }
-  await ensureGateway(sandbox, env);
+  await ensureGateway(sandbox, env, opts);
   const result = await execCli(sandbox, `openclaw pairing list ${escapeShellArg(trimmed)} --json`);
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
@@ -258,6 +307,7 @@ export async function approvePairingRequest(
   channel: string,
   code: string,
   notify?: boolean,
+  opts?: GatewayOptions,
 ): Promise<{ approved: boolean; channel: string; code: string; stdout?: string; stderr?: string }> {
   const trimmedChannel = channel.trim();
   if (!trimmedChannel) {
@@ -267,7 +317,7 @@ export async function approvePairingRequest(
   if (!trimmedCode) {
     throw new Error('code is required');
   }
-  await ensureGateway(sandbox, env);
+  await ensureGateway(sandbox, env, opts);
   const notifyFlag = notify ? ' --notify' : '';
   const result = await execCli(
     sandbox,
@@ -351,9 +401,10 @@ export async function invokeGatewayTool(
     headers?: Record<string, unknown>;
     dryRun?: boolean;
     timeoutMs?: number;
+    gateway?: GatewayOptions;
   },
 ): Promise<{ response: GatewayInvokeResponse; status: number | null }> {
-  await ensureGateway(sandbox, env);
+  await ensureGateway(sandbox, env, opts.gateway);
 
   const payload: Record<string, unknown> = { tool: opts.tool };
   if (typeof opts.action === 'string' && opts.action.trim()) {
@@ -430,9 +481,10 @@ export async function streamGatewayResponses(
     headers?: Record<string, string>;
     timeoutMs?: number;
     signal?: AbortSignal;
+    gateway?: GatewayOptions;
   },
 ): Promise<ReadableStream<Uint8Array>> {
-  await ensureGateway(sandbox, env);
+  await ensureGateway(sandbox, env, opts.gateway);
 
   const headers = normalizeGatewayResponseHeaders(opts.headers);
   const headerArgs: string[] = [

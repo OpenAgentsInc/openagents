@@ -34,6 +34,16 @@ node << 'EOFNODE'
 const fs = require('fs');
 const configPath = '/root/.clawdbot/clawdbot.json';
 const token = process.env.OPENCLAW_GATEWAY_TOKEN;
+const envDefaultModel = process.env.OPENCLAW_DEFAULT_MODEL?.trim();
+const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+const openAiKey = process.env.OPENAI_API_KEY?.trim();
+const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+
+const defaultModel = envDefaultModel
+  || (openRouterKey ? 'openrouter/anthropic/claude-sonnet-4-5' : '')
+  || (openAiKey ? 'openai/gpt-4o-mini' : '')
+  || (anthropicKey ? 'anthropic/claude-sonnet-4-5' : '');
+
 let config = {};
 try {
   config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -48,6 +58,31 @@ config.gateway.http.endpoints.responses.enabled = true;
 if (token) {
   config.gateway.auth = config.gateway.auth || {};
   config.gateway.auth.token = token;
+}
+if (defaultModel) {
+  const ensureModelDefaults = (defaults) => {
+    if (!defaults || typeof defaults !== 'object') return;
+    if (!defaults.model) {
+      defaults.model = { primary: defaultModel };
+    } else if (typeof defaults.model === 'string') {
+      defaults.model = { primary: defaults.model };
+    } else if (typeof defaults.model === 'object') {
+      defaults.model.primary = defaults.model.primary || defaultModel;
+    }
+    if (!defaults.models || typeof defaults.models !== 'object') {
+      defaults.models = {};
+    }
+    if (defaults.models && typeof defaults.models === 'object') {
+      defaults.models[defaultModel] = defaults.models[defaultModel] || {};
+    }
+  };
+
+  config.agents = config.agents || {};
+  config.agents.defaults = config.agents.defaults || {};
+  ensureModelDefaults(config.agents.defaults);
+
+  config.agent = config.agent || {};
+  ensureModelDefaults(config.agent);
 }
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 EOFNODE

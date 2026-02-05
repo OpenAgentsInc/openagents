@@ -118,6 +118,7 @@ This is the fastest end-to-end flow users should be able to complete in one visi
 
 **Default AI provider (no user keys):**
 - Set a server-owned key on `openclaw-runtime` (e.g., `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `ANTHROPIC_API_KEY`).
+- Optional: set `OPENCLAW_DEFAULT_MODEL` to pin the gateway’s default model (runtime writes it into `clawdbot.json` and the allowlist on boot).
 - OpenClaw gateway inherits these env vars at startup via the runtime allowlist.
 - This ensures OpenClaw Chat responds out of the box for all users.
 

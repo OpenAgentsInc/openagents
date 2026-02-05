@@ -30,6 +30,7 @@ pub struct RuntimeResult<T> {
 pub struct RuntimeClient {
     base_url: String,
     service_token: String,
+    extra_headers: Vec<(String, String)>,
 }
 
 impl RuntimeClient {
@@ -37,6 +38,28 @@ impl RuntimeClient {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             service_token,
+            extra_headers: Vec::new(),
+        }
+    }
+
+    pub fn with_extra_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        let name = name.into();
+        let value = value.into();
+        let trimmed_name = name.trim();
+        let trimmed_value = value.trim();
+        if !trimmed_name.is_empty() && !trimmed_value.is_empty() {
+            self.extra_headers
+                .push((trimmed_name.to_string(), trimmed_value.to_string()));
+        }
+        self
+    }
+
+    pub fn with_instance_id(self, instance_id: Option<String>) -> Self {
+        match instance_id {
+            Some(value) if !value.trim().is_empty() => {
+                self.with_extra_header("x-oa-instance-id", value)
+            }
+            _ => self,
         }
     }
 
@@ -137,6 +160,9 @@ impl RuntimeClient {
         headers.set("accept", "text/event-stream")?;
         headers.set("content-type", "application/json")?;
         headers.set(SERVICE_TOKEN_HEADER, &self.service_token)?;
+        for (name, value) in &self.extra_headers {
+            headers.set(name, value)?;
+        }
         for (name, value) in extra_headers {
             headers.set(name, value)?;
         }
@@ -162,6 +188,9 @@ impl RuntimeClient {
         headers.set("accept", "application/json")?;
         headers.set("content-type", "application/json")?;
         headers.set(SERVICE_TOKEN_HEADER, &self.service_token)?;
+        for (name, value) in &self.extra_headers {
+            headers.set(name, value)?;
+        }
         init.with_headers(headers);
         if let Some(body) = body {
             let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
