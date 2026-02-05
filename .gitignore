@@ -158,3 +158,5 @@ proptest-regressions/
 *.snap.new
 docker/autopilot/bin/
 .wrangler/
+
+*.txt
