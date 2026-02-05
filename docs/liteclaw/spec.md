@@ -77,7 +77,7 @@ No branching paths. No modes. No configuration.
 
 Waitlist gating is an overlay/state on Hatchery (not a separate dashboard).
 
-No dashboards. Keep the existing **left sidebar** only; **no right/community sidebar**. No community feed in the golden path.
+No dashboards. Keep the existing **left sidebar**. The right/community sidebar is not part of the LiteClaw golden path (and is hidden on `/hatchery`).
 
 **Chrome decision (immediate):** `/hatchery` uses the existing left sidebar layout but hides the right sidebar.
 
@@ -310,9 +310,113 @@ Do **not** use a `file:` dependency pointing at the local repo.
 
 ---
 
+## Hatchery → Chat (Concrete Wiring)
+
+This is the “keep it dirt simple” plan: take the proven Agents SDK + AIChatAgent pattern from the starter, and render it through our existing `/chat/{id}` UI.
+
+### Hatchery (LiteClaw spawn UI)
+
+- `/hatchery` becomes a simple LiteClaw page (not a graph/canvas).
+- `apps/web/src/routes/_app/hatchery.tsx` should render a new minimal component (e.g. `apps/web/src/components/hatchery/LiteClawHatchery.tsx`).
+- It should reuse the existing gating primitives:
+  - `apps/web/convex/access.ts` (`api.access.getStatus`)
+  - `apps/web/convex/waitlist.ts` (`api.waitlist.joinWaitlist`)
+- Clicking **Spawn your LiteClaw** should:
+  - create or reuse exactly one Convex thread for this user (kind: `liteclaw`)
+  - return that `threadId`
+  - navigate to `/chat/{threadId}`
+- EA constraint: do not expose multiple chats. `/assistant` and “New chat” should funnel into the single LiteClaw thread.
+  - `apps/web/src/routes/_app/assistant.tsx` (stop redirecting to `/chat/new`)
+  - `apps/web/src/routes/_app/chat.$chatId.tsx` (don’t create arbitrary new threads for EA)
+  - `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (hide/remove “New chat” button)
+
+Recommended Convex shape (minimal):
+
+- extend `apps/web/convex/schema.ts` thread `kind` union to include `liteclaw`
+- add a tiny helper mutation (new file is fine):
+  - `apps/web/convex/liteclaw.ts` → `getOrCreateLiteClawThread(): threadId`
+
+### Chat (existing `/chat/{id}` UI)
+
+We keep the UI. We swap the backend.
+
+- Route stays:
+  - `apps/web/src/routes/_app/chat.$chatId.tsx`
+- UI stays:
+  - `apps/web/src/components/assistant-ui/thread.tsx`
+  - `apps/web/src/components/assistant-ui/AppLayout.tsx` (chrome)
+  - Update the empty-thread welcome state to be LiteClaw-first (today it is OpenClaw-first):
+    - `apps/web/src/components/assistant-ui/thread.tsx` (`ThreadWelcome`, suggestions, and setup cards)
+
+LiteClaw chat backing:
+
+- The chat runtime for `/chat/{id}` should connect to the LiteClaw agent DO via Agents SDK:
+  - `useAgent({ agent: "chat", name: threadId })` (WebSocket: `/agents/chat/{threadId}`)
+  - `useAgentChat({ agent })` (streaming, persistence, resume)
+- Transcript rehydration comes from AIChatAgent’s built-in endpoint:
+  - `GET /agents/chat/{threadId}/get-messages`
+
+Where the wiring lives (web):
+
+- `apps/web/src/components/assistant-ui/openagents-chat-runtime.tsx` should be updated to back the assistant runtime with `useAgentChat` (Agents SDK) instead of the legacy HTTP `/chat` transport.
+- `apps/web/src/components/assistant-ui/AppLayout.tsx` should keep the chrome (sidebar + header) but should not be the place we “do chat logic” anymore. The runtime hook should own the transport.
+
+Implementation note:
+
+- Today, `/chat` (the HTTP endpoint) is a legacy OpenClaw-era surface. LiteClaw should not depend on it; LiteClaw uses the Agent websocket transport.
+
+### LiteClaw worker (Agents SDK runtime)
+
+We adapt code from:
+
+- `apps/cloudflare-agent-sdk-demo/src/server.ts` (AIChatAgent + `routeAgentRequest`)
+
+EA changes required in the worker:
+
+- remove tool calling + confirmations:
+  - `apps/cloudflare-agent-sdk-demo/src/tools.ts`
+  - `apps/cloudflare-agent-sdk-demo/src/utils.ts`
+- remove scheduling (`agents/schedule`)
+- pin a single model provider path (prefer Workers AI binding `AI`)
+- keep observability on (Wrangler `observability.enabled = true`)
+
+### Cloudflare routing (production)
+
+- `/hatchery` and `/chat/*` stay on `openagents-web-app`.
+- `/agents/*` must route to the LiteClaw worker so the browser can open the Agent websocket:
+  - `openagents.com/agents*` → worker `liteclaw`
+
+### Implementation Checklist (Paths)
+
+Web (UI):
+
+- Modify: `apps/web/src/routes/_app/hatchery.tsx` (render LiteClaw spawn UI)
+- Add: `apps/web/src/components/hatchery/LiteClawHatchery.tsx`
+- Modify: `apps/web/src/routes/_app/chat.$chatId.tsx` (EA: remove “new chat” creation; always funnel to LiteClaw thread)
+- Modify: `apps/web/src/routes/_app/assistant.tsx` (redirect to LiteClaw thread, not `/chat/new`)
+- Modify: `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (hide “New chat” button for EA)
+- Modify: `apps/web/src/components/assistant-ui/thread.tsx` (LiteClaw welcome copy)
+- Modify: `apps/web/src/components/assistant-ui/openagents-chat-runtime.tsx` (use `useAgent` + `useAgentChat`)
+
+Web (Convex metadata):
+
+- Modify: `apps/web/convex/schema.ts` (add `liteclaw` to thread kind union)
+- Add: `apps/web/convex/liteclaw.ts` (`getOrCreateLiteClawThread`)
+
+LiteClaw worker (Agents SDK runtime):
+
+- Modify: `apps/cloudflare-agent-sdk-demo/src/server.ts` (strip tools/scheduling; keep chat + memory)
+- Modify: `apps/cloudflare-agent-sdk-demo/wrangler.jsonc` (ensure DO binding + observability)
+
+Cloudflare routes:
+
+- Configure: `openagents.com/agents*` → worker `liteclaw`
+
+---
+
 ## Explicit Include / Exclude (To Prevent Scope Creep)
 
-This is the “what do we delete/disable” list (useful because `apps/liteclaw/` starts from `agents-starter`).
+This is the “what do we delete/disable” list (useful because `apps/cloudflare-agent-sdk-demo/` starts from `agents-starter`).
 
 ### Include (EA)
 
@@ -332,18 +436,18 @@ This is the “what do we delete/disable” list (useful because `apps/liteclaw/
 
 ---
 
-## Starter Template Cleanup (apps/liteclaw)
+## Starter Template Cleanup (apps/cloudflare-agent-sdk-demo)
 
-`apps/liteclaw/` currently starts from `agents-starter`, which is intentionally *more capable* than LiteClaw EA. Before we ship EA, we should delete/disable anything that contradicts the “persistent chat only” promise.
+`apps/cloudflare-agent-sdk-demo/` currently starts from `agents-starter`, which is intentionally *more capable* than LiteClaw EA. Before we ship EA, we should delete/disable anything that contradicts the “persistent chat only” promise.
 
 Remove/disable for EA (concrete filepaths):
 
 - Tool calling + confirmations:
-  - `apps/liteclaw/src/tools.ts`
-  - `apps/liteclaw/src/components/tool-invocation-card/ToolInvocationCard.tsx`
-  - `apps/liteclaw/src/utils.ts` (tool-call processing helpers)
+  - `apps/cloudflare-agent-sdk-demo/src/tools.ts`
+  - `apps/cloudflare-agent-sdk-demo/src/components/tool-invocation-card/ToolInvocationCard.tsx`
+  - `apps/cloudflare-agent-sdk-demo/src/utils.ts` (tool-call processing helpers)
 - Scheduling:
-  - `apps/liteclaw/src/server.ts` (remove `agents/schedule` and the schedule tool prompt)
+  - `apps/cloudflare-agent-sdk-demo/src/server.ts` (remove `agents/schedule` and the schedule tool prompt)
 
 We can keep the files around during prototyping, but **don’t ship them in the EA golden path** (and don’t accidentally mention them in UX copy).
 
@@ -353,10 +457,10 @@ We can keep the files around during prototyping, but **don’t ship them in the 
 
 ### Domain routing
 
-We want `openagents.com/liteclaw` to hit the LiteClaw worker (not `apps/web`).
+We want `/hatchery` + `/chat/*` to stay on the main web worker, but the **Agents SDK websocket endpoints** to hit the LiteClaw worker.
 
-- Add a Workers route for LiteClaw:
-  - `openagents.com/liteclaw*` → worker `liteclaw`
+- Add a Workers route for Agents SDK:
+  - `openagents.com/agents*` → worker `liteclaw`
 - Keep the main site route:
   - `openagents.com/*` → worker `openagents-web-app`
 
@@ -366,16 +470,16 @@ LiteClaw uses **one DO namespace**:
 
 - Binding: `Chat` (or rename to `LiteClawAgent`)
 - Class: `Chat` (or rename to `LiteClawAgent`)
-- Config location: `apps/liteclaw/wrangler.jsonc`
+- Config location: `apps/cloudflare-agent-sdk-demo/wrangler.jsonc`
 
 ### Secrets / env vars (LiteClaw worker)
 
 We will choose one model provider path:
 
 - Cloudflare Workers AI binding (preferred for “no keys”):
-  - `AI` binding in `apps/liteclaw/wrangler.jsonc`
+  - `AI` binding in `apps/cloudflare-agent-sdk-demo/wrangler.jsonc`
 - OR server-owned provider key:
-  - `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set as a Wrangler secret for `apps/liteclaw`
+  - `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set as a Wrangler secret for `apps/cloudflare-agent-sdk-demo`
 
 Waitlist gating:
 
@@ -388,6 +492,6 @@ Waitlist gating:
 
 Commands live with the app:
 
-- `cd apps/liteclaw && npm run dev`
-- `cd apps/liteclaw && npm run test`
-- `cd apps/liteclaw && npm run deploy`
+- `cd apps/cloudflare-agent-sdk-demo && npm run dev`
+- `cd apps/cloudflare-agent-sdk-demo && npm run test`
+- `cd apps/cloudflare-agent-sdk-demo && npm run deploy`

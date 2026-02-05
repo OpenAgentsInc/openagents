@@ -1,11 +1,11 @@
 # Browser E2E Testing Plan (Playwright)
 
 ## Summary
-Adopt Playwright for end-to-end browser testing in `apps/web/`, with a test-only auth bypass that still allows calls to Cloudflare-backed resources (OpenClaw API Worker, etc.). Start with a minimal smoke suite, then expand to authenticated and Cloudflare integration flows.
+Adopt Playwright for end-to-end browser testing in `apps/web/`, with a test-only auth bypass that still allows calls to Cloudflare-backed resources. Start with a minimal smoke suite, then expand to authenticated and Cloudflare integration flows.
 
 ## Goals
 - Add reliable, repeatable E2E coverage for critical web flows.
-- Avoid manual WorkOS login in E2E runs, while still allowing OpenClaw/Cloudflare calls.
+- Avoid manual WorkOS login in E2E runs, while still allowing API/Cloudflare calls.
 - Keep tests fast and deterministic; isolate flaky external dependencies.
 - Provide a clear CI path with artifacts (trace, screenshots, video on failure).
 
@@ -62,9 +62,9 @@ Implement a small auth shim that bypasses WorkOS when `E2E_AUTH_BYPASS=1`.
   - `E2E_USER_EMAIL=...` (optional)
   - `E2E_ACCESS_TOKEN=...` (optional)
 - Cloudflare access:
-  - Set `PUBLIC_API_URL` (or `OPENCLAW_API_BASE`) to the Cloudflare API Worker.
+  - Set `PUBLIC_API_URL` to the Cloudflare API Worker.
   - Set `OA_INTERNAL_KEY` to the test internal key.
-  - If `E2E_ACCESS_TOKEN` is not a real WorkOS token, allow E2E mode to skip the Convex `access.getStatus` check in `openclaw.instance` and other gated server routes.
+  - If `E2E_ACCESS_TOKEN` is not a real WorkOS token, allow E2E mode to skip the Convex `access.getStatus` check in gated server routes.
 
 ## Test Suite Layout
 Proposed structure:

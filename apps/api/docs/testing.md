@@ -153,13 +153,13 @@ curl -sS "$OA_API/moltbook"
 
 ---
 
-## 6. Agent Payments (if spark-api is deployed)
+## 6. Agent Payments
 
 ```bash
 # Wallet onboarding doc
 curl -sS "$OA_API/agents/wallet-onboarding"
 
-# Create agent (D1), then wallet and balance (proxied to spark-api)
+# Create agent (D1), then wallet; balance/invoice/pay return 501 (Spark API removed)
 # See apps/api/docs/agent-wallets.md and deployment.md.
 ```
 
@@ -208,4 +208,4 @@ export OA_API=http://127.0.0.1:8787
 # Then run the same curl commands above.
 ```
 
-Social read endpoints use the indexer D1 (`SOCIAL_DB`); if the indexer has not ingested data, feeds may be empty. Moltbook proxy always hits live Moltbook.
+Social read endpoints use the social D1 (`SOCIAL_DB`). Moltbook proxy always hits live Moltbook.

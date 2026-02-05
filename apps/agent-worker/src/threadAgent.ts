@@ -1,26 +1,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { jsonSchema } from '@ai-sdk/provider-utils';
-import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from 'ai';
+import { convertToModelMessages, streamText, type UIMessage } from 'ai';
 import type { AgentWorkerEnv } from './types';
 import { err, ok } from './response';
 import { isInternalKeyValid } from './auth/internalKey';
-import type { OpenclawApiConfig } from './openclawApi';
-import {
-  approvePairingRequest,
-  approveRuntimeDevice,
-  backupRuntime,
-  buildApiConfig,
-  createOpenclawInstance,
-  getBillingSummary,
-  getOpenclawInstance,
-  listPairingRequests,
-  getRuntimeDevices,
-  getRuntimeStatus,
-  getSessionHistory,
-  listSessions,
-  restartRuntime,
-  sendSessionMessage,
-} from './openclawApi';
 
 type ApprovalDecision = 'approved' | 'rejected';
 type ApprovalStatus = 'pending' | ApprovalDecision;
@@ -30,14 +12,6 @@ type StoredApproval = {
   createdAtMs: number;
   status: ApprovalStatus;
   resolvedAtMs?: number;
-  summary?: string;
-  toolName?: string;
-  toolInput?: unknown;
-};
-
-type ApprovalGateResult = {
-  status: 'approval_required' | 'approval_rejected' | 'approval_pending';
-  approvalId: string;
   summary?: string;
   toolName?: string;
   toolInput?: unknown;
@@ -64,38 +38,6 @@ type ApprovalRespondBody = {
   threadId?: string;
   approvalId: string;
   decision: ApprovalDecision;
-};
-
-const defaultApprovalSummary = (toolName: string, toolInput: unknown): string => {
-  if (toolName === 'openclaw_provision') {
-    return 'Provision a managed OpenClaw instance.';
-  }
-  if (toolName === 'openclaw_restart') {
-    return 'Restart the OpenClaw gateway.';
-  }
-  if (toolName === 'openclaw_approve_device') {
-    if (toolInput && typeof toolInput === 'object' && 'requestId' in toolInput) {
-      const requestId = (toolInput as { requestId?: unknown }).requestId;
-      if (typeof requestId === 'string' && requestId.trim().length > 0) {
-        return `Approve device pairing request ${requestId.trim()}.`;
-      }
-    }
-    return 'Approve a pending device pairing request.';
-  }
-  if (toolName === 'openclaw_approve_pairing') {
-    if (toolInput && typeof toolInput === 'object') {
-      const channel = (toolInput as { channel?: unknown }).channel;
-      const code = (toolInput as { code?: unknown }).code;
-      if (typeof channel === 'string' && channel.trim().length > 0) {
-        if (typeof code === 'string' && code.trim().length > 0) {
-          return `Approve DM pairing ${channel.trim()} code ${code.trim()}.`;
-        }
-        return `Approve DM pairing request for ${channel.trim()}.`;
-      }
-    }
-    return 'Approve a DM pairing request.';
-  }
-  return `Approve ${toolName}.`;
 };
 
 function jsonError(status: number, code: string, message: string, details?: Record<string, unknown> | null) {
@@ -134,10 +76,6 @@ function getLastUserMessage(messages: UIMessage[] | undefined): { id?: string; t
 function clampMessages(messages: UIMessage[], maxMessages: number): UIMessage[] {
   if (messages.length <= maxMessages) return messages;
   return messages.slice(messages.length - maxMessages);
-}
-
-function normalizeThreadId(threadId: string): string {
-  return threadId.trim();
 }
 
 function normalizeUserId(userId: string): string {
@@ -212,78 +150,6 @@ export class ThreadAgent {
     await this.state.storage.put('state', next);
   }
 
-  private async requireApproval<T>({
-    userId,
-    toolName,
-    toolInput,
-    approvalId,
-    summary,
-    action,
-  }: {
-    userId: string;
-    toolName: string;
-    toolInput: unknown;
-    approvalId?: string;
-    summary?: string;
-    action: () => Promise<T>;
-  }): Promise<T | ApprovalGateResult> {
-    let decision: ApprovalStatus = 'pending';
-    let resolvedId = '';
-    let resolvedSummary = summary ?? defaultApprovalSummary(toolName, toolInput);
-    let usedExisting = false;
-
-    await this.state.blockConcurrencyWhile(async () => {
-      const state = await this.loadState(userId);
-      let approval: StoredApproval | undefined;
-
-      if (approvalId) {
-        approval = state.approvals[approvalId];
-        usedExisting = Boolean(approval);
-      }
-
-      if (!approval) {
-        const id = crypto.randomUUID();
-        approval = {
-          id,
-          createdAtMs: Date.now(),
-          status: 'pending',
-          summary: resolvedSummary,
-          toolName,
-          toolInput,
-        };
-        state.approvals[id] = approval;
-      }
-
-      decision = approval.status;
-      resolvedId = approval.id;
-      resolvedSummary = approval.summary ?? resolvedSummary;
-      state.updatedAtMs = Date.now();
-      await this.saveState(state);
-    });
-
-    if ((decision as ApprovalDecision) === 'approved') {
-      return action();
-    }
-
-    if ((decision as ApprovalDecision) === 'rejected') {
-      return {
-        status: 'approval_rejected',
-        approvalId: resolvedId,
-        summary: resolvedSummary,
-        toolName,
-        toolInput,
-      };
-    }
-
-    return {
-      status: usedExisting ? 'approval_pending' : 'approval_required',
-      approvalId: resolvedId,
-      summary: resolvedSummary,
-      toolName,
-      toolInput,
-    };
-  }
-
   private async handleChat(request: Request, userId: string): Promise<Response> {
     const body = await readJson<ChatRequestBody>(request);
     if (!body) {
@@ -302,14 +168,6 @@ export class ThreadAgent {
       apiKey: this.env.OPENAI_API_KEY,
       baseURL: this.env.OPENAI_BASE_URL,
     });
-
-    let apiConfig: OpenclawApiConfig;
-    try {
-      apiConfig = buildApiConfig(this.env, userId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'OpenClaw API base not configured';
-      return jsonError(500, 'config_error', message);
-    }
 
     let conversationMessages: UIMessage[] = [];
 
@@ -356,178 +214,8 @@ export class ThreadAgent {
 
     const result = streamText({
       model: openai.responses('gpt-4o-mini'),
-      system: [
-        'You are OpenAgents. Be concise.',
-        'Sensitive actions (provisioning, pairing approvals, restarts) require explicit human approval.',
-        'If a tool response includes status approval_required, ask the user to approve or reject.',
-        'After approval, call the same tool again with the provided approvalId to continue.',
-      ].join(' '),
+      system: 'You are OpenAgents. Be concise.',
       messages: await convertToModelMessages(conversationMessages),
-      stopWhen: stepCountIs(10),
-      tools: {
-        openclaw_get_instance: {
-          description: "Get the current user's OpenClaw instance summary (or null if none).",
-          inputSchema: jsonSchema({ type: 'object', properties: {} }),
-          execute: async () => getOpenclawInstance(apiConfig),
-        },
-        openclaw_provision: {
-          description: 'Provision an OpenClaw instance for the current user.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: { approvalId: { type: 'string', minLength: 1 } },
-          }),
-          execute: async ({ approvalId }: { approvalId?: string }) =>
-            this.requireApproval({
-              userId,
-              toolName: 'openclaw_provision',
-              toolInput: {},
-              approvalId,
-              action: () => createOpenclawInstance(apiConfig),
-            }),
-        },
-        openclaw_get_status: {
-          description: "Get runtime status for the current user's OpenClaw instance.",
-          inputSchema: jsonSchema({ type: 'object', properties: {} }),
-          execute: async () => getRuntimeStatus(apiConfig),
-        },
-        openclaw_list_devices: {
-          description: "List pending and paired devices for the current user's OpenClaw instance.",
-          inputSchema: jsonSchema({ type: 'object', properties: {} }),
-          execute: async () => getRuntimeDevices(apiConfig),
-        },
-        openclaw_approve_device: {
-          description: 'Approve a pending device by requestId.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              requestId: { type: 'string', minLength: 1 },
-              approvalId: { type: 'string', minLength: 1 },
-            },
-            required: ['requestId'],
-          }),
-          execute: async ({ requestId, approvalId }: { requestId: string; approvalId?: string }) =>
-            this.requireApproval({
-              userId,
-              toolName: 'openclaw_approve_device',
-              toolInput: { requestId },
-              approvalId,
-              action: () => approveRuntimeDevice(apiConfig, requestId),
-            }),
-        },
-        openclaw_list_pairing_requests: {
-          description: 'List pending DM pairing requests for a channel.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              channel: { type: 'string', minLength: 1 },
-            },
-            required: ['channel'],
-          }),
-          execute: async ({ channel }: { channel: string }) => listPairingRequests(apiConfig, channel),
-        },
-        openclaw_approve_pairing: {
-          description: 'Approve a DM pairing request by channel + code.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              channel: { type: 'string', minLength: 1 },
-              code: { type: 'string', minLength: 1 },
-              notify: { type: 'boolean' },
-              approvalId: { type: 'string', minLength: 1 },
-            },
-            required: ['channel', 'code'],
-          }),
-          execute: async ({
-            channel,
-            code,
-            notify,
-            approvalId,
-          }: {
-            channel: string;
-            code: string;
-            notify?: boolean;
-            approvalId?: string;
-          }) =>
-            this.requireApproval({
-              userId,
-              toolName: 'openclaw_approve_pairing',
-              toolInput: { channel, code, notify },
-              approvalId,
-              action: () => approvePairingRequest(apiConfig, { channel, code, notify }),
-            }),
-        },
-        openclaw_backup_now: {
-          description: "Trigger a backup/sync for the current user's OpenClaw instance.",
-          inputSchema: jsonSchema({ type: 'object', properties: {} }),
-          execute: async () => backupRuntime(apiConfig),
-        },
-        openclaw_restart: {
-          description: 'Restart the OpenClaw gateway process.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: { approvalId: { type: 'string', minLength: 1 } },
-          }),
-          execute: async ({ approvalId }: { approvalId?: string }) =>
-            this.requireApproval({
-              userId,
-              toolName: 'openclaw_restart',
-              toolInput: {},
-              approvalId,
-              action: () => restartRuntime(apiConfig),
-            }),
-        },
-        openclaw_get_billing_summary: {
-          description: 'Get current credit balance summary.',
-          inputSchema: jsonSchema({ type: 'object', properties: {} }),
-          execute: async () => getBillingSummary(apiConfig),
-        },
-        openclaw_list_sessions: {
-          description: 'List OpenClaw sessions with optional filters.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              kinds: { type: 'array', items: { type: 'string' } },
-              limit: { type: 'number', minimum: 1 },
-              activeMinutes: { type: 'number', minimum: 1 },
-              messageLimit: { type: 'number', minimum: 0 },
-            },
-          }),
-          execute: async (args: {
-            kinds?: string[];
-            limit?: number;
-            activeMinutes?: number;
-            messageLimit?: number;
-          }) => listSessions(apiConfig, args),
-        },
-        openclaw_get_session_history: {
-          description: 'Fetch history for a specific OpenClaw session.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              sessionKey: { type: 'string', minLength: 1 },
-              limit: { type: 'number', minimum: 1 },
-              includeTools: { type: 'boolean' },
-            },
-            required: ['sessionKey'],
-          }),
-          execute: async (args: { sessionKey: string; limit?: number; includeTools?: boolean }) =>
-            getSessionHistory(apiConfig, args),
-        },
-        openclaw_send_session_message: {
-          description: 'Send a message into another OpenClaw session.',
-          inputSchema: jsonSchema({
-            type: 'object',
-            properties: {
-              sessionKey: { type: 'string', minLength: 1 },
-              message: { type: 'string', minLength: 1 },
-              timeoutSeconds: { type: 'number', minimum: 0 },
-            },
-            required: ['sessionKey', 'message'],
-          }),
-          execute: async (args: { sessionKey: string; message: string; timeoutSeconds?: number }) =>
-            sendSessionMessage(apiConfig, args),
-        },
-      } as any,
       onFinish: ({ text }) => {
         this.state.waitUntil(
           (async () => {

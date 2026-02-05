@@ -34,7 +34,6 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { OpenClawSetupCards } from "@/components/openclaw/openclaw-setup-cards";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -101,7 +100,6 @@ const ThreadWelcome: FC = () => {
           <p className="text-sm text-muted-foreground">
             Choose your OpenClaw setup path:
           </p>
-          <OpenClawSetupCards className="mt-3" />
         </div>
       </div>
       <ThreadSuggestions />

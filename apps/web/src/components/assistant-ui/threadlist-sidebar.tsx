@@ -52,7 +52,7 @@ const SITE_TITLE = 'OpenAgents';
 type ThreadSummary = {
   _id: string;
   title: string;
-  kind?: 'chat' | 'project' | 'openclaw';
+  kind?: 'chat' | 'project' | 'liteclaw';
 };
 
 function getInitials(
@@ -148,14 +148,12 @@ function SidebarAdminLink() {
   );
 }
 
-function SidebarOpenClawSection() {
-  const instance = useQuery(api.openclaw.getInstanceForCurrentUser);
+function SidebarLiteClawSection() {
   const hatcheryActive = useIsActive('/hatchery');
-  const openclawChatActive = useIsActive('/openclaw/chat');
   return (
     <SidebarMenu className="pt-2">
       <div className="px-2 pb-1">
-        <span className="text-xs font-medium text-sidebar-foreground/70">OpenClaw Cloud</span>
+        <span className="text-xs font-medium text-sidebar-foreground/70">LiteClaw</span>
       </div>
       <SidebarMenuItem>
         <SidebarMenuButton asChild isActive={hatcheryActive}>
@@ -163,20 +161,7 @@ function SidebarOpenClawSection() {
             <SidebarIcon>
               <ServerIcon className="size-4" />
             </SidebarIcon>
-            <span>
-              {instance === undefined
-                ? 'OpenClaw…'
-                : instance
-                  ? `OpenClaw: ${instance.status}`
-                  : 'OpenClaw'}
-            </span>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={openclawChatActive}>
-          <Link to="/openclaw/chat">
-            <span className="pl-6 text-sm text-sidebar-foreground/80">OpenClaw Chat</span>
+            <span>Hatchery</span>
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -335,7 +320,7 @@ export function ThreadListSidebar(
         </SidebarMenu>
         <SidebarChatsSection threads={threads} />
         <SidebarProjectsSection threads={threads} />
-        <SidebarOpenClawSection />
+        <SidebarLiteClawSection />
       </SidebarContent>
       <SidebarRail />
       <SidebarFooter className="aui-sidebar-footer group-data-[collapsible=icon]:hidden">

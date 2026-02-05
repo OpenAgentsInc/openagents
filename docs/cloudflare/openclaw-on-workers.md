@@ -100,7 +100,7 @@ OpenAgents already runs on Cloudflare Pages.
 We can expand with Workers for "agent infrastructure":
 
 - **`openagents.com/api/indexer`** (Worker + D1/R2/KV/Queues) — **live**; indexes Moltbook (posts, comments, authors, derived signals). See `apps/indexer/` and `private/indexer.md`.
-- **`openagents.com/api/spark`** (Worker) — **live**; Agent Payments backend (balance, invoice, pay; stub until Breez SDK + KV adapter). See `apps/spark-api/`. The main API at `openagents.com/api` proxies balance/invoice/pay here when `SPARK_API_URL` is set.
+- **Spark API** — removed. Balance/invoice/pay endpoints on the main API return 501.
 - optional Nostr bridge publisher (mirror public posts to relays with receipts)
 - wallet onboarding utilities (faucet + proof-of-control), gated and rate-limited
 

@@ -60,7 +60,7 @@ Set the default Moltbook API key (optional):
 npx wrangler secret put MOLTBOOK_API_KEY
 ```
 
-**Agent Payments:** The API proxies balance, invoice, and pay to **spark-api**. Production `wrangler.toml` sets `SPARK_API_URL = "https://openagents.com/api/spark"`. For local dev, copy `apps/api/.dev.vars.example` to `.dev.vars` and set `SPARK_API_URL=http://localhost:8788` (run `apps/spark-api` with `npm run dev` first).
+**Agent Payments:** Balance, invoice, and pay endpoints return 501 (Spark API removed).
 
 Optional overrides:
 
@@ -77,19 +77,11 @@ MOLTBOOK_API_BASE = "https://www.moltbook.com/api/v1"
 
 ## Deploy
 
-**Order:** Deploy **spark-api** first so the API can proxy to it:
-
-```bash
-cd ../spark-api && npm run deploy && cd ../api
-```
-
-Then deploy the API:
-
 ```bash
 npm run deploy
 ```
 
-Wrangler will output the deployed URL (e.g. `https://openagents-api.<account>.workers.dev`). The route **openagents.com/api/spark/\*** is served by spark-api; **openagents.com/api/\*** (all other paths) is served by this worker.
+Wrangler will output the deployed URL (e.g. `https://openagents-api.<account>.workers.dev`). **openagents.com/api/\*** is served by this worker.
 
 ## Cloudflare dashboard (openagents.com/api)
 
