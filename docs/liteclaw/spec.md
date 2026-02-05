@@ -1,8 +1,8 @@
 # LiteClaw Early Access — One-Pager MVP Spec
 
-**Product name:** LiteClaw
-**Platform:** Cloudflare Workers + Durable Objects + Cloudflare Agents SDK
-**Explicit constraint:** No containers, no per-user infra billing, no multi-runtime orchestration.
+- **Product name:** LiteClaw
+- **Platform:** Cloudflare Workers + Durable Objects + Cloudflare Agents SDK
+- **Explicit constraint:** No containers, no per-user infra billing, no multi-runtime orchestration.
 
 ---
 
