@@ -1,0 +1,26 @@
+{
+  "name": "liteclaw-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "types": "wrangler types --include-runtime false"
+  },
+  "dependencies": {
+    "@cloudflare/ai-chat": "0.0.3",
+    "agents": "0.3.3",
+    "ai": "6.0.5",
+    "workers-ai-provider": "3.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.11.1",
+    "@cloudflare/workers-types": "4.20260205.0",
+    "@types/node": "25.2.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "wrangler": "4.62.0"
+  }
+}
