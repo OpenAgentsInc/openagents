@@ -44,6 +44,56 @@ This locks access to the hostname so only your worker (or other allowed services
 
 Use Access for network-level protection and still require `Authorization: Bearer <token>` for app-level authentication. This matches the current LiteClaw tunnel executor contract.
 
+## Access Policy Notes (API Gotchas)
+
+When creating Access policies via API, the **Service Token** selector uses `service_token.token_id` in the `include` rule. Other shapes (`id`, `client_id`, `name`) were rejected. The policy decision for Service Auth is `non_identity` (Service Auth in the UI).
+
+Service tokens are non-identity credentials. Access requires a Service Auth action for service-token selectors, and the client secret is only shown once when the token is created. If you lose the secret, generate a new service token.
+
+Example:
+
+```bash
+curl "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/access/apps/$APP_ID/policies" \
+  --request POST \
+  --header "Authorization: Bearer $CF_API_TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "name": "Allow LiteClaw service token",
+    "decision": "non_identity",
+    "include": [
+      { "service_token": { "token_id": "<SERVICE_TOKEN_ID>" } }
+    ]
+  }'
+```
+
+## Token Verification Endpoint
+
+Account-scoped tokens are verified with the account endpoint:
+
+```bash
+curl "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/tokens/verify" \
+  -H "Authorization: Bearer $CF_API_TOKEN"
+```
+
+## Tunnel Ingress (API)
+
+You can set the tunnel ingress configuration via API so the hostname routes to your local agent:
+
+```bash
+curl "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/configurations" \
+  --request PUT \
+  --header "Authorization: Bearer $CF_API_TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "config": {
+      "ingress": [
+        { "hostname": "burrow.openagents.com", "service": "http://localhost:8787" },
+        { "service": "http_status:404" }
+      ]
+    }
+  }'
+```
+
 ## LiteClaw Phase 4 Pattern
 
 1. Run the local agent on your machine.
@@ -61,6 +111,8 @@ If Access is enabled, also include:
 
 - `CF-Access-Client-Id: <service-token-id>`
 - `CF-Access-Client-Secret: <service-token-secret>`
+
+These header names are the Access service token credentials; both are required together.
 
 The LiteClaw worker can forward these via env vars:
 
@@ -117,6 +169,42 @@ node scripts/tunnel-smoke.js
 ```
 
 The script calls `/health` plus `workspace.write/read/edit` through the tunnel and fails fast if any request is rejected.
+
+If you want a Bun-based handshake, use `apps/nydus`:
+
+```bash
+cd apps/nydus
+LITECLAW_TUNNEL_URL=https://local-tools.example.com \
+LITECLAW_TUNNEL_TOKEN=replace-me \
+CF_ACCESS_CLIENT_ID=optional \
+CF_ACCESS_CLIENT_SECRET=optional \
+bun run index.ts
+```
+
+## End-to-End Handshake (LiteClaw)
+
+Once your Access policy and tunnel are configured:
+
+```bash
+source private/liteclaw-burrow.env
+
+# Terminal 1: local agent
+cd apps/liteclaw-local-agent
+LITECLAW_LOCAL_ROOT=/path/to/your/repo \
+LITECLAW_TUNNEL_TOKEN=$LITECLAW_TUNNEL_TOKEN \
+npm run dev
+
+# Terminal 2: cloudflared tunnel
+cloudflared tunnel run --token "$CLOUDFLARED_TUNNEL_TOKEN"
+
+# Terminal 3: tunnel smoke
+cd apps/liteclaw-local-agent
+CF_ACCESS_CLIENT_ID=$CF_ACCESS_CLIENT_ID \
+CF_ACCESS_CLIENT_SECRET=$CF_ACCESS_CLIENT_SECRET \
+LITECLAW_TUNNEL_URL=$LITECLAW_TUNNEL_URL \
+LITECLAW_TUNNEL_TOKEN=$LITECLAW_TUNNEL_TOKEN \
+npm run smoke
+```
 
 ## Common Failure Modes
 

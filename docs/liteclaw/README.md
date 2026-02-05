@@ -130,6 +130,8 @@ These env vars are used by the LiteClaw worker. Defaults are the current runtime
 
 Local executor env vars live in `apps/liteclaw-local-agent/README.md` and `docs/liteclaw/tunnel.md`.
 
+Note: When using Cloudflare Access service tokens via API, the Access policy must include `service_token.token_id` in the `include` rule (see `docs/liteclaw/cloudflare-tunnel.md`).
+
 ## Local Dev and Testing
 
 Worker development:
@@ -169,6 +171,17 @@ cd apps/liteclaw-local-agent
 LITECLAW_TUNNEL_URL=https://local-tools.example.com \
 LITECLAW_TUNNEL_TOKEN=replace-me \
 node scripts/tunnel-smoke.js
+```
+
+Bun handshake script (minimal tunnel check):
+
+```bash
+cd apps/nydus
+LITECLAW_TUNNEL_URL=https://local-tools.example.com \
+LITECLAW_TUNNEL_TOKEN=replace-me \
+CF_ACCESS_CLIENT_ID=optional \
+CF_ACCESS_CLIENT_SECRET=optional \
+bun run index.ts
 ```
 
 ## Data Model Highlights

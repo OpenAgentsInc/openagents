@@ -531,6 +531,7 @@ Programmatic surfaces (stable + documented):
 
 Automation harness (must exist in-repo):
 - Provide a minimal smoke script (example: `apps/liteclaw-worker/scripts/liteclaw-smoke.ts`, run via `npm run smoke`) that runs against `wrangler dev`.
+- Provide a minimal tunnel handshake script (example: `apps/nydus/index.ts`) that checks `/health` and runs `workspace.write/read/edit` through the tunnel, including Access service token headers when configured.
 - Smoke step: create or pick a thread id, send one user message, and verify first token < 10s.
 - Smoke step: wait for completion and assert a final assistant message.
 - Smoke step: call `/export` and validate every line against the Sky schemas.
@@ -698,6 +699,7 @@ Production smoke (minimum):
 ---
 
 ## Log
+- 2026-02-05: Added Bun-based tunnel handshake script (`apps/nydus`) and expanded tunnel docs with Access service token header guidance and Bun handshake usage.
 - 2026-02-05: Implemented LiteClaw web wiring (Hatchery spawn now uses get-or-create, /assistant and /chat/new funnel to the single LiteClaw thread, chat transport switched to Agents SDK), updated welcome copy, and hid new-chat affordances.
 - 2026-02-05: Ran LiteClaw worker + web tests, deployed liteclaw worker and openagents-web-app, and pushed Convex functions for the LiteClaw web flow.
 - 2026-02-05: Added Hatchery "Reset LiteClaw memory" action that sends CF_AGENT_CHAT_CLEAR via Agents SDK and reran web tests.
@@ -723,6 +725,8 @@ Production smoke (minimum):
 - 2026-02-05: Added LiteClaw documentation (`docs/liteclaw/README.md` + `docs/liteclaw/tunnel.md`) covering runtime flow, endpoints, tools, extensions, and tunnel usage.
 - 2026-02-05: Added Cloudflare Tunnel documentation (`docs/liteclaw/cloudflare-tunnel.md`), updated tunnel references, and added a local-agent tunnel smoke script (`apps/liteclaw-local-agent/scripts/tunnel-smoke.js`).
 - 2026-02-05: Added optional Cloudflare Access headers for tunnel executor calls and documented Access env vars.
+- 2026-02-05: Documented Access API gotchas (service_token.token_id), account token verify endpoint, and end-to-end tunnel handshake steps.
+- 2026-02-05: Updated Access service token policy guidance to use `decision=non_identity` for Service Auth.
 
 ---
 
