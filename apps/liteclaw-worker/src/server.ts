@@ -2310,19 +2310,61 @@ export class Chat extends AIChatAgent<Env> {
     return this.jsonError(405, "method_not_allowed", "Method not allowed");
   }
 
+  private loadMessagesForExport(): {
+    messages: UIMessage[];
+    failures: Array<{ id: string; error: string }>;
+  } {
+    const rows = this.sql<{ id: string; message: string }>`
+      select id, message
+      from cf_ai_chat_agent_messages
+      order by created_at asc
+    `;
+    const messages: UIMessage[] = [];
+    const failures: Array<{ id: string; error: string }> = [];
+
+    for (const row of rows) {
+      try {
+        messages.push(JSON.parse(row.message) as UIMessage);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "parse_error";
+        failures.push({ id: row.id, error: message });
+      }
+    }
+
+    return { messages, failures };
+  }
+
+  private handleGetMessagesRequest() {
+    const { messages, failures } = this.loadMessagesForExport();
+    if (failures.length) {
+      return this.jsonError(
+        500,
+        "message_parse_failed",
+        "Failed to parse stored messages",
+        { failures }
+      );
+    }
+    return Response.json(messages);
+  }
+
   private exportSkyJsonl() {
     this.ensureStateLoaded();
 
     const threadId = this.name;
     const now = Date.now();
-    const messageRows = this.sql<{ message: string }>`
-      select message
-      from cf_ai_chat_agent_messages
-      order by created_at asc
-    `;
-    const messages = messageRows
-      .map((row) => JSON.parse(row.message) as UIMessage)
-      .map((message) => normalizeMessageForExport(message));
+    const { messages, failures } = this.loadMessagesForExport();
+    if (failures.length) {
+      return this.jsonError(
+        500,
+        "message_parse_failed",
+        "Failed to parse stored messages",
+        { failures }
+      );
+    }
+    const normalizedMessages = messages.map((message) =>
+      normalizeMessageForExport(message)
+    );
 
     const runs = this.sql<SkyRunRow>`
       select run_id, thread_id, started_at, completed_at, status, model_config_id, error_code, schema_version
@@ -2365,7 +2407,7 @@ export class Chat extends AIChatAgent<Env> {
       );
     }
 
-    for (const message of messages) {
+    for (const message of normalizedMessages) {
       lines.push(
         JSON.stringify({
           type: "message",
@@ -2438,6 +2480,9 @@ export class Chat extends AIChatAgent<Env> {
     const url = new URL(request.url);
     if (url.pathname.endsWith("/export")) {
       return this.exportSkyJsonl();
+    }
+    if (url.pathname.endsWith("/get-messages")) {
+      return this.handleGetMessagesRequest();
     }
     if (url.pathname.endsWith("/tool-policy")) {
       return this.handleToolPolicyRequest(request);
