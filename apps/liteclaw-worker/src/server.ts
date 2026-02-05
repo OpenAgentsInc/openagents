@@ -87,6 +87,16 @@ type ExtensionMetricLog = {
   error?: string;
 };
 
+type ExtensionToolMetricLog = {
+  event: "liteclaw_extension_tool_metrics";
+  extension_id: string;
+  extension_version: string;
+  tool_name: string;
+  duration_ms: number;
+  ok: boolean;
+  error?: string;
+};
+
 type ToolPolicy = "none" | "read-only" | "read-write";
 type ExecutorKind = "workers" | "container" | "tunnel";
 
@@ -491,6 +501,10 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private logExtensionMetrics(payload: ExtensionMetricLog) {
+    console.log(JSON.stringify(payload));
+  }
+
+  private logExtensionToolMetrics(payload: ExtensionToolMetricLog) {
     console.log(JSON.stringify(payload));
   }
 
@@ -1307,6 +1321,18 @@ export class Chat extends AIChatAgent<Env> {
           status: "success"
         });
 
+        const extensionOwner = extensionToolOwners.get(toolName);
+        if (extensionOwner) {
+          this.logExtensionToolMetrics({
+            event: "liteclaw_extension_tool_metrics",
+            extension_id: extensionOwner.manifest.id,
+            extension_version: extensionOwner.manifest.version,
+            tool_name: toolName,
+            duration_ms: durationMs,
+            ok: true
+          });
+        }
+
         await this.runExtensionHooks("onToolCall", extensionRuntimes, {
           thread_id: this.name,
           run_id: options.runId,
@@ -1347,6 +1373,19 @@ export class Chat extends AIChatAgent<Env> {
           errorCode: errorMessage
         });
 
+        const extensionOwner = extensionToolOwners.get(toolName);
+        if (extensionOwner) {
+          this.logExtensionToolMetrics({
+            event: "liteclaw_extension_tool_metrics",
+            extension_id: extensionOwner.manifest.id,
+            extension_version: extensionOwner.manifest.version,
+            tool_name: toolName,
+            duration_ms: durationMs,
+            ok: false,
+            error: errorMessage
+          });
+        }
+
         await this.runExtensionHooks("onToolCall", extensionRuntimes, {
           thread_id: this.name,
           run_id: options.runId,
@@ -1379,6 +1418,8 @@ export class Chat extends AIChatAgent<Env> {
             () => handler(input, toolOptions)
           )
       });
+
+    const extensionToolOwners = new Map<string, ExtensionRuntime>();
 
     const tools: ToolSet = {
       "http.fetch": tool({
@@ -1744,6 +1785,7 @@ export class Chat extends AIChatAgent<Env> {
             continue;
           }
           tools[toolName] = toolDef;
+          extensionToolOwners.set(toolName, extension);
         }
       }
     }
