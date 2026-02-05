@@ -19,9 +19,10 @@ describe("Sky contracts", () => {
   });
 
   it("validates receipt schema", () => {
-    const receipt = {
+    const runReceipt = {
       schema_version: 1,
       cf_sky_version: "0.1.0",
+      type: "run",
       run_id: "run_1",
       thread_id: "thread_1",
       model_config_id: "workers-ai:llama-3.1-8b-instruct",
@@ -35,7 +36,25 @@ describe("Sky contracts", () => {
       error_code: null
     };
 
-    expect(validators.validateReceipt(receipt)).toBe(true);
+    const toolReceipt = {
+      schema_version: 1,
+      cf_sky_version: "0.1.0",
+      type: "tool",
+      run_id: "run_1",
+      thread_id: "thread_1",
+      tool_call_id: "tool_1",
+      tool_name: "http.fetch",
+      args_hash: "argshash",
+      output_hash: "outputhash",
+      started_at: 1,
+      completed_at: 2,
+      duration_ms: 1,
+      status: "success",
+      error_code: null
+    };
+
+    expect(validators.validateReceipt(runReceipt)).toBe(true);
+    expect(validators.validateReceipt(toolReceipt)).toBe(true);
   });
 
   it("validates every event payload schema", () => {
