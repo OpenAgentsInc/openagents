@@ -1778,6 +1778,15 @@ export class Chat extends AIChatAgent<Env> {
           createTool: createExtensionTool
         });
         for (const [toolName, toolDef] of Object.entries(extensionTools)) {
+          if (
+            extension.manifest.tools &&
+            !extension.manifest.tools.includes(toolName)
+          ) {
+            console.warn(
+              `[LiteClaw] Extension ${extension.manifest.id} attempted to register undeclared tool ${toolName}`
+            );
+            continue;
+          }
           if (tools[toolName]) {
             console.warn(
               `[LiteClaw] Extension ${extension.manifest.id} attempted to override tool ${toolName}`
