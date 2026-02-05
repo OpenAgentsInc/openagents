@@ -26,20 +26,20 @@ If you are writing code here, you are usually adding:
 5) If priority/sequencing conflicts: ROADMAP wins.
 
 Read and apply:
-- Canonical terminology: ./GLOSSARY.md
+- Canonical terminology: ./docs/GLOSSARY.md
 - Architecture decisions: ./docs/adr/ (see [ADR-0001](./docs/adr/ADR-0001-adoption-of-adrs.md))
 - Current system guide (what is wired): ./SYNTHESIS_EXECUTION.md
-- MVP priorities / acceptance: ./ROADMAP.md
+- MVP priorities / acceptance: ./docs/ROADMAP.md
 
 ---
 
 ## Required reading order (fast)
 
-1) ./GLOSSARY.md
+1) ./docs/GLOSSARY.md
 2) ./SYNTHESIS_EXECUTION.md
-3) ./ROADMAP.md
-4) ./PROJECT_OVERVIEW.md (product map; short)
-5) ./AGENT_FOUNDATIONS.md (conceptual model; signatures/tools/metrics/RLM)
+3) ./docs/ROADMAP.md
+4) ./docs/PROJECT_OVERVIEW.md (product map; short)
+5) ./docs/AGENT_FOUNDATIONS.md (conceptual model; signatures/tools/metrics/RLM)
 
 For architecture decisions, see ./docs/adr/INDEX.md (read relevant ADRs as needed).
 
@@ -50,7 +50,7 @@ Then go crate-local:
 - Protocol surface: docs/protocol/PROTOCOL_SURFACE.md
 
 Community presence:
-- Moltbook skill + posting guidance: ./MOLTBOOK.md
+- Moltbook skill + posting guidance: ./docs/MOLTBOOK.md
 - When drafting Moltbook replies (including Codex sessions), consult `MOLTBOOK.md` first and follow `crates/moltbook/docs/CLAIM_HYGIENE.md`.
 - Do not post or reply on content that mentions shitcoin tickers (e.g. $MOLTEN). Filter pattern: dollar sign + 3–7 alphanumeric chars; see MOLTBOOK.md “Shitcoin filter” and `apps/web/src/lib/shitcoinFilter.ts`.
 
@@ -79,7 +79,7 @@ Adapters do serialization/parsing only
 Doc gate for contracts
 - If you introduce/modify a **contract** (interface, invariant, protocol), you must:
   - Add/update an ADR in docs/adr/
-  - Update GLOSSARY.md if terminology changes
+  - Update docs/GLOSSARY.md if terminology changes
   - Update affected specs (ARTIFACTS.md, REPLAY.md, PROTOCOL_SURFACE.md)
 
 ---
@@ -228,7 +228,7 @@ See:
 
 * crates/dsrs/docs/ARTIFACTS.md
 * crates/dsrs/docs/REPLAY.md
-* ./ROADMAP.md (MVP gate: Verified Patch Bundle)
+* ./docs/ROADMAP.md (MVP gate: Verified Patch Bundle)
 
 ---
 
@@ -238,9 +238,9 @@ Core:
 
 * ./GLOSSARY.md (canonical vocabulary)
 * ./SYNTHESIS_EXECUTION.md (how the system works today)
-* ./ROADMAP.md (what to build next; MVP gates)
-* ./PROJECT_OVERVIEW.md (product + stack overview)
-* ./AGENT_FOUNDATIONS.md (conceptual foundations and checklists)
+* ./docs/ROADMAP.md (what to build next; MVP gates)
+* ./docs/PROJECT_OVERVIEW.md (product + stack overview)
+* ./docs/AGENT_FOUNDATIONS.md (conceptual foundations and checklists)
 
 DSPy/dsrs:
 

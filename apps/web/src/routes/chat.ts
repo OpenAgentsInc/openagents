@@ -15,7 +15,7 @@ export const Route = createFileRoute('/chat')({
     handlers: {
       POST: async ({ request }) => {
         const body = (await request.json().catch(() => null)) as
-          | { id?: unknown; messages?: Array<{ id?: string; role: string; content: string }>; [key: string]: unknown }
+          | { id?: unknown; messages?: Array<{ id?: string; role: string; content: string }>;[key: string]: unknown }
           | null;
         const messages = body?.messages;
         if (!body || !Array.isArray(messages)) {

@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code
 - **If this doc conflicts with code, code wins.**
 
 Local issue tracking system backed by SQLite, designed for autonomous agents.

@@ -25,7 +25,7 @@ Without counterfactuals, we cannot quantify regressions or train decision polici
 ### Canonical Owner
 
 - Decision record type: `crates/adjutant/src/dspy/sessions.rs` (or a shared crate if moved)
-- Terminology: [GLOSSARY.md](../../GLOSSARY.md) (`policy_bundle_id`, lane classes)
+- Terminology: [GLOSSARY.md](../GLOSSARY.md) (`policy_bundle_id`, lane classes)
 - Implementation status: [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md)
 
 ### Gating rules (Normative)
@@ -110,7 +110,7 @@ Backward compatibility:
 
 ## References
 
-- [GLOSSARY.md](../../GLOSSARY.md) — terminology
+- [GLOSSARY.md](../GLOSSARY.md) — terminology
 - `crates/adjutant/src/dspy/decision_pipelines.rs` — decision pipelines
 - `crates/adjutant/src/dspy/sessions.rs` — session records
-- [ROADMAP.md](../../ROADMAP.md) — shadow/canary MVP gating
+- [ROADMAP.md](../ROADMAP.md) — shadow/canary MVP gating

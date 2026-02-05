@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code
 - **If this doc conflicts with code, code wins.**
 
 Infrastructure for replicating the Recursive Language Models paper (arXiv 2512.24601v1) using modular Rust crates designed for reuse across future paper replications.

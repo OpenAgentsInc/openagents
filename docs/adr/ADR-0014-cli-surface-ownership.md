@@ -96,8 +96,8 @@ Backward compatibility expectations:
 ## References
 
 - [ADR-0001](./ADR-0001-adoption-of-adrs.md) — authority hierarchy
-- [GLOSSARY.md](../../GLOSSARY.md) — canonical terminology
-- [ROADMAP.md](../../ROADMAP.md) — MVP gates and planned surfaces
+- [GLOSSARY.md](../GLOSSARY.md) — canonical terminology
+- [ROADMAP.md](../ROADMAP.md) — MVP gates and planned surfaces
 - [AGENTS.md](../../AGENTS.md) — "CLI surfaces" section and status notes
 - `crates/autopilot/` — product CLI implementation
 - `crates/pylon/` — node CLI implementation

@@ -224,10 +224,10 @@ ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
 
 ## See Also
 
-- [PAPER.md](PAPER.md) - Technical systems paper
+- [PAPER.md](PAPER.md) — Technical systems paper
 - [SYNTHESIS.md](SYNTHESIS.md) - Vision and strategy document
 - [SYNTHESIS_EXECUTION.md](SYNTHESIS_EXECUTION.md) - Implementation status and practical guide
-- [ROADMAP.md](ROADMAP.md) - Development roadmap with MVP gates
+- [ROADMAP.md](ROADMAP.md) — Development roadmap with MVP gates
 - [crates/dsrs/docs/ARCHITECTURE.md](crates/dsrs/docs/ARCHITECTURE.md) - DSPy core traits and runtime layers
 - [crates/dsrs/docs/SIGNATURES.md](crates/dsrs/docs/SIGNATURES.md) - Signature specifications
 - [crates/dsrs/docs/REPLAY.md](crates/dsrs/docs/REPLAY.md) - REPLAY.jsonl format specification

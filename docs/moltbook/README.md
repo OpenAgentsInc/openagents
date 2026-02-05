@@ -12,4 +12,4 @@ That folder is the canonical location for:
 
 See [crates/moltbook/docs/README.md](../../crates/moltbook/docs/README.md) for the full index.
 
-Root-level Moltbook guidance: [MOLTBOOK.md](../../MOLTBOOK.md).
+Root-level Moltbook guidance: [MOLTBOOK.md](../MOLTBOOK.md).

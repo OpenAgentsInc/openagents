@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
 - **If this doc conflicts with code, code wins.**
 
 The execution engine that DOES THE WORK. Named after StarCraft's command & control AI. Adjutant is an internal library—all user-facing CLI commands use `autopilot`.
@@ -260,7 +260,7 @@ let result = executor.execute_dsrs(&task, &context, &mut tools).await?;
 | Signature | Purpose | Fallback |
 |-----------|---------|----------|
 | `ComplexityClassificationSignature` | Classify task complexity (Low/Medium/High/VeryHigh) | Rule-based heuristics |
-| `DelegationDecisionSignature` | Decide delegation target (see [GLOSSARY.md](../../../GLOSSARY.md) for full enum) | Complexity thresholds |
+| `DelegationDecisionSignature` | Decide delegation target (see [GLOSSARY.md](../../../docs/GLOSSARY.md) for full enum) | Complexity thresholds |
 | `RlmTriggerSignature` | Decide if RLM should be used | Token count + keywords |
 
 Decision pipelines use a 0.7 confidence threshold - below that, they fall back to legacy rule-based logic.

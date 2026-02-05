@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
 - **If this doc conflicts with code, code wins.**
 
 This document describes the DSPy signature execution flow in the Autopilot agent, including the current v1 design and proposed v2 improvements.
@@ -157,13 +157,13 @@ Adjutant and Autopilot have different plan outputs:
 This causes fragmented training data, conflicting schemas, and duplicated
 optimization effort across the two pipelines.
 
-The target is a canonical **PlanIR** (see [GLOSSARY.md](../../../GLOSSARY.md)) that unifies plan
+The target is a canonical **PlanIR** (see [GLOSSARY.md](../../../docs/GLOSSARY.md)) that unifies plan
 representation across both execution paths. This enables aggregated training data
 and a single evaluation framework for plan quality.
 
 ## Proposed Signature Chain (v2)
 
-> **Status:** The v2 signatures (`ToolCallSignature`, `ToolResultSignature`) are **Spec only (not wired)**. See [SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) and [ROADMAP.md](../../../ROADMAP.md) NOW section for implementation status.
+> **Status:** The v2 signatures (`ToolCallSignature`, `ToolResultSignature`) are **Spec only (not wired)**. See [SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) and [ROADMAP.md](../../../docs/ROADMAP.md) NOW section for implementation status.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -303,7 +303,7 @@ This replaces implicit heuristics with explicit classification.
 
 ## See Also
 
-- [GLOSSARY.md](../../../GLOSSARY.md) - Canonical terminology
+- [GLOSSARY.md](../../../docs/GLOSSARY.md) - Canonical terminology
 - [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md) - What's wired today
 - [dsrs/docs/SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) - Signature inventory
 - [adjutant/docs/DSPY-INTEGRATION.md](../../adjutant/docs/DSPY-INTEGRATION.md) - Self-improvement loop

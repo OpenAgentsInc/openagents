@@ -8,7 +8,7 @@
 - **Doc owner:** dsrs
 - **If this doc conflicts with code, code wins.**
 
-Canonical JSONL event format for REPLAY.jsonl files. For terminology, see [GLOSSARY.md](../../../GLOSSARY.md).
+Canonical JSONL event format for REPLAY.jsonl files. For terminology, see [GLOSSARY.md](../../../docs/GLOSSARY.md).
 
 ## Overview
 

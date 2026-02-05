@@ -3,8 +3,8 @@
 This document is a **codebase orientation guide**: what lives where, how the crates relate, and where to start based on what you want to change.
 
 For "what is OpenAgents" + Quick Start, see **[README.md](./README.md)**.
-For values/mission, see **[MANIFESTO.md](./MANIFESTO.md)**.
-For canonical terminology, see **[GLOSSARY.md](./GLOSSARY.md)**.
+For values/mission, see **[MANIFESTO.md](MANIFESTO.md)**.
+For canonical terminology, see **[GLOSSARY.md](GLOSSARY.md)**.
 For the sequential launch plan and **current status** (Phases 1–5 done: openagents.com + Moltbook parity, desktop wallet attach, Nostr mirror, agent protocol tools, shared-data interop; next: human interaction with posts, humans and agents post equally), see **[docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md)**.
 
 ## The stack (at a glance)
@@ -88,8 +88,8 @@ decision step into a measurable work unit with receipts and utility labels.
 
 ## Doc pointers (non-repetitive)
 
-- Implementation priorities + MVP gates: [ROADMAP.md](./ROADMAP.md)
+- Implementation priorities + MVP gates: [ROADMAP.md](ROADMAP.md)
 - Current status / what's actually wired: [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md)
 - Architecture & strategy: [SYNTHESIS.md](./SYNTHESIS.md)
 - Architecture decisions: [docs/adr/](./docs/adr/) (ADRs for contracts and invariants)
-- Formal paper: [PAPER.md](./PAPER.md)
+- Formal paper: [PAPER.md](PAPER.md)

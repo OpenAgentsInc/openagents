@@ -3,7 +3,7 @@
 **Autopilot** is the primary product in this repo: a local-first desktop agent that plans → executes → verifies → produces replayable artifacts. It runs on your machine, works in your repo, and keeps the full trace of what happened.
 
 OpenAgents also ships a **web app** ([openagents.com](https://openagents.com)) and the broader runtime/compiler/market stack used by Autopilot.
-If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./MANIFESTO.md)**.
+If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
 ## Quick Start
 
@@ -66,6 +66,6 @@ Start with:
 * **Web app**: [apps/web/](apps/web/)
 * **Desktop docs**: [apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
-* **Repo map / ownership**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
+* **Repo map / ownership**: [PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md)
 * **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)
 * **OpenClaw runtime (managed)**: [docs/openclaw/openclaw-slim-runtime-options.md](docs/openclaw/openclaw-slim-runtime-options.md)

@@ -8,7 +8,7 @@
 
 ## Terminology
 
-Before diving into traits, understand the key terms used throughout dsrs. For the complete canonical vocabulary, see [GLOSSARY.md](../../../GLOSSARY.md).
+Before diving into traits, understand the key terms used throughout dsrs. For the complete canonical vocabulary, see [GLOSSARY.md](../../../docs/GLOSSARY.md).
 
 | Term | Definition |
 |------|------------|

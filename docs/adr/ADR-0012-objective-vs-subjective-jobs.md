@@ -89,5 +89,5 @@ Backward compatibility:
 ## References
 
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)
-- [GLOSSARY.md](../../GLOSSARY.md) — objective vs subjective job terminology
+- [GLOSSARY.md](../GLOSSARY.md) — objective vs subjective job terminology
 - `crates/protocol/src/verification.rs` (or equivalent)

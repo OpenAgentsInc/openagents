@@ -79,5 +79,5 @@ Backward compatibility:
 ## References
 
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)
-- [GLOSSARY.md](../../GLOSSARY.md) — schema ID terminology
+- [GLOSSARY.md](../GLOSSARY.md) — schema ID terminology
 - `crates/protocol/src/*` — schema registry / envelope parsing
