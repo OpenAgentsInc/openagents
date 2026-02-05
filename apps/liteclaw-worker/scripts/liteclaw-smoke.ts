@@ -1,4 +1,4 @@
-import WebSocket from "ws";
+import WebSocket, { type RawData } from "ws";
 import { randomUUID } from "node:crypto";
 import { createSkyValidators } from "../src/sky/contracts";
 
@@ -64,7 +64,10 @@ const warn = (message: string) => {
   console.warn(`[liteclaw-smoke] ${message}`);
 };
 
-const assert = (condition: unknown, message: string): asserts condition => {
+const assert: (condition: unknown, message: string) => asserts condition = (
+  condition,
+  message
+) => {
   if (!condition) {
     throw new Error(message);
   }
@@ -166,7 +169,7 @@ const sendChatMessage = async (content: string): Promise<ChatResult> => {
       socket.send(JSON.stringify(payload));
     });
 
-    socket.on("message", (data) => {
+    socket.on("message", (data: RawData) => {
       let parsed: unknown = null;
       try {
         parsed = JSON.parse(data.toString());
@@ -205,7 +208,7 @@ const sendChatMessage = async (content: string): Promise<ChatResult> => {
       }
     });
 
-    socket.on("error", (error) => {
+    socket.on("error", (error: Error) => {
       if (finished) return;
       finished = true;
       clearTimeout(ttftTimer);

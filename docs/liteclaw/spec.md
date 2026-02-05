@@ -700,6 +700,7 @@ Production smoke (minimum):
 ---
 
 ## Log
+- 2026-02-05: Converted Nydus + LiteClaw worker + Cloudflare agent demo to Effect-based orchestration, added Effect language-service setup and tsconfig hardening, and documented Sky tool demo flow.
 - 2026-02-05: Updated nydus cloud demo to mirror tool inputs locally when the worker executes tools on Workers (or tool outputs are missing), and documented the behavior.
 - 2026-02-05: Defaulted executor kind to `tunnel` when tunnel URL/token are configured (unless explicitly overridden), and updated docs.
 - 2026-02-05: Switched LiteClaw default model to `@cf/openai/gpt-oss-120b` (tool-capable) and updated docs to reflect the tool model expectation.
@@ -738,7 +739,7 @@ Production smoke (minimum):
 
 ## Post-EA Roadmap: Cloudflare-Native Sky (LiteClaw-First)
 
-Goal: build our own Pi-style runtime, branded as **Sky**, on Workers + Durable Objects, while keeping the LiteClaw product surface stable.
+Goal: build our own **Sky** runtime on Workers + Durable Objects, while keeping the LiteClaw product surface stable.
 
 Non-goal: replacing the LiteClaw UI or transport. The UI (`/chat/{id}`) and transport (`/agents/chat/*`) stay constant; only the runtime beneath evolves.
 
@@ -839,7 +840,7 @@ Export
 
 - Flag off: existing behavior unchanged.
 - Flag on: `/chat/{id}` works end-to-end: streaming, persistence, resume.
-- Export JSONL loads in OpenClaw Pi tooling without conversion errors, or with a documented minimal adapter.
+- Export JSONL loads in Sky tooling without conversion errors, or with a documented minimal adapter.
 - Tests cover message conversion round-trip, event ordering monotonicity, and compaction correctness.
 
 ---

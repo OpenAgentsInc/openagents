@@ -64,11 +64,18 @@ const AvatarComponent = ({
 };
 
 export const Avatar = ({ ...props }: AvatarProps) => {
-  return props.tooltip ? (
-    <Tooltip content={props.tooltip} className={props.className} id={props.id}>
-      <AvatarComponent {...props} className={undefined} />
+  if (!props.tooltip) {
+    return <AvatarComponent {...props} />;
+  }
+
+  const { className, id, tooltip, ...rest } = props;
+  return (
+    <Tooltip
+      content={tooltip}
+      {...(className ? { className } : {})}
+      {...(id !== undefined ? { id } : {})}
+    >
+      <AvatarComponent {...rest} />
     </Tooltip>
-  ) : (
-    <AvatarComponent {...props} />
   );
 };

@@ -21,7 +21,7 @@ const MenuOption = ({
 }: MenuOptionProps) => (
   <Tooltip
     content={tooltip}
-    id={id}
+    {...(id !== undefined ? { id } : {})}
     className="first-of-type:*:first:rounded-l-lg last-of-type:*:first:rounded-r-lg"
   >
     <button
@@ -71,7 +71,7 @@ export const MenuBar = ({
           key={index}
           {...option}
           isActive={isActive}
-          id={optionIds ? option.id : index}
+          id={optionIds && option.id !== undefined ? option.id : index}
         />
       ))}
     </nav>

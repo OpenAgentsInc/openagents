@@ -12,7 +12,9 @@
 		"types": "wrangler types env.d.ts --include-runtime false",
 		"format": "prettier --write .",
 		"check": "prettier . --check && biome lint && tsc",
-		"postinstall": "patch-package"
+		"postinstall": "patch-package",
+		"prepare": "effect-language-service patch",
+		"typecheck": "tsc --noEmit"
 	},
 	"keywords": [
 		"cloudflare",
@@ -26,6 +28,7 @@
 		"@cloudflare/vite-plugin": "1.19.0",
 		"@cloudflare/vitest-pool-workers": "^0.11.1",
 		"@cloudflare/workers-types": "^4.20251231.0",
+		"@effect/language-service": "^0.73.0",
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/node": "^25.2.0",
 		"@types/react": "^19.2.7",
@@ -52,6 +55,7 @@
 		"ai": "^6.0.5",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
+		"effect": "^3.19.16",
 		"marked": "^17.0.1",
 		"react": "^19.2.3",
 		"react-dom": "^19.2.3",

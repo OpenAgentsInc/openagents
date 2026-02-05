@@ -1,12 +1,16 @@
 import http from "node:http";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOT = process.env.LITECLAW_LOCAL_ROOT;
 const TOKEN = process.env.LITECLAW_TUNNEL_TOKEN;
 const MAX_BYTES = Number(process.env.LITECLAW_LOCAL_MAX_BYTES ?? 200000);
+const MAX_BASH_BYTES = Number(
+  process.env.LITECLAW_LOCAL_BASH_MAX_BYTES ?? MAX_BYTES
+);
 const MAX_BODY_BYTES = Number(
   process.env.LITECLAW_LOCAL_MAX_BODY_BYTES ?? 1000000
 );
@@ -246,6 +250,96 @@ async function editWorkspaceFile(args) {
   };
 }
 
+async function executeBashCommand(args) {
+  if (!args || typeof args.command !== "string") {
+    throw new Error("Missing command.");
+  }
+  const timeoutSeconds =
+    typeof args.timeout === "number" && args.timeout > 0
+      ? args.timeout
+      : null;
+
+  const result = await new Promise((resolve, reject) => {
+    const shell = process.platform === "win32" ? "cmd" : "sh";
+    const shellArgs = process.platform === "win32" ? ["/c"] : ["-c"];
+    const child = spawn(shell, [...shellArgs, args.command], {
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timeoutHandle =
+      timeoutSeconds !== null
+        ? setTimeout(() => {
+            timedOut = true;
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch {
+              try {
+                process.kill(child.pid, "SIGKILL");
+              } catch {
+                // ignore
+              }
+            }
+          }, timeoutSeconds * 1000)
+        : null;
+
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("close", (code) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (timedOut) {
+        reject(new Error("Command timed out."));
+        return;
+      }
+      resolve({ stdout, stderr, code: code ?? 0 });
+    });
+
+    child.on("error", (error) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      reject(error);
+    });
+  });
+
+  let combined = "";
+  if (result.stdout) combined += result.stdout;
+  if (result.stderr) {
+    if (combined) combined += "\n";
+    combined += result.stderr;
+  }
+
+  let outputText = combined || "(no output)";
+  let truncated = false;
+  let totalBytes = Buffer.byteLength(outputText, "utf8");
+  if (totalBytes > MAX_BASH_BYTES) {
+    truncated = true;
+    outputText = outputText.slice(outputText.length - MAX_BASH_BYTES);
+    totalBytes = Buffer.byteLength(outputText, "utf8");
+  }
+
+  return {
+    output: {
+      executor_kind: "tunnel",
+      command: args.command,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exit_code: result.code,
+      output: outputText,
+      truncated,
+      bytes: totalBytes
+    },
+    patchHash: null
+  };
+}
+
 async function handleInvoke(body) {
   if (!body || typeof body.tool_name !== "string") {
     throw new Error("Missing tool_name.");
@@ -268,6 +362,9 @@ async function handleInvoke(body) {
       break;
     case "workspace.edit":
       result = await editWorkspaceFile(body.args ?? {});
+      break;
+    case "bash":
+      result = await executeBashCommand(body.args ?? {});
       break;
     default: {
       const error = new Error("Unsupported tool.");

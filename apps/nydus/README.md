@@ -1,12 +1,14 @@
 # nydus
 
-Nydus is a Bun-based demo harness for LiteClaw tunnel tools. It can run a direct tunnel handshake and a cloud-driven demo where a LiteClaw agent message triggers local workspace tools.
+Nydus is a Bun-based demo harness for LiteClaw tunnel tools, now powered by Effect for control flow and error handling. It can run a direct tunnel handshake and a cloud-driven demo where a LiteClaw agent message triggers local workspace tools.
 
 ## Install
 
 ```bash
 bun install
 ```
+
+Effect language service patches TypeScript during `prepare` for richer diagnostics.
 
 ## Handshake (direct tunnel)
 
@@ -47,9 +49,19 @@ LiteClaw now defaults to a tool-capable model (`@cf/openai/gpt-oss-120b`), so th
 
 - `handshake` (default): direct tunnel tool invocation.
 - `cloud`: agent message triggers local tools.
+- `sky` / `sky-tools`: run Sky tool checks (read/write/edit/bash) via the tunnel.
 - `full`: run both handshake and cloud demo.
 
 You can pass the mode as the first argument or via `NYDUS_MODE`.
+
+Quick Sky tools run:
+
+```bash
+cd apps/nydus
+LITECLAW_TUNNEL_URL=https://local-tools.example.com \
+LITECLAW_TUNNEL_TOKEN=replace-me \
+bun run sky-tools
+```
 
 ## Environment
 
@@ -78,3 +90,6 @@ Cloud demo options:
 - `NYDUS_REQUIRE_LOCAL_RECEIPT` (`0` to allow non-tunnel receipts)
 
 Note: If you expect the fallback to run, you must also set `LITECLAW_TUNNEL_URL` and `LITECLAW_TUNNEL_TOKEN` so nydus can execute the tools.
+
+Sky tools options:
+- `NYDUS_SKY_ROOT` (defaults to `NYDUS_LOCAL_ROOT`; used to verify the file on disk)

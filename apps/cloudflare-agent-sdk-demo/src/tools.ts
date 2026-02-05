@@ -118,7 +118,7 @@ export const tools = {
   scheduleTask,
   getScheduledTasks,
   cancelScheduledTask
-} satisfies ToolSet;
+} as unknown as ToolSet;
 
 /**
  * Implementation of confirmation-required tools
