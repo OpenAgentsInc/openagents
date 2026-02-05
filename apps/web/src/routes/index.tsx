@@ -11,7 +11,10 @@ export const Route = createFileRoute('/')({
       throw redirect({ to: '/assistant' });
     }
 
-    const [signInUrl, signUpUrl] = await Promise.all([getSignInUrl(), getSignUpUrl()]);
+    const [signInUrl, signUpUrl] = await Promise.all([
+      getSignInUrl({ data: { returnPathname: '/assistant' } }),
+      getSignUpUrl({ data: { returnPathname: '/assistant' } }),
+    ]);
 
     await context.effectRuntime.runPromise(
       Effect.gen(function* () {
