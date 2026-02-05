@@ -89,6 +89,7 @@ const SkyToolReceiptSchema = Type.Object(
     tool_name: Type.String(),
     args_hash: Type.Union([Type.String(), Type.Null()]),
     output_hash: Type.Union([Type.String(), Type.Null()]),
+    patch_hash: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     started_at: Type.Number(),
     completed_at: Type.Number(),
     duration_ms: Type.Number(),

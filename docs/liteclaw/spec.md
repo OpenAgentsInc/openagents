@@ -663,6 +663,7 @@ Production smoke (minimum):
 - 2026-02-05: Implemented Sky-mode scaffolding in the LiteClaw worker (sky tables + memory storage, run/event/receipt logging behind `LITECLAW_SKY_MODE`, `/agents/chat/{id}/export` JSONL output), reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Added Phase 1 Sky contracts (TypeBox + AJV schemas for messages/events/receipts, tool args streaming contract, R2 ref normalization, compatibility doc), reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Implemented Phase 2 tool registry (http.fetch + summarize + extract), added tool policy/budgets, tool event + receipt logging, updated Sky receipt schema to include tool receipts, reran worker tests, and deployed liteclaw worker.
+- 2026-02-05: Implemented Phase 3 workspace tools (read/write/edit) with executor gating and diff receipts (patch_hash), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1f9c5eb4-7bb6-4d52-bf07-ada1cfea2665`).
 
 ---
 

@@ -20,6 +20,7 @@ Receipts include:
 
 - Run receipts (`type: "run"`)
 - Tool receipts (`type: "tool"`) with args/output hashes
+- Tool receipts may include `patch_hash` for deterministic edits/writes
 
 ## Event contract
 
