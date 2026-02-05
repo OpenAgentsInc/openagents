@@ -318,6 +318,23 @@ This is the “what do we delete/disable” list (useful because `apps/liteclaw/
 
 ---
 
+## Starter Template Cleanup (apps/liteclaw)
+
+`apps/liteclaw/` currently starts from `agents-starter`, which is intentionally *more capable* than LiteClaw EA. Before we ship EA, we should delete/disable anything that contradicts the “persistent chat only” promise.
+
+Remove/disable for EA (concrete filepaths):
+
+- Tool calling + confirmations:
+  - `apps/liteclaw/src/tools.ts`
+  - `apps/liteclaw/src/components/tool-invocation-card/ToolInvocationCard.tsx`
+  - `apps/liteclaw/src/utils.ts` (tool-call processing helpers)
+- Scheduling:
+  - `apps/liteclaw/src/server.ts` (remove `agents/schedule` and the schedule tool prompt)
+
+We can keep the files around during prototyping, but **don’t ship them in the EA golden path** (and don’t accidentally mention them in UX copy).
+
+---
+
 ## Required Cloudflare Wiring (Paths + Config)
 
 ### Domain routing
