@@ -1,3 +1,6 @@
 # LiteClaw uses the Workers AI binding by default.
 # If you switch providers, add secrets here and upload via `wrangler secret bulk`.
 # OPENAI_API_KEY=
+
+# Enable Sky logging/export paths locally.
+# LITECLAW_SKY_MODE=1
