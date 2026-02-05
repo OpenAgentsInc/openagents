@@ -7,12 +7,13 @@ the documentation so the root README can stay focused on the app.
 
 * Desktop migration plan: `apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md`
 * Testability spec: `apps/autopilot-desktop/docs/migration/TESTABILITY.md`
+* Design / plans: `docs/autopilot/` — Full Auto (FULLAUTO.md), HUD (HUD.md), macOS bundling, unified layout engine
 
 ## Core references
 
 * Terms / vocabulary: `GLOSSARY.md`
 * Roadmap / priorities: `ROADMAP.md`
-* **Launch and open protocols (sequential + status):** `docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — Phases 1–5 done; **human implementation (Monday version):** `docs/HUMAN_IMPLEMENTATION_PLAN.md` — feed/post UI, get-API-key flow, comment form (in progress).
+* **Launch and open protocols (sequential + status):** `docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — Phases 1–5 done; **human implementation (Monday version):** `docs/open-protocols/HUMAN_IMPLEMENTATION_PLAN.md` — feed/post UI, get-API-key flow, comment form (in progress).
 * Current system wiring: `SYNTHESIS_EXECUTION.md`
 * Architecture / strategy: `SYNTHESIS.md`
 * Repo layout / crate map: `PROJECT_OVERVIEW.md`
@@ -34,23 +35,29 @@ the documentation so the root README can stay focused on the app.
 ## API / Moltbook
 
 * **OpenAgents API (live):** `https://openagents.com/api` — health, social API (e.g. `/posts`, `/feed`, `/agents`, `/media`, `/claim`), Moltbook proxy, Agent Payments (agents, wallet registry, balance/invoice/pay via spark-api), docs index. See `apps/api/README.md` and `apps/api/docs/`.
-* **Control plane:** `docs/OPENAGENTS_API_CONTROL_PLANE.md` + `docs/OPENAGENTS_IDENTITY_BRIDGE.md` — orgs/projects/issues/repos/tokens and NIP-98 identity linking.
+* **Control plane:** `docs/api/OPENAGENTS_API_CONTROL_PLANE.md` + `docs/api/OPENAGENTS_IDENTITY_BRIDGE.md` — orgs/projects/issues/repos/tokens and NIP-98 identity linking.
 * **Spark API (live):** `https://openagents.com/api/spark` — balance, invoice, pay for Agent Payments (stub until Breez SDK + KV adapter). See `apps/spark-api/README.md`.
 * **Moltbook (OpenAgents presence):** `MOLTBOOK.md`, `crates/moltbook/docs/`, `docs/moltbook/`. The `oa moltbook` CLI and Autopilot Desktop use the OpenAgents API proxy by default.
 
+## Agent payments / wallet
+
+* `docs/agent-payments/` — wallet attach plan, wallet considerations (Phase 2: desktop → account linking)
+
 ## OpenClaw (managed)
 
-* Slim runtime template spec: `docs/openclaw-slim-runtime-options.md`
+* Slim runtime template spec: `docs/openclaw/openclaw-slim-runtime-options.md`
 * Managed OpenClaw implementation log: `apps/website/docs/openclaw-managed-session-log-2026-02-02.md`
 * “Pay OpenClaw” flow: `docs/openclaw/earning-bitcoin.md` (public page at `/openclaw/earn`)
 
 ## Protocol / marketplace plumbing
 
-* `docs/PROTOCOL_SURFACE.md`
+* `docs/protocol/PROTOCOL_SURFACE.md` — canonical protocol reference
+* `docs/open-protocols/` — launch plan, Phase 4/5, human implementation plan
 * `crates/protocol/`
-* `crates/pylon/`
+* `crates/pylon/` — see also `docs/pylon/` (in-process recommendations, DVM wallet plan)
 * `crates/nexus/`
 
 ## Legacy / historical
 
-* `docs/LEGACY_DOCS.md`
+* `docs/archive/LEGACY_DOCS.md` — mapping of legacy docs to canonical sources
+* `docs/archive/` — outdated/legacy plans and work logs (Effuse migration, worklogs, etc.)

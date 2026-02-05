@@ -34,4 +34,4 @@ Set `AGENT_WORKER_URL` on the web app (openagents-web-app) to this worker’s UR
 - Cloudflare Dashboard → Workers & Pages → openagents-web-app → Settings → Variables and Secrets, or
 - `wrangler secret put AGENT_WORKER_URL` (value: this worker’s URL, e.g. `https://openagents-agent-worker.<account>.workers.dev`)
 
-See `apps/web/docs/zero-to-openclaw-30s.md` (“Why /assistant Chat Can Return unauthorized” and “How the agent-worker gets the correct key”) for the full flow and checklist.
+See `apps/web/docs/archive/openclaw-era/zero-to-openclaw-30s.md` (“Why /assistant Chat Can Return unauthorized” and “How the agent-worker gets the correct key”) for the full flow and checklist. (Archived 2026-02-04; OpenClaw-era docs.)

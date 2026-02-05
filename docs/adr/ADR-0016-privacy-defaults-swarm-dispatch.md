@@ -84,7 +84,7 @@ This ADR does NOT guarantee all redaction is reversible — only that modes pres
 
 Trust tiers for providers are defined in:
 - Policy bundle configuration (per ADR-0015)
-- PROTOCOL_SURFACE.md provider reputation
+- [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) provider reputation
 
 This ADR only specifies that **privacy policy MAY vary by trust tier** — the trust model itself is defined elsewhere.
 
@@ -112,7 +112,7 @@ What this ADR covers:
 What this ADR does NOT cover:
 - Exact preset parameter values (see PRIVACY.md)
 - Redaction algorithm implementation
-- Provider trust model (see PROTOCOL_SURFACE.md)
+- Provider trust model (see [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md))
 
 ## Invariants / Compatibility
 

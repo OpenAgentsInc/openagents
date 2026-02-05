@@ -30,7 +30,7 @@
 
 > For values, motivation, and political framing, see [MANIFESTO.md](./MANIFESTO.md). This document focuses on architecture and strategy.
 
-> **Implementation Status:** This document mixes shipped components with planned ones. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md). For protocol details, see [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md).
+> **Implementation Status:** This document mixes shipped components with planned ones. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md). For protocol details, see [docs/protocol/PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md).
 
 ---
 
@@ -333,7 +333,7 @@ Treasury Agents become a new profitable agent class. They hold capital, quote tw
 
 With cryptographic identity, decentralized communication, and economic capability established, directive d-006 defines NIP-SA, the Sovereign Agent Protocol specifying how these capabilities combine into coherent agent behavior. NIP-SA defines ten event kinds describing the full lifecycle of an autonomous agent.
 
-> **Protocol Status:** NIP-SA is proposed but not yet implemented. The kind numbers below are **examples for illustration**—final numbers will be assigned when the NIP is formalized. For canonical protocol details and current implementation status, see [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md).
+> **Protocol Status:** NIP-SA is proposed but not yet implemented. The kind numbers below are **examples for illustration**—final numbers will be assigned when the NIP is formalized. For canonical protocol details and current implementation status, see [docs/protocol/PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md).
 
 *Note on kind numbers:* NIP-SA proposes using the 39200+ range to avoid collisions with existing NIPs. In particular, NIP-87 uses kind 38000 for mint recommendation events—we deliberately avoid this range to ensure protocol compatibility. **These numbers are subject to change.**
 
@@ -379,7 +379,7 @@ The Bazaar promises: open entry (anyone can supply work), price discovery (marke
 
 The mechanics of compute acquisition illustrate how the entire stack works. When an agent needs inference, it publishes a NIP-90 job request (kind 5050) to Nostr relays. Providers subscribe, see requests, bid, execute, and publish results (kind 6050). Before submitting, the agent's CostTracker checks budget against quoted price—if the quote exceeds daily or session budget, the request blocks. If approved, the agent pays via its threshold-protected Spark wallet, the provider executes, and the cost records against a running tally across all backends: cloud APIs, local inference, and decentralized DVMs.
 
-> **Job Type Status:** The job schemas below use NIP-90 as a base. Specific job type identifiers (e.g., `oa.sandbox_run.v1`) are defined in [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md). Kind numbers for specialized job types are examples subject to change.
+> **Job Type Status:** The job schemas below use NIP-90 as a base. Specific job type identifiers (e.g., `oa.sandbox_run.v1`) are defined in [docs/protocol/PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md). Kind numbers for specialized job types are examples subject to change.
 
 The v1 compute marketplace focuses on two verifiable job types. **SandboxRun** (`oa.sandbox_run.v1`) executes commands against a repo snapshot in an isolated sandbox—`cargo test`, `cargo clippy`, builds, benchmarks, static analysis. Verification is straightforward: exit code plus logs plus artifact hashes. If the output hash matches expectations, payment releases; if not, no payment and provider reputation takes a hit. **RepoIndex** (`oa.repo_index.v1`) produces indexing artifacts—embeddings for code search, symbol maps, file digests. Verification uses schema validation (correct dimensions, chunk counts) and spot-check redundancy (re-run a sample on a trusted provider; mismatches trigger penalties). These verifiable workloads enable **pay-after-verify settlement**: providers include their Lightning invoice in the job result, and Autopilot pays only after verification passes. This creates trust without requiring trust—providers cannot get paid for garbage.
 

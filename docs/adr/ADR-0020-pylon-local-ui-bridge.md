@@ -33,7 +33,7 @@ emits `pylon.codex.event`/`pylon.codex.response`/`pylon.codex.status`.
 
 ### Schema / Spec Authority
 
-- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) — Local UI bridge surface
+- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Local UI bridge surface
 
 ## Scope
 

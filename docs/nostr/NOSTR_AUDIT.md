@@ -122,7 +122,7 @@ Key files:
 - Hashing/canonicalization: `crates/protocol/src/hash.rs`
 - Verification modes: `crates/protocol/src/verification.rs`
 
-These are the schema IDs referenced by `docs/PROTOCOL_SURFACE.md`.
+These are the schema IDs referenced by `docs/protocol/PROTOCOL_SURFACE.md`.
 
 ---
 
@@ -529,7 +529,7 @@ Runtime:
 ## Docs inventory (nostr-relevant)
 
 Repo docs:
-- `docs/PROTOCOL_SURFACE.md` (canonical protocol surface; NIP-90/SA status)
+- `docs/protocol/PROTOCOL_SURFACE.md` (canonical protocol surface; NIP-90/SA status)
 - `SYNTHESIS_EXECUTION.md` (implementation status; Nexus marked planned)
 - `GLOSSARY.md` (NIP-90/NIP-SA terminology)
 
@@ -551,7 +551,7 @@ Crate docs:
 
 - **Nexus relay** is referenced (`wss://nexus.openagents.com`) but its code is
   not present in this repo. `SYNTHESIS_EXECUTION.md` lists Nexus as planned.
-- **NIP-SA lifecycle events** are marked planned in `docs/PROTOCOL_SURFACE.md`.
+- **NIP-SA lifecycle events** are marked planned in `docs/protocol/PROTOCOL_SURFACE.md`.
 - **Mnemonic encryption** is still TODO in pylon and agent storage.
 
 ---

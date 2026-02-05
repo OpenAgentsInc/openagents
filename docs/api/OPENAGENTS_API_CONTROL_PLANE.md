@@ -4,7 +4,7 @@
 - **Scope:** Internal control-plane data (orgs/projects/issues/repos/api tokens/nostr identity)
 - **External base:** `https://openagents.com/api`
 - **Source of truth:** Code wins (`apps/api/src/lib.rs`, `apps/web/convex/control_auth.ts`)
-- **Related:** `docs/OPENAGENTS_IDENTITY_BRIDGE.md`
+- **Related:** `docs/api/OPENAGENTS_IDENTITY_BRIDGE.md`
 
 ## Why this exists
 

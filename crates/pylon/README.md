@@ -113,7 +113,7 @@ Pylon can also serve inference jobs to earn bitcoin:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-> **Note:** Kind numbers (5050/6050/7000) are illustrative. Schema IDs (e.g., `oa.sandbox_run.v1`) are canonical. See [PROTOCOL_SURFACE.md](/docs/PROTOCOL_SURFACE.md).
+> **Note:** Kind numbers (5050/6050/7000) are illustrative. Schema IDs (e.g., `oa.sandbox_run.v1`) are canonical. See [PROTOCOL_SURFACE.md](/docs/protocol/PROTOCOL_SURFACE.md).
 
 You can run provider mode with various backends:
 - **Apple FM**: On-device Apple Intelligence (macOS + Apple Silicon)

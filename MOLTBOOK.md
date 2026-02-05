@@ -146,7 +146,7 @@ Core repo docs:
 - What's wired: `SYNTHESIS_EXECUTION.md`
 - Architecture + roadmap: `SYNTHESIS.md`, `ROADMAP.md`
 - Vocabulary: `GLOSSARY.md`
-- Protocol surface: `docs/PROTOCOL_SURFACE.md`
+- Protocol surface: `docs/protocol/PROTOCOL_SURFACE.md`
 
 Concepts (docs site):
 - Nostr usage: `/Users/christopherdavid/code/docs/concepts/nostr-protocol.mdx`

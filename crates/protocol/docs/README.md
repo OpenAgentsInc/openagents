@@ -2,10 +2,10 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), protocol → [docs/PROTOCOL_SURFACE.md](../../../docs/PROTOCOL_SURFACE.md), behavior → code
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), protocol → [docs/protocol/PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md), behavior → code
 - **If this doc conflicts with code, code wins.**
 
-The `protocol` crate provides the Rust API for OpenAgents job schemas. Protocol policy lives in [PROTOCOL_SURFACE.md](../../../docs/PROTOCOL_SURFACE.md); this doc covers crate-specific usage.
+The `protocol` crate provides the Rust API for OpenAgents job schemas. Protocol policy lives in [PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md); this doc covers crate-specific usage.
 
 ## Overview
 
@@ -22,7 +22,7 @@ Every job in the OpenAgents swarm follows a common structure:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> **Note:** `schema_id` is the canonical identifier for job types. Transport uses NIP-90; see [PROTOCOL_SURFACE.md](../../../docs/PROTOCOL_SURFACE.md) for kind mappings.
+> **Note:** `schema_id` is the canonical identifier for job types. Transport uses NIP-90; see [PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md) for kind mappings.
 
 ## Quick Start
 

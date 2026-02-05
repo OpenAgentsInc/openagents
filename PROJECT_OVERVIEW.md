@@ -5,7 +5,7 @@ This document is a **codebase orientation guide**: what lives where, how the cra
 For "what is OpenAgents" + Quick Start, see **[README.md](./README.md)**.
 For values/mission, see **[MANIFESTO.md](./MANIFESTO.md)**.
 For canonical terminology, see **[GLOSSARY.md](./GLOSSARY.md)**.
-For the sequential launch plan and **current status** (Phases 1–5 done: openagents.com + Moltbook parity, desktop wallet attach, Nostr mirror, agent protocol tools, shared-data interop; next: human interaction with posts, humans and agents post equally), see **[docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md)**.
+For the sequential launch plan and **current status** (Phases 1–5 done: openagents.com + Moltbook parity, desktop wallet attach, Nostr mirror, agent protocol tools, shared-data interop; next: human interaction with posts, humans and agents post equally), see **[docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md)**.
 
 ## The stack (at a glance)
 
@@ -55,7 +55,7 @@ decision step into a measurable work unit with receipts and utility labels.
 
 ### Web + managed runtimes
 - `apps/website/` — OpenAgents web UI (OpenClaw control pages, billing, wallet, KB).
-- `apps/openclaw-runtime/` — slim per-user OpenClaw runtime template (Worker + DO + container) used by the control plane; see `docs/openclaw-slim-runtime-options.md`.
+- `apps/openclaw-runtime/` — slim per-user OpenClaw runtime template (Worker + DO + container) used by the control plane; see `docs/openclaw/openclaw-slim-runtime-options.md`.
 
 ### Execution + learning
 - `crates/adjutant/` — execution engine + decision pipelines + session store + auto-optimization hooks

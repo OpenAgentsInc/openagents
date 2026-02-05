@@ -44,7 +44,7 @@ Customer                    Nostr Relays                    Provider (Pylon)
 | 6000-6999 | Result | Job result events |
 | 7000 | Status | Job status/feedback |
 
-> **Note:** Kind numbers are illustrative. Schema IDs (e.g., `oa.sandbox_run.v1`) are the canonical job type identifiers. See [PROTOCOL_SURFACE.md](/docs/PROTOCOL_SURFACE.md).
+> **Note:** Kind numbers are illustrative. Schema IDs (e.g., `oa.sandbox_run.v1`) are the canonical job type identifiers. See [PROTOCOL_SURFACE.md](/docs/protocol/PROTOCOL_SURFACE.md).
 
 ### Job Targeting
 

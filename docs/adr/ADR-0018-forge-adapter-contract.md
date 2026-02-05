@@ -131,7 +131,7 @@ pub struct ForgeCapabilities {
 **ADR-0018.R8** — The canonical field name is **`trajectory_hash`** (not `replay_hash`).
 
 This is consistent with:
-- [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) receipt schema
+- [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) receipt schema
 - [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) receipt fields
 - [GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) tag definitions
 
@@ -250,7 +250,7 @@ Backward compatibility:
 - [GLOSSARY.md](../../GLOSSARY.md) — `Forge Adapter` definition
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Verified Patch Bundle format
 - [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) — GitAfter design and tag format
-- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) — `trajectory_hash` in receipt schema
+- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — `trajectory_hash` in receipt schema
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — Verified Patch Bundle contract
 - [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) — receipt fields including `trajectory_hash`
 - [ADR-0015](./ADR-0015-policy-bundles.md) — policy_bundle_id attribution

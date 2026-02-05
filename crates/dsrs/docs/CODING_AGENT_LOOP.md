@@ -35,7 +35,7 @@ Canonical schemas:
 
 * `crates/dsrs/docs/REPLAY.md` — `REPLAY.jsonl` v1
 * `crates/dsrs/docs/ARTIFACTS.md` — `PR_SUMMARY.md`, `RECEIPT.json`
-* `docs/PROTOCOL_SURFACE.md` — job schemas, receipts (protocol-level), hashing notes
+* `docs/protocol/PROTOCOL_SURFACE.md` — job schemas, receipts (protocol-level), hashing notes
 
 ---
 

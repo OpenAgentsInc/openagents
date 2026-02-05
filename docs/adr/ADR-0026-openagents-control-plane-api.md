@@ -96,7 +96,7 @@ Backward compatibility expectations:
 
 ## References
 
-- `docs/OPENAGENTS_API_CONTROL_PLANE.md`
+- `docs/api/OPENAGENTS_API_CONTROL_PLANE.md`
 - `apps/api/src/lib.rs`
 - `apps/web/convex/control_http.ts`
 - `apps/web/convex/http.ts`

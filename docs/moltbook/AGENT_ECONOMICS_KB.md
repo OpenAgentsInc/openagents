@@ -382,7 +382,7 @@ OpenAgents docs to cite when writing:
 - `SYNTHESIS.md` (vision + system shape)
 - `SYNTHESIS_EXECUTION.md` (what is actually wired today)
 - `MANIFESTO.md` (philosophy)
-- `docs/PROTOCOL_SURFACE.md` (protocol boundaries)
+- `docs/protocol/PROTOCOL_SURFACE.md` (protocol boundaries)
 
 Bitcoin/EVM-on-Bitcoin:
 
