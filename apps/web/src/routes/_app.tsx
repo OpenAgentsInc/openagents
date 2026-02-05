@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
 import { createFileRoute, Outlet, useRouterState } from '@tanstack/react-router';
-import { AnimatorGeneralProvider } from '@arwes/react-animator';
 import { AppLayout } from '@/components/assistant-ui/AppLayout';
 import { ChatSourceProvider } from '@/components/assistant-ui/chat-source-context';
 
@@ -10,11 +9,9 @@ function AppRoute() {
 
   if (isHatchery) {
     return (
-      <AnimatorGeneralProvider disabled={false} duration={{ enter: 0.8, exit: 0.3 }}>
-        <div className="flex h-dvh min-h-0 w-full flex-col">
-          <Outlet />
-        </div>
-      </AnimatorGeneralProvider>
+      <div className="flex h-dvh min-h-0 w-full flex-col">
+        <Outlet />
+      </div>
     );
   }
 

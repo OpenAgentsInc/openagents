@@ -4,32 +4,17 @@ import { useAgent } from 'agents/react';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { MessageType } from '@cloudflare/ai-chat/types';
-import { Animator, useAnimator } from '@arwes/react-animator';
-import { ANIMATOR_ACTIONS } from '@arwes/animator';
-import { Puffs } from '@arwes/react-bgs';
 import { DotsGridBackground, purplePreset } from '@openagentsinc/hud/react';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
 import { HatcheryButton } from './HatcheryButton';
 import { HatcheryH1, HatcheryH2, HatcheryP } from './HatcheryTypography';
+import { HatcheryPuffs } from './HatcheryPuffs';
 import { Input } from '@/components/ui/input';
 import { MessageSquareIcon, ServerIcon } from 'lucide-react';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function FrameAnimatorController({ active }: { active: boolean }) {
-  const animator = useAnimator();
-
-  useEffect(() => {
-    if (!animator) {
-      return;
-    }
-    animator.node.send(active ? ANIMATOR_ACTIONS.enter : ANIMATOR_ACTIONS.exit);
-  }, [animator, active]);
-
-  return null;
-}
 
 export function LiteClawHatchery() {
   const { user, loading: authLoading } = useAuth();
@@ -176,25 +161,18 @@ export function LiteClawHatchery() {
   }
 
   return (
-    <Animator
-      root
-      active={frameVisible}
-      combine
-      duration={{ enter: 0.8, exit: 0.3, interval: 4 }}
+    <div
+      className="min-h-screen bg-site flex flex-col p-3 md:p-4"
+      style={{ fontFamily: 'var(--font-square721)' }}
     >
-      <FrameAnimatorController active={frameVisible} />
-      <div
-        className="min-h-screen bg-site flex flex-col p-3 md:p-4"
-        style={{ fontFamily: 'var(--font-square721)' }}
-      >
-        <nav className="relative z-20 mb-3 md:mb-4">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xl font-bold text-foreground">Hatchery</span>
-            </div>
+      <nav className="absolute left-0 right-0 top-0 z-20 select-none pt-4 md:pt-5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold text-foreground">Hatchery</span>
           </div>
-        </nav>
-        <div className="relative flex min-h-0 flex-1 flex-col">
+        </div>
+      </nav>
+      <div className="relative flex min-h-0 flex-1 flex-col pt-20">
         {/* Arwes-style dots + grid background (purple preset) + vignette + puffs */}
         <div
           className="absolute inset-0"
@@ -211,32 +189,21 @@ export function LiteClawHatchery() {
             dotsColor={purplePreset.dotsColor}
             lineColor={purplePreset.lineColor}
           />
-          <Puffs
-            color="hsla(280, 50%, 70%, 0.2)"
-            quantity={20}
-          />
+          <HatcheryPuffs />
         </div>
         <div className="relative z-10 flex flex-1 flex-col p-4">
-          <div className="mb-4 flex justify-end">
+          {/* <div className="mb-4 flex justify-end">
             <HatcheryButton
               variant="outline"
-              onClick={() =>
-                setFrameVisible((visible) => {
-                  const next = !visible;
-                  console.log('[hatchery][button] toggle frameVisible', {
-                    from: visible,
-                    to: next,
-                  });
-                  return next;
-                })
-              }
+              onClick={() => setFrameVisible((visible) => !visible)}
             >
               {frameVisible ? 'Hide frame & puffs' : 'Show frame & puffs'}
             </HatcheryButton>
-          </div>
+          </div> */}
           <AssemblingFrame
             className="mx-auto w-full max-w-2xl"
             onReady={handleFrameReady}
+            active={frameVisible}
           >
             {/* Waitlist overlay */}
             {overlayVisible && (
@@ -358,8 +325,7 @@ export function LiteClawHatchery() {
             )}
           </AssemblingFrame>
         </div>
-        </div>
       </div>
-    </Animator>
+    </div>
   );
 }

@@ -1,9 +1,8 @@
 .root {
   position: relative;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  align-items: stretch;
+  justify-content: stretch;
   margin: 0;
   border: none;
   padding: 0;
@@ -13,7 +12,7 @@
   letter-spacing: 0.08em;
   font-size: 0.75rem;
   font-weight: 600;
-  color: hsl(280, 65%, 75%);
+  color: hsl(280, 65%, 78%);
   transition: color 200ms ease-out, opacity 200ms ease-out;
 }
 
@@ -23,48 +22,50 @@
 }
 
 .frame {
-  opacity: 0.7;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.75;
   transition: opacity 200ms ease-out, transform 200ms ease-out;
+  pointer-events: none;
 }
 
 .root:hover .frame,
 .root:focus-visible .frame {
   opacity: 1;
-  transform: scale(1.03);
+  transform: scale(1.02);
 }
 
-.root :global([data-frame]) {
-  transition: opacity 200ms ease-out, color 200ms ease-out;
+.bg {
+  fill: hsla(280, 45%, 6%, 0.5);
 }
 
-.root :global([data-name='line']) {
-  color: hsla(280, 75%, 60%, 0.9);
+.line {
+  stroke: hsla(280, 75%, 60%, 0.9);
+  stroke-width: 2;
+  fill: none;
 }
 
-.root:hover :global([data-name='line']),
-.root:focus-visible :global([data-name='line']) {
-  color: hsla(280, 85%, 70%, 1);
-}
-
-.root :global([data-name='bg']) {
-  color: hsla(280, 45%, 6%, 0.5);
-}
-
-.root:hover :global([data-name='bg']),
-.root:focus-visible :global([data-name='bg']) {
-  color: hsla(280, 45%, 10%, 0.6);
+.root:hover .line,
+.root:focus-visible .line {
+  stroke: hsla(280, 85%, 70%, 1);
 }
 
 .content {
   position: relative;
-  display: inline-flex;
+  display: flex;
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
   align-items: center;
   justify-content: center;
-  padding: 0 1.25rem;
-  line-height: 2.25rem;
+  /* Tighter horizontal padding so content fills the frame */
+  padding: 0 1rem;
+  line-height: 2rem;
   gap: 0.5rem;
 }
 
-.outline :global([data-name='bg']) {
-  display: none;
+.outline .bg {
+  fill: transparent;
 }

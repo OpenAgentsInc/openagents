@@ -1,21 +1,50 @@
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
-import { FrameNefrex } from '@arwes/react-frames';
-import { useFrameAssemblerCompat } from './useFrameAssemblerCompat';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFrameAnimation } from './useFrameAnimation';
 
 interface AssemblingFrameProps {
   children: ReactNode;
   className?: string;
   onReady?: () => void;
+  active?: boolean;
 }
 
 /**
- * Wraps content in an Arwes Nefrex frame with assembling animation (draw-in effect).
- * Uses purple theme to match hatchery background. Frame corners: leftBottom + rightTop.
+ * Wraps content in a Nefrex-style frame with assembling animation.
  */
-export function AssemblingFrame({ children, className, onReady }: AssemblingFrameProps) {
+export function AssemblingFrame({
+  children,
+  className,
+  onReady,
+  active = true,
+}: AssemblingFrameProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  useFrameAssemblerCompat(svgRef, { enterDelayMs: 240, exitDelayMs: 160 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useFrameAnimation(svgRef, active, {
+    enterDelayMs: 240,
+    exitDelayMs: 160,
+    enterDurationSec: 0.8,
+    exitDurationSec: 0.3,
+  });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
+        return;
+      }
+      const { width, height } = entry.contentRect;
+      setSize({ width, height });
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,9 +74,61 @@ export function AssemblingFrame({ children, className, onReady }: AssemblingFram
     };
   }, [onReady]);
 
+  const paths = useMemo(() => {
+    const { width, height } = size;
+    if (!width || !height) {
+      return null;
+    }
+
+    const padding = 4;
+    const strokeWidth = 2;
+    const squareSize = 32;
+    const smallLineLength = 32;
+    const largeLineLength = 128;
+    const so = strokeWidth / 2;
+    const w = width;
+    const h = height;
+
+    const bg = [
+      `M ${padding + so} ${padding + so + squareSize + smallLineLength}`,
+      `v ${-smallLineLength}`,
+      `l ${squareSize} ${-squareSize}`,
+      `h ${largeLineLength}`,
+      `L ${w - (padding + so + squareSize + largeLineLength)} ${padding + so}`,
+      `h ${largeLineLength}`,
+      `l ${squareSize} ${squareSize}`,
+      `v ${smallLineLength}`,
+      `L ${w - (padding + so)} ${h - (padding + so + squareSize + smallLineLength)}`,
+      `v ${smallLineLength}`,
+      `l ${-squareSize} ${squareSize}`,
+      `h ${-largeLineLength}`,
+      `L ${padding + so + squareSize + largeLineLength} ${h - (padding + so)}`,
+      `h ${-largeLineLength}`,
+      `l ${-squareSize} ${-squareSize}`,
+      `v ${-smallLineLength}`,
+      'Z',
+    ].join(' ');
+
+    const lineLeftBottom = [
+      `M ${padding + so} ${h - (padding + so + squareSize + smallLineLength)}`,
+      `v ${smallLineLength}`,
+      `l ${squareSize} ${squareSize}`,
+      `h ${largeLineLength}`,
+    ].join(' ');
+
+    const lineRightTop = [
+      `M ${w - (padding + so)} ${padding + so + squareSize + smallLineLength}`,
+      `v ${-smallLineLength}`,
+      `l ${-squareSize} ${-squareSize}`,
+      `h ${-largeLineLength}`,
+    ].join(' ');
+
+    return { bg, lineLeftBottom, lineRightTop, width: w, height: h };
+  }, [size]);
 
   return (
     <div
+      ref={containerRef}
       className={className}
       style={{
         position: 'relative',
@@ -56,27 +137,47 @@ export function AssemblingFrame({ children, className, onReady }: AssemblingFram
         overflow: 'visible',
       }}
     >
-      <FrameNefrex
-        elementRef={svgRef}
-        animated={false}
-        padding={4}
-        strokeWidth={2}
-        squareSize={32}
-        smallLineLength={32}
-        largeLineLength={128}
-        leftTop={false}
-        leftBottom
-        rightTop
-        rightBottom={false}
-        style={
-          {
-            '--arwes-frames-bg-color': 'hsla(280, 45%, 4%, 0.5)',
-            '--arwes-frames-bg-filter': 'drop-shadow(0 0 6px hsla(280, 45%, 4%, 0.5))',
-            '--arwes-frames-line-color': 'hsl(280, 75%, 50%)',
-            '--arwes-frames-line-filter': 'drop-shadow(0 0 4px hsl(280, 75%, 50%))',
-          } as React.CSSProperties
-        }
-      />
+      <svg
+        ref={svgRef}
+        role="presentation"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          filter: 'drop-shadow(0 0 6px hsla(280, 45%, 4%, 0.5))',
+        }}
+        viewBox={paths ? `0 0 ${paths.width} ${paths.height}` : '0 0 100 100'}
+        preserveAspectRatio="none"
+      >
+        <g data-frame="" style={{ vectorEffect: 'non-scaling-stroke' }}>
+          {paths && (
+            <>
+              <path
+                data-name="bg"
+                d={paths.bg}
+                fill="hsla(280, 45%, 4%, 0.5)"
+                stroke="none"
+              />
+              <path
+                data-name="line"
+                d={paths.lineLeftBottom}
+                stroke="hsl(280, 75%, 50%)"
+                strokeWidth={2}
+                fill="none"
+              />
+              <path
+                data-name="line"
+                d={paths.lineRightTop}
+                stroke="hsl(280, 75%, 50%)"
+                strokeWidth={2}
+                fill="none"
+              />
+            </>
+          )}
+        </g>
+      </svg>
       <div className="relative z-10 p-6">{children}</div>
     </div>
   );

@@ -1,5 +1,4 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import { FrameOctagon } from '@arwes/react-frames';
 import styles from './HatcheryButton.module.css';
 
 type HatcheryButtonVariant = 'fill' | 'outline';
@@ -26,24 +25,16 @@ export function HatcheryButton({
         .filter(Boolean)
         .join(' ')}
     >
-      <FrameOctagon
-        className={styles.frame}
-        animated={false}
-        leftBottom={false}
-        rightTop={false}
-        padding={2}
-        squareSize={16}
-        strokeWidth={2}
-        style={
-          {
-            '--arwes-frames-bg-color':
-              variant === 'outline' ? 'transparent' : 'hsla(280, 45%, 6%, 0.5)',
-            '--arwes-frames-line-color': 'hsla(280, 75%, 60%, 0.9)',
-            '--arwes-frames-line-filter':
-              'drop-shadow(0 0 6px hsla(280, 75%, 60%, 0.45))',
-          } as React.CSSProperties
-        }
-      />
+      <svg className={styles.frame} viewBox="0 0 100 40" role="presentation">
+        <polygon
+          className={styles.bg}
+          points="6,0 94,0 100,6 100,34 94,40 6,40 0,34 0,6"
+        />
+        <polygon
+          className={styles.line}
+          points="6,0 94,0 100,6 100,34 94,40 6,40 0,34 0,6"
+        />
+      </svg>
       <span className={styles.content}>{children}</span>
     </button>
   );
