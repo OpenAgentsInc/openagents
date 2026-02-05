@@ -4,6 +4,7 @@ import { useAgent } from 'agents/react';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { MessageType } from '@cloudflare/ai-chat/types';
+import { DotsGridBackground } from '@openagentsinc/hud/react';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
 import { Button } from '@/components/ui/button';
@@ -145,8 +146,24 @@ export function LiteClawHatchery() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col p-4">
-      {/* Waitlist overlay */}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Arwes-style dots + grid background */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundColor: '#000906',
+          backgroundImage:
+            'radial-gradient(85% 85% at 50% 50%, hsla(185, 100%, 25%, 0.25) 0%, hsla(185, 100%, 25%, 0.12) 50%, hsla(185, 100%, 25%, 0) 100%)',
+        }}
+      >
+        <DotsGridBackground
+          distance={30}
+          dotsColor="hsla(180, 100%, 75%, 0.05)"
+          lineColor="hsla(180, 100%, 75%, 0.05)"
+        />
+      </div>
+      <div className="relative z-10 flex flex-1 flex-col p-4">
+        {/* Waitlist overlay */}
       {overlayVisible && (
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 rounded-lg border border-border bg-card p-8 text-center">
           <h1 className="font-semibold text-2xl">LiteClaw Early Access</h1>
@@ -275,6 +292,7 @@ export function LiteClawHatchery() {
           Sign in to spawn your LiteClaw.
         </div>
       )}
+      </div>
     </div>
   );
 }
