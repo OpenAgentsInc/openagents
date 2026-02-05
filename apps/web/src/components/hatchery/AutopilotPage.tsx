@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
+import { DotsGridBackground, whitePreset, Image } from '@openagentsinc/hud/react';
+import autopilotPng from '@openagentsinc/hud/assets/autopilot.png';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
 import { HatcheryButton } from './HatcheryButton';
 import { HatcheryH1, HatcheryH2, HatcheryP } from './HatcheryTypography';
-import { HatcheryPuffs } from './HatcheryPuffs';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, ServerIcon } from 'lucide-react';
 
@@ -118,7 +118,7 @@ export function AutopilotPage() {
         </div>
       </nav>
       <div className="relative flex min-h-0 flex-1 flex-col pt-20">
-        {/* Arwes-style dots + grid background (white preset) + vignette + puffs */}
+        {/* Arwes-style dots + grid background (white preset) + vignette */}
         <div
           className="absolute inset-0"
           style={{
@@ -134,9 +134,17 @@ export function AutopilotPage() {
             dotsColor={whitePreset.dotsColor}
             lineColor={whitePreset.lineColor}
           />
-          <HatcheryPuffs />
         </div>
         <div className="relative z-10 flex flex-1 flex-col p-4">
+          <div className="-mt-1 mb-2 flex justify-center">
+            <Image
+              src={autopilotPng}
+              alt="Autopilot"
+              className="size-40 rounded border-2 border-white/20 object-contain sm:size-52"
+              width={208}
+              height={208}
+            />
+          </div>
           <AssemblingFrame
             className="mx-auto w-full max-w-2xl"
             onReady={handleFrameReady}

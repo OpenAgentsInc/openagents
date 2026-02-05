@@ -101,7 +101,7 @@ Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how Open
 - Add a **settings or provider-connect** surface in the webapp (e.g. in chat settings, or a “Connect ChatGPT (Codex)” entry next to existing provider options). For the **device code** flow (works without OpenCode changes):
   1. User clicks “Connect ChatGPT (Codex)”.
   2. If there is no active thread yet, the webapp **creates one first** and uses that `thread_id` for the sandbox scope.
-  3. Frontend calls an **app backend** route that proxies to the sandbox’s OpenCode:  
+  3. Frontend calls an **app backend** route that proxies to the sandbox’s OpenCode:
      `POST /provider/openai/oauth/authorize` with `{ method: 1 }` (headless).
   4. Backend returns `{ url, method: "auto", instructions }` (e.g. `url: "https://auth.openai.com/codex/device"`, `instructions: "Enter code: XXXXX"`).
   5. Webapp shows the **URL** and **code**, and tells the user to open the URL and enter the code.
@@ -112,9 +112,9 @@ Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how Open
 ### B.3 Backend routes (worker → sandbox)
 
 - Add HTTP routes on the worker that the webapp can call, for example:
-  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize`  
+  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize`
     Body: `{ method: number }`. Worker: get sandbox for `threadId`, ensure OpenCode is running (e.g. `createOpencodeServer`), then `fetch` to `http://container:4096/provider/openai/oauth/authorize` (via `sandbox.containerFetch`). Return JSON.
-  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/callback`  
+  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/callback`
     Body: `{ method, code? }`. Same: resolve sandbox, proxy to container `.../oauth/callback`. This request will block until the plugin’s callback resolves (device flow polls until user completes).
   - Scope id is always `thread_id` so the same OpenCode process (and its `auth.json`) is used for chat and Codex.
   - **Effect:** implement these routes using Effect handlers and `effect/Schema` for request/response validation. Convert sandbox/OpenCode failures into tagged errors and map them to consistent HTTP responses.

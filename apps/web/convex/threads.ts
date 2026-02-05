@@ -111,13 +111,13 @@ export const create = mutation({
   args: {
     title: v.optional(v.string()),
     kind: v.optional(
-    v.union(
-      v.literal('chat'),
-      v.literal('project'),
-      v.literal('liteclaw'),
-      v.literal('autopilot'),
+      v.union(
+        v.literal('chat'),
+        v.literal('project'),
+        v.literal('liteclaw'),
+        v.literal('autopilot'),
+      ),
     ),
-  ),
   },
   handler: async (ctx, args) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
