@@ -35,6 +35,24 @@ export const list = query({
   },
 });
 
+/** One LiteClaw thread per user (EA: exactly one chat id per user). */
+export const getLiteclawThread = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
+    if (!identity?.subject) return null;
+    const docs = await ctx.db
+      .query('threads')
+      .withIndex('by_user_id_archived', (q) =>
+        q.eq('user_id', identity.subject!).eq('archived', false)
+      )
+      .order('desc')
+      .take(50);
+    const liteclaw = docs.find((d) => d.kind === 'liteclaw');
+    return liteclaw?._id ?? null;
+  },
+});
+
 export const get = query({
   args: {
     threadId: v.id('threads'),
@@ -60,7 +78,7 @@ export const get = query({
 export const create = mutation({
   args: {
     title: v.optional(v.string()),
-    kind: v.optional(v.union(v.literal('chat'), v.literal('project'), v.literal('openclaw'))),
+    kind: v.optional(v.union(v.literal('chat'), v.literal('project'), v.literal('liteclaw'))),
   },
   handler: async (ctx, args) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;

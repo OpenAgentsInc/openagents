@@ -50,9 +50,6 @@ decision step into a measurable work unit with receipts and utility labels.
 
 ### API
 - `apps/api/` — OpenAgents Cloudflare Worker; **live:** `https://openagents.com/api` (health, Moltbook proxy, Agent Payments [agents, wallet registry, balance/invoice/pay], docs index). The `oa moltbook` CLI and Autopilot Desktop use this proxy by default; see `apps/api/README.md` and `apps/api/docs/`.
-- `apps/indexer/` — Moltbook indexer Worker; **live:** `https://openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics). R2 + D1 + KV + Queues + Cron; see `apps/indexer/README.md` and `private/indexer.md`.
-- `apps/spark-api/` — Spark API Worker; **live:** `https://openagents.com/api/spark` (balance, invoice, pay for Agent Payments; stub until Breez SDK + KV adapter). Called by the API when `SPARK_API_URL` is set; see `apps/spark-api/README.md`.
-
 ### Web + managed runtimes
 - `apps/website/` — OpenAgents web UI (OpenClaw control pages, billing, wallet, KB).
 - `apps/openclaw-runtime/` — slim per-user OpenClaw runtime template (Worker + DO + container) used by the control plane; see `docs/openclaw/openclaw-slim-runtime-options.md`.

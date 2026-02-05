@@ -9,8 +9,8 @@ describe('content helpers', () => {
   });
 
   it('finds a KB entry by slug', () => {
-    const entry = getKbEntryBySlug('openclaw-wallets');
-    expect(entry?.slug).toBe('openclaw-wallets');
+    const entry = getKbEntryBySlug('agent-login');
+    expect(entry?.slug).toBe('agent-login');
     expect(entry?.body.length).toBeGreaterThan(0);
   });
 });

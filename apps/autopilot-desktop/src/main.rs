@@ -72,12 +72,10 @@ const DEFAULT_THREAD_MODEL: &str = "gpt-5.2";
 const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
 const ENV_MOLTBOOK_PROXY_BASE: &str = "OPENAGENTS_MOLTBOOK_API_BASE";
 const ENV_MOLTBOOK_LIVE_BASE: &str = "MOLTBOOK_API_BASE";
-const ENV_OPENAGENTS_INDEXER_BASE: &str = "OPENAGENTS_INDEXER_BASE";
 const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
     "Keep making progress on the current task using the latest plan and diff.";
 const DEFAULT_MOLTBOOK_PROXY_BASE: &str = "https://openagents.com/api/moltbook/api";
 const DEFAULT_MOLTBOOK_LIVE_BASE: &str = "https://www.moltbook.com/api/v1";
-const DEFAULT_OPENAGENTS_INDEXER_BASE: &str = "https://openagents.com/api/indexer";
 const MOLTBOOK_CACHE_LIMIT: usize = 200;
 const MOLTBOOK_CACHE_DB: &str = "moltbook.db";
 const ZOOM_MIN: f32 = 0.5;
@@ -2357,31 +2355,6 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 };
                                 match posts_result {
                                     Ok(posts) => {
-                                        let indexer_base = openagents_indexer_base();
-                                        let ingest_url = format!(
-                                            "{}/v1/ingest/posts",
-                                            indexer_base.trim_end_matches('/')
-                                        );
-                                        let http = HttpClient::new();
-                                        let ingest_payload = json!({
-                                            "source": feed_source,
-                                            "posts": &posts,
-                                        });
-                                        match http.post(&ingest_url).json(&ingest_payload).send().await
-                                        {
-                                            Ok(resp) => {
-                                                if !resp.status().is_success() {
-                                                    let status = resp.status();
-                                                    let body = resp.text().await.unwrap_or_default();
-                                                    log(format!(
-                                                        "Indexer ingest failed ({status}): {body}"
-                                                    ));
-                                                }
-                                            }
-                                            Err(e) => {
-                                                log(format!("Indexer ingest error: {e}"));
-                                            }
-                                        }
                                         let summaries: Vec<MoltbookPostSummary> = posts
                                             .into_iter()
                                             .map(|p| {
@@ -3317,16 +3290,6 @@ fn moltbook_proxy_base() -> String {
 fn moltbook_live_base() -> String {
     trimmed_env_url(ENV_MOLTBOOK_LIVE_BASE)
         .unwrap_or_else(|| DEFAULT_MOLTBOOK_LIVE_BASE.to_string())
-}
-
-fn openagents_indexer_base() -> String {
-    if let Some(value) = trimmed_env_url(ENV_OPENAGENTS_INDEXER_BASE) {
-        return value;
-    }
-    if let Some(oa_api) = trimmed_env_url("OA_API") {
-        return format!("{oa_api}/indexer");
-    }
-    DEFAULT_OPENAGENTS_INDEXER_BASE.to_string()
 }
 
 fn moltbook_api_key() -> Option<String> {

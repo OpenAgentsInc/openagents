@@ -12,7 +12,7 @@ How the OpenAgents API can support “agents with their own wallets” without c
 |--------|------|-------------|
 | GET    | `/agents/me/wallet` | Get wallet for the authenticated agent. Returns `{ spark_address, lud16?, updated_at }` or 404. |
 | POST   | `/agents/me/wallet` | Register or update wallet. Body: `{ "spark_address": "...", "lud16": "optional" }`. Creates/updates `social_agent_wallets` and lazily creates a payments agent + link for balance/invoice/pay. |
-| GET    | `/agents/me/balance` | Balance for the authenticated agent (proxied to spark-api). 404 if wallet not linked. |
+| GET    | `/agents/me/balance` | Balance for the authenticated agent (returns 501; Spark API removed). |
 
 **Desktop flow:** User has (or creates) a social agent and API key. Call `GET /agents/me/wallet`; if 404, show "Attach wallet", then `POST /agents/me/wallet` with local `spark_address` (and optional `lud16`). Others can discover payment coordinates via `GET /agents/profile?name=X` (includes `spark_address`, `lud16` when wallet is attached).
 
@@ -51,7 +51,7 @@ The API **can**:
   "data": {
     "docs_url": "https://docs.openagents.com/kb/openclaw-wallets",
     "local_command_hint": "pylon agent spawn --name <name> --network mainnet",
-    "wallet_interest_url": "https://openagents.com/api/indexer/v1/wallet-interest?days=30&limit=10"
+    "wallet_interest_url": null
   }
 }
 ```
@@ -84,17 +84,12 @@ This “gives” agents their own wallets in the sense of **discoverable payment
 
 ## 3. Full flow on Cloudflare (balance, invoice, pay)
 
-The API can proxy **balance**, **invoice**, and **pay** to a separate Worker (**spark-api**) so the full flow runs on Cloudflare:
-
-- **API** (`openagents.com/api/*`): D1 for agents and wallet registry; proxies balance/invoice/pay to `SPARK_API_URL`.
-- **spark-api** (`openagents.com/api/spark/*`): Implements `GET /agents/:id/balance`, `POST /payments/invoice`, `POST /payments/pay`. Currently returns **stub** responses so the flow works end-to-end; real Lightning requires Breez SDK with a KV-backed storage adapter (see `apps/spark-api/README.md`).
-
-With `SPARK_API_URL` set to `https://openagents.com/api/spark`, clients call the API and get proxied responses. Local dev: run `apps/spark-api` and set `SPARK_API_URL=http://localhost:8788` in `apps/api/.dev.vars`.
+Balance, invoice, and pay endpoints are implemented but return 501 (Spark API removed).
 
 ## 4. What stays out of the API (by design)
 
 - **Spawn / mnemonic**: Creating new agents with wallets stays local (`pylon agent spawn`); no server-side seed generation or storage.
-- **Real balance/invoice/pay**: Live Lightning operations need wallet state; spark-api stubs them until Breez SDK is integrated with KV/D1 storage.
+- **Real balance/invoice/pay**: Live Lightning operations need wallet state; Spark API has been removed.
 
 ## Summary
 
@@ -102,6 +97,6 @@ With `SPARK_API_URL` set to `https://openagents.com/api/spark`, clients call the
 |-------------------------|-----------------------|-----------------------------------|
 | Create wallet           | Local (Pylon/spawn)  | Onboarding link + command hint    |
 | Receive address / lud16 | Local + API D1       | Registry (agents, agent_wallets)  |
-| Balance / invoice / pay | spark-api (stub)     | Proxy when SPARK_API_URL set      |
+| Balance / invoice / pay | —                   | Return 501 (Spark API removed)    |
 
-Implement **onboarding** first (endpoint + doc). The **registry** and **spark-api** proxy are implemented so the full flow works on Cloudflare; real Spark integration requires a KV-backed storage adapter for the Breez SDK.
+Implement **onboarding** first (endpoint + doc). The **registry** is implemented; balance/invoice/pay return 501 (Spark API removed).

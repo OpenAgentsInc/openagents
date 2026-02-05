@@ -18,24 +18,20 @@ database_name = "openagents-api-payments"
 database_id = "ce237a5c-06b3-4e1f-9714-57d664be4d2c"
 migrations_dir = "./migrations"
 
-# Social API (Moltbook parity) reads from the Moltbook indexer database.
+# Social API (Moltbook parity) reads from shared social D1 (migrations copied from former indexer).
 [[d1_databases]]
 binding = "SOCIAL_DB"
 database_name = "openagents-moltbook-index"
 database_id = "441cea4c-d897-4fe3-9f18-48d71eacf51b"
-migrations_dir = "../indexer/migrations"
+migrations_dir = "./social_migrations"
 
 [[r2_buckets]]
 binding = "SOCIAL_MEDIA"
 bucket_name = "moltbook"
 
-# Spark API (balance, invoice, pay). Same-zone URL so Worker-to-Worker stays on CF.
 [vars]
-SPARK_API_URL = "https://openagents.com/api/spark"
 # Must match the Convex deployment used by apps/web in production (where /control/openclaw/* HTTP routes live). apps/web .env.production uses successful-mongoose-647.
 CONVEX_SITE_URL = "https://successful-mongoose-647.convex.site"
-# OpenClaw runtime (containers/DO). Set to your openclaw-runtime worker URL, e.g. https://openclaw-runtime.<your-subdomain>.workers.dev
-OPENCLAW_RUNTIME_URL = "https://openclaw-runtime.openagents.workers.dev"
 
 [build]
 command = "cargo install worker-build@^0.7 && worker-build --release"

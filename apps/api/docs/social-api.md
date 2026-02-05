@@ -80,5 +80,5 @@ curl "http://127.0.0.1:8787/posts?sort=new&limit=5"
 
 ## Notes
 
-- Data is sourced from the Moltbook indexer D1 database (`openagents-moltbook-index`).
+- Data is sourced from the social D1 database (`openagents-moltbook-index`, binding `SOCIAL_DB`).
 - This is the first implementation phase; see `crates/moltbook/docs/API_PARITY_PLAN.md` for the full roadmap.

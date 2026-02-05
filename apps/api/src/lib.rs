@@ -13,8 +13,6 @@ use url::form_urlencoded;
 use wasm_bindgen::JsValue;
 use worker::*;
 
-mod openclaw;
-
 const MOLTBOOK_SITE_DEFAULT: &str = "https://www.moltbook.com";
 const MOLTBOOK_API_DEFAULT: &str = "https://www.moltbook.com/api/v1";
 const INDEX_LIMIT_DEFAULT: usize = 100;
@@ -202,42 +200,6 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get_async("/", handle_root)
         .get_async("/health", handle_health)
-        .post_async("/agent/signup", openclaw::http::handle_agent_signup)
-        .get_async("/openclaw", openclaw::http::handle_openclaw_index)
-        .get_async("/openclaw/invoice", handle_openclaw_invoice_get)
-        .post_async("/openclaw/invoice", handle_openclaw_invoice_post)
-        .get_async("/openclaw/instance", openclaw::http::handle_instance_get)
-        .post_async("/openclaw/instance", openclaw::http::handle_instance_post)
-        .delete_async("/openclaw/instance", openclaw::http::handle_instance_delete)
-        .get_async("/openclaw/principal", openclaw::http::handle_openclaw_principal)
-        .get_async("/openclaw/runtime/status", openclaw::http::handle_runtime_status)
-        .get_async("/openclaw/runtime/devices", openclaw::http::handle_runtime_devices)
-        .post_async(
-            "/openclaw/runtime/devices/:requestId/approve",
-            openclaw::http::handle_runtime_device_approve,
-        )
-        .get_async(
-            "/openclaw/runtime/pairing/:channel",
-            openclaw::http::handle_runtime_pairing_list,
-        )
-        .post_async(
-            "/openclaw/runtime/pairing/:channel/approve",
-            openclaw::http::handle_runtime_pairing_approve,
-        )
-        .post_async("/openclaw/runtime/backup", openclaw::http::handle_runtime_backup)
-        .post_async("/openclaw/runtime/restart", openclaw::http::handle_runtime_restart)
-        .post_async("/openclaw/tools/invoke", openclaw::http::handle_tools_invoke)
-        .get_async("/openclaw/sessions", openclaw::http::handle_sessions_list)
-        .get_async(
-            "/openclaw/sessions/:key/history",
-            openclaw::http::handle_sessions_history,
-        )
-        .post_async(
-            "/openclaw/sessions/:key/send",
-            openclaw::http::handle_sessions_send,
-        )
-        .post_async("/openclaw/chat", openclaw::http::handle_openclaw_chat)
-        .get_async("/openclaw/billing/summary", openclaw::http::handle_billing_summary)
         .post_async("/auth/agent/register", handle_auth_agent_register)
         .post_async("/register", handle_control_register)
         .get_async("/projects", handle_control_projects)
@@ -261,9 +223,6 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/agents/:id", handle_agents_get)
         .post_async("/agents/:id/wallet", handle_agents_wallet_register)
         .get_async("/agents/:id/wallet", handle_agents_wallet_get)
-        .get_async("/agents/:id/balance", handle_agents_balance)
-        .post_async("/payments/invoice", handle_payments_invoice)
-        .post_async("/payments/pay", handle_payments_pay)
         .get_async("/social/v1", handle_social_root)
         .get_async("/social/v1/", handle_social_root)
         .on_async("/social/v1/*path", handle_social_router)
@@ -308,6 +267,9 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/media/*key", handle_social_api_router)
         .get_async("/claim/:token", handle_social_claim_get)
         .post_async("/claim/:token", handle_social_claim_post)
+        .get_async("/agents/:id/balance", handle_agents_balance)
+        .post_async("/payments/invoice", handle_payments_invoice)
+        .post_async("/payments/pay", handle_payments_pay)
         .get_async("/moltbook", handle_moltbook_root)
         .get_async("/moltbook/", handle_moltbook_root)
         .on_async("/moltbook/*path", handle_moltbook_router)
@@ -333,7 +295,6 @@ async fn handle_root(req: Request, _ctx: RouteContext<()>) -> Result<Response> {
             "moltbook_proxy": "/moltbook/site/",
             "moltbook_api": "/moltbook/api/",
             "moltbook_index": "/moltbook/index",
-            "moltbook_indexer": "/api/indexer",
             "agents_wallet_onboarding": "/api/agents/wallet-onboarding"
         })),
         error: None,
@@ -867,29 +828,6 @@ fn social_api_key_from_request(req: &Request) -> Option<String> {
                 if !trimmed.is_empty() {
                     return Some(trimmed.to_string());
                 }
-            }
-        }
-    }
-    None
-}
-
-fn openclaw_invoice_token(env: &Env) -> Result<String> {
-    if let Ok(var) = env.var("OPENCLAW_INVOICE_TOKEN") {
-        let value = var.to_string();
-        if !value.trim().is_empty() {
-            return Ok(value);
-        }
-    }
-    Ok("".to_string())
-}
-
-fn openclaw_token_from_request(req: &Request) -> Option<String> {
-    if let Ok(Some(auth)) = req.headers().get("authorization") {
-        let trimmed = auth.trim();
-        if let Some(rest) = trimmed.strip_prefix("Bearer ") {
-            let value = rest.trim();
-            if !value.is_empty() {
-                return Some(value.to_string());
             }
         }
     }
@@ -2080,42 +2018,8 @@ async fn handle_social_agents_me_wallet_post(mut req: Request, ctx: RouteContext
     Ok(response)
 }
 
-async fn handle_social_agents_me_balance(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
-        Ok(t) => t,
-        Err(r) => return Ok(r),
-    };
-    let db = ctx.d1("DB")?;
-    let stmt = db
-        .prepare("SELECT payments_agent_id FROM social_agent_payments_link WHERE agent_name = ?1")
-        .bind(&[JsValue::from_str(&agent_name)])?;
-    let row = stmt.first::<serde_json::Value>(None).await?;
-    let id = match row.and_then(|r| r.get("payments_agent_id").and_then(|v| v.as_i64())) {
-        Some(i) => i,
-        None => return json_error("wallet not linked", 404),
-    };
-    let spark_url = ctx.var("SPARK_API_URL").map_err(|_| worker::Error::RustError("SPARK_API_URL not set".into()))?;
-    let url = format!("{}/agents/{}/balance", spark_url.to_string(), id);
-    let mut init = RequestInit::new();
-    init.with_method(Method::Get);
-    let headers = Headers::new();
-    if let Ok(Some(auth)) = req.headers().get("authorization") {
-        let _ = headers.set("authorization", &auth);
-    }
-    init.with_headers(headers);
-    let proxy = Request::new_with_init(&url, &init)?;
-    let mut resp = Fetch::Request(proxy).send().await?;
-    let status = resp.status_code();
-    let text = resp.text().await.unwrap_or_default();
-    let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
-    let mut out = Response::from_json(&ApiResponse {
-        ok: status >= 200 && status < 300,
-        data: Some(data),
-        error: None,
-    })?;
-    out = out.with_status(status);
-    apply_cors(&mut out)?;
-    Ok(out)
+async fn handle_social_agents_me_balance(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
+    json_error("Spark API removed; balance endpoint unavailable", 501)
 }
 
 async fn handle_social_identity_token(req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -3051,9 +2955,9 @@ async fn handle_agents_wallet_onboarding(_: Request, _: RouteContext<()>) -> Res
     let mut response = Response::from_json(&ApiResponse {
         ok: true,
         data: Some(serde_json::json!({
-            "docs_url": "https://docs.openagents.com/kb/openclaw-wallets",
+            "docs_url": "https://docs.openagents.com/kb",
             "local_command_hint": "pylon agent spawn --name <name> --network mainnet",
-            "wallet_interest_url": "https://openagents.com/api/indexer/v1/wallet-interest?days=30&limit=10"
+            "wallet_interest_url": null
         })),
         error: None,
     })?;
@@ -3178,215 +3082,16 @@ async fn handle_agents_wallet_get(_: Request, ctx: RouteContext<()>) -> Result<R
     Ok(response)
 }
 
-async fn handle_agents_balance(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let id = ctx.param("id").ok_or_else(|| worker::Error::RustError("invalid id".into()))?;
-    if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
-        let url = format!("{}/agents/{}/balance", spark_url.to_string(), id);
-        let mut init = RequestInit::new();
-        init.with_method(Method::Get);
-        let headers = Headers::new();
-        if let Ok(Some(auth)) = req.headers().get("authorization") {
-            let _ = headers.set("authorization", &auth);
-        }
-        init.with_headers(headers);
-        let proxy = Request::new_with_init(&url, &init)?;
-        let mut resp = Fetch::Request(proxy).send().await?;
-        let status = resp.status_code();
-        let text = resp.text().await.unwrap_or_default();
-        let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
-        let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
-        out = out.with_status(status);
-        apply_cors(&mut out)?;
-        return Ok(out);
-    }
-    json_error("SPARK_API_URL not set; balance requires Spark API backend", 501)
+async fn handle_agents_balance(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
+    json_error("Spark API removed; balance endpoint unavailable", 501)
 }
 
-#[derive(Debug, Deserialize)]
-struct CreateInvoiceBody {
-    agent_id: i64,
-    amount_sats: u64,
-    description: Option<String>,
+async fn handle_payments_invoice(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
+    json_error("Spark API removed; invoice endpoint unavailable", 501)
 }
 
-#[derive(Debug, Deserialize)]
-struct OpenclawInvoiceBody {
-    payment_request: String,
-    amount_sats: u64,
-    description: Option<String>,
-    expires_at: String,
-    created_at: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenclawInvoiceRow {
-    payment_request: String,
-    amount_sats: i64,
-    description: Option<String>,
-    expires_at: String,
-    expires_at_ms: i64,
-    created_at: String,
-    updated_at: String,
-}
-
-async fn handle_payments_invoice(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let body: CreateInvoiceBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
-    if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
-        let url = format!("{}/payments/invoice", spark_url.to_string());
-        let body_json = serde_json::json!({ "agent_id": body.agent_id, "amount_sats": body.amount_sats, "description": body.description });
-        let headers = Headers::new();
-        let _ = headers.set("content-type", "application/json");
-        if let Ok(Some(auth)) = req.headers().get("authorization") {
-            let _ = headers.set("authorization", &auth);
-        }
-        let mut init = RequestInit::new();
-        init.with_method(Method::Post);
-        init.with_headers(headers);
-        init.with_body(Some(JsValue::from_str(&body_json.to_string())));
-        let proxy = Request::new_with_init(&url, &init)?;
-        let mut resp = Fetch::Request(proxy).send().await?;
-        let status = resp.status_code();
-        let text = resp.text().await.unwrap_or_default();
-        let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!({ "error": text }));
-        let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
-        out = out.with_status(status);
-        apply_cors(&mut out)?;
-        return Ok(out);
-    }
-    json_error("SPARK_API_URL not set; create invoice requires Spark API backend", 501)
-}
-
-#[derive(Debug, Deserialize)]
-struct PayInvoiceBody {
-    agent_id: i64,
-    invoice: String,
-}
-
-async fn handle_payments_pay(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let body: PayInvoiceBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
-    if body.invoice.is_empty() {
-        return json_error("invoice required", 400);
-    }
-    if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
-        let url = format!("{}/payments/pay", spark_url.to_string());
-        let body_json = serde_json::json!({ "agent_id": body.agent_id, "invoice": body.invoice });
-        let mut init = RequestInit::new();
-        init.with_method(Method::Post);
-        init.with_body(Some(JsValue::from_str(&body_json.to_string())));
-        let mut proxy = Request::new_with_init(&url, &init)?;
-        proxy.headers_mut()?.set("content-type", "application/json")?;
-        if let Ok(h) = req.headers().get("authorization") {
-            if let Some(auth) = h {
-                proxy.headers_mut()?.set("authorization", &auth)?;
-            }
-        }
-        let mut resp = Fetch::Request(proxy).send().await?;
-        let status = resp.status_code();
-        let text = resp.text().await.unwrap_or_default();
-        let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!({ "error": text }));
-        let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
-        out = out.with_status(status);
-        apply_cors(&mut out)?;
-        return Ok(out);
-    }
-    json_error("SPARK_API_URL not set; pay requires Spark API backend", 501)
-}
-
-async fn handle_openclaw_invoice_get(_: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let db = ctx.d1("DB")?;
-    let stmt = db
-        .prepare(
-            "SELECT payment_request, amount_sats, description, expires_at, expires_at_ms, created_at, updated_at FROM openclaw_invoices WHERE key = ?1 LIMIT 1",
-        )
-        .bind(&[JsValue::from_str("current")])?;
-    let row = stmt.first::<OpenclawInvoiceRow>(None).await?;
-    let Some(row) = row else {
-        return json_error("invoice not found", 404);
-    };
-    let now = now_ms();
-    if row.expires_at_ms <= now {
-        return json_error("invoice expired", 410);
-    }
-
-    let mut response = Response::from_json(&ApiResponse {
-        ok: true,
-        data: Some(serde_json::json!({
-            "payment_request": row.payment_request,
-            "amount_sats": row.amount_sats,
-            "description": row.description,
-            "expires_at": row.expires_at,
-            "expires_at_ms": row.expires_at_ms,
-            "created_at": row.created_at,
-            "updated_at": row.updated_at
-        })),
-        error: None,
-    })?;
-    response.headers_mut().set("cache-control", "no-store")?;
-    apply_cors(&mut response)?;
-    Ok(response)
-}
-
-async fn handle_openclaw_invoice_post(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let token = match openclaw_invoice_token(&ctx.env) {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => return json_error("OPENCLAW_INVOICE_TOKEN not configured", 500),
-    };
-    let provided = openclaw_token_from_request(&req).unwrap_or_default();
-    if provided != token {
-        return Ok(json_unauthorized("missing or invalid token"));
-    }
-
-    let body: OpenclawInvoiceBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
-    let payment_request = body.payment_request.trim();
-    if payment_request.is_empty() {
-        return json_error("payment_request required", 400);
-    }
-    if body.amount_sats == 0 {
-        return json_error("amount_sats required", 400);
-    }
-    let expires_at_ms = match parse_epoch_ms(&body.expires_at) {
-        Some(ms) => ms,
-        None => return json_error("expires_at invalid", 400),
-    };
-    let expires_at = iso_from_ms(expires_at_ms);
-    let created_at_ms = body
-        .created_at
-        .as_deref()
-        .and_then(parse_epoch_ms)
-        .unwrap_or_else(now_ms);
-    let created_at = iso_from_ms(created_at_ms);
-    let updated_at = iso_from_ms(now_ms());
-
-    let db = ctx.d1("DB")?;
-    db.prepare("INSERT OR REPLACE INTO openclaw_invoices (key, payment_request, amount_sats, description, expires_at, expires_at_ms, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
-        .bind(&[
-            JsValue::from_str("current"),
-            JsValue::from_str(payment_request),
-            JsValue::from_f64(body.amount_sats as f64),
-            serde_wasm_bindgen::to_value(&body.description).unwrap_or(JsValue::NULL),
-            JsValue::from_str(&expires_at),
-            JsValue::from_f64(expires_at_ms as f64),
-            JsValue::from_str(&created_at),
-            JsValue::from_str(&updated_at),
-        ])?
-        .run()
-        .await?;
-
-    let mut response = Response::from_json(&ApiResponse {
-        ok: true,
-        data: Some(serde_json::json!({
-            "payment_request": payment_request,
-            "amount_sats": body.amount_sats,
-            "description": body.description,
-            "expires_at": expires_at,
-            "expires_at_ms": expires_at_ms,
-            "created_at": created_at,
-            "updated_at": updated_at
-        })),
-        error: None,
-    })?;
-    apply_cors(&mut response)?;
-    Ok(response)
+async fn handle_payments_pay(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
+    json_error("Spark API removed; pay endpoint unavailable", 501)
 }
 
 async fn handle_moltbook_root(_: Request, _: RouteContext<()>) -> Result<Response> {
@@ -4155,7 +3860,7 @@ fn rate_limit_429(retry_after_minutes: i64) -> Result<Response> {
 }
 
 /// Returns a 401 Response for auth failures (caller returns Ok(this)).
-/// Sets Cache-Control: private, no-store so 401s are never cached (avoids stuck 401s on openclaw paths).
+/// Sets Cache-Control: private, no-store so 401s are never cached.
 fn json_unauthorized(message: &str) -> Response {
     let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
         ok: false,

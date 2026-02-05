@@ -4,7 +4,7 @@ This file captures the next logical steps for the social API rollout and parity 
 
 ## Platform
 
-- Run D1 migrations for social tables in the shared indexer DB (0002-0005).
+- Run D1 migrations for social tables in the shared social D1 (see `apps/api/social_migrations`).
 - Add staging/prod environment checks for claim and media routes.
 - Decide deprecation timeline for `/social/v1/*` aliases and announce in docs.
 

@@ -2,9 +2,6 @@ export type AgentWorkerEnv = {
   OA_INTERNAL_KEY: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
-  OPENCLAW_API_BASE?: string;
-  OPENAGENTS_API_URL?: string;
-  PUBLIC_API_URL?: string;
   ThreadAgent: DurableObjectNamespace;
 };
 

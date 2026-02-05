@@ -32,30 +32,6 @@ export default defineSchema({
     .index('by_user_id', ['user_id'])
     .index('by_token_hash', ['token_hash']),
 
-  openclaw_instances: defineTable({
-    user_id: v.string(),
-    status: v.string(),
-    runtime_url: v.optional(v.string()),
-    runtime_name: v.optional(v.string()),
-    cf_account_id: v.optional(v.string()),
-    cf_worker_name: v.optional(v.string()),
-    cf_worker_id: v.optional(v.string()),
-    cf_container_app_id: v.optional(v.string()),
-    cf_container_app_name: v.optional(v.string()),
-    r2_bucket_name: v.optional(v.string()),
-    service_token_encrypted: v.optional(v.string()),
-    service_token_iv: v.optional(v.string()),
-    service_token_alg: v.optional(v.string()),
-    provider_keys_encrypted: v.optional(v.string()),
-    provider_keys_iv: v.optional(v.string()),
-    provider_keys_alg: v.optional(v.string()),
-    created_at: v.number(),
-    updated_at: v.number(),
-    last_ready_at: v.optional(v.number()),
-  })
-    .index('by_user_id', ['user_id'])
-    .index('by_status', ['status']),
-
   credit_ledger: defineTable({
     user_id: v.string(),
     kind: v.string(),
@@ -110,11 +86,11 @@ export default defineSchema({
     .index('by_email', ['email'])
     .index('by_created_at', ['created_at']),
 
-  // Thread index (chats/projects); optional kind for OpenClaw later
+  // Thread index (chats/projects); optional kind for LiteClaw
   threads: defineTable({
     user_id: v.string(),
     title: v.string(),
-    kind: v.optional(v.union(v.literal('chat'), v.literal('project'), v.literal('openclaw'))),
+    kind: v.optional(v.union(v.literal('chat'), v.literal('project'), v.literal('liteclaw'))),
     archived: v.optional(v.boolean()),
     created_at: v.number(),
     updated_at: v.number(),

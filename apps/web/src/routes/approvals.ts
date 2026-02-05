@@ -1,8 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
-import { resolveApiBase, resolveInternalKey } from '@/lib/openclawApi';
 import { buildApprovalCookie, recordApprovalDecision } from '@/lib/approvalStore';
-import { extractAgentKey } from '@/lib/openclawAuth';
 
 type ApprovalDecision = 'approved' | 'rejected';
 
@@ -34,10 +32,8 @@ export const Route = createFileRoute('/approvals')({
     handlers: {
       POST: async ({ request }) => {
         const auth = await getAuth().catch(() => null);
-        const rawUserId = auth?.user?.id;
-        const userId = typeof rawUserId === 'string' ? rawUserId.trim() : '';
-        const agentKey = extractAgentKey(request.headers);
-        if (!userId && !agentKey) {
+        const userId = typeof auth?.user?.id === 'string' ? auth.user.id.trim() : '';
+        if (!userId) {
           return json(401, { ok: false, error: 'not authenticated' });
         }
 
@@ -56,67 +52,16 @@ export const Route = createFileRoute('/approvals')({
           return json(400, { ok: false, error: 'invalid decision' });
         }
 
-        let principalId = userId;
-        if (!principalId && agentKey) {
-          let apiBase = '';
-          try {
-            apiBase = resolveApiBase();
-          } catch (error) {
-            return json(500, {
-              ok: false,
-              error: error instanceof Error ? error.message : 'OpenClaw API base not configured',
-            });
-          }
-          const principalResponse = await fetch(`${apiBase}/openclaw/principal`, {
-            method: 'GET',
-            headers: {
-              'content-type': 'application/json',
-              'X-OA-Agent-Key': agentKey,
-            },
-            signal: request.signal,
-          });
-          if (!principalResponse.ok) {
-            const message = await principalResponse.text().catch(() => '');
-            return json(principalResponse.status || 500, {
-              ok: false,
-              error: message || `OpenClaw principal failed (${principalResponse.status})`,
-            });
-          }
-          const principalPayload = (await principalResponse
-            .json()
-            .catch(() => null)) as
-            | { ok?: boolean; data?: { tenant_id?: string | null }; error?: string | null }
-            | null;
-          if (!principalPayload?.ok) {
-            return json(502, {
-              ok: false,
-              error: principalPayload?.error ?? 'OpenClaw principal failed',
-            });
-          }
-          const principalTenant = principalPayload.data?.tenant_id ?? '';
-          if (!principalTenant || typeof principalTenant !== 'string') {
-            return json(502, { ok: false, error: 'OpenClaw principal missing tenant id' });
-          }
-          principalId = principalTenant;
-        }
-
         const threadIdRaw = (body.threadId ?? '').trim();
-        const threadId = threadIdRaw ? `${principalId}:${threadIdRaw}` : `user:${principalId}`;
+        const threadId = threadIdRaw ? `${userId}:${threadIdRaw}` : `user:${userId}`;
 
         const agentWorkerUrl = resolveAgentWorkerUrl();
-        let internalKey = '';
-        if (agentWorkerUrl) {
-          try {
-            internalKey = resolveInternalKey();
-          } catch {
-            internalKey = '';
-          }
-        }
+        const internalKey = process.env.OA_INTERNAL_KEY?.trim();
 
         if (!agentWorkerUrl || !internalKey) {
-          const record = recordApprovalDecision({ userId: principalId, approvalId, decision });
+          const record = recordApprovalDecision({ userId, approvalId, decision });
           const setCookie = buildApprovalCookie({
-            userId: principalId,
+            userId,
             approvalId,
             decision,
             cookieHeader: request.headers.get('cookie'),
@@ -134,7 +79,7 @@ export const Route = createFileRoute('/approvals')({
         headers.set('content-type', 'application/json');
         headers.set('accept', 'application/json');
         headers.set('X-OA-Internal-Key', internalKey);
-        headers.set('X-OA-User-Id', principalId);
+        headers.set('X-OA-User-Id', userId);
         headers.set('X-OA-Thread-Id', threadId);
 
         const upstream = await fetch(`${agentWorkerUrl}/internal/approval/respond`, {

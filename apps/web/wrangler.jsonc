@@ -21,7 +21,7 @@
 	// - wrangler secret put WORKOS_CLIENT_ID
 	// - wrangler secret put WORKOS_API_KEY
 	// - wrangler secret put WORKOS_COOKIE_PASSWORD
-	// Managed OpenClaw (chat tools):
-	// - wrangler secret put OA_INTERNAL_KEY   # used to call /api/openclaw/* (beta internal auth)
-	// - wrangler secret put PUBLIC_API_URL    # OpenClaw API base (e.g. https://openagents.com/api)
+	// Agent worker / API:
+	// - wrangler secret put OA_INTERNAL_KEY   # used for internal server-to-server auth
+	// - wrangler secret put PUBLIC_API_URL    # API base (e.g. https://openagents.com/api)
 }

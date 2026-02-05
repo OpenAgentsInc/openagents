@@ -91,7 +91,7 @@ Doc gate for contracts
 - **Main website:** `cd apps/web && npm run deploy` (Convex + Vite build + Cloudflare Pages).
 - **Other apps:** Check each app’s `package.json` for a `deploy` script, e.g.:
   - `apps/api` → `npm run deploy` (wrangler deploy)
-  - `apps/agent-worker`, `apps/indexer`, `apps/spark-api`, `apps/openclaw-runtime` → `npm run deploy` (wrangler deploy)
+  - `apps/agent-worker` → `npm run deploy` (wrangler deploy)
 - **Workflow:** Fix things, deploy, then test (e.g. hit live site or run E2E). Only pause and ask the user when they have asked you to slow down or when you lack credentials/access.
 
 ---

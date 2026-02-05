@@ -21,7 +21,7 @@ For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concep
 | Autopilot container mode | 🔄 Partial | `crates/autopilot/src/` |
 | Pylon local node | ✅ Implemented | `crates/pylon/src/` |
 | DSPy decision layer | ✅ Implemented | `crates/dsrs/src/`, `crates/adjutant/src/dspy/` |
-| Lightning/Spark payments | 🔄 Partial | `crates/spark/` (Pylon wallet init); `apps/spark-api/` (stub) |
+| Lightning/Spark payments | 🔄 Partial | `crates/spark/` (Pylon wallet init); Spark API removed |
 | **Open Protocols Launch (Phases 1–5)** | **Phases 1–5 done** | **`docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md`** — web+API parity, wallet attach API + desktop UI, Nostr mirror, agent protocol tools, Phase 5 interop doc. |
 
 **Legend:** ✅ Implemented | 🔄 Partial/In Progress | ⏳ Planned/Not Started
