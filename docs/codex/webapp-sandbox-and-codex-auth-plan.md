@@ -176,10 +176,10 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 
 **Codex auth (Part B)**
 
-- [ ] Worker: `POST .../opencode/provider/openai/oauth/authorize` and `.../callback` that proxy to container:4096.
-- [ ] Webapp: “Connect ChatGPT (Codex)” UI (device code: show URL + code, then long-poll callback).
-- [ ] Webapp: pass thread to backend; worker validates and maps to sandbox.
-- [ ] Token persistence implementation and re-inject on sandbox start.
+- [x] Worker: `POST .../opencode/provider/openai/oauth/authorize` and `.../callback` that proxy to container:4096.
+- [x] Webapp: “Connect ChatGPT (Codex)” UI (device code: show URL + code, then long-poll callback).
+- [x] Webapp: pass thread to backend; worker validates and maps to sandbox.
+- [x] Token persistence implementation and re-inject on sandbox start.
 
 ---
 
@@ -194,6 +194,16 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
   - Added container-backed implementations for `workspace.read/write/edit` when `LITECLAW_EXECUTOR_KIND=container`.
   - Added `@cloudflare/sandbox` + `@opencode-ai/sdk` dependencies and mocked Sandbox imports in worker tests.
 - Not done yet: webapp link/route for OpenCode UI (optional Part A item).
+
+### 2026-02-05 (Part B)
+
+- Added Codex OAuth proxy routes to LiteClaw worker: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/{authorize,callback}` with token validation, CORS handling, schema validation, and callback timeout.
+- Persisted Codex auth payloads in the LiteClaw Chat DO (`sky_codex_auth`), encrypted at rest with AES-GCM (`LITECLAW_CODEX_SECRET`), and hydrated `auth.json` into the sandbox before OpenCode starts.
+- Added webapp support:
+  - `/codex-token` server route to mint short-lived HMAC tokens scoped to `thread_id` + `user_id`.
+  - `CodexConnectDialog` UI (device code flow) and LiteClaw worker URL helper.
+  - Header button wiring in `AppLayout` for `/chat` and `/assistant`.
+- Tests: `npm run test` in `apps/liteclaw-worker` (pass); `npm run test` in `apps/web` (failed: `localStorage.clear is not a function` in relay/query/nostr sync tests).
 
 ---
 
