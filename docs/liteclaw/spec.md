@@ -658,3 +658,4 @@ Production smoke (minimum):
 - 2026-02-05: Implemented LiteClaw web wiring (Hatchery spawn now uses get-or-create, /assistant and /chat/new funnel to the single LiteClaw thread, chat transport switched to Agents SDK), updated welcome copy, and hid new-chat affordances.
 - 2026-02-05: Ran LiteClaw worker + web tests, deployed liteclaw worker and openagents-web-app, and pushed Convex functions for the LiteClaw web flow.
 - 2026-02-05: Added Hatchery "Reset LiteClaw memory" action that sends CF_AGENT_CHAT_CLEAR via Agents SDK and reran web tests.
+- 2026-02-05: Added LiteClaw worker metrics logging (ttft_ms, duration_ms, ok/error, message_count) and reran worker tests.
