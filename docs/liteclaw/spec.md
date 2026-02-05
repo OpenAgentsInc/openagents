@@ -672,6 +672,7 @@ Production smoke (minimum):
 - 2026-02-05: Implemented Phase 3 workspace tools (read/write/edit) with executor gating and diff receipts (patch_hash), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1f9c5eb4-7bb6-4d52-bf07-ada1cfea2665`).
 - 2026-02-05: Implemented Phase 4 tunnel executor scaffolding (LiteClaw local agent for read/write/edit, tunnel dispatch + signed local receipts), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1be3086a-c2af-4645-a4e0-135a83cc1db5`).
 - 2026-02-05: Implemented Phase 5 extension scaffolding (manifest allowlists + per-thread policy endpoint, extension hooks + metrics, and a sample `sky.echo` tool extension), reran LiteClaw worker tests, and deployed liteclaw worker (version `ef9a671d-e0b6-4352-a440-365f37cdcc9a`).
+- 2026-02-05: Added extension catalog admin endpoint (`/extensions/catalog`) for managing manifests, reran LiteClaw worker tests, and deployed liteclaw worker (version `d4f0cdf3-bb51-4763-9400-70d2392760b5`).
 
 ---
 
@@ -889,6 +890,7 @@ Intent: reuse OpenClaw skills/extensions without changing LiteClaw UX.
 - Manifest-driven: name, version, tools, permissions, prompts, UI hints
 - Loaded from R2/KV with pinned versions and an allowlist for EA
   - Per-thread enable/disable via `/agents/chat/{id}/extensions` (admin secret required)
+  - Catalog management via `/agents/chat/{id}/extensions/catalog` (admin secret required)
 
 #### Compatibility
 
