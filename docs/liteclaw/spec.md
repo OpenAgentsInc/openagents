@@ -659,54 +659,248 @@ Production smoke (minimum):
 - 2026-02-05: Ran LiteClaw worker + web tests, deployed liteclaw worker and openagents-web-app, and pushed Convex functions for the LiteClaw web flow.
 - 2026-02-05: Added Hatchery "Reset LiteClaw memory" action that sends CF_AGENT_CHAT_CLEAR via Agents SDK and reran web tests.
 - 2026-02-05: Added LiteClaw worker metrics logging (ttft_ms, duration_ms, ok/error, message_count) and reran worker tests.
+- 2026-02-05: Added LiteClaw worker guardrails (per-user rate limit, rolling summary + trimming, cancel in-flight streams, fallback to non-streamed response on stream failure), reran worker tests, and deployed liteclaw worker.
 
 ---
 
 ## Post-EA Roadmap: Cloudflare-Native Sky (LiteClaw-First)
 
-Goal: build our own Pi-style runtime, branded as **Sky**, on Workers + Durable Objects (no pi-mono runtime dependency), while keeping LiteClaw as the product surface. LiteClaw UI and `/agents/chat/*` transport stay the same; the runtime evolves underneath.
+Goal: build our own Pi-style runtime, branded as **Sky**, on Workers + Durable Objects, while keeping the LiteClaw product surface stable.
+
+Non-goal: replacing the LiteClaw UI or transport. The UI (`/chat/{id}`) and transport (`/agents/chat/*`) stay constant; only the runtime beneath evolves.
+
+### Why Sky-style (what changes vs AIChatAgent)
+
+AIChatAgent is great for “chat that persists.” Sky adds:
+
+- A stable run/event contract (streamed deltas + structured tool lifecycle)
+- Tool semantics (schemas, streaming args, receipts, replay)
+- Determinism and observability (run IDs, step IDs, timings, typed errors)
+- Portability (export/import into OpenClaw, later reuse skills/extensions)
+
+Principle: LiteClaw remains the UX; Sky becomes the engine.
+
+---
+
+### Core Contract (freeze early)
+
+These primitives are standardized first so later phases do not thrash.
+
+#### 1) IDs (always present)
+
+- `thread_id` (LiteClaw id)
+- `run_id` (one per user send)
+- `step_id` (model step or tool step)
+- `event_id` (monotonic per run)
+
+#### 2) Message model (Sky-ish)
+
+- Roles: `system | user | assistant | tool`
+- `content[]` parts: `{ type: "text" | "image" | "json" | "ref", ... }`
+- `metadata` bag: model id, tokens, timings, policy flags
+
+#### 3) Event stream (truth the UI renders)
+
+Even if tools are not enabled, the stream shape stays unified:
+
+- `run.started`
+- `model.delta`
+- `model.completed`
+- `tool.call.started`
+- `tool.call.delta`
+- `tool.call.completed`
+- `tool.result`
+- `run.error`
+- `run.completed`
+
+#### 4) Receipts (replay unit)
+
+Receipts are append-only and emitted for every run and tool:
+
+- `receipt.run`: input hash, model config id, output hash, timings
+- `receipt.tool`: tool name, args hash, output hash, duration, status
+
+Receipts are the base layer for replay, billing later, debugging, and trust.
+
+#### 5) Versioning policy
+
+- `liteclaw_session_version` (int) on every transcript export
+- `cf_sky_version` (semver) on every run receipt
+- Backward compatibility: read old forever, write new only
+
+---
 
 ### Phase 0 - Proof of Concept: LiteClaw-Sky Core in the Worker
 
-What we build:
-- A `cf-sky` core module inside `apps/liteclaw-worker/` that owns a model abstraction (`stream(context, options)`), message conversion, and event streaming.
-- A message contract aligned with Sky's `AgentMessage` and tool result shapes, with adapters to and from `AIChatAgent` messages.
-- A simple compaction hook (rolling summary + last N turns) stored in DO SQLite alongside existing AIChat tables.
-- A LiteClaw toggle (`LITECLAW_SKY_MODE=1` or equivalent) that routes `onChatMessage` through the cf-sky core while keeping the same endpoints and UI.
-- A transcript export endpoint that emits Sky-compatible JSONL for a single thread (for OpenClaw import/testing).
+Intent: build the core engine and adapters while keeping endpoints identical.
 
-Definition of done:
-- `/chat/{id}` works end-to-end when the flag is enabled, with streaming, persistence, and resume intact.
-- Exported transcripts load in OpenClaw's Pi session tooling without conversion errors.
-- Tests cover the cf-pi stream adapter and message conversion.
+#### What we build
+
+`cf-sky` module (internal)
+- `ModelProvider`: `stream(messages, options) -> AsyncIterable<ModelEvent>`
+- `Compactor`: `compact(messages) -> { summary, keep[] }`
+- `EventMux`: converts model/tool events into the unified event stream
+
+Message adapters
+- `AIChatAgent` <-> `SkyMessage` conversion
+- normalize `content` parts
+- normalize roles
+- preserve metadata
+
+Persistence layout (DO SQLite)
+- Keep AIChatAgent tables, add Sky tables alongside
+- `sky_runs(run_id, thread_id, started_at, completed_at, status, model_config_id, error_code?)`
+- `sky_events(run_id, event_id, type, payload_json, created_at)`
+- `sky_receipts(run_id, receipt_json, created_at)`
+- `sky_memory(thread_id, summary, updated_at, schema_version)`
+
+Feature flag
+- `LITECLAW_SKY_MODE=1` routes `onChatMessage` through `cf-sky`
+- Same websocket endpoints, same UI rendering path
+
+Export
+- `GET /agents/chat/{id}/export` emits Sky-compatible JSONL
+- includes messages, events, receipts (versioned)
+
+#### Definition of done (tight)
+
+- Flag off: existing behavior unchanged.
+- Flag on: `/chat/{id}` works end-to-end: streaming, persistence, resume.
+- Export JSONL loads in OpenClaw Pi tooling without conversion errors, or with a documented minimal adapter.
+- Tests cover message conversion round-trip, event ordering monotonicity, and compaction correctness.
+
+---
 
 ### Phase 1 - Contracts + Portability
 
-- Formalize tool schemas with TypeBox/AJV and stream partial tool args (Pi-style).
-- Add attachment normalization (images/docs) to match Sky's message transformer.
-- Introduce a model registry config (id -> provider + model + options) to align with OpenClaw's model selection.
-- Store a versioned `liteclaw_session_version` to keep transcript compatibility stable.
+Intent: turn Phase 0 “it works” into a stable contract for tools and skills.
+
+#### What we add
+
+- Typed schemas for events, messages, and receipts. Use TypeBox + AJV or Zod. Pick one and pin schema versions.
+- Streaming tool-args contract, even if tools are stubbed. Partial JSON deltas; final args must validate.
+- Attachment normalization with `ref` parts for R2 blobs (`r2://bucket/key#sha256=...`).
+- Model registry config: `model_config_id -> provider + model + options`, stored in code/config.
+
+#### Done when
+
+- Every event payload validates against schemas in tests.
+- Export includes `liteclaw_session_version` and schema versions.
+- A compatibility doc exists: what LiteClaw exports guarantee.
+
+---
 
 ### Phase 2 - Cloud-Only Tools (Workers Native)
 
-- Implement a tool runtime for R2/KV/D1/HTTP with strict schemas and receipts.
-- Add tool event streaming and UI rendering in the existing chat UI.
-- Enforce tool permissions per thread (read-only vs write) and rate limits.
+Intent: introduce tools without containers and keep zero per-user infra costs.
+
+#### Tool runtime (Workers-native)
+
+Implement a tool registry with strict boundaries:
+
+- `http.fetch` (allowlist + timeouts + max bytes)
+- `r2.put/get/list` (scoped prefixes)
+- `kv.get/put` (scoped)
+- `d1.query` (scoped, optional)
+- `summarize` (internal compaction / memory)
+- `extract` (structured extraction, internal)
+
+#### Security model
+
+- Default-deny tool access.
+- Per-thread tool policy: `none | read-only | read-write`
+- Request budgets: max tool calls per run, max outbound bytes, per-domain allowlist for HTTP
+
+#### Receipts
+
+- Every tool call produces a receipt (args hash, output hash, timing)
+
+#### Done when
+
+- Tools show up in the event stream and render in the chat UI (basic cards).
+- Tool calls are replayable from receipts in a test harness (deterministic tools only).
+- Abuse controls exist (rate limit + allowlists).
+
+---
 
 ### Phase 3 - Sandboxed Coding Tools (Containers)
 
-- Add a container-backed tool executor for `read`, `edit`, `write`, `bash` on ephemeral workspaces.
-- Define workspace snapshot import/export (R2 tarball or repo-sync service).
-- Emit deterministic tool receipts (params hash, output hash, diff hash) for replayability.
+Intent: add coding tools via containers without changing the contract.
+
+#### Contract-first changes
+
+- `ExecutorKind = workers | container | tunnel`
+- Tool runtime dispatches `read/edit/write/bash` to an executor
+- The same tool events and receipts are emitted regardless of executor
+
+#### Workspace model
+
+- Ephemeral workspace per run or per thread (choose one; default per thread with TTL)
+- Snapshot export/import: tarball to R2 with hash + metadata
+
+#### Done when
+
+- `read` works end-to-end with receipts and replay.
+- Deterministic diff receipt exists for `edit/write` (`input_hash`, `patch_hash`, `output_hash`).
+
+---
 
 ### Phase 4 - Tunnel-Backed Local Tools (Your Repo)
 
-- Ship a lightweight local agent + Cloudflare Tunnel endpoint for tool execution on the user's machine.
-- Reuse the same tool schemas and receipts as Phase 3.
-- Add per-tool allowlists and directory scoping to keep access explicit and auditable.
+Intent: make LiteClaw useful on real repos without Cloud infra.
+
+#### What we build
+
+- Local agent runtime implementing the same executor API.
+- Signed requests, per-tool allowlists, and directory scoping.
+- Cloudflare Tunnel endpoint bridges `tool.invoke` to local executor.
+- Tool output streams back as tool events.
+
+#### Trust and audit
+
+- Every local tool invocation produces a receipt signed by the local agent, or at least hashed + timestamped.
+- UI clearly labels “local tool executed.”
+
+#### Done when
+
+- User can run `read` and `edit` against a local directory with explicit scoping.
+- Revocation story exists: disconnect tunnel, rotate token.
+
+---
 
 ### Phase 5 - Skills + Extensions (Sky-Compatible)
 
-- Load skills/extensions from R2/KV with explicit manifests.
-- Align extension hooks with Sky's Extension API so OpenClaw skills can be reused.
-- Add policy-driven enablement and per-skill metrics.
+Intent: reuse OpenClaw skills/extensions without changing LiteClaw UX.
+
+#### Extension model
+
+- Manifest-driven: name, version, tools, permissions, prompts, UI hints
+- Loaded from R2/KV with pinned versions and an allowlist for EA
+
+#### Compatibility
+
+- Align hook points to Sky Extension API: `onRunStart`, `onMessage`, `onToolCall`, `onRunComplete`
+- Skills run inside the runtime: modify tool registry, inject system prompts, add memory transforms
+
+#### Done when
+
+- One extension can add one tool and it shows in UI.
+- Extension metrics exist (calls, errors, latency).
+- Disable/enable is policy-driven per thread.
+
+---
+
+### Risks and Guardrails (to prevent scope creep)
+
+#### Key risks
+
+- Event contract churn: freeze early and version everything.
+- Memory bloat: cap aggressively and require summaries.
+- Tool sprawl: start with 2-3 tools, enforce schemas and budgets.
+- UI drift: keep UI dumb; it renders events, not logic.
+
+#### Guardrails
+
+- No new UI surfaces for Sky phases.
+- No new principal types until Phase 4+.
+- No marketplace framing until extensions exist and are stable.
