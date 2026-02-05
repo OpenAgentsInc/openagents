@@ -108,3 +108,9 @@ If/when you want request-scoped context (trace IDs, per-request logging, cookie/
 - SSR/client behavior is explicit (separate Layers if needed).
 - Auth/Convex/query wiring is not scattered; it’s services with small adapters.
 
+---
+
+## Related references
+
+- Patterns to adopt from `~/code/crest` (Next.js + Effect + Convex): `docs/autopilot/effect-patterns-from-crest.md`
+

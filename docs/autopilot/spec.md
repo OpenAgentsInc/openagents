@@ -85,3 +85,4 @@ Explicitly out of scope:
 
 - Effect migration starting points for the current `apps/web` app: `docs/autopilot/effect-migration-web.md`
 - Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
+- Effect + Convex patterns from `~/code/crest` to adopt: `docs/autopilot/effect-patterns-from-crest.md`
