@@ -24,6 +24,8 @@ After the initial setup (<2 minutes) you'll have a working full-stack app using:
    cp .env.local.example .env.local
    ```
 
+   `.env.local.example` lists WorkOS, optional OpenAI, and other non-Convex vars. Convex URL is added by `npx convex dev`. For production, copy `.env.production.example` to `.env.production` and set prod WorkOS redirect URI (e.g. `https://openagents.com/callback`).
+
 3. Configure WorkOS AuthKit:
    - Create a [WorkOS account](https://workos.com/)
    - Get your Client ID and API Key from the WorkOS dashboard

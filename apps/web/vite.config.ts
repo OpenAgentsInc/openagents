@@ -6,6 +6,10 @@ import * as dotenv from 'dotenv';
 
 // Load .env.local (TanStack Start/Vite convention)
 dotenv.config({ path: '.env.local', quiet: true });
+// Production: load .env.production for build (WorkOS, etc.; Convex is separate)
+if (process.env.NODE_ENV === 'production') {
+  dotenv.config({ path: '.env.production', quiet: true });
+}
 // Also load .env as fallback
 dotenv.config({ quiet: true });
 
