@@ -692,7 +692,13 @@ export class Chat extends AIChatAgent<Env> {
 
   private setExtensionPolicy(enabled: string[]) {
     const normalized = Array.from(
-      new Set(enabled.map((entry) => entry.trim()).filter(Boolean))
+      new Set(
+        enabled
+          .map((entry) => entry.trim())
+          .filter(
+            (entry) => Boolean(entry) && (entry === "*" || entry.includes("@"))
+          )
+      )
     );
     this.sql`
       insert into sky_extension_policy (thread_id, enabled_json, updated_at)
@@ -731,7 +737,17 @@ export class Chat extends AIChatAgent<Env> {
       return this.setExtensionPolicy(defaults);
     }
 
-    return enabled;
+    const normalized = enabled.filter(
+      (entry) => entry === "*" || entry.includes("@")
+    );
+    if (normalized.length === 0) {
+      return this.setExtensionPolicy(defaults);
+    }
+    if (normalized.length !== enabled.length) {
+      return this.setExtensionPolicy(normalized);
+    }
+
+    return normalized;
   }
 
   private async loadExtensionCatalog(): Promise<Map<string, ExtensionManifest>> {
@@ -860,6 +876,12 @@ export class Chat extends AIChatAgent<Env> {
         continue;
       }
       const { id, version } = parseExtensionRef(ref);
+      if (!version) {
+        console.warn(
+          `[LiteClaw] Extension ${id || ref} missing version; skipping.`
+        );
+        continue;
+      }
       const manifest = catalog.get(id);
       if (!manifest) continue;
       if (version && manifest.version !== version) continue;
@@ -2041,6 +2063,7 @@ export class Chat extends AIChatAgent<Env> {
       const catalog = await this.loadExtensionCatalog();
       const disallowed: string[] = [];
       const missing: string[] = [];
+      const missingVersion: string[] = [];
 
       for (const entry of enabled) {
         if (entry === "*") {
@@ -2051,6 +2074,10 @@ export class Chat extends AIChatAgent<Env> {
         }
 
         const { id, version } = parseExtensionRef(entry);
+        if (!version) {
+          missingVersion.push(entry);
+          continue;
+        }
         if (!id) {
           disallowed.push(entry);
           continue;
@@ -2068,13 +2095,14 @@ export class Chat extends AIChatAgent<Env> {
         }
       }
 
-      if (disallowed.length || missing.length) {
+      if (disallowed.length || missing.length || missingVersion.length) {
         return Response.json(
           {
             ok: false,
             error: "Extensions not allowed or missing",
             disallowed,
-            missing
+            missing,
+            missing_version: missingVersion
           },
           { status: 400 }
         );

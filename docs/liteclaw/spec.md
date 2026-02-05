@@ -677,6 +677,7 @@ Production smoke (minimum):
 - 2026-02-05: Enforced extension tool declarations (tools must be listed in `manifest.tools`), reran LiteClaw worker tests, and deployed liteclaw worker (version `40ccc90a-82d3-4bed-84a7-8ee7c9be20dd`).
 - 2026-02-05: Enforced extension policy updates against allowlist + catalog, reran LiteClaw worker tests, and deployed liteclaw worker (version `d09184b1-f77d-42e4-aa75-cc08f9b5119a`).
 - 2026-02-05: Added KV/R2-backed extension catalog loading with configurable key, reran LiteClaw worker tests, and deployed liteclaw worker (version `a9e3b627-3359-4ed8-904a-b0e9d4c914fe`).
+- 2026-02-05: Enforced pinned extension versions in policy updates, reran LiteClaw worker tests, and deployed liteclaw worker (version `bd986663-714a-4a5d-811c-848e3d616e30`).
 
 ---
 
@@ -897,6 +898,7 @@ Intent: reuse OpenClaw skills/extensions without changing LiteClaw UX.
   - Catalog management via `/agents/chat/{id}/extensions/catalog` (admin secret required)
 - Runtime rejects extension tools not declared in `manifest.tools`
 - Extension policy updates reject entries not in the allowlist or missing from the catalog
+- Extension policy entries must include pinned versions (rejects missing `@version`)
 - Catalog can be sourced from KV/R2 (key `extensions/catalog.json` by default)
 
 #### Compatibility
