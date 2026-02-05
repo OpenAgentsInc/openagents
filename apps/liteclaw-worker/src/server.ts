@@ -1,6 +1,8 @@
-import { routeAgentRequest } from "agents";
+import { getAgentByName, routeAgentRequest } from "agents";
 
 import { AIChatAgent } from "@cloudflare/ai-chat";
+import { getSandbox } from "@cloudflare/sandbox";
+import { createOpencodeServer, proxyToOpencode } from "@cloudflare/sandbox/opencode";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -24,8 +26,11 @@ import {
 import { createWorkersAI } from "workers-ai-provider";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 
 import * as EffectWorkers from "./effect/workers";
+
+export { Sandbox } from "@cloudflare/sandbox";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MODEL_CONFIG_ID = "workers-ai:gpt-oss-120b";
@@ -48,8 +53,18 @@ const DEFAULT_TOOL_MAX_OUTBOUND_BYTES = 200_000;
 const DEFAULT_HTTP_TIMEOUT_MS = 8_000;
 const DEFAULT_HTTP_MAX_BYTES = 50_000;
 const DEFAULT_TUNNEL_TIMEOUT_MS = 8_000;
+const DEFAULT_CODEX_CALLBACK_TIMEOUT_MS = 120_000;
+const SANDBOX_WORKSPACE_ROOT = "/workspace";
+const OPENCODE_DATA_ROOT = "/workspace/opencode-data";
+const OPENCODE_AUTH_PATH = `${OPENCODE_DATA_ROOT}/opencode/auth.json`;
+const OPENCODE_ROUTE_PREFIX = "/sandbox/opencode";
+const CODEX_AUTH_SCHEMA_VERSION = 1;
 
 class LiteClawEffectError extends Data.TaggedError("LiteClawEffectError")<{
+  message: string;
+  cause?: unknown;
+}> {}
+class SandboxEffectError extends Data.TaggedError("SandboxEffectError")<{
   message: string;
   cause?: unknown;
 }> {}
@@ -195,6 +210,13 @@ type SkyMemoryRow = {
   schema_version: number;
 };
 
+type CodexAuthRow = {
+  thread_id: string;
+  payload_json: string;
+  updated_at: number;
+  schema_version: number;
+};
+
 type SkyRunRow = {
   run_id: string;
   thread_id: string;
@@ -301,6 +323,7 @@ const combineAbortSignals = (
 };
 
 const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
 const toHex = (buffer: ArrayBuffer) =>
   [...new Uint8Array(buffer)]
@@ -331,6 +354,304 @@ const hmacSha256 = async (secret: string, payload: string) => {
     textEncoder.encode(payload)
   );
   return toHex(signature);
+};
+
+const encodeBase64 = (bytes: Uint8Array) => {
+  if (typeof btoa === "function") {
+    let binary = "";
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
+  }
+  return Buffer.from(bytes).toString("base64");
+};
+
+const decodeBase64 = (value: string) => {
+  if (typeof atob === "function") {
+    return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+  }
+  return new Uint8Array(Buffer.from(value, "base64"));
+};
+
+const encodeBase64UrlBytes = (bytes: Uint8Array) =>
+  encodeBase64(bytes)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+
+const decodeBase64UrlBytes = (value: string) => {
+  const padded = value
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return decodeBase64(padded);
+};
+
+const encodeBase64Url = (value: string) =>
+  encodeBase64UrlBytes(textEncoder.encode(value));
+const decodeBase64Url = (value: string) =>
+  textDecoder.decode(decodeBase64UrlBytes(value));
+
+type SandboxSessionToken = {
+  thread_id: string;
+  user_id: string;
+  exp: number;
+};
+
+const parseSandboxSessionToken = async (
+  secret: string,
+  token: string,
+  threadId: string
+): Promise<SandboxSessionToken | null> => {
+  const [payloadPart, signature] = token.split(".");
+  if (!payloadPart || !signature) return null;
+  const expected = await hmacSha256(secret, payloadPart);
+  if (expected !== signature) return null;
+  let payload: SandboxSessionToken;
+  try {
+    payload = JSON.parse(decodeBase64Url(payloadPart)) as SandboxSessionToken;
+  } catch {
+    return null;
+  }
+  if (!payload || payload.thread_id !== threadId) return null;
+  if (typeof payload.exp !== "number" || payload.exp < Date.now()) {
+    return null;
+  }
+  if (typeof payload.user_id !== "string" || !payload.user_id) {
+    return null;
+  }
+  return payload;
+};
+
+const aesKeyCache = new Map<string, Promise<CryptoKey>>();
+
+const getAesKey = (secret: string) => {
+  const cached = aesKeyCache.get(secret);
+  if (cached) return cached;
+  const keyPromise = crypto.subtle
+    .digest("SHA-256", textEncoder.encode(secret))
+    .then((digest) =>
+      crypto.subtle.importKey("raw", digest, "AES-GCM", false, [
+        "encrypt",
+        "decrypt"
+      ])
+    );
+  aesKeyCache.set(secret, keyPromise);
+  return keyPromise;
+};
+
+type EncryptedPayload = {
+  v: number;
+  iv: string;
+  data: string;
+};
+
+const encryptPayload = async (secret: string, payload: string) => {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await getAesKey(secret);
+  const cipher = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    textEncoder.encode(payload)
+  );
+  const encrypted: EncryptedPayload = {
+    v: 1,
+    iv: encodeBase64UrlBytes(iv),
+    data: encodeBase64UrlBytes(new Uint8Array(cipher))
+  };
+  return JSON.stringify(encrypted);
+};
+
+const decryptPayload = async (secret: string, encoded: string) => {
+  const parsed = JSON.parse(encoded) as EncryptedPayload;
+  if (!parsed || parsed.v !== 1) {
+    throw new Error("Unsupported Codex payload format.");
+  }
+  const key = await getAesKey(secret);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: decodeBase64UrlBytes(parsed.iv) },
+    key,
+    decodeBase64UrlBytes(parsed.data)
+  );
+  return textDecoder.decode(plaintext);
+};
+
+const sandboxEffect = <A>(message: string, thunk: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: thunk,
+    catch: (cause) => new SandboxEffectError({ message, cause })
+  });
+
+const runSandbox = <A>(message: string, thunk: () => Promise<A>) =>
+  Effect.runPromise(sandboxEffect(message, thunk));
+
+const getThreadSandbox = (env: Env, threadId: string) => {
+  if (!env.Sandbox) {
+    throw new Error("Sandbox binding is not configured.");
+  }
+  return getSandbox(env.Sandbox, threadId);
+};
+
+const parseSandboxTimestamp = (value: string | undefined) => {
+  if (!value) return Date.now();
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+};
+
+const extractSandboxToken = (request: Request) => {
+  const header =
+    request.headers.get("authorization") ??
+    request.headers.get("x-liteclaw-sandbox-token");
+  if (!header) return null;
+  if (header.toLowerCase().startsWith("bearer ")) {
+    return header.slice("bearer ".length).trim();
+  }
+  return header.trim();
+};
+
+const buildCorsHeaders = (request: Request, env: Env) => {
+  const origin = request.headers.get("origin");
+  const configured = env.LITECLAW_CODEX_CORS_ORIGIN;
+  const allowOrigin = configured || origin;
+  if (!allowOrigin) return null;
+  return {
+    "access-control-allow-origin": allowOrigin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers":
+      "authorization, content-type, x-liteclaw-sandbox-token",
+    "access-control-max-age": "86400",
+    vary: "origin"
+  };
+};
+
+const getSandboxErrorCode = (error: unknown) => {
+  if (!error || typeof error !== "object") return null;
+  if ("code" in error && typeof error.code === "string") {
+    return error.code;
+  }
+  if (
+    "errorResponse" in error &&
+    error.errorResponse &&
+    typeof error.errorResponse === "object" &&
+    "code" in error.errorResponse &&
+    typeof error.errorResponse.code === "string"
+  ) {
+    return error.errorResponse.code;
+  }
+  return null;
+};
+
+const isSandboxFileNotFound = (error: unknown) =>
+  getSandboxErrorCode(error) === "FILE_NOT_FOUND";
+
+const buildOpencodeProxyRequest = (request: Request, url: URL) => {
+  const proxyUrl = new URL(request.url);
+  const suffix = url.pathname.slice(OPENCODE_ROUTE_PREFIX.length);
+  proxyUrl.pathname = suffix ? (suffix.startsWith("/") ? suffix : `/${suffix}`) : "/";
+  proxyUrl.searchParams.delete("thread");
+  return new Request(proxyUrl.toString(), request);
+};
+
+const ensureOpencodeSandbox = async (
+  sandbox: ReturnType<typeof getThreadSandbox>
+) => {
+  await runSandbox("Sandbox workspace init failed", () =>
+    sandbox.mkdir(SANDBOX_WORKSPACE_ROOT, { recursive: true })
+  );
+  await runSandbox("Sandbox opencode env init failed", () =>
+    sandbox.setEnvVars({ XDG_DATA_HOME: OPENCODE_DATA_ROOT })
+  );
+  await runSandbox("Sandbox opencode data init failed", () =>
+    sandbox.mkdir(`${OPENCODE_DATA_ROOT}/opencode`, { recursive: true })
+  );
+};
+
+const readOpencodeAuth = async (
+  sandbox: ReturnType<typeof getThreadSandbox>
+) => {
+  try {
+    const file = await runSandbox("Sandbox readFile failed", () =>
+      sandbox.readFile(OPENCODE_AUTH_PATH)
+    );
+    if (file.isBinary || file.encoding === "base64") {
+      throw new Error("OpenCode auth file is not text.");
+    }
+    return file.content ?? "";
+  } catch (error) {
+    if (isSandboxFileNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+const getCodexSecret = (env: Env) => env.LITECLAW_CODEX_SECRET ?? null;
+
+const requireCodexSecret = (env: Env) => {
+  const secret = getCodexSecret(env);
+  if (!secret) {
+    throw new Error("Codex secret is not configured.");
+  }
+  return secret;
+};
+
+const fetchCodexAuthPayload = async (env: Env, threadId: string) => {
+  const secret = getCodexSecret(env);
+  if (!secret) return null;
+  const stub = await getAgentByName(env.Chat, threadId);
+  const response = await stub.fetch("https://liteclaw.internal/codex-auth", {
+    method: "GET",
+    headers: { "x-liteclaw-codex-secret": secret }
+  });
+  if (!response.ok) {
+    throw new Error(`Codex auth lookup failed (${response.status}).`);
+  }
+  const body = (await response.json()) as
+    | { ok: true; payload: string | null }
+    | { ok: false; error: string };
+  if (!("ok" in body) || !body.ok) {
+    throw new Error("Codex auth lookup failed.");
+  }
+  return body.payload;
+};
+
+const storeCodexAuthPayload = async (
+  env: Env,
+  threadId: string,
+  payload: string
+) => {
+  const secret = requireCodexSecret(env);
+  const stub = await getAgentByName(env.Chat, threadId);
+  const response = await stub.fetch("https://liteclaw.internal/codex-auth", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-liteclaw-codex-secret": secret
+    },
+    body: JSON.stringify({ payload })
+  });
+  if (!response.ok) {
+    throw new Error(`Codex auth save failed (${response.status}).`);
+  }
+  const body = (await response.json()) as
+    | { ok: true }
+    | { ok: false; error: string };
+  if (!("ok" in body) || !body.ok) {
+    throw new Error("Codex auth save failed.");
+  }
+};
+
+const hydrateOpencodeAuth = async (
+  env: Env,
+  threadId: string,
+  sandbox: ReturnType<typeof getThreadSandbox>
+) => {
+  const stored = await fetchCodexAuthPayload(env, threadId);
+  if (!stored) return;
+  await runSandbox("Sandbox auth write failed", () =>
+    sandbox.writeFile(OPENCODE_AUTH_PATH, stored)
+  );
 };
 
 const parseToolPolicy = (value: string | undefined): ToolPolicy => {
@@ -649,6 +970,14 @@ export class Chat extends AIChatAgent<Env> {
         primary key (workspace_id, path)
       )
     `;
+    this.sql`
+      create table if not exists sky_codex_auth (
+        thread_id text primary key,
+        payload_json text not null,
+        updated_at integer not null,
+        schema_version integer not null
+      )
+    `;
 
     const memoryRows = this.sql<SkyMemoryRow>`
       select thread_id, summary, updated_at, schema_version
@@ -793,6 +1122,81 @@ export class Chat extends AIChatAgent<Env> {
     }
 
     return normalized;
+  }
+
+  private getCodexSecret() {
+    const secret = this.env.LITECLAW_CODEX_SECRET;
+    if (!secret) {
+      throw new Error("Codex secret is not configured.");
+    }
+    return secret;
+  }
+
+  private getCodexAuthRow(): CodexAuthRow | null {
+    const rows = this.sql<CodexAuthRow>`
+      select thread_id, payload_json, updated_at, schema_version
+      from sky_codex_auth
+      where thread_id = ${this.name}
+    `;
+    return rows[0] ?? null;
+  }
+
+  private async getCodexAuthPayload(): Promise<string | null> {
+    const row = this.getCodexAuthRow();
+    if (!row) return null;
+    try {
+      return await decryptPayload(this.getCodexSecret(), row.payload_json);
+    } catch (error) {
+      console.warn("[LiteClaw] Failed to decrypt Codex auth payload", error);
+      return null;
+    }
+  }
+
+  private async setCodexAuthPayload(payload: string) {
+    const encrypted = await encryptPayload(this.getCodexSecret(), payload);
+    this.sql`
+      insert into sky_codex_auth (thread_id, payload_json, updated_at, schema_version)
+      values (${this.name}, ${encrypted}, ${Date.now()}, ${CODEX_AUTH_SCHEMA_VERSION})
+      on conflict(thread_id) do update set
+        payload_json = excluded.payload_json,
+        updated_at = excluded.updated_at,
+        schema_version = excluded.schema_version
+    `;
+  }
+
+  private async handleCodexAuthRequest(request: Request) {
+    this.ensureStateLoaded();
+    const secret = this.env.LITECLAW_CODEX_SECRET;
+    if (!secret) {
+      return new Response("Codex secret is not configured.", { status: 501 });
+    }
+    const provided = request.headers.get("x-liteclaw-codex-secret");
+    if (!provided || provided !== secret) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    if (request.method === "GET") {
+      const payload = await this.getCodexAuthPayload();
+      return Response.json({ ok: true, payload });
+    }
+
+    if (request.method === "POST") {
+      const body = (await request.json().catch(() => null)) as
+        | { payload?: unknown }
+        | null;
+      const payload =
+        body && typeof body.payload === "string" ? body.payload : null;
+      if (!payload) {
+        return Response.json(
+          { ok: false, error: "Invalid payload." },
+          { status: 400 }
+        );
+      }
+      await this.setCodexAuthPayload(payload);
+      return Response.json({ ok: true });
+    }
+
+    return new Response("Method not allowed", { status: 405 });
   }
 
   private async loadExtensionCatalog(): Promise<Map<string, ExtensionManifest>> {
@@ -1203,6 +1607,26 @@ export class Chat extends AIChatAgent<Env> {
         );
       }
     };
+
+    const getSandboxExecutor = () => {
+      if (executorKind !== "container") {
+        throw new Error(
+          `Executor kind ${executorKind} is not available in this runtime.`
+        );
+      }
+      return getThreadSandbox(this.env, this.name);
+    };
+
+    const ensureSandboxWorkspace = async (
+      sandbox: ReturnType<typeof getThreadSandbox>
+    ) => {
+      await runSandbox("Sandbox workspace init failed", () =>
+        sandbox.mkdir(SANDBOX_WORKSPACE_ROOT, { recursive: true })
+      );
+    };
+
+    const toSandboxPath = (path: string) =>
+      `${SANDBOX_WORKSPACE_ROOT}/${path}`;
 
     const invokeTunnelTool = async <Output = unknown>(
       toolName: string,
@@ -1790,6 +2214,36 @@ export class Chat extends AIChatAgent<Env> {
                   toolOptions
                 );
               }
+              if (executorKind === "container") {
+                const workspace = this.ensureWorkspace();
+                const normalizedPath = this.normalizeWorkspacePath(input.path);
+                const sandbox = getSandboxExecutor();
+                await ensureSandboxWorkspace(sandbox);
+                let file;
+                try {
+                  file = await runSandbox("Sandbox readFile failed", () =>
+                    sandbox.readFile(toSandboxPath(normalizedPath))
+                  );
+                } catch (error) {
+                  if (isSandboxFileNotFound(error)) {
+                    throw new Error("Workspace file not found.");
+                  }
+                  throw error;
+                }
+                if (file.isBinary || file.encoding === "base64") {
+                  throw new Error("Binary workspace files are not supported.");
+                }
+                const content = file.content ?? "";
+                consumeOutboundBytes(content.length);
+                return {
+                  executor_kind: executorKind,
+                  workspace_id: workspace.workspace_id,
+                  path: normalizedPath,
+                  content,
+                  bytes: content.length,
+                  updated_at: parseSandboxTimestamp(file.timestamp)
+                };
+              }
               assertWorkersExecutor();
               const result = this.readWorkspaceFile(input.path);
               if (!result.file) {
@@ -1837,6 +2291,61 @@ export class Chat extends AIChatAgent<Env> {
                   input,
                   toolOptions
                 );
+              }
+              if (executorKind === "container") {
+                const workspace = this.ensureWorkspace();
+                const normalizedPath = this.normalizeWorkspacePath(input.path);
+                const sandbox = getSandboxExecutor();
+                await ensureSandboxWorkspace(sandbox);
+                let before: string | null = null;
+                try {
+                  const current = await runSandbox(
+                    "Sandbox readFile failed",
+                    () => sandbox.readFile(toSandboxPath(normalizedPath))
+                  );
+                  if (current.isBinary || current.encoding === "base64") {
+                    throw new Error("Binary workspace files are not supported.");
+                  }
+                  before = current.content ?? "";
+                } catch (error) {
+                  if (!isSandboxFileNotFound(error)) {
+                    throw error;
+                  }
+                }
+
+                await runSandbox("Sandbox writeFile failed", () =>
+                  sandbox.writeFile(toSandboxPath(normalizedPath), input.content)
+                );
+
+                const beforeBytes = before?.length ?? 0;
+                const afterBytes = input.content.length;
+                const beforeHash = before ? await hashText(before) : null;
+                const afterHash = await hashText(input.content);
+                const patch: WorkspaceWritePatch = {
+                  op: "write",
+                  path: normalizedPath,
+                  before_hash: beforeHash,
+                  after_hash: afterHash,
+                  before_bytes: beforeBytes,
+                  after_bytes: afterBytes
+                };
+                const patchHash = await hashJson(patch);
+                const output = {
+                  executor_kind: executorKind,
+                  workspace_id: workspace.workspace_id,
+                  path: normalizedPath,
+                  created: before === null,
+                  before_hash: beforeHash,
+                  after_hash: afterHash,
+                  before_bytes: beforeBytes,
+                  after_bytes: afterBytes,
+                  patch
+                };
+                consumeOutboundBytes(JSON.stringify(output).length);
+                return {
+                  output,
+                  receiptMeta: { patchHash }
+                };
               }
               assertWorkersExecutor();
               const result = this.writeWorkspaceFile(input.path, input.content);
@@ -1905,6 +2414,82 @@ export class Chat extends AIChatAgent<Env> {
                   input,
                   toolOptions
                 );
+              }
+              if (executorKind === "container") {
+                if (input.find.length === 0) {
+                  throw new Error("Find text must not be empty.");
+                }
+                const workspace = this.ensureWorkspace();
+                const normalizedPath = this.normalizeWorkspacePath(input.path);
+                const sandbox = getSandboxExecutor();
+                await ensureSandboxWorkspace(sandbox);
+                let current;
+                try {
+                  current = await runSandbox("Sandbox readFile failed", () =>
+                    sandbox.readFile(toSandboxPath(normalizedPath))
+                  );
+                } catch (error) {
+                  if (isSandboxFileNotFound(error)) {
+                    throw new Error("Workspace file not found.");
+                  }
+                  throw error;
+                }
+                if (current.isBinary || current.encoding === "base64") {
+                  throw new Error("Binary workspace files are not supported.");
+                }
+                const before = current.content ?? "";
+                let after = before;
+                let replacements = 0;
+
+                if (input.all) {
+                  const parts = before.split(input.find);
+                  if (parts.length === 1) {
+                    throw new Error("Find text not found.");
+                  }
+                  replacements = parts.length - 1;
+                  after = parts.join(input.replace);
+                } else {
+                  const index = before.indexOf(input.find);
+                  if (index === -1) {
+                    throw new Error("Find text not found.");
+                  }
+                  replacements = 1;
+                  after =
+                    before.slice(0, index) +
+                    input.replace +
+                    before.slice(index + input.find.length);
+                }
+
+                await runSandbox("Sandbox writeFile failed", () =>
+                  sandbox.writeFile(toSandboxPath(normalizedPath), after)
+                );
+                const beforeHash = await hashText(before);
+                const afterHash = await hashText(after);
+                const patch: WorkspaceEditPatch = {
+                  op: "edit",
+                  path: normalizedPath,
+                  find: input.find,
+                  replace: input.replace,
+                  all: Boolean(input.all),
+                  replacements,
+                  before_hash: beforeHash,
+                  after_hash: afterHash
+                };
+                const patchHash = await hashJson(patch);
+                const output = {
+                  executor_kind: executorKind,
+                  workspace_id: workspace.workspace_id,
+                  path: normalizedPath,
+                  replacements,
+                  before_hash: beforeHash,
+                  after_hash: afterHash,
+                  patch
+                };
+                consumeOutboundBytes(JSON.stringify(output).length);
+                return {
+                  output,
+                  receiptMeta: { patchHash }
+                };
               }
               assertWorkersExecutor();
               if (input.find.length === 0) {
@@ -2612,6 +3197,9 @@ export class Chat extends AIChatAgent<Env> {
     if (url.pathname.endsWith("/extensions")) {
       return this.handleExtensionPolicyRequest(request);
     }
+    if (url.pathname.endsWith("/codex-auth")) {
+      return this.handleCodexAuthRequest(request);
+    }
     return super.onRequest(request);
   }
 
@@ -3024,16 +3612,271 @@ export class Chat extends AIChatAgent<Env> {
   }
 }
 
-const handleRequest = (request: Request, env: Env) =>
+const CodexAuthorizeSchema = Schema.Struct({
+  method: Schema.Number
+});
+
+const CodexCallbackSchema = Schema.Struct({
+  method: Schema.Number,
+  code: Schema.optional(Schema.String)
+});
+
+const decodeJsonBody = <A>(
+  request: Request,
+  schema: Schema.Schema<A>
+) =>
   Effect.tryPromise({
-    try: () => routeAgentRequest(request, env),
-    catch: (cause) =>
-      new LiteClawEffectError({ message: "Route handler failed", cause })
+    try: () => request.json(),
+    catch: (cause) => new SandboxEffectError({ message: "Invalid JSON", cause })
   }).pipe(
-    Effect.map(
-      (response) => response ?? new Response("Not found", { status: 404 })
+    Effect.flatMap((body) => Schema.decodeUnknown(schema)(body)),
+    Effect.mapError((cause) =>
+      cause instanceof SandboxEffectError
+        ? cause
+        : new SandboxEffectError({
+            message: "Invalid request body",
+            cause
+          })
     )
   );
+
+const handleOpencodeOauthRequest = (request: Request, env: Env) => {
+  const url = new URL(request.url);
+  const match = url.pathname.match(
+    /^\/api\/sandbox\/([^/]+)\/opencode\/provider\/openai\/oauth\/(authorize|callback)$/
+  );
+  if (!match) {
+    return Effect.succeed(null);
+  }
+
+  const corsHeaders = buildCorsHeaders(request, env);
+  if (request.method === "OPTIONS") {
+    return Effect.succeed(
+      new Response(null, { status: 204, headers: corsHeaders ?? {} })
+    );
+  }
+
+  if (request.method !== "POST") {
+    return Effect.succeed(
+      new Response("Method not allowed", {
+        status: 405,
+        headers: corsHeaders ?? {}
+      })
+    );
+  }
+
+  const threadId = match[1];
+  const action = match[2] as "authorize" | "callback";
+
+  return Effect.gen(function* () {
+    if (!env.Sandbox) {
+      return new Response("Sandbox binding is not configured.", {
+        status: 501,
+        headers: corsHeaders ?? {}
+      });
+    }
+
+    const secret = getCodexSecret(env);
+    if (!secret) {
+      return new Response("Codex secret is not configured.", {
+        status: 501,
+        headers: corsHeaders ?? {}
+      });
+    }
+
+    const token = extractSandboxToken(request);
+    if (!token) {
+      return new Response("Unauthorized", {
+        status: 401,
+        headers: corsHeaders ?? {}
+      });
+    }
+
+    const claims = yield* sandboxEffect("Sandbox token invalid", () =>
+      parseSandboxSessionToken(secret, token, threadId)
+    );
+    if (!claims) {
+      return new Response("Unauthorized", {
+        status: 401,
+        headers: corsHeaders ?? {}
+      });
+    }
+
+    const bodyRequest = request.clone();
+    const body = yield* decodeJsonBody(
+      bodyRequest,
+      action === "authorize" ? CodexAuthorizeSchema : CodexCallbackSchema
+    );
+
+    const sandbox = getThreadSandbox(env, threadId);
+    yield* sandboxEffect("Sandbox init failed", () =>
+      ensureOpencodeSandbox(sandbox)
+    );
+    yield* sandboxEffect("Codex auth hydrate failed", () =>
+      hydrateOpencodeAuth(env, threadId, sandbox)
+    );
+    const server = yield* sandboxEffect("OpenCode server start failed", () =>
+      createOpencodeServer(sandbox, { directory: SANDBOX_WORKSPACE_ROOT })
+    );
+
+    const timeoutMs = parseNumberEnv(
+      env.LITECLAW_CODEX_CALLBACK_TIMEOUT_MS,
+      DEFAULT_CODEX_CALLBACK_TIMEOUT_MS
+    );
+    const shouldTimeout = action === "callback";
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const opencodeUrl = new URL(request.url);
+    opencodeUrl.pathname = `/provider/openai/oauth/${action}`;
+    opencodeUrl.search = "";
+
+    let opencodeResponse: Response;
+    try {
+      const opencodeBaseRequest = new Request(opencodeUrl.toString(), request);
+      const headers = new Headers(opencodeBaseRequest.headers);
+      headers.set("content-type", "application/json");
+      headers.delete("authorization");
+      headers.delete("x-liteclaw-sandbox-token");
+
+    const opencodeRequest = new Request(opencodeBaseRequest, { headers });
+      opencodeResponse = yield* sandboxEffect(
+        "OpenCode OAuth proxy failed",
+        async () => {
+          try {
+            const fetchPromise = sandbox.containerFetch(
+              opencodeRequest,
+              server.port
+            );
+            if (!shouldTimeout) {
+              return await fetchPromise;
+            }
+            return await new Promise<Response>((resolve, reject) => {
+              timeoutId = setTimeout(() => {
+                reject(new Error("OAuth callback timed out"));
+              }, timeoutMs);
+              fetchPromise.then(resolve, reject);
+            });
+          } catch (error) {
+            console.error("[LiteClaw] OpenCode OAuth proxy failed", error);
+            throw error;
+          }
+        }
+      );
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+
+    const responseText = yield* sandboxEffect(
+      "OpenCode OAuth response read failed",
+      () => opencodeResponse.text()
+    );
+
+    if (action === "callback" && opencodeResponse.ok) {
+      const authPayload = yield* sandboxEffect(
+        "OpenCode auth read failed",
+        () => readOpencodeAuth(sandbox)
+      );
+      if (authPayload) {
+        yield* sandboxEffect("Codex auth persist failed", () =>
+          storeCodexAuthPayload(env, threadId, authPayload)
+        );
+      }
+    }
+
+    const headers = new Headers({
+      "content-type":
+        opencodeResponse.headers.get("content-type") ?? "application/json"
+    });
+    if (corsHeaders) {
+      for (const [key, value] of Object.entries(corsHeaders)) {
+        headers.set(key, value);
+      }
+    }
+
+    return new Response(responseText, {
+      status: opencodeResponse.status,
+      headers
+    });
+  }).pipe(
+    Effect.catchAll((error) => {
+      let message = error instanceof Error ? error.message : "Codex proxy failed";
+      const status =
+        error instanceof SandboxEffectError &&
+        (error.message === "Invalid JSON" ||
+          error.message === "Invalid request body")
+          ? 400
+          : 500;
+      let resolvedStatus = status;
+      if (
+        error instanceof SandboxEffectError &&
+        error.cause instanceof Error &&
+        error.cause.message === "OAuth callback timed out"
+      ) {
+        message = "Codex callback timed out.";
+        resolvedStatus = 504;
+      }
+      const headers = new Headers({ "content-type": "application/json" });
+      if (corsHeaders) {
+        for (const [key, value] of Object.entries(corsHeaders)) {
+          headers.set(key, value);
+        }
+      }
+      return Effect.succeed(
+        new Response(JSON.stringify({ ok: false, error: message }), {
+          status: resolvedStatus,
+          headers
+        })
+      );
+    })
+  );
+};
+
+const handleOpencodeRequest = (request: Request, env: Env) =>
+  Effect.gen(function* () {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith(OPENCODE_ROUTE_PREFIX)) {
+      return null;
+    }
+    const threadId = url.searchParams.get("thread");
+    if (!threadId) {
+      return new Response("Missing thread id", { status: 400 });
+    }
+    if (!env.Sandbox) {
+      return new Response("Sandbox binding is not configured.", { status: 501 });
+    }
+
+    const sandbox = getThreadSandbox(env, threadId);
+    yield* sandboxEffect("Sandbox init failed", () => ensureOpencodeSandbox(sandbox));
+    yield* sandboxEffect("Codex auth hydrate failed", () =>
+      hydrateOpencodeAuth(env, threadId, sandbox)
+    );
+    const server = yield* sandboxEffect("OpenCode server start failed", () =>
+      createOpencodeServer(sandbox, { directory: SANDBOX_WORKSPACE_ROOT })
+    );
+    const proxyRequest = buildOpencodeProxyRequest(request, url);
+    const response = yield* sandboxEffect("OpenCode proxy failed", () =>
+      Promise.resolve(proxyToOpencode(proxyRequest, sandbox, server))
+    );
+    return response;
+  });
+
+const handleRequest = (request: Request, env: Env) =>
+  Effect.gen(function* () {
+    const oauthResponse = yield* handleOpencodeOauthRequest(request, env);
+    if (oauthResponse) {
+      return oauthResponse;
+    }
+    const opencodeResponse = yield* handleOpencodeRequest(request, env);
+    if (opencodeResponse) {
+      return opencodeResponse;
+    }
+    const response = yield* Effect.tryPromise({
+      try: () => routeAgentRequest(request, env),
+      catch: (cause) =>
+        new LiteClawEffectError({ message: "Route handler failed", cause })
+    });
+    return response ?? new Response("Not found", { status: 404 });
+  });
 
 export default EffectWorkers.serve<Env>((request, env) =>
   handleRequest(request, env)

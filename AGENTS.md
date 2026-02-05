@@ -25,30 +25,6 @@ If you are writing code here, you are usually adding:
 4) If implementation status conflicts across docs: prefer the crate sources + SYNTHESIS_EXECUTION.
 5) If priority/sequencing conflicts: ROADMAP wins.
 
-Read and apply:
-- Canonical terminology: ./docs/GLOSSARY.md
-- Architecture decisions: ./docs/adr/ (see [ADR-0001](./docs/adr/ADR-0001-adoption-of-adrs.md))
-- Current system guide (what is wired): ./SYNTHESIS_EXECUTION.md
-- MVP priorities / acceptance: ./docs/ROADMAP.md
-
----
-
-## Required reading order (fast)
-
-1) ./docs/GLOSSARY.md
-2) ./SYNTHESIS_EXECUTION.md
-3) ./docs/ROADMAP.md
-4) ./docs/PROJECT_OVERVIEW.md (product map; short)
-5) ./docs/AGENT_FOUNDATIONS.md (conceptual model; signatures/tools/metrics/RLM)
-
-For architecture decisions, see ./docs/adr/INDEX.md (read relevant ADRs as needed).
-
-Then go crate-local:
-- dsrs docs: crates/dsrs/docs/README.md + ARCHITECTURE.md + TOOLS.md + METRICS.md + OPTIMIZERS.md + EVALUATION.md
-- Autopilot docs: crates/autopilot/docs/
-- Autopilot-core flow: crates/autopilot-core/docs/EXECUTION_FLOW.md
-- Protocol surface: docs/protocol/PROTOCOL_SURFACE.md
-
 <!-- effect-solutions:start -->
 ## Effect Best Practices
 
