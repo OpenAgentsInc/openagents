@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { useAgent } from 'agents/react';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
+import { MessageType } from '@cloudflare/ai-chat/types';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
 import { Button } from '@/components/ui/button';
@@ -24,6 +26,8 @@ export function LiteClawHatchery() {
   const joinWaitlistMutation = useMutation(api.waitlist.joinWaitlist);
   const [spawnStatus, setSpawnStatus] = useState<'idle' | 'spawning' | 'ready' | 'error'>('idle');
   const [spawnError, setSpawnError] = useState<string | null>(null);
+  const [resetStatus, setResetStatus] = useState<'idle' | 'resetting' | 'success' | 'error'>('idle');
+  const [resetError, setResetError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const accessAllowed = accessStatus?.allowed === true;
@@ -31,6 +35,48 @@ export function LiteClawHatchery() {
   const waitlistApproved = accessStatus?.waitlistApproved === true;
   const overlayVisible = !accessAllowed;
   const hasLiteclaw = liteclawThreadId != null;
+  const canConnectAgent = accessAllowed && Boolean(liteclawThreadId);
+
+  const agent = useAgent({
+    agent: 'chat',
+    name: liteclawThreadId ?? 'pending',
+    startClosed: !canConnectAgent,
+  });
+
+  const sendClearCommand = useCallback(async () => {
+    if (agent.readyState === WebSocket.OPEN) {
+      agent.send(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }));
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Timed out waiting for LiteClaw connection.'));
+      }, 8000);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        agent.removeEventListener('open', handleOpen);
+        agent.removeEventListener('error', handleError);
+      };
+
+      const handleOpen = () => {
+        cleanup();
+        agent.send(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }));
+        resolve();
+      };
+
+      const handleError = () => {
+        cleanup();
+        reject(new Error('Failed to connect to LiteClaw.'));
+      };
+
+      agent.addEventListener('open', handleOpen);
+      agent.addEventListener('error', handleError);
+      agent.reconnect();
+    });
+  }, [agent]);
 
   const handleJoinWaitlist = async () => {
     const trimmed = email.trim();
@@ -68,6 +114,25 @@ export function LiteClawHatchery() {
     } catch (error) {
       setSpawnError(error instanceof Error ? error.message : 'Failed to spawn LiteClaw');
       setSpawnStatus('error');
+    }
+  };
+
+  const handleReset = async () => {
+    if (!canConnectAgent || !liteclawThreadId) {
+      setResetError('LiteClaw is not ready yet.');
+      setResetStatus('error');
+      return;
+    }
+    setResetStatus('resetting');
+    setResetError(null);
+    try {
+      await sendClearCommand();
+      setResetStatus('success');
+      posthogCapture('hatchery_liteclaw_reset');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reset LiteClaw';
+      setResetError(message);
+      setResetStatus('error');
     }
   };
 
@@ -171,9 +236,24 @@ export function LiteClawHatchery() {
                       'Spawn your LiteClaw'
                     )}
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleReset}
+                    disabled={!hasLiteclaw || resetStatus === 'resetting'}
+                  >
+                    {resetStatus === 'resetting' ? 'Resetting…' : 'Reset LiteClaw memory'}
+                  </Button>
                 </div>
                 {spawnError && (
                   <p className="text-destructive text-sm">{spawnError}</p>
+                )}
+                {resetError && (
+                  <p className="text-destructive text-sm">{resetError}</p>
+                )}
+                {resetStatus === 'success' && !resetError && (
+                  <p className="text-muted-foreground text-sm">
+                    LiteClaw memory cleared.
+                  </p>
                 )}
                 {hasLiteclaw && liteclawThreadId && (
                   <Link
