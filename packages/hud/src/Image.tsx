@@ -9,7 +9,7 @@ export interface ImageProps extends ImgHTMLAttributes<HTMLImageElement> {
   alt: string;
 }
 
-export function Image(props: ImageProps): JSX.Element {
+export function Image(props: ImageProps) {
   const { src, alt, ...rest } = props;
   return <img src={src} alt={alt} decoding="async" {...rest} />;
 }

@@ -86,10 +86,10 @@ const useConvexThreadListAdapter = (
   return useMemo(() => {
     const asThreadId = (value: string): ThreadId => value as ThreadId;
 
-    const ensureLiteclawThread = async () => {
+    const ensureAutopilotThread = async () => {
       if (!isAuthenticated) return;
       try {
-        await convex.mutation(api.threads.getOrCreateLiteclawThread, {});
+        await convex.mutation(api.threads.getOrCreateAutopilotThread, {});
       } catch {
         // Ignore failures (e.g. session expired); list will return empty.
       }
@@ -97,7 +97,7 @@ const useConvexThreadListAdapter = (
 
     return {
       list: async () => {
-        await ensureLiteclawThread();
+        await ensureAutopilotThread();
         if (!isAuthenticated) {
           return { threads: [] };
         }
@@ -116,23 +116,17 @@ const useConvexThreadListAdapter = (
           externalId: thread._id,
         });
 
-        return {
-          threads: [
-            ...regular
-              .filter((thread) => thread.kind === 'autopilot' || thread.kind === 'liteclaw')
-              .map((thread) => toMetadata(thread, 'regular')),
-            ...archived
-              .filter((thread) => thread.kind === 'autopilot' || thread.kind === 'liteclaw')
-              .map((thread) => toMetadata(thread, 'archived')),
-          ],
-        };
+        const autopilot = regular.find((thread) => thread.kind === 'autopilot');
+        const autopilotArchived = archived.find((thread) => thread.kind === 'autopilot');
+        const thread = autopilot ?? autopilotArchived;
+        return { threads: thread ? [toMetadata(thread, thread.archived ? 'archived' : 'regular')] : [] };
       },
       initialize: async (threadId) => {
         if (!isAuthenticated) {
           throw new Error('Sign in to create a thread');
         }
         const remoteId = await convex.mutation(
-          api.threads.getOrCreateLiteclawThread,
+          api.threads.getOrCreateAutopilotThread,
           {},
         );
         return { remoteId, externalId: threadId };

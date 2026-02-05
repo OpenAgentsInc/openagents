@@ -16,34 +16,57 @@ function ChatPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const runtime = useAssistantRuntime({ optional: true });
-  const threads = useQuery(api.threads.list, { archived: false, limit: 200 });
-  const createThread = useMutation(api.threads.create);
-  const creatingRef = useRef(false);
+  const autopilotThreadId = useQuery(api.threads.getAutopilotThread);
+  const getOrCreateAutopilotThread = useMutation(
+    api.threads.getOrCreateAutopilotThread,
+  );
+  const redirectingRef = useRef(false);
 
   useEffect(() => {
     posthogCapture('chat_view', { chatId });
   }, [chatId]);
 
   useEffect(() => {
-    if (authLoading || !user) return;
+    if (authLoading) return;
+    if (!user) return;
+
     if (chatId === 'new') {
-      if (creatingRef.current) return;
-      creatingRef.current = true;
-      createThread({ title: 'Autopilot', kind: 'autopilot' })
+      navigate({ to: '/assistant' });
+      return;
+    }
+
+    if (autopilotThreadId === undefined) return;
+
+    if (!autopilotThreadId) {
+      if (redirectingRef.current) return;
+      redirectingRef.current = true;
+      getOrCreateAutopilotThread({})
         .then((threadId) => {
           navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
         })
         .catch((err) => {
-          console.error('Failed to create thread:', err);
-          creatingRef.current = false;
+          console.error('Failed to create Autopilot thread:', err);
+          redirectingRef.current = false;
         });
       return;
     }
-    if (threads === undefined) return;
-    if (!threads.some((thread) => thread._id === chatId)) return;
-    creatingRef.current = false;
-    if (runtime) void runtime.switchToThread(chatId);
-  }, [user, authLoading, chatId, runtime, navigate, threads, createThread]);
+
+    if (chatId !== autopilotThreadId) {
+      navigate({ to: '/assistant' });
+      return;
+    }
+
+    redirectingRef.current = false;
+    if (runtime) void runtime.switchToThread(autopilotThreadId);
+  }, [
+    user,
+    authLoading,
+    chatId,
+    autopilotThreadId,
+    getOrCreateAutopilotThread,
+    navigate,
+    runtime,
+  ]);
 
   if (!authLoading && !user) {
     return (
@@ -51,34 +74,28 @@ function ChatPage() {
         <p>Sign in to use Autopilot.</p>
         <Link
           to="/login"
-          search={{ redirect: `/chat/${chatId}` }}
+          search={{ redirect: '/assistant' }}
           className="text-primary underline"
         >
-          Sign in
+          Log in
         </Link>
       </div>
     );
   }
 
-  if (chatId === 'new' || threads === undefined) {
+  if (chatId === 'new' || autopilotThreadId === undefined) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden text-muted-foreground">
-        Loading Autopilot…
+        Loading Autopilot...
       </div>
     );
   }
 
-  if (!threads.some((thread) => thread._id === chatId)) {
+  // If user navigates to a non-Autopilot thread id, we bounce them back to the one flow.
+  if (autopilotThreadId && chatId !== autopilotThreadId) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center text-sm text-muted-foreground">
-        <p>Chat not found.</p>
-        <Link
-          to="/"
-          search={{ focus: undefined }}
-          className="text-primary underline"
-        >
-          Go to Autopilot
-        </Link>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden text-muted-foreground">
+        Opening Autopilot...
       </div>
     );
   }
@@ -89,3 +106,4 @@ function ChatPage() {
     </div>
   );
 }
+

@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { useMutation, useQuery } from 'convex/react';
-import { BookOpen, Plus, ServerIcon, Shield } from 'lucide-react';
+import { useQuery } from 'convex/react';
+import { BookOpen, ServerIcon, Shield } from 'lucide-react';
 import { api } from '../../../convex/_generated/api';
 import {
   Sidebar,
@@ -38,22 +38,7 @@ function useIsActive(path: string) {
   );
 }
 
-function useAssistantThreadId(): string | null {
-  const { location } = useRouterState();
-  const pathname = location.pathname;
-  const chatMatch = pathname.match(/^\/chat\/([^/]+)$/);
-  if (chatMatch && chatMatch[1] !== 'new') return chatMatch[1];
-  const params = new URLSearchParams(location.search);
-  return params.get('threadId');
-}
-
 const SITE_TITLE = 'OpenAgents';
-
-type ThreadSummary = {
-  _id: string;
-  title: string;
-  kind?: 'chat' | 'project' | 'autopilot' | 'liteclaw';
-};
 
 function getInitials(
   name: string | null | undefined,
@@ -87,22 +72,13 @@ function SidebarNavUser() {
     );
   }
 
-  // if (!user) {
-  //   return (
-  //     <SidebarMenuItem>
-  //       <SidebarMenuButton size="lg" asChild className="h-11">
-  //         <Link to="/login" search={{ redirect: '/' }}>
-  //           <span className="group-data-[collapsible=icon]:hidden">Log in</span>
-  //         </Link>
-  //       </SidebarMenuButton>
-  //     </SidebarMenuItem>
-  //   );
-  // }
   if (!user) return null;
 
   const initials = getInitials(user.firstName, user.email);
   const displayName =
-    [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Account';
+    [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+    user.email ||
+    'Account';
 
   return (
     <SidebarMenuItem>
@@ -148,125 +124,10 @@ function SidebarAdminLink() {
   );
 }
 
-function SidebarAutopilotSection() {
-  const autopilotActive = useIsActive('/');
-  return (
-    <SidebarMenu className="pt-2">
-      <div className="px-2 pb-1">
-        <span className="text-xs font-medium text-sidebar-foreground/70">Autopilot</span>
-      </div>
-      <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={autopilotActive}>
-          <Link to="/" search={{ focus: undefined }}>
-            <SidebarIcon>
-              <ServerIcon className="size-4" />
-            </SidebarIcon>
-            <span>Autopilot</span>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
-  );
-}
-
-function SidebarChatsSection({ threads }: { threads?: Array<ThreadSummary> }) {
-  const chatActive = useIsActive('/chat') || useIsActive('/assistant');
-  const activeThreadId = useAssistantThreadId();
-  const chatThreads = React.useMemo(
-    () => (threads ?? []).filter((t) => t.kind === 'autopilot' || t.kind === 'liteclaw'),
-    [threads],
-  );
-
-  return (
-    <SidebarMenu className="pt-2">
-      <div className="flex items-center justify-between px-2 pb-1">
-        <Link
-          to="/assistant"
-          className="text-xs font-medium text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground"
-        >
-          Chats
-        </Link>
-      </div>
-      {chatThreads.length ? (
-        chatThreads.slice(0, 10).map((t) => (
-          <SidebarMenuItem key={t._id}>
-            <SidebarMenuButton
-              asChild
-              isActive={chatActive && activeThreadId === t._id}
-            >
-              <Link to="/chat/$chatId" params={{ chatId: t._id }}>
-                <span className="truncate text-sm">{t.title}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))
-      ) : null}
-    </SidebarMenu>
-  );
-}
-
-function SidebarProjectsSection({ threads }: { threads?: Array<ThreadSummary> }) {
-  const navigate = useNavigate();
-  const createThread = useMutation(api.threads.create);
-  const activeThreadId = useAssistantThreadId();
-  const chatActive = useIsActive('/chat') || useIsActive('/assistant');
-  const projectThreads = React.useMemo(
-    () => (threads ?? []).filter((t) => t.kind === 'project'),
-    [threads],
-  );
-
-  const handleNewProject = () => {
-    createThread({ title: 'New Project', kind: 'project' })
-      .then((threadId: ThreadSummary['_id']) => {
-        navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
-      })
-      .catch((err: unknown) => {
-        console.error('Failed to create project:', err);
-      });
-  };
-
-  return (
-    <SidebarMenu className="pt-2">
-      <div className="flex items-center justify-between px-2 pb-1">
-        <span className="text-xs font-medium text-sidebar-foreground/70">Projects</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 text-sidebar-foreground/70 hover:text-sidebar-foreground"
-          onClick={handleNewProject}
-          aria-label="New project"
-        >
-          <Plus className="size-3.5" />
-        </Button>
-      </div>
-      {projectThreads.length ? (
-        projectThreads.slice(0, 10).map((t) => (
-          <SidebarMenuItem key={t._id}>
-            <SidebarMenuButton
-              asChild
-              isActive={chatActive && activeThreadId === t._id}
-            >
-              <Link to="/chat/$chatId" params={{ chatId: t._id }}>
-                <span className="truncate text-sm">{t.title}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))
-      ) : (
-        <SidebarMenuItem>
-          <span className="px-2 text-xs text-sidebar-foreground/60">
-            No projects yet
-          </span>
-        </SidebarMenuItem>
-      )}
-    </SidebarMenu>
-  );
-}
-
 export function ThreadListSidebar(
   props: React.ComponentProps<typeof Sidebar>,
 ) {
-  const threads = useQuery(api.threads.list, { archived: false, limit: 50 });
+  const autopilotActive = useIsActive('/assistant') || useIsActive('/chat');
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -286,9 +147,11 @@ export function ThreadListSidebar(
       <SidebarContent className="aui-sidebar-content px-2 py-3 group-data-[collapsible=icon]:hidden">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={useIsActive('/')}>
-              <Link to="/" search={{ focus: undefined }}>
-                <span className="text-base">🦞</span>
+            <SidebarMenuButton asChild isActive={autopilotActive}>
+              <Link to="/assistant">
+                <SidebarIcon>
+                  <ServerIcon className="size-4" />
+                </SidebarIcon>
                 <span>Autopilot</span>
               </Link>
             </SidebarMenuButton>
@@ -304,9 +167,6 @@ export function ThreadListSidebar(
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <SidebarChatsSection threads={threads} />
-        <SidebarProjectsSection threads={threads} />
-        <SidebarAutopilotSection />
       </SidebarContent>
       <SidebarRail />
       <SidebarFooter className="aui-sidebar-footer group-data-[collapsible=icon]:hidden">
@@ -318,3 +178,4 @@ export function ThreadListSidebar(
     </Sidebar>
   );
 }
+
