@@ -6,6 +6,19 @@ If you want to “convert basically EVERYTHING to Effect”, you’ll have the b
 
 ---
 
+## Current State (2026-02-05)
+
+- Effect scaffold exists in `apps/web/src/effect/*`:
+  - `AppConfigService` (reads `VITE_CONVEX_URL`)
+  - `TelemetryService` (console sink)
+  - `makeAppRuntime()` (single `ManagedRuntime` for the app)
+- `apps/web/src/router.tsx` creates the runtime and exposes it via router context (`effectRuntime`).
+- `apps/web/src/start.ts` adds request middleware that:
+  - creates a `requestId` and passes it into Start `serverContext`
+  - emits a best-effort `TelemetryService` event (`http: request.start`)
+
+---
+
 ## What is the “entry point” here?
 
 TanStack Start does not have a classic `src/main.tsx` or `index.html` entry file that you own. The Start Vite plugin bootstraps the runtime and then loads your app via its router config and route tree.
@@ -113,4 +126,3 @@ If/when you want request-scoped context (trace IDs, per-request logging, cookie/
 ## Related references
 
 - Patterns to adopt from `~/code/crest` (Next.js + Effect + Convex): `docs/autopilot/effect-patterns-from-crest.md`
-

@@ -73,11 +73,11 @@ Explicitly out of scope:
 
 ## Repo Map (Current)
 
-- Homepage UI: `apps/web-old/src/routes/_app/index.tsx`
-- Homepage component: `apps/web-old/src/components/hatchery/AutopilotPage.tsx`
-- Chat redirect: `apps/web-old/src/routes/_app/assistant.tsx`
-- Chat page: `apps/web-old/src/routes/_app/chat.$chatId.tsx`
-- Autopilot worker (Agents SDK): `apps/liteclaw-worker/src/server.ts` (name is historical)
+- Homepage UI: `apps/web/src/routes/index.tsx`
+- Chat redirect: `apps/web/src/routes/assistant.tsx`
+- Chat page: `apps/web/src/routes/chat.$chatId.tsx`
+- Dev proxy for worker endpoints: `apps/web/vite.config.ts` (`/agents/*` → `127.0.0.1:8787`)
+- Autopilot worker (Agents SDK): `apps/autopilot-worker/src/server.ts`
 
 ---
 
@@ -86,3 +86,9 @@ Explicitly out of scope:
 - Effect migration starting points for the current `apps/web` app: `docs/autopilot/effect-migration-web.md`
 - Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
 - Effect + Convex patterns from `~/code/crest` to adopt: `docs/autopilot/effect-patterns-from-crest.md`
+
+## Status (2026-02-05)
+
+- Web flow: `/` → `/assistant` → `/chat/:threadId` implemented in `apps/web/src/routes/*`.
+- One Autopilot per user: `threadId` is the WorkOS `user.id` (Durable Object name).
+- Worker rename: `apps/liteclaw-worker` → `apps/autopilot-worker`.
