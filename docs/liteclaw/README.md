@@ -184,6 +184,16 @@ CF_ACCESS_CLIENT_SECRET=optional \
 bun run index.ts
 ```
 
+Cloud demo (agent message triggers local tools):
+
+```bash
+cd apps/nydus
+LITECLAW_AGENT_BASE_URL=https://openagents.com \
+LITECLAW_TOOL_ADMIN_SECRET=replace-me \
+NYDUS_LOCAL_ROOT=/path/to/your/repo \
+bun run index.ts cloud
+```
+
 ## Data Model Highlights
 
 LiteClaw relies on SQLite tables inside the Durable Object:

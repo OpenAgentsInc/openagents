@@ -112,6 +112,26 @@ CF_ACCESS_CLIENT_SECRET=optional \
 bun run index.ts
 ```
 
+## Nydus Cloud Demo
+
+This demo shows a LiteClaw agent message in the cloud triggering local workspace tools through the tunnel.
+
+Prereqs:
+- `liteclaw-local-agent` running with `LITECLAW_TUNNEL_TOKEN` and `LITECLAW_LOCAL_ROOT`.
+- `cloudflared` running and publishing the hostname.
+- LiteClaw worker configured with `LITECLAW_EXECUTOR_KIND=tunnel`, `LITECLAW_TUNNEL_URL`, and `LITECLAW_TUNNEL_TOKEN`.
+- Tool policy set to `read-write` for the thread (or provide `LITECLAW_TOOL_ADMIN_SECRET`).
+
+Run:
+
+```bash
+cd apps/nydus
+LITECLAW_AGENT_BASE_URL=https://openagents.com \
+LITECLAW_TOOL_ADMIN_SECRET=replace-me \
+NYDUS_LOCAL_ROOT=/path/to/your/repo \
+bun run index.ts cloud
+```
+
 ## Troubleshooting
 
 - `Tunnel executor is not configured.`
