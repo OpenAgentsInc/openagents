@@ -203,7 +203,13 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
   - `/codex-token` server route to mint short-lived HMAC tokens scoped to `thread_id` + `user_id`.
   - `CodexConnectDialog` UI (device code flow) and LiteClaw worker URL helper.
   - Header button wiring in `AppLayout` for `/chat` and `/assistant`.
+- Follow-up fixes after live testing:
+  - Use `getAgentByName` for Codex auth DO access (avoids missing `x-partykit-room` errors).
+  - Avoid `AbortSignal` in `sandbox.containerFetch` (fixes `DataCloneError: AbortSignal serialization is not enabled`).
+  - Callback now proxies and blocks as expected; add manual timeout handling + 504 on timeout.
 - Tests: `npm run test` in `apps/liteclaw-worker` (pass); `npm run test` in `apps/web` (failed: `localStorage.clear is not a function` in relay/query/nostr sync tests).
+- Manual smoke: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize` returns device code; `/callback` blocks until user completes device flow (curl timed out as expected).
+- Deploy attempt: `apps/web` deploy blocked by WorkOS env mismatch (WORKOS_CLIENT_ID / WORKOS_API_KEY).
 
 ---
 
