@@ -274,6 +274,12 @@ We keep using the existing OpenAgents UI chrome for navigation and gating, but *
 - Hatchery content (legacy / archive; remove from golden path):
   - `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx` (OpenClaw-era demo)
 
+### Legacy durable chat worker (NOT used for LiteClaw)
+
+`apps/agent-worker/` is the OpenClaw-era “durable /chat proxy” worker (custom DO + `/internal/chat`), used only when `apps/web` has `AGENT_WORKER_URL` set.
+
+LiteClaw **does not use** this worker; LiteClaw uses the Agents SDK worker under `/agents/*`. Once LiteClaw is fully cut over, we should delete `apps/agent-worker/` and remove `AGENT_WORKER_URL` from production.
+
 ### LiteClaw runtime (Agents SDK worker)
 
 This is the “real product”: **Workers + Durable Object + Agents SDK**. It owns chat state and streaming.
