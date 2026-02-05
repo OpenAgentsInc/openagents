@@ -4,14 +4,14 @@ This document outlines how to integrate **Cloudflare Sandbox SDK** and **Codex (
 
 **Audience:** Engineers wiring the webapp to a sandbox-backed agent and/or Codex OAuth.
 
-**Related:** `docs/liteclaw/README.md`, `docs/liteclaw/spec.md`, `apps/cloudflare-agent-sdk-demo/`, [Sandbox SDK docs](https://developers.cloudflare.com/sandbox/).
+**Related:** `docs/liteclaw/README.md`, `docs/liteclaw/spec.md` (Autopilot spec), `apps/cloudflare-agent-sdk-demo/`, [Sandbox SDK docs](https://developers.cloudflare.com/sandbox/).
 
 ---
 
 ## Current state
 
-- **Webapp (`apps/web/`):** TanStack Start + Convex + WorkOS Auth. Chat UI uses `@assistant-ui/react`, `@cloudflare/ai-chat`, and `agents` (Agents SDK client). Threads are Convex-backed; the runtime connects via **WebSocket** to the LiteClaw worker (`WS /agents/chat/{id}`).
-- **LiteClaw worker (`apps/liteclaw-worker/`):** Cloudflare Workers + Durable Objects + Agents SDK. Handles chat, transcript, tool policy, extensions. **No sandbox today** (no containers, no `@cloudflare/sandbox`).
+- **Webapp (`apps/web/`):** TanStack Start + Convex + WorkOS Auth. Chat UI uses `@assistant-ui/react`, `@cloudflare/ai-chat`, and `agents` (Agents SDK client). Threads are Convex-backed; the runtime connects via **WebSocket** to the Autopilot worker (`WS /agents/chat/{id}`).
+- **Autopilot worker (`apps/liteclaw-worker/`):** Cloudflare Workers + Durable Objects + Agents SDK. Handles chat, transcript, tool policy, extensions. **No sandbox today** (no containers, no `@cloudflare/sandbox`).
 - **Cloudflare agent demo (`apps/cloudflare-agent-sdk-demo/`):** Effect-based request handling, MCP, tools; useful reference for worker structure. No sandbox.
 - **Codex:** OpenCode’s built-in Codex plugin does OAuth (browser PKCE + localhost callback, or device code). See [opencode-codex-auth.md](./opencode-codex-auth.md) for flows and web viability.
 
@@ -23,7 +23,7 @@ Goal: run agent workloads (and eventually OpenCode/Codex) inside Cloudflare Sand
 
 ### A.1 Where sandboxes live
 
-**Decision:** Add sandbox usage **inside the existing LiteClaw worker**. The worker gets a Sandbox Durable Object binding; for each thread, it obtains a sandbox, runs commands/processes, and (when needed) runs an OpenCode server in the container. This keeps chat + tools + Codex under a single worker endpoint.
+**Decision:** Add sandbox usage **inside the existing Autopilot worker**. The worker gets a Sandbox Durable Object binding; for each thread, it obtains a sandbox, runs commands/processes, and (when needed) runs an OpenCode server in the container. This keeps chat + tools + Codex under a single worker endpoint.
 
 **Deferred:** A dedicated “sandbox worker” is a future split if we need isolation or independent scaling.
 
@@ -44,7 +44,7 @@ Goal: run agent workloads (and eventually OpenCode/Codex) inside Cloudflare Sand
 
 ### A.4 Exposing sandbox to the chat agent
 
-- Today LiteClaw uses **tools** (e.g. `workspace.read`/`write`/`edit`, `http.fetch`). To add sandbox:
+- Today Autopilot uses **tools** (e.g. `workspace.read`/`write`/`edit`, `http.fetch`). To add sandbox:
   - **Path 1:** Implement tools that the agent can call; the worker receives the tool call, runs the operation via Sandbox SDK (e.g. `sandbox.exec`, file APIs, or `createOpencodeServer`), and returns the result. No change to webapp other than new tool behaviors.
   - **Path 2:** Run OpenCode inside the sandbox and proxy the **OpenCode UI** to the user (like [Sandbox OpenCode example](https://developers.cloudflare.com/sandbox/tutorials/claude-code/)). That gives a full IDE-like experience; the webapp would open it in an iframe or new window (see Part B for auth).
 - **Decision (for now):** Use **OpenCode** inside the sandbox for code execution and agent tool runs. Sky tools are deferred until after OpenCode is working end-to-end.
@@ -56,7 +56,7 @@ Goal: run agent workloads (and eventually OpenCode/Codex) inside Cloudflare Sand
     - `const { client } = await createOpencode<OpencodeClient>(sandbox, { directory: "/home/user/project", config: { provider: { anthropic: { options: { apiKey: env.ANTHROPIC_API_KEY } } } } });`
     - `const session = await client.session.create({ body: { title: "My Session" }, query: { directory: "/home/user/project" } });`
     - `const result = await client.session.prompt({ path: { id: session.data!.id }, query: { directory: "/home/user/project" }, body: { model: { providerID: "anthropic", modelID: "claude-haiku-4-5" }, parts: [{ type: "text", text: "Summarize README.md in 2-3 sentences." }] } });`
-  - Map this into LiteClaw tool calls so the agent can request OpenCode actions and receive structured results.
+  - Map this into Autopilot tool calls so the agent can request OpenCode actions and receive structured results.
 - **Webapp changes for Part A (minimal):**
   - No change to `useAgent` / `useAgentChat` if the worker URL and route stay the same.
   - Optional: feature flag or “sandbox tools” toggle so only certain threads/users get sandbox-backed tools until stable.
@@ -64,7 +64,7 @@ Goal: run agent workloads (and eventually OpenCode/Codex) inside Cloudflare Sand
 
 ### A.5 Effect and type discipline
 
-- All sandbox/OpenCode wiring must follow the **Effect** pattern used in `apps/cloudflare-agent-sdk-demo` and `apps/liteclaw-worker`.
+- All sandbox/OpenCode wiring must follow the **Effect** pattern used in `apps/cloudflare-agent-sdk-demo` and `apps/liteclaw-worker` (Autopilot worker).
 - Wrap Sandbox SDK calls in `Effect.tryPromise`, use **tagged errors**, and keep the **Effect boundary in the worker** (no ad-hoc Promise chains).
 - Preserve **exactOptionalPropertyTypes** and strict TS; add types for sandbox options (session id, image type, env) rather than loose objects.
 
@@ -101,7 +101,7 @@ Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how Open
 - Add a **settings or provider-connect** surface in the webapp (e.g. in chat settings, or a “Connect ChatGPT (Codex)” entry next to existing provider options). For the **device code** flow (works without OpenCode changes):
   1. User clicks “Connect ChatGPT (Codex)”.
   2. If there is no active thread yet, the webapp **creates one first** and uses that `thread_id` for the sandbox scope.
-  3. Frontend calls an **app backend** route that proxies to the sandbox’s OpenCode:  
+  3. Frontend calls an **app backend** route that proxies to the sandbox’s OpenCode:
      `POST /provider/openai/oauth/authorize` with `{ method: 1 }` (headless).
   4. Backend returns `{ url, method: "auto", instructions }` (e.g. `url: "https://auth.openai.com/codex/device"`, `instructions: "Enter code: XXXXX"`).
   5. Webapp shows the **URL** and **code**, and tells the user to open the URL and enter the code.
@@ -112,9 +112,9 @@ Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how Open
 ### B.3 Backend routes (worker → sandbox)
 
 - Add HTTP routes on the worker that the webapp can call, for example:
-  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize`  
+  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize`
     Body: `{ method: number }`. Worker: get sandbox for `threadId`, ensure OpenCode is running (e.g. `createOpencodeServer`), then `fetch` to `http://container:4096/provider/openai/oauth/authorize` (via `sandbox.containerFetch`). Return JSON.
-  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/callback`  
+  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/callback`
     Body: `{ method, code? }`. Same: resolve sandbox, proxy to container `.../oauth/callback`. This request will block until the plugin’s callback resolves (device flow polls until user completes).
   - Scope id is always `thread_id` so the same OpenCode process (and its `auth.json`) is used for chat and Codex.
   - **Effect:** implement these routes using Effect handlers and `effect/Schema` for request/response validation. Convert sandbox/OpenCode failures into tagged errors and map them to consistent HTTP responses.
@@ -122,7 +122,7 @@ Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how Open
 
 ### B.4 Webapp → backend
 
-**Decision:** The webapp calls the **same worker** that owns the sandbox (LiteClaw worker). Frontend uses:
+**Decision:** The webapp calls the **same worker** that owns the sandbox (Autopilot worker). Frontend uses:
 `fetch(workerUrl + '/api/sandbox/' + threadId + '/opencode/provider/openai/oauth/...')`.
 
 **Auth:** use a **short-lived, signed session token** that includes `thread_id`, `user_id`, and `exp`. The worker verifies this token (HMAC or JWT) before proxying to the sandbox. This keeps Convex out of the long-polling callback path while still enforcing thread ownership.
@@ -140,7 +140,7 @@ Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how Open
 
 - OpenCode stores tokens in `auth.json` inside the container. Containers are ephemeral; when the sandbox sleeps or is recreated, that file is lost unless we persist it.
 - **Decision:** Persist tokens **outside the container** and re-inject on sandbox start.
-  - Store encrypted token payloads in the LiteClaw DO storage keyed by `thread_id`.
+  - Store encrypted token payloads in the Autopilot DO storage keyed by `thread_id`.
   - Encrypt at rest with a worker secret (AES-GCM), rotate when needed, and fail closed if decryption fails.
   - On sandbox start: hydrate `auth.json` before launching OpenCode.
   - On refresh or re-auth: write-through to storage.
@@ -197,11 +197,11 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 
 ### 2026-02-05 (Part B)
 
-- Added Codex OAuth proxy routes to LiteClaw worker: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/{authorize,callback}` with token validation, CORS handling, schema validation, and callback timeout.
-- Persisted Codex auth payloads in the LiteClaw Chat DO (`sky_codex_auth`), encrypted at rest with AES-GCM (`LITECLAW_CODEX_SECRET`), and hydrated `auth.json` into the sandbox before OpenCode starts.
+- Added Codex OAuth proxy routes to Autopilot worker: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/{authorize,callback}` with token validation, CORS handling, schema validation, and callback timeout.
+- Persisted Codex auth payloads in the Autopilot Chat DO (`sky_codex_auth`), encrypted at rest with AES-GCM (`AUTOPILOT_CODEX_SECRET`), and hydrated `auth.json` into the sandbox before OpenCode starts.
 - Added webapp support:
   - `/codex-token` server route to mint short-lived HMAC tokens scoped to `thread_id` + `user_id`.
-  - `CodexConnectDialog` UI (device code flow) and LiteClaw worker URL helper.
+  - `CodexConnectDialog` UI (device code flow) and Autopilot worker URL helper.
   - Header button wiring in `AppLayout` for `/chat` and `/assistant`.
 - Follow-up fixes after live testing:
   - Use `getAgentByName` for Codex auth DO access (avoids missing `x-partykit-room` errors).
@@ -217,7 +217,7 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
    - Remove the conflicting Convex env values or update them to match the local `.env.production` values used for deploy.
    - Then re-run `npm run deploy` from `apps/web` (this runs `deploy:convex` + build + wrangler deploy).
 2. Ensure required secrets/envs are present on the deploy machine:
-   - `LITECLAW_CODEX_SECRET` (must match LiteClaw worker).
+   - `AUTOPILOT_CODEX_SECRET` (must match Autopilot worker).
    - `WORKOS_*` secrets for the webapp (per `apps/web/wrangler.jsonc` comments).
    - Optional: `VITE_LITECLAW_WORKER_URL` if the webapp is not served from the same origin as the worker.
 3. Sanity check device code flow end-to-end:
@@ -232,5 +232,5 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 
 - [opencode-codex-auth.md](./opencode-codex-auth.md) – OpenCode Codex flows and web viability.
 - [Sandbox SDK](https://developers.cloudflare.com/sandbox/) – Getting started, API, concepts, tutorials.
-- [LiteClaw README](../liteclaw/README.md) and [spec](../liteclaw/spec.md) – Current worker and webapp flow.
+- [Liteclaw docs](../liteclaw/README.md) and [Autopilot spec](../liteclaw/spec.md) – Current worker and webapp flow.
 - [cloudflare-agent-sdk-demo](../cloudflare/) – Effect + Agents SDK structure (no sandbox).

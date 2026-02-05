@@ -11,31 +11,31 @@ export const Route = createFileRoute('/_app/assistant')({
 function AssistantRedirect() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const liteclawThreadId = useQuery(api.threads.getLiteclawThread);
-  const getOrCreateLiteclawThread = useMutation(
-    api.threads.getOrCreateLiteclawThread,
+  const autopilotThreadId = useQuery(api.threads.getAutopilotThread);
+  const getOrCreateAutopilotThread = useMutation(
+    api.threads.getOrCreateAutopilotThread,
   );
 
   useEffect(() => {
-    if (authLoading || liteclawThreadId === undefined) return;
+    if (authLoading || autopilotThreadId === undefined) return;
     if (!user) return;
-    if (liteclawThreadId) {
-      navigate({ to: '/chat/$chatId', params: { chatId: liteclawThreadId } });
+    if (autopilotThreadId) {
+      navigate({ to: '/chat/$chatId', params: { chatId: autopilotThreadId } });
       return;
     }
-    getOrCreateLiteclawThread({})
+    getOrCreateAutopilotThread({})
       .then((threadId) => {
         navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
       })
       .catch((err) => {
-        console.error('Failed to create LiteClaw thread:', err);
+        console.error('Failed to create Autopilot thread:', err);
       });
-  }, [user, authLoading, liteclawThreadId, getOrCreateLiteclawThread, navigate]);
+  }, [user, authLoading, autopilotThreadId, getOrCreateAutopilotThread, navigate]);
 
   if (!authLoading && !user) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center text-sm text-muted-foreground">
-        <p>Sign in to use LiteClaw.</p>
+        <p>Sign in to use Autopilot.</p>
         <Link to="/login" search={{ redirect: '/assistant' }} className="text-primary underline">
           Sign in
         </Link>
@@ -45,7 +45,7 @@ function AssistantRedirect() {
 
   return (
     <div className="flex min-h-[50vh] items-center justify-center p-4 text-sm text-muted-foreground">
-      Loading LiteClaw…
+      Loading Autopilot…
     </div>
   );
 }

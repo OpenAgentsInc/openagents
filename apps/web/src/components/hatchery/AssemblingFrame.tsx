@@ -155,7 +155,7 @@ export function AssemblingFrame({
           width: '100%',
           height: '100%',
           display: 'block',
-          filter: 'drop-shadow(0 0 6px hsla(280, 45%, 4%, 0.5))',
+          filter: 'drop-shadow(0 0 6px hsla(0, 0%, 100%, 0.15))',
         }}
         viewBox={paths ? `0 0 ${paths.width} ${paths.height}` : '0 0 100 100'}
         preserveAspectRatio="none"
@@ -166,20 +166,20 @@ export function AssemblingFrame({
               <path
                 data-name="bg"
                 d={paths.bg}
-                fill="hsla(280, 45%, 4%, 0.5)"
+                fill="hsla(0, 0%, 100%, 0.08)"
                 stroke="none"
               />
               <path
                 data-name="line"
                 d={paths.lineLeftBottom}
-                stroke="hsl(280, 75%, 50%)"
+                stroke="hsl(0, 0%, 100%)"
                 strokeWidth={2}
                 fill="none"
               />
               <path
                 data-name="line"
                 d={paths.lineRightTop}
-                stroke="hsl(280, 75%, 50%)"
+                stroke="hsl(0, 0%, 100%)"
                 strokeWidth={2}
                 fill="none"
               />

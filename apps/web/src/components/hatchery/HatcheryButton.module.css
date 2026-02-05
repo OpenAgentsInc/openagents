@@ -13,7 +13,7 @@
   letter-spacing: 0.08em;
   font-size: 0.75rem;
   font-weight: 600;
-  color: hsl(280, 65%, 78%);
+  color: hsl(0, 0%, 100%);
   transition: color 200ms ease-out, opacity 200ms ease-out;
 }
 
@@ -39,18 +39,18 @@
 }
 
 .bg {
-  fill: hsla(280, 45%, 6%, 0.5);
+  fill: hsla(0, 0%, 100%, 0.08);
 }
 
 .line {
-  stroke: hsla(280, 75%, 60%, 0.9);
+  stroke: hsla(0, 0%, 100%, 0.9);
   stroke-width: 2;
   fill: none;
 }
 
 .root:hover .line,
 .root:focus-visible .line {
-  stroke: hsla(280, 85%, 70%, 1);
+  stroke: hsla(0, 0%, 100%, 1);
 }
 
 .content {

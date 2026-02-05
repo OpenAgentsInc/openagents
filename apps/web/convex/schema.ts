@@ -86,11 +86,18 @@ export default defineSchema({
     .index('by_email', ['email'])
     .index('by_created_at', ['created_at']),
 
-  // Thread index (chats/projects); optional kind for LiteClaw
+  // Thread index (chats/projects); optional kind for Autopilot (legacy: liteclaw)
   threads: defineTable({
     user_id: v.string(),
     title: v.string(),
-    kind: v.optional(v.union(v.literal('chat'), v.literal('project'), v.literal('liteclaw'))),
+    kind: v.optional(
+      v.union(
+        v.literal('chat'),
+        v.literal('project'),
+        v.literal('liteclaw'),
+        v.literal('autopilot'),
+      ),
+    ),
     archived: v.optional(v.boolean()),
     created_at: v.number(),
     updated_at: v.number(),

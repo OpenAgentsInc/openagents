@@ -2,20 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { DotsGridBackground, purplePreset, Image } from '@openagentsinc/hud/react';
-import liteclawPng from '@openagentsinc/hud/assets/liteclaw.png';
+import { DotsGridBackground, whitePreset, Image } from '@openagentsinc/hud/react';
+import autopilotPng from '@openagentsinc/hud/assets/autopilot.png';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
 import { HatcheryButton } from './HatcheryButton';
 import { HatcheryH1, HatcheryH2, HatcheryP } from './HatcheryTypography';
-import { HatcheryPuffs } from './HatcheryPuffs';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, ServerIcon } from 'lucide-react';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function LiteClawHatchery() {
+export function AutopilotPage() {
   const { user, loading: authLoading } = useAuth();
   const accessStatus = useQuery(api.access.getStatus);
   const threads = useQuery(api.threads.list, { archived: false, limit: 200 });
@@ -45,8 +44,10 @@ export function LiteClawHatchery() {
   const waitlistEntry = accessStatus?.waitlistEntry ?? null;
   const waitlistApproved = accessStatus?.waitlistApproved === true;
   const overlayVisible = !accessAllowed;
-  const liteclaws = useMemo(() => {
-    const items = (threads ?? []).filter((thread) => thread.kind === 'liteclaw');
+  const autopilotThreads = useMemo(() => {
+    const items = (threads ?? []).filter(
+      (thread) => thread.kind === 'autopilot' || thread.kind === 'liteclaw',
+    );
     items.sort((a, b) => b.updated_at - a.updated_at);
     return items;
   }, [threads]);
@@ -59,16 +60,16 @@ export function LiteClawHatchery() {
     }
     setWaitlistStatus('submitting');
     setWaitlistError(null);
-    posthogCapture('hatchery_waitlist_submit', { source: 'hatchery' });
+    posthogCapture('autopilot_waitlist_submit', { source: 'autopilot' });
     try {
-      await joinWaitlistMutation({ email: trimmed, source: 'hatchery' });
-      posthogCapture('hatchery_waitlist_success', { source: 'hatchery' });
+      await joinWaitlistMutation({ email: trimmed, source: 'autopilot' });
+      posthogCapture('autopilot_waitlist_success', { source: 'autopilot' });
       setWaitlistStatus('success');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to join waitlist';
       setWaitlistError(message);
       setWaitlistStatus('error');
-      posthogCapture('hatchery_waitlist_error', { source: 'hatchery', message });
+      posthogCapture('autopilot_waitlist_error', { source: 'autopilot', message });
     }
   };
 
@@ -77,13 +78,13 @@ export function LiteClawHatchery() {
     setSpawnError(null);
     try {
       const title =
-        liteclaws.length > 0 ? `LiteClaw ${liteclaws.length + 1}` : 'LiteClaw';
-      const threadId = await createThread({ title, kind: 'liteclaw' });
+        autopilotThreads.length > 0 ? `Autopilot ${autopilotThreads.length + 1}` : 'Autopilot';
+      const threadId = await createThread({ title, kind: 'autopilot' });
       setSpawnStatus('ready');
-      posthogCapture('hatchery_liteclaw_spawn', { kind: 'new' });
+      posthogCapture('autopilot_spawn', { kind: 'new' });
       navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
     } catch (error) {
-      setSpawnError(error instanceof Error ? error.message : 'Failed to spawn LiteClaw');
+      setSpawnError(error instanceof Error ? error.message : 'Failed to spawn Autopilot');
       setSpawnStatus('error');
     }
   };
@@ -117,29 +118,28 @@ export function LiteClawHatchery() {
         </div>
       </nav>
       <div className="relative flex min-h-0 flex-1 flex-col pt-20">
-        {/* Arwes-style dots + grid background (purple preset) + vignette + puffs */}
+        {/* Arwes-style dots + grid background (white preset) + vignette */}
         <div
           className="absolute inset-0"
           style={{
-            backgroundColor: purplePreset.backgroundColor,
+            backgroundColor: whitePreset.backgroundColor,
             backgroundImage: [
               `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 15%, rgba(0,0,0,0.4) 55%, rgba(0,0,0,0.75) 100%)`,
-              purplePreset.backgroundImage,
+              whitePreset.backgroundImage,
             ].join(', '),
           }}
         >
           <DotsGridBackground
-            distance={purplePreset.distance}
-            dotsColor={purplePreset.dotsColor}
-            lineColor={purplePreset.lineColor}
+            distance={whitePreset.distance}
+            dotsColor={whitePreset.dotsColor}
+            lineColor={whitePreset.lineColor}
           />
-          <HatcheryPuffs />
         </div>
         <div className="relative z-10 flex flex-1 flex-col p-4">
           <div className="-mt-1 mb-2 flex justify-center">
             <Image
-              src={liteclawPng}
-              alt="LiteClaw"
+              src={autopilotPng}
+              alt="Autopilot"
               className="size-40 rounded border-2 border-white/20 object-contain sm:size-52"
               width={208}
               height={208}
@@ -153,7 +153,7 @@ export function LiteClawHatchery() {
             {/* Waitlist overlay */}
             {overlayVisible && (
               <div className="flex min-h-[50vh] flex-col items-center justify-center gap-6 text-center">
-          <HatcheryH1>LiteClaw Early Access</HatcheryH1>
+          <HatcheryH1>Autopilot Early Access</HatcheryH1>
           <HatcheryP className="max-w-md">
             A persistent, personal AI agent that remembers context and feels always there — no setup friction.
           </HatcheryP>
@@ -189,20 +189,20 @@ export function LiteClawHatchery() {
             </div>
             )}
 
-            {/* Hatchery content when access allowed */}
+            {/* Autopilot content when access allowed */}
             {accessAllowed && (
               <div className="flex flex-col gap-6">
                 <div>
-                  <HatcheryH1>Hatchery</HatcheryH1>
+                  <HatcheryH1>Autopilot</HatcheryH1>
                   <HatcheryP className="mt-1">
-                    Spawn your LiteClaw — a persistent chat agent that remembers context.
+                    Spawn your Autopilot — a persistent chat agent that remembers context.
                   </HatcheryP>
                 </div>
 	                <div className="flex flex-col gap-4">
 	                  <div className="flex items-center gap-3">
 	                    <ServerIcon className="size-8 text-muted-foreground" />
 	                    <div>
-	                      <HatcheryH2>LiteClaw</HatcheryH2>
+	                      <HatcheryH2>Autopilot</HatcheryH2>
 	                      <HatcheryP>
 	                        Status:{' '}
 	                        {threads === undefined
@@ -211,8 +211,8 @@ export function LiteClawHatchery() {
 	                            ? 'spawning'
 	                            : spawnStatus === 'error'
 	                              ? 'error'
-	                              : liteclaws.length
-	                                ? `${liteclaws.length} active`
+	                              : autopilotThreads.length
+	                                ? `${autopilotThreads.length} active`
 	                                : 'none yet'}
 	                      </HatcheryP>
 	                    </div>
@@ -221,9 +221,9 @@ export function LiteClawHatchery() {
 	                  <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
 	                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 	                      <div>
-	                        <HatcheryH2 durationMs={450}>Your LiteClaws</HatcheryH2>
+	                        <HatcheryH2 durationMs={450}>Your Autopilots</HatcheryH2>
 	                        <HatcheryP className="mt-1">
-	                          Each LiteClaw is its own persistent agent with separate memory.
+	                          Each Autopilot is its own persistent agent with separate memory.
 	                        </HatcheryP>
 	                      </div>
 	                      <HatcheryButton
@@ -232,17 +232,17 @@ export function LiteClawHatchery() {
 	                      >
 	                        {spawnStatus === 'spawning'
 	                          ? 'Spawning…'
-	                          : liteclaws.length
-	                            ? 'Spawn another LiteClaw'
-	                            : 'Spawn your first LiteClaw'}
+	                          : autopilotThreads.length
+	                            ? 'Spawn another Autopilot'
+	                            : 'Spawn your first Autopilot'}
 	                      </HatcheryButton>
 	                    </div>
 
 	                    {threads === undefined ? (
 	                      <HatcheryP>Loading…</HatcheryP>
-	                    ) : liteclaws.length ? (
+	                    ) : autopilotThreads.length ? (
 	                      <div className="flex flex-col gap-2">
-	                        {liteclaws.map((thread) => (
+	                        {autopilotThreads.map((thread) => (
 	                          <div
 	                            key={thread._id}
 	                            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2"
@@ -271,7 +271,7 @@ export function LiteClawHatchery() {
 	                        ))}
 	                      </div>
 	                    ) : (
-	                      <HatcheryP>No LiteClaws yet. Spawn one to start.</HatcheryP>
+	                      <HatcheryP>No Autopilots yet. Spawn one to start.</HatcheryP>
 	                    )}
 	                  </div>
 
@@ -279,19 +279,10 @@ export function LiteClawHatchery() {
 	                    <HatcheryP className="text-destructive">{spawnError}</HatcheryP>
 	                  )}
 
-	                  {/* Reset LiteClaw memory is intentionally disabled for now.
-	                      (We may reintroduce this once “memory” semantics are clearer:
-	                      transcript vs summary vs tool-state.) */}
-	                  {/*
-	                  <HatcheryButton variant="outline" disabled>
-	                    Reset LiteClaw memory
-	                  </HatcheryButton>
-	                  */}
-
-	                  {liteclaws.length ? (
+	                  {autopilotThreads.length ? (
 	                    <Link
 	                      to="/chat/$chatId"
-	                      params={{ chatId: liteclaws[0]!._id }}
+	                      params={{ chatId: autopilotThreads[0]!._id }}
 	                      className="text-muted-foreground hover:text-foreground text-sm underline"
 	                    >
 	                      Open most recent chat →
@@ -303,7 +294,7 @@ export function LiteClawHatchery() {
 
             {!user && accessStatus !== undefined && !overlayVisible && (
               <HatcheryP className="text-center">
-                Sign in to spawn your LiteClaw.
+                Sign in to spawn your Autopilot.
               </HatcheryP>
             )}
           </AssemblingFrame>

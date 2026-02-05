@@ -119,10 +119,10 @@ const useConvexThreadListAdapter = (
         return {
           threads: [
             ...regular
-              .filter((thread) => thread.kind === 'liteclaw')
+              .filter((thread) => thread.kind === 'autopilot' || thread.kind === 'liteclaw')
               .map((thread) => toMetadata(thread, 'regular')),
             ...archived
-              .filter((thread) => thread.kind === 'liteclaw')
+              .filter((thread) => thread.kind === 'autopilot' || thread.kind === 'liteclaw')
               .map((thread) => toMetadata(thread, 'archived')),
           ],
         };

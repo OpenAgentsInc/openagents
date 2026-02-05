@@ -52,7 +52,7 @@ const SITE_TITLE = 'OpenAgents';
 type ThreadSummary = {
   _id: string;
   title: string;
-  kind?: 'chat' | 'project' | 'liteclaw';
+  kind?: 'chat' | 'project' | 'autopilot' | 'liteclaw';
 };
 
 function getInitials(
@@ -148,20 +148,20 @@ function SidebarAdminLink() {
   );
 }
 
-function SidebarLiteClawSection() {
-  const hatcheryActive = useIsActive('/hatchery');
+function SidebarAutopilotSection() {
+  const autopilotActive = useIsActive('/autopilot');
   return (
     <SidebarMenu className="pt-2">
       <div className="px-2 pb-1">
-        <span className="text-xs font-medium text-sidebar-foreground/70">LiteClaw</span>
+        <span className="text-xs font-medium text-sidebar-foreground/70">Autopilot</span>
       </div>
       <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={hatcheryActive}>
-          <Link to="/hatchery" search={{ focus: undefined }}>
+        <SidebarMenuButton asChild isActive={autopilotActive}>
+          <Link to="/autopilot" search={{ focus: undefined }}>
             <SidebarIcon>
               <ServerIcon className="size-4" />
             </SidebarIcon>
-            <span>Hatchery</span>
+            <span>Autopilot</span>
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -173,7 +173,7 @@ function SidebarChatsSection({ threads }: { threads?: Array<ThreadSummary> }) {
   const chatActive = useIsActive('/chat') || useIsActive('/assistant');
   const activeThreadId = useAssistantThreadId();
   const chatThreads = React.useMemo(
-    () => (threads ?? []).filter((t) => t.kind === 'liteclaw'),
+    () => (threads ?? []).filter((t) => t.kind === 'autopilot' || t.kind === 'liteclaw'),
     [threads],
   );
 
@@ -286,10 +286,10 @@ export function ThreadListSidebar(
       <SidebarContent className="aui-sidebar-content px-2 py-3 group-data-[collapsible=icon]:hidden">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={useIsActive('/hatchery')}>
-              <Link to="/hatchery" search={{ focus: undefined }}>
+            <SidebarMenuButton asChild isActive={useIsActive('/autopilot')}>
+              <Link to="/autopilot" search={{ focus: undefined }}>
                 <span className="text-base">🦞</span>
-                <span>Hatchery</span>
+                <span>Autopilot</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -306,7 +306,7 @@ export function ThreadListSidebar(
         </SidebarMenu>
         <SidebarChatsSection threads={threads} />
         <SidebarProjectsSection threads={threads} />
-        <SidebarLiteClawSection />
+        <SidebarAutopilotSection />
       </SidebarContent>
       <SidebarRail />
       <SidebarFooter className="aui-sidebar-footer group-data-[collapsible=icon]:hidden">

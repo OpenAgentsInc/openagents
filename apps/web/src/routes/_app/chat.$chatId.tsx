@@ -29,7 +29,7 @@ function ChatPage() {
     if (chatId === 'new') {
       if (creatingRef.current) return;
       creatingRef.current = true;
-      createThread({ title: 'LiteClaw', kind: 'liteclaw' })
+      createThread({ title: 'Autopilot', kind: 'autopilot' })
         .then((threadId) => {
           navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
         })
@@ -48,7 +48,7 @@ function ChatPage() {
   if (!authLoading && !user) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center text-sm text-muted-foreground">
-        <p>Sign in to use LiteClaw.</p>
+        <p>Sign in to use Autopilot.</p>
         <Link
           to="/login"
           search={{ redirect: `/chat/${chatId}` }}
@@ -63,7 +63,7 @@ function ChatPage() {
   if (chatId === 'new' || threads === undefined) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden text-muted-foreground">
-        Loading LiteClaw…
+        Loading Autopilot…
       </div>
     );
   }
@@ -73,11 +73,11 @@ function ChatPage() {
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center text-sm text-muted-foreground">
         <p>Chat not found.</p>
         <Link
-          to="/hatchery"
+          to="/autopilot"
           search={{ focus: undefined }}
           className="text-primary underline"
         >
-          Go to Hatchery
+          Go to Autopilot
         </Link>
       </div>
     );

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { api } from '../../../convex/_generated/api';
-import { buildLiteclawUrl } from '@/lib/liteclawWorker';
+import { buildAutopilotUrl } from '@/lib/autopilotWorker';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -25,9 +25,9 @@ const extractDeviceCode = (instructions: string | null) => {
 
 export function CodexConnectDialog() {
   const { user } = useAuth();
-  const liteclawThreadId = useQuery(api.threads.getLiteclawThread);
-  const getOrCreateLiteclawThread = useMutation(
-    api.threads.getOrCreateLiteclawThread,
+  const autopilotThreadId = useQuery(api.threads.getAutopilotThread);
+  const getOrCreateAutopilotThread = useMutation(
+    api.threads.getOrCreateAutopilotThread,
   );
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<ConnectStatus>('idle');
@@ -61,7 +61,7 @@ export function CodexConnectDialog() {
 
     try {
       const threadId =
-        liteclawThreadId ?? (await getOrCreateLiteclawThread({}));
+        autopilotThreadId ?? (await getOrCreateAutopilotThread({}));
       const tokenResponse = await fetch('/codex-token', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -76,7 +76,7 @@ export function CodexConnectDialog() {
       }
 
       const authorizeResponse = await fetch(
-        buildLiteclawUrl(
+        buildAutopilotUrl(
           `/api/sandbox/${threadId}/opencode/provider/openai/oauth/authorize`,
         ),
         {
@@ -104,7 +104,7 @@ export function CodexConnectDialog() {
       abortRef.current = controller;
 
       const callbackResponse = await fetch(
-        buildLiteclawUrl(
+        buildAutopilotUrl(
           `/api/sandbox/${threadId}/opencode/provider/openai/oauth/callback`,
         ),
         {
@@ -133,9 +133,9 @@ export function CodexConnectDialog() {
       setError(message);
       setStatus('error');
     }
-  }, [getOrCreateLiteclawThread, liteclawThreadId, status]);
+  }, [getOrCreateAutopilotThread, autopilotThreadId, status]);
 
-  const disabled = !user || liteclawThreadId === undefined;
+  const disabled = !user || autopilotThreadId === undefined;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

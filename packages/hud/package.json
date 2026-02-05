@@ -8,7 +8,7 @@
   "exports": {
     ".": "./index.ts",
     "./react": "./react.tsx",
-    "./assets/liteclaw.png": "./assets/liteclaw.png"
+    "./assets/autopilot.png": "./assets/autopilot.png"
   },
   "peerDependencies": {
     "react": ">=18",

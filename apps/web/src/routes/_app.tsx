@@ -5,9 +5,9 @@ import { ChatSourceProvider } from '@/components/assistant-ui/chat-source-contex
 
 function AppRoute() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isHatchery = pathname === '/hatchery';
+  const isAutopilot = pathname === '/autopilot';
 
-  if (isHatchery) {
+  if (isAutopilot) {
     return (
       <div className="flex h-dvh min-h-0 w-full flex-col">
         <Outlet />
@@ -24,7 +24,7 @@ export const Route = createFileRoute('/_app')({
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
-            Loading LiteClaw…
+            Loading Autopilot…
           </div>
         }
       >

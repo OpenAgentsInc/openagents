@@ -16,7 +16,7 @@ interface HatcheryPuffsProps {
   className?: string;
 }
 
-const defaultColor = 'hsla(280, 50%, 70%, 0.2)';
+const defaultColor = 'hsla(0, 0%, 100%, 0.2)';
 
 export function HatcheryPuffs({
   color = defaultColor,

@@ -1,9 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { LiteClawHatchery } from '@/components/hatchery/LiteClawHatchery';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_app/hatchery')({
-  component: LiteClawHatchery,
-  validateSearch: (search: Record<string, unknown>) => ({
-    focus: typeof search.focus === 'string' ? search.focus : undefined,
-  }),
+  beforeLoad: () => {
+    throw redirect({ to: '/autopilot' });
+  },
+  component: () => null,
 });

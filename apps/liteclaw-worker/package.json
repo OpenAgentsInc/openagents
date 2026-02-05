@@ -1,5 +1,5 @@
 {
-  "name": "liteclaw-worker",
+  "name": "autopilot-worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "deploy": "wrangler deploy",
     "test": "vitest",
     "types": "wrangler types --include-runtime false",
-    "smoke": "tsx scripts/liteclaw-smoke.ts",
+    "smoke": "tsx scripts/autopilot-smoke.ts",
     "prepare": "effect-language-service patch",
     "typecheck": "tsc --noEmit"
   },
