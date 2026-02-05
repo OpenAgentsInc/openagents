@@ -1893,11 +1893,10 @@ export class Chat extends AIChatAgent<Env> {
     });
   }
 
-  private async handleExtensionPolicyRequest(request: Request) {
-    this.ensureStateLoaded();
+  private checkExtensionAdmin(request: Request): { ok: boolean; status: number } {
     const secret = this.env.LITECLAW_EXTENSION_ADMIN_SECRET;
     if (!secret) {
-      return new Response("Not found", { status: 404 });
+      return { ok: false, status: 404 };
     }
 
     const provided =
@@ -1908,7 +1907,20 @@ export class Chat extends AIChatAgent<Env> {
       ? provided.slice(7)
       : provided;
     if (token !== secret) {
-      return new Response("Forbidden", { status: 403 });
+      return { ok: false, status: 403 };
+    }
+
+    return { ok: true, status: 200 };
+  }
+
+  private async handleExtensionPolicyRequest(request: Request) {
+    this.ensureStateLoaded();
+    const adminCheck = this.checkExtensionAdmin(request);
+    if (!adminCheck.ok) {
+      return new Response(
+        adminCheck.status === 404 ? "Not found" : "Forbidden",
+        { status: adminCheck.status }
+      );
     }
 
     if (request.method === "GET") {
@@ -1934,6 +1946,55 @@ export class Chat extends AIChatAgent<Env> {
 
       const updated = this.setExtensionPolicy(enabled);
       return Response.json({ ok: true, enabled: updated });
+    }
+
+    return new Response("Method not allowed", { status: 405 });
+  }
+
+  private async handleExtensionCatalogRequest(request: Request) {
+    this.ensureStateLoaded();
+    const adminCheck = this.checkExtensionAdmin(request);
+    if (!adminCheck.ok) {
+      return new Response(
+        adminCheck.status === 404 ? "Not found" : "Forbidden",
+        { status: adminCheck.status }
+      );
+    }
+
+    if (request.method === "GET") {
+      const catalog = await this.loadExtensionCatalog();
+      return Response.json({
+        extensions: Array.from(catalog.values())
+      });
+    }
+
+    if (request.method === "POST") {
+      let body: unknown = null;
+      try {
+        body = await request.json();
+      } catch {
+        return new Response("Invalid JSON", { status: 400 });
+      }
+
+      const manifests = parseExtensionCatalog(body);
+      if (!manifests.length) {
+        return new Response("No manifests provided", { status: 400 });
+      }
+
+      const now = Date.now();
+      for (const manifest of manifests) {
+        this.sql`
+          insert into sky_extensions (extension_id, manifest_json, updated_at)
+          values (${manifest.id}, ${JSON.stringify(manifest)}, ${now})
+          on conflict(extension_id) do update set
+            manifest_json = excluded.manifest_json,
+            updated_at = excluded.updated_at
+        `;
+      }
+
+      this.extensionCatalog = null;
+
+      return Response.json({ ok: true, count: manifests.length });
     }
 
     return new Response("Method not allowed", { status: 405 });
@@ -2067,6 +2128,9 @@ export class Chat extends AIChatAgent<Env> {
     const url = new URL(request.url);
     if (url.pathname.endsWith("/export")) {
       return this.exportSkyJsonl();
+    }
+    if (url.pathname.endsWith("/extensions/catalog")) {
+      return this.handleExtensionCatalogRequest(request);
     }
     if (url.pathname.endsWith("/extensions")) {
       return this.handleExtensionPolicyRequest(request);
