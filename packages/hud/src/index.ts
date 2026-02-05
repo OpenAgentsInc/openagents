@@ -7,3 +7,12 @@ export type {
 } from './createBackgroundGridLines.js';
 export { getDistanceFromOriginToCornerProgress } from './getDistanceFromOriginToCornerProgress.js';
 export type { DotsOrigin } from './getDistanceFromOriginToCornerProgress.js';
+export {
+  greenPreset,
+  purplePreset,
+  colorPresets,
+} from './colorPresets.js';
+export type {
+  DotsGridColorPreset,
+  ColorPresetName,
+} from './colorPresets.js';
