@@ -10,6 +10,7 @@ declare global {
     LITECLAW_TOOL_POLICY?: string;
     LITECLAW_TOOL_MAX_CALLS?: string;
     LITECLAW_TOOL_MAX_OUTBOUND_BYTES?: string;
+    LITECLAW_TOOL_ADMIN_SECRET?: string;
     LITECLAW_EXECUTOR_KIND?: string;
     LITECLAW_TUNNEL_URL?: string;
     LITECLAW_TUNNEL_TOKEN?: string;

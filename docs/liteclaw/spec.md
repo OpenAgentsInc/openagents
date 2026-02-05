@@ -524,12 +524,13 @@ Programmatic surfaces (stable + documented):
 - `WS /agents/chat/{id}` for streaming chat.
 - `GET /agents/chat/{id}/get-messages` for transcript rehydration.
 - `GET /agents/chat/{id}/export` for Sky JSONL.
+- `GET|POST /agents/chat/{id}/tool-policy` for per-thread tool policy.
 - `GET|POST /agents/chat/{id}/extensions` for extension policy.
 - `GET|POST /agents/chat/{id}/extensions/catalog` for extension catalog.
 - Tool receipts emitted for every tool call (include `patch_hash`/`local_receipt` when relevant).
 
 Automation harness (must exist in-repo):
-- Provide a minimal smoke script (example: `scripts/liteclaw-smoke.ts`) that runs against `wrangler dev`.
+- Provide a minimal smoke script (example: `apps/liteclaw-worker/scripts/liteclaw-smoke.ts`, run via `npm run smoke`) that runs against `wrangler dev`.
 - Smoke step: create or pick a thread id, send one user message, and verify first token < 10s.
 - Smoke step: wait for completion and assert a final assistant message.
 - Smoke step: call `/export` and validate every line against the Sky schemas.
@@ -716,6 +717,7 @@ Production smoke (minimum):
 - 2026-02-05: Added manifest-only extension support (system prompt only, no tools), reran LiteClaw worker tests, and deployed liteclaw worker (version `3ee02e40-97b6-4205-baab-3c0ab7ed1e58`).
 - 2026-02-05: Synced extension catalog admin updates into KV/R2 when configured, reran LiteClaw worker tests, and deployed liteclaw worker (version `10ea4afb-c422-4b94-822e-a0ee7fcf5529`).
 - 2026-02-05: Added programmatic testing + agent automation requirements section (smoke scripts, stable endpoints, contract checks).
+- 2026-02-05: Added tool-policy admin endpoint + JSON error responses for programmatic endpoints, implemented `apps/liteclaw-worker/scripts/liteclaw-smoke.ts` smoke harness (`npm run smoke`), updated env vars, and reran LiteClaw worker tests.
 
 ---
 
