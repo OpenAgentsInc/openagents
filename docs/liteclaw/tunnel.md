@@ -1,6 +1,6 @@
 # LiteClaw Tunnel Executor
 
-This document explains how to use the tunnel-backed executor so LiteClaw can read and edit local files.
+This document explains how to use the tunnel-backed executor so LiteClaw can read and edit local files. For Cloudflare Tunnel architecture and Access patterns, see `docs/liteclaw/cloudflare-tunnel.md`.
 
 ## What The Tunnel Does
 

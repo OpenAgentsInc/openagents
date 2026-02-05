@@ -721,6 +721,7 @@ Production smoke (minimum):
 - 2026-02-05: Added tool-policy admin endpoint + JSON error responses for programmatic endpoints, implemented `apps/liteclaw-worker/scripts/liteclaw-smoke.ts` smoke harness (`npm run smoke`), updated env vars, and reran LiteClaw worker tests.
 - 2026-02-05: Added JSON error handling for `/get-messages` + `/export` and hardened export message parsing for programmatic clients, then reran LiteClaw worker tests.
 - 2026-02-05: Added LiteClaw documentation (`docs/liteclaw/README.md` + `docs/liteclaw/tunnel.md`) covering runtime flow, endpoints, tools, extensions, and tunnel usage.
+- 2026-02-05: Added Cloudflare Tunnel documentation (`docs/liteclaw/cloudflare-tunnel.md`), updated tunnel references, and added a local-agent tunnel smoke script (`apps/liteclaw-local-agent/scripts/tunnel-smoke.js`).
 
 ---
 
