@@ -516,6 +516,41 @@ Commands live with the app:
 
 ---
 
+## Testing + Agent Automation (Required)
+
+Goal: LiteClaw must be fully testable and usable via scripts without the web UI.
+
+Programmatic surfaces (stable + documented):
+- `WS /agents/chat/{id}` for streaming chat.
+- `GET /agents/chat/{id}/get-messages` for transcript rehydration.
+- `GET /agents/chat/{id}/export` for Sky JSONL.
+- `GET|POST /agents/chat/{id}/extensions` for extension policy.
+- `GET|POST /agents/chat/{id}/extensions/catalog` for extension catalog.
+- Tool receipts emitted for every tool call (include `patch_hash`/`local_receipt` when relevant).
+
+Automation harness (must exist in-repo):
+- Provide a minimal smoke script (example: `scripts/liteclaw-smoke.ts`) that runs against `wrangler dev`.
+- Smoke step: create or pick a thread id, send one user message, and verify first token < 10s.
+- Smoke step: wait for completion and assert a final assistant message.
+- Smoke step: call `/export` and validate every line against the Sky schemas.
+- Smoke step: toggle tool policy and confirm tool budget + allowlist enforcement.
+- Smoke step: exercise `workspace.read/write/edit` with `LITECLAW_EXECUTOR_KIND=workers`.
+- Smoke step: exercise `workspace.read/write/edit` with tunnel executor when `liteclaw-local-agent` is running.
+- Smoke step: validate `/extensions` + `/extensions/catalog` admin flows and allowlist enforcement.
+
+Determinism rules:
+- Tests must assert contracts/structure, not exact model text.
+- Use deterministic prompts (e.g., “reply with OK”) and low max tokens.
+
+Machine-readable errors:
+- Programmatic endpoints should return JSON errors with `code` + `message`.
+- Include `run_id` and `thread_id` on run-scoped errors.
+
+CI gating:
+- `npm run test` (apps/liteclaw-worker) on every worker change.
+- `npm run test` (apps/web) when chat UI changes.
+- Optional: `npm run test:e2e` when UI surfaces change.
+
 ## Coding Agent Roadmap (Do This In Order)
 
 This section is intentionally procedural. If you’re the coding agent implementing LiteClaw, follow this order and don’t “improve” scope.
@@ -680,6 +715,7 @@ Production smoke (minimum):
 - 2026-02-05: Enforced pinned extension versions in policy updates, reran LiteClaw worker tests, and deployed liteclaw worker (version `bd986663-714a-4a5d-811c-848e3d616e30`).
 - 2026-02-05: Added manifest-only extension support (system prompt only, no tools), reran LiteClaw worker tests, and deployed liteclaw worker (version `3ee02e40-97b6-4205-baab-3c0ab7ed1e58`).
 - 2026-02-05: Synced extension catalog admin updates into KV/R2 when configured, reran LiteClaw worker tests, and deployed liteclaw worker (version `10ea4afb-c422-4b94-822e-a0ee7fcf5529`).
+- 2026-02-05: Added programmatic testing + agent automation requirements section (smoke scripts, stable endpoints, contract checks).
 
 ---
 
