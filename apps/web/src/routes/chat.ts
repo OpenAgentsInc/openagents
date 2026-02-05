@@ -34,31 +34,6 @@ export const Route = createFileRoute('/chat')({
           );
         }
 
-        const agentWorkerUrl = process.env.AGENT_WORKER_URL?.trim();
-        const internalKey = process.env.OA_INTERNAL_KEY?.trim();
-        const threadIdRaw = typeof body.id === 'string' ? body.id.trim() : '';
-        const threadId = threadIdRaw ? `${userId}:${threadIdRaw}` : `user:${userId}`;
-
-        if (agentWorkerUrl && internalKey) {
-          const headers = new Headers();
-          headers.set('content-type', 'application/json');
-          headers.set('accept', request.headers.get('accept') ?? 'text/plain');
-          headers.set('X-OA-Internal-Key', internalKey);
-          headers.set('X-OA-User-Id', userId);
-          headers.set('X-OA-Thread-Id', threadId);
-
-          const proxyResponse = await fetch(`${agentWorkerUrl.replace(/\/$/, '')}/internal/chat`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(body),
-          });
-          if (proxyResponse.status !== 401) {
-            const h = new Headers(proxyResponse.headers);
-            h.set('X-Chat-Source', 'agent-worker');
-            return new Response(proxyResponse.body, { status: proxyResponse.status, headers: h });
-          }
-        }
-
         const result = streamText({
           model: openai.responses('gpt-4o-mini'),
           system: 'You are OpenAgents. Be concise.',

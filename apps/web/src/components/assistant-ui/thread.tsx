@@ -263,11 +263,9 @@ const MessageSourceLabel: FC = () => {
   const isLastAssistant = lastAssistant != null && message.id === lastAssistant.id;
   const source = streamSource ?? (isLastAssistant ? lastSource : null);
   const label =
-    source === 'agent-worker'
-      ? 'Source: agent-worker'
-      : source === 'local-fallback'
-        ? 'Source: local fallback'
-        : 'Source: Unknown (older message)';
+    source === 'local-fallback'
+      ? 'Source: local fallback'
+      : 'Source: Unknown (older message)';
   return (
     <TooltipIconButton tooltip={label} side="top">
       <InfoIcon className="size-3.5" />
