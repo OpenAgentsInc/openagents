@@ -699,6 +699,7 @@ Production smoke (minimum):
 ---
 
 ## Log
+- 2026-02-05: Added `LITECLAW_TOOL_CHOICE` env for forcing tool usage, updated nydus cloud demo with fallback tool parsing/execution, reran LiteClaw worker tests, and redeployed liteclaw worker.
 - 2026-02-05: Extended `apps/nydus` to include a cloud-driven demo (LiteClaw agent message triggers local workspace tools via tunnel), documented new modes and export receipt checks.
 - 2026-02-05: Added Bun-based tunnel handshake script (`apps/nydus`) and expanded tunnel docs with Access service token header guidance and Bun handshake usage.
 - 2026-02-05: Implemented LiteClaw web wiring (Hatchery spawn now uses get-or-create, /assistant and /chat/new funnel to the single LiteClaw thread, chat transport switched to Agents SDK), updated welcome copy, and hid new-chat affordances.
