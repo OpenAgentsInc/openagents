@@ -47,17 +47,49 @@ fn internal_key(env: &Env) -> Option<String> {
         .filter(|v| !v.trim().is_empty())
 }
 
-fn service_token_from_env(env: &Env) -> Option<String> {
-    env.var("OPENCLAW_SERVICE_TOKEN")
+fn env_var_trimmed(env: &Env, name: &str) -> Option<String> {
+    env.var(name)
         .ok()
         .map(|v| v.to_string())
         .filter(|v| !v.trim().is_empty())
-        .or_else(|| {
-            env.var("OPENAGENTS_SERVICE_TOKEN")
-                .ok()
-                .map(|v| v.to_string())
-                .filter(|v| !v.trim().is_empty())
-        })
+}
+
+fn service_token_from_env(env: &Env) -> Option<String> {
+    env_var_trimmed(env, "OPENCLAW_SERVICE_TOKEN")
+        .or_else(|| env_var_trimmed(env, "OPENAGENTS_SERVICE_TOKEN"))
+}
+
+fn openai_key_from_env(env: &Env) -> Option<String> {
+    env_var_trimmed(env, "OPENAI_API_KEY")
+}
+
+fn openrouter_key_from_env(env: &Env) -> Option<String> {
+    env_var_trimmed(env, "OPENROUTER_API_KEY")
+}
+
+fn anthropic_key_from_env(env: &Env) -> Option<String> {
+    env_var_trimmed(env, "ANTHROPIC_API_KEY")
+}
+
+fn openclaw_default_model_from_env(env: &Env) -> Option<String> {
+    env_var_trimmed(env, "OPENCLAW_DEFAULT_MODEL")
+}
+
+fn attach_runtime_headers(env: &Env, user_id: &str, client: RuntimeClient) -> RuntimeClient {
+    let mut client = client.with_instance_id(Some(user_id.to_string()));
+    if let Some(key) = openai_key_from_env(env) {
+        client = client.with_extra_header("x-openclaw-openai-key", key);
+    }
+    if let Some(key) = openrouter_key_from_env(env) {
+        client = client.with_extra_header("x-openclaw-openrouter-key", key);
+    }
+    if let Some(key) = anthropic_key_from_env(env) {
+        client = client.with_extra_header("x-openclaw-anthropic-key", key);
+    }
+    if let Some(model) = openclaw_default_model_from_env(env) {
+        client = client.with_extra_header("x-openclaw-default-model", model);
+    }
+    client
 }
 
 /// Internal key can come from X-OA-Internal-Key or Authorization: Bearer <key> (Convex may strip custom headers).
@@ -319,7 +351,11 @@ async fn runtime_client_for_user(env: &Env, user_id: &str) -> Result<RuntimeClie
             .await?
             .ok_or_else(|| worker::Error::RustError("service token not set".to_string()))?
     };
-    Ok(RuntimeClient::new(runtime_url, service_token))
+    Ok(attach_runtime_headers(
+        env,
+        user_id,
+        RuntimeClient::new(runtime_url, service_token),
+    ))
 }
 
 pub async fn handle_agent_signup(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -472,7 +508,11 @@ pub async fn handle_instance_delete(req: Request, ctx: RouteContext<()>) -> Resu
                     }
                 }
             };
-            let client = RuntimeClient::new(runtime_url, service_token);
+            let client = attach_runtime_headers(
+                &ctx.env,
+                &user_id,
+                RuntimeClient::new(runtime_url, service_token),
+            );
             let stop_result = match client.stop().await {
                 Ok(res) => res,
                 Err(err) => {

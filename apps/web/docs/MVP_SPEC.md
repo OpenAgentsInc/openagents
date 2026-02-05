@@ -255,9 +255,9 @@ From `zero-to-openclaw-30s.md` gaps list:
 
 - [ ] One-click first-time flow (single CTA: provisions/reuses + sends first message)
 - [ ] Provider keys: runtime has a **server-owned** model key in prod so chat always answers without user config
-- [ ] Spawning: provisioning results in a **real** runtime allocation per user (or a safe multi-tenant boundary)
-- [ ] Delete tears down (not record-only delete)
-- [ ] Pairing onboarding can be deferred, but the UI must explain the current approval-only state
+- [x] Spawning: provisioning results in a **real** runtime allocation per user (or a safe multi-tenant boundary)
+- [x] Delete tears down (not record-only delete)
+- [x] Pairing onboarding can be deferred, but the UI must explain the current approval-only state
 
 ### 1.8 Ops: required envs + 401 failure mode (from `zero-to-openclaw-30s.md`)
 
@@ -282,6 +282,7 @@ If any of these are missing or mismatched, the MVP flows will fail.
   - `OA_AGENT_KEY_HMAC_SECRET` (must match Convex; validates agent keys)
 - **Runtime worker (`apps/openclaw-runtime`)**
   - `OPENAGENTS_SERVICE_TOKEN` (must match API worker)
+  - `OPENCLAW_DEFAULT_MODEL` (optional but recommended; sets gateway default model/allowlist on boot)
   - Cloudflare Containers/Sandbox bindings + R2 backup bindings (per `apps/openclaw-runtime` config)
 - **Web worker (`apps/web`)**
   - `PUBLIC_API_URL` (so server routes/tool calls hit the API worker, not same-origin HTML routes)
@@ -563,3 +564,24 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
   **Deploys:** `apps/web` (`npm run deploy`, version `92de298e-136c-4dbf-b223-584473a19d82`).  
   **Production checks:** API: `POST /api/agent/signup` → `POST/GET /api/openclaw/instance` returned `status: ready`. UI GETs `/feed`, `/c`, `/hatchery`, `/openclaw/chat` returned 200; `/assistant` returned 307 → `/chat/new`; `/chat` returned 307 → `/assistant`.  
   **Known issues / next:** OpenClaw chat streaming still returns no data within 12s (see `docs/local/testing/agent-testing-errors.md`). Next unchecked items are **1.7 “Zero to OpenClaw in 30 seconds” blockers** (provider keys, spawning, teardown).
+
+- **2026-02-05 00:46 UTC (branch: `main`)** – MVP 1.7 progress: per-tenant OpenClaw sandboxes + R2 keys, runtime header overrides for provider keys/default model, gateway config now injects a default model/allowlist, and sandbox `max_instances` raised to 10; API worker forwards instance id + provider/default-model headers.  
+  **Key files:** `apps/openclaw-runtime/src/sandbox/sandboxDo.ts`, `apps/openclaw-runtime/src/sandbox/process.ts`, `apps/openclaw-runtime/src/routes/v1.ts`, `apps/openclaw-runtime/src/sandbox/r2.ts`, `apps/openclaw-runtime/src/sandbox/backup.ts`, `apps/openclaw-runtime/start-openclaw.sh`, `apps/openclaw-runtime/wrangler.jsonc`, `apps/api/src/openclaw/runtime_client.rs`, `apps/api/src/openclaw/http.rs`.  
+  **Tests:** `cargo test` ✅; `npm run test` (apps/openclaw-runtime) ✅.  
+  **Deploys:** `apps/openclaw-runtime` (`npm run deploy`, version `57e8759b-f761-4a92-a3f5-f1ed05ab4338`); `apps/api` (`npm run deploy`, version `d9c37d02-db42-46cf-b388-f44e9da3b5fc`).  
+  **Production checks:** API `POST /api/agent/signup` → `POST/GET /api/openclaw/instance` returned `status: ready`; `POST /api/openclaw/chat` returned HTTP 200 with zero SSE bytes within 60s (logged in `docs/local/testing/agent-testing-errors.md`); `/api/feed` returned 200; UI GETs `/feed`, `/c`, `/hatchery`, `/openclaw/chat` returned 200.  
+  **Known issues / next:** OpenClaw chat streaming still returns no data; confirm provider keys are present in runtime env + gateway model config. Next unchecked items are **1.7 provider keys** and **1.7 one-click first-time flow**.
+
+- **2026-02-05 00:49 UTC (branch: `main`)** – Continued MVP 1.7 debugging: added default-model header forwarding + gateway config compatibility (agent/agents defaults + allowlist), plus runtime env allowlist for `OPENCLAW_DEFAULT_MODEL`.  
+  **Key files:** `apps/openclaw-runtime/start-openclaw.sh`, `apps/openclaw-runtime/src/sandbox/process.ts`, `apps/api/src/openclaw/http.rs`, `apps/web/docs/openclaw-on-openagents-com.md`.  
+  **Tests:** `cargo test` ✅; `npm run test` (apps/openclaw-runtime) ✅.  
+  **Deploys:** `apps/openclaw-runtime` (`npm run deploy`, version `5dc9164f-c594-4406-a277-5d84f388a566`); `apps/api` (`npm run deploy`, version `d9c37d02-db42-46cf-b388-f44e9da3b5fc`).  
+  **Production checks:** API `POST /api/agent/signup` → `POST /api/openclaw/instance` returned `status: ready`; `POST /api/openclaw/chat` still returns HTTP 200 with zero SSE bytes within 60s (logged in `docs/local/testing/agent-testing-errors.md`).  
+  **Known issues / next:** OpenClaw chat streaming still empty; verify provider key + outbound access in container and model config. Next unchecked items remain **1.7 provider keys** and **1.7 one-click first-time flow**.
+
+- **2026-02-05 00:51 UTC (branch: `main`)** – Tried enabling container network egress for OpenClaw runtime; Wrangler warns `network` is unsupported for containers, so the config was reverted.  
+  **Key files:** `apps/openclaw-runtime/wrangler.jsonc`.  
+  **Tests:** No new tests (covered by prior `cargo test` + `npm run test`).  
+  **Deploys:** `apps/openclaw-runtime` (`npm run deploy`, version `fbb6a9f8-07ed-40b7-bb1d-add9f38630c3`, warning about unsupported `network` field).  
+  **Production checks:** Not rerun (streaming already confirmed empty after latest deploys).  
+  **Known issues / next:** OpenClaw chat still returns zero SSE bytes; need confirmation on provider keys and container outbound access. Next unchecked items remain **1.7 provider keys** and **1.7 one-click first-time flow**.

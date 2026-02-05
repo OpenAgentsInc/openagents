@@ -14,7 +14,11 @@ function toBase64(data: Uint8Array): string {
   return Buffer.from(data).toString('base64');
 }
 
-export async function backupToR2(sandbox: Sandbox, env: OpenClawEnv): Promise<string> {
+export async function backupToR2(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  instanceId?: string,
+): Promise<string> {
   const timestamp = new Date().toISOString();
 
   await sandbox.exec(`mkdir -p ${BACKUP_DIR} ${CONFIG_DIR} ${SKILLS_DIR}`, { timeout: BACKUP_TIMEOUT_MS });
@@ -27,18 +31,22 @@ export async function backupToR2(sandbox: Sandbox, env: OpenClawEnv): Promise<st
   const { content } = await collectFile(stream);
   const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
 
-  await env.OPENCLAW_BUCKET.put(getBackupKey(env), bytes, {
+  await env.OPENCLAW_BUCKET.put(getBackupKey(env, instanceId), bytes, {
     httpMetadata: { contentType: 'application/gzip' },
   });
-  await env.OPENCLAW_BUCKET.put(getLastSyncKey(env), timestamp, {
+  await env.OPENCLAW_BUCKET.put(getLastSyncKey(env, instanceId), timestamp, {
     httpMetadata: { contentType: 'text/plain' },
   });
 
   return timestamp;
 }
 
-export async function restoreFromR2(sandbox: Sandbox, env: OpenClawEnv): Promise<boolean> {
-  const obj = await env.OPENCLAW_BUCKET.get(getBackupKey(env));
+export async function restoreFromR2(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  instanceId?: string,
+): Promise<boolean> {
+  const obj = await env.OPENCLAW_BUCKET.get(getBackupKey(env, instanceId));
   if (!obj) return false;
 
   const data = new Uint8Array(await obj.arrayBuffer());
