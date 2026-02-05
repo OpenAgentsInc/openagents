@@ -662,18 +662,18 @@ Production smoke (minimum):
 
 ---
 
-## Post-EA Roadmap: Cloudflare-Native Pi (LiteClaw-First)
+## Post-EA Roadmap: Cloudflare-Native Sky (LiteClaw-First)
 
-Goal: build our own Pi-style runtime on Workers + Durable Objects (no pi-mono runtime dependency), while keeping LiteClaw as the product surface. LiteClaw UI and `/agents/chat/*` transport stay the same; the runtime evolves underneath.
+Goal: build our own Sky-style runtime on Workers + Durable Objects (no pi-mono runtime dependency), while keeping LiteClaw as the product surface. LiteClaw UI and `/agents/chat/*` transport stay the same; the runtime evolves underneath.
 
-### Phase 0 - Proof of Concept: LiteClaw-Pi Core in the Worker
+### Phase 0 - Proof of Concept: LiteClaw-Sky Core in the Worker
 
 What we build:
-- A `cf-pi` core module inside `apps/liteclaw-worker/` that owns a model abstraction (`stream(context, options)`), message conversion, and event streaming.
-- A message contract aligned with Pi's `AgentMessage` and tool result shapes, with adapters to and from `AIChatAgent` messages.
+- A `cf-sky` core module inside `apps/liteclaw-worker/` that owns a model abstraction (`stream(context, options)`), message conversion, and event streaming.
+- A message contract aligned with Sky's `AgentMessage` and tool result shapes, with adapters to and from `AIChatAgent` messages.
 - A simple compaction hook (rolling summary + last N turns) stored in DO SQLite alongside existing AIChat tables.
-- A LiteClaw toggle (`LITECLAW_PI_MODE=1` or equivalent) that routes `onChatMessage` through the cf-pi core while keeping the same endpoints and UI.
-- A transcript export endpoint that emits Pi-compatible JSONL for a single thread (for OpenClaw import/testing).
+- A LiteClaw toggle (`LITECLAW_SKY_MODE=1` or equivalent) that routes `onChatMessage` through the cf-sky core while keeping the same endpoints and UI.
+- A transcript export endpoint that emits Sky-compatible JSONL for a single thread (for OpenClaw import/testing).
 
 Definition of done:
 - `/chat/{id}` works end-to-end when the flag is enabled, with streaming, persistence, and resume intact.
@@ -683,7 +683,7 @@ Definition of done:
 ### Phase 1 - Contracts + Portability
 
 - Formalize tool schemas with TypeBox/AJV and stream partial tool args (Pi-style).
-- Add attachment normalization (images/docs) to match Pi's message transformer.
+- Add attachment normalization (images/docs) to match Sky's message transformer.
 - Introduce a model registry config (id -> provider + model + options) to align with OpenClaw's model selection.
 - Store a versioned `liteclaw_session_version` to keep transcript compatibility stable.
 
@@ -705,8 +705,8 @@ Definition of done:
 - Reuse the same tool schemas and receipts as Phase 3.
 - Add per-tool allowlists and directory scoping to keep access explicit and auditable.
 
-### Phase 5 - Skills + Extensions (Pi-Compatible)
+### Phase 5 - Skills + Extensions (Sky-Compatible)
 
 - Load skills/extensions from R2/KV with explicit manifests.
-- Align extension hooks with Pi's Extension API so OpenClaw skills can be reused.
+- Align extension hooks with Sky's Extension API so OpenClaw skills can be reused.
 - Add policy-driven enablement and per-skill metrics.
