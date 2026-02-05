@@ -43,11 +43,11 @@ If these aren’t green, nothing else ships.
 
 ## The Golden Path (the only path)
 
-1. User opens `/liteclaw`
+1. User opens `/hatchery`
 2. If gated → join waitlist
-3. If approved → LiteClaw agent is created automatically
-4. User types a message
-5. Response streams immediately
+3. If approved → click **Spawn your LiteClaw**
+4. Spawn redirects user to `/chat/{id}`
+5. In `/chat/{id}`, the existing chat UI streams responses from the LiteClaw agent
 6. User refreshes → conversation and memory persist
 7. User returns tomorrow → same LiteClaw, same context
 
@@ -59,17 +59,23 @@ No branching paths. No modes. No configuration.
 
 ## Screens (max 2)
 
-### 1. LiteClaw Chat
+### 1. Hatchery (LiteClaw Spawn)
 
-* Single chat interface
-* Streaming responses
-* Minimal agent status indicator: `ready | thinking | error`
-* Clear reset button (“Reset LiteClaw memory”)
+* Basic “what is LiteClaw?” copy
+* Status: `not spawned | spawning | ready | error`
+* Primary CTA: **Spawn your LiteClaw**
+* If already spawned: **Go to chat** (links to `/chat/{id}`)
+* Secondary action: “Reset LiteClaw memory” (clear DO state)
 
-### 2. Waitlist / Access Gate
+### 2. Chat (Existing UI)
 
-* Email or identity capture
-* Simple “You’re in / You’re waiting” state
+* Route: `/chat/{id}`
+* Uses the existing OpenAgents chat UI
+* The backend is **LiteClaw (Agents SDK + Durable Object)**, not OpenClaw
+* Streaming responses (resumable)
+* Stop button works
+
+Waitlist gating is an overlay/state on Hatchery (not a separate dashboard).
 
 No dashboards. Keep the existing **left sidebar** only; **no right/community sidebar**. No community feed in the golden path.
 
@@ -114,26 +120,24 @@ If it’s not required to chat + remember, it doesn’t exist.
 
 ### Core components
 
-* **Cloudflare Worker**
-
-  * Routes `/liteclaw`
-  * Auth / waitlist gating
-* **Durable Object**
-
-  * One DO per user (`liteclaw:<userId>`)
+* **OpenAgents Web (existing worker)**
+  * Owns the UI routes: `/hatchery`, `/chat/{id}`
+  * Owns auth + gating (WorkOS + existing waitlist/access checks)
+  * Can keep using Convex for:
+    * waitlist/access state
+    * thread index (so the left sidebar + `/chat/{id}` keep working)
+* **LiteClaw runtime (Cloudflare Worker + Agents SDK)**
+  * Owns the agent websocket endpoints (Agents SDK / PartySocket)
+  * Owns chat streaming + persistence (via Durable Object SQLite)
+* **Durable Object (LiteClaw agent)**
+  * One DO per user (EA: exactly one chat id per user)
+  * DO id is derived from the chat id we redirect to: `/chat/{id}`
   * Owns:
+    * conversation history (canonical)
+    * rolling summary memory
+    * resumable stream state
 
-    * conversation history
-    * lightweight memory
-    * agent state
-* **Cloudflare Agents SDK**
-
-  * Agent lifecycle
-  * Streaming responses
-  * Model invocation
-  * Memory primitives (basic)
-
-No Convex. No external orchestrator. No runtime indirection.
+Convex is allowed for *UI metadata*, but **the agent’s state and transcript live in the Durable Object**.
 
 ---
 
@@ -207,13 +211,15 @@ Architecture elegance, extensibility, and parity **do not count** as success cri
 
 If we don’t explicitly choose these, the “simple” plan will still stall.
 
-* **Identity (DO key):** issue a stable `liteclaw_user` HttpOnly cookie on first visit and use `liteclaw:<cookie>` as the DO id.
-* **Concurrency:** one in-flight message per user; sending a new message while streaming cancels the previous stream.
+* **Identity (LiteClaw id):** on first Spawn, create or reuse exactly one Convex thread for the user (kind: `liteclaw`); the Convex `threadId` becomes the LiteClaw id and is the `{id}` in `/chat/{id}`.
+* **DO key:** the LiteClaw agent DO uses the same id/room name as the chat id (e.g. `chat:{threadId}`), so `/chat/{id}` deterministically maps to one DO instance.
+* **Concurrency:** one in-flight message per LiteClaw id; sending a new message while streaming cancels the previous stream.
 * **Routes (minimum):**
-  * `GET /liteclaw` (UI)
-  * `POST /liteclaw/chat` (SSE streaming)
-  * `POST /liteclaw/reset` (clears DO memory/history)
-  * `POST /liteclaw/waitlist` (join; creates “waiting” record)
+  * `GET /hatchery` (UI: spawn + status + waitlist)
+  * `GET /chat/{id}` (UI: existing Thread)
+  * `WS /agents/chat/{id}` (LiteClaw agent websocket; chat requests + streaming)
+  * `GET /agents/chat/{id}/get-messages` (rehydrate transcript; AIChatAgent built-in)
+  * Reset is a websocket command (`CF_AGENT_CHAT_CLEAR`), surfaced as a UI button.
 * **Approval mechanism:** keep it dumb—either a server-side allowlist (env var) or a tiny admin endpoint protected by a single secret header.
 * **DO state shape (versioned):**
   * `schema_version`
@@ -256,29 +262,38 @@ We keep using the existing OpenAgents UI chrome for navigation and gating, but *
 
 - Route entrypoints:
   - `apps/web/src/routes/_app/hatchery.tsx`
+  - `apps/web/src/routes/_app/chat.$chatId.tsx`
 - App chrome:
   - `apps/web/src/components/assistant-ui/AppLayout.tsx` (right sidebar hidden on `/hatchery`)
   - `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (left sidebar)
-- Hatchery content:
-  - `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`
+- Chat UI:
+  - `apps/web/src/components/assistant-ui/thread.tsx` (message UI)
+  - `apps/web/src/components/assistant-ui/openagents-chat-runtime.tsx` (chat runtime hook; will be updated for LiteClaw)
+- Hatchery content (LiteClaw):
+  - `apps/web/src/components/hatchery/` (new simple spawn UI lives here)
+- Hatchery content (legacy / archive; remove from golden path):
+  - `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx` (OpenClaw-era demo)
 
-### LiteClaw runtime (new Cloudflare Worker app)
+### LiteClaw runtime (Agents SDK worker)
 
 This is the “real product”: **Workers + Durable Object + Agents SDK**. It owns chat state and streaming.
 
-- App folder:
-  - `apps/liteclaw/` (Cloudflare Worker + DO + UI assets)
+- App folder (current seed; will be renamed once we commit to it):
+  - `apps/cloudflare-agent-sdk-demo/` (Cloudflare Worker + DO; currently includes a demo UI we will not ship)
 - Cloudflare config:
-  - `apps/liteclaw/wrangler.jsonc`
-  - `apps/liteclaw/.dev.vars.example` (never commit real secrets)
+  - `apps/cloudflare-agent-sdk-demo/wrangler.jsonc`
+  - `apps/cloudflare-agent-sdk-demo/.dev.vars.example` (never commit real secrets)
 - Worker/DO implementation (minimum set we will own):
-  - `apps/liteclaw/src/server.ts` (Worker fetch + DO class)
-  - `apps/liteclaw/src/shared.ts` (shared types/constants)
-  - `apps/liteclaw/src/utils.ts` (small helpers; no business logic sprawl)
-- UI (LiteClaw Chat screen; can be minimal):
-  - `apps/liteclaw/src/app.tsx`
-  - `apps/liteclaw/src/client.tsx`
-  - `apps/liteclaw/src/styles.css`
+  - `apps/cloudflare-agent-sdk-demo/src/server.ts` (Worker fetch + `routeAgentRequest()` + DO class)
+  - `apps/cloudflare-agent-sdk-demo/src/shared.ts` (shared types/constants)
+  - `apps/cloudflare-agent-sdk-demo/src/utils.ts` (helpers; trim down for EA)
+
+The demo UI in the starter template is for reference only; the shipped UI is `apps/web`:
+
+- Demo UI (do not ship in EA):
+  - `apps/cloudflare-agent-sdk-demo/src/app.tsx`
+  - `apps/cloudflare-agent-sdk-demo/src/client.tsx`
+  - `apps/cloudflare-agent-sdk-demo/src/styles.css`
 
 ### Agents SDK source (reference only)
 
@@ -289,7 +304,7 @@ We keep a local checkout of the Agents SDK **only as a reference** (to read how 
 
 LiteClaw should depend on the published npm package and pin it:
 
-- `apps/liteclaw/package.json` → `agents` (npm package) pinned to an explicit version.
+- `apps/cloudflare-agent-sdk-demo/package.json` → `agents` (npm package) pinned to an explicit version.
 
 Do **not** use a `file:` dependency pointing at the local repo.
 
