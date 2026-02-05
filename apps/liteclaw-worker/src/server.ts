@@ -1165,6 +1165,7 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private async handleCodexAuthRequest(request: Request) {
+    this.ensureStateLoaded();
     const secret = this.env.LITECLAW_CODEX_SECRET;
     if (!secret) {
       return new Response("Codex secret is not configured.", { status: 501 });
