@@ -3702,8 +3702,9 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
       });
     }
 
+    const bodyRequest = request.clone();
     const body = yield* decodeJsonBody(
-      request,
+      bodyRequest,
       action === "authorize" ? CodexAuthorizeSchema : CodexCallbackSchema
     );
 
@@ -3732,12 +3733,17 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
 
     let opencodeResponse: Response;
     try {
-      const opencodeRequest = new Request(opencodeUrl.toString(), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        ...(signal ? { signal } : {})
-      });
+    const headers = new Headers(request.headers);
+    headers.set("content-type", "application/json");
+    headers.delete("authorization");
+    headers.delete("x-liteclaw-sandbox-token");
+
+    const opencodeRequest = new Request(opencodeUrl.toString(), {
+      method: "POST",
+      headers,
+      body: request.body,
+      ...(signal ? { signal } : {})
+    });
       opencodeResponse = yield* sandboxEffect(
         "OpenCode OAuth proxy failed",
         () => sandbox.containerFetch(opencodeRequest, server.port)
