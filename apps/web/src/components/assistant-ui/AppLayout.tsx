@@ -17,6 +17,7 @@ import {
 } from '@/components/assistant-ui/right-sidebar';
 import { AppBreadcrumb } from '@/components/assistant-ui/AppBreadcrumb';
 import { useOpenAgentsChatRuntime } from '@/components/assistant-ui/openagents-chat-runtime';
+import { CodexConnectDialog } from '@/components/assistant-ui/CodexConnectDialog';
 
 /**
  * App chrome: left sidebar (thread list), center (header + Outlet), right sidebar (community).
@@ -28,6 +29,8 @@ export function AppLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const location = useRouterState({ select: (s) => s.location });
   const showRightSidebar = !pathname.startsWith('/hatchery');
+  const showCodexConnect =
+    pathname.startsWith('/chat') || pathname.startsWith('/assistant');
   const { user, loading } = useAuth();
   const ensureUser = useMutation(api.users.ensureUser);
   const ensuredUserId = useRef<string | null>(null);
@@ -74,11 +77,14 @@ export function AppLayout() {
             <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
               <SidebarTrigger className="md:hidden" />
               <AppBreadcrumb />
-              <div
-                ref={(el) => setRightTriggerContainer(el ?? null)}
-                className="ml-auto flex md:hidden"
-                aria-hidden
-              />
+              <div className="ml-auto flex items-center gap-2">
+                {showCodexConnect && <CodexConnectDialog />}
+                <div
+                  ref={(el) => setRightTriggerContainer(el ?? null)}
+                  className="flex md:hidden"
+                  aria-hidden
+                />
+              </div>
             </header>
             <div className="flex min-h-0 flex-1 flex-col overflow-auto">
               <Outlet />
