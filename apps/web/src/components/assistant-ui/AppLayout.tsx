@@ -29,6 +29,7 @@ export function AppLayout() {
     useState<HTMLElement | null>(null);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const location = useRouterState({ select: (s) => s.location });
+  const showRightSidebar = !pathname.startsWith('/hatchery');
   const { user, loading } = useAuth();
   const ensureUser = useMutation(api.users.ensureUser);
   const ensuredUserId = useRef<string | null>(null);
@@ -96,16 +97,18 @@ export function AppLayout() {
               <Outlet />
             </div>
           </SidebarInset>
-          <SidebarProvider
-            cookieName="sidebar_right_state"
-            className="w-auto shrink-0"
-          >
-            <RightSidebar />
-            <RightSidebarTriggerPortal
-              container={rightTriggerContainer}
-              className="md:hidden"
-            />
-          </SidebarProvider>
+          {showRightSidebar ? (
+            <SidebarProvider
+              cookieName="sidebar_right_state"
+              className="w-auto shrink-0"
+            >
+              <RightSidebar />
+              <RightSidebarTriggerPortal
+                container={rightTriggerContainer}
+                className="md:hidden"
+              />
+            </SidebarProvider>
+          ) : null}
         </div>
       </SidebarProvider>
     </AssistantRuntimeProvider>

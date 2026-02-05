@@ -71,7 +71,9 @@ No branching paths. No modes. No configuration.
 * Email or identity capture
 * Simple “You’re in / You’re waiting” state
 
-No dashboards. No sidebars. No community feed.
+No dashboards. Keep the existing **left sidebar** only; **no right/community sidebar**. No community feed in the golden path.
+
+**Chrome decision (immediate):** `/hatchery` uses the existing left sidebar layout but hides the right sidebar.
 
 ---
 
@@ -198,6 +200,32 @@ Early Access is done when:
 * Users come back unprompted
 
 Architecture elegance, extensibility, and parity **do not count** as success criteria.
+
+---
+
+## Concrete Defaults (So We Can Ship Without Debates)
+
+If we don’t explicitly choose these, the “simple” plan will still stall.
+
+* **Identity (DO key):** issue a stable `liteclaw_user` HttpOnly cookie on first visit and use `liteclaw:<cookie>` as the DO id.
+* **Concurrency:** one in-flight message per user; sending a new message while streaming cancels the previous stream.
+* **Routes (minimum):**
+  * `GET /liteclaw` (UI)
+  * `POST /liteclaw/chat` (SSE streaming)
+  * `POST /liteclaw/reset` (clears DO memory/history)
+  * `POST /liteclaw/waitlist` (join; creates “waiting” record)
+* **Approval mechanism:** keep it dumb—either a server-side allowlist (env var) or a tiny admin endpoint protected by a single secret header.
+* **DO state shape (versioned):**
+  * `schema_version`
+  * `messages[]` (recent turns only; capped)
+  * `summary` (rolling memory; capped)
+  * `state` (`ready | thinking | error`)
+  * `created_at`, `updated_at`
+* **Memory policy:** keep last N turns (e.g. 25) + a single summary string; when history grows, summarize and drop oldest turns.
+* **Model pin:** one fast/cheap default model, pinned server-side (no user config); enforce `max_output_tokens` and a max context window.
+* **TTFT measurement:** log `ttft_ms` as the time to first model delta (not “status” events), plus `duration_ms` and `ok/error` for every message.
+
+These defaults can be revised later, but we need *some* choice to build against.
 
 ---
 
