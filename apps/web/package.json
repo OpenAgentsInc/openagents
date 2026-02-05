@@ -24,7 +24,11 @@
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.70",
+    "@cloudflare/ai-chat": "0.0.3",
     "@convex-dev/react-query": "^0.1.0",
+    "agents": "0.3.3",
+    "ai": "6.0.5",
     "@openagentsinc/hud": "file:../../packages/hud",
     "@tanstack/react-query": "^5.90.20",
     "@tanstack/react-router": "^1.158.0",
@@ -34,7 +38,8 @@
     "convex": "^1.31.7",
     "effect": "^3.19.16",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^1.1.1",

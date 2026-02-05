@@ -3,7 +3,11 @@ import { createServerFn } from '@tanstack/react-start';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
 import { ConvexProviderWithAuth } from 'convex/react';
+import { Effect } from 'effect';
 import appCssUrl from '../app.css?url';
+import { getAppConfig } from '../effect/config';
+import { makeAppRuntime } from '../effect/runtime';
+import { TelemetryService } from '../effect/telemetry';
 import { useAuthFromWorkOS } from '../useAuthFromWorkOS';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -12,13 +16,31 @@ import type { ConvexQueryClient } from '@convex-dev/react-query';
 import type { AppRuntime } from '../effect/runtime';
 
 const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
-  const auth = await getAuth();
-  const { user } = auth;
+  const runtime = makeAppRuntime(getAppConfig());
 
-  return {
-    userId: user?.id ?? null,
-    token: user ? auth.accessToken : null,
-  };
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const telemetry = yield* TelemetryService;
+
+      const auth = yield* Effect.tryPromise({
+        try: () => getAuth(),
+        catch: (err) => err,
+      }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+      const userId = auth?.user?.id ?? null;
+      const token = auth?.user ? auth.accessToken : null;
+
+      yield* telemetry.withNamespace('auth.workos').event('auth.resolved', {
+        authenticated: Boolean(userId),
+        userId,
+      });
+
+      return {
+        userId,
+        token,
+      };
+    }),
+  );
 });
 
 export const Route = createRootRouteWithContext<{

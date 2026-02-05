@@ -16,6 +16,14 @@ dotenv.config({ quiet: true });
 export default defineConfig({
   server: {
     port: 3000,
+    proxy: {
+      // Local dev: forward Agents SDK websocket + REST to the worker (wrangler dev).
+      '/agents': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
   plugins: [
     tsConfigPaths({
