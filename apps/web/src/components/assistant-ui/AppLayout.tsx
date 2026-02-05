@@ -28,7 +28,7 @@ export function AppLayout() {
     useState<HTMLElement | null>(null);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const location = useRouterState({ select: (s) => s.location });
-  const showRightSidebar = !pathname.startsWith('/hatchery');
+  const showRightSidebar = !pathname.startsWith('/autopilot');
   const showCodexConnect =
     pathname.startsWith('/chat') || pathname.startsWith('/assistant');
   const { user, loading } = useAuth();

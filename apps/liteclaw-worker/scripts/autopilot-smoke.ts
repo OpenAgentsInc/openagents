@@ -3,32 +3,32 @@ import { randomUUID } from "node:crypto";
 import { createSkyValidators } from "../src/sky/contracts";
 
 const BASE_URL =
-  process.env.LITECLAW_SMOKE_BASE_URL ?? "http://127.0.0.1:8787";
+  process.env.AUTOPILOT_SMOKE_BASE_URL ?? "http://127.0.0.1:8787";
 const THREAD_ID =
-  process.env.LITECLAW_SMOKE_THREAD_ID ?? `smoke-${Date.now()}`;
+  process.env.AUTOPILOT_SMOKE_THREAD_ID ?? `smoke-${Date.now()}`;
 const WS_URL = `${BASE_URL.replace(/^http/, "ws")}/agents/chat/${THREAD_ID}`;
-const TTFT_LIMIT_MS = Number(process.env.LITECLAW_SMOKE_TTFT_MS ?? 10_000);
+const TTFT_LIMIT_MS = Number(process.env.AUTOPILOT_SMOKE_TTFT_MS ?? 10_000);
 const RESPONSE_TIMEOUT_MS = Number(
-  process.env.LITECLAW_SMOKE_RESPONSE_TIMEOUT_MS ?? 60_000
+  process.env.AUTOPILOT_SMOKE_RESPONSE_TIMEOUT_MS ?? 60_000
 );
 const STRICT =
-  process.env.LITECLAW_SMOKE_STRICT === "1" || process.env.CI === "1";
+  process.env.AUTOPILOT_SMOKE_STRICT === "1" || process.env.CI === "1";
 const ADMIN_SECRET =
-  process.env.LITECLAW_SMOKE_ADMIN_SECRET ??
-  process.env.LITECLAW_TOOL_ADMIN_SECRET ??
-  process.env.LITECLAW_EXTENSION_ADMIN_SECRET ??
+  process.env.AUTOPILOT_SMOKE_ADMIN_SECRET ??
+  process.env.AUTOPILOT_TOOL_ADMIN_SECRET ??
+  process.env.AUTOPILOT_EXTENSION_ADMIN_SECRET ??
   "";
 const EXTENSION_ALLOWLIST =
-  process.env.LITECLAW_SMOKE_EXTENSION_ALLOWLIST ??
-  process.env.LITECLAW_EXTENSION_ALLOWLIST ??
+  process.env.AUTOPILOT_SMOKE_EXTENSION_ALLOWLIST ??
+  process.env.AUTOPILOT_EXTENSION_ALLOWLIST ??
   "";
 const EXPECT_EXECUTOR =
-  process.env.LITECLAW_SMOKE_EXECUTOR_KIND ??
-  process.env.LITECLAW_EXECUTOR_KIND ??
+  process.env.AUTOPILOT_SMOKE_EXECUTOR_KIND ??
+  process.env.AUTOPILOT_EXECUTOR_KIND ??
   "workers";
 const REQUIRE_SKY =
-  process.env.LITECLAW_SMOKE_REQUIRE_SKY !== "0" &&
-  process.env.LITECLAW_SMOKE_REQUIRE_SKY !== "false";
+  process.env.AUTOPILOT_SMOKE_REQUIRE_SKY !== "0" &&
+  process.env.AUTOPILOT_SMOKE_REQUIRE_SKY !== "false";
 
 const MESSAGE_TYPES = {
   chatRequest: "cf_agent_use_chat_request",
@@ -57,11 +57,11 @@ type ExportSummary = {
 };
 
 const log = (message: string) => {
-  console.log(`[liteclaw-smoke] ${message}`);
+  console.log(`[autopilot-smoke] ${message}`);
 };
 
 const warn = (message: string) => {
-  console.warn(`[liteclaw-smoke] ${message}`);
+  console.warn(`[autopilot-smoke] ${message}`);
 };
 
 const assert: (condition: unknown, message: string) => asserts condition = (
@@ -246,7 +246,7 @@ const validateExport = async (): Promise<ExportSummary> => {
     const entry = JSON.parse(line) as Record<string, unknown>;
     const type = entry.type;
 
-    if (type === "liteclaw.export") {
+    if (type === "autopilot.export") {
       headerCount += 1;
       assert(entry.thread_id === THREAD_ID, "Export header thread_id mismatch.");
       continue;
@@ -337,7 +337,7 @@ const getToolPolicy = async () => {
   const url = `${BASE_URL}/agents/chat/${THREAD_ID}/tool-policy`;
   const { response, json, text } = await fetchJson(url, {
     headers: {
-      "x-liteclaw-admin-secret": ADMIN_SECRET
+      "x-autopilot-admin-secret": ADMIN_SECRET
     }
   });
   assert(response.ok, `Tool policy GET failed: ${response.status} ${text}`);
@@ -349,7 +349,7 @@ const setToolPolicy = async (policy: string) => {
   const { response, json, text } = await fetchJson(url, {
     method: "POST",
     headers: {
-      "x-liteclaw-admin-secret": ADMIN_SECRET
+      "x-autopilot-admin-secret": ADMIN_SECRET
     },
     body: JSON.stringify({ policy })
   });
@@ -407,13 +407,13 @@ const run = async () => {
     const policyUrl = `${BASE_URL}/agents/chat/${THREAD_ID}/extensions`;
 
     const catalog = await fetchJson(catalogUrl, {
-      headers: { "x-liteclaw-admin-secret": ADMIN_SECRET }
+      headers: { "x-autopilot-admin-secret": ADMIN_SECRET }
     });
     assert(catalog.response.ok, "extensions/catalog GET failed.");
 
     await fetchJson(catalogUrl, {
       method: "POST",
-      headers: { "x-liteclaw-admin-secret": ADMIN_SECRET },
+      headers: { "x-autopilot-admin-secret": ADMIN_SECRET },
       body: JSON.stringify({
         extensions: [
           {
@@ -432,7 +432,7 @@ const run = async () => {
     if (EXTENSION_ALLOWLIST && !EXTENSION_ALLOWLIST.includes("*")) {
       const bad = await fetchJson(policyUrl, {
         method: "POST",
-        headers: { "x-liteclaw-admin-secret": ADMIN_SECRET },
+        headers: { "x-autopilot-admin-secret": ADMIN_SECRET },
         body: JSON.stringify({ enabled: ["not.allowed@0.1.0"] })
       });
       assert(
@@ -444,7 +444,7 @@ const run = async () => {
     if (EXTENSION_ALLOWLIST) {
       const good = await fetchJson(policyUrl, {
         method: "POST",
-        headers: { "x-liteclaw-admin-secret": ADMIN_SECRET },
+        headers: { "x-autopilot-admin-secret": ADMIN_SECRET },
         body: JSON.stringify({ enabled: ["sky.echo@0.1.0"] })
       });
       assert(good.response.ok, "Failed to enable sky.echo extension.");
@@ -498,6 +498,6 @@ const run = async () => {
 };
 
 run().catch((error) => {
-  console.error("[liteclaw-smoke] Failed:", error);
+  console.error("[autopilot-smoke] Failed:", error);
   process.exit(1);
 });

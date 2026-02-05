@@ -19,7 +19,7 @@ export interface WorkersService {
   >;
 }
 
-export class WorkersTag extends Context.Tag("liteclaw/WorkersService")<
+export class WorkersTag extends Context.Tag("autopilot/WorkersService")<
   WorkersTag,
   WorkersService
 >() {}

@@ -90,7 +90,7 @@ const ThreadWelcome: FC = () => {
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in font-semibold text-2xl duration-200">
-            Welcome to LiteClaw
+            Welcome to Autopilot
           </h1>
           <p className="mt-1 aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in text-muted-foreground text-xl delay-75 duration-200">
             Your persistent personal agent, always on.
@@ -115,7 +115,7 @@ const SUGGESTIONS = [
   },
   {
     title: "Plan my week",
-    label: "LiteClaw as planner",
+    label: "Autopilot as planner",
     prompt: "Help me plan my week with clear priorities and time blocks.",
   },
   {

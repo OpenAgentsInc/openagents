@@ -53,8 +53,8 @@ function buildBreadcrumbSegments(
 
   if (parts.length === 0) return segments;
 
-  if (parts[0] === 'hatchery') {
-    segments.push({ label: 'Hatchery', href: '/hatchery' });
+  if (parts[0] === 'autopilot') {
+    segments.push({ label: 'Autopilot', href: '/autopilot' });
     return segments;
   }
 

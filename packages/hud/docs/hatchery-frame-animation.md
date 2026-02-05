@@ -1,8 +1,8 @@
-Hatchery frame animation notes
+Autopilot frame animation notes
 
 Context
-- Goal: Arwes-style Nefrex frame assembly animation on the hatchery page.
-- Stack: Fully inlined hatchery components (no `@arwes/*` imports).
+- Goal: Arwes-style Nefrex frame assembly animation on the autopilot page.
+- Stack: Fully inlined autopilot page components (no `@arwes/*` imports).
 
 Key implementation details
 - The Nefrex frame is rendered with a custom SVG path generator in `AssemblingFrame`.
@@ -11,7 +11,7 @@ Key implementation details
 - Activation is gated until the frame SVG has rendered its elements.
   The `AssemblingFrame` component waits for `[data-frame]` and `[data-name=line]`
   to exist before calling `onReady()`.
-- The hatchery page drives the frame animation with a simple `active` boolean,
+- The autopilot page drives the frame animation with a simple `active` boolean,
   passed into `AssemblingFrame`.
 
 Background fade behavior
@@ -23,7 +23,7 @@ Background fade behavior
   with its own delay relative to the line draw.
 
 Files touched
-- `apps/web/src/components/hatchery/LiteClawHatchery.tsx`
+- `apps/web/src/components/hatchery/AutopilotPage.tsx`
   - `frameVisible` toggle and delayed activation
 - `apps/web/src/components/hatchery/AssemblingFrame.tsx`
   - custom SVG frame rendering

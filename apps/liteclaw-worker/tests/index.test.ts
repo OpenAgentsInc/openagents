@@ -22,7 +22,7 @@ declare module "cloudflare:test" {
   interface ProvidedEnv extends Env {}
 }
 
-describe("LiteClaw worker", () => {
+describe("Autopilot worker", () => {
   it("responds with Not found", async () => {
     const request = new Request("http://example.com");
     const ctx = createExecutionContext();
