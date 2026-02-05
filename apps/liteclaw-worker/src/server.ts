@@ -3729,11 +3729,9 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
     const timeoutId = timeoutController
       ? setTimeout(() => timeoutController.abort(), timeoutMs)
       : null;
-    const requestSignal =
-      request.signal && request.signal.aborted ? undefined : request.signal;
     const signal =
       timeoutController && action === "callback"
-        ? combineAbortSignals(timeoutController.signal, requestSignal)
+        ? timeoutController.signal
         : undefined;
 
     const opencodeUrl = new URL(request.url);
