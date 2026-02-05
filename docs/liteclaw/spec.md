@@ -546,6 +546,7 @@ Determinism rules:
 Machine-readable errors:
 - Programmatic endpoints should return JSON errors with `code` + `message`.
 - Include `run_id` and `thread_id` on run-scoped errors.
+- Admin endpoints should accept `x-liteclaw-admin-secret` using `LITECLAW_TOOL_ADMIN_SECRET` (or `LITECLAW_EXTENSION_ADMIN_SECRET` fallback).
 
 CI gating:
 - `npm run test` (apps/liteclaw-worker) on every worker change.
@@ -718,6 +719,7 @@ Production smoke (minimum):
 - 2026-02-05: Synced extension catalog admin updates into KV/R2 when configured, reran LiteClaw worker tests, and deployed liteclaw worker (version `10ea4afb-c422-4b94-822e-a0ee7fcf5529`).
 - 2026-02-05: Added programmatic testing + agent automation requirements section (smoke scripts, stable endpoints, contract checks).
 - 2026-02-05: Added tool-policy admin endpoint + JSON error responses for programmatic endpoints, implemented `apps/liteclaw-worker/scripts/liteclaw-smoke.ts` smoke harness (`npm run smoke`), updated env vars, and reran LiteClaw worker tests.
+- 2026-02-05: Added JSON error handling for `/get-messages` + `/export` and hardened export message parsing for programmatic clients, then reran LiteClaw worker tests.
 
 ---
 
