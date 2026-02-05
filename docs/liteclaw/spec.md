@@ -41,19 +41,19 @@ If these aren’t green, nothing else ships.
 
 ---
 
-## The Golden Path (the only path)
+## The Golden Path (happy path)
 
 1. User opens `/hatchery`
 2. If gated → join waitlist
-3. If approved → click **Spawn your LiteClaw**
+3. If approved → click **Spawn a LiteClaw**
 4. Spawn redirects user to `/chat/{id}`
 5. In `/chat/{id}`, the existing chat UI streams responses from the LiteClaw agent
-6. User refreshes → conversation and memory persist
-7. User returns tomorrow → same LiteClaw, same context
+6. User refreshes → conversation and memory persist (per LiteClaw)
+7. User returns tomorrow → open a LiteClaw from Hatchery and keep going
 
 That’s it.
 
-No branching paths. No modes. No configuration.
+No modes. No configuration. Multiple LiteClaws are just independent threads.
 
 ---
 
@@ -62,10 +62,10 @@ No branching paths. No modes. No configuration.
 ### 1. Hatchery (LiteClaw Spawn)
 
 * Basic “what is LiteClaw?” copy
-* Status: `not spawned | spawning | ready | error`
-* Primary CTA: **Spawn your LiteClaw**
-* If already spawned: **Go to chat** (links to `/chat/{id}`)
-* Secondary action: “Reset LiteClaw memory” (clear DO state)
+* Status: `spawning | ready | error` (plus a count of existing LiteClaws)
+* List of existing LiteClaws (each links to `/chat/{id}`)
+* Primary CTA: **Spawn a LiteClaw** (creates a new one)
+* (Optional) “Reset LiteClaw memory” is currently disabled until memory semantics are clearer
 
 ### 2. Chat (Existing UI)
 
@@ -85,13 +85,13 @@ No dashboards. Keep the existing **left sidebar**. The right/community sidebar i
 
 ## What LiteClaw *Is*
 
-* A **single Cloudflare Agent instance per user**
-* Backed by a **Durable Object**
+* One **Cloudflare Agent instance per LiteClaw** (each backed by its own Durable Object)
+* Users can spawn multiple LiteClaws (separate transcripts + memory)
 * Powered by the **Cloudflare Agents SDK**
 * Stateful across requests
 * Stateless when idle (hibernates automatically)
 
-LiteClaw is **one agent**, not a fleet.
+Each LiteClaw is **one agent**, not a fleet.
 
 ---
 
@@ -110,7 +110,6 @@ Explicitly out of scope for Early Access:
 * Community / Moltbook
 * Billing, credits, payments
 * Marketplace or plugins
-* Multi-instance per user
 
 If it’s not required to chat + remember, it doesn’t exist.
 
@@ -130,7 +129,7 @@ If it’s not required to chat + remember, it doesn’t exist.
   * Owns the agent websocket endpoints (Agents SDK / PartySocket)
   * Owns chat streaming + persistence (via Durable Object SQLite)
 * **Durable Object (LiteClaw agent)**
-  * One DO per user (EA: exactly one chat id per user)
+  * One DO per LiteClaw thread id (one chat id per LiteClaw)
   * DO id is derived from the chat id we redirect to: `/chat/{id}`
   * Owns:
     * conversation history (canonical)
@@ -211,7 +210,7 @@ Architecture elegance, extensibility, and parity **do not count** as success cri
 
 If we don’t explicitly choose these, the “simple” plan will still stall.
 
-* **Identity (LiteClaw id):** on first Spawn, create or reuse exactly one Convex thread for the user (kind: `liteclaw`); the Convex `threadId` becomes the LiteClaw id and is the `{id}` in `/chat/{id}`.
+* **Identity (LiteClaw id):** each Spawn creates a new Convex thread for the user (kind: `liteclaw`); the Convex `threadId` becomes the LiteClaw id and is the `{id}` in `/chat/{id}`.
 * **DO key:** the LiteClaw agent DO uses the same id/room name as the chat id (e.g. `chat:{threadId}`), so `/chat/{id}` deterministically maps to one DO instance.
 * **Concurrency:** one in-flight message per LiteClaw id; sending a new message while streaming cancels the previous stream.
 * **Routes (minimum):**
@@ -219,7 +218,7 @@ If we don’t explicitly choose these, the “simple” plan will still stall.
   * `GET /chat/{id}` (UI: existing Thread)
   * `WS /agents/chat/{id}` (LiteClaw agent websocket; chat requests + streaming)
   * `GET /agents/chat/{id}/get-messages` (rehydrate transcript; AIChatAgent built-in)
-  * Reset is a websocket command (`CF_AGENT_CHAT_CLEAR`), surfaced as a UI button.
+  * Reset is a websocket command (`CF_AGENT_CHAT_CLEAR`), but the Hatchery reset button is currently disabled.
 * **Approval mechanism:** keep it dumb—either a server-side allowlist (env var) or a tiny admin endpoint protected by a single secret header.
 * **DO state shape (versioned):**
   * `schema_version`
@@ -337,21 +336,19 @@ This is the “keep it dirt simple” plan: take the proven Agents SDK + AIChatA
 - It should reuse the existing gating primitives:
   - `apps/web/convex/access.ts` (`api.access.getStatus`)
   - `apps/web/convex/waitlist.ts` (`api.waitlist.joinWaitlist`)
-- Clicking **Spawn your LiteClaw** should:
-  - create or reuse exactly one Convex thread for this user (kind: `liteclaw`)
-  - return that `threadId`
+- Clicking **Spawn a LiteClaw** should:
+  - create a new Convex thread for this user (kind: `liteclaw`)
   - navigate to `/chat/{threadId}`
-- EA constraint: do not expose multiple chats. `/assistant` and “New chat” should funnel into the single LiteClaw thread.
-  - `apps/web/src/routes/_app/assistant.tsx` (stop redirecting to `/chat/new`)
-  - `apps/web/src/routes/_app/chat.$chatId.tsx` (don’t create arbitrary new threads for EA)
-  - `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (hide/remove “New chat” button)
+- Hatchery should list all existing `kind: 'liteclaw'` threads and let the user open any of them.
+- `/chat/new` should create a new LiteClaw thread and redirect to `/chat/{id}`.
+- `/assistant` may redirect to the most-recent LiteClaw thread (creating one if missing).
 
 Recommended Convex shape (minimal):
 
 - We already have the basics:
   - `apps/web/convex/schema.ts` includes thread `kind: 'liteclaw'`
   - `apps/web/convex/threads.ts` includes `getLiteclawThread` + `create({ kind: 'liteclaw' })`
-- Optional (nice-to-have): add `getOrCreateLiteclawThread` mutation to avoid races and keep Hatchery logic dumb.
+- `apps/web/convex/threads.ts` also includes `getOrCreateLiteclawThread` for “open most recent or create if missing” flows (e.g. `/assistant`).
 
 ### Chat (existing `/chat/{id}` UI)
 
@@ -409,17 +406,16 @@ Web (UI):
 
 - Modify: `apps/web/src/routes/_app/hatchery.tsx` (render LiteClaw spawn UI)
 - Optional: rename `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx` → `apps/web/src/components/hatchery/LiteClawHatchery.tsx`
-- Modify: `apps/web/src/routes/_app/chat.$chatId.tsx` (EA: remove “new chat” creation; always funnel to LiteClaw thread)
-- Modify: `apps/web/src/routes/_app/assistant.tsx` (redirect to LiteClaw thread, not `/chat/new`)
-- Modify: `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (hide “New chat” button for EA)
+- Modify: `apps/web/src/routes/_app/chat.$chatId.tsx` (support `/chat/new` spawning a new LiteClaw; allow navigating to any LiteClaw thread id)
+- Modify: `apps/web/src/routes/_app/assistant.tsx` (redirect to most-recent LiteClaw; create one if missing)
+- Optional: `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (keep “New chat” hidden; spawn happens in Hatchery)
 - Modify: `apps/web/src/components/assistant-ui/thread.tsx` (LiteClaw welcome copy)
 - Modify: `apps/web/src/components/assistant-ui/openagents-chat-runtime.tsx` (use `useAgent` + `useAgentChat`)
 
 Web (Convex metadata):
 
 - Already: `apps/web/convex/schema.ts` (thread kind union includes `liteclaw`)
-- Already: `apps/web/convex/threads.ts` (`getLiteclawThread`, `create`)
-- Optional: add `apps/web/convex/liteclaw.ts` (`getOrCreateLiteclawThread`)
+- Already: `apps/web/convex/threads.ts` (`list`, `create`, `getLiteclawThread`, `getOrCreateLiteclawThread`)
 
 LiteClaw worker (Agents SDK runtime):
 
@@ -438,19 +434,19 @@ This is the “what do we delete/disable” list (useful because LiteClaw starts
 
 ### Include (EA)
 
-- One DO per user, one rolling conversation, one memory summary
+- One DO per LiteClaw thread id (multiple LiteClaws per user)
 - Streaming responses with a 10s “first bytes” guarantee (fallback to non-streamed)
-- Reset button (clears memory/history)
 - Waitlist gating (simple allowlist or “approved users” table; no billing)
 - Metrics logging: `ttft_ms`, `duration_ms`, `ok/error`, message counts
+- (Optional) Reset action is available as `CF_AGENT_CHAT_CLEAR`, but the Hatchery reset button is disabled for now.
 
 ### Exclude (EA)
 
 - Tool calling (no tools registry, no confirmations, no executions map)
 - Scheduling/cron tasks
-- Multiple chats/threads per user
 - Multi-agent/fleet features
 - Any “community” surfaces in the golden path
+- Cross-LiteClaw shared memory (each LiteClaw is isolated)
 
 ---
 
@@ -627,7 +623,7 @@ Acceptance checks:
 
 ### 3) Web: Make `/hatchery` The LiteClaw Spawn UI (Left Sidebar Only)
 
-Goal: `/hatchery` is a simple page that funnels into one DO-backed chat.
+Goal: `/hatchery` is a simple page that lists your LiteClaws and lets you spawn more (each maps to one DO-backed chat).
 
 - Confirm `/hatchery` is under the `_app` layout:
   - Route: `apps/web/src/routes/_app/hatchery.tsx`
@@ -638,13 +634,14 @@ Goal: `/hatchery` is a simple page that funnels into one DO-backed chat.
   - Current implementation lives in `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`
   - Optional cleanup: rename to `LiteClawHatchery.tsx`
 - Spawn behavior:
-  - Use `api.threads.getLiteclawThread` + `api.threads.create({ kind: 'liteclaw' })`
+  - Use `api.threads.list` to list existing `kind: 'liteclaw'` threads
+  - Use `api.threads.create({ kind: 'liteclaw' })` to create a new LiteClaw thread
   - Redirect to `/chat/{threadId}`
 
 Acceptance checks:
 
 - `/hatchery` shows left sidebar and no right sidebar
-- Clicking “Spawn your LiteClaw” takes you to `/chat/{id}`
+- Clicking “Spawn a LiteClaw” takes you to `/chat/{id}`
 
 ### 4) Web: Switch `/chat/{id}` Transport To Agents SDK (Keep The UI)
 
@@ -666,18 +663,20 @@ Acceptance checks:
 - In production, POSTing a message from `/chat/{id}` results in streamed tokens via the websocket
 - Refreshing `/chat/{id}` restores the transcript (DO-backed)
 
-### 5) Enforce EA Constraint: One LiteClaw Thread Per User
+### 5) Support Multiple LiteClaws Per User
 
-Goal: remove all “new chat” affordances for Early Access.
+Goal: let users spawn multiple independent LiteClaws and navigate between them.
 
-- `apps/web/src/routes/_app/assistant.tsx` should always redirect to the LiteClaw thread (create if missing)
-- `apps/web/src/routes/_app/chat.$chatId.tsx` should reject `chatId === 'new'` for EA
-- `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` should hide/remove “New chat”
+- Hatchery should list all LiteClaws and provide “Spawn another LiteClaw”.
+- `apps/web/src/routes/_app/chat.$chatId.tsx` should allow navigating to any existing LiteClaw thread id.
+- Navigating to `/chat/new` should create a new LiteClaw thread and redirect to `/chat/{id}`.
+- `/assistant` may redirect to the most-recent LiteClaw thread (creating one if missing).
 
 Acceptance checks:
 
-- There is exactly one `kind: 'liteclaw'` thread per user
-- Navigating to `/chat/new` doesn’t create extra threads
+- You can create multiple `kind: 'liteclaw'` threads for a single user
+- Navigating to `/chat/{id}` opens that specific LiteClaw
+- Navigating to `/chat/new` creates a new LiteClaw thread
 
 ### 6) Verification + Deploy
 
@@ -707,9 +706,9 @@ Production smoke (minimum):
 - 2026-02-05: Added `LITECLAW_TOOL_CHOICE` env for forcing tool usage, updated nydus cloud demo with fallback tool parsing/execution, reran LiteClaw worker tests, and redeployed liteclaw worker.
 - 2026-02-05: Extended `apps/nydus` to include a cloud-driven demo (LiteClaw agent message triggers local workspace tools via tunnel), documented new modes and export receipt checks.
 - 2026-02-05: Added Bun-based tunnel handshake script (`apps/nydus`) and expanded tunnel docs with Access service token header guidance and Bun handshake usage.
-- 2026-02-05: Implemented LiteClaw web wiring (Hatchery spawn now uses get-or-create, /assistant and /chat/new funnel to the single LiteClaw thread, chat transport switched to Agents SDK), updated welcome copy, and hid new-chat affordances.
+- 2026-02-05: Implemented LiteClaw web wiring (Hatchery lists LiteClaws and can spawn multiple; `/assistant` opens most recent; `/chat/new` spawns new; chat transport switched to Agents SDK), updated welcome copy.
 - 2026-02-05: Ran LiteClaw worker + web tests, deployed liteclaw worker and openagents-web-app, and pushed Convex functions for the LiteClaw web flow.
-- 2026-02-05: Added Hatchery "Reset LiteClaw memory" action that sends CF_AGENT_CHAT_CLEAR via Agents SDK and reran web tests.
+- 2026-02-05: Added Hatchery "Reset LiteClaw memory" action (CF_AGENT_CHAT_CLEAR) and later disabled it in the UI pending clearer memory semantics; reran web tests.
 - 2026-02-05: Added LiteClaw worker metrics logging (ttft_ms, duration_ms, ok/error, message_count) and reran worker tests.
 - 2026-02-05: Added LiteClaw worker guardrails (per-user rate limit, rolling summary + trimming, cancel in-flight streams, fallback to non-streamed response on stream failure), reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Implemented Sky-mode scaffolding in the LiteClaw worker (sky tables + memory storage, run/event/receipt logging behind `LITECLAW_SKY_MODE`, `/agents/chat/{id}/export` JSONL output), reran worker tests, and deployed liteclaw worker.

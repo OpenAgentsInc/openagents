@@ -1,7 +1,22 @@
 import { Suspense } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Outlet, useRouterState } from '@tanstack/react-router';
 import { AppLayout } from '@/components/assistant-ui/AppLayout';
 import { ChatSourceProvider } from '@/components/assistant-ui/chat-source-context';
+
+function AppRoute() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isHatchery = pathname === '/hatchery';
+
+  if (isHatchery) {
+    return (
+      <div className="flex h-dvh min-h-0 w-full flex-col">
+        <Outlet />
+      </div>
+    );
+  }
+
+  return <AppLayout />;
+}
 
 export const Route = createFileRoute('/_app')({
   component: () => (
@@ -13,7 +28,7 @@ export const Route = createFileRoute('/_app')({
           </div>
         }
       >
-        <AppLayout />
+        <AppRoute />
       </Suspense>
     </ChatSourceProvider>
   ),
