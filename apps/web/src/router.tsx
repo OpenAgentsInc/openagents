@@ -4,14 +4,14 @@ import { QueryClient } from '@tanstack/react-query';
 import { setupRouterSsrQueryIntegration } from '@tanstack/react-router-ssr-query';
 import { ConvexReactClient } from 'convex/react';
 import { routeTree } from './routeTree.gen';
+import { getAppConfig } from './effect/config';
+import { makeAppRuntime } from './effect/runtime';
 
 export function getRouter() {
-  const CONVEX_URL = (import.meta as any).env.VITE_CONVEX_URL!;
-  if (!CONVEX_URL) {
-    throw new Error('missing VITE_CONVEX_URL env var');
-  }
-  const convex = new ConvexReactClient(CONVEX_URL);
+  const appConfig = getAppConfig();
+  const convex = new ConvexReactClient(appConfig.convexUrl);
   const convexQueryClient = new ConvexQueryClient(convex);
+  const effectRuntime = makeAppRuntime(appConfig);
 
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -31,7 +31,7 @@ export function getRouter() {
     defaultPreloadStaleTime: 0, // Let React Query handle all caching
     defaultErrorComponent: (err) => <p>{err.error.stack}</p>,
     defaultNotFoundComponent: () => <p>not found</p>,
-    context: { queryClient, convexClient: convex, convexQueryClient },
+    context: { queryClient, convexClient: convex, convexQueryClient, effectRuntime },
   });
   setupRouterSsrQueryIntegration({ router, queryClient });
 
