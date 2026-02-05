@@ -47,6 +47,16 @@ Goal: run agent workloads (and eventually OpenCode/Codex) inside Cloudflare Sand
 - Today LiteClaw uses **tools** (e.g. `workspace.read`/`write`/`edit`, `http.fetch`). To add sandbox:
   - **Path 1:** Implement tools that the agent can call; the worker receives the tool call, runs the operation via Sandbox SDK (e.g. `sandbox.exec`, file APIs, or `createOpencodeServer`), and returns the result. No change to webapp other than new tool behaviors.
   - **Path 2:** Run OpenCode inside the sandbox and proxy the **OpenCode UI** to the user (like [Sandbox OpenCode example](https://developers.cloudflare.com/sandbox/tutorials/claude-code/)). That gives a full IDE-like experience; the webapp would open it in an iframe or new window (see Part B for auth).
+- **Decision (for now):** Use **OpenCode** inside the sandbox for code execution and agent tool runs. Sky tools are deferred until after OpenCode is working end-to-end.
+- **OpenCode-first path (SDK):**
+  - Use `@cloudflare/sandbox/opencode` and `opencode-ai/sdk` to drive a session inside the container.
+  - Typical flow inside the worker:
+    - `const sandbox = getSandbox(env.Sandbox, "opencode");`
+    - `await sandbox.gitCheckout("https://github.com/cloudflare/agents.git", { targetDir: "/home/user/project" });`
+    - `const { client } = await createOpencode<OpencodeClient>(sandbox, { directory: "/home/user/project", config: { provider: { anthropic: { options: { apiKey: env.ANTHROPIC_API_KEY } } } } });`
+    - `const session = await client.session.create({ body: { title: "My Session" }, query: { directory: "/home/user/project" } });`
+    - `const result = await client.session.prompt({ path: { id: session.data!.id }, query: { directory: "/home/user/project" }, body: { model: { providerID: "anthropic", modelID: "claude-haiku-4-5" }, parts: [{ type: "text", text: "Summarize README.md in 2-3 sentences." }] } });`
+  - Map this into LiteClaw tool calls so the agent can request OpenCode actions and receive structured results.
 - **Webapp changes for Part A (minimal):**
   - No change to `useAgent` / `useAgentChat` if the worker URL and route stay the same.
   - Optional: feature flag or “sandbox tools” toggle so only certain threads/users get sandbox-backed tools until stable.
@@ -104,11 +114,11 @@ Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how Open
 - Add HTTP routes on the worker that the webapp can call, for example:
   - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize`  
     Body: `{ method: number }`. Worker: get sandbox for `threadId`, ensure OpenCode is running (e.g. `createOpencodeServer`), then `fetch` to `http://container:4096/provider/openai/oauth/authorize` (via `sandbox.containerFetch`). Return JSON.
- - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/callback`  
+  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/callback`  
     Body: `{ method, code? }`. Same: resolve sandbox, proxy to container `.../oauth/callback`. This request will block until the plugin’s callback resolves (device flow polls until user completes).
- - Scope id is always `thread_id` so the same OpenCode process (and its `auth.json`) is used for chat and Codex.
- - **Effect:** implement these routes using Effect handlers and `effect/Schema` for request/response validation. Convert sandbox/OpenCode failures into tagged errors and map them to consistent HTTP responses.
- - **Timeouts:** enforce an upper bound for the blocking callback and abort the container fetch if the client disconnects, to avoid leaking long-poll requests.
+  - Scope id is always `thread_id` so the same OpenCode process (and its `auth.json`) is used for chat and Codex.
+  - **Effect:** implement these routes using Effect handlers and `effect/Schema` for request/response validation. Convert sandbox/OpenCode failures into tagged errors and map them to consistent HTTP responses.
+  - **Timeouts:** enforce an upper bound for the blocking callback and abort the container fetch if the client disconnects, to avoid leaking long-poll requests.
 
 ### B.4 Webapp → backend
 
