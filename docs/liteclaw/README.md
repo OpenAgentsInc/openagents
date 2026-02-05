@@ -114,6 +114,8 @@ These env vars are used by the LiteClaw worker. Defaults are the current runtime
 | `LITECLAW_TUNNEL_URL` | Tunnel base URL for local tools. | none |
 | `LITECLAW_TUNNEL_TOKEN` | Token used for tunnel auth and receipts. | none |
 | `LITECLAW_TUNNEL_TIMEOUT_MS` | Tunnel request timeout. | `8000` |
+| `LITECLAW_TUNNEL_ACCESS_CLIENT_ID` | Optional Cloudflare Access client id. | none |
+| `LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET` | Optional Cloudflare Access client secret. | none |
 | `LITECLAW_HTTP_ALLOWLIST` | Comma-separated host allowlist for `http.fetch`. | none |
 | `LITECLAW_HTTP_MAX_BYTES` | Max bytes returned by `http.fetch`. | `50000` |
 | `LITECLAW_HTTP_TIMEOUT_MS` | HTTP timeout for `http.fetch`. | `8000` |

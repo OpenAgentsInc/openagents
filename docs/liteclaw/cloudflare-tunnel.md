@@ -62,6 +62,11 @@ If Access is enabled, also include:
 - `CF-Access-Client-Id: <service-token-id>`
 - `CF-Access-Client-Secret: <service-token-secret>`
 
+The LiteClaw worker can forward these via env vars:
+
+- `LITECLAW_TUNNEL_ACCESS_CLIENT_ID`
+- `LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET`
+
 ## Tunnel Executor Contract
 
 The worker sends requests to `POST /tools/invoke` with payload:
