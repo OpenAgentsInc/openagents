@@ -1,0 +1,213 @@
+# LiteClaw Early Access — One-Pager MVP Spec
+
+**Product name:** LiteClaw
+**Platform:** Cloudflare Workers + Durable Objects + Cloudflare Agents SDK
+**Explicit constraint:** No containers, no per-user infra billing, no multi-runtime orchestration.
+
+---
+
+## Objective
+
+Prove that users want a **persistent, personal AI agent** that:
+
+* remembers context,
+* responds reliably,
+* and feels “always there” without setup friction.
+
+This is **not** an autonomy platform, not a marketplace, not a tooling hub.
+
+It is a **persistent chat agent that works every time**.
+
+---
+
+## North Star
+
+> A user can go from invite → chatting with their LiteClaw in under **3 minutes**, refresh the page, and keep going.
+
+---
+
+## Success Metrics (instrument from day one)
+
+* **TTFT (time to first token):**
+
+  * p50 < 5s
+  * p95 < 10s
+* **Activation:** ≥80% of approved users send ≥5 messages
+* **Retention:** ≥30% return next day
+* **Reliability:** ≥99.5% of messages return a response
+* **Zero infra cost per user** (Durable Objects only)
+
+If these aren’t green, nothing else ships.
+
+---
+
+## The Golden Path (the only path)
+
+1. User opens `/liteclaw`
+2. If gated → join waitlist
+3. If approved → LiteClaw agent is created automatically
+4. User types a message
+5. Response streams immediately
+6. User refreshes → conversation and memory persist
+7. User returns tomorrow → same LiteClaw, same context
+
+That’s it.
+
+No branching paths. No modes. No configuration.
+
+---
+
+## Screens (max 2)
+
+### 1. LiteClaw Chat
+
+* Single chat interface
+* Streaming responses
+* Minimal agent status indicator: `ready | thinking | error`
+* Clear reset button (“Reset LiteClaw memory”)
+
+### 2. Waitlist / Access Gate
+
+* Email or identity capture
+* Simple “You’re in / You’re waiting” state
+
+No dashboards. No sidebars. No community feed.
+
+---
+
+## What LiteClaw *Is*
+
+* A **single Cloudflare Agent instance per user**
+* Backed by a **Durable Object**
+* Powered by the **Cloudflare Agents SDK**
+* Stateful across requests
+* Stateless when idle (hibernates automatically)
+
+LiteClaw is **one agent**, not a fleet.
+
+---
+
+## What LiteClaw Is *Not* (Hard Cuts)
+
+Explicitly out of scope for Early Access:
+
+* “OpenClaw” branding or concepts
+* Containers / Sandboxes
+* Multi-agent orchestration
+* Tool calling frameworks
+* Approval UX
+* Sessions UI
+* Device or DM pairing
+* Agent parity (API keys, non-human login)
+* Community / Moltbook
+* Billing, credits, payments
+* Marketplace or plugins
+* Multi-instance per user
+
+If it’s not required to chat + remember, it doesn’t exist.
+
+---
+
+## Architecture (minimum viable)
+
+### Core components
+
+* **Cloudflare Worker**
+
+  * Routes `/liteclaw`
+  * Auth / waitlist gating
+* **Durable Object**
+
+  * One DO per user (`liteclaw:<userId>`)
+  * Owns:
+
+    * conversation history
+    * lightweight memory
+    * agent state
+* **Cloudflare Agents SDK**
+
+  * Agent lifecycle
+  * Streaming responses
+  * Model invocation
+  * Memory primitives (basic)
+
+No Convex. No external orchestrator. No runtime indirection.
+
+---
+
+## Agent Behavior (EA-level)
+
+* Single rolling conversation
+* Memory = summarized context + recent messages
+* No autonomous background tasks
+* No external side effects
+* No tool execution beyond text generation
+
+Think “ChatGPT with persistence,” not “autonomous worker.”
+
+---
+
+## Reliability Requirements (non-negotiable)
+
+* Agent must:
+
+  * respond to every message or return a clear error
+  * never silently fail
+* Durable Object must:
+
+  * initialize deterministically
+  * recover cleanly after eviction
+* Streaming must:
+
+  * always emit *something* within 10s
+
+If streaming fails, fallback to non-streamed response.
+
+---
+
+## Safety & Cost Guardrails
+
+* Per-user message rate limit
+* Max context window enforced server-side
+* Automatic summarization to cap memory size
+* No user-supplied API keys
+* No long-running execution
+
+The goal is **predictable cost = $0 marginal infra**.
+
+---
+
+## Explicit Non-Goals (EA)
+
+* No promises of “autonomy”
+* No claims of “agents that act”
+* No enterprise positioning
+* No platform abstractions
+
+LiteClaw is intentionally humble.
+
+---
+
+## What “Done” Means
+
+Early Access is done when:
+
+* Users intuitively understand what LiteClaw is in <10 seconds
+* Chat works every time
+* Memory persistence feels real
+* Users come back unprompted
+
+Architecture elegance, extensibility, and parity **do not count** as success criteria.
+
+---
+
+## Why This Scope Is Correct
+
+This spec:
+
+* Tests **desire**, not ambition
+* Eliminates infra risk
+* Avoids premature abstraction
+* Lets you observe real usage before naming futures
+
+If users don’t care about a persistent LiteClaw, no amount of agent infrastructure will matter.
