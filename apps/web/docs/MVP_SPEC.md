@@ -253,7 +253,7 @@ DM pairing (channels):
 
 From `zero-to-openclaw-30s.md` gaps list:
 
-- [ ] One-click first-time flow (single CTA: provisions/reuses + sends first message)
+- [x] One-click first-time flow (single CTA: provisions/reuses + sends first message)
 - [ ] Provider keys: runtime has a **server-owned** model key in prod so chat always answers without user config
 - [x] Spawning: provisioning results in a **real** runtime allocation per user (or a safe multi-tenant boundary)
 - [x] Delete tears down (not record-only delete)
@@ -585,3 +585,10 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
   **Deploys:** `apps/openclaw-runtime` (`npm run deploy`, version `fbb6a9f8-07ed-40b7-bb1d-add9f38630c3`, warning about unsupported `network` field).  
   **Production checks:** Not rerun (streaming already confirmed empty after latest deploys).  
   **Known issues / next:** OpenClaw chat still returns zero SSE bytes; need confirmation on provider keys and container outbound access. Next unchecked items remain **1.7 provider keys** and **1.7 one-click first-time flow**.
+
+- **2026-02-05 00:58 UTC (branch: `main`)** – Implemented MVP 1.7 one-click OpenClaw chat CTA on `/openclaw/chat` empty state (single button provisions/reuses + sends intro message).  
+  **Key files:** `apps/web/src/routes/_app/openclaw.chat.tsx`.  
+  **Tests:** `npm run test` ✅; `npm run lint` ❌ (pre-existing repo-wide lint issues); `npm run test:e2e` ✅ (openclaw spec skipped without auth state).  
+  **Deploys:** `apps/web` (`npm run deploy`, version `d75705c6-a65a-49ff-a224-09f778dad0e0`).  
+  **Production checks:** API `POST /api/agent/signup` → `POST /api/openclaw/instance` returned `status: ready`; `POST /api/openclaw/chat` still returns HTTP 200 with zero SSE bytes within 60s (logged in `docs/local/testing/agent-testing-errors.md`); `/api/feed` returned 200; UI GETs `/feed`, `/c`, `/hatchery`, `/openclaw/chat` returned 200.  
+  **Known issues / next:** OpenClaw chat streaming still empty; provider keys + gateway model config still unverified. Next unchecked items remain **1.7 provider keys** (and streaming fix).
