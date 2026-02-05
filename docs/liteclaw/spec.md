@@ -888,6 +888,7 @@ Intent: reuse OpenClaw skills/extensions without changing LiteClaw UX.
 
 - Manifest-driven: name, version, tools, permissions, prompts, UI hints
 - Loaded from R2/KV with pinned versions and an allowlist for EA
+  - Per-thread enable/disable via `/agents/chat/{id}/extensions` (admin secret required)
 
 #### Compatibility
 
