@@ -1995,6 +1995,54 @@ export class Chat extends AIChatAgent<Env> {
         return new Response("Missing enabled array", { status: 400 });
       }
 
+      const allowlist = parseExtensionList(this.env.LITECLAW_EXTENSION_ALLOWLIST);
+      if (!allowlist.length) {
+        return new Response("Extension allowlist is empty", { status: 400 });
+      }
+
+      const allowAll = allowlist.includes("*");
+      const catalog = await this.loadExtensionCatalog();
+      const disallowed: string[] = [];
+      const missing: string[] = [];
+
+      for (const entry of enabled) {
+        if (entry === "*") {
+          if (!allowAll) {
+            disallowed.push(entry);
+          }
+          continue;
+        }
+
+        const { id, version } = parseExtensionRef(entry);
+        if (!id) {
+          disallowed.push(entry);
+          continue;
+        }
+        if (!allowAll) {
+          const allowed =
+            allowlist.includes(id) || (version && allowlist.includes(entry));
+          if (!allowed) {
+            disallowed.push(entry);
+            continue;
+          }
+        }
+        if (!catalog.has(id)) {
+          missing.push(entry);
+        }
+      }
+
+      if (disallowed.length || missing.length) {
+        return Response.json(
+          {
+            ok: false,
+            error: "Extensions not allowed or missing",
+            disallowed,
+            missing
+          },
+          { status: 400 }
+        );
+      }
+
       const updated = this.setExtensionPolicy(enabled);
       return Response.json({ ok: true, enabled: updated });
     }
