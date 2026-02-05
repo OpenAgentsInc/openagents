@@ -5,6 +5,7 @@ export {};
 declare global {
   interface Env {
     Chat: DurableObjectNamespace;
+    Sandbox?: DurableObjectNamespace;
     AI: Ai;
     LITECLAW_SKY_MODE?: string;
     LITECLAW_TOOL_POLICY?: string;
@@ -23,6 +24,9 @@ declare global {
     LITECLAW_HTTP_ALLOWLIST?: string;
     LITECLAW_HTTP_MAX_BYTES?: string;
     LITECLAW_HTTP_TIMEOUT_MS?: string;
+    LITECLAW_CODEX_SECRET?: string;
+    LITECLAW_CODEX_CALLBACK_TIMEOUT_MS?: string;
+    LITECLAW_CODEX_CORS_ORIGIN?: string;
     LITECLAW_EXTENSION_ALLOWLIST?: string;
     LITECLAW_EXTENSION_DEFAULTS?: string;
     LITECLAW_EXTENSION_CATALOG_URL?: string;

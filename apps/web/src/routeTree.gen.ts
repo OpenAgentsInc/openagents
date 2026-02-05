@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
+import { Route as CodexTokenRouteImport } from './routes/codex-token'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
@@ -62,6 +63,11 @@ const CallbackRoute = CallbackRouteImport.update({
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CodexTokenRoute = CodexTokenRouteImport.update({
+  id: '/codex-token',
+  path: '/codex-token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -157,6 +163,7 @@ const AppCCommunityRoute = AppCCommunityRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/approvals': typeof ApprovalsRoute
+  '/codex-token': typeof CodexTokenRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
@@ -181,6 +188,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/approvals': typeof ApprovalsRoute
+  '/codex-token': typeof CodexTokenRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
@@ -205,6 +213,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/approvals': typeof ApprovalsRoute
+  '/codex-token': typeof CodexTokenRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
@@ -232,6 +241,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/approvals'
+    | '/codex-token'
     | '/callback'
     | '/chat'
     | '/login'
@@ -256,6 +266,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/approvals'
+    | '/codex-token'
     | '/callback'
     | '/chat'
     | '/login'
@@ -279,6 +290,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_authenticated'
     | '/approvals'
+    | '/codex-token'
     | '/callback'
     | '/chat'
     | '/login'
@@ -306,6 +318,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ApprovalsRoute: typeof ApprovalsRoute
+  CodexTokenRoute: typeof CodexTokenRoute
   CallbackRoute: typeof CallbackRoute
   ChatRoute: typeof ChatRoute
   LoginRoute: typeof LoginRoute
@@ -355,6 +368,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof ApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/codex-token': {
+      id: '/codex-token'
+      path: '/codex-token'
+      fullPath: '/codex-token'
+      preLoaderRoute: typeof CodexTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -556,6 +576,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ApprovalsRoute: ApprovalsRoute,
+  CodexTokenRoute: CodexTokenRoute,
   CallbackRoute: CallbackRoute,
   ChatRoute: ChatRoute,
   LoginRoute: LoginRoute,

@@ -170,16 +170,61 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 
 **Sandbox (Part A)**
 
-- [ ] Worker app (`apps/liteclaw-worker`): add `@cloudflare/sandbox`, wrangler Sandbox class + binding, getSandbox + session id from thread.
-- [ ] Worker: implement tool handlers or OpenCode proxy that use Sandbox SDK (exec, files, or `createOpencodeServer` + `proxyToOpencode`).
+- [x] Worker app (`apps/liteclaw-worker`): add `@cloudflare/sandbox`, wrangler Sandbox class + binding, getSandbox + session id from thread.
+- [x] Worker: implement tool handlers or OpenCode proxy that use Sandbox SDK (exec, files, or `createOpencodeServer` + `proxyToOpencode`).
 - [ ] Optional: `apps/web` – link or route to “OpenCode in sandbox” (e.g. `/sandbox/opencode?thread=...`) if you expose the full UI.
 
 **Codex auth (Part B)**
 
-- [ ] Worker: `POST .../opencode/provider/openai/oauth/authorize` and `.../callback` that proxy to container:4096.
-- [ ] Webapp: “Connect ChatGPT (Codex)” UI (device code: show URL + code, then long-poll callback).
-- [ ] Webapp: pass thread to backend; worker validates and maps to sandbox.
-- [ ] Token persistence implementation and re-inject on sandbox start.
+- [x] Worker: `POST .../opencode/provider/openai/oauth/authorize` and `.../callback` that proxy to container:4096.
+- [x] Webapp: “Connect ChatGPT (Codex)” UI (device code: show URL + code, then long-poll callback).
+- [x] Webapp: pass thread to backend; worker validates and maps to sandbox.
+- [x] Token persistence implementation and re-inject on sandbox start.
+
+---
+
+## Implementation log
+
+### 2026-02-05 (Part A)
+
+- Added Sandbox SDK + OpenCode integration to `apps/liteclaw-worker`:
+  - Exported `Sandbox` DO, added `Sandbox` binding + container config in `apps/liteclaw-worker/wrangler.jsonc`.
+  - Added `apps/liteclaw-worker/Dockerfile` using `cloudflare/sandbox:0.7.0` with OpenCode installed.
+  - Implemented `/sandbox/opencode?thread=...` proxy route that boots OpenCode in the sandbox and proxies the UI via `proxyToOpencode`.
+  - Added container-backed implementations for `workspace.read/write/edit` when `LITECLAW_EXECUTOR_KIND=container`.
+  - Added `@cloudflare/sandbox` + `@opencode-ai/sdk` dependencies and mocked Sandbox imports in worker tests.
+- Not done yet: webapp link/route for OpenCode UI (optional Part A item).
+
+### 2026-02-05 (Part B)
+
+- Added Codex OAuth proxy routes to LiteClaw worker: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/{authorize,callback}` with token validation, CORS handling, schema validation, and callback timeout.
+- Persisted Codex auth payloads in the LiteClaw Chat DO (`sky_codex_auth`), encrypted at rest with AES-GCM (`LITECLAW_CODEX_SECRET`), and hydrated `auth.json` into the sandbox before OpenCode starts.
+- Added webapp support:
+  - `/codex-token` server route to mint short-lived HMAC tokens scoped to `thread_id` + `user_id`.
+  - `CodexConnectDialog` UI (device code flow) and LiteClaw worker URL helper.
+  - Header button wiring in `AppLayout` for `/chat` and `/assistant`.
+- Follow-up fixes after live testing:
+  - Use `getAgentByName` for Codex auth DO access (avoids missing `x-partykit-room` errors).
+  - Avoid `AbortSignal` in `sandbox.containerFetch` (fixes `DataCloneError: AbortSignal serialization is not enabled`).
+  - Callback now proxies and blocks as expected; add manual timeout handling + 504 on timeout.
+- Tests: `npm run test` in `apps/liteclaw-worker` (pass); `npm run test` in `apps/web` (failed: `localStorage.clear is not a function` in relay/query/nostr sync tests).
+- Manual smoke: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize` returns device code; `/callback` blocks until user completes device flow (curl timed out as expected).
+- Deploy attempt: `apps/web` deploy blocked by WorkOS env mismatch (WORKOS_CLIENT_ID / WORKOS_API_KEY).
+
+### Next Steps (Webapp Deploy + Validation)
+
+1. Fix Convex/WorkOS env mismatch on the deploy machine:
+   - Remove the conflicting Convex env values or update them to match the local `.env.production` values used for deploy.
+   - Then re-run `npm run deploy` from `apps/web` (this runs `deploy:convex` + build + wrangler deploy).
+2. Ensure required secrets/envs are present on the deploy machine:
+   - `LITECLAW_CODEX_SECRET` (must match LiteClaw worker).
+   - `WORKOS_*` secrets for the webapp (per `apps/web/wrangler.jsonc` comments).
+   - Optional: `VITE_LITECLAW_WORKER_URL` if the webapp is not served from the same origin as the worker.
+3. Sanity check device code flow end-to-end:
+   - Open the webapp, click “Connect Codex”.
+   - Verify authorize returns a device URL + code and the UI waits on callback.
+   - Complete the device flow in the browser; callback should eventually return success and store `auth.json` (persisted in DO storage).
+   - Re-open “Connect Codex” to confirm no re-auth needed after sandbox restart (auth hydration).
 
 ---
 
