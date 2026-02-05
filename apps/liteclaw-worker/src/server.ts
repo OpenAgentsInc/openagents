@@ -77,6 +77,7 @@ type ChatMetricLog = {
 };
 
 type ToolPolicy = "none" | "read-only" | "read-write";
+type ExecutorKind = "workers" | "container" | "tunnel";
 
 type ToolRunState = {
   calls: number;
@@ -130,6 +131,20 @@ type RateLimitRow = {
   id: string;
   window_start: number;
   count: number;
+};
+
+type WorkspaceRow = {
+  thread_id: string;
+  workspace_id: string;
+  created_at: number;
+  updated_at: number;
+};
+
+type WorkspaceFileRow = {
+  workspace_id: string;
+  path: string;
+  content: string;
+  updated_at: number;
 };
 
 class RateLimitError extends Error {
@@ -200,6 +215,13 @@ const parseToolPolicy = (value: string | undefined): ToolPolicy => {
     return value;
   }
   return "none";
+};
+
+const parseExecutorKind = (value: string | undefined): ExecutorKind => {
+  if (value === "container" || value === "tunnel" || value === "workers") {
+    return value;
+  }
+  return "workers";
 };
 
 const parseNumberEnv = (value: string | undefined, fallback: number) => {
@@ -331,6 +353,23 @@ export class Chat extends AIChatAgent<Env> {
         updated_at integer not null
       )
     `;
+    this.sql`
+      create table if not exists sky_workspaces (
+        thread_id text primary key,
+        workspace_id text not null,
+        created_at integer not null,
+        updated_at integer not null
+      )
+    `;
+    this.sql`
+      create table if not exists sky_workspace_files (
+        workspace_id text not null,
+        path text not null,
+        content text not null,
+        updated_at integer not null,
+        primary key (workspace_id, path)
+      )
+    `;
 
     const memoryRows = this.sql<SkyMemoryRow>`
       select thread_id, summary, updated_at, schema_version
@@ -417,12 +456,96 @@ export class Chat extends AIChatAgent<Env> {
     return policy;
   }
 
+  private getExecutorKind(): ExecutorKind {
+    return parseExecutorKind(this.env.LITECLAW_EXECUTOR_KIND);
+  }
+
+  private ensureWorkspace(): WorkspaceRow {
+    const rows = this.sql<WorkspaceRow>`
+      select thread_id, workspace_id, created_at, updated_at
+      from sky_workspaces
+      where thread_id = ${this.name}
+    `;
+
+    if (rows.length) {
+      return rows[0];
+    }
+
+    const now = Date.now();
+    const workspaceId = `ws_${generateId()}`;
+    this.sql`
+      insert into sky_workspaces (thread_id, workspace_id, created_at, updated_at)
+      values (${this.name}, ${workspaceId}, ${now}, ${now})
+    `;
+    return {
+      thread_id: this.name,
+      workspace_id: workspaceId,
+      created_at: now,
+      updated_at: now
+    };
+  }
+
+  private normalizeWorkspacePath(path: string) {
+    const trimmed = path.trim().replace(/\\/g, "/");
+    const cleaned = trimmed.replace(/^\/+/, "");
+    if (!cleaned || cleaned.includes("..")) {
+      throw new Error("Invalid workspace path.");
+    }
+    return cleaned;
+  }
+
+  private readWorkspaceFile(path: string) {
+    const workspace = this.ensureWorkspace();
+    const normalizedPath = this.normalizeWorkspacePath(path);
+    const rows = this.sql<WorkspaceFileRow>`
+      select workspace_id, path, content, updated_at
+      from sky_workspace_files
+      where workspace_id = ${workspace.workspace_id}
+        and path = ${normalizedPath}
+    `;
+
+    return {
+      workspace,
+      path: normalizedPath,
+      file: rows[0] ?? null
+    };
+  }
+
+  private writeWorkspaceFile(path: string, content: string) {
+    const workspace = this.ensureWorkspace();
+    const normalizedPath = this.normalizeWorkspacePath(path);
+    const existing = this.readWorkspaceFile(normalizedPath);
+    const now = Date.now();
+
+    this.sql`
+      insert into sky_workspace_files (workspace_id, path, content, updated_at)
+      values (${workspace.workspace_id}, ${normalizedPath}, ${content}, ${now})
+      on conflict(workspace_id, path) do update set
+        content = excluded.content,
+        updated_at = excluded.updated_at
+    `;
+
+    this.sql`
+      update sky_workspaces
+      set updated_at = ${now}
+      where thread_id = ${this.name}
+    `;
+
+    return {
+      workspace,
+      path: normalizedPath,
+      before: existing.file?.content ?? null,
+      after: content
+    };
+  }
+
   private recordToolReceipt(options: {
     runId: string;
     toolCallId: string;
     toolName: string;
     argsHash: string | null;
     outputHash: string | null;
+    patchHash?: string | null;
     startedAt: number;
     completedAt: number;
     status: "success" | "error";
@@ -440,6 +563,7 @@ export class Chat extends AIChatAgent<Env> {
       tool_name: options.toolName,
       args_hash: options.argsHash,
       output_hash: options.outputHash,
+      patch_hash: options.patchHash ?? null,
       started_at: options.startedAt,
       completed_at: options.completedAt,
       duration_ms: options.completedAt - options.startedAt,
@@ -477,6 +601,7 @@ export class Chat extends AIChatAgent<Env> {
       this.env.LITECLAW_HTTP_MAX_BYTES,
       DEFAULT_HTTP_MAX_BYTES
     );
+    const executorKind = this.getExecutorKind();
 
     const assertPolicyAllows = (mode: "read" | "write") => {
       if (options.policy === "none") {
@@ -503,12 +628,45 @@ export class Chat extends AIChatAgent<Env> {
       options.toolState.outboundBytes = nextTotal;
     };
 
+    const assertWorkersExecutor = () => {
+      if (executorKind !== "workers") {
+        throw new Error(
+          `Executor kind ${executorKind} is not available in this runtime.`
+        );
+      }
+    };
+
+    type ToolHandlerResult<Output> =
+      | Output
+      | { output: Output; receiptMeta: { patchHash?: string | null } };
+
+    const unwrapToolOutput = <Output>(
+      result: ToolHandlerResult<Output>
+    ): { output: Output; patchHash: string | null } => {
+      if (
+        result &&
+        typeof result === "object" &&
+        "output" in result &&
+        "receiptMeta" in result
+      ) {
+        const wrapped = result as {
+          output: Output;
+          receiptMeta?: { patchHash?: string | null };
+        };
+        return {
+          output: wrapped.output,
+          patchHash: wrapped.receiptMeta?.patchHash ?? null
+        };
+      }
+      return { output: result as Output, patchHash: null };
+    };
+
     const executeToolWithLogging = async <Input, Output>(
       toolName: string,
       mode: "read" | "write",
       input: Input,
       toolOptions: ToolExecutionOptions,
-      handler: () => Promise<Output>
+      handler: () => Promise<ToolHandlerResult<Output>>
     ) => {
       assertPolicyAllows(mode);
       consumeToolCallBudget();
@@ -535,8 +693,11 @@ export class Chat extends AIChatAgent<Env> {
       });
 
       try {
-        const output = await handler();
+        const handlerResult = await handler();
+        const { output, patchHash } = unwrapToolOutput(handlerResult);
         const outputHash = await hashJson(output);
+        const completedAt = Date.now();
+        const durationMs = completedAt - startedAt;
 
         options.emitSkyEvent("tool.result", {
           tool_call_id: toolCallId,
@@ -548,7 +709,7 @@ export class Chat extends AIChatAgent<Env> {
           tool_call_id: toolCallId,
           tool_name: toolName,
           status: "success",
-          duration_ms: Date.now() - startedAt
+          duration_ms: durationMs
         });
 
         this.recordToolReceipt({
@@ -557,8 +718,9 @@ export class Chat extends AIChatAgent<Env> {
           toolName,
           argsHash,
           outputHash,
+          patchHash,
           startedAt,
-          completedAt: Date.now(),
+          completedAt,
           status: "success"
         });
 
@@ -573,11 +735,13 @@ export class Chat extends AIChatAgent<Env> {
           status: "error",
           output_hash: null
         });
+        const completedAt = Date.now();
+        const durationMs = completedAt - startedAt;
         options.emitSkyEvent("tool.call.completed", {
           tool_call_id: toolCallId,
           tool_name: toolName,
           status: "error",
-          duration_ms: Date.now() - startedAt
+          duration_ms: durationMs
         });
 
         this.recordToolReceipt({
@@ -587,7 +751,7 @@ export class Chat extends AIChatAgent<Env> {
           argsHash,
           outputHash: null,
           startedAt,
-          completedAt: Date.now(),
+          completedAt,
           status: "error",
           errorCode: errorMessage
         });
@@ -747,6 +911,189 @@ export class Chat extends AIChatAgent<Env> {
               return {
                 json: parsed,
                 raw: result.text.trim()
+              };
+            }
+          );
+        }
+      }),
+      "workspace.read": tool({
+        description: "Read a file from the LiteClaw workspace.",
+        inputSchema: jsonSchema({
+          type: "object",
+          properties: {
+            path: { type: "string" }
+          },
+          required: ["path"],
+          additionalProperties: false
+        }),
+        execute: async (input: { path: string }, toolOptions) => {
+          return executeToolWithLogging(
+            "workspace.read",
+            "read",
+            input,
+            toolOptions,
+            async () => {
+              assertWorkersExecutor();
+              const result = this.readWorkspaceFile(input.path);
+              if (!result.file) {
+                throw new Error("Workspace file not found.");
+              }
+              const content = result.file.content;
+              consumeOutboundBytes(content.length);
+              return {
+                executor_kind: executorKind,
+                workspace_id: result.workspace.workspace_id,
+                path: result.path,
+                content,
+                bytes: content.length,
+                updated_at: result.file.updated_at
+              };
+            }
+          );
+        }
+      }),
+      "workspace.write": tool({
+        description:
+          "Write a file to the LiteClaw workspace (overwrites existing content).",
+        inputSchema: jsonSchema({
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" }
+          },
+          required: ["path", "content"],
+          additionalProperties: false
+        }),
+        execute: async (
+          input: { path: string; content: string },
+          toolOptions
+        ) => {
+          return executeToolWithLogging(
+            "workspace.write",
+            "write",
+            input,
+            toolOptions,
+            async () => {
+              assertWorkersExecutor();
+              const result = this.writeWorkspaceFile(input.path, input.content);
+              const beforeBytes = result.before?.length ?? 0;
+              const afterBytes = result.after.length;
+              const beforeHash = result.before
+                ? await hashText(result.before)
+                : null;
+              const afterHash = await hashText(result.after);
+              const patch = {
+                op: "write",
+                path: result.path,
+                before_hash: beforeHash,
+                after_hash: afterHash,
+                before_bytes: beforeBytes,
+                after_bytes: afterBytes
+              };
+              const patchHash = await hashJson(patch);
+              const output = {
+                executor_kind: executorKind,
+                workspace_id: result.workspace.workspace_id,
+                path: result.path,
+                created: result.before === null,
+                before_hash: beforeHash,
+                after_hash: afterHash,
+                before_bytes: beforeBytes,
+                after_bytes: afterBytes,
+                patch
+              };
+              consumeOutboundBytes(JSON.stringify(output).length);
+              return {
+                output,
+                receiptMeta: { patchHash }
+              };
+            }
+          );
+        }
+      }),
+      "workspace.edit": tool({
+        description:
+          "Edit a workspace file by applying a string replacement.",
+        inputSchema: jsonSchema({
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            find: { type: "string" },
+            replace: { type: "string" },
+            all: { type: "boolean" }
+          },
+          required: ["path", "find", "replace"],
+          additionalProperties: false
+        }),
+        execute: async (
+          input: { path: string; find: string; replace: string; all?: boolean },
+          toolOptions
+        ) => {
+          return executeToolWithLogging(
+            "workspace.edit",
+            "write",
+            input,
+            toolOptions,
+            async () => {
+              assertWorkersExecutor();
+              if (input.find.length === 0) {
+                throw new Error("Find text must not be empty.");
+              }
+              const current = this.readWorkspaceFile(input.path);
+              if (!current.file) {
+                throw new Error("Workspace file not found.");
+              }
+
+              const before = current.file.content;
+              let after = before;
+              let replacements = 0;
+
+              if (input.all) {
+                const parts = before.split(input.find);
+                if (parts.length === 1) {
+                  throw new Error("Find text not found.");
+                }
+                replacements = parts.length - 1;
+                after = parts.join(input.replace);
+              } else {
+                const index = before.indexOf(input.find);
+                if (index === -1) {
+                  throw new Error("Find text not found.");
+                }
+                replacements = 1;
+                after =
+                  before.slice(0, index) +
+                  input.replace +
+                  before.slice(index + input.find.length);
+              }
+
+              const written = this.writeWorkspaceFile(current.path, after);
+              const beforeHash = await hashText(before);
+              const afterHash = await hashText(after);
+              const patch = {
+                op: "edit",
+                path: written.path,
+                find: input.find,
+                replace: input.replace,
+                all: Boolean(input.all),
+                replacements,
+                before_hash: beforeHash,
+                after_hash: afterHash
+              };
+              const patchHash = await hashJson(patch);
+              const output = {
+                executor_kind: executorKind,
+                workspace_id: written.workspace.workspace_id,
+                path: written.path,
+                replacements,
+                before_hash: beforeHash,
+                after_hash: afterHash,
+                patch
+              };
+              consumeOutboundBytes(JSON.stringify(output).length);
+              return {
+                output,
+                receiptMeta: { patchHash }
               };
             }
           );

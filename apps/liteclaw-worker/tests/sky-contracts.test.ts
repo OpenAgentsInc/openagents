@@ -46,6 +46,7 @@ describe("Sky contracts", () => {
       tool_name: "http.fetch",
       args_hash: "argshash",
       output_hash: "outputhash",
+      patch_hash: null,
       started_at: 1,
       completed_at: 2,
       duration_ms: 1,
