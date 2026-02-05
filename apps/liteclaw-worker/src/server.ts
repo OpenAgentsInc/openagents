@@ -2027,7 +2027,21 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private checkExtensionAdmin(request: Request): { ok: boolean; status: number } {
-    const secret = this.env.LITECLAW_EXTENSION_ADMIN_SECRET;
+    return this.checkAdmin(request, this.env.LITECLAW_EXTENSION_ADMIN_SECRET);
+  }
+
+  private checkToolAdmin(request: Request): { ok: boolean; status: number } {
+    return this.checkAdmin(
+      request,
+      this.env.LITECLAW_TOOL_ADMIN_SECRET ??
+        this.env.LITECLAW_EXTENSION_ADMIN_SECRET
+    );
+  }
+
+  private checkAdmin(
+    request: Request,
+    secret: string | undefined
+  ): { ok: boolean; status: number } {
     if (!secret) {
       return { ok: false, status: 404 };
     }
@@ -2046,13 +2060,32 @@ export class Chat extends AIChatAgent<Env> {
     return { ok: true, status: 200 };
   }
 
+  private jsonError(
+    status: number,
+    code: string,
+    message: string,
+    extra?: Record<string, unknown>
+  ) {
+    return Response.json(
+      {
+        ok: false,
+        code,
+        message,
+        thread_id: this.name,
+        ...(extra ?? {})
+      },
+      { status }
+    );
+  }
+
   private async handleExtensionPolicyRequest(request: Request) {
     this.ensureStateLoaded();
     const adminCheck = this.checkExtensionAdmin(request);
     if (!adminCheck.ok) {
-      return new Response(
-        adminCheck.status === 404 ? "Not found" : "Forbidden",
-        { status: adminCheck.status }
+      return this.jsonError(
+        adminCheck.status,
+        adminCheck.status === 404 ? "not_found" : "forbidden",
+        adminCheck.status === 404 ? "Not found" : "Forbidden"
       );
     }
 
@@ -2065,7 +2098,7 @@ export class Chat extends AIChatAgent<Env> {
       try {
         body = await request.json();
       } catch {
-        return new Response("Invalid JSON", { status: 400 });
+        return this.jsonError(400, "invalid_json", "Invalid JSON");
       }
 
       const record = body as Record<string, unknown>;
@@ -2074,12 +2107,16 @@ export class Chat extends AIChatAgent<Env> {
         : null;
 
       if (!enabled) {
-        return new Response("Missing enabled array", { status: 400 });
+        return this.jsonError(400, "missing_enabled", "Missing enabled array");
       }
 
       const allowlist = parseExtensionList(this.env.LITECLAW_EXTENSION_ALLOWLIST);
       if (!allowlist.length) {
-        return new Response("Extension allowlist is empty", { status: 400 });
+        return this.jsonError(
+          400,
+          "allowlist_empty",
+          "Extension allowlist is empty"
+        );
       }
 
       const allowAll = allowlist.includes("*");
@@ -2119,15 +2156,15 @@ export class Chat extends AIChatAgent<Env> {
       }
 
       if (disallowed.length || missing.length || missingVersion.length) {
-        return Response.json(
+        return this.jsonError(
+          400,
+          "extensions_invalid",
+          "Extensions not allowed or missing",
           {
-            ok: false,
-            error: "Extensions not allowed or missing",
             disallowed,
             missing,
             missing_version: missingVersion
-          },
-          { status: 400 }
+          }
         );
       }
 
@@ -2135,16 +2172,17 @@ export class Chat extends AIChatAgent<Env> {
       return Response.json({ ok: true, enabled: updated });
     }
 
-    return new Response("Method not allowed", { status: 405 });
+    return this.jsonError(405, "method_not_allowed", "Method not allowed");
   }
 
   private async handleExtensionCatalogRequest(request: Request) {
     this.ensureStateLoaded();
     const adminCheck = this.checkExtensionAdmin(request);
     if (!adminCheck.ok) {
-      return new Response(
-        adminCheck.status === 404 ? "Not found" : "Forbidden",
-        { status: adminCheck.status }
+      return this.jsonError(
+        adminCheck.status,
+        adminCheck.status === 404 ? "not_found" : "forbidden",
+        adminCheck.status === 404 ? "Not found" : "Forbidden"
       );
     }
 
@@ -2160,12 +2198,12 @@ export class Chat extends AIChatAgent<Env> {
       try {
         body = await request.json();
       } catch {
-        return new Response("Invalid JSON", { status: 400 });
+        return this.jsonError(400, "invalid_json", "Invalid JSON");
       }
 
       const manifests = parseExtensionCatalog(body);
       if (!manifests.length) {
-        return new Response("No manifests provided", { status: 400 });
+        return this.jsonError(400, "missing_manifests", "No manifests provided");
       }
 
       const now = Date.now();
@@ -2214,7 +2252,62 @@ export class Chat extends AIChatAgent<Env> {
       return Response.json({ ok: true, count: manifests.length });
     }
 
-    return new Response("Method not allowed", { status: 405 });
+    return this.jsonError(405, "method_not_allowed", "Method not allowed");
+  }
+
+  private setToolPolicy(policy: ToolPolicy) {
+    this.sql`
+      insert into sky_tool_policy (thread_id, policy, updated_at)
+      values (${this.name}, ${policy}, ${Date.now()})
+      on conflict(thread_id) do update set
+        policy = excluded.policy,
+        updated_at = excluded.updated_at
+    `;
+    return policy;
+  }
+
+  private async handleToolPolicyRequest(request: Request) {
+    this.ensureStateLoaded();
+    const adminCheck = this.checkToolAdmin(request);
+    if (!adminCheck.ok) {
+      return this.jsonError(
+        adminCheck.status,
+        adminCheck.status === 404 ? "not_found" : "forbidden",
+        adminCheck.status === 404 ? "Not found" : "Forbidden"
+      );
+    }
+
+    if (request.method === "GET") {
+      return Response.json({ policy: this.getToolPolicy() });
+    }
+
+    if (request.method === "POST") {
+      let body: unknown = null;
+      try {
+        body = await request.json();
+      } catch {
+        return this.jsonError(400, "invalid_json", "Invalid JSON");
+      }
+
+      const record = body as Record<string, unknown>;
+      const policyRaw = record.policy;
+      if (
+        policyRaw === "none" ||
+        policyRaw === "read-only" ||
+        policyRaw === "read-write"
+      ) {
+        const updated = this.setToolPolicy(policyRaw);
+        return Response.json({ ok: true, policy: updated });
+      }
+
+      return this.jsonError(
+        400,
+        "invalid_policy",
+        "Policy must be none, read-only, or read-write"
+      );
+    }
+
+    return this.jsonError(405, "method_not_allowed", "Method not allowed");
   }
 
   private exportSkyJsonl() {
@@ -2345,6 +2438,9 @@ export class Chat extends AIChatAgent<Env> {
     const url = new URL(request.url);
     if (url.pathname.endsWith("/export")) {
       return this.exportSkyJsonl();
+    }
+    if (url.pathname.endsWith("/tool-policy")) {
+      return this.handleToolPolicyRequest(request);
     }
     if (url.pathname.endsWith("/extensions/catalog")) {
       return this.handleExtensionCatalogRequest(request);
