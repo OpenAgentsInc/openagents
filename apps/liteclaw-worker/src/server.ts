@@ -1,6 +1,8 @@
 import { routeAgentRequest } from "agents";
 
 import { AIChatAgent } from "@cloudflare/ai-chat";
+import { getSandbox } from "@cloudflare/sandbox";
+import { createOpencodeServer, proxyToOpencode } from "@cloudflare/sandbox/opencode";
 import {
   convertToModelMessages,
   createUIMessageStream,
@@ -27,6 +29,8 @@ import * as Effect from "effect/Effect";
 
 import * as EffectWorkers from "./effect/workers";
 
+export { Sandbox } from "@cloudflare/sandbox";
+
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MODEL_CONFIG_ID = "workers-ai:gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
@@ -48,8 +52,14 @@ const DEFAULT_TOOL_MAX_OUTBOUND_BYTES = 200_000;
 const DEFAULT_HTTP_TIMEOUT_MS = 8_000;
 const DEFAULT_HTTP_MAX_BYTES = 50_000;
 const DEFAULT_TUNNEL_TIMEOUT_MS = 8_000;
+const SANDBOX_WORKSPACE_ROOT = "/workspace";
+const OPENCODE_ROUTE_PREFIX = "/sandbox/opencode";
 
 class LiteClawEffectError extends Data.TaggedError("LiteClawEffectError")<{
+  message: string;
+  cause?: unknown;
+}> {}
+class SandboxEffectError extends Data.TaggedError("SandboxEffectError")<{
   message: string;
   cause?: unknown;
 }> {}
@@ -331,6 +341,56 @@ const hmacSha256 = async (secret: string, payload: string) => {
     textEncoder.encode(payload)
   );
   return toHex(signature);
+};
+
+const sandboxEffect = <A>(message: string, thunk: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: thunk,
+    catch: (cause) => new SandboxEffectError({ message, cause })
+  });
+
+const runSandbox = <A>(message: string, thunk: () => Promise<A>) =>
+  Effect.runPromise(sandboxEffect(message, thunk));
+
+const getThreadSandbox = (env: Env, threadId: string) => {
+  if (!env.Sandbox) {
+    throw new Error("Sandbox binding is not configured.");
+  }
+  return getSandbox(env.Sandbox, threadId);
+};
+
+const parseSandboxTimestamp = (value: string | undefined) => {
+  if (!value) return Date.now();
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+};
+
+const getSandboxErrorCode = (error: unknown) => {
+  if (!error || typeof error !== "object") return null;
+  if ("code" in error && typeof error.code === "string") {
+    return error.code;
+  }
+  if (
+    "errorResponse" in error &&
+    error.errorResponse &&
+    typeof error.errorResponse === "object" &&
+    "code" in error.errorResponse &&
+    typeof error.errorResponse.code === "string"
+  ) {
+    return error.errorResponse.code;
+  }
+  return null;
+};
+
+const isSandboxFileNotFound = (error: unknown) =>
+  getSandboxErrorCode(error) === "FILE_NOT_FOUND";
+
+const buildOpencodeProxyRequest = (request: Request, url: URL) => {
+  const proxyUrl = new URL(request.url);
+  const suffix = url.pathname.slice(OPENCODE_ROUTE_PREFIX.length);
+  proxyUrl.pathname = suffix ? (suffix.startsWith("/") ? suffix : `/${suffix}`) : "/";
+  proxyUrl.searchParams.delete("thread");
+  return new Request(proxyUrl.toString(), request);
 };
 
 const parseToolPolicy = (value: string | undefined): ToolPolicy => {
@@ -1204,6 +1264,26 @@ export class Chat extends AIChatAgent<Env> {
       }
     };
 
+    const getSandboxExecutor = () => {
+      if (executorKind !== "container") {
+        throw new Error(
+          `Executor kind ${executorKind} is not available in this runtime.`
+        );
+      }
+      return getThreadSandbox(this.env, this.name);
+    };
+
+    const ensureSandboxWorkspace = async (
+      sandbox: ReturnType<typeof getThreadSandbox>
+    ) => {
+      await runSandbox("Sandbox workspace init failed", () =>
+        sandbox.mkdir(SANDBOX_WORKSPACE_ROOT, { recursive: true })
+      );
+    };
+
+    const toSandboxPath = (path: string) =>
+      `${SANDBOX_WORKSPACE_ROOT}/${path}`;
+
     const invokeTunnelTool = async <Output = unknown>(
       toolName: string,
       input: unknown,
@@ -1790,6 +1870,36 @@ export class Chat extends AIChatAgent<Env> {
                   toolOptions
                 );
               }
+              if (executorKind === "container") {
+                const workspace = this.ensureWorkspace();
+                const normalizedPath = this.normalizeWorkspacePath(input.path);
+                const sandbox = getSandboxExecutor();
+                await ensureSandboxWorkspace(sandbox);
+                let file;
+                try {
+                  file = await runSandbox("Sandbox readFile failed", () =>
+                    sandbox.readFile(toSandboxPath(normalizedPath))
+                  );
+                } catch (error) {
+                  if (isSandboxFileNotFound(error)) {
+                    throw new Error("Workspace file not found.");
+                  }
+                  throw error;
+                }
+                if (file.isBinary || file.encoding === "base64") {
+                  throw new Error("Binary workspace files are not supported.");
+                }
+                const content = file.content ?? "";
+                consumeOutboundBytes(content.length);
+                return {
+                  executor_kind: executorKind,
+                  workspace_id: workspace.workspace_id,
+                  path: normalizedPath,
+                  content,
+                  bytes: content.length,
+                  updated_at: parseSandboxTimestamp(file.timestamp)
+                };
+              }
               assertWorkersExecutor();
               const result = this.readWorkspaceFile(input.path);
               if (!result.file) {
@@ -1837,6 +1947,61 @@ export class Chat extends AIChatAgent<Env> {
                   input,
                   toolOptions
                 );
+              }
+              if (executorKind === "container") {
+                const workspace = this.ensureWorkspace();
+                const normalizedPath = this.normalizeWorkspacePath(input.path);
+                const sandbox = getSandboxExecutor();
+                await ensureSandboxWorkspace(sandbox);
+                let before: string | null = null;
+                try {
+                  const current = await runSandbox(
+                    "Sandbox readFile failed",
+                    () => sandbox.readFile(toSandboxPath(normalizedPath))
+                  );
+                  if (current.isBinary || current.encoding === "base64") {
+                    throw new Error("Binary workspace files are not supported.");
+                  }
+                  before = current.content ?? "";
+                } catch (error) {
+                  if (!isSandboxFileNotFound(error)) {
+                    throw error;
+                  }
+                }
+
+                await runSandbox("Sandbox writeFile failed", () =>
+                  sandbox.writeFile(toSandboxPath(normalizedPath), input.content)
+                );
+
+                const beforeBytes = before?.length ?? 0;
+                const afterBytes = input.content.length;
+                const beforeHash = before ? await hashText(before) : null;
+                const afterHash = await hashText(input.content);
+                const patch: WorkspaceWritePatch = {
+                  op: "write",
+                  path: normalizedPath,
+                  before_hash: beforeHash,
+                  after_hash: afterHash,
+                  before_bytes: beforeBytes,
+                  after_bytes: afterBytes
+                };
+                const patchHash = await hashJson(patch);
+                const output = {
+                  executor_kind: executorKind,
+                  workspace_id: workspace.workspace_id,
+                  path: normalizedPath,
+                  created: before === null,
+                  before_hash: beforeHash,
+                  after_hash: afterHash,
+                  before_bytes: beforeBytes,
+                  after_bytes: afterBytes,
+                  patch
+                };
+                consumeOutboundBytes(JSON.stringify(output).length);
+                return {
+                  output,
+                  receiptMeta: { patchHash }
+                };
               }
               assertWorkersExecutor();
               const result = this.writeWorkspaceFile(input.path, input.content);
@@ -1905,6 +2070,82 @@ export class Chat extends AIChatAgent<Env> {
                   input,
                   toolOptions
                 );
+              }
+              if (executorKind === "container") {
+                if (input.find.length === 0) {
+                  throw new Error("Find text must not be empty.");
+                }
+                const workspace = this.ensureWorkspace();
+                const normalizedPath = this.normalizeWorkspacePath(input.path);
+                const sandbox = getSandboxExecutor();
+                await ensureSandboxWorkspace(sandbox);
+                let current;
+                try {
+                  current = await runSandbox("Sandbox readFile failed", () =>
+                    sandbox.readFile(toSandboxPath(normalizedPath))
+                  );
+                } catch (error) {
+                  if (isSandboxFileNotFound(error)) {
+                    throw new Error("Workspace file not found.");
+                  }
+                  throw error;
+                }
+                if (current.isBinary || current.encoding === "base64") {
+                  throw new Error("Binary workspace files are not supported.");
+                }
+                const before = current.content ?? "";
+                let after = before;
+                let replacements = 0;
+
+                if (input.all) {
+                  const parts = before.split(input.find);
+                  if (parts.length === 1) {
+                    throw new Error("Find text not found.");
+                  }
+                  replacements = parts.length - 1;
+                  after = parts.join(input.replace);
+                } else {
+                  const index = before.indexOf(input.find);
+                  if (index === -1) {
+                    throw new Error("Find text not found.");
+                  }
+                  replacements = 1;
+                  after =
+                    before.slice(0, index) +
+                    input.replace +
+                    before.slice(index + input.find.length);
+                }
+
+                await runSandbox("Sandbox writeFile failed", () =>
+                  sandbox.writeFile(toSandboxPath(normalizedPath), after)
+                );
+                const beforeHash = await hashText(before);
+                const afterHash = await hashText(after);
+                const patch: WorkspaceEditPatch = {
+                  op: "edit",
+                  path: normalizedPath,
+                  find: input.find,
+                  replace: input.replace,
+                  all: Boolean(input.all),
+                  replacements,
+                  before_hash: beforeHash,
+                  after_hash: afterHash
+                };
+                const patchHash = await hashJson(patch);
+                const output = {
+                  executor_kind: executorKind,
+                  workspace_id: workspace.workspace_id,
+                  path: normalizedPath,
+                  replacements,
+                  before_hash: beforeHash,
+                  after_hash: afterHash,
+                  patch
+                };
+                consumeOutboundBytes(JSON.stringify(output).length);
+                return {
+                  output,
+                  receiptMeta: { patchHash }
+                };
               }
               assertWorkersExecutor();
               if (input.find.length === 0) {
@@ -3024,16 +3265,47 @@ export class Chat extends AIChatAgent<Env> {
   }
 }
 
+const handleOpencodeRequest = (request: Request, env: Env) =>
+  Effect.gen(function* () {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith(OPENCODE_ROUTE_PREFIX)) {
+      return null;
+    }
+    const threadId = url.searchParams.get("thread");
+    if (!threadId) {
+      return new Response("Missing thread id", { status: 400 });
+    }
+    if (!env.Sandbox) {
+      return new Response("Sandbox binding is not configured.", { status: 501 });
+    }
+
+    const sandbox = getThreadSandbox(env, threadId);
+    yield* sandboxEffect("Sandbox workspace init failed", () =>
+      sandbox.mkdir(SANDBOX_WORKSPACE_ROOT, { recursive: true })
+    );
+    const server = yield* sandboxEffect("OpenCode server start failed", () =>
+      createOpencodeServer(sandbox, { directory: SANDBOX_WORKSPACE_ROOT })
+    );
+    const proxyRequest = buildOpencodeProxyRequest(request, url);
+    const response = yield* sandboxEffect("OpenCode proxy failed", () =>
+      Promise.resolve(proxyToOpencode(proxyRequest, sandbox, server))
+    );
+    return response;
+  });
+
 const handleRequest = (request: Request, env: Env) =>
-  Effect.tryPromise({
-    try: () => routeAgentRequest(request, env),
-    catch: (cause) =>
-      new LiteClawEffectError({ message: "Route handler failed", cause })
-  }).pipe(
-    Effect.map(
-      (response) => response ?? new Response("Not found", { status: 404 })
-    )
-  );
+  Effect.gen(function* () {
+    const opencodeResponse = yield* handleOpencodeRequest(request, env);
+    if (opencodeResponse) {
+      return opencodeResponse;
+    }
+    const response = yield* Effect.tryPromise({
+      try: () => routeAgentRequest(request, env),
+      catch: (cause) =>
+        new LiteClawEffectError({ message: "Route handler failed", cause })
+    });
+    return response ?? new Response("Not found", { status: 404 });
+  });
 
 export default EffectWorkers.serve<Env>((request, env) =>
   handleRequest(request, env)
