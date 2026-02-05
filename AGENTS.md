@@ -49,6 +49,25 @@ Then go crate-local:
 - Autopilot-core flow: crates/autopilot-core/docs/EXECUTION_FLOW.md
 - Protocol surface: docs/protocol/PROTOCOL_SURFACE.md
 
+<!-- effect-solutions:start -->
+## Effect Best Practices
+
+**IMPORTANT:** Always consult effect-solutions before writing Effect code.
+
+1. Run `effect-solutions list` to see available guides
+2. Run `effect-solutions show <topic>...` for relevant patterns (supports multiple topics)
+3. Search `.reference/effect/` for real implementations (run `effect-solutions setup` first)
+
+Topics: quick-start, project-setup, tsconfig, basics, services-and-layers, data-modeling, error-handling, config, testing, cli.
+
+Never guess at Effect patterns - check the guide first.
+
+## Local Effect Source
+
+The Effect repository is cloned to `.reference/effect/` for reference.
+Use this to explore APIs, find usage examples, and understand implementation details when documentation isn't enough.
+<!-- effect-solutions:end -->
+
 Community presence:
 - Moltbook skill + posting guidance: ./docs/MOLTBOOK.md
 - When drafting Moltbook replies (including Codex sessions), consult `MOLTBOOK.md` first and follow `crates/moltbook/docs/CLAIM_HYGIENE.md`.

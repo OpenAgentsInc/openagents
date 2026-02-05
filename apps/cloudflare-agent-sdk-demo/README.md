@@ -55,6 +55,10 @@ npm start
 npm run deploy
 ```
 
+## Effect Setup
+
+This starter now runs the worker orchestration through Effect. The Cloudflare runtime helpers live in `src/effect/`, and TypeScript is patched via `@effect/language-service` during `npm install` (`prepare` script). Use `npm run typecheck` for CI-friendly type checks.
+
 ## Project Structure
 
 ```

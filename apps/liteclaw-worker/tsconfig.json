@@ -1,18 +1,26 @@
 {
   "compilerOptions": {
-    "target": "ES2021",
-    "lib": ["ES2021", "DOM"],
-    "module": "ES2022",
-    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
     "types": ["@cloudflare/workers-types", "node"],
-    "noEmit": true,
-    "isolatedModules": true,
     "verbatimModuleSyntax": true,
+    "rewriteRelativeImportExtensions": true,
+    "noEmit": true,
+    "incremental": true,
+    "isolatedModules": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "sourceMap": true,
     "skipLibCheck": true,
-    "noUnusedLocals": true
+    "plugins": [{ "name": "@effect/language-service" }]
   },
   "exclude": ["tests"]
 }

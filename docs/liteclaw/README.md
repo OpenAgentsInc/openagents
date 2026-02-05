@@ -197,6 +197,17 @@ NYDUS_LOCAL_ROOT=/path/to/your/repo \
 bun run index.ts cloud
 ```
 
+Sky tools demo (read/write/edit/bash through the tunnel):
+
+```bash
+cd apps/nydus
+LITECLAW_TUNNEL_URL=https://local-tools.example.com \
+LITECLAW_TUNNEL_TOKEN=replace-me \
+bun run sky-tools
+```
+
+Nydus now runs its orchestration flow via Effect (see `apps/nydus/index.ts`).
+
 ## Data Model Highlights
 
 LiteClaw relies on SQLite tables inside the Durable Object:

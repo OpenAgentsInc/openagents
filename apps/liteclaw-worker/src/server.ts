@@ -10,6 +10,8 @@ import {
   jsonSchema,
   stepCountIs,
   streamText,
+  type Tool,
+  type ToolExecuteFunction,
   tool,
   type StreamTextOnFinishCallback,
   type StreamTextOnChunkCallback,
@@ -20,6 +22,10 @@ import {
   type UIMessageStreamWriter
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+
+import * as EffectWorkers from "./effect/workers";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MODEL_CONFIG_ID = "workers-ai:gpt-oss-120b";
@@ -37,12 +43,16 @@ const SKY_RECEIPT_SCHEMA_VERSION = 1;
 const LITECLAW_SESSION_VERSION = 1;
 const SKY_VERSION = "0.1.0";
 const RATE_LIMIT_ROW_ID = "liteclaw_rate_limit";
-const DEFAULT_TOOL_POLICY: ToolPolicy = "none";
 const DEFAULT_TOOL_MAX_CALLS = 4;
 const DEFAULT_TOOL_MAX_OUTBOUND_BYTES = 200_000;
 const DEFAULT_HTTP_TIMEOUT_MS = 8_000;
 const DEFAULT_HTTP_MAX_BYTES = 50_000;
 const DEFAULT_TUNNEL_TIMEOUT_MS = 8_000;
+
+class LiteClawEffectError extends Data.TaggedError("LiteClawEffectError")<{
+  message: string;
+  cause?: unknown;
+}> {}
 
 const SYSTEM_PROMPT =
   "You are LiteClaw, a persistent personal AI agent. " +
@@ -146,7 +156,9 @@ type ExtensionToolFactory = (options: {
   mode: "read" | "write";
   inputSchema: Record<string, unknown>;
   handler: (input: unknown, toolOptions: ToolExecutionOptions) => Promise<unknown>;
-}) => ReturnType<typeof tool>;
+}) => Tool<unknown, unknown> & {
+  execute: ToolExecuteFunction<unknown, unknown>;
+};
 
 type ExtensionToolContext = {
   createTool: ExtensionToolFactory;
@@ -389,23 +401,21 @@ const parseExtensionManifest = (value: unknown): ExtensionManifest | null => {
     id: record.id,
     name: record.name,
     version: record.version,
-    description:
-      typeof record.description === "string" ? record.description : undefined,
-    tools: Array.isArray(record.tools)
-      ? record.tools.filter((tool) => typeof tool === "string")
-      : undefined,
-    system_prompt:
-      typeof record.system_prompt === "string"
-        ? record.system_prompt
-        : undefined,
-    permissions:
-      record.permissions && typeof record.permissions === "object"
-        ? (record.permissions as Record<string, unknown>)
-        : undefined,
-    ui:
-      record.ui && typeof record.ui === "object"
-        ? (record.ui as Record<string, unknown>)
-        : undefined
+    ...(typeof record.description === "string"
+      ? { description: record.description }
+      : {}),
+    ...(Array.isArray(record.tools)
+      ? { tools: record.tools.filter((tool) => typeof tool === "string") }
+      : {}),
+    ...(typeof record.system_prompt === "string"
+      ? { system_prompt: record.system_prompt }
+      : {}),
+    ...(record.permissions && typeof record.permissions === "object"
+      ? { permissions: record.permissions as Record<string, unknown> }
+      : {}),
+    ...(record.ui && typeof record.ui === "object"
+      ? { ui: record.ui as Record<string, unknown> }
+      : {})
   };
 };
 
@@ -1194,7 +1204,7 @@ export class Chat extends AIChatAgent<Env> {
       }
     };
 
-    const invokeTunnelTool = async <Output>(
+    const invokeTunnelTool = async <Output = unknown>(
       toolName: string,
       input: unknown,
       toolOptions: ToolExecutionOptions
@@ -1243,7 +1253,7 @@ export class Chat extends AIChatAgent<Env> {
             ...accessHeaders
           },
           body: JSON.stringify(payload),
-          signal
+          ...(signal ? { signal } : {})
         });
 
         const body = (await response.json()) as
@@ -1343,6 +1353,57 @@ export class Chat extends AIChatAgent<Env> {
     type ToolHandlerResult<Output> =
       | Output
       | { output: Output; receiptMeta: ToolReceiptMeta };
+
+    type WorkspaceReadOutput = {
+      executor_kind: ExecutorKind;
+      workspace_id: string;
+      path: string;
+      content: string;
+      bytes: number;
+      updated_at: number;
+    };
+
+    type WorkspaceWritePatch = {
+      op: "write";
+      path: string;
+      before_hash: string | null;
+      after_hash: string;
+      before_bytes: number;
+      after_bytes: number;
+    };
+
+    type WorkspaceWriteOutput = {
+      executor_kind: ExecutorKind;
+      workspace_id: string;
+      path: string;
+      created: boolean;
+      before_hash: string | null;
+      after_hash: string;
+      before_bytes: number;
+      after_bytes: number;
+      patch: WorkspaceWritePatch;
+    };
+
+    type WorkspaceEditPatch = {
+      op: "edit";
+      path: string;
+      find: string;
+      replace: string;
+      all: boolean;
+      replacements: number;
+      before_hash: string;
+      after_hash: string;
+    };
+
+    type WorkspaceEditOutput = {
+      executor_kind: ExecutorKind;
+      workspace_id: string;
+      path: string;
+      replacements: number;
+      before_hash: string;
+      after_hash: string;
+      patch: WorkspaceEditPatch;
+    };
 
     const unwrapToolOutput = <Output>(
       result: ToolHandlerResult<Output>
@@ -1528,10 +1589,10 @@ export class Chat extends AIChatAgent<Env> {
       inputSchema,
       handler
     }) =>
-      tool({
+      tool<unknown, unknown>({
         description,
         inputSchema: jsonSchema(inputSchema),
-        execute: async (input, toolOptions) =>
+        execute: async (input: unknown, toolOptions: ToolExecutionOptions) =>
           executeToolWithLogging(
             name,
             mode,
@@ -1539,7 +1600,9 @@ export class Chat extends AIChatAgent<Env> {
             toolOptions,
             () => handler(input, toolOptions)
           )
-      });
+      }) as Tool<unknown, unknown> & {
+        execute: ToolExecuteFunction<unknown, unknown>;
+      };
 
     const extensionToolOwners = new Map<string, ExtensionRuntime>();
 
@@ -1593,9 +1656,9 @@ export class Chat extends AIChatAgent<Env> {
               try {
                 const response = await fetch(url.toString(), {
                   method,
-                  headers: input.headers,
-                  body: input.body,
-                  signal
+                  ...(input.headers ? { headers: input.headers } : {}),
+                  ...(input.body !== undefined ? { body: input.body } : {}),
+                  ...(signal ? { signal } : {})
                 });
 
                 const buffer = await response.arrayBuffer();
@@ -1643,10 +1706,12 @@ export class Chat extends AIChatAgent<Env> {
             toolOptions,
             async () => {
               const result = await generateText({
-                model: options.workersai(MODEL_ID),
+                model: options.workersai(
+                  MODEL_ID as Parameters<typeof options.workersai>[0]
+                ),
                 system: SUMMARY_PROMPT,
                 prompt: input.text,
-                maxTokens: parseNumberEnv(
+                maxOutputTokens: parseNumberEnv(
                   input.max_tokens?.toString(),
                   SUMMARY_MAX_TOKENS
                 )
@@ -1676,12 +1741,14 @@ export class Chat extends AIChatAgent<Env> {
             toolOptions,
             async () => {
               const result = await generateText({
-                model: options.workersai(MODEL_ID),
+                model: options.workersai(
+                  MODEL_ID as Parameters<typeof options.workersai>[0]
+                ),
                 system:
                   "Extract structured JSON from the text. Respond with JSON only." +
                   (input.instructions ? `\n\nInstructions: ${input.instructions}` : ""),
                 prompt: input.text,
-                maxTokens: SUMMARY_MAX_TOKENS
+                maxOutputTokens: SUMMARY_MAX_TOKENS
               });
 
               let parsed: unknown = null;
@@ -1715,9 +1782,13 @@ export class Chat extends AIChatAgent<Env> {
             "read",
             input,
             toolOptions,
-            async () => {
+            async (): Promise<ToolHandlerResult<WorkspaceReadOutput>> => {
               if (executorKind === "tunnel") {
-                return invokeTunnelTool("workspace.read", input, toolOptions);
+                return invokeTunnelTool<WorkspaceReadOutput>(
+                  "workspace.read",
+                  input,
+                  toolOptions
+                );
               }
               assertWorkersExecutor();
               const result = this.readWorkspaceFile(input.path);
@@ -1759,9 +1830,13 @@ export class Chat extends AIChatAgent<Env> {
             "write",
             input,
             toolOptions,
-            async () => {
+            async (): Promise<ToolHandlerResult<WorkspaceWriteOutput>> => {
               if (executorKind === "tunnel") {
-                return invokeTunnelTool("workspace.write", input, toolOptions);
+                return invokeTunnelTool<WorkspaceWriteOutput>(
+                  "workspace.write",
+                  input,
+                  toolOptions
+                );
               }
               assertWorkersExecutor();
               const result = this.writeWorkspaceFile(input.path, input.content);
@@ -1771,7 +1846,7 @@ export class Chat extends AIChatAgent<Env> {
                 ? await hashText(result.before)
                 : null;
               const afterHash = await hashText(result.after);
-              const patch = {
+              const patch: WorkspaceWritePatch = {
                 op: "write",
                 path: result.path,
                 before_hash: beforeHash,
@@ -1823,9 +1898,13 @@ export class Chat extends AIChatAgent<Env> {
             "write",
             input,
             toolOptions,
-            async () => {
+            async (): Promise<ToolHandlerResult<WorkspaceEditOutput>> => {
               if (executorKind === "tunnel") {
-                return invokeTunnelTool("workspace.edit", input, toolOptions);
+                return invokeTunnelTool<WorkspaceEditOutput>(
+                  "workspace.edit",
+                  input,
+                  toolOptions
+                );
               }
               assertWorkersExecutor();
               if (input.find.length === 0) {
@@ -1862,7 +1941,7 @@ export class Chat extends AIChatAgent<Env> {
               const written = this.writeWorkspaceFile(current.path, after);
               const beforeHash = await hashText(before);
               const afterHash = await hashText(after);
-              const patch = {
+              const patch: WorkspaceEditPatch = {
                 op: "edit",
                 path: written.path,
                 find: input.find,
@@ -2516,7 +2595,7 @@ export class Chat extends AIChatAgent<Env> {
     });
   }
 
-  async onRequest(request: Request) {
+  override async onRequest(request: Request) {
     const url = new URL(request.url);
     if (url.pathname.endsWith("/export")) {
       return this.exportSkyJsonl();
@@ -2602,14 +2681,14 @@ export class Chat extends AIChatAgent<Env> {
 
     const messagesToSummarize = this.messages.slice(0, pruneCount);
     const messagesToKeep = this.messages.slice(pruneCount);
-    const model = workersAi(MODEL_ID);
+    const model = workersAi(MODEL_ID as Parameters<typeof workersAi>[0]);
 
     try {
       const result = await generateText({
         model,
         system: buildSummaryPrompt(this.summary),
         messages: await convertToModelMessages(messagesToSummarize),
-        maxTokens: SUMMARY_MAX_TOKENS,
+        maxOutputTokens: SUMMARY_MAX_TOKENS,
         temperature: 0.2
       });
 
@@ -2649,7 +2728,7 @@ export class Chat extends AIChatAgent<Env> {
     writer.write({ type: "text-end", id });
   }
 
-  async onChatMessage(
+  override async onChatMessage(
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     options?: { abortSignal?: AbortSignal }
   ) {
@@ -2741,7 +2820,7 @@ export class Chat extends AIChatAgent<Env> {
       }
       const durationMs = Date.now() - startTime;
       const ttftMs = firstTokenAt ? firstTokenAt - startTime : null;
-      this.logChatMetrics({
+      const metrics: ChatMetricLog = {
         event: "liteclaw_chat_metrics",
         agent_name: this.name,
         model_id: MODEL_ID,
@@ -2749,9 +2828,10 @@ export class Chat extends AIChatAgent<Env> {
         ttft_ms: ttftMs,
         duration_ms: durationMs,
         ok: params.ok,
-        error: params.error,
-        finish_reason: params.finishReason ?? null
-      });
+        finish_reason: params.finishReason ?? null,
+        ...(params.error ? { error: params.error } : {})
+      };
+      this.logChatMetrics(metrics);
 
       const status = params.ok
         ? params.finishReason === "cancelled"
@@ -2796,9 +2876,15 @@ export class Chat extends AIChatAgent<Env> {
       }
 
       if (chunk.type === "text-delta" || chunk.type === "reasoning-delta") {
+        const delta =
+          "delta" in chunk && typeof chunk.delta === "string"
+            ? chunk.delta
+            : "text" in chunk && typeof chunk.text === "string"
+              ? chunk.text
+              : "";
         emitSkyEvent("model.delta", {
           kind: chunk.type,
-          delta: chunk.delta
+          delta
         });
       }
     };
@@ -2879,13 +2965,13 @@ export class Chat extends AIChatAgent<Env> {
           const streamOptions = {
             system: systemPrompt,
             messages: await convertToModelMessages(recentMessages),
-            model: workersai(MODEL_ID),
-            maxTokens: MAX_OUTPUT_TOKENS,
+            model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
             stopWhen: stepCountIs(10),
             onChunk: handleChunk,
             onError: handleError,
             onFinish: handleFinish,
-            abortSignal: signal
+            ...(signal ? { abortSignal: signal } : {})
           };
 
           result = streamText({
@@ -2903,10 +2989,10 @@ export class Chat extends AIChatAgent<Env> {
             error instanceof Error ? error.message : "StreamText error";
           try {
             const fallback = await generateText({
-              model: workersai(MODEL_ID),
+              model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
               system: systemPrompt,
               messages: await convertToModelMessages(recentMessages),
-              maxTokens: MAX_OUTPUT_TOKENS
+              maxOutputTokens: MAX_OUTPUT_TOKENS
             });
             firstTokenAt ??= Date.now();
             await this.writeStaticMessage(writer, fallback.text);
@@ -2938,11 +3024,17 @@ export class Chat extends AIChatAgent<Env> {
   }
 }
 
-export default {
-  async fetch(request: Request, env: Env) {
-    return (
-      (await routeAgentRequest(request, env)) ||
-      new Response("Not found", { status: 404 })
-    );
-  }
-} satisfies ExportedHandler<Env>;
+const handleRequest = (request: Request, env: Env) =>
+  Effect.tryPromise({
+    try: () => routeAgentRequest(request, env),
+    catch: (cause) =>
+      new LiteClawEffectError({ message: "Route handler failed", cause })
+  }).pipe(
+    Effect.map(
+      (response) => response ?? new Response("Not found", { status: 404 })
+    )
+  );
+
+export default EffectWorkers.serve<Env>((request, env) =>
+  handleRequest(request, env)
+);
