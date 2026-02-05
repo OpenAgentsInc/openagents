@@ -19,6 +19,8 @@ import { resolveApiBase, resolveInternalKey } from '@/lib/openclawApi';
 import { consumeOpenClawStream } from '@/lib/openclawStream';
 
 const DEFAULT_AGENT_ID = 'main';
+const QUICK_START_MESSAGE =
+  'Hello OpenClaw. Give me a quick intro and suggest a first task to try.';
 
 export const Route = createFileRoute('/_app/openclaw/chat')({
   component: OpenClawChatPage,
@@ -375,6 +377,27 @@ function OpenClawChatPage() {
     await sendMessage(trimmed);
   };
 
+  const handleQuickStart = () => {
+    if (status === 'streaming' || instanceBusy || approvalDialog) return;
+    const message = QUICK_START_MESSAGE;
+    if (instance?.status !== 'ready') {
+      openApprovalDialog({
+        title: 'Approve OpenClaw provisioning',
+        description:
+          'Provisioning creates a managed OpenClaw gateway for your account. This may allocate compute resources and start billing.',
+        confirmLabel: 'Provision & Send',
+        action: async () => {
+          const ready = await provisionInstance();
+          if (ready) {
+            await sendMessage(message);
+          }
+        },
+      });
+      return;
+    }
+    void sendMessage(message);
+  };
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void handleSend();
@@ -480,6 +503,18 @@ function OpenClawChatPage() {
               Choose a local or managed OpenClaw path. Managed instances provision automatically on
               first send.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={handleQuickStart}
+                disabled={status === 'streaming' || instanceBusy !== null || !!approvalDialog}
+              >
+                {instance?.status === 'ready' ? 'Send intro message' : 'Provision & send intro'}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                One click provisions (if needed) and sends the first message.
+              </p>
+            </div>
             <OpenClawSetupCards className="mt-4" showChatCta={false} />
             <p className="mt-4 text-xs text-muted-foreground">
               Messages are stored in OpenClaw sessions (user-scoped by default).
