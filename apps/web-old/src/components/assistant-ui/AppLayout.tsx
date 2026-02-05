@@ -17,7 +17,6 @@ import {
 } from '@/components/assistant-ui/right-sidebar';
 import { AppBreadcrumb } from '@/components/assistant-ui/AppBreadcrumb';
 import { useOpenAgentsChatRuntime } from '@/components/assistant-ui/openagents-chat-runtime';
-import { CodexConnectDialog } from '@/components/assistant-ui/CodexConnectDialog';
 
 /**
  * App chrome: left sidebar (thread list), center (header + Outlet), right sidebar (community).
@@ -30,8 +29,6 @@ export function AppLayout() {
   const location = useRouterState({ select: (s) => s.location });
   // Right sidebar (Feed/Communities) hidden – social code in packages/social
   const showRightSidebar = false;
-  const showCodexConnect =
-    pathname.startsWith('/chat') || pathname.startsWith('/assistant');
   const { user, loading } = useAuth();
   const ensureUser = useMutation(api.users.ensureUser);
   const ensuredUserId = useRef<string | null>(null);
@@ -79,7 +76,6 @@ export function AppLayout() {
               <SidebarTrigger className="md:hidden" />
               <AppBreadcrumb />
               <div className="ml-auto flex items-center gap-2">
-                {showCodexConnect && <CodexConnectDialog />}
                 <div
                   ref={(el) => setRightTriggerContainer(el ?? null)}
                   className="flex md:hidden"

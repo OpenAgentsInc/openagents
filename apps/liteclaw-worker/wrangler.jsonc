@@ -12,22 +12,11 @@
     "binding": "AI",
     "remote": true
   },
-  "containers": [
-    {
-      "class_name": "Sandbox",
-      "image": "./Dockerfile",
-      "instance_type": "basic"
-    }
-  ],
   "durable_objects": {
     "bindings": [
       {
         "name": "Chat",
         "class_name": "Chat"
-      },
-      {
-        "name": "Sandbox",
-        "class_name": "Sandbox"
       }
     ]
   },
@@ -35,10 +24,6 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["Chat"]
-    },
-    {
-      "tag": "v2",
-      "new_sqlite_classes": ["Sandbox"]
     }
   ],
   "observability": {
