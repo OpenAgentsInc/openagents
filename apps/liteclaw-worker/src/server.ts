@@ -99,6 +99,11 @@ type ExtensionToolMetricLog = {
 
 type ToolPolicy = "none" | "read-only" | "read-write";
 type ExecutorKind = "workers" | "container" | "tunnel";
+type ToolChoiceSetting =
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "tool"; toolName: string };
 
 type ToolRunState = {
   calls: number;
@@ -328,6 +333,22 @@ const parseExecutorKind = (value: string | undefined): ExecutorKind => {
     return value;
   }
   return "workers";
+};
+
+const parseToolChoice = (
+  value: string | undefined
+): ToolChoiceSetting | undefined => {
+  if (!value) return undefined;
+  if (value === "auto" || value === "none" || value === "required") {
+    return value;
+  }
+  if (value.startsWith("tool:")) {
+    const toolName = value.slice("tool:".length).trim();
+    if (toolName) {
+      return { type: "tool", toolName };
+    }
+  }
+  return undefined;
 };
 
 const parseNumberEnv = (value: string | undefined, fallback: number) => {
@@ -2700,6 +2721,7 @@ export class Chat extends AIChatAgent<Env> {
       workersai,
       extensions
     });
+    const toolChoice = tools ? parseToolChoice(this.env.LITECLAW_TOOL_CHOICE) : undefined;
 
     const finalize = (params: {
       ok: boolean;
@@ -2862,7 +2884,13 @@ export class Chat extends AIChatAgent<Env> {
 
           result = streamText({
             ...streamOptions,
-            ...(tools ? { tools, activeTools } : {})
+            ...(tools
+              ? {
+                  tools,
+                  activeTools,
+                  ...(toolChoice ? { toolChoice } : {})
+                }
+              : {})
           });
         } catch (error) {
           const message =

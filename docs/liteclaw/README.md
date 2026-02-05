@@ -107,6 +107,7 @@ These env vars are used by the LiteClaw worker. Defaults are the current runtime
 | --- | --- | --- |
 | `LITECLAW_SKY_MODE` | Enable Sky logging and export. | `"0"` |
 | `LITECLAW_TOOL_POLICY` | Default per-thread tool policy. | `none` |
+| `LITECLAW_TOOL_CHOICE` | Tool choice mode (`auto`, `none`, `required`, or `tool:<name>`). | `auto` |
 | `LITECLAW_TOOL_MAX_CALLS` | Max tool calls per run. | `4` |
 | `LITECLAW_TOOL_MAX_OUTBOUND_BYTES` | Max tool output bytes per run. | `200000` |
 | `LITECLAW_TOOL_ADMIN_SECRET` | Admin secret for `/tool-policy`. | none |

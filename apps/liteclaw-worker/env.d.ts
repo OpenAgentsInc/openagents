@@ -8,6 +8,7 @@ declare global {
     AI: Ai;
     LITECLAW_SKY_MODE?: string;
     LITECLAW_TOOL_POLICY?: string;
+    LITECLAW_TOOL_CHOICE?: string;
     LITECLAW_TOOL_MAX_CALLS?: string;
     LITECLAW_TOOL_MAX_OUTBOUND_BYTES?: string;
     LITECLAW_TOOL_ADMIN_SECRET?: string;

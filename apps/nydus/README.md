@@ -41,6 +41,8 @@ bun run index.ts cloud
 
 The script sends a message to the LiteClaw agent and waits for the agent to call `workspace.write/read` through the tunnel. It then verifies the local file content and (by default) checks the `/export` receipts for workspace tool usage.
 
+If the model responds with JSON tool-call instructions instead of actual tool calls, nydus will parse those JSON blocks and execute them locally via the tunnel as a fallback. When the fallback path is used, export receipt checks are skipped (the tools were executed out-of-band).
+
 ## Modes
 
 - `handshake` (default): direct tunnel tool invocation.
@@ -74,3 +76,5 @@ Cloud demo options:
 - `NYDUS_FILE_WAIT_MS` (defaults to `15000`)
 - `NYDUS_CHECK_EXPORT` (`0` to skip export receipt checks)
 - `NYDUS_REQUIRE_LOCAL_RECEIPT` (`0` to allow non-tunnel receipts)
+
+Note: If you expect the fallback to run, you must also set `LITECLAW_TUNNEL_URL` and `LITECLAW_TUNNEL_TOKEN` so nydus can execute the tools.
