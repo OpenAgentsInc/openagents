@@ -2181,6 +2181,36 @@ export class Chat extends AIChatAgent<Env> {
 
       this.extensionCatalog = null;
 
+      const catalogKey =
+        this.env.LITECLAW_EXTENSION_CATALOG_KEY ?? "extensions/catalog.json";
+      const catalogKv = this.env.LITECLAW_EXTENSION_KV;
+      const catalogBucket = this.env.LITECLAW_EXTENSION_BUCKET;
+      if (catalogKv || catalogBucket) {
+        const rows = this.sql<ExtensionCatalogRow>`
+          select extension_id, manifest_json, updated_at
+          from sky_extensions
+          order by updated_at desc
+        `;
+        const snapshot = rows
+          .map((row) => {
+            try {
+              return parseExtensionManifest(JSON.parse(row.manifest_json));
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean) as ExtensionManifest[];
+        const payload = JSON.stringify({ extensions: snapshot });
+        if (catalogKv) {
+          await catalogKv.put(catalogKey, payload);
+        }
+        if (catalogBucket) {
+          await catalogBucket.put(catalogKey, payload, {
+            httpMetadata: { contentType: "application/json" }
+          });
+        }
+      }
+
       return Response.json({ ok: true, count: manifests.length });
     }
 
