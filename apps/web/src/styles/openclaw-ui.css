@@ -1,0 +1,323 @@
+/* OpenClaw UI – same styling/variables as ~/code/openclaw/ui. Scoped under .openclaw-ui */
+
+.openclaw-ui {
+  /* Design tokens (from openclaw base.css) */
+  --oc-bg: #12141a;
+  --oc-bg-accent: #14161d;
+  --oc-bg-elevated: #1a1d25;
+  --oc-bg-hover: #262a35;
+  --oc-card: #181b22;
+  --oc-card-foreground: #f4f4f5;
+  --oc-card-highlight: rgba(255, 255, 255, 0.05);
+  --oc-panel: #12141a;
+  --oc-panel-strong: #1a1d25;
+  --oc-panel-hover: #262a35;
+  --oc-text: #e4e4e7;
+  --oc-text-strong: #fafafa;
+  --oc-muted: #71717a;
+  --oc-border: #27272a;
+  --oc-border-strong: #3f3f46;
+  --oc-input: #27272a;
+  --oc-ring: #ff5c5c;
+  --oc-accent: #ff5c5c;
+  --oc-accent-hover: #ff7070;
+  --oc-accent-subtle: rgba(255, 92, 92, 0.15);
+  --oc-primary-foreground: #ffffff;
+  --oc-secondary: #1e2028;
+  --oc-ok: #22c55e;
+  --oc-danger: #ef4444;
+  --oc-danger-subtle: rgba(239, 68, 68, 0.12);
+  --oc-focus-ring: 0 0 0 2px var(--oc-bg), 0 0 0 4px var(--oc-ring);
+  --oc-font-body: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --oc-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --oc-radius-sm: 6px;
+  --oc-radius-md: 8px;
+  --oc-radius-lg: 12px;
+  --oc-radius-full: 9999px;
+  --oc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --oc-duration-fast: 120ms;
+  --oc-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  font-family: var(--oc-font-body);
+  background: var(--oc-bg);
+  color: var(--oc-text);
+  height: 100%;
+  min-height: 0;
+}
+
+/* Shell – full viewport grid, chat-only (no nav) */
+.openclaw-ui .oc-shell {
+  --oc-topbar-height: 56px;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: var(--oc-topbar-height) 1fr;
+  grid-template-areas: 'topbar' 'content';
+  overflow: hidden;
+}
+
+.openclaw-ui .oc-topbar {
+  grid-area: topbar;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  height: var(--oc-topbar-height);
+  border-bottom: 1px solid var(--oc-border);
+  background: var(--oc-bg);
+}
+
+.openclaw-ui .oc-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.openclaw-ui .oc-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.openclaw-ui .oc-brand-logo {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.openclaw-ui .oc-brand-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.openclaw-ui .oc-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.openclaw-ui .oc-brand-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--oc-text-strong);
+}
+
+.openclaw-ui .oc-brand-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--oc-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.openclaw-ui .oc-topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.openclaw-ui .oc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--oc-border);
+  padding: 6px 10px;
+  border-radius: var(--oc-radius-full);
+  background: var(--oc-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.openclaw-ui .oc-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--oc-radius-full);
+  background: var(--oc-danger);
+}
+
+.openclaw-ui .oc-status-dot.ok {
+  background: var(--oc-ok);
+}
+
+.openclaw-ui .oc-content {
+  grid-area: content;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow: hidden;
+  padding: 12px 16px 32px;
+  min-height: 0;
+}
+
+.openclaw-ui .oc-content-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+.openclaw-ui .oc-page-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  color: var(--oc-text-strong);
+}
+
+.openclaw-ui .oc-page-sub {
+  color: var(--oc-muted);
+  font-size: 14px;
+  margin-top: 6px;
+}
+
+/* Chat card – same structure as openclaw chat view */
+.openclaw-ui .oc-chat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.openclaw-ui .oc-chat-thread {
+  flex: 1 1 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 4px;
+  margin: 0 -4px;
+  min-height: 0;
+  border-radius: 12px;
+  background: transparent;
+}
+
+.openclaw-ui .oc-chat-compose {
+  position: sticky;
+  bottom: 0;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+  padding: 12px 4px 4px;
+  background: linear-gradient(to bottom, transparent, var(--oc-bg) 20%);
+  z-index: 10;
+}
+
+.openclaw-ui .oc-chat-compose__row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex: 1;
+}
+
+.openclaw-ui .oc-chat-compose__field {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.openclaw-ui .oc-chat-compose__field > span {
+  display: none;
+}
+
+.openclaw-ui .oc-chat-compose__field textarea {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  max-height: 150px;
+  padding: 9px 12px;
+  border-radius: var(--oc-radius-md);
+  border: 1px solid var(--oc-input);
+  background: var(--oc-card);
+  overflow-y: auto;
+  resize: none;
+  white-space: pre-wrap;
+  font-family: var(--oc-font-body);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--oc-text);
+  transition: border-color var(--oc-duration-fast) ease, box-shadow var(--oc-duration-fast) ease;
+}
+
+.openclaw-ui .oc-chat-compose__field textarea::placeholder {
+  color: var(--oc-muted);
+}
+
+.openclaw-ui .oc-chat-compose__field textarea:focus {
+  outline: none;
+  border-color: var(--oc-ring);
+  box-shadow: var(--oc-focus-ring);
+}
+
+.openclaw-ui .oc-chat-compose__actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.openclaw-ui .oc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--oc-border);
+  background: var(--oc-bg-elevated);
+  padding: 9px 16px;
+  border-radius: var(--oc-radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--oc-duration-fast) var(--oc-ease-out),
+    background var(--oc-duration-fast) var(--oc-ease-out);
+  color: var(--oc-text);
+}
+
+.openclaw-ui .oc-btn:hover {
+  background: var(--oc-bg-hover);
+  border-color: var(--oc-border-strong);
+}
+
+.openclaw-ui .oc-btn.primary {
+  border-color: var(--oc-accent);
+  background: var(--oc-accent);
+  color: var(--oc-primary-foreground);
+}
+
+.openclaw-ui .oc-btn.primary:hover {
+  background: var(--oc-accent-hover);
+  border-color: var(--oc-accent-hover);
+}
+
+.openclaw-ui .oc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.openclaw-ui .oc-chat-compose .oc-btn {
+  padding: 0 16px;
+  font-size: 13px;
+  height: 40px;
+  min-height: 40px;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.openclaw-ui .oc-muted {
+  color: var(--oc-muted);
+  font-size: 14px;
+}

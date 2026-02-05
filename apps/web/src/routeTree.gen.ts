@@ -15,13 +15,14 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
+import { Route as OpenclawRouteImport } from './routes/_openclaw'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as OpenclawInstanceRouteImport } from './routes/openclaw.instance'
+import { Route as OpenclawHatcheryRouteImport } from './routes/_openclaw/hatchery'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
 import { Route as AppKbRouteImport } from './routes/_app/kb'
-import { Route as AppHatcheryRouteImport } from './routes/_app/hatchery'
 import { Route as AppFeedRouteImport } from './routes/_app/feed'
 import { Route as AppCRouteImport } from './routes/_app/c'
 import { Route as AppAssistantRouteImport } from './routes/_app/assistant'
@@ -66,6 +67,10 @@ const ApprovalsRoute = ApprovalsRouteImport.update({
   path: '/approvals',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OpenclawRoute = OpenclawRouteImport.update({
+  id: '/_openclaw',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
@@ -84,6 +89,11 @@ const OpenclawInstanceRoute = OpenclawInstanceRouteImport.update({
   path: '/openclaw/instance',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OpenclawHatcheryRoute = OpenclawHatcheryRouteImport.update({
+  id: '/hatchery',
+  path: '/hatchery',
+  getParentRoute: () => OpenclawRoute,
+} as any)
 const AuthenticatedAuthenticatedRoute =
   AuthenticatedAuthenticatedRouteImport.update({
     id: '/authenticated',
@@ -93,11 +103,6 @@ const AuthenticatedAuthenticatedRoute =
 const AppKbRoute = AppKbRouteImport.update({
   id: '/kb',
   path: '/kb',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppHatcheryRoute = AppHatcheryRouteImport.update({
-  id: '/hatchery',
-  path: '/hatchery',
   getParentRoute: () => AppRoute,
 } as any)
 const AppFeedRoute = AppFeedRouteImport.update({
@@ -178,9 +183,9 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AppAssistantRoute
   '/c': typeof AppCRouteWithChildren
   '/feed': typeof AppFeedRoute
-  '/hatchery': typeof AppHatcheryRoute
   '/kb': typeof AppKbRouteWithChildren
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/hatchery': typeof OpenclawHatcheryRoute
   '/openclaw/instance': typeof OpenclawInstanceRoute
   '/c/$community': typeof AppCCommunityRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
@@ -203,8 +208,8 @@ export interface FileRoutesByTo {
   '/admin': typeof AppAdminRoute
   '/assistant': typeof AppAssistantRoute
   '/feed': typeof AppFeedRoute
-  '/hatchery': typeof AppHatcheryRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/hatchery': typeof OpenclawHatcheryRoute
   '/openclaw/instance': typeof OpenclawInstanceRoute
   '/c/$community': typeof AppCCommunityRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
@@ -220,6 +225,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/_openclaw': typeof OpenclawRouteWithChildren
   '/approvals': typeof ApprovalsRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
@@ -230,9 +236,9 @@ export interface FileRoutesById {
   '/_app/assistant': typeof AppAssistantRoute
   '/_app/c': typeof AppCRouteWithChildren
   '/_app/feed': typeof AppFeedRoute
-  '/_app/hatchery': typeof AppHatcheryRoute
   '/_app/kb': typeof AppKbRouteWithChildren
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/_openclaw/hatchery': typeof OpenclawHatcheryRoute
   '/openclaw/instance': typeof OpenclawInstanceRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$community': typeof AppCCommunityRoute
@@ -259,9 +265,9 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/c'
     | '/feed'
-    | '/hatchery'
     | '/kb'
     | '/authenticated'
+    | '/hatchery'
     | '/openclaw/instance'
     | '/c/$community'
     | '/chat/$chatId'
@@ -284,8 +290,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/assistant'
     | '/feed'
-    | '/hatchery'
     | '/authenticated'
+    | '/hatchery'
     | '/openclaw/instance'
     | '/c/$community'
     | '/chat/$chatId'
@@ -300,6 +306,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/_authenticated'
+    | '/_openclaw'
     | '/approvals'
     | '/callback'
     | '/chat'
@@ -310,9 +317,9 @@ export interface FileRouteTypes {
     | '/_app/assistant'
     | '/_app/c'
     | '/_app/feed'
-    | '/_app/hatchery'
     | '/_app/kb'
     | '/_authenticated/authenticated'
+    | '/_openclaw/hatchery'
     | '/openclaw/instance'
     | '/_app/'
     | '/_app/c/$community'
@@ -329,6 +336,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  OpenclawRoute: typeof OpenclawRouteWithChildren
   ApprovalsRoute: typeof ApprovalsRoute
   CallbackRoute: typeof CallbackRoute
   ChatRoute: typeof ChatRoute
@@ -382,6 +390,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApprovalsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_openclaw': {
+      id: '/_openclaw'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof OpenclawRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
@@ -410,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OpenclawInstanceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_openclaw/hatchery': {
+      id: '/_openclaw/hatchery'
+      path: '/hatchery'
+      fullPath: '/hatchery'
+      preLoaderRoute: typeof OpenclawHatcheryRouteImport
+      parentRoute: typeof OpenclawRoute
+    }
     '/_authenticated/authenticated': {
       id: '/_authenticated/authenticated'
       path: '/authenticated'
@@ -422,13 +444,6 @@ declare module '@tanstack/react-router' {
       path: '/kb'
       fullPath: '/kb'
       preLoaderRoute: typeof AppKbRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/hatchery': {
-      id: '/_app/hatchery'
-      path: '/hatchery'
-      fullPath: '/hatchery'
-      preLoaderRoute: typeof AppHatcheryRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/feed': {
@@ -554,7 +569,6 @@ interface AppRouteChildren {
   AppAssistantRoute: typeof AppAssistantRoute
   AppCRoute: typeof AppCRouteWithChildren
   AppFeedRoute: typeof AppFeedRoute
-  AppHatcheryRoute: typeof AppHatcheryRoute
   AppKbRoute: typeof AppKbRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppChatChatIdRoute: typeof AppChatChatIdRoute
@@ -569,7 +583,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppAssistantRoute: AppAssistantRoute,
   AppCRoute: AppCRouteWithChildren,
   AppFeedRoute: AppFeedRoute,
-  AppHatcheryRoute: AppHatcheryRoute,
   AppKbRoute: AppKbRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppChatChatIdRoute: AppChatChatIdRoute,
@@ -593,9 +606,22 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
   AuthenticatedRouteChildren,
 )
 
+interface OpenclawRouteChildren {
+  OpenclawHatcheryRoute: typeof OpenclawHatcheryRoute
+}
+
+const OpenclawRouteChildren: OpenclawRouteChildren = {
+  OpenclawHatcheryRoute: OpenclawHatcheryRoute,
+}
+
+const OpenclawRouteWithChildren = OpenclawRoute._addFileChildren(
+  OpenclawRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  OpenclawRoute: OpenclawRouteWithChildren,
   ApprovalsRoute: ApprovalsRoute,
   CallbackRoute: CallbackRoute,
   ChatRoute: ChatRoute,
