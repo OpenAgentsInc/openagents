@@ -90,15 +90,15 @@ const ThreadWelcome: FC = () => {
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in font-semibold text-2xl duration-200">
-            Welcome to OpenAgents!
+            Welcome to LiteClaw
           </h1>
           <p className="mt-1 aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in text-muted-foreground text-xl delay-75 duration-200">
-            How can we help you?
+            Your persistent personal agent, always on.
           </p>
         </div>
         <div className="mt-6 w-full px-4">
           <p className="text-sm text-muted-foreground">
-            Choose your OpenClaw setup path:
+            Try a starter prompt:
           </p>
         </div>
       </div>
@@ -109,25 +109,24 @@ const ThreadWelcome: FC = () => {
 
 const SUGGESTIONS = [
   {
-    title: "Help me set up OpenClaw",
-    label: "Local or managed",
-    prompt:
-      "Help me set up OpenClaw in this account. If I don't have an instance, provision one. Then help me pair my device.",
+    title: "What do you remember?",
+    label: "Quick recap",
+    prompt: "Give me a quick recap of what we've discussed so far.",
   },
   {
-    title: "What tools do you have?",
-    label: "And what can you do",
-    prompt: "What tools do you have and what can you do?",
+    title: "Remember a preference",
+    label: "Make it stick",
+    prompt: "Remember that I prefer concise, bullet-point answers.",
   },
   {
-    title: "Explain the Nostr protocol",
-    label: "Why does it matter",
-    prompt: "Explain the Nostr protocol and why it matters",
+    title: "Plan my week",
+    label: "LiteClaw as planner",
+    prompt: "Help me plan my week with clear priorities and time blocks.",
   },
   {
-    title: "Help me set up a bitcoin wallet",
-    label: "So my agent can earn and spend",
-    prompt: "Help me set up a bitcoin wallet so my agent can earn and spend",
+    title: "Draft a message",
+    label: "Professional and crisp",
+    prompt: "Draft a concise email to reschedule a meeting to next week.",
   },
 ] as const;
 
@@ -262,6 +261,7 @@ const MessageSourceLabel: FC = () => {
   const lastAssistant = assistantMessages[assistantMessages.length - 1] as { id: string } | undefined;
   const isLastAssistant = lastAssistant != null && message.id === lastAssistant.id;
   const source = streamSource ?? (isLastAssistant ? lastSource : null);
+  if (!source) return null;
   const label =
     source === 'local-fallback'
       ? 'Source: local fallback'

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { useMutation, useQuery } from 'convex/react';
-import { BookOpen, MessageSquarePlus, Plus, ServerIcon, Shield } from 'lucide-react';
+import { BookOpen, Plus, ServerIcon, Shield } from 'lucide-react';
 import { api } from '../../../convex/_generated/api';
 import {
   Sidebar,
@@ -170,17 +170,12 @@ function SidebarLiteClawSection() {
 }
 
 function SidebarChatsSection({ threads }: { threads?: Array<ThreadSummary> }) {
-  const navigate = useNavigate();
   const chatActive = useIsActive('/chat') || useIsActive('/assistant');
   const activeThreadId = useAssistantThreadId();
   const chatThreads = React.useMemo(
-    () => (threads ?? []).filter((t) => t.kind !== 'project'),
+    () => (threads ?? []).filter((t) => t.kind === 'liteclaw'),
     [threads],
   );
-
-  const handleNewChat = () => {
-    navigate({ to: '/chat/$chatId', params: { chatId: 'new' } });
-  };
 
   return (
     <SidebarMenu className="pt-2">
@@ -191,15 +186,6 @@ function SidebarChatsSection({ threads }: { threads?: Array<ThreadSummary> }) {
         >
           Chats
         </Link>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 text-sidebar-foreground/70 hover:text-sidebar-foreground"
-          onClick={handleNewChat}
-          aria-label="New chat"
-        >
-          <MessageSquarePlus className="size-3.5" />
-        </Button>
       </div>
       {chatThreads.length ? (
         chatThreads.slice(0, 10).map((t) => (
