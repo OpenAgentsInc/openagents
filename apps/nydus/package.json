@@ -1,0 +1,14 @@
+{
+  "name": "nydus",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "handshake": "bun run index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

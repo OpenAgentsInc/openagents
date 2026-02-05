@@ -41,6 +41,8 @@ LITECLAW_TUNNEL_URL=https://<your-tunnel-host>
 LITECLAW_TUNNEL_TOKEN=replace-me
 LITECLAW_TUNNEL_ACCESS_CLIENT_ID=optional
 LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET=optional
+
+If the hostname is protected by Cloudflare Access, the worker must forward the Access service token headers. LiteClaw supports this via the `LITECLAW_TUNNEL_ACCESS_CLIENT_ID` and `LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET` env vars.
 ```
 
 4. Ensure tool policy allows write tools.
@@ -97,6 +99,17 @@ LITECLAW_HTTP_ALLOWLIST=example.com \
 LITECLAW_EXTENSION_ALLOWLIST=sky.echo@0.1.0 \
 LITECLAW_EXTENSION_ADMIN_SECRET=replace-me \
 npm run smoke
+```
+
+Or run the Bun-based handshake script:
+
+```bash
+cd apps/nydus
+LITECLAW_TUNNEL_URL=https://local-tools.example.com \
+LITECLAW_TUNNEL_TOKEN=replace-me \
+CF_ACCESS_CLIENT_ID=optional \
+CF_ACCESS_CLIENT_SECRET=optional \
+bun run index.ts
 ```
 
 ## Troubleshooting
