@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
 
 export const Route = createFileRoute('/')({

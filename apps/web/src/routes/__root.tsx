@@ -9,6 +9,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { ConvexReactClient } from 'convex/react';
 import type { ConvexQueryClient } from '@convex-dev/react-query';
+import type { AppRuntime } from '../effect/runtime';
 
 const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
   const auth = await getAuth();
@@ -24,6 +25,7 @@ export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
   convexClient: ConvexReactClient;
   convexQueryClient: ConvexQueryClient;
+  effectRuntime: AppRuntime;
 }>()({
   head: () => ({
     meta: [
