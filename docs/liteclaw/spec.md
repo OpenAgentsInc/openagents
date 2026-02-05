@@ -239,3 +239,124 @@ This spec:
 * Lets you observe real usage before naming futures
 
 If users don’t care about a persistent LiteClaw, no amount of agent infrastructure will matter.
+
+---
+
+## Repo Map (Where The Code Lives)
+
+LiteClaw EA is intentionally small. This section is here so we don’t scatter logic.
+
+### Spec (source of truth)
+
+- `docs/liteclaw/spec.md` (this doc)
+
+### OpenAgents web shell (existing)
+
+We keep using the existing OpenAgents UI chrome for navigation and gating, but **remove the right/community sidebar from Hatchery**.
+
+- Route entrypoints:
+  - `apps/web/src/routes/_app/hatchery.tsx`
+- App chrome:
+  - `apps/web/src/components/assistant-ui/AppLayout.tsx` (right sidebar hidden on `/hatchery`)
+  - `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (left sidebar)
+- Hatchery content:
+  - `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`
+
+### LiteClaw runtime (new Cloudflare Worker app)
+
+This is the “real product”: **Workers + Durable Object + Agents SDK**. It owns chat state and streaming.
+
+- App folder:
+  - `apps/liteclaw/` (Cloudflare Worker + DO + UI assets)
+- Cloudflare config:
+  - `apps/liteclaw/wrangler.jsonc`
+  - `apps/liteclaw/.dev.vars.example` (never commit real secrets)
+- Worker/DO implementation (minimum set we will own):
+  - `apps/liteclaw/src/server.ts` (Worker fetch + DO class)
+  - `apps/liteclaw/src/shared.ts` (shared types/constants)
+  - `apps/liteclaw/src/utils.ts` (small helpers; no business logic sprawl)
+- UI (LiteClaw Chat screen; can be minimal):
+  - `apps/liteclaw/src/app.tsx`
+  - `apps/liteclaw/src/client.tsx`
+  - `apps/liteclaw/src/styles.css`
+
+### Agents SDK source (local dev dependency)
+
+For development, we want to build against the local Agents SDK checkout.
+
+- Local repo path on this machine:
+  - `/Users/christopherdavid/code/agents`
+- Package we depend on:
+  - `/Users/christopherdavid/code/agents/packages/agents` (npm package name: `agents`)
+
+Implementation detail (pick one):
+
+- Option A: pin to npm `agents@^0.3.x` in `apps/liteclaw/package.json`.
+- Option B (preferred for now): set `apps/liteclaw/package.json` → `"agents": "file:../../../agents/packages/agents"`.
+
+---
+
+## Explicit Include / Exclude (To Prevent Scope Creep)
+
+This is the “what do we delete/disable” list (useful because `apps/liteclaw/` starts from `agents-starter`).
+
+### Include (EA)
+
+- One DO per user, one rolling conversation, one memory summary
+- Streaming responses with a 10s “first bytes” guarantee (fallback to non-streamed)
+- Reset button (clears memory/history)
+- Waitlist gating (simple allowlist or “approved users” table; no billing)
+- Metrics logging: `ttft_ms`, `duration_ms`, `ok/error`, message counts
+
+### Exclude (EA)
+
+- Tool calling (no tools registry, no confirmations, no executions map)
+- Scheduling/cron tasks
+- Multiple chats/threads per user
+- Multi-agent/fleet features
+- Any “community” surfaces in the golden path
+
+---
+
+## Required Cloudflare Wiring (Paths + Config)
+
+### Domain routing
+
+We want `openagents.com/liteclaw` to hit the LiteClaw worker (not `apps/web`).
+
+- Add a Workers route for LiteClaw:
+  - `openagents.com/liteclaw*` → worker `liteclaw`
+- Keep the main site route:
+  - `openagents.com/*` → worker `openagents-web-app`
+
+### Durable Object bindings
+
+LiteClaw uses **one DO namespace**:
+
+- Binding: `Chat` (or rename to `LiteClawAgent`)
+- Class: `Chat` (or rename to `LiteClawAgent`)
+- Config location: `apps/liteclaw/wrangler.jsonc`
+
+### Secrets / env vars (LiteClaw worker)
+
+We will choose one model provider path:
+
+- Cloudflare Workers AI binding (preferred for “no keys”):
+  - `AI` binding in `apps/liteclaw/wrangler.jsonc`
+- OR server-owned provider key:
+  - `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set as a Wrangler secret for `apps/liteclaw`
+
+Waitlist gating:
+
+- `LITECLAW_ADMIN_SECRET` (single shared secret for a tiny approval endpoint), or
+- `LITECLAW_ALLOWED_EMAILS` (comma-separated allowlist) for the absolute simplest version.
+
+---
+
+## Local Dev / Test / Deploy (LiteClaw worker)
+
+Commands live with the app:
+
+- `cd apps/liteclaw && npm run dev`
+- `cd apps/liteclaw && npm run test`
+- `cd apps/liteclaw && npm run deploy`
