@@ -178,6 +178,32 @@ const hashText = async (text: string) => {
 
 const hashJson = async (value: unknown) => hashText(JSON.stringify(value));
 
+const normalizeMessageForExport = (message: UIMessage): UIMessage => {
+  const parts = message.parts.map((part) => {
+    if (part.type !== "file") {
+      return part;
+    }
+
+    const data = (part as { data?: { url?: string; mimeType?: string } }).data;
+    const url = data?.url;
+    if (!url) {
+      return part;
+    }
+
+    if (!url.startsWith("r2://")) {
+      return part;
+    }
+
+    return {
+      type: "ref",
+      ref: url,
+      metadata: data?.mimeType ? { mimeType: data.mimeType } : undefined
+    } as unknown as typeof part;
+  });
+
+  return { ...message, parts };
+};
+
 export class Chat extends AIChatAgent<Env> {
   private summary: string | null = null;
   private stateLoaded = false;
@@ -422,6 +448,7 @@ export class Chat extends AIChatAgent<Env> {
 
     const receipt = {
       schema_version: SKY_RECEIPT_SCHEMA_VERSION,
+      cf_sky_version: SKY_VERSION,
       run_id: options.runId,
       thread_id: this.name,
       model_config_id: MODEL_CONFIG_ID,
@@ -452,7 +479,9 @@ export class Chat extends AIChatAgent<Env> {
       from cf_ai_chat_agent_messages
       order by created_at asc
     `;
-    const messages = messageRows.map((row) => JSON.parse(row.message));
+    const messages = messageRows
+      .map((row) => JSON.parse(row.message) as UIMessage)
+      .map((message) => normalizeMessageForExport(message));
 
     const runs = this.sql<SkyRunRow>`
       select run_id, thread_id, started_at, completed_at, status, model_config_id, error_code, schema_version
