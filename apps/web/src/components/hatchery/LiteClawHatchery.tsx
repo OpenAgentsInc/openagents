@@ -1,20 +1,35 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useAgent } from 'agents/react';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { MessageType } from '@cloudflare/ai-chat/types';
-import { Animator } from '@arwes/react-animator';
+import { Animator, useAnimator } from '@arwes/react-animator';
+import { ANIMATOR_ACTIONS } from '@arwes/animator';
+import { Puffs } from '@arwes/react-bgs';
 import { DotsGridBackground, purplePreset } from '@openagentsinc/hud/react';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { HatcheryButton } from './HatcheryButton';
+import { HatcheryH1, HatcheryH2, HatcheryP } from './HatcheryTypography';
 import { Input } from '@/components/ui/input';
 import { MessageSquareIcon, ServerIcon } from 'lucide-react';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function FrameAnimatorController({ active }: { active: boolean }) {
+  const animator = useAnimator();
+
+  useEffect(() => {
+    if (!animator) {
+      return;
+    }
+    animator.node.send(active ? ANIMATOR_ACTIONS.enter : ANIMATOR_ACTIONS.exit);
+  }, [animator, active]);
+
+  return null;
+}
 
 export function LiteClawHatchery() {
   const { user, loading: authLoading } = useAuth();
@@ -31,7 +46,20 @@ export function LiteClawHatchery() {
   const [spawnError, setSpawnError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<'idle' | 'resetting' | 'success' | 'error'>('idle');
   const [resetError, setResetError] = useState<string | null>(null);
+  const [frameVisible, setFrameVisible] = useState(false);
+  const [frameReady, setFrameReady] = useState(false);
   const navigate = useNavigate();
+  const handleFrameReady = useCallback(() => {
+    setFrameReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!frameReady) {
+      return;
+    }
+    const id = window.setTimeout(() => setFrameVisible(true), 500);
+    return () => window.clearTimeout(id);
+  }, [frameReady]);
 
   const accessAllowed = accessStatus?.allowed === true;
   const waitlistEntry = accessStatus?.waitlistEntry ?? null;
@@ -148,44 +176,84 @@ export function LiteClawHatchery() {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      {/* Arwes-style dots + grid background (purple preset) */}
+    <Animator
+      root
+      active={frameVisible}
+      combine
+      duration={{ enter: 0.8, exit: 0.3, interval: 4 }}
+    >
+      <FrameAnimatorController active={frameVisible} />
       <div
-        className="absolute inset-0"
-        style={{
-          backgroundColor: purplePreset.backgroundColor,
-          backgroundImage: purplePreset.backgroundImage,
-        }}
+        className="min-h-screen bg-site flex flex-col p-3 md:p-4"
+        style={{ fontFamily: 'var(--font-square721)' }}
       >
-        <DotsGridBackground
-          distance={purplePreset.distance}
-          dotsColor={purplePreset.dotsColor}
-          lineColor={purplePreset.lineColor}
-        />
-      </div>
-      <div className="relative z-10 flex flex-1 flex-col p-4">
-        <Animator duration={{ enter: 0.8 }}>
-          <AssemblingFrame className="mx-auto w-full max-w-2xl">
+        <nav className="relative z-20 mb-3 md:mb-4">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold text-foreground">Hatchery</span>
+            </div>
+          </div>
+        </nav>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+        {/* Arwes-style dots + grid background (purple preset) + vignette + puffs */}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundColor: purplePreset.backgroundColor,
+            backgroundImage: [
+              `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 15%, rgba(0,0,0,0.4) 55%, rgba(0,0,0,0.75) 100%)`,
+              purplePreset.backgroundImage,
+            ].join(', '),
+          }}
+        >
+          <DotsGridBackground
+            distance={purplePreset.distance}
+            dotsColor={purplePreset.dotsColor}
+            lineColor={purplePreset.lineColor}
+          />
+          <Puffs
+            color="hsla(280, 50%, 70%, 0.2)"
+            quantity={20}
+          />
+        </div>
+        <div className="relative z-10 flex flex-1 flex-col p-4">
+          <div className="mb-4 flex justify-end">
+            <HatcheryButton
+              variant="outline"
+              onClick={() =>
+                setFrameVisible((visible) => {
+                  const next = !visible;
+                  console.log('[hatchery][button] toggle frameVisible', {
+                    from: visible,
+                    to: next,
+                  });
+                  return next;
+                })
+              }
+            >
+              {frameVisible ? 'Hide frame & puffs' : 'Show frame & puffs'}
+            </HatcheryButton>
+          </div>
+          <AssemblingFrame
+            className="mx-auto w-full max-w-2xl"
+            onReady={handleFrameReady}
+          >
             {/* Waitlist overlay */}
             {overlayVisible && (
               <div className="flex min-h-[50vh] flex-col items-center justify-center gap-6 text-center">
-          <h1 className="font-semibold text-2xl">LiteClaw Early Access</h1>
-          <p className="text-muted-foreground max-w-md text-sm">
+          <HatcheryH1>LiteClaw Early Access</HatcheryH1>
+          <HatcheryP className="max-w-md">
             A persistent, personal AI agent that remembers context and feels always there — no setup friction.
-          </p>
+          </HatcheryP>
           {accessStatus === null ? (
-            <span className="text-muted-foreground text-sm">Checking access…</span>
+            <HatcheryP>Checking access…</HatcheryP>
           ) : waitlistApproved || waitlistStatus === 'success' || waitlistEntry ? (
             <div className="flex flex-col items-center gap-3">
-              <p className="text-muted-foreground text-sm">
-                Thanks! We&apos;ll email you as soon as access opens.
-              </p>
+              <HatcheryP>Thanks! We&apos;ll email you as soon as access opens.</HatcheryP>
             </div>
           ) : (
             <div className="flex w-full max-w-sm flex-col gap-3">
-              <p className="text-muted-foreground text-sm">
-                Join the waitlist to get access.
-              </p>
+              <HatcheryP>Join the waitlist to get access.</HatcheryP>
               <Input
                 type="email"
                 placeholder="you@example.com"
@@ -195,12 +263,12 @@ export function LiteClawHatchery() {
                 disabled={waitlistStatus === 'submitting'}
                 className="w-full"
               />
-              <Button
+              <HatcheryButton
                 onClick={handleJoinWaitlist}
                 disabled={waitlistStatus === 'submitting'}
               >
                 {waitlistStatus === 'submitting' ? 'Joining…' : 'Join the waitlist'}
-              </Button>
+              </HatcheryButton>
               {waitlistError && (
                 <p className="text-destructive text-sm">{waitlistError}</p>
               )}
@@ -212,92 +280,86 @@ export function LiteClawHatchery() {
             {/* Hatchery content when access allowed */}
             {accessAllowed && (
               <div className="flex flex-col gap-6">
-          <div>
-            <h1 className="font-semibold text-2xl">Hatchery</h1>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Spawn your LiteClaw — a persistent chat agent that remembers context.
-            </p>
-          </div>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                  <ServerIcon className="size-8 text-muted-foreground" />
-                  <div>
-                    <p className="font-medium">LiteClaw</p>
-                    <p className="text-muted-foreground text-sm">
-                      Status:{' '}
-                      {liteclawThreadId === undefined
-                        ? '…'
-                        : hasLiteclaw
-                          ? 'ready'
-                          : spawnStatus === 'spawning'
-                            ? 'spawning'
-                            : spawnStatus === 'error'
-                              ? 'error'
-                              : 'not spawned'}
-                    </p>
+                <div>
+                  <HatcheryH1>Hatchery</HatcheryH1>
+                  <HatcheryP className="mt-1">
+                    Spawn your LiteClaw — a persistent chat agent that remembers context.
+                  </HatcheryP>
+                </div>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-3">
+                    <ServerIcon className="size-8 text-muted-foreground" />
+                    <div>
+                      <HatcheryH2>LiteClaw</HatcheryH2>
+                      <HatcheryP>
+                        Status:{' '}
+                        {liteclawThreadId === undefined
+                          ? '…'
+                          : hasLiteclaw
+                            ? 'ready'
+                            : spawnStatus === 'spawning'
+                              ? 'spawning'
+                              : spawnStatus === 'error'
+                                ? 'error'
+                                : 'not spawned'}
+                      </HatcheryP>
+                    </div>
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                    <HatcheryButton
+                      onClick={handleSpawn}
+                      disabled={spawnStatus === 'spawning'}
+                    >
+                      {hasLiteclaw ? (
+                        <>
+                          <MessageSquareIcon className="mr-2 size-4" />
+                          Go to chat
+                        </>
+                      ) : spawnStatus === 'spawning' ? (
+                        'Spawning…'
+                      ) : (
+                        'Spawn your LiteClaw'
+                      )}
+                    </HatcheryButton>
+                    <HatcheryButton
+                      variant="outline"
+                      onClick={handleReset}
+                      disabled={!hasLiteclaw || resetStatus === 'resetting'}
+                    >
+                      {resetStatus === 'resetting' ? 'Resetting…' : 'Reset LiteClaw memory'}
+                    </HatcheryButton>
+                  </div>
+                  {spawnError && (
+                    <HatcheryP className="text-destructive">{spawnError}</HatcheryP>
+                  )}
+                  {resetError && (
+                    <HatcheryP className="text-destructive">{resetError}</HatcheryP>
+                  )}
+                  {resetStatus === 'success' && !resetError && (
+                    <HatcheryP>LiteClaw memory cleared.</HatcheryP>
+                  )}
+                  {hasLiteclaw && liteclawThreadId && (
+                    <Link
+                      to="/chat/$chatId"
+                      params={{ chatId: liteclawThreadId }}
+                      className="text-muted-foreground hover:text-foreground text-sm underline"
+                    >
+                      Open chat →
+                    </Link>
+                  )}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={handleSpawn}
-                    disabled={spawnStatus === 'spawning'}
-                  >
-                    {hasLiteclaw ? (
-                      <>
-                        <MessageSquareIcon className="mr-2 size-4" />
-                        Go to chat
-                      </>
-                    ) : spawnStatus === 'spawning' ? (
-                      'Spawning…'
-                    ) : (
-                      'Spawn your LiteClaw'
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleReset}
-                    disabled={!hasLiteclaw || resetStatus === 'resetting'}
-                  >
-                    {resetStatus === 'resetting' ? 'Resetting…' : 'Reset LiteClaw memory'}
-                  </Button>
-                </div>
-                {spawnError && (
-                  <p className="text-destructive text-sm">{spawnError}</p>
-                )}
-                {resetError && (
-                  <p className="text-destructive text-sm">{resetError}</p>
-                )}
-                {resetStatus === 'success' && !resetError && (
-                  <p className="text-muted-foreground text-sm">
-                    LiteClaw memory cleared.
-                  </p>
-                )}
-                {hasLiteclaw && liteclawThreadId && (
-                  <Link
-                    to="/chat/$chatId"
-                    params={{ chatId: liteclawThreadId }}
-                    className="text-muted-foreground hover:text-foreground text-sm underline"
-                  >
-                    Open chat →
-                  </Link>
-                )}
-              </div>
-            </CardContent>
-          </Card>
               </div>
             )}
 
             {!user && accessStatus !== undefined && !overlayVisible && (
-              <div className="rounded-lg border border-border bg-muted/30 p-4 text-center text-sm">
+              <HatcheryP className="text-center">
                 Sign in to spawn your LiteClaw.
-              </div>
+              </HatcheryP>
             )}
           </AssemblingFrame>
-        </Animator>
+        </div>
+        </div>
       </div>
-    </div>
+    </Animator>
   );
 }
