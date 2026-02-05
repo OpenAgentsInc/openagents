@@ -7,11 +7,14 @@ import {
   createUIMessageStreamResponse,
   generateId,
   generateText,
+  jsonSchema,
   stepCountIs,
   streamText,
+  tool,
   type StreamTextOnFinishCallback,
   type StreamTextOnChunkCallback,
   type StreamTextOnErrorCallback,
+  type ToolExecutionOptions,
   type ToolSet,
   type UIMessage,
   type UIMessageStreamWriter
@@ -34,6 +37,11 @@ const SKY_RECEIPT_SCHEMA_VERSION = 1;
 const LITECLAW_SESSION_VERSION = 1;
 const SKY_VERSION = "0.1.0";
 const RATE_LIMIT_ROW_ID = "liteclaw_rate_limit";
+const DEFAULT_TOOL_POLICY: ToolPolicy = "none";
+const DEFAULT_TOOL_MAX_CALLS = 4;
+const DEFAULT_TOOL_MAX_OUTBOUND_BYTES = 200_000;
+const DEFAULT_HTTP_TIMEOUT_MS = 8_000;
+const DEFAULT_HTTP_MAX_BYTES = 50_000;
 
 const SYSTEM_PROMPT =
   "You are LiteClaw, a persistent personal AI agent. " +
@@ -66,6 +74,15 @@ type ChatMetricLog = {
   ok: boolean;
   error?: string;
   finish_reason?: string | null;
+};
+
+type ToolPolicy = "none" | "read-only" | "read-write";
+
+type ToolRunState = {
+  calls: number;
+  maxCalls: number;
+  outboundBytes: number;
+  maxOutboundBytes: number;
 };
 
 type LegacyLiteClawStateRow = {
@@ -178,6 +195,42 @@ const hashText = async (text: string) => {
 
 const hashJson = async (value: unknown) => hashText(JSON.stringify(value));
 
+const parseToolPolicy = (value: string | undefined): ToolPolicy => {
+  if (value === "read-only" || value === "read-write" || value === "none") {
+    return value;
+  }
+  return "none";
+};
+
+const parseNumberEnv = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const parseAllowlist = (value: string | undefined) =>
+  value
+    ? value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    : [];
+
+const isHostAllowed = (host: string, allowlist: Array<string>) => {
+  if (allowlist.length === 0) {
+    return false;
+  }
+  if (allowlist.includes("*")) {
+    return true;
+  }
+  return allowlist.some((entry) => {
+    if (entry.startsWith("*.")) {
+      const suffix = entry.slice(2);
+      return host === suffix || host.endsWith(`.${suffix}`);
+    }
+    return host === entry;
+  });
+};
+
 const normalizeMessageForExport = (message: UIMessage): UIMessage => {
   const parts = message.parts.map((part) => {
     if (part.type !== "file") {
@@ -271,6 +324,13 @@ export class Chat extends AIChatAgent<Env> {
         schema_version integer not null
       )
     `;
+    this.sql`
+      create table if not exists sky_tool_policy (
+        thread_id text primary key,
+        policy text not null,
+        updated_at integer not null
+      )
+    `;
 
     const memoryRows = this.sql<SkyMemoryRow>`
       select thread_id, summary, updated_at, schema_version
@@ -328,6 +388,375 @@ export class Chat extends AIChatAgent<Env> {
 
   private isSkyModeEnabled() {
     return this.env.LITECLAW_SKY_MODE === "1";
+  }
+
+  private getToolPolicy(): ToolPolicy {
+    const defaultPolicy = parseToolPolicy(this.env.LITECLAW_TOOL_POLICY);
+    const rows = this.sql<{ policy: string }>`
+      select policy
+      from sky_tool_policy
+      where thread_id = ${this.name}
+    `;
+
+    if (!rows.length) {
+      this.sql`
+        insert into sky_tool_policy (thread_id, policy, updated_at)
+        values (${this.name}, ${defaultPolicy}, ${Date.now()})
+      `;
+      return defaultPolicy;
+    }
+
+    const policy = parseToolPolicy(rows[0].policy);
+    if (policy !== rows[0].policy) {
+      this.sql`
+        update sky_tool_policy
+        set policy = ${policy}, updated_at = ${Date.now()}
+        where thread_id = ${this.name}
+      `;
+    }
+    return policy;
+  }
+
+  private recordToolReceipt(options: {
+    runId: string;
+    toolCallId: string;
+    toolName: string;
+    argsHash: string | null;
+    outputHash: string | null;
+    startedAt: number;
+    completedAt: number;
+    status: "success" | "error";
+    errorCode?: string | null;
+  }) {
+    if (!this.isSkyModeEnabled()) return;
+
+    const receipt = {
+      schema_version: SKY_RECEIPT_SCHEMA_VERSION,
+      cf_sky_version: SKY_VERSION,
+      type: "tool",
+      run_id: options.runId,
+      thread_id: this.name,
+      tool_call_id: options.toolCallId,
+      tool_name: options.toolName,
+      args_hash: options.argsHash,
+      output_hash: options.outputHash,
+      started_at: options.startedAt,
+      completed_at: options.completedAt,
+      duration_ms: options.completedAt - options.startedAt,
+      status: options.status,
+      error_code: options.errorCode ?? null
+    };
+
+    this.insertSkyReceipt({
+      runId: options.runId,
+      receipt,
+      createdAt: options.completedAt
+    });
+  }
+
+  private buildToolRegistry(options: {
+    policy: ToolPolicy;
+    runId: string;
+    emitSkyEvent: (type: string, payload: unknown) => void;
+    toolState: ToolRunState;
+    workersai: ReturnType<typeof createWorkersAI>;
+  }): {
+    tools?: ToolSet;
+    activeTools?: Array<string>;
+  } {
+    if (options.policy === "none") {
+      return {};
+    }
+
+    const allowlist = parseAllowlist(this.env.LITECLAW_HTTP_ALLOWLIST);
+    const httpTimeoutMs = parseNumberEnv(
+      this.env.LITECLAW_HTTP_TIMEOUT_MS,
+      DEFAULT_HTTP_TIMEOUT_MS
+    );
+    const httpMaxBytes = parseNumberEnv(
+      this.env.LITECLAW_HTTP_MAX_BYTES,
+      DEFAULT_HTTP_MAX_BYTES
+    );
+
+    const assertPolicyAllows = (mode: "read" | "write") => {
+      if (options.policy === "none") {
+        throw new Error("Tools are disabled for this thread.");
+      }
+      if (options.policy === "read-only" && mode === "write") {
+        throw new Error("Tool access is read-only for this thread.");
+      }
+    };
+
+    const consumeToolCallBudget = () => {
+      if (options.toolState.calls >= options.toolState.maxCalls) {
+        throw new Error("Tool call budget exceeded for this run.");
+      }
+      options.toolState.calls += 1;
+    };
+
+    const consumeOutboundBytes = (bytes: number) => {
+      if (bytes <= 0) return;
+      const nextTotal = options.toolState.outboundBytes + bytes;
+      if (nextTotal > options.toolState.maxOutboundBytes) {
+        throw new Error("Outbound tool data budget exceeded for this run.");
+      }
+      options.toolState.outboundBytes = nextTotal;
+    };
+
+    const executeToolWithLogging = async <Input, Output>(
+      toolName: string,
+      mode: "read" | "write",
+      input: Input,
+      toolOptions: ToolExecutionOptions,
+      handler: () => Promise<Output>
+    ) => {
+      assertPolicyAllows(mode);
+      consumeToolCallBudget();
+
+      const toolCallId = toolOptions.toolCallId;
+      const startedAt = Date.now();
+      const argsJson = JSON.stringify(input);
+      const argsHash = await hashText(argsJson);
+
+      options.emitSkyEvent("tool.call.started", {
+        tool_call_id: toolCallId,
+        tool_name: toolName
+      });
+      options.emitSkyEvent("tool.call.args.delta", {
+        tool_call_id: toolCallId,
+        tool_name: toolName,
+        delta: argsJson,
+        format: "json"
+      });
+      options.emitSkyEvent("tool.call.args.completed", {
+        tool_call_id: toolCallId,
+        tool_name: toolName,
+        args: input
+      });
+
+      try {
+        const output = await handler();
+        const outputHash = await hashJson(output);
+
+        options.emitSkyEvent("tool.result", {
+          tool_call_id: toolCallId,
+          tool_name: toolName,
+          status: "success",
+          output_hash: outputHash
+        });
+        options.emitSkyEvent("tool.call.completed", {
+          tool_call_id: toolCallId,
+          tool_name: toolName,
+          status: "success",
+          duration_ms: Date.now() - startedAt
+        });
+
+        this.recordToolReceipt({
+          runId: options.runId,
+          toolCallId,
+          toolName,
+          argsHash,
+          outputHash,
+          startedAt,
+          completedAt: Date.now(),
+          status: "success"
+        });
+
+        return output;
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "tool_error";
+
+        options.emitSkyEvent("tool.result", {
+          tool_call_id: toolCallId,
+          tool_name: toolName,
+          status: "error",
+          output_hash: null
+        });
+        options.emitSkyEvent("tool.call.completed", {
+          tool_call_id: toolCallId,
+          tool_name: toolName,
+          status: "error",
+          duration_ms: Date.now() - startedAt
+        });
+
+        this.recordToolReceipt({
+          runId: options.runId,
+          toolCallId,
+          toolName,
+          argsHash,
+          outputHash: null,
+          startedAt,
+          completedAt: Date.now(),
+          status: "error",
+          errorCode: errorMessage
+        });
+
+        throw error;
+      }
+    };
+
+    const tools: ToolSet = {
+      "http.fetch": tool({
+        description:
+          "Fetch a URL over HTTPS. Responses are size-limited and gated by an allowlist.",
+        inputSchema: jsonSchema({
+          type: "object",
+          properties: {
+            url: { type: "string" },
+            method: { type: "string" },
+            headers: { type: "object", additionalProperties: { type: "string" } },
+            body: { type: "string" },
+            max_bytes: { type: "number" }
+          },
+          required: ["url"],
+          additionalProperties: false
+        }),
+        execute: async (input: {
+          url: string;
+          method?: string;
+          headers?: Record<string, string>;
+          body?: string;
+          max_bytes?: number;
+        }, toolOptions) => {
+          const url = new URL(input.url);
+          if (!isHostAllowed(url.hostname, allowlist)) {
+            throw new Error("HTTP host is not in the allowlist.");
+          }
+
+          const method = (input.method ?? "GET").toUpperCase();
+          const isWrite = !["GET", "HEAD"].includes(method);
+
+          return executeToolWithLogging(
+            "http.fetch",
+            isWrite ? "write" : "read",
+            input,
+            toolOptions,
+            async () => {
+              const timeoutController = new AbortController();
+              const timeoutId = setTimeout(
+                () => timeoutController.abort(),
+                httpTimeoutMs
+              );
+              const signal = combineAbortSignals(
+                timeoutController.signal,
+                toolOptions.abortSignal
+              );
+
+              try {
+                const response = await fetch(url.toString(), {
+                  method,
+                  headers: input.headers,
+                  body: input.body,
+                  signal
+                });
+
+                const buffer = await response.arrayBuffer();
+                const cap = parseNumberEnv(
+                  input.max_bytes?.toString(),
+                  httpMaxBytes
+                );
+                const maxBytes = Math.min(cap, httpMaxBytes);
+                const truncated = buffer.byteLength > maxBytes;
+                const sliced = buffer.slice(0, maxBytes);
+                consumeOutboundBytes(sliced.byteLength);
+
+                const bodyText = new TextDecoder().decode(sliced);
+                const contentType = response.headers.get("content-type");
+                return {
+                  ok: response.ok,
+                  status: response.status,
+                  truncated,
+                  content_type: contentType ?? null,
+                  body: bodyText
+                };
+              } finally {
+                clearTimeout(timeoutId);
+              }
+            }
+          );
+        }
+      }),
+      summarize: tool({
+        description: "Summarize the provided text into concise bullet points.",
+        inputSchema: jsonSchema({
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            max_tokens: { type: "number" }
+          },
+          required: ["text"],
+          additionalProperties: false
+        }),
+        execute: async (input: { text: string; max_tokens?: number }, toolOptions) => {
+          return executeToolWithLogging(
+            "summarize",
+            "read",
+            input,
+            toolOptions,
+            async () => {
+              const result = await generateText({
+                model: options.workersai(MODEL_ID),
+                system: SUMMARY_PROMPT,
+                prompt: input.text,
+                maxTokens: parseNumberEnv(
+                  input.max_tokens?.toString(),
+                  SUMMARY_MAX_TOKENS
+                )
+              });
+              return { summary: result.text.trim() };
+            }
+          );
+        }
+      }),
+      extract: tool({
+        description:
+          "Extract structured JSON from text following optional instructions.",
+        inputSchema: jsonSchema({
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            instructions: { type: "string" }
+          },
+          required: ["text"],
+          additionalProperties: false
+        }),
+        execute: async (input: { text: string; instructions?: string }, toolOptions) => {
+          return executeToolWithLogging(
+            "extract",
+            "read",
+            input,
+            toolOptions,
+            async () => {
+              const result = await generateText({
+                model: options.workersai(MODEL_ID),
+                system:
+                  "Extract structured JSON from the text. Respond with JSON only." +
+                  (input.instructions ? `\n\nInstructions: ${input.instructions}` : ""),
+                prompt: input.text,
+                maxTokens: SUMMARY_MAX_TOKENS
+              });
+
+              let parsed: unknown = null;
+              try {
+                parsed = JSON.parse(result.text);
+              } catch {
+                parsed = null;
+              }
+
+              return {
+                json: parsed,
+                raw: result.text.trim()
+              };
+            }
+          );
+        }
+      })
+    };
+
+    const activeTools = Object.keys(tools);
+
+    return { tools, activeTools };
   }
 
   private insertSkyRun(runId: string, startedAt: number) {
@@ -449,6 +878,7 @@ export class Chat extends AIChatAgent<Env> {
     const receipt = {
       schema_version: SKY_RECEIPT_SCHEMA_VERSION,
       cf_sky_version: SKY_VERSION,
+      type: "run",
       run_id: options.runId,
       thread_id: this.name,
       model_config_id: MODEL_CONFIG_ID,
@@ -724,6 +1154,19 @@ export class Chat extends AIChatAgent<Env> {
     const skyEnabled = this.isSkyModeEnabled();
     const runId = skyEnabled ? generateId() : "";
     let skyEventId = 0;
+    const toolPolicy = this.getToolPolicy();
+    const toolState: ToolRunState = {
+      calls: 0,
+      maxCalls: parseNumberEnv(
+        this.env.LITECLAW_TOOL_MAX_CALLS,
+        DEFAULT_TOOL_MAX_CALLS
+      ),
+      outboundBytes: 0,
+      maxOutboundBytes: parseNumberEnv(
+        this.env.LITECLAW_TOOL_MAX_OUTBOUND_BYTES,
+        DEFAULT_TOOL_MAX_OUTBOUND_BYTES
+      )
+    };
     let inputHashPromise: Promise<string> | null = null;
     let finishReason: string | null = null;
     let finalText: string | null = null;
@@ -752,6 +1195,14 @@ export class Chat extends AIChatAgent<Env> {
         schema_version: SKY_RUN_SCHEMA_VERSION
       });
     }
+
+    const { tools, activeTools } = this.buildToolRegistry({
+      policy: toolPolicy,
+      runId,
+      emitSkyEvent,
+      toolState,
+      workersai
+    });
 
     const finalize = (params: {
       ok: boolean;
@@ -890,7 +1341,7 @@ export class Chat extends AIChatAgent<Env> {
       execute: async ({ writer }) => {
         let result;
         try {
-          result = streamText({
+          const streamOptions = {
             system: systemPrompt,
             messages: await convertToModelMessages(recentMessages),
             model: workersai(MODEL_ID),
@@ -900,6 +1351,11 @@ export class Chat extends AIChatAgent<Env> {
             onError: handleError,
             onFinish: handleFinish,
             abortSignal: signal
+          };
+
+          result = streamText({
+            ...streamOptions,
+            ...(tools ? { tools, activeTools } : {})
           });
         } catch (error) {
           const message =

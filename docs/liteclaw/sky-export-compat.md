@@ -16,6 +16,11 @@ Every export **must** include:
 - One or more `message` records for the transcript.
 - Any `run`, `event`, and `receipt` records for runs that happened in the session.
 
+Receipts include:
+
+- Run receipts (`type: "run"`)
+- Tool receipts (`type: "tool"`) with args/output hashes
+
 ## Event contract
 
 Events are keyed by `type` and must validate against the schema for that type.

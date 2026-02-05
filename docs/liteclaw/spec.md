@@ -662,6 +662,7 @@ Production smoke (minimum):
 - 2026-02-05: Added LiteClaw worker guardrails (per-user rate limit, rolling summary + trimming, cancel in-flight streams, fallback to non-streamed response on stream failure), reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Implemented Sky-mode scaffolding in the LiteClaw worker (sky tables + memory storage, run/event/receipt logging behind `LITECLAW_SKY_MODE`, `/agents/chat/{id}/export` JSONL output), reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Added Phase 1 Sky contracts (TypeBox + AJV schemas for messages/events/receipts, tool args streaming contract, R2 ref normalization, compatibility doc), reran worker tests, and deployed liteclaw worker.
+- 2026-02-05: Implemented Phase 2 tool registry (http.fetch + summarize + extract), added tool policy/budgets, tool event + receipt logging, updated Sky receipt schema to include tool receipts, reran worker tests, and deployed liteclaw worker.
 
 ---
 

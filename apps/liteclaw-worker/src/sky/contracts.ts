@@ -58,10 +58,11 @@ export const SkyMemorySchema = Type.Object(
 
 export type SkyMemory = Static<typeof SkyMemorySchema>;
 
-export const SkyReceiptSchema = Type.Object(
+const SkyRunReceiptSchema = Type.Object(
   {
     schema_version: Type.Number(),
     cf_sky_version: Type.String(),
+    type: Type.Literal("run"),
     run_id: Type.String(),
     thread_id: Type.String(),
     model_config_id: Type.String(),
@@ -76,6 +77,31 @@ export const SkyReceiptSchema = Type.Object(
   },
   { additionalProperties: false }
 );
+
+const SkyToolReceiptSchema = Type.Object(
+  {
+    schema_version: Type.Number(),
+    cf_sky_version: Type.String(),
+    type: Type.Literal("tool"),
+    run_id: Type.String(),
+    thread_id: Type.String(),
+    tool_call_id: Type.String(),
+    tool_name: Type.String(),
+    args_hash: Type.Union([Type.String(), Type.Null()]),
+    output_hash: Type.Union([Type.String(), Type.Null()]),
+    started_at: Type.Number(),
+    completed_at: Type.Number(),
+    duration_ms: Type.Number(),
+    status: Type.Union([Type.Literal("success"), Type.Literal("error")]),
+    error_code: Type.Union([Type.String(), Type.Null()])
+  },
+  { additionalProperties: false }
+);
+
+export const SkyReceiptSchema = Type.Union([
+  SkyRunReceiptSchema,
+  SkyToolReceiptSchema
+]);
 
 export type SkyReceipt = Static<typeof SkyReceiptSchema>;
 
