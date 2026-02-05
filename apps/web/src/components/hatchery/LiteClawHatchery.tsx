@@ -11,7 +11,7 @@ import { HatcheryButton } from './HatcheryButton';
 import { HatcheryH1, HatcheryH2, HatcheryP } from './HatcheryTypography';
 import { HatcheryPuffs } from './HatcheryPuffs';
 import { Input } from '@/components/ui/input';
-import { ServerIcon } from 'lucide-react';
+import { ArrowLeft, ServerIcon } from 'lucide-react';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -104,14 +104,15 @@ export function LiteClawHatchery() {
       <nav className="absolute left-0 right-0 top-0 z-20 select-none pt-4 md:pt-5">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
           <div className="flex items-center gap-2">
-            <Image
-              src={liteclawPng}
-              alt="LiteClaw"
-              className="size-8 object-contain"
-              width={32}
-              height={32}
-            />
-            <span className="text-xl font-bold text-foreground">Hatchery</span>
+            <HatcheryButton
+              type="button"
+              variant="outline"
+              className="text-sm"
+              onClick={() => navigate({ to: '/' })}
+            >
+              <ArrowLeft className="size-4 shrink-0" aria-hidden />
+              Back to OpenAgents
+            </HatcheryButton>
           </div>
         </div>
       </nav>
@@ -135,14 +136,15 @@ export function LiteClawHatchery() {
           <HatcheryPuffs />
         </div>
         <div className="relative z-10 flex flex-1 flex-col p-4">
-          {/* <div className="mb-4 flex justify-end">
-            <HatcheryButton
-              variant="outline"
-              onClick={() => setFrameVisible((visible) => !visible)}
-            >
-              {frameVisible ? 'Hide frame & puffs' : 'Show frame & puffs'}
-            </HatcheryButton>
-          </div> */}
+          <div className="-mt-1 mb-2 flex justify-center">
+            <Image
+              src={liteclawPng}
+              alt="LiteClaw"
+              className="size-40 rounded border-2 border-white/20 object-contain sm:size-52"
+              width={208}
+              height={208}
+            />
+          </div>
           <AssemblingFrame
             className="mx-auto w-full max-w-2xl"
             onReady={handleFrameReady}
@@ -195,7 +197,7 @@ export function LiteClawHatchery() {
                   <HatcheryP className="mt-1">
                     Spawn your LiteClaw — a persistent chat agent that remembers context.
                   </HatcheryP>
-	                </div>
+                </div>
 	                <div className="flex flex-col gap-4">
 	                  <div className="flex items-center gap-3">
 	                    <ServerIcon className="size-8 text-muted-foreground" />

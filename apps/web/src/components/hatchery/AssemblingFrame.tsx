@@ -187,7 +187,7 @@ export function AssemblingFrame({
           )}
         </g>
       </svg>
-      <div className="relative z-10 p-6">{children}</div>
+      <div className="relative z-10 p-8 sm:p-10">{children}</div>
     </div>
   );
 }
