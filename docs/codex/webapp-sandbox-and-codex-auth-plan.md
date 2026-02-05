@@ -170,8 +170,8 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 
 **Sandbox (Part A)**
 
-- [ ] Worker app (`apps/liteclaw-worker`): add `@cloudflare/sandbox`, wrangler Sandbox class + binding, getSandbox + session id from thread.
-- [ ] Worker: implement tool handlers or OpenCode proxy that use Sandbox SDK (exec, files, or `createOpencodeServer` + `proxyToOpencode`).
+- [x] Worker app (`apps/liteclaw-worker`): add `@cloudflare/sandbox`, wrangler Sandbox class + binding, getSandbox + session id from thread.
+- [x] Worker: implement tool handlers or OpenCode proxy that use Sandbox SDK (exec, files, or `createOpencodeServer` + `proxyToOpencode`).
 - [ ] Optional: `apps/web` – link or route to “OpenCode in sandbox” (e.g. `/sandbox/opencode?thread=...`) if you expose the full UI.
 
 **Codex auth (Part B)**
@@ -180,6 +180,20 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 - [ ] Webapp: “Connect ChatGPT (Codex)” UI (device code: show URL + code, then long-poll callback).
 - [ ] Webapp: pass thread to backend; worker validates and maps to sandbox.
 - [ ] Token persistence implementation and re-inject on sandbox start.
+
+---
+
+## Implementation log
+
+### 2026-02-05 (Part A)
+
+- Added Sandbox SDK + OpenCode integration to `apps/liteclaw-worker`:
+  - Exported `Sandbox` DO, added `Sandbox` binding + container config in `apps/liteclaw-worker/wrangler.jsonc`.
+  - Added `apps/liteclaw-worker/Dockerfile` using `cloudflare/sandbox:0.7.0` with OpenCode installed.
+  - Implemented `/sandbox/opencode?thread=...` proxy route that boots OpenCode in the sandbox and proxies the UI via `proxyToOpencode`.
+  - Added container-backed implementations for `workspace.read/write/edit` when `LITECLAW_EXECUTOR_KIND=container`.
+  - Added `@cloudflare/sandbox` + `@opencode-ai/sdk` dependencies and mocked Sandbox imports in worker tests.
+- Not done yet: webapp link/route for OpenCode UI (optional Part A item).
 
 ---
 
