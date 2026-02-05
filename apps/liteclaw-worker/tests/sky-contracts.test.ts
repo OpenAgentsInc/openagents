@@ -47,6 +47,17 @@ describe("Sky contracts", () => {
       args_hash: "argshash",
       output_hash: "outputhash",
       patch_hash: null,
+      local_receipt: {
+        tool_name: "http.fetch",
+        args_hash: "argshash",
+        output_hash: "outputhash",
+        patch_hash: null,
+        executor_kind: "tunnel",
+        started_at: 1,
+        completed_at: 2,
+        duration_ms: 1
+      },
+      local_signature: "sig",
       started_at: 1,
       completed_at: 2,
       duration_ms: 1,

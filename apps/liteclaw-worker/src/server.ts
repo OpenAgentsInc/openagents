@@ -42,6 +42,7 @@ const DEFAULT_TOOL_MAX_CALLS = 4;
 const DEFAULT_TOOL_MAX_OUTBOUND_BYTES = 200_000;
 const DEFAULT_HTTP_TIMEOUT_MS = 8_000;
 const DEFAULT_HTTP_MAX_BYTES = 50_000;
+const DEFAULT_TUNNEL_TIMEOUT_MS = 8_000;
 
 const SYSTEM_PROMPT =
   "You are LiteClaw, a persistent personal AI agent. " +
@@ -209,6 +210,22 @@ const hashText = async (text: string) => {
 };
 
 const hashJson = async (value: unknown) => hashText(JSON.stringify(value));
+
+const hmacSha256 = async (secret: string, payload: string) => {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    textEncoder.encode(payload)
+  );
+  return toHex(signature);
+};
 
 const parseToolPolicy = (value: string | undefined): ToolPolicy => {
   if (value === "read-only" || value === "read-write" || value === "none") {
@@ -546,6 +563,17 @@ export class Chat extends AIChatAgent<Env> {
     argsHash: string | null;
     outputHash: string | null;
     patchHash?: string | null;
+    localReceipt?: {
+      tool_name: string;
+      args_hash: string | null;
+      output_hash: string | null;
+      patch_hash: string | null;
+      executor_kind: ExecutorKind;
+      started_at: number;
+      completed_at: number;
+      duration_ms: number;
+    } | null;
+    localSignature?: string | null;
     startedAt: number;
     completedAt: number;
     status: "success" | "error";
@@ -564,6 +592,8 @@ export class Chat extends AIChatAgent<Env> {
       args_hash: options.argsHash,
       output_hash: options.outputHash,
       patch_hash: options.patchHash ?? null,
+      local_receipt: options.localReceipt ?? null,
+      local_signature: options.localSignature ?? null,
       started_at: options.startedAt,
       completed_at: options.completedAt,
       duration_ms: options.completedAt - options.startedAt,
@@ -602,6 +632,12 @@ export class Chat extends AIChatAgent<Env> {
       DEFAULT_HTTP_MAX_BYTES
     );
     const executorKind = this.getExecutorKind();
+    const tunnelUrl = this.env.LITECLAW_TUNNEL_URL;
+    const tunnelToken = this.env.LITECLAW_TUNNEL_TOKEN;
+    const tunnelTimeoutMs = parseNumberEnv(
+      this.env.LITECLAW_TUNNEL_TIMEOUT_MS,
+      DEFAULT_TUNNEL_TIMEOUT_MS
+    );
 
     const assertPolicyAllows = (mode: "read" | "write") => {
       if (options.policy === "none") {
@@ -636,13 +672,157 @@ export class Chat extends AIChatAgent<Env> {
       }
     };
 
+    const invokeTunnelTool = async <Output>(
+      toolName: string,
+      input: unknown,
+      toolOptions: ToolExecutionOptions
+    ): Promise<ToolHandlerResult<Output>> => {
+      if (executorKind !== "tunnel") {
+        throw new Error(
+          `Executor kind ${executorKind} is not available in this runtime.`
+        );
+      }
+      if (!tunnelUrl || !tunnelToken) {
+        throw new Error("Tunnel executor is not configured.");
+      }
+
+      const baseUrl = tunnelUrl.endsWith("/") ? tunnelUrl : `${tunnelUrl}/`;
+      const endpoint = new URL("tools/invoke", baseUrl);
+      const payload = {
+        tool_name: toolName,
+        tool_call_id: toolOptions.toolCallId,
+        run_id: options.runId,
+        thread_id: this.name,
+        args: input
+      };
+
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(
+        () => timeoutController.abort(),
+        tunnelTimeoutMs
+      );
+      const signal = combineAbortSignals(
+        timeoutController.signal,
+        toolOptions.abortSignal
+      );
+
+      try {
+        const response = await fetch(endpoint.toString(), {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${tunnelToken}`
+          },
+          body: JSON.stringify(payload),
+          signal
+        });
+
+        const body = (await response.json()) as
+          | {
+              ok: true;
+              output: Output;
+              receipt: {
+                tool_name: string;
+                args_hash: string | null;
+                output_hash: string | null;
+                patch_hash?: string | null;
+                executor_kind: ExecutorKind;
+                started_at: number;
+                completed_at: number;
+                duration_ms: number;
+              };
+              signature: string;
+            }
+          | { ok: false; error: string };
+
+        if (!response.ok || !body.ok) {
+          const errorMessage =
+            "error" in body && body.error
+              ? body.error
+              : `Tunnel executor error (${response.status})`;
+          throw new Error(errorMessage);
+        }
+
+        if (body.receipt.tool_name !== toolName) {
+          throw new Error("Tunnel receipt tool name mismatch.");
+        }
+        if (body.receipt.executor_kind !== "tunnel") {
+          throw new Error("Tunnel receipt executor kind mismatch.");
+        }
+
+        const signaturePayload = JSON.stringify(body.receipt);
+        const expectedSignature = await hmacSha256(
+          tunnelToken,
+          signaturePayload
+        );
+        if (expectedSignature !== body.signature) {
+          throw new Error("Invalid tunnel receipt signature.");
+        }
+
+        const argsHash = await hashText(JSON.stringify(input));
+        if (body.receipt.args_hash !== argsHash) {
+          throw new Error("Tunnel receipt args hash mismatch.");
+        }
+
+        const outputHash = await hashJson(body.output);
+        if (body.receipt.output_hash !== outputHash) {
+          throw new Error("Tunnel receipt output hash mismatch.");
+        }
+
+        const outboundSize = JSON.stringify(body.output).length;
+        consumeOutboundBytes(outboundSize);
+
+        return {
+          output: body.output,
+          receiptMeta: {
+            patchHash: body.receipt.patch_hash ?? null,
+            localReceipt: {
+              tool_name: body.receipt.tool_name,
+              args_hash: body.receipt.args_hash,
+              output_hash: body.receipt.output_hash,
+              patch_hash: body.receipt.patch_hash ?? null,
+              executor_kind: body.receipt.executor_kind,
+              started_at: body.receipt.started_at,
+              completed_at: body.receipt.completed_at,
+              duration_ms: body.receipt.duration_ms
+            },
+            localSignature: body.signature
+          }
+        };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
+    type LocalToolReceipt = {
+      tool_name: string;
+      args_hash: string | null;
+      output_hash: string | null;
+      patch_hash: string | null;
+      executor_kind: ExecutorKind;
+      started_at: number;
+      completed_at: number;
+      duration_ms: number;
+    };
+
+    type ToolReceiptMeta = {
+      patchHash?: string | null;
+      localReceipt?: LocalToolReceipt | null;
+      localSignature?: string | null;
+    };
+
     type ToolHandlerResult<Output> =
       | Output
-      | { output: Output; receiptMeta: { patchHash?: string | null } };
+      | { output: Output; receiptMeta: ToolReceiptMeta };
 
     const unwrapToolOutput = <Output>(
       result: ToolHandlerResult<Output>
-    ): { output: Output; patchHash: string | null } => {
+    ): {
+      output: Output;
+      patchHash: string | null;
+      localReceipt: LocalToolReceipt | null;
+      localSignature: string | null;
+    } => {
       if (
         result &&
         typeof result === "object" &&
@@ -651,14 +831,21 @@ export class Chat extends AIChatAgent<Env> {
       ) {
         const wrapped = result as {
           output: Output;
-          receiptMeta?: { patchHash?: string | null };
+          receiptMeta?: ToolReceiptMeta;
         };
         return {
           output: wrapped.output,
-          patchHash: wrapped.receiptMeta?.patchHash ?? null
+          patchHash: wrapped.receiptMeta?.patchHash ?? null,
+          localReceipt: wrapped.receiptMeta?.localReceipt ?? null,
+          localSignature: wrapped.receiptMeta?.localSignature ?? null
         };
       }
-      return { output: result as Output, patchHash: null };
+      return {
+        output: result as Output,
+        patchHash: null,
+        localReceipt: null,
+        localSignature: null
+      };
     };
 
     const executeToolWithLogging = async <Input, Output>(
@@ -694,7 +881,8 @@ export class Chat extends AIChatAgent<Env> {
 
       try {
         const handlerResult = await handler();
-        const { output, patchHash } = unwrapToolOutput(handlerResult);
+        const { output, patchHash, localReceipt, localSignature } =
+          unwrapToolOutput(handlerResult);
         const outputHash = await hashJson(output);
         const completedAt = Date.now();
         const durationMs = completedAt - startedAt;
@@ -719,6 +907,8 @@ export class Chat extends AIChatAgent<Env> {
           argsHash,
           outputHash,
           patchHash,
+          localReceipt,
+          localSignature,
           startedAt,
           completedAt,
           status: "success"
@@ -933,6 +1123,9 @@ export class Chat extends AIChatAgent<Env> {
             input,
             toolOptions,
             async () => {
+              if (executorKind === "tunnel") {
+                return invokeTunnelTool("workspace.read", input, toolOptions);
+              }
               assertWorkersExecutor();
               const result = this.readWorkspaceFile(input.path);
               if (!result.file) {
@@ -974,6 +1167,9 @@ export class Chat extends AIChatAgent<Env> {
             input,
             toolOptions,
             async () => {
+              if (executorKind === "tunnel") {
+                return invokeTunnelTool("workspace.write", input, toolOptions);
+              }
               assertWorkersExecutor();
               const result = this.writeWorkspaceFile(input.path, input.content);
               const beforeBytes = result.before?.length ?? 0;
@@ -1035,6 +1231,9 @@ export class Chat extends AIChatAgent<Env> {
             input,
             toolOptions,
             async () => {
+              if (executorKind === "tunnel") {
+                return invokeTunnelTool("workspace.edit", input, toolOptions);
+              }
               assertWorkersExecutor();
               if (input.find.length === 0) {
                 throw new Error("Find text must not be empty.");

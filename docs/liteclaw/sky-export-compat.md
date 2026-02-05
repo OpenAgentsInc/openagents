@@ -21,6 +21,7 @@ Receipts include:
 - Run receipts (`type: "run"`)
 - Tool receipts (`type: "tool"`) with args/output hashes
 - Tool receipts may include `patch_hash` for deterministic edits/writes
+- Tool receipts may include `local_receipt` + `local_signature` when a tunnel executor is used
 
 ## Event contract
 

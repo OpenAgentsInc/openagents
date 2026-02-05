@@ -285,6 +285,12 @@ This is the “real product”: **Workers + Durable Object + Agents SDK**. It ow
 - Reference folder (do not ship):
   - `apps/cloudflare-agent-sdk-demo/` (unmodified `agents-starter` template; used only to copy patterns)
 
+### LiteClaw local agent (tunnel executor)
+
+Local executor for Phase 4 tunnel-backed tools.
+
+- `apps/liteclaw-local-agent/` (Node HTTP server for `workspace.read/write/edit`)
+
 What moves from `apps/cloudflare-agent-sdk-demo/` → `apps/liteclaw-worker/`:
 
 - Copy/keep (worker runtime only):
@@ -664,6 +670,7 @@ Production smoke (minimum):
 - 2026-02-05: Added Phase 1 Sky contracts (TypeBox + AJV schemas for messages/events/receipts, tool args streaming contract, R2 ref normalization, compatibility doc), reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Implemented Phase 2 tool registry (http.fetch + summarize + extract), added tool policy/budgets, tool event + receipt logging, updated Sky receipt schema to include tool receipts, reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Implemented Phase 3 workspace tools (read/write/edit) with executor gating and diff receipts (patch_hash), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1f9c5eb4-7bb6-4d52-bf07-ada1cfea2665`).
+- 2026-02-05: Implemented Phase 4 tunnel executor scaffolding (LiteClaw local agent for read/write/edit, tunnel dispatch + signed local receipts), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1be3086a-c2af-4645-a4e0-135a83cc1db5`).
 
 ---
 
