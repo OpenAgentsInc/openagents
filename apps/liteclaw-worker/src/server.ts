@@ -764,13 +764,50 @@ export class Chat extends AIChatAgent<Env> {
 
     const catalogJson = this.env.LITECLAW_EXTENSION_CATALOG_JSON;
     const catalogUrl = this.env.LITECLAW_EXTENSION_CATALOG_URL;
+    const catalogKey =
+      this.env.LITECLAW_EXTENSION_CATALOG_KEY ?? "extensions/catalog.json";
+    const catalogKv = this.env.LITECLAW_EXTENSION_KV;
+    const catalogBucket = this.env.LITECLAW_EXTENSION_BUCKET;
 
-    if (catalogJson || catalogUrl) {
+    let externalCatalog: unknown | null = null;
+
+    if (catalogJson) {
       try {
-        const parsed = catalogJson
-          ? JSON.parse(catalogJson)
-          : await fetch(catalogUrl ?? "").then((response) => response.json());
-        const manifests = parseExtensionCatalog(parsed);
+        externalCatalog = JSON.parse(catalogJson);
+      } catch (error) {
+        console.warn("[LiteClaw] Failed to parse extension catalog JSON", error);
+      }
+    } else if (catalogKv) {
+      try {
+        const value = await catalogKv.get(catalogKey);
+        if (value) {
+          externalCatalog = JSON.parse(value);
+        }
+      } catch (error) {
+        console.warn("[LiteClaw] Failed to load extension catalog from KV", error);
+      }
+    } else if (catalogBucket) {
+      try {
+        const object = await catalogBucket.get(catalogKey);
+        if (object) {
+          const text = await object.text();
+          externalCatalog = JSON.parse(text);
+        }
+      } catch (error) {
+        console.warn("[LiteClaw] Failed to load extension catalog from R2", error);
+      }
+    } else if (catalogUrl) {
+      try {
+        const response = await fetch(catalogUrl);
+        externalCatalog = await response.json();
+      } catch (error) {
+        console.warn("[LiteClaw] Failed to fetch extension catalog URL", error);
+      }
+    }
+
+    if (externalCatalog) {
+      try {
+        const manifests = parseExtensionCatalog(externalCatalog);
         const now = Date.now();
         for (const manifest of manifests) {
           catalog.set(manifest.id, manifest);
