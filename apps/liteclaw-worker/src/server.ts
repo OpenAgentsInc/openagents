@@ -3724,9 +3724,15 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
       env.LITECLAW_CODEX_CALLBACK_TIMEOUT_MS,
       DEFAULT_CODEX_CALLBACK_TIMEOUT_MS
     );
-    const timeoutController = new AbortController();
-    const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
-    const signal = combineAbortSignals(timeoutController.signal, request.signal);
+    const timeoutController =
+      action === "callback" ? new AbortController() : null;
+    const timeoutId = timeoutController
+      ? setTimeout(() => timeoutController.abort(), timeoutMs)
+      : null;
+    const signal =
+      timeoutController && action === "callback"
+        ? combineAbortSignals(timeoutController.signal, request.signal)
+        : undefined;
 
     const opencodeUrl = new URL(request.url);
     opencodeUrl.pathname = `/provider/openai/oauth/${action}`;
@@ -3750,7 +3756,9 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
         () => sandbox.containerFetch(opencodeRequest, server.port)
       );
     } finally {
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
 
     const responseText = yield* sandboxEffect(
