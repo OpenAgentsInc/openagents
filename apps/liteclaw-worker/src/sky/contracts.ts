@@ -90,6 +90,25 @@ const SkyToolReceiptSchema = Type.Object(
     args_hash: Type.Union([Type.String(), Type.Null()]),
     output_hash: Type.Union([Type.String(), Type.Null()]),
     patch_hash: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    local_receipt: Type.Optional(
+      Type.Union([
+        Type.Object(
+          {
+            tool_name: Type.String(),
+            args_hash: Type.Union([Type.String(), Type.Null()]),
+            output_hash: Type.Union([Type.String(), Type.Null()]),
+            patch_hash: Type.Union([Type.String(), Type.Null()]),
+            executor_kind: Type.String(),
+            started_at: Type.Number(),
+            completed_at: Type.Number(),
+            duration_ms: Type.Number()
+          },
+          { additionalProperties: false }
+        ),
+        Type.Null()
+      ])
+    ),
+    local_signature: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     started_at: Type.Number(),
     completed_at: Type.Number(),
     duration_ms: Type.Number(),
