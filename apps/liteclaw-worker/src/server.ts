@@ -3703,6 +3703,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
     }
 
     const bodyRequest = request.clone();
+    const proxySource = request.clone();
     const body = yield* decodeJsonBody(
       bodyRequest,
       action === "authorize" ? CodexAuthorizeSchema : CodexCallbackSchema
@@ -3733,7 +3734,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
 
     let opencodeResponse: Response;
     try {
-    const headers = new Headers(request.headers);
+    const headers = new Headers(proxySource.headers);
     headers.set("content-type", "application/json");
     headers.delete("authorization");
     headers.delete("x-liteclaw-sandbox-token");
@@ -3741,7 +3742,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
     const opencodeRequest = new Request(opencodeUrl.toString(), {
       method: "POST",
       headers,
-      body: request.body,
+      body: proxySource.body,
       ...(signal ? { signal } : {})
     });
       opencodeResponse = yield* sandboxEffect(
