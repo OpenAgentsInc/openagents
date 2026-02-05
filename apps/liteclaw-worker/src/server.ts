@@ -3740,15 +3740,14 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
 
     let opencodeResponse: Response;
     try {
-    const headers = new Headers(proxySource.headers);
+    const opencodeBaseRequest = new Request(opencodeUrl.toString(), proxySource);
+    const headers = new Headers(opencodeBaseRequest.headers);
     headers.set("content-type", "application/json");
     headers.delete("authorization");
     headers.delete("x-liteclaw-sandbox-token");
 
-    const opencodeRequest = new Request(opencodeUrl.toString(), {
-      method: "POST",
+    const opencodeRequest = new Request(opencodeBaseRequest, {
       headers,
-      body: proxySource.body,
       ...(signal ? { signal } : {})
     });
       opencodeResponse = yield* sandboxEffect(
