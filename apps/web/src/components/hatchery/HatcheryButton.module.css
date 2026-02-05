@@ -55,8 +55,9 @@
 
 .content {
   position: relative;
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   align-items: center;

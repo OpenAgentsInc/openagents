@@ -5,7 +5,7 @@ import { ChatSourceProvider } from '@/components/assistant-ui/chat-source-contex
 
 function AppRoute() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isAutopilot = pathname === '/autopilot';
+  const isAutopilot = pathname === '/' || pathname === '/autopilot';
 
   if (isAutopilot) {
     return (

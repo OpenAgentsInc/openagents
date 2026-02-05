@@ -2,15 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { DotsGridBackground, whitePreset, Image } from '@openagentsinc/hud/react';
-import autopilotPng from '@openagentsinc/hud/assets/autopilot.png';
+import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
 import { HatcheryButton } from './HatcheryButton';
 import { HatcheryH1, HatcheryH2, HatcheryP } from './HatcheryTypography';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, ServerIcon } from 'lucide-react';
+import { ServerIcon } from 'lucide-react';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -102,22 +101,7 @@ export function AutopilotPage() {
       className="min-h-screen bg-site flex flex-col p-3 md:p-4"
       style={{ fontFamily: 'var(--font-square721)' }}
     >
-      <nav className="absolute left-0 right-0 top-0 z-20 select-none pt-4 md:pt-5">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
-          <div className="flex items-center gap-2">
-            <HatcheryButton
-              type="button"
-              variant="outline"
-              className="text-sm"
-              onClick={() => navigate({ to: '/' })}
-            >
-              <ArrowLeft className="size-4 shrink-0" aria-hidden />
-              Back to OpenAgents
-            </HatcheryButton>
-          </div>
-        </div>
-      </nav>
-      <div className="relative flex min-h-0 flex-1 flex-col pt-20">
+      <div className="relative flex min-h-0 flex-1 flex-col pt-4">
         {/* Arwes-style dots + grid background (white preset) + vignette */}
         <div
           className="absolute inset-0"
@@ -136,15 +120,6 @@ export function AutopilotPage() {
           />
         </div>
         <div className="relative z-10 flex flex-1 flex-col p-4">
-          <div className="-mt-1 mb-2 flex justify-center">
-            <Image
-              src={autopilotPng}
-              alt="Autopilot"
-              className="size-40 rounded border-2 border-white/20 object-contain sm:size-52"
-              width={208}
-              height={208}
-            />
-          </div>
           <AssemblingFrame
             className="mx-auto w-full max-w-2xl"
             onReady={handleFrameReady}
@@ -155,7 +130,7 @@ export function AutopilotPage() {
               <div className="flex min-h-[50vh] flex-col items-center justify-center gap-6 text-center">
           <HatcheryH1>Autopilot Early Access</HatcheryH1>
           <HatcheryP className="max-w-md">
-            A persistent, personal AI agent that remembers context and feels always there — no setup friction.
+
           </HatcheryP>
           {accessStatus === null ? (
             <HatcheryP>Checking access…</HatcheryP>

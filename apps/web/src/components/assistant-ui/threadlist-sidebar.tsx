@@ -149,7 +149,7 @@ function SidebarAdminLink() {
 }
 
 function SidebarAutopilotSection() {
-  const autopilotActive = useIsActive('/autopilot');
+  const autopilotActive = useIsActive('/');
   return (
     <SidebarMenu className="pt-2">
       <div className="px-2 pb-1">
@@ -157,7 +157,7 @@ function SidebarAutopilotSection() {
       </div>
       <SidebarMenuItem>
         <SidebarMenuButton asChild isActive={autopilotActive}>
-          <Link to="/autopilot" search={{ focus: undefined }}>
+          <Link to="/" search={{ focus: undefined }}>
             <SidebarIcon>
               <ServerIcon className="size-4" />
             </SidebarIcon>
@@ -286,8 +286,8 @@ export function ThreadListSidebar(
       <SidebarContent className="aui-sidebar-content px-2 py-3 group-data-[collapsible=icon]:hidden">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={useIsActive('/autopilot')}>
-              <Link to="/autopilot" search={{ focus: undefined }}>
+            <SidebarMenuButton asChild isActive={useIsActive('/')}>
+              <Link to="/" search={{ focus: undefined }}>
                 <span className="text-base">🦞</span>
                 <span>Autopilot</span>
               </Link>
