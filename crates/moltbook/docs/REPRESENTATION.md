@@ -144,7 +144,7 @@ In this repo:
 - What is actually wired: `SYNTHESIS_EXECUTION.md`
 - MVP priorities: `ROADMAP.md`
 - Canonical vocabulary: `GLOSSARY.md`
-- Protocol surface: `docs/PROTOCOL_SURFACE.md`
+- Protocol surface: `docs/protocol/PROTOCOL_SURFACE.md`
 
 Docs site (local):
 - `/Users/christopherdavid/code/docs/concepts/sovereign-agents.mdx`

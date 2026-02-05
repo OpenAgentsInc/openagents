@@ -50,7 +50,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 ## Nostr Protocols
 
-> **Note:** Kind numbers are illustrative examples. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are the canonical identifiers for job types. See [PROTOCOL_SURFACE.md](docs/PROTOCOL_SURFACE.md) for authoritative kind assignments.
+> **Note:** Kind numbers are illustrative examples. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are the canonical identifiers for job types. See [PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) for authoritative kind assignments.
 
 | Term | Definition |
 |------|------------|
@@ -232,4 +232,4 @@ ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
 - [crates/dsrs/docs/SIGNATURES.md](crates/dsrs/docs/SIGNATURES.md) - Signature specifications
 - [crates/dsrs/docs/REPLAY.md](crates/dsrs/docs/REPLAY.md) - REPLAY.jsonl format specification
 - [crates/dsrs/docs/ARTIFACTS.md](crates/dsrs/docs/ARTIFACTS.md) - MVP artifact schemas
-- [docs/PROTOCOL_SURFACE.md](docs/PROTOCOL_SURFACE.md) - Canonical protocol details
+- [docs/protocol/PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) - Canonical protocol details

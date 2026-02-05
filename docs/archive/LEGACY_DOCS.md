@@ -10,7 +10,7 @@ This document maps legacy/archived documentation to their canonical replacements
 | Architecture decisions | [docs/adr/](./adr/) (ADRs for contracts, invariants, interfaces) |
 | Agent architecture | [AGENTS.md](../AGENTS.md) |
 | Execution flow | [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) |
-| Protocol/Transport | [PROTOCOL_SURFACE.md](./PROTOCOL_SURFACE.md) |
+| Protocol/Transport | [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) |
 | Roadmap | [ROADMAP.md](../ROADMAP.md) |
 | DSPy modules | [crates/dsrs/docs/](../crates/dsrs/docs/) |
 
@@ -65,7 +65,7 @@ When reviewing older documents, note these terminology updates:
 
 ## Kind Numbers
 
-Kind numbers in documentation are **illustrative only**. See [PROTOCOL_SURFACE.md](./PROTOCOL_SURFACE.md) for the canonical mapping between `schema_id` values and NIP-90 transport kinds.
+Kind numbers in documentation are **illustrative only**. See [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) for the canonical mapping between `schema_id` values and NIP-90 transport kinds.
 
 ## Document Authority Banners
 

@@ -41,7 +41,7 @@ What this ADR covers:
 
 What this ADR does NOT cover:
 - WGPUI HUD components (see ADR-0019).
-- Nostr protocol schemas (see PROTOCOL_SURFACE.md).
+- Nostr protocol schemas (see [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)).
 - External marketplace or replay formats.
 
 ## Invariants / Compatibility

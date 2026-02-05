@@ -22,11 +22,11 @@ For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concep
 | Pylon local node | ✅ Implemented | `crates/pylon/src/` |
 | DSPy decision layer | ✅ Implemented | `crates/dsrs/src/`, `crates/adjutant/src/dspy/` |
 | Lightning/Spark payments | 🔄 Partial | `crates/spark/` (Pylon wallet init); `apps/spark-api/` (stub) |
-| **Open Protocols Launch (Phases 1–5)** | **Phases 1–5 done** | **`docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md`** — web+API parity, wallet attach API + desktop UI, Nostr mirror, agent protocol tools, Phase 5 interop doc. |
+| **Open Protocols Launch (Phases 1–5)** | **Phases 1–5 done** | **`docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md`** — web+API parity, wallet attach API + desktop UI, Nostr mirror, agent protocol tools, Phase 5 interop doc. |
 
 **Legend:** ✅ Implemented | 🔄 Partial/In Progress | ⏳ Planned/Not Started
 
-**Open Protocols status:** See [docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md) for full phase status (Phases 1–5 done). Agent-facing Nostr + Spark: [docs/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md](docs/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md). Shared data interop: [docs/OPEN_PROTOCOLS_PHASE5_SHARED_DATA.md](docs/OPEN_PROTOCOLS_PHASE5_SHARED_DATA.md).
+**Open Protocols status:** See [docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md) for full phase status (Phases 1–5 done). Agent-facing Nostr + Spark: [docs/open-protocols/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md](docs/open-protocols/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md). Shared data interop: [docs/open-protocols/OPEN_PROTOCOLS_PHASE5_SHARED_DATA.md](docs/open-protocols/OPEN_PROTOCOLS_PHASE5_SHARED_DATA.md).
 
 ---
 
@@ -239,7 +239,7 @@ The key protocol is NIP-90 (Data Vending Machines), which defines how job reques
 - NIP-42: Authentication (required)
 - NIP-01: Basic protocol
 
-**Job flow** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md) for canonical assignments):
+**Job flow** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md) for canonical assignments):
 ```
 Buyer → kind:5050 (job) → Nexus → Provider
 Provider → kind:7000 (invoice) → Nexus → Buyer
@@ -491,7 +491,7 @@ Tracks usage per model for billing and context optimization.
 6. Loop until success or max iterations
 ```
 
-**Autopilot needs swarm inference** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md)):
+**Autopilot needs swarm inference** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md)):
 ```
 1. Runtime /compute/new → NIP-90 kind:5050
 2. Nexus broadcasts to providers

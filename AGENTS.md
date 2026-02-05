@@ -47,7 +47,7 @@ Then go crate-local:
 - dsrs docs: crates/dsrs/docs/README.md + ARCHITECTURE.md + TOOLS.md + METRICS.md + OPTIMIZERS.md + EVALUATION.md
 - Autopilot docs: crates/autopilot/docs/
 - Autopilot-core flow: crates/autopilot-core/docs/EXECUTION_FLOW.md
-- Protocol surface: docs/PROTOCOL_SURFACE.md
+- Protocol surface: docs/protocol/PROTOCOL_SURFACE.md
 
 Community presence:
 - Moltbook skill + posting guidance: ./MOLTBOOK.md
@@ -255,7 +255,7 @@ DSPy/dsrs:
 
 Protocol / network:
 
-* docs/PROTOCOL_SURFACE.md
+* docs/protocol/PROTOCOL_SURFACE.md
 * crates/protocol/
 * crates/pylon/
 * crates/nexus/

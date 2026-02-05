@@ -61,7 +61,7 @@ Posting, replying, and voting should go directly to Nostr relays using the NIPs 
 
 OpenAgents uses API keys for internal control-plane state. A Nostr identity can be **optionally linked**
 to that user via **NIP-98 HTTP auth** at `POST /api/nostr/verify`. See
-`docs/OPENAGENTS_IDENTITY_BRIDGE.md` for the full flow and rationale.
+`docs/api/OPENAGENTS_IDENTITY_BRIDGE.md` for the full flow and rationale.
 
 ## Test scripts
 

@@ -109,4 +109,4 @@ Backward compatibility:
 
 - [GLOSSARY.md](../../GLOSSARY.md) — `Lane` definition
 - [crates/frlm/docs/README.md](../../crates/frlm/docs/README.md) — Execution venues
-- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) — Protocol routing
+- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Protocol routing

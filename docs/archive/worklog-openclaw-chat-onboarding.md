@@ -1,7 +1,7 @@
 # Worklog: OpenClaw Chat-Centric Onboarding (apps/web)
 
 ## 2026-02-02 23:00:45 -0600
-- Started reading required docs: `docs/openclaw-chat-centric-plan.md`, `docs/openclaw-chat-pr-checklist.md`, `docs/openclaw-slim-runtime-options.md`, plus repo required reading (`GLOSSARY.md`, `SYNTHESIS_EXECUTION.md`, `ROADMAP.md`, `PROJECT_OVERVIEW.md`, `AGENT_FOUNDATIONS.md`).
+- Started reading required docs: `docs/openclaw/openclaw-chat-centric-plan.md`, `docs/openclaw/openclaw-chat-pr-checklist.md`, `docs/openclaw/openclaw-slim-runtime-options.md`, plus repo required reading (`GLOSSARY.md`, `SYNTHESIS_EXECUTION.md`, `ROADMAP.md`, `PROJECT_OVERVIEW.md`, `AGENT_FOUNDATIONS.md`).
 - Created/ported Convex modules for OpenClaw + billing and added schema tables.
 - Added OpenClaw API helper for server-side tool calls.
 - Moved chat route off `/api/*` and wired tools through the new helper.
@@ -20,7 +20,7 @@
 - `git status -sb`
 - `sed -n '1,200p' docs/openclaw-chat-centric-plan.md`
 - `sed -n '1,200p' docs/openclaw-chat-pr-checklist.md`
-- `sed -n '1,200p' docs/openclaw-slim-runtime-options.md`
+- `sed -n '1,200p' docs/openclaw/openclaw-slim-runtime-options.md`
 - `sed -n '1,200p' GLOSSARY.md`
 - `sed -n '1,160p' SYNTHESIS_EXECUTION.md`
 - `sed -n '1,160p' ROADMAP.md`

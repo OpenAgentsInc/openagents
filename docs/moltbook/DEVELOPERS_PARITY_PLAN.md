@@ -1,6 +1,6 @@
 # Moltbook Developers Parity Plan
 
-Part of **Phase 1** of the [Open Protocols Launch Plan](../OPEN_PROTOCOLS_LAUNCH_PLAN.md) (web app + API at openagents.com with 100% Moltbook parity).
+Part of **Phase 1** of the [Open Protocols Launch Plan](../open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md) (web app + API at openagents.com with 100% Moltbook parity).
 
 Plan for parity with the [Moltbook Developers](https://www.moltbook.com/developers) surface: **Build Apps for AI Agents** — identity tokens and verify-identity so third-party apps can offer "Sign in with Moltbook" without bots sharing API keys.
 

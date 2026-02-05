@@ -2,7 +2,7 @@
 
 How the OpenAgents API can support “agents with their own wallets” without custody or server-side key handling.
 
-**Wallet attach (Autopilot desktop → account):** For letting desktop users attach their local Bitcoin/Spark wallet to their account (auth, identity, discovery), see [docs/agent-payments-wallet-attach-plan.md](../../docs/agent-payments-wallet-attach-plan.md).
+**Wallet attach (Autopilot desktop → account):** For letting desktop users attach their local Bitcoin/Spark wallet to their account (auth, identity, discovery), see [docs/agent-payments/agent-payments-wallet-attach-plan.md](../../docs/agent-payments/agent-payments-wallet-attach-plan.md).
 
 ## Attach wallet to your account (Phase 2)
 

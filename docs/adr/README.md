@@ -52,7 +52,7 @@ ADRs should **decide**, not **reproduce** full schemas.
 If a schema is canonical elsewhere:
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
 - [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
-- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md)
+- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)
 
 Then ADRs should:
 1. Link to the canonical spec
@@ -132,7 +132,7 @@ All ADRs must use canonical terms from [GLOSSARY.md](../../GLOSSARY.md):
 | `Cloud` lane | `Datacenter` |
 | `autopilot` CLI | `adjutant` CLI |
 
-Do not hardcode NIP-90 kind numbers; reference schema IDs and link [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md).
+Do not hardcode NIP-90 kind numbers; reference schema IDs and link [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md).
 
 ## Index
 

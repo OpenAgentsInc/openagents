@@ -30,7 +30,7 @@ This runtime is a **template** for the per-user “instance runtime” created d
 
 The coding agent must read (in order):
 
-1. `~/code/openagents/docs/openclaw-slim-runtime-options.md` (this file)
+1. `docs/openclaw/openclaw-slim-runtime-options.md` (this file)
 2. `/home/christopherdavid/.openclaw/workspace/instance-runtime-api-contract.md`
 3. `/home/christopherdavid/.openclaw/workspace/PRD-openagents-managed-openclaw.md`
 4. `/home/christopherdavid/.openclaw/workspace/openclaw-api-structure-rust.md`

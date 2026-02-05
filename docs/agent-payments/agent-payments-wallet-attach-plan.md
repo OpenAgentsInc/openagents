@@ -1,6 +1,6 @@
 # Wallet Attach Plan: Autopilot Desktop → Account
 
-Part of **Phase 2** of the [Open Protocols Launch Plan](OPEN_PROTOCOLS_LAUNCH_PLAN.md) (desktop: link local Bitcoin wallet so your agent earns you Bitcoin).
+Part of **Phase 2** of the [Open Protocols Launch Plan](../open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md) (desktop: link local Bitcoin wallet so your agent earns you Bitcoin).
 
 Plan for letting **users of the Autopilot desktop app** register their **local Bitcoin/Spark wallet** and attach it to **their account**, with proper identity, auth, and architecture.
 

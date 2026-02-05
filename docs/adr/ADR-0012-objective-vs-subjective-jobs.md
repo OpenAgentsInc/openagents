@@ -41,7 +41,7 @@ We need canonical rules for:
 
 ### Canonical owner
 
-- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) defines job schema surface + verification modes.
+- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) defines job schema surface + verification modes.
 - `crates/protocol/` defines job typing and verification helpers.
 
 ## Scope
@@ -88,6 +88,6 @@ Backward compatibility:
 
 ## References
 
-- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md)
+- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)
 - [GLOSSARY.md](../../GLOSSARY.md) — objective vs subjective job terminology
 - `crates/protocol/src/verification.rs` (or equivalent)

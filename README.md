@@ -68,4 +68,4 @@ Start with:
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
 * **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)
-* **OpenClaw runtime (managed)**: [docs/openclaw-slim-runtime-options.md](docs/openclaw-slim-runtime-options.md)
+* **OpenClaw runtime (managed)**: [docs/openclaw/openclaw-slim-runtime-options.md](docs/openclaw/openclaw-slim-runtime-options.md)

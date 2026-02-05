@@ -13,7 +13,7 @@
 > - **Reality / what's wired:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md)
 > - **Architecture decisions:** [docs/adr/](./docs/adr/) (ADRs for contracts, interfaces, invariants)
 > - **DSPy core docs:** `crates/dsrs/docs/*` (ARCHITECTURE, SIGNATURES, TOOLS, METRICS, OPTIMIZERS, EVALUATION)
-> - **Protocol surface:** [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md)
+> - **Protocol surface:** [docs/protocol/PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md)
 
 ---
 
