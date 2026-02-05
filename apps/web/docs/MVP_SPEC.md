@@ -254,7 +254,7 @@ DM pairing (channels):
 From `zero-to-openclaw-30s.md` gaps list:
 
 - [x] One-click first-time flow (single CTA: provisions/reuses + sends first message)
-- [ ] Provider keys: runtime has a **server-owned** model key in prod so chat always answers without user config
+- [x] Provider keys: runtime has a **server-owned** model key in prod so chat always answers without user config
 - [x] Spawning: provisioning results in a **real** runtime allocation per user (or a safe multi-tenant boundary)
 - [x] Delete tears down (not record-only delete)
 - [x] Pairing onboarding can be deferred, but the UI must explain the current approval-only state
@@ -293,10 +293,10 @@ If any of these are missing or mismatched, the MVP flows will fail.
   - `PUBLIC_API_URL` (agent worker tool calls → API worker)
   - Any Agents SDK state bindings required by implementation (DO namespace / D1 / etc.)
 
-- [ ] Convex prod env includes `OA_INTERNAL_KEY` and `PUBLIC_API_URL`
-- [ ] API worker secrets include `OA_INTERNAL_KEY` and service token (and correct Convex control config)
-- [ ] Web worker secrets include `OA_INTERNAL_KEY` if any server routes use it
-- [ ] “401 from Hatchery/Convex actions” is understood: Convex actions don’t read `apps/web/.env.local`
+- [x] Convex prod env includes `OA_INTERNAL_KEY` and `PUBLIC_API_URL`
+- [x] API worker secrets include `OA_INTERNAL_KEY` and service token (and correct Convex control config)
+- [x] Web worker secrets include `OA_INTERNAL_KEY` if any server routes use it
+- [x] “401 from Hatchery/Convex actions” is understood: Convex actions don’t read `apps/web/.env.local`
 
 #### Critical coupling (easy foot‑guns)
 
@@ -309,7 +309,7 @@ If any of these are missing or mismatched, the MVP flows will fail.
 
 Deployment discipline:
 
-- [ ] For `apps/web`, deploy via `npm run deploy` (do **not** run raw `npx convex deploy`).
+- [x] For `apps/web`, deploy via `npm run deploy` (do **not** run raw `npx convex deploy`).
 
 Dev/ops quick fix commands (dev Convex example from the doc):
 
@@ -592,3 +592,10 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
   **Deploys:** `apps/web` (`npm run deploy`, version `d75705c6-a65a-49ff-a224-09f778dad0e0`).  
   **Production checks:** API `POST /api/agent/signup` → `POST /api/openclaw/instance` returned `status: ready`; `POST /api/openclaw/chat` still returns HTTP 200 with zero SSE bytes within 60s (logged in `docs/local/testing/agent-testing-errors.md`); `/api/feed` returned 200; UI GETs `/feed`, `/c`, `/hatchery`, `/openclaw/chat` returned 200.  
   **Known issues / next:** OpenClaw chat streaming still empty; provider keys + gateway model config still unverified. Next unchecked items remain **1.7 provider keys** (and streaming fix).
+
+- **2026-02-05 02:47 UTC (branch: `main`)** – Completed MVP 1.7 provider keys + runtime streaming fixes: set server-owned OpenRouter key, removed legacy `agent` config from gateway boot (auto-migrate via `clawdbot doctor --fix`), switched OpenRouter default model to `openai/gpt-4o-mini`, and removed AbortSignal usage in sandbox streaming to fix DataCloneError/ReferenceError. Restart now succeeds and `/api/openclaw/chat` streams SSE bytes.  
+  **Key files:** `apps/openclaw-runtime/start-openclaw.sh`, `apps/openclaw-runtime/src/sandbox/process.ts`.  
+  **Tests:** `npm run test` (apps/openclaw-runtime) ✅.  
+  **Deploys:** `apps/openclaw-runtime` (`npm run deploy`, version `51e6f2bf-af84-4f57-b9e5-f600b9ea670d`).  
+  **Production checks:** API `POST /api/agent/signup` → `POST /api/openclaw/instance` (status `ready`) → `POST /api/openclaw/runtime/restart` (200) → `POST /api/openclaw/chat` (SSE bytes received); social API `GET /api/feed?limit=3` returned 200.  
+  **Known issues / next:** Milestone 2.1 Autopilot durable orchestrator (first unchecked item).
