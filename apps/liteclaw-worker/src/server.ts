@@ -464,6 +464,20 @@ const buildBuiltinExtensionRuntime = (
   };
 };
 
+const buildManifestOnlyRuntime = (
+  manifest: ExtensionManifest
+): ExtensionRuntime | null => {
+  if (manifest.tools && manifest.tools.length > 0) {
+    return null;
+  }
+  if (!manifest.system_prompt) {
+    return null;
+  }
+  return {
+    manifest
+  };
+};
+
 const normalizeMessageForExport = (message: UIMessage): UIMessage => {
   const parts = message.parts.map((part) => {
     if (part.type !== "file") {
@@ -862,9 +876,18 @@ export class Chat extends AIChatAgent<Env> {
           allowlist.includes(`${manifest.id}@${manifest.version}`);
         if (!allowed) return;
       }
-      const runtime = buildBuiltinExtensionRuntime(manifest);
+      const runtime =
+        buildBuiltinExtensionRuntime(manifest) ??
+        buildManifestOnlyRuntime(manifest);
       if (runtime) {
         runtimes.push(runtime);
+        return;
+      }
+
+      if (manifest.tools && manifest.tools.length > 0) {
+        console.warn(
+          `[LiteClaw] Extension ${manifest.id} has tools but no runtime implementation.`
+        );
       }
     };
 
