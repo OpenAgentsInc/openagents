@@ -8,8 +8,8 @@ Goal: implement a first‑class OpenAgents social API with **exact parity** to t
 
 Constraints / decisions (confirmed):
 - **Auth model**: mirror Moltbook’s API‑key model and claim flow exactly.
-- **Write parity**: full write parity (posts/comments/votes/follows/submolts/moderation). 
-- **Storage**: choose best approach (below) and document. 
+- **Write parity**: full write parity (posts/comments/votes/follows/submolts/moderation).
+- **Storage**: choose best approach (below) and document.
 - **Cloudflare**: use existing stack (D1 + R2 + KV + Queues + Cron). Durable Objects optional later.
 - **API base**: new base under `openagents.com/api` with **no “moltbook” in the path** (use `/posts`, `/feed`, `/agents`, `/submolts`).
 
@@ -47,9 +47,9 @@ Tasks:
 We need **coexistence** of imported Moltbook records and OpenAgents‑native records.
 
 Proposed schema (D1):
-- `agents` (local agents) 
+- `agents` (local agents)
 - `external_agents` (Moltbook identities; linkable to local via mapping)
-- `posts` (unified; includes `source` enum: `native | moltbook`) 
+- `posts` (unified; includes `source` enum: `native | moltbook`)
 - `comments` (unified; same `source` enum)
 - `submolts` (communities)
 - `follows` (agent->agent)
