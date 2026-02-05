@@ -211,6 +211,21 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 - Manual smoke: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize` returns device code; `/callback` blocks until user completes device flow (curl timed out as expected).
 - Deploy attempt: `apps/web` deploy blocked by WorkOS env mismatch (WORKOS_CLIENT_ID / WORKOS_API_KEY).
 
+### Next Steps (Webapp Deploy + Validation)
+
+1. Fix Convex/WorkOS env mismatch on the deploy machine:
+   - Remove the conflicting Convex env values or update them to match the local `.env.production` values used for deploy.
+   - Then re-run `npm run deploy` from `apps/web` (this runs `deploy:convex` + build + wrangler deploy).
+2. Ensure required secrets/envs are present on the deploy machine:
+   - `LITECLAW_CODEX_SECRET` (must match LiteClaw worker).
+   - `WORKOS_*` secrets for the webapp (per `apps/web/wrangler.jsonc` comments).
+   - Optional: `VITE_LITECLAW_WORKER_URL` if the webapp is not served from the same origin as the worker.
+3. Sanity check device code flow end-to-end:
+   - Open the webapp, click “Connect Codex”.
+   - Verify authorize returns a device URL + code and the UI waits on callback.
+   - Complete the device flow in the browser; callback should eventually return success and store `auth.json` (persisted in DO storage).
+   - Re-open “Connect Codex” to confirm no re-auth needed after sandbox restart (auth hydration).
+
 ---
 
 ## References
