@@ -282,22 +282,30 @@ The OpenClaw-era “durable /chat proxy” worker (`apps/agent-worker/`, custom 
 
 This is the “real product”: **Workers + Durable Object + Agents SDK**. It owns chat state and streaming.
 
-- App folder (current seed; will be renamed once we commit to it):
-  - `apps/cloudflare-agent-sdk-demo/` (Cloudflare Worker + DO; currently includes a demo UI we will not ship)
-- Cloudflare config:
-  - `apps/cloudflare-agent-sdk-demo/wrangler.jsonc`
-  - `apps/cloudflare-agent-sdk-demo/.dev.vars.example` (never commit real secrets)
-- Worker/DO implementation (minimum set we will own):
-  - `apps/cloudflare-agent-sdk-demo/src/server.ts` (Worker fetch + `routeAgentRequest()` + DO class)
-  - `apps/cloudflare-agent-sdk-demo/src/shared.ts` (shared types/constants)
-  - `apps/cloudflare-agent-sdk-demo/src/utils.ts` (helpers; trim down for EA)
+- Shipped worker folder (LiteClaw runtime):
+  - `apps/liteclaw-worker/` (Cloudflare Worker + DO; **no UI assets**)
+- Reference folder (do not ship):
+  - `apps/cloudflare-agent-sdk-demo/` (unmodified `agents-starter` template; used only to copy patterns)
 
-The demo UI in the starter template is for reference only; the shipped UI is `apps/web`:
+What moves from `apps/cloudflare-agent-sdk-demo/` → `apps/liteclaw-worker/`:
 
-- Demo UI (do not ship in EA):
-  - `apps/cloudflare-agent-sdk-demo/src/app.tsx`
-  - `apps/cloudflare-agent-sdk-demo/src/client.tsx`
-  - `apps/cloudflare-agent-sdk-demo/src/styles.css`
+- Copy/keep (worker runtime only):
+  - `package.json` (but **trim dependencies** to worker-only: `agents`, `@cloudflare/ai-chat`, `ai`, + one model provider)
+  - `tsconfig.json`
+  - `wrangler.jsonc` (DO binding + AI binding + observability; remove `assets` config)
+  - `.dev.vars.example` (never commit real secrets)
+  - `env.d.ts` (generated via `wrangler types`; should match bindings we actually use)
+  - `src/server.ts` pattern:
+    - `Chat extends AIChatAgent` (or rename to `LiteClawAgent`)
+    - `export default { fetch(...) { return routeAgentRequest(request, env) || 404 } }`
+  - `vitest.config.ts` + `tests/index.test.ts` (basic smoke tests are fine)
+- Do not copy (demo UI + build tooling):
+  - `index.html`, `public/`
+  - `vite.config.ts`
+  - `src/app.tsx`, `src/client.tsx`, `src/styles.css`
+  - `src/components/**`, `src/hooks/**`, `src/providers/**`
+  - any Tailwind/React/demo-only deps
+  - `patches/` + `patch-package` (unless we *actually* use MCP and need the patch)
 
 ### Agents SDK source (reference only)
 
@@ -308,7 +316,7 @@ We keep a local checkout of the Agents SDK **only as a reference** (to read how 
 
 LiteClaw should depend on the published npm package and pin it:
 
-- `apps/cloudflare-agent-sdk-demo/package.json` → `agents` (npm package) pinned to an explicit version.
+- `apps/liteclaw-worker/package.json` → `agents` (npm package) pinned to an explicit version.
 
 Do **not** use a `file:` dependency pointing at the local repo.
 
@@ -373,13 +381,13 @@ Implementation note:
 
 We adapt code from:
 
-- `apps/cloudflare-agent-sdk-demo/src/server.ts` (AIChatAgent + `routeAgentRequest`)
+- Reference: `apps/cloudflare-agent-sdk-demo/src/server.ts` (AIChatAgent + `routeAgentRequest`)
+- Shipped code: `apps/liteclaw-worker/src/server.ts`
 
 EA changes required in the worker:
 
-- remove tool calling + confirmations:
-  - `apps/cloudflare-agent-sdk-demo/src/tools.ts`
-  - `apps/cloudflare-agent-sdk-demo/src/utils.ts`
+- no tools / confirmations / MCP:
+  - do not ship `src/tools.ts`, `src/utils.ts`, or any UI tool-confirmation components
 - remove scheduling (`agents/schedule`)
 - pin a single model provider path (prefer Workers AI binding `AI`)
 - keep observability on (Wrangler `observability.enabled = true`)
@@ -409,8 +417,8 @@ Web (Convex metadata):
 
 LiteClaw worker (Agents SDK runtime):
 
-- Modify: `apps/cloudflare-agent-sdk-demo/src/server.ts` (strip tools/scheduling; keep chat + memory)
-- Modify: `apps/cloudflare-agent-sdk-demo/wrangler.jsonc` (ensure DO binding + observability)
+- Implement: `apps/liteclaw-worker/src/server.ts` (chat + memory only)
+- Configure: `apps/liteclaw-worker/wrangler.jsonc` (DO binding + observability)
 
 Cloudflare routes:
 
@@ -420,7 +428,7 @@ Cloudflare routes:
 
 ## Explicit Include / Exclude (To Prevent Scope Creep)
 
-This is the “what do we delete/disable” list (useful because `apps/cloudflare-agent-sdk-demo/` starts from `agents-starter`).
+This is the “what do we delete/disable” list (useful because LiteClaw starts from an `agents-starter` pattern).
 
 ### Include (EA)
 
@@ -440,18 +448,18 @@ This is the “what do we delete/disable” list (useful because `apps/cloudflar
 
 ---
 
-## Starter Template Cleanup (apps/cloudflare-agent-sdk-demo)
+## Starter Template Cleanup (apps/liteclaw-worker)
 
-`apps/cloudflare-agent-sdk-demo/` currently starts from `agents-starter`, which is intentionally *more capable* than LiteClaw EA. Before we ship EA, we should delete/disable anything that contradicts the “persistent chat only” promise.
+When creating `apps/liteclaw-worker/`, start from the `agents-starter` pattern but **do not ship** anything that contradicts the “persistent chat only” promise.
 
 Remove/disable for EA (concrete filepaths):
 
 - Tool calling + confirmations:
-  - `apps/cloudflare-agent-sdk-demo/src/tools.ts`
-  - `apps/cloudflare-agent-sdk-demo/src/components/tool-invocation-card/ToolInvocationCard.tsx`
-  - `apps/cloudflare-agent-sdk-demo/src/utils.ts` (tool-call processing helpers)
+  - do not include `apps/liteclaw-worker/src/tools.ts`
+  - do not include `apps/liteclaw-worker/src/utils.ts` (tool-call processing helpers)
+  - do not include any tool-confirmation UI components
 - Scheduling:
-  - `apps/cloudflare-agent-sdk-demo/src/server.ts` (remove `agents/schedule` and the schedule tool prompt)
+  - `apps/liteclaw-worker/src/server.ts` (remove `agents/schedule` and any schedule prompt)
 
 We can keep the files around during prototyping, but **don’t ship them in the EA golden path** (and don’t accidentally mention them in UX copy).
 
@@ -474,16 +482,16 @@ LiteClaw uses **one DO namespace**:
 
 - Binding: `Chat` (or rename to `LiteClawAgent`)
 - Class: `Chat` (or rename to `LiteClawAgent`)
-- Config location: `apps/cloudflare-agent-sdk-demo/wrangler.jsonc`
+- Config location: `apps/liteclaw-worker/wrangler.jsonc`
 
 ### Secrets / env vars (LiteClaw worker)
 
 We will choose one model provider path:
 
 - Cloudflare Workers AI binding (preferred for “no keys”):
-  - `AI` binding in `apps/cloudflare-agent-sdk-demo/wrangler.jsonc`
+  - `AI` binding in `apps/liteclaw-worker/wrangler.jsonc`
 - OR server-owned provider key:
-  - `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set as a Wrangler secret for `apps/cloudflare-agent-sdk-demo`
+  - `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set as a Wrangler secret for `apps/liteclaw-worker`
 
 Waitlist gating:
 
@@ -496,6 +504,6 @@ Waitlist gating:
 
 Commands live with the app:
 
-- `cd apps/cloudflare-agent-sdk-demo && npm run dev`
-- `cd apps/cloudflare-agent-sdk-demo && npm run test`
-- `cd apps/cloudflare-agent-sdk-demo && npm run deploy`
+- `cd apps/liteclaw-worker && npm run dev`
+- `cd apps/liteclaw-worker && npm run test`
+- `cd apps/liteclaw-worker && npm run deploy`
