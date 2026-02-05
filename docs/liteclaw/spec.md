@@ -588,6 +588,7 @@ What to copy from `apps/cloudflare-agent-sdk-demo/` (and how to simplify it):
   - Replace model with a single pinned provider path:
     - Preferred: Workers AI binding (`env.AI`) in the worker
     - Allowed: server-owned `OPENAI_API_KEY` / `OPENROUTER_API_KEY` secret, pinned model
+  - Use a tool-capable Workers AI model by default (current: `@cf/openai/gpt-oss-120b`).
 - Copy `tsconfig.json`, `vitest.config.ts`, `tests/index.test.ts` and trim as needed.
 - Do not copy any Vite/React/UI files:
   - `index.html`, `public/`, `vite.config.ts`, `src/app.tsx`, `src/client.tsx`, `src/styles.css`, `src/components/**`, `src/providers/**`, `src/hooks/**`
@@ -699,6 +700,9 @@ Production smoke (minimum):
 ---
 
 ## Log
+- 2026-02-05: Updated nydus cloud demo to mirror tool inputs locally when the worker executes tools on Workers (or tool outputs are missing), and documented the behavior.
+- 2026-02-05: Defaulted executor kind to `tunnel` when tunnel URL/token are configured (unless explicitly overridden), and updated docs.
+- 2026-02-05: Switched LiteClaw default model to `@cf/openai/gpt-oss-120b` (tool-capable) and updated docs to reflect the tool model expectation.
 - 2026-02-05: Added `LITECLAW_TOOL_CHOICE` env for forcing tool usage, updated nydus cloud demo with fallback tool parsing/execution, reran LiteClaw worker tests, and redeployed liteclaw worker.
 - 2026-02-05: Extended `apps/nydus` to include a cloud-driven demo (LiteClaw agent message triggers local workspace tools via tunnel), documented new modes and export receipt checks.
 - 2026-02-05: Added Bun-based tunnel handshake script (`apps/nydus`) and expanded tunnel docs with Access service token header guidance and Bun handshake usage.

@@ -21,8 +21,8 @@ import {
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 
-const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct";
-const MODEL_CONFIG_ID = "workers-ai:llama-3.1-8b-instruct";
+const MODEL_ID = "@cf/openai/gpt-oss-120b";
+const MODEL_CONFIG_ID = "workers-ai:gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
 const SUMMARY_TRIGGER_MESSAGES = 35;
 const SUMMARY_MAX_TOKENS = 256;
@@ -981,7 +981,13 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private getExecutorKind(): ExecutorKind {
-    return parseExecutorKind(this.env.LITECLAW_EXECUTOR_KIND);
+    if (this.env.LITECLAW_EXECUTOR_KIND) {
+      return parseExecutorKind(this.env.LITECLAW_EXECUTOR_KIND);
+    }
+    if (this.env.LITECLAW_TUNNEL_URL && this.env.LITECLAW_TUNNEL_TOKEN) {
+      return "tunnel";
+    }
+    return "workers";
   }
 
   private ensureWorkspace(): WorkspaceRow {

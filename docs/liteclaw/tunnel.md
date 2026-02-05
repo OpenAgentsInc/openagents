@@ -42,6 +42,8 @@ LITECLAW_TUNNEL_TOKEN=replace-me
 LITECLAW_TUNNEL_ACCESS_CLIENT_ID=optional
 LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET=optional
 
+If you omit `LITECLAW_EXECUTOR_KIND`, LiteClaw will default to `tunnel` whenever `LITECLAW_TUNNEL_URL` and `LITECLAW_TUNNEL_TOKEN` are set.
+
 If the hostname is protected by Cloudflare Access, the worker must forward the Access service token headers. LiteClaw supports this via the `LITECLAW_TUNNEL_ACCESS_CLIENT_ID` and `LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET` env vars.
 ```
 
@@ -131,6 +133,8 @@ LITECLAW_TOOL_ADMIN_SECRET=replace-me \
 NYDUS_LOCAL_ROOT=/path/to/your/repo \
 bun run index.ts cloud
 ```
+
+Nydus will mirror tool inputs locally if the worker executes tools on the Workers executor (or if tool outputs are missing in the stream), so the local workspace still updates.
 
 ## Troubleshooting
 
