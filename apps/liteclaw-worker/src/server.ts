@@ -3723,15 +3723,8 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
       env.LITECLAW_CODEX_CALLBACK_TIMEOUT_MS,
       DEFAULT_CODEX_CALLBACK_TIMEOUT_MS
     );
-    const timeoutController =
-      action === "callback" ? new AbortController() : null;
-    const timeoutId = timeoutController
-      ? setTimeout(() => timeoutController.abort(), timeoutMs)
-      : null;
-    const signal =
-      timeoutController && action === "callback"
-        ? timeoutController.signal
-        : undefined;
+    const shouldTimeout = action === "callback";
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const opencodeUrl = new URL(request.url);
     opencodeUrl.pathname = `/provider/openai/oauth/${action}`;
@@ -3745,15 +3738,24 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
       headers.delete("authorization");
       headers.delete("x-liteclaw-sandbox-token");
 
-      const opencodeRequest = new Request(opencodeBaseRequest, {
-        headers,
-        ...(signal ? { signal } : {})
-      });
+    const opencodeRequest = new Request(opencodeBaseRequest, { headers });
       opencodeResponse = yield* sandboxEffect(
         "OpenCode OAuth proxy failed",
         async () => {
           try {
-            return await sandbox.containerFetch(opencodeRequest, server.port);
+            const fetchPromise = sandbox.containerFetch(
+              opencodeRequest,
+              server.port
+            );
+            if (!shouldTimeout) {
+              return await fetchPromise;
+            }
+            return await new Promise<Response>((resolve, reject) => {
+              timeoutId = setTimeout(() => {
+                reject(new Error("OAuth callback timed out"));
+              }, timeoutMs);
+              fetchPromise.then(resolve, reject);
+            });
           } catch (error) {
             console.error("[LiteClaw] OpenCode OAuth proxy failed", error);
             throw error;
@@ -3761,9 +3763,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
         }
       );
     } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+      if (timeoutId) clearTimeout(timeoutId);
     }
 
     const responseText = yield* sandboxEffect(
@@ -3799,14 +3799,22 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
     });
   }).pipe(
     Effect.catchAll((error) => {
-      const message =
-        error instanceof Error ? error.message : "Codex proxy failed";
+      let message = error instanceof Error ? error.message : "Codex proxy failed";
       const status =
         error instanceof SandboxEffectError &&
         (error.message === "Invalid JSON" ||
           error.message === "Invalid request body")
           ? 400
           : 500;
+      let resolvedStatus = status;
+      if (
+        error instanceof SandboxEffectError &&
+        error.cause instanceof Error &&
+        error.cause.message === "OAuth callback timed out"
+      ) {
+        message = "Codex callback timed out.";
+        resolvedStatus = 504;
+      }
       const headers = new Headers({ "content-type": "application/json" });
       if (corsHeaders) {
         for (const [key, value] of Object.entries(corsHeaders)) {
@@ -3815,7 +3823,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
       }
       return Effect.succeed(
         new Response(JSON.stringify({ ok: false, error: message }), {
-          status,
+          status: resolvedStatus,
           headers
         })
       );
