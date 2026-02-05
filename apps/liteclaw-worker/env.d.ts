@@ -5,6 +5,7 @@ export {};
 declare global {
   interface Env {
     Chat: DurableObjectNamespace;
+    Sandbox?: DurableObjectNamespace;
     AI: Ai;
     LITECLAW_SKY_MODE?: string;
     LITECLAW_TOOL_POLICY?: string;

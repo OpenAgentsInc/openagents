@@ -3,8 +3,20 @@ import {
   createExecutionContext,
   waitOnExecutionContext
 } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
-import worker from "../src/server";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("@cloudflare/sandbox", () => ({
+  Sandbox: class {},
+  getSandbox: () => {
+    throw new Error("Sandbox not available in tests");
+  }
+}));
+vi.mock("@cloudflare/sandbox/opencode", () => ({
+  createOpencodeServer: vi.fn(),
+  proxyToOpencode: vi.fn()
+}));
+
+const { default: worker } = await import("../src/server");
 
 declare module "cloudflare:test" {
   interface ProvidedEnv extends Env {}
