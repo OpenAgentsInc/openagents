@@ -292,7 +292,7 @@ For development, we want to build against the local Agents SDK checkout.
 Implementation detail (pick one):
 
 - Option A: pin to npm `agents@^0.3.x` in `apps/liteclaw/package.json`.
-- Option B (preferred for now): set `apps/liteclaw/package.json` → `"agents": "file:../../../agents/packages/agents"`.
+- Option B (local dev convenience; don’t commit on main): set `apps/liteclaw/package.json` → `"agents": "file:../../../agents/packages/agents"`.
 
 ---
 
