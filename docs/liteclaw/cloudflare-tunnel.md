@@ -101,6 +101,8 @@ curl "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$TUNN
 3. Configure the LiteClaw worker to call the hostname via `LITECLAW_TUNNEL_URL` and `LITECLAW_TUNNEL_TOKEN`.
 4. Optionally add Access service token headers for extra protection.
 
+If `LITECLAW_EXECUTOR_KIND` is not set, LiteClaw will automatically use the tunnel executor whenever `LITECLAW_TUNNEL_URL` and `LITECLAW_TUNNEL_TOKEN` are present.
+
 ## Required Headers
 
 The worker must include:

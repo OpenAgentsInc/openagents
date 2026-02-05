@@ -296,6 +296,16 @@ type ChatResult = {
   text: string;
   ttftMs: number | null;
   durationMs: number;
+  toolCalls: Array<{
+    toolCallId: string;
+    toolName: string;
+    input: Record<string, unknown>;
+  }>;
+  toolOutputs: Array<{
+    toolCallId: string;
+    toolName: string;
+    output: Record<string, unknown>;
+  }>;
 };
 
 const sendChatMessage = async (content: string): Promise<ChatResult> => {
@@ -307,6 +317,8 @@ const sendChatMessage = async (content: string): Promise<ChatResult> => {
     const startAt = Date.now();
     let firstTokenAt: number | null = null;
     let buffer = "";
+    const toolCalls: ChatResult["toolCalls"] = [];
+    const toolOutputs: ChatResult["toolOutputs"] = [];
     let finished = false;
 
     const ttftTimer = setTimeout(() => {
@@ -336,7 +348,9 @@ const sendChatMessage = async (content: string): Promise<ChatResult> => {
       resolve({
         text: buffer,
         ttftMs: firstTokenAt ? firstTokenAt - startAt : null,
-        durationMs: Date.now() - startAt
+        durationMs: Date.now() - startAt,
+        toolCalls,
+        toolOutputs
       });
     };
 
@@ -390,6 +404,54 @@ const sendChatMessage = async (content: string): Promise<ChatResult> => {
 
       if (!firstTokenAt) {
         firstTokenAt = Date.now();
+      }
+
+      if (
+        parsed.body &&
+        typeof parsed.body === "object" &&
+        (parsed.body as any).type === "tool-input-available"
+      ) {
+        const body = parsed.body as {
+          toolCallId?: string;
+          toolName?: string;
+          input?: Record<string, unknown>;
+        };
+        if (
+          typeof body.toolCallId === "string" &&
+          typeof body.toolName === "string" &&
+          body.input &&
+          typeof body.input === "object"
+        ) {
+          toolCalls.push({
+            toolCallId: body.toolCallId,
+            toolName: body.toolName,
+            input: body.input
+          });
+        }
+      }
+
+      if (
+        parsed.body &&
+        typeof parsed.body === "object" &&
+        (parsed.body as any).type === "tool-output-available"
+      ) {
+        const body = parsed.body as {
+          toolCallId?: string;
+          toolName?: string;
+          output?: Record<string, unknown>;
+        };
+        if (
+          typeof body.toolCallId === "string" &&
+          typeof body.toolName === "string" &&
+          body.output &&
+          typeof body.output === "object"
+        ) {
+          toolOutputs.push({
+            toolCallId: body.toolCallId,
+            toolName: body.toolName,
+            output: body.output
+          });
+        }
       }
 
       if (typeof parsed.body === "string") {
@@ -483,6 +545,61 @@ const extractAssistantTextFromStream = (streamText: string) => {
   return output;
 };
 
+const parseToolEventsFromStream = (streamText: string) => {
+  const calls: Array<{
+    toolCallId: string;
+    toolName: string;
+    input: Record<string, unknown>;
+  }> = [];
+  const outputs: Array<{
+    toolCallId: string;
+    toolName: string;
+    output: Record<string, unknown>;
+  }> = [];
+  if (!streamText) return { calls, outputs };
+  const objects = splitJsonObjects(streamText);
+  for (const objText of objects) {
+    try {
+      const obj = JSON.parse(objText) as {
+        type?: string;
+        toolCallId?: string;
+        toolName?: string;
+        input?: Record<string, unknown>;
+        output?: Record<string, unknown>;
+      };
+      if (
+        obj?.type === "tool-input-available" &&
+        typeof obj.toolCallId === "string" &&
+        typeof obj.toolName === "string" &&
+        obj.input &&
+        typeof obj.input === "object"
+      ) {
+        calls.push({
+          toolCallId: obj.toolCallId,
+          toolName: obj.toolName,
+          input: obj.input
+        });
+      }
+      if (
+        obj?.type === "tool-output-available" &&
+        typeof obj.toolCallId === "string" &&
+        typeof obj.toolName === "string" &&
+        obj.output &&
+        typeof obj.output === "object"
+      ) {
+        outputs.push({
+          toolCallId: obj.toolCallId,
+          toolName: obj.toolName,
+          output: obj.output
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return { calls, outputs };
+};
+
 const parseToolCallsFromText = (text: string): ParsedToolCall[] => {
   if (!text) return [];
   const calls: ParsedToolCall[] = [];
@@ -567,6 +684,11 @@ const runCloudDemo = async () => {
   log(`Requesting tool run for ${toolPath}.`);
   const result = await sendChatMessage(prompt);
   const assistantText = extractAssistantTextFromStream(result.text);
+  const streamTools = parseToolEventsFromStream(result.text);
+  const toolCalls =
+    result.toolCalls.length > 0 ? result.toolCalls : streamTools.calls;
+  const toolOutputs =
+    result.toolOutputs.length > 0 ? result.toolOutputs : streamTools.outputs;
   log(
     `Agent response (${result.durationMs}ms): ${
       assistantText ? assistantText.trim() : result.text.trim()
@@ -574,13 +696,37 @@ const runCloudDemo = async () => {
   );
 
   let fallbackUsed = false;
-  const fallbackCalls = parseToolCallsFromText(assistantText);
-  if (fallbackCalls.length > 0) {
-    log(
-      `Detected ${fallbackCalls.length} tool call(s) in assistant text. Executing via nydus fallback.`
-    );
-    await runFallbackToolCalls(fallbackCalls);
-    fallbackUsed = true;
+
+  if (toolCalls.length > 0) {
+    log(`Parsed tool calls: ${toolCalls.length}, outputs: ${toolOutputs.length}`);
+    const needsLocal =
+      toolOutputs.length === 0 ||
+      toolOutputs.some((item) => {
+        const executor = item.output?.executor_kind;
+        return executor && executor !== "tunnel";
+      });
+
+    if (needsLocal) {
+      log(
+        `Tool outputs used ${toolOutputs.length} call(s) with non-tunnel executors. Mirroring via nydus.`
+      );
+      for (const call of toolCalls) {
+        if (!call.toolName.startsWith("workspace.")) continue;
+        await invokeTool(call.toolName, call.input);
+        fallbackUsed = true;
+      }
+    } else {
+      log("Tool calls executed by tunnel executor.");
+    }
+  } else {
+    const fallbackCalls = parseToolCallsFromText(assistantText);
+    if (fallbackCalls.length > 0) {
+      log(
+        `Detected ${fallbackCalls.length} tool call(s) in assistant text. Executing via nydus fallback.`
+      );
+      await runFallbackToolCalls(fallbackCalls);
+      fallbackUsed = true;
+    }
   }
 
   await waitForFileContent(localPath, toolContent);

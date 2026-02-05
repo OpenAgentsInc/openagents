@@ -26,6 +26,8 @@ Related docs:
 3. The DO streams model deltas back over the websocket and persists messages in SQLite.
 4. Sky-mode instrumentation, tool receipts, and run/event metadata are appended in parallel when `LITECLAW_SKY_MODE=1`.
 
+Default model: `@cf/openai/gpt-oss-120b` via Workers AI. This model is tool-capable and should emit real tool calls when the tool policy allows it.
+
 ## Programmatic Endpoints
 
 These surfaces are treated as stable and are required for automation.
@@ -111,7 +113,7 @@ These env vars are used by the LiteClaw worker. Defaults are the current runtime
 | `LITECLAW_TOOL_MAX_CALLS` | Max tool calls per run. | `4` |
 | `LITECLAW_TOOL_MAX_OUTBOUND_BYTES` | Max tool output bytes per run. | `200000` |
 | `LITECLAW_TOOL_ADMIN_SECRET` | Admin secret for `/tool-policy`. | none |
-| `LITECLAW_EXECUTOR_KIND` | Tool executor (`workers` or `tunnel`). | `workers` |
+| `LITECLAW_EXECUTOR_KIND` | Tool executor (`workers` or `tunnel`). If unset and tunnel vars are configured, defaults to `tunnel`. | `workers` |
 | `LITECLAW_TUNNEL_URL` | Tunnel base URL for local tools. | none |
 | `LITECLAW_TUNNEL_TOKEN` | Token used for tunnel auth and receipts. | none |
 | `LITECLAW_TUNNEL_TIMEOUT_MS` | Tunnel request timeout. | `8000` |
