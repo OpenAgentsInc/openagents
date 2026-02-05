@@ -22,7 +22,7 @@ It is a **persistent chat agent that works every time**.
 
 ## North Star
 
-> A user can go from invite → chatting with their LiteClaw in under **3 minutes**, refresh the page, and keep going.
+> A user can go from invite → chatting with their LiteClaw in under **3 seconds**, refresh the page, and keep going.
 
 ---
 
