@@ -1,6 +1,7 @@
 import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
-import { Link, Outlet, createFileRoute, useRouter } from '@tanstack/react-router';
-import { HatcheryButton } from '../components/hatchery/HatcheryButton';
+import { Outlet, createFileRoute, useRouter } from '@tanstack/react-router';
+import { EffuseMount } from '../components/EffuseMount';
+import { runMarketingHeader } from '../effuse-pages/header';
 
 export const Route = createFileRoute('/_marketing')({
   component: MarketingLayout,
@@ -29,31 +30,11 @@ function MarketingLayout() {
         />
       </div>
       <div className="absolute inset-0 z-10 flex min-h-full min-w-full flex-col p-4">
-        <header className="-mx-4 flex h-14 w-full shrink-0 items-center justify-between px-6">
-          <Link to="/" className="select-none text-lg font-semibold text-white">
-            OpenAgents
-          </Link>
-          {/* Same DOM on both routes: nav always present, invisible on login so layout never reflows */}
-          <div
-            className="flex items-center gap-3"
-            style={{
-              visibility: isHome ? 'visible' : 'hidden',
-              pointerEvents: isHome ? 'auto' : 'none',
-            }}
-            aria-hidden={!isHome}
-          >
-            <a
-              href="/login"
-              className="mr-5 text-base font-medium text-white/90 hover:text-white"
-              style={{ fontFamily: 'var(--font-square721)' }}
-            >
-              Log in
-            </a>
-            <HatcheryButton href="/login" variant="outline">
-              Start for free
-            </HatcheryButton>
-          </div>
-        </header>
+        <EffuseMount
+          run={(el) => runMarketingHeader(el, isHome)}
+          deps={[isHome]}
+          className="shrink-0"
+        />
         <Outlet />
       </div>
     </div>

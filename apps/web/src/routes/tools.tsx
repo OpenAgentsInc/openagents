@@ -1,9 +1,10 @@
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
-import { KranoxFrame } from '../components/KranoxFrame';
+import { EffuseMount } from '../components/EffuseMount';
+import { runToolsPage, type ToolItem } from '../effuse-pages/tools';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { AgentToolContract } from '../effect/agentApi';
@@ -78,10 +79,26 @@ function ToolsPage() {
     };
   }, [runtime, userId]);
 
-  const sorted = useMemo(() => {
-    if (!tools) return null;
-    return [...tools].sort((a, b) => a.name.localeCompare(b.name));
-  }, [tools]);
+  const pageData = useMemo((): { errorText: string | null; sorted: ReadonlyArray<ToolItem> | null } => {
+    if (errorText) return { errorText, sorted: null };
+    if (!tools) return { errorText: null, sorted: null };
+    const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      errorText: null,
+      sorted: sorted.map((t) => ({
+        name: t.name,
+        description: t.description,
+        usage: t.usage ?? null,
+        inputSchemaJson: safeStableStringify(t.inputSchemaJson),
+        outputSchemaJson: safeStableStringify(t.outputSchemaJson ?? null),
+      })),
+    };
+  }, [tools, errorText]);
+
+  const run = useCallback(
+    (el: Element) => runToolsPage(el, pageData),
+    [pageData],
+  );
 
   return (
     <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
@@ -103,101 +120,7 @@ function ToolsPage() {
           dotsSettings={{ type: 'circle', size: 2 }}
         />
       </div>
-
-      <div className="relative z-10 flex flex-col h-screen overflow-hidden">
-        <header className="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
-          <a
-            href="/autopilot"
-            className="text-accent font-mono font-bold text-base tracking-[0.12em] leading-none uppercase hover:opacity-90"
-          >
-            OpenAgents
-          </a>
-          <div className="h-6 w-px bg-border-dark/70" aria-hidden="true" />
-          <span className="text-xs text-text-dim uppercase tracking-wider">DSE Tools</span>
-        </header>
-
-        <main className="flex-1 min-h-0 w-full p-4 overflow-hidden">
-          <div className="mx-auto w-full max-w-5xl h-full min-h-0">
-            <KranoxFrame className="h-full min-h-0">
-              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
-                <div className="flex items-baseline justify-between gap-4">
-                  <div>
-                    <div className="text-xs text-text-dim uppercase tracking-wider">
-                      Tool Contracts
-                    </div>
-                    <div className="text-[11px] text-text-muted mt-1">
-                      Source: Autopilot Worker `GET /agents/chat/:id/tool-contracts`
-                    </div>
-                  </div>
-                  <a
-                    href="/signatures"
-                    className="text-[11px] text-text-muted hover:text-text-primary"
-                  >
-                    View signatures →
-                  </a>
-                </div>
-
-                <div className="mt-4 flex-1 min-h-0 overflow-y-auto overseer-scroll pr-1">
-                  {errorText ? (
-                    <div className="text-xs text-red-400">Error: {errorText}</div>
-                  ) : !sorted ? (
-                    <div className="text-xs text-text-dim">Loading…</div>
-                  ) : sorted.length === 0 ? (
-                    <div className="text-xs text-text-dim">(no tools)</div>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {sorted.map((t) => {
-                        const inputSchema = safeStableStringify(t.inputSchemaJson);
-                        const outputSchema = safeStableStringify(t.outputSchemaJson);
-                        return (
-                          <details
-                            key={t.name}
-                            className="rounded border border-border-dark bg-surface-primary/35 shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]"
-                          >
-                            <summary className="cursor-pointer select-none px-3 py-2 flex items-baseline gap-3">
-                              <span className="text-xs font-semibold text-text-primary">
-                                {t.name}
-                              </span>
-                              {t.usage ? (
-                                <span className="text-[10px] font-mono text-text-dim break-words">
-                                  {t.usage}
-                                </span>
-                              ) : null}
-                            </summary>
-                            <div className="border-t border-border-dark/70 px-3 py-2">
-                              <div className="text-[11px] text-text-muted whitespace-pre-wrap break-words">
-                                {t.description}
-                              </div>
-
-                              <div className="mt-3">
-                                <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
-                                  Input Schema (JSON Schema)
-                                </div>
-                                <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
-                                  {inputSchema}
-                                </pre>
-                              </div>
-
-                              <div className="mt-3 border-t border-border-dark/60 border-dashed pt-2">
-                                <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
-                                  Output Schema (JSON Schema)
-                                </div>
-                                <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
-                                  {outputSchema}
-                                </pre>
-                              </div>
-                            </div>
-                          </details>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </KranoxFrame>
-          </div>
-        </main>
-      </div>
+      <EffuseMount run={run} deps={[pageData]} className="relative z-10 flex flex-col h-screen overflow-hidden" />
     </div>
   );
 }

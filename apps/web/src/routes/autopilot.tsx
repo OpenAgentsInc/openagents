@@ -4,14 +4,13 @@ import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Streamdown } from 'streamdown';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
 import { AutopilotSidebar } from '../components/layout/AutopilotSidebar';
-import { KranoxFrame } from '../components/KranoxFrame';
+import { EffuseMount } from '../components/EffuseMount';
+import { runAutopilotChat, type RenderedMessage as EffuseRenderedMessage } from '../effuse-pages/autopilot';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { UIMessage } from 'ai';
-import type { FormEvent } from 'react';
 import type { AgentToolContract } from '../effect/agentApi';
 
 export const Route = createFileRoute('/autopilot')({
@@ -207,139 +206,6 @@ function toRenderableParts(parts: ReadonlyArray<UiPart>): Array<RenderPart> {
   return out;
 }
 
-function toolStateSummary(state: string): { label: string; badge: string } {
-  switch (state) {
-    case 'output-available':
-      return { label: 'done', badge: 'OK' };
-    case 'output-error':
-      return { label: 'error', badge: 'ERR' };
-    case 'output-denied':
-      return { label: 'denied', badge: 'DENY' };
-    case 'approval-requested':
-      return { label: 'approval', badge: 'ASK' };
-    case 'approval-responded':
-      return { label: 'approval', badge: 'ACK' };
-    case 'input-streaming':
-    case 'input-available':
-      return { label: 'running', badge: '...' };
-    default:
-      return { label: state, badge: '?' };
-  }
-}
-
-function ToolCard({
-  part,
-  meta,
-}: {
-  part: Extract<RenderPart, { kind: 'tool' }>;
-  meta?: AgentToolContract;
-}) {
-  const [isCollapsed, setIsCollapsed] = useState(true);
-  const summary = toolStateSummary(part.state);
-
-  const inputText = safeStableStringify(part.input);
-  const outputText =
-    part.state === 'output-available' ? safeStableStringify(part.output) : '';
-
-  const headerText =
-    part.state === 'output-available' ? 'Used tool:' : 'Using tool:';
-
-  const borderTone =
-    part.state === 'output-error' || part.state === 'output-denied'
-      ? 'border-red-500/40 bg-red-500/5'
-      : 'border-border-dark bg-surface-primary/35';
-
-  return (
-    <div
-      className={[
-        'w-full rounded border shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]',
-        borderTone,
-      ].join(' ')}
-    >
-      <div className="flex items-center justify-between gap-3 px-3 py-2">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className="text-[10px] uppercase tracking-[0.16em] text-text-dim shrink-0">
-            {summary.badge}
-          </span>
-          <span className="text-xs text-text-muted shrink-0">{headerText}</span>
-          <span className="text-xs font-semibold text-text-primary truncate">
-            {part.toolName}
-          </span>
-          <span className="text-[10px] text-text-dim shrink-0">({summary.label})</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsCollapsed((v) => !v)}
-          className="text-[10px] font-mono text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1 shrink-0"
-          aria-expanded={!isCollapsed}
-        >
-          {isCollapsed ? 'Show' : 'Hide'}
-        </button>
-      </div>
-
-      {!isCollapsed ? (
-        <div className="border-t border-border-dark/70 px-3 py-2">
-          {meta?.usage || meta?.description ? (
-            <div className="mb-3">
-              {meta.usage ? (
-                <div className="text-[10px] font-mono text-text-dim whitespace-pre-wrap break-words">
-                  {meta.usage}
-                </div>
-              ) : null}
-              {meta.description ? (
-                <div className="text-[11px] text-text-muted whitespace-pre-wrap break-words">
-                  {meta.description}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
-            Input
-          </div>
-          <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
-            {inputText}
-          </pre>
-
-          {part.state === 'output-error' ? (
-            <div className="mt-3">
-              <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
-                Error
-              </div>
-              <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-red-300">
-                {part.errorText ?? 'Tool failed.'}
-              </pre>
-            </div>
-          ) : null}
-
-          {part.state === 'output-denied' ? (
-            <div className="mt-3">
-              <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
-                Denied
-              </div>
-              <div className="text-[11px] text-text-primary">
-                Tool execution denied
-                {part.approval?.reason ? `: ${part.approval.reason}` : '.'}
-              </div>
-            </div>
-          ) : null}
-
-          {part.state === 'output-available' ? (
-            <div className="mt-3 border-t border-border-dark/60 border-dashed pt-2">
-              <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
-                Output{part.preliminary ? ' (preliminary)' : ''}
-              </div>
-              <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
-                {outputText}
-              </pre>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function ChatPage() {
   const { userId } = Route.useLoaderData();
   const chatId = userId;
@@ -362,7 +228,6 @@ function ChatPage() {
   const { clearHistory } = chat;
 
   const [input, setInput] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
   const didMountRef = useRef(false);
   const [isExportingBlueprint, setIsExportingBlueprint] = useState(false);
   const [isResettingAgent, setIsResettingAgent] = useState(false);
@@ -387,8 +252,8 @@ function ChatPage() {
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
   const messages = chat.messages as ReadonlyArray<UIMessage>;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chatMountRef = useRef<HTMLDivElement>(null);
 
   const recomputeIsAtBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -399,7 +264,8 @@ function ChatPage() {
   }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
-    bottomRef.current?.scrollIntoView({ block: 'end', behavior });
+    const bottom = chatMountRef.current?.firstElementChild?.querySelector('[data-autopilot-bottom]');
+    (bottom as HTMLElement | undefined)?.scrollIntoView({ block: 'end', behavior });
   }, []);
 
   const renderedMessages = useMemo(() => {
@@ -427,6 +293,41 @@ function ChatPage() {
     }
     return `${renderedMessages.length}:${last.id}:tool:${lastPart.toolName}:${lastPart.state}:${safeStableStringify(lastPart.output ?? '').length}`;
   }, [renderedMessages]);
+
+  const autopilotChatData = useMemo((): {
+    messages: ReadonlyArray<EffuseRenderedMessage>;
+    isBusy: boolean;
+    isAtBottom: boolean;
+    inputValue: string;
+  } => {
+    return {
+      messages: renderedMessages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        renderParts: m.renderParts.map((p) => {
+          if (p.kind === 'text') {
+            return { kind: 'text' as const, text: p.text, state: p.state };
+          }
+          const meta = toolContractsByName?.[p.toolName];
+          return {
+            kind: 'tool' as const,
+            toolName: p.toolName,
+            toolCallId: p.toolCallId,
+            state: p.state,
+            inputJson: safeStableStringify(p.input),
+            outputJson: p.output !== undefined ? safeStableStringify(p.output) : undefined,
+            errorText: p.errorText,
+            preliminary: p.preliminary,
+            usage: meta?.usage ?? null,
+            description: meta?.description ?? null,
+          };
+        }),
+      })),
+      isBusy,
+      isAtBottom,
+      inputValue: input,
+    };
+  }, [renderedMessages, toolContractsByName, isBusy, isAtBottom, input]);
 
   const makeDraftFromBlueprint = useCallback((value: unknown) => {
     const b: any = value ?? {};
@@ -562,20 +463,49 @@ function ChatPage() {
     }
   }, [fetchBlueprint, isBusy]);
 
-	  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || isBusy) return;
+  const runAutopilotChatRef = useCallback(
+    (el: Element) => runAutopilotChat(el, autopilotChatData),
+    [autopilotChatData],
+  );
 
-    setInput('');
-    void chat.sendMessage({ text }).catch(() => {
-      // Best effort: restore input if send fails.
-      setInput(text);
-    });
-    // Keep cursor in input after send (next tick so React has committed)
-    setTimeout(() => inputRef.current?.focus(), 0);
-    setTimeout(() => scrollToBottom('auto'), 0);
-  };
+  const onChatRendered = useCallback(() => {
+    const wrapper = chatMountRef.current;
+    if (!wrapper) return;
+    const container = wrapper.firstElementChild;
+    if (!container) return;
+
+    const form = container.querySelector('#chat-form');
+    if (form instanceof HTMLFormElement) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const inputEl = form.querySelector<HTMLInputElement>('input[name="message"]');
+        const text = inputEl?.value?.trim() ?? '';
+        if (!text || isBusy) return;
+        inputEl.value = '';
+        setInput('');
+        void chat.sendMessage({ text }).catch(() => {
+          if (inputEl) inputEl.value = text;
+          setInput(text);
+        });
+        setTimeout(() => scrollToBottom('auto'), 0);
+      });
+    }
+
+    const stopBtn = container.querySelector('[data-action="stop"]');
+    stopBtn?.addEventListener('click', () => void chat.stop());
+
+    const scrollBottomBtn = container.querySelector('[data-action="scroll-bottom"]');
+    scrollBottomBtn?.addEventListener('click', () => scrollToBottom('smooth'));
+
+    const inputEl = container.querySelector<HTMLInputElement>('input[name="message"]');
+    inputEl?.addEventListener('input', () => setInput(inputEl.value));
+
+    const scrollEl = container.querySelector('[data-scroll-id="autopilot-chat-scroll"]');
+    if (scrollEl instanceof HTMLElement) {
+      scrollRef.current = scrollEl;
+      scrollEl.addEventListener('scroll', recomputeIsAtBottom);
+    }
+  }, [isBusy, chat, scrollToBottom, recomputeIsAtBottom]);
 
   const onExportBlueprint = async () => {
     if (isExportingBlueprint) return;
@@ -777,118 +707,15 @@ function ChatPage() {
 	      <main className="flex-1 min-h-0 w-full flex overflow-hidden">
 	        <AutopilotSidebar />
 
-	        {/* Center: header + chat */}
-	        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-	          <header className="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
-	            <span className="text-xs text-text-dim uppercase tracking-wider">Autopilot</span>
-	          </header>
-
-	          <div className="flex-1 min-h-0 flex overflow-hidden">
-	            {/* Chat - center */}
-	            <section className="flex-1 min-h-0 flex flex-col p-4">
-	          <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
-	            <KranoxFrame className="flex-1 min-h-0">
-	              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
-	                <div
-	                  ref={scrollRef}
-	                  onScroll={recomputeIsAtBottom}
-	                  className="flex-1 overflow-y-auto overseer-scroll pr-1 scroll-smooth"
-	                >
-	                  <div className="flex flex-col gap-3">
-	                    {renderedMessages.map((m) => {
-                        const userText = m.renderParts
-                          .filter((p): p is Extract<RenderPart, { kind: 'text' }> => p.kind === 'text')
-                          .map((p) => p.text)
-                          .join('');
-
-                        return (
-                          <div
-                            key={m.id}
-                            className={[
-                              'max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono',
-                              m.role === 'user'
-                                ? 'self-end rounded border bg-accent-subtle text-text-primary border-accent-muted'
-                                : 'self-start text-text-primary',
-                            ].join(' ')}
-                          >
-                            {m.role === 'user' ? (
-                              <div className="whitespace-pre-wrap">{userText}</div>
-                            ) : (
-                              <div className="flex flex-col gap-2">
-                                {m.renderParts.map((p, idx) => {
-                                  if (p.kind === 'text') {
-                                    return (
-                                      <Streamdown
-                                        key={`t:${idx}`}
-                                        mode={p.state === 'streaming' ? 'streaming' : 'static'}
-                                        isAnimating={p.state === 'streaming'}
-                                      >
-                                        {p.text}
-                                      </Streamdown>
-                                    );
-                                  }
-
-                                  return (
-                                    <ToolCard
-                                      key={`tool:${p.toolCallId}`}
-                                      part={p}
-                                      meta={toolContractsByName?.[p.toolName]}
-                                    />
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-	                    <div ref={bottomRef} />
-	                  </div>
-	                </div>
-
-	                <div className="relative mt-3">
-	                  {!isAtBottom && renderedMessages.length > 0 ? (
-	                    <button
-	                      type="button"
-	                      onClick={() => scrollToBottom('smooth')}
-	                      className="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
-	                    >
-	                      Scroll to bottom
-	                    </button>
-	                  ) : null}
-	                  <form
-	                    onSubmit={onSubmit}
-	                    className="flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
-	                  >
-	                    <input
-	                      ref={inputRef}
-	                      autoFocus
-	                      value={input}
-	                      onChange={(e) => setInput(e.target.value)}
-	                      placeholder="Message Autopilot…"
-	                      className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-	                    />
-	                    {isBusy ? (
-	                      <button
-	                        type="button"
-	                        onClick={() => void chat.stop()}
-	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
-	                      >
-	                        Stop
-	                      </button>
-	                    ) : (
-	                      <button
-	                        type="submit"
-	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
-	                      >
-	                        Send
-	                      </button>
-	                    )}
-	                  </form>
-	                </div>
-	              </div>
-	            </KranoxFrame>
-	          </div>
-	        </section>
+	        {/* Center: header + chat (Effuse) */}
+	        <div ref={chatMountRef} className="flex-1 min-h-0 flex flex-col overflow-hidden">
+	          <EffuseMount
+	            run={runAutopilotChatRef}
+	            deps={[autopilotChatData]}
+	            onRendered={onChatRendered}
+	            className="flex-1 min-h-0 flex flex-col overflow-hidden"
+	          />
+	        </div>
 
 	        {/* Blueprint - right sidebar */}
 	        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-l border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
@@ -1017,8 +844,6 @@ function ChatPage() {
 	            </div>
 	          </div>
 	        </aside>
-	          </div>
-	        </div>
       </main>
 
       {/* Control panel - bottom right */}

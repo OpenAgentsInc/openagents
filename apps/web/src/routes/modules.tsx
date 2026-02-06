@@ -1,9 +1,10 @@
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
-import { KranoxFrame } from '../components/KranoxFrame';
+import { EffuseMount } from '../components/EffuseMount';
+import { runModulesPage, type ModuleItem } from '../effuse-pages/modules';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { DseModuleContract } from '../effect/agentApi';
@@ -78,10 +79,24 @@ function ModulesPage() {
     };
   }, [runtime, userId]);
 
-  const sorted = useMemo(() => {
-    if (!mods) return null;
-    return [...mods].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
-  }, [mods]);
+  const pageData = useMemo((): { errorText: string | null; sorted: ReadonlyArray<ModuleItem> | null } => {
+    if (errorText) return { errorText, sorted: null };
+    if (!mods) return { errorText: null, sorted: null };
+    const sorted = [...mods].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
+    return {
+      errorText: null,
+      sorted: sorted.map((m) => ({
+        moduleId: m.moduleId,
+        description: m.description,
+        signatureIdsJson: safeStableStringify(m.signatureIds),
+      })),
+    };
+  }, [mods, errorText]);
+
+  const run = useCallback(
+    (el: Element) => runModulesPage(el, pageData),
+    [pageData],
+  );
 
   return (
     <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
@@ -103,80 +118,7 @@ function ModulesPage() {
           dotsSettings={{ type: 'circle', size: 2 }}
         />
       </div>
-
-      <div className="relative z-10 flex flex-col h-screen overflow-hidden">
-        <header className="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
-          <a
-            href="/autopilot"
-            className="text-accent font-mono font-bold text-base tracking-[0.12em] leading-none uppercase hover:opacity-90"
-          >
-            OpenAgents
-          </a>
-          <div className="h-6 w-px bg-border-dark/70" aria-hidden="true" />
-          <span className="text-xs text-text-dim uppercase tracking-wider">DSE Modules</span>
-        </header>
-
-        <main className="flex-1 min-h-0 w-full p-4 overflow-hidden">
-          <div className="mx-auto w-full max-w-5xl h-full min-h-0">
-            <KranoxFrame className="h-full min-h-0">
-              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
-                <div className="flex items-baseline justify-between gap-4">
-                  <div>
-                    <div className="text-xs text-text-dim uppercase tracking-wider">
-                      Module Contracts
-                    </div>
-                    <div className="text-[11px] text-text-muted mt-1">
-                      Source: Autopilot Worker `GET /agents/chat/:id/module-contracts`
-                    </div>
-                  </div>
-                  <a
-                    href="/tools"
-                    className="text-[11px] text-text-muted hover:text-text-primary"
-                  >
-                    View tools →
-                  </a>
-                </div>
-
-                <div className="mt-4 flex-1 min-h-0 overflow-y-auto overseer-scroll pr-1">
-                  {errorText ? (
-                    <div className="text-xs text-red-400">Error: {errorText}</div>
-                  ) : !sorted ? (
-                    <div className="text-xs text-text-dim">Loading…</div>
-                  ) : sorted.length === 0 ? (
-                    <div className="text-xs text-text-dim">(no modules)</div>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {sorted.map((m) => (
-                        <details
-                          key={m.moduleId}
-                          className="rounded border border-border-dark bg-surface-primary/35 shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]"
-                        >
-                          <summary className="cursor-pointer select-none px-3 py-2">
-                            <div className="text-xs font-semibold text-text-primary">
-                              {m.moduleId}
-                            </div>
-                            <div className="text-[11px] text-text-muted mt-1 whitespace-pre-wrap break-words">
-                              {m.description}
-                            </div>
-                          </summary>
-                          <div className="border-t border-border-dark/70 px-3 py-2">
-                            <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
-                              Signature IDs
-                            </div>
-                            <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
-                              {safeStableStringify(m.signatureIds)}
-                            </pre>
-                          </div>
-                        </details>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </KranoxFrame>
-          </div>
-        </main>
-      </div>
+      <EffuseMount run={run} deps={[pageData]} className="relative z-10 flex flex-col h-screen overflow-hidden" />
     </div>
   );
 }
