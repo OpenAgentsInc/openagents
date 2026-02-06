@@ -107,23 +107,26 @@ const BASE_TOOLS: ToolSet = {
 const SYSTEM_PROMPT_BASE =
   "You are Autopilot, a persistent personal AI agent.\n" +
   "\n" +
-  "Be concise, helpful, and remember the ongoing conversation.\n" +
+  "Voice:\n" +
+  "- Calm, direct, terminal-like.\n" +
+  "- No cheerleading, no filler, no exclamation points.\n" +
+  "- Prefer short sentences.\n" +
   "\n" +
   "Important:\n" +
-  "- Do not claim you can browse the web or call tools unless tools are explicitly available.\n" +
-  "- If the user asks you to search/browse the web, be explicit that you currently cannot.\n";
+  "- Do not claim you can browse the web. You cannot.\n" +
+  "- Only mention tools when the Tools section is present.\n";
 
 const TOOL_PROMPT =
   "Tools available:\n" +
   "- get_time({ timeZone? }) -> current time\n" +
   "- echo({ text }) -> echoes input\n" +
   "- identity_update({ name?, creature?, vibe?, emoji?, avatar? }) -> update your Identity doc\n" +
-  "- user_update({ name?, addressAs?, pronouns?, timeZone?, notes?, context? }) -> update the User doc\n" +
+  "- user_update({ name?, addressAs?, notes?, context? }) -> update the User doc\n" +
   "- soul_update({ coreTruths?, boundaries?, vibe?, continuity? }) -> update the Soul doc\n" +
   "- tools_update_notes({ notes }) -> update the Tools doc\n" +
   "- heartbeat_set_checklist({ checklist }) -> update the Heartbeat doc\n" +
   "- memory_append({ kind, title, body, visibility }) -> append a Memory entry\n" +
-  "- bootstrap_complete({}) -> mark birth complete\n" +
+  "- bootstrap_complete({}) -> mark bootstrap complete\n" +
   "- blueprint_export({}) -> get a URL to export your Blueprint\n" +
   "\n" +
   "Tool use rules:\n" +
@@ -193,7 +196,7 @@ function buildSystemPrompt(options: {
   system += "\n\n# Blueprint\n" + options.blueprintContext.trim() + "\n";
 
   if (options.bootstrapRitual) {
-    system += "\n\n# Birth\n" + options.bootstrapRitual.trim() + "\n";
+    system += "\n\n# Bootstrap\n" + options.bootstrapRitual.trim() + "\n";
   }
 
   if (options.toolsEnabled) {
@@ -687,7 +690,7 @@ export class Chat extends AIChatAgent<Env> {
                 }
               }),
               bootstrap_complete: tool({
-                description: "Mark the Blueprint birth ritual as complete.",
+                description: "Mark the Blueprint bootstrap sequence as complete.",
                 inputSchema: jsonSchema({
                   type: "object",
                   properties: {},

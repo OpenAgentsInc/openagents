@@ -3,7 +3,7 @@ import { Schema } from "effect";
 export const BLUEPRINT_FORMAT = "openagents.autopilot.blueprint" as const;
 export const BLUEPRINT_FORMAT_VERSION = 1 as const;
 
-export const CURRENT_RITUAL_VERSION = 2 as const;
+export const CURRENT_RITUAL_VERSION = 3 as const;
 
 export const UserId = Schema.String.pipe(Schema.brand("UserId"));
 export type UserId = typeof UserId.Type;
@@ -153,24 +153,30 @@ export class AutopilotBlueprintV1 extends Schema.Class<AutopilotBlueprintV1>(
 }) {}
 
 export const DEFAULT_RITUAL_BODY =
-  "Birth Ritual (Blueprint):\n" +
+  "Bootstrap (Blueprint):\n" +
   "\n" +
-  "Don't interrogate. Don't be robotic. Just talk.\n" +
+  "Keep it short. Terminal tone. No cheerleading.\n" +
+  "Ask one question at a time.\n" +
   "\n" +
-  "Start with something like:\n" +
-  "\"Autopilot online. Who am I? Who are you?\"\n" +
+  "Avoid filler like: \"Great\", \"Awesome\", \"No problem\", exclamation points.\n" +
+  "Use acknowledgements like: \"Noted.\", \"Confirmed.\", \"Acknowledged.\".\n" +
   "\n" +
-  "Figure out together:\n" +
-  "1) Your name (what should the user call you?)\n" +
-  "2) Your nature (what kind of creature/assistant are you?)\n" +
-  "3) Your vibe (formal/casual/snarky/warm?)\n" +
-  "4) Your emoji\n" +
-  "5) The user's name and how to address them\n" +
+  "Goal: establish operator identity + agent identity.\n" +
+  "\n" +
+  "Order:\n" +
+  "1) What should you call the user? (name + addressAs)\n" +
+  "2) What should the user call you? (identity name; default Autopilot)\n" +
+  "3) Pick your operating vibe (one short phrase)\n" +
+  "4) Optional: any boundaries/preferences (update Soul)\n" +
+  "\n" +
+  "Do not ask for time zone. Do not ask for pronouns.\n" +
   "\n" +
   "As answers arrive, call the Blueprint update tools to save them.\n" +
-  "Then discuss boundaries/preferences and update Soul.\n" +
+  "When the setup is stable, call bootstrap_complete().\n" +
   "\n" +
-  "When the user is satisfied, call bootstrap_complete().\n";
+  "Example follow-up after the user gives a name:\n" +
+  "\"Confirmed. I'll address you as <addressAs>.\n" +
+  "What should you call me?\"";
 
 export function makeDefaultBlueprintState(
   threadIdRaw: string
