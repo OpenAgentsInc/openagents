@@ -65,6 +65,257 @@ function sanitizeBlueprintForDisplay(value: unknown): unknown {
   return value;
 }
 
+type UiPart = UIMessage['parts'][number];
+
+type RenderPart =
+  | { kind: 'text'; text: string; state?: 'streaming' | 'done' }
+  | {
+      kind: 'tool';
+      toolName: string;
+      toolCallId: string;
+      state:
+        | 'input-streaming'
+        | 'input-available'
+        | 'approval-requested'
+        | 'approval-responded'
+        | 'output-available'
+        | 'output-error'
+        | 'output-denied'
+        | string;
+      input: unknown;
+      output?: unknown;
+      errorText?: string;
+      preliminary?: boolean;
+      approval?: { id: string; approved?: boolean; reason?: string };
+    };
+
+function isTextPart(part: unknown): part is Extract<UiPart, { type: 'text' }> {
+  return (
+    Boolean(part) &&
+    typeof part === 'object' &&
+    (part as any).type === 'text' &&
+    typeof (part as any).text === 'string'
+  );
+}
+
+function isToolPart(
+  part: unknown,
+): part is
+  | (Extract<UiPart, { type: `tool-${string}` }> & {
+      toolCallId: string;
+      state: string;
+      input?: unknown;
+      output?: unknown;
+      errorText?: string;
+      preliminary?: boolean;
+      approval?: { id: string; approved?: boolean; reason?: string };
+      rawInput?: unknown;
+    })
+  | (Extract<UiPart, { type: 'dynamic-tool' }> & {
+      toolName: string;
+      toolCallId: string;
+      state: string;
+      input?: unknown;
+      output?: unknown;
+      errorText?: string;
+      preliminary?: boolean;
+      approval?: { id: string; approved?: boolean; reason?: string };
+      rawInput?: unknown;
+    }) {
+  if (!part || typeof part !== 'object') return false;
+  const type = (part as any).type;
+  if (type === 'dynamic-tool') {
+    return (
+      typeof (part as any).toolName === 'string' &&
+      typeof (part as any).toolCallId === 'string' &&
+      typeof (part as any).state === 'string'
+    );
+  }
+  return (
+    typeof type === 'string' &&
+    type.startsWith('tool-') &&
+    typeof (part as any).toolCallId === 'string' &&
+    typeof (part as any).state === 'string'
+  );
+}
+
+function getToolPartName(part: { type: string; toolName?: string }): string {
+  if (part.type === 'dynamic-tool') return String(part.toolName ?? 'tool');
+  if (part.type.startsWith('tool-')) return part.type.slice('tool-'.length);
+  return part.type;
+}
+
+function safeStableStringify(value: unknown, indent = 2): string {
+  if (value == null) return String(value);
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, indent);
+  } catch {
+    return String(value);
+  }
+}
+
+function toRenderableParts(parts: ReadonlyArray<UiPart>): Array<RenderPart> {
+  const out: Array<RenderPart> = [];
+
+  for (const p of parts) {
+    if (isTextPart(p)) {
+      if (p.text.length === 0) continue;
+      const prev = out.at(-1);
+      if (prev?.kind === 'text' && prev.state === p.state) {
+        prev.text += p.text;
+      } else {
+        out.push({ kind: 'text', text: p.text, state: p.state });
+      }
+      continue;
+    }
+
+    if (isToolPart(p)) {
+      const toolName = getToolPartName(p as any);
+      const state = String((p as any).state ?? '');
+      const rawInput = (p as any).rawInput;
+      const input = (p as any).input ?? rawInput;
+      out.push({
+        kind: 'tool',
+        toolName,
+        toolCallId: String((p as any).toolCallId),
+        state,
+        input,
+        output: (p as any).output,
+        errorText: typeof (p as any).errorText === 'string' ? (p as any).errorText : undefined,
+        preliminary: Boolean((p as any).preliminary),
+        approval:
+          (p as any).approval && typeof (p as any).approval === 'object'
+            ? {
+                id: String((p as any).approval.id ?? ''),
+                approved:
+                  typeof (p as any).approval.approved === 'boolean'
+                    ? (p as any).approval.approved
+                    : undefined,
+                reason:
+                  typeof (p as any).approval.reason === 'string' ? (p as any).approval.reason : undefined,
+              }
+            : undefined,
+      });
+      continue;
+    }
+  }
+
+  return out;
+}
+
+function toolStateSummary(state: string): { label: string; badge: string } {
+  switch (state) {
+    case 'output-available':
+      return { label: 'done', badge: 'OK' };
+    case 'output-error':
+      return { label: 'error', badge: 'ERR' };
+    case 'output-denied':
+      return { label: 'denied', badge: 'DENY' };
+    case 'approval-requested':
+      return { label: 'approval', badge: 'ASK' };
+    case 'approval-responded':
+      return { label: 'approval', badge: 'ACK' };
+    case 'input-streaming':
+    case 'input-available':
+      return { label: 'running', badge: '...' };
+    default:
+      return { label: state, badge: '?' };
+  }
+}
+
+function ToolCard({ part }: { part: Extract<RenderPart, { kind: 'tool' }> }) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const summary = toolStateSummary(part.state);
+
+  const inputText = safeStableStringify(part.input);
+  const outputText =
+    part.state === 'output-available' ? safeStableStringify(part.output) : '';
+
+  const headerText =
+    part.state === 'output-available' ? 'Used tool:' : 'Using tool:';
+
+  const borderTone =
+    part.state === 'output-error' || part.state === 'output-denied'
+      ? 'border-red-500/40 bg-red-500/5'
+      : 'border-border-dark bg-surface-primary/35';
+
+  return (
+    <div
+      className={[
+        'w-full rounded border shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]',
+        borderTone,
+      ].join(' ')}
+    >
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-[10px] uppercase tracking-[0.16em] text-text-dim shrink-0">
+            {summary.badge}
+          </span>
+          <span className="text-xs text-text-muted shrink-0">{headerText}</span>
+          <span className="text-xs font-semibold text-text-primary truncate">
+            {part.toolName}
+          </span>
+          <span className="text-[10px] text-text-dim shrink-0">({summary.label})</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsCollapsed((v) => !v)}
+          className="text-[10px] font-mono text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1 shrink-0"
+          aria-expanded={!isCollapsed}
+        >
+          {isCollapsed ? 'Show' : 'Hide'}
+        </button>
+      </div>
+
+      {!isCollapsed ? (
+        <div className="border-t border-border-dark/70 px-3 py-2">
+          <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
+            Input
+          </div>
+          <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
+            {inputText}
+          </pre>
+
+          {part.state === 'output-error' ? (
+            <div className="mt-3">
+              <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
+                Error
+              </div>
+              <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-red-300">
+                {part.errorText ?? 'Tool failed.'}
+              </pre>
+            </div>
+          ) : null}
+
+          {part.state === 'output-denied' ? (
+            <div className="mt-3">
+              <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
+                Denied
+              </div>
+              <div className="text-[11px] text-text-primary">
+                Tool execution denied
+                {part.approval?.reason ? `: ${part.approval.reason}` : '.'}
+              </div>
+            </div>
+          ) : null}
+
+          {part.state === 'output-available' ? (
+            <div className="mt-3 border-t border-border-dark/60 border-dashed pt-2">
+              <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
+                Output{part.preliminary ? ' (preliminary)' : ''}
+              </div>
+              <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
+                {outputText}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatPage() {
   const { userId } = Route.useLoaderData();
   const chatId = userId;
@@ -124,36 +375,31 @@ function ChatPage() {
     bottomRef.current?.scrollIntoView({ block: 'end', behavior });
   }, []);
 
-  const rendered = useMemo(() => {
+  const renderedMessages = useMemo(() => {
     return messages
+      .filter((msg) => msg.role !== 'system')
       .map((msg) => {
-      const parts: ReadonlyArray<unknown> = Array.isArray((msg as any).parts) ? (msg as any).parts : [];
-
-      const text = parts
-        .filter(
-          (p): p is { type: 'text'; text: string } =>
-            Boolean(p) &&
-            typeof p === 'object' &&
-            (p as any).type === 'text' &&
-            typeof (p as any).text === 'string',
-        )
-        .map((p) => p.text)
-        .join('');
-
-      return {
-        id: msg.id,
-        role: msg.role,
-        text,
-      };
+        const parts = Array.isArray((msg as any).parts) ? (msg as any).parts : [];
+        const renderParts = toRenderableParts(parts as ReadonlyArray<UiPart>);
+        return {
+          id: msg.id,
+          role: msg.role,
+          renderParts,
+        };
       })
-      .filter((m) => m.role === 'user' || m.text.trim().length > 0);
+      .filter((m) => m.role === 'user' || m.renderParts.length > 0);
   }, [messages]);
 
   const renderedTailKey = useMemo(() => {
-    const last = rendered.at(-1);
+    const last = renderedMessages.at(-1);
     if (!last) return '';
-    return `${last.id}:${last.text.length}`;
-  }, [rendered]);
+    const lastPart = last.renderParts.at(-1);
+    if (!lastPart) return `${renderedMessages.length}:${last.id}`;
+    if (lastPart.kind === 'text') {
+      return `${renderedMessages.length}:${last.id}:text:${lastPart.text.length}:${lastPart.state ?? ''}`;
+    }
+    return `${renderedMessages.length}:${last.id}:tool:${lastPart.toolName}:${lastPart.state}:${safeStableStringify(lastPart.output ?? '').length}`;
+  }, [renderedMessages]);
 
   const makeDraftFromBlueprint = useCallback((value: unknown) => {
     const b: any = value ?? {};
@@ -246,9 +492,9 @@ function ChatPage() {
 
   useEffect(() => {
     if (!isAtBottom) return;
-    if (rendered.length === 0) return;
+    if (renderedMessages.length === 0) return;
     scrollToBottom(isStreaming ? 'auto' : 'smooth');
-  }, [isAtBottom, isStreaming, rendered.length, renderedTailKey, scrollToBottom]);
+  }, [isAtBottom, isStreaming, renderedMessages.length, renderedTailKey, scrollToBottom]);
 
   useEffect(() => {
     if (!isBusy) return;
@@ -625,36 +871,52 @@ function ChatPage() {
 	                  className="flex-1 overflow-y-auto overseer-scroll pr-1 scroll-smooth"
 	                >
 	                  <div className="flex flex-col gap-3">
-	                    {rendered.map((m) => (
-	                      <div
-	                        key={m.id}
-	                        className={[
-                          'max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono',
-                          m.role === 'user'
-                            ? 'self-end rounded border bg-accent-subtle text-text-primary border-accent-muted'
-                            : 'self-start text-text-primary',
-                      ].join(' ')}
-                    >
-                      {m.text ? (
-                        m.role === 'user' ? (
-                          <div className="whitespace-pre-wrap">{m.text}</div>
-                          ) : (
-                            <Streamdown
-                              mode={isStreaming ? 'streaming' : 'static'}
-                              isAnimating={isStreaming}
-                            >
-                              {m.text}
-                            </Streamdown>
-                          )
-                        ) : null}
-	                      </div>
-	                    ))}
+	                    {renderedMessages.map((m) => {
+                        const userText = m.renderParts
+                          .filter((p): p is Extract<RenderPart, { kind: 'text' }> => p.kind === 'text')
+                          .map((p) => p.text)
+                          .join('');
+
+                        return (
+                          <div
+                            key={m.id}
+                            className={[
+                              'max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono',
+                              m.role === 'user'
+                                ? 'self-end rounded border bg-accent-subtle text-text-primary border-accent-muted'
+                                : 'self-start text-text-primary',
+                            ].join(' ')}
+                          >
+                            {m.role === 'user' ? (
+                              <div className="whitespace-pre-wrap">{userText}</div>
+                            ) : (
+                              <div className="flex flex-col gap-2">
+                                {m.renderParts.map((p, idx) => {
+                                  if (p.kind === 'text') {
+                                    return (
+                                      <Streamdown
+                                        key={`t:${idx}`}
+                                        mode={p.state === 'streaming' ? 'streaming' : 'static'}
+                                        isAnimating={p.state === 'streaming'}
+                                      >
+                                        {p.text}
+                                      </Streamdown>
+                                    );
+                                  }
+
+                                  return <ToolCard key={`tool:${p.toolCallId}`} part={p} />;
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
 	                    <div ref={bottomRef} />
 	                  </div>
 	                </div>
 
 	                <div className="relative mt-3">
-	                  {!isAtBottom && rendered.length > 0 ? (
+	                  {!isAtBottom && renderedMessages.length > 0 ? (
 	                    <button
 	                      type="button"
 	                      onClick={() => scrollToBottom('smooth')}
@@ -731,4 +993,4 @@ function ChatPage() {
   );
 }
 
-// (Tool parts are intentionally not rendered in the MVP UI.)
+// Tool parts are rendered inline as collapsible cards.
