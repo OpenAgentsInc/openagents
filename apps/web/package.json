@@ -18,9 +18,13 @@
     "dev:backend": "convex dev",
     "dev:worker": "npm --prefix ../autopilot-worker run dev -- --port 8787",
     "predev": "convex dev --until-success",
+    "dashboard": "convex dashboard",
     "build": "vite build",
     "build:prod": "bash -c 'set -a; [ -f .env ] && . ./.env; [ -f .env.production ] && . ./.env.production; set +a; vite build'",
     "start": "vite start",
+    "deploy": "npm run deploy:convex && bash -c 'set -a; [ -f .env ] && . ./.env; [ -f .env.production ] && . ./.env.production; set +a; VITE_CONVEX_URL=${VITE_CONVEX_URL:-https://aware-caterpillar-962.convex.cloud} npm run build && wrangler deploy'",
+    "deploy:convex": "bash -c 'set -a; [ -f .env.production ] && . ./.env.production; set +a; npx convex deploy --yes'",
+    "cf-typegen": "wrangler types",
     "format": "prettier --write .",
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
@@ -44,6 +48,7 @@
     "zod": "^4.1.8"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.13.8",
     "@convex-dev/eslint-plugin": "^1.1.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@tanstack/eslint-config": "^0.3.4",
@@ -58,6 +63,7 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
-    "vite-tsconfig-paths": "^6.0.5"
+    "vite-tsconfig-paths": "^6.0.5",
+    "wrangler": "^4.61.1"
   }
 }
