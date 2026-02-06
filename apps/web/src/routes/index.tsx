@@ -23,11 +23,11 @@ export const Route = createFileRoute('/')({
 
         const [signInUrl, signUpUrl] = yield* Effect.all([
           Effect.tryPromise({
-            try: () => getSignInUrl({ data: { returnPathname: '/assistant' } }),
+            try: () => getSignInUrl({ data: { returnPathname: '/autopilot' } }),
             catch: (err) => err,
           }),
           Effect.tryPromise({
-            try: () => getSignUpUrl({ data: { returnPathname: '/assistant' } }),
+            try: () => getSignUpUrl({ data: { returnPathname: '/autopilot' } }),
             catch: (err) => err,
           }),
         ]);
@@ -39,7 +39,7 @@ export const Route = createFileRoute('/')({
     );
 
     if (result.kind === 'redirect') {
-      throw redirect({ to: '/assistant' });
+      throw redirect({ to: '/autopilot' });
     }
 
     return { signInUrl: result.signInUrl, signUpUrl: result.signUpUrl };
