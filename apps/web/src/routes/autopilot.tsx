@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
@@ -8,6 +8,7 @@ import { Streamdown } from 'streamdown';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
 import { KranoxFrame } from '../components/KranoxFrame';
 import { TelemetryService } from '../effect/telemetry';
+import { AgentApiService } from '../effect/agentApi';
 import type { UIMessage } from 'ai';
 import type { FormEvent } from 'react';
 
@@ -67,6 +68,8 @@ function sanitizeBlueprintForDisplay(value: unknown): unknown {
 function ChatPage() {
   const { userId } = Route.useLoaderData();
   const chatId = userId;
+  const router = useRouter();
+  const runtime = router.options.context.effectRuntime;
 
   const agent = useAgent({
     agent: 'chat',
@@ -148,41 +151,55 @@ function ChatPage() {
       const silent = options?.silent ?? false;
       if (!silent) setBlueprintLoading(true);
       setBlueprintError(null);
-      try {
-        const response = await fetch(`/agents/chat/${chatId}/blueprint`, {
-          cache: 'no-store',
+      await runtime
+        .runPromise(
+          Effect.gen(function* () {
+            const api = yield* AgentApiService;
+            const json = yield* api.getBlueprint(chatId);
+            yield* Effect.sync(() => {
+              setBlueprint(json);
+              setBlueprintUpdatedAt(Date.now());
+            });
+          }).pipe(
+            Effect.catchAll((err) =>
+              Effect.gen(function* () {
+                const telemetry = yield* TelemetryService;
+                yield* telemetry
+                  .withNamespace('ui.blueprint')
+                  .log('error', 'blueprint.fetch_failed', {
+                    message: err instanceof Error ? err.message : String(err),
+                  });
+                yield* Effect.sync(() => {
+                  setBlueprintError(
+                    err instanceof Error ? err.message : 'Failed to load Blueprint.',
+                  );
+                });
+              }),
+            ),
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (!silent) setBlueprintLoading(false);
+              }),
+            ),
+          ),
+        )
+        .catch(() => {
+          // Any defects were already handled best-effort above.
         });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const json: unknown = await response.json();
-        setBlueprint(json);
-        setBlueprintUpdatedAt(Date.now());
-      } catch (err) {
-        console.error(err);
-        setBlueprintError(err instanceof Error ? err.message : 'Failed to load Blueprint.');
-      } finally {
-        if (!silent) setBlueprintLoading(false);
-      }
     },
-    [chatId],
+    [chatId, runtime],
   );
 
   const fetchChatMessages = useCallback(async (): Promise<Array<UIMessage>> => {
-    const response = await fetch(`/agents/chat/${chatId}/get-messages`, {
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const text = await response.text();
-    if (!text.trim()) return [];
-    try {
-      return JSON.parse(text) as Array<UIMessage>;
-    } catch {
-      return [];
-    }
-  }, [chatId]);
+    return runtime
+      .runPromise(
+        Effect.gen(function* () {
+          const api = yield* AgentApiService;
+          return yield* api.getMessages(chatId);
+        }),
+      )
+      .catch(() => []);
+  }, [chatId, runtime]);
 
   useEffect(() => {
     void fetchBlueprint();
@@ -235,11 +252,12 @@ function ChatPage() {
     if (isExportingBlueprint) return;
     setIsExportingBlueprint(true);
     try {
-      const response = await fetch(`/agents/chat/${chatId}/blueprint`);
-      if (!response.ok) {
-        throw new Error(`Export failed (${response.status})`);
-      }
-      const blueprintJson: unknown = await response.json();
+      const blueprintJson = await runtime.runPromise(
+        Effect.gen(function* () {
+          const api = yield* AgentApiService;
+          return yield* api.getBlueprint(chatId);
+        }),
+      );
 
       const blob = new Blob([JSON.stringify(blueprintJson, null, 2)], {
         type: 'application/json',
@@ -253,7 +271,16 @@ function ChatPage() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error(err);
+      await runtime
+        .runPromise(
+          Effect.gen(function* () {
+            const telemetry = yield* TelemetryService;
+            yield* telemetry.withNamespace('ui.blueprint').log('error', 'blueprint.export_failed', {
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }),
+        )
+        .catch(() => {});
       window.alert('Failed to export Blueprint JSON.');
     } finally {
       setIsExportingBlueprint(false);
@@ -270,18 +297,27 @@ function ChatPage() {
     setIsResettingAgent(true);
     setBlueprintError(null);
     try {
-      const response = await fetch(`/agents/chat/${chatId}/reset-agent`, {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        throw new Error(`Reset failed (HTTP ${response.status})`);
-      }
+      await runtime.runPromise(
+        Effect.gen(function* () {
+          const api = yield* AgentApiService;
+          yield* api.resetAgent(chatId);
+        }),
+      );
       setInput('');
       await fetchBlueprint();
       const nextMessages = await fetchChatMessages();
       chat.setMessages(nextMessages);
     } catch (err) {
-      console.error(err);
+      await runtime
+        .runPromise(
+          Effect.gen(function* () {
+            const telemetry = yield* TelemetryService;
+            yield* telemetry.withNamespace('ui.chat').log('error', 'agent.reset_failed', {
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }),
+        )
+        .catch(() => {});
       window.alert('Failed to reset agent.');
     } finally {
       setIsResettingAgent(false);

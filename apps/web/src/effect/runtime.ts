@@ -24,7 +24,7 @@ export const makeAppRuntime = (config: AppConfig): AppRuntime => {
 
       yield* telemetry.withNamespace('app.init').log('info', 'Effect services initialized', {
         runtime: typeof window === 'undefined' ? 'server' : 'client',
-        services: ['AppConfigService', 'TelemetryService'],
+        services: ['AppConfigService', 'TelemetryService', 'AgentApiService'],
         convexUrl: appConfig.convexUrl,
       });
     }),
