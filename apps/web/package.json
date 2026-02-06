@@ -13,9 +13,10 @@
     "url": "https://github.com/workos/template-convex-tanstack-start-authkit/issues"
   },
   "scripts": {
-    "dev": "npm-run-all --parallel dev:frontend dev:backend",
+    "dev": "npm-run-all --parallel dev:frontend dev:backend dev:worker",
     "dev:frontend": "vite dev",
     "dev:backend": "convex dev",
+    "dev:worker": "npm --prefix ../autopilot-worker run dev -- --port 8787",
     "predev": "convex dev --until-success",
     "build": "vite build",
     "build:prod": "bash -c 'set -a; [ -f .env ] && . ./.env; [ -f .env.production ] && . ./.env.production; set +a; vite build'",
