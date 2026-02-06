@@ -354,15 +354,15 @@ function ChatPage() {
                       <div
                         key={m.id}
                         className={[
-                          'max-w-[90%] rounded border px-3 py-2 text-sm leading-relaxed font-mono',
+                          'max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono',
                           m.role === 'user'
-                            ? 'self-end bg-accent-subtle text-text-primary border-accent-muted'
-                            : 'self-start bg-surface-secondary text-text-primary border-border-dark',
-                        ].join(' ')}
-                      >
-                        {m.text ? (
-                          m.role === 'user' ? (
-                            <div className="whitespace-pre-wrap">{m.text}</div>
+                            ? 'self-end rounded border bg-accent-subtle text-text-primary border-accent-muted'
+                            : 'self-start text-text-primary',
+                      ].join(' ')}
+                    >
+                      {m.text ? (
+                        m.role === 'user' ? (
+                          <div className="whitespace-pre-wrap">{m.text}</div>
                           ) : (
                             <Streamdown
                               mode={isStreaming ? 'streaming' : 'static'}
