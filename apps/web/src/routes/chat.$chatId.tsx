@@ -3,22 +3,50 @@ import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
 import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
+import { Effect } from 'effect';
 import { useMemo, useState } from 'react';
+import { TelemetryService } from '../effect/telemetry';
 import type { FormEvent } from 'react';
 
 export const Route = createFileRoute('/chat/$chatId')({
-  loader: async ({ params }) => {
-    const { user } = await getAuth();
-    if (!user) {
-      throw redirect({ to: '/' });
+  loader: async ({ context, params }) => {
+    const result = await context.effectRuntime.runPromise(
+      Effect.gen(function* () {
+        const telemetry = yield* TelemetryService;
+
+        const auth = yield* Effect.tryPromise({
+          try: () => getAuth(),
+          catch: (err) => err,
+        }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+        const userId = auth?.user?.id ?? null;
+        if (!userId) {
+          yield* telemetry.withNamespace('route.chat').event('chat.unauth');
+          return { kind: 'redirect' as const, to: '/' as const };
+        }
+
+        if (params.chatId !== userId) {
+          yield* telemetry.withNamespace('route.chat').event('chat.mismatch', {
+            userId,
+            chatId: params.chatId,
+          });
+          return { kind: 'redirect' as const, to: '/assistant' as const };
+        }
+
+        yield* telemetry.withNamespace('route.chat').event('chat.open', {
+          userId,
+          chatId: params.chatId,
+        });
+
+        return { kind: 'ok' as const, userId };
+      }),
+    );
+
+    if (result.kind === 'redirect') {
+      throw redirect({ to: result.to });
     }
 
-    // One Autopilot per user: the only valid chatId is their user id.
-    if (params.chatId !== user.id) {
-      throw redirect({ to: '/assistant' });
-    }
-
-    return { userId: user.id };
+    return { userId: result.userId };
   },
   component: ChatPage,
 });
