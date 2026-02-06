@@ -12,23 +12,34 @@ import { TelemetryService } from '../effect/telemetry';
  */
 export const Route = createFileRoute('/assistant')({
   loader: async ({ context }) => {
-    const { user } = await getAuth();
-    if (!user) {
-      throw redirect({ to: '/' });
-    }
-
-    await context.effectRuntime.runPromise(
+    const result = await context.effectRuntime.runPromise(
       Effect.gen(function* () {
         const telemetry = yield* TelemetryService;
-        yield* telemetry.withNamespace('route.assistant').event('assistant.redirect', { userId: user.id });
+
+        const auth = yield* Effect.tryPromise({
+          try: () => getAuth(),
+          catch: (err) => err,
+        }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+        const userId = auth?.user?.id ?? null;
+        if (!userId) {
+          yield* telemetry.withNamespace('route.assistant').event('assistant.unauth');
+          return { kind: 'redirect' as const, to: '/' as const };
+        }
+
+        yield* telemetry.withNamespace('route.assistant').event('assistant.redirect', { userId });
+        return { kind: 'redirect' as const, to: '/chat/$chatId' as const, chatId: userId };
       }),
     );
 
+    if (result.to === '/') {
+      throw redirect({ to: '/' });
+    }
+
     throw redirect({
       to: '/chat/$chatId',
-      params: { chatId: user.id },
+      params: { chatId: result.chatId },
     });
   },
   component: () => null,
 });
-

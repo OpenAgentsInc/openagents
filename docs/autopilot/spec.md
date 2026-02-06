@@ -87,8 +87,9 @@ Explicitly out of scope:
 - Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
 - Effect + Convex patterns from `~/code/crest` to adopt: `docs/autopilot/effect-patterns-from-crest.md`
 
-## Status (2026-02-05)
+## Status (2026-02-06)
 
 - Web flow: `/` → `/assistant` → `/chat/:threadId` implemented in `apps/web/src/routes/*`.
 - One Autopilot per user: `threadId` is the WorkOS `user.id` (Durable Object name).
 - Worker rename: `apps/liteclaw-worker` → `apps/autopilot-worker`.
+- Routes run via Effect runtime: loaders execute Effect programs using `context.effectRuntime` (Telemetry events on load/redirect).

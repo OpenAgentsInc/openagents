@@ -6,24 +6,43 @@ import { TelemetryService } from '../effect/telemetry';
 
 export const Route = createFileRoute('/')({
   loader: async ({ context }) => {
-    const { user } = await getAuth();
-    if (user) {
-      throw redirect({ to: '/assistant' });
-    }
-
-    const [signInUrl, signUpUrl] = await Promise.all([
-      getSignInUrl({ data: { returnPathname: '/assistant' } }),
-      getSignUpUrl({ data: { returnPathname: '/assistant' } }),
-    ]);
-
-    await context.effectRuntime.runPromise(
+    const result = await context.effectRuntime.runPromise(
       Effect.gen(function* () {
         const telemetry = yield* TelemetryService;
+
+        const auth = yield* Effect.tryPromise({
+          try: () => getAuth(),
+          catch: (err) => err,
+        }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+        const userId = auth?.user?.id ?? null;
+        if (userId) {
+          yield* telemetry.withNamespace('route.home').event('home.authed_redirect', { userId });
+          return { kind: 'redirect' as const };
+        }
+
+        const [signInUrl, signUpUrl] = yield* Effect.all([
+          Effect.tryPromise({
+            try: () => getSignInUrl({ data: { returnPathname: '/assistant' } }),
+            catch: (err) => err,
+          }),
+          Effect.tryPromise({
+            try: () => getSignUpUrl({ data: { returnPathname: '/assistant' } }),
+            catch: (err) => err,
+          }),
+        ]);
+
         yield* telemetry.withNamespace('route.home').event('home.loaded');
+
+        return { kind: 'ok' as const, signInUrl, signUpUrl };
       }),
     );
 
-    return { signInUrl, signUpUrl };
+    if (result.kind === 'redirect') {
+      throw redirect({ to: '/assistant' });
+    }
+
+    return { signInUrl: result.signInUrl, signUpUrl: result.signUpUrl };
   },
   component: Home,
 });
