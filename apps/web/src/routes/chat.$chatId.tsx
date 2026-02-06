@@ -155,6 +155,22 @@ function ChatPage() {
     [chatId],
   );
 
+  const fetchChatMessages = useCallback(async (): Promise<Array<UIMessage>> => {
+    const response = await fetch(`/agents/chat/${chatId}/get-messages`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    if (!text.trim()) return [];
+    try {
+      return JSON.parse(text) as Array<UIMessage>;
+    } catch {
+      return [];
+    }
+  }, [chatId]);
+
   useEffect(() => {
     void fetchBlueprint();
   }, [fetchBlueprint]);
@@ -237,8 +253,9 @@ function ChatPage() {
         throw new Error(`Reset failed (HTTP ${response.status})`);
       }
       setInput('');
-      clearHistory();
       await fetchBlueprint();
+      const nextMessages = await fetchChatMessages();
+      chat.setMessages(nextMessages);
     } catch (err) {
       console.error(err);
       window.alert('Failed to reset agent.');
