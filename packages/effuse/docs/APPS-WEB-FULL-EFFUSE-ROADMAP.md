@@ -71,10 +71,11 @@ Each phase has a concrete “Definition of Done” and a recommended verificatio
 **Work:**
 
 1. Create a dedicated Effuse “UI kit” package at `packages/effuse-ui/` (consumed by `apps/web`).
-2. Port remaining SVG + CSS-module-based primitives into global classes + Effuse helpers:
-   - example already done (currently local to `apps/web`): `hatcheryButton()` (`apps/web/src/effuse-pages/ui/hatcheryButton.ts`) + `.oa-hatchery-button*` styles in `apps/web/src/app.css`.
-   - move these into `packages/effuse-ui/` as the first migrated UI primitive.
-3. Make Effuse pages use these helpers instead of ad hoc Tailwind strings.
+2. Port remaining SVG + CSS-module-based primitives into Effuse helpers that use **Tailwind utility classes**:
+   - do **not** introduce new global `.oa-*` component classes
+   - use Tailwind arbitrary values/variants when needed for SVG attributes and precise styling
+   - example currently local to `apps/web`: `hatcheryButton()` (`apps/web/src/effuse-pages/ui/hatcheryButton.ts`) which should be migrated into `packages/effuse-ui/` and re-expressed in Tailwind (no component CSS in `app.css`).
+3. Make Effuse pages use these helpers (which internally use Tailwind classes) instead of duplicating long Tailwind strings in each page.
 
 **DoD:**
 
@@ -306,4 +307,5 @@ When changing navigation/events/hydration:
 - Keep the runtime boundaries clean:
   - adapters do parsing only
   - retries/guardrails live in the runtime/operators
-- Don’t re-introduce CSS modules for primitives Effuse must render; prefer global utility classes or a small class-based component system.
+- Don’t re-introduce CSS modules for primitives Effuse must render; prefer Tailwind utility classes directly in templates (including arbitrary variants).
+  - keep global CSS limited to true globals (fonts, `@layer base` resets, theme tokens)
