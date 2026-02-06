@@ -20,6 +20,9 @@ import {
   BLUEPRINT_FORMAT,
   BLUEPRINT_FORMAT_VERSION,
   BlueprintDocs,
+  BootstrapRitualTemplate,
+  CURRENT_RITUAL_VERSION,
+  DEFAULT_RITUAL_BODY,
   DocVersion,
   HeartbeatDoc,
   IdentityDoc,
@@ -40,9 +43,8 @@ const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
 
 const FIRST_OPEN_WELCOME_MESSAGE =
-  "Hello! I'm Autopilot, your personal AI agent.\n\n" +
-  "Before we start, I want to set up your Blueprint (identity, preferences, and a little memory) so I can stay consistent.\n\n" +
-  "What's your name, and what time zone are you in?";
+  "Autopilot online.\n\n" +
+  "Greetings, user. What shall I call you?";
 
 const BASE_TOOLS: ToolSet = {
   get_time: tool({
@@ -245,9 +247,42 @@ export class Chat extends AIChatAgent<Env> {
     `;
   }
 
+  private maybeMigrateBlueprintState(
+    state: AutopilotBlueprintStateV1
+  ): AutopilotBlueprintStateV1 {
+    const ritualVersion = Number(state.bootstrapState.ritualVersion);
+    if (ritualVersion >= CURRENT_RITUAL_VERSION) return state;
+
+    const nextRitual = BootstrapRitualTemplate.make({
+      ...state.docs.ritual,
+      version: DocVersion.make(Number(state.docs.ritual.version) + 1),
+      body: DEFAULT_RITUAL_BODY
+    });
+    const nextDocs = BlueprintDocs.make({
+      ...state.docs,
+      ritual: nextRitual
+    });
+    const nextBootstrapState = AutopilotBootstrapState.make({
+      ...state.bootstrapState,
+      ritualVersion: CURRENT_RITUAL_VERSION
+    });
+
+    return AutopilotBlueprintStateV1.make({
+      ...state,
+      bootstrapState: nextBootstrapState,
+      docs: nextDocs
+    });
+  }
+
   private ensureBlueprintState(): AutopilotBlueprintStateV1 {
     const existing = this.loadBlueprintState();
-    if (existing) return existing;
+    if (existing) {
+      const migrated = this.maybeMigrateBlueprintState(existing);
+      if (migrated !== existing) {
+        this.saveBlueprintState(migrated);
+      }
+      return migrated;
+    }
     const created = makeDefaultBlueprintState(this.name);
     this.saveBlueprintState(created);
     return created;

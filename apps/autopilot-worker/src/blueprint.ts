@@ -3,6 +3,8 @@ import { Schema } from "effect";
 export const BLUEPRINT_FORMAT = "openagents.autopilot.blueprint" as const;
 export const BLUEPRINT_FORMAT_VERSION = 1 as const;
 
+export const CURRENT_RITUAL_VERSION = 2 as const;
+
 export const UserId = Schema.String.pipe(Schema.brand("UserId"));
 export type UserId = typeof UserId.Type;
 
@@ -150,6 +152,26 @@ export class AutopilotBlueprintV1 extends Schema.Class<AutopilotBlueprintV1>(
   audit: Schema.optional(Schema.Array(Schema.Unknown))
 }) {}
 
+export const DEFAULT_RITUAL_BODY =
+  "Birth Ritual (Blueprint):\n" +
+  "\n" +
+  "Don't interrogate. Don't be robotic. Just talk.\n" +
+  "\n" +
+  "Start with something like:\n" +
+  "\"Autopilot online. Who am I? Who are you?\"\n" +
+  "\n" +
+  "Figure out together:\n" +
+  "1) Your name (what should the user call you?)\n" +
+  "2) Your nature (what kind of creature/assistant are you?)\n" +
+  "3) Your vibe (formal/casual/snarky/warm?)\n" +
+  "4) Your emoji\n" +
+  "5) The user's name and how to address them\n" +
+  "\n" +
+  "As answers arrive, call the Blueprint update tools to save them.\n" +
+  "Then discuss boundaries/preferences and update Soul.\n" +
+  "\n" +
+  "When the user is satisfied, call bootstrap_complete().\n";
+
 export function makeDefaultBlueprintState(
   threadIdRaw: string
 ): AutopilotBlueprintStateV1 {
@@ -163,7 +185,7 @@ export function makeDefaultBlueprintState(
       userId,
       threadId,
       status: "pending",
-      ritualVersion: 1
+      ritualVersion: CURRENT_RITUAL_VERSION
     }),
     docs: BlueprintDocs.make({
       rules: AgentRulesDoc.make({
@@ -174,14 +196,7 @@ export function makeDefaultBlueprintState(
       }),
       ritual: BootstrapRitualTemplate.make({
         version: v1,
-        body:
-          "Birth Ritual (Blueprint):\n" +
-          "1) Greet the user and explain you will set up their Autopilot Blueprint.\n" +
-          "2) Ask for: their name, how to address them, their time zone.\n" +
-          "3) Offer to customize your own persona (name/creature/vibe/emoji) and boundaries.\n" +
-          "4) As answers arrive, call the Blueprint update tools to save them.\n" +
-          "5) When the user is satisfied, call bootstrap.complete().\n" +
-          "Keep the ritual short and conversational.\n"
+        body: DEFAULT_RITUAL_BODY
       }),
       identity: IdentityDoc.make({
         version: v1,
