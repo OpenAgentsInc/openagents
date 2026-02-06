@@ -26,7 +26,7 @@ export function runMarketingHeader(
         >
           <a
             href="/login"
-            class="mr-5 text-base font-medium text-white/90 hover:text-white font-[var(--font-square721)]"
+            class="mr-5 text-base font-medium text-white/90 hover:text-white [font-family:var(--font-square721)]"
           >
             Log in
           </a>
