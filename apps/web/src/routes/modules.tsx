@@ -2,8 +2,9 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
+import { whitePreset } from '@openagentsinc/hud';
 import { EffuseMount } from '../components/EffuseMount';
+import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
 import { runModulesPage } from '../effuse-pages/modules';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentRpcClientService } from '../effect/api/agentRpcClient';
@@ -121,11 +122,17 @@ function ModulesPage() {
           ].join(', '),
         }}
       >
-        <DotsGridBackground
-          distance={whitePreset.distance}
-          dotsColor="hsla(0, 0%, 100%, 0.035)"
-          lineColor="hsla(0, 0%, 100%, 0.03)"
-          dotsSettings={{ type: 'circle', size: 2 }}
+        <EffuseMount
+          run={(el) =>
+            runHudDotsGridBackground(el, {
+              distance: whitePreset.distance,
+              dotsColor: 'hsla(0, 0%, 100%, 0.035)',
+              lineColor: 'hsla(0, 0%, 100%, 0.03)',
+              dotsSettings: { type: 'circle', size: 2 },
+            })
+          }
+          onCleanup={cleanupHudBackground}
+          className="absolute inset-0 pointer-events-none"
         />
       </div>
       <EffuseMount run={run} deps={[pageData]} className="relative z-10 flex flex-col h-screen overflow-hidden" />

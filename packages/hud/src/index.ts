@@ -10,6 +10,7 @@ export type { DotsOrigin } from './getDistanceFromOriginToCornerProgress.js';
 export {
   greenPreset,
   purplePreset,
+  whitePreset,
   colorPresets,
 } from './colorPresets.js';
 export type {
