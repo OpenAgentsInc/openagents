@@ -172,6 +172,7 @@ function ChatPage() {
 
           <form onSubmit={onSubmit} className="flex items-center gap-2 border-t border-white/10 p-3">
             <input
+              autoFocus
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Message Autopilot…"
