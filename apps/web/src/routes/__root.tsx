@@ -32,7 +32,15 @@ const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
         catch: (err) => err,
       }).pipe(Effect.catchAll(() => Effect.succeed(null)));
 
-      const userId = auth?.user?.id ?? null;
+      const user = auth?.user
+        ? {
+            id: auth.user.id,
+            email: auth.user.email,
+            firstName: auth.user.firstName ?? null,
+            lastName: auth.user.lastName ?? null,
+          }
+        : null;
+      const userId = user?.id ?? null;
       const token = auth?.user ? auth.accessToken : null;
 
       yield* telemetry.withNamespace('auth.workos').event('auth.resolved', {
@@ -41,7 +49,7 @@ const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
       });
 
       const atomRegistry = Registry.make();
-      atomRegistry.set(SessionAtom, { userId });
+      atomRegistry.set(SessionAtom, { userId, user });
       const atomState = Hydration.dehydrate(atomRegistry);
       atomRegistry.dispose();
 
@@ -186,7 +194,7 @@ function RootComponent() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" dir="ltr">
       <head>
         <HeadContent />
       </head>
