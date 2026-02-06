@@ -12,6 +12,7 @@ export type AgentApi = {
   readonly getBlueprint: (chatId: string) => Effect.Effect<unknown, AgentApiError>;
   readonly getMessages: (chatId: string) => Effect.Effect<Array<UIMessage>, AgentApiError>;
   readonly resetAgent: (chatId: string) => Effect.Effect<void, AgentApiError>;
+  readonly importBlueprint: (chatId: string, blueprint: unknown) => Effect.Effect<void, AgentApiError>;
 };
 
 export class AgentApiService extends Context.Tag('@openagents/web/AgentApi')<
@@ -119,10 +120,42 @@ export const AgentApiLive = Layer.effect(
       yield* t.event('agent.reset', { ok: true });
     });
 
+    const importBlueprint = Effect.fn('AgentApi.importBlueprint')(function* (
+      chatId: string,
+      blueprint: unknown,
+    ) {
+      const url = `/agents/chat/${chatId}/blueprint`;
+      const response = yield* fetchNoStore({
+        operation: 'importBlueprint',
+        url,
+        init: {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(blueprint),
+        },
+      });
+
+      if (!response.ok) {
+        const body = yield* Effect.tryPromise({
+          try: () => response.text(),
+          catch: () => '',
+        }).pipe(Effect.catchAll(() => Effect.succeed('')));
+
+        yield* AgentApiError.make({
+          operation: 'importBlueprint',
+          status: response.status,
+          error: new Error(body ? `HTTP ${response.status}: ${body}` : `HTTP ${response.status}`),
+        });
+      }
+
+      yield* t.event('blueprint.import', { ok: true });
+    });
+
     return AgentApiService.of({
       getBlueprint,
       getMessages,
       resetAgent,
+      importBlueprint,
     });
   }),
 );
