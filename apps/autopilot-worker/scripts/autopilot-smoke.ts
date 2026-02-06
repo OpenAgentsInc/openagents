@@ -6,10 +6,14 @@ const BASE_URL =
 const THREAD_ID =
   process.env.AUTOPILOT_SMOKE_THREAD_ID ?? `smoke-${Date.now()}`;
 const WS_URL = `${BASE_URL.replace(/^http/, "ws")}/agents/chat/${THREAD_ID}`;
+const MESSAGE =
+  process.env.AUTOPILOT_SMOKE_MESSAGE ??
+  "Use the echo tool to echo OK, then reply with a single line containing OK.";
 const TTFT_LIMIT_MS = Number(process.env.AUTOPILOT_SMOKE_TTFT_MS ?? 10_000);
 const RESPONSE_TIMEOUT_MS = Number(
   process.env.AUTOPILOT_SMOKE_RESPONSE_TIMEOUT_MS ?? 60_000
 );
+const REQUIRE_TOOL = (process.env.AUTOPILOT_SMOKE_REQUIRE_TOOL ?? "1") === "1";
 
 const MESSAGE_TYPES = {
   chatRequest: "cf_agent_use_chat_request",
@@ -155,7 +159,7 @@ const getMessages = async () => {
   const url = `${BASE_URL}/agents/chat/${THREAD_ID}/get-messages`;
   const response = await fetch(url);
   if (!response.ok) return { ok: false as const, status: response.status };
-  const json = await response.json().catch(() => null);
+  const json: any = await response.json().catch(() => null);
   return { ok: true as const, status: response.status, json };
 };
 
@@ -163,7 +167,7 @@ const main = async () => {
   log(`Thread: ${THREAD_ID}`);
   log(`WS: ${WS_URL}`);
 
-  const result = await sendChatMessage("Reply with OK.");
+  const result = await sendChatMessage(MESSAGE);
   log(
     `ttft_ms=${result.ttftMs ?? "null"} duration_ms=${result.durationMs} chars=${result.text.length}`
   );
@@ -172,6 +176,20 @@ const main = async () => {
   const messages = await getMessages();
   if (messages.ok) {
     log(`get-messages OK (status=${messages.status})`);
+
+    if (REQUIRE_TOOL) {
+      const allMessages: ReadonlyArray<any> = Array.isArray(messages.json?.messages)
+        ? messages.json.messages
+        : [];
+      const allParts = allMessages.flatMap((m) => (Array.isArray(m?.parts) ? m.parts : []));
+      const toolCalls = allParts.filter((p) => p?.type === "tool-call");
+      const toolResults = allParts.filter((p) => p?.type === "tool-result");
+
+      assert(toolCalls.length > 0, "No tool calls recorded in get-messages.");
+      assert(toolResults.length > 0, "No tool results recorded in get-messages.");
+
+      log(`tool_calls=${toolCalls.length} tool_results=${toolResults.length}`);
+    }
   } else {
     log(`get-messages failed (status=${messages.status})`);
   }
@@ -181,4 +199,3 @@ main().catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });
-

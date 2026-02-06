@@ -2,7 +2,9 @@
 
 Autopilot is a **single, persistent chat agent** that runs on **Cloudflare Workers + Durable Objects** (Cloudflare Agents SDK).
 
-Hard constraint: **no containers**. No sandboxes. No local executors. No tools. One Autopilot per user.
+Hard constraint: **no containers**. No sandboxes. No local executors. One Autopilot per user.
+
+MVP constraint: tool surface stays **tiny** (built-in tools only; no MCP; no “app store”).
 
 ---
 
@@ -58,7 +60,7 @@ Explicitly out of scope:
 
 - Cloudflare Containers / Docker images
 - multiple Autopilots per user
-- tools, approvals, extensions
+- MCP, approvals, extensions
 - dashboards, billing, marketplace, community surfaces
 
 ---
@@ -93,3 +95,4 @@ Explicitly out of scope:
 - One Autopilot per user: `threadId` is the WorkOS `user.id` (Durable Object name).
 - Worker rename: `apps/liteclaw-worker` → `apps/autopilot-worker`.
 - Routes run via Effect runtime: loaders execute Effect programs using `context.effectRuntime` (Telemetry events on load/redirect).
+- Tools (MVP): `get_time`, `echo` (to validate the tool loop + unblock basic capability testing).
