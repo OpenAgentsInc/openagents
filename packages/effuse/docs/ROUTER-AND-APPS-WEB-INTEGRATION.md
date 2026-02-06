@@ -136,6 +136,7 @@ See [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md) and [INDEX.
 | [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md) | Effuse conversion: EffuseMount, data flow, file map, how to add pages. |
 | [tanstack-start-effect-comparison.md](./tanstack-start-effect-comparison.md) | Our approach vs. Practical Effect tutorial (RPC, atoms, MemoMap). |
 | [DELEGATION-full-effect-integration.md](./DELEGATION-full-effect-integration.md) | Delegation brief for implementing RPC, MemoMap, atoms, hydration. |
+| [APPS-WEB-FULL-EFFUSE-ROADMAP.md](./APPS-WEB-FULL-EFFUSE-ROADMAP.md) | Step-by-step roadmap to migrate `apps/web` to Effuse everywhere (thin TanStack host) |
 | [adr/adr-0027-effect-rpc-and-atom-hydration-web.md](./adr/adr-0027-effect-rpc-and-atom-hydration-web.md) | ADR: Effect RPC + atom hydration (canonical: `docs/adr/ADR-0027-...`). |
 | [INDEX.md](./INDEX.md) | Effuse docs index and usage in apps/web. |
 
