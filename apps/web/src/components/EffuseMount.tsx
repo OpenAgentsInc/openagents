@@ -1,6 +1,8 @@
 import { useRouter } from '@tanstack/react-router';
 import { Effect } from 'effect';
 import { useEffect, useRef } from 'react';
+import { EffuseLive, mountEzRuntimeWith } from '@openagentsinc/effuse';
+import type { EzAction } from '@openagentsinc/effuse';
 
 type RunEffuse = (container: Element) => Effect.Effect<void>;
 
@@ -12,20 +14,38 @@ interface EffuseMountProps {
   onRendered?: (container: Element) => void;
   /** Called when the mount is about to be re-rendered or unmounted (e.g. to dispose observers). */
   onCleanup?: (container: Element) => void;
+  /**
+   * Optional Effuse `data-ez` registry. When provided, EffuseMount installs
+   * the delegated event runtime once for this mount container.
+   *
+   * Important: keep the Map identity stable (mutate via `.set(...)` if you need
+   * to update handlers over time).
+   */
+  ezRegistry?: Map<string, EzAction>;
 }
 
 /**
  * Renders a div and runs the given Effuse program to fill it (client-side).
  */
-export function EffuseMount({ run, deps = [], className, onRendered, onCleanup }: EffuseMountProps) {
+export function EffuseMount({
+  run,
+  deps = [],
+  className,
+  onRendered,
+  onCleanup,
+  ezRegistry,
+}: EffuseMountProps) {
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
   const runRef = useRef(run);
   const onRenderedRef = useRef(onRendered);
   const onCleanupRef = useRef(onCleanup);
+  const ezRegistryRef = useRef<EffuseMountProps['ezRegistry']>(undefined);
+  const ezMountedRef = useRef(false);
   runRef.current = run;
   onRenderedRef.current = onRendered;
   onCleanupRef.current = onCleanup;
+  ezRegistryRef.current = ezRegistry;
 
   // Intercept internal <a href="/..."> links inside Effuse-rendered DOM so we navigate
   // via TanStack Router (SPA) instead of full page reloads.
@@ -72,6 +92,21 @@ export function EffuseMount({ run, deps = [], className, onRendered, onCleanup }
     container.addEventListener('click', onClick);
     return () => container.removeEventListener('click', onClick);
   }, [router]);
+
+  // Mount the `data-ez` runtime once per mount container.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (ezMountedRef.current) return;
+
+    const registry = ezRegistryRef.current;
+    if (!registry) return;
+
+    ezMountedRef.current = true;
+    Effect.runPromise(mountEzRuntimeWith(el, registry).pipe(Effect.provide(EffuseLive))).catch((err) => {
+      console.error('[EffuseMount/Ez]', err);
+    });
+  }, [ezRegistry]);
 
   useEffect(() => {
     const el = ref.current;

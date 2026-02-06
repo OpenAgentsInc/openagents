@@ -93,7 +93,7 @@ export function runAutopilotSidebar(
           <div class="relative flex justify-center">
             <button
               type="button"
-              data-action="toggle-user-menu"
+              data-ez="autopilot.sidebar.toggleUserMenu"
               class="flex size-8 items-center justify-center rounded-full border border-border-dark bg-surface-primary text-xs font-medium text-accent hover:bg-surface-primary/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
               aria-expanded="${model.userMenuOpen ? "true" : "false"}"
               aria-haspopup="true"
@@ -111,7 +111,7 @@ export function runAutopilotSidebar(
                     <button
                       type="button"
                       role="menuitem"
-                      data-action="logout"
+                      data-ez="autopilot.sidebar.logout"
                       class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                     >
                       Log out
@@ -127,7 +127,7 @@ export function runAutopilotSidebar(
         <div class="relative">
           <button
             type="button"
-            data-action="toggle-user-menu"
+            data-ez="autopilot.sidebar.toggleUserMenu"
             class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
             aria-expanded="${model.userMenuOpen ? "true" : "false"}"
             aria-haspopup="true"
@@ -162,7 +162,7 @@ export function runAutopilotSidebar(
                   <button
                     type="button"
                     role="menuitem"
-                    data-action="logout"
+                    data-ez="autopilot.sidebar.logout"
                     class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                   >
                     Log out
@@ -184,7 +184,7 @@ export function runAutopilotSidebar(
         <header class="relative flex h-12 shrink-0 flex-row items-center gap-2 border-b border-border-dark px-2">
           <button
             type="button"
-            data-action="toggle-collapse"
+            data-ez="autopilot.sidebar.toggleCollapse"
             class="flex size-8 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
             aria-label="${model.collapsed ? "Expand sidebar" : "Collapse sidebar"}"
           >
@@ -226,4 +226,3 @@ export function runAutopilotSidebar(
     }),
   );
 }
-

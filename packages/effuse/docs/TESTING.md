@@ -5,23 +5,26 @@ Effuse aims to keep docs aligned with behavior through contract tests.
 ## Running Tests
 
 ```
-npm run test
+bun run test
+# or: npm run test
 ```
 
 Tests run with `vitest` using the `happy-dom` environment.
 
 ## Current Contract Tests
 
-Tests live under `tests/effuse/` and cover:
+Tests live under `tests/` and currently cover:
 
-- **DomServiceLive** swap behavior and focus restoration.
 - **Ez runtime** parsing, params collection, and concurrency semantics.
-- **Component mount** render loop, event handling, and subscriptions.
 
-Tests use `@effect/vitest` helpers (`it.effect`, `it.live`) to run Effects safely.
+Current tests:
+
+- `tests/ez-runtime.test.ts`
+
+DomService swap tests and component mount tests are planned but not implemented yet.
 
 ## Adding Tests
 
 - Prefer small, isolated tests that assert observable DOM behavior.
-- Use `Effect.runPromise` with `Effect.scoped` to ensure cleanup.
+- Use `Effect.runPromise` (and `Effect.scoped` when applicable) to ensure cleanup.
 - Keep tests aligned with `docs/effuse/SPEC.md`.

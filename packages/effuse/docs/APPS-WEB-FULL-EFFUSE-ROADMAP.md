@@ -261,6 +261,23 @@ This is the key gap vs. Typed: Typed templates can bind events and update state 
 
 - add targeted tests (happy-dom) for event bindings and basic flows.
 
+**Phase 5 Log (Implemented 2026-02-06)**
+
+- Standardized on Effuse `data-ez` for template-declared events (click/submit/input) and stopped wiring behavior via `onRendered` DOM queries.
+- Added `EffuseMount` support for mounting the Ez runtime once per mount container via `ezRegistry`: `apps/web/src/components/EffuseMount.tsx`
+- Converted templates from `data-action` to `data-ez`:
+  - `apps/web/src/effuse-pages/autopilot.ts`
+  - `apps/web/src/effuse-pages/autopilotBlueprint.ts`
+  - `apps/web/src/effuse-pages/autopilotControls.ts`
+  - `apps/web/src/effuse-pages/autopilotSidebar.ts`
+  - `apps/web/src/effuse-pages/login.ts`
+- Replaced React `onRendered` event wiring with typed Ez registries (Effects) and added best-effort Telemetry logging on failures:
+  - `apps/web/src/routes/autopilot.tsx`
+  - `apps/web/src/routes/_marketing.login.tsx`
+  - `apps/web/src/components/layout/AutopilotSidebar.tsx`
+- Removed chat scroll DOM rebinding by switching to a capture-phase `scroll` listener on the chat mount wrapper: `apps/web/src/routes/autopilot.tsx`
+- Added happy-dom tests for Effuse `data-ez` event binding (click/submit/input): `packages/effuse/tests/ez-runtime.test.ts` (Vitest config: `packages/effuse/vitest.config.ts`)
+
 ---
 
 ### Phase 6: Move Autopilot Chat to Effect (Replace React Hooks)

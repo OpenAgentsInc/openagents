@@ -9,6 +9,13 @@ export type AutopilotBlueprintPanelModel = {
   readonly isSaving: boolean;
   readonly errorText: string | null;
   readonly blueprintText: string | null;
+  readonly draft: {
+    readonly userHandle: string;
+    readonly agentName: string;
+    readonly identityVibe: string;
+    readonly characterVibe: string;
+    readonly characterBoundaries: string;
+  } | null;
 };
 
 export function runAutopilotBlueprintPanel(
@@ -28,7 +35,7 @@ export function runAutopilotBlueprintPanel(
               : null}
             <button
               type="button"
-              data-action="toggle-edit"
+              data-ez="autopilot.blueprint.toggleEdit"
               ${model.isLoading || !model.canEdit ? "disabled" : ""}
               class="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
             >
@@ -36,7 +43,7 @@ export function runAutopilotBlueprintPanel(
             </button>
             <button
               type="button"
-              data-action="refresh"
+              data-ez="autopilot.blueprint.refresh"
               ${model.isLoading ? "disabled" : ""}
               class="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
             >
@@ -59,6 +66,9 @@ export function runAutopilotBlueprintPanel(
                       <input
                         id="blueprint-user-handle"
                         name="userHandle"
+                        data-ez="autopilot.blueprint.draft"
+                        data-ez-trigger="input"
+                        value="${model.draft?.userHandle ?? ""}"
                         class="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
                       />
                     </label>
@@ -68,6 +78,9 @@ export function runAutopilotBlueprintPanel(
                       <input
                         id="blueprint-agent-name"
                         name="agentName"
+                        data-ez="autopilot.blueprint.draft"
+                        data-ez-trigger="input"
+                        value="${model.draft?.agentName ?? ""}"
                         class="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
                       />
                     </label>
@@ -77,6 +90,9 @@ export function runAutopilotBlueprintPanel(
                       <input
                         id="blueprint-identity-vibe"
                         name="identityVibe"
+                        data-ez="autopilot.blueprint.draft"
+                        data-ez-trigger="input"
+                        value="${model.draft?.identityVibe ?? ""}"
                         class="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
                       />
                     </label>
@@ -86,6 +102,9 @@ export function runAutopilotBlueprintPanel(
                       <input
                         id="blueprint-character-vibe"
                         name="characterVibe"
+                        data-ez="autopilot.blueprint.draft"
+                        data-ez-trigger="input"
+                        value="${model.draft?.characterVibe ?? ""}"
                         class="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
                       />
                     </label>
@@ -97,14 +116,16 @@ export function runAutopilotBlueprintPanel(
                       <textarea
                         id="blueprint-character-boundaries"
                         name="characterBoundaries"
+                        data-ez="autopilot.blueprint.draft"
+                        data-ez-trigger="input"
                         rows="8"
                         class="w-full resize-y rounded border border-border-dark bg-surface-primary px-2 py-2 text-[12px] leading-4 text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-                      ></textarea>
+                      >${model.draft?.characterBoundaries ?? ""}</textarea>
                     </label>
 
                     <button
                       type="button"
-                      data-action="save"
+                      data-ez="autopilot.blueprint.save"
                       ${model.isSaving ? "disabled" : ""}
                       class="inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
                     >
@@ -128,4 +149,3 @@ export function runAutopilotBlueprintPanel(
     }),
   );
 }
-

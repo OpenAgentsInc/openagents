@@ -10,14 +10,19 @@
     "./ui": "./src/ui/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "effect": "^3.19.16",
     "typescript": "^5"
   },
   "devDependencies": {
+    "@effect/vitest": "^0.27.0",
     "effect": "^3.19.16",
-    "typescript": "^5.9.3"
+    "happy-dom": "^20.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.0"
   }
 }

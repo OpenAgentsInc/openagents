@@ -175,7 +175,7 @@ export function runAutopilotChat(
         ? html`
             <button
               type="button"
-              data-action="scroll-bottom"
+              data-ez="autopilot.chat.scrollBottom"
               class="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
             >
               Scroll to bottom
@@ -205,6 +205,7 @@ export function runAutopilotChat(
                   ${scrollButton}
                   <form
                     id="chat-form"
+                    data-ez="autopilot.chat.send"
                     class="flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
                   >
                     <input
@@ -212,15 +213,17 @@ export function runAutopilotChat(
                       type="text"
                       placeholder="Message Autopilot…"
                       autocomplete="off"
+                      data-ez="autopilot.chat.input"
+                      data-ez-trigger="input"
                       value="${data.inputValue}"
-                      disabled="${data.isBusy ? "true" : "false"}"
+                      ${data.isBusy ? "disabled" : ""}
                       class="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
                     />
                     ${data.isBusy
                       ? html`
                           <button
                             type="button"
-                            data-action="stop"
+                            data-ez="autopilot.chat.stop"
                             class="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
                           >
                             Stop
