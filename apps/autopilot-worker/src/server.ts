@@ -4,7 +4,10 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  generateText,
+  InvalidToolInputError,
   jsonSchema,
+  NoSuchToolError,
   stepCountIs,
   streamText,
   type StreamTextOnFinishCallback,
@@ -185,6 +188,23 @@ function buildSystemPrompt(options: {
   system += "\n\n" + TOOL_PROMPT;
 
   return system;
+}
+
+function stripToolExecution<T extends ToolSet>(tools: T): T {
+  // Tool-call repair should never have side effects. We strip executors so
+  // we can ask the model to "re-emit" a tool call without running it.
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, toolDef]) => [
+      name,
+      {
+        ...(toolDef as any),
+        execute: undefined,
+        onInputStart: undefined,
+        onInputDelta: undefined,
+        onInputAvailable: undefined
+      }
+    ])
+  ) as T;
 }
 
 function normalizeLegacyBlueprintKeys(input: unknown): unknown {
@@ -1098,9 +1118,9 @@ export class Chat extends AIChatAgent<Env> {
           })
         };
 
-        const result = streamText({
-          system: buildSystem(blueprint),
-          prepareStep: async ({ stepNumber }) => {
+	        const result = streamText({
+	          system: buildSystem(blueprint),
+	          prepareStep: async ({ stepNumber }) => {
             const fresh = this.ensureBlueprintState();
             const system = buildSystem(fresh);
 
@@ -1156,15 +1176,137 @@ export class Chat extends AIChatAgent<Env> {
 
             return { system };
           },
-          messages: await convertToModelMessages(recentMessages),
-          model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
-          stopWhen: stepCountIs(10),
-          tools,
-          // Base class uses this callback to persist messages + stream metadata.
-          onFinish: onFinish as unknown as StreamTextOnFinishCallback<ToolSet>,
-          ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {})
-        });
+	          messages: await convertToModelMessages(recentMessages),
+	          model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
+	          maxOutputTokens: MAX_OUTPUT_TOKENS,
+	          stopWhen: stepCountIs(10),
+	          tools,
+	          experimental_repairToolCall: async ({
+	            toolCall,
+	            tools: availableTools,
+	            error,
+	            messages,
+	            system
+	          }) => {
+	            // AI SDK: parseToolCall() only calls this for NoSuchToolError / InvalidToolInputError.
+	            // We do a single "re-ask" to produce a valid tool call, without executing tools.
+	            if (!availableTools) return null;
+
+	            const model = workersai(MODEL_ID as Parameters<typeof workersai>[0]);
+
+	            // NOTE: Keep repair prompts short. The goal is a syntactically-valid tool call,
+	            // not a full response. The main stream will execute the tool and then respond.
+	            const repairPrompt =
+	              "Repair the following tool call.\n" +
+	              "- Output MUST be a tool call.\n" +
+	              "- Do not output any normal assistant text.\n" +
+	              `- Error: ${error instanceof Error ? error.message : String(error)}\n` +
+	              `- Original toolName: ${toolCall.toolName}\n` +
+	              `- Original input: ${toolCall.input}\n`;
+
+	            try {
+	              // Invalid inputs: force the same tool name and regenerate inputs.
+		              if (InvalidToolInputError.isInstance(error)) {
+		                const toolName = toolCall.toolName as keyof typeof availableTools & string;
+		                const repairTools = stripToolExecution(availableTools);
+
+		                const repaired = await generateText({
+		                  model,
+		                  ...(system != null ? { system } : {}),
+		                  messages: [
+		                    ...messages.slice(-6),
+		                    { role: "user", content: repairPrompt }
+		                  ],
+		                  tools: repairTools,
+	                  toolChoice: { type: "tool", toolName } as const,
+	                  activeTools: [toolName] as const,
+	                  maxOutputTokens: 256
+	                });
+
+	                const next = repaired.toolCalls.find((tc) => tc.toolName === toolName);
+	                if (!next) return null;
+
+	                console.warn("[chat] repaired tool inputs", {
+	                  toolName,
+	                  toolCallId: toolCall.toolCallId
+	                });
+
+	                return {
+	                  ...toolCall,
+	                  toolName,
+	                  input: JSON.stringify(next.input ?? {})
+	                };
+	              }
+
+	              // Unknown tool name: restrict to BASE_TOOLS (safe) and require *some* tool call.
+	              // This avoids silent stalls when the model invents tool names.
+	              if (NoSuchToolError.isInstance(error)) {
+	                const repairTools = stripToolExecution(BASE_TOOLS);
+	                const repaired = await generateText({
+	                  model,
+	                  system:
+	                    (typeof system === "string" ? system : "") +
+	                    "\n\nTool call repair: only use the provided tools.",
+	                  messages: [
+	                    ...messages.slice(-6),
+	                    { role: "user", content: repairPrompt }
+	                  ],
+	                  tools: repairTools,
+	                  toolChoice: "required",
+	                  maxOutputTokens: 256
+	                });
+
+	                const next = repaired.toolCalls[0];
+	                if (!next) return null;
+
+	                console.warn("[chat] repaired tool name", {
+	                  from: toolCall.toolName,
+	                  to: next.toolName,
+	                  toolCallId: toolCall.toolCallId
+	                });
+
+	                return {
+	                  ...toolCall,
+	                  toolName: next.toolName,
+	                  input: JSON.stringify(next.input ?? {})
+	                };
+	              }
+	            } catch (repairError) {
+	              console.error("[chat] tool call repair failed", repairError);
+	            }
+
+	            return null;
+	          },
+	          onStepFinish: ({ toolCalls, toolResults, text, finishReason, usage }) => {
+	            // Observability: when tool calling misbehaves, it's usually because the
+	            // model emitted an invalid tool name/input. Log enough to debug quickly.
+	            const hasToolActivity =
+	              (toolCalls?.length ?? 0) > 0 || (toolResults?.length ?? 0) > 0;
+	            if (!hasToolActivity) return;
+
+	            const summarizedToolCalls = (toolCalls ?? []).map((tc) => ({
+	              toolCallId: (tc as any).toolCallId,
+	              toolName: (tc as any).toolName,
+	              invalid: Boolean((tc as any).invalid)
+	            }));
+	            const summarizedToolResults = (toolResults ?? []).map((tr) => ({
+	              toolCallId: (tr as any).toolCallId,
+	              toolName: (tr as any).toolName,
+	              type: (tr as any).type
+	            }));
+
+	            console.log("[chat] step.finish", {
+	              finishReason,
+	              usage,
+	              hasText: Boolean(text && text.trim().length > 0),
+	              toolCalls: summarizedToolCalls,
+	              toolOutputs: summarizedToolResults
+	            });
+	          },
+	          // Base class uses this callback to persist messages + stream metadata.
+	          onFinish: onFinish as unknown as StreamTextOnFinishCallback<ToolSet>,
+	          ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {})
+	        });
 
         writer.merge(
           result.toUIMessageStream({
