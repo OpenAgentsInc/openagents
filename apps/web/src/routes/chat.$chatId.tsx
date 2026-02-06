@@ -78,17 +78,6 @@ function ChatPage() {
     return messages.map((msg) => {
       const parts: ReadonlyArray<unknown> = Array.isArray((msg as any).parts) ? (msg as any).parts : [];
 
-      const text = parts
-        .filter(
-          (p): p is { type: 'text'; text: string } =>
-            Boolean(p) &&
-            typeof p === 'object' &&
-            (p as any).type === 'text' &&
-            typeof (p as any).text === 'string',
-        )
-        .map((p) => p.text)
-        .join('');
-
       const reasoning = parts
         .filter(
           (p): p is { type: 'reasoning'; text: string } =>
@@ -100,10 +89,22 @@ function ChatPage() {
         .map((p) => p.text)
         .join('');
 
+      const text = parts
+        .filter(
+          (p): p is { type: 'text'; text: string } =>
+            Boolean(p) &&
+            typeof p === 'object' &&
+            (p as any).type === 'text' &&
+            typeof (p as any).text === 'string',
+        )
+        .map((p) => p.text)
+        .join('');
+
       return {
         id: msg.id,
         role: msg.role,
-        text: text || reasoning,
+        text,
+        reasoning,
       };
     });
   }, [messages]);
@@ -158,8 +159,13 @@ function ChatPage() {
                       : 'self-start bg-white/10 text-white',
                   ].join(' ')}
                 >
+                  {m.reasoning && m.role !== 'user' ? (
+                    <div className="whitespace-pre-wrap text-xs text-white/60">{m.reasoning}</div>
+                  ) : null}
                   {m.text ? (
-                    m.text
+                    <div className={m.reasoning && m.role !== 'user' ? 'mt-2 whitespace-pre-wrap' : 'whitespace-pre-wrap'}>
+                      {m.text}
+                    </div>
                   ) : (
                     <span className={m.role === 'user' ? 'text-black/40' : 'text-white/40'}>
                       (no text)
