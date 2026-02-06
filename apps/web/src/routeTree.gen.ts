@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ToolsRouteImport } from './routes/tools'
 import { Route as SignaturesRouteImport } from './routes/signatures'
 import { Route as ModulesRouteImport } from './routes/modules'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AutopilotRouteImport } from './routes/autopilot'
 import { Route as AssistantRouteImport } from './routes/assistant'
@@ -31,6 +32,11 @@ const SignaturesRoute = SignaturesRouteImport.update({
 const ModulesRoute = ModulesRouteImport.update({
   id: '/modules',
   path: '/modules',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CallbackRoute = CallbackRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
+  '/login': typeof LoginRoute
   '/modules': typeof ModulesRoute
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
+  '/login': typeof LoginRoute
   '/modules': typeof ModulesRoute
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
+  '/login': typeof LoginRoute
   '/modules': typeof ModulesRoute
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/autopilot'
     | '/callback'
+    | '/login'
     | '/modules'
     | '/signatures'
     | '/tools'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/autopilot'
     | '/callback'
+    | '/login'
     | '/modules'
     | '/signatures'
     | '/tools'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/autopilot'
     | '/callback'
+    | '/login'
     | '/modules'
     | '/signatures'
     | '/tools'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   AssistantRoute: typeof AssistantRoute
   AutopilotRoute: typeof AutopilotRoute
   CallbackRoute: typeof CallbackRoute
+  LoginRoute: typeof LoginRoute
   ModulesRoute: typeof ModulesRoute
   SignaturesRoute: typeof SignaturesRoute
   ToolsRoute: typeof ToolsRoute
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/modules'
       fullPath: '/modules'
       preLoaderRoute: typeof ModulesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/callback': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssistantRoute: AssistantRoute,
   AutopilotRoute: AutopilotRoute,
   CallbackRoute: CallbackRoute,
+  LoginRoute: LoginRoute,
   ModulesRoute: ModulesRoute,
   SignaturesRoute: SignaturesRoute,
   ToolsRoute: ToolsRoute,
