@@ -54,6 +54,19 @@ OpenClaw uses these canonical bootstrap files:
 
 Autopilot should store each as structured records, with a derived Markdown/string renderer for prompt context.
 
+Proposed mapping:
+
+| OpenClaw artifact | Autopilot record type | Notes |
+| --- | --- | --- |
+| `AGENTS.md` | `AgentRulesDoc` (global) | Usually code-defined; optionally DB-backed for hotfix/versioning. |
+| `BOOTSTRAP.md` | `BootstrapRitualTemplate` (global) + `AutopilotBootstrapState` (per user) | Template defines the ritual; state tracks whether it is pending/complete. |
+| `IDENTITY.md` | `IdentityDoc` | Structured fields, versioned. |
+| `USER.md` | `UserDoc` | Structured fields, versioned. |
+| `SOUL.md` | `SoulDoc` | Prefer structured arrays for truths/boundaries. |
+| `TOOLS.md` | `ToolsDoc` | Tool surface and conventions (not "local binaries"). |
+| `HEARTBEAT.md` | `HeartbeatDoc` | Checklist items + future schedule fields. |
+| `memory/*` + `MEMORY.md` | `MemoryEntry[]` | Enforce `visibility` mechanically (main-only vs all). |
+
 ## Data Model (Effect Schema)
 
 All domain types should be Effect `Schema` so we get:
@@ -88,6 +101,23 @@ export class IdentityDoc extends Schema.Class<IdentityDoc>("IdentityDoc")({
   avatar: Schema.optional(Schema.String), // URL/data URI, later: typed union
   updatedAt: Schema.Date,
   updatedBy: Schema.Literal("user", "agent"),
+}) {}
+
+// Global rules (OpenClaw AGENTS.md analog).
+export class AgentRulesDoc extends Schema.Class<AgentRulesDoc>("AgentRulesDoc")({
+  version: DocVersion,
+  // For now: keep as a string blob rendered into the system prompt.
+  // Later: structured + compiled policies.
+  body: Schema.String,
+}) {}
+
+// Global ritual definition (OpenClaw BOOTSTRAP.md analog).
+export class BootstrapRitualTemplate extends Schema.Class<BootstrapRitualTemplate>(
+  "BootstrapRitualTemplate"
+)({
+  version: DocVersion,
+  // Rendered instructions (string) plus optional structured steps later.
+  body: Schema.String,
 }) {}
 
 export class UserDoc extends Schema.Class<UserDoc>("UserDoc")({
@@ -324,4 +354,3 @@ Additionally:
 - How do we represent global rules (`AGENTS.md`)?
   - Keep in code (simpler), or store versioned in DB for hotfixes?
 - Do we want a formal "bootstrap wizard" UI before chat, or keep it purely conversational?
-
