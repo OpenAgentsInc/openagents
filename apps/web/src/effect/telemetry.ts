@@ -20,7 +20,7 @@ export type TelemetryClient = {
 export class TelemetryService extends Context.Tag('@openagents/web/Telemetry')<
   TelemetryService,
   TelemetryClient
->() {}
+>() { }
 
 /** PostHog sink: best-effort capture/identify with page context (client-only). */
 function posthogCapture(event: string, properties?: TelemetryFields): void {

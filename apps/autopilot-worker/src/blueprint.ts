@@ -70,7 +70,7 @@ export class UserDoc extends Schema.Class<UserDoc>("UserDoc")({
   updatedBy: UpdatedBy
 }) {}
 
-export class SoulDoc extends Schema.Class<SoulDoc>("SoulDoc")({
+export class CharacterDoc extends Schema.Class<CharacterDoc>("CharacterDoc")({
   version: DocVersion,
   coreTruths: Schema.Array(Schema.String),
   boundaries: Schema.Array(Schema.String),
@@ -129,7 +129,7 @@ export class BlueprintDocs extends Schema.Class<BlueprintDocs>("BlueprintDocs")(
   bootstrap: BootstrapTemplate,
   identity: IdentityDoc,
   user: UserDoc,
-  soul: SoulDoc,
+  character: CharacterDoc,
   tools: ToolsDoc,
   heartbeat: HeartbeatDoc
 }) {}
@@ -183,8 +183,8 @@ export const DEFAULT_BOOTSTRAP_TEMPLATE_BODY =
   "   - Call identity_update({ name: <name> }) to persist it.\n" +
   "3) Pick your operating vibe (one short phrase)\n" +
   "   - Call identity_update({ vibe: <vibe> }) to persist it.\n" +
-  "4) Optional: any boundaries/preferences (update Soul)\n" +
-  "   - If they provide boundaries, call soul_update({ boundaries: [ ... ] }).\n" +
+  "4) Optional: any boundaries/preferences (update Character)\n" +
+  "   - If they provide boundaries, call character_update({ boundaries: [ ... ] }).\n" +
   "   - If they say \"none\", call bootstrap_complete({}).\n" +
   "\n" +
   "Do not ask for time zone. Do not ask for pronouns.\n" +
@@ -239,7 +239,7 @@ export function makeDefaultBlueprintState(
         updatedAt: now,
         updatedBy: "agent"
       }),
-      soul: SoulDoc.make({
+      character: CharacterDoc.make({
         version: v1,
         coreTruths: [
           "I am your Autopilot: persistent, careful, and action-oriented.",
@@ -252,14 +252,14 @@ export function makeDefaultBlueprintState(
         ],
         vibe: "helpful, concise, engineering-minded",
         continuity:
-          "I keep a durable Blueprint (Identity/User/Soul/Memory) and update it when allowed.",
+          "I keep a durable Blueprint (Identity/User/Character/Memory) and update it when allowed.",
         updatedAt: now,
         updatedBy: "agent"
       }),
       tools: ToolsDoc.make({
         version: v1,
         notes:
-          "Built-in tools only. When available, use Blueprint tools to persist identity/user/soul/memory updates.",
+          "Built-in tools only. When available, use Blueprint tools to persist identity/user/character/memory updates.",
         updatedAt: now,
         updatedBy: "agent"
       }),
@@ -315,12 +315,12 @@ export function renderBlueprintContext(
           : "")
     },
     {
-      title: "SOUL",
+      title: "CHARACTER",
       body:
-        `coreTruths:\n- ${blueprint.docs.soul.coreTruths.join("\n- ")}\n\n` +
-        `boundaries:\n- ${blueprint.docs.soul.boundaries.join("\n- ")}\n\n` +
-        `vibe: ${blueprint.docs.soul.vibe}\n` +
-        `continuity: ${blueprint.docs.soul.continuity}\n`
+        `coreTruths:\n- ${blueprint.docs.character.coreTruths.join("\n- ")}\n\n` +
+        `boundaries:\n- ${blueprint.docs.character.boundaries.join("\n- ")}\n\n` +
+        `vibe: ${blueprint.docs.character.vibe}\n` +
+        `continuity: ${blueprint.docs.character.continuity}\n`
     },
     {
       title: "HEARTBEAT",

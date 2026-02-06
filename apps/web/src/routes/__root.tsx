@@ -1,7 +1,7 @@
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useLoaderData, useRouter } from '@tanstack/react-router';
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useRouter } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
-import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
+import { AuthKitProvider, useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { ConvexProviderWithAuth } from 'convex/react';
 import { Effect } from 'effect';
 import { useEffect } from 'react';
@@ -104,8 +104,8 @@ function TelemetryPageView() {
 
 /** Identifies the user in PostHog (via Telemetry) when root loader has userId. */
 function TelemetryIdentify() {
-  const rootData = useLoaderData({ from: '__root__' }) as { userId?: string | null } | undefined;
-  const userId = rootData?.userId ?? null;
+  const { user, loading } = useAuth();
+  const userId = loading ? null : user?.id ?? null;
   const router = useRouter();
 
   useEffect(() => {

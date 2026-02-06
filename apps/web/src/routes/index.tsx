@@ -1,7 +1,8 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
 import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth, getSignInUrl, getSignUpUrl } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
+import { HatcheryButton } from '../components/hatchery/HatcheryButton';
 import { TelemetryService } from '../effect/telemetry';
 
 export const Route = createFileRoute('/')({
@@ -75,16 +76,14 @@ function Home() {
           <div className="flex items-center gap-3">
             <a
               href={signInUrl}
-              className="text-sm font-medium text-white/90 hover:text-white"
+              className="pr-5 text-base font-medium text-white/90 hover:text-white"
+              style={{ fontFamily: 'var(--font-square721)' }}
             >
               Log in
             </a>
-            <a
-              href={signUpUrl}
-              className="inline-flex items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-white/90"
-            >
+            <HatcheryButton href={signUpUrl}>
               Start for free
-            </a>
+            </HatcheryButton>
           </div>
         </header>
 
@@ -98,12 +97,9 @@ function Home() {
             </p>
 
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <a
-                href={signUpUrl}
-                className="inline-flex w-full max-w-xs items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-white/90 sm:w-auto"
-              >
+              <HatcheryButton href={signUpUrl} className="w-full max-w-xs sm:w-auto">
                 Start for free
-              </a>
+              </HatcheryButton>
             </div>
           </div>
         </main>

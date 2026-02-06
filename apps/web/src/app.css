@@ -8,6 +8,15 @@
   }
 }
 
+/* Square721: proportional serif (hatchery / display) */
+@font-face {
+  font-family: 'Square721';
+  src: url('/fonts/Square721StdRoman.woff2') format('woff2'), url('/fonts/Square721StdRoman.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Vera Mono: monospace for chat (from repo src/gui/assets/fonts) */
 @font-face {
   font-family: 'Vera Mono';
@@ -68,6 +77,7 @@
   --font-display: "Vera Mono", "SF Mono", ui-monospace, monospace;
   --font-body: "Vera Mono", "SF Mono", ui-monospace, monospace;
   --font-mono: "Vera Mono", "SF Mono", ui-monospace, monospace;
+  --font-square721: "Square721", ui-serif, Georgia, serif;
 }
 
 @media (prefers-color-scheme: dark) {

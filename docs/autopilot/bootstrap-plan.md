@@ -4,7 +4,7 @@ Date: 2026-02-06
 
 This doc proposes an Autopilot-native version of OpenClaw's "workspace bootstrap" flow, redesigned for a cloud-first, multi-surface Autopilot where bootstrap artifacts are treated as **durable state** rather than a directory of files.
 
-Instead of seeding Markdown files like `SOUL.md` and `USER.md`, we model bootstrap state as **typed, versioned records** (Effect `Schema`) stored in a **database** (Durable Object SQLite and/or Convex). This unlocks runtime validation, queryability, receipts/replay stability, visibility controls, and a single **Blueprint** export/import story. We can still render a "context file" view into the system prompt for the OpenClaw vibe, but the canonical representation is structured data with auditability.
+Instead of seeding Markdown files like `CHARACTER.md` and `USER.md`, we model bootstrap state as **typed, versioned records** (Effect `Schema`) stored in a **database** (Durable Object SQLite and/or Convex). This unlocks runtime validation, queryability, receipts/replay stability, visibility controls, and a single **Blueprint** export/import story. We can still render a "context file" view into the system prompt for the OpenClaw vibe, but the canonical representation is structured data with auditability.
 
 ## Source Reference (OpenClaw)
 
@@ -15,13 +15,13 @@ OpenClaw implements bootstrap via seeded workspace files and prompt injection:
 - Hook override point: `~/code/openclaw/src/agents/bootstrap-hooks.ts` + `src/hooks/internal-hooks.ts`
 - Onboarding hatch UX: `~/code/openclaw/src/wizard/onboarding.finalize.ts` (sends "Wake up, my friend!" if `BOOTSTRAP.md` exists)
 
-We keep the *product intent* (one-time "birth certificate" bootstrap + durable identity/user/soul docs) but change the storage and update mechanism.
+We keep the *product intent* (one-time "birth certificate" bootstrap + durable identity/user/character docs) but change the storage and update mechanism.
 
 ## Goals
 
 - Preserve the OpenClaw feel:
   - A one-time "birth certificate" bootstrap conversation
-  - Persistent: Identity, User profile, Soul/persona, Heartbeat checklist, Tools notes, Memory
+  - Persistent: Identity, User profile, Character/persona, Heartbeat checklist, Tools notes, Memory
   - Ability to inject these into the system prompt every turn (with truncation)
   - Ability to run "bootstrap hooks" that can override injected content (experiments / safety)
 - Cloud-first:
@@ -62,7 +62,7 @@ OpenClaw uses these canonical bootstrap files:
 - `BOOTSTRAP.md`: one-time setup instructions
 - `IDENTITY.md`: name, creature, vibe, emoji, avatar
 - `USER.md`: user name, address style, timezone, notes
-- `SOUL.md`: core truths, boundaries, vibe, continuity
+- `CHARACTER.md`: core truths, boundaries, vibe, continuity
 - `TOOLS.md`: local tool/convention notes
 - `HEARTBEAT.md`: optional checklist
 - `memory/YYYY-MM-DD-*.md` + `MEMORY.md`: daily + long-term memory
@@ -77,7 +77,7 @@ Proposed mapping:
 | `BOOTSTRAP.md` | `BootstrapTemplate` (global) + `AutopilotBootstrapState` (per user) | Template defines the setup instructions; state tracks whether it is pending/complete. |
 | `IDENTITY.md` | `IdentityDoc` | Structured fields, versioned. |
 | `USER.md` | `UserDoc` | Structured fields, versioned. |
-| `SOUL.md` | `SoulDoc` | Prefer structured arrays for truths/boundaries. |
+| `CHARACTER.md` | `CharacterDoc` | Prefer structured arrays for truths/boundaries. |
 | `TOOLS.md` | `ToolsDoc` | Tool surface and conventions (not "local binaries"). |
 | `HEARTBEAT.md` | `HeartbeatDoc` | Checklist items + future schedule fields. |
 | `memory/*` + `MEMORY.md` | `MemoryEntry[]` | Enforce `visibility` mechanically (main-only vs all). |
@@ -147,7 +147,7 @@ export class UserDoc extends Schema.Class<UserDoc>("UserDoc")({
   updatedBy: Schema.Literal("user", "agent"),
 }) {}
 
-export class SoulDoc extends Schema.Class<SoulDoc>("SoulDoc")({
+export class CharacterDoc extends Schema.Class<CharacterDoc>("CharacterDoc")({
   version: DocVersion,
   coreTruths: Schema.Array(Schema.String),
   boundaries: Schema.Array(Schema.String),
@@ -254,7 +254,7 @@ export class AutopilotBlueprintV1 extends Schema.Class<AutopilotBlueprintV1>(
     bootstrap: BootstrapTemplate,
     identity: IdentityDoc,
     user: UserDoc,
-    soul: SoulDoc,
+    character: CharacterDoc,
     tools: ToolsDoc,
     heartbeat: HeartbeatDoc,
   }),
@@ -285,7 +285,7 @@ Autopilot: `ensureAutopilotBootstrapState(userId)` + `ensureDefaultDocs(userId)`
 - If no bootstrap state exists: create `status = "pending"`, seed default docs:
   - IdentityDoc: empty-ish defaults (or placeholders)
   - UserDoc: empty-ish defaults
-  - SoulDoc: default "Core Truths" etc (adapted from OpenClaw SOUL.md)
+  - CharacterDoc: default "Core Truths" etc (persona defaults)
   - ToolsDoc: default notes about available tools/surfaces
   - HeartbeatDoc: empty checklist
 - Never overwrite existing docs; only create missing ones.
@@ -330,7 +330,7 @@ Add internal tools that update specific records:
 
 - `identity.update({ name?, creature?, vibe?, emoji?, avatar? })`
 - `user.update({ name?, addressAs?, pronouns?, timeZone?, notes?, context? })`
-- `soul.update({ coreTruths?, boundaries?, vibe?, continuity? })`
+- `character.update({ coreTruths?, boundaries?, vibe?, continuity? })`
 - `heartbeat.setChecklist({ checklist })`
 - `memory.append({ kind, title, body, visibility })`
 
@@ -344,12 +344,12 @@ Each tool:
 
 Add a lightweight "Profile" panel later:
 
-- shows identity + user profile + soul summary
+- shows identity + user profile + character summary
 - edits write through the same schema + receipt path
 
 ## Hook System (Bootstrap Overrides)
 
-OpenClaw has internal hooks that can mutate the injected bootstrap files in-memory (e.g. `soul-evil` swaps soul content).
+OpenClaw has internal hooks that can mutate the injected bootstrap files in-memory (e.g. `soul-evil` swaps persona content).
 
 Autopilot should implement a similar seam:
 
@@ -373,7 +373,7 @@ We should adopt the OpenClaw truncation strategy (head + marker + tail) per doc.
 Configuration knobs:
 
 - `bootstrapMaxChars` (global default)
-- optional per-doc max (Soul/Memory tends to grow)
+- optional per-doc max (Character/Memory tends to grow)
 
 Additionally:
 
@@ -386,14 +386,14 @@ Additionally:
 - Add schemas + storage in DO
 - Add `status: pending|complete`
 - Inject a short bootstrap instruction when pending
-- Add tools to update identity/user/soul and to `bootstrap.complete()`
+- Add tools to update identity/user/character and to `bootstrap.complete()`
 - Render docs into system prompt (truncated)
 
 ### Phase 2: Versioning + audit
 
 - Version increments per update
 - Store an append-only change log (who changed what, when)
-- Agent must announce when it changes Soul (per OpenClaw SOUL.md guidance)
+- Agent must announce when it changes Character (per OpenClaw persona guidance)
 
 ### Phase 3: Hook seam
 
@@ -426,13 +426,13 @@ Shipped (DO-only, no Convex mirror):
 - Added Blueprint export endpoint: `GET /agents/chat/:id/blueprint` (Blueprint JSON, schema-encoded).
 - Added Blueprint import endpoint: `POST /agents/chat/:id/blueprint` (validate + import Blueprint JSON).
 - Wired birth prompt injection: render Blueprint docs into the system prompt each turn, and inject bootstrap instructions while `bootstrap.status != "complete"`.
-- Added Blueprint tools (server-side, AI SDK tools): `identity_update`, `user_update`, `soul_update`, `tools_update_notes`, `heartbeat_set_checklist`, `memory_append`, `bootstrap_complete`, `blueprint_export`.
+- Added Blueprint tools (server-side, AI SDK tools): `identity_update`, `user_update`, `character_update`, `tools_update_notes`, `heartbeat_set_checklist`, `memory_append`, `bootstrap_complete`, `blueprint_export`.
 - Added worker tests covering Blueprint export/import (`apps/autopilot-worker/tests/index.test.ts`).
 
 ## Open Questions
 
 - Canonical store: DO-only vs DO+Convex mirror?
-- How do we want the user to "edit Soul": form UI (structured) vs rich text editor (markdown-like)?
+- How do we want the user to "edit Character": form UI (structured) vs rich text editor (markdown-like)?
 - How do we represent global rules (`AGENTS.md`)?
   - Keep in code (simpler), or store versioned in DB for hotfixes?
 - Do we want a formal "bootstrap wizard" UI before chat, or keep it purely conversational?
