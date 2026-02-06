@@ -16,6 +16,7 @@ import {
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { Schema } from "effect";
+import { Tool, type DseToolContract } from "@openagentsinc/dse";
 import {
   AutopilotBootstrapState,
   AutopilotBlueprintStateV1,
@@ -40,6 +41,11 @@ import {
   renderBlueprintContext,
   renderBootstrapInstructions
 } from "./blueprint";
+import {
+  renderToolPrompt,
+  toolContracts,
+  toolContractsExport
+} from "./tools";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
@@ -49,23 +55,24 @@ const FIRST_OPEN_WELCOME_MESSAGE =
   "Autopilot online.\n\n" +
   "Greetings, user. What shall I call you?";
 
-const BASE_TOOLS: ToolSet = {
-  get_time: tool({
-    description:
-      "Return the current time. Use this tool whenever the user asks you to use a tool but doesn't specify which one.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        timeZone: {
-          type: "string",
-          description:
-            "Optional IANA time zone name (e.g. 'UTC', 'America/Chicago')."
-        }
-      },
-      additionalProperties: false
-    }),
+function aiToolFromContract<I, O>(
+  contract: DseToolContract<I, O>,
+  execute: (input: I) => Promise<O>
+) {
+  const inputSchema = jsonSchema(Tool.inputJsonSchema(contract));
+  return tool({
+    description: contract.description,
+    inputSchema,
     strict: true,
-    execute: async ({ timeZone }: { timeZone?: string }) => {
+    ...(contract.inputExamples ? { inputExamples: contract.inputExamples as any } : {}),
+    execute: execute as any
+  });
+}
+
+const BASE_TOOLS: ToolSet = {
+  get_time: aiToolFromContract(
+    toolContracts.get_time,
+    async ({ timeZone }) => {
       const now = new Date();
       const iso = now.toISOString();
       const epochMs = now.getTime();
@@ -93,20 +100,11 @@ const BASE_TOOLS: ToolSet = {
         ...(resolvedTimeZone ? { timeZone: resolvedTimeZone } : {})
       };
     }
-  }),
-  echo: tool({
-    description: "Echo back the provided text. Useful for testing tool calling.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        text: { type: "string" }
-      },
-      required: ["text"],
-      additionalProperties: false
-    }),
-    strict: true,
-    execute: async ({ text }: { text: string }) => ({ text })
-  })
+  ),
+  echo: aiToolFromContract(
+    toolContracts.echo,
+    async ({ text }) => ({ text })
+  )
 };
 
 const SYSTEM_PROMPT_BASE =
@@ -128,30 +126,6 @@ const SYSTEM_PROMPT_BASE =
   "  Ask only for a preferred handle (what to call the user).\n" +
   "- Avoid the word \"address\" in user-facing messages. Say \"call you\" or \"handle\".\n";
 
-const TOOL_PROMPT =
-  "Tools available:\n" +
-  "- get_time({ timeZone? }) -> current time\n" +
-  "- echo({ text }) -> echoes input\n" +
-  "- bootstrap_set_user_handle({ handle }) -> (bootstrap) set what to call the user\n" +
-  "- bootstrap_set_agent_name({ name }) -> (bootstrap) set what to call the agent\n" +
-  "- bootstrap_set_agent_vibe({ vibe }) -> (bootstrap) set the agent's operating vibe\n" +
-  "- identity_update({ name?, creature?, vibe?, emoji?, avatar? }) -> update your Identity doc\n" +
-  "- user_update({ handle?, notes?, context? }) -> update the User doc (handle = what to call the user; not a postal address)\n" +
-  "- soul_update({ coreTruths?, boundaries?, vibe?, continuity? }) -> update the Soul doc\n" +
-  "- tools_update_notes({ notes }) -> update the Tools doc\n" +
-  "- heartbeat_set_checklist({ checklist }) -> update the Heartbeat doc\n" +
-  "- memory_append({ kind, title, body, visibility }) -> append a Memory entry\n" +
-  "- bootstrap_complete({}) -> mark bootstrap complete\n" +
-  "- blueprint_export({}) -> get a URL to export your Blueprint\n" +
-  "\n" +
-  "Tool use rules:\n" +
-  "- If the user asks you to use a tool, you MUST call an appropriate tool.\n" +
-  "- During bootstrap, prefer the bootstrap_* tools.\n" +
-  "- After using tools, ALWAYS send a normal assistant reply with user-visible text.\n" +
-  "- Always include a user-visible text reply. Never output reasoning-only.\n" +
-  "- Never claim you have tools you do not have.\n" +
-  "- If the user asks you to search/browse the web, be explicit that you currently cannot.\n";
-
 function buildSystemPrompt(options: {
   blueprintContext: string;
   bootstrapInstructions: string | null;
@@ -163,6 +137,7 @@ function buildSystemPrompt(options: {
     startedAt: Date | undefined;
     completedAt: Date | undefined;
   };
+  toolPrompt: string | null;
 }) {
   let system = SYSTEM_PROMPT_BASE;
   system +=
@@ -185,7 +160,9 @@ function buildSystemPrompt(options: {
     system += "\n\n# Bootstrap\n" + options.bootstrapInstructions.trim() + "\n";
   }
 
-  system += "\n\n" + TOOL_PROMPT;
+  if (options.toolPrompt) {
+    system += "\n\n" + options.toolPrompt.trim() + "\n";
+  }
 
   return system;
 }
@@ -443,6 +420,13 @@ export class Chat extends AIChatAgent<Env> {
       return Response.json({ ok: true });
     }
 
+    if (url.pathname.endsWith("/tool-contracts")) {
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+      return Response.json(toolContractsExport());
+    }
+
     if (url.pathname.endsWith("/blueprint")) {
       if (request.method === "GET") {
         const blueprint = this.ensureBlueprintState();
@@ -518,11 +502,15 @@ export class Chat extends AIChatAgent<Env> {
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        const buildSystem = (state: AutopilotBlueprintStateV1) => {
+        const buildSystem = (
+          state: AutopilotBlueprintStateV1,
+          toolNames?: ReadonlyArray<string>
+        ) => {
           const blueprintContext = renderBlueprintContext(state, {
             includeToolsDoc: true
           });
           const bootstrapInstructions = renderBootstrapInstructions(state);
+          const toolPrompt = toolNames ? renderToolPrompt({ toolNames }) : renderToolPrompt();
           return buildSystemPrompt({
             identityVibe: state.docs.identity.vibe,
             soulVibe: state.docs.soul.vibe,
@@ -533,30 +521,16 @@ export class Chat extends AIChatAgent<Env> {
               completedAt: state.bootstrapState.completedAt
             },
             blueprintContext,
-            bootstrapInstructions
+            bootstrapInstructions,
+            toolPrompt
           });
         };
 
         const tools: ToolSet = {
           ...BASE_TOOLS,
-          bootstrap_set_user_handle: tool({
-            description:
-              "Bootstrap step: set what to call the user (a handle/nickname), persist it, and advance bootstrap stage.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                handle: {
-                  type: "string",
-                  minLength: 1,
-                  description:
-                    "What to call the user (handle/nickname). Not a physical address."
-                }
-              },
-              required: ["handle"],
-              additionalProperties: false
-            }),
-            strict: true,
-            execute: async ({ handle }: { handle: string }) => {
+          bootstrap_set_user_handle: aiToolFromContract(
+            toolContracts.bootstrap_set_user_handle,
+            async ({ handle }) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const user = state.docs.user;
@@ -599,24 +573,10 @@ export class Chat extends AIChatAgent<Env> {
                 stage: updated.bootstrapState.stage ?? null
               };
             }
-          }),
-          bootstrap_set_agent_name: tool({
-            description:
-              "Bootstrap step: set what to call the agent (identity name), persist it, and advance bootstrap stage.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                name: {
-                  type: "string",
-                  minLength: 1,
-                  description: "The name the user should call the agent."
-                }
-              },
-              required: ["name"],
-              additionalProperties: false
-            }),
-            strict: true,
-            execute: async ({ name }: { name: string }) => {
+          ),
+          bootstrap_set_agent_name: aiToolFromContract(
+            toolContracts.bootstrap_set_agent_name,
+            async ({ name }) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const identity = state.docs.identity;
@@ -659,24 +619,10 @@ export class Chat extends AIChatAgent<Env> {
                 stage: updated.bootstrapState.stage ?? null
               };
             }
-          }),
-          bootstrap_set_agent_vibe: tool({
-            description:
-              "Bootstrap step: set the agent operating vibe, persist it, and advance bootstrap stage.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                vibe: {
-                  type: "string",
-                  minLength: 1,
-                  description: "One short phrase describing the agent's operating vibe."
-                }
-              },
-              required: ["vibe"],
-              additionalProperties: false
-            }),
-            strict: true,
-            execute: async ({ vibe }: { vibe: string }) => {
+          ),
+          bootstrap_set_agent_vibe: aiToolFromContract(
+            toolContracts.bootstrap_set_agent_vibe,
+            async ({ vibe }) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const identity = state.docs.identity;
@@ -719,32 +665,10 @@ export class Chat extends AIChatAgent<Env> {
                 stage: updated.bootstrapState.stage ?? null
               };
             }
-          }),
-          identity_update: tool({
-            description: "Update Identity fields in the Blueprint.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                name: { type: "string" },
-                creature: { type: "string" },
-                vibe: { type: "string" },
-                emoji: { type: "string" },
-                avatar: { type: "string" }
-              },
-              additionalProperties: false
-            }),
-            strict: true,
-            inputExamples: [
-              { input: { name: "Autopilot" } },
-              { input: { vibe: "calm, direct, terminal-like" } }
-            ],
-            execute: async (input: {
-              name?: string;
-              creature?: string;
-              vibe?: string;
-              emoji?: string;
-              avatar?: string;
-            }) => {
+          ),
+          identity_update: aiToolFromContract(
+            toolContracts.identity_update,
+            async (input) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const identity = state.docs.identity;
@@ -799,32 +723,10 @@ export class Chat extends AIChatAgent<Env> {
                 version: Number(updated.docs.identity.version)
               };
             }
-          }),
-          user_update: tool({
-            description: "Update User fields in the Blueprint.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                handle: {
-                  type: "string",
-                  description:
-                    "What to call the user (nickname/handle). Not a physical address."
-                },
-                notes: { type: "string" },
-                context: { type: "string" }
-              },
-              additionalProperties: false
-            }),
-            strict: true,
-            inputExamples: [
-              { input: { handle: "TimeLord" } },
-              { input: { handle: "Jimbo" } }
-            ],
-            execute: async (input: {
-              handle?: string;
-              notes?: string;
-              context?: string;
-            }) => {
+          ),
+          user_update: aiToolFromContract(
+            toolContracts.user_update,
+            async (input) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const user = state.docs.user;
@@ -874,33 +776,10 @@ export class Chat extends AIChatAgent<Env> {
                 version: Number(updated.docs.user.version)
               };
             }
-          }),
-          soul_update: tool({
-            description: "Update Soul fields in the Blueprint.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                coreTruths: { type: "array", items: { type: "string" } },
-                boundaries: { type: "array", items: { type: "string" } },
-                vibe: { type: "string" },
-                continuity: { type: "string" }
-              },
-              additionalProperties: false
-            }),
-            strict: true,
-            inputExamples: [
-              {
-                input: {
-                  boundaries: ["No web browsing.", "Ask before destructive actions."]
-                }
-              }
-            ],
-            execute: async (input: {
-              coreTruths?: string[];
-              boundaries?: string[];
-              vibe?: string;
-              continuity?: string;
-            }) => {
+          ),
+          soul_update: aiToolFromContract(
+            toolContracts.soul_update,
+            async (input) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const soul = state.docs.soul;
@@ -961,20 +840,10 @@ export class Chat extends AIChatAgent<Env> {
                 version: Number(updated.docs.soul.version)
               };
             }
-          }),
-          tools_update_notes: tool({
-            description: "Update the Tools doc notes in the Blueprint.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                notes: { type: "string" }
-              },
-              required: ["notes"],
-              additionalProperties: false
-            }),
-            strict: true,
-            inputExamples: [{ input: { notes: "Tools are DO-backed. No web browsing." } }],
-            execute: async ({ notes }: { notes: string }) => {
+          ),
+          tools_update_notes: aiToolFromContract(
+            toolContracts.tools_update_notes,
+            async ({ notes }) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const toolsDoc = state.docs.tools;
@@ -999,20 +868,10 @@ export class Chat extends AIChatAgent<Env> {
                 version: Number(updated.docs.tools.version)
               };
             }
-          }),
-          heartbeat_set_checklist: tool({
-            description: "Replace the Heartbeat checklist in the Blueprint.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                checklist: { type: "array", items: { type: "string" } }
-              },
-              required: ["checklist"],
-              additionalProperties: false
-            }),
-            strict: true,
-            inputExamples: [{ input: { checklist: ["Ask before deleting data."] } }],
-            execute: async ({ checklist }: { checklist: string[] }) => {
+          ),
+          heartbeat_set_checklist: aiToolFromContract(
+            toolContracts.heartbeat_set_checklist,
+            async ({ checklist }) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const heartbeat = state.docs.heartbeat;
@@ -1037,27 +896,10 @@ export class Chat extends AIChatAgent<Env> {
                 version: Number(updated.docs.heartbeat.version)
               };
             }
-          }),
-          memory_append: tool({
-            description: "Append a new Memory entry to the Blueprint.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {
-                kind: { type: "string", enum: ["daily", "long_term"] },
-                title: { type: "string" },
-                body: { type: "string" },
-                visibility: { type: "string", enum: ["main_only", "all"] }
-              },
-              required: ["kind", "title", "body", "visibility"],
-              additionalProperties: false
-            }),
-            strict: true,
-            execute: async (input: {
-              kind: "daily" | "long_term";
-              title: string;
-              body: string;
-              visibility: "main_only" | "all";
-            }) => {
+          ),
+          memory_append: aiToolFromContract(
+            toolContracts.memory_append,
+            async (input) => {
               const updated = this.updateBlueprintState((state) => {
                 const entry = MemoryEntry.make({
                   id: MemoryEntryId.make(crypto.randomUUID()),
@@ -1074,16 +916,10 @@ export class Chat extends AIChatAgent<Env> {
               });
               return { ok: true, count: updated.memory.length };
             }
-          }),
-          bootstrap_complete: tool({
-            description: "Mark the Blueprint bootstrap sequence as complete.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {},
-              additionalProperties: false
-            }),
-            strict: true,
-            execute: async () => {
+          ),
+          bootstrap_complete: aiToolFromContract(
+            toolContracts.bootstrap_complete,
+            async () => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const nextBootstrapState = AutopilotBootstrapState.make({
@@ -1100,22 +936,16 @@ export class Chat extends AIChatAgent<Env> {
               });
               return { ok: true, status: updated.bootstrapState.status };
             }
-          }),
-          blueprint_export: tool({
-            description: "Return the export URL for this thread's Blueprint JSON.",
-            inputSchema: jsonSchema({
-              type: "object",
-              properties: {},
-              additionalProperties: false
-            }),
-            strict: true,
-            execute: async () => ({
+          ),
+          blueprint_export: aiToolFromContract(
+            toolContracts.blueprint_export,
+            async () => ({
               ok: true,
               url: `/agents/chat/${this.name}/blueprint`,
               format: BLUEPRINT_FORMAT,
               formatVersion: BLUEPRINT_FORMAT_VERSION
             })
-          })
+          )
         };
 
 	        const result = streamText({
@@ -1130,44 +960,48 @@ export class Chat extends AIChatAgent<Env> {
               const stage = fresh.bootstrapState.stage ?? "ask_user_handle";
 
               if (stage === "ask_user_handle") {
+                const activeTools = ["bootstrap_set_user_handle"];
                 return {
-                  system,
+                  system: buildSystem(fresh, activeTools),
                   toolChoice: {
                     type: "tool",
                     toolName: "bootstrap_set_user_handle"
                   } as const,
-                  activeTools: ["bootstrap_set_user_handle"] as const
+                  activeTools
                 };
               }
 
               if (stage === "ask_agent_name") {
+                const activeTools = ["bootstrap_set_agent_name"];
                 return {
-                  system,
+                  system: buildSystem(fresh, activeTools),
                   toolChoice: {
                     type: "tool",
                     toolName: "bootstrap_set_agent_name"
                   } as const,
-                  activeTools: ["bootstrap_set_agent_name"] as const
+                  activeTools
                 };
               }
 
               if (stage === "ask_vibe") {
+                const activeTools = ["bootstrap_set_agent_vibe"];
                 return {
-                  system,
+                  system: buildSystem(fresh, activeTools),
                   toolChoice: {
                     type: "tool",
                     toolName: "bootstrap_set_agent_vibe"
                   } as const,
-                  activeTools: ["bootstrap_set_agent_vibe"] as const
+                  activeTools
                 };
               }
 
               if (stage === "ask_boundaries") {
+                const activeTools = ["soul_update", "bootstrap_complete"];
                 return {
-                  system,
+                  system: buildSystem(fresh, activeTools),
                   // Only call tools when the user actually provides boundaries or says "none".
                   toolChoice: "auto" as const,
-                  activeTools: ["soul_update", "bootstrap_complete"] as const
+                  activeTools
                 };
               }
 

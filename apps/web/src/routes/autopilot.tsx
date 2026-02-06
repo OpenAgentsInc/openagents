@@ -11,6 +11,7 @@ import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { UIMessage } from 'ai';
 import type { FormEvent } from 'react';
+import type { AgentToolContract } from '../effect/agentApi';
 
 export const Route = createFileRoute('/autopilot')({
   loader: async ({ context }) => {
@@ -224,7 +225,13 @@ function toolStateSummary(state: string): { label: string; badge: string } {
   }
 }
 
-function ToolCard({ part }: { part: Extract<RenderPart, { kind: 'tool' }> }) {
+function ToolCard({
+  part,
+  meta,
+}: {
+  part: Extract<RenderPart, { kind: 'tool' }>;
+  meta?: AgentToolContract;
+}) {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const summary = toolStateSummary(part.state);
 
@@ -270,6 +277,21 @@ function ToolCard({ part }: { part: Extract<RenderPart, { kind: 'tool' }> }) {
 
       {!isCollapsed ? (
         <div className="border-t border-border-dark/70 px-3 py-2">
+          {meta?.usage || meta?.description ? (
+            <div className="mb-3">
+              {meta.usage ? (
+                <div className="text-[10px] font-mono text-text-dim whitespace-pre-wrap break-words">
+                  {meta.usage}
+                </div>
+              ) : null}
+              {meta.description ? (
+                <div className="text-[11px] text-text-muted whitespace-pre-wrap break-words">
+                  {meta.description}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="text-[10px] text-text-dim uppercase tracking-wider mb-1">
             Input
           </div>
@@ -354,6 +376,9 @@ function ChatPage() {
     soulVibe: string;
     soulBoundaries: string;
   } | null>(null);
+  const [toolContractsByName, setToolContractsByName] = useState<
+    Record<string, AgentToolContract> | null
+  >(null);
   const [isSavingBlueprint, setIsSavingBlueprint] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const isStreaming = chat.status === 'streaming';
@@ -485,6 +510,27 @@ function ChatPage() {
   useEffect(() => {
     void fetchBlueprint();
   }, [fetchBlueprint]);
+
+  useEffect(() => {
+    let cancelled = false;
+    runtime
+      .runPromise(
+        Effect.gen(function* () {
+          const api = yield* AgentApiService;
+          const contracts = yield* api.getToolContracts(chatId);
+          yield* Effect.sync(() => {
+            if (cancelled) return;
+            const map: Record<string, AgentToolContract> = {};
+            for (const c of contracts) map[c.name] = c;
+            setToolContractsByName(map);
+          });
+        }),
+      )
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, runtime]);
 
   useEffect(() => {
     recomputeIsAtBottom();
@@ -904,7 +950,13 @@ function ChatPage() {
                                     );
                                   }
 
-                                  return <ToolCard key={`tool:${p.toolCallId}`} part={p} />;
+                                  return (
+                                    <ToolCard
+                                      key={`tool:${p.toolCallId}`}
+                                      part={p}
+                                      meta={toolContractsByName?.[p.toolName]}
+                                    />
+                                  );
                                 })}
                               </div>
                             )}

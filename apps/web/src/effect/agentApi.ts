@@ -11,8 +11,17 @@ class AgentApiError extends Schema.TaggedError<AgentApiError>()('AgentApiError',
 export type AgentApi = {
   readonly getBlueprint: (chatId: string) => Effect.Effect<unknown, AgentApiError>;
   readonly getMessages: (chatId: string) => Effect.Effect<Array<UIMessage>, AgentApiError>;
+  readonly getToolContracts: (chatId: string) => Effect.Effect<Array<AgentToolContract>, AgentApiError>;
   readonly resetAgent: (chatId: string) => Effect.Effect<void, AgentApiError>;
   readonly importBlueprint: (chatId: string, blueprint: unknown) => Effect.Effect<void, AgentApiError>;
+};
+
+export type AgentToolContract = {
+  readonly name: string;
+  readonly description: string;
+  readonly usage?: string;
+  readonly inputSchemaJson: unknown;
+  readonly outputSchemaJson: unknown | null;
 };
 
 export class AgentApiService extends Context.Tag('@openagents/web/AgentApi')<
@@ -102,6 +111,28 @@ export const AgentApiLive = Layer.effect(
       return parsed;
     });
 
+    const getToolContracts = Effect.fn('AgentApi.getToolContracts')(function* (chatId: string) {
+      const url = `/agents/chat/${chatId}/tool-contracts`;
+      const response = yield* fetchNoStore({ operation: 'getToolContracts', url });
+      if (!response.ok) {
+        yield* AgentApiError.make({
+          operation: 'getToolContracts',
+          status: response.status,
+          error: new Error(`HTTP ${response.status}`),
+        });
+      }
+
+      return yield* Effect.tryPromise({
+        try: () => response.json() as Promise<Array<AgentToolContract>>,
+        catch: (error) =>
+          AgentApiError.make({
+            operation: 'getToolContracts',
+            status: response.status,
+            error,
+          }),
+      });
+    });
+
     const resetAgent = Effect.fn('AgentApi.resetAgent')(function* (chatId: string) {
       const url = `/agents/chat/${chatId}/reset-agent`;
       const response = yield* fetchNoStore({
@@ -154,6 +185,7 @@ export const AgentApiLive = Layer.effect(
     return AgentApiService.of({
       getBlueprint,
       getMessages,
+      getToolContracts,
       resetAgent,
       importBlueprint,
     });

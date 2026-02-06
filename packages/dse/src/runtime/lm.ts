@@ -9,10 +9,12 @@ export type LmMessage = {
 
 export type LmRequest = {
   readonly messages: ReadonlyArray<LmMessage>;
-  readonly modelId?: string;
-  readonly temperature?: number;
-  readonly topP?: number;
-  readonly maxTokens?: number;
+  // With `exactOptionalPropertyTypes`, it's common for callers to pass through `T | undefined`.
+  // Model clients should treat `undefined` the same as "unset".
+  readonly modelId?: string | undefined;
+  readonly temperature?: number | undefined;
+  readonly topP?: number | undefined;
+  readonly maxTokens?: number | undefined;
 };
 
 export type LmUsage = {
@@ -44,4 +46,3 @@ export class LmClientService extends Context.Tag("@openagentsinc/dse/LmClient")<
   LmClientService,
   LmClient
 >() {}
-
