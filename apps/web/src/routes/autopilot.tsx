@@ -8,6 +8,8 @@ import { whitePreset } from '@openagentsinc/hud';
 import { AutopilotSidebar } from '../components/layout/AutopilotSidebar';
 import { EffuseMount } from '../components/EffuseMount';
 import { runAutopilotChat } from '../effuse-pages/autopilot';
+import { runAutopilotBlueprintPanel } from '../effuse-pages/autopilotBlueprint';
+import { runAutopilotControls } from '../effuse-pages/autopilotControls';
 import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
@@ -238,13 +240,14 @@ function ChatPage() {
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintUpdatedAt, setBlueprintUpdatedAt] = useState<number | null>(null);
   const [isEditingBlueprint, setIsEditingBlueprint] = useState(false);
-  const [blueprintDraft, setBlueprintDraft] = useState<{
+  type BlueprintDraft = {
     userHandle: string;
     agentName: string;
     identityVibe: string;
     characterVibe: string;
     characterBoundaries: string;
-  } | null>(null);
+  };
+  const blueprintDraftRef = useRef<BlueprintDraft | null>(null);
   const [toolContractsByName, setToolContractsByName] = useState<
     Record<string, AgentToolContract> | null
   >(null);
@@ -336,7 +339,7 @@ function ChatPage() {
     };
   }, [renderedMessages, toolContractsByName, isBusy, isAtBottom, input]);
 
-  const makeDraftFromBlueprint = useCallback((value: unknown) => {
+  const makeDraftFromBlueprint = useCallback((value: unknown): BlueprintDraft => {
     const b: any = value ?? {};
     const docs = b?.docs ?? {};
     const identity = docs.identity ?? {};
@@ -373,7 +376,7 @@ function ChatPage() {
               setBlueprint(json);
               setBlueprintUpdatedAt(Date.now());
               if (!isEditingBlueprint) {
-                setBlueprintDraft(makeDraftFromBlueprint(json));
+                blueprintDraftRef.current = makeDraftFromBlueprint(json);
               }
             });
           }).pipe(
@@ -553,16 +556,17 @@ function ChatPage() {
 
   const onStartEditBlueprint = () => {
     if (!blueprint) return;
-    setBlueprintDraft(makeDraftFromBlueprint(blueprint));
+    blueprintDraftRef.current = makeDraftFromBlueprint(blueprint);
     setIsEditingBlueprint(true);
   };
 
   const onCancelEditBlueprint = () => {
-    setBlueprintDraft(blueprint ? makeDraftFromBlueprint(blueprint) : null);
+    blueprintDraftRef.current = blueprint ? makeDraftFromBlueprint(blueprint) : null;
     setIsEditingBlueprint(false);
   };
 
   const onSaveBlueprint = async () => {
+    const blueprintDraft = blueprintDraftRef.current;
     if (!blueprintDraft || !blueprint || isSavingBlueprint) return;
     setIsSavingBlueprint(true);
     setBlueprintError(null);
@@ -684,6 +688,150 @@ function ChatPage() {
     }
   }, [blueprint]);
 
+  const blueprintPanelModel = useMemo(
+    () => ({
+      updatedAtLabel: blueprintUpdatedAt ? new Date(blueprintUpdatedAt).toLocaleTimeString() : null,
+      isLoading: blueprintLoading,
+      isEditing: isEditingBlueprint,
+      canEdit: Boolean(blueprint),
+      isSaving: isSavingBlueprint,
+      errorText: blueprintError,
+      blueprintText,
+    }),
+    [
+      blueprint,
+      blueprintError,
+      blueprintLoading,
+      blueprintText,
+      blueprintUpdatedAt,
+      isEditingBlueprint,
+      isSavingBlueprint,
+    ],
+  );
+
+  const runBlueprintPanelRef = useCallback(
+    (el: Element) => runAutopilotBlueprintPanel(el, blueprintPanelModel),
+    [blueprintPanelModel],
+  );
+
+  const blueprintPanelDeps = useMemo<ReadonlyArray<unknown>>(() => {
+    if (isEditingBlueprint) {
+      // Freeze the Effuse form while editing so background refreshes don't reset the inputs/caret.
+      return [isEditingBlueprint, isSavingBlueprint, blueprintError];
+    }
+    return [
+      isEditingBlueprint,
+      isSavingBlueprint,
+      blueprintLoading,
+      blueprintError,
+      blueprintUpdatedAt,
+      blueprintText,
+      Boolean(blueprint),
+    ];
+  }, [
+    blueprint,
+    blueprintError,
+    blueprintLoading,
+    blueprintText,
+    blueprintUpdatedAt,
+    isEditingBlueprint,
+    isSavingBlueprint,
+  ]);
+
+  const onBlueprintRendered = useCallback(
+    (container: Element) => {
+      const toggleEditBtn = container.querySelector('[data-action="toggle-edit"]');
+      toggleEditBtn?.addEventListener('click', () => {
+        if (isEditingBlueprint) onCancelEditBlueprint();
+        else onStartEditBlueprint();
+      });
+
+      const refreshBtn = container.querySelector('[data-action="refresh"]');
+      refreshBtn?.addEventListener('click', () => void fetchBlueprint());
+
+      const saveBtn = container.querySelector('[data-action="save"]');
+      saveBtn?.addEventListener('click', () => void onSaveBlueprint());
+
+      if (!isEditingBlueprint) return;
+
+      const draft =
+        blueprintDraftRef.current ??
+        (blueprint
+          ? makeDraftFromBlueprint(blueprint)
+          : {
+              userHandle: '',
+              agentName: '',
+              identityVibe: '',
+              characterVibe: '',
+              characterBoundaries: '',
+            });
+      blueprintDraftRef.current = draft;
+
+      const bindText = (
+        field: keyof BlueprintDraft,
+        el: HTMLInputElement | HTMLTextAreaElement | null,
+      ) => {
+        if (!el) return;
+        const current = draft[field];
+        if (typeof current === 'string' && el.value !== current) {
+          el.value = current;
+        }
+        el.addEventListener('input', () => {
+          const next = el.value;
+          const d = blueprintDraftRef.current;
+          if (!d) return;
+          d[field] = next;
+        });
+      };
+
+      bindText('userHandle', container.querySelector<HTMLInputElement>('input[name="userHandle"]'));
+      bindText('agentName', container.querySelector<HTMLInputElement>('input[name="agentName"]'));
+      bindText('identityVibe', container.querySelector<HTMLInputElement>('input[name="identityVibe"]'));
+      bindText('characterVibe', container.querySelector<HTMLInputElement>('input[name="characterVibe"]'));
+      bindText(
+        'characterBoundaries',
+        container.querySelector<HTMLTextAreaElement>('textarea[name="characterBoundaries"]'),
+      );
+    },
+    [
+      blueprint,
+      fetchBlueprint,
+      isEditingBlueprint,
+      makeDraftFromBlueprint,
+      onCancelEditBlueprint,
+      onSaveBlueprint,
+      onStartEditBlueprint,
+    ],
+  );
+
+  const controlsModel = useMemo(
+    () => ({
+      isExportingBlueprint,
+      isBusy,
+      isResettingAgent,
+    }),
+    [isBusy, isExportingBlueprint, isResettingAgent],
+  );
+
+  const runControlsRef = useCallback(
+    (el: Element) => runAutopilotControls(el, controlsModel),
+    [controlsModel],
+  );
+
+  const onControlsRendered = useCallback(
+    (container: Element) => {
+      const exportBtn = container.querySelector('[data-action="export-blueprint"]');
+      exportBtn?.addEventListener('click', () => void onExportBlueprint());
+
+      const clearBtn = container.querySelector('[data-action="clear-messages"]');
+      clearBtn?.addEventListener('click', () => clearHistory());
+
+      const resetBtn = container.querySelector('[data-action="reset-agent"]');
+      resetBtn?.addEventListener('click', () => void onResetAgent());
+    },
+    [clearHistory, onExportBlueprint, onResetAgent],
+  );
+
   return (
     <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
       {/* Arwes-style ambient background (HUD). */}
@@ -728,162 +876,22 @@ function ChatPage() {
 	          />
 	        </div>
 
-	        {/* Blueprint - right sidebar */}
-	        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-l border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
-	          <div className="flex flex-col h-full min-h-0 w-full">
-	            <div className="flex items-center justify-between h-11 px-3 border-b border-border-dark">
-	              <div className="text-xs text-text-dim uppercase tracking-wider">Blueprint</div>
-	              <div className="flex items-center gap-2">
-	                {blueprintUpdatedAt ? (
-	                  <div className="text-[10px] text-text-dim">
-	                    {new Date(blueprintUpdatedAt).toLocaleTimeString()}
-	                  </div>
-	                ) : null}
-	                <button
-	                  type="button"
-	                  onClick={() => (isEditingBlueprint ? onCancelEditBlueprint() : onStartEditBlueprint())}
-	                  disabled={blueprintLoading || !blueprint}
-	                  className="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
-	                >
-	                  {isEditingBlueprint ? 'Cancel' : 'Edit'}
-	                </button>
-	                <button
-	                  type="button"
-	                  onClick={() => void fetchBlueprint()}
-	                  disabled={blueprintLoading}
-	                  className="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
-	                >
-	                  {blueprintLoading ? 'Syncing…' : 'Refresh'}
-	                </button>
-	              </div>
-	            </div>
-	            <div className="flex-1 min-h-0 overflow-y-auto p-3 overseer-scroll">
-	              {blueprintError ? (
-	                <div className="text-xs text-red-400">Blueprint error: {blueprintError}</div>
-	              ) : isEditingBlueprint ? (
-	                <div className="flex flex-col gap-3">
-	                  <div className="text-[11px] text-text-dim">
-	                    Edit the Blueprint fields below. (Avoid personal info; handle/nickname only.)
-	                  </div>
-
-	                  <label className="flex flex-col gap-1">
-	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
-	                      Your handle
-	                    </span>
-	                    <input
-	                      value={blueprintDraft?.userHandle ?? ''}
-	                      onChange={(e) =>
-	                        setBlueprintDraft((d) => (d ? { ...d, userHandle: e.target.value } : d))
-	                      }
-	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-	                    />
-	                  </label>
-
-	                  <label className="flex flex-col gap-1">
-	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
-	                      Agent name
-	                    </span>
-	                    <input
-	                      value={blueprintDraft?.agentName ?? ''}
-	                      onChange={(e) =>
-	                        setBlueprintDraft((d) => (d ? { ...d, agentName: e.target.value } : d))
-	                      }
-	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-	                    />
-	                  </label>
-
-	                  <label className="flex flex-col gap-1">
-	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
-	                      Agent vibe
-	                    </span>
-	                    <input
-	                      value={blueprintDraft?.identityVibe ?? ''}
-	                      onChange={(e) =>
-	                        setBlueprintDraft((d) => (d ? { ...d, identityVibe: e.target.value } : d))
-	                      }
-	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-	                    />
-	                  </label>
-
-	                  <label className="flex flex-col gap-1">
-	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
-	                      Character vibe
-	                    </span>
-	                    <input
-	                      value={blueprintDraft?.characterVibe ?? ''}
-	                      onChange={(e) =>
-	                        setBlueprintDraft((d) =>
-	                          d ? { ...d, characterVibe: e.target.value } : d,
-	                        )
-	                      }
-	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-	                    />
-	                  </label>
-
-	                  <label className="flex flex-col gap-1">
-	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
-	                      Boundaries (one per line)
-	                    </span>
-	                    <textarea
-	                      value={blueprintDraft?.characterBoundaries ?? ''}
-	                      onChange={(e) =>
-	                        setBlueprintDraft((d) =>
-	                          d ? { ...d, characterBoundaries: e.target.value } : d,
-	                        )
-	                      }
-	                      rows={8}
-	                      className="w-full resize-y rounded border border-border-dark bg-surface-primary px-2 py-2 text-[12px] leading-4 text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-	                    />
-	                  </label>
-
-	                  <button
-	                    type="button"
-	                    onClick={() => void onSaveBlueprint()}
-	                    disabled={isSavingBlueprint}
-	                    className="inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
-	                  >
-	                    {isSavingBlueprint ? 'Saving…' : 'Save Blueprint'}
-	                  </button>
-	                </div>
-	              ) : blueprintText ? (
-	                <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
-	                  {blueprintText}
-	                </pre>
-	              ) : (
-	                <div className="text-xs text-text-dim">(no blueprint)</div>
-	              )}
-	            </div>
-	          </div>
-	        </aside>
+	        {/* Blueprint - right sidebar (Effuse) */}
+	        <EffuseMount
+	          run={runBlueprintPanelRef}
+	          deps={blueprintPanelDeps}
+	          onRendered={onBlueprintRendered}
+	          className="hidden lg:flex lg:w-[360px] shrink-0 border-l border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
+	        />
       </main>
 
-      {/* Control panel - bottom right */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-1 text-right">
-        <button
-          type="button"
-          onClick={() => void onExportBlueprint()}
-          disabled={isExportingBlueprint}
-          className="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
-        >
-          {isExportingBlueprint ? 'Exporting…' : 'Export Blueprint JSON'}
-        </button>
-        <button
-          type="button"
-          onClick={() => clearHistory()}
-          disabled={isBusy}
-          className="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
-        >
-          Clear messages
-        </button>
-        <button
-          type="button"
-          onClick={() => void onResetAgent()}
-          disabled={isBusy || isResettingAgent}
-          className="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
-        >
-          {isResettingAgent ? 'Resetting...' : 'Reset agent'}
-        </button>
-      </div>
+      {/* Control panel - bottom right (Effuse) */}
+      <EffuseMount
+        run={runControlsRef}
+        deps={[controlsModel]}
+        onRendered={onControlsRendered}
+        className="absolute bottom-4 right-4"
+      />
       </div>
     </div>
   );
