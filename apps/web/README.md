@@ -9,6 +9,7 @@ After the initial setup (<2 minutes) you'll have a working full-stack app using:
 - [TanStack Start](https://tanstack.com/start) for modern full-stack React with file-based routing
 - [Tailwind](https://tailwindcss.com/) for building great looking accessible UI
 - [WorkOS AuthKit](https://authkit.com/) for authentication
+- [Effuse](https://github.com/OpenAgentsInc/openagents/tree/main/packages/effuse) for Effect-native UI: most route UIs are rendered by Effuse (marketing header and home/login, modules/signatures/tools catalogs, autopilot chat column); React provides the shell (backgrounds, sidebar, blueprint panel) and data/effects
 
 ## Get started
 

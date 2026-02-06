@@ -7,15 +7,19 @@ interface EffuseMountProps {
   run: RunEffuse;
   deps?: ReadonlyArray<unknown>;
   className?: string;
+  /** Called after the Effuse program has rendered (e.g. to attach event delegation). */
+  onRendered?: () => void;
 }
 
 /**
  * Renders a div and runs the given Effuse program to fill it (client-side).
  */
-export function EffuseMount({ run, deps = [], className }: EffuseMountProps) {
+export function EffuseMount({ run, deps = [], className, onRendered }: EffuseMountProps) {
   const ref = useRef<HTMLDivElement>(null);
   const runRef = useRef(run);
+  const onRenderedRef = useRef(onRendered);
   runRef.current = run;
+  onRenderedRef.current = onRendered;
 
   useEffect(() => {
     const el = ref.current;
@@ -24,7 +28,9 @@ export function EffuseMount({ run, deps = [], className }: EffuseMountProps) {
     const program = runRef.current(el);
     let cancelled = false;
 
-    Effect.runPromise(program).catch((err) => {
+    Effect.runPromise(program).then(() => {
+      if (!cancelled) onRenderedRef.current?.();
+    }).catch((err) => {
       if (!cancelled) console.error("[EffuseMount]", err);
     });
 
