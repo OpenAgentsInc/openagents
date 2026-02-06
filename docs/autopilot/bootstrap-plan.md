@@ -216,6 +216,62 @@ Recommendation:
 - Canonical: store bootstrap docs + bootstrap state in the **Chat durable object** (same place as transcript).
 - Optional: mirror selected fields to Convex for UI (identity, user timezone, bootstrap status) if/when needed.
 
+## Single-File Export (Portable JSON Bundle)
+
+We must support letting a user export their entire Autopilot bootstrap configuration in **one export**.
+
+Requirements:
+
+- Export is a **single JSON object** containing the whole schema set together (bootstrap state + docs + memory + optional audit).
+- Export must be validated against the **JSON encoding** of our Effect Schemas (not ad hoc JSON).
+  - Practically: define a top-level `Schema` for the export format using *encoded* schemas (e.g. dates as ISO strings).
+- Export format is versioned and documented so other systems (and other OpenAgents installs) can import/export consistently.
+
+Proposed top-level schema (v1 sketch):
+
+```ts
+import { Schema } from "effect"
+
+export class AutopilotBootstrapExportV1 extends Schema.Class<AutopilotBootstrapExportV1>(
+  "AutopilotBootstrapExportV1"
+)({
+  format: Schema.Literal("openagents.autopilot.bootstrap.export"),
+  formatVersion: Schema.Literal(1),
+
+  // Use encoded schemas for JSON stability (example: DateFromString instead of Date).
+  exportedAt: Schema.DateFromString,
+
+  // Optional metadata for debugging/support (not used for semantics).
+  app: Schema.optional(Schema.Struct({
+    name: Schema.Literal("autopilot"),
+    version: Schema.optional(Schema.String),
+  })),
+
+  // The "payload"
+  bootstrapState: AutopilotBootstrapState, // encoded form
+  docs: Schema.Struct({
+    rules: AgentRulesDoc,
+    ritual: BootstrapRitualTemplate,
+    identity: IdentityDoc,
+    user: UserDoc,
+    soul: SoulDoc,
+    tools: ToolsDoc,
+    heartbeat: HeartbeatDoc,
+  }),
+  memory: Schema.Array(MemoryEntry),
+
+  // Optional append-only changes/receipts (Phase 2+).
+  audit: Schema.optional(Schema.Array(Schema.Unknown)),
+}) {}
+```
+
+Import semantics (MVP):
+
+- Decode with `Schema.decodeUnknown(AutopilotBootstrapExportV1)` (runtime validation).
+- If `formatVersion` is older: run migrations, then validate again.
+- Write into the canonical store (DO SQLite) in a single transaction.
+- Treat import as "replace bootstrap set" for the user/thread (simplest), with a future option for merge/partial import.
+
 ## Bootstrap Flow (Autopilot)
 
 OpenClaw triggers the ritual when `BOOTSTRAP.md` exists. In Autopilot, we trigger when `AutopilotBootstrapState.status != "complete"`.
