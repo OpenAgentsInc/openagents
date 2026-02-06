@@ -1,6 +1,13 @@
 @import 'tailwindcss';
 @source '../node_modules/streamdown/dist/*.js';
 
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 /* Vera Mono: monospace for chat (from repo src/gui/assets/fonts) */
 @font-face {
   font-family: 'Vera Mono';
