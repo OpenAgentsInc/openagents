@@ -33,6 +33,21 @@ We keep the *product intent* (one-time "birth certificate" ritual + durable iden
   - Versioned updates, `updatedBy`, timestamps, and receipts
   - Visibility controls (e.g. "main-only" memory) enforced mechanically
 
+## Why Effect Schema (Benefits)
+
+Using Effect `Schema` for these bootstrap artifacts is the difference between "we store some text" and "we have a safe, evolvable configuration + memory system".
+
+Benefits over DB-stored Markdown blobs:
+
+- Runtime validation at every boundary (LLM/tool calls, UI edits, Convex, Durable Object storage) via `Schema.decode`.
+- Single source of truth for TypeScript types + runtime constraints (no drift between types and validation).
+- Safer partial updates (update `user.timeZone` without rewriting a whole doc).
+- Queryability and indexing (e.g. `bootstrap.status`, `completedAt`, `memory.visibility`) instead of buried text.
+- Versioning + migrations (upgrade old records deterministically; avoid “format drift”).
+- Tool schemas “for free”: the same schemas can validate tool inputs/outputs and later generate JSON schema / forms.
+- Better receipts/replay stability: canonical encodings are easier to hash than arbitrary Markdown formatting.
+- Typed error modeling (`Schema.TaggedError`) for update conflicts, forbidden visibility, invalid inputs, etc.
+
 ## Non-Goals (For MVP)
 
 - Multiple workspaces per user (Autopilot is 1:1 user <-> thread)
