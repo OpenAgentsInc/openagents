@@ -3,6 +3,9 @@ export * as Hash from "./internal/hash.js";
 
 export * as PromptIR from "./promptIr.js";
 export * as Signature from "./signature.js";
+export type { DseSignature, SignatureId, SignatureConstraints } from "./signature.js";
+export * as SignatureContract from "./signatureContract.js";
+export type { SignatureContractExportV1 } from "./signatureContract.js";
 export * as Params from "./params.js";
 export * as Tool from "./tool.js";
 export type { ToolName, DseToolContract } from "./tool.js";

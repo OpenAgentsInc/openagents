@@ -9,12 +9,30 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ToolsRouteImport } from './routes/tools'
+import { Route as SignaturesRouteImport } from './routes/signatures'
+import { Route as ModulesRouteImport } from './routes/modules'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AutopilotRouteImport } from './routes/autopilot'
 import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 
+const ToolsRoute = ToolsRouteImport.update({
+  id: '/tools',
+  path: '/tools',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignaturesRoute = SignaturesRouteImport.update({
+  id: '/signatures',
+  path: '/signatures',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModulesRoute = ModulesRouteImport.update({
+  id: '/modules',
+  path: '/modules',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
   path: '/callback',
@@ -46,6 +64,9 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
+  '/modules': typeof ModulesRoute
+  '/signatures': typeof SignaturesRoute
+  '/tools': typeof ToolsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +74,9 @@ export interface FileRoutesByTo {
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
+  '/modules': typeof ModulesRoute
+  '/signatures': typeof SignaturesRoute
+  '/tools': typeof ToolsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
 export interface FileRoutesById {
@@ -61,19 +85,41 @@ export interface FileRoutesById {
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
+  '/modules': typeof ModulesRoute
+  '/signatures': typeof SignaturesRoute
+  '/tools': typeof ToolsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/assistant' | '/autopilot' | '/callback' | '/chat/$chatId'
+  fullPaths:
+    | '/'
+    | '/assistant'
+    | '/autopilot'
+    | '/callback'
+    | '/modules'
+    | '/signatures'
+    | '/tools'
+    | '/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/assistant' | '/autopilot' | '/callback' | '/chat/$chatId'
+  to:
+    | '/'
+    | '/assistant'
+    | '/autopilot'
+    | '/callback'
+    | '/modules'
+    | '/signatures'
+    | '/tools'
+    | '/chat/$chatId'
   id:
     | '__root__'
     | '/'
     | '/assistant'
     | '/autopilot'
     | '/callback'
+    | '/modules'
+    | '/signatures'
+    | '/tools'
     | '/chat/$chatId'
   fileRoutesById: FileRoutesById
 }
@@ -82,11 +128,35 @@ export interface RootRouteChildren {
   AssistantRoute: typeof AssistantRoute
   AutopilotRoute: typeof AutopilotRoute
   CallbackRoute: typeof CallbackRoute
+  ModulesRoute: typeof ModulesRoute
+  SignaturesRoute: typeof SignaturesRoute
+  ToolsRoute: typeof ToolsRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tools': {
+      id: '/tools'
+      path: '/tools'
+      fullPath: '/tools'
+      preLoaderRoute: typeof ToolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signatures': {
+      id: '/signatures'
+      path: '/signatures'
+      fullPath: '/signatures'
+      preLoaderRoute: typeof SignaturesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/modules': {
+      id: '/modules'
+      path: '/modules'
+      fullPath: '/modules'
+      preLoaderRoute: typeof ModulesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/callback': {
       id: '/callback'
       path: '/callback'
@@ -130,6 +200,9 @@ const rootRouteChildren: RootRouteChildren = {
   AssistantRoute: AssistantRoute,
   AutopilotRoute: AutopilotRoute,
   CallbackRoute: CallbackRoute,
+  ModulesRoute: ModulesRoute,
+  SignaturesRoute: SignaturesRoute,
+  ToolsRoute: ToolsRoute,
   ChatChatIdRoute: ChatChatIdRoute,
 }
 export const routeTree = rootRouteImport

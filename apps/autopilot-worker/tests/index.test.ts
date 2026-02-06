@@ -111,6 +111,38 @@ describe("Autopilot worker", () => {
     expect(getTime?.inputSchemaJson).toBeTruthy();
   });
 
+  it("exposes DSE signature contracts for UI introspection", async () => {
+    const threadId = `sigs-${Date.now()}`;
+    const url = `http://example.com/agents/chat/${threadId}/signature-contracts`;
+
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(new Request(url), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as any[];
+    expect(Array.isArray(json)).toBe(true);
+    const ids = json.map((s) => s?.signatureId).filter(Boolean);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids).toContain("@openagents/autopilot/bootstrap/ExtractUserHandle.v1");
+  });
+
+  it("exposes DSE module contracts for UI introspection", async () => {
+    const threadId = `mods-${Date.now()}`;
+    const url = `http://example.com/agents/chat/${threadId}/module-contracts`;
+
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(new Request(url), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as any[];
+    expect(Array.isArray(json)).toBe(true);
+    const ids = json.map((m) => m?.moduleId).filter(Boolean);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids).toContain("@openagents/autopilot/BootstrapFlow.v1");
+  });
+
   it("resets the agent Blueprint state", async () => {
     const threadId = `reset-${Date.now()}`;
     const blueprintUrl = `http://example.com/agents/chat/${threadId}/blueprint`;
