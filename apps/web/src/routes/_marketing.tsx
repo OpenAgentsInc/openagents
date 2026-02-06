@@ -10,6 +10,7 @@ export const Route = createFileRoute('/_marketing')({
 function MarketingLayout() {
   const router = useRouter();
   const isHome = router.state.location.pathname === '/';
+  const isLogin = router.state.location.pathname === '/login';
 
   return (
     <div className="fixed inset-0">
@@ -31,8 +32,8 @@ function MarketingLayout() {
       </div>
       <div className="absolute inset-0 z-10 flex min-h-full min-w-full flex-col p-4">
         <EffuseMount
-          run={(el) => runMarketingHeader(el, isHome)}
-          deps={[isHome]}
+          run={(el) => runMarketingHeader(el, isHome, isLogin)}
+          deps={[isHome, isLogin]}
           className="shrink-0"
         />
         <Outlet />
