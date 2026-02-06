@@ -117,14 +117,17 @@ const SYSTEM_PROMPT_BASE =
   "\n" +
   "Important:\n" +
   "- Do not claim you can browse the web. You cannot.\n" +
-  "- Only mention tools when the Tools section is present.\n";
+  "- Only mention tools when the Tools section is present.\n" +
+  "- Never ask for personal info (physical address, email, phone, legal name, etc.).\n" +
+  "  Ask only for a preferred handle (what to call the user).\n" +
+  "- Avoid the word \"address\" in user-facing messages. Say \"call you\" or \"handle\".\n";
 
 const TOOL_PROMPT =
   "Tools available:\n" +
   "- get_time({ timeZone? }) -> current time\n" +
   "- echo({ text }) -> echoes input\n" +
   "- identity_update({ name?, creature?, vibe?, emoji?, avatar? }) -> update your Identity doc\n" +
-  "- user_update({ name?, addressAs?, notes?, context? }) -> update the User doc\n" +
+  "- user_update({ handle?, notes?, context? }) -> update the User doc (handle = what to call the user; not a postal address)\n" +
   "- soul_update({ coreTruths?, boundaries?, vibe?, continuity? }) -> update the Soul doc\n" +
   "- tools_update_notes({ notes }) -> update the Tools doc\n" +
   "- heartbeat_set_checklist({ checklist }) -> update the Heartbeat doc\n" +
@@ -435,8 +438,11 @@ export class Chat extends AIChatAgent<Env> {
             inputSchema: jsonSchema({
               type: "object",
               properties: {
-                name: { type: "string" },
-                addressAs: { type: "string" },
+                handle: {
+                  type: "string",
+                  description:
+                    "What to call the user (nickname/handle). Not a physical address."
+                },
                 notes: { type: "string" },
                 context: { type: "string" }
               },
@@ -444,33 +450,21 @@ export class Chat extends AIChatAgent<Env> {
             }),
             strict: true,
             inputExamples: [
-              { input: { name: "TimeLord", addressAs: "TimeLord" } },
-              { input: { addressAs: "Jimbo" } }
+              { input: { handle: "TimeLord" } },
+              { input: { handle: "Jimbo" } }
             ],
             execute: async (input: {
-              name?: string;
-              addressAs?: string;
+              handle?: string;
               notes?: string;
               context?: string;
             }) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const user = state.docs.user;
-                // Bootstrap guardrail: if we only get one of `name`/`addressAs`,
-                // mirror it to the other when the stored value is still unset.
-                const storedNameUnset = user.name === "Unknown";
-                const storedAddressUnset = user.addressAs === "Unknown";
-                const mirrorNameToAddress =
-                  Boolean(input.name) && !input.addressAs && storedAddressUnset;
-                const mirrorAddressToName =
-                  Boolean(input.addressAs) && !input.name && storedNameUnset;
-
-                const nextName =
-                  (mirrorAddressToName ? input.addressAs : input.name) ??
-                  user.name;
-                const nextAddressAs =
-                  (mirrorNameToAddress ? input.name : input.addressAs) ??
-                  user.addressAs;
+                const handle = input.handle?.trim();
+                const hasHandle = Boolean(handle) && handle!.length > 0;
+                const nextName = hasHandle ? handle! : user.name;
+                const nextAddressAs = hasHandle ? handle! : user.addressAs;
 
                 const nextUser = UserDoc.make({
                   ...user,
