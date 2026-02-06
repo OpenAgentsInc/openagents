@@ -1,6 +1,7 @@
-import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
+import { whitePreset } from '@openagentsinc/hud';
 import { Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
 import { EffuseMount } from '../components/EffuseMount';
+import { cleanupHudBackground, runHudDotsBackground } from '../effuse-pages/hudBackground';
 import { runMarketingHeader } from '../effuse-pages/header';
 
 export const Route = createFileRoute('/_marketing')({
@@ -24,10 +25,16 @@ function MarketingLayout() {
           ].join(', '),
         }}
       >
-        <DotsBackground
-          distance={whitePreset.distance}
-          dotsColor="hsla(0, 0%, 100%, 0.12)"
-          dotsSettings={{ type: 'circle', size: 2 }}
+        <EffuseMount
+          run={(el) =>
+            runHudDotsBackground(el, {
+              distance: whitePreset.distance,
+              dotsColor: 'hsla(0, 0%, 100%, 0.12)',
+              dotsSettings: { type: 'circle', size: 2 },
+            })
+          }
+          onCleanup={cleanupHudBackground}
+          className="absolute inset-0 pointer-events-none"
         />
       </div>
       <div className="absolute inset-0 z-10 flex min-h-full min-w-full flex-col overflow-y-auto p-4 [scrollbar-gutter:stable]">

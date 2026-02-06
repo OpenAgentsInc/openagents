@@ -10,18 +10,22 @@ interface EffuseMountProps {
   className?: string;
   /** Called after the Effuse program has rendered (e.g. to attach event delegation). */
   onRendered?: (container: Element) => void;
+  /** Called when the mount is about to be re-rendered or unmounted (e.g. to dispose observers). */
+  onCleanup?: (container: Element) => void;
 }
 
 /**
  * Renders a div and runs the given Effuse program to fill it (client-side).
  */
-export function EffuseMount({ run, deps = [], className, onRendered }: EffuseMountProps) {
+export function EffuseMount({ run, deps = [], className, onRendered, onCleanup }: EffuseMountProps) {
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
   const runRef = useRef(run);
   const onRenderedRef = useRef(onRendered);
+  const onCleanupRef = useRef(onCleanup);
   runRef.current = run;
   onRenderedRef.current = onRendered;
+  onCleanupRef.current = onCleanup;
 
   // Intercept internal <a href="/..."> links inside Effuse-rendered DOM so we navigate
   // via TanStack Router (SPA) instead of full page reloads.
@@ -86,6 +90,7 @@ export function EffuseMount({ run, deps = [], className, onRendered }: EffuseMou
 
     return () => {
       cancelled = true;
+      onCleanupRef.current?.(el);
     };
   }, deps);
 

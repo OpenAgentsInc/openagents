@@ -131,6 +131,24 @@ Each phase has a concrete “Definition of Done” and a recommended verificatio
 
 - same as Phase 1 + visually confirm canvas still animates/renders on resize.
 
+**Phase 2 Log (Implemented 2026-02-06)**
+
+- Added Effuse HUD background helpers:
+  - `apps/web/src/effuse-pages/hudBackground.ts` renders canvases and wires `createBackgroundDots` + `createBackgroundGridLines`.
+- Added disposal support to Effuse mounts:
+  - `apps/web/src/components/EffuseMount.tsx` now supports `onCleanup(container)` which is called on unmount/re-render.
+  - backgrounds pass `cleanupHudBackground` to `onCleanup` so ResizeObservers are disconnected.
+- Removed `@openagentsinc/hud/react` usage from routes (background canvases are now Effuse-managed):
+  - `apps/web/src/routes/_marketing.tsx`
+  - `apps/web/src/routes/autopilot.tsx`
+  - `apps/web/src/routes/modules.tsx`
+  - `apps/web/src/routes/tools.tsx`
+  - `apps/web/src/routes/signatures.tsx`
+- Made `whitePreset` available from the non-React HUD entrypoint:
+  - `packages/hud/src/index.ts` exports `whitePreset`
+  - `packages/hud/index.ts` re-exports from `./src/index.js`
+- Verified: `cd apps/web && npm run lint` and `cd apps/web && npm run build`
+
 ---
 
 ### Phase 3: Convert Autopilot Chrome to Effuse (Sidebar, Blueprint Panel, Controls)

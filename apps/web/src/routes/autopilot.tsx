@@ -4,10 +4,11 @@ import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
+import { whitePreset } from '@openagentsinc/hud';
 import { AutopilotSidebar } from '../components/layout/AutopilotSidebar';
 import { EffuseMount } from '../components/EffuseMount';
 import { runAutopilotChat } from '../effuse-pages/autopilot';
+import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { UIMessage } from 'ai';
@@ -698,11 +699,17 @@ function ChatPage() {
           ].join(', '),
         }}
       >
-        <DotsGridBackground
-          distance={whitePreset.distance}
-          dotsColor="hsla(0, 0%, 100%, 0.035)"
-          lineColor="hsla(0, 0%, 100%, 0.03)"
-          dotsSettings={{ type: 'circle', size: 2 }}
+        <EffuseMount
+          run={(el) =>
+            runHudDotsGridBackground(el, {
+              distance: whitePreset.distance,
+              dotsColor: 'hsla(0, 0%, 100%, 0.035)',
+              lineColor: 'hsla(0, 0%, 100%, 0.03)',
+              dotsSettings: { type: 'circle', size: 2 },
+            })
+          }
+          onCleanup={cleanupHudBackground}
+          className="absolute inset-0 pointer-events-none"
         />
       </div>
 
