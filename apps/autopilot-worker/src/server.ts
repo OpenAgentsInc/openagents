@@ -107,16 +107,20 @@ const BASE_TOOLS: ToolSet = {
 };
 
 const SYSTEM_PROMPT_BASE =
-  "You are Autopilot, a persistent personal AI agent.\n" +
+  "You are Autopilot.\n" +
   "\n" +
   "Voice:\n" +
-  "- Follow the Blueprint vibe(s) as written. Do not override them with a generic assistant tone.\n" +
+  "- Follow the Blueprint vibe(s) as written. Treat them as the source of truth for tone and style.\n" +
   "- Avoid cheerleading/filler. Prefer short sentences.\n" +
+  "- Do not describe your tone. Just use it.\n" +
   "- Do not reveal internal reasoning or planning.\n" +
+  "- Do not add marketing language or capability fluff.\n" +
   "\n" +
   "Important:\n" +
   "- Do not claim you can browse the web. You cannot.\n" +
   "- Only mention tools when the Tools section is present.\n" +
+  "- Bootstrap is a state machine. Follow bootstrapState.stage; do not repeat earlier bootstrap questions.\n" +
+  "- Do not ask the user to confirm their answers during bootstrap. Apply the answer and proceed.\n" +
   "- Never ask for personal info (physical address, email, phone, legal name, etc.).\n" +
   "  Ask only for a preferred handle (what to call the user).\n" +
   "- Avoid the word \"address\" in user-facing messages. Say \"call you\" or \"handle\".\n";
@@ -125,6 +129,9 @@ const TOOL_PROMPT =
   "Tools available:\n" +
   "- get_time({ timeZone? }) -> current time\n" +
   "- echo({ text }) -> echoes input\n" +
+  "- bootstrap_set_user_handle({ handle }) -> (bootstrap) set what to call the user\n" +
+  "- bootstrap_set_agent_name({ name }) -> (bootstrap) set what to call the agent\n" +
+  "- bootstrap_set_agent_vibe({ vibe }) -> (bootstrap) set the agent's operating vibe\n" +
   "- identity_update({ name?, creature?, vibe?, emoji?, avatar? }) -> update your Identity doc\n" +
   "- user_update({ handle?, notes?, context? }) -> update the User doc (handle = what to call the user; not a postal address)\n" +
   "- soul_update({ coreTruths?, boundaries?, vibe?, continuity? }) -> update the Soul doc\n" +
@@ -136,6 +143,7 @@ const TOOL_PROMPT =
   "\n" +
   "Tool use rules:\n" +
   "- If the user asks you to use a tool, you MUST call an appropriate tool.\n" +
+  "- During bootstrap, prefer the bootstrap_* tools.\n" +
   "- After using tools, ALWAYS send a normal assistant reply with user-visible text.\n" +
   "- Always include a user-visible text reply. Never output reasoning-only.\n" +
   "- Never claim you have tools you do not have.\n" +
@@ -511,6 +519,187 @@ export class Chat extends AIChatAgent<Env> {
 
         const tools: ToolSet = {
           ...BASE_TOOLS,
+          bootstrap_set_user_handle: tool({
+            description:
+              "Bootstrap step: set what to call the user (a handle/nickname), persist it, and advance bootstrap stage.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                handle: {
+                  type: "string",
+                  minLength: 1,
+                  description:
+                    "What to call the user (handle/nickname). Not a physical address."
+                }
+              },
+              required: ["handle"],
+              additionalProperties: false
+            }),
+            strict: true,
+            execute: async ({ handle }: { handle: string }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const user = state.docs.user;
+                const nextHandle = handle.trim();
+
+                const nextUser = UserDoc.make({
+                  ...user,
+                  version: DocVersion.make(Number(user.version) + 1),
+                  name: nextHandle,
+                  addressAs: nextHandle,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  user: nextUser
+                });
+                const nextBootstrapState =
+                  state.bootstrapState.status === "complete"
+                    ? state.bootstrapState
+                    : AutopilotBootstrapState.make({
+                        ...state.bootstrapState,
+                        status:
+                          state.bootstrapState.status === "pending"
+                            ? "in_progress"
+                            : state.bootstrapState.status,
+                        stage: "ask_agent_name",
+                        startedAt: state.bootstrapState.startedAt ?? now
+                      });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  bootstrapState: nextBootstrapState,
+                  docs: nextDocs
+                });
+              });
+
+              return {
+                ok: true,
+                handle: updated.docs.user.addressAs,
+                stage: updated.bootstrapState.stage ?? null
+              };
+            }
+          }),
+          bootstrap_set_agent_name: tool({
+            description:
+              "Bootstrap step: set what to call the agent (identity name), persist it, and advance bootstrap stage.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  minLength: 1,
+                  description: "The name the user should call the agent."
+                }
+              },
+              required: ["name"],
+              additionalProperties: false
+            }),
+            strict: true,
+            execute: async ({ name }: { name: string }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const identity = state.docs.identity;
+                const nextName = name.trim();
+
+                const nextIdentity = IdentityDoc.make({
+                  ...identity,
+                  version: DocVersion.make(Number(identity.version) + 1),
+                  name: nextName,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  identity: nextIdentity
+                });
+                const nextBootstrapState =
+                  state.bootstrapState.status === "complete"
+                    ? state.bootstrapState
+                    : AutopilotBootstrapState.make({
+                        ...state.bootstrapState,
+                        status:
+                          state.bootstrapState.status === "pending"
+                            ? "in_progress"
+                            : state.bootstrapState.status,
+                        stage: "ask_vibe",
+                        startedAt: state.bootstrapState.startedAt ?? now
+                      });
+
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  bootstrapState: nextBootstrapState,
+                  docs: nextDocs
+                });
+              });
+
+              return {
+                ok: true,
+                name: updated.docs.identity.name,
+                stage: updated.bootstrapState.stage ?? null
+              };
+            }
+          }),
+          bootstrap_set_agent_vibe: tool({
+            description:
+              "Bootstrap step: set the agent operating vibe, persist it, and advance bootstrap stage.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                vibe: {
+                  type: "string",
+                  minLength: 1,
+                  description: "One short phrase describing the agent's operating vibe."
+                }
+              },
+              required: ["vibe"],
+              additionalProperties: false
+            }),
+            strict: true,
+            execute: async ({ vibe }: { vibe: string }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const identity = state.docs.identity;
+                const nextVibe = vibe.trim();
+
+                const nextIdentity = IdentityDoc.make({
+                  ...identity,
+                  version: DocVersion.make(Number(identity.version) + 1),
+                  vibe: nextVibe,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  identity: nextIdentity
+                });
+                const nextBootstrapState =
+                  state.bootstrapState.status === "complete"
+                    ? state.bootstrapState
+                    : AutopilotBootstrapState.make({
+                        ...state.bootstrapState,
+                        status:
+                          state.bootstrapState.status === "pending"
+                            ? "in_progress"
+                            : state.bootstrapState.status,
+                        stage: "ask_boundaries",
+                        startedAt: state.bootstrapState.startedAt ?? now
+                      });
+
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  bootstrapState: nextBootstrapState,
+                  docs: nextDocs
+                });
+              });
+
+              return {
+                ok: true,
+                vibe: updated.docs.identity.vibe,
+                stage: updated.bootstrapState.stage ?? null
+              };
+            }
+          }),
           identity_update: tool({
             description: "Update Identity fields in the Blueprint.",
             inputSchema: jsonSchema({
@@ -923,31 +1112,41 @@ export class Chat extends AIChatAgent<Env> {
               if (stage === "ask_user_handle") {
                 return {
                   system,
-                  toolChoice: { type: "tool", toolName: "user_update" } as const,
-                  activeTools: ["user_update"] as const
+                  toolChoice: {
+                    type: "tool",
+                    toolName: "bootstrap_set_user_handle"
+                  } as const,
+                  activeTools: ["bootstrap_set_user_handle"] as const
                 };
               }
 
               if (stage === "ask_agent_name") {
                 return {
                   system,
-                  toolChoice: { type: "tool", toolName: "identity_update" } as const,
-                  activeTools: ["identity_update"] as const
+                  toolChoice: {
+                    type: "tool",
+                    toolName: "bootstrap_set_agent_name"
+                  } as const,
+                  activeTools: ["bootstrap_set_agent_name"] as const
                 };
               }
 
               if (stage === "ask_vibe") {
                 return {
                   system,
-                  toolChoice: { type: "tool", toolName: "identity_update" } as const,
-                  activeTools: ["identity_update"] as const
+                  toolChoice: {
+                    type: "tool",
+                    toolName: "bootstrap_set_agent_vibe"
+                  } as const,
+                  activeTools: ["bootstrap_set_agent_vibe"] as const
                 };
               }
 
               if (stage === "ask_boundaries") {
                 return {
                   system,
-                  toolChoice: "required" as const,
+                  // Only call tools when the user actually provides boundaries or says "none".
+                  toolChoice: "auto" as const,
                   activeTools: ["soul_update", "bootstrap_complete"] as const
                 };
               }
