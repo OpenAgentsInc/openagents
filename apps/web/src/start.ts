@@ -48,7 +48,19 @@ export const startInstance = createStart(() => {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes('Invalid server function ID')) {
-        console.error('AuthKit middleware error (continuing unauthenticated):', err);
+        const runtime = makeAppRuntime(getAppConfig());
+        try {
+          await runtime.runPromise(
+            Effect.gen(function* () {
+              const telemetry = yield* TelemetryService;
+              yield* telemetry.withNamespace('auth.workos').log('error', 'authkit.middleware_error', {
+                message: msg,
+              });
+            }),
+          );
+        } catch {
+          // Never block a request on telemetry.
+        }
       }
       return opts.next();
     }
