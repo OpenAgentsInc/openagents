@@ -1,10 +1,20 @@
 import { Link } from '@tanstack/react-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '@workos/authkit-tanstack-react-start/client';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const SITE_TITLE = 'OpenAgents';
 const STORAGE_KEY = 'autopilot-sidebar-collapsed';
 const WIDTH_EXPANDED = '16rem';
 const WIDTH_COLLAPSED = '3rem';
+
+function getInitials(user: { firstName?: string | null; lastName?: string | null; email?: string | null }): string {
+  const first = user.firstName?.trim().slice(0, 1) ?? '';
+  const last = user.lastName?.trim().slice(0, 1) ?? '';
+  if (first || last) return (first + last).toUpperCase();
+  const email = user.email?.trim() ?? '';
+  if (email) return email.slice(0, 2).toUpperCase();
+  return '?';
+}
 
 function PanelIcon({ className }: { className?: string }) {
   return (
@@ -23,6 +33,130 @@ function PanelIcon({ className }: { className?: string }) {
       <rect x="3" y="3" width="7" height="18" rx="1" />
       <rect x="14" y="3" width="7" height="18" rx="1" />
     </svg>
+  );
+}
+
+function SidebarUserMenu() {
+  const { user, loading, signOut } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [menuOpen]);
+
+  if (loading || !user) return null;
+
+  const displayName =
+    [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Account';
+  const initials = getInitials(user);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setMenuOpen((o) => !o)}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+        aria-expanded={menuOpen}
+        aria-haspopup="true"
+        aria-label="User menu"
+      >
+        <span
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border-dark bg-surface-primary text-xs font-medium text-accent"
+          aria-hidden
+        >
+          {initials}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{displayName}</span>
+        <svg
+          className="size-4 shrink-0 text-text-dim"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {menuOpen && (
+        <div
+          className="absolute bottom-full left-0 right-0 mb-1 rounded border border-border-dark bg-bg-secondary py-1 shadow-lg"
+          role="menu"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              void signOut();
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+          >
+            Log out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SidebarUserCollapsed() {
+  const { user, loading, signOut } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [menuOpen]);
+
+  if (loading || !user) return null;
+  const initials = getInitials(user);
+
+  return (
+    <div className="relative flex justify-center" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setMenuOpen((o) => !o)}
+        className="flex size-8 items-center justify-center rounded-full border border-border-dark bg-surface-primary text-xs font-medium text-accent hover:bg-surface-primary/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+        aria-expanded={menuOpen}
+        aria-haspopup="true"
+        aria-label="User menu"
+      >
+        {initials}
+      </button>
+      {menuOpen && (
+        <div
+          className="absolute bottom-full left-1/2 mb-1 min-w-[120px] -translate-x-1/2 rounded border border-border-dark bg-bg-secondary py-1 shadow-lg"
+          role="menu"
+        >
+          <div className="truncate px-3 py-2 text-xs text-text-dim">{user.email}</div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              void signOut();
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+          >
+            Log out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -65,7 +199,7 @@ export function AutopilotSidebar() {
         {!collapsed ? <div className="p-2" /> : null}
       </div>
       <footer className="shrink-0 border-t border-border-dark p-2">
-        {!collapsed ? <div className="h-6" /> : null}
+        {collapsed ? <SidebarUserCollapsed /> : <SidebarUserMenu />}
       </footer>
     </aside>
   );

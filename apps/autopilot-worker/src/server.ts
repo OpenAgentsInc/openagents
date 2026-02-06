@@ -15,8 +15,14 @@ import {
   type ToolSet
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
-import { Schema } from "effect";
-import { Tool, type DseToolContract } from "@openagentsinc/dse";
+import { Effect, Schema } from "effect";
+import {
+  Lm,
+  Policy,
+  Predict,
+  Tool,
+  type DseToolContract
+} from "@openagentsinc/dse";
 import {
   AutopilotBootstrapState,
   AutopilotBlueprintStateV1,
@@ -29,10 +35,10 @@ import {
   DEFAULT_BOOTSTRAP_TEMPLATE_BODY,
   DocVersion,
   HeartbeatDoc,
+  CharacterDoc,
   IdentityDoc,
   MemoryEntry,
   MemoryEntryId,
-  SoulDoc,
   ToolsDoc,
   ThreadId,
   UserDoc,
@@ -42,11 +48,16 @@ import {
   renderBootstrapInstructions
 } from "./blueprint";
 import {
+  BASE_TOOL_NAMES,
   renderToolPrompt,
   toolContracts,
   toolContractsExport
 } from "./tools";
-import { moduleContractsExport, signatureContractsExport } from "./dseCatalog";
+import {
+  signatures,
+  moduleContractsExport,
+  signatureContractsExport
+} from "./dseCatalog";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
@@ -131,7 +142,7 @@ function buildSystemPrompt(options: {
   blueprintContext: string;
   bootstrapInstructions: string | null;
   identityVibe: string;
-  soulVibe: string;
+  characterVibe: string;
   bootstrapState: {
     status: string;
     stage: string | undefined;
@@ -144,7 +155,7 @@ function buildSystemPrompt(options: {
   system +=
     "\n\n# Voice Vibe (verbatim)\n" +
     `IDENTITY.vibe: ${options.identityVibe}\n` +
-    `SOUL.vibe: ${options.soulVibe}\n`;
+    `CHARACTER.vibe: ${options.characterVibe}\n`;
   system +=
     "\n\n# Bootstrap State\n" +
     `status: ${options.bootstrapState.status}\n` +
@@ -208,6 +219,12 @@ function normalizeLegacyBlueprintKeys(input: unknown): unknown {
     if ("ritual" in docs && !("bootstrap" in docs)) {
       docs.bootstrap = docs.ritual;
       delete docs.ritual;
+    }
+
+    // docs.soul -> docs.character
+    if ("soul" in docs && !("character" in docs)) {
+      docs.character = docs.soul;
+      delete docs.soul;
     }
   }
 
@@ -522,13 +539,17 @@ export class Chat extends AIChatAgent<Env> {
           toolNames?: ReadonlyArray<string>
         ) => {
           const blueprintContext = renderBlueprintContext(state, {
-            includeToolsDoc: true
+            // Only include the Tools doc when tools are active for this step.
+            includeToolsDoc: Boolean(toolNames && toolNames.length > 0)
           });
           const bootstrapInstructions = renderBootstrapInstructions(state);
-          const toolPrompt = toolNames ? renderToolPrompt({ toolNames }) : renderToolPrompt();
+          const toolPrompt =
+            toolNames && toolNames.length > 0
+              ? renderToolPrompt({ toolNames })
+              : null;
           return buildSystemPrompt({
             identityVibe: state.docs.identity.vibe,
-            soulVibe: state.docs.soul.vibe,
+            characterVibe: state.docs.character.vibe,
             bootstrapState: {
               status: state.bootstrapState.status,
               stage: state.bootstrapState.stage,
@@ -792,44 +813,44 @@ export class Chat extends AIChatAgent<Env> {
               };
             }
           ),
-          soul_update: aiToolFromContract(
-            toolContracts.soul_update,
+          character_update: aiToolFromContract(
+            toolContracts.character_update,
             async (input) => {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
-                const soul = state.docs.soul;
+                const character = state.docs.character;
 
                 const nextCoreTruths = input.coreTruths
-                  ? [...soul.coreTruths, ...input.coreTruths]
+                  ? [...character.coreTruths, ...input.coreTruths]
                       .map((s) => s.trim())
                       .filter(Boolean)
                       .filter((v, idx, arr) => arr.indexOf(v) === idx)
-                  : soul.coreTruths;
+                  : character.coreTruths;
 
                 const nextBoundaries = input.boundaries
-                  ? [...soul.boundaries, ...input.boundaries]
+                  ? [...character.boundaries, ...input.boundaries]
                       .map((s) => s.trim())
                       .filter(Boolean)
                       .filter((v, idx, arr) => arr.indexOf(v) === idx)
-                  : soul.boundaries;
+                  : character.boundaries;
 
-                const nextSoul = SoulDoc.make({
-                  ...soul,
-                  version: DocVersion.make(Number(soul.version) + 1),
+                const nextCharacter = CharacterDoc.make({
+                  ...character,
+                  version: DocVersion.make(Number(character.version) + 1),
                   coreTruths: nextCoreTruths,
                   boundaries: nextBoundaries,
-                  vibe: input.vibe ?? soul.vibe,
-                  continuity: input.continuity ?? soul.continuity,
+                  vibe: input.vibe ?? character.vibe,
+                  continuity: input.continuity ?? character.continuity,
                   updatedAt: now,
                   updatedBy: "agent"
                 });
                 const nextDocs = BlueprintDocs.make({
                   ...state.docs,
-                  soul: nextSoul
+                  character: nextCharacter
                 });
 
                 // Bootstrap completion: the final prompt is "boundaries/preferences".
-                // If the agent calls soul_update at that stage, we treat bootstrap as complete.
+                // If the agent calls character_update at that stage, we treat bootstrap as complete.
                 let nextBootstrapState = state.bootstrapState;
                 if (
                   state.bootstrapState.status !== "complete" &&
@@ -852,7 +873,7 @@ export class Chat extends AIChatAgent<Env> {
               });
               return {
                 ok: true,
-                version: Number(updated.docs.soul.version)
+                version: Number(updated.docs.character.version)
               };
             }
           ),
@@ -963,15 +984,71 @@ export class Chat extends AIChatAgent<Env> {
           )
         };
 
-	        const result = streamText({
-	          system: buildSystem(blueprint),
-	          prepareStep: async ({ stepNumber }) => {
+        const lastUserMessageText = (() => {
+          for (let i = recentMessages.length - 1; i >= 0; i--) {
+            const m: any = recentMessages[i];
+            if (!m || m.role !== "user") continue;
+            const parts: any[] = Array.isArray(m.parts) ? m.parts : [];
+            const text = parts
+              .filter((p) => p && typeof p === "object" && p.type === "text")
+              .map((p) => String((p as any).text ?? ""))
+              .join("");
+            if (text.trim()) return text.trim();
+          }
+          return "";
+        })();
+
+        const dseLmClient: Lm.LmClient = {
+          complete: (req) =>
+            Effect.tryPromise({
+              try: async () => {
+                const systemText = req.messages.find((m) => m.role === "system")
+                  ?.content;
+                const messages = req.messages
+                  .filter((m) => m.role !== "system")
+                  .map((m) => ({ role: m.role, content: m.content }));
+
+                const res = await generateText({
+                  model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
+                  ...(systemText ? { system: systemText } : {}),
+                  messages: messages as any,
+                  maxOutputTokens: req.maxTokens ?? 256,
+                  ...(typeof req.temperature === "number"
+                    ? { temperature: req.temperature }
+                    : {}),
+                  ...(typeof req.topP === "number" ? { topP: req.topP } : {})
+                });
+
+                return { text: res.text };
+              },
+              catch: (cause) =>
+                Lm.LmClientError.make({
+                  message: "DSE LM client failed",
+                  cause
+                })
+            })
+        };
+
+        const selectBlueprintTool = Predict.make(signatures.blueprint_select_tool);
+
+        const result = streamText({
+          system: buildSystem(blueprint, BASE_TOOL_NAMES),
+          prepareStep: async ({ stepNumber }) => {
             const fresh = this.ensureBlueprintState();
-            const system = buildSystem(fresh);
+
+            // After the first step (tool call), produce text only. This keeps the loop
+            // deterministic and prevents cascading tool calls / tool list exposure.
+            if (stepNumber > 0) {
+              return {
+                system: buildSystem(fresh),
+                toolChoice: "none" as const,
+                activeTools: []
+              };
+            }
 
             // Bootstrap: force the appropriate update tool based on the current stage.
             // This prevents the model from "confirming" in text without persisting state.
-            if (fresh.bootstrapState.status !== "complete" && stepNumber === 0) {
+            if (fresh.bootstrapState.status !== "complete") {
               const stage = fresh.bootstrapState.stage ?? "ask_user_handle";
 
               if (stage === "ask_user_handle") {
@@ -1011,7 +1088,10 @@ export class Chat extends AIChatAgent<Env> {
               }
 
               if (stage === "ask_boundaries") {
-                const activeTools = ["soul_update", "bootstrap_complete"];
+                const activeTools = [
+                  "character_update",
+                  "bootstrap_complete"
+                ];
                 return {
                   system: buildSystem(fresh, activeTools),
                   // Only call tools when the user actually provides boundaries or says "none".
@@ -1020,10 +1100,59 @@ export class Chat extends AIChatAgent<Env> {
                 };
               }
 
-              return { system };
+              const activeTools = [...BASE_TOOL_NAMES];
+              return {
+                system: buildSystem(fresh, activeTools),
+                toolChoice: "auto" as const,
+                activeTools
+              };
             }
 
-            return { system };
+            // Post-bootstrap: keep the default tool surface minimal (base tools only).
+            // If the message looks like a Blueprint update request, route to exactly one
+            // Blueprint tool via a DSE signature, and force that tool call.
+            if (!lastUserMessageText) {
+              const activeTools = [...BASE_TOOL_NAMES];
+              return {
+                system: buildSystem(fresh, activeTools),
+                toolChoice: "auto" as const,
+                activeTools
+              };
+            }
+
+            try {
+              const selection = await Effect.runPromise(
+                selectBlueprintTool({
+                  message: lastUserMessageText,
+                  blueprintHint: {
+                    userHandle: fresh.docs.user.addressAs,
+                    agentName: fresh.docs.identity.name
+                  }
+                }).pipe(
+                  Effect.provideService(Lm.LmClientService, dseLmClient),
+                  Effect.provide(Policy.layerInMemory())
+                )
+              );
+
+              if (selection.action === "tool") {
+                const toolName = selection.toolName as string;
+                const activeTools = [toolName];
+                return {
+                  system: buildSystem(fresh, activeTools),
+                  toolChoice: { type: "tool", toolName } as const,
+                  activeTools
+                };
+              }
+            } catch (error) {
+              console.warn("[dse] blueprint tool routing failed; falling back", error);
+            }
+
+            const activeTools = [...BASE_TOOL_NAMES];
+            return {
+              system: buildSystem(fresh, activeTools),
+              toolChoice: "auto" as const,
+              activeTools
+            };
           },
 	          messages: await convertToModelMessages(recentMessages),
 	          model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),

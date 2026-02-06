@@ -36,6 +36,31 @@ const Vibe = Schema.NonEmptyString.annotations({
   description: "One short phrase describing the vibe."
 });
 
+const BlueprintToolName = Schema.Literal(
+  "identity_update",
+  "user_update",
+  "character_update",
+  "tools_update_notes",
+  "heartbeat_set_checklist",
+  "memory_append",
+  "blueprint_export"
+).annotations({
+  description: "A Blueprint update tool name."
+});
+
+const BlueprintToolSelection = Schema.Union(
+  Schema.Struct({
+    action: Schema.Literal("none")
+  }),
+  Schema.Struct({
+    action: Schema.Literal("tool"),
+    toolName: BlueprintToolName
+  })
+).annotations({
+  description:
+    "Whether the user requested a Blueprint update. If yes, select exactly one Blueprint tool."
+});
+
 const defaultParams = {
   ...Params.emptyParamsV1,
   decode: { mode: "strict_json", maxRepairs: 0 }
@@ -168,6 +193,92 @@ export const signatures = {
       ]
     },
     defaults: { params: defaultParams }
+  }),
+
+  blueprint_select_tool: Signature.make({
+    id: "@openagents/autopilot/blueprint/SelectTool.v1",
+    input: Schema.Struct({
+      message: Schema.String.annotations({
+        description: "The user's raw message text."
+      }),
+      blueprintHint: Schema.Struct({
+        userHandle: Schema.String.annotations({
+          description: "Current user handle (what to call the user)."
+        }),
+        agentName: Schema.String.annotations({
+          description: "Current agent name (what the user calls the agent)."
+        })
+      }).annotations({
+        description:
+          "Small Blueprint hint to help with intent classification. Do not leak or request personal info."
+      })
+    }),
+    output: BlueprintToolSelection,
+    prompt: {
+      version: 1,
+      blocks: [
+        PromptIR.system(
+          "You are a strict router for Autopilot. You decide if a message requires a Blueprint update tool."
+        ),
+        PromptIR.instruction(
+          "Given the user's message, decide whether Autopilot should call a Blueprint update tool.\n" +
+            "\n" +
+            "Rules:\n" +
+            "- Output MUST be JSON only.\n" +
+            "- If the user is asking to change Autopilot's identity, name, vibe, or boundaries, select the best tool.\n" +
+            "- If the user is asking to change what Autopilot calls the user (handle/nickname), select user_update.\n" +
+            "- If the user is asking to export the Blueprint, select blueprint_export.\n" +
+            "- If the user is asking a normal question or chatting, output action=none.\n" +
+            "- Never select a tool for personal info requests (address, email, phone, legal name, etc.).\n" +
+            "\n" +
+            "Pick exactly one tool when action=tool."
+        ),
+        PromptIR.fewShot([
+          {
+            id: "ex1",
+            input: {
+              message: "Change your vibe to angry capslock.",
+              blueprintHint: { userHandle: "Jimbo", agentName: "Autopilot" }
+            },
+            output: { action: "tool", toolName: "identity_update" } as const
+          },
+          {
+            id: "ex2",
+            input: {
+              message: "Call me TimeLord.",
+              blueprintHint: { userHandle: "Unknown", agentName: "Autopilot" }
+            },
+            output: { action: "tool", toolName: "user_update" } as const
+          },
+          {
+            id: "ex3",
+            input: {
+              message: "Add a boundary: never ask for personal info.",
+              blueprintHint: { userHandle: "Ada", agentName: "Autopilot" }
+            },
+            output: { action: "tool", toolName: "character_update" } as const
+          },
+          {
+            id: "ex4",
+            input: {
+              message: "Export my blueprint JSON.",
+              blueprintHint: { userHandle: "Ada", agentName: "Autopilot" }
+            },
+            output: { action: "tool", toolName: "blueprint_export" } as const
+          },
+          {
+            id: "ex5",
+            input: {
+              message: "What can you do?",
+              blueprintHint: { userHandle: "Ada", agentName: "Autopilot" }
+            },
+            output: { action: "none" } as const
+          }
+        ]),
+        PromptIR.outputJsonSchema(JSONSchema.make(BlueprintToolSelection))
+      ]
+    },
+    defaults: { params: defaultParams }
   })
 } satisfies Record<string, DseSignature<any, any>>;
 
@@ -183,6 +294,14 @@ export const modules: ReadonlyArray<DseModuleContractExportV1> = [
       signatures.bootstrap_extract_agent_name.id,
       signatures.bootstrap_extract_agent_vibe.id
     ]
+  },
+  {
+    format: "openagents.dse.module_contract",
+    formatVersion: 1,
+    moduleId: "@openagents/autopilot/BlueprintUpdate.v1",
+    description:
+      "Blueprint update module: route a user message to exactly one Blueprint update tool (identity/user/character/memory/tools/heartbeat/export), or select none.",
+    signatureIds: [signatures.blueprint_select_tool.id]
   }
 ];
 

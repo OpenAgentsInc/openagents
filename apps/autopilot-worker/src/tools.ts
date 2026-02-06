@@ -123,11 +123,11 @@ export const toolContracts = {
     output: Schema.Struct({ ok: Schema.Boolean, version: Schema.Number })
   }),
 
-  soul_update: Tool.make({
-    name: "soul_update",
-    description: "Update Soul fields in the Blueprint.",
+  character_update: Tool.make({
+    name: "character_update",
+    description: "Update Character fields in the Blueprint.",
     usage:
-      "soul_update({ coreTruths?, boundaries?, vibe?, continuity? }) -> update the Soul doc",
+      "character_update({ coreTruths?, boundaries?, vibe?, continuity? }) -> update the Character doc",
     input: Schema.Struct({
       coreTruths: Schema.optional(Schema.Array(Schema.String)),
       boundaries: Schema.optional(Schema.Array(Schema.String)),
@@ -209,6 +209,16 @@ export type AutopilotToolName = keyof typeof toolContracts;
 
 export const BASE_TOOL_NAMES = ["get_time", "echo"] as const satisfies ReadonlyArray<AutopilotToolName>;
 
+export const BLUEPRINT_TOOL_NAMES = [
+  "identity_update",
+  "user_update",
+  "character_update",
+  "tools_update_notes",
+  "heartbeat_set_checklist",
+  "memory_append",
+  "blueprint_export"
+] as const satisfies ReadonlyArray<AutopilotToolName>;
+
 // Stable ordering for prompt rendering (and future UI usage).
 export const TOOL_ORDER = [
   "get_time",
@@ -218,7 +228,7 @@ export const TOOL_ORDER = [
   "bootstrap_set_agent_vibe",
   "identity_update",
   "user_update",
-  "soul_update",
+  "character_update",
   "tools_update_notes",
   "heartbeat_set_checklist",
   "memory_append",
