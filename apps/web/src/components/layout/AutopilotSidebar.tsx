@@ -1,6 +1,7 @@
-import { Link } from '@tanstack/react-router';
-import { useAuth } from '@workos/authkit-tanstack-react-start/client';
+import { useAtomSet, useAtomValue } from '@effect-atom/atom-react';
+import { Link, useRouter } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SessionAtom } from '../../effect/atoms/session';
 import { clearRootAuthCache } from '../../routes/__root';
 
 const SITE_TITLE = 'OpenAgents';
@@ -15,6 +16,26 @@ function getInitials(user: { firstName?: string | null; lastName?: string | null
   const email = user.email?.trim() ?? '';
   if (email) return email.slice(0, 2).toUpperCase();
   return '?';
+}
+
+function useSignOutAction() {
+  const router = useRouter();
+  const setSession = useAtomSet(SessionAtom);
+
+  return useCallback(async () => {
+    try {
+      await fetch('/api/auth/signout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // Best-effort sign-out; always clear local session state.
+    } finally {
+      clearRootAuthCache();
+      setSession({ userId: null, user: null });
+      router.navigate({ href: '/' }).catch(() => {});
+    }
+  }, [router, setSession]);
 }
 
 function PanelIcon({ className }: { className?: string }) {
@@ -38,7 +59,9 @@ function PanelIcon({ className }: { className?: string }) {
 }
 
 function SidebarUserMenu() {
-  const { user, loading, signOut } = useAuth();
+  const session = useAtomValue(SessionAtom);
+  const user = session.user;
+  const signOut = useSignOutAction();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -51,7 +74,7 @@ function SidebarUserMenu() {
     return () => document.removeEventListener('click', handleClick);
   }, [menuOpen]);
 
-  if (loading || !user) return null;
+  if (!user) return null;
 
   const displayName =
     [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Account';
@@ -97,7 +120,6 @@ function SidebarUserMenu() {
             role="menuitem"
             onClick={() => {
               setMenuOpen(false);
-              clearRootAuthCache();
               void signOut();
             }}
             className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
@@ -111,7 +133,9 @@ function SidebarUserMenu() {
 }
 
 function SidebarUserCollapsed() {
-  const { user, loading, signOut } = useAuth();
+  const session = useAtomValue(SessionAtom);
+  const user = session.user;
+  const signOut = useSignOutAction();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -124,7 +148,7 @@ function SidebarUserCollapsed() {
     return () => document.removeEventListener('click', handleClick);
   }, [menuOpen]);
 
-  if (loading || !user) return null;
+  if (!user) return null;
   const initials = getInitials(user);
 
   return (
@@ -150,7 +174,6 @@ function SidebarUserCollapsed() {
             role="menuitem"
             onClick={() => {
               setMenuOpen(false);
-              clearRootAuthCache();
               void signOut();
             }}
             className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
