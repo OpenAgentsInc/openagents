@@ -46,6 +46,7 @@ import {
   toolContracts,
   toolContractsExport
 } from "./tools";
+import { moduleContractsExport, signatureContractsExport } from "./dseCatalog";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
@@ -425,6 +426,20 @@ export class Chat extends AIChatAgent<Env> {
         return new Response("Method not allowed", { status: 405 });
       }
       return Response.json(toolContractsExport());
+    }
+
+    if (url.pathname.endsWith("/signature-contracts")) {
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+      return Response.json(signatureContractsExport());
+    }
+
+    if (url.pathname.endsWith("/module-contracts")) {
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+      return Response.json(moduleContractsExport());
     }
 
     if (url.pathname.endsWith("/blueprint")) {

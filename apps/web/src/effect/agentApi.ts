@@ -12,6 +12,10 @@ export type AgentApi = {
   readonly getBlueprint: (chatId: string) => Effect.Effect<unknown, AgentApiError>;
   readonly getMessages: (chatId: string) => Effect.Effect<Array<UIMessage>, AgentApiError>;
   readonly getToolContracts: (chatId: string) => Effect.Effect<Array<AgentToolContract>, AgentApiError>;
+  readonly getSignatureContracts: (
+    chatId: string,
+  ) => Effect.Effect<Array<DseSignatureContract>, AgentApiError>;
+  readonly getModuleContracts: (chatId: string) => Effect.Effect<Array<DseModuleContract>, AgentApiError>;
   readonly resetAgent: (chatId: string) => Effect.Effect<void, AgentApiError>;
   readonly importBlueprint: (chatId: string, blueprint: unknown) => Effect.Effect<void, AgentApiError>;
 };
@@ -22,6 +26,25 @@ export type AgentToolContract = {
   readonly usage?: string;
   readonly inputSchemaJson: unknown;
   readonly outputSchemaJson: unknown | null;
+};
+
+export type DseSignatureContract = {
+  readonly format: string;
+  readonly formatVersion: number;
+  readonly signatureId: string;
+  readonly inputSchemaJson: unknown;
+  readonly outputSchemaJson: unknown;
+  readonly promptIr: unknown;
+  readonly defaultParams: unknown;
+  readonly defaultConstraints: unknown;
+};
+
+export type DseModuleContract = {
+  readonly format: string;
+  readonly formatVersion: number;
+  readonly moduleId: string;
+  readonly description: string;
+  readonly signatureIds: ReadonlyArray<string>;
 };
 
 export class AgentApiService extends Context.Tag('@openagents/web/AgentApi')<
@@ -133,6 +156,50 @@ export const AgentApiLive = Layer.effect(
       });
     });
 
+    const getSignatureContracts = Effect.fn('AgentApi.getSignatureContracts')(function* (chatId: string) {
+      const url = `/agents/chat/${chatId}/signature-contracts`;
+      const response = yield* fetchNoStore({ operation: 'getSignatureContracts', url });
+      if (!response.ok) {
+        yield* AgentApiError.make({
+          operation: 'getSignatureContracts',
+          status: response.status,
+          error: new Error(`HTTP ${response.status}`),
+        });
+      }
+
+      return yield* Effect.tryPromise({
+        try: () => response.json() as Promise<Array<DseSignatureContract>>,
+        catch: (error) =>
+          AgentApiError.make({
+            operation: 'getSignatureContracts',
+            status: response.status,
+            error,
+          }),
+      });
+    });
+
+    const getModuleContracts = Effect.fn('AgentApi.getModuleContracts')(function* (chatId: string) {
+      const url = `/agents/chat/${chatId}/module-contracts`;
+      const response = yield* fetchNoStore({ operation: 'getModuleContracts', url });
+      if (!response.ok) {
+        yield* AgentApiError.make({
+          operation: 'getModuleContracts',
+          status: response.status,
+          error: new Error(`HTTP ${response.status}`),
+        });
+      }
+
+      return yield* Effect.tryPromise({
+        try: () => response.json() as Promise<Array<DseModuleContract>>,
+        catch: (error) =>
+          AgentApiError.make({
+            operation: 'getModuleContracts',
+            status: response.status,
+            error,
+          }),
+      });
+    });
+
     const resetAgent = Effect.fn('AgentApi.resetAgent')(function* (chatId: string) {
       const url = `/agents/chat/${chatId}/reset-agent`;
       const response = yield* fetchNoStore({
@@ -186,6 +253,8 @@ export const AgentApiLive = Layer.effect(
       getBlueprint,
       getMessages,
       getToolContracts,
+      getSignatureContracts,
+      getModuleContracts,
       resetAgent,
       importBlueprint,
     });
