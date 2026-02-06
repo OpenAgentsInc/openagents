@@ -20,9 +20,9 @@ import {
   BLUEPRINT_FORMAT,
   BLUEPRINT_FORMAT_VERSION,
   BlueprintDocs,
-  BootstrapRitualTemplate,
-  CURRENT_RITUAL_VERSION,
-  DEFAULT_RITUAL_BODY,
+  BootstrapTemplate,
+  CURRENT_BOOTSTRAP_TEMPLATE_VERSION,
+  DEFAULT_BOOTSTRAP_TEMPLATE_BODY,
   DocVersion,
   HeartbeatDoc,
   IdentityDoc,
@@ -35,7 +35,7 @@ import {
   UserId,
   makeDefaultBlueprintState,
   renderBlueprintContext,
-  renderBootstrapRitual
+  renderBootstrapInstructions
 } from "./blueprint";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
@@ -143,7 +143,7 @@ const TOOL_PROMPT =
 
 function buildSystemPrompt(options: {
   blueprintContext: string;
-  bootstrapRitual: string | null;
+  bootstrapInstructions: string | null;
   identityVibe: string;
   soulVibe: string;
 }) {
@@ -154,13 +154,42 @@ function buildSystemPrompt(options: {
     `SOUL.vibe: ${options.soulVibe}\n`;
   system += "\n\n# Blueprint\n" + options.blueprintContext.trim() + "\n";
 
-  if (options.bootstrapRitual) {
-    system += "\n\n# Bootstrap\n" + options.bootstrapRitual.trim() + "\n";
+  if (options.bootstrapInstructions) {
+    system += "\n\n# Bootstrap\n" + options.bootstrapInstructions.trim() + "\n";
   }
 
   system += "\n\n" + TOOL_PROMPT;
 
   return system;
+}
+
+function normalizeLegacyBlueprintKeys(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+
+  const root = input as Record<string, unknown>;
+
+  // legacy bootstrapState key -> bootstrapState.templateVersion
+  if (root.bootstrapState && typeof root.bootstrapState === "object") {
+    const bootstrapState = root.bootstrapState as Record<string, unknown>;
+    if (
+      "ritualVersion" in bootstrapState &&
+      !("templateVersion" in bootstrapState)
+    ) {
+      bootstrapState.templateVersion = bootstrapState.ritualVersion;
+      delete bootstrapState.ritualVersion;
+    }
+  }
+
+  // docs.<legacy> -> docs.bootstrap
+  if (root.docs && typeof root.docs === "object") {
+    const docs = root.docs as Record<string, unknown>;
+    if ("ritual" in docs && !("bootstrap" in docs)) {
+      docs.bootstrap = docs.ritual;
+      delete docs.ritual;
+    }
+  }
+
+  return root;
 }
 
 /**
@@ -190,7 +219,8 @@ export class Chat extends AIChatAgent<Env> {
 
     try {
       const parsed: unknown = JSON.parse(row.json);
-      return Schema.decodeUnknownSync(AutopilotBlueprintStateV1)(parsed);
+      const normalized = normalizeLegacyBlueprintKeys(parsed);
+      return Schema.decodeUnknownSync(AutopilotBlueprintStateV1)(normalized);
     } catch (error) {
       console.error("[blueprint] Failed to decode state; resetting.", error);
       return null;
@@ -210,21 +240,21 @@ export class Chat extends AIChatAgent<Env> {
   private maybeMigrateBlueprintState(
     state: AutopilotBlueprintStateV1
   ): AutopilotBlueprintStateV1 {
-    const ritualVersion = Number(state.bootstrapState.ritualVersion);
-    if (ritualVersion >= CURRENT_RITUAL_VERSION) return state;
+    const templateVersion = Number(state.bootstrapState.templateVersion);
+    if (templateVersion >= CURRENT_BOOTSTRAP_TEMPLATE_VERSION) return state;
 
-    const nextRitual = BootstrapRitualTemplate.make({
-      ...state.docs.ritual,
-      version: DocVersion.make(Number(state.docs.ritual.version) + 1),
-      body: DEFAULT_RITUAL_BODY
+    const nextBootstrap = BootstrapTemplate.make({
+      ...state.docs.bootstrap,
+      version: DocVersion.make(Number(state.docs.bootstrap.version) + 1),
+      body: DEFAULT_BOOTSTRAP_TEMPLATE_BODY
     });
     const nextDocs = BlueprintDocs.make({
       ...state.docs,
-      ritual: nextRitual
+      bootstrap: nextBootstrap
     });
     const nextBootstrapState = AutopilotBootstrapState.make({
       ...state.bootstrapState,
-      ritualVersion: CURRENT_RITUAL_VERSION
+      templateVersion: CURRENT_BOOTSTRAP_TEMPLATE_VERSION
     });
 
     return AutopilotBlueprintStateV1.make({
@@ -327,7 +357,8 @@ export class Chat extends AIChatAgent<Env> {
 
         let decoded: AutopilotBlueprintV1;
         try {
-          decoded = Schema.decodeUnknownSync(AutopilotBlueprintV1)(body);
+          const normalized = normalizeLegacyBlueprintKeys(body);
+          decoded = Schema.decodeUnknownSync(AutopilotBlueprintV1)(normalized);
         } catch (error) {
           console.error("[blueprint] Import decode failed.", error);
           return Response.json(
@@ -375,12 +406,12 @@ export class Chat extends AIChatAgent<Env> {
           const blueprintContext = renderBlueprintContext(state, {
             includeToolsDoc: true
           });
-          const ritual = renderBootstrapRitual(state);
+          const bootstrapInstructions = renderBootstrapInstructions(state);
           return buildSystemPrompt({
             identityVibe: state.docs.identity.vibe,
             soulVibe: state.docs.soul.vibe,
             blueprintContext,
-            bootstrapRitual: ritual
+            bootstrapInstructions
           });
         };
 

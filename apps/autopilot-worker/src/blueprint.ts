@@ -3,7 +3,7 @@ import { Schema } from "effect";
 export const BLUEPRINT_FORMAT = "openagents.autopilot.blueprint" as const;
 export const BLUEPRINT_FORMAT_VERSION = 1 as const;
 
-export const CURRENT_RITUAL_VERSION = 5 as const;
+export const CURRENT_BOOTSTRAP_TEMPLATE_VERSION = 5 as const;
 
 export const UserId = Schema.String.pipe(Schema.brand("UserId"));
 export type UserId = typeof UserId.Type;
@@ -32,8 +32,8 @@ export class AgentRulesDoc extends Schema.Class<AgentRulesDoc>("AgentRulesDoc")(
   body: Schema.String
 }) {}
 
-export class BootstrapRitualTemplate extends Schema.Class<BootstrapRitualTemplate>(
-  "BootstrapRitualTemplate"
+export class BootstrapTemplate extends Schema.Class<BootstrapTemplate>(
+  "BootstrapTemplate"
 )({
   version: DocVersion,
   body: Schema.String
@@ -112,12 +112,12 @@ export class AutopilotBootstrapState extends Schema.Class<AutopilotBootstrapStat
   status: BootstrapStatus,
   startedAt: Schema.optional(Schema.DateFromString),
   completedAt: Schema.optional(Schema.DateFromString),
-  ritualVersion: Schema.Int
+  templateVersion: Schema.Int
 }) {}
 
 export class BlueprintDocs extends Schema.Class<BlueprintDocs>("BlueprintDocs")({
   rules: AgentRulesDoc,
-  ritual: BootstrapRitualTemplate,
+  bootstrap: BootstrapTemplate,
   identity: IdentityDoc,
   user: UserDoc,
   soul: SoulDoc,
@@ -152,7 +152,7 @@ export class AutopilotBlueprintV1 extends Schema.Class<AutopilotBlueprintV1>(
   audit: Schema.optional(Schema.Array(Schema.Unknown))
 }) {}
 
-export const DEFAULT_RITUAL_BODY =
+export const DEFAULT_BOOTSTRAP_TEMPLATE_BODY =
   "Bootstrap (Blueprint):\n" +
   "\n" +
   "Keep it short. Terminal tone. No cheerleading.\n" +
@@ -195,7 +195,7 @@ export function makeDefaultBlueprintState(
       userId,
       threadId,
       status: "pending",
-      ritualVersion: CURRENT_RITUAL_VERSION
+      templateVersion: CURRENT_BOOTSTRAP_TEMPLATE_VERSION
     }),
     docs: BlueprintDocs.make({
       rules: AgentRulesDoc.make({
@@ -204,9 +204,9 @@ export function makeDefaultBlueprintState(
           "You are Autopilot, a persistent personal AI agent.\n" +
           "Follow the Blueprint and keep it up to date using the Blueprint tools when available.\n"
       }),
-      ritual: BootstrapRitualTemplate.make({
+      bootstrap: BootstrapTemplate.make({
         version: v1,
-        body: DEFAULT_RITUAL_BODY
+        body: DEFAULT_BOOTSTRAP_TEMPLATE_BODY
       }),
       identity: IdentityDoc.make({
         version: v1,
@@ -342,9 +342,9 @@ export function renderBlueprintContext(
     .join("\n");
 }
 
-export function renderBootstrapRitual(
+export function renderBootstrapInstructions(
   blueprint: AutopilotBlueprintStateV1
 ): string | null {
   if (blueprint.bootstrapState.status === "complete") return null;
-  return blueprint.docs.ritual.body.trim();
+  return blueprint.docs.bootstrap.body.trim();
 }

@@ -15,7 +15,7 @@ OpenClaw implements bootstrap via seeded workspace files and prompt injection:
 - Hook override point: `~/code/openclaw/src/agents/bootstrap-hooks.ts` + `src/hooks/internal-hooks.ts`
 - Onboarding hatch UX: `~/code/openclaw/src/wizard/onboarding.finalize.ts` (sends "Wake up, my friend!" if `BOOTSTRAP.md` exists)
 
-We keep the *product intent* (one-time "birth certificate" ritual + durable identity/user/soul docs) but change the storage and update mechanism.
+We keep the *product intent* (one-time "birth certificate" bootstrap + durable identity/user/soul docs) but change the storage and update mechanism.
 
 ## Goals
 
@@ -59,7 +59,7 @@ Benefits over DB-stored Markdown blobs:
 OpenClaw uses these canonical bootstrap files:
 
 - `AGENTS.md`: global rules, "if BOOTSTRAP exists, run it"
-- `BOOTSTRAP.md`: one-time ritual instructions
+- `BOOTSTRAP.md`: one-time setup instructions
 - `IDENTITY.md`: name, creature, vibe, emoji, avatar
 - `USER.md`: user name, address style, timezone, notes
 - `SOUL.md`: core truths, boundaries, vibe, continuity
@@ -74,7 +74,7 @@ Proposed mapping:
 | OpenClaw artifact | Autopilot record type | Notes |
 | --- | --- | --- |
 | `AGENTS.md` | `AgentRulesDoc` (global) | Usually code-defined; optionally DB-backed for hotfix/versioning. |
-| `BOOTSTRAP.md` | `BootstrapRitualTemplate` (global) + `AutopilotBootstrapState` (per user) | Template defines the ritual; state tracks whether it is pending/complete. |
+| `BOOTSTRAP.md` | `BootstrapTemplate` (global) + `AutopilotBootstrapState` (per user) | Template defines the setup instructions; state tracks whether it is pending/complete. |
 | `IDENTITY.md` | `IdentityDoc` | Structured fields, versioned. |
 | `USER.md` | `UserDoc` | Structured fields, versioned. |
 | `SOUL.md` | `SoulDoc` | Prefer structured arrays for truths/boundaries. |
@@ -126,9 +126,9 @@ export class AgentRulesDoc extends Schema.Class<AgentRulesDoc>("AgentRulesDoc")(
   body: Schema.String,
 }) {}
 
-// Global ritual definition (OpenClaw BOOTSTRAP.md analog).
-export class BootstrapRitualTemplate extends Schema.Class<BootstrapRitualTemplate>(
-  "BootstrapRitualTemplate"
+// Global bootstrap template (OpenClaw BOOTSTRAP.md analog).
+export class BootstrapTemplate extends Schema.Class<BootstrapTemplate>(
+  "BootstrapTemplate"
 )({
   version: DocVersion,
   // Rendered instructions (string) plus optional structured steps later.
@@ -188,8 +188,8 @@ export class AutopilotBootstrapState extends Schema.Class<AutopilotBootstrapStat
   status: BootstrapStatus,
   startedAt: Schema.optional(Schema.Date),
   completedAt: Schema.optional(Schema.Date),
-  // "Birth certificate" configuration can evolve without changing prompt code.
-  ritualVersion: Schema.Int,
+  // The bootstrap template can evolve without changing prompt code.
+  templateVersion: Schema.Int,
 }) {}
 ```
 
@@ -251,7 +251,7 @@ export class AutopilotBlueprintV1 extends Schema.Class<AutopilotBlueprintV1>(
   bootstrapState: AutopilotBootstrapState, // encoded form
   docs: Schema.Struct({
     rules: AgentRulesDoc,
-    ritual: BootstrapRitualTemplate,
+    bootstrap: BootstrapTemplate,
     identity: IdentityDoc,
     user: UserDoc,
     soul: SoulDoc,
@@ -274,7 +274,7 @@ Import semantics (MVP):
 
 ## Bootstrap Flow (Autopilot)
 
-OpenClaw triggers the ritual when `BOOTSTRAP.md` exists. In Autopilot, we trigger when `AutopilotBootstrapState.status != "complete"`.
+OpenClaw triggers bootstrap when `BOOTSTRAP.md` exists. In Autopilot, we trigger when `AutopilotBootstrapState.status != "complete"`.
 
 ### 1) Ensure "workspace" records exist (write-if-missing)
 
@@ -304,7 +304,7 @@ On each turn:
 5. Build the final system prompt:
   - Base system prompt (global Autopilot rules)
   - + injected bootstrap docs ("context files")
-  - + if `status != complete`: include "bootstrap ritual" instructions (the BOOTSTRAP equivalent)
+  - + if `status != complete`: include "bootstrap instructions" (the BOOTSTRAP equivalent)
 
 ### 3) Completing bootstrap (replaces "delete BOOTSTRAP.md")
 
@@ -385,7 +385,7 @@ Additionally:
 
 - Add schemas + storage in DO
 - Add `status: pending|complete`
-- Inject a short ritual instruction when pending
+- Inject a short bootstrap instruction when pending
 - Add tools to update identity/user/soul and to `bootstrap.complete()`
 - Render docs into system prompt (truncated)
 
@@ -415,7 +415,7 @@ Additionally:
   - Visibility filtering (main vs subagent)
 - Integration tests (worker):
   - New thread starts with `bootstrap.status = pending`
-  - After calling update tools + `bootstrap.complete`, status persists and ritual instructions stop injecting
+  - After calling update tools + `bootstrap.complete`, status persists and bootstrap instructions stop injecting
   - `get-messages` includes tool-call/tool-result parts for updates
 
 ## Implementation Status (2026-02-06)
@@ -425,7 +425,7 @@ Shipped (DO-only, no Convex mirror):
 - Stored Blueprint state in the Autopilot DO SQLite DB (`autopilot_blueprint_state`).
 - Added Blueprint export endpoint: `GET /agents/chat/:id/blueprint` (Blueprint JSON, schema-encoded).
 - Added Blueprint import endpoint: `POST /agents/chat/:id/blueprint` (validate + import Blueprint JSON).
-- Wired birth prompt injection: render Blueprint docs into the system prompt each turn, and inject ritual instructions while `bootstrap.status != "complete"`.
+- Wired birth prompt injection: render Blueprint docs into the system prompt each turn, and inject bootstrap instructions while `bootstrap.status != "complete"`.
 - Added Blueprint tools (server-side, AI SDK tools): `identity_update`, `user_update`, `soul_update`, `tools_update_notes`, `heartbeat_set_checklist`, `memory_append`, `bootstrap_complete`, `blueprint_export`.
 - Added worker tests covering Blueprint export/import (`apps/autopilot-worker/tests/index.test.ts`).
 
