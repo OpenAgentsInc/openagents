@@ -61,6 +61,7 @@ const BASE_TOOLS: ToolSet = {
       },
       additionalProperties: false
     }),
+    strict: true,
     execute: async ({ timeZone }: { timeZone?: string }) => {
       const now = new Date();
       const iso = now.toISOString();
@@ -100,6 +101,7 @@ const BASE_TOOLS: ToolSet = {
       required: ["text"],
       additionalProperties: false
     }),
+    strict: true,
     execute: async ({ text }: { text: string }) => ({ text })
   })
 };
@@ -111,6 +113,7 @@ const SYSTEM_PROMPT_BASE =
   "- Calm, direct, terminal-like.\n" +
   "- No cheerleading, no filler, no exclamation points.\n" +
   "- Prefer short sentences.\n" +
+  "- Do not reveal internal reasoning or planning.\n" +
   "\n" +
   "Important:\n" +
   "- Do not claim you can browse the web. You cannot.\n" +
@@ -132,63 +135,11 @@ const TOOL_PROMPT =
   "Tool use rules:\n" +
   "- If the user asks you to use a tool, you MUST call an appropriate tool.\n" +
   "- After using tools, ALWAYS send a normal assistant reply with user-visible text.\n" +
+  "- Always include a user-visible text reply. Never output reasoning-only.\n" +
   "- Never claim you have tools you do not have.\n" +
   "- If the user asks you to search/browse the web, be explicit that you currently cannot.\n";
 
-function shouldForceToolChoice(recentMessages: ReadonlyArray<unknown>) {
-  // Heuristic: if the user explicitly asks to use tools, require at least one tool call.
-  // This avoids "reasoning-only" replies that never actually invoke a tool.
-  const lastUser = [...recentMessages].reverse().find((m: any) => m?.role === "user");
-  const parts: ReadonlyArray<any> = Array.isArray((lastUser as any)?.parts)
-    ? (lastUser as any).parts
-    : [];
-  const text = parts
-    .filter((p) => p && typeof p === "object" && p.type === "text" && typeof p.text === "string")
-    .map((p) => p.text)
-    .join("")
-    .trim();
-
-  if (!text) return false;
-
-  return (
-    /\b(use|try|call|run)\b[\s\S]{0,40}\btools?\b/i.test(text)
-  );
-}
-
-function getLastUserText(recentMessages: ReadonlyArray<unknown>) {
-  const lastUser = [...recentMessages].reverse().find((m: any) => m?.role === "user");
-  const parts: ReadonlyArray<any> = Array.isArray((lastUser as any)?.parts)
-    ? (lastUser as any).parts
-    : [];
-  return parts
-    .filter((p) => p && typeof p === "object" && p.type === "text" && typeof p.text === "string")
-    .map((p) => p.text)
-    .join("")
-    .trim();
-}
-
-function shouldEnableTools(
-  recentMessages: ReadonlyArray<unknown>,
-  bootstrapStatus: "pending" | "in_progress" | "complete"
-) {
-  if (bootstrapStatus !== "complete") return true;
-
-  const text = getLastUserText(recentMessages);
-  if (!text) return false;
-
-  // Preserve streaming + reasoning for normal chat by default. Tools are opt-in.
-  return (
-    shouldForceToolChoice(recentMessages) ||
-    /\b(get_time|echo|blueprint|identity_update|user_update|soul_update)\b/i.test(
-      text
-    ) ||
-    /\bwhat(?:'s| is)\s+the\s+time\b/i.test(text) ||
-    /\bcurrent\s+time\b/i.test(text)
-  );
-}
-
 function buildSystemPrompt(options: {
-  toolsEnabled: boolean;
   blueprintContext: string;
   bootstrapRitual: string | null;
 }) {
@@ -199,9 +150,7 @@ function buildSystemPrompt(options: {
     system += "\n\n# Bootstrap\n" + options.bootstrapRitual.trim() + "\n";
   }
 
-  if (options.toolsEnabled) {
-    system += "\n\n" + TOOL_PROMPT;
-  }
+  system += "\n\n" + TOOL_PROMPT;
 
   return system;
 }
@@ -414,353 +363,375 @@ export class Chat extends AIChatAgent<Env> {
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        const toolsEnabled = shouldEnableTools(
-          recentMessages,
-          blueprint.bootstrapState.status
-        );
-        const forceTool = toolsEnabled && shouldForceToolChoice(recentMessages);
+        const buildSystem = (state: AutopilotBlueprintStateV1) => {
+          const blueprintContext = renderBlueprintContext(state, {
+            includeToolsDoc: true
+          });
+          const ritual = renderBootstrapRitual(state);
+          return buildSystemPrompt({
+            blueprintContext,
+            bootstrapRitual: ritual
+          });
+        };
 
-        const blueprintContext = renderBlueprintContext(blueprint, {
-          includeToolsDoc: toolsEnabled
-        });
-        const ritual = renderBootstrapRitual(blueprint);
-
-        const system = buildSystemPrompt({
-          toolsEnabled,
-          blueprintContext,
-          bootstrapRitual: ritual
-        });
-
-        const tools: ToolSet = toolsEnabled
-          ? {
-              ...BASE_TOOLS,
-              identity_update: tool({
-                description: "Update Identity fields in the Blueprint.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {
-                    name: { type: "string" },
-                    creature: { type: "string" },
-                    vibe: { type: "string" },
-                    emoji: { type: "string" },
-                    avatar: { type: "string" }
-                  },
-                  additionalProperties: false
-                }),
-                execute: async (input: {
-                  name?: string;
-                  creature?: string;
-                  vibe?: string;
-                  emoji?: string;
-                  avatar?: string;
-                }) => {
-                  const updated = this.updateBlueprintState((state) => {
-                    const now = new Date();
-                    const identity = state.docs.identity;
-                    const nextIdentity = IdentityDoc.make({
-                      ...identity,
-                      version: DocVersion.make(Number(identity.version) + 1),
-                      name: input.name ?? identity.name,
-                      creature: input.creature ?? identity.creature,
-                      vibe: input.vibe ?? identity.vibe,
-                      emoji: input.emoji ?? identity.emoji,
-                      avatar: input.avatar ?? identity.avatar,
-                      updatedAt: now,
-                      updatedBy: "agent"
-                    });
-                    const nextDocs = BlueprintDocs.make({
-                      ...state.docs,
-                      identity: nextIdentity
-                    });
-                    return AutopilotBlueprintStateV1.make({
-                      ...state,
-                      docs: nextDocs
-                    });
-                  });
-                  return {
-                    ok: true,
-                    version: Number(updated.docs.identity.version)
-                  };
-                }
-              }),
-              user_update: tool({
-                description: "Update User fields in the Blueprint.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {
-                    name: { type: "string" },
-                    addressAs: { type: "string" },
-                    notes: { type: "string" },
-                    context: { type: "string" }
-                  },
-                  additionalProperties: false
-                }),
-                execute: async (input: {
-                  name?: string;
-                  addressAs?: string;
-                  notes?: string;
-                  context?: string;
-                }) => {
-                  const updated = this.updateBlueprintState((state) => {
-                    const now = new Date();
-                    const user = state.docs.user;
-                    // Bootstrap guardrail: if we only get one of `name`/`addressAs`,
-                    // mirror it to the other when the stored value is still unset.
-                    const storedNameUnset = user.name === "Unknown";
-                    const storedAddressUnset = user.addressAs === "Unknown";
-                    const mirrorNameToAddress =
-                      Boolean(input.name) && !input.addressAs && storedAddressUnset;
-                    const mirrorAddressToName =
-                      Boolean(input.addressAs) && !input.name && storedNameUnset;
-
-                    const nextName =
-                      (mirrorAddressToName ? input.addressAs : input.name) ??
-                      user.name;
-                    const nextAddressAs =
-                      (mirrorNameToAddress ? input.name : input.addressAs) ??
-                      user.addressAs;
-
-                    const nextUser = UserDoc.make({
-                      ...user,
-                      version: DocVersion.make(Number(user.version) + 1),
-                      name: nextName,
-                      addressAs: nextAddressAs,
-                      pronouns: user.pronouns,
-                      timeZone: user.timeZone,
-                      notes: input.notes ?? user.notes,
-                      context: input.context ?? user.context,
-                      updatedAt: now,
-                      updatedBy: "agent"
-                    });
-                    const nextDocs = BlueprintDocs.make({
-                      ...state.docs,
-                      user: nextUser
-                    });
-                    return AutopilotBlueprintStateV1.make({
-                      ...state,
-                      docs: nextDocs
-                    });
-                  });
-                  return {
-                    ok: true,
-                    version: Number(updated.docs.user.version)
-                  };
-                }
-              }),
-              soul_update: tool({
-                description: "Update Soul fields in the Blueprint.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {
-                    coreTruths: { type: "array", items: { type: "string" } },
-                    boundaries: { type: "array", items: { type: "string" } },
-                    vibe: { type: "string" },
-                    continuity: { type: "string" }
-                  },
-                  additionalProperties: false
-                }),
-                execute: async (input: {
-                  coreTruths?: string[];
-                  boundaries?: string[];
-                  vibe?: string;
-                  continuity?: string;
-                }) => {
-                  const updated = this.updateBlueprintState((state) => {
-                    const now = new Date();
-                    const soul = state.docs.soul;
-                    const nextSoul = SoulDoc.make({
-                      ...soul,
-                      version: DocVersion.make(Number(soul.version) + 1),
-                      coreTruths: input.coreTruths ?? soul.coreTruths,
-                      boundaries: input.boundaries ?? soul.boundaries,
-                      vibe: input.vibe ?? soul.vibe,
-                      continuity: input.continuity ?? soul.continuity,
-                      updatedAt: now,
-                      updatedBy: "agent"
-                    });
-                    const nextDocs = BlueprintDocs.make({
-                      ...state.docs,
-                      soul: nextSoul
-                    });
-                    return AutopilotBlueprintStateV1.make({
-                      ...state,
-                      docs: nextDocs
-                    });
-                  });
-                  return {
-                    ok: true,
-                    version: Number(updated.docs.soul.version)
-                  };
-                }
-              }),
-              tools_update_notes: tool({
-                description: "Update the Tools doc notes in the Blueprint.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {
-                    notes: { type: "string" }
-                  },
-                  required: ["notes"],
-                  additionalProperties: false
-                }),
-                execute: async ({ notes }: { notes: string }) => {
-                  const updated = this.updateBlueprintState((state) => {
-                    const now = new Date();
-                    const toolsDoc = state.docs.tools;
-                    const nextTools = ToolsDoc.make({
-                      ...toolsDoc,
-                      version: DocVersion.make(Number(toolsDoc.version) + 1),
-                      notes,
-                      updatedAt: now,
-                      updatedBy: "agent"
-                    });
-                    const nextDocs = BlueprintDocs.make({
-                      ...state.docs,
-                      tools: nextTools
-                    });
-                    return AutopilotBlueprintStateV1.make({
-                      ...state,
-                      docs: nextDocs
-                    });
-                  });
-                  return {
-                    ok: true,
-                    version: Number(updated.docs.tools.version)
-                  };
-                }
-              }),
-              heartbeat_set_checklist: tool({
-                description: "Replace the Heartbeat checklist in the Blueprint.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {
-                    checklist: { type: "array", items: { type: "string" } }
-                  },
-                  required: ["checklist"],
-                  additionalProperties: false
-                }),
-                execute: async ({ checklist }: { checklist: string[] }) => {
-                  const updated = this.updateBlueprintState((state) => {
-                    const now = new Date();
-                    const heartbeat = state.docs.heartbeat;
-                    const nextHeartbeat = HeartbeatDoc.make({
-                      ...heartbeat,
-                      version: DocVersion.make(Number(heartbeat.version) + 1),
-                      checklist,
-                      updatedAt: now,
-                      updatedBy: "agent"
-                    });
-                    const nextDocs = BlueprintDocs.make({
-                      ...state.docs,
-                      heartbeat: nextHeartbeat
-                    });
-                    return AutopilotBlueprintStateV1.make({
-                      ...state,
-                      docs: nextDocs
-                    });
-                  });
-                  return {
-                    ok: true,
-                    version: Number(updated.docs.heartbeat.version)
-                  };
-                }
-              }),
-              memory_append: tool({
-                description: "Append a new Memory entry to the Blueprint.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {
-                    kind: { type: "string", enum: ["daily", "long_term"] },
-                    title: { type: "string" },
-                    body: { type: "string" },
-                    visibility: { type: "string", enum: ["main_only", "all"] }
-                  },
-                  required: ["kind", "title", "body", "visibility"],
-                  additionalProperties: false
-                }),
-                execute: async (input: {
-                  kind: "daily" | "long_term";
-                  title: string;
-                  body: string;
-                  visibility: "main_only" | "all";
-                }) => {
-                  const updated = this.updateBlueprintState((state) => {
-                    const entry = MemoryEntry.make({
-                      id: MemoryEntryId.make(crypto.randomUUID()),
-                      createdAt: new Date(),
-                      kind: input.kind,
-                      title: input.title,
-                      body: input.body,
-                      visibility: input.visibility
-                    });
-                    return AutopilotBlueprintStateV1.make({
-                      ...state,
-                      memory: [...state.memory, entry]
-                    });
-                  });
-                  return { ok: true, count: updated.memory.length };
-                }
-              }),
-              bootstrap_complete: tool({
-                description: "Mark the Blueprint bootstrap sequence as complete.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {},
-                  additionalProperties: false
-                }),
-                execute: async () => {
-                  const updated = this.updateBlueprintState((state) => {
-                    const now = new Date();
-                    const nextBootstrapState = AutopilotBootstrapState.make({
-                      ...state.bootstrapState,
-                      status: "complete",
-                      startedAt: state.bootstrapState.startedAt ?? now,
-                      completedAt: now
-                    });
-                    return AutopilotBlueprintStateV1.make({
-                      ...state,
-                      bootstrapState: nextBootstrapState
-                    });
-                  });
-                  return { ok: true, status: updated.bootstrapState.status };
-                }
-              }),
-              blueprint_export: tool({
-                description: "Return the export URL for this thread's Blueprint JSON.",
-                inputSchema: jsonSchema({
-                  type: "object",
-                  properties: {},
-                  additionalProperties: false
-                }),
-                execute: async () => ({
-                  ok: true,
-                  url: `/agents/chat/${this.name}/blueprint`,
-                  format: BLUEPRINT_FORMAT,
-                  formatVersion: BLUEPRINT_FORMAT_VERSION
-                })
-              })
+        const tools: ToolSet = {
+          ...BASE_TOOLS,
+          identity_update: tool({
+            description: "Update Identity fields in the Blueprint.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                creature: { type: "string" },
+                vibe: { type: "string" },
+                emoji: { type: "string" },
+                avatar: { type: "string" }
+              },
+              additionalProperties: false
+            }),
+            strict: true,
+            inputExamples: [
+              { input: { name: "Autopilot" } },
+              { input: { vibe: "calm, direct, terminal-like" } }
+            ],
+            execute: async (input: {
+              name?: string;
+              creature?: string;
+              vibe?: string;
+              emoji?: string;
+              avatar?: string;
+            }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const identity = state.docs.identity;
+                const nextIdentity = IdentityDoc.make({
+                  ...identity,
+                  version: DocVersion.make(Number(identity.version) + 1),
+                  name: input.name ?? identity.name,
+                  creature: input.creature ?? identity.creature,
+                  vibe: input.vibe ?? identity.vibe,
+                  emoji: input.emoji ?? identity.emoji,
+                  avatar: input.avatar ?? identity.avatar,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  identity: nextIdentity
+                });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  docs: nextDocs
+                });
+              });
+              return {
+                ok: true,
+                version: Number(updated.docs.identity.version)
+              };
             }
-          : {};
+          }),
+          user_update: tool({
+            description: "Update User fields in the Blueprint.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                addressAs: { type: "string" },
+                notes: { type: "string" },
+                context: { type: "string" }
+              },
+              additionalProperties: false
+            }),
+            strict: true,
+            inputExamples: [
+              { input: { name: "TimeLord", addressAs: "TimeLord" } },
+              { input: { addressAs: "Jimbo" } }
+            ],
+            execute: async (input: {
+              name?: string;
+              addressAs?: string;
+              notes?: string;
+              context?: string;
+            }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const user = state.docs.user;
+                // Bootstrap guardrail: if we only get one of `name`/`addressAs`,
+                // mirror it to the other when the stored value is still unset.
+                const storedNameUnset = user.name === "Unknown";
+                const storedAddressUnset = user.addressAs === "Unknown";
+                const mirrorNameToAddress =
+                  Boolean(input.name) && !input.addressAs && storedAddressUnset;
+                const mirrorAddressToName =
+                  Boolean(input.addressAs) && !input.name && storedNameUnset;
+
+                const nextName =
+                  (mirrorAddressToName ? input.addressAs : input.name) ??
+                  user.name;
+                const nextAddressAs =
+                  (mirrorNameToAddress ? input.name : input.addressAs) ??
+                  user.addressAs;
+
+                const nextUser = UserDoc.make({
+                  ...user,
+                  version: DocVersion.make(Number(user.version) + 1),
+                  name: nextName,
+                  addressAs: nextAddressAs,
+                  pronouns: user.pronouns,
+                  timeZone: user.timeZone,
+                  notes: input.notes ?? user.notes,
+                  context: input.context ?? user.context,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  user: nextUser
+                });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  docs: nextDocs
+                });
+              });
+              return {
+                ok: true,
+                version: Number(updated.docs.user.version)
+              };
+            }
+          }),
+          soul_update: tool({
+            description: "Update Soul fields in the Blueprint.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                coreTruths: { type: "array", items: { type: "string" } },
+                boundaries: { type: "array", items: { type: "string" } },
+                vibe: { type: "string" },
+                continuity: { type: "string" }
+              },
+              additionalProperties: false
+            }),
+            strict: true,
+            inputExamples: [
+              {
+                input: {
+                  boundaries: ["No web browsing.", "Ask before destructive actions."]
+                }
+              }
+            ],
+            execute: async (input: {
+              coreTruths?: string[];
+              boundaries?: string[];
+              vibe?: string;
+              continuity?: string;
+            }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const soul = state.docs.soul;
+                const nextSoul = SoulDoc.make({
+                  ...soul,
+                  version: DocVersion.make(Number(soul.version) + 1),
+                  coreTruths: input.coreTruths ?? soul.coreTruths,
+                  boundaries: input.boundaries ?? soul.boundaries,
+                  vibe: input.vibe ?? soul.vibe,
+                  continuity: input.continuity ?? soul.continuity,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  soul: nextSoul
+                });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  docs: nextDocs
+                });
+              });
+              return {
+                ok: true,
+                version: Number(updated.docs.soul.version)
+              };
+            }
+          }),
+          tools_update_notes: tool({
+            description: "Update the Tools doc notes in the Blueprint.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                notes: { type: "string" }
+              },
+              required: ["notes"],
+              additionalProperties: false
+            }),
+            strict: true,
+            inputExamples: [{ input: { notes: "Tools are DO-backed. No web browsing." } }],
+            execute: async ({ notes }: { notes: string }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const toolsDoc = state.docs.tools;
+                const nextTools = ToolsDoc.make({
+                  ...toolsDoc,
+                  version: DocVersion.make(Number(toolsDoc.version) + 1),
+                  notes,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  tools: nextTools
+                });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  docs: nextDocs
+                });
+              });
+              return {
+                ok: true,
+                version: Number(updated.docs.tools.version)
+              };
+            }
+          }),
+          heartbeat_set_checklist: tool({
+            description: "Replace the Heartbeat checklist in the Blueprint.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                checklist: { type: "array", items: { type: "string" } }
+              },
+              required: ["checklist"],
+              additionalProperties: false
+            }),
+            strict: true,
+            inputExamples: [{ input: { checklist: ["Ask before deleting data."] } }],
+            execute: async ({ checklist }: { checklist: string[] }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const heartbeat = state.docs.heartbeat;
+                const nextHeartbeat = HeartbeatDoc.make({
+                  ...heartbeat,
+                  version: DocVersion.make(Number(heartbeat.version) + 1),
+                  checklist,
+                  updatedAt: now,
+                  updatedBy: "agent"
+                });
+                const nextDocs = BlueprintDocs.make({
+                  ...state.docs,
+                  heartbeat: nextHeartbeat
+                });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  docs: nextDocs
+                });
+              });
+              return {
+                ok: true,
+                version: Number(updated.docs.heartbeat.version)
+              };
+            }
+          }),
+          memory_append: tool({
+            description: "Append a new Memory entry to the Blueprint.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {
+                kind: { type: "string", enum: ["daily", "long_term"] },
+                title: { type: "string" },
+                body: { type: "string" },
+                visibility: { type: "string", enum: ["main_only", "all"] }
+              },
+              required: ["kind", "title", "body", "visibility"],
+              additionalProperties: false
+            }),
+            strict: true,
+            execute: async (input: {
+              kind: "daily" | "long_term";
+              title: string;
+              body: string;
+              visibility: "main_only" | "all";
+            }) => {
+              const updated = this.updateBlueprintState((state) => {
+                const entry = MemoryEntry.make({
+                  id: MemoryEntryId.make(crypto.randomUUID()),
+                  createdAt: new Date(),
+                  kind: input.kind,
+                  title: input.title,
+                  body: input.body,
+                  visibility: input.visibility
+                });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  memory: [...state.memory, entry]
+                });
+              });
+              return { ok: true, count: updated.memory.length };
+            }
+          }),
+          bootstrap_complete: tool({
+            description: "Mark the Blueprint bootstrap sequence as complete.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {},
+              additionalProperties: false
+            }),
+            strict: true,
+            execute: async () => {
+              const updated = this.updateBlueprintState((state) => {
+                const now = new Date();
+                const nextBootstrapState = AutopilotBootstrapState.make({
+                  ...state.bootstrapState,
+                  status: "complete",
+                  startedAt: state.bootstrapState.startedAt ?? now,
+                  completedAt: now
+                });
+                return AutopilotBlueprintStateV1.make({
+                  ...state,
+                  bootstrapState: nextBootstrapState
+                });
+              });
+              return { ok: true, status: updated.bootstrapState.status };
+            }
+          }),
+          blueprint_export: tool({
+            description: "Return the export URL for this thread's Blueprint JSON.",
+            inputSchema: jsonSchema({
+              type: "object",
+              properties: {},
+              additionalProperties: false
+            }),
+            strict: true,
+            execute: async () => ({
+              ok: true,
+              url: `/agents/chat/${this.name}/blueprint`,
+              format: BLUEPRINT_FORMAT,
+              formatVersion: BLUEPRINT_FORMAT_VERSION
+            })
+          })
+        };
 
         const result = streamText({
-          system,
+          system: buildSystem(blueprint),
+          prepareStep: async () => ({
+            system: buildSystem(this.ensureBlueprintState())
+          }),
           messages: await convertToModelMessages(recentMessages),
           model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           stopWhen: stepCountIs(10),
-          ...(toolsEnabled
-            ? {
-                tools,
-                // When tools are enabled, keep default 'auto' unless we need to force a tool call.
-                ...(forceTool ? { toolChoice: "required" as const } : {})
-              }
-            : {}),
+          tools,
           // Base class uses this callback to persist messages + stream metadata.
           onFinish: onFinish as unknown as StreamTextOnFinishCallback<ToolSet>,
           ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {})
         });
 
-        writer.merge(result.toUIMessageStream());
+        writer.merge(
+          result.toUIMessageStream({
+            sendReasoning: false,
+            onError: (error) => {
+              console.error("[chat] stream error", error);
+              return "Internal error.";
+            }
+          })
+        );
       }
     });
 
