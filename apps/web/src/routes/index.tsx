@@ -65,17 +65,17 @@ function Home() {
       >
         <DotsBackground
           distance={whitePreset.distance}
-          dotsColor="hsla(0, 0%, 100%, 0.03)"
+          dotsColor="hsla(0, 0%, 100%, 0.12)"
           dotsSettings={{ type: 'circle', size: 2 }}
         />
       </div>
       <div className="absolute inset-0 z-10 flex min-h-full min-w-full flex-col p-4">
         <header className="mx-auto flex w-full max-w-5xl items-center justify-between py-2">
-          <div className="text-sm font-semibold text-white">OpenAgents</div>
+          <div className="select-none text-lg font-semibold text-white">OpenAgents</div>
           <div className="flex items-center gap-3">
             <a
               href={signInUrl}
-              className="inline-flex items-center justify-center rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm hover:bg-white/20"
+              className="text-sm font-medium text-white/90 hover:text-white"
             >
               Log in
             </a>
@@ -103,12 +103,6 @@ function Home() {
                 className="inline-flex w-full max-w-xs items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-white/90 sm:w-auto"
               >
                 Start for free
-              </a>
-              <a
-                href={signInUrl}
-                className="inline-flex w-full max-w-xs items-center justify-center rounded-md bg-white/10 px-5 py-3 text-sm font-medium text-white backdrop-blur-sm hover:bg-white/20 sm:w-auto"
-              >
-                Log in
               </a>
             </div>
           </div>

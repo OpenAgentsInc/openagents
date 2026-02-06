@@ -6,6 +6,7 @@ import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Streamdown } from 'streamdown';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
+import { AutopilotSidebar } from '../components/layout/AutopilotSidebar';
 import { KranoxFrame } from '../components/KranoxFrame';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
@@ -771,19 +772,125 @@ function ChatPage() {
       </div>
 
       <div className="relative z-10 flex flex-col h-screen overflow-hidden">
-      {/* Header - overseer-style */}
-      <header className="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
-        <span className="text-accent font-mono font-bold text-base tracking-[0.12em] leading-none uppercase drop-shadow-[0_0_16px_rgba(255,255,255,0.18)]">
-          OpenAgents
-        </span>
-        <div className="h-6 w-px bg-border-dark/70" aria-hidden="true" />
-        <span className="text-xs text-text-dim uppercase tracking-wider">Autopilot</span>
-      </header>
-
-	      {/* Main area */}
+	      {/* Main area: left sidebar (nav) | center (header + chat) | right (Blueprint) */}
 	      <main className="flex-1 min-h-0 w-full flex overflow-hidden">
-	        {/* Blueprint sidebar */}
-	        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-r border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
+	        <AutopilotSidebar />
+
+	        {/* Center: header + chat */}
+	        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+	          <header className="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
+	            <span className="text-xs text-text-dim uppercase tracking-wider">Autopilot</span>
+	          </header>
+
+	          <div className="flex-1 min-h-0 flex overflow-hidden">
+	            {/* Chat - center */}
+	            <section className="flex-1 min-h-0 flex flex-col p-4">
+	          <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
+	            <KranoxFrame className="flex-1 min-h-0">
+	              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
+	                <div
+	                  ref={scrollRef}
+	                  onScroll={recomputeIsAtBottom}
+	                  className="flex-1 overflow-y-auto overseer-scroll pr-1 scroll-smooth"
+	                >
+	                  <div className="flex flex-col gap-3">
+	                    {renderedMessages.map((m) => {
+                        const userText = m.renderParts
+                          .filter((p): p is Extract<RenderPart, { kind: 'text' }> => p.kind === 'text')
+                          .map((p) => p.text)
+                          .join('');
+
+                        return (
+                          <div
+                            key={m.id}
+                            className={[
+                              'max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono',
+                              m.role === 'user'
+                                ? 'self-end rounded border bg-accent-subtle text-text-primary border-accent-muted'
+                                : 'self-start text-text-primary',
+                            ].join(' ')}
+                          >
+                            {m.role === 'user' ? (
+                              <div className="whitespace-pre-wrap">{userText}</div>
+                            ) : (
+                              <div className="flex flex-col gap-2">
+                                {m.renderParts.map((p, idx) => {
+                                  if (p.kind === 'text') {
+                                    return (
+                                      <Streamdown
+                                        key={`t:${idx}`}
+                                        mode={p.state === 'streaming' ? 'streaming' : 'static'}
+                                        isAnimating={p.state === 'streaming'}
+                                      >
+                                        {p.text}
+                                      </Streamdown>
+                                    );
+                                  }
+
+                                  return (
+                                    <ToolCard
+                                      key={`tool:${p.toolCallId}`}
+                                      part={p}
+                                      meta={toolContractsByName?.[p.toolName]}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+	                    <div ref={bottomRef} />
+	                  </div>
+	                </div>
+
+	                <div className="relative mt-3">
+	                  {!isAtBottom && renderedMessages.length > 0 ? (
+	                    <button
+	                      type="button"
+	                      onClick={() => scrollToBottom('smooth')}
+	                      className="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+	                    >
+	                      Scroll to bottom
+	                    </button>
+	                  ) : null}
+	                  <form
+	                    onSubmit={onSubmit}
+	                    className="flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+	                  >
+	                    <input
+	                      ref={inputRef}
+	                      autoFocus
+	                      value={input}
+	                      onChange={(e) => setInput(e.target.value)}
+	                      placeholder="Message Autopilot…"
+	                      className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+	                    />
+	                    {isBusy ? (
+	                      <button
+	                        type="button"
+	                        onClick={() => void chat.stop()}
+	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+	                      >
+	                        Stop
+	                      </button>
+	                    ) : (
+	                      <button
+	                        type="submit"
+	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
+	                      >
+	                        Send
+	                      </button>
+	                    )}
+	                  </form>
+	                </div>
+	              </div>
+	            </KranoxFrame>
+	          </div>
+	        </section>
+
+	        {/* Blueprint - right sidebar */}
+	        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-l border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
 	          <div className="flex flex-col h-full min-h-0 w-full">
 	            <div className="flex items-center justify-between h-11 px-3 border-b border-border-dark">
 	              <div className="text-xs text-text-dim uppercase tracking-wider">Blueprint</div>
@@ -905,112 +1012,8 @@ function ChatPage() {
 	            </div>
 	          </div>
 	        </aside>
-
-        {/* Chat */}
-        <section className="flex-1 min-h-0 flex flex-col p-4">
-	          <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
-	            <KranoxFrame className="flex-1 min-h-0">
-	              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
-	                <div
-	                  ref={scrollRef}
-	                  onScroll={recomputeIsAtBottom}
-	                  className="flex-1 overflow-y-auto overseer-scroll pr-1 scroll-smooth"
-	                >
-	                  <div className="flex flex-col gap-3">
-	                    {renderedMessages.map((m) => {
-                        const userText = m.renderParts
-                          .filter((p): p is Extract<RenderPart, { kind: 'text' }> => p.kind === 'text')
-                          .map((p) => p.text)
-                          .join('');
-
-                        return (
-                          <div
-                            key={m.id}
-                            className={[
-                              'max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono',
-                              m.role === 'user'
-                                ? 'self-end rounded border bg-accent-subtle text-text-primary border-accent-muted'
-                                : 'self-start text-text-primary',
-                            ].join(' ')}
-                          >
-                            {m.role === 'user' ? (
-                              <div className="whitespace-pre-wrap">{userText}</div>
-                            ) : (
-                              <div className="flex flex-col gap-2">
-                                {m.renderParts.map((p, idx) => {
-                                  if (p.kind === 'text') {
-                                    return (
-                                      <Streamdown
-                                        key={`t:${idx}`}
-                                        mode={p.state === 'streaming' ? 'streaming' : 'static'}
-                                        isAnimating={p.state === 'streaming'}
-                                      >
-                                        {p.text}
-                                      </Streamdown>
-                                    );
-                                  }
-
-                                  return (
-                                    <ToolCard
-                                      key={`tool:${p.toolCallId}`}
-                                      part={p}
-                                      meta={toolContractsByName?.[p.toolName]}
-                                    />
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-	                    <div ref={bottomRef} />
-	                  </div>
-	                </div>
-
-	                <div className="relative mt-3">
-	                  {!isAtBottom && renderedMessages.length > 0 ? (
-	                    <button
-	                      type="button"
-	                      onClick={() => scrollToBottom('smooth')}
-	                      className="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
-	                    >
-	                      Scroll to bottom
-	                    </button>
-	                  ) : null}
-	                  <form
-	                    onSubmit={onSubmit}
-	                    className="flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
-	                  >
-	                    <input
-	                      ref={inputRef}
-	                      autoFocus
-	                      value={input}
-	                      onChange={(e) => setInput(e.target.value)}
-	                      placeholder="Message Autopilot…"
-	                      className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-	                    />
-	                    {isBusy ? (
-	                      <button
-	                        type="button"
-	                        onClick={() => void chat.stop()}
-	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
-	                      >
-	                        Stop
-	                      </button>
-	                    ) : (
-	                      <button
-	                        type="submit"
-	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
-	                      >
-	                        Send
-	                      </button>
-	                    )}
-	                  </form>
-	                </div>
-	              </div>
-	            </KranoxFrame>
 	          </div>
-	        </section>
+	        </div>
       </main>
 
       {/* Control panel - bottom right */}
