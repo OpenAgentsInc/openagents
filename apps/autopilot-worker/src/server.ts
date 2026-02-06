@@ -146,12 +146,28 @@ function buildSystemPrompt(options: {
   bootstrapInstructions: string | null;
   identityVibe: string;
   soulVibe: string;
+  bootstrapState: {
+    status: string;
+    stage: string | undefined;
+    startedAt: Date | undefined;
+    completedAt: Date | undefined;
+  };
 }) {
   let system = SYSTEM_PROMPT_BASE;
   system +=
     "\n\n# Voice Vibe (verbatim)\n" +
     `IDENTITY.vibe: ${options.identityVibe}\n` +
     `SOUL.vibe: ${options.soulVibe}\n`;
+  system +=
+    "\n\n# Bootstrap State\n" +
+    `status: ${options.bootstrapState.status}\n` +
+    (options.bootstrapState.stage ? `stage: ${options.bootstrapState.stage}\n` : "") +
+    (options.bootstrapState.startedAt
+      ? `startedAt: ${options.bootstrapState.startedAt.toISOString()}\n`
+      : "") +
+    (options.bootstrapState.completedAt
+      ? `completedAt: ${options.bootstrapState.completedAt.toISOString()}\n`
+      : "");
   system += "\n\n# Blueprint\n" + options.blueprintContext.trim() + "\n";
 
   if (options.bootstrapInstructions) {
@@ -264,10 +280,52 @@ export class Chat extends AIChatAgent<Env> {
     });
   }
 
+  private ensureBootstrapStage(
+    state: AutopilotBlueprintStateV1
+  ): AutopilotBlueprintStateV1 {
+    // If bootstrap is complete, stage is irrelevant. Normalize to unset.
+    if (state.bootstrapState.status === "complete") {
+      if (state.bootstrapState.stage == null) return state;
+      return AutopilotBlueprintStateV1.make({
+        ...state,
+        bootstrapState: AutopilotBootstrapState.make({
+          ...state.bootstrapState,
+          stage: undefined
+        })
+      });
+    }
+
+    if (state.bootstrapState.stage != null) return state;
+
+    // Best-effort inference for older states without a stage field.
+    // This keeps the flow deterministic without requiring filesystem/stateful prompts.
+    const userKnown = state.docs.user.addressAs !== "Unknown";
+    const agentNamed = state.docs.identity.name !== "Autopilot";
+    const vibeChanged = state.docs.identity.vibe !== "calm, direct, pragmatic";
+
+    const stage = !userKnown
+      ? "ask_user_handle"
+      : !agentNamed
+        ? "ask_agent_name"
+        : !vibeChanged
+          ? "ask_vibe"
+          : "ask_boundaries";
+
+    return AutopilotBlueprintStateV1.make({
+      ...state,
+      bootstrapState: AutopilotBootstrapState.make({
+        ...state.bootstrapState,
+        stage
+      })
+    });
+  }
+
   private ensureBlueprintState(): AutopilotBlueprintStateV1 {
     const existing = this.loadBlueprintState();
     if (existing) {
-      const migrated = this.maybeMigrateBlueprintState(existing);
+      const migrated = this.ensureBootstrapStage(
+        this.maybeMigrateBlueprintState(existing)
+      );
       if (migrated !== existing) {
         this.saveBlueprintState(migrated);
       }
@@ -287,6 +345,7 @@ export class Chat extends AIChatAgent<Env> {
       const nextBootstrapState = AutopilotBootstrapState.make({
         ...state.bootstrapState,
         status: "in_progress",
+        stage: state.bootstrapState.stage ?? "ask_user_handle",
         startedAt: state.bootstrapState.startedAt ?? now
       });
       return AutopilotBlueprintStateV1.make({
@@ -439,6 +498,12 @@ export class Chat extends AIChatAgent<Env> {
           return buildSystemPrompt({
             identityVibe: state.docs.identity.vibe,
             soulVibe: state.docs.soul.vibe,
+            bootstrapState: {
+              status: state.bootstrapState.status,
+              stage: state.bootstrapState.stage,
+              startedAt: state.bootstrapState.startedAt,
+              completedAt: state.bootstrapState.completedAt
+            },
             blueprintContext,
             bootstrapInstructions
           });
@@ -474,14 +539,21 @@ export class Chat extends AIChatAgent<Env> {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const identity = state.docs.identity;
+                const name = input.name?.trim();
+                const creature = input.creature?.trim();
+                const vibe = input.vibe?.trim();
+                const emoji = input.emoji?.trim();
+                const avatar = input.avatar?.trim();
+
                 const nextIdentity = IdentityDoc.make({
                   ...identity,
                   version: DocVersion.make(Number(identity.version) + 1),
-                  name: input.name ?? identity.name,
-                  creature: input.creature ?? identity.creature,
-                  vibe: input.vibe ?? identity.vibe,
-                  emoji: input.emoji ?? identity.emoji,
-                  avatar: input.avatar ?? identity.avatar,
+                  name: name && name.length > 0 ? name : identity.name,
+                  creature:
+                    creature && creature.length > 0 ? creature : identity.creature,
+                  vibe: vibe && vibe.length > 0 ? vibe : identity.vibe,
+                  emoji: emoji && emoji.length > 0 ? emoji : identity.emoji,
+                  avatar: avatar && avatar.length > 0 ? avatar : identity.avatar,
                   updatedAt: now,
                   updatedBy: "agent"
                 });
@@ -489,8 +561,27 @@ export class Chat extends AIChatAgent<Env> {
                   ...state.docs,
                   identity: nextIdentity
                 });
+
+                // Bootstrap progression: agent naming and vibe are both Identity updates.
+                let nextBootstrapState = state.bootstrapState;
+                if (state.bootstrapState.status !== "complete") {
+                  const stage = state.bootstrapState.stage;
+                  if (stage === "ask_agent_name" && name && name.length > 0) {
+                    nextBootstrapState = AutopilotBootstrapState.make({
+                      ...state.bootstrapState,
+                      stage: "ask_vibe"
+                    });
+                  } else if (stage === "ask_vibe" && vibe && vibe.length > 0) {
+                    nextBootstrapState = AutopilotBootstrapState.make({
+                      ...state.bootstrapState,
+                      stage: "ask_boundaries"
+                    });
+                  }
+                }
+
                 return AutopilotBlueprintStateV1.make({
                   ...state,
+                  bootstrapState: nextBootstrapState,
                   docs: nextDocs
                 });
               });
@@ -549,8 +640,23 @@ export class Chat extends AIChatAgent<Env> {
                   ...state.docs,
                   user: nextUser
                 });
+
+                // Bootstrap progression: once we have a handle, move to naming the agent.
+                let nextBootstrapState = state.bootstrapState;
+                if (
+                  state.bootstrapState.status !== "complete" &&
+                  state.bootstrapState.stage === "ask_user_handle" &&
+                  hasHandle
+                ) {
+                  nextBootstrapState = AutopilotBootstrapState.make({
+                    ...state.bootstrapState,
+                    stage: "ask_agent_name"
+                  });
+                }
+
                 return AutopilotBlueprintStateV1.make({
                   ...state,
+                  bootstrapState: nextBootstrapState,
                   docs: nextDocs
                 });
               });
@@ -589,11 +695,26 @@ export class Chat extends AIChatAgent<Env> {
               const updated = this.updateBlueprintState((state) => {
                 const now = new Date();
                 const soul = state.docs.soul;
+
+                const nextCoreTruths = input.coreTruths
+                  ? [...soul.coreTruths, ...input.coreTruths]
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .filter((v, idx, arr) => arr.indexOf(v) === idx)
+                  : soul.coreTruths;
+
+                const nextBoundaries = input.boundaries
+                  ? [...soul.boundaries, ...input.boundaries]
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .filter((v, idx, arr) => arr.indexOf(v) === idx)
+                  : soul.boundaries;
+
                 const nextSoul = SoulDoc.make({
                   ...soul,
                   version: DocVersion.make(Number(soul.version) + 1),
-                  coreTruths: input.coreTruths ?? soul.coreTruths,
-                  boundaries: input.boundaries ?? soul.boundaries,
+                  coreTruths: nextCoreTruths,
+                  boundaries: nextBoundaries,
                   vibe: input.vibe ?? soul.vibe,
                   continuity: input.continuity ?? soul.continuity,
                   updatedAt: now,
@@ -603,8 +724,26 @@ export class Chat extends AIChatAgent<Env> {
                   ...state.docs,
                   soul: nextSoul
                 });
+
+                // Bootstrap completion: the final prompt is "boundaries/preferences".
+                // If the agent calls soul_update at that stage, we treat bootstrap as complete.
+                let nextBootstrapState = state.bootstrapState;
+                if (
+                  state.bootstrapState.status !== "complete" &&
+                  state.bootstrapState.stage === "ask_boundaries"
+                ) {
+                  nextBootstrapState = AutopilotBootstrapState.make({
+                    ...state.bootstrapState,
+                    status: "complete",
+                    stage: undefined,
+                    startedAt: state.bootstrapState.startedAt ?? now,
+                    completedAt: now
+                  });
+                }
+
                 return AutopilotBlueprintStateV1.make({
                   ...state,
+                  bootstrapState: nextBootstrapState,
                   docs: nextDocs
                 });
               });
@@ -741,6 +880,7 @@ export class Chat extends AIChatAgent<Env> {
                 const nextBootstrapState = AutopilotBootstrapState.make({
                   ...state.bootstrapState,
                   status: "complete",
+                  stage: undefined,
                   startedAt: state.bootstrapState.startedAt ?? now,
                   completedAt: now
                 });
@@ -775,22 +915,44 @@ export class Chat extends AIChatAgent<Env> {
             const fresh = this.ensureBlueprintState();
             const system = buildSystem(fresh);
 
-            // During bootstrap, force at least one tool call on the first step so
-            // we persist user/identity updates instead of "thinking" in text.
+            // Bootstrap: force the appropriate update tool based on the current stage.
+            // This prevents the model from "confirming" in text without persisting state.
             if (fresh.bootstrapState.status !== "complete" && stepNumber === 0) {
-              return {
-                system,
-                toolChoice: "required" as const,
-                activeTools: [
-                  "identity_update",
-                  "user_update",
-                  "soul_update",
-                  "tools_update_notes",
-                  "heartbeat_set_checklist",
-                  "memory_append",
-                  "bootstrap_complete"
-                ] as const
-              };
+              const stage = fresh.bootstrapState.stage ?? "ask_user_handle";
+
+              if (stage === "ask_user_handle") {
+                return {
+                  system,
+                  toolChoice: { type: "tool", toolName: "user_update" } as const,
+                  activeTools: ["user_update"] as const
+                };
+              }
+
+              if (stage === "ask_agent_name") {
+                return {
+                  system,
+                  toolChoice: { type: "tool", toolName: "identity_update" } as const,
+                  activeTools: ["identity_update"] as const
+                };
+              }
+
+              if (stage === "ask_vibe") {
+                return {
+                  system,
+                  toolChoice: { type: "tool", toolName: "identity_update" } as const,
+                  activeTools: ["identity_update"] as const
+                };
+              }
+
+              if (stage === "ask_boundaries") {
+                return {
+                  system,
+                  toolChoice: "required" as const,
+                  activeTools: ["soul_update", "bootstrap_complete"] as const
+                };
+              }
+
+              return { system };
             }
 
             return { system };
