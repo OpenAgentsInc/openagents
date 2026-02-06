@@ -93,8 +93,8 @@ When `deps` (e.g. `autopilotChatData`) change, Effuse re-runs and replaces the D
 **Files:**
 
 - `apps/web/src/effuse-pages/header.ts` – Renders `<header>` with logo and conditional nav.
-- `apps/web/src/effuse-pages/ui/hatcheryButton.ts` – Small Effuse helper that renders the “HatcheryButton” SVG-frame button used on marketing pages.
-- `apps/web/src/app.css` – Global `.oa-hatchery-button*` styles (ported from the old React `HatcheryButton.module.css` so Effuse can render the same button).
+- `packages/effuse-ui/src/hatcheryButton.ts` – Effuse helper that renders the “HatcheryButton” SVG-frame button used on marketing pages (Tailwind classes only; no component CSS).
+- `apps/web/src/app.css` – App globals (Tailwind import, fonts, theme tokens, scrollbars).
 - `apps/web/src/routes/_marketing.tsx` – Uses `EffuseMount` for header; background + Outlet unchanged.
 
 ### 2. Catalog routes: modules, signatures, tools

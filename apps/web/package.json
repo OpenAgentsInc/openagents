@@ -39,6 +39,7 @@
     "@effect/platform": "^0.94.3",
     "@effect/rpc": "^0.73.0",
     "@openagentsinc/effuse": "file:../../packages/effuse",
+    "@openagentsinc/effuse-ui": "file:../../packages/effuse-ui",
     "@openagentsinc/hud": "file:../../packages/hud",
     "@tanstack/react-query": "^5.90.20",
     "@tanstack/react-router": "^1.158.0",
