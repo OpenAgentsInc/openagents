@@ -1,15 +1,13 @@
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
+import { useAtomValue } from '@effect-atom/atom-react';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { whitePreset } from '@openagentsinc/hud';
 import { EffuseMount } from '../components/EffuseMount';
 import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
 import { runToolsPage } from '../effuse-pages/tools';
+import { ToolsPageDataAtom } from '../effect/atoms/contracts';
 import { TelemetryService } from '../effect/telemetry';
-import { AgentApiService } from '../effect/agentApi';
-import type { AgentToolContract } from '../effect/agentApi';
-import type { ToolItem } from '../effuse-pages/tools';
 
 export const Route = createFileRoute('/tools')({
   loader: async ({ context }) => {
@@ -39,68 +37,9 @@ export const Route = createFileRoute('/tools')({
   component: ToolsPage,
 });
 
-function safeStableStringify(value: unknown, indent = 2): string {
-  if (value == null) return String(value);
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value, null, indent);
-  } catch {
-    return String(value);
-  }
-}
-
 function ToolsPage() {
   const { userId } = Route.useLoaderData();
-  const router = useRouter();
-  const runtime = router.options.context.effectRuntime;
-
-  const [tools, setTools] = useState<ReadonlyArray<AgentToolContract> | null>(null);
-  const [errorText, setErrorText] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setTools(null);
-    setErrorText(null);
-    runtime
-      .runPromise(
-        Effect.gen(function* () {
-          const api = yield* AgentApiService;
-          return yield* api.getToolContracts(userId);
-        }),
-      )
-      .then((next) => {
-        if (cancelled) return;
-        setTools(next);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setErrorText(err instanceof Error ? err.message : 'Failed to load tool contracts.');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [runtime, userId]);
-
-  const pageData = useMemo((): { errorText: string | null; sorted: ReadonlyArray<ToolItem> | null } => {
-    if (errorText) return { errorText, sorted: null };
-    if (!tools) return { errorText: null, sorted: null };
-    const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
-    return {
-      errorText: null,
-      sorted: sorted.map((t) => ({
-        name: t.name,
-        description: t.description,
-        usage: t.usage ?? null,
-        inputSchemaJson: safeStableStringify(t.inputSchemaJson),
-        outputSchemaJson: safeStableStringify(t.outputSchemaJson ?? null),
-      })),
-    };
-  }, [tools, errorText]);
-
-  const run = useCallback(
-    (el: Element) => runToolsPage(el, pageData),
-    [pageData],
-  );
+  const pageData = useAtomValue(ToolsPageDataAtom(userId));
 
   return (
     <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
@@ -128,7 +67,11 @@ function ToolsPage() {
           className="absolute inset-0 pointer-events-none"
         />
       </div>
-      <EffuseMount run={run} deps={[pageData]} className="relative z-10 flex flex-col h-screen overflow-hidden" />
+      <EffuseMount
+        run={(el) => runToolsPage(el, pageData)}
+        deps={[pageData]}
+        className="relative z-10 flex flex-col h-screen overflow-hidden"
+      />
     </div>
   );
 }

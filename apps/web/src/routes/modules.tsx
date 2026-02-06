@@ -1,16 +1,13 @@
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
+import { useAtomValue } from '@effect-atom/atom-react';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { whitePreset } from '@openagentsinc/hud';
 import { EffuseMount } from '../components/EffuseMount';
 import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
 import { runModulesPage } from '../effuse-pages/modules';
+import { ModulesPageDataAtom } from '../effect/atoms/contracts';
 import { TelemetryService } from '../effect/telemetry';
-import { AgentRpcClientService } from '../effect/api/agentRpcClient';
-import { AgentApiService } from '../effect/agentApi';
-import type { DseModuleContract } from '../effect/agentApi';
-import type { ModuleItem } from '../effuse-pages/modules';
 
 export const Route = createFileRoute('/modules')({
   loader: async ({ context }) => {
@@ -40,74 +37,9 @@ export const Route = createFileRoute('/modules')({
   component: ModulesPage,
 });
 
-function safeStableStringify(value: unknown, indent = 2): string {
-  if (value == null) return String(value);
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value, null, indent);
-  } catch {
-    return String(value);
-  }
-}
-
 function ModulesPage() {
   const { userId } = Route.useLoaderData();
-  const router = useRouter();
-  const runtime = router.options.context.effectRuntime;
-
-  const [mods, setMods] = useState<ReadonlyArray<DseModuleContract> | null>(null);
-  const [errorText, setErrorText] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setMods(null);
-    setErrorText(null);
-    runtime
-      .runPromise(
-        Effect.gen(function* () {
-          const rpc = yield* AgentRpcClientService;
-          return yield* rpc.agent.getModuleContracts({ chatId: userId });
-        }).pipe(
-          // Keep the legacy HTTP path as a fallback while RPC is being proven out.
-          Effect.catchAll(() =>
-            Effect.gen(function* () {
-              const api = yield* AgentApiService;
-              return yield* api.getModuleContracts(userId);
-            }),
-          ),
-        ),
-      )
-      .then((next) => {
-        if (cancelled) return;
-        setMods(next);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setErrorText(err instanceof Error ? err.message : 'Failed to load module contracts.');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [runtime, userId]);
-
-  const pageData = useMemo((): { errorText: string | null; sorted: ReadonlyArray<ModuleItem> | null } => {
-    if (errorText) return { errorText, sorted: null };
-    if (!mods) return { errorText: null, sorted: null };
-    const sorted = [...mods].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
-    return {
-      errorText: null,
-      sorted: sorted.map((m) => ({
-        moduleId: m.moduleId,
-        description: m.description,
-        signatureIdsJson: safeStableStringify(m.signatureIds),
-      })),
-    };
-  }, [mods, errorText]);
-
-  const run = useCallback(
-    (el: Element) => runModulesPage(el, pageData),
-    [pageData],
-  );
+  const pageData = useAtomValue(ModulesPageDataAtom(userId));
 
   return (
     <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
@@ -135,7 +67,11 @@ function ModulesPage() {
           className="absolute inset-0 pointer-events-none"
         />
       </div>
-      <EffuseMount run={run} deps={[pageData]} className="relative z-10 flex flex-col h-screen overflow-hidden" />
+      <EffuseMount
+        run={(el) => runModulesPage(el, pageData)}
+        deps={[pageData]}
+        className="relative z-10 flex flex-col h-screen overflow-hidden"
+      />
     </div>
   );
 }

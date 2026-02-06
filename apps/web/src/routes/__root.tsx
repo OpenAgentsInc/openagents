@@ -4,7 +4,7 @@ import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
 import { ConvexProviderWithAuth } from 'convex/react';
 import { Hydration, Registry } from '@effect-atom/atom';
-import { RegistryProvider, useAtomValue } from '@effect-atom/atom-react';
+import { RegistryProvider, scheduleTask as atomScheduleTask, useAtomValue } from '@effect-atom/atom-react';
 import { HydrationBoundary } from '@effect-atom/atom-react/ReactHydration';
 import { Effect, Exit } from 'effect';
 import { useEffect } from 'react';
@@ -176,7 +176,13 @@ function RootComponent() {
   const { atomState } = Route.useRouteContext();
 
   return (
-    <RegistryProvider>
+    <RegistryProvider
+      scheduleTask={(f) => {
+        // Avoid running effectful atoms during SSR for now. (EffuseMount is client-only anyway.)
+        if (typeof window === 'undefined') return;
+        atomScheduleTask(f);
+      }}
+    >
       <HydrationBoundary state={atomState}>
         <AuthKitProvider>
           <ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>
