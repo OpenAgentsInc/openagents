@@ -39,7 +39,7 @@ export function hatcheryButton(input: {
         'cursor-pointer select-none no-underline',
         'text-white transition-[color,opacity] duration-200 ease-out',
         'uppercase tracking-[0.08em] font-semibold',
-        'font-[var(--font-square721)]',
+        '[font-family:var(--font-square721)]',
         'focus-visible:outline-none',
         input.className ?? null
       )}"
@@ -83,4 +83,3 @@ export function hatcheryButton(input: {
     </a>
   `;
 }
-
