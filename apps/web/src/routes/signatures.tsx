@@ -1,15 +1,13 @@
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
+import { useAtomValue } from '@effect-atom/atom-react';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { whitePreset } from '@openagentsinc/hud';
 import { EffuseMount } from '../components/EffuseMount';
 import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
 import { runSignaturesPage } from '../effuse-pages/signatures';
+import { SignaturesPageDataAtom } from '../effect/atoms/contracts';
 import { TelemetryService } from '../effect/telemetry';
-import { AgentApiService } from '../effect/agentApi';
-import type { DseSignatureContract } from '../effect/agentApi';
-import type { SignatureItem } from '../effuse-pages/signatures';
 
 export const Route = createFileRoute('/signatures')({
   loader: async ({ context }) => {
@@ -39,84 +37,9 @@ export const Route = createFileRoute('/signatures')({
   component: SignaturesPage,
 });
 
-function safeStableStringify(value: unknown, indent = 2): string {
-  if (value == null) return String(value);
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value, null, indent);
-  } catch {
-    return String(value);
-  }
-}
-
-function summarizePromptIr(promptIr: unknown): string {
-  if (!promptIr || typeof promptIr !== 'object') return '(missing prompt IR)';
-  const obj = promptIr as { blocks?: Array<unknown> };
-  const blocks = obj.blocks;
-  if (!Array.isArray(blocks)) return '(missing blocks)';
-  const tags = blocks.map((b) => (b && typeof b === 'object' ? String((b as { _tag?: unknown })._tag ?? '?') : '?'));
-  return tags.join(' → ');
-}
-
 function SignaturesPage() {
   const { userId } = Route.useLoaderData();
-  const router = useRouter();
-  const runtime = router.options.context.effectRuntime;
-
-  const [sigs, setSigs] = useState<ReadonlyArray<DseSignatureContract> | null>(null);
-  const [errorText, setErrorText] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSigs(null);
-    setErrorText(null);
-    runtime
-      .runPromise(
-        Effect.gen(function* () {
-          const api = yield* AgentApiService;
-          return yield* api.getSignatureContracts(userId);
-        }),
-      )
-      .then((next) => {
-        if (cancelled) return;
-        setSigs(next);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setErrorText(err instanceof Error ? err.message : 'Failed to load signature contracts.');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [runtime, userId]);
-
-  const pageData = useMemo((): {
-    errorText: string | null;
-    sorted: ReadonlyArray<SignatureItem> | null;
-  } => {
-    if (errorText) return { errorText, sorted: null };
-    if (!sigs) return { errorText: null, sorted: null };
-    const sorted = [...sigs].sort((a, b) => a.signatureId.localeCompare(b.signatureId));
-    return {
-      errorText: null,
-      sorted: sorted.map((s) => ({
-        signatureId: s.signatureId,
-        promptSummary: summarizePromptIr(s.promptIr),
-        inputSchemaJson: safeStableStringify(s.inputSchemaJson),
-        outputSchemaJson: safeStableStringify(s.outputSchemaJson),
-        promptIrJson: safeStableStringify(s.promptIr),
-        defaultsJson: safeStableStringify({
-          defaultParams: s.defaultParams,
-          defaultConstraints: s.defaultConstraints,
-        }),
-      })),
-    };
-  }, [sigs, errorText]);
-
-  const run = useCallback(
-    (el: Element) => runSignaturesPage(el, pageData),
-    [pageData],
-  );
+  const pageData = useAtomValue(SignaturesPageDataAtom(userId));
 
   return (
     <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
@@ -144,7 +67,11 @@ function SignaturesPage() {
           className="absolute inset-0 pointer-events-none"
         />
       </div>
-      <EffuseMount run={run} deps={[pageData]} className="relative z-10 flex flex-col h-screen overflow-hidden" />
+      <EffuseMount
+        run={(el) => runSignaturesPage(el, pageData)}
+        deps={[pageData]}
+        className="relative z-10 flex flex-col h-screen overflow-hidden"
+      />
     </div>
   );
 }

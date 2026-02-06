@@ -1,12 +1,14 @@
 import { useAtomSet, useAtomValue } from '@effect-atom/atom-react';
 import { useRouter, useRouterState } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { EffuseMount } from '../EffuseMount';
 import { SessionAtom } from '../../effect/atoms/session';
+import {
+  AutopilotSidebarCollapsedAtom,
+  AutopilotSidebarUserMenuOpenAtom,
+} from '../../effect/atoms/autopilotUi';
 import { clearRootAuthCache } from '../../routes/__root';
 import { runAutopilotSidebar } from '../../effuse-pages/autopilotSidebar';
-
-const STORAGE_KEY = 'autopilot-sidebar-collapsed';
 
 function useSignOutAction() {
   const router = useRouter();
@@ -33,17 +35,11 @@ export function AutopilotSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const signOut = useSignOutAction();
 
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
-  });
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const collapsed = useAtomValue(AutopilotSidebarCollapsedAtom);
+  const setCollapsed = useAtomSet(AutopilotSidebarCollapsedAtom);
+  const userMenuOpen = useAtomValue(AutopilotSidebarUserMenuOpenAtom);
+  const setUserMenuOpen = useAtomSet(AutopilotSidebarUserMenuOpenAtom);
   const mountElRef = useRef<Element | null>(null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEY, String(collapsed));
-  }, [collapsed]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -105,4 +101,3 @@ export function AutopilotSidebar() {
     />
   );
 }
-

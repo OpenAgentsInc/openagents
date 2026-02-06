@@ -220,6 +220,14 @@ Each phase has a concrete “Definition of Done” and a recommended verificatio
 - route transitions preserve state as expected
 - hydration initializes atoms correctly (no “flash” to null session)
 
+**Phase 4 Log (Implemented 2026-02-06)**
+
+- Added an app-wide Atom runtime that provides the same Effect services as `context.effectRuntime` and shares its MemoMap: `apps/web/src/effect/atoms/appRuntime.ts`
+- Moved “catalog page” data fetching out of React state/effects and into `@effect-atom` (RPC-first with legacy HTTP fallback): `apps/web/src/effect/atoms/contracts.ts`
+- Updated routes to read derived page models via atoms (no `useState` / `useEffect` for page logic): `apps/web/src/routes/modules.tsx`, `apps/web/src/routes/tools.tsx`, `apps/web/src/routes/signatures.tsx`
+- Moved Autopilot sidebar UI state (collapsed + user menu open) out of React `useState` and into atoms (collapsed is localStorage-backed): `apps/web/src/effect/atoms/autopilotUi.ts`, `apps/web/src/components/layout/AutopilotSidebar.tsx`
+- Prevented effectful atoms from running during SSR for now (Effuse mounts are client-only anyway), to avoid relative-URL fetch issues on the server: `apps/web/src/routes/__root.tsx` (`RegistryProvider.scheduleTask` no-ops on the server)
+
 ---
 
 ### Phase 5: Typed-Style Template Directives (Remove `onRendered` DOM Queries)
