@@ -164,7 +164,8 @@ export const DEFAULT_RITUAL_BODY =
   "Goal: establish operator identity + agent identity.\n" +
   "\n" +
   "Order:\n" +
-  "1) What should you call the user? (name + addressAs)\n" +
+  "1) Ask what to call the user.\n" +
+  "   - Persist it as BOTH user.name and user.addressAs (unless the user explicitly wants them different).\n" +
   "2) What should the user call you? (identity name; default Autopilot)\n" +
   "3) Pick your operating vibe (one short phrase)\n" +
   "4) Optional: any boundaries/preferences (update Soul)\n" +
