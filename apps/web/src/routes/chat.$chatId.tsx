@@ -6,6 +6,7 @@ import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
 import { useMemo, useState } from 'react';
 import { TelemetryService } from '../effect/telemetry';
+import type { UIMessage } from 'ai';
 import type { FormEvent } from 'react';
 
 export const Route = createFileRoute('/chat/$chatId')({
@@ -71,28 +72,38 @@ function ChatPage() {
   const [input, setInput] = useState('');
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
-  const messages = chat.messages as ReadonlyArray<unknown>;
+  const messages = chat.messages as ReadonlyArray<UIMessage>;
 
   const rendered = useMemo(() => {
-    return messages.map((m) => {
-      const msg = m as any;
-      const role = msg.role as string | undefined;
-      const content = msg.content as unknown;
+    return messages.map((msg) => {
+      const parts: ReadonlyArray<unknown> = Array.isArray((msg as any).parts) ? (msg as any).parts : [];
 
-      const text =
-        typeof content === 'string'
-          ? content
-          : Array.isArray(content)
-              ? content
-                  .filter((p: any) => p && typeof p === 'object' && p.type === 'text')
-                  .map((p: any) => String(p.text ?? ''))
-                  .join('')
-              : '';
+      const text = parts
+        .filter(
+          (p): p is { type: 'text'; text: string } =>
+            Boolean(p) &&
+            typeof p === 'object' &&
+            (p as any).type === 'text' &&
+            typeof (p as any).text === 'string',
+        )
+        .map((p) => p.text)
+        .join('');
+
+      const reasoning = parts
+        .filter(
+          (p): p is { type: 'reasoning'; text: string } =>
+            Boolean(p) &&
+            typeof p === 'object' &&
+            (p as any).type === 'reasoning' &&
+            typeof (p as any).text === 'string',
+        )
+        .map((p) => p.text)
+        .join('');
 
       return {
-        id: msg.id ?? `${role ?? 'msg'}-${Math.random().toString(36).slice(2)}`,
-        role: role ?? 'assistant',
-        text,
+        id: msg.id,
+        role: msg.role,
+        text: text || reasoning,
       };
     });
   }, [messages]);
@@ -147,7 +158,13 @@ function ChatPage() {
                       : 'self-start bg-white/10 text-white',
                   ].join(' ')}
                 >
-                  {m.text || <span className="text-white/40">(no text)</span>}
+                  {m.text ? (
+                    m.text
+                  ) : (
+                    <span className={m.role === 'user' ? 'text-black/40' : 'text-white/40'}>
+                      (no text)
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
