@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as CallbackRouteImport } from './routes/callback'
+import { Route as AutopilotRouteImport } from './routes/autopilot'
 import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
@@ -17,6 +18,11 @@ import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
   path: '/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AutopilotRoute = AutopilotRouteImport.update({
+  id: '/autopilot',
+  path: '/autopilot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssistantRoute = AssistantRouteImport.update({
@@ -38,12 +44,14 @@ const ChatChatIdRoute = ChatChatIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/assistant': typeof AssistantRoute
+  '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/assistant': typeof AssistantRoute
+  '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
@@ -51,20 +59,28 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/assistant': typeof AssistantRoute
+  '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/assistant' | '/callback' | '/chat/$chatId'
+  fullPaths: '/' | '/assistant' | '/autopilot' | '/callback' | '/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/assistant' | '/callback' | '/chat/$chatId'
-  id: '__root__' | '/' | '/assistant' | '/callback' | '/chat/$chatId'
+  to: '/' | '/assistant' | '/autopilot' | '/callback' | '/chat/$chatId'
+  id:
+    | '__root__'
+    | '/'
+    | '/assistant'
+    | '/autopilot'
+    | '/callback'
+    | '/chat/$chatId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AssistantRoute: typeof AssistantRoute
+  AutopilotRoute: typeof AutopilotRoute
   CallbackRoute: typeof CallbackRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
 }
@@ -76,6 +92,13 @@ declare module '@tanstack/react-router' {
       path: '/callback'
       fullPath: '/callback'
       preLoaderRoute: typeof CallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/autopilot': {
+      id: '/autopilot'
+      path: '/autopilot'
+      fullPath: '/autopilot'
+      preLoaderRoute: typeof AutopilotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assistant': {
@@ -105,6 +128,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AssistantRoute: AssistantRoute,
+  AutopilotRoute: AutopilotRoute,
   CallbackRoute: CallbackRoute,
   ChatChatIdRoute: ChatChatIdRoute,
 }

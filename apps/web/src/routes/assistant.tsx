@@ -28,7 +28,7 @@ export const Route = createFileRoute('/assistant')({
         }
 
         yield* telemetry.withNamespace('route.assistant').event('assistant.redirect', { userId });
-        return { kind: 'redirect' as const, to: '/chat/$chatId' as const, chatId: userId };
+        return { kind: 'redirect' as const, to: '/autopilot' as const };
       }),
     );
 
@@ -36,10 +36,7 @@ export const Route = createFileRoute('/assistant')({
       throw redirect({ to: '/' });
     }
 
-    throw redirect({
-      to: '/chat/$chatId',
-      params: { chatId: result.chatId },
-    });
+    throw redirect({ to: '/autopilot' });
   },
   component: () => null,
 });
