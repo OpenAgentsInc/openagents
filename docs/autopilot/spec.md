@@ -86,6 +86,7 @@ Explicitly out of scope:
 
 ## Notes
 
+- **Effuse conversion**: Most `apps/web` route UI is rendered by Effuse (marketing, home/login, modules/signatures/tools, autopilot chat column). See `docs/autopilot/effuse-conversion-apps-web.md` for the full conversion doc.
 - Effect migration starting points for the current `apps/web` app: `docs/autopilot/effect-migration-web.md`
 - Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
 - Effect + Convex patterns from `~/code/crest` to adopt: `docs/autopilot/effect-patterns-from-crest.md`
