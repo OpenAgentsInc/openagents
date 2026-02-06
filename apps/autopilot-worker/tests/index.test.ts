@@ -92,6 +92,25 @@ describe("Autopilot worker", () => {
     }
   });
 
+  it("exposes tool contracts for UI introspection", async () => {
+    const threadId = `tools-${Date.now()}`;
+    const url = `http://example.com/agents/chat/${threadId}/tool-contracts`;
+
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(new Request(url), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as any[];
+    expect(Array.isArray(json)).toBe(true);
+    const names = json.map((t) => t?.name).filter(Boolean);
+    expect(names).toContain("get_time");
+    expect(names).toContain("bootstrap_set_user_handle");
+
+    const getTime = json.find((t) => t?.name === "get_time");
+    expect(getTime?.inputSchemaJson).toBeTruthy();
+  });
+
   it("resets the agent Blueprint state", async () => {
     const threadId = `reset-${Date.now()}`;
     const blueprintUrl = `http://example.com/agents/chat/${threadId}/blueprint`;
