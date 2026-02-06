@@ -336,6 +336,23 @@ export class Chat extends AIChatAgent<Env> {
       const reset = makeDefaultBlueprintState(this.name);
       this.saveBlueprintState(reset);
 
+      // Reset chat transcript + streaming state (server-side).
+      //
+      // NOTE: We intentionally do this here (instead of relying on the WS-only
+      // CF_AGENT_CHAT_CLEAR message) so the UI can reset via a single POST,
+      // and immediately see the post-reset welcome message without a refresh.
+      this.sql`delete from cf_ai_chat_agent_messages`;
+      this.sql`delete from cf_ai_chat_stream_chunks`;
+      this.sql`delete from cf_ai_chat_stream_metadata`;
+      this.messages = [];
+      this._activeStreamId = null;
+      this._activeRequestId = null;
+
+      // Ensure the first-open UX restarts immediately for any connected clients.
+      // Keep bootstrapState at defaults ("pending") on reset; it will transition
+      // to "in_progress" when the chat is actually opened (get-messages).
+      await this.ensureWelcomeMessage(reset);
+
       return Response.json({ ok: true });
     }
 
