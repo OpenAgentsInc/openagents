@@ -6,6 +6,7 @@ import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Streamdown } from 'streamdown';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
+import { KranoxFrame } from '../components/KranoxFrame';
 import { TelemetryService } from '../effect/telemetry';
 import type { UIMessage } from 'ai';
 import type { FormEvent } from 'react';
@@ -328,7 +329,7 @@ function ChatPage() {
         {/* Chat */}
         <section className="flex-1 min-h-0 flex flex-col p-4">
           <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
-            <div className="flex-1 flex flex-col overflow-hidden rounded-lg border border-border-dark bg-surface-primary shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.06)]">
+            <KranoxFrame className="flex-1 min-h-0">
               <div className="flex-1 overflow-y-auto p-4 overseer-scroll">
                 <div className="flex flex-col gap-3">
                   {rendered.map((m) => (
@@ -384,7 +385,7 @@ function ChatPage() {
                   </button>
                 )}
               </form>
-            </div>
+            </KranoxFrame>
           </div>
         </section>
       </main>
