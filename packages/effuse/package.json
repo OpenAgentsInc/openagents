@@ -1,0 +1,23 @@
+{
+  "name": "@openagentsinc/effuse",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ui": "./src/ui/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "effect": "^3.19.16",
+    "typescript": "^5"
+  },
+  "devDependencies": {
+    "effect": "^3.19.16",
+    "typescript": "^5.9.3"
+  }
+}

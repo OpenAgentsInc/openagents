@@ -1,5 +1,5 @@
 import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
-import { createFileRoute, Link, Outlet, useRouter } from '@tanstack/react-router';
+import { Link, Outlet, createFileRoute, useRouter } from '@tanstack/react-router';
 import { HatcheryButton } from '../components/hatchery/HatcheryButton';
 
 export const Route = createFileRoute('/_marketing')({
@@ -33,22 +33,26 @@ function MarketingLayout() {
           <Link to="/" className="select-none text-lg font-semibold text-white">
             OpenAgents
           </Link>
-          {isHome ? (
-            <div className="flex items-center gap-3">
-              <a
-                href="/login"
-                className="mr-5 text-base font-medium text-white/90 hover:text-white"
-                style={{ fontFamily: 'var(--font-square721)' }}
-              >
-                Log in
-              </a>
-              <HatcheryButton href="/login" variant="outline">
-                Start for free
-              </HatcheryButton>
-            </div>
-          ) : (
-            <div className="flex min-w-[11rem] items-center gap-3" aria-hidden />
-          )}
+          {/* Same DOM on both routes: nav always present, invisible on login so layout never reflows */}
+          <div
+            className="flex items-center gap-3"
+            style={{
+              visibility: isHome ? 'visible' : 'hidden',
+              pointerEvents: isHome ? 'auto' : 'none',
+            }}
+            aria-hidden={!isHome}
+          >
+            <a
+              href="/login"
+              className="mr-5 text-base font-medium text-white/90 hover:text-white"
+              style={{ fontFamily: 'var(--font-square721)' }}
+            >
+              Log in
+            </a>
+            <HatcheryButton href="/login" variant="outline">
+              Start for free
+            </HatcheryButton>
+          </div>
         </header>
         <Outlet />
       </div>
