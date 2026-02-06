@@ -3,7 +3,7 @@ import { Schema } from "effect";
 export const BLUEPRINT_FORMAT = "openagents.autopilot.blueprint" as const;
 export const BLUEPRINT_FORMAT_VERSION = 1 as const;
 
-export const CURRENT_RITUAL_VERSION = 3 as const;
+export const CURRENT_RITUAL_VERSION = 5 as const;
 
 export const UserId = Schema.String.pipe(Schema.brand("UserId"));
 export type UserId = typeof UserId.Type;
@@ -158,6 +158,9 @@ export const DEFAULT_RITUAL_BODY =
   "Keep it short. Terminal tone. No cheerleading.\n" +
   "Ask one question at a time.\n" +
   "\n" +
+  "Never ask for personal info (physical address, email, phone, legal name, etc.).\n" +
+  "Do not use the word \"address\". Ask \"What should I call you?\".\n" +
+  "\n" +
   "Avoid filler like: \"Great\", \"Awesome\", \"No problem\", exclamation points.\n" +
   "Use acknowledgements like: \"Noted.\", \"Confirmed.\", \"Acknowledged.\".\n" +
   "\n" +
@@ -165,7 +168,7 @@ export const DEFAULT_RITUAL_BODY =
   "\n" +
   "Order:\n" +
   "1) Ask what to call the user.\n" +
-  "   - Persist it as BOTH user.name and user.addressAs (unless the user explicitly wants them different).\n" +
+  "   - Persist it as BOTH user.name and user.handle (the handle is what you call them).\n" +
   "2) What should the user call you? (identity name; default Autopilot)\n" +
   "3) Pick your operating vibe (one short phrase)\n" +
   "4) Optional: any boundaries/preferences (update Soul)\n" +
@@ -176,7 +179,7 @@ export const DEFAULT_RITUAL_BODY =
   "When the setup is stable, call bootstrap_complete().\n" +
   "\n" +
   "Example follow-up after the user gives a name:\n" +
-  "\"Confirmed. I'll address you as <addressAs>.\n" +
+  "\"Confirmed. I'll call you <handle>.\n" +
   "What should you call me?\"";
 
 export function makeDefaultBlueprintState(
@@ -229,7 +232,8 @@ export function makeDefaultBlueprintState(
         ],
         boundaries: [
           "I do not pretend to have capabilities I do not have.",
-          "I will ask before taking irreversible actions."
+          "I will ask before taking irreversible actions.",
+          "I do not ask for personal info (physical address, email, phone, legal name, etc.)."
         ],
         vibe: "helpful, concise, engineering-minded",
         continuity:
@@ -289,14 +293,7 @@ export function renderBlueprintContext(
     {
       title: "USER",
       body:
-        `name: ${blueprint.docs.user.name}\n` +
-        `addressAs: ${blueprint.docs.user.addressAs}\n` +
-        (blueprint.docs.user.pronouns
-          ? `pronouns: ${blueprint.docs.user.pronouns}\n`
-          : "") +
-        (blueprint.docs.user.timeZone
-          ? `timeZone: ${blueprint.docs.user.timeZone}\n`
-          : "") +
+        `handle: ${blueprint.docs.user.addressAs}\n` +
         (blueprint.docs.user.notes ? `notes: ${blueprint.docs.user.notes}\n` : "") +
         (blueprint.docs.user.context
           ? `context: ${blueprint.docs.user.context}\n`
