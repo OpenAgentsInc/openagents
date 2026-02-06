@@ -21,6 +21,26 @@ describe("Autopilot worker", () => {
     expect(response.status).toBe(404);
   });
 
+  it("seeds a welcome message on first get-messages call", async () => {
+    const threadId = `welcome-${Date.now()}`;
+    const url = `http://example.com/agents/chat/${threadId}/get-messages`;
+
+    const ctx1 = createExecutionContext();
+    const res1 = await worker.fetch(new Request(url), env, ctx1);
+    await waitOnExecutionContext(ctx1);
+    expect(res1.status).toBe(200);
+    const messages1 = (await res1.json()) as any[];
+    expect(Array.isArray(messages1)).toBe(true);
+    expect(messages1.length).toBe(1);
+    expect(messages1[0]?.role).toBe("assistant");
+
+    const ctx2 = createExecutionContext();
+    const res2 = await worker.fetch(new Request(url), env, ctx2);
+    await waitOnExecutionContext(ctx2);
+    const messages2 = (await res2.json()) as any[];
+    expect(messages2.length).toBe(1);
+  });
+
   it("exports and imports a Blueprint via the DO endpoint", async () => {
     const threadId = `test-${Date.now()}`;
     const exportUrl = `http://example.com/agents/chat/${threadId}/blueprint`;

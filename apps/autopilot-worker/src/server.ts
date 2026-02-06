@@ -39,6 +39,11 @@ const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
 
+const FIRST_OPEN_WELCOME_MESSAGE =
+  "Hello! I'm Autopilot, your personal AI agent.\n\n" +
+  "Before we start, I want to set up your Blueprint (identity, preferences, and a little memory) so I can stay consistent.\n\n" +
+  "What's your name, and what time zone are you in?";
+
 const BASE_TOOLS: ToolSet = {
   get_time: tool({
     description:
@@ -266,6 +271,19 @@ export class Chat extends AIChatAgent<Env> {
     });
   }
 
+  private async ensureWelcomeMessage(blueprint: AutopilotBlueprintStateV1) {
+    if (blueprint.bootstrapState.status === "complete") return;
+    if (this.messages.length > 0) return;
+
+    await this.persistMessages([
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [{ type: "text", text: FIRST_OPEN_WELCOME_MESSAGE }]
+      } as any
+    ]);
+  }
+
   private updateBlueprintState(
     updater: (state: AutopilotBlueprintStateV1) => AutopilotBlueprintStateV1
   ): AutopilotBlueprintStateV1 {
@@ -277,6 +295,12 @@ export class Chat extends AIChatAgent<Env> {
 
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname.endsWith("/get-messages")) {
+      const blueprint = this.ensureBlueprintStateForChat();
+      await this.ensureWelcomeMessage(blueprint);
+      return super.onRequest(request);
+    }
 
     if (url.pathname.endsWith("/blueprint")) {
       if (request.method === "GET") {
