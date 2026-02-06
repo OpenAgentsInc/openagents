@@ -34,6 +34,7 @@ export const Route = createFileRoute('/autopilot')({
         yield* telemetry.withNamespace('route.autopilot').event('autopilot.open', {
           userId,
         });
+        yield* telemetry.withNamespace('app').event('chat_view', { chatId: userId });
 
         return { kind: 'ok' as const, userId };
       }),
@@ -374,8 +375,8 @@ function ChatPage() {
     userHandle: string;
     agentName: string;
     identityVibe: string;
-    soulVibe: string;
-    soulBoundaries: string;
+    characterVibe: string;
+    characterBoundaries: string;
   } | null>(null);
   const [toolContractsByName, setToolContractsByName] = useState<
     Record<string, AgentToolContract> | null
@@ -432,10 +433,10 @@ function ChatPage() {
     const docs = b?.docs ?? {};
     const identity = docs.identity ?? {};
     const user = docs.user ?? {};
-    const soul = docs.soul ?? {};
+    const character = docs.character ?? {};
 
-    const boundaries: string = Array.isArray(soul.boundaries)
-      ? soul.boundaries
+    const boundaries: string = Array.isArray(character.boundaries)
+      ? character.boundaries
           .map((s: unknown) => (typeof s === 'string' ? s : ''))
           .filter(Boolean)
           .join('\n')
@@ -445,8 +446,8 @@ function ChatPage() {
       userHandle: typeof user.addressAs === 'string' ? user.addressAs : '',
       agentName: typeof identity.name === 'string' ? identity.name : '',
       identityVibe: typeof identity.vibe === 'string' ? identity.vibe : '',
-      soulVibe: typeof soul.vibe === 'string' ? soul.vibe : '',
-      soulBoundaries: boundaries,
+      characterVibe: typeof character.vibe === 'string' ? character.vibe : '',
+      characterBoundaries: boundaries,
     };
   }, []);
 
@@ -632,7 +633,7 @@ function ChatPage() {
     setBlueprintError(null);
 
     const nowIso = new Date().toISOString();
-    const nextBoundaries = blueprintDraft.soulBoundaries
+    const nextBoundaries = blueprintDraft.characterBoundaries
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -654,12 +655,12 @@ function ChatPage() {
     next.docs.identity.updatedBy = 'user';
     next.docs.identity.version = Number(next.docs.identity.version ?? 1) + 1;
 
-    // SOUL
-    next.docs.soul.vibe = blueprintDraft.soulVibe.trim() || next.docs.soul.vibe;
-    next.docs.soul.boundaries = nextBoundaries;
-    next.docs.soul.updatedAt = nowIso;
-    next.docs.soul.updatedBy = 'user';
-    next.docs.soul.version = Number(next.docs.soul.version ?? 1) + 1;
+    // CHARACTER
+    next.docs.character.vibe = blueprintDraft.characterVibe.trim() || next.docs.character.vibe;
+    next.docs.character.boundaries = nextBoundaries;
+    next.docs.character.updatedAt = nowIso;
+    next.docs.character.updatedBy = 'user';
+    next.docs.character.version = Number(next.docs.character.version ?? 1) + 1;
 
     const saved = await runtime
       .runPromise(
@@ -671,8 +672,8 @@ function ChatPage() {
               'user.handle',
               'identity.name',
               'identity.vibe',
-              'soul.vibe',
-              'soul.boundaries',
+              'character.vibe',
+              'character.boundaries',
             ],
           });
           yield* api.importBlueprint(chatId, next);
@@ -968,12 +969,14 @@ function ChatPage() {
 
 	                  <label className="flex flex-col gap-1">
 	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
-	                      Soul vibe
+	                      Character vibe
 	                    </span>
 	                    <input
-	                      value={blueprintDraft?.soulVibe ?? ''}
+	                      value={blueprintDraft?.characterVibe ?? ''}
 	                      onChange={(e) =>
-	                        setBlueprintDraft((d) => (d ? { ...d, soulVibe: e.target.value } : d))
+	                        setBlueprintDraft((d) =>
+	                          d ? { ...d, characterVibe: e.target.value } : d,
+	                        )
 	                      }
 	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
 	                    />
@@ -984,9 +987,11 @@ function ChatPage() {
 	                      Boundaries (one per line)
 	                    </span>
 	                    <textarea
-	                      value={blueprintDraft?.soulBoundaries ?? ''}
+	                      value={blueprintDraft?.characterBoundaries ?? ''}
 	                      onChange={(e) =>
-	                        setBlueprintDraft((d) => (d ? { ...d, soulBoundaries: e.target.value } : d))
+	                        setBlueprintDraft((d) =>
+	                          d ? { ...d, characterBoundaries: e.target.value } : d,
+	                        )
 	                      }
 	                      rows={8}
 	                      className="w-full resize-y rounded border border-border-dark bg-surface-primary px-2 py-2 text-[12px] leading-4 text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
