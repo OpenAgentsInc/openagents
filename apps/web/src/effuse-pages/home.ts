@@ -25,11 +25,11 @@ export function runHomePage(container: Element): Effect.Effect<void> {
 
           <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             ${hatcheryButton({
-              href: '/login',
-              label: 'Start for free',
-              size: 'large',
-              className: 'w-full max-w-xs sm:w-auto',
-            })}
+      href: '/login',
+      label: 'Start for free',
+      size: 'large',
+      className: 'w-full max-w-xs sm:w-auto',
+    })}
           </div>
         </div>
       </main>
