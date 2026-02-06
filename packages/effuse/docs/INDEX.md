@@ -12,6 +12,8 @@ The OpenAgents web app (`apps/web`) uses Effuse for almost all user-facing UI:
 
 React is still used for: route loaders, auth, Convex, HUD backgrounds (DotsBackground), `EffuseMount` (run Effuse in a div and optionally `onRendered` for event delegation), and the Autopilot sidebar/blueprint/controls.
 
+**Important integration detail:** Effuse templates use normal anchors (`<a href="/...">`). `EffuseMount` intercepts internal (same-origin) anchor clicks and calls TanStack Router navigation so links stay SPA (no full page refresh). Opt out with `data-router-ignore`.
+
 **Full conversion doc:** [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md) (architecture, data flow, event delegation, file map, how to add or change Effuse pages).
 
 ---

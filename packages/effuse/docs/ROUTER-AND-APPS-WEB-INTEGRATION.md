@@ -19,7 +19,34 @@ This document explains how **routing**, **Effect**, **RPC**, and **Effuse** fit 
 
 ## 2. What we do *not* do: full browser reloads
 
-Navigation uses **TanStack Router**’s client-side routing (e.g. `<Link>` in the sidebar). The document never reloads; only the tree under `<Outlet />` changes. So we already avoid full browser reloads.
+Navigation uses **TanStack Router**’s client-side routing. The document should not reload; only the tree under `<Outlet />` changes.
+
+### 2.1 Effuse-rendered links (important)
+
+Effuse templates cannot render TanStack’s `<Link>`, so they use plain anchors:
+
+```html
+<a href="/login">Log in</a>
+```
+
+To keep these anchors **SPA** (no full page refresh), `apps/web/src/components/EffuseMount.tsx` installs a click handler on the Effuse container that:
+
+- detects internal `<a href="/...">` clicks (same-origin, left-click, no modifier keys)
+- calls `router.navigate({ href })`
+- prevents the browser’s default document navigation
+
+**Opt-outs (not intercepted):**
+
+- external links (different origin)
+- `target != "_self"`
+- `download`
+- `href` starting with `#`
+
+If you need an internal link to do a full reload, add `data-router-ignore`:
+
+```html
+<a href="/somewhere" data-router-ignore>Force full reload</a>
+```
 
 ---
 
@@ -111,3 +138,24 @@ See [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md) and [INDEX.
 | [DELEGATION-full-effect-integration.md](./DELEGATION-full-effect-integration.md) | Delegation brief for implementing RPC, MemoMap, atoms, hydration. |
 | [adr/adr-0027-effect-rpc-and-atom-hydration-web.md](./adr/adr-0027-effect-rpc-and-atom-hydration-web.md) | ADR: Effect RPC + atom hydration (canonical: `docs/adr/ADR-0027-...`). |
 | [INDEX.md](./INDEX.md) | Effuse docs index and usage in apps/web. |
+
+---
+
+## 10. Toward 100% Effect/Effuse (thin TanStack layer)
+
+Today `apps/web` is “Effect-first” in **services** and “Effuse-first” in **rendering**, but still uses React for:
+
+- routing + SSR (TanStack Start)
+- loaders and most side effects
+- stateful chrome (sidebar, blueprint editor, control panels)
+- HUD backgrounds (canvas hooks)
+
+If the goal is **near-100% Effect/Effuse**, keep TanStack Start as the minimal router/SSR substrate and migrate everything above it:
+
+- **UI:** Convert remaining React chrome to Effuse programs (sidebar, blueprint panel, controls) and drive them from Effect state (`@effect-atom` or an Effect service). Keep React only as the mounting/runtime host.
+- **Events:** Move from “React wiring + DOM listeners in `onRendered`” toward **typed template event directives** (Typed-style) so Effuse templates can bind events without React code.
+- **SSR/hydration:** Effuse pages are currently rendered client-side (after hydration) via `useEffect`. To remove most React and improve perceived performance, add an Effuse SSR + hydration story (or adopt a Typed-like template layer for SSR while keeping Effuse runtime semantics).
+- **API surface:** Expand RPC usage (or add HttpApi/HttpApiGroup) so both loaders and client state use one typed Effect-native request surface.
+- **Testing:** Add “render Effuse template to string/DOM and assert” helpers (Typed has good patterns) so UI logic is testable without a browser.
+
+Nothing in this section is implemented automatically; it’s a direction for future work so agents don’t accidentally re-introduce React-heavy patterns when “Effect everywhere” is the goal.
