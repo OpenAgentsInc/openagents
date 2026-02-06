@@ -91,4 +91,60 @@ describe("Autopilot worker", () => {
       expect(json.docs.identity.name).toBe("MyAgent");
     }
   });
+
+  it("resets the agent Blueprint state", async () => {
+    const threadId = `reset-${Date.now()}`;
+    const blueprintUrl = `http://example.com/agents/chat/${threadId}/blueprint`;
+    const resetUrl = `http://example.com/agents/chat/${threadId}/reset-agent`;
+
+    // Seed a non-default Blueprint via import.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(new Request(blueprintUrl), env, ctx);
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      json.docs.identity.name = "NotAutopilot";
+      json.docs.identity.updatedAt = new Date().toISOString();
+
+      const postCtx = createExecutionContext();
+      const postResponse = await worker.fetch(
+        new Request(blueprintUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(json)
+        }),
+        env,
+        postCtx
+      );
+      await waitOnExecutionContext(postCtx);
+      expect(postResponse.status).toBe(200);
+      // Drain body to avoid leaving the request hanging in isolated storage mode.
+      await postResponse.json();
+    }
+
+    // Reset.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(resetUrl, { method: "POST" }),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.ok).toBe(true);
+    }
+
+    // Blueprint returns to defaults.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(new Request(blueprintUrl), env, ctx);
+      await waitOnExecutionContext(ctx);
+      const json = (await response.json()) as any;
+      expect(json.docs.identity.name).toBe("Autopilot");
+      expect(json.bootstrapState.status).toBe("pending");
+    }
+  });
 });
