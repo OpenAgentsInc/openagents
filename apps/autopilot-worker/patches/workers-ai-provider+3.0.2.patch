@@ -1,0 +1,13 @@
+diff --git a/node_modules/workers-ai-provider/dist/index.js b/node_modules/workers-ai-provider/dist/index.js
+index 12e32e0..febc111 100644
+--- a/node_modules/workers-ai-provider/dist/index.js
++++ b/node_modules/workers-ai-provider/dist/index.js
+@@ -907,7 +907,7 @@ var WorkersAIChatLanguageModel = class {
+                 controller.enqueue({
+                   type: "reasoning-delta",
+                   delta: contentPart.text,
+-                  id: generateId3()
++                  id: reasoningId
+                 });
+               }
+             }
