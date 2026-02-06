@@ -418,6 +418,17 @@ Additionally:
   - After calling update tools + `bootstrap.complete`, status persists and ritual instructions stop injecting
   - `get-messages` includes tool-call/tool-result parts for updates
 
+## Implementation Status (2026-02-06)
+
+Shipped (DO-only, no Convex mirror):
+
+- Stored Blueprint state in the Autopilot DO SQLite DB (`autopilot_blueprint_state`).
+- Added Blueprint export endpoint: `GET /agents/chat/:id/blueprint` (Blueprint JSON, schema-encoded).
+- Added Blueprint import endpoint: `POST /agents/chat/:id/blueprint` (validate + import Blueprint JSON).
+- Wired birth prompt injection: render Blueprint docs into the system prompt each turn, and inject ritual instructions while `bootstrap.status != "complete"`.
+- Added Blueprint tools (server-side, AI SDK tools): `identity_update`, `user_update`, `soul_update`, `tools_update_notes`, `heartbeat_set_checklist`, `memory_append`, `bootstrap_complete`, `blueprint_export`.
+- Added worker tests covering Blueprint export/import (`apps/autopilot-worker/tests/index.test.ts`).
+
 ## Open Questions
 
 - Canonical store: DO-only vs DO+Convex mirror?
