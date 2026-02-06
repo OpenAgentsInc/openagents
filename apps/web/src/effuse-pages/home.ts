@@ -35,7 +35,7 @@ export function runHomePage(container: Element): Effect.Effect<void> {
       </main>
 
       <footer class="mt-auto flex w-full items-center justify-between px-6 py-4">
-        <span class="text-sm text-white/75">© ${String(year)} OpenAgents, Inc.</span>
+        <span class="text-xs text-white/75">© ${String(year)} OpenAgents, Inc.</span>
         <div class="flex items-center gap-4">
           <a href="https://x.com/OpenAgentsInc" target="_blank" rel="noopener noreferrer" class="text-white/75 transition-colors hover:text-white" aria-label="OpenAgents on X">${X_ICON}</a>
           <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer" class="text-white/75 transition-colors hover:text-white" aria-label="OpenAgents on GitHub">${GITHUB_ICON}</a>
