@@ -1,5 +1,5 @@
 import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
-import { Outlet, createFileRoute, useRouter } from '@tanstack/react-router';
+import { Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
 import { EffuseMount } from '../components/EffuseMount';
 import { runMarketingHeader } from '../effuse-pages/header';
 
@@ -8,9 +8,9 @@ export const Route = createFileRoute('/_marketing')({
 });
 
 function MarketingLayout() {
-  const router = useRouter();
-  const isHome = router.state.location.pathname === '/';
-  const isLogin = router.state.location.pathname === '/login';
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isHome = pathname === '/';
+  const isLogin = pathname === '/login';
 
   return (
     <div className="fixed inset-0">
