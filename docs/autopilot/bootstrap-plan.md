@@ -2,9 +2,9 @@
 
 Date: 2026-02-06
 
-This doc proposes an Autopilot-native version of OpenClaw's "workspace bootstrap" flow, redesigned for a cloud environment where we cannot rely on a real filesystem.
+This doc proposes an Autopilot-native version of OpenClaw's "workspace bootstrap" flow, redesigned for a cloud-first, multi-surface Autopilot where bootstrap artifacts are treated as **durable state** rather than a directory of files.
 
-Instead of seeding Markdown files like `SOUL.md` and `USER.md`, we model bootstrap state as **typed, versioned records** (Effect `Schema`) stored in a **database** (Durable Object SQLite and/or Convex). We can still render a "context file" view into the system prompt, but the canonical representation is structured data with auditability.
+Instead of seeding Markdown files like `SOUL.md` and `USER.md`, we model bootstrap state as **typed, versioned records** (Effect `Schema`) stored in a **database** (Durable Object SQLite and/or Convex). This unlocks runtime validation, queryability, receipts/replay stability, visibility controls, and a single-bundle export/import story. We can still render a "context file" view into the system prompt for the OpenClaw vibe, but the canonical representation is structured data with auditability.
 
 ## Source Reference (OpenClaw)
 
