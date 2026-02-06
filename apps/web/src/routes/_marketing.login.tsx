@@ -1,7 +1,8 @@
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { makeEzRegistry } from '@openagentsinc/effuse';
 import { EffuseMount } from '../components/EffuseMount';
 import { runLoginPage } from '../effuse-pages/login';
 import { TelemetryService } from '../effect/telemetry';
@@ -47,6 +48,7 @@ function LoginPage() {
   const [code, setCode] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const runtime = router.options.context.effectRuntime;
 
   const model: LoginPageModel = useMemo(
     () => ({
@@ -59,125 +61,215 @@ function LoginPage() {
     [step, email, code, isBusy, errorText],
   );
 
-  const run = useCallback((el: Element) => runLoginPage(el, model), [model]);
+  const ezRegistryRef = useRef(makeEzRegistry());
+  const ezRegistry = ezRegistryRef.current;
 
-  const onRendered = useCallback(
-    (container: Element) => {
-      const emailInput = container.querySelector<HTMLInputElement>('input[name="email"]');
-      if (emailInput) {
-        emailInput.addEventListener('input', () => setEmail(emailInput.value));
-        if (step === 'email') emailInput.focus();
-      }
+  // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
+  ezRegistry.set('login.email.input', ({ params }) =>
+    Effect.sync(() => {
+      const paramsMaybe = params as Record<string, string | undefined>;
+      setEmail(String(paramsMaybe.email ?? ''));
+    }),
+  );
 
-      const codeInput = container.querySelector<HTMLInputElement>('input[name="code"]');
-      if (codeInput) {
-        codeInput.addEventListener('input', () => setCode(codeInput.value));
-        if (step === 'code') codeInput.focus();
-      }
+  ezRegistry.set('login.code.input', ({ params }) =>
+    Effect.sync(() => {
+      const paramsMaybe = params as Record<string, string | undefined>;
+      setCode(String(paramsMaybe.code ?? ''));
+    }),
+  );
 
-      const emailForm = container.querySelector<HTMLFormElement>('#login-email-form');
-      if (emailForm) {
-        emailForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-          if (isBusy) return;
-          const nextEmail = (emailInput?.value ?? email).trim().toLowerCase();
-          setErrorText(null);
-          setIsBusy(true);
-          void fetch('/api/auth/start', {
+  ezRegistry.set('login.email.submit', ({ params }) =>
+    Effect.gen(function* () {
+      if (isBusy) return;
+
+      const paramsMaybe = params as Record<string, string | undefined>;
+      const nextEmail = String(paramsMaybe.email ?? email)
+        .trim()
+        .toLowerCase();
+      if (!nextEmail) return;
+
+      yield* Effect.sync(() => {
+        setErrorText(null);
+        setIsBusy(true);
+      });
+
+      const start = Effect.tryPromise({
+        try: async () => {
+          const r = await fetch('/api/auth/start', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ email: nextEmail }),
-          })
-            .then(async (r) => {
-              const data = await r.json().catch(() => null);
-              if (!r.ok || !data?.ok) {
-                throw new Error(typeof data?.error === 'string' ? data.error : 'send_failed');
-              }
-              setEmail(nextEmail);
-              setCode('');
-              setStep('code');
-            })
-            .catch((err) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              setErrorText(msg === 'invalid_email' ? 'Please enter a valid email.' : 'Failed to send code. Try again.');
-            })
-            .finally(() => setIsBusy(false));
-        });
-      }
+          });
+          const data = await r.json().catch(() => null);
+          if (!r.ok || !data?.ok) {
+            throw new Error(typeof data?.error === 'string' ? data.error : 'send_failed');
+          }
+        },
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+      });
 
-      const codeForm = container.querySelector<HTMLFormElement>('#login-code-form');
-      if (codeForm) {
-        codeForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-          if (isBusy) return;
-          const nextCode = (codeInput?.value ?? code).replace(/\\s+/g, '');
-          const nextEmail = email.trim().toLowerCase();
-          setErrorText(null);
-          setIsBusy(true);
-          void fetch('/api/auth/verify', {
+      yield* start.pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setEmail(nextEmail);
+            setCode('');
+            setStep('code');
+          }),
+        ),
+        Effect.catchAll((err) =>
+          Effect.sync(() => {
+            runtime
+              .runPromise(
+                Effect.gen(function* () {
+                  const telemetry = yield* TelemetryService;
+                  yield* telemetry.withNamespace('ui.login').event('login.start_failed', {
+                    message: err.message,
+                  });
+                }),
+              )
+              .catch(() => {});
+
+            setErrorText(
+              err.message === 'invalid_email'
+                ? 'Please enter a valid email.'
+                : 'Failed to send code. Try again.',
+            );
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setIsBusy(false))),
+      );
+    }),
+  );
+
+  ezRegistry.set('login.code.submit', ({ params }) =>
+    Effect.gen(function* () {
+      if (isBusy) return;
+      const nextEmail = email.trim().toLowerCase();
+      if (!nextEmail) return;
+      const paramsMaybe = params as Record<string, string | undefined>;
+      const nextCode = String(paramsMaybe.code ?? code).replace(/\s+/g, '');
+      if (!nextCode) return;
+
+      yield* Effect.sync(() => {
+        setErrorText(null);
+        setIsBusy(true);
+      });
+
+      const verify = Effect.tryPromise({
+        try: async () => {
+          const r = await fetch('/api/auth/verify', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ email: nextEmail, code: nextCode }),
-          })
-            .then(async (r) => {
-              const data = await r.json().catch(() => null);
-              if (!r.ok || !data?.ok) {
-                throw new Error(typeof data?.error === 'string' ? data.error : 'verify_failed');
-              }
-              clearRootAuthCache();
-              return router.navigate({ href: '/autopilot' });
-            })
-            .catch((err) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              setErrorText(msg === 'invalid_code' ? 'Invalid code. Please try again.' : 'Verification failed. Try again.');
-            })
-            .finally(() => setIsBusy(false));
-        });
-      }
-
-      const backBtn = container.querySelector('[data-action="back"]');
-      backBtn?.addEventListener('click', () => {
-        if (isBusy) return;
-        setErrorText(null);
-        setCode('');
-        setStep('email');
+          });
+          const data = await r.json().catch(() => null);
+          if (!r.ok || !data?.ok) {
+            throw new Error(typeof data?.error === 'string' ? data.error : 'verify_failed');
+          }
+        },
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
       });
 
-      const resendBtn = container.querySelector('[data-action="resend"]');
-      resendBtn?.addEventListener('click', () => {
-        if (isBusy) return;
-        const nextEmail = email.trim().toLowerCase();
-        if (!nextEmail) return;
+      yield* verify.pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            clearRootAuthCache();
+            router.navigate({ href: '/autopilot' }).catch(() => {});
+          }),
+        ),
+        Effect.catchAll((err) =>
+          Effect.sync(() => {
+            runtime
+              .runPromise(
+                Effect.gen(function* () {
+                  const telemetry = yield* TelemetryService;
+                  yield* telemetry.withNamespace('ui.login').event('login.verify_failed', {
+                    message: err.message,
+                  });
+                }),
+              )
+              .catch(() => {});
+
+            setErrorText(
+              err.message === 'invalid_code'
+                ? 'Invalid code. Please try again.'
+                : 'Verification failed. Try again.',
+            );
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setIsBusy(false))),
+      );
+    }),
+  );
+
+  ezRegistry.set('login.code.back', () =>
+    Effect.sync(() => {
+      if (isBusy) return;
+      setErrorText(null);
+      setCode('');
+      setStep('email');
+    }),
+  );
+
+  ezRegistry.set('login.code.resend', () =>
+    Effect.gen(function* () {
+      if (isBusy) return;
+      const nextEmail = email.trim().toLowerCase();
+      if (!nextEmail) return;
+
+      yield* Effect.sync(() => {
         setErrorText(null);
         setIsBusy(true);
-        void fetch('/api/auth/start', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email: nextEmail }),
-        })
-          .then(async (r) => {
-            const data = await r.json().catch(() => null);
-            if (!r.ok || !data?.ok) {
-              throw new Error(typeof data?.error === 'string' ? data.error : 'send_failed');
-            }
-          })
-          .catch(() => setErrorText('Failed to resend code. Try again.'))
-          .finally(() => setIsBusy(false));
       });
-    },
-    [router, step, email, code, isBusy],
+
+      const resend = Effect.tryPromise({
+        try: async () => {
+          const r = await fetch('/api/auth/start', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ email: nextEmail }),
+          });
+          const data = await r.json().catch(() => null);
+          if (!r.ok || !data?.ok) {
+            throw new Error(typeof data?.error === 'string' ? data.error : 'send_failed');
+          }
+        },
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+      });
+
+      yield* resend.pipe(
+        Effect.catchAll((err) =>
+          Effect.sync(() => {
+            runtime
+              .runPromise(
+                Effect.gen(function* () {
+                  const telemetry = yield* TelemetryService;
+                  yield* telemetry.withNamespace('ui.login').event('login.resend_failed', {
+                    message: err.message,
+                  });
+                }),
+              )
+              .catch(() => {});
+
+            setErrorText('Failed to resend code. Try again.');
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setIsBusy(false))),
+      );
+    }),
   );
 
   return (
     <EffuseMount
-      run={run}
+      run={(el) => runLoginPage(el, model)}
       // Avoid re-rendering the Effuse DOM on each keystroke; it causes caret/selection glitches
       // because Effuse replaces the input element. We only rerender on step/busy/error changes.
       deps={[step, isBusy, errorText]}
-      onRendered={onRendered}
+      ezRegistry={ezRegistry}
       className="flex min-h-0 flex-1 flex-col"
     />
   );

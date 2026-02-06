@@ -1,6 +1,8 @@
 import { useAtomSet, useAtomValue } from '@effect-atom/atom-react';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Effect } from 'effect';
+import { makeEzRegistry } from '@openagentsinc/effuse';
 import { EffuseMount } from '../EffuseMount';
 import { SessionAtom } from '../../effect/atoms/session';
 import {
@@ -39,12 +41,12 @@ export function AutopilotSidebar() {
   const setCollapsed = useAtomSet(AutopilotSidebarCollapsedAtom);
   const userMenuOpen = useAtomValue(AutopilotSidebarUserMenuOpenAtom);
   const setUserMenuOpen = useAtomSet(AutopilotSidebarUserMenuOpenAtom);
-  const mountElRef = useRef<Element | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!userMenuOpen) return;
     const onDocClick = (e: MouseEvent) => {
-      const root = mountElRef.current;
+      const root = wrapperRef.current;
       if (!root) return;
       if (!(e.target instanceof Node)) return;
       if (!root.contains(e.target)) setUserMenuOpen(false);
@@ -71,33 +73,41 @@ export function AutopilotSidebar() {
 
   const run = useCallback((el: Element) => runAutopilotSidebar(el, model), [model]);
 
-  const onRendered = useCallback((container: Element) => {
-    mountElRef.current = container;
+  const ezRegistryRef = useRef(makeEzRegistry());
+  const ezRegistry = ezRegistryRef.current;
 
-    const toggleBtn = container.querySelector('[data-action="toggle-collapse"]');
-    toggleBtn?.addEventListener('click', () => {
+  // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
+  ezRegistry.set('autopilot.sidebar.toggleCollapse', () =>
+    Effect.sync(() => {
       setUserMenuOpen(false);
       setCollapsed((c) => !c);
-    });
+    }),
+  );
 
-    const menuToggle = container.querySelector('[data-action="toggle-user-menu"]');
-    menuToggle?.addEventListener('click', () => setUserMenuOpen((o) => !o));
+  ezRegistry.set('autopilot.sidebar.toggleUserMenu', () =>
+    Effect.sync(() => setUserMenuOpen((o) => !o)),
+  );
 
-    const logoutBtn = container.querySelector('[data-action="logout"]');
-    logoutBtn?.addEventListener('click', () => {
+  ezRegistry.set('autopilot.sidebar.logout', () =>
+    Effect.sync(() => {
       setUserMenuOpen(false);
       void signOut();
-    });
-  }, [signOut]);
+    }),
+  );
 
   const widthClass = collapsed ? 'w-12' : 'w-64';
 
   return (
-    <EffuseMount
-      run={run}
-      deps={[collapsed, pathname, session.user?.id ?? null, userMenuOpen]}
-      onRendered={onRendered}
+    <div
+      ref={wrapperRef}
       className={`hidden md:flex h-full flex-col shrink-0 border-r border-border-dark bg-bg-secondary text-text-primary transition-[width] duration-200 ease-linear ${widthClass}`}
-    />
+    >
+      <EffuseMount
+        run={run}
+        deps={[collapsed, pathname, session.user?.id ?? null, userMenuOpen]}
+        ezRegistry={ezRegistry}
+        className="h-full w-full"
+      />
+    </div>
   );
 }

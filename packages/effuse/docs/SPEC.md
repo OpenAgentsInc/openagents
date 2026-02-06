@@ -432,7 +432,7 @@ subscriptions: (ctx) => [
 
 ## Testing
 
-Contract tests live under `tests/effuse/`; see `docs/effuse/TESTING.md` for
+Contract tests live under `tests/`; see `docs/effuse/TESTING.md` for
 details and usage.
 
 ## Type Constraints

@@ -42,7 +42,7 @@ export function runLoginPage(
 
           ${model.step === "email"
             ? html`
-                <form id="login-email-form" class="mt-8">
+                <form id="login-email-form" data-ez="login.email.submit" class="mt-8">
                   <label for="login-email" class="mb-1.5 block text-sm font-medium text-text-dim">
                     Email address
                   </label>
@@ -52,6 +52,9 @@ export function runLoginPage(
                     type="email"
                     placeholder="you@example.com"
                     autocomplete="email"
+                    data-ez="login.email.input"
+                    data-ez-trigger="input"
+                    autofocus
                     value="${model.email}"
                     class="w-full rounded-lg border border-border-dark bg-surface-primary px-4 py-3 text-text-primary placeholder:text-text-dim outline-none transition-colors focus:border-border-focus focus:ring-2 focus:ring-border-focus/30"
                   />
@@ -66,7 +69,7 @@ export function runLoginPage(
                 </form>
               `
             : html`
-                <form id="login-code-form" class="mt-8">
+                <form id="login-code-form" data-ez="login.code.submit" class="mt-8">
                   <label for="login-code" class="mb-1.5 block text-sm font-medium text-text-dim">
                     Verification code
                   </label>
@@ -76,6 +79,9 @@ export function runLoginPage(
                     inputmode="numeric"
                     autocomplete="one-time-code"
                     placeholder="123456"
+                    data-ez="login.code.input"
+                    data-ez-trigger="input"
+                    autofocus
                     value="${model.code}"
                     class="w-full rounded-lg border border-border-dark bg-surface-primary px-4 py-3 text-text-primary placeholder:text-text-dim outline-none transition-colors focus:border-border-focus focus:ring-2 focus:ring-border-focus/30"
                   />
@@ -90,14 +96,14 @@ export function runLoginPage(
                   <div class="mt-4 flex items-center justify-between text-sm">
                     <button
                       type="button"
-                      data-action="back"
+                      data-ez="login.code.back"
                       class="text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                     >
                       Back
                     </button>
                     <button
                       type="button"
-                      data-action="resend"
+                      data-ez="login.code.resend"
                       class="text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
                     >
                       Resend code

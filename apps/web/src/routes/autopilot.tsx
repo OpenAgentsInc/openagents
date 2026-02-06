@@ -4,6 +4,7 @@ import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { makeEzRegistry } from '@openagentsinc/effuse';
 import { whitePreset } from '@openagentsinc/hud';
 import { AutopilotSidebar } from '../components/layout/AutopilotSidebar';
 import { EffuseMount } from '../components/EffuseMount';
@@ -257,20 +258,30 @@ function ChatPage() {
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
   const messages = chat.messages as ReadonlyArray<UIMessage>;
-  const scrollRef = useRef<HTMLElement | null>(null);
   const chatMountRef = useRef<HTMLDivElement>(null);
-
-  const recomputeIsAtBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const thresholdPx = 96;
-    const distanceFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
-    setIsAtBottom(distanceFromBottom <= thresholdPx);
-  }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const bottom = chatMountRef.current?.firstElementChild?.querySelector('[data-autopilot-bottom]');
     (bottom as HTMLElement | undefined)?.scrollIntoView({ block: 'end', behavior });
+  }, []);
+
+  // Track whether the user is near the bottom of the chat scroll region.
+  // Use a capture-phase scroll listener so we don't need to rebind on each Effuse re-render.
+  useEffect(() => {
+    const root = chatMountRef.current;
+    if (!root) return;
+
+    const thresholdPx = 96;
+    const onScrollCapture = (e: Event) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.getAttribute('data-scroll-id') !== 'autopilot-chat-scroll') return;
+      const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
+      setIsAtBottom(distanceFromBottom <= thresholdPx);
+    };
+
+    root.addEventListener('scroll', onScrollCapture, true);
+    return () => root.removeEventListener('scroll', onScrollCapture, true);
   }, []);
 
   const renderedMessages = useMemo(() => {
@@ -446,10 +457,6 @@ function ChatPage() {
   }, [chatId, runtime]);
 
   useEffect(() => {
-    recomputeIsAtBottom();
-  }, [recomputeIsAtBottom, renderedTailKey]);
-
-  useEffect(() => {
     if (!isAtBottom) return;
     if (renderedMessages.length === 0) return;
     scrollToBottom(isStreaming ? 'auto' : 'smooth');
@@ -478,42 +485,67 @@ function ChatPage() {
     [autopilotChatData],
   );
 
-  const onChatRendered = useCallback((container: Element) => {
-    const form = container.querySelector('#chat-form');
-    if (form instanceof HTMLFormElement) {
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const inputEl = form.querySelector<HTMLInputElement>('input[name="message"]');
-        if (!inputEl || isBusy) return;
-        const text = inputEl.value.trim();
-        if (!text) return;
-        inputEl.value = '';
+  const chatEzRegistryRef = useRef(makeEzRegistry());
+  const chatEzRegistry = chatEzRegistryRef.current;
+
+  // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
+  chatEzRegistry.set('autopilot.chat.input', ({ params }) =>
+    Effect.sync(() => {
+      const paramsMaybe = params as Record<string, string | undefined>;
+      setInput(String(paramsMaybe.message ?? ''));
+    }),
+  );
+
+  chatEzRegistry.set('autopilot.chat.scrollBottom', () =>
+    Effect.sync(() => scrollToBottom('smooth')),
+  );
+
+  chatEzRegistry.set('autopilot.chat.stop', () =>
+    Effect.sync(() => {
+      chat.stop().catch(() => {});
+    }),
+  );
+
+  chatEzRegistry.set('autopilot.chat.send', ({ el, params }) =>
+    Effect.gen(function* () {
+      if (isBusy) return;
+      const form = el instanceof HTMLFormElement ? el : null;
+      const inputEl = form?.querySelector<HTMLInputElement>('input[name="message"]') ?? null;
+
+      const paramsMaybe = params as Record<string, string | undefined>;
+      const text = String(paramsMaybe.message ?? '').trim();
+      if (!text) return;
+
+      yield* Effect.sync(() => {
+        if (inputEl) inputEl.value = '';
         setInput('');
-        void chat.sendMessage({ text }).catch(() => {
-          inputEl.value = text;
-          setInput(text);
-        });
-        setTimeout(() => scrollToBottom('auto'), 0);
       });
-    }
 
-    const stopBtn = container.querySelector('[data-action="stop"]');
-    stopBtn?.addEventListener('click', () => void chat.stop());
+      yield* Effect.tryPromise({
+        try: () => chat.sendMessage({ text }),
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+      }).pipe(
+        Effect.catchAll((err) =>
+          Effect.sync(() => {
+            if (inputEl) inputEl.value = text;
+            setInput(text);
+            runtime
+              .runPromise(
+                Effect.gen(function* () {
+                  const telemetry = yield* TelemetryService;
+                  yield* telemetry.withNamespace('ui.chat').log('error', 'chat.send_failed', {
+                    message: err.message,
+                  });
+                }),
+              )
+              .catch(() => {});
+          }),
+        ),
+      );
 
-    const scrollBottomBtn = container.querySelector('[data-action="scroll-bottom"]');
-    scrollBottomBtn?.addEventListener('click', () => scrollToBottom('smooth'));
-
-    const inputEl = container.querySelector<HTMLInputElement>('input[name="message"]');
-    if (inputEl) {
-      inputEl.addEventListener('input', () => setInput(inputEl.value));
-    }
-
-    const scrollEl = container.querySelector('[data-scroll-id="autopilot-chat-scroll"]');
-    if (scrollEl instanceof HTMLElement) {
-      scrollRef.current = scrollEl;
-      scrollEl.addEventListener('scroll', recomputeIsAtBottom);
-    }
-  }, [isBusy, chat, scrollToBottom, recomputeIsAtBottom]);
+      yield* Effect.sync(() => setTimeout(() => scrollToBottom('auto'), 0));
+    }),
+  );
 
   const onExportBlueprint = async () => {
     if (isExportingBlueprint) return;
@@ -697,6 +729,18 @@ function ChatPage() {
       isSaving: isSavingBlueprint,
       errorText: blueprintError,
       blueprintText,
+      draft: isEditingBlueprint
+        ? (blueprintDraftRef.current ??
+            (blueprint
+              ? makeDraftFromBlueprint(blueprint)
+              : {
+                  userHandle: '',
+                  agentName: '',
+                  identityVibe: '',
+                  characterVibe: '',
+                  characterBoundaries: '',
+                }))
+        : null,
     }),
     [
       blueprint,
@@ -706,6 +750,7 @@ function ChatPage() {
       blueprintUpdatedAt,
       isEditingBlueprint,
       isSavingBlueprint,
+      makeDraftFromBlueprint,
     ],
   );
 
@@ -738,22 +783,32 @@ function ChatPage() {
     isSavingBlueprint,
   ]);
 
-  const onBlueprintRendered = useCallback(
-    (container: Element) => {
-      const toggleEditBtn = container.querySelector('[data-action="toggle-edit"]');
-      toggleEditBtn?.addEventListener('click', () => {
-        if (isEditingBlueprint) onCancelEditBlueprint();
-        else onStartEditBlueprint();
-      });
+  const blueprintEzRegistryRef = useRef(makeEzRegistry());
+  const blueprintEzRegistry = blueprintEzRegistryRef.current;
 
-      const refreshBtn = container.querySelector('[data-action="refresh"]');
-      refreshBtn?.addEventListener('click', () => void fetchBlueprint());
+  // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
+  blueprintEzRegistry.set('autopilot.blueprint.toggleEdit', () =>
+    Effect.sync(() => {
+      if (isEditingBlueprint) onCancelEditBlueprint();
+      else onStartEditBlueprint();
+    }),
+  );
 
-      const saveBtn = container.querySelector('[data-action="save"]');
-      saveBtn?.addEventListener('click', () => void onSaveBlueprint());
+  blueprintEzRegistry.set('autopilot.blueprint.refresh', () =>
+    Effect.sync(() => {
+      fetchBlueprint().catch(() => {});
+    }),
+  );
 
-      if (!isEditingBlueprint) return;
+  blueprintEzRegistry.set('autopilot.blueprint.save', () =>
+    Effect.sync(() => {
+      onSaveBlueprint().catch(() => {});
+    }),
+  );
 
+  blueprintEzRegistry.set('autopilot.blueprint.draft', ({ params }) =>
+    Effect.sync(() => {
+      const paramsMaybe = params as Record<string, string | undefined>;
       const draft =
         blueprintDraftRef.current ??
         (blueprint
@@ -767,41 +822,14 @@ function ChatPage() {
             });
       blueprintDraftRef.current = draft;
 
-      const bindText = (
-        field: keyof BlueprintDraft,
-        el: HTMLInputElement | HTMLTextAreaElement | null,
-      ) => {
-        if (!el) return;
-        const current = draft[field];
-        if (typeof current === 'string' && el.value !== current) {
-          el.value = current;
-        }
-        el.addEventListener('input', () => {
-          const next = el.value;
-          const d = blueprintDraftRef.current;
-          if (!d) return;
-          d[field] = next;
-        });
-      };
-
-      bindText('userHandle', container.querySelector<HTMLInputElement>('input[name="userHandle"]'));
-      bindText('agentName', container.querySelector<HTMLInputElement>('input[name="agentName"]'));
-      bindText('identityVibe', container.querySelector<HTMLInputElement>('input[name="identityVibe"]'));
-      bindText('characterVibe', container.querySelector<HTMLInputElement>('input[name="characterVibe"]'));
-      bindText(
-        'characterBoundaries',
-        container.querySelector<HTMLTextAreaElement>('textarea[name="characterBoundaries"]'),
-      );
-    },
-    [
-      blueprint,
-      fetchBlueprint,
-      isEditingBlueprint,
-      makeDraftFromBlueprint,
-      onCancelEditBlueprint,
-      onSaveBlueprint,
-      onStartEditBlueprint,
-    ],
+      if (paramsMaybe.userHandle !== undefined) draft.userHandle = String(paramsMaybe.userHandle);
+      if (paramsMaybe.agentName !== undefined) draft.agentName = String(paramsMaybe.agentName);
+      if (paramsMaybe.identityVibe !== undefined) draft.identityVibe = String(paramsMaybe.identityVibe);
+      if (paramsMaybe.characterVibe !== undefined) draft.characterVibe = String(paramsMaybe.characterVibe);
+      if (paramsMaybe.characterBoundaries !== undefined) {
+        draft.characterBoundaries = String(paramsMaybe.characterBoundaries);
+      }
+    }),
   );
 
   const controlsModel = useMemo(
@@ -818,18 +846,26 @@ function ChatPage() {
     [controlsModel],
   );
 
-  const onControlsRendered = useCallback(
-    (container: Element) => {
-      const exportBtn = container.querySelector('[data-action="export-blueprint"]');
-      exportBtn?.addEventListener('click', () => void onExportBlueprint());
+  const controlsEzRegistryRef = useRef(makeEzRegistry());
+  const controlsEzRegistry = controlsEzRegistryRef.current;
 
-      const clearBtn = container.querySelector('[data-action="clear-messages"]');
-      clearBtn?.addEventListener('click', () => clearHistory());
+  // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
+  controlsEzRegistry.set('autopilot.controls.exportBlueprint', () =>
+    Effect.sync(() => {
+      onExportBlueprint().catch(() => {});
+    }),
+  );
 
-      const resetBtn = container.querySelector('[data-action="reset-agent"]');
-      resetBtn?.addEventListener('click', () => void onResetAgent());
-    },
-    [clearHistory, onExportBlueprint, onResetAgent],
+  controlsEzRegistry.set('autopilot.controls.clearMessages', () =>
+    Effect.sync(() => {
+      clearHistory();
+    }),
+  );
+
+  controlsEzRegistry.set('autopilot.controls.resetAgent', () =>
+    Effect.sync(() => {
+      onResetAgent().catch(() => {});
+    }),
   );
 
   return (
@@ -871,7 +907,7 @@ function ChatPage() {
 	          <EffuseMount
 	            run={runAutopilotChatRef}
 	            deps={[autopilotChatData]}
-	            onRendered={onChatRendered}
+	            ezRegistry={chatEzRegistry}
 	            className="flex-1 min-h-0 flex flex-col overflow-hidden"
 	          />
 	        </div>
@@ -880,7 +916,7 @@ function ChatPage() {
 	        <EffuseMount
 	          run={runBlueprintPanelRef}
 	          deps={blueprintPanelDeps}
-	          onRendered={onBlueprintRendered}
+	          ezRegistry={blueprintEzRegistry}
 	          className="hidden lg:flex lg:w-[360px] shrink-0 border-l border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
 	        />
       </main>
@@ -889,7 +925,7 @@ function ChatPage() {
       <EffuseMount
         run={runControlsRef}
         deps={[controlsModel]}
-        onRendered={onControlsRendered}
+        ezRegistry={controlsEzRegistry}
         className="absolute bottom-4 right-4"
       />
       </div>

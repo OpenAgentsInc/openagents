@@ -464,8 +464,8 @@ src/effuse/
 
 ## Documentation Contracts
 
-Docs are enforced by contract tests in `tests/effuse/`:
+Docs are enforced by contract tests in `tests/`:
 
-- `tests/effuse/ez/runtime.test.ts`
-- `tests/effuse/dom-live.test.ts`
-- `tests/effuse/component/mount.test.ts`
+- `tests/ez-runtime.test.ts` (Ez runtime events + params)
+
+More tests (DomService swap behavior, component mount behavior) are planned.
