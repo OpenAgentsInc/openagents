@@ -75,20 +75,26 @@ const TOOLS: ToolSet = {
   })
 };
 
-const SYSTEM_PROMPT =
+const SYSTEM_PROMPT_BASE =
   "You are Autopilot, a persistent personal AI agent.\n" +
   "\n" +
-  "You have access to these tools:\n" +
-  "- get_time({ timeZone? }) -> current time (use this if the user says 'use a tool' but doesn't specify)\n" +
-  "- echo({ text }) -> echoes input (useful for quick tests)\n" +
+  "Be concise, helpful, and remember the ongoing conversation.\n" +
+  "\n" +
+  "Important:\n" +
+  "- Do not claim you can browse the web or call tools unless tools are explicitly available.\n";
+
+const SYSTEM_PROMPT_WITH_TOOLS =
+  SYSTEM_PROMPT_BASE +
+  "\n" +
+  "Tools available:\n" +
+  "- get_time({ timeZone? }) -> current time\n" +
+  "- echo({ text }) -> echoes input\n" +
   "\n" +
   "Tool use rules:\n" +
-  "- When the user asks you to use a tool (explicitly), you MUST call an appropriate tool.\n" +
+  "- If the user asks you to use a tool, you MUST call an appropriate tool.\n" +
   "- After using tools, ALWAYS send a normal assistant reply with user-visible text.\n" +
   "- Never claim you have tools you do not have.\n" +
-  "- If the user asks you to search/browse the web, be explicit that you currently cannot.\n" +
-  "\n" +
-  "Be concise, helpful, and remember the ongoing conversation.";
+  "- If the user asks you to search/browse the web, be explicit that you currently cannot.\n";
 
 function shouldForceToolChoice(recentMessages: ReadonlyArray<unknown>) {
   // Heuristic: if the user explicitly asks to use tools, require at least one tool call.
@@ -111,6 +117,31 @@ function shouldForceToolChoice(recentMessages: ReadonlyArray<unknown>) {
   );
 }
 
+function getLastUserText(recentMessages: ReadonlyArray<unknown>) {
+  const lastUser = [...recentMessages].reverse().find((m: any) => m?.role === "user");
+  const parts: ReadonlyArray<any> = Array.isArray((lastUser as any)?.parts)
+    ? (lastUser as any).parts
+    : [];
+  return parts
+    .filter((p) => p && typeof p === "object" && p.type === "text" && typeof p.text === "string")
+    .map((p) => p.text)
+    .join("")
+    .trim();
+}
+
+function shouldEnableTools(recentMessages: ReadonlyArray<unknown>) {
+  const text = getLastUserText(recentMessages);
+  if (!text) return false;
+
+  // Preserve streaming + reasoning for normal chat by default. Tools are opt-in.
+  return (
+    shouldForceToolChoice(recentMessages) ||
+    /\b(get_time|echo)\b/i.test(text) ||
+    /\bwhat(?:'s| is)\s+the\s+time\b/i.test(text) ||
+    /\bcurrent\s+time\b/i.test(text)
+  );
+}
+
 /**
  * Minimal persistent chat agent:
  * - Durable Object-backed transcript via AIChatAgent
@@ -127,18 +158,22 @@ export class Chat extends AIChatAgent<Env> {
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        const toolChoice = shouldForceToolChoice(recentMessages)
-          ? ("required" as const)
-          : ("auto" as const);
+        const toolsEnabled = shouldEnableTools(recentMessages);
+        const forceTool = toolsEnabled && shouldForceToolChoice(recentMessages);
 
         const result = streamText({
-          system: SYSTEM_PROMPT,
+          system: toolsEnabled ? SYSTEM_PROMPT_WITH_TOOLS : SYSTEM_PROMPT_BASE,
           messages: await convertToModelMessages(recentMessages),
           model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           stopWhen: stepCountIs(10),
-          tools: TOOLS,
-          toolChoice,
+          ...(toolsEnabled
+            ? {
+                tools: TOOLS,
+                // When tools are enabled, keep default 'auto' unless we need to force a tool call.
+                ...(forceTool ? { toolChoice: "required" as const } : {})
+              }
+            : {}),
           // Base class uses this callback to persist messages + stream metadata.
           onFinish: onFinish as unknown as StreamTextOnFinishCallback<ToolSet>,
           ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {})
