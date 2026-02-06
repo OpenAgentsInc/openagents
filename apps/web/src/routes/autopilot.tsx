@@ -7,11 +7,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
 import { AutopilotSidebar } from '../components/layout/AutopilotSidebar';
 import { EffuseMount } from '../components/EffuseMount';
-import { runAutopilotChat, type RenderedMessage as EffuseRenderedMessage } from '../effuse-pages/autopilot';
+import { runAutopilotChat } from '../effuse-pages/autopilot';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { UIMessage } from 'ai';
 import type { AgentToolContract } from '../effect/agentApi';
+import type { RenderedMessage as EffuseRenderedMessage } from '../effuse-pages/autopilot';
 
 export const Route = createFileRoute('/autopilot')({
   loader: async ({ context }) => {
@@ -252,7 +253,7 @@ function ChatPage() {
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
   const messages = chat.messages as ReadonlyArray<UIMessage>;
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLElement | null>(null);
   const chatMountRef = useRef<HTMLDivElement>(null);
 
   const recomputeIsAtBottom = useCallback(() => {
@@ -269,8 +270,13 @@ function ChatPage() {
   }, []);
 
   const renderedMessages = useMemo(() => {
+    const isUserOrAssistant = (
+      msg: UIMessage,
+    ): msg is UIMessage & { readonly role: 'user' | 'assistant' } =>
+      msg.role === 'user' || msg.role === 'assistant';
+
     return messages
-      .filter((msg) => msg.role !== 'system')
+      .filter(isUserOrAssistant)
       .map((msg) => {
         const parts = Array.isArray((msg as any).parts) ? (msg as any).parts : [];
         const renderParts = toRenderableParts(parts as ReadonlyArray<UiPart>);
@@ -479,12 +485,13 @@ function ChatPage() {
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const inputEl = form.querySelector<HTMLInputElement>('input[name="message"]');
-        const text = inputEl?.value?.trim() ?? '';
-        if (!text || isBusy) return;
+        if (!inputEl || isBusy) return;
+        const text = inputEl.value.trim();
+        if (!text) return;
         inputEl.value = '';
         setInput('');
         void chat.sendMessage({ text }).catch(() => {
-          if (inputEl) inputEl.value = text;
+          inputEl.value = text;
           setInput(text);
         });
         setTimeout(() => scrollToBottom('auto'), 0);
@@ -498,7 +505,9 @@ function ChatPage() {
     scrollBottomBtn?.addEventListener('click', () => scrollToBottom('smooth'));
 
     const inputEl = container.querySelector<HTMLInputElement>('input[name="message"]');
-    inputEl?.addEventListener('input', () => setInput(inputEl.value));
+    if (inputEl) {
+      inputEl.addEventListener('input', () => setInput(inputEl.value));
+    }
 
     const scrollEl = container.querySelector('[data-scroll-id="autopilot-chat-scroll"]');
     if (scrollEl instanceof HTMLElement) {

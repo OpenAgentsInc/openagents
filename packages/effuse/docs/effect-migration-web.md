@@ -6,17 +6,25 @@ If you want to “convert basically EVERYTHING to Effect”, you’ll have the b
 
 ---
 
-## Current State (2026-02-05)
+## Current State (2026-02-06)
 
 - Effect scaffold exists in `apps/web/src/effect/*`:
   - `AppConfigService` (reads `VITE_CONVEX_URL`)
   - `TelemetryService` (console sink)
   - `AgentApiService` (typed Effect boundary for `/agents/*` endpoints)
-  - `makeAppRuntime()` (single `ManagedRuntime` for the app)
+  - `AgentRpcClientService` (typed `@effect/rpc` client for `/api/rpc`)
+  - `makeAppRuntime()` (single `ManagedRuntime` for the app, created with a shared `MemoMap`)
+  - `getServerRuntime()` (shared server runtime + `MemoMap` accessor for API handlers)
 - `apps/web/src/router.tsx` creates the runtime and exposes it via router context (`effectRuntime`).
 - `apps/web/src/start.ts` adds request middleware that:
   - creates a `requestId` and passes it into Start `serverContext`
   - emits a best-effort `TelemetryService` event (`http: request.start`)
+- Effect RPC + atom hydration:
+  - RPC is mounted at `POST /api/rpc` via `apps/web/src/routes/api.rpc.tsx` using `RpcServer.toWebHandler(...)` with `disableFatalDefects: true` and the shared `MemoMap`.
+  - Example call site: `apps/web/src/routes/modules.tsx` uses `AgentRpcClientService` to fetch `agent.getModuleContracts`.
+  - SSR atom hydration is wired in `apps/web/src/routes/__root.tsx`:
+    - server fn `fetchWorkosAuth` produces a dehydrated `atomState` for `SessionAtom`
+    - app is wrapped in `RegistryProvider` + `HydrationBoundary` so atoms are hydrated before child render
 
 ---
 
@@ -104,7 +112,7 @@ If/when you want request-scoped context (trace IDs, per-request logging, cookie/
      - Convex client
      - WorkOS auth (server: `getAuth`, client: hooks)
      - Environment/config (`import.meta.env`)
-     - Telemetry/logging (spec: `docs/autopilot/effect-telemetry-service.md`)
+     - Telemetry/logging (see effect-telemetry-service in repo docs if present)
 
 3. **Route loaders + serverFns**
    - Convert `loader` / `beforeLoad` / `createServerFn` logic to Effect programs.
@@ -124,6 +132,21 @@ If/when you want request-scoped context (trace IDs, per-request logging, cookie/
 
 ---
 
+## Routing, navigation, and avoiding full-page behavior
+
+**How routing relates to Effect:** The router is created once in `getRouter()` and receives `effectRuntime: makeAppRuntime(appConfig)` in context. Every route and component that uses `router.options.context.effectRuntime` shares that same runtime (and thus the same app layer, RPC client, etc.). The RPC endpoint (`POST /api/rpc`) is just another route; page navigation does not touch it. So routing decides which page component and loaders run; Effect is in router context and used inside those.
+
+**We do not do full browser reloads.** Navigation uses TanStack Router’s client-side routing (e.g. `<Link>`), so the document never reloads—only the tree under `<Outlet />` changes.
+
+Two things can still feel heavy:
+
+1. **Root `beforeLoad` runs on every navigation.** TanStack Router runs `beforeLoad` from root down on each navigation. We avoid refetching auth on every client-side navigation by caching the root auth result on the client (see `clientAuthCache` and `clearRootAuthCache()` in `apps/web/src/routes/__root.tsx`). On the server we always fetch; on the client we reuse the cache until sign-out or a full page load.
+2. **App pages are direct children of root.** Routes like `/autopilot`, `/modules`, `/tools` are direct children of `__root__`, so the entire page component swaps on navigation. To get a persistent “app shell” (e.g. sidebar stays mounted, only main content changes), add a shared layout route (e.g. `_app` or `_dashboard`) that wraps those routes and renders a persistent shell + `<Outlet />` for the main content. Then only the outlet remounts when switching pages.
+
+---
+
 ## Related references
 
-- Patterns to adopt from `~/code/crest` (Next.js + Effect + Convex): `docs/autopilot/effect-patterns-from-crest.md`
+- Full router + integration overview: [ROUTER-AND-APPS-WEB-INTEGRATION.md](./ROUTER-AND-APPS-WEB-INTEGRATION.md)
+- RPC details: [effect-rpc-web.md](./effect-rpc-web.md)
+- Effuse conversion: [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md)

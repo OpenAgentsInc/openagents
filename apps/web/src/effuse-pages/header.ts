@@ -1,5 +1,6 @@
-import { Effect } from "effect";
-import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
+import { Effect } from 'effect';
+import { DomServiceTag, EffuseLive, html } from '@openagentsinc/effuse';
+import { hatcheryButton } from './ui/hatcheryButton';
 
 /**
  * Renders the marketing layout header (logo + optional nav).
@@ -11,15 +12,15 @@ export function runMarketingHeader(
 ): Effect.Effect<void> {
   return Effect.gen(function* () {
     const dom = yield* DomServiceTag;
-    const navVisibility = isHome ? "visible" : "hidden";
-    const navPointerEvents = isHome ? "auto" : "none";
+    const navVisibility = isHome ? 'visible' : 'hidden';
+    const navPointerEvents = isHome ? 'auto' : 'none';
     const content = html`
       <header class="-mx-4 flex h-14 w-full shrink-0 items-center justify-between px-6">
         <a href="/" class="select-none text-lg font-semibold text-white">OpenAgents</a>
         <div
           class="flex items-center gap-3"
           style="visibility: ${navVisibility}; pointer-events: ${navPointerEvents};"
-          aria-hidden="${isHome ? "false" : "true"}"
+          aria-hidden="${isHome ? 'false' : 'true'}"
         >
           <a
             href="/login"
@@ -28,12 +29,11 @@ export function runMarketingHeader(
           >
             Log in
           </a>
-          <a
-            href="/login"
-            class="inline-flex h-9 min-h-9 items-center justify-center rounded-lg border border-white/90 bg-transparent px-4 text-sm font-medium uppercase tracking-wide text-white transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-          >
-            Start for free
-          </a>
+          ${hatcheryButton({
+            href: '/login',
+            label: 'Start for free',
+            variant: 'outline',
+          })}
         </div>
       </header>
     `;
@@ -41,7 +41,7 @@ export function runMarketingHeader(
   }).pipe(
     Effect.provide(EffuseLive),
     Effect.catchAll((err) => {
-      console.error("[Effuse header]", err);
+      console.error('[Effuse header]', err);
       return Effect.void;
     })
   );

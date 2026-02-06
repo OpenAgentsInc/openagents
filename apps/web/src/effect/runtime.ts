@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Effect, Layer } from 'effect';
 import * as ManagedRuntime from 'effect/ManagedRuntime';
 import { AppConfigService } from './config';
 import { makeAppLayer } from './layer';
@@ -10,11 +10,17 @@ import type { AppServices } from './layer';
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppServices, never>;
 
 let singletonRuntime: AppRuntime | null = null;
+let singletonMemoMap: Layer.MemoMap | null = null;
+let singletonLayer: ReturnType<typeof makeAppLayer> | null = null;
 
 export const makeAppRuntime = (config: AppConfig): AppRuntime => {
   if (singletonRuntime) return singletonRuntime;
 
-  const runtime = ManagedRuntime.make(makeAppLayer(config));
+  singletonMemoMap ??= Effect.runSync(Layer.makeMemoMap);
+
+  singletonLayer ??= makeAppLayer(config);
+
+  const runtime = ManagedRuntime.make(singletonLayer, singletonMemoMap);
   singletonRuntime = runtime;
 
   runtime.runSync(
@@ -24,11 +30,19 @@ export const makeAppRuntime = (config: AppConfig): AppRuntime => {
 
       yield* telemetry.withNamespace('app.init').log('info', 'Effect services initialized', {
         runtime: typeof window === 'undefined' ? 'server' : 'client',
-        services: ['AppConfigService', 'TelemetryService', 'AgentApiService'],
+        services: ['AppConfigService', 'TelemetryService', 'AgentApiService', 'AgentRpcClientService'],
         convexUrl: appConfig.convexUrl,
       });
     }),
   );
 
   return runtime;
+};
+
+export const getAppMemoMap = (config: AppConfig): Layer.MemoMap => makeAppRuntime(config).memoMap;
+
+/** Access the singleton app layer instance used by `makeAppRuntime` (for MemoMap sharing). */
+export const getAppLayer = (config: AppConfig) => {
+  makeAppRuntime(config);
+  return singletonLayer!;
 };

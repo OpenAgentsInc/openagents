@@ -4,10 +4,11 @@ import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
 import { EffuseMount } from '../components/EffuseMount';
-import { runToolsPage, type ToolItem } from '../effuse-pages/tools';
+import { runToolsPage } from '../effuse-pages/tools';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { AgentToolContract } from '../effect/agentApi';
+import type { ToolItem } from '../effuse-pages/tools';
 
 export const Route = createFileRoute('/tools')({
   loader: async ({ context }) => {

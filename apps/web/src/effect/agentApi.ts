@@ -2,7 +2,7 @@ import { Context, Effect, Layer, Schema } from 'effect';
 import { TelemetryService } from './telemetry';
 import type { UIMessage } from 'ai';
 
-class AgentApiError extends Schema.TaggedError<AgentApiError>()('AgentApiError', {
+export class AgentApiError extends Schema.TaggedError<AgentApiError>()('AgentApiError', {
   operation: Schema.String,
   status: Schema.optional(Schema.Number),
   error: Schema.Defect,

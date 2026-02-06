@@ -18,6 +18,7 @@ import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as MarketingRouteImport } from './routes/_marketing'
 import { Route as MarketingIndexRouteImport } from './routes/_marketing.index'
 import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
+import { Route as ApiRpcRouteImport } from './routes/api.rpc'
 import { Route as MarketingLoginRouteImport } from './routes/_marketing.login'
 
 const ToolsRoute = ToolsRouteImport.update({
@@ -64,6 +65,11 @@ const ChatChatIdRoute = ChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRpcRoute = ApiRpcRouteImport.update({
+  id: '/api/rpc',
+  path: '/api/rpc',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MarketingLoginRoute = MarketingLoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
   '/login': typeof MarketingLoginRoute
+  '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
 export interface FileRoutesByTo {
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
   '/login': typeof MarketingLoginRoute
+  '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/': typeof MarketingIndexRoute
 }
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
   '/_marketing/login': typeof MarketingLoginRoute
+  '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/_marketing/': typeof MarketingIndexRoute
 }
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/signatures'
     | '/tools'
     | '/login'
+    | '/api/rpc'
     | '/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/signatures'
     | '/tools'
     | '/login'
+    | '/api/rpc'
     | '/chat/$chatId'
     | '/'
   id:
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/signatures'
     | '/tools'
     | '/_marketing/login'
+    | '/api/rpc'
     | '/chat/$chatId'
     | '/_marketing/'
   fileRoutesById: FileRoutesById
@@ -150,6 +162,7 @@ export interface RootRouteChildren {
   ModulesRoute: typeof ModulesRoute
   SignaturesRoute: typeof SignaturesRoute
   ToolsRoute: typeof ToolsRoute
+  ApiRpcRoute: typeof ApiRpcRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
 }
 
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatChatIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/rpc': {
+      id: '/api/rpc'
+      path: '/api/rpc'
+      fullPath: '/api/rpc'
+      preLoaderRoute: typeof ApiRpcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_marketing/login': {
       id: '/_marketing/login'
       path: '/login'
@@ -250,6 +270,7 @@ const rootRouteChildren: RootRouteChildren = {
   ModulesRoute: ModulesRoute,
   SignaturesRoute: SignaturesRoute,
   ToolsRoute: ToolsRoute,
+  ApiRpcRoute: ApiRpcRoute,
   ChatChatIdRoute: ChatChatIdRoute,
 }
 export const routeTree = rootRouteImport

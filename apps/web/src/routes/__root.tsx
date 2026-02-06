@@ -1,14 +1,17 @@
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useRouter } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
-import { AuthKitProvider, useAuth } from '@workos/authkit-tanstack-react-start/client';
+import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
 import { ConvexProviderWithAuth } from 'convex/react';
-import { Effect } from 'effect';
+import { Hydration, Registry } from '@effect-atom/atom';
+import { RegistryProvider, useAtomValue } from '@effect-atom/atom-react';
+import { HydrationBoundary } from '@effect-atom/atom-react/ReactHydration';
+import { Effect, Exit } from 'effect';
 import { useEffect } from 'react';
 import appCssUrl from '../app.css?url';
 import { PostHogLoader } from '../components/PostHogLoader';
-import { getAppConfig } from '../effect/config';
-import { makeAppRuntime } from '../effect/runtime';
+import { getServerRuntime } from '../effect/serverRuntime';
+import { SessionAtom } from '../effect/atoms/session';
 import { TelemetryService } from '../effect/telemetry';
 import { useAuthFromWorkOS } from '../useAuthFromWorkOS';
 import type { QueryClient } from '@tanstack/react-query';
@@ -18,9 +21,9 @@ import type { ConvexQueryClient } from '@convex-dev/react-query';
 import type { AppRuntime } from '../effect/runtime';
 
 const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
-  const runtime = makeAppRuntime(getAppConfig());
+  const { runtime } = getServerRuntime();
 
-  return runtime.runPromise(
+  const exit = await runtime.runPromiseExit(
     Effect.gen(function* () {
       const telemetry = yield* TelemetryService;
 
@@ -37,13 +40,34 @@ const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
         userId,
       });
 
+      const atomRegistry = Registry.make();
+      atomRegistry.set(SessionAtom, { userId });
+      const atomState = Hydration.dehydrate(atomRegistry);
+      atomRegistry.dispose();
+
       return {
         userId,
         token,
+        atomState,
       };
     }),
   );
+
+  return Exit.match(exit, {
+    onFailure: () => ({ userId: null, token: null, atomState: [] }),
+    onSuccess: (value) => value,
+  });
 });
+
+/** Client-only cache for root auth so we don't refetch on every client-side navigation. */
+let clientAuthCache:
+  | { userId: string | null; token: string | null; atomState: ReadonlyArray<Hydration.DehydratedAtom> }
+  | undefined;
+
+/** Call after sign-out so the next navigation refetches auth instead of reusing cached. */
+export function clearRootAuthCache(): void {
+  clientAuthCache = undefined;
+}
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -72,7 +96,23 @@ export const Route = createRootRouteWithContext<{
   component: RootComponent,
   notFoundComponent: () => <div>Not Found</div>,
   beforeLoad: async (ctx) => {
-    const { userId, token } = await fetchWorkosAuth();
+    // On the client, reuse cached auth so we don't refetch on every navigation (avoids full-page feel).
+    // On the server we always fetch (each request is new). Cache is cleared on full page load.
+    let userId: string | null;
+    let token: string | null;
+    let atomState: ReadonlyArray<Hydration.DehydratedAtom>;
+
+    if (typeof window !== 'undefined' && clientAuthCache) {
+      ({ userId, token, atomState } = clientAuthCache);
+    } else {
+      const result = await fetchWorkosAuth();
+      userId = result.userId;
+      token = result.token;
+      atomState = result.atomState;
+      if (typeof window !== 'undefined') {
+        clientAuthCache = { userId, token, atomState };
+      }
+    }
 
     // During SSR only (the only time serverHttpClient exists),
     // set the WorkOS auth token to make HTTP queries with.
@@ -80,7 +120,7 @@ export const Route = createRootRouteWithContext<{
       ctx.context.convexQueryClient.serverHttpClient?.setAuth(token);
     }
 
-    return { userId, token };
+    return { userId, token, atomState };
   },
 });
 
@@ -104,8 +144,8 @@ function TelemetryPageView() {
 
 /** Identifies the user in PostHog (via Telemetry) when root loader has userId. */
 function TelemetryIdentify() {
-  const { user, loading } = useAuth();
-  const userId = loading ? null : user?.id ?? null;
+  const session = useAtomValue(SessionAtom);
+  const userId = session.userId;
   const router = useRouter();
 
   useEffect(() => {
@@ -125,17 +165,22 @@ function TelemetryIdentify() {
 function RootComponent() {
   const router = useRouter();
   const { convexClient } = router.options.context;
+  const { atomState } = Route.useRouteContext();
 
   return (
-    <AuthKitProvider>
-      <ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>
-        <RootDocument>
-          <TelemetryPageView />
-          <TelemetryIdentify />
-          <Outlet />
-        </RootDocument>
-      </ConvexProviderWithAuth>
-    </AuthKitProvider>
+    <RegistryProvider>
+      <HydrationBoundary state={atomState}>
+        <AuthKitProvider>
+          <ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>
+            <RootDocument>
+              <TelemetryPageView />
+              <TelemetryIdentify />
+              <Outlet />
+            </RootDocument>
+          </ConvexProviderWithAuth>
+        </AuthKitProvider>
+      </HydrationBoundary>
+    </RegistryProvider>
   );
 }
 

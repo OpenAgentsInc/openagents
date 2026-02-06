@@ -86,10 +86,11 @@ Explicitly out of scope:
 
 ## Notes
 
-- **Effuse conversion**: Most `apps/web` route UI is rendered by Effuse (marketing, home/login, modules/signatures/tools, autopilot chat column). See `docs/autopilot/effuse-conversion-apps-web.md` for the full conversion doc. Delegation for a **full** TanStack Start + Effect integration (RPC, @effect-atom, hydration): `docs/autopilot/DELEGATION-full-effect-integration.md`.
+- **Effuse conversion**: Most `apps/web` route UI is rendered by Effuse (marketing, home/login, modules/signatures/tools, autopilot chat column). See `packages/effuse/docs/effuse-conversion-apps-web.md` for the full conversion doc. Delegation for a **full** TanStack Start + Effect integration (RPC, @effect-atom, hydration): `packages/effuse/docs/DELEGATION-full-effect-integration.md`.
 - **Monty synergies**: Comparison and learnings between Pydantic Monty (minimal secure Python for LLM code) and our Autopilot/Effect/DSE approach: `docs/autopilot/monty-synergies.md`.
 - **Horizons synergies**: Comparison and learnings between Horizons (Rust agent runtime: graph DAG, verifier graphs, RLM/mipro_v2/voyager) and our Autopilot/Effect/DSE approach: `docs/autopilot/horizons-synergies.md`.
-- Effect migration starting points for the current `apps/web` app: `docs/autopilot/effect-migration-web.md`
+- **Typed synergies**: Comparison and learnings between Typed (Effect-native full-stack toolkit: template/Fx, SSR+hydration, type-safe API/client, router) and our Autopilot/Effuse/Effect approach: `docs/autopilot/typed-synergies.md`.
+- Effect migration starting points for the current `apps/web` app: `packages/effuse/docs/effect-migration-web.md`
 - Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
 - Effect + Convex patterns from `~/code/crest` to adopt: `docs/autopilot/effect-patterns-from-crest.md`
 

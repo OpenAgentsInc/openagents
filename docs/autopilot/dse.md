@@ -23,7 +23,7 @@ The goal is not “Effect wrappers around an LLM client”. The goal is to make 
 
 ## 0) Context and Motivation
 
-Autopilot is moving toward Effect as the default application architecture (see `docs/autopilot/effect-migration-web.md`, `docs/autopilot/effect-telemetry-service.md`).
+Autopilot is moving toward Effect as the default application architecture (see `packages/effuse/docs/effect-migration-web.md`, `docs/autopilot/effect-telemetry-service.md`).
 
 Effect solves wiring, reliability, observability, and testability. It does **not** automatically solve the “DSPy problem”:
 

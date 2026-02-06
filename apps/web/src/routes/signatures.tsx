@@ -8,6 +8,7 @@ import { runSignaturesPage } from '../effuse-pages/signatures';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { DseSignatureContract } from '../effect/agentApi';
+import type { SignatureItem } from '../effuse-pages/signatures';
 
 export const Route = createFileRoute('/signatures')({
   loader: async ({ context }) => {
@@ -49,7 +50,7 @@ function safeStableStringify(value: unknown, indent = 2): string {
 
 function summarizePromptIr(promptIr: unknown): string {
   if (!promptIr || typeof promptIr !== 'object') return '(missing prompt IR)';
-  const obj = promptIr as { blocks?: unknown[] };
+  const obj = promptIr as { blocks?: Array<unknown> };
   const blocks = obj.blocks;
   if (!Array.isArray(blocks)) return '(missing blocks)';
   const tags = blocks.map((b) => (b && typeof b === 'object' ? String((b as { _tag?: unknown })._tag ?? '?') : '?'));
@@ -90,7 +91,7 @@ function SignaturesPage() {
 
   const pageData = useMemo((): {
     errorText: string | null;
-    sorted: ReadonlyArray<import('../effuse-pages/signatures').SignatureItem> | null;
+    sorted: ReadonlyArray<SignatureItem> | null;
   } => {
     if (errorText) return { errorText, sorted: null };
     if (!sigs) return { errorText: null, sorted: null };

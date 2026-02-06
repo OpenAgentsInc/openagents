@@ -1,5 +1,6 @@
-import { Effect } from "effect";
-import { DomServiceTag, EffuseLive, html, rawHtml } from "@openagentsinc/effuse";
+import { Effect } from 'effect';
+import { DomServiceTag, EffuseLive, html, rawHtml } from '@openagentsinc/effuse';
+import { hatcheryButton } from './ui/hatcheryButton';
 
 const X_ICON = rawHtml(
   '<svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>'
@@ -13,36 +14,39 @@ export function runHomePage(container: Element): Effect.Effect<void> {
   return Effect.gen(function* () {
     const dom = yield* DomServiceTag;
     const content = html`
-      <div class="effuse-home">
-        <main class="mx-auto flex w-full max-w-5xl flex-1 items-center justify-center">
-          <div class="w-full max-w-3xl text-center text-white">
-            <h1 class="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
-              Introducing Autopilot
-            </h1>
-            <p class="mx-auto mt-4 max-w-2xl text-pretty text-lg text-white/80 sm:text-xl">
-              Your personal agent, no Mac Mini required
-            </p>
-            <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <a href="/login" class="inline-flex h-14 min-h-14 items-center justify-center rounded-lg border border-white/90 bg-transparent px-8 text-base font-semibold uppercase tracking-wide text-white transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50" style="font-family: var(--font-square721); opacity: 0.9;">
-                Start for free
-              </a>
-            </div>
+      <main class="mx-auto flex w-full max-w-5xl flex-1 items-center justify-center">
+        <div class="w-full max-w-3xl text-center text-white">
+          <h1 class="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
+            Introducing Autopilot
+          </h1>
+          <p class="mx-auto mt-4 max-w-2xl text-pretty text-lg text-white/80 sm:text-xl">
+            Your personal agent, no Mac Mini required
+          </p>
+
+          <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            ${hatcheryButton({
+              href: '/login',
+              label: 'Start for free',
+              size: 'large',
+              className: 'w-full max-w-xs sm:w-auto',
+            })}
           </div>
-        </main>
-        <footer class="-mx-4 mt-auto flex w-full items-center justify-between px-6 py-4">
-          <span class="text-sm text-white/75">© ${String(year)} OpenAgents, Inc.</span>
-          <div class="flex items-center gap-4">
-            <a href="https://x.com/OpenAgentsInc" target="_blank" rel="noopener noreferrer" class="text-white/75 transition-colors hover:text-white" aria-label="OpenAgents on X">${X_ICON}</a>
-            <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer" class="text-white/75 transition-colors hover:text-white" aria-label="OpenAgents on GitHub">${GITHUB_ICON}</a>
-          </div>
-        </footer>
-      </div>
+        </div>
+      </main>
+
+      <footer class="-mx-4 mt-auto flex w-full items-center justify-between px-6 py-4">
+        <span class="text-sm text-white/75">© ${String(year)} OpenAgents, Inc.</span>
+        <div class="flex items-center gap-4">
+          <a href="https://x.com/OpenAgentsInc" target="_blank" rel="noopener noreferrer" class="text-white/75 transition-colors hover:text-white" aria-label="OpenAgents on X">${X_ICON}</a>
+          <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer" class="text-white/75 transition-colors hover:text-white" aria-label="OpenAgents on GitHub">${GITHUB_ICON}</a>
+        </div>
+      </footer>
     `;
     yield* dom.render(container, content);
   }).pipe(
     Effect.provide(EffuseLive),
     Effect.catchAll((err) => {
-      console.error("[Effuse home]", err);
+      console.error('[Effuse home]', err);
       return Effect.void;
     })
   );

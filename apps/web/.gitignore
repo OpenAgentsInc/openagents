@@ -21,6 +21,7 @@
 /build
 /dist/
 /dist-ssr/
+.tanstack/
 
 # misc
 .DS_Store
