@@ -327,6 +327,18 @@ export class Chat extends AIChatAgent<Env> {
       return super.onRequest(request);
     }
 
+    if (url.pathname.endsWith("/reset-agent")) {
+      if (request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      // Reset persistent Blueprint state.
+      const reset = makeDefaultBlueprintState(this.name);
+      this.saveBlueprintState(reset);
+
+      return Response.json({ ok: true });
+    }
+
     if (url.pathname.endsWith("/blueprint")) {
       if (request.method === "GET") {
         const blueprint = this.ensureBlueprintState();

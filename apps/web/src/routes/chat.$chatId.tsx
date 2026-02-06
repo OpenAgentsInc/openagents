@@ -93,6 +93,7 @@ function ChatPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const didMountRef = useRef(false);
   const [isExportingBlueprint, setIsExportingBlueprint] = useState(false);
+  const [isResettingAgent, setIsResettingAgent] = useState(false);
   const [blueprint, setBlueprint] = useState<unknown | null>(null);
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [blueprintLoading, setBlueprintLoading] = useState(false);
@@ -214,6 +215,33 @@ function ChatPage() {
       window.alert('Failed to export Blueprint JSON.');
     } finally {
       setIsExportingBlueprint(false);
+    }
+  };
+
+  const onResetAgent = async () => {
+    if (isResettingAgent || isBusy) return;
+    const confirmed = window.confirm(
+      'Reset agent?\n\nThis will clear messages and reset your Blueprint to defaults.',
+    );
+    if (!confirmed) return;
+
+    setIsResettingAgent(true);
+    setBlueprintError(null);
+    try {
+      const response = await fetch(`/agents/chat/${chatId}/reset-agent`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(`Reset failed (HTTP ${response.status})`);
+      }
+      setInput('');
+      clearHistory();
+      await fetchBlueprint();
+    } catch (err) {
+      console.error(err);
+      window.alert('Failed to reset agent.');
+    } finally {
+      setIsResettingAgent(false);
     }
   };
 
@@ -354,7 +382,15 @@ function ChatPage() {
           disabled={isBusy}
           className="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
         >
-          Delete all messages
+          Clear messages
+        </button>
+        <button
+          type="button"
+          onClick={() => void onResetAgent()}
+          disabled={isBusy || isResettingAgent}
+          className="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
+        >
+          {isResettingAgent ? 'Resetting...' : 'Reset agent'}
         </button>
       </div>
     </div>
