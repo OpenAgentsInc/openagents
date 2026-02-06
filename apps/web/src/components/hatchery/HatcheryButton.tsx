@@ -5,7 +5,7 @@ type HatcheryButtonVariant = 'fill' | 'outline';
 
 type BaseProps = {
   variant?: HatcheryButtonVariant;
-  size?: 'default' | 'small';
+  size?: 'default' | 'small' | 'large';
   children: ReactNode;
   className?: string;
 };
@@ -24,6 +24,7 @@ export function HatcheryButton({
     styles.root,
     variant === 'outline' ? styles.outline : undefined,
     size === 'small' ? styles.small : undefined,
+    size === 'large' ? styles.large : undefined,
     className,
   ]
     .filter(Boolean)

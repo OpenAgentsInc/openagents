@@ -12,12 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ToolsRouteImport } from './routes/tools'
 import { Route as SignaturesRouteImport } from './routes/signatures'
 import { Route as ModulesRouteImport } from './routes/modules'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AutopilotRouteImport } from './routes/autopilot'
 import { Route as AssistantRouteImport } from './routes/assistant'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as MarketingRouteImport } from './routes/_marketing'
+import { Route as MarketingIndexRouteImport } from './routes/_marketing.index'
 import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
+import { Route as MarketingLoginRouteImport } from './routes/_marketing.login'
 
 const ToolsRoute = ToolsRouteImport.update({
   id: '/tools',
@@ -32,11 +33,6 @@ const SignaturesRoute = SignaturesRouteImport.update({
 const ModulesRoute = ModulesRouteImport.update({
   id: '/modules',
   path: '/modules',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CallbackRoute = CallbackRouteImport.update({
@@ -54,50 +50,60 @@ const AssistantRoute = AssistantRouteImport.update({
   path: '/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const MarketingRoute = MarketingRouteImport.update({
+  id: '/_marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketingIndexRoute = MarketingIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => MarketingRoute,
 } as any)
 const ChatChatIdRoute = ChatChatIdRouteImport.update({
   id: '/chat/$chatId',
   path: '/chat/$chatId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketingLoginRoute = MarketingLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => MarketingRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof MarketingIndexRoute
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
-  '/login': typeof LoginRoute
   '/modules': typeof ModulesRoute
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
+  '/login': typeof MarketingLoginRoute
   '/chat/$chatId': typeof ChatChatIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
-  '/login': typeof LoginRoute
   '/modules': typeof ModulesRoute
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
+  '/login': typeof MarketingLoginRoute
   '/chat/$chatId': typeof ChatChatIdRoute
+  '/': typeof MarketingIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_marketing': typeof MarketingRouteWithChildren
   '/assistant': typeof AssistantRoute
   '/autopilot': typeof AutopilotRoute
   '/callback': typeof CallbackRoute
-  '/login': typeof LoginRoute
   '/modules': typeof ModulesRoute
   '/signatures': typeof SignaturesRoute
   '/tools': typeof ToolsRoute
+  '/_marketing/login': typeof MarketingLoginRoute
   '/chat/$chatId': typeof ChatChatIdRoute
+  '/_marketing/': typeof MarketingIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -106,41 +112,41 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/autopilot'
     | '/callback'
-    | '/login'
     | '/modules'
     | '/signatures'
     | '/tools'
+    | '/login'
     | '/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/assistant'
     | '/autopilot'
     | '/callback'
-    | '/login'
     | '/modules'
     | '/signatures'
     | '/tools'
+    | '/login'
     | '/chat/$chatId'
+    | '/'
   id:
     | '__root__'
-    | '/'
+    | '/_marketing'
     | '/assistant'
     | '/autopilot'
     | '/callback'
-    | '/login'
     | '/modules'
     | '/signatures'
     | '/tools'
+    | '/_marketing/login'
     | '/chat/$chatId'
+    | '/_marketing/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  MarketingRoute: typeof MarketingRouteWithChildren
   AssistantRoute: typeof AssistantRoute
   AutopilotRoute: typeof AutopilotRoute
   CallbackRoute: typeof CallbackRoute
-  LoginRoute: typeof LoginRoute
   ModulesRoute: typeof ModulesRoute
   SignaturesRoute: typeof SignaturesRoute
   ToolsRoute: typeof ToolsRoute
@@ -170,13 +176,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ModulesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/callback': {
       id: '/callback'
       path: '/callback'
@@ -198,12 +197,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_marketing': {
+      id: '/_marketing'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_marketing/': {
+      id: '/_marketing/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof MarketingIndexRouteImport
+      parentRoute: typeof MarketingRoute
     }
     '/chat/$chatId': {
       id: '/chat/$chatId'
@@ -212,15 +218,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatChatIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_marketing/login': {
+      id: '/_marketing/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof MarketingLoginRouteImport
+      parentRoute: typeof MarketingRoute
+    }
   }
 }
 
+interface MarketingRouteChildren {
+  MarketingLoginRoute: typeof MarketingLoginRoute
+  MarketingIndexRoute: typeof MarketingIndexRoute
+}
+
+const MarketingRouteChildren: MarketingRouteChildren = {
+  MarketingLoginRoute: MarketingLoginRoute,
+  MarketingIndexRoute: MarketingIndexRoute,
+}
+
+const MarketingRouteWithChildren = MarketingRoute._addFileChildren(
+  MarketingRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  MarketingRoute: MarketingRouteWithChildren,
   AssistantRoute: AssistantRoute,
   AutopilotRoute: AutopilotRoute,
   CallbackRoute: CallbackRoute,
-  LoginRoute: LoginRoute,
   ModulesRoute: ModulesRoute,
   SignaturesRoute: SignaturesRoute,
   ToolsRoute: ToolsRoute,

@@ -1,10 +1,9 @@
-import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
-import { createFileRoute, Link, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth, getSignInUrl } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
 import { TelemetryService } from '../effect/telemetry';
 
-export const Route = createFileRoute('/login')({
+export const Route = createFileRoute('/_marketing/login')({
   loader: async ({ context }) => {
     const result = await context.effectRuntime.runPromise(
       Effect.gen(function* () {
@@ -64,41 +63,14 @@ function LoginPage() {
   const { signInUrl } = Route.useLoaderData();
 
   return (
-    <div className="fixed inset-0">
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundColor: whitePreset.backgroundColor,
-          backgroundImage: [
-            `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 15%, rgba(0,0,0,0.4) 55%, rgba(0,0,0,0.75) 100%)`,
-            whitePreset.backgroundImage,
-          ].join(', '),
-        }}
-      >
-        <DotsBackground
-          distance={whitePreset.distance}
-          dotsColor="hsla(0, 0%, 100%, 0.12)"
-          dotsSettings={{ type: 'circle', size: 2 }}
-        />
-      </div>
-
-      <div className="absolute inset-0 z-10 flex min-h-full min-w-full flex-col p-4">
-        <header className="mx-auto flex w-full max-w-5xl items-center justify-between py-2">
-          <Link to="/" className="select-none text-lg font-semibold text-white">
-            OpenAgents
-          </Link>
-        </header>
-
-        <div className="mx-auto flex flex-1 w-full max-w-5xl items-center justify-center">
-          <div className="w-full max-w-[400px] rounded-2xl border border-white/10 bg-bg-secondary/95 p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]">
+    <>
+      <div className="mx-auto flex flex-1 w-full max-w-5xl items-center justify-center">
+        <div className="w-full max-w-[400px] rounded-2xl border border-white/10 bg-bg-secondary/95 p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]">
           <div className="flex flex-col items-center text-center">
             <div className="mb-6 text-accent">
               <EnvelopeIcon className="size-12" />
             </div>
-            <h1
-              className="text-2xl font-bold tracking-tight text-text-primary"
-              style={{ fontFamily: 'var(--font-square721)' }}
-            >
+            <h1 className="text-2xl font-bold tracking-tight text-text-primary">
               Log in to OpenAgents
             </h1>
             <p className="mt-2 text-sm text-text-muted">
@@ -125,14 +97,12 @@ function LoginPage() {
           <a
             href={signInUrl}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-accent bg-accent px-4 py-3.5 text-base font-semibold text-bg-primary transition-colors hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            style={{ fontFamily: 'var(--font-square721)' }}
           >
             Continue with Email
             <span aria-hidden>→</span>
           </a>
-          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
