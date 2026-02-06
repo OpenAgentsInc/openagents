@@ -20,6 +20,8 @@ import { Route as MarketingIndexRouteImport } from './routes/_marketing.index'
 import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 import { Route as ApiRpcRouteImport } from './routes/api.rpc'
 import { Route as MarketingLoginRouteImport } from './routes/_marketing.login'
+import { Route as ApiAuthVerifyRouteImport } from './routes/api.auth.verify'
+import { Route as ApiAuthStartRouteImport } from './routes/api.auth.start'
 
 const ToolsRoute = ToolsRouteImport.update({
   id: '/tools',
@@ -75,6 +77,16 @@ const MarketingLoginRoute = MarketingLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => MarketingRoute,
 } as any)
+const ApiAuthVerifyRoute = ApiAuthVerifyRouteImport.update({
+  id: '/api/auth/verify',
+  path: '/api/auth/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthStartRoute = ApiAuthStartRouteImport.update({
+  id: '/api/auth/start',
+  path: '/api/auth/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof MarketingIndexRoute
@@ -87,6 +99,8 @@ export interface FileRoutesByFullPath {
   '/login': typeof MarketingLoginRoute
   '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
+  '/api/auth/start': typeof ApiAuthStartRoute
+  '/api/auth/verify': typeof ApiAuthVerifyRoute
 }
 export interface FileRoutesByTo {
   '/assistant': typeof AssistantRoute
@@ -99,6 +113,8 @@ export interface FileRoutesByTo {
   '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/': typeof MarketingIndexRoute
+  '/api/auth/start': typeof ApiAuthStartRoute
+  '/api/auth/verify': typeof ApiAuthVerifyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -113,6 +129,8 @@ export interface FileRoutesById {
   '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/_marketing/': typeof MarketingIndexRoute
+  '/api/auth/start': typeof ApiAuthStartRoute
+  '/api/auth/verify': typeof ApiAuthVerifyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -127,6 +145,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/rpc'
     | '/chat/$chatId'
+    | '/api/auth/start'
+    | '/api/auth/verify'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/assistant'
@@ -139,6 +159,8 @@ export interface FileRouteTypes {
     | '/api/rpc'
     | '/chat/$chatId'
     | '/'
+    | '/api/auth/start'
+    | '/api/auth/verify'
   id:
     | '__root__'
     | '/_marketing'
@@ -152,6 +174,8 @@ export interface FileRouteTypes {
     | '/api/rpc'
     | '/chat/$chatId'
     | '/_marketing/'
+    | '/api/auth/start'
+    | '/api/auth/verify'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -164,6 +188,8 @@ export interface RootRouteChildren {
   ToolsRoute: typeof ToolsRoute
   ApiRpcRoute: typeof ApiRpcRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
+  ApiAuthStartRoute: typeof ApiAuthStartRoute
+  ApiAuthVerifyRoute: typeof ApiAuthVerifyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -245,6 +271,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketingLoginRouteImport
       parentRoute: typeof MarketingRoute
     }
+    '/api/auth/verify': {
+      id: '/api/auth/verify'
+      path: '/api/auth/verify'
+      fullPath: '/api/auth/verify'
+      preLoaderRoute: typeof ApiAuthVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/start': {
+      id: '/api/auth/start'
+      path: '/api/auth/start'
+      fullPath: '/api/auth/start'
+      preLoaderRoute: typeof ApiAuthStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -272,6 +312,8 @@ const rootRouteChildren: RootRouteChildren = {
   ToolsRoute: ToolsRoute,
   ApiRpcRoute: ApiRpcRoute,
   ChatChatIdRoute: ChatChatIdRoute,
+  ApiAuthStartRoute: ApiAuthStartRoute,
+  ApiAuthVerifyRoute: ApiAuthVerifyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

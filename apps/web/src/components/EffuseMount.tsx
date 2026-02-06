@@ -9,7 +9,7 @@ interface EffuseMountProps {
   deps?: ReadonlyArray<unknown>;
   className?: string;
   /** Called after the Effuse program has rendered (e.g. to attach event delegation). */
-  onRendered?: () => void;
+  onRendered?: (container: Element) => void;
 }
 
 /**
@@ -78,7 +78,7 @@ export function EffuseMount({ run, deps = [], className, onRendered }: EffuseMou
 
     Effect.runPromise(program)
       .then(() => {
-        if (!cancelled) onRenderedRef.current?.();
+        if (!cancelled) onRenderedRef.current?.(el);
       })
       .catch((err) => {
         if (!cancelled) console.error('[EffuseMount]', err);

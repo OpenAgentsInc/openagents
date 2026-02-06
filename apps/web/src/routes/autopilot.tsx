@@ -474,12 +474,7 @@ function ChatPage() {
     [autopilotChatData],
   );
 
-  const onChatRendered = useCallback(() => {
-    const wrapper = chatMountRef.current;
-    if (!wrapper) return;
-    const container = wrapper.firstElementChild;
-    if (!container) return;
-
+  const onChatRendered = useCallback((container: Element) => {
     const form = container.querySelector('#chat-form');
     if (form instanceof HTMLFormElement) {
       form.addEventListener('submit', (e) => {

@@ -5,6 +5,26 @@
 
 ---
 
+## Status (Implemented)
+
+As of **2026-02-06**, we started the “Effect-first, Effuse-first” auth refactor by removing the hosted AuthKit redirect from `/login` and replacing it with **email code (Magic Auth)** handled entirely on our site:
+
+- `POST /api/auth/start` — sends a one-time code to the provided email.
+- `POST /api/auth/verify` — verifies the code and sets the encrypted `wos-session` cookie (via `@workos/authkit-session`).
+- `/login` UI is Effuse-rendered and submits to these endpoints (no hosted OAuth page).
+
+Files:
+
+- `apps/web/src/auth/workosAuth.ts`
+- `apps/web/src/auth/sessionCookieStorage.ts`
+- `apps/web/src/routes/api.auth.start.tsx`
+- `apps/web/src/routes/api.auth.verify.tsx`
+- `apps/web/src/effuse-pages/login.ts` + `apps/web/src/routes/_marketing.login.tsx`
+
+This unblocks login immediately while we continue the broader “remove React AuthKitProvider/hooks” work.
+
+---
+
 ## 1. References
 
 **Read first:**
@@ -20,9 +40,10 @@
 - `apps/web/src/start.ts` — `authkitMiddleware()` wrapped in safe error handling.
 - `apps/web/src/useAuthFromWorkOS.tsx` — `useAuth` + `useAccessToken` → Convex `fetchAccessToken` / `isAuthenticated`.
 - `apps/web/src/routes/callback.tsx` — `handleCallbackRoute()` (GET handler).
-- `apps/web/src/routes/_marketing.login.tsx` — `getAuth()`, `getSignInUrl()` inside Effect.
+- `apps/web/src/routes/_marketing.login.tsx` — Effuse login UI; uses `/api/auth/start` + `/api/auth/verify` (Magic Auth code flow).
 - Other routes — `getAuth()` in loaders for redirect-if-unauthenticated.
 - `apps/web/src/components/layout/AutopilotSidebar.tsx` — `useAuth()` for `user`, `loading`, `signOut`.
+- `apps/web/src/routes/api.auth.start.tsx` + `apps/web/src/routes/api.auth.verify.tsx` — Magic Auth code flow endpoints.
 
 ---
 
