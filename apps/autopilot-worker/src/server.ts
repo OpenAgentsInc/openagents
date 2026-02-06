@@ -490,8 +490,6 @@ export class Chat extends AIChatAgent<Env> {
                   properties: {
                     name: { type: "string" },
                     addressAs: { type: "string" },
-                    pronouns: { type: "string" },
-                    timeZone: { type: "string" },
                     notes: { type: "string" },
                     context: { type: "string" }
                   },
@@ -500,21 +498,35 @@ export class Chat extends AIChatAgent<Env> {
                 execute: async (input: {
                   name?: string;
                   addressAs?: string;
-                  pronouns?: string;
-                  timeZone?: string;
                   notes?: string;
                   context?: string;
                 }) => {
                   const updated = this.updateBlueprintState((state) => {
                     const now = new Date();
                     const user = state.docs.user;
+                    // Bootstrap guardrail: if we only get one of `name`/`addressAs`,
+                    // mirror it to the other when the stored value is still unset.
+                    const storedNameUnset = user.name === "Unknown";
+                    const storedAddressUnset = user.addressAs === "Unknown";
+                    const mirrorNameToAddress =
+                      Boolean(input.name) && !input.addressAs && storedAddressUnset;
+                    const mirrorAddressToName =
+                      Boolean(input.addressAs) && !input.name && storedNameUnset;
+
+                    const nextName =
+                      (mirrorAddressToName ? input.addressAs : input.name) ??
+                      user.name;
+                    const nextAddressAs =
+                      (mirrorNameToAddress ? input.name : input.addressAs) ??
+                      user.addressAs;
+
                     const nextUser = UserDoc.make({
                       ...user,
                       version: DocVersion.make(Number(user.version) + 1),
-                      name: input.name ?? user.name,
-                      addressAs: input.addressAs ?? user.addressAs,
-                      pronouns: input.pronouns ?? user.pronouns,
-                      timeZone: input.timeZone ?? user.timeZone,
+                      name: nextName,
+                      addressAs: nextAddressAs,
+                      pronouns: user.pronouns,
+                      timeZone: user.timeZone,
                       notes: input.notes ?? user.notes,
                       context: input.context ?? user.context,
                       updatedAt: now,
