@@ -2,7 +2,7 @@
 
 - **Status:** Proposed (implementation roadmap)
 - **Last updated:** 2026-02-06
-- **Primary input docs:** `docs/autopilot/dse.md`, `docs/autopilot/horizons-synergies.md`, `docs/autopilot/monty-synergies.md`
+- **Primary input docs:** `docs/autopilot/dse.md`, `docs/autopilot/horizons-synergies.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`
 
 This plan proposes a unified roadmap to implement **DSE** (“DSPy, but Effect TS”) and selectively adopt the best patterns from **Horizons** (graph execution, evaluation/optimization shape, budgets, memory, evented traces) and **Monty** (secure “code mode” with externals + snapshot/resume).
 
@@ -30,7 +30,7 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 
 ---
 
-## Unified mental model (DSE × Horizons × Monty)
+## Unified mental model (DSE × Horizons × Monty × Microcode)
 
 ### DSE core (from `dse.md`)
 - **Signature** = typed IO (Effect Schema) + **Prompt IR** + defaults + constraints.
@@ -51,6 +51,14 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 - **Typecheck/validate before run** (against allowed externals).
 - **Hard resource limits**.
 
+### Microcode patterns we should port (from `microcode-synergies.md`)
+- **“Compiled artifact first” posture**: runtime resolves/pins an immutable artifact id and logs it (analogous to Microcode’s precompiled program pinning).
+- **Config precedence + persistence**: a deterministic precedence chain (request overrides/env/durable config) with auditable resolution and stable hashes in receipts.
+- **Large blob side channel**: store large pasted/code blobs once and reference them by id/hash in Prompt IR and receipts/replay.
+- **Multi-model roles**: explicitly model primary vs sub/aux models (and extend to judge/repair/router roles) as policy knobs in artifacts.
+- **Dynamic tool mounting**: treat MCP servers (and future providers) as `ToolProvider`s that can mount namespaced tools with schemas and receipt hooks.
+- **Debug/trace toggles**: structured “trajectory” traces when enabled (bounded and redactable), not unstructured internal monologue in prod.
+
 ---
 
 ## Roadmap (phases and deliverables)
@@ -70,6 +78,10 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
   - Render deterministically (provider adapter boundary).
   - Decode + bounded repair policy.
   - Emit receipts: `signatureId`, `compiled_id?`, hashes, timing, tool/LLM metadata.
+
+- **Blob references for large context**
+  - Add a Prompt IR `Context` entry type for blob references (id/hash/size/mime), backed by a `BlobStore` service.
+  - Store large pasted/code artifacts once (DO SQLite/R2), reference by hash/id in prompts and receipts.
 
 - **Artifact format + Registry**
   - Implement schema-validated `DseCompiledArtifactV1` load/store.
@@ -158,6 +170,7 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
     - `maxSteps` (supersteps)
     - `maxLlmCalls`
     - `maxToolCalls`
+    - `maxOutputChars` (Microcode-style hard cap on emitted content)
     - optional `maxTokens` / `maxCost` when measurable
   - Thread budget context through:
     - `Predict`
