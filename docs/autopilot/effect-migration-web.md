@@ -11,6 +11,7 @@ If you want to “convert basically EVERYTHING to Effect”, you’ll have the b
 - Effect scaffold exists in `apps/web/src/effect/*`:
   - `AppConfigService` (reads `VITE_CONVEX_URL`)
   - `TelemetryService` (console sink)
+  - `AgentApiService` (typed Effect boundary for `/agents/*` endpoints)
   - `makeAppRuntime()` (single `ManagedRuntime` for the app)
 - `apps/web/src/router.tsx` creates the runtime and exposes it via router context (`effectRuntime`).
 - `apps/web/src/start.ts` adds request middleware that:
