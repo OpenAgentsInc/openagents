@@ -4,7 +4,7 @@ Date: 2026-02-06
 
 This doc proposes an Autopilot-native version of OpenClaw's "workspace bootstrap" flow, redesigned for a cloud-first, multi-surface Autopilot where bootstrap artifacts are treated as **durable state** rather than a directory of files.
 
-Instead of seeding Markdown files like `SOUL.md` and `USER.md`, we model bootstrap state as **typed, versioned records** (Effect `Schema`) stored in a **database** (Durable Object SQLite and/or Convex). This unlocks runtime validation, queryability, receipts/replay stability, visibility controls, and a single-bundle export/import story. We can still render a "context file" view into the system prompt for the OpenClaw vibe, but the canonical representation is structured data with auditability.
+Instead of seeding Markdown files like `SOUL.md` and `USER.md`, we model bootstrap state as **typed, versioned records** (Effect `Schema`) stored in a **database** (Durable Object SQLite and/or Convex). This unlocks runtime validation, queryability, receipts/replay stability, visibility controls, and a single **Blueprint** export/import story. We can still render a "context file" view into the system prompt for the OpenClaw vibe, but the canonical representation is structured data with auditability.
 
 ## Source Reference (OpenClaw)
 
@@ -216,9 +216,9 @@ Recommendation:
 - Canonical: store bootstrap docs + bootstrap state in the **Chat durable object** (same place as transcript).
 - Optional: mirror selected fields to Convex for UI (identity, user timezone, bootstrap status) if/when needed.
 
-## Single-File Export (Portable JSON Bundle)
+## Single-File Export (Portable JSON Blueprint)
 
-We must support letting a user export their entire Autopilot bootstrap configuration in **one export**.
+We must support letting a user export their entire Autopilot bootstrap configuration in **one export** ("Blueprint").
 
 Requirements:
 
@@ -232,10 +232,10 @@ Proposed top-level schema (v1 sketch):
 ```ts
 import { Schema } from "effect"
 
-export class AutopilotBootstrapExportV1 extends Schema.Class<AutopilotBootstrapExportV1>(
-  "AutopilotBootstrapExportV1"
+export class AutopilotBlueprintV1 extends Schema.Class<AutopilotBlueprintV1>(
+  "AutopilotBlueprintV1"
 )({
-  format: Schema.Literal("openagents.autopilot.bootstrap.export"),
+  format: Schema.Literal("openagents.autopilot.blueprint"),
   formatVersion: Schema.Literal(1),
 
   // Use encoded schemas for JSON stability (example: DateFromString instead of Date).
@@ -267,7 +267,7 @@ export class AutopilotBootstrapExportV1 extends Schema.Class<AutopilotBootstrapE
 
 Import semantics (MVP):
 
-- Decode with `Schema.decodeUnknown(AutopilotBootstrapExportV1)` (runtime validation).
+- Decode with `Schema.decodeUnknown(AutopilotBlueprintV1)` (runtime validation).
 - If `formatVersion` is older: run migrations, then validate again.
 - Write into the canonical store (DO SQLite) in a single transaction.
 - Treat import as "replace bootstrap set" for the user/thread (simplest), with a future option for merge/partial import.
