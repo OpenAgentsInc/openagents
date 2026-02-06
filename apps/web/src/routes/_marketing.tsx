@@ -30,7 +30,7 @@ function MarketingLayout() {
           dotsSettings={{ type: 'circle', size: 2 }}
         />
       </div>
-      <div className="absolute inset-0 z-10 flex min-h-full min-w-full flex-col p-4">
+      <div className="absolute inset-0 z-10 flex min-h-full min-w-full flex-col overflow-y-auto p-4 [scrollbar-gutter:stable]">
         <EffuseMount
           run={(el) => runMarketingHeader(el, isHome, isLogin)}
           deps={[isHome, isLogin]}

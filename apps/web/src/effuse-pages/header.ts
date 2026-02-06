@@ -17,7 +17,7 @@ export function runMarketingHeader(
     const navVisibility = showNav ? 'visible' : 'hidden';
     const navPointerEvents = showNav ? 'auto' : 'none';
     const content = html`
-      <header class="-mx-4 flex h-14 w-full shrink-0 items-center justify-between px-6">
+      <header class="flex h-14 w-full shrink-0 items-center justify-between px-6">
         <a href="/" class="select-none text-lg font-semibold text-white">OpenAgents</a>
         <div
           class="flex items-center gap-3"
@@ -32,10 +32,10 @@ export function runMarketingHeader(
             Log in
           </a>
           ${hatcheryButton({
-            href: '/login',
-            label: 'Start for free',
-            variant: 'outline',
-          })}
+      href: '/login',
+      label: 'Start for free',
+      variant: 'outline',
+    })}
         </div>
       </header>
     `;
