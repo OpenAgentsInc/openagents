@@ -8,7 +8,7 @@ const THREAD_ID =
 const WS_URL = `${BASE_URL.replace(/^http/, "ws")}/agents/chat/${THREAD_ID}`;
 const MESSAGE =
   process.env.AUTOPILOT_SMOKE_MESSAGE ??
-  "Use the echo tool to echo OK, then reply with a single line containing OK.";
+  "SmokeUser";
 const TTFT_LIMIT_MS = Number(process.env.AUTOPILOT_SMOKE_TTFT_MS ?? 10_000);
 const RESPONSE_TIMEOUT_MS = Number(
   process.env.AUTOPILOT_SMOKE_RESPONSE_TIMEOUT_MS ?? 60_000
@@ -95,7 +95,13 @@ const sendChatMessage = async (content: string): Promise<ChatResult> => {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              messages: [{ id: messageId, role: "user", content }]
+              messages: [
+                {
+                  id: messageId,
+                  role: "user",
+                  parts: [{ type: "text", text: content }],
+                },
+              ],
             })
           }
         })
@@ -182,13 +188,21 @@ const main = async () => {
         ? messages.json.messages
         : [];
       const allParts = allMessages.flatMap((m) => (Array.isArray(m?.parts) ? m.parts : []));
-      const toolCalls = allParts.filter((p) => p?.type === "tool-call");
-      const toolResults = allParts.filter((p) => p?.type === "tool-result");
+      const toolInvocations = allParts.filter((p) => {
+        const t = p?.type;
+        return typeof t === "string" && (t === "dynamic-tool" || t.startsWith("tool-"));
+      });
+      const completedInvocations = toolInvocations.filter(
+        (p) => typeof p?.state === "string" && p.state.startsWith("output-"),
+      );
 
-      assert(toolCalls.length > 0, "No tool calls recorded in get-messages.");
-      assert(toolResults.length > 0, "No tool results recorded in get-messages.");
+      assert(toolInvocations.length > 0, "No tool invocations recorded in get-messages.");
+      assert(
+        completedInvocations.length > 0,
+        "No tool outputs recorded in get-messages (expected output-* state).",
+      );
 
-      log(`tool_calls=${toolCalls.length} tool_results=${toolResults.length}`);
+      log(`tool_invocations=${toolInvocations.length} tool_outputs=${completedInvocations.length}`);
     }
   } else {
     log(`get-messages failed (status=${messages.status})`);
