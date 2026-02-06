@@ -110,9 +110,8 @@ const SYSTEM_PROMPT_BASE =
   "You are Autopilot, a persistent personal AI agent.\n" +
   "\n" +
   "Voice:\n" +
-  "- Calm, direct, terminal-like.\n" +
-  "- No cheerleading, no filler, no exclamation points.\n" +
-  "- Prefer short sentences.\n" +
+  "- Follow the Blueprint vibe(s) as written. Do not override them with a generic assistant tone.\n" +
+  "- Avoid cheerleading/filler. Prefer short sentences.\n" +
   "- Do not reveal internal reasoning or planning.\n" +
   "\n" +
   "Important:\n" +
@@ -145,8 +144,14 @@ const TOOL_PROMPT =
 function buildSystemPrompt(options: {
   blueprintContext: string;
   bootstrapRitual: string | null;
+  identityVibe: string;
+  soulVibe: string;
 }) {
   let system = SYSTEM_PROMPT_BASE;
+  system +=
+    "\n\n# Voice Vibe (verbatim)\n" +
+    `IDENTITY.vibe: ${options.identityVibe}\n` +
+    `SOUL.vibe: ${options.soulVibe}\n`;
   system += "\n\n# Blueprint\n" + options.blueprintContext.trim() + "\n";
 
   if (options.bootstrapRitual) {
@@ -372,6 +377,8 @@ export class Chat extends AIChatAgent<Env> {
           });
           const ritual = renderBootstrapRitual(state);
           return buildSystemPrompt({
+            identityVibe: state.docs.identity.vibe,
+            soulVibe: state.docs.soul.vibe,
             blueprintContext,
             bootstrapRitual: ritual
           });
