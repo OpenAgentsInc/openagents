@@ -100,10 +100,25 @@ function ChatPage() {
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintUpdatedAt, setBlueprintUpdatedAt] = useState<number | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const isStreaming = chat.status === 'streaming';
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
   const messages = chat.messages as ReadonlyArray<UIMessage>;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const recomputeIsAtBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const thresholdPx = 96;
+    const distanceFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+    setIsAtBottom(distanceFromBottom <= thresholdPx);
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    bottomRef.current?.scrollIntoView({ block: 'end', behavior });
+  }, []);
 
   const rendered = useMemo(() => {
     return messages
@@ -129,6 +144,12 @@ function ChatPage() {
       })
       .filter((m) => m.role === 'user' || m.text.trim().length > 0);
   }, [messages]);
+
+  const renderedTailKey = useMemo(() => {
+    const last = rendered.at(-1);
+    if (!last) return '';
+    return `${last.id}:${last.text.length}`;
+  }, [rendered]);
 
   const fetchBlueprint = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -176,6 +197,16 @@ function ChatPage() {
   }, [fetchBlueprint]);
 
   useEffect(() => {
+    recomputeIsAtBottom();
+  }, [recomputeIsAtBottom, renderedTailKey]);
+
+  useEffect(() => {
+    if (!isAtBottom) return;
+    if (rendered.length === 0) return;
+    scrollToBottom(isStreaming ? 'auto' : 'smooth');
+  }, [isAtBottom, isStreaming, rendered.length, renderedTailKey, scrollToBottom]);
+
+  useEffect(() => {
     if (!isBusy) return;
     const interval = window.setInterval(() => {
       void fetchBlueprint({ silent: true });
@@ -193,7 +224,7 @@ function ChatPage() {
     }
   }, [fetchBlueprint, isBusy]);
 
-  const onSubmit = (e: FormEvent) => {
+	  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const text = input.trim();
     if (!text || isBusy) return;
@@ -205,6 +236,7 @@ function ChatPage() {
     });
     // Keep cursor in input after send (next tick so React has committed)
     setTimeout(() => inputRef.current?.focus(), 0);
+    setTimeout(() => scrollToBottom('auto'), 0);
   };
 
   const onExportBlueprint = async () => {
@@ -345,15 +377,19 @@ function ChatPage() {
 
         {/* Chat */}
         <section className="flex-1 min-h-0 flex flex-col p-4">
-          <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
-            <KranoxFrame className="flex-1 min-h-0">
-              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
-                <div className="flex-1 overflow-y-auto overseer-scroll pr-1">
-                  <div className="flex flex-col gap-3">
-                    {rendered.map((m) => (
-                      <div
-                        key={m.id}
-                        className={[
+	          <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
+	            <KranoxFrame className="flex-1 min-h-0">
+	              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
+	                <div
+	                  ref={scrollRef}
+	                  onScroll={recomputeIsAtBottom}
+	                  className="flex-1 overflow-y-auto overseer-scroll pr-1 scroll-smooth"
+	                >
+	                  <div className="flex flex-col gap-3">
+	                    {rendered.map((m) => (
+	                      <div
+	                        key={m.id}
+	                        className={[
                           'max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono',
                           m.role === 'user'
                             ? 'self-end rounded border bg-accent-subtle text-text-primary border-accent-muted'
@@ -372,44 +408,56 @@ function ChatPage() {
                             </Streamdown>
                           )
                         ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+	                      </div>
+	                    ))}
+	                    <div ref={bottomRef} />
+	                  </div>
+	                </div>
 
-                <form
-                  onSubmit={onSubmit}
-                  className="mt-3 flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
-                >
-                  <input
-                    ref={inputRef}
-                    autoFocus
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Message Autopilot…"
-                    className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-                  />
-                  {isBusy ? (
-                    <button
-                      type="button"
-                      onClick={() => void chat.stop()}
-                      className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
-                    >
-                      Stop
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
-                    >
-                      Send
-                    </button>
-                  )}
-                </form>
-              </div>
-            </KranoxFrame>
-          </div>
-        </section>
+	                <div className="relative mt-3">
+	                  {!isAtBottom && rendered.length > 0 ? (
+	                    <button
+	                      type="button"
+	                      onClick={() => scrollToBottom('smooth')}
+	                      className="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+	                    >
+	                      Scroll to bottom
+	                    </button>
+	                  ) : null}
+	                  <form
+	                    onSubmit={onSubmit}
+	                    className="flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+	                  >
+	                    <input
+	                      ref={inputRef}
+	                      autoFocus
+	                      value={input}
+	                      onChange={(e) => setInput(e.target.value)}
+	                      placeholder="Message Autopilot…"
+	                      className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+	                    />
+	                    {isBusy ? (
+	                      <button
+	                        type="button"
+	                        onClick={() => void chat.stop()}
+	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+	                      >
+	                        Stop
+	                      </button>
+	                    ) : (
+	                      <button
+	                        type="submit"
+	                        className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
+	                      >
+	                        Send
+	                      </button>
+	                    )}
+	                  </form>
+	                </div>
+	              </div>
+	            </KranoxFrame>
+	          </div>
+	        </section>
       </main>
 
       {/* Control panel - bottom right */}
