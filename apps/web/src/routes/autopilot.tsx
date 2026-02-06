@@ -95,6 +95,15 @@ function ChatPage() {
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintUpdatedAt, setBlueprintUpdatedAt] = useState<number | null>(null);
+  const [isEditingBlueprint, setIsEditingBlueprint] = useState(false);
+  const [blueprintDraft, setBlueprintDraft] = useState<{
+    userHandle: string;
+    agentName: string;
+    identityVibe: string;
+    soulVibe: string;
+    soulBoundaries: string;
+  } | null>(null);
+  const [isSavingBlueprint, setIsSavingBlueprint] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const isStreaming = chat.status === 'streaming';
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
@@ -146,6 +155,29 @@ function ChatPage() {
     return `${last.id}:${last.text.length}`;
   }, [rendered]);
 
+  const makeDraftFromBlueprint = useCallback((value: unknown) => {
+    const b: any = value ?? {};
+    const docs = b?.docs ?? {};
+    const identity = docs.identity ?? {};
+    const user = docs.user ?? {};
+    const soul = docs.soul ?? {};
+
+    const boundaries: string = Array.isArray(soul.boundaries)
+      ? soul.boundaries
+          .map((s: unknown) => (typeof s === 'string' ? s : ''))
+          .filter(Boolean)
+          .join('\n')
+      : '';
+
+    return {
+      userHandle: typeof user.addressAs === 'string' ? user.addressAs : '',
+      agentName: typeof identity.name === 'string' ? identity.name : '',
+      identityVibe: typeof identity.vibe === 'string' ? identity.vibe : '',
+      soulVibe: typeof soul.vibe === 'string' ? soul.vibe : '',
+      soulBoundaries: boundaries,
+    };
+  }, []);
+
   const fetchBlueprint = useCallback(
     async (options?: { silent?: boolean }) => {
       const silent = options?.silent ?? false;
@@ -159,6 +191,9 @@ function ChatPage() {
             yield* Effect.sync(() => {
               setBlueprint(json);
               setBlueprintUpdatedAt(Date.now());
+              if (!isEditingBlueprint) {
+                setBlueprintDraft(makeDraftFromBlueprint(json));
+              }
             });
           }).pipe(
             Effect.catchAll((err) =>
@@ -187,7 +222,7 @@ function ChatPage() {
           // Any defects were already handled best-effort above.
         });
     },
-    [chatId, runtime],
+    [chatId, runtime, isEditingBlueprint, makeDraftFromBlueprint],
   );
 
   const fetchChatMessages = useCallback(async (): Promise<Array<UIMessage>> => {
@@ -287,6 +322,93 @@ function ChatPage() {
     }
   };
 
+  const onStartEditBlueprint = () => {
+    if (!blueprint) return;
+    setBlueprintDraft(makeDraftFromBlueprint(blueprint));
+    setIsEditingBlueprint(true);
+  };
+
+  const onCancelEditBlueprint = () => {
+    setBlueprintDraft(blueprint ? makeDraftFromBlueprint(blueprint) : null);
+    setIsEditingBlueprint(false);
+  };
+
+  const onSaveBlueprint = async () => {
+    if (!blueprintDraft || !blueprint || isSavingBlueprint) return;
+    setIsSavingBlueprint(true);
+    setBlueprintError(null);
+
+    const nowIso = new Date().toISOString();
+    const nextBoundaries = blueprintDraft.soulBoundaries
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    // Clone the export object so we can safely mutate and re-import it.
+    const next: any = JSON.parse(JSON.stringify(blueprint));
+    next.exportedAt = nowIso;
+
+    // USER (handle only)
+    next.docs.user.addressAs = blueprintDraft.userHandle.trim() || next.docs.user.addressAs;
+    next.docs.user.updatedAt = nowIso;
+    next.docs.user.updatedBy = 'user';
+    next.docs.user.version = Number(next.docs.user.version ?? 1) + 1;
+
+    // IDENTITY
+    next.docs.identity.name = blueprintDraft.agentName.trim() || next.docs.identity.name;
+    next.docs.identity.vibe = blueprintDraft.identityVibe.trim() || next.docs.identity.vibe;
+    next.docs.identity.updatedAt = nowIso;
+    next.docs.identity.updatedBy = 'user';
+    next.docs.identity.version = Number(next.docs.identity.version ?? 1) + 1;
+
+    // SOUL
+    next.docs.soul.vibe = blueprintDraft.soulVibe.trim() || next.docs.soul.vibe;
+    next.docs.soul.boundaries = nextBoundaries;
+    next.docs.soul.updatedAt = nowIso;
+    next.docs.soul.updatedBy = 'user';
+    next.docs.soul.version = Number(next.docs.soul.version ?? 1) + 1;
+
+    const saved = await runtime
+      .runPromise(
+        Effect.gen(function* () {
+          const telemetry = yield* TelemetryService;
+          const api = yield* AgentApiService;
+          yield* telemetry.withNamespace('ui.blueprint').event('blueprint.save', {
+            changed: [
+              'user.handle',
+              'identity.name',
+              'identity.vibe',
+              'soul.vibe',
+              'soul.boundaries',
+            ],
+          });
+          yield* api.importBlueprint(chatId, next);
+          return true as const;
+        }).pipe(
+          Effect.catchAll((err) =>
+            Effect.gen(function* () {
+              const telemetry = yield* TelemetryService;
+              yield* telemetry.withNamespace('ui.blueprint').log('error', 'blueprint.save_failed', {
+                message: err instanceof Error ? err.message : String(err),
+              });
+              yield* Effect.sync(() => {
+                setBlueprintError(err instanceof Error ? err.message : 'Failed to save Blueprint.');
+              });
+              return false as const;
+            }),
+          ),
+        ),
+      )
+      .catch(() => false);
+
+    setIsSavingBlueprint(false);
+
+    if (saved) {
+      setIsEditingBlueprint(false);
+      await fetchBlueprint();
+    }
+  };
+
   const onResetAgent = async () => {
     if (isResettingAgent || isBusy) return;
     const confirmed = window.confirm(
@@ -366,42 +488,131 @@ function ChatPage() {
         <span className="text-xs text-text-dim uppercase tracking-wider">Autopilot</span>
       </header>
 
-      {/* Main area */}
-      <main className="flex-1 min-h-0 w-full flex overflow-hidden">
-        {/* Blueprint sidebar */}
-        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-r border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
-          <div className="flex flex-col h-full min-h-0 w-full">
-            <div className="flex items-center justify-between h-11 px-3 border-b border-border-dark">
-              <div className="text-xs text-text-dim uppercase tracking-wider">Blueprint</div>
-              <div className="flex items-center gap-2">
-                {blueprintUpdatedAt ? (
-                  <div className="text-[10px] text-text-dim">
-                    {new Date(blueprintUpdatedAt).toLocaleTimeString()}
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void fetchBlueprint()}
-                  disabled={blueprintLoading}
-                  className="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
-                >
-                  {blueprintLoading ? 'Syncing…' : 'Refresh'}
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 overseer-scroll">
-              {blueprintError ? (
-                <div className="text-xs text-red-400">Blueprint error: {blueprintError}</div>
-              ) : blueprintText ? (
-                <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
-                  {blueprintText}
-                </pre>
-              ) : (
-                <div className="text-xs text-text-dim">(no blueprint)</div>
-              )}
-            </div>
-          </div>
-        </aside>
+	      {/* Main area */}
+	      <main className="flex-1 min-h-0 w-full flex overflow-hidden">
+	        {/* Blueprint sidebar */}
+	        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-r border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
+	          <div className="flex flex-col h-full min-h-0 w-full">
+	            <div className="flex items-center justify-between h-11 px-3 border-b border-border-dark">
+	              <div className="text-xs text-text-dim uppercase tracking-wider">Blueprint</div>
+	              <div className="flex items-center gap-2">
+	                {blueprintUpdatedAt ? (
+	                  <div className="text-[10px] text-text-dim">
+	                    {new Date(blueprintUpdatedAt).toLocaleTimeString()}
+	                  </div>
+	                ) : null}
+	                <button
+	                  type="button"
+	                  onClick={() => (isEditingBlueprint ? onCancelEditBlueprint() : onStartEditBlueprint())}
+	                  disabled={blueprintLoading || !blueprint}
+	                  className="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
+	                >
+	                  {isEditingBlueprint ? 'Cancel' : 'Edit'}
+	                </button>
+	                <button
+	                  type="button"
+	                  onClick={() => void fetchBlueprint()}
+	                  disabled={blueprintLoading}
+	                  className="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
+	                >
+	                  {blueprintLoading ? 'Syncing…' : 'Refresh'}
+	                </button>
+	              </div>
+	            </div>
+	            <div className="flex-1 min-h-0 overflow-y-auto p-3 overseer-scroll">
+	              {blueprintError ? (
+	                <div className="text-xs text-red-400">Blueprint error: {blueprintError}</div>
+	              ) : isEditingBlueprint ? (
+	                <div className="flex flex-col gap-3">
+	                  <div className="text-[11px] text-text-dim">
+	                    Edit the Blueprint fields below. (Avoid personal info; handle/nickname only.)
+	                  </div>
+
+	                  <label className="flex flex-col gap-1">
+	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
+	                      Your handle
+	                    </span>
+	                    <input
+	                      value={blueprintDraft?.userHandle ?? ''}
+	                      onChange={(e) =>
+	                        setBlueprintDraft((d) => (d ? { ...d, userHandle: e.target.value } : d))
+	                      }
+	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+	                    />
+	                  </label>
+
+	                  <label className="flex flex-col gap-1">
+	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
+	                      Agent name
+	                    </span>
+	                    <input
+	                      value={blueprintDraft?.agentName ?? ''}
+	                      onChange={(e) =>
+	                        setBlueprintDraft((d) => (d ? { ...d, agentName: e.target.value } : d))
+	                      }
+	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+	                    />
+	                  </label>
+
+	                  <label className="flex flex-col gap-1">
+	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
+	                      Agent vibe
+	                    </span>
+	                    <input
+	                      value={blueprintDraft?.identityVibe ?? ''}
+	                      onChange={(e) =>
+	                        setBlueprintDraft((d) => (d ? { ...d, identityVibe: e.target.value } : d))
+	                      }
+	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+	                    />
+	                  </label>
+
+	                  <label className="flex flex-col gap-1">
+	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
+	                      Soul vibe
+	                    </span>
+	                    <input
+	                      value={blueprintDraft?.soulVibe ?? ''}
+	                      onChange={(e) =>
+	                        setBlueprintDraft((d) => (d ? { ...d, soulVibe: e.target.value } : d))
+	                      }
+	                      className="h-8 w-full rounded border border-border-dark bg-surface-primary px-2 text-[12px] text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+	                    />
+	                  </label>
+
+	                  <label className="flex flex-col gap-1">
+	                    <span className="text-[10px] text-text-dim uppercase tracking-wider">
+	                      Boundaries (one per line)
+	                    </span>
+	                    <textarea
+	                      value={blueprintDraft?.soulBoundaries ?? ''}
+	                      onChange={(e) =>
+	                        setBlueprintDraft((d) => (d ? { ...d, soulBoundaries: e.target.value } : d))
+	                      }
+	                      rows={8}
+	                      className="w-full resize-y rounded border border-border-dark bg-surface-primary px-2 py-2 text-[12px] leading-4 text-text-primary outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+	                    />
+	                  </label>
+
+	                  <button
+	                    type="button"
+	                    onClick={() => void onSaveBlueprint()}
+	                    disabled={isSavingBlueprint}
+	                    className="inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
+	                  >
+	                    {isSavingBlueprint ? 'Saving…' : 'Save Blueprint'}
+	                  </button>
+	                </div>
+	              ) : blueprintText ? (
+	                <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
+	                  {blueprintText}
+	                </pre>
+	              ) : (
+	                <div className="text-xs text-text-dim">(no blueprint)</div>
+	              )}
+	            </div>
+	          </div>
+	        </aside>
 
         {/* Chat */}
         <section className="flex-1 min-h-0 flex flex-col p-4">
