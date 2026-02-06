@@ -5,6 +5,7 @@ import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
 import { useMemo, useState } from 'react';
+import { Streamdown } from 'streamdown';
 import { TelemetryService } from '../effect/telemetry';
 import type { UIMessage } from 'ai';
 import type { FormEvent } from 'react';
@@ -70,6 +71,7 @@ function ChatPage() {
   });
 
   const [input, setInput] = useState('');
+  const isStreaming = chat.status === 'streaming';
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
   const messages = chat.messages as ReadonlyArray<UIMessage>;
@@ -163,9 +165,15 @@ function ChatPage() {
                     <div className="whitespace-pre-wrap text-xs text-white/60">{m.reasoning}</div>
                   ) : null}
                   {m.text ? (
-                    <div className={m.reasoning && m.role !== 'user' ? 'mt-2 whitespace-pre-wrap' : 'whitespace-pre-wrap'}>
-                      {m.text}
-                    </div>
+                    m.role === 'user' ? (
+                      <div className="whitespace-pre-wrap">{m.text}</div>
+                    ) : (
+                      <div className={m.reasoning ? 'mt-2' : undefined}>
+                        <Streamdown mode={isStreaming ? 'streaming' : 'static'} isAnimating={isStreaming}>
+                          {m.text}
+                        </Streamdown>
+                      </div>
+                    )
                   ) : (
                     <span className={m.role === 'user' ? 'text-black/40' : 'text-white/40'}>
                       (no text)
