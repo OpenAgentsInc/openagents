@@ -179,6 +179,20 @@ Each phase has a concrete “Definition of Done” and a recommended verificatio
 - smoke `/autopilot` (unauth redirect still works)
 - sign-out clears root auth cache and forces refetch on next nav
 
+**Phase 3 Log (Implemented 2026-02-06)**
+
+- Converted Autopilot chrome to Effuse islands:
+  - `apps/web/src/effuse-pages/autopilotSidebar.ts`
+  - `apps/web/src/effuse-pages/autopilotBlueprint.ts`
+  - `apps/web/src/effuse-pages/autopilotControls.ts`
+- Updated sidebar wrapper to be Effuse-rendered (React is now just state + event wiring):
+  - `apps/web/src/components/layout/AutopilotSidebar.tsx`
+  - Added SPA nav links (Autopilot/Modules/Tools/Signatures), collapse persistence, and logout via `/api/auth/signout`.
+- Replaced React Blueprint panel + control panel on `/autopilot` with Effuse mounts:
+  - `apps/web/src/routes/autopilot.tsx`
+  - Blueprint editing uses a ref-backed draft + freezes Effuse re-render while editing to avoid caret resets.
+- Verified: `cd apps/web && npm run lint` and `cd apps/web && npm run build`
+
 ---
 
 ### Phase 4: Move UI State to Effect (Stop Using React State for Page Logic)
