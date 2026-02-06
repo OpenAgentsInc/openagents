@@ -42,6 +42,12 @@ Effuse does not replace the router or the DOM root. Instead, React renders a **c
 
 So: **React owns the tree and the lifecycle; Effuse owns the content of one node.** When `deps` change, the program runs again and replaces that content.
 
+### Navigation (no full page refresh)
+
+Effuse templates use normal anchors (`<a href="/login">`) for internal links. To keep navigation SPA (no document reload), `EffuseMount` intercepts same-origin `<a>` clicks inside the container and calls `router.navigate({ href })`.
+
+If you need to opt out (force a full reload), add `data-router-ignore` to the anchor.
+
 ### Data flow
 
 - **Route loaders** (React/TanStack) fetch or compute data (e.g. auth, `signInUrl`, `userId`).
@@ -87,6 +93,8 @@ When `deps` (e.g. `autopilotChatData`) change, Effuse re-runs and replaces the D
 **Files:**
 
 - `apps/web/src/effuse-pages/header.ts` – Renders `<header>` with logo and conditional nav.
+- `apps/web/src/effuse-pages/ui/hatcheryButton.ts` – Small Effuse helper that renders the “HatcheryButton” SVG-frame button used on marketing pages.
+- `apps/web/src/app.css` – Global `.oa-hatchery-button*` styles (ported from the old React `HatcheryButton.module.css` so Effuse can render the same button).
 - `apps/web/src/routes/_marketing.tsx` – Uses `EffuseMount` for header; background + Outlet unchanged.
 
 ### 2. Catalog routes: modules, signatures, tools

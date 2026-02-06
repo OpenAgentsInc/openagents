@@ -136,4 +136,4 @@ Typed provides **@typed/template/Test** (HTML, DOM, hydration) and **@typed/temp
 
 - **Typed repo:** `~/code/typed` (or https://github.com/tylors/typed)
 - **Typed docs (in repo):** `readme.md`, `CLAUDE.md`, `packages-summary.md`, `basics.md`; `docs/` (per-package API); `examples/counter`, `examples/simple-fullstack`, `examples/simple-ssr`, `examples/todomvc`, `examples/fx-tracing`
-- **Our docs:** `docs/autopilot/effuse-conversion-apps-web.md`, `docs/autopilot/DELEGATION-full-effect-integration.md`, `docs/autopilot/tanstack-start-effect-comparison.md`
+- **Our docs:** `packages/effuse/docs/effuse-conversion-apps-web.md`, `packages/effuse/docs/DELEGATION-full-effect-integration.md`, `packages/effuse/docs/tanstack-start-effect-comparison.md`

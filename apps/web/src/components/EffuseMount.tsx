@@ -41,6 +41,7 @@ export function EffuseMount({ run, deps = [], className, onRendered }: EffuseMou
       if (!(anchor instanceof HTMLAnchorElement)) return;
 
       // Let the browser handle non-default behaviors.
+      if (anchor.hasAttribute('data-router-ignore')) return;
       const hrefAttr = anchor.getAttribute('href');
       if (!hrefAttr) return;
       if (hrefAttr.startsWith('#')) return;
