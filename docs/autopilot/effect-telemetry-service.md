@@ -181,7 +181,7 @@ Telemetry should follow that same contract:
 
 When you introduce Effect into `apps/web`, telemetry should be constructed **at the same place other global services are composed** (the composition root).
 
-Recommended insertion points (see `docs/autopilot/effect-migration-web.md`):
+Recommended insertion points (see `packages/effuse/docs/effect-migration-web.md`):
 
 - **Primary**: `apps/web/src/router.tsx` (the `AppLayer` / service composition root)
 - **Secondary**:

@@ -182,8 +182,8 @@ Shared:
 
 ## References
 
-- **Effuse package and framework**: `packages/effuse/`, `packages/effuse/docs/` (INDEX.md, README.md, ARCHITECTURE.md, SPEC.md, DOM.md, etc.).
-- **apps/web usage summary**: `packages/effuse/docs/INDEX.md` → “Usage in apps/web”.
-- **Autopilot web flow**: `docs/autopilot/spec.md`.
-- **Effect in apps/web**: `docs/autopilot/effect-migration-web.md`.
-- **Comparison with another TanStack Start + Effect approach** (RPC, @effect-atom, hydration, patches): `docs/autopilot/tanstack-start-effect-comparison.md`.
+- **Effuse package and framework**: `packages/effuse/`, this `packages/effuse/docs/` (INDEX.md, README.md, ARCHITECTURE.md, SPEC.md, DOM.md, etc.).
+- **apps/web usage summary**: [INDEX.md](./INDEX.md) → “Usage in apps/web”.
+- **Router and Effect integration**: [ROUTER-AND-APPS-WEB-INTEGRATION.md](./ROUTER-AND-APPS-WEB-INTEGRATION.md).
+- **Effect in apps/web**: [effect-migration-web.md](./effect-migration-web.md).
+- **TanStack Start + Effect comparison**: [tanstack-start-effect-comparison.md](./tanstack-start-effect-comparison.md).

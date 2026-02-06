@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { clearRootAuthCache } from '../../routes/__root';
 
 const SITE_TITLE = 'OpenAgents';
 const STORAGE_KEY = 'autopilot-sidebar-collapsed';
@@ -96,6 +97,7 @@ function SidebarUserMenu() {
             role="menuitem"
             onClick={() => {
               setMenuOpen(false);
+              clearRootAuthCache();
               void signOut();
             }}
             className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
@@ -148,6 +150,7 @@ function SidebarUserCollapsed() {
             role="menuitem"
             onClick={() => {
               setMenuOpen(false);
+              clearRootAuthCache();
               void signOut();
             }}
             className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"

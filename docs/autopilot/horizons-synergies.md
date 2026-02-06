@@ -55,7 +55,7 @@ So Horizons is **architecturally close**: graph as pipeline, eval/optimization a
 
 ### 3.1 Graph as DAG of steps (vs. DSE modules)
 
-We have **DSE modules**: Effect programs `I -> Effect<R, E, O>`, composed in pipelines. Horizons has **explicit DAGs**: YAML-defined nodes (python, LLM, tool), control edges, start/end. 
+We have **DSE modules**: Effect programs `I -> Effect<R, E, O>`, composed in pipelines. Horizons has **explicit DAGs**: YAML-defined nodes (python, LLM, tool), control edges, start/end.
 
 **Synergy:** We could:
 - Describe a “pipeline” or “verifier” as a **graph IR** (our format or a subset of theirs) and execute it with a small engine (TS/Effect or call into a Rust/WASM graph runner).
@@ -166,5 +166,5 @@ Horizons keys everything by `org_id` and `project_id` (headers, DB, memory scope
 - **Horizons:** `~/code/Horizons`, [github.com/synth-laboratories/Horizons](https://github.com/synth-laboratories/Horizons) — README, AGENTS.md, horizons_core, horizons_graph, horizons_server, horizons_ts, rlm, mipro_v2, voyager.
 - **Our spec:** `docs/autopilot/spec.md` (no containers, one Autopilot per user, tiny tool surface).
 - **Our DSE:** `docs/autopilot/dse.md` (signatures, modules, tool contracts, compile, artifacts).
-- **Our Effect:** `docs/autopilot/effect-migration-web.md`, `docs/autopilot/effuse-conversion-apps-web.md`.
+- **Our Effect:** `packages/effuse/docs/effect-migration-web.md`, `packages/effuse/docs/effuse-conversion-apps-web.md`.
 - **Monty synergies:** `docs/autopilot/monty-synergies.md` (Horizons uses Monty optionally for graph Python nodes).

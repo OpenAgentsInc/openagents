@@ -1,6 +1,6 @@
 # Effuse docs
 
-These docs were part of the former autopilot-desktop app (Effuse-based Tauri UI) and are now maintained with the standalone `@openagentsinc/effuse` package.
+These docs were part of the former autopilot-desktop app (Effuse-based Tauri UI) and are now maintained with the standalone `@openagentsinc/effuse` package. **All Effuse and apps/web integration documentation is consolidated here** (moved from `docs/autopilot/` and related locations).
 
 ## Usage in apps/web
 
@@ -12,7 +12,28 @@ The OpenAgents web app (`apps/web`) uses Effuse for almost all user-facing UI:
 
 React is still used for: route loaders, auth, Convex, HUD backgrounds (DotsBackground), `EffuseMount` (run Effuse in a div and optionally `onRendered` for event delegation), and the Autopilot sidebar/blueprint/controls.
 
-**Full conversion doc:** `docs/autopilot/effuse-conversion-apps-web.md` (architecture, data flow, event delegation, file map, how to add or change Effuse pages).
+**Full conversion doc:** [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md) (architecture, data flow, event delegation, file map, how to add or change Effuse pages).
+
+---
+
+## Router and apps/web integration (start here)
+
+| Doc | Description |
+|-----|-------------|
+| [ROUTER-AND-APPS-WEB-INTEGRATION.md](./ROUTER-AND-APPS-WEB-INTEGRATION.md) | **Comprehensive:** Router, Effect, RPC, auth cache, navigation, avoiding full-page behavior |
+| [effect-rpc-web.md](./effect-rpc-web.md) | Effect RPC mount, procedures, client usage |
+| [effect-migration-web.md](./effect-migration-web.md) | Effect scaffold, entry points, migration order, routing/navigation |
+| [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md) | Effuse conversion: EffuseMount, data flow, file map, adding pages |
+| [tanstack-start-effect-comparison.md](./tanstack-start-effect-comparison.md) | Our approach vs. Practical Effect tutorial |
+| [DELEGATION-full-effect-integration.md](./DELEGATION-full-effect-integration.md) | Delegation brief for implementing RPC, MemoMap, atoms, hydration |
+
+**ADR copies (canonical in repo `docs/adr/`):** [adr/adr-0022-effuse-uitree-ipc.md](./adr/adr-0022-effuse-uitree-ipc.md), [adr/adr-0027-effect-rpc-and-atom-hydration-web.md](./adr/adr-0027-effect-rpc-and-atom-hydration-web.md)
+
+**Archive (legacy plans):** [archive/dsrs-effuse-ui-plan.md](./archive/dsrs-effuse-ui-plan.md), [archive/effuse-ui-implementation-plan.md](./archive/effuse-ui-implementation-plan.md)
+
+---
+
+## Effuse framework (core)
 
 | Doc | Description |
 |-----|-------------|

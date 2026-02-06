@@ -4,10 +4,12 @@ import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
 import { EffuseMount } from '../components/EffuseMount';
-import { runModulesPage, type ModuleItem } from '../effuse-pages/modules';
+import { runModulesPage } from '../effuse-pages/modules';
 import { TelemetryService } from '../effect/telemetry';
+import { AgentRpcClientService } from '../effect/api/agentRpcClient';
 import { AgentApiService } from '../effect/agentApi';
 import type { DseModuleContract } from '../effect/agentApi';
+import type { ModuleItem } from '../effuse-pages/modules';
 
 export const Route = createFileRoute('/modules')({
   loader: async ({ context }) => {
@@ -62,9 +64,17 @@ function ModulesPage() {
     runtime
       .runPromise(
         Effect.gen(function* () {
-          const api = yield* AgentApiService;
-          return yield* api.getModuleContracts(userId);
-        }),
+          const rpc = yield* AgentRpcClientService;
+          return yield* rpc.agent.getModuleContracts({ chatId: userId });
+        }).pipe(
+          // Keep the legacy HTTP path as a fallback while RPC is being proven out.
+          Effect.catchAll(() =>
+            Effect.gen(function* () {
+              const api = yield* AgentApiService;
+              return yield* api.getModuleContracts(userId);
+            }),
+          ),
+        ),
       )
       .then((next) => {
         if (cancelled) return;

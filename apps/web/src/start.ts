@@ -1,8 +1,7 @@
 import { createMiddleware, createStart } from '@tanstack/react-start';
 import { authkitMiddleware } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { getAppConfig } from './effect/config';
-import { makeAppRuntime } from './effect/runtime';
+import { getServerRuntime } from './effect/serverRuntime';
 import { TelemetryService } from './effect/telemetry';
 
 export const startInstance = createStart(() => {
@@ -16,7 +15,7 @@ export const startInstance = createStart(() => {
         : Math.random().toString(36).slice(2);
 
     const url = new URL(opts.request.url);
-    const runtime = makeAppRuntime(getAppConfig());
+    const runtime = getServerRuntime().runtime;
 
     try {
       await runtime.runPromise(
@@ -48,7 +47,7 @@ export const startInstance = createStart(() => {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes('Invalid server function ID')) {
-        const runtime = makeAppRuntime(getAppConfig());
+        const runtime = getServerRuntime().runtime;
         try {
           await runtime.runPromise(
             Effect.gen(function* () {
