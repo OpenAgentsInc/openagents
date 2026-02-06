@@ -3,7 +3,7 @@ import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { useAgent } from 'agents/react';
 import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Streamdown } from 'streamdown';
 import { TelemetryService } from '../effect/telemetry';
 import type { UIMessage } from 'ai';
@@ -52,6 +52,25 @@ export const Route = createFileRoute('/chat/$chatId')({
   component: ChatPage,
 });
 
+function sanitizeBlueprintForDisplay(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeBlueprintForDisplay);
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(record)) {
+      // UI: avoid the word "address" (this is a handle/nickname field).
+      const safeKey = key === 'addressAs' ? 'handle' : key;
+      out[safeKey] = sanitizeBlueprintForDisplay(child);
+    }
+    return out;
+  }
+
+  return value;
+}
+
 function ChatPage() {
   const { chatId } = Route.useParams();
 
@@ -72,7 +91,12 @@ function ChatPage() {
 
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const didMountRef = useRef(false);
   const [isExportingBlueprint, setIsExportingBlueprint] = useState(false);
+  const [blueprint, setBlueprint] = useState<unknown | null>(null);
+  const [blueprintError, setBlueprintError] = useState<string | null>(null);
+  const [blueprintLoading, setBlueprintLoading] = useState(false);
+  const [blueprintUpdatedAt, setBlueprintUpdatedAt] = useState<number | null>(null);
   const isStreaming = chat.status === 'streaming';
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
@@ -103,6 +127,53 @@ function ChatPage() {
       .filter((m) => m.role === 'user' || m.text.trim().length > 0);
   }, [messages]);
 
+  const fetchBlueprint = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!silent) setBlueprintLoading(true);
+      setBlueprintError(null);
+      try {
+        const response = await fetch(`/agents/chat/${chatId}/blueprint`, {
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const json: unknown = await response.json();
+        setBlueprint(json);
+        setBlueprintUpdatedAt(Date.now());
+      } catch (err) {
+        console.error(err);
+        setBlueprintError(err instanceof Error ? err.message : 'Failed to load Blueprint.');
+      } finally {
+        if (!silent) setBlueprintLoading(false);
+      }
+    },
+    [chatId],
+  );
+
+  useEffect(() => {
+    void fetchBlueprint();
+  }, [fetchBlueprint]);
+
+  useEffect(() => {
+    if (!isBusy) return;
+    const interval = window.setInterval(() => {
+      void fetchBlueprint({ silent: true });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [fetchBlueprint, isBusy]);
+
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    if (!isBusy) {
+      void fetchBlueprint({ silent: true });
+    }
+  }, [fetchBlueprint, isBusy]);
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const text = input.trim();
@@ -125,9 +196,9 @@ function ChatPage() {
       if (!response.ok) {
         throw new Error(`Export failed (${response.status})`);
       }
-      const blueprint: unknown = await response.json();
+      const blueprintJson: unknown = await response.json();
 
-      const blob = new Blob([JSON.stringify(blueprint, null, 2)], {
+      const blob = new Blob([JSON.stringify(blueprintJson, null, 2)], {
         type: 'application/json',
       });
       const url = URL.createObjectURL(blob);
@@ -146,6 +217,15 @@ function ChatPage() {
     }
   };
 
+  const blueprintText = useMemo(() => {
+    if (!blueprint) return null;
+    try {
+      return JSON.stringify(sanitizeBlueprintForDisplay(blueprint), null, 2);
+    } catch {
+      return null;
+    }
+  }, [blueprint]);
+
   return (
     <div className="fixed inset-0 flex flex-col h-screen overflow-hidden bg-bg-primary text-text-primary font-mono">
       {/* Header - overseer-style */}
@@ -157,65 +237,105 @@ function ChatPage() {
         <span className="text-xs text-text-dim uppercase tracking-wider">Autopilot</span>
       </header>
 
-      {/* Main chat area */}
-      <main className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl p-4">
-        <div className="flex-1 flex flex-col overflow-hidden rounded-lg border border-border-dark bg-surface-primary">
-          <div className="flex-1 overflow-y-auto p-4 overseer-scroll">
-            <div className="flex flex-col gap-3">
-              {rendered.map((m) => (
-                <div
-                  key={m.id}
-                  className={[
-                    'max-w-[90%] rounded border px-3 py-2 text-sm leading-relaxed font-mono',
-                    m.role === 'user'
-                      ? 'self-end bg-accent-subtle text-text-primary border-accent-muted'
-                      : 'self-start bg-surface-secondary text-text-primary border-border-dark',
-                  ].join(' ')}
+      {/* Main area */}
+      <main className="flex-1 min-h-0 w-full flex overflow-hidden">
+        {/* Blueprint sidebar */}
+        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-r border-border-dark bg-bg-secondary">
+          <div className="flex flex-col h-full min-h-0 w-full">
+            <div className="flex items-center justify-between h-11 px-3 border-b border-border-dark">
+              <div className="text-xs text-text-dim uppercase tracking-wider">Blueprint</div>
+              <div className="flex items-center gap-2">
+                {blueprintUpdatedAt ? (
+                  <div className="text-[10px] text-text-dim">
+                    {new Date(blueprintUpdatedAt).toLocaleTimeString()}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void fetchBlueprint()}
+                  disabled={blueprintLoading}
+                  className="text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus rounded px-2 py-1"
                 >
-                  {m.text ? (
-                    m.role === 'user' ? (
-                      <div className="whitespace-pre-wrap">{m.text}</div>
-                    ) : (
-                      <Streamdown mode={isStreaming ? 'streaming' : 'static'} isAnimating={isStreaming}>
-                        {m.text}
-                      </Streamdown>
-                    )
-                  ) : null}
-                </div>
-              ))}
+                  {blueprintLoading ? 'Syncing…' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 overseer-scroll">
+              {blueprintError ? (
+                <div className="text-xs text-red-400">Blueprint error: {blueprintError}</div>
+              ) : blueprintText ? (
+                <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">
+                  {blueprintText}
+                </pre>
+              ) : (
+                <div className="text-xs text-text-dim">(no blueprint)</div>
+              )}
             </div>
           </div>
+        </aside>
 
-          <form
-            onSubmit={onSubmit}
-            className="flex items-center gap-2 border-t border-border-dark p-3 bg-bg-secondary"
-          >
-            <input
-              ref={inputRef}
-              autoFocus
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Message Autopilot…"
-              className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-            />
-            {isBusy ? (
-              <button
-                type="button"
-                onClick={() => void chat.stop()}
-                className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+        {/* Chat */}
+        <section className="flex-1 min-h-0 flex flex-col p-4">
+          <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
+            <div className="flex-1 flex flex-col overflow-hidden rounded-lg border border-border-dark bg-surface-primary">
+              <div className="flex-1 overflow-y-auto p-4 overseer-scroll">
+                <div className="flex flex-col gap-3">
+                  {rendered.map((m) => (
+                    <div
+                      key={m.id}
+                      className={[
+                        'max-w-[90%] rounded border px-3 py-2 text-sm leading-relaxed font-mono',
+                        m.role === 'user'
+                          ? 'self-end bg-accent-subtle text-text-primary border-accent-muted'
+                          : 'self-start bg-surface-secondary text-text-primary border-border-dark',
+                      ].join(' ')}
+                    >
+                      {m.text ? (
+                        m.role === 'user' ? (
+                          <div className="whitespace-pre-wrap">{m.text}</div>
+                        ) : (
+                          <Streamdown mode={isStreaming ? 'streaming' : 'static'} isAnimating={isStreaming}>
+                            {m.text}
+                          </Streamdown>
+                        )
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <form
+                onSubmit={onSubmit}
+                className="flex items-center gap-2 border-t border-border-dark p-3 bg-bg-secondary"
               >
-                Stop
-              </button>
-            ) : (
-              <button
-                type="submit"
-                className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
-              >
-                Send
-              </button>
-            )}
-          </form>
-        </div>
+                <input
+                  ref={inputRef}
+                  autoFocus
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Message Autopilot…"
+                  className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+                />
+                {isBusy ? (
+                  <button
+                    type="button"
+                    onClick={() => void chat.stop()}
+                    className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+                  >
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
+                  >
+                    Send
+                  </button>
+                )}
+              </form>
+            </div>
+          </div>
+        </section>
       </main>
 
       {/* Control panel - bottom right */}
