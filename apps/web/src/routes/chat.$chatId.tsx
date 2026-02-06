@@ -79,19 +79,9 @@ function ChatPage() {
   const messages = chat.messages as ReadonlyArray<UIMessage>;
 
   const rendered = useMemo(() => {
-    return messages.map((msg) => {
+    return messages
+      .map((msg) => {
       const parts: ReadonlyArray<unknown> = Array.isArray((msg as any).parts) ? (msg as any).parts : [];
-
-      const reasoning = parts
-        .filter(
-          (p): p is { type: 'reasoning'; text: string } =>
-            Boolean(p) &&
-            typeof p === 'object' &&
-            (p as any).type === 'reasoning' &&
-            typeof (p as any).text === 'string',
-        )
-        .map((p) => p.text)
-        .join('');
 
       const text = parts
         .filter(
@@ -104,45 +94,13 @@ function ChatPage() {
         .map((p) => p.text)
         .join('');
 
-      const toolCalls = parts
-        .filter(
-          (p): p is { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown } =>
-            Boolean(p) &&
-            typeof p === 'object' &&
-            (p as any).type === 'tool-call' &&
-            typeof (p as any).toolCallId === 'string' &&
-            typeof (p as any).toolName === 'string',
-        )
-        .map((p) => ({
-          id: p.toolCallId,
-          name: p.toolName,
-          input: (p as any).input as unknown,
-        }));
-
-      const toolResults = parts
-        .filter(
-          (p): p is { type: 'tool-result'; toolCallId: string; toolName: string; output: unknown } =>
-            Boolean(p) &&
-            typeof p === 'object' &&
-            (p as any).type === 'tool-result' &&
-            typeof (p as any).toolCallId === 'string' &&
-            typeof (p as any).toolName === 'string',
-        )
-        .map((p) => ({
-          id: p.toolCallId,
-          name: p.toolName,
-          output: (p as any).output as unknown,
-        }));
-
       return {
         id: msg.id,
         role: msg.role,
         text,
-        reasoning,
-        toolCalls,
-        toolResults,
       };
-    });
+      })
+      .filter((m) => m.role === 'user' || m.text.trim().length > 0);
   }, [messages]);
 
   const onSubmit = (e: FormEvent) => {
@@ -214,46 +172,15 @@ function ChatPage() {
                       : 'self-start bg-surface-secondary text-text-primary border-border-dark',
                   ].join(' ')}
                 >
-                  {m.reasoning && m.role !== 'user' ? (
-                    <div className="whitespace-pre-wrap text-xs text-text-muted">{m.reasoning}</div>
-                  ) : null}
-                  {m.role !== 'user' && m.toolCalls.length ? (
-                    <div className={m.reasoning ? 'mt-2' : undefined}>
-                      <div className="space-y-1 text-xs text-text-muted font-mono">
-                        {m.toolCalls.map((call) => (
-                          <div key={call.id}>
-                            tool: {call.name}
-                            {call.input ? ` ${safeJson(call.input)}` : ''}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  {m.role !== 'user' && m.toolResults.length ? (
-                    <div className={m.reasoning || m.toolCalls.length ? 'mt-2' : undefined}>
-                      <div className="space-y-1 text-xs text-text-muted font-mono">
-                        {m.toolResults.map((res) => (
-                          <div key={res.id}>
-                            result: {res.name}
-                            {res.output ? ` ${safeJson(res.output)}` : ''}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                   {m.text ? (
                     m.role === 'user' ? (
                       <div className="whitespace-pre-wrap">{m.text}</div>
                     ) : (
-                      <div className={m.reasoning ? 'mt-2' : undefined}>
-                        <Streamdown mode={isStreaming ? 'streaming' : 'static'} isAnimating={isStreaming}>
-                          {m.text}
-                        </Streamdown>
-                      </div>
+                      <Streamdown mode={isStreaming ? 'streaming' : 'static'} isAnimating={isStreaming}>
+                        {m.text}
+                      </Streamdown>
                     )
-                  ) : m.reasoning || m.toolCalls.length || m.toolResults.length ? null : (
-                    <span className="text-text-dim">(no text)</span>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -314,10 +241,4 @@ function ChatPage() {
   );
 }
 
-function safeJson(value: unknown) {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
+// (Tool parts are intentionally not rendered in the MVP UI.)
