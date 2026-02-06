@@ -74,7 +74,7 @@ Each phase has a concrete “Definition of Done” and a recommended verificatio
 2. Port remaining SVG + CSS-module-based primitives into Effuse helpers that use **Tailwind utility classes**:
    - do **not** introduce new global `.oa-*` component classes
    - use Tailwind arbitrary values/variants when needed for SVG attributes and precise styling
-   - example currently local to `apps/web`: `hatcheryButton()` (`apps/web/src/effuse-pages/ui/hatcheryButton.ts`) which should be migrated into `packages/effuse-ui/` and re-expressed in Tailwind (no component CSS in `app.css`).
+   - example: `hatcheryButton()` (`packages/effuse-ui/src/hatcheryButton.ts`)
 3. Make Effuse pages use these helpers (which internally use Tailwind classes) instead of duplicating long Tailwind strings in each page.
 
 **DoD:**
@@ -87,6 +87,21 @@ Each phase has a concrete “Definition of Done” and a recommended verificatio
 - `cd apps/web && npm run build`
 - `cd apps/web && npm run lint`
 - smoke: open `/` and `/login` and confirm (a) full-screen layout, (b) the framed button renders, (c) navigation to `/login` is SPA.
+
+**Phase 1 Log (Implemented 2026-02-06)**
+
+- Added `packages/effuse-ui/` (`@openagentsinc/effuse-ui`) and implemented `hatcheryButton()` using Tailwind classes only.
+- Updated `apps/web` to depend on `@openagentsinc/effuse-ui` and use it from:
+  - `apps/web/src/effuse-pages/home.ts`
+  - `apps/web/src/effuse-pages/header.ts`
+- Removed the app-local HatcheryButton helper and component CSS:
+  - deleted `apps/web/src/effuse-pages/ui/hatcheryButton.ts`
+  - removed `.oa-hatchery-button*` styles from `apps/web/src/app.css`
+- Ensured Tailwind includes classes used by `@openagentsinc/effuse-ui`:
+  - added `@source '../node_modules/@openagentsinc/effuse-ui/src/**/*.ts';` in `apps/web/src/app.css`
+- Fixed Vite/SSR resolution for local workspace packages:
+  - added aliases + `ssr.noExternal` for `@openagentsinc/effuse` and `@openagentsinc/effuse-ui` in `apps/web/vite.config.ts`
+- Verified: `cd apps/web && npm run lint` and `cd apps/web && npm run build`
 
 ---
 

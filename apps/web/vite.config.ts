@@ -33,7 +33,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // Resolve local workspace package so @openagentsinc/hud and @openagentsinc/hud/react work
+      // Resolve local workspace packages so TS source is bundled in Vite/SSR.
+      '@openagentsinc/effuse': path.resolve(__dirname, '../../packages/effuse'),
+      '@openagentsinc/effuse-ui': path.resolve(__dirname, '../../packages/effuse-ui'),
       '@openagentsinc/hud': path.resolve(__dirname, '../../packages/hud'),
     },
     // Single instances to avoid mixed animator systems.
@@ -42,7 +44,14 @@ export default defineConfig({
   ssr: {
     // Force one React in SSR bundle to avoid "Invalid hook call" / useState null.
     // Bundle local @openagentsinc/hud so it resolves and runs in SSR.
-    noExternal: ['react', 'react-dom', 'react/jsx-runtime', '@openagentsinc/hud'],
+    noExternal: [
+      'react',
+      'react-dom',
+      'react/jsx-runtime',
+      '@openagentsinc/effuse',
+      '@openagentsinc/effuse-ui',
+      '@openagentsinc/hud',
+    ],
   },
   plugins: [
     cloudflare({ viteEnvironment: { name: 'ssr' } }),

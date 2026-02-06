@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { DomServiceTag, EffuseLive, html } from '@openagentsinc/effuse';
-import { hatcheryButton } from './ui/hatcheryButton';
+import { hatcheryButton } from '@openagentsinc/effuse-ui';
 
 /**
  * Renders the marketing layout header (logo + optional nav).
@@ -26,16 +26,15 @@ export function runMarketingHeader(
         >
           <a
             href="/login"
-            class="mr-5 text-base font-medium text-white/90 hover:text-white"
-            style="font-family: var(--font-square721);"
+            class="mr-5 text-base font-medium text-white/90 hover:text-white font-[var(--font-square721)]"
           >
             Log in
           </a>
           ${hatcheryButton({
-      href: '/login',
-      label: 'Start for free',
-      variant: 'outline',
-    })}
+            href: '/login',
+            label: 'Start for free',
+            variant: 'outline',
+          })}
         </div>
       </header>
     `;
