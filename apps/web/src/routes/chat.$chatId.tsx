@@ -330,61 +330,66 @@ function ChatPage() {
         <section className="flex-1 min-h-0 flex flex-col p-4">
           <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
             <KranoxFrame className="flex-1 min-h-0">
-              <div className="flex-1 overflow-y-auto p-4 overseer-scroll">
-                <div className="flex flex-col gap-3">
-                  {rendered.map((m) => (
-                    <div
-                      key={m.id}
-                      className={[
-                        'max-w-[90%] rounded border px-3 py-2 text-sm leading-relaxed font-mono',
-                        m.role === 'user'
-                          ? 'self-end bg-accent-subtle text-text-primary border-accent-muted'
-                          : 'self-start bg-surface-secondary text-text-primary border-border-dark',
-                      ].join(' ')}
-                    >
-                      {m.text ? (
-                        m.role === 'user' ? (
-                          <div className="whitespace-pre-wrap">{m.text}</div>
-                        ) : (
-                          <Streamdown mode={isStreaming ? 'streaming' : 'static'} isAnimating={isStreaming}>
-                            {m.text}
-                          </Streamdown>
-                        )
-                      ) : null}
-                    </div>
-                  ))}
+              <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
+                <div className="flex-1 overflow-y-auto overseer-scroll pr-1">
+                  <div className="flex flex-col gap-3">
+                    {rendered.map((m) => (
+                      <div
+                        key={m.id}
+                        className={[
+                          'max-w-[90%] rounded border px-3 py-2 text-sm leading-relaxed font-mono',
+                          m.role === 'user'
+                            ? 'self-end bg-accent-subtle text-text-primary border-accent-muted'
+                            : 'self-start bg-surface-secondary text-text-primary border-border-dark',
+                        ].join(' ')}
+                      >
+                        {m.text ? (
+                          m.role === 'user' ? (
+                            <div className="whitespace-pre-wrap">{m.text}</div>
+                          ) : (
+                            <Streamdown
+                              mode={isStreaming ? 'streaming' : 'static'}
+                              isAnimating={isStreaming}
+                            >
+                              {m.text}
+                            </Streamdown>
+                          )
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <form
-                onSubmit={onSubmit}
-                className="flex items-center gap-2 border-t border-border-dark p-3 bg-bg-secondary"
-              >
-                <input
-                  ref={inputRef}
-                  autoFocus
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Message Autopilot…"
-                  className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-                />
-                {isBusy ? (
-                  <button
-                    type="button"
-                    onClick={() => void chat.stop()}
-                    className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
-                  >
-                    Stop
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
-                  >
-                    Send
-                  </button>
-                )}
-              </form>
+                <form
+                  onSubmit={onSubmit}
+                  className="mt-3 flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+                >
+                  <input
+                    ref={inputRef}
+                    autoFocus
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Message Autopilot…"
+                    className="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+                  />
+                  {isBusy ? (
+                    <button
+                      type="button"
+                      onClick={() => void chat.stop()}
+                      className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+                    >
+                      Stop
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
+                    >
+                      Send
+                    </button>
+                  )}
+                </form>
+              </div>
             </KranoxFrame>
           </div>
         </section>
