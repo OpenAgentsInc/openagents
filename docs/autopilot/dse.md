@@ -1,11 +1,11 @@
-# DSE / ds-effect: DSPy, but Effect TS (Full Spec)
+# DSE / dse: DSPy, but Effect TS (Full Spec)
 
 - **Status:** Draft (intended design; not fully implemented)
 - **Last updated:** 2026-02-06
-- **Source of truth (eventual):** `packages/ds-effect/`
+- **Source of truth (eventual):** `packages/dse/`
 - **If this doc conflicts with code behavior:** code wins
 
-This spec defines `ds-effect` (aka “DSE”): a TypeScript + Effect library for **declarative, self-improving LM programs**. It is explicitly inspired by:
+This spec defines `dse` (aka “DSE”): a TypeScript + Effect library for **declarative, self-improving LM programs**. It is explicitly inspired by:
 
 - **DSPy** (Python): signatures + programs + “compile” via eval loops (`~/code/dspy/`)
 - **dsrs / DSRs** (Rust DSPy rewrite): typed signatures, optimizers, eval + manifest posture (`~/code/dsrs/` and `openagents/crates/dsrs/`)
@@ -32,7 +32,7 @@ Effect solves wiring, reliability, observability, and testability. It does **not
 - no disciplined eval loop exists to justify changes
 - no artifact registry exists to pin and roll back behavior
 
-`ds-effect` is the missing compiler-layer counterpart for an Effect-first codebase.
+`dse` is the missing compiler-layer counterpart for an Effect-first codebase.
 
 ---
 
@@ -46,6 +46,8 @@ If we built “DSPy, but Effect TS”, the big decisions are:
 4. **Serialize and ship artifacts**: what are the on-disk/on-wire formats, how do we hash/version them, and how does runtime load them?
 
 This spec answers those four.
+
+**Hard constraint for this repo:** compilation and runtime are **TypeScript-only** and **Effect-native**. We do not depend on a Rust compiler/optimizer for DSE.
 
 ---
 
@@ -119,7 +121,7 @@ Unlike dsrs, DSE MUST keep a first-class prompt AST so compilation can safely re
 
 Signatures MUST be exportable into a deterministic, language-agnostic JSON form so:
 
-- a compiler (TS-native or dsrs-backed) can optimize without importing app code
+- a compiler (TypeScript, Effect-native) can optimize without importing app code
 - we can hash contracts (schema + prompt IR) to enforce compatibility
 - compiled artifacts can be audited independently of runtime
 
@@ -181,7 +183,7 @@ type CompileJobSpecV1 = {
 }
 ```
 
-`ds-effect` SHOULD ship helpers to:
+`dse` SHOULD ship helpers to:
 
 - export `SignatureContractExportV1` from in-repo signature definitions
 - compute `schemaHash` and `promptIrHash`
@@ -214,6 +216,8 @@ At minimum the runtime environment SHOULD include:
 - `OutputDecoder` (provider response -> `O`, with repair pipeline)
 - `Telemetry` (logs/spans/events; see `docs/autopilot/effect-telemetry-service.md`)
 - `ReceiptRecorder` (canonical hashes, tool calls, timings)
+- `WorkersEnv` (Cloudflare bindings/env access, request-scoped when needed)
+- `WorkersExecutionContext` (Cloudflare `waitUntil`, `passThroughOnException`, etc.)
 - `Clock` and `Random` (testability/determinism)
 - optional `Cache` (eval caching; runtime caching if safe)
 
@@ -238,6 +242,173 @@ Formatting/parsing is “adapter work”. Validation/retry/timeouts/receipts are
 
 - Prompt renderer/decoder MUST NOT implement retries.
 - Retries/repair loops MUST be explicit `Effect` operators with bounded time.
+
+### 4.5 Cloudflare Workers Entry Points (Fetch, Routers)
+
+Cloudflare Workers has a recurring constraint:
+
+- bindings/env (`env`) and execution context (`ctx`) are available **at request time**
+
+Effect wants Layers “up-front”, so in practice you need a small boundary adapter that:
+
+- builds request-scoped infra from `env`
+- provides it via Layers/ManagedRuntime
+- runs your Effect program and returns a `Response`
+
+Two patterns that work well:
+
+#### 4.5.1 `@effect/platform` HttpServer router (`toWebHandler`)
+
+This is a clean option when your Worker is primarily an HTTP server:
+
+```ts
+import * as Http from "@effect/platform/HttpServer"
+import { Effect } from "effect"
+import * as S from "@effect/schema/Schema"
+
+const HttpLive = Http.router.empty.pipe(
+  Http.router.get("/", Http.response.text("Hello World")),
+  Http.router.get(
+    "/todo/:id",
+    Effect.gen(function* ($) {
+      const { id } = yield* $(
+        Http.router.schemaPathParams(S.struct({ id: S.NumberFromString }))
+      )
+      return yield* $(Http.response.text(`Todo ${id}`))
+    })
+  ),
+  Http.router.all("*", Http.response.empty({ status: 404 })),
+  Http.router.catchAll((e) => {
+    console.log(e)
+    return Http.response.empty({ status: 400 })
+  }),
+  Http.app.toWebHandler
+)
+
+export default {
+  async fetch(request: Request) {
+    return await HttpLive(request)
+  }
+}
+```
+
+Where DSE fits:
+
+- route handlers are Effects, so they can call `Predict(signature)` modules directly
+- DSE’s `PolicyRegistry` and `ReceiptRecorder` can be provided as request-scoped services
+
+#### 4.5.2 `effect-cf` Workers bridge (`Workers.serve`)
+
+If you want the thinnest possible adapter, `effect-cf` provides a pragmatic `serve()` that converts:
+
+`(request, env, ctx) => Effect<Response>` into an `ExportedHandler.fetch`.
+
+DSE should provide an equivalent helper that additionally:
+
+- provides `WorkersEnv` / `WorkersExecutionContext`
+- installs `ConfigProvider` from `env`
+- uses a `ManagedRuntime` so layers can be composed cleanly
+
+### 4.6 Request-Scoped Env and ManagedRuntime (The “Runtime Wrapper”)
+
+Problem statement (Cloudflare constraint vs Effect preference):
+
+- Cloudflare gives bindings at request time.
+- Effect dependency graphs want Layers composed once (composition root).
+
+In Worker apps, the pragmatic solution is to build a request-scoped runtime:
+
+- build infra layer from `env` (KV, D1, R2, DO stubs, etc.)
+- build app layer by providing that infra
+- create a `ManagedRuntime`
+- run the Effect program with that runtime
+
+This pattern also maps cleanly onto framework boundaries (React Router loaders/actions, Remix, TanStack Start serverFns/loaders): you return a `Promise`, but internally you run Effects.
+
+Illustrative wrapper (adapted from the pattern you shared):
+
+```ts
+import { ConfigProvider, Effect, Layer, ManagedRuntime } from "effect"
+
+export const makeInfraLive = (env: Env) =>
+  Layer.mergeAll(
+    /* KV.layer(...env.KV...), D1.layer(env.DB), ... */
+  )
+
+export const makeFetchRuntime =
+  <R, E>(
+    makeLiveLayer: (deps: { env: Env; infra: Layer.Layer<any> }) => Layer.Layer<R, E, never>
+  ) =>
+  <A, E2>(body: (args: { request: Request; env: Env; ctx: ExecutionContext }) => Effect.Effect<A, E2, R>) =>
+  async (args: { request: Request; env: Env; ctx: ExecutionContext }): Promise<A> => {
+    const infra = makeInfraLive(args.env)
+    const live = makeLiveLayer({ env: args.env, infra })
+    const runtime = ManagedRuntime.make(live)
+
+    const program = body(args).pipe(
+      // Request-scoped config from bindings.
+      // Alternatively: Layer.setConfigProvider(ConfigProvider.fromJson(args.env))
+      Effect.withConfigProvider(ConfigProvider.fromJson(args.env))
+    )
+
+    return runtime.runPromise(program)
+  }
+```
+
+Tradeoffs and rules:
+
+- Creating a runtime per request is usually fine when your “infra” is just wrappers over CF bindings (KV/D1/etc).
+- For heavy resources, avoid re-creating them per request. In Workers you typically:
+  - create them once in module scope when possible, or
+  - create them once per Durable Object instance (see §4.7), or
+  - cache the runtime/layer after the first request (env is stable within a worker instance).
+
+#### Note: `cloudflare:workers` env import
+
+Cloudflare also supports `import { env } from "cloudflare:workers"` (so you can access bindings outside the fetch signature).
+
+This can simplify runtime construction (you can build layers at module scope), but we SHOULD still model env as an injectable service (`WorkersEnv`) for testability and explicitness.
+
+### 4.7 Durable Objects: Long-Lived Runtime + Request Context
+
+Durable Objects change the equation because `env` is available in the constructor, and stateful resources (like DO SQLite) naturally live there.
+
+Recommended pattern:
+
+- build a long-lived `ManagedRuntime` once per DO instance in the constructor
+- for each request/message:
+  - provide request-scoped context (requestId, route, user/thread ids, etc.)
+  - run DSE modules inside the runtime
+
+This fits Autopilot specifically:
+
+- the Autopilot chat thread is already a Durable Object
+- the DO is a natural composition root for:
+  - artifact registry tables (see §10.3)
+  - telemetry sinks
+  - request correlation ids
+  - DSE `PolicyRegistry` + `ReceiptRecorder`
+
+`effect-cf` includes an `EffectDurableObject` base class that wraps DO storage and returns `Effect<Response>` from `fetch()`. Even if we keep using `AIChatAgent`, the architectural move is the same: the DO holds the runtime, and request handlers run effects inside it.
+
+### 4.8 Cloudflare Service Layers (effect-cf) and Control-Plane API (cloudflare-typescript)
+
+To keep DSE focused, Cloudflare integrations SHOULD live as separate “infra layers” that apps provide, not inside `dse` core.
+
+Recommendations:
+
+- For runtime bindings (KV, D1, R2, Queues, DOs), prefer `effect-cf` patterns (reference: `~/code/effect-cf/`):
+  - namespaced modules
+  - `make()` + `layer()` + `Tag` + service accessors
+  - Schema validation and typed errors at boundaries
+
+- For Cloudflare control-plane APIs (account/zone/workers management), we likely want Effect-wrapped services around the `cloudflare` TypeScript client (repo: `~/code/cloudflare-typescript/`):
+  - `CloudflareApi` as a `Context.Tag`
+  - each method returns `Effect` via `Effect.tryPromise`
+  - map errors into `Schema.TaggedError` with `Schema.Defect` for underlying causes
+  - validate important responses with Schema (don’t trust the network boundary)
+
+This gives us the same benefits as DSE itself: typed contracts, retry/timeout policy at the runtime boundary, and traceable receipts.
 
 ---
 
@@ -596,14 +767,10 @@ Recommended workflow:
 
 Engine options:
 
-1. **dsrs-backed compilation (recommended first)**
-   - dsrs already has optimizers (MIPROv2/GEPA/COPRO) and a manifest posture.
-   - We add an adapter layer that ingests `SignatureContractExportV1` + `CompileJobSpecV1`.
-   - Output: dsrs-like manifest + DSE policy bundle JSON that the TS runtime loads.
-
-2. **TS-native compilation (later)**
+1. **TS-native compilation (the only supported engine)**
+   - Compilation runs in TypeScript and is implemented as Effect programs.
    - Start with simple grid search / greedy selection, then expand.
-   - Must still emit the same artifact format for portability.
+   - Must emit deterministic artifact formats so runtime behavior is pin-able and auditable.
 
 Autopilot-worker constraints strongly suggest compilation is out-of-band; runtime should only *load and execute*.
 
@@ -889,10 +1056,10 @@ The smallest credible DSE:
 
 ## 16) Package Layout (Proposed)
 
-We’ll move this to `packages/ds-effect/` when ready.
+We’ll move this to `packages/dse/` when ready.
 
 ```
-packages/ds-effect/
+packages/dse/
   src/
     signature/
     prompt-ir/
@@ -907,7 +1074,7 @@ packages/ds-effect/
 CLI shape (open decision):
 
 - library-only first (scripts call `compile(...)`)
-- or Bun-first CLI + library (`bun run ds-effect compile ...`)
+- or Bun-first CLI + library (`bun run dse compile ...`)
 
 Recommendation: start library-only. Add a CLI once artifact formats and registry semantics stabilize.
 
@@ -948,16 +1115,20 @@ Runtime:
 2. Canonicalization rules for hashing
 3. Registry backend strategy (DO SQLite only vs shared store)
 4. Trace model (spans-only vs DAG)
-5. Compilation engine (dsrs-backed first vs TS-native)
+5. Compilation runtime (local CLI vs CI job vs dedicated compile service)
+6. Workers runtime strategy (per-request runtime vs cached runtime vs per-DO runtime; `env` param vs `cloudflare:workers`)
 
 ---
 
 ## 19) Next Steps
 
-1. Implement Phase 0 runtime pieces in `packages/ds-effect/`:
+1. Implement Phase 0 runtime pieces in `packages/dse/`:
    - signature + prompt IR render/hash
    - `Predict` with decode/repair policy
    - artifact registry interface + DO SQLite impl for worker
 2. Wire one tiny signature inside `apps/autopilot-worker` behind a feature flag.
 3. Build eval harness + instruction search optimizer.
 4. Decide whether compilation runs via dsrs (recommended first) or TS-native.
+5. Standardize Cloudflare infra layers:
+   - adopt `effect-cf` modules for KV/D1/DO helpers where applicable
+   - wrap `cloudflare` (cloudflare-typescript) APIs behind Effect services as-needed (control plane, deploy tooling)
