@@ -174,7 +174,9 @@ function LoginPage() {
   return (
     <EffuseMount
       run={run}
-      deps={[model]}
+      // Avoid re-rendering the Effuse DOM on each keystroke; it causes caret/selection glitches
+      // because Effuse replaces the input element. We only rerender on step/busy/error changes.
+      deps={[step, isBusy, errorText]}
       onRendered={onRendered}
       className="flex min-h-0 flex-1 flex-col"
     />
