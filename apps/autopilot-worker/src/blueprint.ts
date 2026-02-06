@@ -24,6 +24,14 @@ export const BootstrapStatus = Schema.Literal(
 );
 export type BootstrapStatus = typeof BootstrapStatus.Type;
 
+export const BootstrapStage = Schema.Literal(
+  "ask_user_handle",
+  "ask_agent_name",
+  "ask_vibe",
+  "ask_boundaries"
+);
+export type BootstrapStage = typeof BootstrapStage.Type;
+
 export const UpdatedBy = Schema.Literal("user", "agent");
 export type UpdatedBy = typeof UpdatedBy.Type;
 
@@ -110,6 +118,7 @@ export class AutopilotBootstrapState extends Schema.Class<AutopilotBootstrapStat
   userId: UserId,
   threadId: ThreadId,
   status: BootstrapStatus,
+  stage: Schema.optional(BootstrapStage),
   startedAt: Schema.optional(Schema.DateFromString),
   completedAt: Schema.optional(Schema.DateFromString),
   templateVersion: Schema.Int
@@ -157,6 +166,7 @@ export const DEFAULT_BOOTSTRAP_TEMPLATE_BODY =
   "\n" +
   "Keep it short. Terminal tone. No cheerleading.\n" +
   "Ask one question at a time.\n" +
+  "Do not ask the user to confirm their answers. Apply the answer and move on.\n" +
   "\n" +
   "Never ask for personal info (physical address, email, phone, legal name, etc.).\n" +
   "Do not use the word \"address\". Ask \"What should I call you?\".\n" +
@@ -168,10 +178,14 @@ export const DEFAULT_BOOTSTRAP_TEMPLATE_BODY =
   "\n" +
   "Order:\n" +
   "1) Ask what to call the user.\n" +
-  "   - Persist it as BOTH user.name and user.handle (the handle is what you call them).\n" +
+  "   - Call user_update({ handle: <handle> }) to persist it.\n" +
   "2) What should the user call you? (identity name; default Autopilot)\n" +
+  "   - Call identity_update({ name: <name> }) to persist it.\n" +
   "3) Pick your operating vibe (one short phrase)\n" +
+  "   - Call identity_update({ vibe: <vibe> }) to persist it.\n" +
   "4) Optional: any boundaries/preferences (update Soul)\n" +
+  "   - If they provide boundaries, call soul_update({ boundaries: [ ... ] }).\n" +
+  "   - If they say \"none\", call bootstrap_complete({}).\n" +
   "\n" +
   "Do not ask for time zone. Do not ask for pronouns.\n" +
   "\n" +
@@ -195,6 +209,7 @@ export function makeDefaultBlueprintState(
       userId,
       threadId,
       status: "pending",
+      stage: "ask_user_handle",
       templateVersion: CURRENT_BOOTSTRAP_TEMPLATE_VERSION
     }),
     docs: BlueprintDocs.make({
