@@ -72,6 +72,7 @@ function ChatPage() {
 
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isExportingBlueprint, setIsExportingBlueprint] = useState(false);
   const isStreaming = chat.status === 'streaming';
   const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
 
@@ -156,6 +157,35 @@ function ChatPage() {
     });
     // Keep cursor in input after send (next tick so React has committed)
     setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const onExportBlueprint = async () => {
+    if (isExportingBlueprint) return;
+    setIsExportingBlueprint(true);
+    try {
+      const response = await fetch(`/agents/chat/${chatId}/blueprint`);
+      if (!response.ok) {
+        throw new Error(`Export failed (${response.status})`);
+      }
+      const blueprint: unknown = await response.json();
+
+      const blob = new Blob([JSON.stringify(blueprint, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `autopilot-blueprint-${chatId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      window.alert('Failed to export Blueprint JSON.');
+    } finally {
+      setIsExportingBlueprint(false);
+    }
   };
 
   return (
@@ -263,6 +293,14 @@ function ChatPage() {
 
       {/* Control panel - bottom right */}
       <div className="absolute bottom-4 right-4 flex flex-col gap-1 text-right">
+        <button
+          type="button"
+          onClick={() => void onExportBlueprint()}
+          disabled={isExportingBlueprint}
+          className="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
+        >
+          {isExportingBlueprint ? 'Exporting…' : 'Export Blueprint JSON'}
+        </button>
         <button
           type="button"
           onClick={() => clearHistory()}
