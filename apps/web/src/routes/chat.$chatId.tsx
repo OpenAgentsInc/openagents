@@ -5,6 +5,7 @@ import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Streamdown } from 'streamdown';
+import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
 import { TelemetryService } from '../effect/telemetry';
 import type { UIMessage } from 'ai';
 import type { FormEvent } from 'react';
@@ -255,10 +256,32 @@ function ChatPage() {
   }, [blueprint]);
 
   return (
-    <div className="fixed inset-0 flex flex-col h-screen overflow-hidden bg-bg-primary text-text-primary font-mono">
+    <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
+      {/* Arwes-style ambient background (HUD). */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundColor: whitePreset.backgroundColor,
+          backgroundImage: [
+            // Soft top glow + vignette to frame the UI.
+            `radial-gradient(120% 85% at 50% 0%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 55%)`,
+            `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 12%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.88) 100%)`,
+            whitePreset.backgroundImage,
+          ].join(', '),
+        }}
+      >
+        <DotsGridBackground
+          distance={whitePreset.distance}
+          dotsColor="hsla(0, 0%, 100%, 0.035)"
+          lineColor="hsla(0, 0%, 100%, 0.03)"
+          dotsSettings={{ type: 'circle', size: 2 }}
+        />
+      </div>
+
+      <div className="relative z-10 flex flex-col h-screen overflow-hidden">
       {/* Header - overseer-style */}
-      <header className="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0">
-        <span className="text-accent font-mono font-bold text-base tracking-[0.12em] leading-none uppercase">
+      <header className="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
+        <span className="text-accent font-mono font-bold text-base tracking-[0.12em] leading-none uppercase drop-shadow-[0_0_16px_rgba(255,255,255,0.18)]">
           OpenAgents
         </span>
         <div className="h-6 w-px bg-border-dark/70" aria-hidden="true" />
@@ -268,7 +291,7 @@ function ChatPage() {
       {/* Main area */}
       <main className="flex-1 min-h-0 w-full flex overflow-hidden">
         {/* Blueprint sidebar */}
-        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-r border-border-dark bg-bg-secondary">
+        <aside className="hidden lg:flex lg:w-[360px] shrink-0 border-r border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]">
           <div className="flex flex-col h-full min-h-0 w-full">
             <div className="flex items-center justify-between h-11 px-3 border-b border-border-dark">
               <div className="text-xs text-text-dim uppercase tracking-wider">Blueprint</div>
@@ -305,7 +328,7 @@ function ChatPage() {
         {/* Chat */}
         <section className="flex-1 min-h-0 flex flex-col p-4">
           <div className="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
-            <div className="flex-1 flex flex-col overflow-hidden rounded-lg border border-border-dark bg-surface-primary">
+            <div className="flex-1 flex flex-col overflow-hidden rounded-lg border border-border-dark bg-surface-primary shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_0_40px_rgba(255,255,255,0.06)]">
               <div className="flex-1 overflow-y-auto p-4 overseer-scroll">
                 <div className="flex flex-col gap-3">
                   {rendered.map((m) => (
@@ -392,6 +415,7 @@ function ChatPage() {
         >
           {isResettingAgent ? 'Resetting...' : 'Reset agent'}
         </button>
+      </div>
       </div>
     </div>
   );
