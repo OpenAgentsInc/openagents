@@ -1,10 +1,12 @@
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useRouter } from '@tanstack/react-router';
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useLoaderData, useRouter } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
 import { ConvexProviderWithAuth } from 'convex/react';
 import { Effect } from 'effect';
+import { useEffect } from 'react';
 import appCssUrl from '../app.css?url';
+import { PostHogLoader } from '../components/PostHogLoader';
 import { getAppConfig } from '../effect/config';
 import { makeAppRuntime } from '../effect/runtime';
 import { TelemetryService } from '../effect/telemetry';
@@ -82,6 +84,44 @@ export const Route = createRootRouteWithContext<{
   },
 });
 
+/** Emits page_view to PostHog (via Telemetry) on client when pathname changes. */
+function TelemetryPageView() {
+  const router = useRouter();
+  const pathname = router.state.location.pathname;
+
+  useEffect(() => {
+    const { effectRuntime } = router.options.context;
+    effectRuntime.runPromise(
+      Effect.gen(function* () {
+        const telemetry = yield* TelemetryService;
+        yield* telemetry.withNamespace('app').event('page_view', { path: pathname });
+      }),
+    ).catch(() => {});
+  }, [pathname, router]);
+
+  return null;
+}
+
+/** Identifies the user in PostHog (via Telemetry) when root loader has userId. */
+function TelemetryIdentify() {
+  const rootData = useLoaderData({ from: '__root__' }) as { userId?: string | null } | undefined;
+  const userId = rootData?.userId ?? null;
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!userId) return;
+    const { effectRuntime } = router.options.context;
+    effectRuntime.runPromise(
+      Effect.gen(function* () {
+        const telemetry = yield* TelemetryService;
+        yield* telemetry.withNamespace('auth.workos').identify(userId, { userId });
+      }),
+    ).catch(() => {});
+  }, [userId, router]);
+
+  return null;
+}
+
 function RootComponent() {
   const router = useRouter();
   const { convexClient } = router.options.context;
@@ -90,6 +130,8 @@ function RootComponent() {
     <AuthKitProvider>
       <ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>
         <RootDocument>
+          <TelemetryPageView />
+          <TelemetryIdentify />
           <Outlet />
         </RootDocument>
       </ConvexProviderWithAuth>
@@ -105,6 +147,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       </head>
       <body>
         {children}
+        <PostHogLoader />
         <Scripts />
       </body>
     </html>

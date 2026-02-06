@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from 'effect';
+import { getPageContext, getPostHog } from '../lib/posthog';
 
 export type TelemetryLevel = "debug" | "info" | "warn" | "error";
 
@@ -20,6 +21,27 @@ export class TelemetryService extends Context.Tag('@openagents/web/Telemetry')<
   TelemetryService,
   TelemetryClient
 >() {}
+
+/** PostHog sink: best-effort capture/identify with page context (client-only). */
+function posthogCapture(event: string, properties?: TelemetryFields): void {
+  const posthog = getPostHog();
+  if (!posthog) return;
+  try {
+    posthog.capture(event, { ...getPageContext(), ...(properties ?? {}) });
+  } catch {
+    // never block on analytics
+  }
+}
+
+function posthogIdentify(distinctId: string, properties?: TelemetryFields): void {
+  const posthog = getPostHog();
+  if (!posthog) return;
+  try {
+    posthog.identify(distinctId, { ...getPageContext(), ...(properties ?? {}) });
+  } catch {
+    // never block on analytics
+  }
+}
 
 const createTelemetry = (options: {
   namespace?: string;
@@ -53,11 +75,15 @@ const createTelemetry = (options: {
     log: emit,
     event: (name, properties) =>
       Effect.sync(() => {
-        console.log(`[telemetry:event] ${name}`, mergeFields(properties));
+        const payload = mergeFields(properties);
+        console.log(`[telemetry:event] ${name}`, payload);
+        posthogCapture(name, payload);
       }),
     identify: (distinctId, properties) =>
       Effect.sync(() => {
-        console.log(`[telemetry:identify] ${distinctId}`, mergeFields(properties));
+        const payload = mergeFields(properties);
+        console.log(`[telemetry:identify] ${distinctId}`, payload);
+        posthogIdentify(distinctId, payload);
       }),
     withNamespace: (nextNamespace) =>
       createTelemetry({
