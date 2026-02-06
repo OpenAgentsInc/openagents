@@ -710,9 +710,30 @@ export class Chat extends AIChatAgent<Env> {
 
         const result = streamText({
           system: buildSystem(blueprint),
-          prepareStep: async () => ({
-            system: buildSystem(this.ensureBlueprintState())
-          }),
+          prepareStep: async ({ stepNumber }) => {
+            const fresh = this.ensureBlueprintState();
+            const system = buildSystem(fresh);
+
+            // During bootstrap, force at least one tool call on the first step so
+            // we persist user/identity updates instead of "thinking" in text.
+            if (fresh.bootstrapState.status !== "complete" && stepNumber === 0) {
+              return {
+                system,
+                toolChoice: "required" as const,
+                activeTools: [
+                  "identity_update",
+                  "user_update",
+                  "soul_update",
+                  "tools_update_notes",
+                  "heartbeat_set_checklist",
+                  "memory_append",
+                  "bootstrap_complete"
+                ] as const
+              };
+            }
+
+            return { system };
+          },
           messages: await convertToModelMessages(recentMessages),
           model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
           maxOutputTokens: MAX_OUTPUT_TOKENS,
