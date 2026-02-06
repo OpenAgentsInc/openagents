@@ -307,6 +307,43 @@ We SHOULD generate JSON schema from Effect Schema and include:
 - “return JSON only” guidance
 - any additional formatting hints (e.g., “no extra keys”)
 
+### 5.6 Compilation-Safe Transforms (What the Compiler May Rewrite)
+
+Because prompt IR is structured, compilation can safely apply transforms without brittle string surgery.
+
+Allowed transforms MUST be explicitly enumerated and bounded. MVP transforms:
+
+- Replace `InstructionBlock` text (choose an instruction variant).
+- Select a subset of `FewShotBlock.examples` by id (few-shot selection).
+- Tighten `OutputFormatBlock` (e.g., add “JSON only”, forbid extra keys).
+- Modify `ToolPolicyBlock` if and only if the signature declares it tool-aware (e.g., restrict allowed tools).
+- Insert optional rubric/scoring hints only for explicit judge/eval signatures.
+
+Anything not in the allowlist above is a breaking change and MUST require:
+
+- a prompt IR version bump, or
+- an explicit “transform capability” declared by the signature.
+
+### 5.7 Normalization and Hashing
+
+`PromptIR` MUST have a canonical normalized JSON form so we can compute stable hashes:
+
+- `promptIrHash`: `sha256(canonicalJson(normalizePromptIr(promptIr)))`
+- `renderedPromptHash` (optional): hash of final provider messages after params application and rendering
+
+Normalization rules (v1):
+
+- preserve block order as authored (blocks are semantically ordered)
+- within each object, keys are sorted during canonical JSON serialization (see §9.3)
+- remove runtime-only fields (timestamps, request ids, etc.) before hashing
+- few-shot examples are referenced by stable ids and/or content hashes, never by “pretty-printed” text
+
+This is the foundation of:
+
+- eval caching keys
+- artifact determinism (`compiled_id`)
+- reproducible debugging (“what prompt did we run?”)
+
 ---
 
 ## 6) What’s Optimizable (Explicit Params)
@@ -327,6 +364,73 @@ DSE MUST model all optimizable degrees of freedom as a serializable `Params` obj
   - allowed tools list
   - timeouts, budgets
 - router thresholds (when routers exist)
+
+### 6.1.1 Params Schema (JSON Shape, v1)
+
+`DseParams` MUST be fully serializable, and its canonical JSON MUST be included in artifact hashing.
+
+Illustrative v1 shape:
+
+```ts
+type DseParamsV1 = {
+  readonly paramsVersion: 1
+
+  // Instruction selection
+  readonly instruction?: {
+    readonly variantId?: string
+    readonly text?: string // optional literal override; prefer variantId
+  }
+
+  // Few-shot selection
+  readonly fewShot?: {
+    readonly exampleIds: ReadonlyArray<string>
+    readonly k?: number
+    readonly selector?: { readonly id: string; readonly config?: unknown }
+  }
+
+  // Model knobs
+  readonly model?: {
+    readonly modelId?: string
+    readonly temperature?: number
+    readonly topP?: number
+    readonly maxTokens?: number
+  }
+
+  // Decode/repair knobs
+  readonly decode?: {
+    readonly mode: "strict_json" | "jsonish"
+    readonly maxRepairs?: number
+    readonly repairStrategy?: "reask_same_model" | "reask_repair_model" | "repair_signature"
+    readonly repairModelId?: string
+  }
+
+  // Tool policy knobs (only if signature declares tool awareness)
+  readonly tools?: {
+    readonly allowedToolNames?: ReadonlyArray<string>
+    readonly maxToolCalls?: number
+    readonly timeoutMsByToolName?: Record<string, number>
+  }
+}
+```
+
+Notes:
+
+- `paramsVersion` MUST be present to make forward compatibility explicit.
+- When both `variantId` and `text` exist, runtime MUST define precedence (recommend: `text` wins).
+- Unknown fields MUST be preserved for hashing (don’t drop them silently), but runtime MAY ignore them for forward compatibility.
+
+### 6.1.2 Search Space Representation
+
+Optimizers need a serializable search space definition, e.g.:
+
+- instruction variants list
+- few-shot pool reference (ids + hashes)
+- which knobs are in scope (model/decode/tools)
+
+That search space SHOULD live in the compile job spec (`CompileJobSpecV1.searchSpace`) so:
+
+- compilation is reproducible from artifacts
+- we can compute a stable `compileJobHash`
 
 ### 6.2 Param tree is explicit
 
@@ -390,6 +494,38 @@ Evaluation MUST:
   - failure taxonomy (decode failures, tool failures, metric mismatches)
   - performance summaries (latency/tokens/cost if available)
 
+### 7.3.1 Eval Report Schema (Summary)
+
+`EvalReport` SHOULD be serializable so compilation outputs can embed evidence.
+
+Illustrative summary shape:
+
+```ts
+type EvalSummaryV1 = {
+  readonly evalVersion: 1
+
+  readonly datasetId: string
+  readonly metricId: string
+
+  readonly n: number
+  readonly meanScore: number
+  readonly p50Score?: number
+  readonly p95Score?: number
+
+  readonly failures?: {
+    readonly decodeFailures?: number
+    readonly toolFailures?: number
+    readonly otherFailures?: number
+  }
+
+  // Optional performance aggregates
+  readonly latencyMs?: { readonly p50?: number; readonly p95?: number }
+  readonly tokens?: { readonly prompt?: number; readonly completion?: number; readonly total?: number }
+}
+```
+
+For MVP, storing only `EvalSummaryV1` is sufficient. Later we can optionally store per-example results (careful: size).
+
 ### 7.4 Determinism
 
 For compilation to be meaningful:
@@ -437,6 +573,40 @@ After MVP:
 
 Runtime execution MUST load compiled artifacts and run them. It MUST NOT “learn” (change params) unless explicitly enabled behind a feature flag / experiment harness.
 
+### 8.5 Compilation Workflow and Engines
+
+Compilation is a workflow that turns:
+
+- a `SignatureContractExportV1`
+- a `CompileJobSpecV1` (search space + dataset + metric + optimizer config)
+
+into:
+
+- a `CompiledArtifact` (see §9.4)
+- and a registry update (set “active artifact” for a signature)
+
+Recommended workflow:
+
+1. Export signature contracts from the codebase (deterministic JSON).
+2. Define compile jobs (datasets + metrics + search spaces).
+3. Run optimizers offline (CI, developer machine, or a dedicated compile service).
+4. Store artifacts in the registry.
+5. Promote artifacts via an explicit “set active” step (promotion gates can live here).
+6. Runtime loads active artifacts; receipts include `compiled_id`.
+
+Engine options:
+
+1. **dsrs-backed compilation (recommended first)**
+   - dsrs already has optimizers (MIPROv2/GEPA/COPRO) and a manifest posture.
+   - We add an adapter layer that ingests `SignatureContractExportV1` + `CompileJobSpecV1`.
+   - Output: dsrs-like manifest + DSE policy bundle JSON that the TS runtime loads.
+
+2. **TS-native compilation (later)**
+   - Start with simple grid search / greedy selection, then expand.
+   - Must still emit the same artifact format for portability.
+
+Autopilot-worker constraints strongly suggest compilation is out-of-band; runtime should only *load and execute*.
+
 ---
 
 ## 9) Compilation Outputs: Shipable Artifacts
@@ -483,6 +653,84 @@ Even if the TS runtime doesn’t use every field initially, keeping it compatibl
 
 This is required so receipts and replays can refer to stable IDs.
 
+### 9.4 Artifact Schema (JSON, v1)
+
+Define a single, shippable artifact format that runtime can load without code changes.
+
+```ts
+type DseCompiledArtifactV1 = {
+  readonly format: "openagents.dse.compiled_artifact"
+  readonly formatVersion: 1
+
+  readonly signatureId: string
+  readonly compiled_id: string // sha256:<hex>
+  readonly createdAt: string // ISO 8601
+
+  readonly hashes: {
+    readonly inputSchemaHash: string
+    readonly outputSchemaHash: string
+    readonly promptIrHash: string
+    readonly paramsHash: string
+  }
+
+  readonly params: unknown // canonicalized DseParamsV1
+
+  readonly eval: unknown // EvalSummaryV1 (at minimum)
+
+  readonly optimizer: {
+    readonly id: string // e.g. "instruction_grid.v1"
+    readonly config?: unknown
+    readonly iterations?: number
+  }
+
+  readonly provenance: {
+    readonly compilerVersion?: string
+    readonly gitSha?: string
+    readonly datasetId?: string
+    readonly datasetHash?: string
+    readonly metricId?: string
+    readonly searchSpaceHash?: string
+  }
+
+  // Optional dsrs-style compatibility declaration.
+  readonly compatibility?: {
+    readonly requiredTools?: ReadonlyArray<string>
+    readonly requiredLanes?: ReadonlyArray<string>
+    readonly privacyModesAllowed?: ReadonlyArray<string>
+  }
+}
+```
+
+Runtime MUST treat artifacts as immutable. A “promotion” changes only the active pointer in the registry.
+
+### 9.5 Artifact Example (Abbreviated)
+
+```json
+{
+  "format": "openagents.dse.compiled_artifact",
+  "formatVersion": 1,
+  "signatureId": "@openagents/autopilot/IssueTriage.v1",
+  "compiled_id": "sha256:7e2b...c1",
+  "createdAt": "2026-02-06T08:30:00Z",
+  "hashes": {
+    "inputSchemaHash": "sha256:...",
+    "outputSchemaHash": "sha256:...",
+    "promptIrHash": "sha256:...",
+    "paramsHash": "sha256:..."
+  },
+  "params": {
+    "paramsVersion": 1,
+    "instruction": { "variantId": "triage_rubric_v3" },
+    "fewShot": { "exampleIds": ["ex_001", "ex_014", "ex_102"], "k": 3 },
+    "model": { "temperature": 0.2, "maxTokens": 600 },
+    "decode": { "mode": "jsonish", "maxRepairs": 1, "repairStrategy": "reask_same_model" }
+  },
+  "eval": { "evalVersion": 1, "datasetId": "triage.v2", "metricId": "triage_exact.v1", "n": 500, "meanScore": 0.86 },
+  "optimizer": { "id": "mvp_joint_search.v1", "iterations": 42 },
+  "provenance": { "gitSha": "abc123", "datasetHash": "sha256:..." }
+}
+```
+
 ---
 
 ## 10) Artifact Registry: Load + Pin + Roll Back
@@ -512,6 +760,33 @@ Every production run SHOULD log:
 - latency + token usage + tool calls
 
 This matches OpenAgents’ “everything is logged and replayable” posture (see `crates/dsrs/docs/ARTIFACTS.md` and `crates/dsrs/docs/REPLAY.md` for the broader worldview).
+
+### 10.3 Suggested Durable Object SQLite Layout (Autopilot Worker)
+
+For `apps/autopilot-worker`, the simplest registry is local to the user’s Durable Object (same place transcript + blueprint state live).
+
+Suggested tables:
+
+```sql
+create table if not exists dse_artifacts (
+  signature_id text not null,
+  compiled_id  text not null,
+  json         text not null,
+  created_at   integer not null,
+  primary key (signature_id, compiled_id)
+);
+
+create table if not exists dse_active_artifacts (
+  signature_id text primary key,
+  compiled_id  text not null,
+  updated_at   integer not null
+);
+```
+
+Notes:
+
+- Store full artifact JSON; runtime validates with a schema before use.
+- `dse_active_artifacts` is the only mutable “pointer” table; artifacts themselves are immutable rows.
 
 ---
 
