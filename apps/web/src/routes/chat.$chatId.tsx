@@ -62,6 +62,10 @@ function ChatPage() {
   const chat = useAgentChat({
     agent,
     resume: true,
+    // SSR: `useAgent` (PartySocket) uses a dummy host when `window` is undefined.
+    // Avoid fetching `/get-messages` against that host during SSR; the client will
+    // fetch messages from the real origin after hydration.
+    ...(typeof window === 'undefined' ? { getInitialMessages: null } : {}),
   });
 
   const [input, setInput] = useState('');
