@@ -116,10 +116,29 @@ const defaultNotFound = ({ url }: { readonly url: URL }) =>
     html`<div data-effuse-error="not-found"><h1>Not found</h1><p>${url.pathname}</p></div>`
   )
 
+const formatErrorText = (error: unknown): string => {
+  if (error && typeof error === "object") {
+    const any = error as any
+    // RouterError is not an `Error` in v1, so String(error) is useless.
+    if (any._tag === "RouterError" && typeof any.message === "string") {
+      return any.message
+    }
+    if (typeof any.message === "string") {
+      return any.message
+    }
+    try {
+      return JSON.stringify(error)
+    } catch {
+      // fall through
+    }
+  }
+  return String(error)
+}
+
 const defaultError = ({ url, error }: { readonly url: URL; readonly error: unknown }) =>
   Effect.succeed(
     html`<div data-effuse-error="fail"><h1>Error</h1><p>${url.pathname}</p><pre>${String(
-      error
+      formatErrorText(error)
     )}</pre></div>`
   )
 

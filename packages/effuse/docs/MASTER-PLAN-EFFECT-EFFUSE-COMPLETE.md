@@ -978,6 +978,8 @@ Work log:
 - 2026-02-07: hardening: stabilized `apps/autopilot-worker` tests by disabling Wrangler `remoteBindings` in the Workers Vitest pool (we stub Workers AI in tests; avoids remote proxy session flake + potential usage charges) (`apps/autopilot-worker/vitest.config.ts`, `apps/autopilot-worker/tests/index.test.ts`).
 - 2026-02-07: hardening: strengthened AI receipt BlobRef discipline by asserting model/tool receipts always include prompt/input/output blob refs (and that huge user inputs are truncated before prompt blob serialization) (`apps/autopilot-worker/tests/index.test.ts`).
 - 2026-02-07: hardening: added a wire-protocol regression gate: the chat WebSocket stream must emit valid `@effect/ai/Response` parts (`tool-call`/`tool-result`/`finish`) and MUST NOT forward reasoning parts (`reasoning-*`) (`apps/autopilot-worker/tests/index.test.ts`).
+- 2026-02-07: hardening: added RouterService outcome contract tests for redirect handling (replace semantics + loop cutoff), not-found rendering, and loader fail rendering (view not executed) (`packages/effuse/tests/router-outcomes.test.ts`).
+- 2026-02-07: hardening: improved default Router error UI so non-`Error` failures (notably `RouterError`) render a useful message instead of `[object Object]` (`packages/effuse/src/router/router.ts`).
 
 Add/Change:
 
