@@ -15,7 +15,7 @@ export function marketingHeaderTemplate(isHome: boolean, isLogin: boolean): Temp
       <a href="/" class="select-none text-lg font-semibold text-white">OpenAgents</a>
       <div class="flex items-center gap-3" aria-hidden="${showNav ? 'false' : 'true'}">
         ${showNav
-          ? html`
+      ? html`
               <a
                 href="/login"
                 class="mr-5 text-base font-medium text-white/90 hover:text-white [font-family:var(--font-square721)]"
@@ -23,12 +23,12 @@ export function marketingHeaderTemplate(isHome: boolean, isLogin: boolean): Temp
                 Log in
               </a>
               ${hatcheryButton({
-                href: '/autopilot',
-                label: 'Start for free',
-                variant: 'outline',
-              })}
+        href: '/autopilot',
+        label: 'Start for free',
+        variant: 'outline',
+      })}
             `
-          : ''}
+      : ''}
       </div>
     </header>
   `;

@@ -24,11 +24,11 @@ export function homePageTemplate(year = new Date().getFullYear()): TemplateResul
 
         <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           ${hatcheryButton({
-            href: '/autopilot',
-            label: 'Start for free',
-            size: 'large',
-            className: 'w-full max-w-xs sm:w-auto',
-          })}
+    href: '/autopilot',
+    label: 'Start for free',
+    size: 'large',
+    className: 'w-full max-w-xs sm:w-auto',
+  })}
         </div>
       </div>
     </main>

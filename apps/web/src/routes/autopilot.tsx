@@ -18,7 +18,6 @@ import type { UIMessage } from 'ai';
 import type { AgentToolContract } from '../effect/agentApi';
 import type { RenderedMessage as EffuseRenderedMessage } from '../effuse-pages/autopilot';
 import type { AutopilotRouteRenderInput } from '../effuse-pages/autopilotRoute';
-import type { AutopilotSidebarModel } from '../effuse-pages/autopilotSidebar';
 
 export const Route = createFileRoute('/autopilot')({
   loader: async ({ context }) => {
@@ -209,104 +208,28 @@ function toRenderableParts(parts: ReadonlyArray<UiPart>): Array<RenderPart> {
   return out;
 }
 
-/** Minimal shell + sidebar + intro for unauthenticated users (no chat/API). */
-function AutopilotIntroPage() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const collapsed = useAtomValue(AutopilotSidebarCollapsedAtom);
-  const setCollapsed = useAtomSet(AutopilotSidebarCollapsedAtom);
-  const userMenuOpen = useAtomValue(AutopilotSidebarUserMenuOpenAtom);
-  const setUserMenuOpen = useAtomSet(AutopilotSidebarUserMenuOpenAtom);
+const ANON_CHAT_STORAGE_KEY = 'autopilot-anon-chat-id';
 
-  const ezRegistryRef = useRef(makeEzRegistry());
-  const ezRegistry = ezRegistryRef.current;
-  ezRegistry.set('autopilot.sidebar.toggleCollapse', () =>
-    Effect.sync(() => setCollapsed((c) => !c)),
-  );
-  ezRegistry.set('autopilot.sidebar.toggleUserMenu', () =>
-    Effect.sync(() => setUserMenuOpen((o) => !o)),
-  );
-  ezRegistry.set('autopilot.sidebar.logout', () => Effect.void);
+function randomId(size = 12): string {
+  let out = '';
+  while (out.length < size) out += Math.random().toString(36).slice(2);
+  return out.slice(0, size);
+}
 
-  const sidebarModel = useMemo(
-    () => ({
-      collapsed,
-      pathname,
-      user: null as AutopilotSidebarModel['user'],
-      userMenuOpen,
-    }),
-    [collapsed, pathname, userMenuOpen],
-  );
-
-  const renderInput = useMemo((): AutopilotRouteRenderInput => {
-    const emptyChatData = {
-      messages: [],
-      isBusy: false,
-      isAtBottom: true,
-      inputValue: '',
-    };
-    const emptyBlueprintModel = {
-      updatedAtLabel: null,
-      isLoading: false,
-      isEditing: false,
-      canEdit: false,
-      isSaving: false,
-      errorText: null,
-      blueprintText: null,
-      draft: null,
-    };
-    const emptyControlsModel = {
-      isExportingBlueprint: false,
-      isBusy: false,
-      isResettingAgent: false,
-    };
-    return {
-      sidebarModel,
-      sidebarKey: `intro:${collapsed ? 1 : 0}:${pathname}`,
-      introMode: true,
-      chatData: emptyChatData,
-      chatKey: 'intro',
-      blueprintModel: emptyBlueprintModel,
-      blueprintKey: 'intro',
-      controlsModel: emptyControlsModel,
-      controlsKey: 'intro',
-    };
-  }, [sidebarModel, collapsed, pathname]);
-
-  const ssrHtmlRef = useRef<string | null>(null);
-  if (ssrHtmlRef.current === null) {
-    ssrHtmlRef.current = renderToString(autopilotRouteShellTemplate());
+function getOrCreateAnonChatId(): string {
+  if (typeof sessionStorage === 'undefined') return `anon-${randomId(8)}`;
+  let id = sessionStorage.getItem(ANON_CHAT_STORAGE_KEY);
+  if (!id) {
+    id = `anon-${randomId(12)}`;
+    sessionStorage.setItem(ANON_CHAT_STORAGE_KEY, id);
   }
-
-  const hydrate = useCallback(
-    (el: Element) =>
-      Effect.gen(function* () {
-        yield* hydrateAuthedDotsGridBackground(el);
-        yield* runAutopilotRoute(el, renderInput);
-      }),
-    [renderInput],
-  );
-
-  return (
-    <EffuseMount
-      run={(el) => runAutopilotRoute(el, renderInput)}
-      deps={[renderInput.sidebarKey, 'intro']}
-      ssrHtml={ssrHtmlRef.current}
-      hydrate={hydrate}
-      onCleanup={cleanupAuthedDotsGridBackground}
-      cleanupOn="unmount"
-      ezRegistry={ezRegistry}
-      className="h-full w-full"
-    />
-  );
+  return id;
 }
 
 function ChatPage() {
   const { userId } = Route.useLoaderData();
-  if (userId === null) {
-    return <AutopilotIntroPage />;
-  }
-
-  const chatId = userId;
+  const [anonChatId] = useState(() => getOrCreateAnonChatId());
+  const chatId = userId ?? anonChatId;
   const router = useRouter();
   const runtime = router.options.context.effectRuntime;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -1034,18 +957,23 @@ function ChatPage() {
   }
   const ssrHtml = ssrHtmlRef.current;
 
+  const renderInputRef = useRef(renderInput);
+  renderInputRef.current = renderInput;
+
   const hydrate = useCallback(
     (el: Element) =>
       Effect.gen(function* () {
         yield* hydrateAuthedDotsGridBackground(el);
-        yield* runAutopilotRoute(el, renderInput);
+        yield* runAutopilotRoute(el, renderInputRef.current);
       }),
     [renderInput],
   );
 
+  const run = useCallback((el: Element) => runAutopilotRoute(el, renderInputRef.current), []);
+
   return (
     <EffuseMount
-      run={(el) => runAutopilotRoute(el, renderInput)}
+      run={run}
       deps={[sidebarKey, chatKey, blueprintKey, controlsKey]}
       ssrHtml={ssrHtml}
       hydrate={hydrate}

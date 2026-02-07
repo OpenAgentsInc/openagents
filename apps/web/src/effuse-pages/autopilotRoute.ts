@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
 import { whitePreset } from "@openagentsinc/hud";
 import { runAutopilotChat } from "./autopilot";
-import { runAutopilotIntro } from "./autopilotIntro";
 import { runAutopilotBlueprintPanel } from "./autopilotBlueprint";
 import { runAutopilotControls } from "./autopilotControls";
 import { runAutopilotSidebar } from "./autopilotSidebar";
@@ -70,6 +69,11 @@ const ensureShell = (container: Element) =>
     const dom = yield* DomServiceTag;
     const shell = container.querySelector("[data-autopilot-shell]");
     if (shell) return;
+    // Only replace container when it is empty (initial client render without ssrHtml).
+    // If container already has children (e.g. from hydration), do not overwrite — slots
+    // are already present and we must not replace them with the shell template (which
+    // would show "Loading…" in chat/blueprint again).
+    if (container.children.length > 0) return;
     yield* dom.render(container, autopilotRouteShellTemplate());
   });
 
@@ -81,8 +85,6 @@ const getSlot = (container: Element, name: SlotName): Element | null => {
 export type AutopilotRouteRenderInput = {
   readonly sidebarModel: AutopilotSidebarModel;
   readonly sidebarKey: string;
-  /** When true, chat slot shows intro (unauthed) instead of chat. */
-  readonly introMode?: boolean;
   readonly chatData: AutopilotChatData;
   readonly chatKey: string;
   readonly blueprintModel: AutopilotBlueprintPanelModel;
@@ -130,11 +132,7 @@ export const runAutopilotRoute = (
     }
 
     if (chatSlot && (prev.chat !== next.chat || chatSlot.childNodes.length === 0)) {
-      if (input.introMode) {
-        yield* runAutopilotIntro(chatSlot);
-      } else {
-        yield* runAutopilotChat(chatSlot, input.chatData);
-      }
+      yield* runAutopilotChat(chatSlot, input.chatData);
     }
 
     if (
