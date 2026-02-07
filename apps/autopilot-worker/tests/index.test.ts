@@ -6,10 +6,23 @@ import {
 import { describe, it, expect } from "vitest";
 
 const { default: worker } = await import("../src/server");
+const { MessageType } = await import("../src/chatProtocol");
 
 declare module "cloudflare:test" {
   interface ProvidedEnv extends Env {}
 }
+
+const makeAiStream = (lines: ReadonlyArray<string>): ReadableStream => {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const line of lines) {
+        controller.enqueue(encoder.encode(`${line}\n`));
+      }
+      controller.close();
+    }
+  });
+};
 
 describe("Autopilot worker", () => {
   it("responds with Not found", async () => {
@@ -381,6 +394,200 @@ describe("Autopilot worker", () => {
       expect(json.signatureId).toBe(signatureId);
       expect(json.compiled_id).toBe(compiled_id);
       expect(json.optimizer?.id).toBe("default_install.v1");
+    }
+  });
+
+  it("records model receipts with finish.usage and tool receipts (stubbed Workers AI)", async () => {
+    const threadId = `ai-receipts-${Date.now()}`;
+
+    let call = 0;
+    const stubAi = {
+      run: async (_model: any, input: any) => {
+        const wantsStream = Boolean(input && typeof input === "object" && (input as any).stream);
+        if (!wantsStream) {
+          return {
+            choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          };
+        }
+
+        call++;
+
+        if (call === 1) {
+          return makeAiStream([
+            'data: {"response":"Calling tool...","usage":{"prompt_tokens":12,"completion_tokens":3}}',
+            'data: {"tool_calls":[{"index":0,"id":"call_0","type":"function","function":{"name":"bootstrap_set_user_handle","arguments":"{\\"handle\\":\\"Chris\\"}"}}]}',
+            "data: [DONE]"
+          ]);
+        }
+
+        return makeAiStream([
+          'data: {"response":"Done.","usage":{"prompt_tokens":13,"completion_tokens":4}}',
+          "data: [DONE]"
+        ]);
+      }
+    };
+    const aiBinding = (env as any).AI as any;
+    const originalRun = aiBinding?.run;
+    if (typeof originalRun !== "function") {
+      throw new Error("Expected env.AI.run to be a function in tests");
+    }
+
+    aiBinding.run = stubAi.run;
+    try {
+
+    // Connect to the agent DO over WebSocket (PartyServer / Agents).
+    const wsCtx = createExecutionContext();
+    const wsRes = await worker.fetch(
+      new Request(`http://example.com/agents/chat/${threadId}`, {
+        headers: { Upgrade: "websocket" }
+      }),
+      env,
+      wsCtx
+    );
+    await waitOnExecutionContext(wsCtx);
+    expect(wsRes.status).toBe(101);
+
+    const ws = (wsRes as any).webSocket as WebSocket | undefined;
+    expect(ws).toBeTruthy();
+    ws!.accept();
+
+    const requestId = `req-${Date.now()}`;
+    const userMsgId = "user_1";
+    const hugeText = "x".repeat(200_000);
+
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => reject(new Error("timeout waiting for done")), 2_000);
+
+      const onMessage = (event: MessageEvent) => {
+        if (typeof (event as any).data !== "string") return;
+        let parsed: any;
+        try {
+          parsed = JSON.parse((event as any).data);
+        } catch {
+          return;
+        }
+
+        if (parsed?.type === MessageType.CF_AGENT_USE_CHAT_RESPONSE && parsed?.id === requestId) {
+          if (parsed?.error) {
+            clearTimeout(timeoutId);
+            ws.removeEventListener("message", onMessage);
+            reject(new Error("chat stream returned error"));
+            return;
+          }
+
+          if (parsed?.done) {
+            clearTimeout(timeoutId);
+            ws.removeEventListener("message", onMessage);
+            resolve();
+          }
+        }
+      };
+
+      ws.addEventListener("message", onMessage);
+
+      ws.send(
+        JSON.stringify({
+          id: requestId,
+          type: MessageType.CF_AGENT_USE_CHAT_REQUEST,
+          init: {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              id: threadId,
+              messages: [
+                {
+                  id: userMsgId,
+                  role: "user",
+                  parts: [{ type: "text", text: hugeText }]
+                }
+              ],
+              trigger: "submit-message",
+              messageId: userMsgId
+            })
+          }
+        })
+      );
+    });
+
+    // WebSocket should be closed to avoid vitest hanging on open handles.
+    const closePromise = new Promise<void>((resolve) => {
+      ws.addEventListener("close", () => resolve(), { once: true } as any);
+    });
+    try {
+      ws.close(1000, "done");
+    } catch {
+      // ignore
+    }
+    await Promise.race([closePromise, new Promise<void>((r) => setTimeout(r, 250))]);
+
+    // Ensure our stub binding was actually used.
+    expect(call).toBeGreaterThan(0);
+
+    // Tool call should have executed and persisted into the Blueprint state.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`http://example.com/agents/chat/${threadId}/blueprint`),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const blueprint = (await response.json()) as any;
+      expect(blueprint?.docs?.user?.addressAs).toBe("Chris");
+    }
+
+    // Model receipts include finish.usage and obey prompt token cap.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`http://example.com/agents/chat/${threadId}/ai/receipts?limit=10`),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const receipts = (await response.json()) as any[];
+      expect(receipts.length).toBeGreaterThan(0);
+
+      const withFinish = receipts.find((r) => r && typeof r === "object" && "finish" in r) as any;
+      expect(withFinish?.format).toBe("openagents.ai.model_receipt");
+      expect(withFinish?.finish?.usage?.inputTokens).toBeTypeOf("number");
+      expect(withFinish?.finish?.usage?.outputTokens).toBeTypeOf("number");
+      expect(withFinish?.maxPromptTokens).toBe(8000);
+      expect(withFinish?.promptTokenEstimate).toBeLessThanOrEqual(8000);
+    }
+
+    // Tool receipts exist for the tool call.
+    {
+      // In isolated storage mode, DO writes triggered by WebSocket message
+      // handling can be slightly laggy. Retry briefly to avoid flakes.
+      const deadline = Date.now() + 1_000;
+      let receipts: any[] = [];
+
+      while (Date.now() < deadline) {
+        const ctx = createExecutionContext();
+        const response = await worker.fetch(
+          new Request(
+            `http://example.com/agents/chat/${threadId}/ai/tool-receipts?limit=10`
+          ),
+          env,
+          ctx
+        );
+        await waitOnExecutionContext(ctx);
+        expect(response.status).toBe(200);
+        receipts = (await response.json()) as any[];
+        if (receipts.length > 0) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      expect(receipts.length).toBeGreaterThan(0);
+      const names = receipts.map((r) => r?.toolName).filter(Boolean);
+      expect(names).toContain("bootstrap_set_user_handle");
+    }
+    } finally {
+      aiBinding.run = originalRun;
     }
   });
 });
