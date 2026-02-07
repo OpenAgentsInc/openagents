@@ -721,6 +721,11 @@ Everything below is “what’s left”.
 
 **Goal:** make the framework-level semantics testable so future router/host work can’t regress swaps/hydration/tool rendering.
 
+Work log:
+- 2026-02-07: added DomService swap contract tests (`packages/effuse/tests/dom-swap.test.ts`).
+- 2026-02-07: added component mount lifecycle tests (`packages/effuse/tests/component-mount.test.ts`).
+- 2026-02-07: added conformance skeleton tests for hydration + cancellation semantics (`packages/effuse/tests/conformance-hydration.test.ts`, `packages/effuse/tests/conformance-router.test.ts`).
+
 Add/Change:
 
 - Add DomService swap contract tests:
