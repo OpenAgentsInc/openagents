@@ -353,12 +353,12 @@ Convex remains an allowed backend during the React/TanStack removal, but it MUST
 - auth token handling is centralized (WorkOS session or API token) and observable.
 - caching/dedupe/cancellation rules are standardized (no “React Query by accident”).
 
-We reviewed `~/code/confect` and `~/code/crest` for patterns. We will **not** depend on Confect directly, but we will copy the architecture moves:
+We reviewed `~/code/confect`, `~/code/crest`, and our prior Effevex take (in `~/code/oapreclean/src/effevex/*`) for patterns. We will **not** depend on Confect directly, but we will copy the architecture moves:
 
 - treat Convex as an adapter boundary (Promises -> Effects, nullables -> Option where appropriate)
 - use Schema encode/decode at request boundaries (like Confect’s React bindings, but without React)
 - provide request-scoped Convex HTTP clients on the server (like Crest’s `ConvexService`)
-- optionally write Convex functions as Effect programs (like Crest’s `convex/effect/*` bridge)
+- optionally write Convex functions as Effect programs (like Crest’s `convex/effect/*` bridge and Effevex’s `query/mutation/action` wrappers)
 
 #### 3.5.4.1 Service Surface (App-Side)
 
@@ -447,6 +447,11 @@ If/when we invest in making Convex backend code Effect-native, follow Crest’s 
 - `convex/effect/ctx.ts`: wrap Convex `QueryCtx/MutationCtx/ActionCtx` into Effect-friendly contexts (db/auth/storage/scheduler).
 - `convex/effect/functions.ts`: `effectQuery/effectMutation/effectAction` wrappers that run Effect handlers in Convex function definitions.
 - `convex/effect/validators.ts`: table-derived document validators for consistent return typing.
+
+Effevex adds two additional ideas that are worth adopting when we do this:
+
+- **Typed errors in the Effect error channel** (mapped to thrown errors only at the Convex boundary).
+- **DB/auth/storage wrappers** that eliminate `null` and push normalization to the boundary (e.g. `Option` for nullable returns).
 
 If we want schema-driven args/returns validators derived from Effect `Schema`, adopt Confect’s idea later (compile Schema -> `v.*` validators), but keep it as an internal build step or helper library, not a runtime dependency.
 
@@ -565,121 +570,225 @@ These tests should run in CI and be treated as “framework regressions”, not 
 | SSR rendering | `renderToString(TemplateResult)` + `EffuseWebHost` |
 | Hydration | Effuse boot that attaches behavior without DOM teardown |
 
-## 5. Migration Plan (Phased, Shippable)
+## 5. Implementation Roadmap (Detailed, File-Level)
 
-This is the concrete, incremental path from today to the end state.
+This is the concrete, incremental path from **today’s repo state** to the end state. It is intentionally **file-level** so implementers don’t invent parallel routers/hosts/caches.
 
-### Cross-Cutting Prereqs (Apply To Every Phase)
+### 5.0 Current State (Already Done in This Repo)
 
-- Wire a real `TelemetryService` (namespaces + request correlation + SSR-safe sinks) and remove scattered `console.*` / ad hoc analytics calls.
-- Enforce budgets and cancellation at boundaries (navigation cancels loaders; server observes abort; tool/LLM calls are bounded).
-- Ensure tool-error visibility (never “silent stall”).
-- Prefer BlobRefs for large payloads (avoid prompt/DOM bloat; receipts stay stable).
+This master plan assumes the following is already implemented and is our baseline:
 
-### Phase 0: Lock Baseline + Hard Contracts
+- Effuse core primitives + tests:
+  - `packages/effuse/src/template/*` (`html```, `TemplateResult`, `renderToString`)
+  - `packages/effuse/src/services/dom-live.ts` (swap + focus restore)
+  - `packages/effuse/src/ez/*` (`data-ez` runtime)
+  - `packages/effuse/tests/ez-runtime.test.ts`
+  - `packages/effuse/tests/render-to-string.test.ts`
+- Effuse UI kit exists:
+  - `packages/effuse-ui/src/*`
+- `apps/web` is “Effuse everywhere” at the page level:
+  - templates in `apps/web/src/effuse-pages/*`
+  - Effect-first chat loop in `apps/web/src/effect/chat.ts` + atoms in `apps/web/src/effect/atoms/chat.ts`
+  - Atom runtime in `apps/web/src/effect/atoms/appRuntime.ts`
+  - SSR HTML hydration bridge in `apps/web/src/components/EffuseMount.tsx` (`ssrHtml` + `hydrate`)
+- `apps/web` is Cloudflare-deployed, but still hosted by TanStack Start:
+  - `apps/web/wrangler.jsonc` points at `@tanstack/react-start/server-entry`
+  - `apps/web/src/router.tsx`, `apps/web/src/start.ts`, `apps/web/src/routes/__root.tsx` are still the hosting substrate
 
-Deliverables:
+Everything below is “what’s left”.
 
-- Treat `packages/effuse/docs/SPEC.md` + `DOM.md` as contracts and add missing tests (swap semantics, focus restoration, param collection).
-- Ensure SSR rendering (`renderToString`) stays DOM-free via node-env tests.
-- Ensure EZ runtime is mount-once and does not leak listeners.
+### Cross-Cutting Verification (Every Phase)
 
-DoD:
+- `cd packages/effuse && npm test`
+- `cd apps/web && npm run lint`
+- `cd apps/web && npm run build`
+- smoke: `cd apps/web && wrangler dev` (or equivalent dev wiring) and exercise `/`, `/login`, `/autopilot`, `/api/rpc`
 
-- Effuse has contract tests for: swap modes, focus restore, EZ parsing + params + cancellation, and render-to-string snapshots.
+### Phase 1: Tighten Effuse Contracts + Conformance Harness
 
-### Phase 1: Router Becomes Source of Truth (Inside the Existing Host)
+**Goal:** make the framework-level semantics testable so future router/host work can’t regress swaps/hydration/tool rendering.
 
-Deliverables:
+Add/Change:
 
-- Implement a minimal `RouterService` (this is the real milestone; the rest is plumbing):
-  - route matching
-  - `navigate(href)`
-  - popstate handling
-  - link interception at root
-  - cancellable loader pipeline (switch-latest)
-  - standardized `RouteOutcome` handling (redirect/not-found/fail/ok + hints)
-  - standardized cache/dedupe behavior (no per-page reinvention)
-- Implement a top-level Effuse “app shell” template:
-  - persistent chrome
-  - `<main data-outlet>` target where route content swaps
-
-DoD:
-
-- TanStack no longer decides what UI renders; navigation and outlet rendering are driven by `RouterService` (even if TanStack/React still exist as a temporary host).
-
-### Phase 2: Collapse `apps/web` to a Single Catch-All (Make TanStack a Transport Only)
-
-Deliverables:
-
-- Convert the web app’s route tree to a single “catch-all” host page that always serves the Effuse shell (still within the old system if necessary).
-- Ensure all internal navigation is driven by the new `RouterService`.
+- Add DomService swap contract tests:
+  - new: `packages/effuse/tests/dom-swap.test.ts` (focus restore, scroll restore, outer/inner/replace semantics)
+- Add component mount lifecycle tests:
+  - new: `packages/effuse/tests/component-mount.test.ts` (render loop, subscriptions, finalizers)
+- Add a conformance test skeleton (even if it’s initially small):
+  - new: `packages/effuse/tests/conformance-hydration.test.ts`
+  - new: `packages/effuse/tests/conformance-router.test.ts`
 
 DoD:
 
-- The app no longer depends on TanStack’s notion of route components for UI; TanStack is only an asset/SSR transport layer.
+- Conformance tests can assert “strict hydration does not swap” by instrumenting `DomService.swap`.
+- We have a place to put the future “shell/outlet invariant” tests.
 
-### Phase 3: Stand Up `EffuseWebHost` in Parallel
+### Phase 2: Implement the Route Contract in Code (Not Just Docs)
 
-Deliverables:
+**Goal:** make the `Route` / `RouteOutcome` contract real and importable on server + client.
 
-- Create a new Effuse host server on **Cloudflare Workers** that can:
-  - serve the built assets
-  - SSR the Effuse app via route table
-  - host `POST /api/rpc`
-  - host auth endpoints (`/api/auth/*`) compatible with existing flows
-- In dev, proxy static asset serving to Vite as needed.
+Add/Change (library):
 
-DoD:
+- new: `packages/effuse/src/app/route.ts` (types: `Route`, `RouteContext`, `RouteOutcome`, `RouteOkHints`, `CachePolicy`)
+- new: `packages/effuse/src/app/run.ts` (normalize a route execution into an internal `RouteRun` shape)
+- change: `packages/effuse/src/index.ts` export the app/route surface
 
-- You can run the app end-to-end locally via Cloudflare dev tooling (`wrangler dev` / Miniflare) (SSR + client navigation + RPC).
+Add/Change (apps/web):
 
-### Phase 4: Production Cutover (Remove TanStack Start)
-
-Deliverables:
-
-- Deploy `EffuseWebHost` as the production server entrypoint.
-- Remove TanStack Start server runtime from the deployment pipeline.
+- new: `apps/web/src/effuse-app/routes.ts` re-exporting the current page templates as `Route` entries:
+  - reuse existing templates in `apps/web/src/effuse-pages/*` for `view` (and `head` where relevant)
 
 DoD:
 
-- Production traffic is served by the Effuse host; TanStack Start is no longer in the deploy artifact.
+- Both SSR code and client router code import the same route table and can execute `guard/loader/view/head` without branching on env beyond `RouteContext`.
 
-### Phase 5: Remove React (No TSX, No React Providers)
+### Phase 3: Effect-First Auth + Convex Services (Remove React Providers as a Dependency)
 
-Deliverables:
+**Goal:** make auth/session and Convex access available everywhere via Effect services, so we can delete React providers later without losing behavior.
 
-- Replace `EffuseMount.tsx` and any remaining TSX-based composition with a plain boot module (e.g. `apps/web/src/main.ts` or equivalent).
-- Replace Convex/WorkOS React providers/hooks with Effect services (or move calls behind RPC/HTTP boundaries).
+Add/Change (apps/web Effect runtime):
+
+- new: `apps/web/src/effect/auth.ts` (`AuthService`):
+  - `getSession()` (server: parse cookie; client: cached atom or RPC)
+  - `sessionScopeKey()` (`anon` | `user:<id>` | `session:<id>`)
+  - `getAccessToken({ forceRefreshToken })` (used by Convex and any authenticated HTTP)
+- new: `apps/web/src/effect/convex.ts` (`ConvexService`):
+  - server impl wraps `ConvexHttpClient` (request-scoped, `setAuth(token)` per request)
+  - client impl wraps `ConvexClient` + `onUpdate` into `Stream` subscriptions
+- change: `apps/web/src/effect/layer.ts` include `AuthServiceLive` + `ConvexServiceLive*`
+- change: `apps/web/src/effect/config.ts` becomes the single source of `convexUrl` and any Convex auth config
+
+Add/Change (apps/web Convex backend code, recommended):
+
+- new: `apps/web/convex/effect/ctx.ts` (Effect-friendly `QueryCtx/MutationCtx/ActionCtx` tags)
+- new: `apps/web/convex/effect/auth.ts` (nullable identity -> `Option`)
+- new: `apps/web/convex/effect/storage.ts` (storage APIs as Effects)
+- new: `apps/web/convex/effect/scheduler.ts` (scheduler APIs as Effects)
+- new: `apps/web/convex/effect/functions.ts` (`effectQuery/effectMutation/effectAction` wrappers)
+- new: `apps/web/convex/effect/validators.ts` (schema-derived doc validators, like Crest)
+- new: `apps/web/convex/effect/tryPromise.ts` (central Promise -> Effect error mapping)
+- change: `apps/web/convex/myFunctions.ts` migrate to the wrappers as a sanity check (keeps behavior the same, but enforces the pattern)
+
+Refactor targets (transitional, while TanStack still hosts):
+
+- `apps/web/src/routes/__root.tsx`: plan to remove `ConvexProviderWithAuth` and `@effect-atom/atom-react` over time; until then, ensure `beforeLoad` and `fetchWorkosAuth` are thin shims that call `AuthService`.
+- `apps/web/src/router.tsx`: stop constructing `ConvexReactClient`/`ConvexQueryClient` for “app logic”; those become host-only legacy until deleted.
 
 DoD:
 
-- No runtime React dependency remains; the UI boots and runs from Effect.
+- Any Effect program can call Convex without React (`ConvexService`) and can get a stable auth scope (`AuthService.sessionScopeKey`).
 
-### Phase 6: Remove Remaining TanStack/React-Query Dependencies
+### Phase 4: Implement `RouterService` (Effuse-Owned Navigation + Loader Pipeline)
 
-Deliverables:
+**Goal:** make navigation + loader caching/dedupe/cancel rules framework-owned, not page-owned.
 
-- Remove TanStack Router/Query usage from code and dependencies.
-- Replace any remaining caching/query patterns with Effect `Cache`/`Request` patterns.
+Add/Change (library):
+
+- new: `packages/effuse/src/router/*`:
+  - History adapter (push/replace/popstate)
+  - loader pipeline with standardized keying + cache + in-flight dedupe
+  - apply rules for `RouteOutcome` (redirect/not-found/fail/ok + hints)
+  - shell/outlet swap default behavior
+- change: export router surface from `packages/effuse/src/index.ts`
+
+Add/Change (apps/web integration):
+
+- new: `apps/web/src/effuse-app/boot.ts`:
+  - mounts EZ runtime + RouterService on `[data-effuse-shell]`
+  - binds outlet swaps to `[data-effuse-outlet]`
+  - strict hydration by default (no initial swap)
 
 DoD:
 
-- No TanStack packages remain in the dependency graph.
+- `RouterService.navigate()` drives outlet swaps and loader execution.
+- In-flight loader dedupe + cancellation rules match §3.4.1 and are covered by tests.
 
-### Phase 7: Hardening + Ergonomics (Make It Pleasant)
+### Phase 5: Stand Up `EffuseWebHost` on Cloudflare Workers (Parallel Host)
 
-Deliverables:
+**Goal:** add a real Worker host that can serve the app without TanStack Start, while keeping the current host available until cutover.
 
-- Effuse state ergonomics: `computed`, `eq` dedupe, `batch` (per `ROADMAP.md` / `inspiration-typed.md`)
-- EZ runtime v1 features (loading indicators, error targets, concurrency policies)
-- HMR for Effuse templates/components (see `ORIGIN.md` for historical precedent)
-- Router prefetch + transition patterns (optional)
-- Performance: introduce “template parts” for fine-grained updates (Phase 4 in `ROADMAP.md`) if full swaps become limiting
+Add/Change (apps/web host):
+
+- new: `apps/web/src/effuse-host/worker.ts` (Cloudflare Worker fetch handler)
+- new: `apps/web/src/effuse-host/ssr.ts` (SSR entry: request -> `RouteRun` -> HTML + headers/cookies + dehydrate payload)
+- new: `apps/web/src/effuse-host/assets.ts` (static asset serving strategy; Vite manifest integration)
+- new: `apps/web/src/effuse-host/rpc.ts` mounts the existing RPC handler using:
+  - `apps/web/src/effect/api/*` (already exists)
+- new: `apps/web/src/effuse-host/auth.ts` mounts existing WorkOS endpoints using:
+  - `apps/web/src/auth/workosAuth.ts` (already exists)
+
+Parallel deploy options:
+
+- add a second Worker config (recommended) so we can deploy without risk:
+  - new: `apps/web/wrangler.effuse.jsonc` with a different Worker `name` and `main`
+- or add a path-prefix mount in the existing Worker for preview (less clean)
 
 DoD:
 
-- The app feels “native”: stable focus/caret, minimal flicker, predictable navigation, test coverage for core flows, and no regressions in SSR/hydration.
+- `wrangler dev` can serve SSR HTML + boot the client router without TanStack Start.
+- `/api/rpc` and `/api/auth/*` still work and are request-scoped (budgets + telemetry).
+
+### Phase 6: Cut Over Production Host (Remove TanStack Start Server Runtime)
+
+**Goal:** production traffic is served by `EffuseWebHost`; TanStack Start is removed from deploy artifacts.
+
+Change:
+
+- `apps/web/wrangler.jsonc`:
+  - set `main` to `apps/web/src/effuse-host/worker.ts`
+  - ensure assets binding/serving is correct
+- `apps/web/vite.config.ts`:
+  - remove `@tanstack/react-start/plugin/vite`
+  - keep a client build for the Effuse boot bundle
+- `apps/web/package.json`:
+  - update `build`/`deploy` to build client assets + worker bundle, then `wrangler deploy`
+
+DoD:
+
+- Deployed Worker serves openagents.com without TanStack Start.
+
+### Phase 7: Remove React + TanStack + React Query (No TSX Anywhere)
+
+**Goal:** no runtime React, no TanStack Router/Start, no Convex React bindings.
+
+Remove/Replace (apps/web):
+
+- delete React/TanStack host files:
+  - `apps/web/src/router.tsx`
+  - `apps/web/src/start.ts`
+  - `apps/web/src/routes/*`
+  - `apps/web/src/components/EffuseMount.tsx` (replaced by Effuse boot)
+- remove dependencies from `apps/web/package.json`:
+  - `react`, `react-dom`
+  - `@tanstack/react-start`, `@tanstack/react-router`, `@tanstack/react-router-ssr-query`, `@tanstack/react-query`
+  - `convex/react`, `@convex-dev/react-query`
+  - `@effect-atom/atom-react`
+- add a single client entrypoint:
+  - new: `apps/web/src/client/main.ts` (boots Effuse app)
+
+DoD:
+
+- The app runs with Effuse + Effect only; builds and deploys on Cloudflare Workers.
+- Use `apps/web/docs/REACT-USAGE-REPORT.md` as the checklist: update it during the migration, and ensure every item is eliminated before calling Phase 7 “done”.
+
+### Phase 8: Hardening (Performance, Ergonomics, Regression Gates)
+
+**Goal:** “ship quality” once the substrate is gone.
+
+Add/Change:
+
+- implement Effuse state ergonomics from `packages/effuse/docs/ROADMAP.md`:
+  - `computed`, `eq` dedupe, `batch`
+  - tests for coalescing + dedupe
+- expand conformance suite (CI gates):
+  - strict hydration no-swap invariant
+  - shell/outlet swap invariant
+  - cancellation + dedupe correctness
+  - tool part rendering + BlobRef discipline
+
+DoD:
+
+- CI fails on hydration/router regressions; UX is stable (focus/caret preserved, minimal flicker).
 
 ## 6. Open Decisions / Questions
 
@@ -711,6 +820,7 @@ These must be decided explicitly to finish the React/TanStack removal:
   - `effuse-conversion-apps-web.md`
   - `ROUTER-AND-APPS-WEB-INTEGRATION.md`
   - `APPS-WEB-FULL-EFFUSE-ROADMAP.md` (deprecated; historical record)
+  - `apps/web/docs/REACT-USAGE-REPORT.md` (inventory + checklist for Phase 7)
   - `effect-migration-web.md`
   - `effect-rpc-web.md`
   - `tanstack-start-effect-comparison.md`
