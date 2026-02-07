@@ -378,7 +378,7 @@ export function rollbackActiveArtifact(sql: SqlTag, signatureId: string): {
     sql<{ compiled_id: string }>`
       select compiled_id from dse_active_artifact_history
       where signature_id = ${signatureId}
-      order by updated_at desc
+      order by updated_at desc, rowid desc
       limit 2
     ` || [];
 
