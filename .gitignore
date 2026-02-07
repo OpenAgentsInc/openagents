@@ -85,6 +85,7 @@ test-results/
 apps/web/.auth/
 
 results
+output/
 
 docs/local/
 

@@ -1,0 +1,38 @@
+{
+  "name": "@openagentsinc/effuse-test",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "bin": {
+    "effuse-test": "./src/cli.ts"
+  },
+  "scripts": {
+    "run": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "effect": "^3.19.16",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.73.1",
+    "@effect/platform": "^0.94.3",
+    "@effect/platform-bun": "^0.87.1"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.27.0",
+    "@types/bun": "latest",
+    "effect": "^3.19.16",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.0"
+  }
+}

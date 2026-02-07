@@ -1,0 +1,251 @@
+import * as Fs from "node:fs/promises"
+import * as Path from "node:path"
+
+import { Cause, Effect, Layer, Scope } from "effect"
+
+import { BrowserService, BrowserServiceLive, BrowserServiceNone } from "../browser/BrowserService.ts"
+import { ProbeServiceLive, ProbeService } from "../effect/ProbeService.ts"
+import { CurrentSpanId } from "../effect/span.ts"
+import type { SpanId, TestCase, TestStatus } from "../spec.ts"
+import { appsWebSuite } from "../suites/apps-web.ts"
+import { startViewerServer } from "../viewer/server.ts"
+import { TestContext } from "./TestContext.ts"
+import { startWranglerDev } from "./TestServer.ts"
+
+export type RunnerOptions = {
+  readonly projectDir: string
+  readonly serverPort: number
+  readonly viewerPort: number
+  readonly headless: boolean
+  readonly watch: boolean
+  readonly grep?: string
+  readonly tags?: ReadonlyArray<string>
+}
+
+const defaultArtifactsRoot = (runId: string) =>
+  Path.resolve(process.cwd(), "../../output/effuse-test", runId)
+
+type TestEnv = ProbeService | BrowserService | TestContext | Scope.Scope
+
+const selectSuite = (projectDir: string): ReadonlyArray<TestCase<TestEnv>> => {
+  // v1: only apps/web is supported.
+  const normalized = projectDir.replaceAll("\\", "/")
+  if (normalized.endsWith("/apps/web")) return appsWebSuite()
+  throw new Error(`Unsupported projectDir for v1 runner: ${projectDir}`)
+}
+
+const filterTests = (tests: ReadonlyArray<TestCase<TestEnv>>, options: RunnerOptions): ReadonlyArray<TestCase<TestEnv>> => {
+  let out = tests
+  if (options.grep) {
+    const re = new RegExp(options.grep)
+    out = out.filter((t) => re.test(t.id))
+  }
+  if (options.tags && options.tags.length > 0) {
+    const required = new Set(options.tags)
+    out = out.filter((t) => t.tags.some((tag) => required.has(tag)))
+  }
+  return out
+}
+
+export const run = (options: RunnerOptions): Effect.Effect<void, Error> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const runId = crypto.randomUUID()
+      const runStart = Date.now()
+      const artifactsRoot = defaultArtifactsRoot(runId)
+      yield* Effect.promise(() => Fs.mkdir(artifactsRoot, { recursive: true }))
+
+      const tests = filterTests(selectSuite(options.projectDir), options)
+      if (tests.length === 0) {
+        yield* Effect.logWarning("No tests selected")
+        return
+      }
+
+      const needsBrowser = tests.some((t) => t.tags.includes("browser"))
+
+      const viewer = options.watch
+        ? yield* startViewerServer(options.viewerPort).pipe(
+            Effect.tap((v) => Effect.logInfo(`Viewer: ${v.url}`)),
+          )
+        : undefined
+
+      const eventsPath = Path.join(artifactsRoot, "events.jsonl")
+      const probeLayer = ProbeServiceLive({
+        eventsPath,
+        broadcast: viewer?.broadcast,
+      })
+
+      const server = yield* startWranglerDev({ projectDir: options.projectDir, port: options.serverPort })
+      const browserLayer = needsBrowser ? BrowserServiceLive({ headless: options.headless }) : BrowserServiceNone
+
+      const mainLayer = Layer.mergeAll(probeLayer, browserLayer)
+
+      const main = Effect.gen(function* () {
+        const probe = yield* ProbeService
+        const browser = yield* BrowserService
+
+        yield* probe.emit({
+          type: "run.started",
+          runId,
+          ts: Date.now(),
+          baseUrl: server.baseUrl,
+        })
+        yield* probe.emit({
+          type: "server.started",
+          runId,
+          ts: Date.now(),
+          baseUrl: server.baseUrl,
+        })
+        yield* probe.emit({
+          type: "artifact.created",
+          runId,
+          ts: Date.now(),
+          testId: "run",
+          kind: "events",
+          path: eventsPath,
+        })
+
+        let overall: TestStatus = "passed"
+
+        for (const test of tests) {
+          const testId = test.id
+          const testStart = Date.now()
+          const testArtifactsDir = Path.join(artifactsRoot, sanitizePath(testId))
+          yield* Effect.promise(() => Fs.mkdir(testArtifactsDir, { recursive: true }))
+
+          const ctxLayer = Layer.succeed(TestContext, {
+            runId,
+            testId,
+            baseUrl: server.baseUrl,
+            artifactsDir: testArtifactsDir,
+          })
+
+          yield* probe.emit({
+            type: "test.started",
+            runId,
+            ts: testStart,
+            testId,
+            tags: test.tags,
+          })
+
+          const testSpanId = crypto.randomUUID() as SpanId
+          yield* probe.emit({
+            type: "span.started",
+            runId,
+            ts: Date.now(),
+            testId,
+            spanId: testSpanId,
+            name: testId,
+            kind: "test",
+          })
+
+          const program = Effect.locally(CurrentSpanId, testSpanId)(
+            test.steps.pipe(
+              test.timeoutMs != null
+                ? Effect.timeoutFail({
+                    duration: `${test.timeoutMs} millis`,
+                    onTimeout: () => new Error(`Timed out after ${test.timeoutMs}ms`),
+                  })
+                : (a) => a,
+            ),
+          ).pipe(Effect.provide(ctxLayer))
+
+          const exit = yield* program.pipe(Effect.exit)
+
+          if (exit._tag === "Success") {
+            yield* probe.emit({
+              type: "span.finished",
+              runId,
+              ts: Date.now(),
+              testId,
+              spanId: testSpanId,
+              status: "passed",
+              durationMs: Date.now() - testStart,
+            })
+            yield* probe.emit({
+              type: "test.finished",
+              runId,
+              ts: Date.now(),
+              testId,
+              status: "passed",
+              durationMs: Date.now() - testStart,
+            })
+          } else {
+            overall = "failed"
+
+            const error = { name: "TestFailure", message: Cause.pretty(exit.cause) }
+
+            // Best-effort failure artifacts.
+            const screenshotPath = Path.join(testArtifactsDir, "failure.png")
+            const htmlPath = Path.join(testArtifactsDir, "failure.html")
+            const captured = yield* Effect.locally(CurrentSpanId, testSpanId)(
+              browser
+                .captureFailureArtifacts({ screenshotPath, htmlPath })
+                .pipe(Effect.provide(ctxLayer), Effect.catchAll(() => Effect.succeed(false))),
+            )
+            if (captured) {
+              yield* probe.emit({
+                type: "artifact.created",
+                runId,
+                ts: Date.now(),
+                testId,
+                kind: "screenshot",
+                path: screenshotPath,
+              })
+              yield* probe.emit({
+                type: "artifact.created",
+                runId,
+                ts: Date.now(),
+                testId,
+                kind: "html",
+                path: htmlPath,
+              })
+            }
+
+            yield* probe.emit({
+              type: "span.finished",
+              runId,
+              ts: Date.now(),
+              testId,
+              spanId: testSpanId,
+              status: "failed",
+              durationMs: Date.now() - testStart,
+              error,
+            })
+            yield* probe.emit({
+              type: "test.finished",
+              runId,
+              ts: Date.now(),
+              testId,
+              status: "failed",
+              durationMs: Date.now() - testStart,
+              error,
+            })
+          }
+        }
+
+        yield* probe.emit({
+          type: "server.stopped",
+          runId,
+          ts: Date.now(),
+        })
+        yield* probe.emit({
+          type: "run.finished",
+          runId,
+          ts: Date.now(),
+          status: overall === "passed" ? "passed" : "failed",
+          durationMs: Date.now() - runStart,
+        })
+
+        yield* probe.flush
+
+        if (overall !== "passed") {
+          return yield* Effect.fail(new Error("One or more tests failed"))
+        }
+      }).pipe(Effect.provide(mainLayer))
+
+      yield* main
+    }),
+  )
+
+const sanitizePath = (s: string): string => s.replaceAll(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160)

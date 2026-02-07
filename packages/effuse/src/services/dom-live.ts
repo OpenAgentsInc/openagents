@@ -206,7 +206,14 @@ export const DomServiceLive: DomService = {
     swapImpl(container, content, "inner"),
 
   swap: (target: Element, content: TemplateResult, mode: DomSwapMode = "inner") =>
-    swapImpl(target, content, mode),
+    Effect.sync(() => {
+      // Dev/test-only: if an E2E harness sets a global swap counter, increment it
+      // for each router-level swap (render() is intentionally not counted).
+      const g = globalThis as any
+      if (typeof g.__effuseSwapCount === "number") {
+        g.__effuseSwapCount += 1
+      }
+    }).pipe(Effect.zipRight(swapImpl(target, content, mode))),
 
   delegate: (container: Element, selector: string, event: string, handler: (e: Event, target: Element) => void) =>
     Effect.sync(() => {
