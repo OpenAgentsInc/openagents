@@ -60,7 +60,7 @@ Effuse core (see `README.md`, `ARCHITECTURE.md`, `SPEC.md`, `DOM.md`, `EZ.md`):
 
 - Effect runtime in router context, shared server runtime via `MemoMap`
 - Effect RPC mounted at `POST /api/rpc` (ADR-0027)
-- Minimal SSR atom hydration via `@effect-atom` (ADR-0027)
+- Minimal SSR atom hydration via `@effect-atom/atom` (and currently `@effect-atom/atom-react` while React is still the host) (ADR-0027)
 - Most UI already renders via Effuse, with React/TanStack still providing the hosting substrate
 
 This master plan starts from that baseline and describes how to **remove the remaining substrate**.
@@ -288,13 +288,14 @@ Opt-out (rare):
 
 ### 3.5 State + Data (Effect-Owned)
 
-Remove React state and TanStack Query by standardizing on Effect primitives:
+Remove React state and TanStack Query by standardizing on Effect primitives and a single state story:
 
-- UI state: `@effect-atom` (SSR serializable) and/or Effuse `StateCell` (local, component-scoped)
-- Server/shared caches: `MemoMap`, `Cache`, `Request`/`RequestResolver` patterns
-- Network: `@effect/platform` `HttpClient` (or RPC-first)
+- **Canonical app/UI store:** `@effect-atom/atom` (Effect-native; SSR-hydratable; no React bindings in the end state)
+- **Local ephemeral component state:** Effuse `StateCell` for tight render loops (or an Atom-backed equivalent later)
+- **Server/shared caches:** `MemoMap`, `Cache`, `Request`/`RequestResolver` (service-owned; not per-screen ad hoc)
+- **Network:** Effect RPC + `@effect/platform` `HttpClient`
 
-**Rule:** if state drives UI, it must be observable by Effuse (Atom subscription or Stream) and must not require React rendering to reflect changes.
+**Rule:** if state drives DOM, it must be observable by Effuse without React (Atom subscription, `Stream`, or `StateCell.changes`).
 
 ### 3.5.1 Blueprint/Bootstrap State (Schema-Backed, Exportable)
 
@@ -304,6 +305,37 @@ Autopilot-specific “bootstrap” (Identity/User/Character/Tools/Heartbeat/Memo
 - export/import: a single versioned JSON “Blueprint” format, validated at boundaries
 - prompt injection: rendered “context file” view is derived; canonical representation remains structured
 - memory visibility: enforce `main_only` vs `all` mechanically (not by convention)
+
+### 3.5.2 Canonical UI Store: `@effect-atom/atom` (No React Bindings)
+
+`@effect-atom/atom` fits Effuse’s constraints: it is Effect-native, supports effectful reads, derived values, and SSR-safe serialization. It should be the **default UI state mechanism** in Effuse apps (and is already in use in `apps/web`).
+
+Hard choices (to prevent “three competing state systems”):
+
+- Use **atoms** for state that is shared across routes/components, needs SSR hydration, or must outlive a single component mount (session/auth, router state, query results, view-models).
+- Use **`StateCell`** for state that is purely local and high-frequency (text inputs, caret/selection, transient UI toggles inside a single mounted component) where you want a small, explicit render loop.
+
+End-state binding requirements:
+
+- Effuse MUST provide an Atom runtime/registry as part of `AppRuntime` (an Effect service), so routes, EZ actions, and components can read/write atoms without React.
+- SSR/hydration MUST be implemented without `@effect-atom/atom-react`:
+  - **Server:** create a request-scoped Atom registry, run `guard`/`loader`/`view`, then serialize only atoms declared via `Atom.serializable(...)` into the route’s `dehydrate` payload.
+  - **Client:** hydrate the Atom registry from the payload **before** router boot. In `strict` hydration, this MUST NOT trigger any `DomService.swap` during boot.
+
+Caching boundary (avoid “React Query by accident”):
+
+- `RouterService` owns the cache/dedupe/cancel rules for **route loaders** (per §3.4.1). Atoms MAY reflect the current `RouteRun`, but they MUST NOT introduce a second ad hoc route-data cache with different semantics.
+- Non-route “queries” should use Effect `Request`/`Cache`/`MemoMap` in services, and atoms should be the UI-facing projection of those services (so SSR/client parity and receipts stay consistent).
+
+### 3.5.3 Learnings From `typed`: Dedupe + Batching Ergonomics
+
+We reviewed `~/code/typed`. It does **not** use `@effect-atom/atom`, but it heavily uses `@typed/fx/RefSubject` (an “atom-like” primitive) with a few patterns worth copying into the Effuse state story:
+
+- **Batched/atomic updates:** `RefSubject.runUpdates(...)` lets you apply multiple reads/writes as one transition (avoid intermediate states and double renders).
+- **Equivalence-based dedupe:** `skipRepeatsWith(eq)` prevents recomputation/re-render when computed values are structurally equal.
+- **Context-tag wiring:** `computedFromTag(...)` / `filteredFromTag(...)` keeps router/navigation state explicit via tags, rather than hidden globals.
+
+Effuse state ergonomics (Phase 7) should ensure these capabilities exist for atoms (or as a tiny wrapper layer) so implementers don’t reinvent batching/dedupe per screen.
 
 ### 3.6 UI Interaction Model (Effuse-First)
 
@@ -411,7 +443,7 @@ These tests should run in CI and be treated as “framework regressions”, not 
 | React/TanStack capability | Replacement |
 |---|---|
 | JSX UI | Effuse `html`` + helpers (`effuse-ui` style) |
-| Component state (`useState`, `useEffect`) | `StateCell`, `@effect-atom`, Effects + Streams |
+| Component state (`useState`, `useEffect`) | `StateCell`, `@effect-atom/atom`, Effects + Streams |
 | Router (`@tanstack/router`) | `RouterService` (Effuse-owned, Effect-based; History API + route table) |
 | Loaders/serverFns (Start) | Route `loader` Effects (SSR + client) |
 | SPA navigation (`<Link/>`) | `<a href>` + router interception (built into RouterService/EZ) |
@@ -609,6 +641,14 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: in-flight loader runs are deduped by loader key.
 - MUST: navigation applies results switch-latest; stale results MUST NOT commit to the outlet.
 - SHOULD: `prefetch(href)` shares the same loader keying + cache and must not mutate history.
+
+**State (Atoms/Cells)**
+- MUST: `@effect-atom/atom` is the canonical application/UI store and is accessible from `AppRuntime` (no “React-only” state).
+- MUST: the end state MUST NOT depend on `@effect-atom/atom-react` or any other React binding.
+- MUST: only atoms declared with `Atom.serializable(...)` are included in SSR hydration payloads, and each MUST have a stable key + `Schema`.
+- MUST: atom hydration is applied before router boot; in `strict` hydration this MUST NOT trigger `DomService.swap` during boot.
+- SHOULD: state transitions that can cause DOM updates are batched/atomic, and derived state is equivalence-deduped to avoid needless re-renders.
+- SHOULD: `StateCell` is component-local and ephemeral; it MUST NOT be used as a cross-route cache or as an SSR-hydration mechanism.
 
 **Hydration**
 - MUST: default hydration mode is `strict`.
