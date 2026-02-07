@@ -89,6 +89,9 @@ Define one canonical Layer bundle, with server/client specializations.
 - `AuthService` (WorkOS session, sign-in/out; server cookie parsing)
 - `ConvexService` (Effect-first wrapper over Convex HTTP + WS clients; no React bindings)
 - `AgentRpcClientService` (or successor)
+- `LanguageModel` (`@effect/ai/LanguageModel`) (Effect-native LLM interface; provider-backed)
+- `Tokenizer` (`@effect/ai/Tokenizer`) (prompt token counting + truncation for budget enforcement)
+- `EmbeddingModel` (`@effect/ai/EmbeddingModel`) (embeddings with batching/caching)
 - `ExecutionBudget` (time/steps/tool+LLM call caps, output-size caps)
 - `ReceiptRecorder` (stable hashes + tool receipts for replay/debug)
 - `BlobStore` (BlobRef storage for large context inputs)
@@ -482,6 +485,39 @@ Practical consequences:
 - The **Worker/DO is the authority for user-space mutations** (writes that change agent state, blueprint state, or execution-local caches). After committing, it emits/replicates a projection to Convex so subscribed UIs update.
 - Access control is enforced using Convex-authenticated identity (WorkOS user id) and Convex membership/ownership checks, but the execution plane holds the canonical workspace state.
 
+### 3.5.6 AI Inference (Effect-Native, `@effect/ai`)
+
+To keep AI inference coherent with the rest of the Effect/Effuse stack (budgets, receipts, schemas, telemetry), we standardize on `@effect/ai` primitives instead of ad hoc provider SDKs.
+
+Core choices:
+
+- **Canonical LLM interface:** `@effect/ai/LanguageModel` (`generateText`, `streamText`, `generateObject` with Effect `Schema`)
+- **Canonical tool interface:** `@effect/ai/Tool` + `@effect/ai/Toolkit` (Schema-derived JSON Schema for tool parameters; Effect handlers; standardized toolChoice + concurrency)
+- **Canonical error taxonomy:** `@effect/ai/AiError` (request/response/parse/input/output failures)
+- **Canonical telemetry:** `@effect/ai/Telemetry` + provider-specific telemetry (for example `@effect/ai-openai` `OpenAiTelemetry`) for GenAI semantic conventions
+- **Token accounting + truncation:** `@effect/ai/Tokenizer` (use OpenAI tokenizer when using OpenAI models)
+
+Provider posture:
+
+- Keep using the **current provider** for inference, but route all calls through `LanguageModel` so the rest of the runtime (budgets/receipts/telemetry) is provider-agnostic.
+- If the current provider is Cloudflare (Workers AI, Agents, or an AI gateway reachable from the Worker), implement a `LanguageModel` adapter using `@effect/ai` conventions (Response parts, `AiError`, telemetry). Borrow patterns from `@effect/ai-openai` even if we are not using OpenAI.
+- If the current provider is OpenAI, prefer `@effect/ai-openai` (Responses API, streaming + tool calling).
+- If the current provider is OpenRouter, prefer `@effect/ai-openrouter`.
+- Provider-specific “extras” (OpenAI web search / file search / code interpreter) are allowed, but must still produce standard `Response` tool parts so UI + receipts remain consistent.
+
+Integration requirements (Effuse-side):
+
+- Standardize the streaming/message part shape on `@effect/ai/Response` parts (`text-*`, `tool-*`, `finish`, `error`) and adapt any legacy stream formats into this shape at the boundary.
+- Tool call resolution must emit **tool call receipts** and renderable UI parts:
+  - `Response.ToolCallPart` (toolName + toolCallId + params)
+  - `Response.ToolResultPart` (toolName + toolCallId + success/failure + bounded payload/BlobRef)
+- Model calls MUST be budgeted and receipted:
+  - prompt inputs are BlobRef-backed when large
+  - token estimates via `Tokenizer` gate max prompt size
+  - `finish` part usage is recorded (input/output tokens, cached tokens, reasoning tokens when available)
+
+Optional (later): use `@effect/ai/Chat.Persistence` with a DO SQLite-backed `BackingPersistence` store to persist chat histories in the user-space plane while still projecting key events into Convex for realtime UI.
+
 ### 3.6 UI Interaction Model (Effuse-First)
 
 Two primitives remain the core UX building blocks:
@@ -504,7 +540,7 @@ The end-state should use EZ for:
 
 ### 3.6.1 Tool UX Must Not Stall
 
-Tool calling in the AI SDK produces `tool-error` parts for invalid tool names/inputs; if the UI hides tool parts, users experience “nothing happened”.
+Tool calling (via `@effect/ai` `Response` parts or provider adapters) produces tool-call/tool-result/error parts; if the UI hides tool parts, users experience “nothing happened”.
 
 End-state requirements:
 
@@ -531,6 +567,7 @@ Minimal UI schema:
 
 - Every tool part renders as `{ status, toolName, toolCallId, summary, details? }`.
 - `details` MUST be behind a disclosure affordance; “view full” uses `BlobRef` when payloads are large.
+- This schema is the UI projection of `@effect/ai/Response` parts (`tool-call`, `tool-result`, and `error`) so provider adapters can’t drift UI semantics.
 
 Implementation posture:
 
@@ -580,6 +617,7 @@ Minimum conformance suite:
 - **Swap focus/caret**: caret/selection stays stable across swaps for Blueprint-like editing flows (exercise `DomService` focus restore rules).
 - **Tool part visibility**: `tool-error` always renders a visible fallback; tool output truncation + BlobRefs work.
 - **BlobRef discipline**: large payloads are stored as blobs and referenced in prompts/receipts/UI (no megabytes in DOM or receipt JSON).
+- **LLM/tooling invariants**: Response part mapping is stable, tool calls always render, and `finish.usage` is recorded + receipted.
 
 These tests should run in CI and be treated as “framework regressions”, not app-level snapshots.
 
@@ -669,7 +707,7 @@ DoD:
 
 - Both SSR code and client router code import the same route table and can execute `guard/loader/view/head` without branching on env beyond `RouteContext`.
 
-### Phase 3: Effect-First Auth + Convex Services (Remove React Providers as a Dependency)
+### Phase 3: Effect-First Auth + Convex + AI Services (Remove React Providers as a Dependency)
 
 **Goal:** make auth/session and Convex access available everywhere via Effect services, so we can delete React providers later without losing behavior.
 
@@ -696,6 +734,14 @@ Add/Change (apps/web Convex backend code, REQUIRED standard):
 - new: `apps/web/convex/effect/tryPromise.ts` (central Promise -> Effect error mapping)
 - change: `apps/web/convex/myFunctions.ts` migrate to the wrappers as a sanity check (keeps behavior the same, but enforces the pattern)
 
+Add/Change (apps/web AI inference wiring, `@effect/ai`):
+
+- new: `apps/web/src/effect/ai/languageModel.ts` (Layer providing `@effect/ai/LanguageModel` via the current provider; prefer `@effect/ai-openai` when using OpenAI)
+- new: `apps/web/src/effect/ai/tokenizer.ts` (Layer providing `@effect/ai/Tokenizer` for prompt budgeting + truncation)
+- new: `apps/web/src/effect/ai/toolkit.ts` (maps the app/tool registry into `@effect/ai/Tool` + `Toolkit` with Effect handlers)
+- new: `apps/web/src/effect/ai/receipts.ts` (SpanTransformer/middleware to emit receipts + BlobRefs for prompts, tool calls, and model responses)
+- change: `apps/web/src/effect/layer.ts` include AI layers in the Worker/server runtime composition root
+
 Refactor targets (transitional, while TanStack still hosts):
 
 - `apps/web/src/routes/__root.tsx`: plan to remove `ConvexProviderWithAuth` and `@effect-atom/atom-react` over time; until then, ensure `beforeLoad` and `fetchWorkosAuth` are thin shims that call `AuthService`.
@@ -703,7 +749,7 @@ Refactor targets (transitional, while TanStack still hosts):
 
 DoD:
 
-- Any Effect program can call Convex without React (`ConvexService`) and can get a stable auth scope (`AuthService.sessionScopeKey`).
+- Any Effect program can call Convex without React (`ConvexService`), can get a stable auth scope (`AuthService.sessionScopeKey`), and can call the LLM through `LanguageModel` (provider-agnostic, with receipts + token usage).
 
 ### Phase 4: Implement `RouterService` (Effuse-Owned Navigation + Loader Pipeline)
 
@@ -795,6 +841,7 @@ Remove/Replace (apps/web):
   - `react`, `react-dom`
   - `@tanstack/react-start`, `@tanstack/react-router`, `@tanstack/react-router-ssr-query`, `@tanstack/react-query`
   - `convex/react`, `@convex-dev/react-query`
+  - `@ai-sdk/react`, `ai`
   - `@effect-atom/atom-react`
 - add a single client entrypoint:
   - new: `apps/web/src/client/main.ts` (boots Effuse app)
@@ -818,6 +865,7 @@ Add/Change:
   - shell/outlet swap invariant
   - cancellation + dedupe correctness
   - tool part rendering + BlobRef discipline
+  - LLM/tooling: `@effect/ai/Response` part mapping is stable, tool calls always render, and `finish.usage` is recorded/receipted
 
 DoD:
 
@@ -831,6 +879,8 @@ These must be decided explicitly to finish the React/TanStack removal:
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
 - **Convex usage (resolved):** browser connects directly to Convex via WebSockets (`ConvexClient`) for realtime subscriptions; Convex MUST still be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
 - **Workspace plane (partially resolved):** DO SQLite is canonical for user-space + agents; Convex is canonical for profile/ownership/membership. The remaining decision is the *exact replication contract* (what is mirrored to Convex and at what granularity).
+- **AI inference placement:** whether inference runs inside the Worker, inside the DO, or in an external service (preferred: Worker/DO plane).
+- **AI provider:** name the “current provider” we standardize behind `@effect/ai` first (Cloudflare Workers AI/Agents/gateway vs OpenAI vs OpenRouter) and which adapter we implement first.
 - **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
 - **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
@@ -933,6 +983,15 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: tool parts render at least `{ status, toolName, toolCallId, summary, details? }`.
 - MUST: large tool I/O is truncated in DOM and referenced via `BlobRef` for “view full”.
 
+**AI Inference**
+- MUST: app inference uses `@effect/ai/LanguageModel` (and `Tokenizer` / `EmbeddingModel` where relevant) from the Effect environment; provider SDKs are confined to adapter modules.
+- MUST: streaming output is standardized on `@effect/ai/Response` parts (or a boundary adapter that is 1:1 mappable to Response parts); legacy stream vocabularies MUST be mapped at the boundary.
+- MUST: each model call emits a receipt including `(provider, model, params_hash, prompt_blobrefs, output_blobrefs, finish.usage)` and is correlated to tool receipts.
+- MUST: tool resolution uses `Toolkit` handlers and emits `tool-call` / `tool-result` / `error` parts so the Tool Parts contract can render them.
+- MUST: prompt budgeting uses `Tokenizer` and enforces token caps before provider calls.
+- SHOULD: GenAI telemetry spans are emitted with `@effect/ai/Telemetry` (and provider telemetry when available) and are linked to receipts.
+- MAY: chat transcripts are persisted in DO SQLite (`Chat.Persistence`) and projected into Convex for realtime UI.
+
 **Cloudflare Host**
 - MUST: v1 targets **a single Cloudflare Worker** (not Pages Functions) and relevant Cloudflare infra (DO/DO SQLite, R2, KV, Queues).
 - MUST: Durable Objects + DO SQLite are used as the canonical “user-space / agent workspace” store.
@@ -940,3 +999,4 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 
 **Conformance**
 - MUST: the conformance suite runs in CI and gates framework changes (SSR determinism, hydration, cancellation, shell/outlet invariants, focus/caret, tool visibility, BlobRef discipline).
+- MUST: conformance includes LLM/tooling invariants (Response part mapping stable, tool calls always render, `finish.usage` is recorded and receipted).
