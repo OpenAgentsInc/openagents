@@ -199,6 +199,22 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 **Exit criteria**
 - We can run compile offline and promote a better artifact, with a measurable improvement on holdout.
 
+#### Phase 2 Implementation Log (2026-02-07)
+
+- `packages/dse/`
+  - Added Phase 2 compile job + hashing in `packages/dse/src/compile/job.ts` (`CompileJobSpecV1`, `compileJobHash`).
+  - Implemented a TS/Effect-native compiler loop in `packages/dse/src/compile/compile.ts`:
+    - instruction grid search optimizer (`instruction_grid.v1`)
+    - greedy few-shot forward selection optimizer (`fewshot_greedy_forward.v1`)
+    - joint optimizer (`joint_instruction_grid_then_fewshot_greedy_forward.v1`)
+    - emits schema-validated `DseCompiledArtifactV1` with eval summary + provenance (dataset hash, metric id, searchSpaceHash).
+  - Exported compile APIs via `packages/dse/src/index.ts`.
+  - Added compile tests in `packages/dse/test/compile.test.ts`.
+
+- Verification
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/autopilot-worker && npm test && npm run typecheck`
+
 ---
 
 ### Phase 3 — Bounded execution budgets everywhere (Horizons budgets)

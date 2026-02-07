@@ -28,3 +28,6 @@ export * as EvalDataset from "./eval/dataset.js";
 export * as EvalMetric from "./eval/metric.js";
 export * as EvalReward from "./eval/reward.js";
 export * as Eval from "./eval/evaluate.js";
+
+export * as CompileJob from "./compile/job.js";
+export * as Compile from "./compile/compile.js";
