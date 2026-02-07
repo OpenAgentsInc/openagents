@@ -147,17 +147,17 @@ const parseHref = (href: string, base: URL): URL | null => {
 
 const applyHead = (run: OkRun) =>
   Effect.sync(() => {
+    // Clear previous router-managed meta tags.
+    document.head
+      .querySelectorAll('meta[data-effuse-meta="1"]')
+      .forEach((node) => node.remove())
+
     const head = run.head
     if (!head) return
 
     if (head.title !== undefined) {
       document.title = head.title
     }
-
-    // Clear previous router-managed meta tags.
-    document.head
-      .querySelectorAll('meta[data-effuse-meta="1"]')
-      .forEach((node) => node.remove())
 
     if (head.meta) {
       for (const [name, content] of head.meta) {
