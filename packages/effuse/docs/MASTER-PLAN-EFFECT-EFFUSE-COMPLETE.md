@@ -745,6 +745,10 @@ DoD:
 
 **Goal:** make the `Route` / `RouteOutcome` contract real and importable on server + client.
 
+Work log:
+- 2026-02-07: implemented route contract types + `runRoute` normalizer in `packages/effuse/src/app/*` and exported from `packages/effuse/src/index.ts`.
+- 2026-02-07: added an initial `apps/web` Effuse route table in `apps/web/src/effuse-app/routes.ts` (views reuse existing `apps/web/src/effuse-pages/*` templates).
+
 Add/Change (library):
 
 - new: `packages/effuse/src/app/route.ts` (types: `Route`, `RouteContext`, `RouteOutcome`, `RouteOkHints`, `CachePolicy`)

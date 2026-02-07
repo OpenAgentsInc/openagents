@@ -42,3 +42,23 @@ export { mountEzRuntime, mountEzRuntimeWith } from "./ez/runtime.js"
 
 // Signature-driven UI runtime
 export * from "./ui/index.js"
+
+// App route contract (server + client)
+export type {
+  CachePolicy,
+  CookieMutation,
+  DehydrateFragment,
+  HydrationMode,
+  NavigationSwapMode,
+  ReceiptsFragment,
+  RedirectStatus,
+  Route,
+  RouteContext,
+  RouteHead,
+  RouteId,
+  RouteMatch,
+  RouteOkHints,
+} from "./app/route.js"
+export { RouteOutcome } from "./app/route.js"
+export type { RouteRun, RouteRunStage } from "./app/run.js"
+export { runRoute } from "./app/run.js"
