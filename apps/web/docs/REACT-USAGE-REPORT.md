@@ -1,6 +1,31 @@
-# How React Is Still Used in apps/web UI
+# React Usage Report (apps/web)
 
-This report describes where and how React is used in the apps/web UI so that a refactor to remove React can be scoped. Effuse (Effect + template literals + DOM) already renders most route content; React remains as the shell for routing, mounting, and state.
+**Status (2026-02-07):** Phase 7 is complete. `apps/web` no longer uses React/TanStack at runtime, and there are **no `.tsx` files under `apps/web/src/`**.
+
+This document is retained as a historical checklist and “what we replaced” reference. If React/TanStack reappears, treat it as a regression and re-run the original checks (search for `react`, `@tanstack/*`, `.tsx` in `apps/web/src`).
+
+## What Replaced React/TanStack
+
+- Routing + navigation substrate:
+  - Effuse `RouterService` booted in `apps/web/src/effuse-app/boot.ts`
+  - route table in `apps/web/src/effuse-app/routes.ts`
+- Route controllers (replacing React components + hooks):
+  - `apps/web/src/effuse-app/controllers/autopilotController.ts`
+  - `apps/web/src/effuse-app/controllers/loginController.ts`
+  - `apps/web/src/effuse-app/controllers/contractsController.ts`
+- Atom hydration (replacing `@effect-atom/atom-react` provider/boundary):
+  - SSR embeds dehydrate payload in `apps/web/src/effuse-host/ssr.ts`
+  - client hydrates in `apps/web/src/effuse-app/atomRegistry.ts`
+- WorkOS OAuth callback:
+  - `apps/web/src/effuse-host/callback.ts` using `@workos/authkit-session`
+- PostHog script boot:
+  - `apps/web/src/effuse-app/posthog.ts`
+
+---
+
+## Historical (Pre-Phase 7) Notes
+
+The sections below describe the **pre-Phase 7** state, when TanStack Start/Router hosted the app and React was used as the page/controller shell.
 
 ---
 

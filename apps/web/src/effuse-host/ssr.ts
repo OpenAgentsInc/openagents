@@ -2,13 +2,14 @@ import { Effect } from "effect"
 import { escapeHtml, renderToString, runRoute } from "@openagentsinc/effuse"
 
 import { appRoutes } from "../effuse-app/routes"
+import type { AppServices } from "../effect/layer"
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext"
 
 import { getWorkerRuntime } from "./runtime"
 import type { Route, RouteContext, RouteMatch, RouteRun } from "@openagentsinc/effuse"
 import type { WorkerEnv } from "./env"
 
-type AnyRoute = Route<any>
+type AnyRoute = Route<any, AppServices>
 type AnyRun = RouteRun<unknown>
 
 const matchRoute = (

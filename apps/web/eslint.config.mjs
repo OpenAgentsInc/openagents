@@ -1,9 +1,22 @@
 import { defineConfig, globalIgnores } from 'eslint/config';
-import { tanstackConfig } from '@tanstack/eslint-config';
 import convexPlugin from '@convex-dev/eslint-plugin';
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
 
 export default defineConfig([
-  ...tanstackConfig,
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   ...convexPlugin.configs.recommended,
-  globalIgnores(['convex/_generated']),
+  {
+    rules: {
+      // The codebase is mid-migration; allow `any` in transitional adapters and protocol surfaces.
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-empty-object-type': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  globalIgnores(['convex/_generated', 'dist']),
 ]);

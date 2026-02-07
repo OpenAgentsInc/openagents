@@ -12,7 +12,6 @@
     "preserveSymlinks": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
     "incremental": true,
     "strictNullChecks": true,
     "paths": {
@@ -21,6 +20,6 @@
     },
     "types": ["vite/client", "@cloudflare/workers-types"]
   },
-  "include": ["src/**/*", "vite.config.ts", "vite.effuse.config.ts"],
+  "include": ["src/**/*", "vite.effuse.config.ts"],
   "exclude": ["node_modules", "dist", ".tanstack"]
 }

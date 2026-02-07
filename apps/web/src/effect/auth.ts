@@ -60,6 +60,11 @@ type CachedAuthState = {
 const CLIENT_CACHE_TTL_MS = 5_000;
 let clientCache: CachedAuthState | null = null;
 
+/** Clear the client-only AuthService cache (call after sign-out / login). */
+export const clearAuthClientCache = (): void => {
+  clientCache = null;
+};
+
 const serverCache = FiberRef.unsafeMake<CachedAuthState | null>(null);
 
 const emptySession = (): AuthSession =>
