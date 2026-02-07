@@ -1,7 +1,5 @@
 import { Context, Effect, Layer, SubscriptionRef } from 'effect';
 import { AgentClient } from 'agents/client';
-import { Chat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
 import { MessageType } from '@cloudflare/ai-chat/types';
 import { AgentApiService } from './agentApi';
 import { TelemetryService } from './telemetry';
@@ -22,10 +20,11 @@ type ActiveStream = {
 
 type ChatSession = {
   readonly chatId: string;
-  readonly agent: AgentClient;
-  readonly chat: Chat<UIMessage>;
+  readonly agent: AgentClient | null;
+  readonly agentUrlString: string | null;
   readonly state: SubscriptionRef.SubscriptionRef<ChatSnapshot>;
   readonly localRequestIds: Set<string>;
+  messages: Array<UIMessage>;
   manualStatus: ChatStatus | null;
   manualErrorText: string | null;
   activeStream: ActiveStream | null;
@@ -68,6 +67,7 @@ function cloneParts(parts: unknown): Array<any> {
 
 function applyMessageUpdated(prevMessages: ReadonlyArray<UIMessage>, updatedMessage: UIMessage): Array<UIMessage> {
   let idx = prevMessages.findIndex((m) => m.id === updatedMessage.id);
+
   if (idx < 0) {
     const updatedToolCallIds = new Set(
       cloneParts((updatedMessage as any).parts)
@@ -83,10 +83,23 @@ function applyMessageUpdated(prevMessages: ReadonlyArray<UIMessage>, updatedMess
     }
   }
 
+  if (idx < 0 && (updatedMessage as any).role === 'assistant') {
+    // Last-resort reconciliation: when we locally stream a synthetic assistant message,
+    // the server may later broadcast the canonical message with a different id.
+    // Prefer replacing the latest assistant message over appending duplicates.
+    for (let i = prevMessages.length - 1; i >= 0; i--) {
+      const m = prevMessages[i] as any;
+      if (m && m.role === 'assistant') {
+        idx = i;
+        break;
+      }
+    }
+  }
+
   if (idx >= 0) {
     const updated = [...prevMessages];
-    // Preserve the existing message id to avoid React key churn when the server
-    // updates a message that was locally streamed with a synthetic id.
+    // Preserve the existing message id to avoid key churn when server updates a
+    // message that was locally streamed with a synthetic id.
     updated[idx] = { ...updatedMessage, id: prevMessages[idx].id };
     return updated;
   }
@@ -122,6 +135,8 @@ function applyRemoteChunk(active: ActiveStream, chunkData: any): ActiveStream {
       const lastReasoningPart = [...active.parts].reverse().find((p) => p?.type === 'reasoning');
       if (lastReasoningPart && lastReasoningPart.type === 'reasoning') {
         lastReasoningPart.text += String(chunkData.delta ?? '');
+      } else {
+        active.parts.push({ type: 'reasoning', text: String(chunkData.delta ?? '') });
       }
       return active;
     }
@@ -181,19 +196,13 @@ function applyRemoteChunk(active: ActiveStream, chunkData: any): ActiveStream {
   }
 }
 
-function getRequestUrlString(request: RequestInfo | URL): string {
-  if (request instanceof URL) return request.toString();
-  if (typeof request === 'string') return request;
-  if (request instanceof Request) return request.url;
-  return String(request);
-}
-
 function toChatSnapshot(session: ChatSession): ChatSnapshot {
+  const status: ChatStatus =
+    session.manualStatus ?? (session.activeStream ? 'streaming' : 'ready');
   return {
-    messages: session.chat.messages,
-    status: session.manualStatus ?? session.chat.status,
-    errorText:
-      session.manualErrorText ?? (session.chat.error ? session.chat.error.message : null),
+    messages: session.messages,
+    status,
+    errorText: session.manualErrorText,
   };
 }
 
@@ -216,21 +225,18 @@ export const ChatServiceLive = Layer.effect(
       // SSR safety: do not attempt to create WebSockets during server render.
       if (typeof window === 'undefined') {
         const state = yield* SubscriptionRef.make(initialSnapshot());
-        sessions.set(
+        sessions.set(chatId, {
           chatId,
-          // Minimal stub session for SSR; nothing is connected.
-          {
-            chatId,
-            agent: null as any,
-            chat: null as any,
-            state,
-            localRequestIds: new Set(),
-            manualStatus: null,
-            manualErrorText: null,
-            activeStream: null,
-            dispose: () => {},
-          },
-        );
+          agent: null,
+          agentUrlString: null,
+          state,
+          localRequestIds: new Set(),
+          messages: [],
+          manualStatus: null,
+          manualErrorText: null,
+          activeStream: null,
+          dispose: () => {},
+        });
         return state;
       }
 
@@ -241,9 +247,7 @@ export const ChatServiceLive = Layer.effect(
       // port to prevent reconnect loops (seen as repeated 101s in the network panel).
       const isDev = Boolean((import.meta as any).env?.DEV);
       const shouldBypassViteWsProxy = isDev && window.location.port === '3000';
-      const workerHost = shouldBypassViteWsProxy
-        ? `${window.location.hostname}:8787`
-        : window.location.host;
+      const workerHost = shouldBypassViteWsProxy ? `${window.location.hostname}:8787` : window.location.host;
       const workerProtocol = shouldBypassViteWsProxy
         ? 'ws'
         : window.location.protocol === 'https:'
@@ -256,140 +260,107 @@ export const ChatServiceLive = Layer.effect(
         host: workerHost,
         protocol: workerProtocol,
       });
-      const agentOrigin = shouldBypassViteWsProxy
-        ? `http://${workerHost}`
-        : window.location.origin;
+      const agentOrigin = shouldBypassViteWsProxy ? `http://${workerHost}` : window.location.origin;
       const agentUrlString = new URL(`/agents/chat/${chatId}`, agentOrigin).toString();
-      const localRequestIds = new Set<string>();
+
       const state = yield* SubscriptionRef.make<ChatSnapshot>({
         messages: initialMessages,
         status: 'ready',
         errorText: null,
       });
 
-      const aiFetch = (request: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
-        const { method, keepalive, headers, body, redirect, integrity, signal, credentials, mode, referrer, referrerPolicy, window: win } =
-          init;
-
-        const id = randomId(8);
-        const abortController = new AbortController();
-        let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
-
-        localRequestIds.add(id);
-
-        signal?.addEventListener('abort', () => {
-          try {
-            agent.send(JSON.stringify({ id, type: MessageType.CF_AGENT_CHAT_REQUEST_CANCEL }));
-          } catch {
-            // best-effort
-          }
-          abortController.abort();
-          try {
-            controller?.close();
-          } catch {
-            // ignore
-          }
-          localRequestIds.delete(id);
-        });
-
-        agent.addEventListener(
-          'message',
-          (event) => {
-            if (typeof (event as any).data !== 'string') return;
-            const parsed = safeJsonParse((event as any).data) as any;
-            if (!parsed || parsed.type !== MessageType.CF_AGENT_USE_CHAT_RESPONSE) return;
-            if (parsed.id !== id) return;
-
-            if (parsed.error) {
-              try {
-                controller?.error(new Error(String(parsed.body ?? 'chat error')));
-              } catch {
-                // ignore
-              }
-              abortController.abort();
-              localRequestIds.delete(id);
-              return;
-            }
-
-            if (String(parsed.body ?? '').trim()) {
-              controller?.enqueue(new TextEncoder().encode(`data: ${parsed.body}\n\n`));
-            }
-
-            if (parsed.done) {
-              try {
-                controller?.close();
-              } catch {
-                // ignore
-              }
-              abortController.abort();
-              localRequestIds.delete(id);
-            }
-          },
-          { signal: abortController.signal } as any,
-        );
-
-        const stream = new ReadableStream<Uint8Array>({
-          start(c) {
-            controller = c;
-          },
-          cancel(reason) {
-            // Not fatal; this is mostly for debugging.
-            console.warn('[ChatService] cancelling stream', id, reason ?? 'no reason');
-          },
-        });
-
-        agent.send(
-          JSON.stringify({
-            id,
-            init: {
-              body,
-              credentials,
-              headers,
-              integrity,
-              keepalive,
-              method,
-              mode,
-              redirect,
-              referrer,
-              referrerPolicy,
-              window: win,
-            },
-            type: MessageType.CF_AGENT_USE_CHAT_REQUEST,
-            url: getRequestUrlString(request),
-          }),
-        );
-
-        return Promise.resolve(new Response(stream));
-      };
-
-      const transport = {
-        sendMessages: (sendMessageOptions: Parameters<DefaultChatTransport<UIMessage>['sendMessages']>[0]) =>
-          new DefaultChatTransport<UIMessage>({ api: agentUrlString, fetch: aiFetch as any }).sendMessages(sendMessageOptions),
-        reconnectToStream: () => Promise.resolve(null),
-      };
-
-      const chat = new Chat<UIMessage>({
-        messages: initialMessages,
-        transport,
-      });
-
       const session: ChatSession = {
         chatId,
         agent,
-        chat,
+        agentUrlString,
         state,
-        localRequestIds,
+        localRequestIds: new Set(),
+        messages: [...initialMessages],
         manualStatus: null,
         manualErrorText: null,
         activeStream: null,
-        dispose: () => {
-          // Unregistering chat callbacks is handled below via closures.
-        },
+        dispose: () => {},
       };
 
-      const unsubscribeMessages = chat['~registerMessagesCallback'](() => updateSnapshot(session));
-      const unsubscribeStatus = chat['~registerStatusCallback'](() => updateSnapshot(session));
-      const unsubscribeError = chat['~registerErrorCallback'](() => updateSnapshot(session));
+      const onChatResponseChunk = (parsed: any, isLocal: boolean) => {
+        const id = String(parsed.id ?? '');
+        if (!id) return;
+
+        const isContinuation = parsed.continuation === true;
+        const done = Boolean(parsed.done);
+        const errored = Boolean(parsed.error);
+
+        // For local streams, the activeStream is always created by `send()`.
+        // For remote/broadcast streams, we reconstruct state here.
+        if (!session.activeStream || session.activeStream.id !== id) {
+          let messageId = randomId(16);
+          let existingParts: Array<any> = [];
+
+          if (!isLocal && isContinuation) {
+            for (let i = session.messages.length - 1; i >= 0; i--) {
+              const m = session.messages[i] as any;
+              if (m && m.role === 'assistant') {
+                messageId = m.id;
+                existingParts = cloneParts(m.parts);
+                break;
+              }
+            }
+          }
+
+          session.activeStream = { id, messageId, parts: existingParts };
+          session.manualStatus = 'streaming';
+          session.manualErrorText = null;
+        }
+
+        const active = session.activeStream;
+
+        if (String(parsed.body ?? '').trim()) {
+          const chunkData = safeJsonParse(String(parsed.body ?? '')) as any;
+          if (chunkData) {
+            try {
+              applyRemoteChunk(active, chunkData);
+
+              const prev = session.messages;
+              const existingIdx = prev.findIndex((m) => m.id === active.messageId);
+              const partialMessage = {
+                id: active.messageId,
+                role: 'assistant',
+                parts: [...active.parts],
+              } as UIMessage;
+
+              if (existingIdx >= 0) {
+                const next = [...prev];
+                next[existingIdx] = partialMessage;
+                session.messages = next;
+              } else {
+                session.messages = [...prev, partialMessage];
+              }
+            } catch (err) {
+              console.warn(
+                '[ChatService] Failed to apply stream chunk:',
+                err instanceof Error ? err.message : String(err),
+                'body:',
+                String(parsed.body ?? '').slice(0, 100),
+              );
+            }
+          }
+        }
+
+        if (done || errored) {
+          if (errored) {
+            session.manualStatus = 'error';
+            session.manualErrorText = typeof parsed.body === 'string' ? parsed.body : 'Chat stream failed.';
+          } else {
+            session.manualStatus = null;
+            session.manualErrorText = null;
+          }
+
+          session.localRequestIds.delete(id);
+          session.activeStream = null;
+        }
+
+        updateSnapshot(session);
+      };
 
       const onAgentMessage = (event: MessageEvent) => {
         if (typeof (event as any).data !== 'string') return;
@@ -401,7 +372,7 @@ export const ChatServiceLive = Layer.effect(
             session.manualStatus = null;
             session.manualErrorText = null;
             session.activeStream = null;
-            chat.messages = [];
+            session.messages = [];
             updateSnapshot(session);
             return;
           }
@@ -410,14 +381,14 @@ export const ChatServiceLive = Layer.effect(
             session.manualStatus = null;
             session.manualErrorText = null;
             session.activeStream = null;
-            chat.messages = msgs;
+            session.messages = msgs;
             updateSnapshot(session);
             return;
           }
           case MessageType.CF_AGENT_MESSAGE_UPDATED: {
             const msg: unknown = parsed.message;
-            if (!msg || typeof msg !== 'object') return;
-            chat.messages = applyMessageUpdated(chat.messages, msg as UIMessage);
+            if (!msg || typeof msg !== "object") return;
+            session.messages = applyMessageUpdated(session.messages, msg as UIMessage);
             updateSnapshot(session);
             return;
           }
@@ -425,11 +396,7 @@ export const ChatServiceLive = Layer.effect(
             const id = String(parsed.id ?? '');
             if (!id) return;
 
-            session.activeStream = {
-              id,
-              messageId: randomId(16),
-              parts: [],
-            };
+            session.activeStream = { id, messageId: randomId(16), parts: [] };
             session.manualStatus = 'streaming';
             updateSnapshot(session);
 
@@ -443,74 +410,9 @@ export const ChatServiceLive = Layer.effect(
           case MessageType.CF_AGENT_USE_CHAT_RESPONSE: {
             const id = String(parsed.id ?? '');
             if (!id) return;
-            if (session.localRequestIds.has(id)) return;
 
-            // Remote/broadcast stream chunks (including resume).
-            const isContinuation = parsed.continuation === true;
-            if (!session.activeStream || session.activeStream.id !== id) {
-              let messageId = randomId(16);
-              let existingParts: Array<any> = [];
-              if (isContinuation) {
-                for (let i = chat.messages.length - 1; i >= 0; i--) {
-                  const m = chat.messages[i];
-                  if (m.role === 'assistant') {
-                    messageId = m.id;
-                    existingParts = cloneParts((m as any).parts);
-                    break;
-                  }
-                }
-              }
-
-              session.activeStream = { id, messageId, parts: existingParts };
-              session.manualStatus = 'streaming';
-              session.manualErrorText = null;
-            }
-
-            const active = session.activeStream;
-
-            if (String(parsed.body ?? '').trim()) {
-              const chunkData = safeJsonParse(String(parsed.body ?? '')) as any;
-              if (chunkData) {
-                try {
-                  applyRemoteChunk(active, chunkData);
-
-                  const prev = chat.messages;
-                  const existingIdx = prev.findIndex((m) => m.id === active.messageId);
-                  const partialMessage = {
-                    id: active.messageId,
-                    role: 'assistant',
-                    parts: [...active.parts],
-                  } as UIMessage;
-
-                  if (existingIdx >= 0) {
-                    const next = [...prev];
-                    next[existingIdx] = partialMessage;
-                    chat.messages = next;
-                  } else {
-                    chat.messages = [...prev, partialMessage];
-                  }
-                } catch (err) {
-                  console.warn(
-                    '[ChatService] Failed to apply remote stream chunk:',
-                    err instanceof Error ? err.message : String(err),
-                    'body:',
-                    String(parsed.body ?? '').slice(0, 100),
-                  );
-                }
-              }
-            }
-
-            if (parsed.done || parsed.error) {
-              if (parsed.error) {
-                session.manualStatus = 'error';
-                session.manualErrorText = typeof parsed.body === 'string' ? parsed.body : 'Chat stream failed.';
-              } else {
-                session.manualStatus = null;
-                session.manualErrorText = null;
-              }
-              session.activeStream = null;
-              updateSnapshot(session);
-            }
+            const isLocal = session.localRequestIds.has(id);
+            onChatResponseChunk(parsed, isLocal);
             return;
           }
           default:
@@ -523,21 +425,6 @@ export const ChatServiceLive = Layer.effect(
       session.dispose = () => {
         try {
           agent.removeEventListener('message', onAgentMessage);
-        } catch {
-          // ignore
-        }
-        try {
-          unsubscribeMessages();
-        } catch {
-          // ignore
-        }
-        try {
-          unsubscribeStatus();
-        } catch {
-          // ignore
-        }
-        try {
-          unsubscribeError();
         } catch {
           // ignore
         }
@@ -563,7 +450,7 @@ export const ChatServiceLive = Layer.effect(
       open(chatId).pipe(
         Effect.flatMap(() => {
           const session = sessions.get(chatId);
-          if (!session || !(session as any).agent || !(session as any).chat) {
+          if (!session || !session.agent || !session.agentUrlString) {
             return Effect.sync(() => {
               console.warn('[ChatService] Session missing after open()', { chatId });
               return undefined as unknown as TValue;
@@ -575,15 +462,63 @@ export const ChatServiceLive = Layer.effect(
 
     const send = Effect.fn('ChatService.send')(function* (chatId: string, text: string) {
       yield* withSession(chatId, (session) =>
-        Effect.tryPromise({
-          try: () => session.chat.sendMessage({ text }),
-          catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+        Effect.sync(() => {
+          const userMsgId = randomId(16);
+          const userMsg = {
+            id: userMsgId,
+            role: 'user',
+            parts: [{ type: 'text', text }],
+          } as UIMessage;
+
+          // Request messages are the transcript up through the new user message.
+          const requestMessages = [...session.messages, userMsg];
+          session.messages = requestMessages;
+
+          const requestId = randomId(16);
+          session.localRequestIds.add(requestId);
+
+          // Create a synthetic assistant message in the UI so the first paint
+          // shows "streaming" immediately; server will later broadcast the
+          // canonical message (we reconcile in applyMessageUpdated()).
+          session.activeStream = {
+            id: requestId,
+            messageId: randomId(16),
+            parts: [],
+          };
+          session.manualStatus = 'streaming';
+          session.manualErrorText = null;
+
+          updateSnapshot(session);
+
+          try {
+            session.agent!.send(
+              JSON.stringify({
+                id: requestId,
+                type: MessageType.CF_AGENT_USE_CHAT_REQUEST,
+                url: session.agentUrlString!,
+                init: {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    id: chatId,
+                    messages: requestMessages,
+                    trigger: 'submit-message',
+                    messageId: userMsgId,
+                  }),
+                },
+              }),
+            );
+          } catch (err) {
+            session.localRequestIds.delete(requestId);
+            session.activeStream = null;
+            session.manualStatus = 'error';
+            session.manualErrorText = err instanceof Error ? err.message : String(err);
+            updateSnapshot(session);
+            throw err instanceof Error ? err : new Error(String(err));
+          }
         }).pipe(
           Effect.tapError((err) =>
-            telemetry.withNamespace('chat.service').log('error', 'chat.send_failed', {
-              chatId,
-              message: err.message,
-            }),
+            telemetry.withNamespace('chat.service').log('error', 'chat.send_failed', { chatId, message: String(err) }),
           ),
         ),
       );
@@ -592,22 +527,19 @@ export const ChatServiceLive = Layer.effect(
     const stop = Effect.fn('ChatService.stop')(function* (chatId: string) {
       yield* withSession(chatId, (session) =>
         Effect.sync(() => {
-          // Stop local in-flight request (if any).
-          session.chat.stop().catch(() => {});
-
-          // Stop resumed/broadcast stream (if any).
           const activeId = session.activeStream?.id;
           if (activeId) {
             try {
-              session.agent.send(JSON.stringify({ id: activeId, type: MessageType.CF_AGENT_CHAT_REQUEST_CANCEL }));
+              session.agent!.send(JSON.stringify({ id: activeId, type: MessageType.CF_AGENT_CHAT_REQUEST_CANCEL }));
             } catch {
               // ignore
             }
-            session.activeStream = null;
-            session.manualStatus = null;
-            session.manualErrorText = null;
-            updateSnapshot(session);
           }
+          session.localRequestIds.clear();
+          session.activeStream = null;
+          session.manualStatus = null;
+          session.manualErrorText = null;
+          updateSnapshot(session);
         }),
       );
     });
@@ -618,9 +550,9 @@ export const ChatServiceLive = Layer.effect(
           session.manualStatus = null;
           session.manualErrorText = null;
           session.activeStream = null;
-          session.chat.messages = [];
+          session.messages = [];
           try {
-            session.agent.send(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }));
+            session.agent!.send(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }));
           } catch {
             // ignore
           }
@@ -629,18 +561,15 @@ export const ChatServiceLive = Layer.effect(
       );
     });
 
-    const setMessages = Effect.fn('ChatService.setMessages')(function* (
-      chatId: string,
-      messages: ReadonlyArray<UIMessage>,
-    ) {
+    const setMessages = Effect.fn('ChatService.setMessages')(function* (chatId: string, messages: ReadonlyArray<UIMessage>) {
       yield* withSession(chatId, (session) =>
         Effect.sync(() => {
           session.manualStatus = null;
           session.manualErrorText = null;
           session.activeStream = null;
-          session.chat.messages = [...messages];
+          session.messages = [...messages];
           try {
-            session.agent.send(
+            session.agent!.send(
               JSON.stringify({
                 messages: Array.isArray(messages) ? messages : [],
                 type: MessageType.CF_AGENT_CHAT_MESSAGES,
@@ -654,12 +583,7 @@ export const ChatServiceLive = Layer.effect(
       );
     });
 
-    return ChatService.of({
-      open,
-      send,
-      stop,
-      clearHistory,
-      setMessages,
-    });
+    return ChatService.of({ open, send, stop, clearHistory, setMessages });
   }),
 );
+

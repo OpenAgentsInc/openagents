@@ -768,6 +768,16 @@ DoD:
 
 **Goal:** make auth/session and Convex access available everywhere via Effect services, so we can delete React providers later without losing behavior.
 
+Work log:
+- 2026-02-07: added `RequestContextService` tag + helpers in `apps/web/src/effect/requestContext.ts` and wired it into the app Layer (`apps/web/src/effect/layer.ts`).
+- 2026-02-07: implemented `AuthService` in `apps/web/src/effect/auth.ts` with a client cache and SSR-only WorkOS AuthKit parsing; added `GET /api/auth/session` in `apps/web/src/routes/api.auth.session.tsx`.
+- 2026-02-07: implemented `ConvexService` in `apps/web/src/effect/convex.ts` (SSR uses `ConvexHttpClient` request-scoped via `FiberRef`; client uses `ConvexClient` (WS) + `Stream` wrapper for `onUpdate`).
+- 2026-02-07: refactored `apps/web/src/effect/chat.ts` to remove `@ai-sdk/react` and stream directly over the Agents WebSocket protocol.
+- 2026-02-07: added Convex Effect wrapper helpers under `apps/web/convex/effect/*` and migrated `apps/web/convex/myFunctions.ts` to the wrappers.
+
+Not yet implemented (remains in Phase 3 scope):
+- `apps/autopilot-worker` migration to `@effect/ai` (`LanguageModel` + toolkit + streaming adapter) and wire-level standardization on `@effect/ai/Response` parts.
+
 Add/Change (apps/web Effect runtime):
 
 - new: `apps/web/src/effect/auth.ts` (`AuthService`):
