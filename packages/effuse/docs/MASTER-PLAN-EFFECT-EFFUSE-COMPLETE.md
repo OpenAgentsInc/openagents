@@ -12,7 +12,6 @@ When complete, the web product is a *pure Effuse application (built on Effect)*:
 
 - **No React**: no `react`, no JSX/TSX runtime in production.
 - **No TanStack**: no `@tanstack/start`, `@tanstack/router`, `@tanstack/react-query` (or any TanStack UI/runtime dependency).
-- **Multi-backend host, Cloudflare-first**: Effuse is designed to run on multiple server backends, but the initial target (and plan in this doc) is **Cloudflare Workers** plus the Cloudflare primitives we already depend on (Durable Objects, DO SQLite, R2, KV, Queues, etc.).
 - **Effuse is the application framework/runtime (built on Effect)**:
   - Think: “Effuse is to Effect what Next.js is to React”: Effuse owns the web app’s UI *and* the app loop (routing/loaders/navigation/SSR/hydration), and it is implemented in terms of Effect.
   - UI primitives:
@@ -26,6 +25,7 @@ When complete, the web product is a *pure Effuse application (built on Effect)*:
     - hydration/boot with no “tear down and replace DOM” for first paint
     - typed request boundaries (RPC/HTTP), budgets, receipts/replay, telemetry
     - a single shared composed runtime (an Effect `ManagedRuntime` built from the app Layer) usable on server + client
+- **Multi-backend host, Cloudflare-first**: Effuse is designed to run on multiple server backends, but the initial target (and plan in this doc) is **Cloudflare Workers** plus relevant Cloudflare infra (Durable Objects, DO SQLite, R2, KV, Queues, etc.).
 
 ## 0.1 Engineering Invariants (Pulled In From `docs/autopilot/*`)
 
@@ -115,12 +115,9 @@ export type RouteHead = {
   readonly meta?: ReadonlyArray<readonly [name: string, content: string]>
 }
 
-export type RouteContext = {
-  readonly url: URL
-  readonly match: RouteMatch
-  // Server-only; on the client this is null/undefined.
-  readonly request?: Request
-}
+export type RouteContext =
+  | { readonly _tag: "Server"; readonly url: URL; readonly match: RouteMatch; readonly request: Request }
+  | { readonly _tag: "Client"; readonly url: URL; readonly match: RouteMatch }
 
 export type CachePolicy =
   | { readonly mode: "no-store" }
@@ -131,12 +128,18 @@ export type CookieMutation =
   | { readonly _tag: "Set"; readonly name: string; readonly value: string; readonly attributes?: string }
   | { readonly _tag: "Delete"; readonly name: string; readonly attributes?: string }
 
+// Merge rules:
+// - `dehydrate` is stored under a routeId namespace (no deep merge).
+// - `receipts` is append-only (array) or a stable-id map (no last-write-wins).
+export type DehydrateFragment = unknown
+export type ReceiptsFragment = unknown
+
 export type RouteOkHints = {
   readonly cache?: CachePolicy
   readonly headers?: ReadonlyArray<readonly [string, string]>
   readonly cookies?: ReadonlyArray<CookieMutation> // server only
-  readonly dehydrate?: unknown // merged into the SSR hydration payload
-  readonly receipts?: unknown // optional receipt fragments (tool/llm budget) to surface in UI/devtools
+  readonly dehydrate?: DehydrateFragment
+  readonly receipts?: ReceiptsFragment
 }
 
 export type RouteOutcome<A> =
@@ -153,6 +156,10 @@ export type Route<LoaderData> = {
 
   // Path matching + param parsing (must be deterministic and shared).
   readonly match: (url: URL) => RouteMatch | null
+
+  // Guards are optional sugar but MUST be standardized to avoid ad hoc redirects in loaders.
+  // If a guard returns an outcome, the route run short-circuits (redirect/not-found/fail).
+  readonly guard?: (ctx: RouteContext) => Effect.Effect<RouteOutcome<never> | void>
 
   // Loaders return RouteOutcome so redirect/not-found/cache/dehydrate is standardized.
   readonly loader: (ctx: RouteContext) => Effect.Effect<RouteOutcome<LoaderData>>
@@ -213,18 +220,20 @@ Initial planned backend: **Cloudflare Workers**, plus relevant Cloudflare infra:
 
 Secondary backend (later, optional): Node/Bun adapter for local dev or alternative deployment, but the plan in this doc should assume Cloudflare’s constraints and primitives.
 
+SSR note: Workers can stream `Response` bodies, but **v1 may buffer HTML for simplicity**. Streaming SSR is an optimization, not a requirement for the migration.
+
 SSR pipeline:
 
-1. Parse request (URL, headers, cookies) into a request-scoped service (`RequestContext`)
-2. Match route
-3. Run `guards` (redirects / auth checks)
-4. Run `loader` to produce `LoaderData`
-5. Render `TemplateResult` via `view`
-6. `renderToString` to HTML
-7. Produce a response HTML document:
-   - server HTML for the UI root
-   - dehydrated state payload (atoms or equivalent)
-   - boot script + asset references
+1. Build `RouteContext.Server` and install request-scoped services (requestId, cookies, auth/session scope).
+2. Match route (or return `NotFound`).
+3. Run `route.guard` (if present); if it returns a `RouteOutcome`, apply it and stop.
+4. Run `route.loader` to produce `RouteOutcome<LoaderData>`.
+5. If `Ok`, run `route.head` (optional) and `route.view` to produce `TemplateResult`.
+6. `renderToString` to HTML.
+7. Apply `RouteOkHints` (headers/cookies/cache/dehydrate/receipts) and produce a response HTML document:
+   - server HTML for shell + outlet
+   - hydration payload (dehydrate fragments namespaced by routeId)
+   - boot script + asset references (and optional dev-only SSR key/hash metadata)
 
 ### 3.4 Client: `EffuseApp` (Boot + Navigation + Rendering)
 
@@ -249,7 +258,8 @@ Navigation pipeline:
 
 Minimum rules (v1):
 
-- **Loader keying**: each loader run has a stable key derived from `(routeId, pathname, params, search, auth/session scope)`.
+- **Loader keying**: each loader run has a stable key derived from `(routeId, pathname, params, search, sessionScopeKey)`.
+- **Session scope**: `sessionScopeKey` is a stable string derived from `AuthService` (for example: `anon` | `user:<id>` | `session:<id>`). It MUST NOT include high-churn fields (e.g. expiring tokens, request ids).
 - **In-flight dedupe**: if the same loader key is requested twice, the router reuses the same in-flight fiber/result (no double fetch).
 - **Cancellation**:
   - navigation is switch-latest (new navigation cancels the previous navigation’s “apply”)
@@ -340,6 +350,11 @@ Framework-level requirements:
   - `tool-error` must be rendered as a user-visible failure state
   - budget/cancellation must also be rendered (e.g. “canceled: budget exceeded”)
 
+Minimal UI schema:
+
+- Every tool part renders as `{ status, toolName, toolCallId, summary, details? }`.
+- `details` MUST be behind a disclosure affordance; “view full” uses `BlobRef` when payloads are large.
+
 Implementation posture:
 
 - Provide a default `ToolPartRenderer` used across the app (one place to enforce truncation, receipt linking, and error visibility).
@@ -351,13 +366,16 @@ Effuse must support SSR and a crisp hydration contract. Otherwise, implementers 
 Effuse provides three hydration modes (per-route), with a single default:
 
 - `strict` (default): **attach behavior only**. The server renders shell + outlet HTML; the client boot mounts EZ + router + subscriptions without performing an initial outlet swap.
+  - Strict mode MUST NOT call `DomService.swap` during boot.
+  - Strict mode MUST NOT run an initial `view` render pass during boot.
+  - Strict mode MUST NOT re-run the initial `loader` during boot (it relies on SSR output + hydration payload).
 - `soft`: **render once on boot**. The client runs `loader` + `view` once and swaps the outlet after hydration; this is safer when SSR markup is incomplete or non-deterministic.
 - `client-only`: **no SSR outlet**. The server emits an empty outlet placeholder and the client renders normally; use only when SSR is not worth it.
 
 “Matches SSR output” must be a defined property:
 
 - Strict hydration assumes determinism: given the same `RouteOutcome.Ok.data` and the same render pipeline (`renderToString`), the HTML output is stable. We enforce this via conformance tests, not a runtime DOM diff.
-- Optionally (dev/test), we can embed a server `data-effuse-ssr-hash` and compare against a client recomputation; on mismatch, fall back to a soft outlet swap (debugging aid, not the core model).
+- Optionally (dev/test), the server can embed a `data-effuse-ssr-key` derived from `(routeId, loaderKey, sessionScopeKey, dataHash)` and the client can recompute that key from the hydrated data (no `view` run). On mismatch, fall back to `soft` (debugging aid, not the core model).
 
 To remove React, SSR/hydration is done with Effuse primitives:
 
@@ -469,7 +487,7 @@ Deliverables:
 
 DoD:
 
-- You can run the app end-to-end via the Effuse host locally (SSR + client navigation + RPC).
+- You can run the app end-to-end locally via Cloudflare dev tooling (`wrangler dev` / Miniflare) (SSR + client navigation + RPC).
 
 ### Phase 4: Production Cutover (Remove TanStack Start)
 
@@ -569,3 +587,44 @@ These must be decided explicitly to finish the React/TanStack removal:
   - `../../../docs/autopilot/monty-synergies.md`
   - `../../../docs/autopilot/dse.md`
   - `../../../docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`
+
+## Appendix A: Normative Requirements (MUST/SHOULD/MAY)
+
+This appendix is the “don’t bikeshed it” spec layer. If something conflicts, this appendix is the contract.
+
+**Routes**
+- MUST: `Route.loader` returns `RouteOutcome` (not ad hoc “data or throw”).
+- MUST: `Route.guard` (if present) runs before `loader`; if it returns a `RouteOutcome`, the run short-circuits.
+- MUST: `RouteOutcome.Ok.hints.dehydrate` is namespaced by `routeId` (no deep merge semantics).
+- MUST: `RouteOutcome.Ok.hints.receipts` is mergeable as append-only arrays or stable-id maps (no last-write-wins).
+- SHOULD: `Route.view` is pure with respect to `LoaderData` (side effects belong in loaders/subscriptions).
+
+**Shell/Outlet**
+- MUST: the shell is stable across navigation; by default only `[data-effuse-outlet]` swaps.
+- MAY: routes explicitly opt into `navigation.swap="document"` (treat as exceptional).
+
+**Router Cache/Dedupe/Cancellation**
+- MUST: loader keys include `(routeId, pathname, params, search, sessionScopeKey)` and are stable across server/client.
+- MUST: `sessionScopeKey` is a stable, low-churn string derived from `AuthService` (for example `anon` | `user:<id>` | `session:<id>`).
+- MUST: in-flight loader runs are deduped by loader key.
+- MUST: navigation applies results switch-latest; stale results MUST NOT commit to the outlet.
+- SHOULD: `prefetch(href)` shares the same loader keying + cache and must not mutate history.
+
+**Hydration**
+- MUST: default hydration mode is `strict`.
+- MUST: `strict` boot does not call `DomService.swap`.
+- MUST: `strict` boot does not run an initial `view` render pass.
+- MUST: `strict` boot does not re-run the initial `loader` (it relies on SSR + hydration payload).
+- MAY: `soft` mode performs one initial `loader`+`view` and swaps the outlet once.
+
+**Tool Parts**
+- MUST: tool calls/results/errors are always user-visible (no “silent stall”).
+- MUST: tool parts render at least `{ status, toolName, toolCallId, summary, details? }`.
+- MUST: large tool I/O is truncated in DOM and referenced via `BlobRef` for “view full”.
+
+**Cloudflare Host**
+- MUST: v1 targets Cloudflare Workers and relevant Cloudflare infra (DO/DO SQLite, R2, KV, Queues).
+- MAY: SSR is buffered in v1; streaming SSR is an optimization.
+
+**Conformance**
+- MUST: the conformance suite runs in CI and gates framework changes (SSR determinism, hydration, cancellation, shell/outlet invariants, focus/caret, tool visibility, BlobRef discipline).
