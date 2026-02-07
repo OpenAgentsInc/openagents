@@ -905,7 +905,7 @@ DoD:
 **Goal:** production traffic is served by `EffuseWebHost`; TanStack Start is removed from deploy artifacts.
 
 Work log:
-- 2026-02-07: cut over `apps/web/wrangler.jsonc` to `apps/web/src/effuse-host/worker.ts`, added Wrangler module aliasing for local workspace packages, and updated `apps/web/package.json` build/deploy scripts to build `dist/effuse-client` (Effuse client bootstrap) before `wrangler deploy` (legacy TanStack build kept as `npm run build:tanstack`; deploy script clears `.wrangler/deploy/config.json` to avoid TanStack config redirection).
+- 2026-02-07: cut over `apps/web/wrangler.jsonc` to `apps/web/src/effuse-host/worker.ts`, added Wrangler module aliasing for local workspace packages, and updated `apps/web/package.json` build/deploy scripts to build `dist/effuse-client` (Effuse client bootstrap) before `wrangler deploy` (legacy TanStack build kept as `npm run build:tanstack`; deploy script clears `.wrangler/deploy/config.json` to avoid TanStack config redirection). Also added `workers-ai-provider` + `@openagentsinc/dse` to `apps/web` dependencies so the single-worker bundle does not rely on `apps/autopilot-worker` installs.
 
 Change:
 
