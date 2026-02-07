@@ -1,5 +1,6 @@
 import { Effect } from "effect"
-import type { EzAction, RouterService } from "@openagentsinc/effuse"
+import { boundText, html } from "@openagentsinc/effuse"
+import type { EzAction, RouterService, ToolPartStatus } from "@openagentsinc/effuse"
 
 import { cleanupAuthedDotsGridBackground, hydrateAuthedDotsGridBackground } from "../../effuse-pages/authedShell"
 import { runAutopilotRoute } from "../../effuse-pages/autopilotRoute"
@@ -7,6 +8,7 @@ import { AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from "../../effect/atom
 import { AutopilotSidebarCollapsedAtom, AutopilotSidebarUserMenuOpenAtom } from "../../effect/atoms/autopilotUi"
 import { SessionAtom } from "../../effect/atoms/session"
 import { clearAuthClientCache } from "../../effect/auth"
+import { UiBlobStore } from "../blobStore"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { AgentApi, AgentToolContract } from "../../effect/agentApi"
@@ -185,6 +187,24 @@ function toRenderableParts(parts: ReadonlyArray<UiPart>): Array<RenderPart> {
   return out
 }
 
+const TOOL_IO_MAX_CHARS = 4000
+
+const toToolStatus = (state: string): ToolPartStatus => {
+  switch (state) {
+    case "output-available":
+      return "tool-result"
+    case "output-error":
+      return "tool-error"
+    case "output-denied":
+      return "tool-denied"
+    case "approval-requested":
+    case "approval-responded":
+      return "tool-approval"
+    default:
+      return state.startsWith("input-") ? "tool-call" : "tool-call"
+  }
+}
+
 export type AutopilotController = {
   readonly cleanup: () => void
 }
@@ -289,17 +309,68 @@ export const mountAutopilotController = (input: {
             return { kind: "text" as const, text: p.text, state: p.state }
           }
           const meta = toolContractsByName?.[p.toolName]
+          const putText = ({ text, mime }: { readonly text: string; readonly mime?: string }) =>
+            Effect.sync(() => UiBlobStore.putText({ text, mime }))
+
+          const input = Effect.runSync(
+            boundText({
+              text: safeStableStringify(p.input),
+              maxChars: TOOL_IO_MAX_CHARS,
+              putText,
+              mime: "application/json",
+            }),
+          )
+
+          const outputText = p.output !== undefined ? safeStableStringify(p.output) : null
+          const output = outputText
+            ? Effect.runSync(
+                boundText({
+                  text: outputText,
+                  maxChars: TOOL_IO_MAX_CHARS,
+                  putText,
+                  mime: "application/json",
+                }),
+              )
+            : undefined
+
+          const error =
+            p.errorText && p.errorText.length > 0
+              ? Effect.runSync(
+                  boundText({
+                    text: p.errorText,
+                    maxChars: TOOL_IO_MAX_CHARS,
+                    putText,
+                    mime: "text/plain",
+                  }),
+                )
+              : undefined
+
+          const extra =
+            meta?.usage || meta?.description
+              ? html`
+                  <div data-effuse-tool-meta="1">
+                    ${meta.usage ? html`<div data-effuse-tool-usage="1">${meta.usage}</div>` : null}
+                    ${meta.description
+                      ? html`<div data-effuse-tool-description="1">${meta.description}</div>`
+                      : null}
+                  </div>
+                `
+              : null
+
           return {
             kind: "tool" as const,
-            toolName: p.toolName,
-            toolCallId: p.toolCallId,
-            state: p.state,
-            inputJson: safeStableStringify(p.input),
-            outputJson: p.output !== undefined ? safeStableStringify(p.output) : undefined,
-            errorText: p.errorText,
-            preliminary: p.preliminary,
-            usage: meta?.usage ?? null,
-            description: meta?.description ?? null,
+            model: {
+              status: toToolStatus(p.state),
+              toolName: p.toolName,
+              toolCallId: p.toolCallId,
+              summary: p.state,
+              details: {
+                extra,
+                input,
+                output,
+                error,
+              },
+            },
           }
         }),
       })),

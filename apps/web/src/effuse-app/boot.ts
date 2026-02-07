@@ -2,6 +2,7 @@ import { Effect, Stream } from "effect"
 import {
   BrowserHistory,
   EffuseLive,
+  html,
   makeEzRegistry,
   makeRouter,
   mountEzRuntimeWith,
@@ -20,6 +21,7 @@ import { mountModulesController, mountSignaturesController, mountToolsController
 import { mountLoginController } from "./controllers/loginController"
 import { loadPostHog } from "./posthog"
 import { appRoutes } from "./routes"
+import { UiBlobStore } from "./blobStore"
 
 export type BootOptions = {
   readonly shellSelector?: string
@@ -51,6 +53,19 @@ export const bootEffuseApp = (options?: BootOptions): void => {
   loadPostHog()
 
   const ezRegistry = makeEzRegistry()
+  ezRegistry.set("effuse.blob.view", ({ params }) =>
+    Effect.sync(() => {
+      const blobId = params.blobId ?? params.id ?? ""
+      if (!blobId) {
+        return html`[missing blobId]`
+      }
+      const text = UiBlobStore.getText(blobId)
+      if (text == null) {
+        return html`[blob not found: ${blobId}]`
+      }
+      return html`${text}`
+    }),
+  )
 
   // Extract service clients once so EZ actions can run without requiring Effect env.
   const telemetry = runtime.runSync(
