@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, SubscriptionRef } from "effect"
 import { AgentClient } from "agents/client"
 import { AgentApiService } from "./agentApi"
+import { RequestContextService } from "./requestContext"
 import { TelemetryService } from "./telemetry"
 import { MessageType, type ChatMessage, type ChatPart } from "./chatProtocol"
 
@@ -36,14 +37,14 @@ type ChatSession = {
 export type ChatClient = {
   readonly open: (
     chatId: string,
-  ) => Effect.Effect<SubscriptionRef.SubscriptionRef<ChatSnapshot>>
-  readonly send: (chatId: string, text: string) => Effect.Effect<void, Error>
-  readonly stop: (chatId: string) => Effect.Effect<void>
-  readonly clearHistory: (chatId: string) => Effect.Effect<void>
+  ) => Effect.Effect<SubscriptionRef.SubscriptionRef<ChatSnapshot>, never, RequestContextService>
+  readonly send: (chatId: string, text: string) => Effect.Effect<void, Error, RequestContextService>
+  readonly stop: (chatId: string) => Effect.Effect<void, never, RequestContextService>
+  readonly clearHistory: (chatId: string) => Effect.Effect<void, never, RequestContextService>
   readonly setMessages: (
     chatId: string,
     messages: ReadonlyArray<ChatMessage>,
-  ) => Effect.Effect<void>
+  ) => Effect.Effect<void, never, RequestContextService>
 }
 
 export class ChatService extends Context.Tag(
@@ -477,14 +478,14 @@ export const ChatServiceLive = Layer.effect(
       return state;
     });
 
-    const withSession = <TValue, TError>(
-      chatId: string,
-      f: (session: ChatSession) => Effect.Effect<TValue, TError>,
-    ): Effect.Effect<TValue, TError> =>
-      open(chatId).pipe(
-        Effect.flatMap(() => {
-          const session = sessions.get(chatId);
-          if (!session || !session.agent || !session.agentUrlString) {
+	    const withSession = <TValue, TError, R>(
+	      chatId: string,
+	      f: (session: ChatSession) => Effect.Effect<TValue, TError, R>,
+	    ): Effect.Effect<TValue, TError, R | RequestContextService> =>
+	      open(chatId).pipe(
+	        Effect.flatMap(() => {
+	          const session = sessions.get(chatId);
+	          if (!session || !session.agent || !session.agentUrlString) {
             return Effect.sync(() => {
               console.warn('[ChatService] Session missing after open()', { chatId });
               return undefined as unknown as TValue;

@@ -1236,7 +1236,7 @@ These tests are the framework’s “non-negotiable” gates. They should be fas
 
 Goal: verify the **single Worker** host in-process in a Workers runtime (no browser).
 
-Proposed suites:
+Implemented suites (2026-02-07):
 
 - `apps/web/tests/worker/ssr.test.ts`
   - SSR respects abort signal
@@ -1254,11 +1254,12 @@ Proposed suites:
   - `ASSETS` binding serves `/effuse-client.css` + `/effuse-client.js`
   - asset requests never fall through to SSR
 
-Harness requirements:
+Harness:
 
-- run under a Workers runtime pool (Wrangler Vitest pool is preferred for fidelity)
-- inject `env` bindings (DO namespaces, ASSETS, AI) via test fakes
-- stub external services by default (WorkOS API calls, AI provider, Convex network)
+- runs under a Workers runtime pool (`@cloudflare/vitest-pool-workers`) via `apps/web/vitest.config.ts` + `apps/web/wrangler.jsonc`
+- uses `cloudflare:test` `env` bindings (DO namespaces, `ASSETS`, `AI`) from Wrangler config
+- external services are stubbed/blocked by default in tests (WorkOS paths mocked; same-origin fetch routing for `/agents/*`)
+- run: `cd apps/web && npm test`
 
 ### 9.3 `apps/web`: Durable Objects + DO SQLite Integration (L4)
 

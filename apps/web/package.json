@@ -27,7 +27,9 @@
     "wrangler:secrets": "bash scripts/sync-wrangler-secrets.sh",
     "cf-typegen": "wrangler types",
     "format": "prettier --write .",
-    "lint": "tsc && eslint . --ext ts --report-unused-disable-directives --max-warnings 0"
+    "lint": "tsc && eslint . --ext ts --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@effect-atom/atom": "^0.5.0",
@@ -47,6 +49,8 @@
     "zod": "^4.1.8"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.11.1",
+    "@cloudflare/workers-types": "4.20260205.0",
     "@convex-dev/eslint-plugin": "^1.1.1",
     "@eslint/js": "^9.21.0",
     "@tailwindcss/postcss": "^4.1.18",
@@ -57,6 +61,7 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.25.0",
+    "vitest": "^3.2.4",
     "vite": "^7.3.1",
     "vite-tsconfig-paths": "^6.0.5",
     "wrangler": "^4.61.1"

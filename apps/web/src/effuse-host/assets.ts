@@ -19,8 +19,7 @@ export const tryServeAsset = async (
   if (!isLikelyAssetPath(url.pathname)) return null
   if (!env.ASSETS) return null
 
-  const response = await env.ASSETS.fetch(request)
-  if (response.status === 404) return null
-  return response
+  // Never fall through to SSR for "asset-like" paths. If the asset is missing,
+  // return the asset 404 rather than attempting to SSR a fake route.
+  return env.ASSETS.fetch(request)
 }
-

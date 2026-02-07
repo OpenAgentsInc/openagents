@@ -173,6 +173,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                 cleanup: mountAutopilotController({
                   container: outlet,
                   ez: ezRegistry,
+                  runtime,
                   atoms,
                   telemetry,
                   api,
