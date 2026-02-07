@@ -23,7 +23,7 @@ export function marketingHeaderTemplate(isHome: boolean, isLogin: boolean): Temp
                 Log in
               </a>
               ${hatcheryButton({
-                href: '/login',
+                href: '/autopilot',
                 label: 'Start for free',
                 variant: 'outline',
               })}

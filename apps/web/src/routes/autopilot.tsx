@@ -1,5 +1,5 @@
 import { useAtomSet, useAtomValue } from '@effect-atom/atom-react';
-import { createFileRoute, redirect, useRouter, useRouterState } from '@tanstack/react-router';
+import { createFileRoute, useRouter, useRouterState } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,6 +18,7 @@ import type { UIMessage } from 'ai';
 import type { AgentToolContract } from '../effect/agentApi';
 import type { RenderedMessage as EffuseRenderedMessage } from '../effuse-pages/autopilot';
 import type { AutopilotRouteRenderInput } from '../effuse-pages/autopilotRoute';
+import type { AutopilotSidebarModel } from '../effuse-pages/autopilotSidebar';
 
 export const Route = createFileRoute('/autopilot')({
   loader: async ({ context }) => {
@@ -33,7 +34,7 @@ export const Route = createFileRoute('/autopilot')({
         const userId = auth?.user?.id ?? null;
         if (!userId) {
           yield* telemetry.withNamespace('route.autopilot').event('autopilot.unauth');
-          return { kind: 'redirect' as const, to: '/' as const };
+          return { kind: 'ok' as const, userId: null };
         }
 
         yield* telemetry.withNamespace('route.autopilot').event('autopilot.open', {
@@ -44,10 +45,6 @@ export const Route = createFileRoute('/autopilot')({
         return { kind: 'ok' as const, userId };
       }),
     );
-
-    if (result.kind === 'redirect') {
-      throw redirect({ to: result.to });
-    }
 
     return { userId: result.userId };
   },
@@ -212,8 +209,103 @@ function toRenderableParts(parts: ReadonlyArray<UiPart>): Array<RenderPart> {
   return out;
 }
 
+/** Minimal shell + sidebar + intro for unauthenticated users (no chat/API). */
+function AutopilotIntroPage() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const collapsed = useAtomValue(AutopilotSidebarCollapsedAtom);
+  const setCollapsed = useAtomSet(AutopilotSidebarCollapsedAtom);
+  const userMenuOpen = useAtomValue(AutopilotSidebarUserMenuOpenAtom);
+  const setUserMenuOpen = useAtomSet(AutopilotSidebarUserMenuOpenAtom);
+
+  const ezRegistryRef = useRef(makeEzRegistry());
+  const ezRegistry = ezRegistryRef.current;
+  ezRegistry.set('autopilot.sidebar.toggleCollapse', () =>
+    Effect.sync(() => setCollapsed((c) => !c)),
+  );
+  ezRegistry.set('autopilot.sidebar.toggleUserMenu', () =>
+    Effect.sync(() => setUserMenuOpen((o) => !o)),
+  );
+  ezRegistry.set('autopilot.sidebar.logout', () => Effect.void);
+
+  const sidebarModel = useMemo(
+    () => ({
+      collapsed,
+      pathname,
+      user: null as AutopilotSidebarModel['user'],
+      userMenuOpen,
+    }),
+    [collapsed, pathname, userMenuOpen],
+  );
+
+  const renderInput = useMemo((): AutopilotRouteRenderInput => {
+    const emptyChatData = {
+      messages: [],
+      isBusy: false,
+      isAtBottom: true,
+      inputValue: '',
+    };
+    const emptyBlueprintModel = {
+      updatedAtLabel: null,
+      isLoading: false,
+      isEditing: false,
+      canEdit: false,
+      isSaving: false,
+      errorText: null,
+      blueprintText: null,
+      draft: null,
+    };
+    const emptyControlsModel = {
+      isExportingBlueprint: false,
+      isBusy: false,
+      isResettingAgent: false,
+    };
+    return {
+      sidebarModel,
+      sidebarKey: `intro:${collapsed ? 1 : 0}:${pathname}`,
+      introMode: true,
+      chatData: emptyChatData,
+      chatKey: 'intro',
+      blueprintModel: emptyBlueprintModel,
+      blueprintKey: 'intro',
+      controlsModel: emptyControlsModel,
+      controlsKey: 'intro',
+    };
+  }, [sidebarModel, collapsed, pathname]);
+
+  const ssrHtmlRef = useRef<string | null>(null);
+  if (ssrHtmlRef.current === null) {
+    ssrHtmlRef.current = renderToString(autopilotRouteShellTemplate());
+  }
+
+  const hydrate = useCallback(
+    (el: Element) =>
+      Effect.gen(function* () {
+        yield* hydrateAuthedDotsGridBackground(el);
+        yield* runAutopilotRoute(el, renderInput);
+      }),
+    [renderInput],
+  );
+
+  return (
+    <EffuseMount
+      run={(el) => runAutopilotRoute(el, renderInput)}
+      deps={[renderInput.sidebarKey, 'intro']}
+      ssrHtml={ssrHtmlRef.current}
+      hydrate={hydrate}
+      onCleanup={cleanupAuthedDotsGridBackground}
+      cleanupOn="unmount"
+      ezRegistry={ezRegistry}
+      className="h-full w-full"
+    />
+  );
+}
+
 function ChatPage() {
   const { userId } = Route.useLoaderData();
+  if (userId === null) {
+    return <AutopilotIntroPage />;
+  }
+
   const chatId = userId;
   const router = useRouter();
   const runtime = router.options.context.effectRuntime;
