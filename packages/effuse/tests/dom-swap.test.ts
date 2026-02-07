@@ -32,6 +32,64 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
+  it("restores focus and textarea selection on inner swaps", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div id="target"><textarea id="field" name="field">hello world</textarea></div>`
+    document.body.appendChild(root)
+
+    const target = root.querySelector("#target") as HTMLElement
+    const textarea = root.querySelector("#field") as HTMLTextAreaElement
+
+    textarea.focus()
+    textarea.setSelectionRange(2, 5, "forward")
+    expect(document.activeElement).toBe(textarea)
+
+    await Effect.runPromise(
+      DomServiceLive.swap(
+        target,
+        html`<textarea id="field" name="field">hello world</textarea>`,
+        "inner"
+      )
+    )
+
+    const next = root.querySelector("#field") as HTMLTextAreaElement
+    expect(next).not.toBe(textarea)
+    expect(document.activeElement).toBe(next)
+    expect(next.selectionStart).toBe(2)
+    expect(next.selectionEnd).toBe(5)
+
+    root.remove()
+  })
+
+  it("restores focus and input selection on outer swaps", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div id="target"><input id="field" name="field" value="hello world" /></div>`
+    document.body.appendChild(root)
+
+    const target = root.querySelector("#target") as HTMLElement
+    const input = root.querySelector("#field") as HTMLInputElement
+
+    input.focus()
+    input.setSelectionRange(1, 4, "forward")
+    expect(document.activeElement).toBe(input)
+
+    await Effect.runPromise(
+      DomServiceLive.swap(
+        target,
+        html`<div id="target"><input id="field" name="field" value="hello world" /></div>`,
+        "outer"
+      )
+    )
+
+    const next = root.querySelector("#field") as HTMLInputElement
+    expect(next).not.toBe(input)
+    expect(document.activeElement).toBe(next)
+    expect(next.selectionStart).toBe(1)
+    expect(next.selectionEnd).toBe(4)
+
+    root.remove()
+  })
+
   it("restores scroll positions for nodes with data-scroll-id", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><div data-scroll-id="swap-scroll-1"></div></div>`
@@ -119,4 +177,3 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 })
-
