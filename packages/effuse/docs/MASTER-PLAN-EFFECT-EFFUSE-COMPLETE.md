@@ -1257,6 +1257,7 @@ Implemented suites (2026-02-07):
 Harness:
 
 - runs under a Workers runtime pool (`@cloudflare/vitest-pool-workers`) via `apps/web/vitest.config.ts` + `apps/web/wrangler.jsonc`
+- configured with `singleWorker: true` to avoid flaky isolated-runtime startup on localhost module fallback ports
 - uses `cloudflare:test` `env` bindings (DO namespaces, `ASSETS`, `AI`) from Wrangler config
 - external services are stubbed/blocked by default in tests (WorkOS paths mocked; same-origin fetch routing for `/agents/*`)
 - run: `cd apps/web && npm test`
@@ -1265,16 +1266,25 @@ Harness:
 
 Goal: verify DO SQLite invariants and Convex projection semantics *without* a browser.
 
-Proposed suites:
+Implemented suites (2026-02-07):
 
 - `apps/web/tests/do/userSpace.test.ts`
   - append-only event log: seq monotonic, stable ids, deterministic ordering
   - idempotent apply by `eventId`
-  - large payloads stored in BlobStore/R2 test store; DO receipts store only refs
 - `apps/web/tests/do/replication.test.ts`
-  - replication mutation calls are idempotent (`eventId` upsert)
-  - `ctx.waitUntil` replication does not block responses (timing assertions via `TestClock`)
-  - Convex projection stores metadata + BlobRefs only (no large inline payloads)
+  - replication is scheduled once per `eventId` (duplicate apply does not re-trigger Convex calls)
+  - `ctx.waitUntil` replication does not block responses
+
+Harness:
+
+- runs under a Workers runtime pool (`@cloudflare/vitest-pool-workers`) via `apps/web/vitest.config.ts` + `apps/web/wrangler.jsonc`
+- uses `cloudflare:test` `env` bindings (DO namespace: `UserSpaceDO`) from Wrangler config
+- run: `cd apps/web && npm test`
+
+Deferred (not implemented yet):
+
+- large payloads stored in BlobStore/R2 test store; DO receipts store only refs
+- Convex projection stores metadata + BlobRefs only (no large inline payloads)
 
 ### 9.4 Chat DO + AI Receipts Integration (L4/L5 boundary)
 
