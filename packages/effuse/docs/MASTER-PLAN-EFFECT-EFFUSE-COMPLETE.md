@@ -541,11 +541,11 @@ Provider posture:
 
 Current implementation in this repo (as of 2026-02-07):
 
-- AI chat runs on Cloudflare Workers using the **Agents + `AIChatAgent`** pattern (Durable Object-backed sessions + transcript), as demonstrated in:
+- AI chat runs on Cloudflare Workers using the **Agents SDK + Durable Object-backed sessions** pattern (colocated transcript + connection state), as demonstrated in:
   - `apps/autopilot-worker/src/server.ts` (our production worker)
   - `apps/cloudflare-agent-sdk-demo/src/server.ts` (reference demo)
 - The model provider is **Cloudflare Workers AI** via the `env.AI` binding (see `apps/autopilot-worker/wrangler.jsonc`), with a current model id of `@cf/openai/gpt-oss-120b` (`apps/autopilot-worker/src/server.ts`).
-- The browser streams over **WebSockets** using `agents/client` and the `@cloudflare/ai-chat` message envelope (`CF_AGENT_*`), and the current `apps/web` code bridges that into SSE format only to satisfy the Vercel `ai` SDK (`apps/web/src/effect/chat.ts`).
+- The browser streams over **WebSockets** using `agents/client` and the `CF_AGENT_*` message envelope, with the payload standardized on `@effect/ai/Response` `StreamPartEncoded` end-to-end (no SSE bridge). Reasoning parts are filtered on the wire.
 
 Inference placement (v1 target):
 
@@ -699,14 +699,13 @@ This master plan assumes the following is already implemented and is our baselin
   - `packages/effuse/tests/render-to-string.test.ts`
 - Effuse UI kit exists:
   - `packages/effuse-ui/src/*`
-- `apps/web` is “Effuse everywhere” at the page level:
+- `apps/web` is Effuse-first end-to-end (no React/TanStack substrate):
   - templates in `apps/web/src/effuse-pages/*`
-  - Effect-first chat loop in `apps/web/src/effect/chat.ts` + atoms in `apps/web/src/effect/atoms/chat.ts`
+  - client boot in `apps/web/src/effuse-app/boot.ts` + entry `apps/web/src/effuse-app/client.ts`
+  - Worker host in `apps/web/src/effuse-host/worker.ts` + SSR in `apps/web/src/effuse-host/ssr.ts`
+  - `apps/web/wrangler.jsonc` points at `apps/web/src/effuse-host/worker.ts`
+  - Effect-first chat loop in `apps/web/src/effect/chat.ts` consuming `@effect/ai/Response` parts
   - Atom runtime in `apps/web/src/effect/atoms/appRuntime.ts`
-  - SSR HTML hydration bridge in `apps/web/src/components/EffuseMount.tsx` (`ssrHtml` + `hydrate`)
-- `apps/web` is Cloudflare-deployed, but still hosted by TanStack Start:
-  - `apps/web/wrangler.jsonc` points at `@tanstack/react-start/server-entry`
-  - `apps/web/src/router.tsx`, `apps/web/src/start.ts`, `apps/web/src/routes/__root.tsx` are still the hosting substrate
 
 Everything below is “what’s left”.
 
@@ -942,8 +941,6 @@ Remove/Replace (apps/web):
   - `@ai-sdk/react`
   - `@effect-atom/atom-react`
   - `@workos/authkit-tanstack-react-start` (replaced by `@workos/authkit-session`)
-- keep (temporary, required by Chat DO until `apps/autopilot-worker` migrates to `@effect/ai`):
-  - `ai`
 - ensure a single client entrypoint:
   - `apps/web/src/effuse-app/client.ts` (boots Effuse app; built by `apps/web/vite.effuse.config.ts`)
 
@@ -959,6 +956,7 @@ DoD:
 Work log:
 - 2026-02-07: implemented `StateCell` ergonomics in `@openagentsinc/effuse` (`computed`, `filtered`, `withEq`, `batch`) with correctness-focused contract tests (`tests/state-cell.test.ts` + render coalescing in `tests/component-mount.test.ts`). Expanded conformance suite to enforce shell/outlet invariants and strict router boot no-swap behavior (`tests/conformance-shell-outlet.test.ts`).
 - 2026-02-07: implemented framework-level Tool Part rendering + BlobRef bounding helpers in `@openagentsinc/effuse` (`boundText`, `renderToolPart`) with conformance tests (`tests/conformance-tool-parts.test.ts`). Updated `apps/web` Autopilot chat to render tool parts via `renderToolPart` and added a client-side `UiBlobStore` + `effuse.blob.view` EZ action for “view full” payload swaps.
+- 2026-02-07: hardening: added SSR request abort handling + max HTML byte cap (`apps/web/src/effuse-host/ssr.ts`), plus prompt budgeting via `@effect/ai/Tokenizer` and model-call receipt recording (with `finish.usage`) in the Chat DO (`apps/autopilot-worker/src/server.ts`, `apps/autopilot-worker/src/effect/ai/receipts.ts`).
 
 Add/Change:
 

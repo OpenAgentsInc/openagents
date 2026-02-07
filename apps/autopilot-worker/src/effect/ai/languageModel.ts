@@ -112,15 +112,17 @@ function parseToolCallParams(raw: unknown): unknown {
 function toToolCallParts(rawToolCalls: unknown[]): Array<Response.ToolCallPartEncoded> {
   const out: Array<Response.ToolCallPartEncoded> = []
 
-  for (const raw of rawToolCalls) {
+  for (let idx = 0; idx < rawToolCalls.length; idx++) {
+    const raw = rawToolCalls[idx]
     if (!raw || typeof raw !== "object") continue
 
     const record = raw as any
+    const fallbackId = `call_${idx}`
 
     // OpenAI-style: { id, type, function: { name, arguments } }
     if (record.function && typeof record.function === "object") {
       const fn = record.function as any
-      const id = typeof record.id === "string" ? record.id : crypto.randomUUID()
+      const id = typeof record.id === "string" && record.id.length > 0 ? record.id : fallbackId
       const name = typeof fn.name === "string" ? fn.name : "tool"
       const params = parseToolCallParams(fn.arguments)
       out.push({
@@ -135,7 +137,7 @@ function toToolCallParts(rawToolCalls: unknown[]): Array<Response.ToolCallPartEn
 
     // Legacy-ish: { id, name, arguments }
     if (typeof record.name === "string") {
-      const id = typeof record.id === "string" ? record.id : crypto.randomUUID()
+      const id = typeof record.id === "string" && record.id.length > 0 ? record.id : fallbackId
       const name = record.name
       const params = parseToolCallParams(record.arguments)
       out.push({
