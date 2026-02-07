@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse"
 import { whitePreset } from "@openagentsinc/hud"
 
-import { cleanupHudBackground, runHudDotsGridBackground } from "./hudBackground"
+import { cleanupHudBackground, runHudDotsBackground } from "./hudBackground"
 import { marketingHeaderTemplate } from "./header"
 
 import type { TemplateResult } from "@openagentsinc/effuse"
@@ -44,10 +44,9 @@ export const hydrateMarketingDotsGridBackground = (container: Element): Effect.E
     const bg = container.querySelector('[data-hud-bg="dots-grid"]')
     if (!(bg instanceof Element)) return
 
-    yield* runHudDotsGridBackground(bg, {
+    yield* runHudDotsBackground(bg, {
       distance: whitePreset.distance,
       dotsColor: whitePreset.dotsColor,
-      lineColor: whitePreset.lineColor,
       dotsSettings: { type: "circle", size: 2 },
     })
   })
