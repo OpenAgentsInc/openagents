@@ -65,3 +65,6 @@ export { runRoute } from "./app/run.js"
 
 // Router (client-side navigation + loaders)
 export * from "./router/index.js"
+
+// Tool part rendering + bounded payload helpers
+export * from "./toolParts/index.js"
