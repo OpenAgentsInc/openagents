@@ -66,6 +66,13 @@ export type RouterService<R> = {
   readonly start: Effect.Effect<void, RouterError, DomService | R>
 
   /**
+   * Stop browser listeners and invalidate any in-flight navigation applies.
+   *
+   * This exists to support test teardown and any future "unmount app" flows.
+   */
+  readonly stop: Effect.Effect<void, never, R>
+
+  /**
    * Navigate to an internal URL (SPA).
    *
    * - switch-latest: interrupts previous navigation apply
@@ -205,6 +212,9 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
     const navToken = yield* Ref.make(0)
     const currentNavKey = yield* Ref.make<LoaderKey | null>(null)
     const started = yield* Ref.make(false)
+    const cleanupRef = yield* Ref.make<null | { readonly onClick: (evt: Event) => void; readonly stopHistory: () => void }>(
+      null
+    )
 
     const initialUrl = config.history.current()
     const state = yield* SubscriptionRef.make<RouterState>({
@@ -729,13 +739,41 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         )
       })
 
-      // Scope-less cleanup: callers can rely on module lifetime in the browser.
-      // Tests can call stopHistory() / removeEventListener via the returned cleanup
-      // once we add explicit disposal APIs.
-      void stopHistory
+      yield* Ref.set(cleanupRef, { onClick, stopHistory })
     })
 
-    const service = { state, start, navigate, prefetch } satisfies RouterService<R>
+    const stop: RouterService<R>["stop"] = Effect.gen(function* () {
+      const cleanup = yield* Ref.getAndSet(cleanupRef, null)
+      if (cleanup) {
+        yield* Effect.sync(() => {
+          config.shell.removeEventListener("click", cleanup.onClick)
+          cleanup.stopHistory()
+        })
+      }
+
+      // Mark router as not started so it can be restarted.
+      yield* Ref.set(started, false)
+
+      // Invalidate any in-flight applyOutcome / refresh apply.
+      yield* Ref.update(navToken, (n) => n + 1)
+
+      // Best-effort: stop any active navigation fiber.
+      const previous = yield* Ref.getAndSet(navFiber, null)
+      if (previous) {
+        yield* Fiber.interrupt(previous).pipe(Effect.asVoid)
+      }
+
+      // Reset observable state (tests and future teardown flows).
+      const url = config.history.current()
+      yield* SubscriptionRef.set(state, {
+        status: "idle",
+        url,
+        key: null,
+        run: null,
+      })
+    })
+
+    const service = { state, start, stop, navigate, prefetch } satisfies RouterService<R>
     // Non-normative: allow tests/dev tooling to introspect inflight/cache state.
     return Object.assign(service, { __debug: debug })
   })

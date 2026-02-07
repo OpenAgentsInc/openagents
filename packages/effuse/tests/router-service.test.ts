@@ -37,6 +37,87 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("RouterService (contract)", () => {
+  it("stop removes navigation listeners (no click interception, no popstate listener)", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `
+      <div data-effuse-shell>
+        <div data-effuse-outlet>SSR</div>
+        <a href="/a">Go</a>
+      </div>
+    `
+    document.body.appendChild(root)
+
+    const shell = root.querySelector("[data-effuse-shell]")!
+
+    let pushes = 0
+    let replaces = 0
+    const listeners = new Set<(url: URL) => void>()
+    let current = new URL("https://example.test/")
+
+    const history: RouterHistory = {
+      current: () => current,
+      push: (url) => {
+        pushes++
+        current = url
+      },
+      replace: (url) => {
+        replaces++
+        current = url
+      },
+      listen: (listener) => {
+        listeners.add(listener)
+        return () => void listeners.delete(listener)
+      },
+    }
+
+    let swaps = 0
+    const outlet = root.querySelector("[data-effuse-outlet]")!
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        if (target === outlet) swaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    const a: Route<{}> = {
+      id: "/a",
+      match: matchExact("/a"),
+      loader: () => Effect.succeed(RouteOutcome.ok({})),
+      view: () => Effect.succeed(html`<div data-page="a">a</div>`),
+    }
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [a],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        yield* router.start
+        expect(listeners.size).toBe(1)
+
+        yield* router.stop
+        expect(listeners.size).toBe(0)
+
+        // Click after stop must not be intercepted.
+        const link = root.querySelector("a") as HTMLAnchorElement
+        link.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+        yield* Effect.sleep("20 millis")
+
+        expect(pushes).toBe(0)
+        expect(replaces).toBe(0)
+        expect(swaps).toBe(0)
+        expect(root.querySelector('[data-page="a"]')).toBeNull()
+        expect(root.querySelector("[data-effuse-outlet]")?.textContent).toContain("SSR")
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    root.remove()
+  })
+
   it("prefetch does not mutate history or swap DOM, and warms the cache for cache-first routes", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`

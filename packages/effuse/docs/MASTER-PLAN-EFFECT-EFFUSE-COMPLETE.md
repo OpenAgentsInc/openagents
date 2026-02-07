@@ -963,6 +963,7 @@ Work log:
 - 2026-02-07: hardening: applied `RouteOkHints.cache` to SSR responses via `Cache-Control` (default `no-store`, `private` for cacheable routes, and never cache HTML when `Set-Cookie` is emitted) using a shared helper (`packages/effuse/src/app/cache-control.ts`, `packages/effuse/tests/cache-control.test.ts`, `apps/web/src/effuse-host/ssr.ts`).
 - 2026-02-07: hardening: added RouterService contract test that `prefetch()` does not mutate history or swap DOM and that it warms the cache for `cache-first` routes (so subsequent `navigate()` does not re-run the loader) (`packages/effuse/tests/router-service.test.ts`).
 - 2026-02-07: hardening: ensured SSR non-OK responses are never cached (`Cache-Control: no-store` for redirect/not-found/fail/aborted/too-large responses) and added loader-key stability tests (params/search ordering + session scope) (`apps/web/src/effuse-host/ssr.ts`, `packages/effuse/tests/loader-key.test.ts`).
+- 2026-02-07: hardening: added `RouterService.stop` disposal API (removes click/popstate listeners, invalidates in-flight applies, resets state) with contract tests (prevents navigation after stop) (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-service.test.ts`).
 
 Add/Change:
 
