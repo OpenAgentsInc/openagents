@@ -37,6 +37,94 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("RouterService (contract)", () => {
+  it("prefetch does not mutate history or swap DOM, and warms the cache for cache-first routes", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
+    document.body.appendChild(root)
+
+    let started = 0
+    let finished = 0
+    let swaps = 0
+    let pushes = 0
+    let replaces = 0
+
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        swaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    const cached: Route<{ readonly n: number }> = {
+      id: "/prefetch-cached",
+      match: matchExact("/prefetch-cached"),
+      loader: () =>
+        Effect.gen(function* () {
+          started++
+          yield* Effect.sleep("10 millis")
+          finished++
+          return RouteOutcome.ok(
+            { n: finished },
+            { cache: { mode: "cache-first" } } // ttlMs undefined => cache forever
+          )
+        }),
+      view: (_ctx, data) =>
+        Effect.succeed(
+          html`<div data-page="prefetch-cached" data-n="${String(data.n)}">cached</div>`
+        ),
+    }
+
+    const baseHref = "https://example.test/"
+    const history: RouterHistory = {
+      ...makeMemoryHistory(baseHref),
+      push: (url) => {
+        pushes++
+        ;(history as any)._current = url
+      },
+      replace: (url) => {
+        replaces++
+        ;(history as any)._current = url
+      },
+      current: () => (history as any)._current ?? new URL(baseHref),
+    }
+    ;(history as any)._current = new URL(baseHref)
+
+    const shell = root.querySelector("[data-effuse-shell]")!
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [cached],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        yield* router.prefetch("/prefetch-cached")
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+        expect(swaps).toBe(0)
+        expect(pushes).toBe(0)
+        expect(replaces).toBe(0)
+        expect(history.current().href).toBe(baseHref)
+
+        // Navigate should use the warmed cache (no re-run).
+        yield* router.navigate("/prefetch-cached")
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+        expect(swaps).toBe(1)
+        expect(pushes).toBe(1)
+        expect(replaces).toBe(0)
+        expect(root.querySelector('[data-page="prefetch-cached"]')?.getAttribute("data-n")).toBe(
+          "1"
+        )
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    root.remove()
+  })
+
   it("cache-first: uses cached RouteRun without re-running loader (ttlMs undefined)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
