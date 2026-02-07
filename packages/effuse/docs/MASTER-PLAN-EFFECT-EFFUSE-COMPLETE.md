@@ -1052,6 +1052,332 @@ These must be decided explicitly to finish the React/TanStack removal:
   - `../../../docs/autopilot/dse.md`
   - `../../../docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`
 
+## 8. Test Strategy
+
+Effuse replaces *framework-owned correctness guarantees* (React reconciliation, TanStack data consistency) with **explicit contracts** enforced by:
+
+- a conformance suite (no-swap strict hydration, shell/outlet invariants, router cache/dedupe/cancel semantics)
+- Worker/DO integration tests (SSR, API surfaces, DO SQLite invariants, Convex replication)
+- browser E2E tests (what users actually experience)
+
+Effect is the test harness and DI system: tests run Effects with Layers to inject fakes and deterministic services. “Newing up” SDK clients directly in tests is treated as a smell.
+
+### 8.1 Test Pyramid
+
+Levels and what they cover:
+
+- **L0: Pure unit tests (no DOM, no Worker)**
+  - route/run normalization (`runRoute`)
+  - loader key computation + stability
+  - cache-control derivation
+  - HTML/JSON escaping helpers
+  - receipt hashing / BlobRef bounding helpers
+- **L1: DOM contract tests (happy-dom)**
+  - `DomService.swap` focus/caret/scroll invariants
+  - EZ parsing/binding + switch-latest cancellation
+  - component mount lifecycle (finalizers, render coalescing)
+- **L2: Router conformance tests (happy-dom)**
+  - strict hydration boot: **no swap / no loader / no view**
+  - loader dedupe + switch-latest cancellation
+  - cache-first + SWR semantics
+  - outlet-only swap invariant; shell node identity stable
+  - head/meta management (no duplication; replace router-managed tags)
+
+> L2 and above are treated as **conformance gates**: any framework change that violates L2 MUST fail CI.
+
+- **L3: Worker integration tests (Workers runtime)**
+  - `fetch` handler SSR/static/API behavior in-process
+  - abort/budgets/max HTML caps enforced
+  - `RouteOkHints` applied consistently (headers/cookies/cache-control)
+  - SSR dehydrate payload shape + escaping
+- **L4: Durable Object integration tests (DO + DO SQLite)**
+  - DO SQLite schema invariants
+  - append-only event logs (seq monotonic, idempotent eventId)
+  - Convex projection adapter semantics (idempotent upsert, BlobRef discipline)
+  - `ctx.waitUntil` replication is best-effort and non-blocking
+- **L5: Browser E2E tests (real browser, Playwright)**
+  - SSR -> strict hydration “attach only” (no initial swap)
+  - SPA navigation + back/forward (History)
+  - focus/caret preservation across swaps (Blueprint-like flows)
+  - tool part rendering (tool-error always visible; “view full” uses BlobRef)
+  - websocket chat streaming (Response parts)
+  - Convex realtime rendering (when feasible in local test env)
+- **L6: Production smoke tests (optional / nightly)**
+  - deployed Worker endpoints sanity checks (non-blocking, best-effort)
+  - not a merge gate, but a “we didn’t break prod” early warning
+
+### 8.2 Effect Test Harness Primitives (Required)
+
+All suites should share a small set of test harness primitives, built as Effect services and composed with Layers.
+
+Required harness services/patterns:
+
+- `TestClock` (deterministic time + timeouts)
+- `TestRandom` (stable ids; avoid `Math.random()` in tests)
+- `TestTelemetrySink` (capture spans/events by `requestId` for assertions)
+- `TestBlobStore` (supports `BlobRef` put/get; asserts bounding/truncation rules)
+- `TestLanguageModel` (scripted `@effect/ai/Response` parts; deterministic tool-call flows)
+- `TestConvexService`
+  - stubbed request/response for query/mutation/action
+  - stream-based live query events (push updates into `Stream`)
+- `TestAuthService` (explicit `sessionScopeKey` variations: `anon` vs `user:<id>`)
+
+Hard rule:
+
+- Tests SHOULD NOT directly instantiate provider SDK clients (WorkOS/Convex/AI) except inside adapter modules under test.
+- Tests MUST prefer `Layer.provide(...)` of fakes rather than ad hoc mocking.
+
+Suggested harness file layout (v1):
+
+```txt
+packages/effuse/tests/harness/
+  dom.ts
+  telemetry.ts
+
+apps/web/tests/harness/
+  workerEnv.ts
+  testRuntime.ts
+  telemetry.ts
+  blobStore.ts
+  auth.ts
+  convex.ts
+  ai.ts
+
+apps/autopilot-worker/tests/harness/
+  testRuntime.ts
+  telemetry.ts
+  blobStore.ts
+  ai.ts
+```
+
+### 8.3 Determinism and Replayability Tests (Required)
+
+The following properties are core to “replayable receipts” and must be tested explicitly:
+
+- **Loader key determinism**
+  - same URL with reordered query params yields same key
+  - params/search ordering normalized consistently across server/client
+  - `sessionScopeKey` is stable and low-churn (never includes access tokens)
+- **SSR determinism**
+  - `runRoute` + `renderToString` output is stable for fixed inputs
+  - SSR dehydrate payload is stable and HTML-safe (no `</script>` breakouts)
+- **Receipt discipline**
+  - tool-call/tool-result correlation by `toolCallId`
+  - model receipts include `finish.usage`
+  - large inputs/outputs never inline in receipts; replaced with `BlobRef`
+- **Budget/abort semantics**
+  - SSR respects `AbortSignal` and returns a deterministic abort response
+  - max HTML byte cap enforced (prevents Worker memory blowups)
+  - chat streaming cancellation yields visible UI state (finish/error part) + a receipt “reason”
+
+### 8.4 How To Run (Local + CI)
+
+Local (fast):
+
+- `cd packages/effuse && npm test`
+- `cd apps/autopilot-worker && npm run typecheck && npm test`
+- `cd apps/web && npm run lint && npm run build`
+
+Local (dev + manual smoke):
+
+- `cd apps/web && npm run dev`
+  - opens Worker at `http://localhost:3000`
+
+CI gates (required):
+
+- run all L0-L2 suites for `packages/effuse`
+- run `apps/web` lint/build
+- run `apps/autopilot-worker` typecheck/tests
+
+As we add L3-L5, CI should expand to include:
+
+- Worker integration suites (L3/L4) in a Workers runtime pool
+- Playwright E2E (L5) against a locally started Worker
+
+## 9. Test Suites (Concrete)
+
+This section enumerates the concrete suites we maintain, what they assert, and how they run.
+
+### 9.1 `packages/effuse`: Contract + Conformance (Unit/DOM/Router)
+
+These tests are the framework’s “non-negotiable” gates. They should be fast and run on every change.
+
+- DOM swap contract tests
+  - `packages/effuse/tests/dom-swap.test.ts`
+  - asserts: focus restoration (input/textarea), selection/caret restoration, scroll restoration for `data-scroll-id`, inner/outer/replace invariants
+- EZ runtime contract tests
+  - `packages/effuse/tests/ez-runtime.test.ts`
+  - asserts: delegated mount-once, param extraction, switch-latest cancellation (2nd action cancels 1st), bounded error behavior
+- RouterService contract tests
+  - `packages/effuse/tests/router-service.test.ts`
+  - `packages/effuse/tests/router-link-interception.test.ts`
+  - `packages/effuse/tests/router-outcomes.test.ts`
+  - `packages/effuse/tests/router-head.test.ts`
+  - asserts: loader keying, in-flight dedupe, switch-latest apply semantics, prefetch warms cache (no DOM/history mutation), redirects (loop cutoff + replace), not-found/fail behavior, head/meta tag management without duplication
+- Hydration conformance suite
+  - `packages/effuse/tests/conformance-hydration.test.ts`
+  - `packages/effuse/tests/conformance-hydration-modes.test.ts`
+  - `packages/effuse/tests/conformance-shell-outlet.test.ts`
+  - asserts:
+    - strict boot: **no `DomService.swap`**, **no loader**, **no view**
+    - soft/client-only boot: allowed initial apply semantics
+    - outlet-only swap invariant by default
+    - shell node identity stable across navigations
+- Security + correctness helpers
+  - `packages/effuse/tests/escape-json.test.ts`
+  - `packages/effuse/tests/cache-control.test.ts`
+  - `packages/effuse/tests/loader-key.test.ts`
+  - `packages/effuse/tests/run-route.test.ts`
+  - `packages/effuse/tests/conformance-ssr-determinism.test.ts`
+  - asserts: HTML-safe JSON escaping, cache-control rules (no-store when `Set-Cookie`, never cache non-OK), guard short-circuit stage attribution, SSR determinism for fixed inputs
+
+### 9.2 `apps/web`: Worker Host Integration (L3)
+
+Goal: verify the **single Worker** host in-process in a Workers runtime (no browser).
+
+Proposed suites:
+
+- `apps/web/tests/worker/ssr.test.ts`
+  - SSR respects abort signal
+  - max HTML byte cap enforced
+  - `RouteOkHints` applied (headers/cookies/cache-control)
+  - SSR dehydrate payload is namespaced by routeId and HTML-safe
+- `apps/web/tests/worker/api-rpc.test.ts`
+  - `/api/rpc` works in Worker runtime, request-scoped, and never cached
+  - emits receipts/telemetry correlation (when enabled)
+- `apps/web/tests/worker/auth.test.ts`
+  - `GET /api/auth/session` ok without external network
+  - WorkOS refresh `Set-Cookie` header is persisted (when stubbing refresh path)
+  - magic code endpoints are stubbed (no real WorkOS network)
+- `apps/web/tests/worker/assets.test.ts`
+  - `ASSETS` binding serves `/effuse-client.css` + `/effuse-client.js`
+  - asset requests never fall through to SSR
+
+Harness requirements:
+
+- run under a Workers runtime pool (Wrangler Vitest pool is preferred for fidelity)
+- inject `env` bindings (DO namespaces, ASSETS, AI) via test fakes
+- stub external services by default (WorkOS API calls, AI provider, Convex network)
+
+### 9.3 `apps/web`: Durable Objects + DO SQLite Integration (L4)
+
+Goal: verify DO SQLite invariants and Convex projection semantics *without* a browser.
+
+Proposed suites:
+
+- `apps/web/tests/do/userSpace.test.ts`
+  - append-only event log: seq monotonic, stable ids, deterministic ordering
+  - idempotent apply by `eventId`
+  - large payloads stored in BlobStore/R2 test store; DO receipts store only refs
+- `apps/web/tests/do/replication.test.ts`
+  - replication mutation calls are idempotent (`eventId` upsert)
+  - `ctx.waitUntil` replication does not block responses (timing assertions via `TestClock`)
+  - Convex projection stores metadata + BlobRefs only (no large inline payloads)
+
+### 9.4 Chat DO + AI Receipts Integration (L4/L5 boundary)
+
+Goal: verify the chat execution plane produces **user-visible tool parts** and **replayable receipts**.
+
+Existing coverage:
+
+- `apps/autopilot-worker/tests/index.test.ts`
+  - gates: Response part vocabulary (`tool-call`/`tool-result`/`finish`, no `reasoning-*`)
+  - gates: BlobRef discipline on receipts; `finish.usage` present; tool receipts present
+
+Planned suite split (when we consolidate single-worker host):
+
+- `apps/autopilot-worker/tests/chat-protocol.test.ts` (or `apps/web/tests/do/chat.test.ts`)
+  - websocket stream emits valid `@effect/ai/Response` parts
+  - tool-call -> tool-result correlation by `toolCallId`
+  - budget exceed/cancel yields visible finish/error part + receipt “reason”
+  - large prompt/output bounded and stored as BlobRefs
+
+Harness requirements:
+
+- `TestLanguageModel` provides scripted Response parts including tool calls and failures
+- AI provider bindings are stubbed by default (no remote usage charges in CI)
+
+### 9.5 Browser E2E (Playwright) (L5)
+
+Goal: verify user-visible behavior in a real browser, against a locally started Worker.
+
+Proposed layout:
+
+```txt
+apps/web/tests/e2e/
+  playwright.config.ts
+  fixtures/
+  hydration.spec.ts
+  navigation.spec.ts
+  focus-caret.spec.ts
+  tool-parts.spec.ts
+  chat-ws.spec.ts
+```
+
+Minimum assertions:
+
+1. **SSR + strict hydration**
+   - initial load shows SSR HTML
+   - strict boot performs **no initial outlet swap**
+2. **Navigation**
+   - click internal links -> outlet swaps, shell stable
+   - back/forward works
+3. **Focus/caret preservation**
+   - type into textarea, trigger outlet swap, caret preserved
+4. **EZ action semantics**
+   - verify switch-latest cancellation (2nd action cancels 1st)
+5. **Tool part visibility**
+   - force a tool-error: ensure `{status, toolName, toolCallId, summary}` renders
+   - “view full” uses BlobRef fetch/swap (no huge inline DOM)
+6. **WebSocket chat streaming**
+   - assistant text streams incrementally
+   - tool parts correlate (toolCallId stable)
+7. **Convex live subscription rendering (when feasible locally)**
+   - inject a `TestConvexService` stream update and assert DOM changes
+
+Instrumentation for “no swap on strict hydration”:
+
+- add a dev/test-only counter in `DomService.swap` (or a wrapper) such as `globalThis.__effuseSwapCount++`
+- in E2E, assert `__effuseSwapCount === 0` after initial load, then increases on navigation
+
+Golden-path E2E scenarios (recommended):
+
+- Unauthed `/autopilot`: start chat, stream assistant, tool-error renders, no login required
+- Authed flow: login sets cookie, `sessionScopeKey` changes, loader cache keys differ from anon
+- Blueprint edit flow: caret stable; “view full” BlobRef works
+- Navigation stress: rapid navigations (20+) do not apply stale runs
+
+### 9.6 CI Wiring (Gates)
+
+Existing gates:
+
+- `packages/effuse` tests (L0-L2)
+- `apps/web` lint/build
+- `apps/autopilot-worker` typecheck/tests
+
+Planned expansion:
+
+- add `apps/web` Worker/DO integration suites (L3/L4) as CI gates
+- add Playwright E2E (L5) as a CI gate
+  - headless, deterministic fakes, screenshots/videos on failure
+  - no external network calls by default (stub WorkOS/Convex/AI)
+
+## 10. Stress + Property Tests (Recommended)
+
+These tests reduce flake and catch “only happens at scale” regressions. Prefer deterministic randomness (Effect `TestRandom`) over introducing new deps unless justified.
+
+- **Property tests: loader key normalization**
+  - randomized query param ordering yields same loader key
+  - randomized param maps normalize deterministically
+- **Fuzz tests: DomService.swap**
+  - random DOM trees containing inputs/selection/scroll anchors maintain focus/caret invariants
+- **Stress tests: RouterService cancellation**
+  - rapid navigation sequences never commit stale results
+  - cache/SWR refresh never applies after navigating away
+- **Load tests: chat streaming**
+  - many streamed parts do not cause unbounded DOM growth
+  - bounded tool I/O (BlobRef discipline) holds under large payloads
+
 ## Appendix A: Normative Requirements (MUST/SHOULD/MAY)
 
 This appendix is the “don’t bikeshed it” spec layer. If something conflicts, this appendix is the contract.
@@ -1128,3 +1454,10 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 **Conformance**
 - MUST: the conformance suite runs in CI and gates framework changes (SSR determinism, hydration, cancellation, shell/outlet invariants, focus/caret, tool visibility, BlobRef discipline).
 - MUST: conformance includes LLM/tooling invariants (Response part mapping stable, tool calls always render, `finish.usage` is recorded and receipted).
+
+**Testing & CI**
+- MUST: browser E2E exists and asserts strict hydration performs no initial swap (attach-only boot).
+- MUST: Worker integration tests assert SSR abort handling and max HTML byte cap enforcement.
+- MUST: AI/tool receipt tests assert `finish.usage` is recorded and large prompt/output payloads are BlobRefs (never inline).
+- MUST: DO replication tests assert idempotency (`eventId`) and no large payloads are mirrored into Convex without BlobRefs.
+- MUST: test suites do not rely on React/TanStack, and do not call real external services by default (WorkOS/Convex/AI); provider SDKs must be stubbed behind Effect Layers.
