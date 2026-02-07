@@ -51,6 +51,7 @@ describe("conformance: shell/outlet invariants", () => {
 
     let swaps = 0
     let loaderRuns = 0
+    let viewRuns = 0
     const dom = {
       ...DomServiceLive,
       swap: (target: Element, content: any, mode?: any) => {
@@ -64,7 +65,10 @@ describe("conformance: shell/outlet invariants", () => {
       match: matchExact("/a"),
       loader: () =>
         Effect.sync(() => void loaderRuns++).pipe(Effect.as(RouteOutcome.ok({}))),
-      view: () => Effect.succeed(html`<div data-page="a">a</div>`),
+      view: () =>
+        Effect.sync(() => void viewRuns++).pipe(
+          Effect.as(html`<div data-page="a">a</div>`)
+        ),
     }
 
     const history = makeMemoryHistory("https://example.test/")
@@ -85,6 +89,7 @@ describe("conformance: shell/outlet invariants", () => {
     expect(swaps).toBe(0)
     // MUST NOT re-run initial loader during strict hydration boot.
     expect(loaderRuns).toBe(0)
+    expect(viewRuns).toBe(0)
 
     root.remove()
   })
@@ -103,6 +108,7 @@ describe("conformance: shell/outlet invariants", () => {
 
     let swaps = 0
     let loaderRuns = 0
+    let viewRuns = 0
     const dom = {
       ...DomServiceLive,
       swap: (target: Element, content: any, mode?: any) => {
@@ -116,7 +122,10 @@ describe("conformance: shell/outlet invariants", () => {
       match: matchExact("/a"),
       loader: () =>
         Effect.sync(() => void loaderRuns++).pipe(Effect.as(RouteOutcome.ok({}))),
-      view: () => Effect.succeed(html`<div data-page="a">a</div>`),
+      view: () =>
+        Effect.sync(() => void viewRuns++).pipe(
+          Effect.as(html`<div data-page="a">a</div>`)
+        ),
       hydration: "strict",
     }
 
@@ -139,6 +148,7 @@ describe("conformance: shell/outlet invariants", () => {
 
     expect(swaps).toBe(0)
     expect(loaderRuns).toBe(0)
+    expect(viewRuns).toBe(0)
     expect(root.innerHTML).toContain("SSR outlet")
 
     root.remove()
