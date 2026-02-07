@@ -926,21 +926,28 @@ DoD:
 
 **Goal:** no runtime React, no TanStack Router/Start, no Convex React bindings.
 
+Work log:
+- 2026-02-07: removed all React/TanStack TSX substrate from `apps/web` (deleted `src/routes/*`, `src/components/*`, `src/router.tsx`, `src/start.ts`, `src/routeTree.gen.ts`, `src/useAuthFromWorkOS.tsx`), replaced WorkOS `/callback` handler with native `@workos/authkit-session`, and moved “controller” logic into Effuse boot + non-React route controllers (`src/effuse-app/controllers/*`). Added Atom registry hydration from SSR dehydrate payload, ported PostHog loading to a non-React boot helper, and updated `apps/web` scripts + ESLint config to typecheck/lint/build without React/TanStack.
+
 Remove/Replace (apps/web):
 
 - delete React/TanStack host files:
-  - `apps/web/src/router.tsx`
-  - `apps/web/src/start.ts`
-  - `apps/web/src/routes/*`
-  - `apps/web/src/components/EffuseMount.tsx` (replaced by Effuse boot)
+  - `apps/web/src/router.tsx` (removed)
+  - `apps/web/src/start.ts` (removed)
+  - `apps/web/src/routeTree.gen.ts` (removed)
+  - `apps/web/src/routes/*` (removed)
+  - `apps/web/src/components/*` (removed)
 - remove dependencies from `apps/web/package.json`:
   - `react`, `react-dom`
   - `@tanstack/react-start`, `@tanstack/react-router`, `@tanstack/react-router-ssr-query`, `@tanstack/react-query`
   - `convex/react`, `@convex-dev/react-query`
-  - `@ai-sdk/react`, `ai`
+  - `@ai-sdk/react`
   - `@effect-atom/atom-react`
-- add a single client entrypoint:
-  - new: `apps/web/src/client/main.ts` (boots Effuse app)
+  - `@workos/authkit-tanstack-react-start` (replaced by `@workos/authkit-session`)
+- keep (temporary, required by Chat DO until `apps/autopilot-worker` migrates to `@effect/ai`):
+  - `ai`
+- ensure a single client entrypoint:
+  - `apps/web/src/effuse-app/client.ts` (boots Effuse app; built by `apps/web/vite.effuse.config.ts`)
 
 DoD:
 
@@ -950,6 +957,9 @@ DoD:
 ### Phase 8: Hardening (Performance, Ergonomics, Regression Gates)
 
 **Goal:** “ship quality” once the substrate is gone.
+
+Work log:
+- 2026-02-07: implemented `StateCell` ergonomics in `@openagentsinc/effuse` (`computed`, `filtered`, `withEq`, `batch`) with correctness-focused contract tests (`tests/state-cell.test.ts` + render coalescing in `tests/component-mount.test.ts`). Expanded conformance suite to enforce shell/outlet invariants and strict router boot no-swap behavior (`tests/conformance-shell-outlet.test.ts`).
 
 Add/Change:
 

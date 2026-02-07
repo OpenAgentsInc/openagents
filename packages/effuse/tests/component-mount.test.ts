@@ -51,6 +51,57 @@ describe("mountComponent (contract)", () => {
     container.remove()
   })
 
+  it("StateCell.batch coalesces multiple updates into a single re-render", async () => {
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+
+    type E = "double"
+
+    let renders = 0
+
+    const component: Component<number, E> = {
+      id: "counter-batch",
+      initialState: () => 0,
+      render: ({ state }) =>
+        Effect.gen(function* () {
+          renders++
+          const n = yield* state.get
+          return html`<div data-count="${String(n)}">count:${String(n)}</div>`
+        }),
+      handleEvent: (event, { state }) => {
+        if (event !== "double") return Effect.void
+        return state.batch(
+          Effect.gen(function* () {
+            yield* state.update((n) => n + 1)
+            yield* state.update((n) => n + 1)
+          })
+        )
+      },
+    }
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mounted = yield* mountComponent(component, container)
+
+          expect(container.innerHTML).toContain("count:0")
+          expect(renders).toBe(1)
+
+          yield* mounted.emit("double")
+          yield* Effect.sleep("10 millis")
+
+          expect(container.innerHTML).toContain("count:2")
+          expect(renders).toBe(2)
+        }).pipe(
+          Effect.provideService(DomServiceTag, DomServiceLive),
+          Effect.provideService(StateServiceTag, StateServiceLive)
+        )
+      )
+    )
+
+    container.remove()
+  })
+
   it("cleans up subscriptions on scope close", async () => {
     const container = document.createElement("div")
     document.body.appendChild(container)
@@ -93,4 +144,3 @@ describe("mountComponent (contract)", () => {
     container.remove()
   })
 })
-
