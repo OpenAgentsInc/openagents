@@ -427,11 +427,9 @@ describe("Autopilot worker", () => {
         ]);
       }
     };
-    const aiBinding = (env as any).AI as any;
-    const originalRun = aiBinding?.run;
-    if (typeof originalRun !== "function") {
-      throw new Error("Expected env.AI.run to be a function in tests");
-    }
+    const envAny = env as any;
+    const aiBinding = (envAny.AI ??= {}) as any;
+    const originalRun = aiBinding.run;
 
     aiBinding.run = stubAi.run;
     try {
@@ -587,7 +585,11 @@ describe("Autopilot worker", () => {
       expect(names).toContain("bootstrap_set_user_handle");
     }
     } finally {
-      aiBinding.run = originalRun;
+      if (typeof originalRun === "function") {
+        aiBinding.run = originalRun;
+      } else {
+        delete aiBinding.run;
+      }
     }
   });
 });

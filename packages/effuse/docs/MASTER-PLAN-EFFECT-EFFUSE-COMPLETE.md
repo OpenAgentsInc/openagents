@@ -974,6 +974,8 @@ Work log:
 - 2026-02-07: hardening: added GitHub Actions CI gate running the Effuse conformance suite + `apps/web` lint/build + `apps/autopilot-worker` typecheck/tests on every push/PR (`.github/workflows/verify.yml`).
 - 2026-02-07: hardening: added RouterService link interception contract tests (same-origin click interception, modifier-key bypass, cross-origin bypass) to prevent regressions in SPA navigation semantics (`packages/effuse/tests/router-link-interception.test.ts`).
 - 2026-02-07: hardening: implemented soft/client-only hydration semantics for `RouterService.start` (per-route initial navigation apply), and added conformance tests for hydration modes + strict “matched route” boot (no loader/view on boot) (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/conformance-hydration-modes.test.ts`, `packages/effuse/tests/conformance-shell-outlet.test.ts`).
+- 2026-02-07: hardening: added SSR determinism conformance test ensuring `runRoute` + `renderToString` is stable in a node environment (no DOM) for fixed inputs (`packages/effuse/tests/conformance-ssr-determinism.test.ts`).
+- 2026-02-07: hardening: stabilized `apps/autopilot-worker` tests by disabling Wrangler `remoteBindings` in the Workers Vitest pool (we stub Workers AI in tests; avoids remote proxy session flake + potential usage charges) (`apps/autopilot-worker/vitest.config.ts`, `apps/autopilot-worker/tests/index.test.ts`).
 
 Add/Change:
 
