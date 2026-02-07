@@ -11,6 +11,7 @@
     "noEmit": true,
 
     "strict": true,
+    "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
@@ -21,4 +22,3 @@
     "noPropertyAccessFromIndexSignature": false
   }
 }
-

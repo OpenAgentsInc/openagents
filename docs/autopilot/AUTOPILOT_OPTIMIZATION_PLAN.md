@@ -97,6 +97,30 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 - At least one in-repo signature runs in Autopilot and records `signatureId` + `compiled_id` consistently.
 - Artifacts can be stored, resolved, promoted, and rolled back.
 
+#### Phase 0 Implementation Log (2026-02-07)
+
+- `packages/dse/`
+  - Added deterministic hashing helpers (`promptIrHash`, `renderedPromptHash`, schema/params hashes) in `packages/dse/src/hashes.ts`.
+  - Added schema-validated compiled artifact format `DseCompiledArtifactV1` in `packages/dse/src/compiledArtifact.ts`.
+  - Added `BlobRef` + `BlobStore` (in-memory + DO-SQLite wiring on the worker side) and extended Prompt IR Context entries to support blob refs.
+  - Upgraded `Predict` to:
+    - resolve active artifact via `PolicyRegistry` (`getActive` + `getArtifact`)
+    - apply allowlisted transforms (instruction, few-shot, tool policy)
+    - decode with `strict_json` or `jsonish` + bounded re-ask repair
+    - emit `PredictReceiptV1` receipts (hash-first) via `ReceiptRecorder`
+
+- `apps/autopilot-worker/`
+  - Implemented Durable Object SQLite-backed `PolicyRegistry` + `BlobStore` + `ReceiptRecorder` layers and wired them into the DSE signature used for Blueprint tool routing.
+  - Added DO endpoints for artifact storage/promotion/rollback and receipt listing:
+    - `.../dse/artifacts` (GET/POST)
+    - `.../dse/active` (GET/POST/DELETE)
+    - `.../dse/rollback` (POST)
+    - `.../dse/receipts` (GET)
+
+- Verification
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/autopilot-worker && npm test && npm run typecheck`
+
 ---
 
 ### Phase 1 — Evaluation harness (DSE eval) with “reward signals” (Horizons RLM shape)

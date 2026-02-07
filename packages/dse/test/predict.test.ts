@@ -4,10 +4,13 @@ import { Effect, Layer, Schema } from "effect";
 import * as PromptIR from "../src/promptIr.js";
 import * as Signature from "../src/signature.js";
 import * as Params from "../src/params.js";
+import * as Hashes from "../src/hashes.js";
 
 import { LmClientService, type LmRequest, type LmResponse } from "../src/runtime/lm.js";
 import { layerInMemory } from "../src/runtime/policyRegistry.js";
 import { make as makePredict } from "../src/runtime/predict.js";
+import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
+import { makeInMemory as makeReceiptRecorder } from "../src/runtime/receipt.js";
 
 test("Predict applies active policy params (instruction + few-shot selection)", async () => {
   type In = { message: string };
@@ -47,23 +50,49 @@ test("Predict applies active policy params (instruction + few-shot selection)", 
     })
   );
 
+  const params: Params.DseParamsV1 = {
+    paramsVersion: 1,
+    instruction: { text: "Extract the handle. Output JSON only." },
+    fewShot: { exampleIds: ["ex2"] },
+    decode: { mode: "strict_json", maxRepairs: 0 }
+  };
+
+  const compiled_id = await Effect.runPromise(Hashes.paramsHash(params));
+  const inputSchemaHash = await Effect.runPromise(Hashes.schemaJsonHash(InSchema));
+  const outputSchemaHash = await Effect.runPromise(Hashes.schemaJsonHash(OutSchema));
+  const promptIrHash = await Effect.runPromise(Hashes.promptIrHash(sig.prompt));
+
   const policyLayer = layerInMemory({
-    activeBySignatureId: {
-      [sig.id]: {
-        compiledId: "sha256:test",
-        params: {
-          paramsVersion: 1,
-          instruction: { text: "Extract the handle. Output JSON only." },
-          fewShot: { exampleIds: ["ex2"] },
-          decode: { mode: "strict_json", maxRepairs: 0 }
-        } satisfies Params.DseParamsV1
+    activeBySignatureId: { [sig.id]: compiled_id },
+    artifacts: [
+      {
+        format: "openagents.dse.compiled_artifact",
+        formatVersion: 1,
+        signatureId: sig.id,
+        compiled_id,
+        createdAt: new Date().toISOString(),
+        hashes: {
+          inputSchemaHash,
+          outputSchemaHash,
+          promptIrHash,
+          paramsHash: compiled_id
+        },
+        params,
+        eval: { evalVersion: 1, kind: "unscored" },
+        optimizer: { id: "test" },
+        provenance: {}
       }
-    }
+    ]
   });
+
+  const blobLayer = blobLayerInMemory();
+  const receiptRecorder = makeReceiptRecorder();
 
   const predict = makePredict(sig);
   const program = predict({ message: "Call me Chris." }).pipe(
-    Effect.provide(Layer.mergeAll(lmLayer, policyLayer))
+    Effect.provide(
+      Layer.mergeAll(lmLayer, policyLayer, blobLayer, receiptRecorder.layer)
+    )
   );
 
   const out = await Effect.runPromise(program);
@@ -74,5 +103,9 @@ test("Predict applies active policy params (instruction + few-shot selection)", 
   expect(userMsg?.content).toContain("Extract the handle. Output JSON only.");
   expect(userMsg?.content).toContain('"id":"ex2"');
   expect(userMsg?.content).not.toContain('"id":"ex1"');
-});
 
+  const receipts = receiptRecorder.getReceipts();
+  expect(receipts.length).toBe(1);
+  expect(receipts[0]?.signatureId).toBe(sig.id);
+  expect(receipts[0]?.compiled_id).toBe(compiled_id);
+});
