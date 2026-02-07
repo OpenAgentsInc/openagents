@@ -9,6 +9,7 @@ import { loginPageTemplate } from "../effuse-pages/login"
 import { modulesPageTemplate } from "../effuse-pages/modules"
 import { signaturesPageTemplate } from "../effuse-pages/signatures"
 import { toolsPageTemplate } from "../effuse-pages/tools"
+import { marketingShellTemplate } from "../effuse-pages/marketingShell"
 
 import { AuthService } from "../effect/auth"
 import { SessionAtom } from "../effect/atoms/session"
@@ -81,7 +82,14 @@ const home: Route<HomeData, AppServices> = {
   id: "/",
   match: matchExact("/"),
   loader: (ctx) => okWithSession(ctx, { year: new Date().getFullYear() }),
-  view: (_ctx, data) => Effect.succeed(homePageTemplate(data.year)),
+  view: (_ctx, data) =>
+    Effect.succeed(
+      marketingShellTemplate({
+        isHome: true,
+        isLogin: false,
+        content: homePageTemplate(data.year),
+      }),
+    ),
   head: () => Effect.succeed({ title: "OpenAgents" }),
 }
 
@@ -104,7 +112,14 @@ const login: Route<LoginPageModel, AppServices> = {
       return
     }),
   loader: (ctx) => okWithSession(ctx, defaultLoginModel),
-  view: (_ctx, model) => Effect.succeed(loginPageTemplate(model)),
+  view: (_ctx, model) =>
+    Effect.succeed(
+      marketingShellTemplate({
+        isHome: false,
+        isLogin: true,
+        content: loginPageTemplate(model),
+      }),
+    ),
   head: () => Effect.succeed({ title: "Log in" }),
 }
 

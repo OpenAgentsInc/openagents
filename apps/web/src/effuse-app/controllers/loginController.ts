@@ -3,7 +3,12 @@ import type { EzAction } from "@openagentsinc/effuse"
 
 import { AuthService, clearAuthClientCache } from "../../effect/auth"
 import { SessionAtom } from "../../effect/atoms/session"
-import { runLoginPage } from "../../effuse-pages/login"
+import { loginPageTemplate } from "../../effuse-pages/login"
+import {
+  cleanupMarketingDotsGridBackground,
+  hydrateMarketingDotsGridBackground,
+  runMarketingShell,
+} from "../../effuse-pages/marketingShell"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { AppRuntime } from "../../effect/runtime"
@@ -45,7 +50,13 @@ export const mountLoginController = (input: {
     const nextKey = `${step}:${isBusy ? 1 : 0}:${errorText ?? ""}`
     if (nextKey === lastRenderKey) return
     lastRenderKey = nextKey
-    Effect.runPromise(runLoginPage(input.container, model())).catch(() => {})
+    Effect.runPromise(
+      runMarketingShell(input.container, {
+        isHome: false,
+        isLogin: true,
+        content: loginPageTemplate(model()),
+      }),
+    ).catch(() => {})
   }
 
   const setBusy = (busy: boolean) => {
@@ -248,6 +259,10 @@ export const mountLoginController = (input: {
     })
   )
 
+  // Start background work + initial render/hydration.
+  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
+  renderIfNeeded()
+
   return {
     cleanup: () => {
       input.ez.delete("login.email.input")
@@ -256,7 +271,8 @@ export const mountLoginController = (input: {
       input.ez.delete("login.code.submit")
       input.ez.delete("login.code.back")
       input.ez.delete("login.code.resend")
+
+      cleanupMarketingDotsGridBackground(input.container)
     },
   }
 }
-

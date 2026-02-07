@@ -18,6 +18,7 @@ import { TelemetryService } from "../effect/telemetry"
 import { hydrateAtomRegistryFromDocument, makeAtomRegistry } from "./atomRegistry"
 import { mountAutopilotController } from "./controllers/autopilotController"
 import { mountModulesController, mountSignaturesController, mountToolsController } from "./controllers/contractsController"
+import { mountHomeController } from "./controllers/homeController"
 import { mountLoginController } from "./controllers/loginController"
 import { loadPostHog } from "./posthog"
 import { appRoutes } from "./routes"
@@ -143,6 +144,8 @@ export const bootEffuseApp = (options?: BootOptions): void => {
           const desired =
             pathname === "/autopilot"
               ? "autopilot"
+              : pathname === "/"
+                ? "home"
               : pathname === "/login"
                 ? "login"
                 : pathname === "/modules"
@@ -157,6 +160,13 @@ export const bootEffuseApp = (options?: BootOptions): void => {
           stopActive()
 
           switch (desired) {
+            case "home": {
+              active = {
+                kind: "home",
+                cleanup: mountHomeController({ container: outlet }).cleanup,
+              }
+              return
+            }
             case "autopilot": {
               active = {
                 kind: "autopilot",
