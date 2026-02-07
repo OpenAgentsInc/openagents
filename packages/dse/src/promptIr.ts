@@ -58,10 +58,11 @@ export type OutputFormatBlock = {
   readonly format: OutputFormatSpec;
 };
 
-export type ContextEntry = {
-  readonly key: string;
-  readonly value: unknown;
-};
+import type { BlobRef } from "./blob.js";
+
+export type ContextEntry =
+  | { readonly key: string; readonly value: unknown }
+  | { readonly key: string; readonly blob: BlobRef };
 
 export type ContextBlock = {
   readonly _tag: "Context";
@@ -88,8 +89,15 @@ export const outputJsonSchema = (schema: unknown): OutputFormatBlock => ({
   _tag: "OutputFormat",
   format: { _tag: "JsonSchema", schema }
 });
+export const contextValue = (key: string, value: unknown): ContextEntry => ({
+  key,
+  value
+});
+export const contextBlob = (key: string, blob: BlobRef): ContextEntry => ({
+  key,
+  blob
+});
 export const context = (entries: ReadonlyArray<ContextEntry>): ContextBlock => ({
   _tag: "Context",
   entries
 });
-

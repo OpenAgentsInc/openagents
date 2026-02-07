@@ -4,7 +4,8 @@ import { canonicalJson } from "../internal/canonicalJson.js";
 import type { DseParams } from "../params.js";
 import type { DseSignature } from "../signature.js";
 import type { LmMessage } from "./lm.js";
-import type { PromptBlock, PromptIR } from "../promptIr.js";
+import type { ContextEntry, PromptBlock, PromptIR } from "../promptIr.js";
+import { BlobStoreService } from "./blobStore.js";
 
 export class PromptRenderError extends Schema.TaggedError<PromptRenderError>()(
   "PromptRenderError",
@@ -24,6 +25,7 @@ function applyParamsToPromptIr<I, O>(
   return Effect.gen(function* () {
     const instructionText = params.instruction?.text;
     const selectedExampleIds = params.fewShot?.exampleIds;
+    const tools = params.tools;
 
     // Precompute example id existence so we can fail fast and deterministically.
     if (selectedExampleIds && selectedExampleIds.length > 0) {
@@ -42,6 +44,7 @@ function applyParamsToPromptIr<I, O>(
       }
     }
 
+    let sawToolPolicy = false;
     const nextBlocks: Array<PromptBlock<I, O>> = prompt.blocks.map((block) => {
       switch (block._tag) {
         case "Instruction":
@@ -55,10 +58,44 @@ function applyParamsToPromptIr<I, O>(
               selectedExampleIds.includes(ex.id)
             )
           };
+        case "ToolPolicy": {
+          sawToolPolicy = true;
+          if (!tools) return block;
+          return {
+            ...block,
+            policy: {
+              ...block.policy,
+              ...(tools.allowedToolNames
+                ? { allowedToolNames: tools.allowedToolNames }
+                : {}),
+              ...(typeof tools.maxToolCalls === "number"
+                ? { maxToolCalls: tools.maxToolCalls }
+                : {}),
+              ...(tools.timeoutMsByToolName
+                ? { timeoutMsByToolName: tools.timeoutMsByToolName }
+                : {})
+            }
+          };
+        }
         default:
           return block;
       }
     });
+
+    if (tools && !sawToolPolicy) {
+      nextBlocks.push({
+        _tag: "ToolPolicy",
+        policy: {
+          ...(tools.allowedToolNames ? { allowedToolNames: tools.allowedToolNames } : {}),
+          ...(typeof tools.maxToolCalls === "number"
+            ? { maxToolCalls: tools.maxToolCalls }
+            : {}),
+          ...(tools.timeoutMsByToolName
+            ? { timeoutMsByToolName: tools.timeoutMsByToolName }
+            : {})
+        }
+      });
+    }
 
     return { ...prompt, blocks: nextBlocks };
   });
@@ -72,9 +109,10 @@ export function renderPromptMessages<I, O>(options: {
   readonly signature: DseSignature<I, O>;
   readonly input: I;
   readonly params: DseParams;
-}): Effect.Effect<ReadonlyArray<LmMessage>, PromptRenderError> {
+}): Effect.Effect<ReadonlyArray<LmMessage>, PromptRenderError, BlobStoreService> {
   return Effect.gen(function* () {
     const sig = options.signature;
+    const blobStore = yield* BlobStoreService;
 
     const prompt = yield* applyParamsToPromptIr(sig.id, sig.prompt, options.params);
 
@@ -91,13 +129,59 @@ export function renderPromptMessages<I, O>(options: {
       )
     );
 
-    const contextText = joinNonEmpty(
-      prompt.blocks.flatMap((b) => {
-        if (b._tag !== "Context") return [];
-        const lines = b.entries.map((e) => `${e.key}: ${canonicalJson(e.value)}`);
-        return lines.length ? ["Context:\n" + lines.join("\n")] : [];
-      })
+    const renderContextEntry = (e: ContextEntry): Effect.Effect<string, PromptRenderError> => {
+      if ("value" in e) {
+        return Effect.succeed(`${e.key}: ${canonicalJson(e.value)}`);
+      }
+
+      return blobStore.getText(e.blob.id).pipe(
+        Effect.flatMap((text) => {
+          if (text == null) {
+            return Effect.fail(
+              PromptRenderError.make({
+                signatureId: sig.id,
+                message: `Missing blob for context entry (blobId=${e.blob.id})`
+              })
+            );
+          }
+
+          const MAX_CONTEXT_CHARS = 20_000;
+          const truncated =
+            text.length > MAX_CONTEXT_CHARS
+              ? text.slice(0, MAX_CONTEXT_CHARS) + "\n...[truncated]"
+              : text;
+
+          const metaParts: Array<string> = [];
+          metaParts.push(`blobId=${e.blob.id}`);
+          if (e.blob.mime) metaParts.push(`mime=${e.blob.mime}`);
+          metaParts.push(`size=${e.blob.size}`);
+
+          return Effect.succeed(`${e.key} (${metaParts.join(" ")}):\n${truncated}`);
+        }),
+        Effect.catchAll((cause) =>
+          Effect.fail(
+            PromptRenderError.make({
+              signatureId: sig.id,
+              message: "Failed to load blob for context entry",
+              cause
+            })
+          )
+        )
+      );
+    };
+
+    const contextSections = yield* Effect.forEach(
+      prompt.blocks,
+      (b) => {
+        if (b._tag !== "Context") return Effect.succeed("");
+        return Effect.forEach(b.entries, renderContextEntry).pipe(
+          Effect.map((lines) => (lines.length ? "Context:\n" + lines.join("\n") : ""))
+        );
+      },
+      { discard: false }
     );
+
+    const contextText = joinNonEmpty(contextSections);
 
     const toolPolicyText = joinNonEmpty(
       prompt.blocks.flatMap((b) => {

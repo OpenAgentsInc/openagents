@@ -25,15 +25,95 @@ function stripCodeFences(text: string): string {
   return withoutFirst.slice(0, endFenceIndex).trim();
 }
 
+function extractFirstJsonValue(text: string): string | null {
+  const idxObj = text.indexOf("{");
+  const idxArr = text.indexOf("[");
+  const start =
+    idxObj === -1
+      ? idxArr
+      : idxArr === -1
+        ? idxObj
+        : Math.min(idxObj, idxArr);
+
+  if (start === -1) return null;
+
+  const open = text[start]!;
+  const close = open === "{" ? "}" : "]";
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]!;
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (ch === open) depth++;
+    if (ch === close) depth--;
+
+    if (depth === 0) {
+      return text.slice(start, i + 1);
+    }
+  }
+
+  return null;
+}
+
+function parseStrictJson(stripped: string): unknown {
+  return JSON.parse(stripped) as unknown;
+}
+
+function parseJsonish(stripped: string): unknown {
+  const extracted = extractFirstJsonValue(stripped);
+  if (!extracted) {
+    throw new Error("No JSON object/array found in output");
+  }
+  return JSON.parse(extracted) as unknown;
+}
+
 export function decodeJsonOutput<O>(
   schema: Schema.Schema<O>,
   rawText: string
+): Effect.Effect<O, OutputDecodeError> {
+  return decodeJsonOutputWithMode(schema, rawText, { mode: "strict_json" });
+}
+
+export function decodeJsonOutputWithMode<O>(
+  schema: Schema.Schema<O>,
+  rawText: string,
+  options: { readonly mode: "strict_json" | "jsonish" }
 ): Effect.Effect<O, OutputDecodeError> {
   return Effect.gen(function* () {
     const stripped = stripCodeFences(rawText);
 
     const parsed = yield* Effect.try({
-      try: () => JSON.parse(stripped) as unknown,
+      try: () => {
+        try {
+          return parseStrictJson(stripped);
+        } catch (error) {
+          if (options.mode !== "jsonish") throw error;
+          return parseJsonish(stripped);
+        }
+      },
       catch: (cause) =>
         OutputDecodeError.make({
           message: "Failed to parse JSON output",
@@ -53,4 +133,3 @@ export function decodeJsonOutput<O>(
     });
   });
 }
-

@@ -198,4 +198,131 @@ describe("Autopilot worker", () => {
       expect(json.bootstrapState.status).toBe("pending");
     }
   });
+
+  it("stores DSE artifacts, promotes active, and rolls back via DO SQLite", async () => {
+    const threadId = `dse-${Date.now()}`;
+    const base = `http://example.com/agents/chat/${threadId}`;
+
+    const signatureId = "@openagents/test/Sig.v1";
+
+    const artifact1 = {
+      format: "openagents.dse.compiled_artifact",
+      formatVersion: 1,
+      signatureId,
+      compiled_id: "sha256:test1",
+      createdAt: new Date().toISOString(),
+      hashes: {
+        inputSchemaHash: "sha256:in",
+        outputSchemaHash: "sha256:out",
+        promptIrHash: "sha256:prompt",
+        paramsHash: "sha256:test1"
+      },
+      params: {
+        paramsVersion: 1,
+        instruction: { text: "v1" },
+        fewShot: { exampleIds: [] },
+        decode: { mode: "strict_json", maxRepairs: 0 }
+      },
+      eval: { evalVersion: 1, kind: "unscored" },
+      optimizer: { id: "test" },
+      provenance: {}
+    };
+
+    const artifact2 = {
+      ...artifact1,
+      compiled_id: "sha256:test2",
+      hashes: { ...artifact1.hashes, paramsHash: "sha256:test2" },
+      params: { ...artifact1.params, instruction: { text: "v2" } }
+    };
+
+    // Store artifacts.
+    for (const artifact of [artifact1, artifact2]) {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`${base}/dse/artifacts`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(artifact)
+        }),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.ok).toBe(true);
+    }
+
+    // Promote artifact1.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`${base}/dse/active`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ signatureId, compiled_id: artifact1.compiled_id })
+        }),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.ok).toBe(true);
+      expect(json.compiled_id).toBe(artifact1.compiled_id);
+    }
+
+    // Promote artifact2.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`${base}/dse/active`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ signatureId, compiled_id: artifact2.compiled_id })
+        }),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.ok).toBe(true);
+      expect(json.compiled_id).toBe(artifact2.compiled_id);
+    }
+
+    // Roll back to artifact1.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`${base}/dse/rollback`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ signatureId })
+        }),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.ok).toBe(true);
+      expect(json.from).toBe(artifact2.compiled_id);
+      expect(json.to).toBe(artifact1.compiled_id);
+    }
+
+    // Active pointer reflects rollback.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`${base}/dse/active?signatureId=${encodeURIComponent(signatureId)}`),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.compiled_id).toBe(artifact1.compiled_id);
+    }
+  });
 });

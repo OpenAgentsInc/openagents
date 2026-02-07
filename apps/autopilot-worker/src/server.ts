@@ -17,8 +17,8 @@ import {
 import { createWorkersAI } from "workers-ai-provider";
 import { Effect, Schema } from "effect";
 import {
+  CompiledArtifact,
   Lm,
-  Policy,
   Predict,
   Tool,
   type DseToolContract
@@ -58,6 +58,13 @@ import {
   moduleContractsExport,
   signatureContractsExport
 } from "./dseCatalog";
+import {
+  initDseTables,
+  layerDseFromSql,
+  listReceipts,
+  rollbackActiveArtifact,
+  type SqlTag
+} from "./dseServices";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
@@ -247,6 +254,7 @@ export class Chat extends AIChatAgent<Env> {
       json text not null,
       updated_at integer not null
     )`;
+    initDseTables(this.sql.bind(this) as unknown as SqlTag);
   }
 
   private loadBlueprintState(): AutopilotBlueprintStateV1 | null {
@@ -436,6 +444,234 @@ export class Chat extends AIChatAgent<Env> {
       await this.ensureWelcomeMessage(reset);
 
       return Response.json({ ok: true });
+    }
+
+    if (url.pathname.endsWith("/dse/artifacts")) {
+      if (request.method === "GET") {
+        const signatureId = url.searchParams.get("signatureId");
+        const compiledId = url.searchParams.get("compiled_id");
+        if (!signatureId || !compiledId) {
+          return Response.json(
+            {
+              code: "invalid_request",
+              message: "Expected query params: signatureId, compiled_id"
+            },
+            { status: 400 }
+          );
+        }
+
+        const rows =
+          this.sql<{ json: string }>`
+            select json from dse_artifacts
+            where signature_id = ${signatureId} and compiled_id = ${compiledId}
+          ` || [];
+        const row = rows[0];
+        if (!row) {
+          return Response.json(
+            { code: "not_found", message: "Artifact not found." },
+            { status: 404 }
+          );
+        }
+        try {
+          return Response.json(JSON.parse(row.json));
+        } catch {
+          return Response.json(
+            { code: "corrupt_artifact", message: "Stored artifact JSON is invalid." },
+            { status: 500 }
+          );
+        }
+      }
+
+      if (request.method === "POST") {
+        let body: unknown = null;
+        try {
+          body = await request.json();
+        } catch {
+          return Response.json(
+            { code: "invalid_json", message: "Expected JSON body." },
+            { status: 400 }
+          );
+        }
+
+        let decoded: CompiledArtifact.DseCompiledArtifactV1;
+        try {
+          decoded = Schema.decodeUnknownSync(CompiledArtifact.DseCompiledArtifactV1Schema)(
+            body
+          );
+        } catch (error) {
+          console.error("[dse] invalid artifact", error);
+          return Response.json(
+            { code: "invalid_artifact", message: "Artifact failed validation." },
+            { status: 400 }
+          );
+        }
+
+        const encoded = Schema.encodeSync(CompiledArtifact.DseCompiledArtifactV1Schema)(
+          decoded
+        );
+        const json = JSON.stringify(encoded);
+        const createdAtMs = Date.parse(decoded.createdAt);
+        const createdAt = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
+
+        this.sql`
+          insert into dse_artifacts (signature_id, compiled_id, json, created_at)
+          values (${decoded.signatureId}, ${decoded.compiled_id}, ${json}, ${createdAt})
+          on conflict(signature_id, compiled_id) do nothing
+        `;
+
+        return Response.json({
+          ok: true,
+          signatureId: decoded.signatureId,
+          compiled_id: decoded.compiled_id
+        });
+      }
+
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    if (url.pathname.endsWith("/dse/active")) {
+      if (request.method === "GET") {
+        const signatureId = url.searchParams.get("signatureId");
+        if (!signatureId) {
+          return Response.json(
+            { code: "invalid_request", message: "Expected query param: signatureId" },
+            { status: 400 }
+          );
+        }
+
+        const rows =
+          this.sql<{ compiled_id: string }>`
+            select compiled_id from dse_active_artifacts where signature_id = ${signatureId}
+          ` || [];
+
+        return Response.json({
+          signatureId,
+          compiled_id: rows[0]?.compiled_id ?? null
+        });
+      }
+
+      if (request.method === "POST") {
+        let body: unknown = null;
+        try {
+          body = await request.json();
+        } catch {
+          return Response.json(
+            { code: "invalid_json", message: "Expected JSON body." },
+            { status: 400 }
+          );
+        }
+
+        const signatureId =
+          body && typeof body === "object" ? (body as any).signatureId : null;
+        const compiledId =
+          body && typeof body === "object" ? (body as any).compiled_id : null;
+
+        if (typeof signatureId !== "string" || typeof compiledId !== "string") {
+          return Response.json(
+            {
+              code: "invalid_request",
+              message: "Expected body: { signatureId: string, compiled_id: string }"
+            },
+            { status: 400 }
+          );
+        }
+
+        const exists =
+          (this.sql<{ ok: number }>`
+            select 1 as ok from dse_artifacts
+            where signature_id = ${signatureId} and compiled_id = ${compiledId}
+            limit 1
+          ` || [])[0]?.ok === 1;
+
+        if (!exists) {
+          return Response.json(
+            { code: "not_found", message: "Artifact not found; cannot set active." },
+            { status: 404 }
+          );
+        }
+
+        const ts = Date.now();
+        this.sql`
+          insert into dse_active_artifact_history (signature_id, compiled_id, updated_at)
+          values (${signatureId}, ${compiledId}, ${ts})
+        `;
+        this.sql`
+          insert into dse_active_artifacts (signature_id, compiled_id, updated_at)
+          values (${signatureId}, ${compiledId}, ${ts})
+          on conflict(signature_id) do update set compiled_id = excluded.compiled_id, updated_at = excluded.updated_at
+        `;
+
+        return Response.json({ ok: true, signatureId, compiled_id: compiledId });
+      }
+
+      if (request.method === "DELETE") {
+        const signatureId = url.searchParams.get("signatureId");
+        if (!signatureId) {
+          return Response.json(
+            { code: "invalid_request", message: "Expected query param: signatureId" },
+            { status: 400 }
+          );
+        }
+        this.sql`delete from dse_active_artifacts where signature_id = ${signatureId}`;
+        return Response.json({ ok: true, signatureId });
+      }
+
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    if (url.pathname.endsWith("/dse/rollback")) {
+      if (request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      let body: unknown = null;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json(
+          { code: "invalid_json", message: "Expected JSON body." },
+          { status: 400 }
+        );
+      }
+
+      const signatureId =
+        body && typeof body === "object" ? (body as any).signatureId : null;
+      if (typeof signatureId !== "string") {
+        return Response.json(
+          { code: "invalid_request", message: "Expected body: { signatureId: string }" },
+          { status: 400 }
+        );
+      }
+
+      const result = rollbackActiveArtifact(
+        this.sql.bind(this) as unknown as SqlTag,
+        signatureId
+      );
+      if (!result.ok) {
+        return Response.json(
+          { code: "rollback_failed", message: result.message ?? "Rollback failed." },
+          { status: 400 }
+        );
+      }
+      return Response.json(result);
+    }
+
+    if (url.pathname.endsWith("/dse/receipts")) {
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const signatureId = url.searchParams.get("signatureId") ?? undefined;
+      const limitRaw = url.searchParams.get("limit");
+      const limitParsed = limitRaw ? Number(limitRaw) : Number.NaN;
+      const limit = Number.isFinite(limitParsed) ? limitParsed : undefined;
+
+      const receipts = listReceipts(this.sql.bind(this) as unknown as SqlTag, {
+        ...(signatureId ? { signatureId } : {}),
+        ...(limit !== undefined ? { limit } : {})
+      });
+
+      return Response.json(receipts);
     }
 
     if (url.pathname.endsWith("/tool-contracts")) {
@@ -1130,7 +1366,9 @@ export class Chat extends AIChatAgent<Env> {
                   }
                 }).pipe(
                   Effect.provideService(Lm.LmClientService, dseLmClient),
-                  Effect.provide(Policy.layerInMemory())
+                  Effect.provide(
+                    layerDseFromSql(this.sql.bind(this) as unknown as SqlTag)
+                  )
                 )
               );
 
