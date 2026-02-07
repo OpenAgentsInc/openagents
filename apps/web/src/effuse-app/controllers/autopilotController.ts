@@ -14,7 +14,7 @@ import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { AgentApi, AgentToolContract } from "../../effect/agentApi"
 import type { ChatClient } from "../../effect/chat"
 import type { TelemetryClient } from "../../effect/telemetry"
-import type { UIMessage } from "ai"
+import type { ChatMessage } from "../../effect/chatProtocol"
 import type { AutopilotRouteRenderInput } from "../../effuse-pages/autopilotRoute"
 import type { RenderedMessage as EffuseRenderedMessage } from "../../effuse-pages/autopilot"
 
@@ -54,7 +54,7 @@ function sanitizeBlueprintForDisplay(value: unknown): unknown {
   return value
 }
 
-type UiPart = UIMessage["parts"][number]
+type UiPart = ChatMessage["parts"][number]
 
 type RenderPart =
   | { kind: "text"; text: string; state?: "streaming" | "done" }
@@ -279,7 +279,10 @@ export const mountAutopilotController = (input: {
     const messages = chatSnapshot.messages
 
     const renderedMessages = messages
-      .filter((m): m is UIMessage & { readonly role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
+      .filter(
+        (m): m is ChatMessage & { readonly role: "user" | "assistant" } =>
+          m.role === "user" || m.role === "assistant",
+      )
       .map((msg) => {
         const parts = Array.isArray((msg as any).parts) ? ((msg as any).parts as ReadonlyArray<UiPart>) : []
         const renderParts = toRenderableParts(parts)

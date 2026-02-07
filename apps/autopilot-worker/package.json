@@ -13,13 +13,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cloudflare/ai-chat": "0.0.3",
+    "@effect/ai": "0.33.2",
     "@openagentsinc/dse": "file:../../packages/dse",
     "agents": "0.3.3",
-    "ai": "6.0.5",
-    "ajv": "^8.17.1",
-    "effect": "^3.19.16",
-    "workers-ai-provider": "3.0.2"
+    "effect": "^3.19.16"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.11.1",

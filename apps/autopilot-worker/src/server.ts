@@ -1,28 +1,9 @@
-import { routeAgentRequest, type AgentContext } from "agents";
-import { AIChatAgent } from "@cloudflare/ai-chat";
-import {
-  convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  generateText,
-  InvalidToolInputError,
-  jsonSchema,
-  NoSuchToolError,
-  stepCountIs,
-  streamText,
-  type StreamTextOnFinishCallback,
-  tool,
-  type ToolSet
-} from "ai";
-import { createWorkersAI } from "workers-ai-provider";
-import { Effect, Schema } from "effect";
-import {
-  CompiledArtifact,
-  Lm,
-  Predict,
-  Tool,
-  type DseToolContract
-} from "@openagentsinc/dse";
+import { Agent, routeAgentRequest, type AgentContext, type Connection, type WSMessage } from "agents";
+import * as AiLanguageModel from "@effect/ai/LanguageModel";
+import * as AiResponse from "@effect/ai/Response";
+import * as AiToolkit from "@effect/ai/Toolkit";
+import { Effect, Layer, Schema, Stream } from "effect";
+import { CompiledArtifact, Lm, Predict } from "@openagentsinc/dse";
 import {
   AutopilotBootstrapState,
   AutopilotBlueprintStateV1,
@@ -67,6 +48,11 @@ import {
   type SqlTag
 } from "./dseServices";
 
+import { MessageType, type ChatMessage, type ChatPart, type ChatToolPart } from "./chatProtocol";
+import { makeWorkersAiLanguageModel } from "./effect/ai/languageModel";
+import { encodeWirePart } from "./effect/ai/streaming";
+import { aiToolFromContract } from "./effect/ai/toolkit";
+
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
@@ -75,57 +61,23 @@ const FIRST_OPEN_WELCOME_MESSAGE =
   "Autopilot online.\n\n" +
   "Greetings, user. What shall I call you?";
 
-function aiToolFromContract<I, O>(
-  contract: DseToolContract<I, O>,
-  execute: (input: I) => Promise<O>
-) {
-  const inputSchema = jsonSchema(Tool.inputJsonSchema(contract));
-  return tool({
-    description: contract.description,
-    inputSchema,
-    strict: true,
-    ...(contract.inputExamples ? { inputExamples: contract.inputExamples as any } : {}),
-    execute: execute as any
-  });
-}
+const AUTOPILOT_TOOLKIT = AiToolkit.make(
+  aiToolFromContract(toolContracts.get_time),
+  aiToolFromContract(toolContracts.echo),
+  aiToolFromContract(toolContracts.bootstrap_set_user_handle),
+  aiToolFromContract(toolContracts.bootstrap_set_agent_name),
+  aiToolFromContract(toolContracts.bootstrap_set_agent_vibe),
+  aiToolFromContract(toolContracts.identity_update),
+  aiToolFromContract(toolContracts.user_update),
+  aiToolFromContract(toolContracts.character_update),
+  aiToolFromContract(toolContracts.tools_update_notes),
+  aiToolFromContract(toolContracts.heartbeat_set_checklist),
+  aiToolFromContract(toolContracts.memory_append),
+  aiToolFromContract(toolContracts.bootstrap_complete),
+  aiToolFromContract(toolContracts.blueprint_export),
+);
 
-const BASE_TOOLS: ToolSet = {
-  get_time: aiToolFromContract(
-    toolContracts.get_time,
-    async ({ timeZone }) => {
-      const now = new Date();
-      const iso = now.toISOString();
-      const epochMs = now.getTime();
-      const epochSec = Math.floor(epochMs / 1000);
-
-      let formatted: string | null = null;
-      let resolvedTimeZone: string | null = null;
-
-      if (timeZone) {
-        // Intl is available in Workers. Keep output stable and small.
-        const dtf = new Intl.DateTimeFormat("en-US", {
-          timeZone,
-          dateStyle: "medium",
-          timeStyle: "medium"
-        });
-        formatted = dtf.format(now);
-        resolvedTimeZone = timeZone;
-      }
-
-      return {
-        iso,
-        epochMs,
-        epochSec,
-        ...(formatted ? { formatted } : {}),
-        ...(resolvedTimeZone ? { timeZone: resolvedTimeZone } : {})
-      };
-    }
-  ),
-  echo: aiToolFromContract(
-    toolContracts.echo,
-    async ({ text }) => ({ text })
-  )
-};
+const encodeStreamPart = Schema.encodeSync(AiResponse.StreamPart(AUTOPILOT_TOOLKIT));
 
 const SYSTEM_PROMPT_BASE =
   "You are Autopilot.\n" +
@@ -187,23 +139,6 @@ function buildSystemPrompt(options: {
   return system;
 }
 
-function stripToolExecution<T extends ToolSet>(tools: T): T {
-  // Tool-call repair should never have side effects. We strip executors so
-  // we can ask the model to "re-emit" a tool call without running it.
-  return Object.fromEntries(
-    Object.entries(tools).map(([name, toolDef]) => [
-      name,
-      {
-        ...(toolDef as any),
-        execute: undefined,
-        onInputStart: undefined,
-        onInputDelta: undefined,
-        onInputAvailable: undefined
-      }
-    ])
-  ) as T;
-}
-
 function normalizeLegacyBlueprintKeys(input: unknown): unknown {
   if (!input || typeof input !== "object") return input;
 
@@ -239,24 +174,50 @@ function normalizeLegacyBlueprintKeys(input: unknown): unknown {
   return root;
 }
 
+function safeJsonParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function messageText(message: ChatMessage): string {
+  const parts: ReadonlyArray<ChatPart> = Array.isArray(message.parts)
+    ? (message.parts as ReadonlyArray<ChatPart>)
+    : [];
+  return parts
+    .filter((p) => p && typeof p === "object" && (p as any).type === "text")
+    .map((p) => String((p as any).text ?? ""))
+    .join("");
+}
+
 /**
  * Minimal persistent chat agent:
- * - Durable Object-backed transcript via AIChatAgent
- * - Workers AI model (no keys)
- * - No tools, no sandbox, no containers
+ * - Durable Object-backed transcript via DO SQLite
+ * - Workers AI model (no keys) via `@effect/ai` (`LanguageModel` + Response parts)
+ * - No tools beyond the explicit Tool contracts in `./tools`
  */
-export class Chat extends AIChatAgent<Env> {
+export class Chat extends Agent<Env> {
   private static readonly BLUEPRINT_ROW_ID = "autopilot_blueprint_state_v1";
   private dseDefaultsInit: Promise<void> | null = null;
+  messages: Array<ChatMessage>;
+  private chatAbortControllers = new Map<string, AbortController>();
 
   constructor(ctx: AgentContext, env: Env) {
     super(ctx, env);
+    this.sql`create table if not exists cf_ai_chat_agent_messages (
+      id text primary key,
+      message text not null,
+      created_at datetime default current_timestamp
+    )`;
     this.sql`create table if not exists autopilot_blueprint_state (
       id text primary key,
       json text not null,
       updated_at integer not null
     )`;
     initDseTables(this.sql.bind(this) as unknown as SqlTag);
+    this.messages = this.loadMessagesFromDb();
   }
 
   private ensureDefaultDsePolicies(): Promise<void> {
@@ -273,6 +234,39 @@ export class Chat extends AIChatAgent<Env> {
     })();
 
     return this.dseDefaultsInit;
+  }
+
+  private loadMessagesFromDb(): Array<ChatMessage> {
+    const rows =
+      this.sql<{ message: string }>`select message from cf_ai_chat_agent_messages order by created_at` ||
+      [];
+    return rows
+      .map((row) => {
+        try {
+          return JSON.parse(row.message) as ChatMessage;
+        } catch (error) {
+          console.error("[chat] Failed to parse stored message", error);
+          return null;
+        }
+      })
+      .filter((msg): msg is ChatMessage => msg !== null);
+  }
+
+  private persistMessages(messages: ReadonlyArray<ChatMessage>) {
+    for (const message of messages) {
+      const json = JSON.stringify(message);
+      this.sql`
+        insert into cf_ai_chat_agent_messages (id, message)
+        values (${message.id}, ${json})
+        on conflict(id) do update set message = excluded.message
+      `;
+    }
+    this.messages = this.loadMessagesFromDb();
+  }
+
+  private clearMessages() {
+    this.sql`delete from cf_ai_chat_agent_messages`;
+    this.messages = [];
   }
 
   private loadBlueprintState(): AutopilotBlueprintStateV1 | null {
@@ -404,16 +398,16 @@ export class Chat extends AIChatAgent<Env> {
     });
   }
 
-  private async ensureWelcomeMessage(blueprint: AutopilotBlueprintStateV1) {
+  private ensureWelcomeMessage(blueprint: AutopilotBlueprintStateV1) {
     if (blueprint.bootstrapState.status === "complete") return;
     if (this.messages.length > 0) return;
 
-    await this.persistMessages([
+    this.persistMessages([
       {
         id: crypto.randomUUID(),
         role: "assistant",
         parts: [{ type: "text", text: FIRST_OPEN_WELCOME_MESSAGE }]
-      } as any
+      }
     ]);
   }
 
@@ -433,8 +427,8 @@ export class Chat extends AIChatAgent<Env> {
 
     if (url.pathname.endsWith("/get-messages")) {
       const blueprint = this.ensureBlueprintStateForChat();
-      await this.ensureWelcomeMessage(blueprint);
-      return super.onRequest(request);
+      this.ensureWelcomeMessage(blueprint);
+      return Response.json(this.loadMessagesFromDb());
     }
 
     if (url.pathname.endsWith("/reset-agent")) {
@@ -448,20 +442,23 @@ export class Chat extends AIChatAgent<Env> {
 
       // Reset chat transcript + streaming state (server-side).
       //
-      // NOTE: We intentionally do this here (instead of relying on the WS-only
+      // NOTE: We intentionally do this here (instead of relying only on the WS
       // CF_AGENT_CHAT_CLEAR message) so the UI can reset via a single POST,
       // and immediately see the post-reset welcome message without a refresh.
-      this.sql`delete from cf_ai_chat_agent_messages`;
-      this.sql`delete from cf_ai_chat_stream_chunks`;
-      this.sql`delete from cf_ai_chat_stream_metadata`;
-      this.messages = [];
-      this._activeStreamId = null;
-      this._activeRequestId = null;
+      for (const controller of this.chatAbortControllers.values()) {
+        try {
+          controller.abort();
+        } catch {
+          // ignore
+        }
+      }
+      this.chatAbortControllers.clear();
+      this.clearMessages();
 
       // Ensure the first-open UX restarts immediately for any connected clients.
       // Keep bootstrapState at defaults ("pending") on reset; it will transition
       // to "in_progress" when the chat is actually opened (get-messages).
-      await this.ensureWelcomeMessage(reset);
+      this.ensureWelcomeMessage(reset);
 
       return Response.json({ ok: true });
     }
@@ -780,783 +777,1039 @@ export class Chat extends AIChatAgent<Env> {
     return super.onRequest(request);
   }
 
-  override async onChatMessage(
-    onFinish: StreamTextOnFinishCallback<ToolSet>,
-    options?: { abortSignal?: AbortSignal }
-  ) {
-    const workersai = createWorkersAI({ binding: this.env.AI });
-    const blueprint = this.ensureBlueprintStateForChat();
-    const recentMessages = this.messages.slice(-MAX_CONTEXT_MESSAGES);
+  override async onMessage(connection: Connection, message: WSMessage) {
+    if (typeof message !== "string") return;
 
-    const stream = createUIMessageStream({
-      execute: async ({ writer }) => {
-        const buildSystem = (
-          state: AutopilotBlueprintStateV1,
-          toolNames?: ReadonlyArray<string>
-        ) => {
-          const blueprintContext = renderBlueprintContext(state, {
-            // Only include the Tools doc when tools are active for this step.
-            includeToolsDoc: Boolean(toolNames && toolNames.length > 0)
-          });
-          const bootstrapInstructions = renderBootstrapInstructions(state);
-          const toolPrompt =
-            toolNames && toolNames.length > 0
-              ? renderToolPrompt({ toolNames })
-              : null;
-          return buildSystemPrompt({
-            identityVibe: state.docs.identity.vibe,
-            characterVibe: state.docs.character.vibe,
-            bootstrapState: {
-              status: state.bootstrapState.status,
-              stage: state.bootstrapState.stage,
-              startedAt: state.bootstrapState.startedAt,
-              completedAt: state.bootstrapState.completedAt
-            },
-            blueprintContext,
-            bootstrapInstructions,
-            toolPrompt
-          });
-        };
+    const parsed = safeJsonParse(message) as any;
+    if (!parsed || typeof parsed !== "object") return;
 
-        const tools: ToolSet = {
-          ...BASE_TOOLS,
-          bootstrap_set_user_handle: aiToolFromContract(
-            toolContracts.bootstrap_set_user_handle,
-            async ({ handle }) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const user = state.docs.user;
-                const nextHandle = handle.trim();
+    switch (parsed.type) {
+      case MessageType.CF_AGENT_CHAT_CLEAR: {
+        for (const controller of this.chatAbortControllers.values()) {
+          try {
+            controller.abort();
+          } catch {
+            // ignore
+          }
+        }
+        this.chatAbortControllers.clear();
+        this.clearMessages();
+        this.broadcast(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }), [
+          connection.id
+        ]);
+        return;
+      }
 
-                const nextUser = UserDoc.make({
-                  ...user,
-                  version: DocVersion.make(Number(user.version) + 1),
-                  name: nextHandle,
-                  addressAs: nextHandle,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  user: nextUser
-                });
-                const nextBootstrapState =
-                  state.bootstrapState.status === "complete"
-                    ? state.bootstrapState
-                    : AutopilotBootstrapState.make({
-                        ...state.bootstrapState,
-                        status:
-                          state.bootstrapState.status === "pending"
-                            ? "in_progress"
-                            : state.bootstrapState.status,
-                        stage: "ask_agent_name",
-                        startedAt: state.bootstrapState.startedAt ?? now
-                      });
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  bootstrapState: nextBootstrapState,
-                  docs: nextDocs
-                });
+      case MessageType.CF_AGENT_CHAT_MESSAGES: {
+        const messages = Array.isArray(parsed.messages)
+          ? (parsed.messages as ReadonlyArray<ChatMessage>)
+          : [];
+        this.clearMessages();
+        this.persistMessages(messages);
+        this.broadcast(
+          JSON.stringify({
+            type: MessageType.CF_AGENT_CHAT_MESSAGES,
+            messages
+          }),
+          [connection.id]
+        );
+        return;
+      }
+
+      case MessageType.CF_AGENT_CHAT_REQUEST_CANCEL: {
+        const id = typeof parsed.id === "string" ? parsed.id : "";
+        const controller = id ? this.chatAbortControllers.get(id) : null;
+        if (controller) {
+          try {
+            controller.abort();
+          } catch {
+            // ignore
+          }
+          this.chatAbortControllers.delete(id);
+        }
+        return;
+      }
+
+      case MessageType.CF_AGENT_USE_CHAT_REQUEST: {
+        const requestId = typeof parsed.id === "string" ? parsed.id : "";
+        if (!requestId) return;
+        const init = parsed.init;
+        if (!init || init.method !== "POST") return;
+
+        const bodyText = typeof init.body === "string" ? init.body : "";
+        const body = bodyText ? safeJsonParse(bodyText) : null;
+        const messages = Array.isArray((body as any)?.messages)
+          ? ((body as any).messages as ReadonlyArray<ChatMessage>)
+          : [];
+
+        this.persistMessages(messages);
+        this.broadcast(
+          JSON.stringify({
+            type: MessageType.CF_AGENT_CHAT_MESSAGES,
+            messages
+          }),
+          [connection.id]
+        );
+
+        const controller = new AbortController();
+        this.chatAbortControllers.set(requestId, controller);
+
+        try {
+          await this.streamChatResponse(connection, requestId, controller.signal);
+        } finally {
+          this.chatAbortControllers.delete(requestId);
+        }
+
+        return;
+      }
+
+      default:
+        return;
+    }
+  }
+
+  private toolHandlers() {
+    return AUTOPILOT_TOOLKIT.of({
+      get_time: ({ timeZone }: any) =>
+        Effect.try({
+          try: () => {
+            const now = new Date();
+            const iso = now.toISOString();
+            const epochMs = now.getTime();
+            const epochSec = Math.floor(epochMs / 1000);
+
+            let formatted: string | null = null;
+            let resolvedTimeZone: string | null = null;
+
+            if (timeZone) {
+              // Intl is available in Workers. Keep output stable and small.
+              const dtf = new Intl.DateTimeFormat("en-US", {
+                timeZone,
+                dateStyle: "medium",
+                timeStyle: "medium"
               });
-
-              return {
-                ok: true,
-                handle: updated.docs.user.addressAs,
-                stage: updated.bootstrapState.stage ?? null
-              };
+              formatted = dtf.format(now);
+              resolvedTimeZone = timeZone;
             }
-          ),
-          bootstrap_set_agent_name: aiToolFromContract(
-            toolContracts.bootstrap_set_agent_name,
-            async ({ name }) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const identity = state.docs.identity;
-                const nextName = name.trim();
 
-                const nextIdentity = IdentityDoc.make({
-                  ...identity,
-                  version: DocVersion.make(Number(identity.version) + 1),
-                  name: nextName,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  identity: nextIdentity
-                });
-                const nextBootstrapState =
-                  state.bootstrapState.status === "complete"
-                    ? state.bootstrapState
-                    : AutopilotBootstrapState.make({
-                        ...state.bootstrapState,
-                        status:
-                          state.bootstrapState.status === "pending"
-                            ? "in_progress"
-                            : state.bootstrapState.status,
-                        stage: "ask_vibe",
-                        startedAt: state.bootstrapState.startedAt ?? now
-                      });
+            return {
+              iso,
+              epochMs,
+              epochSec,
+              ...(formatted ? { formatted } : {}),
+              ...(resolvedTimeZone ? { timeZone: resolvedTimeZone } : {})
+            };
+          },
+          catch: (cause) => cause
+        }),
 
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  bootstrapState: nextBootstrapState,
-                  docs: nextDocs
-                });
+      echo: ({ text }: any) => Effect.succeed({ text: String(text ?? "") }),
+
+      bootstrap_set_user_handle: ({ handle }: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const user = state.docs.user;
+              const nextHandle = String(handle ?? "").trim();
+
+              const nextUser = UserDoc.make({
+                ...user,
+                version: DocVersion.make(Number(user.version) + 1),
+                name: nextHandle,
+                addressAs: nextHandle,
+                updatedAt: now,
+                updatedBy: "agent"
               });
-
-              return {
-                ok: true,
-                name: updated.docs.identity.name,
-                stage: updated.bootstrapState.stage ?? null
-              };
-            }
-          ),
-          bootstrap_set_agent_vibe: aiToolFromContract(
-            toolContracts.bootstrap_set_agent_vibe,
-            async ({ vibe }) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const identity = state.docs.identity;
-                const nextVibe = vibe.trim();
-
-                const nextIdentity = IdentityDoc.make({
-                  ...identity,
-                  version: DocVersion.make(Number(identity.version) + 1),
-                  vibe: nextVibe,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  identity: nextIdentity
-                });
-                const nextBootstrapState =
-                  state.bootstrapState.status === "complete"
-                    ? state.bootstrapState
-                    : AutopilotBootstrapState.make({
-                        ...state.bootstrapState,
-                        status:
-                          state.bootstrapState.status === "pending"
-                            ? "in_progress"
-                            : state.bootstrapState.status,
-                        stage: "ask_boundaries",
-                        startedAt: state.bootstrapState.startedAt ?? now
-                      });
-
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  bootstrapState: nextBootstrapState,
-                  docs: nextDocs
-                });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                user: nextUser
               });
-
-              return {
-                ok: true,
-                vibe: updated.docs.identity.vibe,
-                stage: updated.bootstrapState.stage ?? null
-              };
-            }
-          ),
-          identity_update: aiToolFromContract(
-            toolContracts.identity_update,
-            async (input) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const identity = state.docs.identity;
-                const name = input.name?.trim();
-                const creature = input.creature?.trim();
-                const vibe = input.vibe?.trim();
-                const emoji = input.emoji?.trim();
-                const avatar = input.avatar?.trim();
-
-                const nextIdentity = IdentityDoc.make({
-                  ...identity,
-                  version: DocVersion.make(Number(identity.version) + 1),
-                  name: name && name.length > 0 ? name : identity.name,
-                  creature:
-                    creature && creature.length > 0 ? creature : identity.creature,
-                  vibe: vibe && vibe.length > 0 ? vibe : identity.vibe,
-                  emoji: emoji && emoji.length > 0 ? emoji : identity.emoji,
-                  avatar: avatar && avatar.length > 0 ? avatar : identity.avatar,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  identity: nextIdentity
-                });
-
-                // Bootstrap progression: agent naming and vibe are both Identity updates.
-                let nextBootstrapState = state.bootstrapState;
-                if (state.bootstrapState.status !== "complete") {
-                  const stage = state.bootstrapState.stage;
-                  if (stage === "ask_agent_name" && name && name.length > 0) {
-                    nextBootstrapState = AutopilotBootstrapState.make({
+              const nextBootstrapState =
+                state.bootstrapState.status === "complete"
+                  ? state.bootstrapState
+                  : AutopilotBootstrapState.make({
                       ...state.bootstrapState,
-                      stage: "ask_vibe"
+                      status:
+                        state.bootstrapState.status === "pending"
+                          ? "in_progress"
+                          : state.bootstrapState.status,
+                      stage: "ask_agent_name",
+                      startedAt: state.bootstrapState.startedAt ?? now
                     });
-                  } else if (stage === "ask_vibe" && vibe && vibe.length > 0) {
-                    nextBootstrapState = AutopilotBootstrapState.make({
-                      ...state.bootstrapState,
-                      stage: "ask_boundaries"
-                    });
-                  }
-                }
-
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  bootstrapState: nextBootstrapState,
-                  docs: nextDocs
-                });
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                bootstrapState: nextBootstrapState,
+                docs: nextDocs
               });
-              return {
-                ok: true,
-                version: Number(updated.docs.identity.version)
-              };
-            }
-          ),
-          user_update: aiToolFromContract(
-            toolContracts.user_update,
-            async (input) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const user = state.docs.user;
-                const handle = input.handle?.trim();
-                const hasHandle = Boolean(handle) && handle!.length > 0;
-                const nextName = hasHandle ? handle! : user.name;
-                const nextAddressAs = hasHandle ? handle! : user.addressAs;
+            });
 
-                const nextUser = UserDoc.make({
-                  ...user,
-                  version: DocVersion.make(Number(user.version) + 1),
-                  name: nextName,
-                  addressAs: nextAddressAs,
-                  pronouns: user.pronouns,
-                  timeZone: user.timeZone,
-                  notes: input.notes ?? user.notes,
-                  context: input.context ?? user.context,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  user: nextUser
-                });
+            return {
+              ok: true,
+              handle: updated.docs.user.addressAs,
+              stage: updated.bootstrapState.stage ?? null
+            };
+          },
+          catch: (cause) => cause
+        }),
 
-                // Bootstrap progression: once we have a handle, move to naming the agent.
-                let nextBootstrapState = state.bootstrapState;
-                if (
-                  state.bootstrapState.status !== "complete" &&
-                  state.bootstrapState.stage === "ask_user_handle" &&
-                  hasHandle
-                ) {
+      bootstrap_set_agent_name: ({ name }: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const identity = state.docs.identity;
+              const nextName = String(name ?? "").trim();
+
+              const nextIdentity = IdentityDoc.make({
+                ...identity,
+                version: DocVersion.make(Number(identity.version) + 1),
+                name: nextName,
+                updatedAt: now,
+                updatedBy: "agent"
+              });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                identity: nextIdentity
+              });
+              const nextBootstrapState =
+                state.bootstrapState.status === "complete"
+                  ? state.bootstrapState
+                  : AutopilotBootstrapState.make({
+                      ...state.bootstrapState,
+                      status:
+                        state.bootstrapState.status === "pending"
+                          ? "in_progress"
+                          : state.bootstrapState.status,
+                      stage: "ask_vibe",
+                      startedAt: state.bootstrapState.startedAt ?? now
+                    });
+
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                bootstrapState: nextBootstrapState,
+                docs: nextDocs
+              });
+            });
+
+            return {
+              ok: true,
+              name: updated.docs.identity.name,
+              stage: updated.bootstrapState.stage ?? null
+            };
+          },
+          catch: (cause) => cause
+        }),
+
+      bootstrap_set_agent_vibe: ({ vibe }: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const identity = state.docs.identity;
+              const nextVibe = String(vibe ?? "").trim();
+
+              const nextIdentity = IdentityDoc.make({
+                ...identity,
+                version: DocVersion.make(Number(identity.version) + 1),
+                vibe: nextVibe,
+                updatedAt: now,
+                updatedBy: "agent"
+              });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                identity: nextIdentity
+              });
+              const nextBootstrapState =
+                state.bootstrapState.status === "complete"
+                  ? state.bootstrapState
+                  : AutopilotBootstrapState.make({
+                      ...state.bootstrapState,
+                      status:
+                        state.bootstrapState.status === "pending"
+                          ? "in_progress"
+                          : state.bootstrapState.status,
+                      stage: "ask_boundaries",
+                      startedAt: state.bootstrapState.startedAt ?? now
+                    });
+
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                bootstrapState: nextBootstrapState,
+                docs: nextDocs
+              });
+            });
+
+            return {
+              ok: true,
+              vibe: updated.docs.identity.vibe,
+              stage: updated.bootstrapState.stage ?? null
+            };
+          },
+          catch: (cause) => cause
+        }),
+
+      identity_update: (input: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const identity = state.docs.identity;
+              const name = typeof input?.name === "string" ? input.name.trim() : undefined;
+              const creature =
+                typeof input?.creature === "string" ? input.creature.trim() : undefined;
+              const vibe = typeof input?.vibe === "string" ? input.vibe.trim() : undefined;
+              const emoji = typeof input?.emoji === "string" ? input.emoji.trim() : undefined;
+              const avatar =
+                typeof input?.avatar === "string" ? input.avatar.trim() : undefined;
+
+              const nextIdentity = IdentityDoc.make({
+                ...identity,
+                version: DocVersion.make(Number(identity.version) + 1),
+                name: name && name.length > 0 ? name : identity.name,
+                creature:
+                  creature && creature.length > 0 ? creature : identity.creature,
+                vibe: vibe && vibe.length > 0 ? vibe : identity.vibe,
+                emoji: emoji && emoji.length > 0 ? emoji : identity.emoji,
+                avatar: avatar && avatar.length > 0 ? avatar : identity.avatar,
+                updatedAt: now,
+                updatedBy: "agent"
+              });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                identity: nextIdentity
+              });
+
+              // Bootstrap progression: agent naming and vibe are both Identity updates.
+              let nextBootstrapState = state.bootstrapState;
+              if (state.bootstrapState.status !== "complete") {
+                const stage = state.bootstrapState.stage;
+                if (stage === "ask_agent_name" && name && name.length > 0) {
                   nextBootstrapState = AutopilotBootstrapState.make({
                     ...state.bootstrapState,
-                    stage: "ask_agent_name"
+                    stage: "ask_vibe"
                   });
-                }
-
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  bootstrapState: nextBootstrapState,
-                  docs: nextDocs
-                });
-              });
-              return {
-                ok: true,
-                version: Number(updated.docs.user.version)
-              };
-            }
-          ),
-          character_update: aiToolFromContract(
-            toolContracts.character_update,
-            async (input) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const character = state.docs.character;
-
-                const nextCoreTruths = input.coreTruths
-                  ? [...character.coreTruths, ...input.coreTruths]
-                      .map((s) => s.trim())
-                      .filter(Boolean)
-                      .filter((v, idx, arr) => arr.indexOf(v) === idx)
-                  : character.coreTruths;
-
-                const nextBoundaries = input.boundaries
-                  ? [...character.boundaries, ...input.boundaries]
-                      .map((s) => s.trim())
-                      .filter(Boolean)
-                      .filter((v, idx, arr) => arr.indexOf(v) === idx)
-                  : character.boundaries;
-
-                const nextCharacter = CharacterDoc.make({
-                  ...character,
-                  version: DocVersion.make(Number(character.version) + 1),
-                  coreTruths: nextCoreTruths,
-                  boundaries: nextBoundaries,
-                  vibe: input.vibe ?? character.vibe,
-                  continuity: input.continuity ?? character.continuity,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  character: nextCharacter
-                });
-
-                // Bootstrap completion: the final prompt is "boundaries/preferences".
-                // If the agent calls character_update at that stage, we treat bootstrap as complete.
-                let nextBootstrapState = state.bootstrapState;
-                if (
-                  state.bootstrapState.status !== "complete" &&
-                  state.bootstrapState.stage === "ask_boundaries"
-                ) {
+                } else if (stage === "ask_vibe" && vibe && vibe.length > 0) {
                   nextBootstrapState = AutopilotBootstrapState.make({
                     ...state.bootstrapState,
-                    status: "complete",
-                    stage: undefined,
-                    startedAt: state.bootstrapState.startedAt ?? now,
-                    completedAt: now
+                    stage: "ask_boundaries"
                   });
                 }
+              }
 
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  bootstrapState: nextBootstrapState,
-                  docs: nextDocs
-                });
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                bootstrapState: nextBootstrapState,
+                docs: nextDocs
               });
-              return {
-                ok: true,
-                version: Number(updated.docs.character.version)
-              };
-            }
-          ),
-          tools_update_notes: aiToolFromContract(
-            toolContracts.tools_update_notes,
-            async ({ notes }) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const toolsDoc = state.docs.tools;
-                const nextTools = ToolsDoc.make({
-                  ...toolsDoc,
-                  version: DocVersion.make(Number(toolsDoc.version) + 1),
-                  notes,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  tools: nextTools
-                });
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  docs: nextDocs
-                });
+            });
+            return {
+              ok: true,
+              version: Number(updated.docs.identity.version)
+            };
+          },
+          catch: (cause) => cause
+        }),
+
+      user_update: (input: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const user = state.docs.user;
+              const handle =
+                typeof input?.handle === "string" ? input.handle.trim() : undefined;
+              const hasHandle = Boolean(handle) && handle!.length > 0;
+              const nextName = hasHandle ? handle! : user.name;
+              const nextAddressAs = hasHandle ? handle! : user.addressAs;
+
+              const nextUser = UserDoc.make({
+                ...user,
+                version: DocVersion.make(Number(user.version) + 1),
+                name: nextName,
+                addressAs: nextAddressAs,
+                pronouns: user.pronouns,
+                timeZone: user.timeZone,
+                notes: typeof input?.notes === "string" ? input.notes : user.notes,
+                context:
+                  typeof input?.context === "string" ? input.context : user.context,
+                updatedAt: now,
+                updatedBy: "agent"
               });
-              return {
-                ok: true,
-                version: Number(updated.docs.tools.version)
-              };
-            }
-          ),
-          heartbeat_set_checklist: aiToolFromContract(
-            toolContracts.heartbeat_set_checklist,
-            async ({ checklist }) => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const heartbeat = state.docs.heartbeat;
-                const nextHeartbeat = HeartbeatDoc.make({
-                  ...heartbeat,
-                  version: DocVersion.make(Number(heartbeat.version) + 1),
-                  checklist,
-                  updatedAt: now,
-                  updatedBy: "agent"
-                });
-                const nextDocs = BlueprintDocs.make({
-                  ...state.docs,
-                  heartbeat: nextHeartbeat
-                });
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  docs: nextDocs
-                });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                user: nextUser
               });
-              return {
-                ok: true,
-                version: Number(updated.docs.heartbeat.version)
-              };
-            }
-          ),
-          memory_append: aiToolFromContract(
-            toolContracts.memory_append,
-            async (input) => {
-              const updated = this.updateBlueprintState((state) => {
-                const entry = MemoryEntry.make({
-                  id: MemoryEntryId.make(crypto.randomUUID()),
-                  createdAt: new Date(),
-                  kind: input.kind,
-                  title: input.title,
-                  body: input.body,
-                  visibility: input.visibility
+
+              // Bootstrap progression: once we have a handle, move to naming the agent.
+              let nextBootstrapState = state.bootstrapState;
+              if (
+                state.bootstrapState.status !== "complete" &&
+                state.bootstrapState.stage === "ask_user_handle" &&
+                hasHandle
+              ) {
+                nextBootstrapState = AutopilotBootstrapState.make({
+                  ...state.bootstrapState,
+                  stage: "ask_agent_name"
                 });
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  memory: [...state.memory, entry]
-                });
+              }
+
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                bootstrapState: nextBootstrapState,
+                docs: nextDocs
               });
-              return { ok: true, count: updated.memory.length };
-            }
-          ),
-          bootstrap_complete: aiToolFromContract(
-            toolContracts.bootstrap_complete,
-            async () => {
-              const updated = this.updateBlueprintState((state) => {
-                const now = new Date();
-                const nextBootstrapState = AutopilotBootstrapState.make({
+            });
+            return {
+              ok: true,
+              version: Number(updated.docs.user.version)
+            };
+          },
+          catch: (cause) => cause
+        }),
+
+      character_update: (input: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const character = state.docs.character;
+
+              const nextCoreTruths = Array.isArray(input?.coreTruths)
+                ? [...character.coreTruths, ...input.coreTruths]
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .filter((v, idx, arr) => arr.indexOf(v) === idx)
+                : character.coreTruths;
+
+              const nextBoundaries = Array.isArray(input?.boundaries)
+                ? [...character.boundaries, ...input.boundaries]
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .filter((v, idx, arr) => arr.indexOf(v) === idx)
+                : character.boundaries;
+
+              const nextCharacter = CharacterDoc.make({
+                ...character,
+                version: DocVersion.make(Number(character.version) + 1),
+                coreTruths: nextCoreTruths,
+                boundaries: nextBoundaries,
+                vibe: typeof input?.vibe === "string" ? input.vibe : character.vibe,
+                continuity:
+                  typeof input?.continuity === "string"
+                    ? input.continuity
+                    : character.continuity,
+                updatedAt: now,
+                updatedBy: "agent"
+              });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                character: nextCharacter
+              });
+
+              // Bootstrap completion: the final prompt is "boundaries/preferences".
+              // If the agent calls character_update at that stage, we treat bootstrap as complete.
+              let nextBootstrapState = state.bootstrapState;
+              if (
+                state.bootstrapState.status !== "complete" &&
+                state.bootstrapState.stage === "ask_boundaries"
+              ) {
+                nextBootstrapState = AutopilotBootstrapState.make({
                   ...state.bootstrapState,
                   status: "complete",
                   stage: undefined,
                   startedAt: state.bootstrapState.startedAt ?? now,
                   completedAt: now
                 });
-                return AutopilotBlueprintStateV1.make({
-                  ...state,
-                  bootstrapState: nextBootstrapState
-                });
+              }
+
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                bootstrapState: nextBootstrapState,
+                docs: nextDocs
               });
-              return { ok: true, status: updated.bootstrapState.status };
-            }
-          ),
-          blueprint_export: aiToolFromContract(
-            toolContracts.blueprint_export,
-            async () => ({
-              ok: true,
-              url: `/agents/chat/${this.name}/blueprint`,
-              format: BLUEPRINT_FORMAT,
-              formatVersion: BLUEPRINT_FORMAT_VERSION
-            })
-          )
-        };
-
-        const lastUserMessageText = (() => {
-          for (let i = recentMessages.length - 1; i >= 0; i--) {
-            const m: any = recentMessages[i];
-            if (!m || m.role !== "user") continue;
-            const parts: any[] = Array.isArray(m.parts) ? m.parts : [];
-            const text = parts
-              .filter((p) => p && typeof p === "object" && p.type === "text")
-              .map((p) => String((p as any).text ?? ""))
-              .join("");
-            if (text.trim()) return text.trim();
-          }
-          return "";
-        })();
-
-        const dseLmClient: Lm.LmClient = {
-          complete: (req) =>
-            Effect.tryPromise({
-              try: async () => {
-                const systemText = req.messages.find((m) => m.role === "system")
-                  ?.content;
-                const messages = req.messages
-                  .filter((m) => m.role !== "system")
-                  .map((m) => ({ role: m.role, content: m.content }));
-
-                const res = await generateText({
-                  model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
-                  ...(systemText ? { system: systemText } : {}),
-                  messages: messages as any,
-                  maxOutputTokens: req.maxTokens ?? 256,
-                  ...(typeof req.temperature === "number"
-                    ? { temperature: req.temperature }
-                    : {}),
-                  ...(typeof req.topP === "number" ? { topP: req.topP } : {})
-                });
-
-                return { text: res.text };
-              },
-              catch: (cause) =>
-                Lm.LmClientError.make({
-                  message: "DSE LM client failed",
-                  cause
-                })
-            })
-        };
-
-        const selectBlueprintTool = Predict.make(signatures.blueprint_select_tool);
-
-        const result = streamText({
-          system: buildSystem(blueprint, BASE_TOOL_NAMES),
-          prepareStep: async ({ stepNumber }) => {
-            const fresh = this.ensureBlueprintState();
-
-            // After the first step (tool call), produce text only. This keeps the loop
-            // deterministic and prevents cascading tool calls / tool list exposure.
-            if (stepNumber > 0) {
-              return {
-                system: buildSystem(fresh),
-                toolChoice: "none" as const,
-                activeTools: []
-              };
-            }
-
-            // Bootstrap: force the appropriate update tool based on the current stage.
-            // This prevents the model from "confirming" in text without persisting state.
-            if (fresh.bootstrapState.status !== "complete") {
-              const stage = fresh.bootstrapState.stage ?? "ask_user_handle";
-
-              if (stage === "ask_user_handle") {
-                const activeTools = ["bootstrap_set_user_handle"];
-                return {
-                  system: buildSystem(fresh, activeTools),
-                  toolChoice: {
-                    type: "tool",
-                    toolName: "bootstrap_set_user_handle"
-                  } as const,
-                  activeTools
-                };
-              }
-
-              if (stage === "ask_agent_name") {
-                const activeTools = ["bootstrap_set_agent_name"];
-                return {
-                  system: buildSystem(fresh, activeTools),
-                  toolChoice: {
-                    type: "tool",
-                    toolName: "bootstrap_set_agent_name"
-                  } as const,
-                  activeTools
-                };
-              }
-
-              if (stage === "ask_vibe") {
-                const activeTools = ["bootstrap_set_agent_vibe"];
-                return {
-                  system: buildSystem(fresh, activeTools),
-                  toolChoice: {
-                    type: "tool",
-                    toolName: "bootstrap_set_agent_vibe"
-                  } as const,
-                  activeTools
-                };
-              }
-
-              if (stage === "ask_boundaries") {
-                const activeTools = [
-                  "character_update",
-                  "bootstrap_complete"
-                ];
-                return {
-                  system: buildSystem(fresh, activeTools),
-                  // Only call tools when the user actually provides boundaries or says "none".
-                  toolChoice: "auto" as const,
-                  activeTools
-                };
-              }
-
-              const activeTools = [...BASE_TOOL_NAMES];
-              return {
-                system: buildSystem(fresh, activeTools),
-                toolChoice: "auto" as const,
-                activeTools
-              };
-            }
-
-            // Post-bootstrap: keep the default tool surface minimal (base tools only).
-            // If the message looks like a Blueprint update request, route to exactly one
-            // Blueprint tool via a DSE signature, and force that tool call.
-            if (!lastUserMessageText) {
-              const activeTools = [...BASE_TOOL_NAMES];
-              return {
-                system: buildSystem(fresh, activeTools),
-                toolChoice: "auto" as const,
-                activeTools
-              };
-            }
-
-            try {
-              const selection = await Effect.runPromise(
-                selectBlueprintTool({
-                  message: lastUserMessageText,
-                  blueprintHint: {
-                    userHandle: fresh.docs.user.addressAs,
-                    agentName: fresh.docs.identity.name
-                  }
-                }).pipe(
-                  Effect.provideService(Lm.LmClientService, dseLmClient),
-                  Effect.provide(
-                    layerDseFromSql(this.sql.bind(this) as unknown as SqlTag)
-                  )
-                )
-              );
-
-              if (selection.action === "tool") {
-                const toolName = selection.toolName as string;
-                const activeTools = [toolName];
-                return {
-                  system: buildSystem(fresh, activeTools),
-                  toolChoice: { type: "tool", toolName } as const,
-                  activeTools
-                };
-              }
-            } catch (error) {
-              console.warn("[dse] blueprint tool routing failed; falling back", error);
-            }
-
-            const activeTools = [...BASE_TOOL_NAMES];
+            });
             return {
-              system: buildSystem(fresh, activeTools),
-              toolChoice: "auto" as const,
-              activeTools
+              ok: true,
+              version: Number(updated.docs.character.version)
             };
           },
-	          messages: await convertToModelMessages(recentMessages),
-	          model: workersai(MODEL_ID as Parameters<typeof workersai>[0]),
-	          maxOutputTokens: MAX_OUTPUT_TOKENS,
-	          stopWhen: stepCountIs(10),
-	          tools,
-	          experimental_repairToolCall: async ({
-	            toolCall,
-	            tools: availableTools,
-	            error,
-	            messages,
-	            system
-	          }) => {
-	            // AI SDK: parseToolCall() only calls this for NoSuchToolError / InvalidToolInputError.
-	            // We do a single "re-ask" to produce a valid tool call, without executing tools.
-	            if (!availableTools) return null;
+          catch: (cause) => cause
+        }),
 
-	            const model = workersai(MODEL_ID as Parameters<typeof workersai>[0]);
+      tools_update_notes: ({ notes }: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const toolsDoc = state.docs.tools;
+              const nextTools = ToolsDoc.make({
+                ...toolsDoc,
+                version: DocVersion.make(Number(toolsDoc.version) + 1),
+                notes: String(notes ?? ""),
+                updatedAt: now,
+                updatedBy: "agent"
+              });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                tools: nextTools
+              });
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                docs: nextDocs
+              });
+            });
+            return {
+              ok: true,
+              version: Number(updated.docs.tools.version)
+            };
+          },
+          catch: (cause) => cause
+        }),
 
-	            // NOTE: Keep repair prompts short. The goal is a syntactically-valid tool call,
-	            // not a full response. The main stream will execute the tool and then respond.
-	            const repairPrompt =
-	              "Repair the following tool call.\n" +
-	              "- Output MUST be a tool call.\n" +
-	              "- Do not output any normal assistant text.\n" +
-	              `- Error: ${error instanceof Error ? error.message : String(error)}\n` +
-	              `- Original toolName: ${toolCall.toolName}\n` +
-	              `- Original input: ${toolCall.input}\n`;
+      heartbeat_set_checklist: ({ checklist }: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const heartbeat = state.docs.heartbeat;
+              const nextHeartbeat = HeartbeatDoc.make({
+                ...heartbeat,
+                version: DocVersion.make(Number(heartbeat.version) + 1),
+                checklist: Array.isArray(checklist)
+                  ? (checklist as ReadonlyArray<unknown>).map((s) => String(s)).filter(Boolean)
+                  : heartbeat.checklist,
+                updatedAt: now,
+                updatedBy: "agent"
+              });
+              const nextDocs = BlueprintDocs.make({
+                ...state.docs,
+                heartbeat: nextHeartbeat
+              });
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                docs: nextDocs
+              });
+            });
+            return {
+              ok: true,
+              version: Number(updated.docs.heartbeat.version)
+            };
+          },
+          catch: (cause) => cause
+        }),
 
-	            try {
-	              // Invalid inputs: force the same tool name and regenerate inputs.
-		              if (InvalidToolInputError.isInstance(error)) {
-		                const toolName = toolCall.toolName as keyof typeof availableTools & string;
-		                const repairTools = stripToolExecution(availableTools);
+      memory_append: (input: any) =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const entry = MemoryEntry.make({
+                id: MemoryEntryId.make(crypto.randomUUID()),
+                createdAt: new Date(),
+                kind: input?.kind,
+                title: String(input?.title ?? ""),
+                body: String(input?.body ?? ""),
+                visibility: input?.visibility
+              });
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                memory: [...state.memory, entry]
+              });
+            });
+            return { ok: true, count: updated.memory.length };
+          },
+          catch: (cause) => cause
+        }),
 
-		                const repaired = await generateText({
-		                  model,
-		                  ...(system != null ? { system } : {}),
-		                  messages: [
-		                    ...messages.slice(-6),
-		                    { role: "user", content: repairPrompt }
-		                  ],
-		                  tools: repairTools,
-	                  toolChoice: { type: "tool", toolName } as const,
-	                  activeTools: [toolName] as const,
-	                  maxOutputTokens: 256
-	                });
+      bootstrap_complete: () =>
+        Effect.try({
+          try: () => {
+            const updated = this.updateBlueprintState((state) => {
+              const now = new Date();
+              const nextBootstrapState = AutopilotBootstrapState.make({
+                ...state.bootstrapState,
+                status: "complete",
+                stage: undefined,
+                startedAt: state.bootstrapState.startedAt ?? now,
+                completedAt: now
+              });
+              return AutopilotBlueprintStateV1.make({
+                ...state,
+                bootstrapState: nextBootstrapState
+              });
+            });
+            return { ok: true, status: updated.bootstrapState.status };
+          },
+          catch: (cause) => cause
+        }),
 
-	                const next = repaired.toolCalls.find((tc) => tc.toolName === toolName);
-	                if (!next) return null;
-
-	                console.warn("[chat] repaired tool inputs", {
-	                  toolName,
-	                  toolCallId: toolCall.toolCallId
-	                });
-
-	                return {
-	                  ...toolCall,
-	                  toolName,
-	                  input: JSON.stringify(next.input ?? {})
-	                };
-	              }
-
-	              // Unknown tool name: restrict to BASE_TOOLS (safe) and require *some* tool call.
-	              // This avoids silent stalls when the model invents tool names.
-	              if (NoSuchToolError.isInstance(error)) {
-	                const repairTools = stripToolExecution(BASE_TOOLS);
-	                const repaired = await generateText({
-	                  model,
-	                  system:
-	                    (typeof system === "string" ? system : "") +
-	                    "\n\nTool call repair: only use the provided tools.",
-	                  messages: [
-	                    ...messages.slice(-6),
-	                    { role: "user", content: repairPrompt }
-	                  ],
-	                  tools: repairTools,
-	                  toolChoice: "required",
-	                  maxOutputTokens: 256
-	                });
-
-	                const next = repaired.toolCalls[0];
-	                if (!next) return null;
-
-	                console.warn("[chat] repaired tool name", {
-	                  from: toolCall.toolName,
-	                  to: next.toolName,
-	                  toolCallId: toolCall.toolCallId
-	                });
-
-	                return {
-	                  ...toolCall,
-	                  toolName: next.toolName,
-	                  input: JSON.stringify(next.input ?? {})
-	                };
-	              }
-	            } catch (repairError) {
-	              console.error("[chat] tool call repair failed", repairError);
-	            }
-
-	            return null;
-	          },
-	          onStepFinish: ({ toolCalls, toolResults, text, finishReason, usage }) => {
-	            // Observability: when tool calling misbehaves, it's usually because the
-	            // model emitted an invalid tool name/input. Log enough to debug quickly.
-	            const hasToolActivity =
-	              (toolCalls?.length ?? 0) > 0 || (toolResults?.length ?? 0) > 0;
-	            if (!hasToolActivity) return;
-
-	            const summarizedToolCalls = (toolCalls ?? []).map((tc) => ({
-	              toolCallId: (tc as any).toolCallId,
-	              toolName: (tc as any).toolName,
-	              invalid: Boolean((tc as any).invalid)
-	            }));
-	            const summarizedToolResults = (toolResults ?? []).map((tr) => ({
-	              toolCallId: (tr as any).toolCallId,
-	              toolName: (tr as any).toolName,
-	              type: (tr as any).type
-	            }));
-
-	            console.log("[chat] step.finish", {
-	              finishReason,
-	              usage,
-	              hasText: Boolean(text && text.trim().length > 0),
-	              toolCalls: summarizedToolCalls,
-	              toolOutputs: summarizedToolResults
-	            });
-	          },
-	          // Base class uses this callback to persist messages + stream metadata.
-	          onFinish: onFinish as unknown as StreamTextOnFinishCallback<ToolSet>,
-	          ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {})
-	        });
-
-        writer.merge(
-          result.toUIMessageStream({
-            sendReasoning: false,
-            onError: (error) => {
-              console.error("[chat] stream error", error);
-              return "Internal error.";
-            }
-          })
-        );
-      }
+      blueprint_export: () =>
+        Effect.succeed({
+          ok: true,
+          url: `/agents/chat/${this.name}/blueprint`,
+          format: BLUEPRINT_FORMAT,
+          formatVersion: BLUEPRINT_FORMAT_VERSION
+        })
     });
+  }
 
-    return createUIMessageStreamResponse({ stream });
+  private applyWirePart(activeParts: Array<ChatPart>, chunkData: AiResponse.StreamPartEncoded): void {
+    switch (chunkData.type) {
+      case "text-start": {
+        activeParts.push({ type: "text", text: "", state: "streaming" });
+        return;
+      }
+      case "text-delta": {
+        const lastTextPart = [...activeParts].reverse().find((p) => (p as any)?.type === "text") as any;
+        if (lastTextPart && lastTextPart.type === "text") {
+          lastTextPart.text += String((chunkData as any).delta ?? "");
+        } else {
+          activeParts.push({ type: "text", text: String((chunkData as any).delta ?? "") });
+        }
+        return;
+      }
+      case "text-end": {
+        const lastTextPart = [...activeParts].reverse().find((p) => (p as any)?.type === "text") as any;
+        if (lastTextPart && "state" in lastTextPart) lastTextPart.state = "done";
+        return;
+      }
+      case "tool-call": {
+        activeParts.push({
+          type: `tool-${String((chunkData as any).name ?? "tool")}`,
+          toolName: (chunkData as any).name,
+          toolCallId: String((chunkData as any).id ?? ""),
+          state: "input-available",
+          input: (chunkData as any).params
+        } satisfies ChatToolPart);
+        return;
+      }
+      case "tool-result": {
+        const toolCallId = String((chunkData as any).id ?? "");
+        const isFailure = Boolean((chunkData as any).isFailure);
+        const toolName = String((chunkData as any).name ?? "tool");
+        const result = (chunkData as any).result;
+
+        const stable = (value: unknown) => {
+          if (value == null) return String(value);
+          if (typeof value === "string") return value;
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        };
+
+        let didUpdate = false;
+        for (let i = 0; i < activeParts.length; i++) {
+          const p = activeParts[i] as any;
+          if (!p || typeof p !== "object") continue;
+          if (p.toolCallId !== toolCallId) continue;
+          p.state = isFailure ? "output-error" : "output-available";
+          p.output = result;
+          if (isFailure) p.errorText = stable(result);
+          didUpdate = true;
+          break;
+        }
+
+        if (!didUpdate) {
+          activeParts.push({
+            type: `tool-${toolName}`,
+            toolName,
+            toolCallId,
+            state: isFailure ? "output-error" : "output-available",
+            output: result,
+            ...(isFailure ? { errorText: stable(result) } : {})
+          } satisfies ChatToolPart);
+        }
+
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  private sendChatChunk(connection: Connection, requestId: string, body: string, options: { done: boolean; error?: boolean }) {
+    connection.send(
+      JSON.stringify({
+        type: MessageType.CF_AGENT_USE_CHAT_RESPONSE,
+        id: requestId,
+        body,
+        done: options.done,
+        ...(options.error ? { error: true } : {})
+      })
+    );
+  }
+
+  private async streamChatResponse(connection: Connection, requestId: string, abortSignal: AbortSignal) {
+    await this.ensureDefaultDsePolicies();
+
+    const buildSystem = (
+      state: AutopilotBlueprintStateV1,
+      toolNames?: ReadonlyArray<string>
+    ) => {
+      const blueprintContext = renderBlueprintContext(state, {
+        // Only include the Tools doc when tools are active for this step.
+        includeToolsDoc: Boolean(toolNames && toolNames.length > 0)
+      });
+      const bootstrapInstructions = renderBootstrapInstructions(state);
+      const toolPrompt =
+        toolNames && toolNames.length > 0
+          ? renderToolPrompt({ toolNames })
+          : null;
+      return buildSystemPrompt({
+        identityVibe: state.docs.identity.vibe,
+        characterVibe: state.docs.character.vibe,
+        bootstrapState: {
+          status: state.bootstrapState.status,
+          stage: state.bootstrapState.stage,
+          startedAt: state.bootstrapState.startedAt,
+          completedAt: state.bootstrapState.completedAt
+        },
+        blueprintContext,
+        bootstrapInstructions,
+        toolPrompt
+      });
+    };
+
+    const blueprint = this.ensureBlueprintStateForChat();
+    this.ensureWelcomeMessage(blueprint);
+
+    const recentMessages = this.messages.slice(-MAX_CONTEXT_MESSAGES);
+    const lastUserMessageText = (() => {
+      for (let i = recentMessages.length - 1; i >= 0; i--) {
+        const m = recentMessages[i];
+        if (!m || m.role !== "user") continue;
+        const text = messageText(m).trim();
+        if (text) return text;
+      }
+      return "";
+    })();
+
+    const dseLmClient: Lm.LmClient = {
+      complete: (req) =>
+        Effect.tryPromise({
+          try: async () => {
+            const messages = req.messages.map((m) => ({
+              role: m.role,
+              content: m.content
+            }));
+
+            const output = (await this.env.AI.run(
+              MODEL_ID as any,
+              {
+                model: MODEL_ID,
+                max_tokens: req.maxTokens ?? 256,
+                messages: messages as any,
+                ...(typeof req.temperature === "number"
+                  ? { temperature: req.temperature }
+                  : {}),
+                ...(typeof req.topP === "number" ? { top_p: req.topP } : {})
+              } as any,
+              {}
+            )) as any;
+
+            const text =
+              output?.choices?.[0]?.message?.content ??
+              (typeof output?.response === "string"
+                ? output.response
+                : JSON.stringify(output?.response ?? ""));
+
+            return { text: typeof text === "string" ? text : String(text) };
+          },
+          catch: (cause) =>
+            Lm.LmClientError.make({
+              message: "DSE LM client failed",
+              cause
+            })
+        })
+    };
+
+    const selectBlueprintTool = Predict.make(signatures.blueprint_select_tool);
+
+    const prepareStep0 = async () => {
+      const fresh = this.ensureBlueprintState();
+
+      // Bootstrap: force the appropriate update tool based on the current stage.
+      if (fresh.bootstrapState.status !== "complete") {
+        const stage = fresh.bootstrapState.stage ?? "ask_user_handle";
+
+        if (stage === "ask_user_handle") {
+          const toolNames = ["bootstrap_set_user_handle"];
+          return {
+            system: buildSystem(fresh, toolNames),
+            toolChoice: { tool: "bootstrap_set_user_handle" as const },
+            toolNames
+          };
+        }
+
+        if (stage === "ask_agent_name") {
+          const toolNames = ["bootstrap_set_agent_name"];
+          return {
+            system: buildSystem(fresh, toolNames),
+            toolChoice: { tool: "bootstrap_set_agent_name" as const },
+            toolNames
+          };
+        }
+
+        if (stage === "ask_vibe") {
+          const toolNames = ["bootstrap_set_agent_vibe"];
+          return {
+            system: buildSystem(fresh, toolNames),
+            toolChoice: { tool: "bootstrap_set_agent_vibe" as const },
+            toolNames
+          };
+        }
+
+        if (stage === "ask_boundaries") {
+          const toolNames = ["character_update", "bootstrap_complete"] as const;
+          return {
+            system: buildSystem(fresh, toolNames),
+            toolChoice: { mode: "auto" as const, oneOf: toolNames },
+            toolNames: [...toolNames]
+          };
+        }
+
+        const toolNames = [...BASE_TOOL_NAMES];
+        return {
+          system: buildSystem(fresh, toolNames),
+          toolChoice: { mode: "auto" as const, oneOf: toolNames },
+          toolNames
+        };
+      }
+
+      // Post-bootstrap: keep the default tool surface minimal (base tools only).
+      // If the message looks like a Blueprint update request, route to exactly one
+      // Blueprint tool via a DSE signature, and force that tool call.
+      if (lastUserMessageText) {
+        try {
+          const selection = await Effect.runPromise(
+            selectBlueprintTool({
+              message: lastUserMessageText,
+              blueprintHint: {
+                userHandle: fresh.docs.user.addressAs,
+                agentName: fresh.docs.identity.name
+              }
+            }).pipe(
+              Effect.provideService(Lm.LmClientService, dseLmClient),
+              Effect.provide(
+                layerDseFromSql(this.sql.bind(this) as unknown as SqlTag)
+              )
+            )
+          );
+
+          if (selection.action === "tool") {
+            const toolName = selection.toolName as string;
+            const toolNames = [toolName];
+            return {
+              system: buildSystem(fresh, toolNames),
+              toolChoice: { tool: toolName },
+              toolNames
+            };
+          }
+        } catch (error) {
+          console.warn("[dse] blueprint tool routing failed; falling back", error);
+        }
+      }
+
+      const toolNames = [...BASE_TOOL_NAMES];
+      return {
+        system: buildSystem(fresh, toolNames),
+        toolChoice: { mode: "auto" as const, oneOf: toolNames },
+        toolNames
+      };
+    };
+
+    const { system, toolChoice } = await prepareStep0();
+    const promptBase = [
+      { role: "system" as const, content: system },
+      ...recentMessages.flatMap((m) => {
+        const text = messageText(m).trim();
+        if (!text) return [];
+        return [
+          {
+            role: m.role,
+            content: [{ type: "text" as const, text }]
+          }
+        ];
+      })
+    ];
+
+    const toolCalls: Array<AiResponse.ToolCallPartEncoded> = [];
+    const toolResults: Array<AiResponse.ToolResultPartEncoded> = [];
+    const activeParts: Array<ChatPart> = [];
+
+    const handlers = this.toolHandlers();
+    const toolLayer = AUTOPILOT_TOOLKIT.toLayer(handlers);
+    const modelLayer = Layer.effect(
+      AiLanguageModel.LanguageModel,
+      makeWorkersAiLanguageModel({
+        binding: this.env.AI,
+        model: MODEL_ID,
+        maxOutputTokens: MAX_OUTPUT_TOKENS
+      })
+    );
+    const live = Layer.mergeAll(toolLayer, modelLayer);
+
+    const runStep0 = () =>
+      AiLanguageModel.streamText({
+        prompt: promptBase,
+        toolkit: AUTOPILOT_TOOLKIT,
+        toolChoice: toolChoice as any,
+        concurrency: 1,
+        disableToolCallResolution: true
+      }).pipe(
+        Stream.runForEach((part) =>
+          Effect.sync(() => {
+            if (abortSignal.aborted) return;
+            const encoded = encodeStreamPart(part as any);
+            // Autopilot must not reveal internal reasoning on the UI wire.
+            if (
+              encoded.type === "reasoning-start" ||
+              encoded.type === "reasoning-delta" ||
+              encoded.type === "reasoning-end"
+            ) {
+              return;
+            }
+            if (encoded.type === "tool-call") {
+              toolCalls.push(encoded as any);
+            }
+            this.sendChatChunk(
+              connection,
+              requestId,
+              encodeWirePart(encoded),
+              { done: encoded.type === "finish" && toolCalls.length === 0 }
+            );
+            this.applyWirePart(activeParts, encoded);
+          })
+        ),
+        Effect.provide(live)
+      );
+
+    try {
+      await Effect.runPromise(runStep0() as Effect.Effect<void, any, never>);
+    } catch (error) {
+      console.error("[chat] step0 stream failed", error);
+      this.sendChatChunk(connection, requestId, "Internal error.", {
+        done: true,
+        error: true
+      });
+      return;
+    }
+
+    if (abortSignal.aborted) return;
+
+    if (toolCalls.length > 0) {
+      const toolkit = await Effect.runPromise(
+        AUTOPILOT_TOOLKIT.pipe(Effect.provide(toolLayer))
+      );
+
+      for (const toolCall of toolCalls) {
+        if (abortSignal.aborted) return;
+        const handlerResult = (await Effect.runPromise(
+          toolkit.handle(toolCall.name as any, toolCall.params as any) as any
+        )) as { readonly encodedResult: unknown; readonly isFailure: boolean };
+        const resultPart: AiResponse.ToolResultPartEncoded = {
+          type: "tool-result",
+          id: toolCall.id,
+          name: toolCall.name,
+          result: handlerResult.encodedResult,
+          isFailure: handlerResult.isFailure,
+          providerExecuted: false
+        };
+        toolResults.push(resultPart);
+        this.sendChatChunk(connection, requestId, encodeWirePart(resultPart), {
+          done: false
+        });
+        this.applyWirePart(activeParts, resultPart);
+      }
+
+      const fresh = this.ensureBlueprintState();
+      const system2 = buildSystem(fresh);
+
+      const toolCallMessage = {
+        role: "assistant" as const,
+        content: toolCalls.map((tc) => ({
+          type: "tool-call" as const,
+          id: tc.id,
+          name: tc.name,
+          params: tc.params,
+          providerExecuted: false
+        }))
+      };
+      const toolResultMessage = {
+        role: "tool" as const,
+        content: toolResults.map((tr) => ({
+          type: "tool-result" as const,
+          id: tr.id,
+          name: tr.name,
+          isFailure: tr.isFailure,
+          result: tr.result,
+          providerExecuted: false
+        }))
+      };
+
+      const prompt2 = [
+        { role: "system" as const, content: system2 },
+        ...(promptBase as any).slice(1), // reuse user/assistant history (no system)
+        toolCallMessage,
+        toolResultMessage
+      ];
+
+      const runStep1 = () =>
+        AiLanguageModel.streamText({
+          prompt: prompt2,
+          toolChoice: "none",
+          disableToolCallResolution: true
+        }).pipe(
+          Stream.runForEach((part) =>
+            Effect.sync(() => {
+              if (abortSignal.aborted) return;
+              const encoded = encodeStreamPart(part as any);
+              // Autopilot must not reveal internal reasoning on the UI wire.
+              if (
+                encoded.type === "reasoning-start" ||
+                encoded.type === "reasoning-delta" ||
+                encoded.type === "reasoning-end"
+              ) {
+                return;
+              }
+              this.sendChatChunk(connection, requestId, encodeWirePart(encoded), {
+                done: encoded.type === "finish"
+              });
+              this.applyWirePart(activeParts, encoded);
+            })
+          ),
+          Effect.provide(modelLayer)
+        );
+
+      try {
+        await Effect.runPromise(runStep1());
+      } catch (error) {
+        console.error("[chat] step1 stream failed", error);
+        this.sendChatChunk(connection, requestId, "Internal error.", {
+          done: true,
+          error: true
+        });
+        return;
+      }
+
+      if (abortSignal.aborted) return;
+    }
+
+    // Persist a single assistant message (tool parts + final text).
+    const assistantMessage: ChatMessage = {
+      id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      role: "assistant",
+      parts: activeParts
+    };
+    this.persistMessages([assistantMessage]);
+    this.broadcast(
+      JSON.stringify({
+        type: MessageType.CF_AGENT_MESSAGE_UPDATED,
+        message: assistantMessage
+      })
+    );
   }
 }
 

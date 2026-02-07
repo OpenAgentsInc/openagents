@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Schema } from 'effect';
 import { TelemetryService } from './telemetry';
-import type { UIMessage } from 'ai';
+import type { ChatMessage } from "./chatProtocol"
 
 export class AgentApiError extends Schema.TaggedError<AgentApiError>()('AgentApiError', {
   operation: Schema.String,
@@ -10,7 +10,7 @@ export class AgentApiError extends Schema.TaggedError<AgentApiError>()('AgentApi
 
 export type AgentApi = {
   readonly getBlueprint: (chatId: string) => Effect.Effect<unknown, AgentApiError>;
-  readonly getMessages: (chatId: string) => Effect.Effect<Array<UIMessage>, AgentApiError>;
+  readonly getMessages: (chatId: string) => Effect.Effect<Array<ChatMessage>, AgentApiError>;
   readonly getToolContracts: (chatId: string) => Effect.Effect<Array<AgentToolContract>, AgentApiError>;
   readonly getSignatureContracts: (
     chatId: string,
@@ -119,14 +119,14 @@ export const AgentApiLive = Layer.effect(
           }),
       });
 
-      if (!text.trim()) return [];
+	      if (!text.trim()) return [];
 
-      const parsed = yield* Effect.try({
-        try: () => JSON.parse(text) as Array<UIMessage>,
-        catch: (error) =>
-          AgentApiError.make({
-            operation: 'getMessages',
-            status: response.status,
+	      const parsed = yield* Effect.try({
+	        try: () => JSON.parse(text) as Array<ChatMessage>,
+	        catch: (error) =>
+	          AgentApiError.make({
+	            operation: 'getMessages',
+	            status: response.status,
             error,
           }),
       });

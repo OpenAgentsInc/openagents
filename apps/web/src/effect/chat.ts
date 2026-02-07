@@ -1,204 +1,238 @@
-import { Context, Effect, Layer, SubscriptionRef } from 'effect';
-import { AgentClient } from 'agents/client';
-import { MessageType } from '@cloudflare/ai-chat/types';
-import { AgentApiService } from './agentApi';
-import { TelemetryService } from './telemetry';
+import { Context, Effect, Layer, SubscriptionRef } from "effect"
+import { AgentClient } from "agents/client"
+import { AgentApiService } from "./agentApi"
+import { TelemetryService } from "./telemetry"
+import { MessageType, type ChatMessage, type ChatPart } from "./chatProtocol"
 
-import type { ChatStatus, UIMessage } from 'ai';
+import type * as AiResponse from "@effect/ai/Response"
 
 export type ChatSnapshot = {
-  readonly messages: ReadonlyArray<UIMessage>;
-  readonly status: ChatStatus;
-  readonly errorText: string | null;
-};
+  readonly messages: ReadonlyArray<ChatMessage>
+  readonly status: ChatStatus
+  readonly errorText: string | null
+}
+
+export type ChatStatus = "ready" | "submitted" | "streaming" | "error"
 
 type ActiveStream = {
-  readonly id: string;
-  readonly messageId: string;
-  parts: Array<any>;
-};
+  readonly id: string
+  readonly messageId: string
+  parts: Array<ChatPart>
+}
 
 type ChatSession = {
-  readonly chatId: string;
-  readonly agent: AgentClient | null;
-  readonly agentUrlString: string | null;
-  readonly state: SubscriptionRef.SubscriptionRef<ChatSnapshot>;
-  readonly localRequestIds: Set<string>;
-  messages: Array<UIMessage>;
-  manualStatus: ChatStatus | null;
-  manualErrorText: string | null;
-  activeStream: ActiveStream | null;
-  dispose: () => void;
-};
+  readonly chatId: string
+  readonly agent: AgentClient | null
+  readonly agentUrlString: string | null
+  readonly state: SubscriptionRef.SubscriptionRef<ChatSnapshot>
+  readonly localRequestIds: Set<string>
+  messages: Array<ChatMessage>
+  manualStatus: ChatStatus | null
+  manualErrorText: string | null
+  activeStream: ActiveStream | null
+  dispose: () => void
+}
 
 export type ChatClient = {
-  readonly open: (chatId: string) => Effect.Effect<SubscriptionRef.SubscriptionRef<ChatSnapshot>>;
-  readonly send: (chatId: string, text: string) => Effect.Effect<void, Error>;
-  readonly stop: (chatId: string) => Effect.Effect<void>;
-  readonly clearHistory: (chatId: string) => Effect.Effect<void>;
-  readonly setMessages: (chatId: string, messages: ReadonlyArray<UIMessage>) => Effect.Effect<void>;
-};
+  readonly open: (
+    chatId: string,
+  ) => Effect.Effect<SubscriptionRef.SubscriptionRef<ChatSnapshot>>
+  readonly send: (chatId: string, text: string) => Effect.Effect<void, Error>
+  readonly stop: (chatId: string) => Effect.Effect<void>
+  readonly clearHistory: (chatId: string) => Effect.Effect<void>
+  readonly setMessages: (
+    chatId: string,
+    messages: ReadonlyArray<ChatMessage>,
+  ) => Effect.Effect<void>
+}
 
-export class ChatService extends Context.Tag('@openagents/web/ChatService')<ChatService, ChatClient>() {}
+export class ChatService extends Context.Tag(
+  "@openagents/web/ChatService",
+)<ChatService, ChatClient>() {}
 
 const initialSnapshot = (): ChatSnapshot => ({
   messages: [],
-  status: 'ready',
+  status: "ready",
   errorText: null,
 });
 
 function randomId(size = 8): string {
-  let out = '';
-  while (out.length < size) out += Math.random().toString(36).slice(2);
-  return out.slice(0, size);
+  let out = ""
+  while (out.length < size) out += Math.random().toString(36).slice(2)
+  return out.slice(0, size)
 }
 
 function safeJsonParse(text: string): unknown {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text)
   } catch {
-    return null;
+    return null
   }
 }
 
-function cloneParts(parts: unknown): Array<any> {
-  return Array.isArray(parts) ? [...parts] : [];
+function cloneParts(parts: unknown): Array<ChatPart> {
+  return Array.isArray(parts) ? [...(parts as Array<ChatPart>)] : []
 }
 
-function applyMessageUpdated(prevMessages: ReadonlyArray<UIMessage>, updatedMessage: UIMessage): Array<UIMessage> {
-  let idx = prevMessages.findIndex((m) => m.id === updatedMessage.id);
+function applyMessageUpdated(
+  prevMessages: ReadonlyArray<ChatMessage>,
+  updatedMessage: ChatMessage,
+): Array<ChatMessage> {
+  let idx = prevMessages.findIndex((m) => m.id === updatedMessage.id)
 
   if (idx < 0) {
     const updatedToolCallIds = new Set(
-      cloneParts((updatedMessage as any).parts)
-        .filter((p) => p && typeof p === 'object' && 'toolCallId' in p && p.toolCallId)
-        .map((p) => String(p.toolCallId)),
-    );
+      updatedMessage.parts
+        .filter((p) => p && typeof p === "object" && "toolCallId" in p && (p as any).toolCallId)
+        .map((p) => String((p as any).toolCallId)),
+    )
     if (updatedToolCallIds.size > 0) {
       idx = prevMessages.findIndex((m) =>
-        cloneParts((m as any).parts).some(
-          (p) => p && typeof p === 'object' && 'toolCallId' in p && updatedToolCallIds.has(String(p.toolCallId)),
+        m.parts.some(
+          (p) =>
+            p &&
+            typeof p === "object" &&
+            "toolCallId" in p &&
+            updatedToolCallIds.has(String((p as any).toolCallId)),
         ),
-      );
+      )
     }
   }
 
-  if (idx < 0 && (updatedMessage as any).role === 'assistant') {
+  if (idx < 0 && updatedMessage.role === "assistant") {
     // Last-resort reconciliation: when we locally stream a synthetic assistant message,
     // the server may later broadcast the canonical message with a different id.
     // Prefer replacing the latest assistant message over appending duplicates.
     for (let i = prevMessages.length - 1; i >= 0; i--) {
-      const m = prevMessages[i] as any;
-      if (m && m.role === 'assistant') {
-        idx = i;
-        break;
+      const m = prevMessages[i]
+      if (m && m.role === "assistant") {
+        idx = i
+        break
       }
     }
   }
 
   if (idx >= 0) {
-    const updated = [...prevMessages];
+    const updated = [...prevMessages]
     // Preserve the existing message id to avoid key churn when server updates a
     // message that was locally streamed with a synthetic id.
-    updated[idx] = { ...updatedMessage, id: prevMessages[idx].id };
-    return updated;
+    updated[idx] = { ...updatedMessage, id: prevMessages[idx].id }
+    return updated
   }
 
-  return [...prevMessages, updatedMessage];
+  return [...prevMessages, updatedMessage]
 }
 
-function applyRemoteChunk(active: ActiveStream, chunkData: any): ActiveStream {
+function stableStringify(value: unknown): string {
+  if (value == null) return String(value)
+  if (typeof value === "string") return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function applyRemoteChunk(active: ActiveStream, chunkData: AiResponse.StreamPartEncoded): ActiveStream {
   switch (chunkData?.type) {
-    case 'text-start': {
-      active.parts.push({ type: 'text', text: '', state: 'streaming' });
-      return active;
+    case "text-start": {
+      active.parts.push({ type: "text", text: "", state: "streaming" })
+      return active
     }
-    case 'text-delta': {
-      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === 'text');
-      if (lastTextPart && lastTextPart.type === 'text') {
-        lastTextPart.text += String(chunkData.delta ?? '');
+    case "text-delta": {
+      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any
+      if (lastTextPart && lastTextPart.type === "text") {
+        lastTextPart.text += String((chunkData as any).delta ?? "")
       } else {
-        active.parts.push({ type: 'text', text: String(chunkData.delta ?? '') });
+        active.parts.push({ type: "text", text: String((chunkData as any).delta ?? "") })
       }
-      return active;
+      return active
     }
-    case 'text-end': {
-      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === 'text');
-      if (lastTextPart && 'state' in lastTextPart) lastTextPart.state = 'done';
-      return active;
+    case "text-end": {
+      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any
+      if (lastTextPart && "state" in lastTextPart) lastTextPart.state = "done"
+      return active
     }
-    case 'reasoning-start': {
-      active.parts.push({ type: 'reasoning', text: '', state: 'streaming' });
-      return active;
+    case "reasoning-start":
+    case "reasoning-delta":
+    case "reasoning-end": {
+      // Autopilot must not render reasoning. Ignore these parts on the UI wire.
+      return active
     }
-    case 'reasoning-delta': {
-      const lastReasoningPart = [...active.parts].reverse().find((p) => p?.type === 'reasoning');
-      if (lastReasoningPart && lastReasoningPart.type === 'reasoning') {
-        lastReasoningPart.text += String(chunkData.delta ?? '');
-      } else {
-        active.parts.push({ type: 'reasoning', text: String(chunkData.delta ?? '') });
-      }
-      return active;
-    }
-    case 'reasoning-end': {
-      const lastReasoningPart = [...active.parts].reverse().find((p) => p?.type === 'reasoning');
-      if (lastReasoningPart && 'state' in lastReasoningPart) lastReasoningPart.state = 'done';
-      return active;
-    }
-    case 'file': {
-      active.parts.push({ type: 'file', mediaType: chunkData.mediaType, url: chunkData.url });
-      return active;
-    }
-    case 'source-url': {
+    case "file": {
       active.parts.push({
-        type: 'source-url',
-        sourceId: chunkData.sourceId,
-        url: chunkData.url,
-        title: chunkData.title,
-      });
-      return active;
+        type: "file",
+        mediaType: (chunkData as any).mediaType,
+        url: (chunkData as any).url,
+      })
+      return active
     }
-    case 'source-document': {
+    case "source": {
+      // Sources are not currently rendered in the Effuse UI.
+      return active
+    }
+    case "tool-call": {
+      const toolName = String((chunkData as any).name ?? "tool")
       active.parts.push({
-        type: 'source-document',
-        sourceId: chunkData.sourceId,
-        mediaType: chunkData.mediaType,
-        title: chunkData.title,
-        filename: chunkData.filename,
-      });
-      return active;
+        type: `tool-${toolName}`,
+        toolCallId: String((chunkData as any).id ?? ""),
+        toolName,
+        state: "input-available",
+        input: (chunkData as any).params,
+      })
+      return active
     }
-    case 'tool-input-available': {
-      active.parts.push({
-        type: `tool-${String(chunkData.toolName ?? 'tool')}`,
-        toolCallId: String(chunkData.toolCallId ?? ''),
-        toolName: chunkData.toolName,
-        state: 'input-available',
-        input: chunkData.input,
-      });
-      return active;
-    }
-    case 'tool-output-available': {
+    case "tool-result": {
+      const toolCallId = String((chunkData as any).id ?? "")
+      const isFailure = Boolean((chunkData as any).isFailure)
+      const result = (chunkData as any).result
+
+      let didUpdate = false
       active.parts = active.parts.map((p) => {
-        if (p && typeof p === 'object' && 'toolCallId' in p && p.toolCallId === chunkData.toolCallId && 'state' in p) {
-          return { ...p, state: 'output-available', output: chunkData.output };
+        if (
+          p &&
+          typeof p === "object" &&
+          "toolCallId" in p &&
+          String((p as any).toolCallId) === toolCallId &&
+          "state" in p
+        ) {
+          didUpdate = true
+          return {
+            ...(p as any),
+            state: isFailure ? "output-error" : "output-available",
+            output: result,
+            ...(isFailure ? { errorText: stableStringify(result) } : {}),
+          }
         }
-        return p;
-      });
-      return active;
+        return p
+      })
+
+      if (!didUpdate) {
+        const toolName = String((chunkData as any).name ?? "tool")
+        active.parts.push({
+          type: `tool-${toolName}`,
+          toolCallId,
+          toolName,
+          state: isFailure ? "output-error" : "output-available",
+          output: result,
+          ...(isFailure ? { errorText: stableStringify(result) } : {}),
+        } as any)
+      }
+
+      return active
     }
-    case 'step-start': {
-      active.parts.push({ type: 'step-start' });
-      return active;
+    case "finish":
+    case "error": {
+      return active
     }
     default:
-      return active;
+      return active
   }
 }
 
 function toChatSnapshot(session: ChatSession): ChatSnapshot {
   const status: ChatStatus =
-    session.manualStatus ?? (session.activeStream ? 'streaming' : 'ready');
+    session.manualStatus ?? (session.activeStream ? "streaming" : "ready")
   return {
     messages: session.messages,
     status,
@@ -269,7 +303,7 @@ export const ChatServiceLive = Layer.effect(
         errorText: null,
       });
 
-      const session: ChatSession = {
+	      const session: ChatSession = {
         chatId,
         agent,
         agentUrlString,
@@ -282,7 +316,7 @@ export const ChatServiceLive = Layer.effect(
         dispose: () => {},
       };
 
-      const onChatResponseChunk = (parsed: any, isLocal: boolean) => {
+	      const onChatResponseChunk = (parsed: any, isLocal: boolean) => {
         const id = String(parsed.id ?? '');
         if (!id) return;
 
@@ -292,18 +326,18 @@ export const ChatServiceLive = Layer.effect(
 
         // For local streams, the activeStream is always created by `send()`.
         // For remote/broadcast streams, we reconstruct state here.
-        if (!session.activeStream || session.activeStream.id !== id) {
-          let messageId = randomId(16);
-          let existingParts: Array<any> = [];
+	        if (!session.activeStream || session.activeStream.id !== id) {
+	          let messageId = randomId(16);
+	          let existingParts: Array<ChatPart> = [];
 
-          if (!isLocal && isContinuation) {
-            for (let i = session.messages.length - 1; i >= 0; i--) {
-              const m = session.messages[i] as any;
-              if (m && m.role === 'assistant') {
-                messageId = m.id;
-                existingParts = cloneParts(m.parts);
-                break;
-              }
+	          if (!isLocal && isContinuation) {
+	            for (let i = session.messages.length - 1; i >= 0; i--) {
+	              const m = session.messages[i];
+	              if (m && m.role === 'assistant') {
+	                messageId = m.id;
+	                existingParts = cloneParts(m.parts);
+	                break;
+	              }
             }
           }
 
@@ -322,11 +356,11 @@ export const ChatServiceLive = Layer.effect(
 
               const prev = session.messages;
               const existingIdx = prev.findIndex((m) => m.id === active.messageId);
-              const partialMessage = {
-                id: active.messageId,
-                role: 'assistant',
-                parts: [...active.parts],
-              } as UIMessage;
+	              const partialMessage = {
+	                id: active.messageId,
+	                role: 'assistant',
+	                parts: [...active.parts],
+	              } satisfies ChatMessage;
 
               if (existingIdx >= 0) {
                 const next = [...prev];
@@ -376,22 +410,22 @@ export const ChatServiceLive = Layer.effect(
             updateSnapshot(session);
             return;
           }
-          case MessageType.CF_AGENT_CHAT_MESSAGES: {
-            const msgs = Array.isArray(parsed.messages) ? (parsed.messages as Array<UIMessage>) : [];
-            session.manualStatus = null;
-            session.manualErrorText = null;
-            session.activeStream = null;
-            session.messages = msgs;
+	          case MessageType.CF_AGENT_CHAT_MESSAGES: {
+	            const msgs = Array.isArray(parsed.messages) ? (parsed.messages as Array<ChatMessage>) : [];
+	            session.manualStatus = null;
+	            session.manualErrorText = null;
+	            session.activeStream = null;
+	            session.messages = msgs;
             updateSnapshot(session);
             return;
           }
-          case MessageType.CF_AGENT_MESSAGE_UPDATED: {
-            const msg: unknown = parsed.message;
-            if (!msg || typeof msg !== "object") return;
-            session.messages = applyMessageUpdated(session.messages, msg as UIMessage);
-            updateSnapshot(session);
-            return;
-          }
+	          case MessageType.CF_AGENT_MESSAGE_UPDATED: {
+	            const msg: unknown = parsed.message;
+	            if (!msg || typeof msg !== "object") return;
+	            session.messages = applyMessageUpdated(session.messages, msg as ChatMessage);
+	            updateSnapshot(session);
+	            return;
+	          }
           case MessageType.CF_AGENT_STREAM_RESUMING: {
             const id = String(parsed.id ?? '');
             if (!id) return;
@@ -460,15 +494,15 @@ export const ChatServiceLive = Layer.effect(
         }),
       );
 
-    const send = Effect.fn('ChatService.send')(function* (chatId: string, text: string) {
-      yield* withSession(chatId, (session) =>
-        Effect.sync(() => {
-          const userMsgId = randomId(16);
-          const userMsg = {
-            id: userMsgId,
-            role: 'user',
-            parts: [{ type: 'text', text }],
-          } as UIMessage;
+	    const send = Effect.fn('ChatService.send')(function* (chatId: string, text: string) {
+	      yield* withSession(chatId, (session) =>
+	        Effect.sync(() => {
+	          const userMsgId = randomId(16);
+	          const userMsg = {
+	            id: userMsgId,
+	            role: 'user',
+	            parts: [{ type: 'text', text }],
+	          } satisfies ChatMessage;
 
           // Request messages are the transcript up through the new user message.
           const requestMessages = [...session.messages, userMsg];
@@ -561,7 +595,10 @@ export const ChatServiceLive = Layer.effect(
       );
     });
 
-    const setMessages = Effect.fn('ChatService.setMessages')(function* (chatId: string, messages: ReadonlyArray<UIMessage>) {
+    const setMessages = Effect.fn("ChatService.setMessages")(function* (
+      chatId: string,
+      messages: ReadonlyArray<ChatMessage>,
+    ) {
       yield* withSession(chatId, (session) =>
         Effect.sync(() => {
           session.manualStatus = null;
@@ -586,4 +623,3 @@ export const ChatServiceLive = Layer.effect(
     return ChatService.of({ open, send, stop, clearHistory, setMessages });
   }),
 );
-
