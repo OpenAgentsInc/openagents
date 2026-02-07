@@ -32,6 +32,13 @@ interface EffuseMountProps {
   /** Called when the mount is about to be re-rendered or unmounted (e.g. to dispose observers). */
   onCleanup?: (container: Element) => void;
   /**
+   * Control when `onCleanup()` is invoked:
+   * - `both` (default): called on rerender + unmount
+   * - `rerender`: called only when the mount is about to rerender
+   * - `unmount`: called only when the mount is unmounting
+   */
+  cleanupOn?: 'both' | 'rerender' | 'unmount';
+  /**
    * Optional Effuse `data-ez` registry. When provided, EffuseMount installs
    * the delegated event runtime once for this mount container.
    *
@@ -52,6 +59,7 @@ export function EffuseMount({
   hydrate,
   onRendered,
   onCleanup,
+  cleanupOn = 'both',
   ezRegistry,
 }: EffuseMountProps) {
   const router = useRouter();
@@ -63,6 +71,7 @@ export function EffuseMount({
   const ezRegistryRef = useRef<EffuseMountProps['ezRegistry']>(undefined);
   const ezMountedRef = useRef(false);
   const didSkipInitialRenderRef = useRef(false);
+  const isUnmountingRef = useRef(false);
   runRef.current = run;
   hydrateRef.current = hydrate;
   onRenderedRef.current = onRendered;
@@ -153,7 +162,14 @@ export function EffuseMount({
 
       return () => {
         cancelled = true;
-        onCleanupRef.current?.(el);
+        const isUnmounting = isUnmountingRef.current;
+        const shouldCleanup =
+          cleanupOn === 'both'
+            ? true
+            : cleanupOn === 'unmount'
+              ? isUnmounting
+              : !isUnmounting;
+        if (shouldCleanup) onCleanupRef.current?.(el);
       };
     }
 
@@ -170,9 +186,20 @@ export function EffuseMount({
 
     return () => {
       cancelled = true;
-      onCleanupRef.current?.(el);
+      const isUnmounting = isUnmountingRef.current;
+      const shouldCleanup =
+        cleanupOn === 'both' ? true : cleanupOn === 'unmount' ? isUnmounting : !isUnmounting;
+      if (shouldCleanup) onCleanupRef.current?.(el);
     };
   }, deps);
+
+  // Set an unmount marker so effect cleanups can tell rerender vs unmount.
+  // Declared after the render effect so its cleanup runs first on unmount.
+  useEffect(() => {
+    return () => {
+      isUnmountingRef.current = true;
+    };
+  }, []);
 
   if (ssrHtml !== undefined) {
     return (

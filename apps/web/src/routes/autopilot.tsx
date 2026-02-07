@@ -1,23 +1,23 @@
 import { useAtomSet, useAtomValue } from '@effect-atom/atom-react';
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
+import { createFileRoute, redirect, useRouter, useRouterState } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { makeEzRegistry } from '@openagentsinc/effuse';
-import { whitePreset } from '@openagentsinc/hud';
-import { AutopilotSidebar } from '../components/layout/AutopilotSidebar';
+import { makeEzRegistry, renderToString } from '@openagentsinc/effuse';
 import { EffuseMount } from '../components/EffuseMount';
-import { runAutopilotChat } from '../effuse-pages/autopilot';
-import { runAutopilotBlueprintPanel } from '../effuse-pages/autopilotBlueprint';
-import { runAutopilotControls } from '../effuse-pages/autopilotControls';
-import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
+import { cleanupAuthedDotsGridBackground, hydrateAuthedDotsGridBackground } from '../effuse-pages/authedShell';
+import { autopilotRouteShellTemplate, runAutopilotRoute } from '../effuse-pages/autopilotRoute';
 import { ChatService } from '../effect/chat';
 import { AutopilotChatInputAtom, AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from '../effect/atoms/chat';
+import { AutopilotSidebarCollapsedAtom, AutopilotSidebarUserMenuOpenAtom } from '../effect/atoms/autopilotUi';
+import { SessionAtom } from '../effect/atoms/session';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
+import { clearRootAuthCache } from './__root';
 import type { UIMessage } from 'ai';
 import type { AgentToolContract } from '../effect/agentApi';
 import type { RenderedMessage as EffuseRenderedMessage } from '../effuse-pages/autopilot';
+import type { AutopilotRouteRenderInput } from '../effuse-pages/autopilotRoute';
 
 export const Route = createFileRoute('/autopilot')({
   loader: async ({ context }) => {
@@ -217,6 +217,42 @@ function ChatPage() {
   const chatId = userId;
   const router = useRouter();
   const runtime = router.options.context.effectRuntime;
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  const session = useAtomValue(SessionAtom);
+  const setSession = useAtomSet(SessionAtom);
+
+  const collapsed = useAtomValue(AutopilotSidebarCollapsedAtom);
+  const setCollapsed = useAtomSet(AutopilotSidebarCollapsedAtom);
+  const userMenuOpen = useAtomValue(AutopilotSidebarUserMenuOpenAtom);
+  const setUserMenuOpen = useAtomSet(AutopilotSidebarUserMenuOpenAtom);
+
+  const signOut = useCallback(async () => {
+    try {
+      await fetch('/api/auth/signout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // Best-effort sign-out; always clear local session state.
+    } finally {
+      clearRootAuthCache();
+      setSession({ userId: null, user: null });
+      router.navigate({ href: '/' }).catch(() => {});
+    }
+  }, [router, setSession]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const root = document.querySelector('[data-autopilot-sidebar-root]');
+      if (!(root instanceof HTMLElement)) return;
+      if (!(e.target instanceof Node)) return;
+      if (!root.contains(e.target)) setUserMenuOpen(false);
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [userMenuOpen, setUserMenuOpen]);
 
   const chatClient = useMemo(
     () =>
@@ -258,19 +294,15 @@ function ChatPage() {
   const isBusy = chatSnapshot.status === 'submitted' || chatSnapshot.status === 'streaming';
 
   const messages = chatSnapshot.messages;
-  const chatMountRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
-    const bottom = chatMountRef.current?.firstElementChild?.querySelector('[data-autopilot-bottom]');
-    (bottom as HTMLElement | undefined)?.scrollIntoView({ block: 'end', behavior });
+    const bottom = document.querySelector('[data-autopilot-bottom]');
+    (bottom as HTMLElement | null)?.scrollIntoView({ block: 'end', behavior });
   }, []);
 
   // Track whether the user is near the bottom of the chat scroll region.
   // Use a capture-phase scroll listener so we don't need to rebind on each Effuse re-render.
   useEffect(() => {
-    const root = chatMountRef.current;
-    if (!root) return;
-
     const thresholdPx = 96;
     const onScrollCapture = (e: Event) => {
       const target = e.target;
@@ -280,8 +312,8 @@ function ChatPage() {
       setIsAtBottom(distanceFromBottom <= thresholdPx);
     };
 
-    root.addEventListener('scroll', onScrollCapture, true);
-    return () => root.removeEventListener('scroll', onScrollCapture, true);
+    document.addEventListener('scroll', onScrollCapture, true);
+    return () => document.removeEventListener('scroll', onScrollCapture, true);
   }, [setIsAtBottom]);
 
   const renderedMessages = useMemo(() => {
@@ -480,31 +512,42 @@ function ChatPage() {
     }
   }, [fetchBlueprint, isBusy]);
 
-  const runAutopilotChatRef = useCallback(
-    (el: Element) => runAutopilotChat(el, autopilotChatData),
-    [autopilotChatData],
-  );
-
-  const chatEzRegistryRef = useRef(makeEzRegistry());
-  const chatEzRegistry = chatEzRegistryRef.current;
+  const ezRegistryRef = useRef(makeEzRegistry());
+  const ezRegistry = ezRegistryRef.current;
 
   // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
-  chatEzRegistry.set('autopilot.chat.input', ({ params }) =>
+  ezRegistry.set('autopilot.sidebar.toggleCollapse', () =>
+    Effect.sync(() => {
+      setUserMenuOpen(false);
+      setCollapsed((c) => !c);
+    }),
+  );
+
+  ezRegistry.set('autopilot.sidebar.toggleUserMenu', () =>
+    Effect.sync(() => setUserMenuOpen((o) => !o)),
+  );
+
+  ezRegistry.set('autopilot.sidebar.logout', () =>
+    Effect.sync(() => {
+      setUserMenuOpen(false);
+      void signOut();
+    }),
+  );
+
+  ezRegistry.set('autopilot.chat.input', ({ params }) =>
     Effect.sync(() => {
       const paramsMaybe = params as Record<string, string | undefined>;
       setInput(String(paramsMaybe.message ?? ''));
     }),
   );
 
-  chatEzRegistry.set('autopilot.chat.scrollBottom', () =>
+  ezRegistry.set('autopilot.chat.scrollBottom', () =>
     Effect.sync(() => scrollToBottom('smooth')),
   );
 
-  chatEzRegistry.set('autopilot.chat.stop', () =>
-    chatClient.stop(chatId),
-  );
+  ezRegistry.set('autopilot.chat.stop', () => chatClient.stop(chatId));
 
-  chatEzRegistry.set('autopilot.chat.send', ({ el, params }) =>
+  ezRegistry.set('autopilot.chat.send', ({ el, params }) =>
     Effect.gen(function* () {
       if (isBusy) return;
       const form = el instanceof HTMLFormElement ? el : null;
@@ -739,59 +782,26 @@ function ChatPage() {
     ],
   );
 
-  const runBlueprintPanelRef = useCallback(
-    (el: Element) => runAutopilotBlueprintPanel(el, blueprintPanelModel),
-    [blueprintPanelModel],
-  );
-
-  const blueprintPanelDeps = useMemo<ReadonlyArray<unknown>>(() => {
-    if (isEditingBlueprint) {
-      // Freeze the Effuse form while editing so background refreshes don't reset the inputs/caret.
-      return [isEditingBlueprint, isSavingBlueprint, blueprintError];
-    }
-    return [
-      isEditingBlueprint,
-      isSavingBlueprint,
-      blueprintLoading,
-      blueprintError,
-      blueprintUpdatedAt,
-      blueprintText,
-      Boolean(blueprint),
-    ];
-  }, [
-    blueprint,
-    blueprintError,
-    blueprintLoading,
-    blueprintText,
-    blueprintUpdatedAt,
-    isEditingBlueprint,
-    isSavingBlueprint,
-  ]);
-
-  const blueprintEzRegistryRef = useRef(makeEzRegistry());
-  const blueprintEzRegistry = blueprintEzRegistryRef.current;
-
-  // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
-  blueprintEzRegistry.set('autopilot.blueprint.toggleEdit', () =>
+  ezRegistry.set('autopilot.blueprint.toggleEdit', () =>
     Effect.sync(() => {
       if (isEditingBlueprint) onCancelEditBlueprint();
       else onStartEditBlueprint();
     }),
   );
 
-  blueprintEzRegistry.set('autopilot.blueprint.refresh', () =>
+  ezRegistry.set('autopilot.blueprint.refresh', () =>
     Effect.sync(() => {
       fetchBlueprint().catch(() => {});
     }),
   );
 
-  blueprintEzRegistry.set('autopilot.blueprint.save', () =>
+  ezRegistry.set('autopilot.blueprint.save', () =>
     Effect.sync(() => {
       onSaveBlueprint().catch(() => {});
     }),
   );
 
-  blueprintEzRegistry.set('autopilot.blueprint.draft', ({ params }) =>
+  ezRegistry.set('autopilot.blueprint.draft', ({ params }) =>
     Effect.sync(() => {
       const paramsMaybe = params as Record<string, string | undefined>;
       const draft =
@@ -826,98 +836,125 @@ function ChatPage() {
     [isBusy, isExportingBlueprint, isResettingAgent],
   );
 
-  const runControlsRef = useCallback(
-    (el: Element) => runAutopilotControls(el, controlsModel),
-    [controlsModel],
-  );
-
-  const controlsEzRegistryRef = useRef(makeEzRegistry());
-  const controlsEzRegistry = controlsEzRegistryRef.current;
-
-  // Keep handlers in a stable Map (EffuseMount expects stable Map identity).
-  controlsEzRegistry.set('autopilot.controls.exportBlueprint', () =>
+  ezRegistry.set('autopilot.controls.exportBlueprint', () =>
     Effect.sync(() => {
       onExportBlueprint().catch(() => {});
     }),
   );
 
-  controlsEzRegistry.set('autopilot.controls.clearMessages', () =>
+  ezRegistry.set('autopilot.controls.clearMessages', () =>
     Effect.gen(function* () {
       yield* chatClient.clearHistory(chatId);
       yield* Effect.sync(() => setInput(''));
     }),
   );
 
-  controlsEzRegistry.set('autopilot.controls.resetAgent', () =>
+  ezRegistry.set('autopilot.controls.resetAgent', () =>
     Effect.sync(() => {
       onResetAgent().catch(() => {});
     }),
   );
 
-  return (
-    <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
-      {/* Arwes-style ambient background (HUD). */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundColor: whitePreset.backgroundColor,
-          backgroundImage: [
-            // Soft top glow + vignette to frame the UI.
-            `radial-gradient(120% 85% at 50% 0%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 55%)`,
-            `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 12%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.88) 100%)`,
-            whitePreset.backgroundImage,
-          ].join(', '),
-        }}
-      >
-        <EffuseMount
-          run={(el) =>
-            runHudDotsGridBackground(el, {
-              distance: whitePreset.distance,
-              dotsColor: 'hsla(0, 0%, 100%, 0.035)',
-              lineColor: 'hsla(0, 0%, 100%, 0.03)',
-              dotsSettings: { type: 'circle', size: 2 },
-            })
+  const sidebarModel = useMemo(
+    () => ({
+      collapsed,
+      pathname,
+      user: session.user
+        ? {
+            email: session.user.email,
+            firstName: session.user.firstName,
+            lastName: session.user.lastName,
           }
-          onCleanup={cleanupHudBackground}
-          className="absolute inset-0 pointer-events-none"
-        />
-      </div>
+        : null,
+      userMenuOpen,
+    }),
+    [collapsed, pathname, session.user, userMenuOpen],
+  );
 
-      <div className="relative z-10 flex flex-col h-screen overflow-hidden">
-	      {/* Main area: left sidebar (nav) | center (header + chat) | right (Blueprint) */}
-	      <main className="flex-1 min-h-0 w-full flex overflow-hidden">
-	        <AutopilotSidebar />
+  const toolContractsKey = useMemo(() => {
+    if (!toolContractsByName) return '';
+    return Object.keys(toolContractsByName).sort().join(',');
+  }, [toolContractsByName]);
 
-	        {/* Center: header + chat (Effuse) */}
-	        <div ref={chatMountRef} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-	          <EffuseMount
-	            run={runAutopilotChatRef}
-	            // Avoid rerendering the Effuse DOM on each keystroke; it causes caret/selection glitches
-	            // because Effuse replaces the input element.
-	            deps={[renderedTailKey, isBusy, isAtBottom, toolContractsByName]}
-	            ezRegistry={chatEzRegistry}
-	            className="flex-1 min-h-0 flex flex-col overflow-hidden"
-	          />
-	        </div>
+  const sidebarKey = useMemo(
+    () =>
+      `${collapsed ? 1 : 0}:${pathname}:${session.user?.id ?? 'null'}:${userMenuOpen ? 1 : 0}`,
+    [collapsed, pathname, session.user?.id, userMenuOpen],
+  );
 
-	        {/* Blueprint - right sidebar (Effuse) */}
-	        <EffuseMount
-	          run={runBlueprintPanelRef}
-	          deps={blueprintPanelDeps}
-	          ezRegistry={blueprintEzRegistry}
-	          className="hidden lg:flex lg:w-[360px] shrink-0 border-l border-border-dark bg-bg-secondary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
-	        />
-      </main>
+  const chatKey = useMemo(
+    () => `${renderedTailKey}:${isBusy ? 1 : 0}:${isAtBottom ? 1 : 0}:${toolContractsKey}`,
+    [renderedTailKey, isBusy, isAtBottom, toolContractsKey],
+  );
 
-      {/* Control panel - bottom right (Effuse) */}
-      <EffuseMount
-        run={runControlsRef}
-        deps={[controlsModel]}
-        ezRegistry={controlsEzRegistry}
-        className="absolute bottom-4 right-4"
-      />
-      </div>
-    </div>
+  const blueprintKey = useMemo(() => {
+    if (isEditingBlueprint) {
+      // Freeze the Effuse form while editing so background refreshes don't reset the inputs/caret.
+      return `edit:${isSavingBlueprint ? 1 : 0}:${blueprintError ?? ''}`;
+    }
+    return `view:${isSavingBlueprint ? 1 : 0}:${blueprintLoading ? 1 : 0}:${blueprintError ?? ''}:${blueprintUpdatedAt ?? 0}`;
+  }, [
+    blueprintError,
+    blueprintLoading,
+    blueprintUpdatedAt,
+    isEditingBlueprint,
+    isSavingBlueprint,
+  ]);
+
+  const controlsKey = useMemo(
+    () => `${isExportingBlueprint ? 1 : 0}:${isBusy ? 1 : 0}:${isResettingAgent ? 1 : 0}`,
+    [isExportingBlueprint, isBusy, isResettingAgent],
+  );
+
+  const renderInput: AutopilotRouteRenderInput = useMemo(
+    () => ({
+      sidebarModel,
+      sidebarKey,
+      chatData: autopilotChatData,
+      chatKey,
+      blueprintModel: blueprintPanelModel,
+      blueprintKey,
+      controlsModel,
+      controlsKey,
+    }),
+    [
+      autopilotChatData,
+      blueprintKey,
+      blueprintPanelModel,
+      chatKey,
+      controlsKey,
+      controlsModel,
+      sidebarKey,
+      sidebarModel,
+    ],
+  );
+
+  const ssrHtmlRef = useRef<string | null>(null);
+  if (ssrHtmlRef.current === null) {
+    ssrHtmlRef.current = renderToString(autopilotRouteShellTemplate());
+  }
+  const ssrHtml = ssrHtmlRef.current;
+
+  const hydrate = useCallback(
+    (el: Element) =>
+      Effect.gen(function* () {
+        yield* hydrateAuthedDotsGridBackground(el);
+        yield* runAutopilotRoute(el, renderInput);
+      }),
+    [renderInput],
+  );
+
+  return (
+    <EffuseMount
+      run={(el) => runAutopilotRoute(el, renderInput)}
+      deps={[sidebarKey, chatKey, blueprintKey, controlsKey]}
+      ssrHtml={ssrHtml}
+      hydrate={hydrate}
+      onCleanup={cleanupAuthedDotsGridBackground}
+      cleanupOn="unmount"
+      ezRegistry={ezRegistry}
+      className="h-full w-full"
+    />
   );
 }
 
