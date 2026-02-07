@@ -62,6 +62,9 @@ export type RouterService<R> = {
    * Start browser listeners (popstate + link interception).
    *
    * Strict hydration default: `start` MUST NOT call DomService.swap.
+   *
+   * Routes may opt into `hydration="soft"` / `"client-only"`, in which case
+   * `start` will perform a single initial navigation apply for the current URL.
    */
   readonly start: Effect.Effect<void, RouterError, DomService | R>
 
@@ -802,6 +805,23 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
       })
 
       yield* Ref.set(cleanupRef, { onClick, onMouseOver, onFocusIn, stopHistory })
+
+      // Soft/client-only hydration: run one initial navigation apply on boot.
+      // Strict hydration does not re-run the initial loader/view.
+      const current = config.history.current()
+      const matched = matchRoute(config.routes, current)
+      const hydration = matched?.route.hydration ?? ("strict" as const)
+      if (matched && hydration !== "strict") {
+        runFork(
+          startNavigation(current, "none").pipe(
+            Effect.catchAll((err) =>
+              Effect.sync(() =>
+                console.error("[Effuse/Router] initial hydration failed", err)
+              )
+            )
+          )
+        )
+      }
     })
 
     const stop: RouterService<R>["stop"] = Effect.gen(function* () {

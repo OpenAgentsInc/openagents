@@ -89,6 +89,61 @@ describe("conformance: shell/outlet invariants", () => {
     root.remove()
   })
 
+  it("strict hydration: RouterService.start does not re-run the initial loader even when the current URL matches a route", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `
+      <div data-effuse-shell>
+        <div data-effuse-outlet>SSR outlet</div>
+      </div>
+    `
+    document.body.appendChild(root)
+
+    const shell = root.querySelector("[data-effuse-shell]")!
+    const outlet = root.querySelector("[data-effuse-outlet]")!
+
+    let swaps = 0
+    let loaderRuns = 0
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        if (target === outlet) swaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    const a: Route<{}> = {
+      id: "/a",
+      match: matchExact("/a"),
+      loader: () =>
+        Effect.sync(() => void loaderRuns++).pipe(Effect.as(RouteOutcome.ok({}))),
+      view: () => Effect.succeed(html`<div data-page="a">a</div>`),
+      hydration: "strict",
+    }
+
+    const history = makeMemoryHistory("https://example.test/a")
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [a],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        yield* router.start
+        // Give any mistakenly-forked initial navigation a chance to run.
+        yield* Effect.sleep("20 millis")
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    expect(swaps).toBe(0)
+    expect(loaderRuns).toBe(0)
+    expect(root.innerHTML).toContain("SSR outlet")
+
+    root.remove()
+  })
+
   it("navigations swap the outlet only by default (shell remains stable)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `

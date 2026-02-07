@@ -973,6 +973,7 @@ Work log:
 - 2026-02-07: hardening: added RouterService “prefetch intent” behavior (`data-router-prefetch` triggers prefetch on hover/focus) with contract tests ensuring no DOM swap occurs during prefetch (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-service.test.ts`).
 - 2026-02-07: hardening: added GitHub Actions CI gate running the Effuse conformance suite + `apps/web` lint/build + `apps/autopilot-worker` typecheck/tests on every push/PR (`.github/workflows/verify.yml`).
 - 2026-02-07: hardening: added RouterService link interception contract tests (same-origin click interception, modifier-key bypass, cross-origin bypass) to prevent regressions in SPA navigation semantics (`packages/effuse/tests/router-link-interception.test.ts`).
+- 2026-02-07: hardening: implemented soft/client-only hydration semantics for `RouterService.start` (per-route initial navigation apply), and added conformance tests for hydration modes + strict “matched route” boot (no loader/view on boot) (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/conformance-hydration-modes.test.ts`, `packages/effuse/tests/conformance-shell-outlet.test.ts`).
 
 Add/Change:
 
