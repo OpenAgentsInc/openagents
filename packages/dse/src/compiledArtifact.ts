@@ -10,7 +10,10 @@ export type EvalSummaryV1 = {
   readonly datasetId?: string | undefined;
   readonly datasetHash?: string | undefined;
   readonly metricId?: string | undefined;
+  readonly metricVersion?: number | undefined;
   readonly n?: number | undefined;
+  readonly seed?: number | undefined;
+  readonly selectedExampleIdsHash?: string | undefined;
 };
 
 export const EvalSummaryV1Schema: Schema.Schema<EvalSummaryV1> = Schema.Struct({
@@ -21,7 +24,10 @@ export const EvalSummaryV1Schema: Schema.Schema<EvalSummaryV1> = Schema.Struct({
   datasetId: Schema.optional(Schema.String),
   datasetHash: Schema.optional(Schema.String),
   metricId: Schema.optional(Schema.String),
-  n: Schema.optional(Schema.Number)
+  metricVersion: Schema.optional(Schema.Number),
+  n: Schema.optional(Schema.Number),
+  seed: Schema.optional(Schema.Number),
+  selectedExampleIdsHash: Schema.optional(Schema.String)
 });
 
 export type DseCompiledArtifactV1 = {
