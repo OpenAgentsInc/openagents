@@ -16,7 +16,8 @@
     "remote": true
   },
   "assets": {
-    "directory": "dist/effuse-client"
+    "directory": "dist/effuse-client",
+    "binding": "ASSETS"
   },
   "alias": {
     "@openagentsinc/dse": "../../packages/dse/src/index.ts",
