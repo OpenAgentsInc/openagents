@@ -32,7 +32,10 @@ export const makeAppRuntime = (config: AppConfig): AppRuntime => {
         runtime: typeof window === 'undefined' ? 'server' : 'client',
         services: [
           'AppConfigService',
+          'RequestContextService',
           'TelemetryService',
+          'AuthService',
+          'ConvexService',
           'AgentApiService',
           'AgentRpcClientService',
           'ChatService',

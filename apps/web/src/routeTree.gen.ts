@@ -23,6 +23,7 @@ import { Route as MarketingLoginRouteImport } from './routes/_marketing.login'
 import { Route as ApiAuthVerifyRouteImport } from './routes/api.auth.verify'
 import { Route as ApiAuthStartRouteImport } from './routes/api.auth.start'
 import { Route as ApiAuthSignoutRouteImport } from './routes/api.auth.signout'
+import { Route as ApiAuthSessionRouteImport } from './routes/api.auth.session'
 
 const ToolsRoute = ToolsRouteImport.update({
   id: '/tools',
@@ -93,6 +94,11 @@ const ApiAuthSignoutRoute = ApiAuthSignoutRouteImport.update({
   path: '/api/auth/signout',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSessionRoute = ApiAuthSessionRouteImport.update({
+  id: '/api/auth/session',
+  path: '/api/auth/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof MarketingIndexRoute
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof MarketingLoginRoute
   '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
+  '/api/auth/session': typeof ApiAuthSessionRoute
   '/api/auth/signout': typeof ApiAuthSignoutRoute
   '/api/auth/start': typeof ApiAuthStartRoute
   '/api/auth/verify': typeof ApiAuthVerifyRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByTo {
   '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/': typeof MarketingIndexRoute
+  '/api/auth/session': typeof ApiAuthSessionRoute
   '/api/auth/signout': typeof ApiAuthSignoutRoute
   '/api/auth/start': typeof ApiAuthStartRoute
   '/api/auth/verify': typeof ApiAuthVerifyRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/api/rpc': typeof ApiRpcRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/_marketing/': typeof MarketingIndexRoute
+  '/api/auth/session': typeof ApiAuthSessionRoute
   '/api/auth/signout': typeof ApiAuthSignoutRoute
   '/api/auth/start': typeof ApiAuthStartRoute
   '/api/auth/verify': typeof ApiAuthVerifyRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/rpc'
     | '/chat/$chatId'
+    | '/api/auth/session'
     | '/api/auth/signout'
     | '/api/auth/start'
     | '/api/auth/verify'
@@ -169,6 +179,7 @@ export interface FileRouteTypes {
     | '/api/rpc'
     | '/chat/$chatId'
     | '/'
+    | '/api/auth/session'
     | '/api/auth/signout'
     | '/api/auth/start'
     | '/api/auth/verify'
@@ -185,6 +196,7 @@ export interface FileRouteTypes {
     | '/api/rpc'
     | '/chat/$chatId'
     | '/_marketing/'
+    | '/api/auth/session'
     | '/api/auth/signout'
     | '/api/auth/start'
     | '/api/auth/verify'
@@ -200,6 +212,7 @@ export interface RootRouteChildren {
   ToolsRoute: typeof ToolsRoute
   ApiRpcRoute: typeof ApiRpcRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
+  ApiAuthSessionRoute: typeof ApiAuthSessionRoute
   ApiAuthSignoutRoute: typeof ApiAuthSignoutRoute
   ApiAuthStartRoute: typeof ApiAuthStartRoute
   ApiAuthVerifyRoute: typeof ApiAuthVerifyRoute
@@ -305,6 +318,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSignoutRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/session': {
+      id: '/api/auth/session'
+      path: '/api/auth/session'
+      fullPath: '/api/auth/session'
+      preLoaderRoute: typeof ApiAuthSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -332,6 +352,7 @@ const rootRouteChildren: RootRouteChildren = {
   ToolsRoute: ToolsRoute,
   ApiRpcRoute: ApiRpcRoute,
   ChatChatIdRoute: ChatChatIdRoute,
+  ApiAuthSessionRoute: ApiAuthSessionRoute,
   ApiAuthSignoutRoute: ApiAuthSignoutRoute,
   ApiAuthStartRoute: ApiAuthStartRoute,
   ApiAuthVerifyRoute: ApiAuthVerifyRoute,
