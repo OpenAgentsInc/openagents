@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
 import { whitePreset } from "@openagentsinc/hud";
 import { runAutopilotChat } from "./autopilot";
+import { runAutopilotIntro } from "./autopilotIntro";
 import { runAutopilotBlueprintPanel } from "./autopilotBlueprint";
 import { runAutopilotControls } from "./autopilotControls";
 import { runAutopilotSidebar } from "./autopilotSidebar";
@@ -80,6 +81,8 @@ const getSlot = (container: Element, name: SlotName): Element | null => {
 export type AutopilotRouteRenderInput = {
   readonly sidebarModel: AutopilotSidebarModel;
   readonly sidebarKey: string;
+  /** When true, chat slot shows intro (unauthed) instead of chat. */
+  readonly introMode?: boolean;
   readonly chatData: AutopilotChatData;
   readonly chatKey: string;
   readonly blueprintModel: AutopilotBlueprintPanelModel;
@@ -127,7 +130,11 @@ export const runAutopilotRoute = (
     }
 
     if (chatSlot && (prev.chat !== next.chat || chatSlot.childNodes.length === 0)) {
-      yield* runAutopilotChat(chatSlot, input.chatData);
+      if (input.introMode) {
+        yield* runAutopilotIntro(chatSlot);
+      } else {
+        yield* runAutopilotChat(chatSlot, input.chatData);
+      }
     }
 
     if (
