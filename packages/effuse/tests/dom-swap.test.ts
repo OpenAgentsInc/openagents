@@ -119,6 +119,36 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
+  it("restores scroll positions for nodes with data-scroll-id on outer swaps", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div id="target"><div data-scroll-id="swap-scroll-outer"></div></div>`
+    document.body.appendChild(root)
+
+    const target = root.querySelector("#target") as HTMLElement
+    const scrollEl = target.querySelector(
+      '[data-scroll-id="swap-scroll-outer"]'
+    ) as HTMLElement
+    scrollEl.scrollTop = 123
+    scrollEl.scrollLeft = 45
+
+    await Effect.runPromise(
+      DomServiceLive.swap(
+        target,
+        html`<div id="target"><div data-scroll-id="swap-scroll-outer"></div><div>more</div></div>`,
+        "outer"
+      )
+    )
+
+    const nextTarget = root.querySelector("#target") as HTMLElement
+    const nextScrollEl = nextTarget.querySelector(
+      '[data-scroll-id="swap-scroll-outer"]'
+    ) as HTMLElement
+    expect(nextScrollEl.scrollTop).toBe(123)
+    expect(nextScrollEl.scrollLeft).toBe(45)
+
+    root.remove()
+  })
+
   it("supports swap modes: beforeend / afterbegin / delete", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><span>a</span></div>`
