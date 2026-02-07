@@ -37,6 +37,87 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("RouterService (contract)", () => {
+  it("prefetch intent: data-router-prefetch triggers prefetch on hover/focus without swapping", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `
+      <div data-effuse-shell>
+        <div data-effuse-outlet>SSR</div>
+        <a href="/a" data-router-prefetch>Go</a>
+      </div>
+    `
+    document.body.appendChild(root)
+
+    const shell = root.querySelector("[data-effuse-shell]")!
+    const anchor = root.querySelector("a") as HTMLAnchorElement
+    const outlet = root.querySelector("[data-effuse-outlet]")!
+
+    let started = 0
+    let finished = 0
+    let swaps = 0
+    let resolveStarted!: () => void
+    const startedPromise = new Promise<void>((r) => {
+      resolveStarted = r
+    })
+
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        if (target === outlet) swaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    const a: Route<{}> = {
+      id: "/a",
+      match: matchExact("/a"),
+      loader: () =>
+        Effect.gen(function* () {
+          started++
+          resolveStarted()
+          yield* Effect.sleep("20 millis")
+          finished++
+          return RouteOutcome.ok({}, { cache: { mode: "cache-first" } })
+        }),
+      view: () => Effect.succeed(html`<div data-page="a">a</div>`),
+    }
+
+    const history = makeMemoryHistory("https://example.test/")
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [a],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        yield* router.start
+
+        // Hover triggers prefetch.
+        anchor.dispatchEvent(
+          new MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })
+        )
+
+        yield* Effect.promise(() => startedPromise)
+        yield* Effect.sleep("40 millis")
+
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+        expect(swaps).toBe(0)
+        expect(root.querySelector('[data-page="a"]')).toBeNull()
+
+        // Focus triggers prefetch as well (deduped by loader key, so no second run).
+        anchor.dispatchEvent(new FocusEvent("focusin", { bubbles: true }))
+        yield* Effect.sleep("10 millis")
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    root.remove()
+  })
+
   it("stop removes navigation listeners (no click interception, no popstate listener)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `

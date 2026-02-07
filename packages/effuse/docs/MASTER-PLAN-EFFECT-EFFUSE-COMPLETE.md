@@ -968,6 +968,7 @@ Work log:
 - 2026-02-07: hardening: expanded `DomService.swap` focus/caret contract tests to cover textarea selection restoration and outer-swap focus restoration (caret preservation for Blueprint-like editing flows) (`packages/effuse/tests/dom-swap.test.ts`).
 - 2026-02-07: hardening: added `runRoute` contract tests covering guard short-circuiting, stage attribution (`guard`/`loader`/`head`/`view`) on defects, and hydration/navigation defaults/overrides (`packages/effuse/tests/run-route.test.ts`).
 - 2026-02-07: hardening: ensured SSR route meta tags include `data-effuse-meta="1"` so RouterService head management can reliably clear/replace them on client navigations (prevents duplicate stale meta tags after the first SPA navigation) (`apps/web/src/effuse-host/ssr.ts`).
+- 2026-02-07: hardening: added RouterService “prefetch intent” behavior (`data-router-prefetch` triggers prefetch on hover/focus) with contract tests ensuring no DOM swap occurs during prefetch (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-service.test.ts`).
 
 Add/Change:
 
