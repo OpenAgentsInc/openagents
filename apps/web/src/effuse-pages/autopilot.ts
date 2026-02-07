@@ -1,5 +1,6 @@
 import { Effect } from "effect";
-import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
+import { DomServiceTag, EffuseLive, html, renderToolPart } from "@openagentsinc/effuse";
+import type { ToolPartModel } from "@openagentsinc/effuse";
 
 /** Text part for display (state for streaming done) */
 export type RenderTextPart = {
@@ -11,15 +12,7 @@ export type RenderTextPart = {
 /** Tool part for display */
 export type RenderToolPart = {
   readonly kind: "tool";
-  readonly toolName: string;
-  readonly toolCallId: string;
-  readonly state: string;
-  readonly inputJson: string;
-  readonly outputJson?: string;
-  readonly errorText?: string;
-  readonly preliminary?: boolean;
-  readonly usage?: string | null;
-  readonly description?: string | null;
+  readonly model: ToolPartModel;
 };
 
 export type RenderPart = RenderTextPart | RenderToolPart;
@@ -36,46 +29,6 @@ export type AutopilotChatData = {
   readonly isAtBottom: boolean;
   readonly inputValue: string;
 };
-
-function toolStateBadge(state: string): string {
-  switch (state) {
-    case "output-available":
-      return "OK";
-    case "output-error":
-      return "ERR";
-    case "output-denied":
-      return "DENY";
-    case "approval-requested":
-      return "ASK";
-    case "approval-responded":
-      return "ACK";
-    case "input-streaming":
-    case "input-available":
-      return "...";
-    default:
-      return "?";
-  }
-}
-
-function toolStateLabel(state: string): string {
-  switch (state) {
-    case "output-available":
-      return "done";
-    case "output-error":
-      return "error";
-    case "output-denied":
-      return "denied";
-    case "approval-requested":
-      return "approval";
-    case "approval-responded":
-      return "approval";
-    case "input-streaming":
-    case "input-available":
-      return "running";
-    default:
-      return state;
-  }
-}
 
 export function runAutopilotChat(
   container: Element,
@@ -109,58 +62,9 @@ export function runAutopilotChat(
         if (p.kind === "text") {
           return html`<div class="whitespace-pre-wrap break-words">${p.text}</div>`;
         }
-        const badge = toolStateBadge(p.state);
-        const label = toolStateLabel(p.state);
-        const headerText =
-          p.state === "output-available" ? "Used tool:" : "Using tool:";
-        const borderTone =
-          p.state === "output-error" || p.state === "output-denied"
-            ? "border-red-500/40 bg-red-500/5"
-            : "border-border-dark bg-surface-primary/35";
-
-        return html`
-          <details
-            class="w-full rounded border shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset] ${borderTone}"
-          >
-            <summary class="flex items-center justify-between gap-3 px-3 py-2 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-              <div class="flex items-baseline gap-2 min-w-0">
-                <span class="text-[10px] uppercase tracking-[0.16em] text-text-dim shrink-0">${badge}</span>
-                <span class="text-xs text-text-muted shrink-0">${headerText}</span>
-                <span class="text-xs font-semibold text-text-primary truncate">${p.toolName}</span>
-                <span class="text-[10px] text-text-dim shrink-0">(${label})</span>
-              </div>
-              <span class="text-[10px] font-mono text-text-muted shrink-0">Show</span>
-            </summary>
-            <div class="border-t border-border-dark/70 px-3 py-2">
-              ${p.usage || p.description
-                ? html`
-                    <div class="mb-3">
-                      ${p.usage ? html`<div class="text-[10px] font-mono text-text-dim whitespace-pre-wrap break-words">${p.usage}</div>` : null}
-                      ${p.description ? html`<div class="text-[11px] text-text-muted whitespace-pre-wrap break-words">${p.description}</div>` : null}
-                    </div>
-                  `
-                : null}
-              <div class="text-[10px] text-text-dim uppercase tracking-wider mb-1">Input</div>
-              <pre class="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">${p.inputJson}</pre>
-              ${p.state === "output-error" && p.errorText
-                ? html`
-                    <div class="mt-3">
-                      <div class="text-[10px] text-text-dim uppercase tracking-wider mb-1">Error</div>
-                      <pre class="text-[11px] leading-4 whitespace-pre-wrap break-words text-red-300">${p.errorText}</pre>
-                    </div>
-                  `
-                : null}
-              ${p.state === "output-available" && p.outputJson != null
-                ? html`
-                    <div class="mt-3 border-t border-border-dark/60 border-dashed pt-2">
-                      <div class="text-[10px] text-text-dim uppercase tracking-wider mb-1">Output${p.preliminary ? " (preliminary)" : ""}</div>
-                      <pre class="text-[11px] leading-4 whitespace-pre-wrap break-words text-text-primary">${p.outputJson}</pre>
-                    </div>
-                  `
-                : null}
-            </div>
-          </details>
-        `;
+        // Default tool card rendering: enforces toolCallId visibility + BlobRef view-full affordance.
+        // Style is inherited from the surrounding typography.
+        return renderToolPart(p.model);
       });
 
       return html`
