@@ -110,7 +110,7 @@ function LoginPage() {
             credentials: 'include',
             body: JSON.stringify({ email: nextEmail }),
           });
-          const data = await r.json().catch(() => null);
+          const data: any = await r.json().catch(() => null);
           if (!r.ok || !data?.ok) {
             throw new Error(typeof data?.error === 'string' ? data.error : 'send_failed');
           }
@@ -173,7 +173,7 @@ function LoginPage() {
             credentials: 'include',
             body: JSON.stringify({ email: nextEmail, code: nextCode }),
           });
-          const data = await r.json().catch(() => null);
+          const data: any = await r.json().catch(() => null);
           if (!r.ok || !data?.ok) {
             throw new Error(typeof data?.error === 'string' ? data.error : 'verify_failed');
           }
@@ -241,7 +241,7 @@ function LoginPage() {
             credentials: 'include',
             body: JSON.stringify({ email: nextEmail }),
           });
-          const data = await r.json().catch(() => null);
+          const data: any = await r.json().catch(() => null);
           if (!r.ok || !data?.ok) {
             throw new Error(typeof data?.error === 'string' ? data.error : 'send_failed');
           }

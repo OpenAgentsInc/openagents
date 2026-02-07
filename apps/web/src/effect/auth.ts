@@ -115,7 +115,7 @@ const fetchClientAuthState = Effect.fn('AuthService.fetchClientAuthState')(funct
   }
 
   const json = yield* Effect.tryPromise({
-    try: () => response.json() as Promise<unknown>,
+    try: () => response.json(),
     catch: (error) => AuthServiceError.make({ operation: 'fetchClientAuthState.json', error }),
   });
 
@@ -148,7 +148,7 @@ type WorkOsAuthKit = {
 };
 
 let getWorkosAuthKit: (() => Promise<WorkOsAuthKit>) | undefined;
-if ((import.meta as any).env?.SSR) {
+if (typeof window === 'undefined') {
   let cached: WorkOsAuthKit | null = null;
   getWorkosAuthKit = async () => {
     if (cached) return cached;

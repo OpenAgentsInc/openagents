@@ -1,18 +1,16 @@
 /**
- * Cloudflare Workers config for apps/web.
- * Custom domain openagents.com: add in Dashboard → Workers & Pages → autopilot-web → Settings → Domains & routes
- * (remove openagents.com from the old worker first, then add route for openagents.com/* to this worker).
- * https://developers.cloudflare.com/workers/wrangler/configuration/
+ * Parallel Cloudflare Workers config for the EffuseWebHost (Phase 5).
+ *
+ * This allows us to develop and deploy the React/TanStack host and the Effuse host
+ * side-by-side until Phase 6 cutover.
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "autopilot-web",
+  "name": "autopilot-web-effuse",
   "compatibility_date": "2025-12-17",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/effuse-host/worker.ts",
-  "observability": {
-    "enabled": true
-  },
+  "observability": { "enabled": true },
   "ai": {
     "binding": "AI",
     "remote": true
@@ -43,6 +41,4 @@
   }
   // Production secrets (from .env.production): run once before deploy:
   //   npm run wrangler:secrets
-  // This pushes WORKOS_CLIENT_ID, WORKOS_API_KEY, WORKOS_COOKIE_PASSWORD,
-  // AUTOPILOT_CODEX_SECRET, OA_INTERNAL_KEY, PUBLIC_API_URL to the Worker.
 }

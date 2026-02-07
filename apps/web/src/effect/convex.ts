@@ -47,7 +47,7 @@ export const ConvexServiceLive = Layer.scoped(
     const config = yield* AppConfigService;
     const auth = yield* AuthService;
 
-    if ((import.meta as any).env?.SSR) {
+    if (typeof window === 'undefined') {
       const getHttp = Effect.fn('ConvexService.getHttp')(function* () {
         const existing = yield* FiberRef.get(serverHttpClientRef);
         if (existing) return existing;

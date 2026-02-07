@@ -33,7 +33,7 @@ export const Route = createFileRoute('/api/auth/verify')({
       POST: async ({ request }) => {
         let body: VerifyBody;
         try {
-          body = (await request.json()) as VerifyBody;
+          body = await request.json();
         } catch {
           return json({ ok: false, error: 'invalid_json' }, { status: 400 });
         }
@@ -78,4 +78,3 @@ export const Route = createFileRoute('/api/auth/verify')({
     },
   },
 });
-

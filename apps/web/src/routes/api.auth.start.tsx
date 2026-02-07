@@ -28,7 +28,7 @@ export const Route = createFileRoute('/api/auth/start')({
       POST: async ({ request }) => {
         let body: StartBody;
         try {
-          body = (await request.json()) as StartBody;
+          body = await request.json();
         } catch {
           return json({ ok: false, error: 'invalid_json' }, { status: 400 });
         }

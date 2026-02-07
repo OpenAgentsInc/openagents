@@ -88,7 +88,7 @@ export const AgentApiLive = Layer.effect(
       yield* t.event('blueprint.fetch', { ok: true });
 
       return yield* Effect.tryPromise({
-        try: () => response.json() as Promise<unknown>,
+        try: () => response.json(),
         catch: (error) =>
           AgentApiError.make({
             operation: 'getBlueprint',
@@ -145,8 +145,8 @@ export const AgentApiLive = Layer.effect(
         });
       }
 
-      return yield* Effect.tryPromise({
-        try: () => response.json() as Promise<Array<AgentToolContract>>,
+      const json = yield* Effect.tryPromise({
+        try: () => response.json(),
         catch: (error) =>
           AgentApiError.make({
             operation: 'getToolContracts',
@@ -154,6 +154,7 @@ export const AgentApiLive = Layer.effect(
             error,
           }),
       });
+      return json as Array<AgentToolContract>;
     });
 
     const getSignatureContracts = Effect.fn('AgentApi.getSignatureContracts')(function* (chatId: string) {
@@ -167,8 +168,8 @@ export const AgentApiLive = Layer.effect(
         });
       }
 
-      return yield* Effect.tryPromise({
-        try: () => response.json() as Promise<Array<DseSignatureContract>>,
+      const json = yield* Effect.tryPromise({
+        try: () => response.json(),
         catch: (error) =>
           AgentApiError.make({
             operation: 'getSignatureContracts',
@@ -176,6 +177,7 @@ export const AgentApiLive = Layer.effect(
             error,
           }),
       });
+      return json as Array<DseSignatureContract>;
     });
 
     const getModuleContracts = Effect.fn('AgentApi.getModuleContracts')(function* (chatId: string) {
@@ -189,8 +191,8 @@ export const AgentApiLive = Layer.effect(
         });
       }
 
-      return yield* Effect.tryPromise({
-        try: () => response.json() as Promise<Array<DseModuleContract>>,
+      const json = yield* Effect.tryPromise({
+        try: () => response.json(),
         catch: (error) =>
           AgentApiError.make({
             operation: 'getModuleContracts',
@@ -198,6 +200,7 @@ export const AgentApiLive = Layer.effect(
             error,
           }),
       });
+      return json as Array<DseModuleContract>;
     });
 
     const resetAgent = Effect.fn('AgentApi.resetAgent')(function* (chatId: string) {

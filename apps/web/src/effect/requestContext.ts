@@ -26,10 +26,10 @@ export const makeServerRequestContext = (request: Request): RequestContext => ({
 });
 
 export const makeDefaultRequestContext = (): RequestContext => {
-  // Vite replaces this at build-time, so SSR code can be tree-shaken correctly.
-  if ((import.meta as any).env?.SSR) {
+  // Avoid relying on Vite-only `import.meta.env.SSR` so this works under
+  // Cloudflare Worker bundlers too.
+  if (typeof window === 'undefined') {
     return { _tag: 'MissingServerRequest' };
   }
   return { _tag: 'Client' };
 };
-

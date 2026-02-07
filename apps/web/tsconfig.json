@@ -19,8 +19,8 @@
       "@/*": ["./src/*"],
       "~/*": ["./src/*"]
     },
-    "types": ["vite/client"]
+    "types": ["vite/client", "@cloudflare/workers-types"]
   },
-  "include": ["src/**/*", "vite.config.ts"],
+  "include": ["src/**/*", "vite.config.ts", "vite.effuse.config.ts"],
   "exclude": ["node_modules", "dist", ".tanstack"]
 }
