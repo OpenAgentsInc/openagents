@@ -52,7 +52,16 @@ import {
 
 import { MessageType, type ChatMessage, type ChatPart, type ChatToolPart } from "./chatProtocol";
 import { makeWorkersAiLanguageModel } from "./effect/ai/languageModel";
-import { initAiReceiptTables, listAiModelReceipts, recordAiModelReceipt, type AiModelReceiptV1, type UsageEncoded } from "./effect/ai/receipts";
+import {
+  initAiReceiptTables,
+  listAiModelReceipts,
+  listAiToolReceipts,
+  recordAiModelReceipt,
+  recordAiToolReceipt,
+  type AiModelReceiptV1,
+  type AiToolReceiptV1,
+  type UsageEncoded
+} from "./effect/ai/receipts";
 import { encodeWirePart } from "./effect/ai/streaming";
 import { aiToolFromContract } from "./effect/ai/toolkit";
 import { sha256IdFromString } from "./hash";
@@ -786,6 +795,22 @@ export class Chat extends Agent<Env> {
       const limit = Number.isFinite(limitParsed) ? limitParsed : undefined;
 
       const receipts = listAiModelReceipts(this.sql.bind(this) as unknown as SqlTag, {
+        ...(limit !== undefined ? { limit } : {})
+      });
+
+      return Response.json(receipts);
+    }
+
+    if (url.pathname.endsWith("/ai/tool-receipts")) {
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const limitRaw = url.searchParams.get("limit");
+      const limitParsed = limitRaw ? Number(limitRaw) : Number.NaN;
+      const limit = Number.isFinite(limitParsed) ? limitParsed : undefined;
+
+      const receipts = listAiToolReceipts(this.sql.bind(this) as unknown as SqlTag, {
         ...(limit !== undefined ? { limit } : {})
       });
 
@@ -1650,6 +1675,90 @@ export class Chat extends Agent<Env> {
     }
   }
 
+  private async recordToolReceipt(input: {
+    readonly step: number
+    readonly requestId: string
+    readonly toolName: string
+    readonly toolCallId: string
+    readonly params: unknown
+    readonly output: unknown
+    readonly startedAtMs: number
+    readonly endedAtMs: number
+    readonly error: unknown | null
+  }): Promise<void> {
+    try {
+      const paramsHash = await sha256IdFromString(JSON.stringify(input.params))
+      const inputJson = JSON.stringify({ params: input.params })
+      const outputJson = JSON.stringify({ output: input.output })
+
+      const { inputBlob, outputBlob } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const blobs = yield* BlobStore.BlobStoreService
+          const inputBlob = yield* blobs.putText({
+            text: inputJson,
+            mime: "application/json",
+          })
+          const outputBlob = yield* blobs.putText({
+            text: outputJson,
+            mime: "application/json",
+          })
+          return { inputBlob, outputBlob }
+        }).pipe(
+          Effect.provide(layerDseFromSql(this.sql.bind(this) as unknown as SqlTag)),
+        ),
+      )
+
+      const receiptKey = {
+        toolName: input.toolName,
+        toolCallId: input.toolCallId,
+        paramsHash,
+        inputBlobId: inputBlob.id,
+        outputBlobId: outputBlob.id,
+        step: input.step,
+      }
+      const receiptId = await sha256IdFromString(JSON.stringify(receiptKey))
+
+      const receipt: AiToolReceiptV1 = {
+        format: "openagents.ai.tool_receipt",
+        formatVersion: 1,
+        receiptId,
+        createdAt: new Date().toISOString(),
+        toolName: input.toolName,
+        toolCallId: input.toolCallId,
+        paramsHash,
+        inputBlobs: [inputBlob],
+        outputBlobs: [outputBlob],
+        timing: {
+          startedAtMs: input.startedAtMs,
+          endedAtMs: input.endedAtMs,
+          durationMs: Math.max(0, input.endedAtMs - input.startedAtMs),
+        },
+        correlation: {
+          agentName: this.name,
+          requestId: input.requestId,
+          step: input.step,
+        },
+        result: input.error
+          ? {
+              _tag: "Error",
+              errorName:
+                input.error && typeof input.error === "object" && "name" in input.error
+                  ? String((input.error as any).name)
+                  : "Error",
+              message:
+                input.error && typeof input.error === "object" && "message" in input.error
+                  ? String((input.error as any).message)
+                  : String(input.error),
+            }
+          : { _tag: "Ok" },
+      }
+
+      recordAiToolReceipt(this.sql.bind(this) as unknown as SqlTag, receipt)
+    } catch (error) {
+      console.warn("[ai] failed to record tool receipt", error)
+    }
+  }
+
   private async streamChatResponse(connection: Connection, requestId: string, abortSignal: AbortSignal) {
     await this.ensureDefaultDsePolicies();
 
@@ -1960,9 +2069,33 @@ export class Chat extends Agent<Env> {
 
       for (const toolCall of toolCalls) {
         if (abortSignal.aborted) return;
-        const handlerResult = (await Effect.runPromise(
-          toolkit.handle(toolCall.name as any, toolCall.params as any) as any
-        )) as { readonly encodedResult: unknown; readonly isFailure: boolean };
+        const startedAtMs = Date.now();
+        let handlerResult: { readonly encodedResult: unknown; readonly isFailure: boolean };
+        let handlerError: unknown | null = null;
+
+        try {
+          handlerResult = (await Effect.runPromise(
+            toolkit.handle(toolCall.name as any, toolCall.params as any) as any
+          )) as { readonly encodedResult: unknown; readonly isFailure: boolean };
+        } catch (error) {
+          handlerError = error;
+          handlerResult = { encodedResult: { error: String(error) }, isFailure: true };
+        }
+
+        const endedAtMs = Date.now();
+
+        await this.recordToolReceipt({
+          step: 0,
+          requestId,
+          toolName: toolCall.name,
+          toolCallId: toolCall.id,
+          params: toolCall.params,
+          output: handlerResult.encodedResult,
+          startedAtMs,
+          endedAtMs,
+          error: handlerError ?? (handlerResult.isFailure ? new Error("Tool failed") : null),
+        });
+
         const resultPart: AiResponse.ToolResultPartEncoded = {
           type: "tool-result",
           id: toolCall.id,
