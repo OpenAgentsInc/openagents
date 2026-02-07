@@ -1,8 +1,8 @@
 # Autopilot (Simplified Spec)
 
-Autopilot is a **single, persistent chat agent** that runs on **Cloudflare Workers + Durable Objects** (Cloudflare Agents SDK).
+Autopilot is a **single, persistent chat agent** hosted on a **single Cloudflare Worker**, with **Convex as the canonical product DB and realtime stream**.
 
-Hard constraint: **no containers**. No sandboxes. No local executors. One Autopilot per user.
+Hard constraint: **no containers**. No sandboxes. No local executors.
 
 MVP constraint: tool surface stays **tiny** (built-in tools only; no MCP; no “app store”).
 
@@ -19,49 +19,62 @@ The homepage is the product entrypoint.
   - **Log in**
   - **Start for free**
 
-If the visitor is already authenticated, `/` immediately redirects them into chat.
+If the visitor is already authenticated, `/` may redirect them into chat.
 
 ---
 
-## Single Flow
+## Single Flow (MVP)
 
 1. Visitor opens `/`.
 2. Visitor clicks **Start for free** (sign up) or **Log in**.
-3. After auth, the app redirects to `/autopilot` (single-thread chat UI).
-   - `/assistant` exists as a legacy redirect helper but should not be user-visible.
-4. `/autopilot` connects to the Cloudflare Agent websocket:
-   - `WS /agents/chat/:threadId` (where `threadId` is the WorkOS `user.id`, used as the Durable Object name)
-   - transcript rehydration: `GET /agents/chat/:threadId/get-messages` (AIChatAgent built-in)
+3. Visitor arrives at `/autopilot` (single-thread chat UI).
+   - `/autopilot` MUST work for **unauthed** users.
+4. `/autopilot` connects to Convex (WebSocket) and subscribes to:
+   - the thread’s messages
+   - the assistant message’s incremental `messageParts` (chunked deltas)
+5. On user message:
+   - Convex mutation writes the user message
+   - Worker endpoint starts inference and writes assistant `messageParts` into Convex in batches (~250–500ms or N chars)
+6. On auth (when it happens), the existing anon thread is migrated to an owned thread (see below).
 
 There is no "Spawn" UI and no multi-thread UX in the MVP.
 
 ---
 
-## Data Model (One Autopilot Per User)
+## Data Model (MVP)
 
-- Each user has exactly **one** Autopilot thread.
-- The thread id (`threadId`) is used as the **agent/DO name** so `/autopilot` deterministically maps to one Durable Object (without exposing the id in the browser URL).
-- Convex can store lightweight UI metadata (thread title/id), but the canonical transcript lives in the Durable Object.
+- Convex is canonical for:
+  - threads
+  - messages
+  - message parts (chunked streaming deltas)
+  - receipts/budgets/tool calls (bounded; large payloads are `BlobRef`s)
+- Anon threads exist as real Convex threads.
+- **Anon -> owned migration is REQUIRED**:
+  - on auth, the anon thread’s transcript MUST remain available to the user
+  - preferred: claim/transfer ownership in-place (no copying)
 
 ---
 
 ## Runtime (No Containers)
 
-- Web app serves UI routes:
-  - `GET /` (homepage)
-  - `GET /assistant` (legacy redirect helper)
-  - `GET /autopilot` (chat UI)
-  - `GET /chat/:threadId` (legacy redirect, should forward to `/autopilot`)
-- Agent runtime is a Cloudflare Worker with a single Durable Object:
-  - `Chat extends AIChatAgent` (Agents SDK + `@cloudflare/ai-chat`)
-  - routed under `/agents/*` (websocket + REST endpoints)
+- Cloudflare Worker (single host):
+  - serves SSR + static assets
+  - exposes `/api/*` endpoints for secret-bearing operations (model calls, tool execution)
+  - enforces budgets, emits receipts
+- Convex:
+  - DB + auth + realtime subscriptions (browser connects directly via WS)
+  - optional presence/participants for multiplayer
 
-Explicitly out of scope:
+Explicitly out of scope for MVP:
 
-- Cloudflare Containers / Docker images
+- per-user Cloudflare DO / DO-SQLite execution plane
 - multiple Autopilots per user
 - MCP, approvals, extensions
 - dashboards, billing, marketplace, community surfaces
+
+Post-MVP (optional):
+
+- reintroduce DO/DO-SQLite as an execution-plane optimization, while keeping Convex as the product DB + multiplayer surface.
 
 ---
 
@@ -73,31 +86,18 @@ Explicitly out of scope:
 
 ---
 
-## Repo Map (Current)
+## Repo Map (Current / Target)
 
-- Homepage UI: `apps/web/src/routes/index.tsx`
-- Chat redirect: `apps/web/src/routes/assistant.tsx`
-- Chat page: `apps/web/src/routes/autopilot.tsx`
-- Legacy redirect: `apps/web/src/routes/chat.$chatId.tsx` (redirects to `/autopilot`)
-- Dev proxy for worker endpoints: `apps/web/vite.config.ts` (`/agents/*` → `127.0.0.1:8787`)
-- Autopilot worker (Agents SDK): `apps/autopilot-worker/src/server.ts`
+- Worker host: `apps/web/src/effuse-host/worker.ts`
+- Autopilot controller: `apps/web/src/effuse-app/controllers/autopilotController.ts`
+- Autopilot page templates: `apps/web/src/effuse-pages/autopilot.ts`
+- Master plan (Effuse stack): `packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md`
+- Execution plane decision (Convex-first MVP): `docs/autopilot/anon-chat-execution-plane.md`
 
 ---
 
 ## Notes
 
-- **Effuse conversion**: Most `apps/web` route UI is rendered by Effuse (marketing, home/login, modules/signatures/tools, autopilot chat column). See `packages/effuse/docs/effuse-conversion-apps-web.md` for the full conversion doc. Delegation for a **full** TanStack Start + Effect integration (RPC, @effect-atom, hydration): `packages/effuse/docs/DELEGATION-full-effect-integration.md`.
-- **Monty synergies**: Comparison and learnings between Pydantic Monty (minimal secure Python for LLM code) and our Autopilot/Effect/DSE approach: `docs/autopilot/monty-synergies.md`.
-- **Horizons synergies**: Comparison and learnings between Horizons (Rust agent runtime: graph DAG, verifier graphs, RLM/mipro_v2/voyager) and our Autopilot/Effect/DSE approach: `docs/autopilot/horizons-synergies.md`.
-- **Typed synergies**: Comparison and learnings between Typed (Effect-native full-stack toolkit: template/Fx, SSR+hydration, type-safe API/client, router) and our Autopilot/Effuse/Effect approach: `docs/autopilot/typed-synergies.md`.
-- Effect migration starting points for the current `apps/web` app: `packages/effuse/docs/effect-migration-web.md`
+- Effuse architecture and migration plan: `packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md`
+- Autopilot bootstrap state plan: `docs/autopilot/bootstrap-plan.md`
 - Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
-- Effect + Convex patterns from `~/code/crest` to adopt: `docs/autopilot/effect-patterns-from-crest.md`
-
-## Status (2026-02-06)
-
-- Web flow: `/` → `/autopilot` implemented in `apps/web/src/routes/*` (with `/assistant` and `/chat/:threadId` as legacy redirects).
-- One Autopilot per user: `threadId` is the WorkOS `user.id` (Durable Object name), but it is not exposed in the browser URL.
-- Worker rename: `apps/liteclaw-worker` → `apps/autopilot-worker`.
-- Routes run via Effect runtime: loaders execute Effect programs using `context.effectRuntime` (Telemetry events on load/redirect).
-- Tools (MVP): `get_time`, `echo` (to validate the tool loop + unblock basic capability testing).

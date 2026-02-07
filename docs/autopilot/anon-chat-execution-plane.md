@@ -1,25 +1,128 @@
-# Autopilot Anonymous Chat Execution Plane (DO vs Convex)
+# Autopilot Chat Execution Plane (Convex-First MVP)
 
-This is a brainstorming doc for one decision:
+This doc records one resolved decision:
 
-> Should unauthenticated (“anon”) users who open `/autopilot` get their own Cloudflare Durable Object (DO), or should we run anon chat on Convex first and only allocate user-scoped DO/DO SQLite once the user authenticates (and maybe once they have credits)?
+> For the MVP, should Autopilot chat run on a per-user Cloudflare Durable Object (DO/DO SQLite) execution plane, or should we run *all chat state* in Convex (with chunked streaming) and defer per-user Cloudflare persistence to post-MVP?
 
-This matters because Autopilot is intentionally **WebSocket-first** (streaming `@effect/ai/Response` parts), and today our “happy path” assumes the chat session lives in an Agent DO.
+This matters because Autopilot is intentionally **realtime-first**, and we want multiplayer/observers to be trivial (Convex subscriptions).
 
 ## Decision (Resolved: MVP)
 
-We are going **Convex-first for the MVP**:
+We are going **Convex-first for the MVP** (anon + authed):
 
-- **No per-user Cloudflare infra** for MVP: no DO / DO-SQLite / per-user DO classes for chat.
-- Cloudflare Worker remains the **single host** (SSR/static + APIs) and the place we run inference (Workers AI) and server-side tool execution when needed.
-- Convex becomes the **canonical store** for:
+- **No per-user Cloudflare infra for MVP**: no DO / DO-SQLite / per-user DO classes for chat or “user-space”.
+- Cloudflare Worker remains the **single host** (SSR/static + APIs) and the place we run:
+  - inference (current provider, via `@effect/ai/LanguageModel`)
+  - server-side tool execution (when needed)
+  - budgets/receipts enforcement
+- Convex becomes the **canonical store for MVP**:
   - threads
   - messages
-  - **chunked streaming deltas** (written every ~250–500ms, never per-token)
+  - **chunked streaming deltas** (written every ~250–500ms or every N chars, never per-token)
   - receipts/budgets/tool calls (bounded; large payloads are BlobRefs)
+  - (optional) presence/participants for multiplayer
 - **Realtime UX** comes from Convex WebSocket subscriptions (clients watch Convex state update).
-- **Anon -> authed continuity is REQUIRED**: when the user authenticates, we MUST preserve the anon transcript and attach it to the owned thread (see “Move To Owned Thread”).
+- **Anon -> authed continuity is REQUIRED**: when the user authenticates, we MUST preserve the anon transcript and attach it to an owned thread (see “Anon -> Owned Thread Migration”).
 - Post-MVP, we MAY reintroduce DO/DO-SQLite as an execution-plane optimization (cheaper streaming, stronger per-user consistency), but Convex remains the product DB and multiplayer surface.
+
+## MVP Reference Architecture (Convex-Only Chat, Chunked Streaming)
+
+### Transport
+
+- **Browser ↔ Convex**: WebSocket (Convex client) for realtime subscriptions. This is the primary “streaming” surface.
+- **Browser ↔ Worker**: HTTP endpoints for SSR and secret-bearing operations (e.g. initiating inference runs). Do not proxy Convex subscriptions through the Worker.
+
+### Minimal Convex Schema (v1)
+
+Required tables (names illustrative):
+
+- `threads`
+  - `ownerId?: string` (WorkOS user id when authed; absent/null when anon)
+  - `anonKey?: string` (stable secret for anon access; stored client-side)
+  - `createdAt`, `updatedAt`, `title?`, `visibility?`
+- `messages`
+  - `threadId`
+  - `role: "user" | "assistant" | "system"`
+  - `status: "draft" | "streaming" | "final" | "error" | "canceled"`
+  - `createdAt`, `updatedAt`
+  - `runId?: string` (stable id for an assistant generation run)
+  - `seq: number` (monotonic for streaming updates; see parts)
+- `messageParts` (recommended, to bound updates + support idempotency)
+  - `messageId`
+  - `runId` (duplicate for indexing/idempotency)
+  - `seq: number` (monotonic per `runId` or per `messageId`)
+  - `kind: "text-delta" | "tool-call" | "tool-result" | "error" | "finish"`
+  - `data` (bounded; large payloads are `BlobRef`s)
+  - `createdAt`
+- `receipts` (optional but strongly recommended)
+  - `runId`
+  - `type: "model" | "tool"`
+  - `toolCallId?: string`
+  - `data` (bounded + `BlobRef`s)
+  - `createdAt`
+
+Notes:
+
+- For MVP, “Blueprint/bootstrap state” can also live in Convex (schemas + receipts still apply). If/when we introduce a DO execution plane, it becomes an optimization.
+
+### Chunked Streaming Algorithm (Worker -> Convex)
+
+Hard rules:
+
+- **No per-token writes** to Convex.
+- Writes MUST be **chunked** (time-based ~250–500ms and/or size-based N chars).
+- Writes MUST be **idempotent** and safe to retry.
+
+Reference algorithm:
+
+1. Client submits a user message:
+  - Convex mutation creates the user message.
+  - Worker endpoint starts an inference run and returns `{ runId, assistantMessageId }`.
+2. Worker creates/marks the assistant message:
+  - `messages.status="streaming"`, `messages.runId=runId`, `messages.seq=0`.
+3. Worker streams provider output, buffers locally, and flushes periodically:
+  - every `T=250–500ms` OR when buffer length exceeds N chars:
+    - append `messageParts` row `{ runId, messageId, seq++, kind:"text-delta", data:{ text } }`
+4. Tool calls/results are written as parts:
+  - `{kind:"tool-call"}` and `{kind:"tool-result"}` with stable `toolCallId`.
+  - Large tool I/O MUST be stored in blob storage and referenced by `BlobRef` in `data`.
+5. On completion:
+  - append `{kind:"finish", data:{ usage, ... } }`
+  - set `messages.status="final"`.
+6. On error/cancel/budget stop:
+  - append `{kind:"error", data:{ code, message } }` (or a `finish` with a stop reason)
+  - set `messages.status="error" | "canceled"`.
+
+Idempotency:
+
+- Writes MUST be keyed by `(runId, seq)` (or equivalent unique constraint).
+- Retrying a flush MUST NOT duplicate parts.
+
+Backpressure/cancellation:
+
+- If the client disconnects/cancels or budgets are exceeded, the Worker MUST stop writing parts and must finalize the run state in Convex (`status="canceled"` + terminal part).
+
+### Anon -> Owned Thread Migration (Required)
+
+We care about carrying “try before auth” transcripts into the owned Autopilot thread.
+
+Minimum acceptable behavior:
+
+- After authentication, the prior anon thread’s transcript MUST still be visible to the user in their owned Autopilot experience (at least `{role, text}` deltas assembled).
+
+Recommended MVP mechanism (Convex-only makes this simple):
+
+- Treat “anon” as a real Convex thread with `ownerId = null` and an `anonKey` secret held by the browser.
+- On auth, run a Convex mutation that:
+  - verifies the `anonKey`
+  - sets `threads.ownerId = <userId>`
+  - clears `anonKey` (or marks it rotated/expired)
+- Result: the same `threadId` becomes owned without copying data.
+
+If we later enforce “one thread per user id”, we can:
+
+- create a new owned thread and copy parts/messages, OR
+- keep a stable thread id and enforce “one default thread pointer” per user.
 
 ## Current State (What The Code Does Today)
 
@@ -93,265 +196,38 @@ The user journey we likely want:
 
 The current implementation gives anon users nearly the same backend surface as authed users.
 
-## Decision Criteria
+## MVP Implications (Abuse Control, Security, Credits)
 
-Use these to judge options:
+Even with Convex as the canonical store, the Worker remains the enforcement point for:
 
-- **Streaming UX**: TTFT and smooth incremental updates.
-- **Reliability**: reconnection behavior, resumability, minimal “stalled” cases.
-- **Abuse control**: enforce budgets, per-ip/session throttles, and visibility of tool/AI errors.
-- **Persistence semantics**: what is retained, for how long, and where.
-- **Security**: prevent cross-user access to threads.
-- **Migration**: can we carry an anon session into an authed “owned” session cleanly?
-- **Implementation complexity**: do we stay within Agents SDK or invent a second stack?
-- **Observability/receipts**: budget/receipt invariants still hold.
+- budgets (token/time/tool caps)
+- hard stops with visible `error`/terminal parts + receipts
+- rate limiting and abuse controls (IP/session-based)
 
-## Options
+Convex is the natural place to store:
 
-### Option A: Keep per-anon DOs, but harden + stop persisting
+- user profile + entitlements (credits, flags)
+- thread ownership and sharing
+- presence/participants (if we add multiplayer affordances)
 
-Keep the current `chatId = userId ?? anon-*` mapping and Agents SDK transport, but change semantics for anon ids.
+Security requirements:
 
-Required work:
+- Authed thread access MUST be enforced by Convex auth (row-level ownership/membership checks).
+- Anon thread access MUST be protected by an explicit secret (for example `threads.anonKey`) and must not rely on “thread id as bearer token”.
+- Worker endpoints that initiate inference MUST validate access to the target thread (owner or valid anonKey), then write parts into Convex.
 
-- Worker guard before `routeAgentRequest`:
-  - If `chatId` is not `anon-*`, require an authenticated session and `chatId === session.userId`.
-  - If `chatId` is `anon-*`, allow but apply strict limits (see below).
-- In the Chat DO:
-  - For `this.name.startsWith("anon-")`, do not write to SQLite (no transcript/blueprint persistence).
-  - Optionally disable blueprint/tool endpoints for anon.
-  - Optionally use a cheaper model + smaller context for anon.
-- Add anon rate limiting:
-  - simplest: per-IP limits at Worker edge (KV counter or DO counter)
-  - or Convex-based counters (since the browser already connects via WS).
+## Post-MVP (Optional): Reintroduce a Cloudflare Execution Plane
 
-Pros:
+If/when we want cheaper “true streaming” and stronger per-user consistency:
 
-- Minimal surface area change (no new protocol).
-- Keeps WebSocket-first streaming with current client code.
+- Introduce a per-user (or per-thread) execution plane (DO/DO-SQLite).
+- Keep Convex as the product DB and multiplayer surface.
+- Use event-sourced projection (idempotent `eventId`, monotonic `seq`) to mirror execution history into Convex.
 
-Cons:
+This is a performance/consistency optimization, not an MVP requirement.
 
-- Still creates a DO instance per anon session (but without durable writes).
-- Requires careful “anon mode” branching in the Chat DO to avoid accidental persistence/features.
+## Remaining Open Questions (Small)
 
-### Option B: Split DOs: `AnonChat` vs `Chat` (same protocol, different backing)
-
-Create a separate DO class for unauth that is intentionally minimal and not persistent.
-
-Shape:
-
-- `Chat` DO (agent name `chat`):
-  - authed-only
-  - DO SQLite persistence (transcripts, blueprint, receipts)
-  - full tool surface
-- `AnonChat` DO (agent name `anon-chat`):
-  - unauthed allowed
-  - **no DO SQLite writes** (ephemeral)
-  - limited tool surface (likely “no tools”)
-  - strict budgets + rate limits
-
-Client change:
-
-- If `session.userId` exists: connect to `agent: "chat", name: userId`
-- Else: connect to `agent: "anon-chat", name: anonChatId`
-
-Pros:
-
-- Makes it much harder to “accidentally” persist anon data.
-- Lets us tune model/tooling/budgets for the try-before-auth experience.
-
-Cons:
-
-- Still per-anon DO unless we also shard (Option C).
-- Requires another DO binding + more code paths.
-
-### Option C: Sharded anon hub DO(s) (bounded DO count)
-
-Instead of per-anon DO, create a fixed set of hub DOs:
-
-- `AnonHub-0..63` (for example)
-- Client picks a hub by hashing `anonSessionId`.
-- Hub maintains per-session state in memory and multiplexes WebSockets.
-
-Pros:
-
-- Bounded DO count (no DO explosion).
-- Still WebSocket-first and Cloudflare-native.
-
-Cons:
-
-- More custom protocol/state management (less “use Agents SDK as intended”).
-- Hub hot-spot risk; would need good sharding and bounded per-session memory.
-- Harder to do “resume stream” semantics cleanly.
-
-### Option D: Convex-first for anon; DO after auth/credits (the proposed direction)
-
-Anon chat lives in Convex. The browser streams by subscribing to Convex queries (WS), not by connecting to `/agents/*`.
-
-Possible architecture:
-
-1. Client creates or resumes an `anonThreadId` in Convex (stored in sessionStorage).
-2. On user message:
-   - Convex mutation writes the user message.
-   - Triggers inference job (details below).
-3. Inference runner (Worker/DO/Queue) produces `@effect/ai/Response` parts and writes them back to Convex in batches.
-4. UI is a Convex subscription on `(threadId -> messages + parts)`.
-5. After auth (and optionally after credits):
-   - Create owned `threadId = userId` (Chat DO + DO SQLite).
-   - Import the anon transcript into the owned DO (MUST for v1; at least `{ role, text }`).
-
-Where inference runs:
-
-- still likely Cloudflare Worker/DO because we standardized on Workers AI and receipts.
-- Convex is the **control plane** and the realtime “fanout bus” (WS).
-
-Pros:
-
-- Avoids creating per-anon DOs and per-anon DO SQLite state.
-- Convex gives a natural place for analytics and quota counters.
-- Aligns with “Convex is the product DB + realtime backbone.”
-
-Cons / risks:
-
-- Streaming via Convex implies frequent writes (token-level writes are too expensive).
-  - We’d need batching (e.g., write every 250-500ms or per sentence) to keep costs sane.
-  - This increases perceived latency vs direct socket streaming.
-- We’d be running **two** streaming stacks (Agents WS for authed DO, Convex WS for anon) unless we also migrate authed to Convex.
-- More moving parts (Convex schema, mutations/actions, inference runner, subscription modeling).
-
-### Option F: Convex-only MVP (no per-user DO; everything through Convex)
-
-This is the “nuclear simplification” idea: keep hosting on Cloudflare (SSR/static), but run **all Autopilot state + backend actions** in Convex for the MVP, including authenticated users.
-
-Shape:
-
-- **Transport**
-  - No `/agents/*` for MVP.
-  - Browser uses Convex WS subscriptions as the realtime transport for chat state (messages + parts).
-- **State**
-  - Transcript, blueprint, tool receipts, budgets, and thread metadata live in Convex tables.
-  - “One thread per user” becomes: `threadId = userId` in Convex (not DO name).
-- **Inference + tools**
-  - A Convex action (or action + scheduler) runs model inference and tool execution.
-  - It writes incremental `@effect/ai/Response` parts into Convex so subscriptions update the UI.
-  - Cancellation is modeled explicitly (e.g. `runId` + `cancel` mutation) since there is no DO-local abort controller to target.
-
-Why it might be simpler:
-
-- Single backend system for MVP: Convex schema + actions + auth.
-- No per-user DO lifecycle, migrations, or DO auth gating.
-- The “anon -> owned” migration becomes trivial (it’s all in Convex): on auth, re-bind the same thread (or copy it) to the user id.
-
-Why it might be harder in practice (given today’s constraints):
-
-- **Streaming becomes DB-write-driven.**
-  - Convex subscriptions react to DB changes; there is no native token socket.
-  - We must batch (e.g. every 250-500ms or per sentence) to keep write volume/cost sane.
-  - This introduces more perceived latency and increases implementation complexity for “stop” and “resume”.
-- **Provider constraint mismatch.**
-  - Today we rely on Cloudflare Workers AI (`env.AI` binding) for “no keys” inference.
-  - Convex actions cannot access `env.AI` directly; to keep the same provider we’d need an HTTP bridge (Cloudflare API token + REST) or accept a provider change for MVP.
-- **We’d be rewriting working code.**
-  - The current DO already ships: transcript persistence, blueprint, tools, receipts, WebSocket protocol.
-  - A Convex-only MVP likely means replacing most of that with a different execution model.
-
-Net: Convex-only MVP is conceptually clean and likely reduces infra surface area, but may be a larger rewrite than hardening the existing DO approach.
-
-### Option E: Worker-only ephemeral WebSocket for anon (no DO, no Convex)
-
-Implement a dedicated `GET /ws/autopilot-try` endpoint in the Worker fetch handler.
-
-- No persistence.
-- Simple budgets + rate limits.
-- After auth, switch to DO chat.
-
-Pros:
-
-- No DO explosion.
-- No Convex schema work.
-
-Cons:
-
-- More bespoke code; doesn’t leverage Agents SDK primitives (resume, message_updated, etc.).
-- WebSocket reliability/hibernation story is weaker than DO-based websockets.
-
-## “Move To Owned DO” Mechanics (If We Split Planes)
-
-If we want to preserve the anon conversation after signup, we need a defined migration:
-
-- Minimal migration: import only `{role, text}` messages (drop tool parts, drop blueprint).
-- Better migration: import messages + selected metadata; keep receipts separate.
-
-Implementation sketch (client-driven):
-
-1. While unauthed, keep `anonChatId` and transcript in memory (or Convex).
-2. After auth:
-   - Fetch anon messages (`GET /agents/anon-chat/:anonId/get-messages` or Convex query).
-   - Connect to owned `Chat` DO (`chatId = session.userId`).
-   - Push messages into owned DO:
-     - either via a dedicated endpoint `POST /agents/chat/:userId/import`
-     - or via the existing “set messages” WS message (`CF_AGENT_CHAT_MESSAGES`) once connected.
-
-Decision: **anon -> owned transcript migration is a MUST for v1**.
-
-- Minimum acceptable behavior: after authentication, the user’s owned Autopilot thread must contain the prior anon transcript (at least `{ role, text }`).
-- Preferred behavior: preserve tool parts when possible and keep a stable receipt trail (even if receipts remain stored separately).
-
-## Credits/Billing Gating (Future-Proofing This Decision)
-
-Even before “real billing,” we likely want:
-
-- Free tier:
-  - anon: low caps, minimal persistence, cheaper model, no tools
-  - authed but no credits: limited caps, maybe still no heavy tools
-- Paid/credits:
-  - enable persistent DO SQLite state
-  - enable tool execution with receipts
-  - enable larger context windows and long-running tasks
-
-Convex is a good place to store:
-
-- user profile
-- balance/credits
-- feature flags / entitlements
-
-Worker/DO is a good place to enforce at runtime:
-
-- budgets (token/time/tool)
-- hard stops with visible tool/AI error parts + receipts
-
-## Security Requirements (Needed No Matter What)
-
-Regardless of which plane we choose:
-
-- **Authed chat access control**:
-  - Requests to `/agents/chat/:userId` MUST require a WorkOS session for that `userId`.
-  - A Worker pre-check is a good first line of defense (cheap), but the DO should also enforce.
-- **Anon chat access control**:
-  - Either accept that `anonChatId` is the bearer token (not great),
-  - or introduce a `chatSecret` (random) stored in sessionStorage and required on WS connect and REST fetches.
-- **Rate limiting**:
-  - Must exist for anon. (IP-based + session-based).
-
-## Recommendation (Provisional)
-
-If we want the smallest delta with the biggest risk reduction:
-
-1. Implement **Worker gating** for `/agents/chat/:id`:
-   - `id === session.userId` (authed) OR `id` is `anon-*` (unauthed).
-2. Stop persisting anon sessions:
-   - either conditional “anon mode” inside `Chat`, or better, **Option B** (`AnonChat` DO with no SQLite writes).
-3. Implement the required **anon -> owned transcript migration** on auth (minimum: `{ role, text }`; ideally preserve tool parts).
-
-If we want the cleanest product separation (“try” on Convex, “own” on DO) and are OK with added complexity:
-
-- pursue **Option D** (Convex-first anon chat) with explicit batching semantics for “streaming via subscription”.
-
-## Open Questions
-
-1. Do we want anon `/autopilot` to expose the full blueprint/tools UI, or a simplified try flow?
-2. What is the free-tier cap (messages/day, tokens/day) and how do we enforce it (KV vs Convex vs DO)?
-3. Is “Convex subscription streaming” acceptable latency-wise if we batch parts (vs direct WebSocket streaming)?
-4. Should the long-term goal be a single chat transport (Agents WS everywhere), or is split transport acceptable?
-5. If we considered a Convex-only MVP (Option F), would we accept a model/provider change (or an HTTP bridge) so inference can run inside Convex actions?
+1. Default flush cadence and chunk sizing: start at `T=350ms` and `N=1–2k chars`, or go tighter?
+2. Blob storage for `BlobRef`s in MVP: Cloudflare R2 vs Convex file storage (or both)?
+3. “One thread per user” enforcement: stable thread id vs “default thread pointer” mapping after auth?
