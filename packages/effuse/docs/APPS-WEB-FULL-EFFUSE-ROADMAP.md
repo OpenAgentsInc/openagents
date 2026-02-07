@@ -389,6 +389,25 @@ This is the hardest phase; it is also where Typed is an excellent reference impl
 - route components contain almost no UI code.
 - UI changes do not require React changes.
 
+**Phase 8 Log (Implemented 2026-02-07)**
+
+- Collapsed authed catalog routes to a single Effuse mount with SSR HTML:
+  - `/modules`: `apps/web/src/routes/modules.tsx`
+  - `/tools`: `apps/web/src/routes/tools.tsx`
+  - `/signatures`: `apps/web/src/routes/signatures.tsx`
+  - All three now render via a shared Effuse shell (`apps/web/src/effuse-pages/authedShell.ts`) and pass stable `ssrHtml` (via `renderToString`) so first paint is server-rendered.
+  - HUD canvases are hydrated via `hydrateAuthedDotsGridBackground` and cleaned up on unmount only (so data refreshes don't tear down the background).
+- Removed React UI layout from `/autopilot` by replacing multiple islands with a single page mount:
+  - Added `apps/web/src/effuse-pages/autopilotRoute.ts` (shell + slot renderer with per-slot keys so blueprint polling does not rerender chat).
+  - Updated `apps/web/src/routes/autopilot.tsx` to render a single `<EffuseMount/>` with one combined `data-ez` registry (sidebar/chat/blueprint/controls).
+  - Moved sidebar wrapper width/visibility from React into Effuse (`apps/web/src/effuse-pages/autopilotSidebar.ts`).
+- Extended `EffuseMount` cleanup semantics to support Phase 8 shells:
+  - `apps/web/src/components/EffuseMount.tsx` now supports `cleanupOn="unmount"` so mounts can keep long-lived observers (HUD) across rerenders without leaking on route unmount.
+- Verified:
+  - `cd packages/effuse && npm test`
+  - `cd apps/web && npm run lint`
+  - `cd apps/web && npm run build`
+
 ---
 
 ## 3. Verification Loop (Repeat Every Phase)

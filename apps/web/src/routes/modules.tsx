@@ -2,10 +2,16 @@ import { useAtomValue } from '@effect-atom/atom-react';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
-import { whitePreset } from '@openagentsinc/hud';
+import { renderToString } from '@openagentsinc/effuse';
+import { useRef } from 'react';
 import { EffuseMount } from '../components/EffuseMount';
-import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
-import { runModulesPage } from '../effuse-pages/modules';
+import {
+  authedShellTemplate,
+  cleanupAuthedDotsGridBackground,
+  hydrateAuthedDotsGridBackground,
+  runAuthedShell,
+} from '../effuse-pages/authedShell';
+import { modulesPageTemplate } from '../effuse-pages/modules';
 import { ModulesPageDataAtom } from '../effect/atoms/contracts';
 import { TelemetryService } from '../effect/telemetry';
 
@@ -41,37 +47,21 @@ function ModulesPage() {
   const { userId } = Route.useLoaderData();
   const pageData = useAtomValue(ModulesPageDataAtom(userId));
 
+  const ssrHtmlRef = useRef<string | null>(null);
+  if (ssrHtmlRef.current === null) {
+    ssrHtmlRef.current = renderToString(authedShellTemplate(modulesPageTemplate(pageData)));
+  }
+  const ssrHtml = ssrHtmlRef.current;
+
   return (
-    <div className="fixed inset-0 overflow-hidden text-text-primary font-mono">
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundColor: whitePreset.backgroundColor,
-          backgroundImage: [
-            `radial-gradient(120% 85% at 50% 0%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 55%)`,
-            `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 12%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.88) 100%)`,
-            whitePreset.backgroundImage,
-          ].join(', '),
-        }}
-      >
-        <EffuseMount
-          run={(el) =>
-            runHudDotsGridBackground(el, {
-              distance: whitePreset.distance,
-              dotsColor: 'hsla(0, 0%, 100%, 0.035)',
-              lineColor: 'hsla(0, 0%, 100%, 0.03)',
-              dotsSettings: { type: 'circle', size: 2 },
-            })
-          }
-          onCleanup={cleanupHudBackground}
-          className="absolute inset-0 pointer-events-none"
-        />
-      </div>
-      <EffuseMount
-        run={(el) => runModulesPage(el, pageData)}
-        deps={[pageData]}
-        className="relative z-10 flex flex-col h-screen overflow-hidden"
-      />
-    </div>
+    <EffuseMount
+      run={(el) => runAuthedShell(el, modulesPageTemplate(pageData))}
+      deps={[pageData]}
+      ssrHtml={ssrHtml}
+      hydrate={hydrateAuthedDotsGridBackground}
+      onCleanup={cleanupAuthedDotsGridBackground}
+      cleanupOn="unmount"
+      className="h-full w-full"
+    />
   );
 }

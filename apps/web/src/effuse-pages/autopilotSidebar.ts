@@ -44,6 +44,7 @@ export function runAutopilotSidebar(
 ): Effect.Effect<void> {
   return Effect.gen(function* () {
     const dom = yield* DomServiceTag;
+    const widthClass = model.collapsed ? "w-12" : "w-64";
 
     const navItems = [
       { href: "/autopilot", label: "Autopilot", icon: "A" },
@@ -180,41 +181,49 @@ export function runAutopilotSidebar(
     );
 
     const content = html`
-      <aside class="flex h-full flex-col" aria-label="Autopilot sidebar">
-        <header class="relative flex h-12 shrink-0 flex-row items-center gap-2 border-b border-border-dark px-2">
-          <button
-            type="button"
-            data-ez="autopilot.sidebar.toggleCollapse"
-            class="flex size-8 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
-            aria-label="${model.collapsed ? "Expand sidebar" : "Collapse sidebar"}"
-          >
-            <svg
-              class="size-5"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden
+      <div
+        data-autopilot-sidebar-root="1"
+        class="${cx(
+          "hidden md:flex h-full flex-col shrink-0 border-r border-border-dark bg-bg-secondary text-text-primary transition-[width] duration-200 ease-linear",
+          widthClass,
+        )}"
+      >
+        <aside class="flex h-full flex-col" aria-label="Autopilot sidebar">
+          <header class="relative flex h-12 shrink-0 flex-row items-center gap-2 border-b border-border-dark px-2">
+            <button
+              type="button"
+              data-ez="autopilot.sidebar.toggleCollapse"
+              class="flex size-8 shrink-0 items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-surface-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+              aria-label="${model.collapsed ? "Expand sidebar" : "Collapse sidebar"}"
             >
-              <rect x="3" y="3" width="7" height="18" rx="1" />
-              <rect x="14" y="3" width="7" height="18" rx="1" />
-            </svg>
-          </button>
-          <a href="/" class="${titleClass}">OpenAgents</a>
-        </header>
+              <svg
+                class="size-5"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden
+              >
+                <rect x="3" y="3" width="7" height="18" rx="1" />
+                <rect x="14" y="3" width="7" height="18" rx="1" />
+              </svg>
+            </button>
+            <a href="/" class="${titleClass}">OpenAgents</a>
+          </header>
 
-        <div class="flex min-h-0 flex-1 flex-col overflow-auto">
-          ${nav}
-        </div>
+          <div class="flex min-h-0 flex-1 flex-col overflow-auto">
+            ${nav}
+          </div>
 
-        <footer class="shrink-0 border-t border-border-dark p-2">
-          ${userMenu}
-        </footer>
-      </aside>
+          <footer class="shrink-0 border-t border-border-dark p-2">
+            ${userMenu}
+          </footer>
+        </aside>
+      </div>
     `;
 
     yield* dom.render(container, content);
