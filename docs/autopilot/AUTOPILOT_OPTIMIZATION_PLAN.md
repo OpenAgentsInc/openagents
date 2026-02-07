@@ -149,6 +149,23 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 **Exit criteria**
 - `evaluate(signature, artifact, dataset, metricOrRewardBundle)` produces stable reports and can be run offline deterministically (seeded sampling recorded).
 
+#### Phase 1 Implementation Log (2026-02-07)
+
+- `packages/dse/`
+  - Added Dataset primitives (stable `exampleId`, `split`/`tags`, deterministic ordering + hashing, deterministic sampling) in `packages/dse/src/eval/dataset.ts`.
+  - Added Metrics:
+    - deterministic metrics (pure scoring)
+    - judge metrics backed by pinned DSE judge signatures + artifacts (recorded in metric reports)
+    in `packages/dse/src/eval/metric.ts`.
+  - Added Reward bundles and signals (format validity, metric signal, tool-failure penalty) + weighted aggregation in `packages/dse/src/eval/reward.ts`.
+  - Added Eval cache keys + in-memory/noop cache layers in `packages/dse/src/eval/cache.ts` and wired caching into evaluation.
+  - Added `Eval.evaluate(...)` in `packages/dse/src/eval/evaluate.ts` producing `EvalSummaryV1` with `datasetHash`, `(metricId, metricVersion)`, and selection hash (plus optional sampling seed).
+  - Exported new eval modules via `packages/dse/src/index.ts`.
+
+- Verification
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/autopilot-worker && npm test && npm run typecheck`
+
 ---
 
 ### Phase 2 — Compiler loop (DSE compile), shaped like Horizons `mipro_v2` (but TS/Effect-native)

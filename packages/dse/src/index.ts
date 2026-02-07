@@ -22,3 +22,9 @@ export * as Policy from "./runtime/policyRegistry.js";
 export * as Predict from "./runtime/predict.js";
 export * as BlobStore from "./runtime/blobStore.js";
 export * as Receipt from "./runtime/receipt.js";
+
+export * as EvalCache from "./eval/cache.js";
+export * as EvalDataset from "./eval/dataset.js";
+export * as EvalMetric from "./eval/metric.js";
+export * as EvalReward from "./eval/reward.js";
+export * as Eval from "./eval/evaluate.js";
