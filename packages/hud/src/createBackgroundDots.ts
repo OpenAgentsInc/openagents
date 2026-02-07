@@ -10,6 +10,8 @@ export interface CreateBackgroundDotsSettings {
   origin?: DotsOrigin;
   /** If true, fade from edge to center; else center to edge */
   originInverted?: boolean;
+  /** If true, all dots same opacity (no radial fade) */
+  uniform?: boolean;
 }
 
 export interface BackgroundDots {
@@ -24,6 +26,7 @@ const DEFAULTS: Required<CreateBackgroundDotsSettings> = {
   crossSize: 1,
   origin: 'center',
   originInverted: false,
+  uniform: false,
 };
 
 /**
@@ -59,7 +62,7 @@ export function createBackgroundDots(
   }
 
   function draw(): void {
-    const { color, type, distance, size, crossSize, origin, originInverted } =
+    const { color, type, distance, size, crossSize, origin, originInverted, uniform } =
       getSettings();
     const width = canvas.width / dpr;
     const height = canvas.height / dpr;
@@ -83,7 +86,7 @@ export function createBackgroundDots(
           y,
           origin,
         );
-        const alpha = originInverted ? progress : 1 - progress;
+        const alpha = uniform ? 1 : (originInverted ? progress : 1 - progress);
         context.globalAlpha = Math.max(0, Math.min(1, alpha));
 
         context.beginPath();
