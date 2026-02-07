@@ -23,8 +23,10 @@ type WorkersAiStreamChunk = {
   readonly response?: string
   readonly usage?: WorkersAiUsage
   readonly tool_calls?: unknown
+  readonly finish_reason?: string | null
   readonly choices?: ReadonlyArray<{
     readonly delta?: { readonly content?: string; readonly reasoning_content?: string }
+    readonly finish_reason?: string | null
   }>
 }
 
@@ -406,6 +408,7 @@ export const makeWorkersAiLanguageModel = (options: {
         let buffer = ""
         let usage: UsageEncoded = { inputTokens: undefined, outputTokens: undefined, totalTokens: undefined }
         const partialToolCalls: Array<unknown> = []
+        let finishReasonRaw: unknown = null
 
         let textId: string | null = null
         let reasoningId: string | null = null
@@ -456,6 +459,15 @@ export const makeWorkersAiLanguageModel = (options: {
             if (chunk.usage) {
               usage = toUsage(chunk.usage)
             }
+            if (typeof chunk.finish_reason === "string" || chunk.finish_reason === null) {
+              finishReasonRaw = chunk.finish_reason
+            }
+            if (
+              typeof chunk.choices?.[0]?.finish_reason === "string" ||
+              chunk.choices?.[0]?.finish_reason === null
+            ) {
+              finishReasonRaw = chunk.choices[0]!.finish_reason
+            }
             if (Array.isArray(chunk.tool_calls)) {
               partialToolCalls.push(...chunk.tool_calls)
             }
@@ -503,7 +515,12 @@ export const makeWorkersAiLanguageModel = (options: {
           yield { type: "text-end", id: textId, metadata: {} }
         }
 
-        const finishReason: Response.FinishReason = toolCalls.length > 0 ? "tool-calls" : "stop"
+        const finishReason: Response.FinishReason =
+          typeof finishReasonRaw === "string"
+            ? mapFinishReason(finishReasonRaw)
+            : toolCalls.length > 0
+              ? "tool-calls"
+              : "stop"
         yield { type: "finish", reason: finishReason, usage, metadata: {} }
       }
 

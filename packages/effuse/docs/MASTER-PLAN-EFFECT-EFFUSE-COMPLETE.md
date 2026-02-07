@@ -1296,12 +1296,16 @@ Existing coverage:
   - gates: Response part vocabulary (`tool-call`/`tool-result`/`finish`, no `reasoning-*`)
   - gates: BlobRef discipline on receipts; `finish.usage` present; tool receipts present
 
-Planned suite split (when we consolidate single-worker host):
+Implemented suites (2026-02-07):
 
-- `apps/autopilot-worker/tests/chat-protocol.test.ts` (or `apps/web/tests/do/chat.test.ts`)
+- `apps/autopilot-worker/tests/chat-protocol.test.ts`
+  - provider `finish_reason` is preserved on the wire `finish` part and in model receipts (e.g. `"length"`)
+  - cancel (`CF_AGENT_CHAT_REQUEST_CANCEL`) emits a terminal wire `finish` part (`reason: "pause"`) and records a model receipt with the same finish reason
+
+Planned suite split (when we consolidate single-worker host further):
+
+- (optional) `apps/web/tests/do/chat.test.ts`
   - websocket stream emits valid `@effect/ai/Response` parts
-  - tool-call -> tool-result correlation by `toolCallId`
-  - budget exceed/cancel yields visible finish/error part + receipt “reason”
   - large prompt/output bounded and stored as BlobRefs
 
 Harness requirements:

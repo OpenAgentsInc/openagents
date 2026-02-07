@@ -1762,6 +1762,37 @@ export class Chat extends Agent<Env> {
   private async streamChatResponse(connection: Connection, requestId: string, abortSignal: AbortSignal) {
     await this.ensureDefaultDsePolicies();
 
+    let didSendDone = false;
+    const sendChunk = (body: string, options: { done: boolean; error?: boolean }) => {
+      if (didSendDone) return;
+      this.sendChatChunk(connection, requestId, body, options);
+      if (options.done) didSendDone = true;
+    };
+
+    // When a user cancels a request, send a visible, schema-valid finish part.
+    // Note: Response.FinishReason is a closed vocabulary; use "pause" to represent cancellation.
+    const cancelUsage: UsageEncoded = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const cancelFinish: AiResponse.FinishPartEncoded = {
+      type: "finish",
+      reason: "pause",
+      usage: cancelUsage,
+      metadata: {},
+    };
+
+    let cancelled = false;
+    const onAbort = () => {
+      if (didSendDone) return;
+      cancelled = true;
+      sendChunk(encodeWirePart(cancelFinish), { done: true });
+    };
+
+    // Ensure cancellation always produces a terminal chunk for the client.
+    try {
+      abortSignal.addEventListener("abort", onAbort, { once: true } as any);
+    } catch {
+      // ignore (AbortSignal always supports addEventListener in Workers, but keep defensive)
+    }
+
     const buildSystem = (
       state: AutopilotBlueprintStateV1,
       toolNames?: ReadonlyArray<string>
@@ -1998,7 +2029,7 @@ export class Chat extends Agent<Env> {
       }).pipe(
         Stream.runForEach((part) =>
           Effect.sync(() => {
-            if (abortSignal.aborted) return;
+            if (abortSignal.aborted || didSendDone) return;
             const encoded = encodeStreamPart(part as any);
             // Autopilot must not reveal internal reasoning on the UI wire.
             if (
@@ -2020,12 +2051,9 @@ export class Chat extends Agent<Env> {
                 usage: (encoded as any).usage as UsageEncoded,
               };
             }
-            this.sendChatChunk(
-              connection,
-              requestId,
-              encodeWirePart(encoded),
-              { done: encoded.type === "finish" && toolCalls.length === 0 }
-            );
+            sendChunk(encodeWirePart(encoded), {
+              done: encoded.type === "finish" && toolCalls.length === 0,
+            });
             this.applyWirePart(activeParts, encoded);
           })
         ),
@@ -2037,12 +2065,16 @@ export class Chat extends Agent<Env> {
     } catch (error) {
       step0Error = error;
       console.error("[chat] step0 stream failed", error);
-      this.sendChatChunk(connection, requestId, "Internal error.", {
+      sendChunk("Internal error.", {
         done: true,
         error: true
       });
     } finally {
       const endedAtMs = Date.now();
+      if (cancelled && !step0Error) {
+        step0Error = new Error("Cancelled");
+        step0Finish ??= { reason: cancelFinish.reason, usage: cancelUsage };
+      }
       await this.recordModelReceipt({
         step: 0,
         requestId,
@@ -2105,11 +2137,14 @@ export class Chat extends Agent<Env> {
           providerExecuted: false
         };
         toolResults.push(resultPart);
-        this.sendChatChunk(connection, requestId, encodeWirePart(resultPart), {
+        if (abortSignal.aborted || didSendDone) return;
+        sendChunk(encodeWirePart(resultPart), {
           done: false
         });
         this.applyWirePart(activeParts, resultPart);
       }
+
+      if (abortSignal.aborted || didSendDone) return;
 
       const fresh = this.ensureBlueprintState();
       const system2 = buildSystem(fresh);
@@ -2167,7 +2202,7 @@ export class Chat extends Agent<Env> {
         }).pipe(
           Stream.runForEach((part) =>
             Effect.sync(() => {
-              if (abortSignal.aborted) return;
+              if (abortSignal.aborted || didSendDone) return;
               const encoded = encodeStreamPart(part as any);
               // Autopilot must not reveal internal reasoning on the UI wire.
               if (
@@ -2186,7 +2221,7 @@ export class Chat extends Agent<Env> {
                   usage: (encoded as any).usage as UsageEncoded,
                 };
               }
-              this.sendChatChunk(connection, requestId, encodeWirePart(encoded), {
+              sendChunk(encodeWirePart(encoded), {
                 done: encoded.type === "finish"
               });
               this.applyWirePart(activeParts, encoded);
@@ -2200,12 +2235,16 @@ export class Chat extends Agent<Env> {
       } catch (error) {
         step1Error = error;
         console.error("[chat] step1 stream failed", error);
-        this.sendChatChunk(connection, requestId, "Internal error.", {
+        sendChunk("Internal error.", {
           done: true,
           error: true
         });
       } finally {
         const endedAtMs = Date.now();
+        if (cancelled && !step1Error) {
+          step1Error = new Error("Cancelled");
+          step1Finish ??= { reason: cancelFinish.reason, usage: cancelUsage };
+        }
         await this.recordModelReceipt({
           step: 1,
           requestId,
