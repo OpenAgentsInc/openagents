@@ -42,6 +42,19 @@ The “no React / no TanStack” end-state must still preserve the core Autopilo
 - **Telemetry is a service**: structured, namespaced telemetry with request correlation (`requestId`) and best-effort sinks; never blocks user flows; SSR-safe.
 - **No containers posture holds**: if we ever add “code mode”, it must be capability-limited (externals-only), checkpointable at I/O, and strictly resource-bounded (Monty model).
 
+## 0.2 Implementer Quick Start (Non-Normative)
+
+This section is a “how do I not accidentally violate the spec” cheat sheet. The normative rules are in Appendix A.
+
+- If you are adding a route: implement `Route.guard` (optional) + `Route.loader` returning `RouteOutcome`, and keep the UI pure in `Route.view` (return `TemplateResult`, do not perform side effects in views).
+- If you need state:
+  - Shared/durable UI state: `@effect-atom/atom` (SSR-hydratable only if `Atom.serializable(...)` with stable key + `Schema`).
+  - Component-local/high-frequency state: `StateCell` (ephemeral, not SSR/hydration, not a cross-route cache).
+- If you need interactivity: prefer EZ (`data-ez-*`) for localized actions; use component loops only for streaming/subscriptions.
+- If you are adding a tool: schema-first params/outputs, bounded outputs + `BlobRef` for large payloads, and always emit receipts (toolName/toolCallId correlation).
+- If you are touching Convex: do not use React bindings; use the Effect-first `ConvexService` and standard wrappers in `apps/web/convex/effect/*`.
+- If you are touching AI: do not introduce new provider SDKs in app code; treat AI as `@effect/ai` (`LanguageModel` + `Response` parts) and keep WebSocket streaming as the canonical transport.
+
 ## 1. Non-Goals (For This Master Plan)
 
 - Replacing *every backend* immediately (Convex / WorkOS / Autopilot worker) is not required for removing React/TanStack. They must be wrapped behind Effect services so they can remain during migration.
@@ -66,6 +79,7 @@ Effuse core (see `README.md`, `ARCHITECTURE.md`, `SPEC.md`, `DOM.md`, `EZ.md`):
 - Shared Effuse UI primitives live in `@openagentsinc/effuse-ui` (Tailwind-first helpers).
 - Autopilot chat is Effect-first (`ChatService`) and the UI is driven by atoms (not React hooks).
 - Key routes are SSR-rendered as Effuse HTML and hydrated without DOM teardown (via mount-level `ssrHtml`), even before TanStack is removed.
+- Today the agent/AI plane runs as a separate Worker (`apps/autopilot-worker`) and the web app connects to it over WebSockets; the end state in this doc folds that into the single-worker host via DO classes.
 
 This master plan starts from that baseline and describes how to **remove the remaining substrate**.
 
@@ -233,6 +247,7 @@ Additional backend used by the product (not Cloudflare infra):
 Secondary backend (later, optional): Node/Bun adapter for local dev or alternative deployment, but the plan in this doc should assume Cloudflare’s constraints and primitives.
 
 SSR note: Workers can stream `Response` bodies, but **v1 may buffer HTML for simplicity**. Streaming SSR is an optimization, not a requirement for the migration.
+Even when buffering, SSR MUST still respect request abort signals and budgets, and MUST enforce a max HTML byte cap to avoid Worker memory blow-ups.
 
 SSR pipeline:
 
@@ -485,6 +500,25 @@ Practical consequences:
 - The **Worker/DO is the authority for user-space mutations** (writes that change agent state, blueprint state, or execution-local caches). After committing, it emits/replicates a projection to Convex so subscribed UIs update.
 - Access control is enforced using Convex-authenticated identity (WorkOS user id) and Convex membership/ownership checks, but the execution plane holds the canonical workspace state.
 
+V1 replication contract (execution plane -> Convex projection):
+
+- The execution plane (DO SQLite) maintains an **append-only event log** per user-space (or per thread), with a monotonically increasing `seq` and a stable `eventId` (ULID).
+- Each event is mirrored to Convex as an **idempotent upsert** keyed by `eventId` (duplicates are safe).
+- Convex stores:
+  - an append-only `userSpaceEvents` table for realtime subscription and replay UI (the primary projection)
+  - index tables derived from events for efficient UI navigation (agents list, threads list, last activity)
+- Large payloads are never stored inline in Convex:
+  - store them in R2 as blobs
+  - mirror only `BlobRef`s + metadata into Convex
+
+Minimum event kinds (v1):
+
+- `agent.created`, `agent.updated`, `agent.deleted` (projection updates the Convex agent index)
+- `thread.created`, `thread.updated`, `thread.deleted` (projection updates the Convex thread index)
+- `message.appended` (assistant/user message projection; payload is parts summary + BlobRefs for details)
+- `receipt.appended` (tool/model receipts; always correlated via stable ids)
+- `blueprint.updated` (projection stores a summary + BlobRef to the canonical blueprint state)
+
 ### 3.5.6 AI Inference (Effect-Native, `@effect/ai`)
 
 To keep AI inference coherent with the rest of the Effect/Effuse stack (budgets, receipts, schemas, telemetry), we standardize on `@effect/ai` primitives instead of ad hoc provider SDKs.
@@ -505,9 +539,23 @@ Provider posture:
 - If the current provider is OpenRouter, prefer `@effect/ai-openrouter`.
 - Provider-specific “extras” (OpenAI web search / file search / code interpreter) are allowed, but must still produce standard `Response` tool parts so UI + receipts remain consistent.
 
+Current implementation in this repo (as of 2026-02-07):
+
+- AI chat runs on Cloudflare Workers using the **Agents + `AIChatAgent`** pattern (Durable Object-backed sessions + transcript), as demonstrated in:
+  - `apps/autopilot-worker/src/server.ts` (our production worker)
+  - `apps/cloudflare-agent-sdk-demo/src/server.ts` (reference demo)
+- The model provider is **Cloudflare Workers AI** via the `env.AI` binding (see `apps/autopilot-worker/wrangler.jsonc`), with a current model id of `@cf/openai/gpt-oss-120b` (`apps/autopilot-worker/src/server.ts`).
+- The browser streams over **WebSockets** using `agents/client` and the `@cloudflare/ai-chat` message envelope (`CF_AGENT_*`), and the current `apps/web` code bridges that into SSE format only to satisfy the Vercel `ai` SDK (`apps/web/src/effect/chat.ts`).
+
+Inference placement (v1 target):
+
+- For **WebSocket chat sessions**, inference runs inside the Agent Durable Object (`AIChatAgent`) so that the connection state + transcript are colocated and consistent (this is also the Cloudflare Agents reference architecture).
+- The Worker `fetch` handler remains the **single host entrypoint** and simply routes Agent/WebSocket requests to the DO (`routeAgentRequest`), and serves SSR/static/API for the rest of the app.
+
 Integration requirements (Effuse-side):
 
 - Standardize the streaming/message part shape on `@effect/ai/Response` parts (`text-*`, `tool-*`, `finish`, `error`) and adapt any legacy stream formats into this shape at the boundary.
+- WebSockets are the canonical transport for streaming AI parts (no SSE dependency in the end state).
 - Tool call resolution must emit **tool call receipts** and renderable UI parts:
   - `Response.ToolCallPart` (toolName + toolCallId + params)
   - `Response.ToolResultPart` (toolName + toolCallId + success/failure + bounded payload/BlobRef)
@@ -734,13 +782,16 @@ Add/Change (apps/web Convex backend code, REQUIRED standard):
 - new: `apps/web/convex/effect/tryPromise.ts` (central Promise -> Effect error mapping)
 - change: `apps/web/convex/myFunctions.ts` migrate to the wrappers as a sanity check (keeps behavior the same, but enforces the pattern)
 
-Add/Change (apps/web AI inference wiring, `@effect/ai`):
+Add/Change (agent plane AI inference wiring, `@effect/ai`):
 
-- new: `apps/web/src/effect/ai/languageModel.ts` (Layer providing `@effect/ai/LanguageModel` via the current provider; prefer `@effect/ai-openai` when using OpenAI)
-- new: `apps/web/src/effect/ai/tokenizer.ts` (Layer providing `@effect/ai/Tokenizer` for prompt budgeting + truncation)
-- new: `apps/web/src/effect/ai/toolkit.ts` (maps the app/tool registry into `@effect/ai/Tool` + `Toolkit` with Effect handlers)
-- new: `apps/web/src/effect/ai/receipts.ts` (SpanTransformer/middleware to emit receipts + BlobRefs for prompts, tool calls, and model responses)
-- change: `apps/web/src/effect/layer.ts` include AI layers in the Worker/server runtime composition root
+- new: `apps/autopilot-worker/src/effect/ai/languageModel.ts` (Layer providing `@effect/ai/LanguageModel` via Cloudflare Workers AI; map provider errors to `AiError`)
+- new: `apps/autopilot-worker/src/effect/ai/toolkit.ts` (maps the tool registry/contracts into `@effect/ai/Tool` + `Toolkit` handlers)
+- new: `apps/autopilot-worker/src/effect/ai/streaming.ts` (encode/decode `@effect/ai/Response` parts onto the WebSocket stream envelope)
+- change: `apps/autopilot-worker/src/server.ts` migrate `onChatMessage` from Vercel `ai` (`streamText`) to `@effect/ai` (`LanguageModel.streamText`) while preserving the WebSocket protocol and receipts
+
+Add/Change (apps/web client, end-state cleanup):
+
+- change: `apps/web/src/effect/chat.ts` stop bridging WebSocket -> SSE for the Vercel `ai` SDK; instead consume `@effect/ai/Response` parts directly and build `ChatSnapshot` from those parts
 
 Refactor targets (transitional, while TanStack still hosts):
 
@@ -793,8 +844,18 @@ Add/Change (apps/web host):
 Add/Change (apps/web user-space plane, Cloudflare DO SQLite):
 
 - new: `apps/web/src/effuse-host/do/userSpace.ts` (Durable Object implementing “user-space + agents” using DO SQLite)
+- new: `apps/web/src/effuse-host/do/chat.ts` (Agent Durable Object implementing WebSocket chat + transcript; port the proven implementation from `apps/autopilot-worker/src/server.ts`)
 - new: `apps/web/src/effect/userSpace.ts` (`UserSpaceService` for reading/writing user-space from route loaders, EZ actions, and server endpoints)
 - change: `apps/web/wrangler.jsonc` add Durable Object bindings + migrations for `UserSpaceDO` (and mirror the same in `apps/web/wrangler.effuse.jsonc` if used)
+- change: `apps/web/wrangler.jsonc` add `ai` binding (`env.AI`) for Workers AI, matching the agent DO’s needs
+
+Add/Change (Convex projection from the execution plane):
+
+- change: `apps/web/convex/schema.ts` add tables required by §3.5.5:
+  - `users`, `agents`, `threads`, `userSpaceEvents` (append-only), and any minimal index tables needed for navigation
+- new: `apps/web/convex/userSpace/replicateEvents.ts` Convex action: idempotent upsert of events by `eventId`, plus index updates
+- new: `apps/web/src/effect/convexReplication.ts` (`ConvexReplicationService`): Effect wrapper for the replication action with retries/backoff + bounded payload handling (BlobRefs)
+- change: `apps/web/src/effuse-host/do/userSpace.ts` emit events for every canonical mutation and `ctx.waitUntil` replication (do not block user flows)
 
 Parallel deploy options:
 
@@ -878,9 +939,7 @@ These must be decided explicitly to finish the React/TanStack removal:
 - **Hosting target (resolved):** single Cloudflare Worker (not Pages Functions). Portability remains an explicit adapter boundary for an optional Node/Bun host.
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
 - **Convex usage (resolved):** browser connects directly to Convex via WebSockets (`ConvexClient`) for realtime subscriptions; Convex MUST still be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
-- **Workspace plane (partially resolved):** DO SQLite is canonical for user-space + agents; Convex is canonical for profile/ownership/membership. The remaining decision is the *exact replication contract* (what is mirrored to Convex and at what granularity).
-- **AI inference placement:** whether inference runs inside the Worker, inside the DO, or in an external service (preferred: Worker/DO plane).
-- **AI provider:** name the “current provider” we standardize behind `@effect/ai` first (Cloudflare Workers AI/Agents/gateway vs OpenAI vs OpenRouter) and which adapter we implement first.
+- **Workspace plane (resolved):** DO SQLite is canonical for user-space + agents; Convex is canonical for profile/ownership/membership; replication contract is the v1 event-log + index projection described in §3.5.5.
 - **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
 - **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
@@ -956,6 +1015,7 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: atom hydration is applied before router boot; in `strict` hydration this MUST NOT trigger `DomService.swap` during boot.
 - SHOULD: state transitions that can cause DOM updates are batched/atomic, and derived state is equivalence-deduped to avoid needless re-renders.
 - SHOULD: `StateCell` is component-local and ephemeral; it MUST NOT be used as a cross-route cache or as an SSR-hydration mechanism.
+- SHOULD: loaders MAY read atoms, but SHOULD NOT write atoms as their primary output mechanism; route data MUST flow through `RouteOutcome` to preserve cache semantics and SSR/client parity.
 
 **Convex**
 - MUST: the end state MUST NOT depend on `convex/react`, `@convex-dev/react-query`, or React Query.
@@ -970,6 +1030,7 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: DO SQLite is canonical for user-space + user-owned agent state (blueprints, agent configs, execution-local caches).
 - MUST: Convex is canonical for user identity/profile, org membership, and agent ownership/index metadata (who owns what).
 - SHOULD: execution history mirrored into Convex uses `BlobRef` for large payloads (store payloads in R2; Convex stores metadata + refs).
+- MUST: execution plane -> Convex mirroring is event-sourced and idempotent (stable `eventId`, monotonic `seq`), with append-only semantics.
 
 **Hydration**
 - MUST: default hydration mode is `strict`.
@@ -996,6 +1057,7 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: v1 targets **a single Cloudflare Worker** (not Pages Functions) and relevant Cloudflare infra (DO/DO SQLite, R2, KV, Queues).
 - MUST: Durable Objects + DO SQLite are used as the canonical “user-space / agent workspace” store.
 - MAY: SSR is buffered in v1; streaming SSR is an optimization.
+- MUST: buffered SSR enforces a max HTML byte cap and respects request abort + budgets (no unbounded buffering in Workers).
 
 **Conformance**
 - MUST: the conformance suite runs in CI and gates framework changes (SSR determinism, hydration, cancellation, shell/outlet invariants, focus/caret, tool visibility, BlobRef discipline).
