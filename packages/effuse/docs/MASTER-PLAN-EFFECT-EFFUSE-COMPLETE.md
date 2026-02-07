@@ -958,6 +958,7 @@ Work log:
 - 2026-02-07: implemented framework-level Tool Part rendering + BlobRef bounding helpers in `@openagentsinc/effuse` (`boundText`, `renderToolPart`) with conformance tests (`tests/conformance-tool-parts.test.ts`). Updated `apps/web` Autopilot chat to render tool parts via `renderToolPart` and added a client-side `UiBlobStore` + `effuse.blob.view` EZ action for “view full” payload swaps.
 - 2026-02-07: hardening: added SSR request abort handling + max HTML byte cap (`apps/web/src/effuse-host/ssr.ts`), plus prompt budgeting via `@effect/ai/Tokenizer` and model-call receipt recording (with `finish.usage`) in the Chat DO (`apps/autopilot-worker/src/server.ts`, `apps/autopilot-worker/src/effect/ai/receipts.ts`).
 - 2026-02-07: hardening: added tool-call execution receipts (toolName/toolCallId, params/output blobs, timing, correlation) recorded into DO SQLite + exposed via `GET /agents/chat/:id/ai/tool-receipts`, and added an integration test that stubs Workers AI to force a tool call and asserts (1) Blueprint state mutation occurs and (2) both model receipts (`finish.usage`) and tool receipts are present (`apps/autopilot-worker/src/server.ts`, `apps/autopilot-worker/src/effect/ai/receipts.ts`, `apps/autopilot-worker/tests/index.test.ts`).
+- 2026-02-07: hardening: added RouterService caching contract tests for `cache-first` (ttl unset + ttl expiry) and `stale-while-revalidate` (render stale immediately, refresh in background, and ensure refresh does not apply after navigating away) (`packages/effuse/tests/router-service.test.ts`).
 
 Add/Change:
 
