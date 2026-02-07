@@ -60,6 +60,7 @@ import {
 } from "./dseCatalog";
 import {
   initDseTables,
+  ensureDefaultArtifacts,
   layerDseFromSql,
   listReceipts,
   rollbackActiveArtifact,
@@ -246,6 +247,7 @@ function normalizeLegacyBlueprintKeys(input: unknown): unknown {
  */
 export class Chat extends AIChatAgent<Env> {
   private static readonly BLUEPRINT_ROW_ID = "autopilot_blueprint_state_v1";
+  private dseDefaultsInit: Promise<void> | null = null;
 
   constructor(ctx: AgentContext, env: Env) {
     super(ctx, env);
@@ -255,6 +257,22 @@ export class Chat extends AIChatAgent<Env> {
       updated_at integer not null
     )`;
     initDseTables(this.sql.bind(this) as unknown as SqlTag);
+  }
+
+  private ensureDefaultDsePolicies(): Promise<void> {
+    if (this.dseDefaultsInit) return this.dseDefaultsInit;
+
+    this.dseDefaultsInit = (async () => {
+      const result = await ensureDefaultArtifacts(
+        this.sql.bind(this) as unknown as SqlTag,
+        [signatures.blueprint_select_tool]
+      );
+      if (result.errors.length > 0) {
+        console.warn("[dse] default artifact install failed", result.errors);
+      }
+    })();
+
+    return this.dseDefaultsInit;
   }
 
   private loadBlueprintState(): AutopilotBlueprintStateV1 | null {
@@ -410,6 +428,8 @@ export class Chat extends AIChatAgent<Env> {
 
   override async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    await this.ensureDefaultDsePolicies();
 
     if (url.pathname.endsWith("/get-messages")) {
       const blueprint = this.ensureBlueprintStateForChat();

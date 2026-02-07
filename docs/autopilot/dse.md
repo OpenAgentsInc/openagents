@@ -1052,22 +1052,34 @@ The smallest credible DSE:
    - few-shot selection
 5. artifact registry + runtime loader + receipts
 
+### Status (implemented)
+
+As of 2026-02-07, the MVP slice is implemented:
+
+- `packages/dse/` ships Signature, Predict, Eval, Compile, and compiled artifact schemas.
+- Autopilot worker uses DSE for Blueprint tool routing:
+  - Signature: `@openagents/autopilot/blueprint/SelectTool.v1` in `apps/autopilot-worker/src/dseCatalog.ts`
+  - DO SQLite registry + receipts: `apps/autopilot-worker/src/dseServices.ts`
+  - Default artifact auto-install (pins `compiled_id`): `apps/autopilot-worker/src/dseServices.ts`, `apps/autopilot-worker/src/server.ts`
+
 ---
 
-## 16) Package Layout (Proposed)
+## 16) Package Layout (Current)
 
-We’ll move this to `packages/dse/` when ready.
+Implemented as `packages/dse/`:
 
 ```
 packages/dse/
   src/
-    signature/
-    prompt-ir/
-    predict/
-    policy/
+    compiledArtifact.ts
+    hashes.ts
+    params.ts
+    promptIr.ts
+    signature.ts
+    runtime/
     eval/
-    optimize/
-    registry/
+    compile/
+    internal/
   test/
 ```
 
@@ -1122,13 +1134,10 @@ Runtime:
 
 ## 19) Next Steps
 
-1. Implement Phase 0 runtime pieces in `packages/dse/`:
-   - signature + prompt IR render/hash
-   - `Predict` with decode/repair policy
-   - artifact registry interface + DO SQLite impl for worker
-2. Wire one tiny signature inside `apps/autopilot-worker` behind a feature flag.
-3. Build eval harness + instruction search optimizer.
-4. Decide whether compilation runs via dsrs (recommended first) or TS-native.
-5. Standardize Cloudflare infra layers:
-   - adopt `effect-cf` modules for KV/D1/DO helpers where applicable
-   - wrap `cloudflare` (cloudflare-typescript) APIs behind Effect services as-needed (control plane, deploy tooling)
+1. Implement Phase 3 budgets (see `AUTOPILOT_OPTIMIZATION_PLAN.md`) and thread them through:
+   - `Predict` (LLM calls + repair loops)
+   - tool execution
+   - receipts/trace events
+2. Add a minimal “graph runner” (Phase 4) so Autopilot multi-step flows can be executed as explicit nodes with per-node receipts.
+3. Add a compile runner (script/CLI) that runs `Compile.compile(...)` offline and promotes artifacts into the worker registry via `/dse/artifacts` + `/dse/active`.
+4. Add deterministic `TestLM` + golden prompt snapshots to lock down prompt rendering and compilation transforms.

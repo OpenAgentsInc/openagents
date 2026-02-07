@@ -1,7 +1,7 @@
 # Autopilot Optimization Plan (DSE-first, Horizons/Monty-inspired)
 
 - **Status:** Proposed (implementation roadmap)
-- **Last updated:** 2026-02-06
+- **Last updated:** 2026-02-07
 - **Primary input docs:** `docs/autopilot/dse.md`, `docs/autopilot/horizons-synergies.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`
 
 This plan proposes a unified roadmap to implement **DSE** (“DSPy, but Effect TS”) and selectively adopt the best patterns from **Horizons** (graph execution, evaluation/optimization shape, budgets, memory, evented traces) and **Monty** (secure “code mode” with externals + snapshot/resume).
@@ -116,6 +116,7 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
     - `.../dse/active` (GET/POST/DELETE)
     - `.../dse/rollback` (POST)
     - `.../dse/receipts` (GET)
+  - Auto-installs a default compiled artifact and sets an active pointer for Blueprint tool routing so Autopilot chat runs with a pinned `compiled_id` by default.
 
 - Verification
   - `cd packages/dse && bun test && bun run typecheck`
