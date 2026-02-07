@@ -18,7 +18,7 @@ export function marketingHeaderTemplate(isHome: boolean, isLogin: boolean): Temp
       ? html`
               <a
                 href="/login"
-                class="mr-5 text-base font-medium text-white/90 hover:text-white [font-family:var(--font-square721)]"
+                class="mr-5 text-base font-medium text-white/90 hover:text-white use-font-square721 [font-family:var(--font-square721)]"
               >
                 Log in
               </a>

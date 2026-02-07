@@ -18,6 +18,15 @@
   font-display: swap;
 }
 
+/* Hide Square721-dependent UI until font is loaded to avoid FOUC */
+.use-font-square721 {
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+html.fonts-ready .use-font-square721 {
+  opacity: 1;
+}
+
 /* Vera Mono: monospace for chat (from repo src/gui/assets/fonts) */
 @font-face {
   font-family: 'Vera Mono';
