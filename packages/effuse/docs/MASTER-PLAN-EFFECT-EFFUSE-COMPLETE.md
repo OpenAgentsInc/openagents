@@ -86,6 +86,7 @@ Define one canonical Layer bundle, with server/client specializations.
 - `TelemetryService` (namespaced, best-effort sinks, request correlation)
 - `HttpClient` (`@effect/platform`), plus `Fetch` implementation per environment
 - `AuthService` (WorkOS session, sign-in/out; server cookie parsing)
+- `ConvexService` (Effect-first wrapper over Convex HTTP + WS clients; no React bindings)
 - `AgentRpcClientService` (or successor)
 - `ExecutionBudget` (time/steps/tool+LLM call caps, output-size caps)
 - `ReceiptRecorder` (stable hashes + tool receipts for replay/debug)
@@ -343,6 +344,112 @@ We reviewed `~/code/typed`. It does **not** use `@effect-atom/atom`, but it heav
 
 Effuse state ergonomics (Phase 7) should ensure these capabilities exist for atoms (or as a tiny wrapper layer) so implementers don’t reinvent batching/dedupe per screen.
 
+### 3.5.4 Convex (Effect-First, No React)
+
+Convex remains an allowed backend during the React/TanStack removal, but it MUST be wrapped behind Effect services so:
+
+- UI code never depends on `convex/react` or React Query.
+- SSR and client behavior are consistent and testable.
+- auth token handling is centralized (WorkOS session or API token) and observable.
+- caching/dedupe/cancellation rules are standardized (no “React Query by accident”).
+
+We reviewed `~/code/confect` and `~/code/crest` for patterns. We will **not** depend on Confect directly, but we will copy the architecture moves:
+
+- treat Convex as an adapter boundary (Promises -> Effects, nullables -> Option where appropriate)
+- use Schema encode/decode at request boundaries (like Confect’s React bindings, but without React)
+- provide request-scoped Convex HTTP clients on the server (like Crest’s `ConvexService`)
+- optionally write Convex functions as Effect programs (like Crest’s `convex/effect/*` bridge)
+
+#### 3.5.4.1 Service Surface (App-Side)
+
+Define a single `ConvexService` used everywhere (routes/loaders/EZ handlers/components/services).
+
+Illustrative shape:
+
+```ts
+import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server"
+import { Effect, Option, Stream } from "effect"
+
+export type ConvexCallError =
+  | { readonly _tag: "Unauthorized" }
+  | { readonly _tag: "UdfFailed"; readonly message: string }
+  | { readonly _tag: "Transport"; readonly error: unknown }
+
+export interface ConvexService {
+  // One-shot calls (HTTP on server; WS or HTTP on client).
+  readonly query: <Q extends FunctionReference<"query">>(
+    query: Q,
+    args: FunctionArgs<Q>,
+  ) => Effect.Effect<Awaited<FunctionReturnType<Q>>, ConvexCallError>
+
+  readonly mutation: <M extends FunctionReference<"mutation">>(
+    mutation: M,
+    args: FunctionArgs<M>,
+  ) => Effect.Effect<Awaited<FunctionReturnType<M>>, ConvexCallError>
+
+  readonly action: <A extends FunctionReference<"action">>(
+    action: A,
+    args: FunctionArgs<A>,
+  ) => Effect.Effect<Awaited<FunctionReturnType<A>>, ConvexCallError>
+
+  // Live queries (client only). Useful for realtime UIs; integrates with atoms.
+  readonly subscribeQuery: <Q extends FunctionReference<"query">>(
+    query: Q,
+    args: FunctionArgs<Q>,
+  ) => Stream.Stream<Awaited<FunctionReturnType<Q>>, ConvexCallError>
+
+  // Optional: expose connection status in the browser.
+  readonly connectionState?: Stream.Stream<unknown, never>
+}
+```
+
+Typed boundary upgrades (recommended):
+
+- Add optional Schema encoding/decoding helpers so call sites can be domain-typed and avoid `unknown`:
+  - `callQuery({ query, argsSchema, returnsSchema })(args)` (Confect-style)
+- Centralize `Option` conversions (nullable -> `Option`) at the boundary so app logic is consistent.
+
+#### 3.5.4.2 Server Implementation (Cloudflare Workers)
+
+Server-side Convex calls MUST use `convex/browser` `ConvexHttpClient`:
+
+- `ConvexHttpClient` is **stateful** (auth + queued mutations) so treat it as **request-scoped**.
+- Auth token comes from `AuthService` (WorkOS session, API token exchange, etc.) and is applied via `client.setAuth(token)` before the first call.
+- Provide a Worker-safe `fetch` into the client (if needed) and enforce timeouts/budgets in the Effect wrapper.
+
+This gives SSR-safe loaders and RPC handlers a consistent Convex access path without React.
+
+#### 3.5.4.3 Client Implementation (No React)
+
+Client-side live queries should use `convex/browser` `ConvexClient` (WebSocket), wrapped in Effect:
+
+- Create one long-lived `ConvexClient` (singleton in the browser runtime Layer).
+- Set auth via `client.setAuth(fetchToken)` where `fetchToken` delegates to `AuthService`:
+  - must support refresh (`forceRefreshToken`) and return `null` when unauthenticated.
+- Wrap `client.onUpdate(...)` into `Stream.async` (unsubscribe in the stream finalizer).
+- Wrap `client.query/mutation/action` Promises with `Effect.tryPromise` and map errors to `ConvexCallError`.
+
+#### 3.5.4.4 Caching + Dedupe + Cancellation
+
+Rules:
+
+- Route-level caching is owned by `RouterService` (§3.4.1). Convex calls inside loaders MUST respect loader cancellation.
+- For non-route usage, standardize on Effect `Request` + `Cache`:
+  - `ConvexQueryRequest` keyed by `(functionPath, encodedArgs, sessionScopeKey)`
+  - supports in-flight dedupe and equivalence-based dedupe for derived atoms
+
+No new “query library” is allowed; the combination of `RouterService` rules + Effect cache primitives is the query system.
+
+#### 3.5.4.5 Optional: Convex Functions Written as Effect Programs
+
+If/when we invest in making Convex backend code Effect-native, follow Crest’s lightweight `convex/effect/*` pattern:
+
+- `convex/effect/ctx.ts`: wrap Convex `QueryCtx/MutationCtx/ActionCtx` into Effect-friendly contexts (db/auth/storage/scheduler).
+- `convex/effect/functions.ts`: `effectQuery/effectMutation/effectAction` wrappers that run Effect handlers in Convex function definitions.
+- `convex/effect/validators.ts`: table-derived document validators for consistent return typing.
+
+If we want schema-driven args/returns validators derived from Effect `Schema`, adopt Confect’s idea later (compile Schema -> `v.*` validators), but keep it as an internal build step or helper library, not a runtime dependency.
+
 ### 3.6 UI Interaction Model (Effuse-First)
 
 Two primitives remain the core UX building blocks:
@@ -580,7 +687,7 @@ These must be decided explicitly to finish the React/TanStack removal:
 
 - **Hosting target:** Cloudflare Workers first (and which flavor: Worker vs Pages Functions), plus an explicit portability boundary for an optional Node/Bun adapter.
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
-- **Convex usage:** keep it behind RPC/HTTP boundaries or integrate a non-React Convex client directly as an Effect service.
+- **Convex usage:** whether the browser talks to Convex directly (WS subscriptions via `ConvexClient`) or only via the Worker (proxy/RPC); regardless, Convex MUST be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
 - **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
 - **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
@@ -655,6 +762,13 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: atom hydration is applied before router boot; in `strict` hydration this MUST NOT trigger `DomService.swap` during boot.
 - SHOULD: state transitions that can cause DOM updates are batched/atomic, and derived state is equivalence-deduped to avoid needless re-renders.
 - SHOULD: `StateCell` is component-local and ephemeral; it MUST NOT be used as a cross-route cache or as an SSR-hydration mechanism.
+
+**Convex**
+- MUST: the end state MUST NOT depend on `convex/react`, `@convex-dev/react-query`, or React Query.
+- MUST: all Convex interactions happen through `ConvexService` and are represented as Effects (Promises do not escape the boundary).
+- MUST: server-side Convex calls use `ConvexHttpClient` and are request-scoped (auth is applied per request).
+- SHOULD: client-side live queries use `ConvexClient` subscriptions wrapped as `Stream` with correct finalizers (unsubscribe on scope close).
+- SHOULD: Convex call args/returns are Schema-encoded/decoded (or otherwise validated) at the boundary for determinism and SSR/client parity.
 
 **Hydration**
 - MUST: default hydration mode is `strict`.
