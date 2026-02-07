@@ -972,6 +972,7 @@ Work log:
 - 2026-02-07: hardening: tightened RouterService head semantics to always clear router-managed meta tags on navigation (even when the next route has no `head`), and added contract tests to prevent meta tag duplication/staleness across navigations (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-head.test.ts`).
 - 2026-02-07: hardening: added RouterService “prefetch intent” behavior (`data-router-prefetch` triggers prefetch on hover/focus) with contract tests ensuring no DOM swap occurs during prefetch (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-service.test.ts`).
 - 2026-02-07: hardening: added GitHub Actions CI gate running the Effuse conformance suite + `apps/web` lint/build + `apps/autopilot-worker` typecheck/tests on every push/PR (`.github/workflows/verify.yml`).
+- 2026-02-07: hardening: added RouterService link interception contract tests (same-origin click interception, modifier-key bypass, cross-origin bypass) to prevent regressions in SPA navigation semantics (`packages/effuse/tests/router-link-interception.test.ts`).
 
 Add/Change:
 
