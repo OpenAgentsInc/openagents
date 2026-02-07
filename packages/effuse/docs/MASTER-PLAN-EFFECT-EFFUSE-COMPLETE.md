@@ -68,7 +68,7 @@ Effuse core (see `README.md`, `ARCHITECTURE.md`, `SPEC.md`, `DOM.md`, `EZ.md`):
 - DOM: swap modes + focus preservation (`DomService.swap`)
 - State: `StateCell` and component mount lifecycle
 - EZ runtime: `data-ez-*` action attributes with delegated listeners and switch-latest semantics
-- Testing: vitest + happy-dom contract tests (currently EZ-focused)
+- Testing: vitest + happy-dom contract + conformance tests (EZ + swaps + router + SSR determinism)
 
 `apps/web` integration (see `INDEX.md`, `effuse-conversion-apps-web.md`, `ROUTER-AND-APPS-WEB-INTEGRATION.md`, `APPS-WEB-FULL-EFFUSE-ROADMAP.md`):
 
@@ -724,6 +724,7 @@ Work log:
 - 2026-02-07: added DomService swap contract tests (`packages/effuse/tests/dom-swap.test.ts`).
 - 2026-02-07: added component mount lifecycle tests (`packages/effuse/tests/component-mount.test.ts`).
 - 2026-02-07: added conformance skeleton tests for hydration + cancellation semantics (`packages/effuse/tests/conformance-hydration.test.ts`, `packages/effuse/tests/conformance-router.test.ts`).
+- 2026-02-07: hardened EZ runtime contracts (mount-once, switch-latest cancellation, bounded failure) with tests (`packages/effuse/src/ez/runtime.ts`, `packages/effuse/tests/ez-runtime.test.ts`).
 
 Add/Change:
 
@@ -971,7 +972,7 @@ Work log:
 - 2026-02-07: hardening: ensured SSR route meta tags include `data-effuse-meta="1"` so RouterService head management can reliably clear/replace them on client navigations (prevents duplicate stale meta tags after the first SPA navigation) (`apps/web/src/effuse-host/ssr.ts`).
 - 2026-02-07: hardening: tightened RouterService head semantics to always clear router-managed meta tags on navigation (even when the next route has no `head`), and added contract tests to prevent meta tag duplication/staleness across navigations (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-head.test.ts`).
 - 2026-02-07: hardening: added RouterService “prefetch intent” behavior (`data-router-prefetch` triggers prefetch on hover/focus) with contract tests ensuring no DOM swap occurs during prefetch (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-service.test.ts`).
-- 2026-02-07: hardening: added GitHub Actions CI gate running the Effuse conformance suite + `apps/web` lint/build + `apps/autopilot-worker` typecheck/tests on every push/PR (`.github/workflows/verify.yml`).
+- 2026-02-07: hardening: CI gate wiring is optional; workflows were intentionally removed from this repo. See §9.6 for the recommended gates to wire into CI.
 - 2026-02-07: hardening: added RouterService link interception contract tests (same-origin click interception, modifier-key bypass, cross-origin bypass) to prevent regressions in SPA navigation semantics (`packages/effuse/tests/router-link-interception.test.ts`).
 - 2026-02-07: hardening: implemented soft/client-only hydration semantics for `RouterService.start` (per-route initial navigation apply), and added conformance tests for hydration modes + strict “matched route” boot (no loader/view on boot) (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/conformance-hydration-modes.test.ts`, `packages/effuse/tests/conformance-shell-outlet.test.ts`).
 - 2026-02-07: hardening: added SSR determinism conformance test ensuring `runRoute` + `renderToString` is stable in a node environment (no DOM) for fixed inputs (`packages/effuse/tests/conformance-ssr-determinism.test.ts`).
@@ -1349,7 +1350,7 @@ Golden-path E2E scenarios (recommended):
 
 ### 9.6 CI Wiring (Gates)
 
-Existing gates:
+Recommended gates (wire into your CI of choice):
 
 - `packages/effuse` tests (L0-L2)
 - `apps/web` lint/build

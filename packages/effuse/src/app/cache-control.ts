@@ -1,4 +1,5 @@
 import type { CachePolicy } from "./route.js"
+import type { RouteRun } from "./run.js"
 
 const toSeconds = (ms: number): number =>
   Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 1000)) : 0
@@ -30,3 +31,25 @@ export const cachePolicyToCacheControlDirectives = (
   }
 }
 
+/**
+ * Conservative default `Cache-Control` header value for SSR HTML responses derived from a `RouteRun`.
+ *
+ * Rules:
+ * - Never cache non-Ok outcomes.
+ * - Never cache when cookie mutations are present (implies `Set-Cookie`).
+ * - Default to `no-store` unless a cache policy maps to durable HTTP directives.
+ * - Use `private` scope for cacheable HTML.
+ *
+ * Note: Hosts may still choose to override this when a route explicitly sets `Cache-Control`.
+ */
+export const cacheControlForRouteRun = (run: RouteRun<unknown>): string => {
+  if (run._tag !== "Ok") return "no-store"
+
+  const hints = run.hints
+  if (!hints?.cache) return "no-store"
+  if (hints.cookies && hints.cookies.length > 0) return "no-store"
+
+  const directives = cachePolicyToCacheControlDirectives(hints.cache)
+  if (!directives || directives === "no-store") return "no-store"
+  return `private, ${directives}`
+}

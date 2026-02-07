@@ -2,13 +2,17 @@
  * Hypermedia action runtime.
  */
 
-import { Effect, Fiber } from "effect"
+import { Cause, Effect, Fiber } from "effect"
 import type { DomService } from "../services/dom.js"
 import { DomServiceTag, type DomSwapMode } from "../services/dom.js"
 import { EzRegistryTag } from "./registry.js"
 import type { EzAction } from "./types.js"
 
 type EzTrigger = "click" | "submit" | "change" | "input"
+
+// Defensive contract: mounting the EZ runtime on the same root twice must be a no-op,
+// otherwise apps can accidentally double-register delegated listeners (double-execution).
+const mountedRoots = new WeakSet<Element>()
 
 const SUPPORTED_TRIGGERS: readonly EzTrigger[] = [
   "click",
@@ -160,46 +164,56 @@ const runAction = (
   root: Element,
   actionEl: Element,
   event: Event
-) =>
-  Effect.gen(function* () {
-    const actionName = actionEl.getAttribute("data-ez")
-    if (!actionName) {
-      return
-    }
+) => {
+  const actionName = actionEl.getAttribute("data-ez")
+  if (!actionName) {
+    return Effect.void
+  }
 
-    const action = registry.get(actionName)
-    if (!action) {
-      console.warn(`[Effuse/Ez] No action registered for "${actionName}"`)
-      return
-    }
+  const action = registry.get(actionName)
+  if (!action) {
+    console.warn(`[Effuse/Ez] No action registered for "${actionName}"`)
+    return Effect.void
+  }
 
-    const params = collectParams(actionEl, event)
-    const targetSpec = actionEl.getAttribute("data-ez-target")
-    const swapMode = parseSwapMode(actionEl.getAttribute("data-ez-swap"))
-    const target = parseTarget(root, actionEl, targetSpec)
-    const shouldDisable = actionEl.hasAttribute("data-ez-disable")
-    const previous = { disabled: null as boolean | null, aria: null as string | null }
+  const params = collectParams(actionEl, event)
+  const targetSpec = actionEl.getAttribute("data-ez-target")
+  const swapMode = parseSwapMode(actionEl.getAttribute("data-ez-swap"))
+  const target = parseTarget(root, actionEl, targetSpec)
+  const shouldDisable = actionEl.hasAttribute("data-ez-disable")
+  const previous = { disabled: null as boolean | null, aria: null as string | null }
 
+  const restoreDisabled =
+    shouldDisable ? Effect.sync(() => setDisabled(actionEl, false, previous)) : Effect.void
+
+  return Effect.gen(function* () {
     if (shouldDisable) {
       setDisabled(actionEl, true, previous)
     }
 
-    try {
-      const result = yield* action({ event, el: actionEl, params, dom })
-      if (result && target) {
-        yield* dom.swap(target, result, swapMode)
-      }
-    } catch (error) {
-      console.error("[Effuse/Ez] Action failed:", error)
-    } finally {
-      if (shouldDisable) {
-        setDisabled(actionEl, false, previous)
-      }
+    const result = yield* action({ event, el: actionEl, params, dom })
+    if (result && target) {
+      yield* dom.swap(target, result, swapMode)
     }
-  })
+  }).pipe(
+    // Action failures should not crash the UI loop. Interrupts are expected
+    // under switch-latest semantics and should be silent.
+    Effect.catchAllCause((cause) =>
+      Cause.isInterruptedOnly(cause)
+        ? Effect.void
+        : Effect.sync(() => console.error("[Effuse/Ez] Action failed:", cause))
+    ),
+    Effect.ensuring(restoreDisabled)
+  )
+}
 
 export const mountEzRuntime = (root: Element) =>
   Effect.gen(function* () {
+    if (mountedRoots.has(root)) {
+      return
+    }
+    mountedRoots.add(root)
+
     const dom = yield* DomServiceTag
     const registry = yield* EzRegistryTag
     const inflight = new WeakMap<Element, Fiber.RuntimeFiber<unknown, unknown>>()

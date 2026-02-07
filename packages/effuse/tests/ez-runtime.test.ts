@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
   DomServiceTag,
+  html,
   makeEzRegistry,
   mountEzRuntimeWith,
 } from "../src/index.ts"
@@ -44,6 +45,130 @@ describe("Effuse Ez runtime", () => {
     expect(ran).toBe(true)
 
     root.remove()
+  })
+
+  it("is mount-once per root: mounting twice does not double-execute actions", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<button data-ez="inc">Inc</button>`
+    document.body.appendChild(root)
+
+    let runs = 0
+
+    const registry = makeEzRegistry([
+      [
+        "inc",
+        () =>
+          Effect.sync(() => {
+            runs++
+          }),
+      ],
+    ])
+
+    await Effect.runPromise(
+      mountEzRuntimeWith(root, registry).pipe(
+        Effect.zipRight(mountEzRuntimeWith(root, registry)),
+        Effect.provideService(DomServiceTag, DomServiceLive),
+      ),
+    )
+
+    const btn = root.querySelector("button") as HTMLButtonElement | null
+    expect(btn).not.toBeNull()
+    btn!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+    // Give the delegated handler a tick to run.
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(runs).toBe(1)
+
+    root.remove()
+  })
+
+  it("switch-latest: a second trigger interrupts an in-flight action for the same element", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<button data-ez="slow">Go</button>`
+    document.body.appendChild(root)
+
+    let started = 0
+    let finished = 0
+    let swaps = 0
+
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        swaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    const registry = makeEzRegistry([
+      [
+        "slow",
+        () =>
+          Effect.gen(function* () {
+            started++
+            yield* Effect.sleep("50 millis")
+            finished++
+            return html`<span data-finished="${String(finished)}">done</span>`
+          }),
+      ],
+    ])
+
+    await Effect.runPromise(
+      mountEzRuntimeWith(root, registry).pipe(Effect.provideService(DomServiceTag, dom)),
+    )
+
+    const btn = root.querySelector("button") as HTMLButtonElement
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+    await Effect.runPromise(Effect.sleep("100 millis"))
+
+    expect(started).toBe(2)
+    expect(finished).toBe(1)
+    expect(swaps).toBe(1)
+    expect(root.querySelector('[data-finished="1"]')).not.toBeNull()
+
+    root.remove()
+  })
+
+  it("bounds action failures: errors do not swap and disabled state is restored", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const root = document.createElement("div")
+    root.innerHTML = `<button data-ez="boom" data-ez-disable>Go</button>`
+    document.body.appendChild(root)
+
+    const btn = root.querySelector("button") as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
+    expect(btn.getAttribute("aria-disabled")).toBeNull()
+
+    let swaps = 0
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        swaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    const registry = makeEzRegistry([
+      ["boom", () => Effect.die(new Error("boom"))],
+    ])
+
+    await Effect.runPromise(
+      mountEzRuntimeWith(root, registry).pipe(Effect.provideService(DomServiceTag, dom)),
+    )
+
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    // Allow the action fiber to run its finally clause.
+    await Effect.runPromise(Effect.sleep("10 millis"))
+
+    expect(swaps).toBe(0)
+    expect(btn.disabled).toBe(false)
+    expect(btn.getAttribute("aria-disabled")).toBeNull()
+
+    root.remove()
+    errorSpy.mockRestore()
   })
 
   it("collects submit params via FormData", async () => {
@@ -128,4 +253,3 @@ describe("Effuse Ez runtime", () => {
     root.remove()
   })
 })
-
