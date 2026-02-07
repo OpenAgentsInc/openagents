@@ -1,6 +1,6 @@
 import { useRouter } from '@tanstack/react-router';
 import { Effect } from 'effect';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { EffuseLive, mountEzRuntimeWith } from '@openagentsinc/effuse';
 import type { EzAction } from '@openagentsinc/effuse';
 
@@ -77,6 +77,13 @@ export function EffuseMount({
   onRenderedRef.current = onRendered;
   onCleanupRef.current = onCleanup;
   ezRegistryRef.current = ezRegistry;
+
+  // Stable object for dangerouslySetInnerHTML so React does not re-apply on parent re-renders.
+  // Must be unconditional (hooks rules).
+  const stableInnerHTML = useMemo(
+    () => (ssrHtml !== undefined ? { __html: ssrHtml } : { __html: '' }),
+    [ssrHtml],
+  );
 
   // Intercept internal <a href="/..."> links inside Effuse-rendered DOM so we navigate
   // via TanStack Router (SPA) instead of full page reloads.
@@ -206,7 +213,7 @@ export function EffuseMount({
       <div
         ref={ref}
         className={className}
-        dangerouslySetInnerHTML={{ __html: ssrHtml }}
+        dangerouslySetInnerHTML={stableInnerHTML}
       />
     );
   }
