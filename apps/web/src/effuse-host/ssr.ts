@@ -1,5 +1,10 @@
 import { Effect } from "effect"
-import { escapeHtml, renderToString, runRoute } from "@openagentsinc/effuse"
+import {
+  escapeHtml,
+  escapeJsonForHtmlScript,
+  renderToString,
+  runRoute,
+} from "@openagentsinc/effuse"
 
 import { appRoutes } from "../effuse-app/routes"
 import type { AppServices } from "../effect/layer"
@@ -91,7 +96,9 @@ const renderDocument = (input: {
 
   const dehydrateScript =
     input.dehydrateJson != null
-      ? `<script id="effuse-dehydrate" type="application/json">${input.dehydrateJson}</script>`
+      ? `<script id="effuse-dehydrate" type="application/json">${escapeJsonForHtmlScript(
+          input.dehydrateJson,
+        )}</script>`
       : ""
 
   // NOTE: In Phase 5 we serve a dedicated Effuse client bundle (no React/TanStack).
