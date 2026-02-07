@@ -12,7 +12,7 @@ export { escapeHtml } from "./template/escape.js"
 export { renderToString } from "./template/render.js"
 
 // State management
-export type { StateCell } from "./state/cell.js"
+export type { Eq, StateCell, StateCellView } from "./state/cell.js"
 export { makeCell } from "./state/cell.js"
 
 // Services
