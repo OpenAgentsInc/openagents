@@ -1,16 +1,39 @@
-import { handleCallbackRoute } from "@workos/authkit-tanstack-react-start"
+import { createAuthService } from "@workos/authkit-session"
 
-// Transitional: preserve WorkOS OAuth callback behavior during Phase 6 cutover.
-//
-// This keeps the existing `state` decoding + session header behavior working while
-// the rest of the app moves off the TanStack host. We can replace this with a
-// native `@workos/authkit-session` handler once React/TanStack deps are removed.
-const callbackHandler = handleCallbackRoute()
+import { WebCookieSessionStorage } from "../auth/sessionCookieStorage"
 
-export const handleCallbackRequest = (request: Request): Promise<Response> => {
+const authkit = createAuthService<Request, Response>({
+  sessionStorageFactory: (config) => new WebCookieSessionStorage(config),
+})
+
+export const handleCallbackRequest = async (request: Request): Promise<Response> => {
   if (request.method !== "GET") {
-    return Promise.resolve(new Response("Method not allowed", { status: 405 }))
+    return new Response("Method not allowed", { status: 405 })
   }
-  // The WorkOS helper expects a TanStack-style handler signature `({ request }) => Response`.
-  return (callbackHandler as any)({ request })
+
+  const url = new URL(request.url)
+  const code = url.searchParams.get("code")
+  const state = url.searchParams.get("state") ?? undefined
+  if (!code) {
+    return new Response("Missing code", { status: 400 })
+  }
+
+  try {
+    const result = await authkit.handleCallback(request, new Response(null), { code, state })
+    const location = new URL(result.returnPathname ?? "/", url).toString()
+
+    const headers = new Headers()
+    headers.set("location", location)
+
+    // Persist WorkOS session cookie.
+    const setCookie = (result.headers as any)?.["Set-Cookie"]
+    if (typeof setCookie === "string") {
+      headers.append("Set-Cookie", setCookie)
+    }
+
+    return new Response(null, { status: 302, headers })
+  } catch (err) {
+    console.error("[auth.callback]", err)
+    return new Response("Callback failed", { status: 500 })
+  }
 }

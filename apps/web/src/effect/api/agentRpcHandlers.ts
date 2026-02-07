@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Effect } from 'effect';
 import { AgentApiService } from '../agentApi';
 import { TelemetryService } from '../telemetry';
 import { AgentRpcError, AgentRpcs } from './agentRpc';
