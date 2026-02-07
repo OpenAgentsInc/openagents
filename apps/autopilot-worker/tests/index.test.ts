@@ -453,6 +453,7 @@ describe("Autopilot worker", () => {
     const requestId = `req-${Date.now()}`;
     const userMsgId = "user_1";
     const hugeText = "x".repeat(200_000);
+    const wireParts: any[] = [];
 
     await new Promise<void>((resolve, reject) => {
       const timeoutId = setTimeout(() => reject(new Error("timeout waiting for done")), 2_000);
@@ -467,6 +468,18 @@ describe("Autopilot worker", () => {
         }
 
         if (parsed?.type === MessageType.CF_AGENT_USE_CHAT_RESPONSE && parsed?.id === requestId) {
+          const bodyText = typeof parsed?.body === "string" ? parsed.body : "";
+          if (bodyText.trim()) {
+            try {
+              const part = JSON.parse(bodyText);
+              if (part && typeof part === "object" && typeof (part as any).type === "string") {
+                wireParts.push(part);
+              }
+            } catch {
+              // ignore non-json bodies (e.g. error strings)
+            }
+          }
+
           if (parsed?.error) {
             clearTimeout(timeoutId);
             ws.removeEventListener("message", onMessage);
@@ -521,6 +534,25 @@ describe("Autopilot worker", () => {
 
     // Ensure our stub binding was actually used.
     expect(call).toBeGreaterThan(0);
+
+    // Wire protocol: Effect AI Response stream parts must be JSON and include tool call/result parts.
+    expect(wireParts.length).toBeGreaterThan(0);
+    const types = wireParts.map((p) => p?.type).filter(Boolean);
+    expect(types).toContain("tool-call");
+    expect(types).toContain("tool-result");
+    expect(types).toContain("finish");
+    expect(types).not.toContain("reasoning-start");
+    expect(types).not.toContain("reasoning-delta");
+    expect(types).not.toContain("reasoning-end");
+
+    const toolCall = wireParts.find((p) => p?.type === "tool-call" && p?.name === "bootstrap_set_user_handle");
+    expect(toolCall?.id).toBe("call_0");
+    expect(toolCall?.params?.handle).toBe("Chris");
+
+    const toolResult = wireParts.find((p) => p?.type === "tool-result" && p?.name === "bootstrap_set_user_handle");
+    expect(toolResult?.id).toBe("call_0");
+    expect(toolResult?.isFailure).toBe(false);
+    expect(toolResult?.result?.ok).toBe(true);
 
     // Tool call should have executed and persisted into the Blueprint state.
     {

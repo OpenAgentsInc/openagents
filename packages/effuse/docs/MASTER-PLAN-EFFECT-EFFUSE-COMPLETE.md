@@ -977,6 +977,7 @@ Work log:
 - 2026-02-07: hardening: added SSR determinism conformance test ensuring `runRoute` + `renderToString` is stable in a node environment (no DOM) for fixed inputs (`packages/effuse/tests/conformance-ssr-determinism.test.ts`).
 - 2026-02-07: hardening: stabilized `apps/autopilot-worker` tests by disabling Wrangler `remoteBindings` in the Workers Vitest pool (we stub Workers AI in tests; avoids remote proxy session flake + potential usage charges) (`apps/autopilot-worker/vitest.config.ts`, `apps/autopilot-worker/tests/index.test.ts`).
 - 2026-02-07: hardening: strengthened AI receipt BlobRef discipline by asserting model/tool receipts always include prompt/input/output blob refs (and that huge user inputs are truncated before prompt blob serialization) (`apps/autopilot-worker/tests/index.test.ts`).
+- 2026-02-07: hardening: added a wire-protocol regression gate: the chat WebSocket stream must emit valid `@effect/ai/Response` parts (`tool-call`/`tool-result`/`finish`) and MUST NOT forward reasoning parts (`reasoning-*`) (`apps/autopilot-worker/tests/index.test.ts`).
 
 Add/Change:
 
