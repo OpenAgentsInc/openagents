@@ -60,6 +60,7 @@ export type {
   RouteOkHints,
 } from "./app/route.js"
 export { RouteOutcome } from "./app/route.js"
+export { cachePolicyToCacheControlDirectives } from "./app/cache-control.js"
 export type { RouteRun, RouteRunStage } from "./app/run.js"
 export { runRoute } from "./app/run.js"
 

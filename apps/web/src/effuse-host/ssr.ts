@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import {
+  cachePolicyToCacheControlDirectives,
   escapeHtml,
   escapeJsonForHtmlScript,
   renderToString,
@@ -79,6 +80,41 @@ const applyCookieMutations = (
         break
     }
   }
+}
+
+const applyCachePolicy = (
+  headers: Headers,
+  input: {
+    readonly cache?: any
+    readonly cookies?: ReadonlyArray<any>
+  },
+): void => {
+  // If the route explicitly set Cache-Control, do not override.
+  if (headers.has("cache-control")) return
+
+  // Conservative default: never cache HTML when cookies are mutated.
+  if (input.cookies && input.cookies.length > 0) {
+    headers.set("Cache-Control", "no-store")
+    return
+  }
+
+  if (!input.cache) {
+    headers.set("Cache-Control", "no-store")
+    return
+  }
+
+  const directives = cachePolicyToCacheControlDirectives(input.cache)
+  if (!directives) {
+    headers.set("Cache-Control", "no-store")
+    return
+  }
+
+  if (directives === "no-store") {
+    headers.set("Cache-Control", "no-store")
+    return
+  }
+
+  headers.set("Cache-Control", `private, ${directives}`)
 }
 
 const renderDocument = (input: {
@@ -247,6 +283,7 @@ export const handleSsrRequest = async (
         if (run.hints?.headers) {
           for (const [k, v] of run.hints.headers) headers.append(k, v)
         }
+        applyCachePolicy(headers, { cache: run.hints?.cache, cookies: run.hints?.cookies as any })
         applyCookieMutations(headers, run.hints?.cookies as any)
 
         return new Response(html, { status: 200, headers })
