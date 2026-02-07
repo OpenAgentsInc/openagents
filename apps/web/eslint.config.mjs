@@ -18,5 +18,5 @@ export default defineConfig([
       ],
     },
   },
-  globalIgnores(['convex/_generated', 'dist']),
+  globalIgnores(['convex/_generated', 'dist', '.wrangler']),
 ]);

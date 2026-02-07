@@ -12,6 +12,17 @@ import type { WorkerEnv } from "./env"
 type AnyRoute = Route<any, AppServices>
 type AnyRun = RouteRun<unknown>
 
+class RequestAbortedError extends Error {
+  readonly _tag = "RequestAbortedError"
+  constructor() {
+    super("Request aborted")
+  }
+}
+
+const MAX_SSR_HTML_BYTES = 1_500_000
+
+const byteLengthUtf8 = (text: string): number => new TextEncoder().encode(text).byteLength
+
 const matchRoute = (
   routes: ReadonlyArray<AnyRoute>,
   url: URL,
@@ -116,6 +127,24 @@ export const handleSsrRequest = async (
 
   const { runtime } = getWorkerRuntime(env)
 
+  const awaitRequestAbort = Effect.async<never, RequestAbortedError>((resume, fiberSignal) => {
+    if (request.signal.aborted) {
+      resume(Effect.fail(new RequestAbortedError()))
+      return
+    }
+
+    const onAbort = () => resume(Effect.fail(new RequestAbortedError()))
+    request.signal.addEventListener("abort", onAbort, { once: true })
+
+    const cleanup = () => request.signal.removeEventListener("abort", onAbort)
+    fiberSignal.addEventListener("abort", cleanup, { once: true })
+
+    return Effect.sync(() => {
+      cleanup()
+      fiberSignal.removeEventListener("abort", cleanup)
+    })
+  })
+
   const effect = Effect.gen(function* () {
     if (!matched) {
       const html = renderDocument({
@@ -124,6 +153,12 @@ export const handleSsrRequest = async (
         bodyHtml: defaultNotFoundHtml(url),
         dehydrateJson: null,
       })
+      if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
+        return new Response("<!doctype html><h1>SSR output too large</h1>", {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        })
+      }
       return new Response(html, {
         status: 404,
         headers: { "content-type": "text/html; charset=utf-8" },
@@ -148,6 +183,12 @@ export const handleSsrRequest = async (
           bodyHtml: defaultNotFoundHtml(url),
           dehydrateJson: null,
         })
+        if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
+          return new Response("<!doctype html><h1>SSR output too large</h1>", {
+            status: 500,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          })
+        }
         return new Response(html, {
           status: 404,
           headers: { "content-type": "text/html; charset=utf-8" },
@@ -160,6 +201,12 @@ export const handleSsrRequest = async (
           bodyHtml: defaultFailHtml(url, run.error),
           dehydrateJson: null,
         })
+        if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
+          return new Response("<!doctype html><h1>SSR output too large</h1>", {
+            status: 500,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          })
+        }
         return new Response(html, {
           status: run.status ?? 500,
           headers: { "content-type": "text/html; charset=utf-8" },
@@ -182,6 +229,12 @@ export const handleSsrRequest = async (
           bodyHtml,
           dehydrateJson: dehydrate,
         })
+        if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
+          return new Response("<!doctype html><h1>SSR output too large</h1>", {
+            status: 500,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          })
+        }
 
         const headers = new Headers({ "content-type": "text/html; charset=utf-8" })
         if (run.hints?.headers) {
@@ -193,21 +246,37 @@ export const handleSsrRequest = async (
       }
     }
   }).pipe(
+    Effect.raceFirst(awaitRequestAbort),
     // Provide request-scoped context for services (AuthService, ConvexService, etc.).
     Effect.provideService(RequestContextService, makeServerRequestContext(request)),
-    Effect.catchAll((error) =>
-      Effect.succeed(
-        new Response(
-          renderDocument({
-            title: "Error",
-            meta: [],
-            bodyHtml: defaultFailHtml(url, error),
-            dehydrateJson: null,
+    Effect.catchAll((error) => {
+      if (error instanceof RequestAbortedError) {
+        return Effect.succeed(new Response(null, { status: 499 }))
+      }
+
+      const html = renderDocument({
+        title: "Error",
+        meta: [],
+        bodyHtml: defaultFailHtml(url, error),
+        dehydrateJson: null,
+      })
+
+      if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
+        return Effect.succeed(
+          new Response("<!doctype html><h1>SSR output too large</h1>", {
+            status: 500,
+            headers: { "content-type": "text/html; charset=utf-8" },
           }),
-          { status: 500, headers: { "content-type": "text/html; charset=utf-8" } },
-        ),
-      ),
-    ),
+        )
+      }
+
+      return Effect.succeed(
+        new Response(html, {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      )
+    }),
   )
 
   return runtime.runPromise(effect)

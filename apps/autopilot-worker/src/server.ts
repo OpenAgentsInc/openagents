@@ -1,9 +1,11 @@
 import { Agent, routeAgentRequest, type AgentContext, type Connection, type WSMessage } from "agents";
 import * as AiLanguageModel from "@effect/ai/LanguageModel";
+import * as AiPrompt from "@effect/ai/Prompt";
 import * as AiResponse from "@effect/ai/Response";
+import * as AiTokenizer from "@effect/ai/Tokenizer";
 import * as AiToolkit from "@effect/ai/Toolkit";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { CompiledArtifact, Lm, Predict } from "@openagentsinc/dse";
+import { BlobStore, CompiledArtifact, Lm, Predict } from "@openagentsinc/dse";
 import {
   AutopilotBootstrapState,
   AutopilotBlueprintStateV1,
@@ -50,11 +52,15 @@ import {
 
 import { MessageType, type ChatMessage, type ChatPart, type ChatToolPart } from "./chatProtocol";
 import { makeWorkersAiLanguageModel } from "./effect/ai/languageModel";
+import { initAiReceiptTables, listAiModelReceipts, recordAiModelReceipt, type AiModelReceiptV1, type UsageEncoded } from "./effect/ai/receipts";
 import { encodeWirePart } from "./effect/ai/streaming";
 import { aiToolFromContract } from "./effect/ai/toolkit";
+import { sha256IdFromString } from "./hash";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
+const MAX_PROMPT_TOKENS = 8_000;
+const MAX_SYSTEM_PROMPT_CHARS = 20_000;
 const MAX_OUTPUT_TOKENS = 512;
 
 const FIRST_OPEN_WELCOME_MESSAGE =
@@ -78,6 +84,84 @@ const AUTOPILOT_TOOLKIT = AiToolkit.make(
 );
 
 const encodeStreamPart = Schema.encodeSync(AiResponse.StreamPart(AUTOPILOT_TOOLKIT));
+
+const TOKENIZER_LAYER = Layer.succeed(
+  AiTokenizer.Tokenizer,
+  AiTokenizer.make({
+    tokenize: (prompt) =>
+      Effect.sync(() => {
+        const textForPart = (part: any): string => {
+          if (!part || typeof part !== "object") return "";
+          switch (part.type) {
+            case "text":
+            case "reasoning":
+              return typeof part.text === "string" ? part.text : "";
+            case "tool-call":
+              try {
+                return JSON.stringify(part.params ?? {});
+              } catch {
+                return "";
+              }
+            case "tool-result":
+              try {
+                return JSON.stringify(part.result ?? part.encodedResult ?? null);
+              } catch {
+                return "";
+              }
+            case "file":
+              return typeof part.fileName === "string" ? part.fileName : "";
+            default:
+              return "";
+          }
+        };
+
+        const messageText = (msg: any): string => {
+          if (!msg || typeof msg !== "object") return "";
+          if (typeof msg.content === "string") return msg.content;
+          if (Array.isArray(msg.content)) return msg.content.map(textForPart).join("\n");
+          return "";
+        };
+
+        const all = prompt.content.map(messageText).join("\n\n");
+        // This is an intentionally naive token estimate to enforce a hard cap.
+        // v2 can swap in a model-accurate tokenizer without changing call sites.
+        const estimate = Math.ceil(all.length / 4);
+        const n = Math.max(0, Math.min(estimate, 200_000));
+        return Array.from({ length: n }, (_, i) => i);
+      }),
+  }),
+);
+
+const capText = (text: string, maxChars: number): string => {
+  const limit = Math.max(0, Math.floor(maxChars));
+  if (text.length <= limit) return text;
+  return text.slice(0, limit) + "\n\n[truncated for prompt budget]"
+};
+
+const budgetChatPrompt = (raw: AiPrompt.RawInput) =>
+  Effect.gen(function* () {
+    const tokenizer = yield* AiTokenizer.Tokenizer;
+    const prompt = AiPrompt.make(raw);
+    const messages = prompt.content;
+    const first = messages[0];
+
+    if (!first || first.role !== "system") {
+      return yield* tokenizer.truncate(prompt, MAX_PROMPT_TOKENS);
+    }
+
+    const systemOnly = AiPrompt.fromMessages([first]);
+    const systemTokens = (yield* tokenizer.tokenize(systemOnly)).length;
+    const remaining = Math.max(0, MAX_PROMPT_TOKENS - systemTokens);
+    const rest = messages.length > 1 ? AiPrompt.fromMessages(messages.slice(1)) : AiPrompt.empty;
+    const truncatedRest = yield* tokenizer.truncate(rest, remaining);
+    return AiPrompt.fromMessages([first, ...truncatedRest.content]);
+  }).pipe(Effect.provide(TOKENIZER_LAYER));
+
+const tokenEstimate = (prompt: AiPrompt.Prompt) =>
+  Effect.gen(function* () {
+    const tokenizer = yield* AiTokenizer.Tokenizer;
+    return (yield* tokenizer.tokenize(prompt)).length;
+  }).pipe(Effect.provide(TOKENIZER_LAYER));
 
 const SYSTEM_PROMPT_BASE =
   "You are Autopilot.\n" +
@@ -217,6 +301,7 @@ export class Chat extends Agent<Env> {
       updated_at integer not null
     )`;
     initDseTables(this.sql.bind(this) as unknown as SqlTag);
+    initAiReceiptTables(this.sql.bind(this) as unknown as SqlTag);
     this.messages = this.loadMessagesFromDb();
   }
 
@@ -685,6 +770,22 @@ export class Chat extends Agent<Env> {
 
       const receipts = listReceipts(this.sql.bind(this) as unknown as SqlTag, {
         ...(signatureId ? { signatureId } : {}),
+        ...(limit !== undefined ? { limit } : {})
+      });
+
+      return Response.json(receipts);
+    }
+
+    if (url.pathname.endsWith("/ai/receipts")) {
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const limitRaw = url.searchParams.get("limit");
+      const limitParsed = limitRaw ? Number(limitRaw) : Number.NaN;
+      const limit = Number.isFinite(limitParsed) ? limitParsed : undefined;
+
+      const receipts = listAiModelReceipts(this.sql.bind(this) as unknown as SqlTag, {
         ...(limit !== undefined ? { limit } : {})
       });
 
@@ -1441,6 +1542,114 @@ export class Chat extends Agent<Env> {
     );
   }
 
+  private async recordModelReceipt(input: {
+    readonly step: number
+    readonly requestId: string
+    readonly params: unknown
+    readonly prompt: AiPrompt.Prompt
+    readonly promptTokenEstimate: number
+    readonly outputText: string
+    readonly toolCalls: ReadonlyArray<AiResponse.ToolCallPartEncoded>
+    readonly finish: { readonly reason: string; readonly usage: UsageEncoded } | null
+    readonly startedAtMs: number
+    readonly endedAtMs: number
+    readonly error: unknown | null
+  }): Promise<void> {
+    try {
+      const paramsHash = await sha256IdFromString(JSON.stringify(input.params))
+
+      const encodedPrompt = Schema.encodeSync(AiPrompt.Prompt)(input.prompt)
+      const promptJson = JSON.stringify(encodedPrompt)
+
+      const outputJson = JSON.stringify({
+        text: input.outputText,
+        toolCalls: input.toolCalls.map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          params: tc.params,
+          providerExecuted: tc.providerExecuted,
+        })),
+      })
+
+      const { promptBlob, outputBlob } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const blobs = yield* BlobStore.BlobStoreService
+          const promptBlob = yield* blobs.putText({
+            text: promptJson,
+            mime: "application/json",
+          })
+          const outputBlob = yield* blobs.putText({
+            text: outputJson,
+            mime: "application/json",
+          })
+          return { promptBlob, outputBlob }
+        }).pipe(
+          Effect.provide(layerDseFromSql(this.sql.bind(this) as unknown as SqlTag)),
+        ),
+      )
+
+      const finish = input.finish
+        ? { reason: input.finish.reason, usage: input.finish.usage }
+        : undefined
+
+      const receiptKey = {
+        provider: "cloudflare-workers-ai",
+        modelId: MODEL_ID,
+        paramsHash,
+        promptBlobId: promptBlob.id,
+        outputBlobId: outputBlob.id,
+        finish,
+        step: input.step,
+      }
+      const receiptId = await sha256IdFromString(JSON.stringify(receiptKey))
+
+      const receipt: AiModelReceiptV1 = {
+        format: "openagents.ai.model_receipt",
+        formatVersion: 1,
+        receiptId,
+        createdAt: new Date().toISOString(),
+        provider: "cloudflare-workers-ai",
+        modelId: MODEL_ID,
+        paramsHash,
+        promptBlobs: [promptBlob],
+        outputBlobs: [outputBlob],
+        ...(finish ? { finish } : {}),
+        ...(input.toolCalls.length > 0
+          ? { toolCallIds: input.toolCalls.map((tc) => tc.id) }
+          : {}),
+        promptTokenEstimate: input.promptTokenEstimate,
+        maxPromptTokens: MAX_PROMPT_TOKENS,
+        timing: {
+          startedAtMs: input.startedAtMs,
+          endedAtMs: input.endedAtMs,
+          durationMs: Math.max(0, input.endedAtMs - input.startedAtMs),
+        },
+        correlation: {
+          agentName: this.name,
+          requestId: input.requestId,
+          step: input.step,
+        },
+        result: input.error
+          ? {
+              _tag: "Error",
+              errorName:
+                input.error && typeof input.error === "object" && "name" in input.error
+                  ? String((input.error as any).name)
+                  : "Error",
+              message:
+                input.error && typeof input.error === "object" && "message" in input.error
+                  ? String((input.error as any).message)
+                  : String(input.error),
+            }
+          : { _tag: "Ok" },
+      }
+
+      recordAiModelReceipt(this.sql.bind(this) as unknown as SqlTag, receipt)
+    } catch (error) {
+      console.warn("[ai] failed to record model receipt", error)
+    }
+  }
+
   private async streamChatResponse(connection: Connection, requestId: string, abortSignal: AbortSignal) {
     await this.ensureDefaultDsePolicies();
 
@@ -1457,7 +1666,7 @@ export class Chat extends Agent<Env> {
         toolNames && toolNames.length > 0
           ? renderToolPrompt({ toolNames })
           : null;
-      return buildSystemPrompt({
+      const system = buildSystemPrompt({
         identityVibe: state.docs.identity.vibe,
         characterVibe: state.docs.character.vibe,
         bootstrapState: {
@@ -1470,6 +1679,7 @@ export class Chat extends Agent<Env> {
         bootstrapInstructions,
         toolPrompt
       });
+      return capText(system, MAX_SYSTEM_PROMPT_CHARS);
     };
 
     const blueprint = this.ensureBlueprintStateForChat();
@@ -1635,6 +1845,10 @@ export class Chat extends Agent<Env> {
       })
     ];
 
+    const prompt0 = await Effect.runPromise(budgetChatPrompt(promptBase));
+    const prompt0TokenEstimate = await Effect.runPromise(tokenEstimate(prompt0));
+    const prompt0Encoded = Schema.encodeSync(AiPrompt.Prompt)(prompt0);
+
     const toolCalls: Array<AiResponse.ToolCallPartEncoded> = [];
     const toolResults: Array<AiResponse.ToolResultPartEncoded> = [];
     const activeParts: Array<ChatPart> = [];
@@ -1651,9 +1865,23 @@ export class Chat extends Agent<Env> {
     );
     const live = Layer.mergeAll(toolLayer, modelLayer);
 
+    const step0Params = {
+      provider: "cloudflare-workers-ai",
+      modelId: MODEL_ID,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      toolChoice,
+      concurrency: 1,
+      step: 0,
+    };
+
+    const step0StartedAtMs = Date.now();
+    let step0OutputText = "";
+    let step0Finish: { readonly reason: string; readonly usage: UsageEncoded } | null = null;
+    let step0Error: unknown | null = null;
+
     const runStep0 = () =>
       AiLanguageModel.streamText({
-        prompt: promptBase,
+        prompt: prompt0,
         toolkit: AUTOPILOT_TOOLKIT,
         toolChoice: toolChoice as any,
         concurrency: 1,
@@ -1671,8 +1899,17 @@ export class Chat extends Agent<Env> {
             ) {
               return;
             }
+            if (encoded.type === "text-delta") {
+              step0OutputText += String((encoded as any).delta ?? "");
+            }
             if (encoded.type === "tool-call") {
               toolCalls.push(encoded as any);
+            }
+            if (encoded.type === "finish") {
+              step0Finish = {
+                reason: String((encoded as any).reason ?? "unknown"),
+                usage: (encoded as any).usage as UsageEncoded,
+              };
             }
             this.sendChatChunk(
               connection,
@@ -1689,13 +1926,30 @@ export class Chat extends Agent<Env> {
     try {
       await Effect.runPromise(runStep0() as Effect.Effect<void, any, never>);
     } catch (error) {
+      step0Error = error;
       console.error("[chat] step0 stream failed", error);
       this.sendChatChunk(connection, requestId, "Internal error.", {
         done: true,
         error: true
       });
-      return;
+    } finally {
+      const endedAtMs = Date.now();
+      await this.recordModelReceipt({
+        step: 0,
+        requestId,
+        params: step0Params,
+        prompt: prompt0,
+        promptTokenEstimate: prompt0TokenEstimate,
+        outputText: step0OutputText,
+        toolCalls,
+        finish: step0Finish,
+        startedAtMs: step0StartedAtMs,
+        endedAtMs,
+        error: step0Error,
+      });
     }
+
+    if (step0Error) return;
 
     if (abortSignal.aborted) return;
 
@@ -1751,14 +2005,30 @@ export class Chat extends Agent<Env> {
 
       const prompt2 = [
         { role: "system" as const, content: system2 },
-        ...(promptBase as any).slice(1), // reuse user/assistant history (no system)
+        ...(prompt0Encoded.content as any).slice(1), // reuse truncated user/assistant history (no system)
         toolCallMessage,
         toolResultMessage
       ];
 
+      const prompt1 = await Effect.runPromise(budgetChatPrompt(prompt2));
+      const prompt1TokenEstimate = await Effect.runPromise(tokenEstimate(prompt1));
+
+      const step1Params = {
+        provider: "cloudflare-workers-ai",
+        modelId: MODEL_ID,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        toolChoice: "none",
+        step: 1,
+      };
+
+      const step1StartedAtMs = Date.now();
+      let step1OutputText = "";
+      let step1Finish: { readonly reason: string; readonly usage: UsageEncoded } | null = null;
+      let step1Error: unknown | null = null;
+
       const runStep1 = () =>
         AiLanguageModel.streamText({
-          prompt: prompt2,
+          prompt: prompt1,
           toolChoice: "none",
           disableToolCallResolution: true
         }).pipe(
@@ -1774,6 +2044,15 @@ export class Chat extends Agent<Env> {
               ) {
                 return;
               }
+              if (encoded.type === "text-delta") {
+                step1OutputText += String((encoded as any).delta ?? "");
+              }
+              if (encoded.type === "finish") {
+                step1Finish = {
+                  reason: String((encoded as any).reason ?? "unknown"),
+                  usage: (encoded as any).usage as UsageEncoded,
+                };
+              }
               this.sendChatChunk(connection, requestId, encodeWirePart(encoded), {
                 done: encoded.type === "finish"
               });
@@ -1786,13 +2065,30 @@ export class Chat extends Agent<Env> {
       try {
         await Effect.runPromise(runStep1());
       } catch (error) {
+        step1Error = error;
         console.error("[chat] step1 stream failed", error);
         this.sendChatChunk(connection, requestId, "Internal error.", {
           done: true,
           error: true
         });
-        return;
+      } finally {
+        const endedAtMs = Date.now();
+        await this.recordModelReceipt({
+          step: 1,
+          requestId,
+          params: step1Params,
+          prompt: prompt1,
+          promptTokenEstimate: prompt1TokenEstimate,
+          outputText: step1OutputText,
+          toolCalls: [],
+          finish: step1Finish,
+          startedAtMs: step1StartedAtMs,
+          endedAtMs,
+          error: step1Error,
+        });
       }
+
+      if (step1Error) return;
 
       if (abortSignal.aborted) return;
     }
