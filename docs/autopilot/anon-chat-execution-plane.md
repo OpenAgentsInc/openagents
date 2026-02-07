@@ -184,7 +184,7 @@ Possible architecture:
 4. UI is a Convex subscription on `(threadId -> messages + parts)`.
 5. After auth (and optionally after credits):
    - Create owned `threadId = userId` (Chat DO + DO SQLite).
-   - Optionally import last N messages from Convex anon thread into the owned DO.
+   - Import the anon transcript into the owned DO (MUST for v1; at least `{ role, text }`).
 
 Where inference runs:
 
@@ -204,6 +204,44 @@ Cons / risks:
   - This increases perceived latency vs direct socket streaming.
 - We’d be running **two** streaming stacks (Agents WS for authed DO, Convex WS for anon) unless we also migrate authed to Convex.
 - More moving parts (Convex schema, mutations/actions, inference runner, subscription modeling).
+
+### Option F: Convex-only MVP (no per-user DO; everything through Convex)
+
+This is the “nuclear simplification” idea: keep hosting on Cloudflare (SSR/static), but run **all Autopilot state + backend actions** in Convex for the MVP, including authenticated users.
+
+Shape:
+
+- **Transport**
+  - No `/agents/*` for MVP.
+  - Browser uses Convex WS subscriptions as the realtime transport for chat state (messages + parts).
+- **State**
+  - Transcript, blueprint, tool receipts, budgets, and thread metadata live in Convex tables.
+  - “One thread per user” becomes: `threadId = userId` in Convex (not DO name).
+- **Inference + tools**
+  - A Convex action (or action + scheduler) runs model inference and tool execution.
+  - It writes incremental `@effect/ai/Response` parts into Convex so subscriptions update the UI.
+  - Cancellation is modeled explicitly (e.g. `runId` + `cancel` mutation) since there is no DO-local abort controller to target.
+
+Why it might be simpler:
+
+- Single backend system for MVP: Convex schema + actions + auth.
+- No per-user DO lifecycle, migrations, or DO auth gating.
+- The “anon -> owned” migration becomes trivial (it’s all in Convex): on auth, re-bind the same thread (or copy it) to the user id.
+
+Why it might be harder in practice (given today’s constraints):
+
+- **Streaming becomes DB-write-driven.**
+  - Convex subscriptions react to DB changes; there is no native token socket.
+  - We must batch (e.g. every 250-500ms or per sentence) to keep write volume/cost sane.
+  - This introduces more perceived latency and increases implementation complexity for “stop” and “resume”.
+- **Provider constraint mismatch.**
+  - Today we rely on Cloudflare Workers AI (`env.AI` binding) for “no keys” inference.
+  - Convex actions cannot access `env.AI` directly; to keep the same provider we’d need an HTTP bridge (Cloudflare API token + REST) or accept a provider change for MVP.
+- **We’d be rewriting working code.**
+  - The current DO already ships: transcript persistence, blueprint, tools, receipts, WebSocket protocol.
+  - A Convex-only MVP likely means replacing most of that with a different execution model.
+
+Net: Convex-only MVP is conceptually clean and likely reduces infra surface area, but may be a larger rewrite than hardening the existing DO approach.
 
 ### Option E: Worker-only ephemeral WebSocket for anon (no DO, no Convex)
 
@@ -240,7 +278,10 @@ Implementation sketch (client-driven):
      - either via a dedicated endpoint `POST /agents/chat/:userId/import`
      - or via the existing “set messages” WS message (`CF_AGENT_CHAT_MESSAGES`) once connected.
 
-We should decide whether this migration is a MUST for v1 or an optional UX.
+Decision: **anon -> owned transcript migration is a MUST for v1**.
+
+- Minimum acceptable behavior: after authentication, the user’s owned Autopilot thread must contain the prior anon transcript (at least `{ role, text }`).
+- Preferred behavior: preserve tool parts when possible and keep a stable receipt trail (even if receipts remain stored separately).
 
 ## Credits/Billing Gating (Future-Proofing This Decision)
 
@@ -286,7 +327,7 @@ If we want the smallest delta with the biggest risk reduction:
    - `id === session.userId` (authed) OR `id` is `anon-*` (unauthed).
 2. Stop persisting anon sessions:
    - either conditional “anon mode” inside `Chat`, or better, **Option B** (`AnonChat` DO with no SQLite writes).
-3. Decide if we care about migrating anon transcripts to owned threads after auth.
+3. Implement the required **anon -> owned transcript migration** on auth (minimum: `{ role, text }`; ideally preserve tool parts).
 
 If we want the cleanest product separation (“try” on Convex, “own” on DO) and are OK with added complexity:
 
@@ -295,8 +336,7 @@ If we want the cleanest product separation (“try” on Convex, “own” on DO
 ## Open Questions
 
 1. Do we want anon `/autopilot` to expose the full blueprint/tools UI, or a simplified try flow?
-2. Should we preserve anon conversation after signup (import), or discard it?
-3. What is the free-tier cap (messages/day, tokens/day) and how do we enforce it (KV vs Convex vs DO)?
-4. Is “Convex subscription streaming” acceptable latency-wise if we batch parts (vs direct WebSocket streaming)?
-5. Should the long-term goal be a single chat transport (Agents WS everywhere), or is split transport acceptable?
-
+2. What is the free-tier cap (messages/day, tokens/day) and how do we enforce it (KV vs Convex vs DO)?
+3. Is “Convex subscription streaming” acceptable latency-wise if we batch parts (vs direct WebSocket streaming)?
+4. Should the long-term goal be a single chat transport (Agents WS everywhere), or is split transport acceptable?
+5. If we considered a Convex-only MVP (Option F), would we accept a model/provider change (or an HTTP bridge) so inference can run inside Convex actions?
