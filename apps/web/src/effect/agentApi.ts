@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from 'effect';
 import { TelemetryService } from './telemetry';
+import { RequestContextService } from './requestContext';
 import type { ChatMessage } from "./chatProtocol"
 
 export class AgentApiError extends Schema.TaggedError<AgentApiError>()('AgentApiError', {
@@ -9,15 +10,26 @@ export class AgentApiError extends Schema.TaggedError<AgentApiError>()('AgentApi
 }) {}
 
 export type AgentApi = {
-  readonly getBlueprint: (chatId: string) => Effect.Effect<unknown, AgentApiError>;
-  readonly getMessages: (chatId: string) => Effect.Effect<Array<ChatMessage>, AgentApiError>;
-  readonly getToolContracts: (chatId: string) => Effect.Effect<Array<AgentToolContract>, AgentApiError>;
+  readonly getBlueprint: (
+    chatId: string,
+  ) => Effect.Effect<unknown, AgentApiError, RequestContextService>;
+  readonly getMessages: (
+    chatId: string,
+  ) => Effect.Effect<Array<ChatMessage>, AgentApiError, RequestContextService>;
+  readonly getToolContracts: (
+    chatId: string,
+  ) => Effect.Effect<Array<AgentToolContract>, AgentApiError, RequestContextService>;
   readonly getSignatureContracts: (
     chatId: string,
-  ) => Effect.Effect<Array<DseSignatureContract>, AgentApiError>;
-  readonly getModuleContracts: (chatId: string) => Effect.Effect<Array<DseModuleContract>, AgentApiError>;
-  readonly resetAgent: (chatId: string) => Effect.Effect<void, AgentApiError>;
-  readonly importBlueprint: (chatId: string, blueprint: unknown) => Effect.Effect<void, AgentApiError>;
+  ) => Effect.Effect<Array<DseSignatureContract>, AgentApiError, RequestContextService>;
+  readonly getModuleContracts: (
+    chatId: string,
+  ) => Effect.Effect<Array<DseModuleContract>, AgentApiError, RequestContextService>;
+  readonly resetAgent: (chatId: string) => Effect.Effect<void, AgentApiError, RequestContextService>;
+  readonly importBlueprint: (
+    chatId: string,
+    blueprint: unknown,
+  ) => Effect.Effect<void, AgentApiError, RequestContextService>;
 };
 
 export type AgentToolContract = {
@@ -57,8 +69,29 @@ const fetchNoStore = Effect.fn('AgentApi.fetchNoStore')(function* (input: {
   readonly url: string;
   readonly init?: RequestInit;
 }) {
+  const ctx = yield* RequestContextService;
+
+  const url =
+    ctx._tag === 'Server'
+      ? // Resolve relative URLs against the incoming request so server/RPC calls
+        // stay on-origin and can be intercepted in Workers tests.
+        new URL(input.url, ctx.request.url).toString()
+      : input.url;
+
+  const headers = new Headers(input.init?.headers);
+  if (ctx._tag === 'Server') {
+    // Forward auth state for same-origin subrequests (e.g. /agents/*) from RPC/SSR.
+    const cookie = ctx.request.headers.get('cookie');
+    if (cookie && !headers.has('cookie')) headers.set('cookie', cookie);
+
+    const authorization = ctx.request.headers.get('authorization');
+    if (authorization && !headers.has('authorization')) {
+      headers.set('authorization', authorization);
+    }
+  }
+
   return yield* Effect.tryPromise({
-    try: () => fetch(input.url, { cache: 'no-store', ...(input.init ?? {}) }),
+    try: () => fetch(url, { ...(input.init ?? {}), cache: 'no-store', headers }),
     catch: (error) =>
       AgentApiError.make({
         operation: input.operation,

@@ -13,6 +13,7 @@ import { UiBlobStore } from "../blobStore"
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { AgentApi, AgentToolContract } from "../../effect/agentApi"
 import type { ChatClient } from "../../effect/chat"
+import type { AppRuntime } from "../../effect/runtime"
 import type { TelemetryClient } from "../../effect/telemetry"
 import type { ChatMessage } from "../../effect/chatProtocol"
 import type { AutopilotRouteRenderInput } from "../../effuse-pages/autopilotRoute"
@@ -212,6 +213,7 @@ export type AutopilotController = {
 export const mountAutopilotController = (input: {
   readonly container: Element
   readonly ez: Map<string, EzAction>
+  readonly runtime: AppRuntime
   readonly atoms: AtomRegistry
   readonly telemetry: TelemetryClient
   readonly api: AgentApi
@@ -496,7 +498,7 @@ export const mountAutopilotController = (input: {
     blueprintError = null
 
     try {
-      const json = await Effect.runPromise(input.api.getBlueprint(chatId))
+      const json = await input.runtime.runPromise(input.api.getBlueprint(chatId))
       blueprint = json
       blueprintUpdatedAt = Date.now()
       if (!isEditingBlueprint) {
@@ -535,7 +537,7 @@ export const mountAutopilotController = (input: {
 
   const fetchToolContracts = async () => {
     try {
-      const contracts = await Effect.runPromise(input.api.getToolContracts(chatId))
+      const contracts = await input.runtime.runPromise(input.api.getToolContracts(chatId))
       const map: Record<string, AgentToolContract> = {}
       for (const c of contracts) map[c.name] = c
       toolContractsByName = map
@@ -655,7 +657,9 @@ export const mountAutopilotController = (input: {
     Effect.sync(() => scrollToBottom("smooth"))
   )
 
-  input.ez.set("autopilot.chat.stop", () => input.chat.stop(chatId))
+  input.ez.set("autopilot.chat.stop", () =>
+    Effect.promise(() => input.runtime.runPromise(input.chat.stop(chatId)))
+  )
 
   input.ez.set("autopilot.chat.send", ({ el, params }) =>
     Effect.gen(function* () {
@@ -673,7 +677,10 @@ export const mountAutopilotController = (input: {
         inputDraft = ""
       })
 
-      yield* input.chat.send(chatId, text).pipe(
+      yield* Effect.tryPromise({
+        try: () => input.runtime.runPromise(input.chat.send(chatId, text)),
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+      }).pipe(
         Effect.catchAll(() =>
           Effect.sync(() => {
             if (inputEl) inputEl.value = text
@@ -759,7 +766,7 @@ export const mountAutopilotController = (input: {
           ],
         })
       )
-      await Effect.runPromise(input.api.importBlueprint(chatId, next))
+      await input.runtime.runPromise(input.api.importBlueprint(chatId, next))
       isEditingBlueprint = false
       await fetchBlueprint()
     } catch (err) {
@@ -823,7 +830,7 @@ export const mountAutopilotController = (input: {
 
       void (async () => {
         try {
-          const blueprintJson = await Effect.runPromise(input.api.getBlueprint(chatId))
+          const blueprintJson = await input.runtime.runPromise(input.api.getBlueprint(chatId))
           const blob = new Blob([JSON.stringify(blueprintJson, null, 2)], { type: "application/json" })
           const url = URL.createObjectURL(blob)
           const link = document.createElement("a")
@@ -849,7 +856,7 @@ export const mountAutopilotController = (input: {
 
   input.ez.set("autopilot.controls.clearMessages", () =>
     Effect.gen(function* () {
-      yield* input.chat.clearHistory(chatId)
+      yield* Effect.promise(() => input.runtime.runPromise(input.chat.clearHistory(chatId)))
       yield* Effect.sync(() => {
         inputDraft = ""
         const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]')
@@ -870,13 +877,13 @@ export const mountAutopilotController = (input: {
     scheduleRender()
 
     try {
-      await Effect.runPromise(input.api.resetAgent(chatId))
+      await input.runtime.runPromise(input.api.resetAgent(chatId))
       inputDraft = ""
       const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]')
       if (inputEl) inputEl.value = ""
       await fetchBlueprint()
-      const nextMessages = await Effect.runPromise(input.api.getMessages(chatId)).catch(() => [])
-      await Effect.runPromise(input.chat.setMessages(chatId, nextMessages)).catch(() => {})
+      const nextMessages = await input.runtime.runPromise(input.api.getMessages(chatId)).catch(() => [])
+      await input.runtime.runPromise(input.chat.setMessages(chatId, nextMessages)).catch(() => {})
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       Effect.runPromise(
