@@ -1003,6 +1003,7 @@ These must be decided explicitly to finish the React/TanStack removal:
 
 - **Hosting target (resolved):** single Cloudflare Worker (not Pages Functions). Portability remains an explicit adapter boundary for an optional Node/Bun host.
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
+- **Autopilot unauthenticated mode (resolved):** `/autopilot` (and anything it depends on, notably `/agents/*` WebSockets/streams) MUST work for unauthed users. Auth is used to unlock user identity, ownership, and user-space persistence (DO SQLite + Convex projection), but the core chat experience must not require a WorkOS session.
 - **Convex usage (resolved):** browser connects directly to Convex via WebSockets (`ConvexClient`) for realtime subscriptions; Convex MUST still be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
 - **Workspace plane (resolved):** DO SQLite is canonical for user-space + agents; Convex is canonical for profile/ownership/membership; replication contract is the v1 event-log + index projection described in §3.5.5.
 - **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
