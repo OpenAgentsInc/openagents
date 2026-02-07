@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from "effect";
+import { Effect, JSONSchema, Layer, Schema } from "effect";
 
 import {
   BlobStore,
@@ -6,7 +6,8 @@ import {
   Hash,
   Policy,
   Receipt,
-  type BlobRef
+  type BlobRef,
+  type DseSignature
 } from "@openagentsinc/dse";
 
 export type SqlTag = <T extends Record<string, unknown> = Record<string, unknown>>(
@@ -62,6 +63,133 @@ function nowMs(): number {
 
 function byteLengthUtf8(text: string): number {
   return new TextEncoder().encode(text).byteLength;
+}
+
+export type EnsureDefaultArtifactsResult = {
+  readonly ok: boolean;
+  readonly installed: ReadonlyArray<{
+    readonly signatureId: string;
+    readonly compiled_id: string;
+  }>;
+  readonly skipped: ReadonlyArray<{
+    readonly signatureId: string;
+    readonly reason: "already_active";
+  }>;
+  readonly errors: ReadonlyArray<{
+    readonly signatureId: string;
+    readonly message: string;
+  }>;
+};
+
+export async function ensureDefaultArtifacts(
+  sql: SqlTag,
+  signatures: ReadonlyArray<DseSignature<any, any>>
+): Promise<EnsureDefaultArtifactsResult> {
+  const installed: Array<{ signatureId: string; compiled_id: string }> = [];
+  const skipped: Array<{ signatureId: string; reason: "already_active" }> = [];
+  const errors: Array<{ signatureId: string; message: string }> = [];
+
+  for (const signature of signatures) {
+    try {
+      const activeRows =
+        sql<{ compiled_id: string }>`
+          select compiled_id from dse_active_artifacts where signature_id = ${signature.id}
+        ` || [];
+
+      const activeCompiledId = activeRows[0]?.compiled_id ?? null;
+      if (activeCompiledId) {
+        const artifactOk =
+          (sql<{ ok: number }>`
+            select 1 as ok from dse_artifacts
+            where signature_id = ${signature.id} and compiled_id = ${activeCompiledId}
+            limit 1
+          ` || [])[0]?.ok === 1;
+
+        if (artifactOk) {
+          skipped.push({ signatureId: signature.id, reason: "already_active" });
+          continue;
+        }
+      }
+
+      const inputSchemaHash = await Hash.sha256IdFromCanonicalJson(
+        JSONSchema.make(signature.input)
+      );
+      const outputSchemaHash = await Hash.sha256IdFromCanonicalJson(
+        JSONSchema.make(signature.output)
+      );
+      const promptIrHash = await Hash.sha256IdFromCanonicalJson(signature.prompt);
+      const paramsHash = await Hash.sha256IdFromCanonicalJson(signature.defaults.params);
+
+      // For now, compiled_id == paramsHash (see packages/dse/src/hashes.ts).
+      const compiled_id = paramsHash;
+      if (activeCompiledId && activeCompiledId !== compiled_id) {
+        errors.push({
+          signatureId: signature.id,
+          message:
+            "Active artifact pointer exists but artifact is missing; refusing to override active compiled_id."
+        });
+        continue;
+      }
+
+      const artifact: CompiledArtifact.DseCompiledArtifactV1 = {
+        format: "openagents.dse.compiled_artifact",
+        formatVersion: 1,
+        signatureId: signature.id,
+        compiled_id,
+        createdAt: new Date().toISOString(),
+        hashes: {
+          inputSchemaHash,
+          outputSchemaHash,
+          promptIrHash,
+          paramsHash
+        },
+        params: signature.defaults.params,
+        eval: {
+          evalVersion: 1,
+          kind: "unscored",
+          notes: "default-installed (runtime)"
+        },
+        optimizer: {
+          id: "default_install.v1"
+        },
+        provenance: {}
+      };
+
+      const encoded = Schema.encodeSync(CompiledArtifact.DseCompiledArtifactV1Schema)(
+        artifact
+      );
+      const json = JSON.stringify(encoded);
+      const createdAtMs = Date.parse(artifact.createdAt);
+      const createdAt = Number.isFinite(createdAtMs) ? createdAtMs : nowMs();
+
+      sql`
+        insert into dse_artifacts (signature_id, compiled_id, json, created_at)
+        values (${artifact.signatureId}, ${artifact.compiled_id}, ${json}, ${createdAt})
+        on conflict(signature_id, compiled_id) do nothing
+      `;
+
+      const ts = nowMs();
+      sql`
+        insert into dse_active_artifact_history (signature_id, compiled_id, updated_at)
+        values (${artifact.signatureId}, ${artifact.compiled_id}, ${ts})
+      `;
+      sql`
+        insert into dse_active_artifacts (signature_id, compiled_id, updated_at)
+        values (${artifact.signatureId}, ${artifact.compiled_id}, ${ts})
+        on conflict(signature_id) do update set compiled_id = excluded.compiled_id, updated_at = excluded.updated_at
+      `;
+
+      installed.push({ signatureId: signature.id, compiled_id });
+    } catch (cause) {
+      const message =
+        cause && typeof cause === "object" && "message" in cause
+          ? String((cause as any).message)
+          : "Failed to ensure default artifact";
+      errors.push({ signatureId: signature.id, message });
+    }
+  }
+
+  return { ok: errors.length === 0, installed, skipped, errors };
 }
 
 export function layerDseFromSql(sql: SqlTag): Layer.Layer<

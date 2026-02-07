@@ -325,4 +325,62 @@ describe("Autopilot worker", () => {
       expect(json.compiled_id).toBe(artifact1.compiled_id);
     }
   });
+
+  it("installs a default active DSE artifact for Blueprint tool routing", async () => {
+    const threadId = `dse-default-${Date.now()}`;
+    const base = `http://example.com/agents/chat/${threadId}`;
+
+    // Trigger DO initialization.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(`${base}/get-messages`),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      await response.json();
+    }
+
+    const signatureId = "@openagents/autopilot/blueprint/SelectTool.v1";
+
+    const compiled_id = await (async () => {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(
+          `${base}/dse/active?signatureId=${encodeURIComponent(signatureId)}`
+        ),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.signatureId).toBe(signatureId);
+      expect(typeof json.compiled_id).toBe("string");
+      expect(String(json.compiled_id).startsWith("sha256:")).toBe(true);
+      return String(json.compiled_id);
+    })();
+
+    // Artifact can be fetched by signatureId+compiled_id.
+    {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request(
+          `${base}/dse/artifacts?signatureId=${encodeURIComponent(signatureId)}&compiled_id=${encodeURIComponent(compiled_id)}`
+        ),
+        env,
+        ctx
+      );
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as any;
+      expect(json.format).toBe("openagents.dse.compiled_artifact");
+      expect(json.formatVersion).toBe(1);
+      expect(json.signatureId).toBe(signatureId);
+      expect(json.compiled_id).toBe(compiled_id);
+      expect(json.optimizer?.id).toBe("default_install.v1");
+    }
+  });
 });
