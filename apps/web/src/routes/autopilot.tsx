@@ -8,7 +8,7 @@ import { EffuseMount } from '../components/EffuseMount';
 import { cleanupAuthedDotsGridBackground, hydrateAuthedDotsGridBackground } from '../effuse-pages/authedShell';
 import { autopilotRouteShellTemplate, runAutopilotRoute } from '../effuse-pages/autopilotRoute';
 import { ChatService } from '../effect/chat';
-import { AutopilotChatInputAtom, AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from '../effect/atoms/chat';
+import { AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from '../effect/atoms/chat';
 import { AutopilotSidebarCollapsedAtom, AutopilotSidebarUserMenuOpenAtom } from '../effect/atoms/autopilotUi';
 import { SessionAtom } from '../effect/atoms/session';
 import { TelemetryService } from '../effect/telemetry';
@@ -265,8 +265,9 @@ function ChatPage() {
   );
   const chatSnapshot = useAtomValue(ChatSnapshotAtom(chatId));
 
-  const input = useAtomValue(AutopilotChatInputAtom(chatId));
-  const setInput = useAtomSet(AutopilotChatInputAtom(chatId));
+  // Keep input draft in a ref so keystrokes don't force a React rerender.
+  // We still want the draft persisted across Effuse rerenders (when messages stream, etc.).
+  const inputDraftRef = useRef('');
 
   const didMountRef = useRef(false);
   const [isExportingBlueprint, setIsExportingBlueprint] = useState(false);
@@ -378,9 +379,9 @@ function ChatPage() {
       })),
       isBusy,
       isAtBottom,
-      inputValue: input,
+      inputValue: inputDraftRef.current,
     };
-  }, [renderedMessages, toolContractsByName, isBusy, isAtBottom, input]);
+  }, [renderedMessages, toolContractsByName, isBusy, isAtBottom]);
 
   const makeDraftFromBlueprint = useCallback((value: unknown): BlueprintDraft => {
     const b: any = value ?? {};
@@ -537,7 +538,7 @@ function ChatPage() {
   ezRegistry.set('autopilot.chat.input', ({ params }) =>
     Effect.sync(() => {
       const paramsMaybe = params as Record<string, string | undefined>;
-      setInput(String(paramsMaybe.message ?? ''));
+      inputDraftRef.current = String(paramsMaybe.message ?? '');
     }),
   );
 
@@ -559,14 +560,14 @@ function ChatPage() {
 
       yield* Effect.sync(() => {
         if (inputEl) inputEl.value = '';
-        setInput('');
+        inputDraftRef.current = '';
       });
 
       yield* chatClient.send(chatId, text).pipe(
         Effect.catchAll(() =>
           Effect.sync(() => {
             if (inputEl) inputEl.value = text;
-            setInput(text);
+            inputDraftRef.current = text;
           }),
         ),
       );
@@ -718,7 +719,9 @@ function ChatPage() {
           yield* api.resetAgent(chatId);
         }),
       );
-      setInput('');
+      inputDraftRef.current = '';
+      const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]');
+      if (inputEl) inputEl.value = '';
       await fetchBlueprint();
       const nextMessages = await fetchChatMessages();
       await Effect.runPromise(chatClient.setMessages(chatId, nextMessages)).catch(() => {});
@@ -845,7 +848,11 @@ function ChatPage() {
   ezRegistry.set('autopilot.controls.clearMessages', () =>
     Effect.gen(function* () {
       yield* chatClient.clearHistory(chatId);
-      yield* Effect.sync(() => setInput(''));
+      yield* Effect.sync(() => {
+        inputDraftRef.current = '';
+        const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]');
+        if (inputEl) inputEl.value = '';
+      });
     }),
   );
 
