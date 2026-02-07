@@ -212,9 +212,15 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
     const navToken = yield* Ref.make(0)
     const currentNavKey = yield* Ref.make<LoaderKey | null>(null)
     const started = yield* Ref.make(false)
-    const cleanupRef = yield* Ref.make<null | { readonly onClick: (evt: Event) => void; readonly stopHistory: () => void }>(
-      null
-    )
+    const cleanupRef = yield* Ref.make<
+      | null
+      | {
+          readonly onClick: (evt: Event) => void
+          readonly onMouseOver: (evt: Event) => void
+          readonly onFocusIn: (evt: Event) => void
+          readonly stopHistory: () => void
+        }
+    >(null)
 
     const initialUrl = config.history.current()
     const state = yield* SubscriptionRef.make<RouterState>({
@@ -692,6 +698,32 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
       const runtime = yield* Effect.runtime<DomService | R>()
       const runFork = Runtime.runFork(runtime)
 
+      const prefetchFromAnchor = (anchor: HTMLAnchorElement) => {
+        if (anchor.hasAttribute("data-router-ignore")) return
+        if (!anchor.hasAttribute("data-router-prefetch")) return
+        const hrefAttr = anchor.getAttribute("href")
+        if (!hrefAttr) return
+        if (hrefAttr.startsWith("#")) return
+        if (hrefAttr.startsWith("mailto:") || hrefAttr.startsWith("tel:")) return
+        if (anchor.hasAttribute("download")) return
+        if (anchor.target && anchor.target !== "_self") return
+
+        const base = config.history.current()
+        const url = parseHref(hrefAttr, base)
+        if (!url) return
+        if (url.origin !== base.origin) return
+
+        runFork(
+          prefetch(`${url.pathname}${url.search}${url.hash}`).pipe(
+            Effect.catchAll((err) =>
+              Effect.sync(() =>
+                console.error("[Effuse/Router] prefetch failed", err)
+              )
+            )
+          )
+        )
+      }
+
       const onClick = (evt: Event) => {
         if (!(evt instanceof MouseEvent)) return
         if (evt.defaultPrevented) return
@@ -727,7 +759,37 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         )
       }
 
+      const onMouseOver = (evt: Event) => {
+        if (!(evt instanceof MouseEvent)) return
+        if (evt.defaultPrevented) return
+
+        const target = evt.target
+        if (!(target instanceof Element)) return
+
+        const anchor = target.closest("a[href]")
+        if (!(anchor instanceof HTMLAnchorElement)) return
+
+        // Only prefetch when entering the anchor from outside (avoid repeated
+        // triggers when moving between anchor children).
+        const related = evt.relatedTarget
+        if (related instanceof Node && anchor.contains(related)) return
+
+        prefetchFromAnchor(anchor)
+      }
+
+      const onFocusIn = (evt: Event) => {
+        const target = evt.target
+        if (!(target instanceof Element)) return
+
+        const anchor = target.closest("a[href]")
+        if (!(anchor instanceof HTMLAnchorElement)) return
+
+        prefetchFromAnchor(anchor)
+      }
+
       config.shell.addEventListener("click", onClick)
+      config.shell.addEventListener("mouseover", onMouseOver)
+      config.shell.addEventListener("focusin", onFocusIn)
 
       const stopHistory = config.history.listen((url) => {
         runFork(
@@ -739,7 +801,7 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         )
       })
 
-      yield* Ref.set(cleanupRef, { onClick, stopHistory })
+      yield* Ref.set(cleanupRef, { onClick, onMouseOver, onFocusIn, stopHistory })
     })
 
     const stop: RouterService<R>["stop"] = Effect.gen(function* () {
@@ -747,6 +809,8 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
       if (cleanup) {
         yield* Effect.sync(() => {
           config.shell.removeEventListener("click", cleanup.onClick)
+          config.shell.removeEventListener("mouseover", cleanup.onMouseOver)
+          config.shell.removeEventListener("focusin", cleanup.onFocusIn)
           cleanup.stopHistory()
         })
       }
