@@ -1,4 +1,4 @@
-# Master Plan: Complete Effect + Effuse Stack (No React, No TanStack)
+# Master Plan: Complete Effuse Stack (No React, No TanStack)
 
 **Status:** Draft (2026-02-07)  
 **Audience:** implementers of `@openagentsinc/effuse` + maintainers of `apps/web`  
@@ -12,6 +12,7 @@ When complete, the web product is a *pure Effuse application (built on Effect)*:
 
 - **No React**: no `react`, no JSX/TSX runtime in production.
 - **No TanStack**: no `@tanstack/start`, `@tanstack/router`, `@tanstack/react-query` (or any TanStack UI/runtime dependency).
+- **Multi-backend host, Cloudflare-first**: Effuse is designed to run on multiple server backends, but the initial target (and plan in this doc) is **Cloudflare Workers** plus the Cloudflare primitives we already depend on (Durable Objects, DO SQLite, R2, KV, Queues, etc.).
 - **Effuse is the application framework/runtime (built on Effect)**:
   - Think: “Effuse is to Effect what Next.js is to React”: Effuse owns the web app’s UI *and* the app loop (routing/loaders/navigation/SSR/hydration), and it is implemented in terms of Effect.
   - UI primitives:
@@ -20,7 +21,7 @@ When complete, the web product is a *pure Effuse application (built on Effect)*:
     - component render loops (`StateCell` + `mountComponent`) when needed
     - hypermedia actions / event binding via EZ (`data-ez-*`)
   - App/runtime primitives (also Effuse-owned in the end state):
-    - routing + loaders + navigation (Effect-native router service)
+    - routing + loaders + navigation (`RouterService`, Effuse-owned and implemented with Effect)
     - SSR rendering via `renderToString(TemplateResult)`
     - hydration/boot with no “tear down and replace DOM” for first paint
     - typed request boundaries (RPC/HTTP), budgets, receipts/replay, telemetry
@@ -91,16 +92,88 @@ Define one canonical Layer bundle, with server/client specializations.
 
 ### 3.2 Route Contract (Shared by Server + Client)
 
-Replace TanStack “file routes + loaders” with an Effect-native route table.
+Replace TanStack “file routes + loaders” with an Effuse-native route table (implemented with Effect).
 
-Each route is a typed contract:
+Each route is a typed contract, but **loaders must return a first-class outcome type**, not “just data”, so the host/router doesn’t devolve into ad hoc behavior.
 
-- `id`: stable identifier for telemetry/debugging
-- `match`: path pattern + param parsing
-- `loader`: `Effect<LoaderData>` (server + client compatible), cancellable
-- `view`: `Effect<TemplateResult>` (pure rendering from loader data + global state)
-- `head`: optional computed metadata (title, meta tags)
-- `guards`: optional auth/redirect decisions as Effects
+Proposed minimal interface (v1):
+
+```ts
+// IMPORTANT: the real implementation should use Effect Schema-tagged errors,
+// not `unknown`. This is just the shape the framework must standardize on.
+
+export type RouteId = string
+
+export type RouteMatch = {
+  readonly pathname: string
+  readonly params: Readonly<Record<string, string>>
+  readonly search: URLSearchParams
+}
+
+export type RouteHead = {
+  readonly title?: string
+  readonly meta?: ReadonlyArray<readonly [name: string, content: string]>
+}
+
+export type RouteContext = {
+  readonly url: URL
+  readonly match: RouteMatch
+  // Server-only; on the client this is null/undefined.
+  readonly request?: Request
+}
+
+export type CachePolicy =
+  | { readonly mode: "no-store" }
+  | { readonly mode: "cache-first"; readonly ttlMs?: number }
+  | { readonly mode: "stale-while-revalidate"; readonly ttlMs: number; readonly swrMs: number }
+
+export type CookieMutation =
+  | { readonly _tag: "Set"; readonly name: string; readonly value: string; readonly attributes?: string }
+  | { readonly _tag: "Delete"; readonly name: string; readonly attributes?: string }
+
+export type RouteOkHints = {
+  readonly cache?: CachePolicy
+  readonly headers?: ReadonlyArray<readonly [string, string]>
+  readonly cookies?: ReadonlyArray<CookieMutation> // server only
+  readonly dehydrate?: unknown // merged into the SSR hydration payload
+  readonly receipts?: unknown // optional receipt fragments (tool/llm budget) to surface in UI/devtools
+}
+
+export type RouteOutcome<A> =
+  | { readonly _tag: "Ok"; readonly data: A; readonly hints?: RouteOkHints }
+  | { readonly _tag: "Redirect"; readonly href: string; readonly status?: 301 | 302 | 303 | 307 | 308 }
+  | { readonly _tag: "NotFound" }
+  | { readonly _tag: "Fail"; readonly status?: number; readonly error: unknown }
+
+export type HydrationMode = "strict" | "soft" | "client-only"
+export type NavigationSwapMode = "outlet" | "document"
+
+export type Route<LoaderData> = {
+  readonly id: RouteId
+
+  // Path matching + param parsing (must be deterministic and shared).
+  readonly match: (url: URL) => RouteMatch | null
+
+  // Loaders return RouteOutcome so redirect/not-found/cache/dehydrate is standardized.
+  readonly loader: (ctx: RouteContext) => Effect.Effect<RouteOutcome<LoaderData>>
+
+  // Views are pure w.r.t. loader data (side effects belong in loader/subscriptions).
+  readonly view: (ctx: RouteContext, data: LoaderData) => Effect.Effect<TemplateResult>
+
+  readonly head?: (ctx: RouteContext, data: LoaderData) => Effect.Effect<RouteHead>
+
+  // Defaults: hydration="strict", navigation.swap="outlet"
+  readonly hydration?: HydrationMode
+  readonly navigation?: { readonly swap?: NavigationSwapMode }
+}
+```
+
+Host-level normalization (so implementers don’t invent “three routers”):
+
+- `RouterService` (client) and `EffuseWebHost` (server) should normalize route execution into a single internal “run” shape (e.g. `RouteRun`) that carries:
+  - redirect/not-found/fail vs ok+rendered template
+  - headers/cookies/dehydrate/cache hints
+  - telemetry boundaries (loader/view/head spans)
 
 **Key constraint:** route definitions must be importable and runnable in both SSR and the browser.
 
@@ -120,6 +193,25 @@ Replace TanStack Start’s server runtime with an Effuse host (implemented with 
 - Handles `POST /api/rpc` (Effect RPC) and any other API endpoints
 - Performs SSR for `GET /*` via the same route contract
 - Emits consistent telemetry across SSR, RPC, and auth endpoints
+
+### 3.3.1 Backend Targets (Multi-Backend, Cloudflare First)
+
+Effuse should support multiple server backends, but we want to **ship on Cloudflare first** and treat portability as an explicit adapter boundary.
+
+Hard requirements for the host surface:
+
+- Use standard Web APIs (`Request`, `Response`, `Headers`, `URL`) as the primary contract so Cloudflare is the “native” environment.
+- Keep backend-specific details behind `EffuseWebHost` adapters so `RouterService` + route tables don’t hardcode a hosting platform.
+
+Initial planned backend: **Cloudflare Workers**, plus relevant Cloudflare infra:
+
+- **Durable Objects** (and DO SQLite) for per-user durable state (Autopilot thread, Blueprint/bootstrap state, receipts, policy registry pointers).
+- **R2** for large blob storage (`BlobStore`) and any large tool/LLM artifacts.
+- **KV** for small global caches/flags/pointers where appropriate (not canonical state).
+- **Queues** for background or deferred work (e.g. compile jobs, log flushing) when needed.
+- **D1** only if/when we need a global relational store (optional).
+
+Secondary backend (later, optional): Node/Bun adapter for local dev or alternative deployment, but the plan in this doc should assume Cloudflare’s constraints and primitives.
 
 SSR pipeline:
 
@@ -150,6 +242,39 @@ Navigation pipeline:
 - Convert to `router.navigate(href)` Effect
 - Cancel in-flight `loader` for the previous navigation (switch-latest)
 - Swap only the outlet area where possible (avoid nuking persistent shell)
+
+### 3.4.1 Router Data Cache, Dedupe, and Cancellation
+
+`RouterService` must define caching and dedupe rules up front, otherwise we will reinvent React Query inconsistently.
+
+Minimum rules (v1):
+
+- **Loader keying**: each loader run has a stable key derived from `(routeId, pathname, params, search, auth/session scope)`.
+- **In-flight dedupe**: if the same loader key is requested twice, the router reuses the same in-flight fiber/result (no double fetch).
+- **Cancellation**:
+  - navigation is switch-latest (new navigation cancels the previous navigation’s “apply”)
+  - shared in-flight loader fibers are only interrupted when no longer needed (don’t cancel a shared request that a prefetch is still awaiting)
+- **Caching**:
+  - default is `CachePolicy: no-store`
+  - caching is enabled only when a route returns `RouteOutcome.Ok(..., { cache: ... })`
+  - SWR (`stale-while-revalidate`) is explicit and recorded: render with stale data, refresh in background, re-render outlet on success
+- **Prefetch**:
+  - `prefetch(href)` runs the same loader with the same keying and writes into the same cache
+  - prefetch must respect `CachePolicy` and must not mutate navigation history/state
+
+Implementation note: Effect already has the primitives (`Request`, `Cache`, `MemoMap`) to build this, but the *router must standardize the rules* so pages don’t each invent their own.
+
+### 3.4.2 Shell/Outlet Swap Is a Hard Invariant
+
+Effuse is a swap-based UI framework; the **single biggest UX lever** is a stable shell.
+
+Hard rule:
+
+- **The app shell never re-renders on navigation.** By default, only the route outlet swaps (the element designated by a stable marker like `[data-effuse-outlet]`).
+
+Opt-out (rare):
+
+- A route may explicitly request `navigation.swap="document"` when it truly needs a full document/shell replacement. This should be exceptional and treated as a regression risk.
 
 ### 3.5 State + Data (Effect-Owned)
 
@@ -200,19 +325,68 @@ End-state requirements:
 - log/record tool-call repair events and invalid tool calls for debugging
 - keep tool UI bounded (truncate big tool I/O; use BlobRefs when large)
 
+### 3.6.2 Tool Part Rendering Contract (Non-Negotiable)
+
+We need a single rendering contract for “tool parts” so different screens don’t silently hide tool failures.
+
+Framework-level requirements:
+
+- **Always render something** for tool calls, tool results, and tool errors (even if compact).
+- **Stable correlation**: display at least `toolName` and `toolCallId` (and optionally a receipt id) so logs/receipts can be traced from the UI.
+- **Bounded output**:
+  - truncate large tool I/O in the DOM
+  - store full payloads in `BlobStore` and render as a `BlobRef` “view full” affordance
+- **Error visibility**:
+  - `tool-error` must be rendered as a user-visible failure state
+  - budget/cancellation must also be rendered (e.g. “canceled: budget exceeded”)
+
+Implementation posture:
+
+- Provide a default `ToolPartRenderer` used across the app (one place to enforce truncation, receipt linking, and error visibility).
+
 ### 3.7 SSR + Hydration (Effuse-Native)
 
-To remove React, SSR/hydration must be done with Effuse primitives:
+Effuse must support SSR and a crisp hydration contract. Otherwise, implementers will ship a pile of “works on my machine” hydrators.
+
+Effuse provides three hydration modes (per-route), with a single default:
+
+- `strict` (default): **attach behavior only**. The server renders shell + outlet HTML; the client boot mounts EZ + router + subscriptions without performing an initial outlet swap.
+- `soft`: **render once on boot**. The client runs `loader` + `view` once and swaps the outlet after hydration; this is safer when SSR markup is incomplete or non-deterministic.
+- `client-only`: **no SSR outlet**. The server emits an empty outlet placeholder and the client renders normally; use only when SSR is not worth it.
+
+“Matches SSR output” must be a defined property:
+
+- Strict hydration assumes determinism: given the same `RouteOutcome.Ok.data` and the same render pipeline (`renderToString`), the HTML output is stable. We enforce this via conformance tests, not a runtime DOM diff.
+- Optionally (dev/test), we can embed a server `data-effuse-ssr-hash` and compare against a client recomputation; on mismatch, fall back to a soft outlet swap (debugging aid, not the core model).
+
+To remove React, SSR/hydration is done with Effuse primitives:
 
 - SSR: `TemplateResult -> renderToString -> HTML`
 - Hydration: attach behavior (EZ runtime, router interception, subscriptions) to existing DOM without replacing it
-- Any initial client render should be a no-op if the DOM matches the SSR output (or should patch minimally)
 
-This implies:
+This requires stable DOM structure and markers:
 
-- stable container structure (shell + outlet)
-- stable markers for event binding where needed (EZ already uses attributes)
-- deterministic rendering between server and client (same escape/serialize rules)
+- a persistent shell element (e.g. `[data-effuse-shell]`)
+- a stable outlet element (e.g. `[data-effuse-outlet]`) that is the default swap target
+- deterministic server/client rendering rules (escape/serialize/whitespace strategy)
+
+### 3.8 Conformance Tests (Framework-Level)
+
+If Effuse is going to replace React/TanStack, we need framework-level tests that app code can’t “accidentally bypass”.
+
+Minimum conformance suite:
+
+- **SSR determinism**: snapshot `renderToString` for representative routes with fixed inputs (no `document` access in node env).
+- **Hydration conformance**:
+  - `strict`: boot attaches EZ/router without replacing outlet HTML
+  - `soft`: boot is allowed one outlet swap, and must do so deterministically
+- **Navigation cancellation**: a second `navigate()` cancels the first “apply”; loaders don’t double-commit stale results.
+- **Shell/outlet invariants**: navigation swaps only `[data-effuse-outlet]` by default; shell remains stable.
+- **Swap focus/caret**: caret/selection stays stable across swaps for Blueprint-like editing flows (exercise `DomService` focus restore rules).
+- **Tool part visibility**: `tool-error` always renders a visible fallback; tool output truncation + BlobRefs work.
+- **BlobRef discipline**: large payloads are stored as blobs and referenced in prompts/receipts/UI (no megabytes in DOM or receipt JSON).
+
+These tests should run in CI and be treated as “framework regressions”, not app-level snapshots.
 
 ## 4. Replacement Matrix (React/TanStack -> Effect/Effuse)
 
@@ -220,7 +394,7 @@ This implies:
 |---|---|
 | JSX UI | Effuse `html`` + helpers (`effuse-ui` style) |
 | Component state (`useState`, `useEffect`) | `StateCell`, `@effect-atom`, Effects + Streams |
-| Router (`@tanstack/router`) | Effect-native `RouterService` (History API + route table) |
+| Router (`@tanstack/router`) | `RouterService` (Effuse-owned, Effect-based; History API + route table) |
 | Loaders/serverFns (Start) | Route `loader` Effects (SSR + client) |
 | SPA navigation (`<Link/>`) | `<a href>` + router interception (built into RouterService/EZ) |
 | React Query caching | Effect `Cache` / `Request` / `MemoMap` patterns |
@@ -251,25 +425,27 @@ DoD:
 
 - Effuse has contract tests for: swap modes, focus restore, EZ parsing + params + cancellation, and render-to-string snapshots.
 
-### Phase 1: Introduce an Effect-Native Router (Inside the Existing Host)
+### Phase 1: Router Becomes Source of Truth (Inside the Existing Host)
 
 Deliverables:
 
-- Implement a minimal `RouterService`:
+- Implement a minimal `RouterService` (this is the real milestone; the rest is plumbing):
   - route matching
   - `navigate(href)`
   - popstate handling
   - link interception at root
   - cancellable loader pipeline (switch-latest)
+  - standardized `RouteOutcome` handling (redirect/not-found/fail/ok + hints)
+  - standardized cache/dedupe behavior (no per-page reinvention)
 - Implement a top-level Effuse “app shell” template:
   - persistent chrome
   - `<main data-outlet>` target where route content swaps
 
 DoD:
 
-- Navigation between major pages works with **no TanStack router calls** (even if TanStack/React still exist as the hosting scaffold).
+- TanStack no longer decides what UI renders; navigation and outlet rendering are driven by `RouterService` (even if TanStack/React still exist as a temporary host).
 
-### Phase 2: Collapse `apps/web` to a Single Catch-All (Remove TanStack Routing Semantics)
+### Phase 2: Collapse `apps/web` to a Single Catch-All (Make TanStack a Transport Only)
 
 Deliverables:
 
@@ -278,13 +454,13 @@ Deliverables:
 
 DoD:
 
-- The app no longer depends on TanStack’s notion of route components for UI; TanStack is only an asset+SSR transport.
+- The app no longer depends on TanStack’s notion of route components for UI; TanStack is only an asset/SSR transport layer.
 
 ### Phase 3: Stand Up `EffuseWebHost` in Parallel
 
 Deliverables:
 
-- Create a new Effuse host server (Node/Bun/Worker target) that can:
+- Create a new Effuse host server on **Cloudflare Workers** that can:
   - serve the built assets
   - SSR the Effuse app via route table
   - host `POST /api/rpc`
@@ -346,10 +522,10 @@ DoD:
 
 These must be decided explicitly to finish the React/TanStack removal:
 
-- **Hosting target:** Cloudflare Worker vs Node/Bun for `EffuseWebHost`.
+- **Hosting target:** Cloudflare Workers first (and which flavor: Worker vs Pages Functions), plus an explicit portability boundary for an optional Node/Bun adapter.
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
 - **Convex usage:** keep it behind RPC/HTTP boundaries or integrate a non-React Convex client directly as an Effect service.
-- **Hydration strictness:** do we require DOM-perfect hydration for all routes, or allow “first client render swaps outlet” for some screens?
+- **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
 - **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
 - **Blueprint editing UX:** schema-driven forms vs markdown-like editing, and how to keep edits focus-stable under Effuse swaps.
