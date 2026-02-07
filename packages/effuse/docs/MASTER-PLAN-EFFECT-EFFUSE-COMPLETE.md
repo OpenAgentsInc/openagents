@@ -965,6 +965,7 @@ Work log:
 - 2026-02-07: hardening: ensured SSR non-OK responses are never cached (`Cache-Control: no-store` for redirect/not-found/fail/aborted/too-large responses) and added loader-key stability tests (params/search ordering + session scope) (`apps/web/src/effuse-host/ssr.ts`, `packages/effuse/tests/loader-key.test.ts`).
 - 2026-02-07: hardening: added `RouterService.stop` disposal API (removes click/popstate listeners, invalidates in-flight applies, resets state) with contract tests (prevents navigation after stop) (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/router-service.test.ts`).
 - 2026-02-07: hardening: tightened strict hydration conformance by asserting `RouterService.start` does not execute loaders on boot (not just “no swap”) (`packages/effuse/tests/conformance-shell-outlet.test.ts`).
+- 2026-02-07: hardening: expanded `DomService.swap` focus/caret contract tests to cover textarea selection restoration and outer-swap focus restoration (caret preservation for Blueprint-like editing flows) (`packages/effuse/tests/dom-swap.test.ts`).
 
 Add/Change:
 
