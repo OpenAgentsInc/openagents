@@ -54,6 +54,12 @@ const defaultFailHtml = (url: URL, error: unknown): string =>
     url.pathname,
   )}</p><pre>${escapeHtml(String(error))}</pre></div>`
 
+const htmlHeadersNoStore = (): Headers =>
+  new Headers({
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  })
+
 const applyCookieMutations = (
   headers: Headers,
   cookies: ReadonlyArray<any> | undefined,
@@ -199,12 +205,12 @@ export const handleSsrRequest = async (
       if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
         return new Response("<!doctype html><h1>SSR output too large</h1>", {
           status: 500,
-          headers: { "content-type": "text/html; charset=utf-8" },
+          headers: htmlHeadersNoStore(),
         })
       }
       return new Response(html, {
         status: 404,
-        headers: { "content-type": "text/html; charset=utf-8" },
+        headers: htmlHeadersNoStore(),
       })
     }
 
@@ -216,7 +222,7 @@ export const handleSsrRequest = async (
         const location = new URL(run.href, url).toString()
         return new Response(null, {
           status: run.status ?? 302,
-          headers: { location },
+          headers: new Headers({ location, "cache-control": "no-store" }),
         })
       }
       case "NotFound": {
@@ -229,12 +235,12 @@ export const handleSsrRequest = async (
         if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
           return new Response("<!doctype html><h1>SSR output too large</h1>", {
             status: 500,
-            headers: { "content-type": "text/html; charset=utf-8" },
+            headers: htmlHeadersNoStore(),
           })
         }
         return new Response(html, {
           status: 404,
-          headers: { "content-type": "text/html; charset=utf-8" },
+          headers: htmlHeadersNoStore(),
         })
       }
       case "Fail": {
@@ -247,12 +253,12 @@ export const handleSsrRequest = async (
         if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
           return new Response("<!doctype html><h1>SSR output too large</h1>", {
             status: 500,
-            headers: { "content-type": "text/html; charset=utf-8" },
+            headers: htmlHeadersNoStore(),
           })
         }
         return new Response(html, {
           status: run.status ?? 500,
-          headers: { "content-type": "text/html; charset=utf-8" },
+          headers: htmlHeadersNoStore(),
         })
       }
       case "Ok": {
@@ -275,7 +281,7 @@ export const handleSsrRequest = async (
         if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
           return new Response("<!doctype html><h1>SSR output too large</h1>", {
             status: 500,
-            headers: { "content-type": "text/html; charset=utf-8" },
+            headers: htmlHeadersNoStore(),
           })
         }
 
@@ -295,7 +301,9 @@ export const handleSsrRequest = async (
     Effect.provideService(RequestContextService, makeServerRequestContext(request)),
     Effect.catchAll((error) => {
       if (error instanceof RequestAbortedError) {
-        return Effect.succeed(new Response(null, { status: 499 }))
+        return Effect.succeed(
+          new Response(null, { status: 499, headers: { "cache-control": "no-store" } }),
+        )
       }
 
       const html = renderDocument({
@@ -309,7 +317,7 @@ export const handleSsrRequest = async (
         return Effect.succeed(
           new Response("<!doctype html><h1>SSR output too large</h1>", {
             status: 500,
-            headers: { "content-type": "text/html; charset=utf-8" },
+            headers: htmlHeadersNoStore(),
           }),
         )
       }
@@ -317,7 +325,7 @@ export const handleSsrRequest = async (
       return Effect.succeed(
         new Response(html, {
           status: 500,
-          headers: { "content-type": "text/html; charset=utf-8" },
+          headers: htmlHeadersNoStore(),
         }),
       )
     }),
