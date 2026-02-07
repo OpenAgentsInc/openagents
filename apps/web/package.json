@@ -29,6 +29,7 @@
     "format": "prettier --write .",
     "lint": "tsc && eslint . --ext ts --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
+    "test:e2e": "bun run --cwd ../../packages/effuse-test src/cli.ts run --project ../../apps/web",
     "test:watch": "vitest"
   },
   "dependencies": {

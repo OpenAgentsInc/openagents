@@ -1015,6 +1015,33 @@ DoD:
 
 - CI fails on hydration/router regressions; UX is stable (focus/caret preserved, minimal flicker).
 
+### Phase 9: Build Effuse Test Runner (Browser + Visual Execution UI)
+
+**Goal:** Playwright-class browser/integration tests that are **Effect-first** and **watchable** (headed browser + live flow graph viewer), plus a no-browser visual mode that still renders Effect execution.
+
+Work log:
+
+- 2026-02-07: added `packages/effuse-test` v1 runner (Bun + `@effect/cli`), Chromium control via CDP, live viewer (WS + flow graph), and failure artifacts (screenshot + HTML snapshot + `events.jsonl`).
+- 2026-02-07: wired `apps/web` `npm run test:e2e` to call the Effuse Test Runner.
+- 2026-02-07: added a dev/test-only swap counter in `DomService.swap` (`globalThis.__effuseSwapCount`) to assert strict hydration “no swap” in real-browser E2E.
+- 2026-02-07: added a no-browser runner mode (when selected tests do not have the `browser` tag) and added no-browser HTTP smoke tests (`apps-web.http.*`) plus a browser history back/forward gate (`apps-web.navigation.back-forward`).
+
+Add/Change:
+
+- new: `packages/effuse-test/*`
+  - CLI: `packages/effuse-test/src/cli.ts`
+  - runner core: `packages/effuse-test/src/runner/*`
+  - browser controller: `packages/effuse-test/src/browser/*`
+  - viewer: `packages/effuse-test/src/viewer/*`
+- change: `apps/web/package.json` add `test:e2e` script that runs the runner.
+- change: `packages/effuse/src/services/dom-live.ts` increment `__effuseSwapCount` when set by an E2E harness.
+
+DoD:
+
+- `cd packages/effuse-test && bun run src/cli.ts run --project ../../apps/web --headless` passes locally.
+- `--watch` starts the viewer and streams spans/events live during a run.
+- on failure, artifacts include `failure.png`, `failure.html`, and `events.jsonl`.
+
 ## 6. Open Decisions / Questions
 
 These must be decided explicitly to finish the React/TanStack removal:
@@ -1113,7 +1140,7 @@ Levels and what they cover:
   - append-only event logs (seq monotonic, idempotent eventId)
   - Convex projection adapter semantics (idempotent upsert, BlobRef discipline)
   - `ctx.waitUntil` replication is best-effort and non-blocking
-- **L5: Browser E2E tests (real browser, Playwright)**
+- **L5: Browser E2E tests (real browser, Effuse Test Runner)**
   - SSR -> strict hydration “attach only” (no initial swap)
   - SPA navigation + back/forward (History)
   - focus/caret preservation across swaps (Blueprint-like flows)
@@ -1210,7 +1237,7 @@ CI gates (required):
 As we add L3-L5, CI should expand to include:
 
 - Worker integration suites (L3/L4) in a Workers runtime pool
-- Playwright E2E (L5) against a locally started Worker
+- Effuse Test Runner browser E2E (L5) against a locally started Worker
 
 ## 9. Test Suites (Concrete)
 
@@ -1343,31 +1370,44 @@ Harness requirements:
 - `TestLanguageModel` provides scripted Response parts including tool calls and failures
 - AI provider bindings are stubbed by default (no remote usage charges in CI)
 
-### 9.5 Browser E2E (Playwright) (L5)
+### 9.5 Browser E2E (Effuse Test Runner) (L5)
 
-Goal: verify user-visible behavior in a real browser, against a locally started Worker.
+Goal: verify user-visible behavior in a real browser (Chromium), against a locally started Worker, using **Effect-native** tests (no Promise soup) and a **live execution viewer**.
 
-Proposed layout:
+Implemented suites (2026-02-07):
 
-```txt
-apps/web/tests/e2e/
-  playwright.config.ts
-  fixtures/
-  hydration.spec.ts
-  navigation.spec.ts
-  focus-caret.spec.ts
-  tool-parts.spec.ts
-  chat-convex-stream.spec.ts
-```
+- `packages/effuse-test/src/suites/apps-web.ts`
+  - `apps-web.http.ssr-home`
+    - asserts: `GET /` returns SSR HTML with `data-effuse-shell` + `data-effuse-outlet` (no browser)
+  - `apps-web.http.assets`
+    - asserts: `GET /effuse-client.css` + `GET /effuse-client.js` return 200 with non-empty bodies (no browser)
+  - `apps-web.navigation.back-forward`
+    - asserts: SPA history back/forward navigates between `/` and `/login` and preserves shell node identity
+  - `apps-web.hydration.strict-no-swap`
+    - asserts: initial load has SSR `[data-effuse-shell]` + `[data-effuse-outlet]`
+    - asserts: strict boot performs **no initial outlet swap** (`window.__effuseSwapCount === 0`)
+    - asserts: click `/login` swaps outlet and preserves shell node identity
 
-Minimum assertions:
+Harness:
+
+- Runner core + CLI: `packages/effuse-test/src/cli.ts` (Bun + `@effect/cli`)
+- Browser control: `packages/effuse-test/src/browser/*` (Chromium via CDP)
+- Live viewer UI: `packages/effuse-test/src/viewer/*` (WebSocket event stream + flow graph)
+- Local server: starts `apps/web` via `wrangler dev --local` after building `effuse-client` assets
+
+Run:
+
+- `cd apps/web && npm run test:e2e`
+- or `cd packages/effuse-test && bun run src/cli.ts run --project ../../apps/web`
+
+Minimum assertions (expand from here):
 
 1. **SSR + strict hydration**
    - initial load shows SSR HTML
    - strict boot performs **no initial outlet swap**
 2. **Navigation**
    - click internal links -> outlet swaps, shell stable
-   - back/forward works
+   - back/forward works (implemented: `apps-web.navigation.back-forward`)
 3. **Focus/caret preservation**
    - type into textarea, trigger outlet swap, caret preserved
 4. **EZ action semantics**
@@ -1378,12 +1418,11 @@ Minimum assertions:
 6. **Convex chat streaming (WebSocket subscriptions)**
    - assistant text streams incrementally from `messageParts`
    - tool parts correlate (toolCallId stable)
-7. **Convex live subscription rendering (when feasible locally)**
-   - inject a `TestConvexService` stream update and assert DOM changes
 
 Instrumentation for “no swap on strict hydration”:
 
-- add a dev/test-only counter in `DomService.swap` (or a wrapper) such as `globalThis.__effuseSwapCount++`
+- `packages/effuse/src/services/dom-live.ts`: dev/test-only counter in `DomService.swap`:
+  - if `globalThis.__effuseSwapCount` exists and is a number, increment it per swap
 - in E2E, assert `__effuseSwapCount === 0` after initial load, then increases on navigation
 
 Golden-path E2E scenarios (recommended):
@@ -1404,7 +1443,7 @@ Recommended gates (wire into your CI of choice):
 Planned expansion:
 
 - add `apps/web` Worker/DO integration suites (L3/L4) as CI gates
-- add Playwright E2E (L5) as a CI gate
+- add Effuse Test Runner browser E2E (L5) as a CI gate
   - headless, deterministic fakes, screenshots/videos on failure
   - no external network calls by default (stub WorkOS/Convex/AI)
 
@@ -1423,6 +1462,189 @@ These tests reduce flake and catch “only happens at scale” regressions. Pref
 - **Load tests: chat streaming**
   - many streamed parts do not cause unbounded DOM growth
   - bounded tool I/O (BlobRef discipline) holds under large payloads
+
+## 11. Effuse Test Runner (Browser + Visual Execution UI)
+
+This section specifies the Effuse-native browser/integration test runner: Playwright-class capability, but **Effect-first** with a **live execution viewer**.
+
+### 11.1 Goals and Non-Goals
+
+Goals:
+
+- Run browser tests as **Effect programs**.
+- Support **headed** mode where a human can watch the run live (demos/debugging).
+- Produce artifacts: screenshots (required), HTML snapshots (required), trace/video (optional).
+- Allow “no browser” tests to still be watchable via a live **flow graph** of Effect execution:
+  - services called
+  - spans/events
+  - budgets/receipts (when present)
+
+Non-goals (v1):
+
+- Multi-browser parity (Chromium only initially).
+- Perfect Playwright API compatibility.
+- Distributed execution / device farms.
+
+### 11.2 Architecture Overview
+
+Effuse Test Runner is three cooperating pieces:
+
+1. Runner core (Bun/Node process)
+   - orchestrates tests
+   - launches browser
+   - collects artifacts
+   - streams live events to the viewer
+2. Browser controller (CDP-based)
+   - talks to Chromium via the Chrome DevTools Protocol (CDP)
+   - implements navigation, click, type, evaluate, screenshot
+3. Live viewer UI (Flow Graph)
+   - runs as a local UI for watch mode
+   - renders: test steps, Effect spans, service calls, router swaps, tool receipts (when present)
+
+### 11.3 Packages and File Layout
+
+Canonical package layout:
+
+```txt
+packages/effuse-test/
+  src/
+    cli.ts
+    spec.ts
+    runner/
+      runner.ts
+      TestContext.ts
+      TestServer.ts
+      Test.ts
+    browser/
+      BrowserService.ts
+      cdp.ts
+      page.ts
+    effect/
+      ProbeService.ts
+      span.ts
+    viewer/
+      assets.ts
+      server.ts
+    suites/
+      apps-web.ts
+  tests/ (unit tests for the runner itself)
+```
+
+Notes:
+
+- The viewer may later be split into a dedicated app (e.g. `apps/effuse-test-viewer/`) if we want a richer UI, but the event protocol MUST remain stable.
+
+### 11.4 Test Authoring Model (Effect-First)
+
+Core types:
+
+- `TestCase = { id, tags, timeoutMs?, steps: Effect<void> }`
+- `TestContext` (per-test) includes:
+  - `runId`, `testId`
+  - `baseUrl` (wrangler dev)
+  - `artifactsDir`
+
+Authoring rules:
+
+- Tests MUST be written as Effects.
+- Tests SHOULD be written in explicit steps, so the viewer can render them as spans:
+  - `step("navigates to /login", Effect...)`
+
+### 11.5 Watched Mode (Headed Browser + Live UI)
+
+Watch mode (`--watch`) MUST:
+
+- run Chromium in headed mode
+- start the viewer UI
+- stream step + span + service-call events live
+
+Recommended behavior:
+
+- on failure, pause (configurable) before shutdown so a human can inspect state
+- provide easy repro command output (copyable)
+
+### 11.6 “No Browser” Visual Mode (Flow Graph)
+
+If a suite has no browser steps (Worker integration, conformance, DO tests), the runner MUST still:
+
+- emit spans/events for the Effect execution
+- produce a recorded event log artifact (JSONL)
+- render the flow graph in the viewer (when `--watch`)
+
+### 11.7 Service Call Instrumentation (ProbeService)
+
+`ProbeService` powers the viewer and artifacts.
+
+MUST:
+
+- be best-effort and bounded (dropping buffer; never block the test)
+- record an event stream (JSONL) suitable for replay/view
+- broadcast events to the live viewer (WS)
+
+Event capture sources (v1):
+
+- step spans (start/finish)
+- service spans (browser operations, server lifecycle, artifacts)
+
+Planned expansion:
+
+- RouterService events (navigate/prefetch/apply)
+- DomService swap events (mode/target/focus restoration)
+- receipts/budgets (hashes only in viewer; payloads via BlobRefs)
+
+### 11.8 Runner Protocol (Event Stream)
+
+The runner emits a structured event stream over WebSocket (for live UI) and JSONL (for artifacts).
+
+Minimum event types:
+
+- `run.started`, `run.finished`
+- `test.started`, `test.finished`
+- `span.started`, `span.finished`
+- `artifact.created`
+- `server.started`, `server.stopped`
+
+### 11.9 Artifacts and Determinism
+
+Artifacts:
+
+- MUST: screenshots on failure
+- MUST: HTML snapshot on failure
+- SHOULD: record the full event stream as JSONL
+- MAY: video/trace (v2+)
+
+Determinism guidelines:
+
+- Prefer explicit waits (`waitForFunction`) over sleeps.
+- External services MUST be stubbed by default (WorkOS/Convex/AI), unless the test is explicitly tagged as integration.
+
+### 11.10 CLI Spec
+
+Command: `effuse-test run`
+
+Options (v1 subset):
+
+- `--project <path>` (currently `apps/web`)
+- `--watch` (headed + viewer)
+- `--headed` / `--headless`
+- `--server-port <n>`
+- `--viewer-port <n>`
+- `--grep <pattern>`
+- `--tag <tag1,tag2>`
+
+### 11.11 Integration Points With Existing Suites
+
+- Browser E2E scenarios in §9.5 MUST be implemented with Effuse Test Runner (not raw Playwright).
+- Worker/DO integration suites in §9.2/§9.3 MAY optionally run under the runner in no-browser visual mode for watchability.
+
+Work log:
+
+- 2026-02-07: added `packages/effuse-test` v1:
+  - Effect-first CLI (`effuse-test run`)
+  - Chromium control via CDP
+  - live viewer UI (WS + flow graph)
+  - artifacts: failure screenshot + HTML snapshot + `events.jsonl`
+- 2026-02-07: wired `apps/web` `npm run test:e2e` to run the Effuse Test Runner.
 
 ## Appendix A: Normative Requirements (MUST/SHOULD/MAY)
 
@@ -1502,6 +1724,11 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: conformance includes LLM/tooling invariants (Response part mapping stable, tool calls always render, `finish.usage` is recorded and receipted).
 
 **Testing & CI**
+- MUST: browser E2E runs via the Effuse Test Runner (Effect-native), not raw Playwright.
+- MUST: the runner supports `--watch` (headed + live viewer) and `--headless`.
+- MUST: the runner emits a structured event stream consumable by the flow graph viewer, and records it as an artifact (JSONL).
+- MUST: ProbeService is best-effort and bounded (dropping buffer); it MUST NOT block test execution.
+- MUST: artifacts include failure screenshots + HTML snapshots at minimum.
 - MUST: browser E2E exists and asserts strict hydration performs no initial swap (attach-only boot).
 - MUST: Worker integration tests assert SSR abort handling and max HTML byte cap enforcement.
 - MUST: AI/tool receipt tests assert `finish.usage` is recorded and large prompt/output payloads are BlobRefs (never inline).
