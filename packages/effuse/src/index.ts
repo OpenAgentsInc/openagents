@@ -62,3 +62,6 @@ export type {
 export { RouteOutcome } from "./app/route.js"
 export type { RouteRun, RouteRunStage } from "./app/run.js"
 export { runRoute } from "./app/run.js"
+
+// Router (client-side navigation + loaders)
+export * from "./router/index.js"

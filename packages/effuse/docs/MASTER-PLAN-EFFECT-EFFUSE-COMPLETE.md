@@ -825,6 +825,11 @@ DoD:
 
 **Goal:** make navigation + loader caching/dedupe/cancel rules framework-owned, not page-owned.
 
+Work log:
+- 2026-02-07: implemented Effuse-owned router surface (`History`, loader keying, in-flight dedupe, cache/SWR skeleton, switch-latest cancellation) in `packages/effuse/src/router/*` and exported from `packages/effuse/src/index.ts`.
+- 2026-02-07: added RouterService contract tests for dedupe + cancellation + shared in-flight semantics (`packages/effuse/tests/router-service.test.ts`).
+- 2026-02-07: added `apps/web` boot wiring for EZ runtime + RouterService (strict hydration: no initial swap) in `apps/web/src/effuse-app/boot.ts`.
+
 Add/Change (library):
 
 - new: `packages/effuse/src/router/*`:
