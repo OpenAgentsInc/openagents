@@ -16,6 +16,7 @@ import type * as effect_storage from "../effect/storage.js";
 import type * as effect_tryPromise from "../effect/tryPromise.js";
 import type * as effect_validators from "../effect/validators.js";
 import type * as myFunctions from "../myFunctions.js";
+import type * as userSpace_replicateEvents from "../userSpace/replicateEvents.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   "effect/tryPromise": typeof effect_tryPromise;
   "effect/validators": typeof effect_validators;
   myFunctions: typeof myFunctions;
+  "userSpace/replicateEvents": typeof userSpace_replicateEvents;
 }>;
 
 /**

@@ -855,30 +855,38 @@ DoD:
 
 **Goal:** add a real Worker host that can serve the app without TanStack Start, while keeping the current host available until cutover.
 
+Work log:
+- 2026-02-07: added parallel Effuse Worker host entry + SSR + API mounts in `apps/web/src/effuse-host/*` and config `apps/web/wrangler.effuse.jsonc`.
+- 2026-02-07: added a dedicated Effuse-only client bootstrap entry (`apps/web/src/effuse-app/client.ts`) and build config (`apps/web/vite.effuse.config.ts`) to produce stable `effuse-client.{js,css}` assets.
+- 2026-02-07: added DO SQLite “user-space” Durable Object with append-only event log and best-effort Convex replication (`apps/web/src/effuse-host/do/userSpace.ts`), proxied via `/api/user-space/*` in the Worker.
+- 2026-02-07: routed `/agents/*` through the Worker using the Cloudflare Agents SDK and re-exported the proven `Chat` DO from `apps/autopilot-worker/src/server.ts` via `apps/web/src/effuse-host/do/chat.ts`.
+- 2026-02-07: expanded Convex schema and added `convex/userSpace/replicateEvents` (idempotent by `eventId`); regenerated `apps/web/convex/_generated/*`.
+
 Add/Change (apps/web host):
 
 - new: `apps/web/src/effuse-host/worker.ts` (Cloudflare Worker fetch handler)
 - new: `apps/web/src/effuse-host/ssr.ts` (SSR entry: request -> `RouteRun` -> HTML + headers/cookies + dehydrate payload)
-- new: `apps/web/src/effuse-host/assets.ts` (static asset serving strategy; Vite manifest integration)
+- new: `apps/web/src/effuse-host/assets.ts` (static asset serving strategy; stable asset names in v1, manifest integration later)
 - new: `apps/web/src/effuse-host/rpc.ts` mounts the existing RPC handler using:
   - `apps/web/src/effect/api/*` (already exists)
 - new: `apps/web/src/effuse-host/auth.ts` mounts existing WorkOS endpoints using:
   - `apps/web/src/auth/workosAuth.ts` (already exists)
+- new: `apps/web/src/effuse-app/client.ts` (Effuse-only client entry)
+- new: `apps/web/vite.effuse.config.ts` (builds stable `effuse-client.{js,css}`)
 
 Add/Change (apps/web user-space plane, Cloudflare DO SQLite):
 
 - new: `apps/web/src/effuse-host/do/userSpace.ts` (Durable Object implementing “user-space + agents” using DO SQLite)
 - new: `apps/web/src/effuse-host/do/chat.ts` (Agent Durable Object implementing WebSocket chat + transcript; port the proven implementation from `apps/autopilot-worker/src/server.ts`)
 - new: `apps/web/src/effect/userSpace.ts` (`UserSpaceService` for reading/writing user-space from route loaders, EZ actions, and server endpoints)
-- change: `apps/web/wrangler.jsonc` add Durable Object bindings + migrations for `UserSpaceDO` (and mirror the same in `apps/web/wrangler.effuse.jsonc` if used)
-- change: `apps/web/wrangler.jsonc` add `ai` binding (`env.AI`) for Workers AI, matching the agent DO’s needs
+- new: `apps/web/wrangler.effuse.jsonc` add Durable Object bindings + migrations for `Chat` + `UserSpaceDO`, plus Workers AI binding (`env.AI`) and static assets binding
 
 Add/Change (Convex projection from the execution plane):
 
 - change: `apps/web/convex/schema.ts` add tables required by §3.5.5:
   - `users`, `agents`, `threads`, `userSpaceEvents` (append-only), and any minimal index tables needed for navigation
-- new: `apps/web/convex/userSpace/replicateEvents.ts` Convex action: idempotent upsert of events by `eventId`, plus index updates
-- new: `apps/web/src/effect/convexReplication.ts` (`ConvexReplicationService`): Effect wrapper for the replication action with retries/backoff + bounded payload handling (BlobRefs)
+- new: `apps/web/convex/userSpace/replicateEvents.ts` Convex mutation: idempotent upsert of events by `eventId`, plus index updates
+- new: `apps/web/src/effect/convexReplication.ts` (`ConvexReplicationService`): Effect wrapper for the replication mutation with retries/backoff + bounded payload handling (BlobRefs)
 - change: `apps/web/src/effuse-host/do/userSpace.ts` emit events for every canonical mutation and `ctx.waitUntil` replication (do not block user flows)
 
 Parallel deploy options:
@@ -895,6 +903,9 @@ DoD:
 ### Phase 6: Cut Over Production Host (Remove TanStack Start Server Runtime)
 
 **Goal:** production traffic is served by `EffuseWebHost`; TanStack Start is removed from deploy artifacts.
+
+Work log:
+- 2026-02-07: cut over `apps/web/wrangler.jsonc` to `apps/web/src/effuse-host/worker.ts`, added Wrangler module aliasing for local workspace packages, and updated `apps/web/package.json` build/deploy scripts to build `dist/effuse-client` (Effuse client bootstrap) before `wrangler deploy` (legacy TanStack build kept as `npm run build:tanstack`; deploy script clears `.wrangler/deploy/config.json` to avoid TanStack config redirection).
 
 Change:
 
