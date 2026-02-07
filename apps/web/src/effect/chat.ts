@@ -236,13 +236,30 @@ export const ChatServiceLive = Layer.effect(
 
       const initialMessages = yield* api.getMessages(chatId).pipe(Effect.catchAll(() => Effect.succeed([])));
 
+      // Dev-only: Vite's HTTP proxy handles `/agents/**` fetches, but WebSocket proxying is unreliable
+      // under TanStack Start + Cloudflare Vite plugin. Connect the AgentClient directly to the worker
+      // port to prevent reconnect loops (seen as repeated 101s in the network panel).
+      const isDev = Boolean((import.meta as any).env?.DEV);
+      const shouldBypassViteWsProxy = isDev && window.location.port === '3000';
+      const workerHost = shouldBypassViteWsProxy
+        ? `${window.location.hostname}:8787`
+        : window.location.host;
+      const workerProtocol = shouldBypassViteWsProxy
+        ? 'ws'
+        : window.location.protocol === 'https:'
+          ? 'wss'
+          : 'ws';
+
       const agent = new AgentClient({
         agent: 'chat',
         name: chatId,
-        host: window.location.host,
-        protocol: window.location.protocol === 'https:' ? 'wss' : 'ws',
+        host: workerHost,
+        protocol: workerProtocol,
       });
-      const agentUrlString = new URL(`/agents/chat/${chatId}`, window.location.origin).toString();
+      const agentOrigin = shouldBypassViteWsProxy
+        ? `http://${workerHost}`
+        : window.location.origin;
+      const agentUrlString = new URL(`/agents/chat/${chatId}`, agentOrigin).toString();
       const localRequestIds = new Set<string>();
       const state = yield* SubscriptionRef.make<ChatSnapshot>({
         messages: initialMessages,
