@@ -10,6 +10,23 @@ interface EffuseMountProps {
   run: RunEffuse;
   deps?: ReadonlyArray<unknown>;
   className?: string;
+  /**
+   * Optional server-rendered HTML for this mount container.
+   *
+   * When provided, EffuseMount will:
+   * - render this HTML via `dangerouslySetInnerHTML` (SSR + initial hydration)
+   * - skip the initial `run()` call to avoid tearing down the server DOM
+   *
+   * Keep this value stable for the lifetime of the mount to prevent React from
+   * mutating `innerHTML` after hydration.
+   */
+  ssrHtml?: string;
+  /**
+   * Optional client-side hydration program to run when `ssrHtml` is present.
+   * Use this to attach behaviors that can't run on the server (e.g. canvases,
+   * observers) without rerendering/replacing DOM.
+   */
+  hydrate?: RunEffuse;
   /** Called after the Effuse program has rendered (e.g. to attach event delegation). */
   onRendered?: (container: Element) => void;
   /** Called when the mount is about to be re-rendered or unmounted (e.g. to dispose observers). */
@@ -31,6 +48,8 @@ export function EffuseMount({
   run,
   deps = [],
   className,
+  ssrHtml,
+  hydrate,
   onRendered,
   onCleanup,
   ezRegistry,
@@ -38,11 +57,14 @@ export function EffuseMount({
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
   const runRef = useRef(run);
+  const hydrateRef = useRef(hydrate);
   const onRenderedRef = useRef(onRendered);
   const onCleanupRef = useRef(onCleanup);
   const ezRegistryRef = useRef<EffuseMountProps['ezRegistry']>(undefined);
   const ezMountedRef = useRef(false);
+  const didSkipInitialRenderRef = useRef(false);
   runRef.current = run;
+  hydrateRef.current = hydrate;
   onRenderedRef.current = onRendered;
   onCleanupRef.current = onCleanup;
   ezRegistryRef.current = ezRegistry;
@@ -112,6 +134,29 @@ export function EffuseMount({
     const el = ref.current;
     if (!el) return;
 
+    // If we have SSR HTML, the DOM is already present. Avoid calling `run()`
+    // on the first client effect, since `DomService.render` would replace
+    // the subtree and cause flicker.
+    if (ssrHtml !== undefined && !didSkipInitialRenderRef.current) {
+      didSkipInitialRenderRef.current = true;
+
+      const hydrateProgram = hydrateRef.current?.(el) ?? Effect.void;
+      let cancelled = false;
+
+      Effect.runPromise(hydrateProgram)
+        .then(() => {
+          if (!cancelled) onRenderedRef.current?.(el);
+        })
+        .catch((err) => {
+          if (!cancelled) console.error('[EffuseMount/hydrate]', err);
+        });
+
+      return () => {
+        cancelled = true;
+        onCleanupRef.current?.(el);
+      };
+    }
+
     const program = runRef.current(el);
     let cancelled = false;
 
@@ -128,6 +173,16 @@ export function EffuseMount({
       onCleanupRef.current?.(el);
     };
   }, deps);
+
+  if (ssrHtml !== undefined) {
+    return (
+      <div
+        ref={ref}
+        className={className}
+        dangerouslySetInnerHTML={{ __html: ssrHtml }}
+      />
+    );
+  }
 
   return <div ref={ref} className={className} />;
 }

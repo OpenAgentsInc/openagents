@@ -1,8 +1,10 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
+import { useMemo } from 'react';
+import { renderToString } from '@openagentsinc/effuse';
 import { EffuseMount } from '../components/EffuseMount';
-import { runHomePage } from '../effuse-pages/home';
+import { homePageTemplate, runHomePage } from '../effuse-pages/home';
 import { TelemetryService } from '../effect/telemetry';
 
 export const Route = createFileRoute('/_marketing/')({
@@ -37,9 +39,11 @@ export const Route = createFileRoute('/_marketing/')({
 });
 
 function Home() {
+  const ssrHtml = useMemo(() => renderToString(homePageTemplate()), []);
   return (
     <EffuseMount
       run={runHomePage}
+      ssrHtml={ssrHtml}
       className="flex min-h-0 flex-1 flex-col"
     />
   );

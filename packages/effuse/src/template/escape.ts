@@ -3,7 +3,11 @@
  */
 
 export const escapeHtml = (text: string): string => {
-  const div = document.createElement("div")
-  div.textContent = text
-  return div.innerHTML
+  // Must be SSR-safe (no DOM). This matches typical HTML text escaping.
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
 }
