@@ -201,20 +201,20 @@ Notes:
 
 ## Storage Strategy (DB-Backed)
 
-We have two viable stores in the current stack:
+We have two viable stores in the stack, but the MVP choice is now explicit:
 
-1. Durable Object SQLite (recommended canonical for Autopilot)
-  - Pros: co-located with the chat thread (1 DO per user); fast; no extra infra.
-  - Cons: harder to build admin/UIs that query across users; limited analytics.
+1. Convex (recommended canonical for MVP)
+  - Pros: canonical product DB + realtime subscriptions; simplest “multiplayer” and admin surfaces; one store.
+  - Cons: streaming/write amplification requires batching discipline; “execution plane” concerns live in the same system.
 
-2. Convex (optional mirror / control plane)
-  - Pros: easy UI querying/editing, indexing, dashboards.
-  - Cons: adds another source of truth; cross-service auth; eventual consistency.
+2. Durable Object SQLite (post-MVP execution-plane optimization)
+  - Pros: strong per-user consistency; colocated “workspace plane”; cheap true streaming.
+  - Cons: adds a second durable system; requires projection/mirroring into Convex for UI/subscriptions.
 
-Recommendation:
+Recommendation (MVP):
 
-- Canonical: store bootstrap docs + bootstrap state in the **Chat durable object** (same place as transcript).
-- Optional: mirror selected fields to Convex for UI (identity, user timezone, bootstrap status) if/when needed.
+- Canonical: store bootstrap docs + bootstrap state in **Convex** alongside threads/messages/receipts.
+- Optional (post-MVP): introduce DO/DO-SQLite as an execution plane and project bootstrap summaries into Convex for realtime UI.
 
 ## Single-File Export (Portable JSON Blueprint)
 
@@ -269,7 +269,7 @@ Import semantics (MVP):
 
 - Decode with `Schema.decodeUnknown(AutopilotBlueprintV1)` (runtime validation).
 - If `formatVersion` is older: run migrations, then validate again.
-- Write into the canonical store (DO SQLite) in a single transaction.
+- Write into the canonical store (Convex) in a single transaction (or an equivalent “all or nothing” mutation).
 - Treat import as "replace bootstrap set" for the user/thread (simplest), with a future option for merge/partial import.
 
 ## Bootstrap Flow (Autopilot)
@@ -413,14 +413,15 @@ Additionally:
   - Schema decode/encode roundtrips for each doc type
   - Truncation logic (marker present, head/tail kept)
   - Visibility filtering (main vs subagent)
-- Integration tests (worker):
+- Integration tests (worker + Convex):
   - New thread starts with `bootstrap.status = pending`
   - After calling update tools + `bootstrap.complete`, status persists and bootstrap instructions stop injecting
-  - `get-messages` includes tool-call/tool-result parts for updates
+  - `messageParts` include tool-call/tool-result parts for updates
 
-## Implementation Status (2026-02-06)
+## Legacy Implementation Status (2026-02-06)
 
-Shipped (DO-only, no Convex mirror):
+This was shipped before the **Convex-first MVP** decision (see `docs/autopilot/anon-chat-execution-plane.md`).
+Treat this as a reference implementation to port into Convex; DO-only endpoints are expected to be deprecated for the MVP.
 
 - Stored Blueprint state in the Autopilot DO SQLite DB (`autopilot_blueprint_state`).
 - Added Blueprint export endpoint: `GET /agents/chat/:id/blueprint` (Blueprint JSON, schema-encoded).
@@ -431,8 +432,8 @@ Shipped (DO-only, no Convex mirror):
 
 ## Open Questions
 
-- Canonical store: DO-only vs DO+Convex mirror?
 - How do we want the user to "edit Character": form UI (structured) vs rich text editor (markdown-like)?
 - How do we represent global rules (`AGENTS.md`)?
   - Keep in code (simpler), or store versioned in DB for hotfixes?
 - Do we want a formal "bootstrap wizard" UI before chat, or keep it purely conversational?
+- For Blueprint exports/imports, what is the blob store for large artifacts (`BlobRef`): Cloudflare R2 vs Convex file storage (or both)?

@@ -79,7 +79,8 @@ Effuse core (see `README.md`, `ARCHITECTURE.md`, `SPEC.md`, `DOM.md`, `EZ.md`):
 - Shared Effuse UI primitives live in `@openagentsinc/effuse-ui` (Tailwind-first helpers).
 - Autopilot chat is Effect-first (`ChatService`) and the UI is driven by atoms (not React hooks).
 - Key routes are SSR-rendered as Effuse HTML and hydrated without DOM teardown (via mount-level `ssrHtml`), even before TanStack is removed.
-- Today the agent/AI plane runs as a separate Worker (`apps/autopilot-worker`) and the web app connects to it over WebSockets; the end state in this doc folds that into the single-worker host via DO classes.
+- Today the agent/AI plane runs as a separate Worker (`apps/autopilot-worker`) and the web app connects to it over WebSockets (Cloudflare Agents SDK).
+- **MVP direction (resolved):** Autopilot chat becomes **Convex-first** (chunked streaming written into Convex; browser subscribes via Convex WS). Per-user Cloudflare execution planes (DO/DO SQLite) are deferred to post-MVP optimizations.
 
 This master plan starts from that baseline and describes how to **remove the remaining substrate**.
 
@@ -234,11 +235,12 @@ Hard requirements for the host surface:
 
 Initial planned backend: **Cloudflare Workers**, using a **single Worker** fetch handler for SSR + static + API, plus relevant Cloudflare infra:
 
-- **Durable Objects** (and DO SQLite) for per-user durable state (Autopilot thread, Blueprint/bootstrap state, receipts, policy registry pointers).
-- **R2** for large blob storage (`BlobStore`) and any large tool/LLM artifacts.
+- **R2** (or Convex file storage) for large blob storage (`BlobStore`) and any large tool/LLM artifacts.
 - **KV** for small global caches/flags/pointers where appropriate (not canonical state).
 - **Queues** for background or deferred work (e.g. compile jobs, log flushing) when needed.
 - **D1** only if/when we need a global relational store (optional).
+
+Post-MVP (optional): add **Durable Objects + DO SQLite** as an execution/workspace plane (cheaper true streaming, strong per-user consistency) while keeping Convex as the product DB and subscription surface.
 
 Additional backend used by the product (not Cloudflare infra):
 
@@ -328,7 +330,8 @@ Remove React state and TanStack Query by standardizing on Effect primitives and 
 
 Autopilot-specific “bootstrap” (Identity/User/Character/Tools/Heartbeat/Memory) should be treated as **durable, typed records** (Effect `Schema`), not a pile of markdown files:
 
-- canonical store: per-user durable storage (Durable Object SQLite), mirrored to Convex as needed for indexing + realtime UI subscription
+- MVP canonical store: **Convex** (product DB + realtime backbone)
+- post-MVP (optional): move selected state into a DO/DO SQLite execution plane and project summaries into Convex for realtime UI
 - export/import: a single versioned JSON “Blueprint” format, validated at boundaries
 - prompt injection: rendered “context file” view is derived; canonical representation remains structured
 - memory visibility: enforce `main_only` vs `all` mechanically (not by convention)
@@ -480,44 +483,55 @@ If we want schema-driven args/returns validators derived from Effect `Schema`, a
 
 ### 3.5.5 Data Residency and Sync (Convex vs Cloudflare)
 
-We are intentionally using **two durable systems** for different purposes:
+MVP choice (resolved): **Convex-first**.
 
-- **Convex** is the **product DB and realtime fanout** (what the UI subscribes to and what shared/product state lives in).
-- **Cloudflare Durable Objects + DO SQLite** is the **per-user execution/workspace plane** (“user-space”) where agent runtimes and user-owned agent state live with strong consistency.
+For the MVP we intentionally avoid a second per-user persistence plane (DO/DO-SQLite). Convex is the canonical durable system for product *and* chat/execution history, and the Cloudflare Worker is the host + compute enforcement layer.
 
-This plan MUST avoid “two sources of truth by accident”. Rules:
+### 3.5.5.1 MVP Rules (Single Canonical Store)
 
-- **DO SQLite is canonical** for: user-space state, user-owned agent definitions/config, blueprint drafts, execution-local caches, and any “must be consistent within a user’s workspace” data.
-- **Convex is canonical** for: user identity/profile, org membership/roles, agent ownership/indexing metadata (who owns what), share/visibility rules, thread/message projections, and anything the UI must observe in realtime.
-- **Both (mirrored)** for: run/event logs, tool receipts, and other “execution history” that must be replayable and observable in realtime:
-  - canonical write goes to the execution plane (Worker/DO)
-  - a normalized projection is written to Convex for subscription + UI querying
-  - large payloads are stored in R2 as blobs; Convex stores only `BlobRef`s and metadata
+- **Convex is canonical** for:
+  - threads, messages, and **message parts** (chunked streaming deltas)
+  - receipts/budgets/tool calls (bounded; large payloads are `BlobRef`s)
+  - bootstrap/blueprint state and user profile/ownership/membership
+  - any state the UI must observe in realtime (multiplayer, observers, presence)
+- The **browser always connects to Convex via WebSockets** for realtime subscriptions (no subscription proxying through the Worker).
+- The **Worker is the enforcement point**:
+  - validates access to a target thread (owner or valid anon key)
+  - runs inference/tools with budgets
+  - writes chunked deltas and receipts back into Convex
+- Large payload discipline:
+  - large content is stored once in blob storage (Cloudflare R2 or Convex file storage)
+  - Convex stores only `BlobRef`s + metadata (never inline megabytes)
 
-Practical consequences:
+### 3.5.5.2 MVP Chat Streaming Contract (Convex)
 
-- The **browser always connects to Convex via WebSockets** (for subscriptions and live updates).
-- The **Worker/DO is the authority for user-space mutations** (writes that change agent state, blueprint state, or execution-local caches). After committing, it emits/replicates a projection to Convex so subscribed UIs update.
-- Access control is enforced using Convex-authenticated identity (WorkOS user id) and Convex membership/ownership checks, but the execution plane holds the canonical workspace state.
+We model “streaming” as realtime Convex updates.
 
-V1 replication contract (execution plane -> Convex projection):
+Rules:
 
-- The execution plane (DO SQLite) maintains an **append-only event log** per user-space (or per thread), with a monotonically increasing `seq` and a stable `eventId` (ULID).
-- Each event is mirrored to Convex as an **idempotent upsert** keyed by `eventId` (duplicates are safe).
-- Convex stores:
-  - an append-only `userSpaceEvents` table for realtime subscription and replay UI (the primary projection)
-  - index tables derived from events for efficient UI navigation (agents list, threads list, last activity)
-- Large payloads are never stored inline in Convex:
-  - store them in R2 as blobs
-  - mirror only `BlobRef`s + metadata into Convex
+- Streaming writes MUST be **chunked** (~250–500ms and/or N chars); never per-token.
+- Parts MUST be **idempotent** and retry-safe:
+  - unique key `(runId, seq)` (or equivalent)
+  - duplicates are safe (upsert/no-op)
+- Runs MUST finalize:
+  - append a terminal `finish` (with usage) or `error` part
+  - mark the assistant message `status` to `final|error|canceled`
+- Backpressure/cancel MUST exist:
+  - if the client cancels/disconnects or budgets are exceeded, stop writing parts and finalize the run state
 
-Minimum event kinds (v1):
+Anon continuity (required):
 
-- `agent.created`, `agent.updated`, `agent.deleted` (projection updates the Convex agent index)
-- `thread.created`, `thread.updated`, `thread.deleted` (projection updates the Convex thread index)
-- `message.appended` (assistant/user message projection; payload is parts summary + BlobRefs for details)
-- `receipt.appended` (tool/model receipts; always correlated via stable ids)
-- `blueprint.updated` (projection stores a summary + BlobRef to the canonical blueprint state)
+- anon threads MUST be migratable to owned threads on auth (prefer “claim ownership in place” by verifying a secret `anonKey`, rather than copying data).
+
+### 3.5.5.3 Post-MVP (Optional): Dual-Plane Execution + Projection
+
+If/when we want cheaper “true streaming” and stronger per-user consistency, we MAY introduce a Cloudflare execution/workspace plane (DO/DO SQLite) and project normalized state into Convex for subscriptions.
+
+If introduced, mirroring MUST be event-sourced and idempotent:
+
+- execution plane maintains an append-only event log with monotonic `seq` and stable `eventId` (ULID)
+- Convex projection uses idempotent upserts keyed by `eventId`
+- large payloads remain blobs (`BlobRef`s), not inline Convex fields
 
 ### 3.5.6 AI Inference (Effect-Native, `@effect/ai`)
 
@@ -539,7 +553,7 @@ Provider posture:
 - If the current provider is OpenRouter, prefer `@effect/ai-openrouter`.
 - Provider-specific “extras” (OpenAI web search / file search / code interpreter) are allowed, but must still produce standard `Response` tool parts so UI + receipts remain consistent.
 
-Current implementation in this repo (as of 2026-02-07):
+Current implementation in this repo (as of 2026-02-07, legacy):
 
 - AI chat runs on Cloudflare Workers using the **Agents SDK + Durable Object-backed sessions** pattern (colocated transcript + connection state), as demonstrated in:
   - `apps/autopilot-worker/src/server.ts` (our production worker)
@@ -547,15 +561,18 @@ Current implementation in this repo (as of 2026-02-07):
 - The model provider is **Cloudflare Workers AI** via the `env.AI` binding (see `apps/autopilot-worker/wrangler.jsonc`), with a current model id of `@cf/openai/gpt-oss-120b` (`apps/autopilot-worker/src/server.ts`).
 - The browser streams over **WebSockets** using `agents/client` and the `CF_AGENT_*` message envelope, with the payload standardized on `@effect/ai/Response` `StreamPartEncoded` end-to-end (no SSE bridge). Reasoning parts are filtered on the wire.
 
-Inference placement (v1 target):
+Inference placement (MVP target, resolved):
 
-- For **WebSocket chat sessions**, inference runs inside the Agent Durable Object (`AIChatAgent`) so that the connection state + transcript are colocated and consistent (this is also the Cloudflare Agents reference architecture).
-- The Worker `fetch` handler remains the **single host entrypoint** and simply routes Agent/WebSocket requests to the DO (`routeAgentRequest`), and serves SSR/static/API for the rest of the app.
+- Inference runs in the **single Cloudflare Worker host** (Effect `LanguageModel.streamText`, tool execution, budgets, receipts).
+- Streaming is implemented as **chunked writes into Convex** (`messageParts` + receipts), and the UI streams by subscribing over Convex WebSockets.
+- The `/agents/*` Durable Object + Agents SDK transport is not required for the MVP; it may remain temporarily as a legacy implementation during migration.
 
 Integration requirements (Effuse-side):
 
 - Standardize the streaming/message part shape on `@effect/ai/Response` parts (`text-*`, `tool-*`, `finish`, `error`) and adapt any legacy stream formats into this shape at the boundary.
-- WebSockets are the canonical transport for streaming AI parts (no SSE dependency in the end state).
+- WebSockets are the canonical transport for streaming AI parts (no SSE dependency in the end state):
+  - MVP: Convex WebSockets (subscriptions over `messageParts`)
+  - post-MVP: optional direct Worker/DO WebSockets if/when we add an execution plane
 - Tool call resolution must emit **tool call receipts** and renderable UI parts:
   - `Response.ToolCallPart` (toolName + toolCallId + params)
   - `Response.ToolResultPart` (toolName + toolCallId + success/failure + bounded payload/BlobRef)
@@ -1004,9 +1021,9 @@ These must be decided explicitly to finish the React/TanStack removal:
 
 - **Hosting target (resolved):** single Cloudflare Worker (not Pages Functions). Portability remains an explicit adapter boundary for an optional Node/Bun host.
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
-- **Autopilot unauthenticated mode (resolved):** `/autopilot` (and anything it depends on, notably `/agents/*` WebSockets/streams) MUST work for unauthed users. Auth is used to unlock user identity, ownership, and user-space persistence (DO SQLite + Convex projection), but the core chat experience must not require a WorkOS session.
+- **Autopilot unauthenticated mode (resolved):** `/autopilot` (and anything it depends on, notably Convex WebSocket subscriptions and the Worker inference endpoints) MUST work for unauthed users. Auth is used to unlock user identity and ownership, but the core chat experience must not require a WorkOS session.
 - **Convex usage (resolved):** browser connects directly to Convex via WebSockets (`ConvexClient`) for realtime subscriptions; Convex MUST still be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
-- **Workspace plane (resolved):** DO SQLite is canonical for user-space + agents; Convex is canonical for profile/ownership/membership; replication contract is the v1 event-log + index projection described in §3.5.5.
+- **Workspace plane (resolved for MVP):** Convex is canonical for user-space/chat state and receipts. A DO/DO SQLite execution plane is deferred to post-MVP; if introduced, it must follow the projection/mirroring rules in §3.5.5.3.
 - **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
 - **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
@@ -1254,17 +1271,25 @@ Implemented suites (2026-02-07):
   - `ASSETS` binding serves `/effuse-client.css` + `/effuse-client.js`
   - asset requests never fall through to SSR
 
+Required suites for Convex-first MVP (not implemented yet):
+
+- `apps/web/tests/worker/chat-streaming-convex.test.ts`
+  - Worker starts a run and writes `messageParts` into Convex in **chunked** batches (no per-token writes)
+  - idempotency: `(runId, seq)` upserts are retry-safe (no duplicate parts)
+  - terminal parts: `finish.usage` recorded; canceled runs finalize predictably
+  - BlobRef discipline: large tool/model payloads are stored as blobs and only refs are written into Convex
+
 Harness:
 
 - runs under a Workers runtime pool (`@cloudflare/vitest-pool-workers`) via `apps/web/vitest.config.ts` + `apps/web/wrangler.jsonc`
 - configured with `singleWorker: true` to avoid flaky isolated-runtime startup on localhost module fallback ports
 - uses `cloudflare:test` `env` bindings (DO namespaces, `ASSETS`, `AI`) from Wrangler config
-- external services are stubbed/blocked by default in tests (WorkOS paths mocked; same-origin fetch routing for `/agents/*`)
+- external services are stubbed/blocked by default in tests (WorkOS paths mocked; AI provider stubbed; Convex calls stubbed or routed to a local test deployment)
 - run: `cd apps/web && npm test`
 
-### 9.3 `apps/web`: Durable Objects + DO SQLite Integration (L4)
+### 9.3 `apps/web`: Durable Objects + DO SQLite Integration (Post-MVP, L4)
 
-Goal: verify DO SQLite invariants and Convex projection semantics *without* a browser.
+Goal (post-MVP): verify DO SQLite invariants and Convex projection semantics *without* a browser.
 
 Implemented suites (2026-02-07):
 
@@ -1286,11 +1311,16 @@ Deferred (not implemented yet):
 - large payloads stored in BlobStore/R2 test store; DO receipts store only refs
 - Convex projection stores metadata + BlobRefs only (no large inline payloads)
 
-### 9.4 Chat DO + AI Receipts Integration (L4/L5 boundary)
+### 9.4 Chat Streaming + AI Receipts Integration (MVP: Convex, Post-MVP: DO) (L4/L5 boundary)
 
 Goal: verify the chat execution plane produces **user-visible tool parts** and **replayable receipts**.
 
-Existing coverage:
+MVP target:
+
+- Chat streaming is via Convex `messageParts` (chunked), and receipts are stored in Convex (bounded + BlobRefs).
+- The primary regression gates are the Worker+Convex integration tests described in §9.2 and the browser E2E scenarios in §9.5.
+
+Legacy / post-MVP coverage (DO + Agents SDK):
 
 - `apps/autopilot-worker/tests/index.test.ts`
   - gates: Response part vocabulary (`tool-call`/`tool-result`/`finish`, no `reasoning-*`)
@@ -1327,7 +1357,7 @@ apps/web/tests/e2e/
   navigation.spec.ts
   focus-caret.spec.ts
   tool-parts.spec.ts
-  chat-ws.spec.ts
+  chat-convex-stream.spec.ts
 ```
 
 Minimum assertions:
@@ -1345,8 +1375,8 @@ Minimum assertions:
 5. **Tool part visibility**
    - force a tool-error: ensure `{status, toolName, toolCallId, summary}` renders
    - “view full” uses BlobRef fetch/swap (no huge inline DOM)
-6. **WebSocket chat streaming**
-   - assistant text streams incrementally
+6. **Convex chat streaming (WebSocket subscriptions)**
+   - assistant text streams incrementally from `messageParts`
    - tool parts correlate (toolCallId stable)
 7. **Convex live subscription rendering (when feasible locally)**
    - inject a `TestConvexService` stream update and assert DOM changes
@@ -1435,10 +1465,9 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - SHOULD: Convex call args/returns are Schema-encoded/decoded (or otherwise validated) at the boundary for determinism and SSR/client parity.
 
 **Data Residency**
-- MUST: DO SQLite is canonical for user-space + user-owned agent state (blueprints, agent configs, execution-local caches).
-- MUST: Convex is canonical for user identity/profile, org membership, and agent ownership/index metadata (who owns what).
-- SHOULD: execution history mirrored into Convex uses `BlobRef` for large payloads (store payloads in R2; Convex stores metadata + refs).
-- MUST: execution plane -> Convex mirroring is event-sourced and idempotent (stable `eventId`, monotonic `seq`), with append-only semantics.
+- MUST (MVP): Convex is canonical for user-space/chat state (threads/messages/messageParts), receipts/budgets/tool calls, bootstrap/blueprints, and user identity/ownership/membership.
+- SHOULD: large payloads are stored once as blobs (R2 or Convex file storage) and referenced by `BlobRef` in Convex records (never inline megabytes).
+- MAY (post-MVP): introduce a DO/DO SQLite execution plane; if introduced, execution plane -> Convex mirroring MUST be event-sourced and idempotent (stable `eventId`, monotonic `seq`), with append-only semantics.
 
 **Hydration**
 - MUST: default hydration mode is `strict`.
@@ -1459,11 +1488,12 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: tool resolution uses `Toolkit` handlers and emits `tool-call` / `tool-result` / `error` parts so the Tool Parts contract can render them.
 - MUST: prompt budgeting uses `Tokenizer` and enforces token caps before provider calls.
 - SHOULD: GenAI telemetry spans are emitted with `@effect/ai/Telemetry` (and provider telemetry when available) and are linked to receipts.
-- MAY: chat transcripts are persisted in DO SQLite (`Chat.Persistence`) and projected into Convex for realtime UI.
+- MUST (MVP): chat transcripts/parts are persisted in Convex.
+- MAY (post-MVP): add `Chat.Persistence` backed by DO SQLite and project key events into Convex for realtime UI.
 
 **Cloudflare Host**
-- MUST: v1 targets **a single Cloudflare Worker** (not Pages Functions) and relevant Cloudflare infra (DO/DO SQLite, R2, KV, Queues).
-- MUST: Durable Objects + DO SQLite are used as the canonical “user-space / agent workspace” store.
+- MUST: v1 targets **a single Cloudflare Worker** (not Pages Functions) and relevant Cloudflare infra (R2, KV, Queues as needed).
+- MAY (post-MVP): add Durable Objects + DO SQLite as an execution/workspace plane.
 - MAY: SSR is buffered in v1; streaming SSR is an optimization.
 - MUST: buffered SSR enforces a max HTML byte cap and respects request abort + budgets (no unbounded buffering in Workers).
 
@@ -1475,5 +1505,6 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: browser E2E exists and asserts strict hydration performs no initial swap (attach-only boot).
 - MUST: Worker integration tests assert SSR abort handling and max HTML byte cap enforcement.
 - MUST: AI/tool receipt tests assert `finish.usage` is recorded and large prompt/output payloads are BlobRefs (never inline).
-- MUST: DO replication tests assert idempotency (`eventId`) and no large payloads are mirrored into Convex without BlobRefs.
+- MUST (MVP): Convex streaming tests assert idempotency (`runId`, monotonic `seq`) and that chunking rules are enforced (no per-token writes).
+- MAY (post-MVP): DO replication tests assert idempotency (`eventId`) and no large payloads are mirrored into Convex without BlobRefs.
 - MUST: test suites do not rely on React/TanStack, and do not call real external services by default (WorkOS/Convex/AI); provider SDKs must be stubbed behind Effect Layers.
