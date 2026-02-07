@@ -6,6 +6,21 @@ This is a brainstorming doc for one decision:
 
 This matters because Autopilot is intentionally **WebSocket-first** (streaming `@effect/ai/Response` parts), and today our “happy path” assumes the chat session lives in an Agent DO.
 
+## Decision (Resolved: MVP)
+
+We are going **Convex-first for the MVP**:
+
+- **No per-user Cloudflare infra** for MVP: no DO / DO-SQLite / per-user DO classes for chat.
+- Cloudflare Worker remains the **single host** (SSR/static + APIs) and the place we run inference (Workers AI) and server-side tool execution when needed.
+- Convex becomes the **canonical store** for:
+  - threads
+  - messages
+  - **chunked streaming deltas** (written every ~250–500ms, never per-token)
+  - receipts/budgets/tool calls (bounded; large payloads are BlobRefs)
+- **Realtime UX** comes from Convex WebSocket subscriptions (clients watch Convex state update).
+- **Anon -> authed continuity is REQUIRED**: when the user authenticates, we MUST preserve the anon transcript and attach it to the owned thread (see “Move To Owned Thread”).
+- Post-MVP, we MAY reintroduce DO/DO-SQLite as an execution-plane optimization (cheaper streaming, stronger per-user consistency), but Convex remains the product DB and multiplayer surface.
+
 ## Current State (What The Code Does Today)
 
 ### `/autopilot` chooses a chat id
