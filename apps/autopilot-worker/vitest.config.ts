@@ -26,6 +26,9 @@ export default defineWorkersConfig({
     },
     poolOptions: {
       workers: {
+        // We stub Workers AI in tests; avoid starting Wrangler remote proxy sessions
+        // (flaky + can incur usage charges).
+        remoteBindings: false,
         wrangler: { configPath: "./wrangler.jsonc" }
       }
     }
