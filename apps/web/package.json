@@ -40,6 +40,7 @@
     "@effect/experimental": "^0.58.0",
     "@effect/platform": "^0.94.3",
     "@effect/rpc": "^0.73.0",
+    "@openagentsinc/dse": "file:../../packages/dse",
     "@openagentsinc/effuse": "file:../../packages/effuse",
     "@openagentsinc/effuse-ui": "file:../../packages/effuse-ui",
     "@openagentsinc/hud": "file:../../packages/hud",
@@ -55,6 +56,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "streamdown": "^2.1.0",
+    "workers-ai-provider": "3.0.2",
     "zod": "^4.1.8"
   },
   "devDependencies": {

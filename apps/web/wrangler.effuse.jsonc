@@ -19,6 +19,7 @@
     "directory": "dist/effuse-client"
   },
   "alias": {
+    "@openagentsinc/dse": "../../packages/dse/src/index.ts",
     "@openagentsinc/effuse": "../../packages/effuse/src/index.ts",
     "@openagentsinc/effuse-ui": "../../packages/effuse-ui/src/index.ts",
     "@openagentsinc/hud": "../../packages/hud/src/index.ts"
