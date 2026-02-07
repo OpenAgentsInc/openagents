@@ -2,7 +2,7 @@
 
 - **Status:** Proposed (implementation roadmap)
 - **Last updated:** 2026-02-07
-- **Primary input docs:** `docs/autopilot/dse.md`, `docs/autopilot/horizons-synergies.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`
+- **Primary input docs:** `docs/autopilot/dse.md`, `docs/autopilot/horizons-synergies.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`, `docs/autopilot/rlm-synergies.md`
 
 This plan proposes a unified roadmap to implement **DSE** (“DSPy, but Effect TS”) and selectively adopt the best patterns from **Horizons** (graph execution, evaluation/optimization shape, budgets, memory, evented traces) and **Monty** (secure “code mode” with externals + snapshot/resume).
 
@@ -30,7 +30,7 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 
 ---
 
-## Unified mental model (DSE × Horizons × Monty × Microcode)
+## Unified mental model (DSE × Horizons × Monty × Microcode × RLM)
 
 ### DSE core (from `dse.md`)
 - **Signature** = typed IO (Effect Schema) + **Prompt IR** + defaults + constraints.
@@ -58,6 +58,12 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 - **Multi-model roles**: explicitly model primary vs sub/aux models (and extend to judge/repair/router roles) as policy knobs in artifacts.
 - **Dynamic tool mounting**: treat MCP servers (and future providers) as `ToolProvider`s that can mount namespaced tools with schemas and receipt hooks.
 - **Debug/trace toggles**: structured “trajectory” traces when enabled (bounded and redactable), not unstructured internal monologue in prod.
+
+### RLM patterns we should port (from `rlm-synergies.md`)
+- **Two-bucket context**: keep huge inputs in variable space (vars/blobs), load only previews/slices into token space.
+- **Recursion via sub-LM**: budgeted sub-calls whose results land in variable space (not automatically in the main prompt).
+- **Inference-time strategy**: RLM should be a swappable execution strategy that works with existing DSE signatures.
+- **Budgets fit the model**: add `maxIterations` and `maxSubLmCalls` alongside time/tool/LLM-call budgets.
 
 ---
 
@@ -215,6 +221,30 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 - Verification
   - `cd packages/dse && bun test && bun run typecheck`
   - `cd apps/autopilot-worker && npm test && npm run typecheck`
+
+---
+
+### Phase 2.5 — RLM-style inference for long-context tasks (two-bucket context)
+
+**Objective:** mitigate context rot for huge inputs by adding an RLM execution strategy that works with existing signature contracts.
+
+- **RLM strategy (Effect-first)**
+  - Add `RlmPredict(signature)` as a swappable inference-time strategy.
+  - Persist a variable space (`VarSpace`) whose values are typed metadata + blob references (aligns with Phase 0 `BlobStore`).
+  - Start with an RLM-lite “action DSL” kernel (deterministic, replayable). Keep arbitrary code execution behind a strict boundary (see Phase 6 + Monty model).
+
+- **Recursion and model roles**
+  - Add explicit `sub` model role (in addition to main/judge/repair) and pin role selection in artifacts.
+  - Expose recursion as a budgeted operation (`sub_lm(...)`) whose results land in variable space.
+
+- **Budgets**
+  - Enforce `maxIterations` (REPL turns) and `maxSubLmCalls` (recursive calls), in addition to Phase 3 budgets.
+
+- **Receipts and replay**
+  - Emit structured per-iteration trace events: actions executed, blobs accessed (by ref/hash), sub-LM calls, and derived-variable writes.
+
+**Exit criteria**
+- At least one long-context Autopilot workload (logs/codebase subset/evidence sourcing) runs reliably under strict budgets with auditable receipts.
 
 ---
 

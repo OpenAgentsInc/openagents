@@ -22,6 +22,7 @@ React is still used for: route loaders, auth, Convex, HUD backgrounds (DotsBackg
 
 | Doc | Description |
 |-----|-------------|
+| [MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md](./MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md) | **Single master plan:** end-state Effect/Effuse architecture including full React + TanStack replacement |
 | [ROUTER-AND-APPS-WEB-INTEGRATION.md](./ROUTER-AND-APPS-WEB-INTEGRATION.md) | **Comprehensive:** Router, Effect, RPC, auth cache, navigation, avoiding full-page behavior |
 | [APPS-WEB-FULL-EFFUSE-ROADMAP.md](./APPS-WEB-FULL-EFFUSE-ROADMAP.md) | Step-by-step roadmap to migrate `apps/web` to Effuse everywhere (Typed-inspired, thin TanStack host) |
 | [effect-rpc-web.md](./effect-rpc-web.md) | Effect RPC mount, procedures, client usage |
