@@ -29,6 +29,9 @@ export default defineWorkersConfig({
         // We stub Workers AI in tests; avoid starting Wrangler remote proxy sessions
         // (flaky + can incur usage charges).
         remoteBindings: false,
+        // Avoid spawning many isolated runtimes (and localhost fallback-module servers) which can
+        // intermittently fail with EADDRNOTAVAIL/connection refused on some machines.
+        singleWorker: true,
         wrangler: { configPath: "./wrangler.jsonc" }
       }
     }
