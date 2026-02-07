@@ -976,6 +976,7 @@ Work log:
 - 2026-02-07: hardening: implemented soft/client-only hydration semantics for `RouterService.start` (per-route initial navigation apply), and added conformance tests for hydration modes + strict “matched route” boot (no loader/view on boot) (`packages/effuse/src/router/router.ts`, `packages/effuse/tests/conformance-hydration-modes.test.ts`, `packages/effuse/tests/conformance-shell-outlet.test.ts`).
 - 2026-02-07: hardening: added SSR determinism conformance test ensuring `runRoute` + `renderToString` is stable in a node environment (no DOM) for fixed inputs (`packages/effuse/tests/conformance-ssr-determinism.test.ts`).
 - 2026-02-07: hardening: stabilized `apps/autopilot-worker` tests by disabling Wrangler `remoteBindings` in the Workers Vitest pool (we stub Workers AI in tests; avoids remote proxy session flake + potential usage charges) (`apps/autopilot-worker/vitest.config.ts`, `apps/autopilot-worker/tests/index.test.ts`).
+- 2026-02-07: hardening: strengthened AI receipt BlobRef discipline by asserting model/tool receipts always include prompt/input/output blob refs (and that huge user inputs are truncated before prompt blob serialization) (`apps/autopilot-worker/tests/index.test.ts`).
 
 Add/Change:
 

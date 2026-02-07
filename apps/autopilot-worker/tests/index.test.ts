@@ -555,6 +555,18 @@ describe("Autopilot worker", () => {
       expect(withFinish?.finish?.usage?.outputTokens).toBeTypeOf("number");
       expect(withFinish?.maxPromptTokens).toBe(8000);
       expect(withFinish?.promptTokenEstimate).toBeLessThanOrEqual(8000);
+
+      // BlobRef discipline: receipts reference prompts/outputs by BlobRef (no huge inline payloads).
+      expect(Array.isArray(withFinish?.promptBlobs)).toBe(true);
+      expect(Array.isArray(withFinish?.outputBlobs)).toBe(true);
+      expect(withFinish?.promptBlobs?.length).toBeGreaterThan(0);
+      expect(withFinish?.outputBlobs?.length).toBeGreaterThan(0);
+      expect(typeof withFinish?.promptBlobs?.[0]?.id).toBe("string");
+      expect(typeof withFinish?.promptBlobs?.[0]?.hash).toBe("string");
+      expect(withFinish?.promptBlobs?.[0]?.mime).toBe("application/json");
+      expect(withFinish?.promptBlobs?.[0]?.size).toBeTypeOf("number");
+      // A huge input message should be truncated before prompt serialization.
+      expect(withFinish?.promptBlobs?.[0]?.size).toBeLessThan(hugeText.length);
     }
 
     // Tool receipts exist for the tool call.
@@ -583,6 +595,14 @@ describe("Autopilot worker", () => {
       expect(receipts.length).toBeGreaterThan(0);
       const names = receipts.map((r) => r?.toolName).filter(Boolean);
       expect(names).toContain("bootstrap_set_user_handle");
+
+      const bootstrap = receipts.find((r) => r && r.toolName === "bootstrap_set_user_handle") as any;
+      expect(Array.isArray(bootstrap?.inputBlobs)).toBe(true);
+      expect(Array.isArray(bootstrap?.outputBlobs)).toBe(true);
+      expect(bootstrap?.inputBlobs?.length).toBeGreaterThan(0);
+      expect(bootstrap?.outputBlobs?.length).toBeGreaterThan(0);
+      expect(bootstrap?.inputBlobs?.[0]?.mime).toBe("application/json");
+      expect(bootstrap?.inputBlobs?.[0]?.size).toBeTypeOf("number");
     }
     } finally {
       if (typeof originalRun === "function") {
