@@ -20,7 +20,7 @@
   "assets": {
     "directory": "dist/effuse-client",
     "binding": "ASSETS",
-    "run_worker_first": true
+    "run_worker_first": ["/*"]
   },
   "alias": {
     "@openagentsinc/dse": "../../packages/dse/src/index.ts",
