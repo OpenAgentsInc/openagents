@@ -960,6 +960,7 @@ DoD:
 
 Work log:
 - 2026-02-07: implemented `StateCell` ergonomics in `@openagentsinc/effuse` (`computed`, `filtered`, `withEq`, `batch`) with correctness-focused contract tests (`tests/state-cell.test.ts` + render coalescing in `tests/component-mount.test.ts`). Expanded conformance suite to enforce shell/outlet invariants and strict router boot no-swap behavior (`tests/conformance-shell-outlet.test.ts`).
+- 2026-02-07: implemented framework-level Tool Part rendering + BlobRef bounding helpers in `@openagentsinc/effuse` (`boundText`, `renderToolPart`) with conformance tests (`tests/conformance-tool-parts.test.ts`). Updated `apps/web` Autopilot chat to render tool parts via `renderToolPart` and added a client-side `UiBlobStore` + `effuse.blob.view` EZ action for “view full” payload swaps.
 
 Add/Change:
 
