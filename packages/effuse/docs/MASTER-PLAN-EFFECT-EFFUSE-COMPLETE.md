@@ -26,6 +26,7 @@ When complete, the web product is a *pure Effuse application (built on Effect)*:
     - typed request boundaries (RPC/HTTP), budgets, receipts/replay, telemetry
     - a single shared composed runtime (an Effect `ManagedRuntime` built from the app Layer) usable on server + client
 - **Multi-backend host, Cloudflare-first**: Effuse is designed to run on multiple server backends, but the initial target (and plan in this doc) is **Cloudflare Workers** plus relevant Cloudflare infra (Durable Objects, DO SQLite, R2, KV, Queues, etc.).
+- **Single Worker host** (Cloudflare): in production, **one Worker** serves SSR + static assets + API endpoints (`/api/*`). This is a “single host” architecture, not a split across Pages Functions / multiple workers.
 
 ## 0.1 Engineering Invariants (Pulled In From `docs/autopilot/*`)
 
@@ -214,13 +215,17 @@ Hard requirements for the host surface:
 - Use standard Web APIs (`Request`, `Response`, `Headers`, `URL`) as the primary contract so Cloudflare is the “native” environment.
 - Keep backend-specific details behind `EffuseWebHost` adapters so `RouterService` + route tables don’t hardcode a hosting platform.
 
-Initial planned backend: **Cloudflare Workers**, plus relevant Cloudflare infra:
+Initial planned backend: **Cloudflare Workers**, using a **single Worker** fetch handler for SSR + static + API, plus relevant Cloudflare infra:
 
 - **Durable Objects** (and DO SQLite) for per-user durable state (Autopilot thread, Blueprint/bootstrap state, receipts, policy registry pointers).
 - **R2** for large blob storage (`BlobStore`) and any large tool/LLM artifacts.
 - **KV** for small global caches/flags/pointers where appropriate (not canonical state).
 - **Queues** for background or deferred work (e.g. compile jobs, log flushing) when needed.
 - **D1** only if/when we need a global relational store (optional).
+
+Additional backend used by the product (not Cloudflare infra):
+
+- **Convex** is the product database and realtime subscription backbone. The browser MUST be able to connect to Convex via WebSockets for live updates (see §3.5.5).
 
 Secondary backend (later, optional): Node/Bun adapter for local dev or alternative deployment, but the plan in this doc should assume Cloudflare’s constraints and primitives.
 
@@ -305,7 +310,7 @@ Remove React state and TanStack Query by standardizing on Effect primitives and 
 
 Autopilot-specific “bootstrap” (Identity/User/Character/Tools/Heartbeat/Memory) should be treated as **durable, typed records** (Effect `Schema`), not a pile of markdown files:
 
-- canonical store: per-user durable storage (Durable Object SQLite), optionally mirrored to Convex for UI/querying
+- canonical store: per-user durable storage (Durable Object SQLite), mirrored to Convex as needed for indexing + realtime UI subscription
 - export/import: a single versioned JSON “Blueprint” format, validated at boundaries
 - prompt injection: rendered “context file” view is derived; canonical representation remains structured
 - memory visibility: enforce `main_only` vs `all` mechanically (not by convention)
@@ -421,7 +426,7 @@ This gives SSR-safe loaders and RPC handlers a consistent Convex access path wit
 
 #### 3.5.4.3 Client Implementation (No React)
 
-Client-side live queries should use `convex/browser` `ConvexClient` (WebSocket), wrapped in Effect:
+Client-side live queries MUST use `convex/browser` `ConvexClient` (WebSocket), wrapped in Effect. **Realtime is non-negotiable** and we do not proxy subscriptions through the Worker.
 
 - Create one long-lived `ConvexClient` (singleton in the browser runtime Layer).
 - Set auth via `client.setAuth(fetchToken)` where `fetchToken` delegates to `AuthService`:
@@ -454,6 +459,28 @@ Effevex adds two additional ideas that are worth adopting when we do this:
 - **DB/auth/storage wrappers** that eliminate `null` and push normalization to the boundary (e.g. `Option` for nullable returns).
 
 If we want schema-driven args/returns validators derived from Effect `Schema`, adopt Confect’s idea later (compile Schema -> `v.*` validators), but keep it as an internal build step or helper library, not a runtime dependency.
+
+### 3.5.5 Data Residency and Sync (Convex vs Cloudflare)
+
+We are intentionally using **two durable systems** for different purposes:
+
+- **Convex** is the **product DB and realtime fanout** (what the UI subscribes to and what shared/product state lives in).
+- **Cloudflare Durable Objects + DO SQLite** is the **per-user execution/workspace plane** (“user-space”) where agent runtimes and user-owned agent state live with strong consistency.
+
+This plan MUST avoid “two sources of truth by accident”. Rules:
+
+- **DO SQLite is canonical** for: user-space state, user-owned agent definitions/config, blueprint drafts, execution-local caches, and any “must be consistent within a user’s workspace” data.
+- **Convex is canonical** for: user identity/profile, org membership/roles, agent ownership/indexing metadata (who owns what), share/visibility rules, thread/message projections, and anything the UI must observe in realtime.
+- **Both (mirrored)** for: run/event logs, tool receipts, and other “execution history” that must be replayable and observable in realtime:
+  - canonical write goes to the execution plane (Worker/DO)
+  - a normalized projection is written to Convex for subscription + UI querying
+  - large payloads are stored in R2 as blobs; Convex stores only `BlobRef`s and metadata
+
+Practical consequences:
+
+- The **browser always connects to Convex via WebSockets** (for subscriptions and live updates).
+- The **Worker/DO is the authority for user-space mutations** (writes that change agent state, blueprint state, or execution-local caches). After committing, it emits/replicates a projection to Convex so subscribed UIs update.
+- Access control is enforced using Convex-authenticated identity (WorkOS user id) and Convex membership/ownership checks, but the execution plane holds the canonical workspace state.
 
 ### 3.6 UI Interaction Model (Effuse-First)
 
@@ -658,7 +685,7 @@ Add/Change (apps/web Effect runtime):
 - change: `apps/web/src/effect/layer.ts` include `AuthServiceLive` + `ConvexServiceLive*`
 - change: `apps/web/src/effect/config.ts` becomes the single source of `convexUrl` and any Convex auth config
 
-Add/Change (apps/web Convex backend code, recommended):
+Add/Change (apps/web Convex backend code, REQUIRED standard):
 
 - new: `apps/web/convex/effect/ctx.ts` (Effect-friendly `QueryCtx/MutationCtx/ActionCtx` tags)
 - new: `apps/web/convex/effect/auth.ts` (nullable identity -> `Option`)
@@ -717,9 +744,15 @@ Add/Change (apps/web host):
 - new: `apps/web/src/effuse-host/auth.ts` mounts existing WorkOS endpoints using:
   - `apps/web/src/auth/workosAuth.ts` (already exists)
 
+Add/Change (apps/web user-space plane, Cloudflare DO SQLite):
+
+- new: `apps/web/src/effuse-host/do/userSpace.ts` (Durable Object implementing “user-space + agents” using DO SQLite)
+- new: `apps/web/src/effect/userSpace.ts` (`UserSpaceService` for reading/writing user-space from route loaders, EZ actions, and server endpoints)
+- change: `apps/web/wrangler.jsonc` add Durable Object bindings + migrations for `UserSpaceDO` (and mirror the same in `apps/web/wrangler.effuse.jsonc` if used)
+
 Parallel deploy options:
 
-- add a second Worker config (recommended) so we can deploy without risk:
+- deploy the same single-worker host under a second Worker name (recommended) so we can deploy without risk:
   - new: `apps/web/wrangler.effuse.jsonc` with a different Worker `name` and `main`
 - or add a path-prefix mount in the existing Worker for preview (less clean)
 
@@ -794,9 +827,10 @@ DoD:
 
 These must be decided explicitly to finish the React/TanStack removal:
 
-- **Hosting target:** Cloudflare Workers first (and which flavor: Worker vs Pages Functions), plus an explicit portability boundary for an optional Node/Bun adapter.
+- **Hosting target (resolved):** single Cloudflare Worker (not Pages Functions). Portability remains an explicit adapter boundary for an optional Node/Bun host.
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
-- **Convex usage:** whether the browser talks to Convex directly (WS subscriptions via `ConvexClient`) or only via the Worker (proxy/RPC); regardless, Convex MUST be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
+- **Convex usage (resolved):** browser connects directly to Convex via WebSockets (`ConvexClient`) for realtime subscriptions; Convex MUST still be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
+- **Workspace plane (partially resolved):** DO SQLite is canonical for user-space + agents; Convex is canonical for profile/ownership/membership. The remaining decision is the *exact replication contract* (what is mirrored to Convex and at what granularity).
 - **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
 - **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
@@ -877,8 +911,15 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: the end state MUST NOT depend on `convex/react`, `@convex-dev/react-query`, or React Query.
 - MUST: all Convex interactions happen through `ConvexService` and are represented as Effects (Promises do not escape the boundary).
 - MUST: server-side Convex calls use `ConvexHttpClient` and are request-scoped (auth is applied per request).
-- SHOULD: client-side live queries use `ConvexClient` subscriptions wrapped as `Stream` with correct finalizers (unsubscribe on scope close).
+- MUST: the browser connects directly to Convex via WebSockets for realtime subscriptions (no subscription proxying through the Worker).
+- MUST: client-side live queries use `ConvexClient` subscriptions wrapped as `Stream` with correct finalizers (unsubscribe on scope close).
+- MUST: new `apps/web/convex/*` functions are implemented using the Effect wrappers in `apps/web/convex/effect/*` (centralized normalization, typed errors, and Promise->Effect discipline).
 - SHOULD: Convex call args/returns are Schema-encoded/decoded (or otherwise validated) at the boundary for determinism and SSR/client parity.
+
+**Data Residency**
+- MUST: DO SQLite is canonical for user-space + user-owned agent state (blueprints, agent configs, execution-local caches).
+- MUST: Convex is canonical for user identity/profile, org membership, and agent ownership/index metadata (who owns what).
+- SHOULD: execution history mirrored into Convex uses `BlobRef` for large payloads (store payloads in R2; Convex stores metadata + refs).
 
 **Hydration**
 - MUST: default hydration mode is `strict`.
@@ -893,7 +934,8 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: large tool I/O is truncated in DOM and referenced via `BlobRef` for “view full”.
 
 **Cloudflare Host**
-- MUST: v1 targets Cloudflare Workers and relevant Cloudflare infra (DO/DO SQLite, R2, KV, Queues).
+- MUST: v1 targets **a single Cloudflare Worker** (not Pages Functions) and relevant Cloudflare infra (DO/DO SQLite, R2, KV, Queues).
+- MUST: Durable Objects + DO SQLite are used as the canonical “user-space / agent workspace” store.
 - MAY: SSR is buffered in v1; streaming SSR is an optimization.
 
 **Conformance**
