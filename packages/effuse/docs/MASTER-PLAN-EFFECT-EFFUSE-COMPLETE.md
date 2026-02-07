@@ -960,6 +960,7 @@ Work log:
 - 2026-02-07: hardening: added tool-call execution receipts (toolName/toolCallId, params/output blobs, timing, correlation) recorded into DO SQLite + exposed via `GET /agents/chat/:id/ai/tool-receipts`, and added an integration test that stubs Workers AI to force a tool call and asserts (1) Blueprint state mutation occurs and (2) both model receipts (`finish.usage`) and tool receipts are present (`apps/autopilot-worker/src/server.ts`, `apps/autopilot-worker/src/effect/ai/receipts.ts`, `apps/autopilot-worker/tests/index.test.ts`).
 - 2026-02-07: hardening: added RouterService caching contract tests for `cache-first` (ttl unset + ttl expiry) and `stale-while-revalidate` (render stale immediately, refresh in background, and ensure refresh does not apply after navigating away) (`packages/effuse/tests/router-service.test.ts`).
 - 2026-02-07: hardening: escaped SSR dehydrate JSON before embedding in `<script type="application/json">` to prevent `</script>` breakouts; added `escapeJsonForHtmlScript` helper + tests and wired it into `apps/web` SSR (`packages/effuse/src/template/escape.ts`, `packages/effuse/tests/escape-json.test.ts`, `apps/web/src/effuse-host/ssr.ts`).
+- 2026-02-07: hardening: applied `RouteOkHints.cache` to SSR responses via `Cache-Control` (default `no-store`, `private` for cacheable routes, and never cache HTML when `Set-Cookie` is emitted) using a shared helper (`packages/effuse/src/app/cache-control.ts`, `packages/effuse/tests/cache-control.test.ts`, `apps/web/src/effuse-host/ssr.ts`).
 
 Add/Change:
 
