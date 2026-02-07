@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse"
-import { purplePreset } from "@openagentsinc/hud"
+import { whitePreset } from "@openagentsinc/hud"
 
 import { cleanupHudBackground, runHudDotsGridBackground } from "./hudBackground"
 import { marketingHeaderTemplate } from "./header"
@@ -11,10 +11,10 @@ const marketingBackgroundStyle = (): string => {
   const backgroundImage = [
     `radial-gradient(120% 85% at 50% 0%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 55%)`,
     `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 12%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.88) 100%)`,
-    purplePreset.backgroundImage,
+    whitePreset.backgroundImage,
   ].join(", ")
 
-  return `background-color: ${purplePreset.backgroundColor}; background-image: ${backgroundImage};`
+  return `background-color: ${whitePreset.backgroundColor}; background-image: ${backgroundImage};`
 }
 
 export const marketingShellTemplate = (input: {
@@ -45,9 +45,9 @@ export const hydrateMarketingDotsGridBackground = (container: Element): Effect.E
     if (!(bg instanceof Element)) return
 
     yield* runHudDotsGridBackground(bg, {
-      distance: purplePreset.distance,
-      dotsColor: purplePreset.dotsColor,
-      lineColor: purplePreset.lineColor,
+      distance: whitePreset.distance,
+      dotsColor: whitePreset.dotsColor,
+      lineColor: whitePreset.lineColor,
       dotsSettings: { type: "circle", size: 2 },
     })
   })
