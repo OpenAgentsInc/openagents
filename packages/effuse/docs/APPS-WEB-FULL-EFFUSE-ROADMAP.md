@@ -1,5 +1,8 @@
 # Roadmap: Convert `apps/web` to Effuse Everywhere (Thin TanStack Host)
 
+**Deprecated (2026-02-07):** superseded by `MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md`.  
+This document is retained as a historical record of the `apps/web` migration while TanStack Start/Router was still the host. Phases 1-8 below are implemented; new work should follow the master plan (Effuse router + EffuseWebHost + full removal of React/TanStack).
+
 **Audience:** coding agents working on `apps/web` + `@openagentsinc/effuse`.  
 **Goal:** move `apps/web` to **Effuse + Effect for essentially all UI and UI logic**, while keeping **TanStack Start/Router** as a thin substrate for SSR + routing until/unless we replace it later.
 

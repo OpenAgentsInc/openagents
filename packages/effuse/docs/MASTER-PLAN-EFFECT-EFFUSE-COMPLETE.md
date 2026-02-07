@@ -61,7 +61,10 @@ Effuse core (see `README.md`, `ARCHITECTURE.md`, `SPEC.md`, `DOM.md`, `EZ.md`):
 - Effect runtime in router context, shared server runtime via `MemoMap`
 - Effect RPC mounted at `POST /api/rpc` (ADR-0027)
 - Minimal SSR atom hydration via `@effect-atom/atom` (and currently `@effect-atom/atom-react` while React is still the host) (ADR-0027)
-- Most UI already renders via Effuse, with React/TanStack still providing the hosting substrate
+- `apps/web` is now “Effuse everywhere” at the page level (templates + swaps + EZ actions + Effect-owned state), while React/TanStack still provide the hosting substrate (file routes, SSR glue, providers).
+- Shared Effuse UI primitives live in `@openagentsinc/effuse-ui` (Tailwind-first helpers).
+- Autopilot chat is Effect-first (`ChatService`) and the UI is driven by atoms (not React hooks).
+- Key routes are SSR-rendered as Effuse HTML and hydrated without DOM teardown (via mount-level `ssrHtml`), even before TanStack is removed.
 
 This master plan starts from that baseline and describes how to **remove the remaining substrate**.
 
@@ -321,6 +324,9 @@ End-state binding requirements:
 - SSR/hydration MUST be implemented without `@effect-atom/atom-react`:
   - **Server:** create a request-scoped Atom registry, run `guard`/`loader`/`view`, then serialize only atoms declared via `Atom.serializable(...)` into the route’s `dehydrate` payload.
   - **Client:** hydrate the Atom registry from the payload **before** router boot. In `strict` hydration, this MUST NOT trigger any `DomService.swap` during boot.
+- SSR I/O discipline:
+  - request-scoped registries MUST NOT spawn unbounded background fibers during SSR (all work is request-scoped and finalizes at end of request)
+  - effectful atoms that perform network I/O MUST use request-scoped `HttpClient`/`Fetch` configured from the incoming request URL (do not rely on relative-URL `fetch()` on the server)
 
 Caching boundary (avoid “React Query by accident”):
 
@@ -597,7 +603,7 @@ These must be decided explicitly to finish the React/TanStack removal:
   - `INDEX.md`
   - `effuse-conversion-apps-web.md`
   - `ROUTER-AND-APPS-WEB-INTEGRATION.md`
-  - `APPS-WEB-FULL-EFFUSE-ROADMAP.md`
+  - `APPS-WEB-FULL-EFFUSE-ROADMAP.md` (deprecated; historical record)
   - `effect-migration-web.md`
   - `effect-rpc-web.md`
   - `tanstack-start-effect-comparison.md`
