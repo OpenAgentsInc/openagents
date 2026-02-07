@@ -83,7 +83,7 @@ Doc gate for contracts
 
 **You ARE able to run deploys yourself.** Do not wait for a human to deploy unless the user explicitly tells you to slow down.
 
-- **Main website:** `cd apps/web && npm run deploy` (Convex + Vite build + Cloudflare Pages).
+- **Main website:** `cd apps/web && npm run deploy` (Convex + Vite build + Cloudflare Workers deploy).
 - **Other apps:** Check each app’s `package.json` for a `deploy` script, e.g.:
   - `apps/api` → `npm run deploy` (wrangler deploy)
 - **Workflow:** Fix things, deploy, then test (e.g. hit live site or run E2E). Only pause and ask the user when they have asked you to slow down or when you lack credentials/access.

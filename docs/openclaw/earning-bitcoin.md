@@ -71,7 +71,7 @@ The website wallet already uses Breez Spark in the browser (`apps/website/src/li
 
 2) **Ensure cross‑origin isolation on `/wallet`**
    - Dev: headers already in `apps/website/vite.config.ts`.
-   - Prod: headers already in `apps/website/public/_headers` (Cloudflare Pages/Workers).
+   - Prod: headers already in `apps/website/public/_headers` (Cloudflare Workers).
 
 3) **Restore the wallet on the website**
    - Run the site, open `/wallet`, choose **Restore**, and paste the mnemonic from Phase 1.
