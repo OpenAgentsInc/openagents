@@ -50,6 +50,7 @@ describe("conformance: shell/outlet invariants", () => {
     const shell = root.querySelector("[data-effuse-shell]")!
 
     let swaps = 0
+    let loaderRuns = 0
     const dom = {
       ...DomServiceLive,
       swap: (target: Element, content: any, mode?: any) => {
@@ -61,7 +62,8 @@ describe("conformance: shell/outlet invariants", () => {
     const a: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
-      loader: () => Effect.succeed(RouteOutcome.ok({})),
+      loader: () =>
+        Effect.sync(() => void loaderRuns++).pipe(Effect.as(RouteOutcome.ok({}))),
       view: () => Effect.succeed(html`<div data-page="a">a</div>`),
     }
 
@@ -81,6 +83,8 @@ describe("conformance: shell/outlet invariants", () => {
     )
 
     expect(swaps).toBe(0)
+    // MUST NOT re-run initial loader during strict hydration boot.
+    expect(loaderRuns).toBe(0)
 
     root.remove()
   })
@@ -198,4 +202,3 @@ describe("conformance: shell/outlet invariants", () => {
     root.remove()
   })
 })
-
