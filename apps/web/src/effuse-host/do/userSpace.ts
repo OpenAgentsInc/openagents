@@ -180,6 +180,81 @@ export class UserSpaceDO {
       return json({ ok: true, agentId: id, event: { eventId: evt.event_id, seq: evt.seq } })
     }
 
+    // POST /api/user-space/events { eventId, kind, json, createdAtMs }
+    // Idempotent by eventId to support replay / replication without duplicates.
+    if (url.pathname.endsWith("/events") && request.method === "POST") {
+      const body = (await readJson(request)) as any
+      const eventId = typeof body?.eventId === "string" ? body.eventId : ""
+      const kind = typeof body?.kind === "string" ? body.kind : ""
+      const jsonPayload =
+        typeof body?.json === "string"
+          ? body.json
+          : JSON.stringify(body?.payload ?? null)
+
+      const createdAtMsRaw = body?.createdAtMs
+      const createdAtMs =
+        typeof createdAtMsRaw === "number" && Number.isFinite(createdAtMsRaw)
+          ? createdAtMsRaw
+          : Date.now()
+
+      if (!eventId || !kind) {
+        return json({ ok: false, error: "invalid_event" }, { status: 400 })
+      }
+
+      const existing = sql
+        .exec<EventRow>(
+          "select seq, event_id, kind, json, created_at from events where event_id = ?",
+          eventId,
+        )
+        .toArray()
+
+      if (existing.length > 0) {
+        const row = existing[0]
+        return json({
+          ok: true,
+          inserted: false,
+          event: {
+            seq: row.seq,
+            eventId: row.event_id,
+            kind: row.kind,
+            json: row.json,
+            createdAtMs: row.created_at,
+          },
+        })
+      }
+
+      sql.exec(
+        "insert into events (event_id, kind, json, created_at) values (?, ?, ?, ?)",
+        eventId,
+        kind,
+        jsonPayload,
+        createdAtMs,
+      )
+
+      const seqRow = sql.exec<{ seq: number }>("select last_insert_rowid() as seq").one()
+      const seq = Number(seqRow.seq)
+
+      const row: EventRow = {
+        seq,
+        event_id: eventId,
+        kind,
+        json: jsonPayload,
+        created_at: createdAtMs,
+      }
+
+      // Best-effort replication (non-blocking).
+      const convexUrl = this.env.VITE_CONVEX_URL ?? process.env.VITE_CONVEX_URL
+      if (convexUrl && token) {
+        this.state.waitUntil(this.replicateToConvex(convexUrl, token, userSpaceId, [row]))
+      }
+
+      return json({
+        ok: true,
+        inserted: true,
+        event: { eventId, seq, kind, json: jsonPayload, createdAtMs },
+      })
+    }
+
     // GET /api/user-space/events?after=123
     if (url.pathname.endsWith("/events") && request.method === "GET") {
       const afterRaw = url.searchParams.get("after")
