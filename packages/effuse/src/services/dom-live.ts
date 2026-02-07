@@ -5,20 +5,7 @@
 import { Effect } from "effect"
 import { DomError, type DomService, type DomSwapMode } from "./dom.js"
 import type { TemplateResult } from "../template/types.js"
-
-const templateToString = (template: TemplateResult): string =>
-  template.parts
-    .map((part) => {
-      switch (part._tag) {
-        case "Text":
-          return part.value
-        case "Html":
-          return part.value
-        case "Template":
-          return templateToString(part.value)
-      }
-    })
-    .join("")
+import { renderToString as templateToString } from "../template/render.js"
 
 type FocusSnapshot = {
   readonly element: HTMLElement

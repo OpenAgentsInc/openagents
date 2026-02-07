@@ -345,6 +345,30 @@ This is the hardest phase; it is also where Typed is an excellent reference impl
 - measure layout stability: no reflow or flicker on hydration
 - add SSR snapshot tests for core pages
 
+**Phase 7 Log (Implemented 2026-02-07)**
+
+- Added SSR-safe template rendering primitives to Effuse:
+  - `packages/effuse/src/template/render.ts` (`renderToString(TemplateResult)`)
+  - `packages/effuse/src/template/escape.ts` is now DOM-free (works in SSR)
+  - `packages/effuse/src/services/dom-live.ts` now reuses `renderToString` instead of its own ad-hoc string renderer
+- Added a node-environment snapshot test to prevent SSR regressions (no `document` allowed):
+  - `packages/effuse/tests/render-to-string.test.ts`
+- Implemented minimal Effuse SSR + hydration in `apps/web` (key pages):
+  - `apps/web/src/components/EffuseMount.tsx` now supports `ssrHtml` (and optional `hydrate`) and skips the initial `run()` to avoid DOM teardown on hydration
+  - Refactored Effuse pages to expose pure template builders for SSR:
+    - `apps/web/src/effuse-pages/home.ts` (`homePageTemplate`)
+    - `apps/web/src/effuse-pages/header.ts` (`marketingHeaderTemplate`)
+    - `apps/web/src/effuse-pages/login.ts` (`loginPageTemplate`)
+  - Wired server-rendered HTML into TanStack Start SSR output for:
+    - marketing header (`apps/web/src/routes/_marketing.tsx`)
+    - home (`apps/web/src/routes/_marketing.index.tsx`)
+    - login (`apps/web/src/routes/_marketing.login.tsx`)
+  - Kept `ssrHtml` stable for each mount via refs/memoization so React does not mutate `innerHTML` after hydration; Effuse owns DOM updates post-hydration.
+- Verified:
+  - `cd packages/effuse && npm test`
+  - `cd apps/web && npm run lint`
+  - `cd apps/web && npm run build`
+
 ---
 
 ### Phase 8: Collapse React to a True “Host Only” Layer

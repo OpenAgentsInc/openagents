@@ -9,6 +9,7 @@ export { html, rawHtml, joinTemplates } from "./template/html.js"
 export type { TemplateResult, TemplateValue } from "./template/types.js"
 export { isTemplateResult } from "./template/types.js"
 export { escapeHtml } from "./template/escape.js"
+export { renderToString } from "./template/render.js"
 
 // State management
 export type { StateCell } from "./state/cell.js"

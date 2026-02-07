@@ -2,9 +2,9 @@ import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { Effect } from 'effect';
 import { useMemo, useRef, useState } from 'react';
-import { makeEzRegistry } from '@openagentsinc/effuse';
+import { makeEzRegistry, renderToString } from '@openagentsinc/effuse';
 import { EffuseMount } from '../components/EffuseMount';
-import { runLoginPage } from '../effuse-pages/login';
+import { loginPageTemplate, runLoginPage } from '../effuse-pages/login';
 import { TelemetryService } from '../effect/telemetry';
 import { clearRootAuthCache } from './__root';
 
@@ -60,6 +60,14 @@ function LoginPage() {
     }),
     [step, email, code, isBusy, errorText],
   );
+
+  // Keep SSR HTML stable for the lifetime of this mount. After hydration,
+  // Effuse should own DOM updates (React must not mutate innerHTML).
+  const ssrHtmlRef = useRef<string | null>(null);
+  if (ssrHtmlRef.current === null) {
+    ssrHtmlRef.current = renderToString(loginPageTemplate(model));
+  }
+  const ssrHtml = ssrHtmlRef.current;
 
   const ezRegistryRef = useRef(makeEzRegistry());
   const ezRegistry = ezRegistryRef.current;
@@ -270,6 +278,7 @@ function LoginPage() {
       // because Effuse replaces the input element. We only rerender on step/busy/error changes.
       deps={[step, isBusy, errorText]}
       ezRegistry={ezRegistry}
+      ssrHtml={ssrHtml}
       className="flex min-h-0 flex-1 flex-col"
     />
   );

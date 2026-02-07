@@ -1,8 +1,10 @@
 import { whitePreset } from '@openagentsinc/hud';
 import { Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
+import { renderToString } from '@openagentsinc/effuse';
+import { useRef } from 'react';
 import { EffuseMount } from '../components/EffuseMount';
 import { cleanupHudBackground, runHudDotsBackground } from '../effuse-pages/hudBackground';
-import { runMarketingHeader } from '../effuse-pages/header';
+import { marketingHeaderTemplate, runMarketingHeader } from '../effuse-pages/header';
 
 export const Route = createFileRoute('/_marketing')({
   component: MarketingLayout,
@@ -12,6 +14,14 @@ function MarketingLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isHome = pathname === '/';
   const isLogin = pathname === '/login';
+
+  // Keep SSR HTML stable for the lifetime of this mount. After hydration,
+  // Effuse should own DOM updates (React must not mutate innerHTML).
+  const ssrHeaderHtmlRef = useRef<string | null>(null);
+  if (ssrHeaderHtmlRef.current === null) {
+    ssrHeaderHtmlRef.current = renderToString(marketingHeaderTemplate(isHome, isLogin));
+  }
+  const ssrHeaderHtml = ssrHeaderHtmlRef.current;
 
   return (
     <div className="fixed inset-0">
@@ -41,6 +51,7 @@ function MarketingLayout() {
         <EffuseMount
           run={(el) => runMarketingHeader(el, isHome, isLogin)}
           deps={[isHome, isLogin]}
+          ssrHtml={ssrHeaderHtml}
           className="shrink-0"
         />
         <Outlet />
