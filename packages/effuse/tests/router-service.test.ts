@@ -37,6 +37,312 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("RouterService (contract)", () => {
+  it("cache-first: uses cached RouteRun without re-running loader (ttlMs undefined)", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
+    document.body.appendChild(root)
+
+    let started = 0
+    let finished = 0
+
+    const dom = DomServiceLive
+
+    const cached: Route<{ readonly n: number }> = {
+      id: "/cached",
+      match: matchExact("/cached"),
+      loader: () =>
+        Effect.gen(function* () {
+          started++
+          yield* Effect.sleep("20 millis")
+          finished++
+          return RouteOutcome.ok(
+            { n: finished },
+            { cache: { mode: "cache-first" } } // ttlMs undefined => cache forever
+          )
+        }),
+      view: (_ctx, data) =>
+        Effect.succeed(html`<div data-page="cached" data-n="${String(data.n)}">cached</div>`),
+    }
+
+    const history = makeMemoryHistory("https://example.test/")
+    const shell = root.querySelector("[data-effuse-shell]")!
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [cached],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        yield* router.navigate("/cached")
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+        expect(root.querySelector('[data-page="cached"]')?.getAttribute("data-n")).toBe(
+          "1"
+        )
+
+        // Second navigation should reuse cached run immediately (no new loader).
+        yield* router.navigate("/cached")
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+        expect(root.querySelector('[data-page="cached"]')?.getAttribute("data-n")).toBe(
+          "1"
+        )
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    root.remove()
+  })
+
+  it("cache-first: re-runs loader after ttlMs expires", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
+    document.body.appendChild(root)
+
+    let started = 0
+    let finished = 0
+
+    const dom = DomServiceLive
+
+    const cached: Route<{ readonly n: number }> = {
+      id: "/cached-ttl",
+      match: matchExact("/cached-ttl"),
+      loader: () =>
+        Effect.gen(function* () {
+          started++
+          yield* Effect.sleep("10 millis")
+          finished++
+          return RouteOutcome.ok(
+            { n: finished },
+            { cache: { mode: "cache-first", ttlMs: 5 } }
+          )
+        }),
+      view: (_ctx, data) =>
+        Effect.succeed(html`<div data-page="cached-ttl" data-n="${String(data.n)}">cached</div>`),
+    }
+
+    const history = makeMemoryHistory("https://example.test/")
+    const shell = root.querySelector("[data-effuse-shell]")!
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [cached],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        yield* router.navigate("/cached-ttl")
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+        expect(root.querySelector('[data-page="cached-ttl"]')?.getAttribute("data-n")).toBe(
+          "1"
+        )
+
+        // Wait long enough for ttl to expire.
+        yield* Effect.sleep("20 millis")
+
+        // Next navigation should re-run loader.
+        yield* router.navigate("/cached-ttl")
+        expect(started).toBe(2)
+        expect(finished).toBe(2)
+        expect(root.querySelector('[data-page="cached-ttl"]')?.getAttribute("data-n")).toBe(
+          "2"
+        )
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    root.remove()
+  })
+
+  it("stale-while-revalidate: renders stale immediately, then refreshes in background", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
+    document.body.appendChild(root)
+
+    const shell = root.querySelector("[data-effuse-shell]")!
+    const outlet = root.querySelector("[data-effuse-outlet]")!
+
+    let started = 0
+    let finished = 0
+    let outletSwaps = 0
+
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        if (target === outlet) outletSwaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    const swr: Route<{ readonly n: number }> = {
+      id: "/swr",
+      match: matchExact("/swr"),
+      loader: () =>
+        Effect.gen(function* () {
+          started++
+          yield* Effect.sleep("50 millis")
+          finished++
+          return RouteOutcome.ok(
+            { n: finished },
+            { cache: { mode: "stale-while-revalidate", ttlMs: 0, swrMs: 1_000 } }
+          )
+        }),
+      view: (_ctx, data) =>
+        Effect.succeed(html`<div data-page="swr" data-n="${String(data.n)}">swr</div>`),
+    }
+
+    const history = makeMemoryHistory("https://example.test/")
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [swr],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        // First navigation populates cache.
+        yield* router.navigate("/swr")
+        expect(started).toBe(1)
+        expect(finished).toBe(1)
+        expect(root.querySelector('[data-page="swr"]')?.getAttribute("data-n")).toBe(
+          "1"
+        )
+        expect(outletSwaps).toBe(1)
+
+        // Ensure cache age > ttlMs (0) so SWR stale path triggers.
+        yield* Effect.sleep("5 millis")
+
+        // Second navigation should render stale immediately and schedule a refresh.
+        yield* router.navigate("/swr")
+        expect(finished).toBe(1)
+        expect(root.querySelector('[data-page="swr"]')?.getAttribute("data-n")).toBe(
+          "1"
+        )
+        expect(outletSwaps).toBe(2)
+
+        // After refresh completes, outlet should update to n=2.
+        yield* Effect.sleep("80 millis")
+        expect(started).toBe(2)
+        expect(finished).toBe(2)
+        expect(root.querySelector('[data-page="swr"]')?.getAttribute("data-n")).toBe(
+          "2"
+        )
+        expect(outletSwaps).toBe(3)
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    root.remove()
+  })
+
+  it("stale-while-revalidate: refresh MUST NOT apply after navigating away", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
+    document.body.appendChild(root)
+
+    const shell = root.querySelector("[data-effuse-shell]")!
+    const outlet = root.querySelector("[data-effuse-outlet]")!
+
+    let started = 0
+    let finished = 0
+    let interrupted = 0
+    let outletSwaps = 0
+
+    const dom = {
+      ...DomServiceLive,
+      swap: (target: Element, content: any, mode?: any) => {
+        if (target === outlet) outletSwaps++
+        return DomServiceLive.swap(target, content, mode)
+      },
+    }
+
+    let resolveRefreshStarted!: () => void
+    const refreshStarted = new Promise<void>((r) => {
+      resolveRefreshStarted = r
+    })
+
+    const swr: Route<{ readonly n: number }> = {
+      id: "/swr-away",
+      match: matchExact("/swr-away"),
+      loader: () =>
+        Effect.gen(function* () {
+          started++
+          if (started === 2) resolveRefreshStarted()
+          yield* Effect.sleep("50 millis")
+          finished++
+          return RouteOutcome.ok(
+            { n: finished },
+            { cache: { mode: "stale-while-revalidate", ttlMs: 0, swrMs: 1_000 } }
+          )
+        }).pipe(
+          Effect.onInterrupt(() => Effect.sync(() => void interrupted++))
+        ),
+      view: (_ctx, data) =>
+        Effect.succeed(
+          html`<div data-page="swr-away" data-n="${String(data.n)}">swr</div>`
+        ),
+    }
+
+    const fast: Route<{}> = {
+      id: "/fast-away",
+      match: matchExact("/fast-away"),
+      loader: () => Effect.succeed(RouteOutcome.ok({})),
+      view: () => Effect.succeed(html`<div data-page="fast-away">fast</div>`),
+    }
+
+    const history = makeMemoryHistory("https://example.test/")
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const router = yield* makeRouter({
+          routes: [swr, fast],
+          history,
+          shell,
+          sessionScopeKey: Effect.succeed("anon"),
+        })
+
+        // First navigation populates cache.
+        yield* router.navigate("/swr-away")
+        expect(finished).toBe(1)
+        expect(outletSwaps).toBe(1)
+
+        yield* Effect.sleep("5 millis")
+
+        // Second navigation triggers SWR stale render + refresh in background.
+        yield* router.navigate("/swr-away")
+        expect(outletSwaps).toBe(2)
+
+        // Ensure the refresh loader actually started (so we are testing the
+        // "don't apply after navigate away" case, not "no refresh scheduled").
+        yield* Effect.promise(() => refreshStarted)
+
+        // Navigate away before refresh completes.
+        yield* router.navigate("/fast-away")
+        expect(root.querySelector('[data-page=\"fast-away\"]')).not.toBeNull()
+        expect(outletSwaps).toBe(3)
+
+        // Wait long enough for the refresh loader to finish.
+        yield* Effect.sleep("80 millis")
+        expect(started).toBe(2)
+        // Refresh should be canceled because its loader key is no longer needed.
+        expect(finished).toBe(1)
+        expect(interrupted).toBe(1)
+
+        // Refresh MUST NOT have swapped us back to /swr-away.
+        expect(root.querySelector('[data-page=\"fast-away\"]')).not.toBeNull()
+        expect(root.querySelector('[data-page=\"swr-away\"]')).toBeNull()
+        expect(outletSwaps).toBe(3)
+      }).pipe(Effect.provideService(DomServiceTag, dom))
+    )
+
+    root.remove()
+  })
+
   it("dedupes concurrent prefetches for the same loader key", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
