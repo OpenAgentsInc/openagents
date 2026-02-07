@@ -2,27 +2,43 @@
 
 **Status:** Draft (2026-02-07)  
 **Audience:** implementers of `@openagentsinc/effuse` + maintainers of `apps/web`  
-**Goal:** define the end-state architecture and migration plan where **Effect + Effuse fully replace React + TanStack** for the OpenAgents web app, while staying consistent with Effuse’s design constraints (no VDOM, explicit swaps, Effect-native services).
+**Goal:** define the end-state architecture and migration plan where **Effuse (built on Effect) fully replaces React + TanStack** for the OpenAgents web app, while staying consistent with Effuse’s design constraints (no VDOM, explicit swaps, Effect-native services).
 
 This document consolidates and extends the existing Effuse framework docs and the `apps/web` integration docs into a **single end-to-end plan**.
 
 ## 0. End State (What “Complete” Means)
 
-When complete, the web product is a *pure Effect/Effuse application*:
+When complete, the web product is a *pure Effuse application (built on Effect)*:
 
 - **No React**: no `react`, no JSX/TSX runtime in production.
 - **No TanStack**: no `@tanstack/start`, `@tanstack/router`, `@tanstack/react-query` (or any TanStack UI/runtime dependency).
-- **Effuse is the UI runtime**:
-  - HTML templates (`html```, `TemplateResult`)
-  - explicit DOM swaps (`DomService.swap`)
-  - component render loops (`StateCell` + `mountComponent`) when needed
-  - hypermedia actions / event binding via EZ (`data-ez-*`)
-  - SSR rendering via `renderToString(TemplateResult)`
-  - hydration/boot with no “tear down and replace DOM” for first paint
-- **Effect is the application runtime**:
-  - routing, loaders, navigation, state, side effects, caching
-  - typed request boundaries (RPC/HTTP) and telemetry
-  - a single shared Layered composition root (server + client)
+- **Effuse is the application framework/runtime (built on Effect)**:
+  - Think: “Effuse is to Effect what Next.js is to React”: Effuse owns the web app’s UI *and* the app loop (routing/loaders/navigation/SSR/hydration), and it is implemented in terms of Effect.
+  - UI primitives:
+    - HTML templates (`html```, `TemplateResult`)
+    - explicit DOM swaps (`DomService.swap`)
+    - component render loops (`StateCell` + `mountComponent`) when needed
+    - hypermedia actions / event binding via EZ (`data-ez-*`)
+  - App/runtime primitives (also Effuse-owned in the end state):
+    - routing + loaders + navigation (Effect-native router service)
+    - SSR rendering via `renderToString(TemplateResult)`
+    - hydration/boot with no “tear down and replace DOM” for first paint
+    - typed request boundaries (RPC/HTTP), budgets, receipts/replay, telemetry
+    - a single shared composed runtime (an Effect `ManagedRuntime` built from the app Layer) usable on server + client
+
+## 0.1 Engineering Invariants (Pulled In From `docs/autopilot/*`)
+
+The “no React / no TanStack” end-state must still preserve the core Autopilot/DSE posture:
+
+- **Schema-first everywhere**: domain state and request boundaries are validated with Effect `Schema` (inputs, outputs, persisted records, exports/imports).
+- **Artifact-first, no learning in prod**: production execution loads pinned artifacts/policies; “optimization/compile” is explicit and offline; artifacts are immutable and promotion is pointer-only.
+- **Adapters only parse/format**: validation, retries, budgets, receipts, and error normalization live in runtime operators/middleware, not in API/DOM adapters.
+- **Everything is replayable**: stable IDs + deterministic hashes appear in receipts (e.g. `signatureId`, `compiled_id`, prompt/policy hashes, tool call receipts).
+- **Budgets are enforced**: time, steps, tool calls, LLM calls, and output-size caps are first-class and observable (why we stopped is always answerable).
+- **Large inputs are blobs**: big pasted/code/log content is stored once (`BlobStore`) and referenced (`BlobRef`) in prompts/receipts (“two-bucket context”); don’t duplicate huge text in token space.
+- **Tool-call failures are user-visible**: tool-call repair is used where possible; `tool-error` parts must render (or degrade to a visible fallback) so the UI never “silently stalls”.
+- **Telemetry is a service**: structured, namespaced telemetry with request correlation (`requestId`) and best-effort sinks; never blocks user flows; SSR-safe.
+- **No containers posture holds**: if we ever add “code mode”, it must be capability-limited (externals-only), checkpointable at I/O, and strictly resource-bounded (Monty model).
 
 ## 1. Non-Goals (For This Master Plan)
 
@@ -58,14 +74,18 @@ Define one canonical Layer bundle, with server/client specializations.
 
 - All “global” dependencies (config, telemetry, HTTP, auth, RPC client, etc.) are provided via Effect `Layer`s.
 - The UI runtime (`EffuseLive`) is provided via `Layer`s (browser DOM on client; SSR-only rendering services on server).
+  - Prefer a single composed runtime (ManagedRuntime) with middleware-style wrapping for cross-cutting concerns (telemetry, errors, abort), rather than sprinkling `Layer.provide(...)` ad hoc.
 
 **Recommended service surface (illustrative, not exhaustive):**
 
 - `AppConfigService` (env/config)
-- `TelemetryService`
+- `TelemetryService` (namespaced, best-effort sinks, request correlation)
 - `HttpClient` (`@effect/platform`), plus `Fetch` implementation per environment
 - `AuthService` (WorkOS session, sign-in/out; server cookie parsing)
 - `AgentRpcClientService` (or successor)
+- `ExecutionBudget` (time/steps/tool+LLM call caps, output-size caps)
+- `ReceiptRecorder` (stable hashes + tool receipts for replay/debug)
+- `BlobStore` (BlobRef storage for large context inputs)
 - `RouterService` (see below)
 - `DomService` (client only), `Document/Window/History` split over time (per `ROADMAP.md`)
 
@@ -84,9 +104,17 @@ Each route is a typed contract:
 
 **Key constraint:** route definitions must be importable and runnable in both SSR and the browser.
 
-### 3.3 Server: `EffectWebHost` (SSR + RPC + Static)
+### 3.2.1 Middleware-Style Boundaries (Telemetry, Errors, Abort)
 
-Replace TanStack Start’s server runtime with an Effect server that:
+Where TanStack/React used framework boundaries (loaders, error boundaries, providers), the end-state should use explicit Effect middleware at the server and router boundaries:
+
+- **Telemetry middleware**: annotate logs with `requestId`/`routeId`/`threadId` and emit lifecycle events; flush any bounded sinks in finalizers (best-effort).
+- **Error normalization middleware**: map typed failures to user-safe responses/templates, and avoid double-logging by centralizing error emission.
+- **Abort/cancellation middleware**: navigation cancels in-flight loaders; server requests observe abort signals and terminate safely.
+
+### 3.3 Server: `EffuseWebHost` (SSR + RPC + Static)
+
+Replace TanStack Start’s server runtime with an Effuse host (implemented with Effect) that:
 
 - Serves static assets (the built client bundle)
 - Handles `POST /api/rpc` (Effect RPC) and any other API endpoints
@@ -133,6 +161,15 @@ Remove React state and TanStack Query by standardizing on Effect primitives:
 
 **Rule:** if state drives UI, it must be observable by Effuse (Atom subscription or Stream) and must not require React rendering to reflect changes.
 
+### 3.5.1 Blueprint/Bootstrap State (Schema-Backed, Exportable)
+
+Autopilot-specific “bootstrap” (Identity/User/Character/Tools/Heartbeat/Memory) should be treated as **durable, typed records** (Effect `Schema`), not a pile of markdown files:
+
+- canonical store: per-user durable storage (Durable Object SQLite), optionally mirrored to Convex for UI/querying
+- export/import: a single versioned JSON “Blueprint” format, validated at boundaries
+- prompt injection: rendered “context file” view is derived; canonical representation remains structured
+- memory visibility: enforce `main_only` vs `all` mechanically (not by convention)
+
 ### 3.6 UI Interaction Model (Effuse-First)
 
 Two primitives remain the core UX building blocks:
@@ -152,6 +189,16 @@ The end-state should use EZ for:
 - long-lived screens with multiple state sources
 - streaming views (chat, logs)
 - subscriptions (websocket, timers, push streams)
+
+### 3.6.1 Tool UX Must Not Stall
+
+Tool calling in the AI SDK produces `tool-error` parts for invalid tool names/inputs; if the UI hides tool parts, users experience “nothing happened”.
+
+End-state requirements:
+
+- render tool results and tool errors (or a compact, user-visible fallback)
+- log/record tool-call repair events and invalid tool calls for debugging
+- keep tool UI bounded (truncate big tool I/O; use BlobRefs when large)
 
 ### 3.7 SSR + Hydration (Effuse-Native)
 
@@ -178,12 +225,19 @@ This implies:
 | SPA navigation (`<Link/>`) | `<a href>` + router interception (built into RouterService/EZ) |
 | React Query caching | Effect `Cache` / `Request` / `MemoMap` patterns |
 | Error boundaries | Effect error channels + EZ error targets + top-level “render error template” |
-| SSR rendering | `renderToString(TemplateResult)` + Effect server |
+| SSR rendering | `renderToString(TemplateResult)` + `EffuseWebHost` |
 | Hydration | Effuse boot that attaches behavior without DOM teardown |
 
 ## 5. Migration Plan (Phased, Shippable)
 
 This is the concrete, incremental path from today to the end state.
+
+### Cross-Cutting Prereqs (Apply To Every Phase)
+
+- Wire a real `TelemetryService` (namespaces + request correlation + SSR-safe sinks) and remove scattered `console.*` / ad hoc analytics calls.
+- Enforce budgets and cancellation at boundaries (navigation cancels loaders; server observes abort; tool/LLM calls are bounded).
+- Ensure tool-error visibility (never “silent stall”).
+- Prefer BlobRefs for large payloads (avoid prompt/DOM bloat; receipts stay stable).
 
 ### Phase 0: Lock Baseline + Hard Contracts
 
@@ -226,11 +280,11 @@ DoD:
 
 - The app no longer depends on TanStack’s notion of route components for UI; TanStack is only an asset+SSR transport.
 
-### Phase 3: Stand Up `EffectWebHost` in Parallel
+### Phase 3: Stand Up `EffuseWebHost` in Parallel
 
 Deliverables:
 
-- Create a new Effect server (Node/Bun/Worker target) that can:
+- Create a new Effuse host server (Node/Bun/Worker target) that can:
   - serve the built assets
   - SSR the Effuse app via route table
   - host `POST /api/rpc`
@@ -239,18 +293,18 @@ Deliverables:
 
 DoD:
 
-- You can run the app end-to-end via the Effect server locally (SSR + client navigation + RPC).
+- You can run the app end-to-end via the Effuse host locally (SSR + client navigation + RPC).
 
 ### Phase 4: Production Cutover (Remove TanStack Start)
 
 Deliverables:
 
-- Deploy `EffectWebHost` as the production server entrypoint.
+- Deploy `EffuseWebHost` as the production server entrypoint.
 - Remove TanStack Start server runtime from the deployment pipeline.
 
 DoD:
 
-- Production traffic is served by the Effect server; TanStack Start is no longer in the deploy artifact.
+- Production traffic is served by the Effuse host; TanStack Start is no longer in the deploy artifact.
 
 ### Phase 5: Remove React (No TSX, No React Providers)
 
@@ -292,11 +346,14 @@ DoD:
 
 These must be decided explicitly to finish the React/TanStack removal:
 
-- **Hosting target:** Cloudflare Worker vs Node/Bun for `EffectWebHost`.
-- **Auth integration:** how WorkOS AuthKit middleware maps into the Effect server request pipeline (cookie/session parsing, redirect flows, CSRF).
+- **Hosting target:** Cloudflare Worker vs Node/Bun for `EffuseWebHost`.
+- **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
 - **Convex usage:** keep it behind RPC/HTTP boundaries or integrate a non-React Convex client directly as an Effect service.
 - **Hydration strictness:** do we require DOM-perfect hydration for all routes, or allow “first client render swaps outlet” for some screens?
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
+- **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
+- **Blueprint editing UX:** schema-driven forms vs markdown-like editing, and how to keep edits focus-stable under Effuse swaps.
+- **Receipt surfaces:** what parts of receipts (tool calls, `compiled_id`, hashes, budgets) should be user-visible vs debug-only.
 
 ## 7. Related Docs (Sources Consolidated Here)
 
@@ -323,3 +380,16 @@ These must be decided explicitly to finish the React/TanStack removal:
   - `adr/adr-0027-effect-rpc-and-atom-hydration-web.md`
   - `adr/adr-0022-effuse-uitree-ipc.md` (desktop UITree/patch IPC contract; orthogonal to React/TanStack removal)
 
+- Autopilot / DSE sources that inform this plan:
+  - `../../../docs/autopilot/spec.md`
+  - `../../../docs/autopilot/effect-telemetry-service.md`
+  - `../../../docs/autopilot/effect-patterns-from-crest.md`
+  - `../../../docs/autopilot/tool-handling-improvements.md`
+  - `../../../docs/autopilot/bootstrap-plan.md`
+  - `../../../docs/autopilot/typed-synergies.md`
+  - `../../../docs/autopilot/horizons-synergies.md`
+  - `../../../docs/autopilot/microcode-synergies.md`
+  - `../../../docs/autopilot/rlm-synergies.md`
+  - `../../../docs/autopilot/monty-synergies.md`
+  - `../../../docs/autopilot/dse.md`
+  - `../../../docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`
