@@ -24,7 +24,17 @@ export const AutopilotSidebarCollapsedAtom = Atom.writable(
   },
 ).pipe(Atom.keepAlive, Atom.withLabel('@openagents/web/autopilot/sidebarCollapsed'));
 
-export const AutopilotSidebarUserMenuOpenAtom = Atom.make(false).pipe(
+export const AutopilotSidebarUserMenuOpenAtom = Atom.writable(
+  (get) => {
+    const existing = get.self<boolean>();
+    if (Option.isSome(existing)) return existing.value;
+    get.setSelf(false);
+    return false;
+  },
+  (ctx, value: boolean) => {
+    ctx.setSelf(value);
+  },
+).pipe(
   Atom.keepAlive,
   Atom.withLabel('@openagents/web/autopilot/sidebarUserMenuOpen'),
 );
