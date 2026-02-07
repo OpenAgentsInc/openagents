@@ -1,7 +1,6 @@
+import { useAtomSet, useAtomValue } from '@effect-atom/atom-react';
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
-import { useAgent } from 'agents/react';
-import { useAgentChat } from '@cloudflare/ai-chat/react';
 import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { makeEzRegistry } from '@openagentsinc/effuse';
@@ -12,6 +11,8 @@ import { runAutopilotChat } from '../effuse-pages/autopilot';
 import { runAutopilotBlueprintPanel } from '../effuse-pages/autopilotBlueprint';
 import { runAutopilotControls } from '../effuse-pages/autopilotControls';
 import { cleanupHudBackground, runHudDotsGridBackground } from '../effuse-pages/hudBackground';
+import { ChatService } from '../effect/chat';
+import { AutopilotChatInputAtom, AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from '../effect/atoms/chat';
 import { TelemetryService } from '../effect/telemetry';
 import { AgentApiService } from '../effect/agentApi';
 import type { UIMessage } from 'ai';
@@ -217,22 +218,20 @@ function ChatPage() {
   const router = useRouter();
   const runtime = router.options.context.effectRuntime;
 
-  const agent = useAgent({
-    agent: 'chat',
-    name: chatId,
-  });
+  const chatClient = useMemo(
+    () =>
+      runtime.runSync(
+        Effect.gen(function* () {
+          return yield* ChatService;
+        }),
+      ),
+    [runtime],
+  );
+  const chatSnapshot = useAtomValue(ChatSnapshotAtom(chatId));
 
-  const chat = useAgentChat({
-    agent,
-    resume: true,
-    // SSR: `useAgent` (PartySocket) uses a dummy host when `window` is undefined.
-    // Avoid fetching `/get-messages` against that host during SSR; the client will
-    // fetch messages from the real origin after hydration.
-    ...(typeof window === 'undefined' ? { getInitialMessages: null } : {}),
-  });
-  const { clearHistory } = chat;
+  const input = useAtomValue(AutopilotChatInputAtom(chatId));
+  const setInput = useAtomSet(AutopilotChatInputAtom(chatId));
 
-  const [input, setInput] = useState('');
   const didMountRef = useRef(false);
   const [isExportingBlueprint, setIsExportingBlueprint] = useState(false);
   const [isResettingAgent, setIsResettingAgent] = useState(false);
@@ -253,11 +252,12 @@ function ChatPage() {
     Record<string, AgentToolContract> | null
   >(null);
   const [isSavingBlueprint, setIsSavingBlueprint] = useState(false);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const isStreaming = chat.status === 'streaming';
-  const isBusy = chat.status === 'submitted' || chat.status === 'streaming';
+  const isAtBottom = useAtomValue(AutopilotChatIsAtBottomAtom(chatId));
+  const setIsAtBottom = useAtomSet(AutopilotChatIsAtBottomAtom(chatId));
+  const isStreaming = chatSnapshot.status === 'streaming';
+  const isBusy = chatSnapshot.status === 'submitted' || chatSnapshot.status === 'streaming';
 
-  const messages = chat.messages as ReadonlyArray<UIMessage>;
+  const messages = chatSnapshot.messages;
   const chatMountRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -282,7 +282,7 @@ function ChatPage() {
 
     root.addEventListener('scroll', onScrollCapture, true);
     return () => root.removeEventListener('scroll', onScrollCapture, true);
-  }, []);
+  }, [setIsAtBottom]);
 
   const renderedMessages = useMemo(() => {
     const isUserOrAssistant = (
@@ -501,9 +501,7 @@ function ChatPage() {
   );
 
   chatEzRegistry.set('autopilot.chat.stop', () =>
-    Effect.sync(() => {
-      chat.stop().catch(() => {});
-    }),
+    chatClient.stop(chatId),
   );
 
   chatEzRegistry.set('autopilot.chat.send', ({ el, params }) =>
@@ -521,24 +519,11 @@ function ChatPage() {
         setInput('');
       });
 
-      yield* Effect.tryPromise({
-        try: () => chat.sendMessage({ text }),
-        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
-      }).pipe(
-        Effect.catchAll((err) =>
+      yield* chatClient.send(chatId, text).pipe(
+        Effect.catchAll(() =>
           Effect.sync(() => {
             if (inputEl) inputEl.value = text;
             setInput(text);
-            runtime
-              .runPromise(
-                Effect.gen(function* () {
-                  const telemetry = yield* TelemetryService;
-                  yield* telemetry.withNamespace('ui.chat').log('error', 'chat.send_failed', {
-                    message: err.message,
-                  });
-                }),
-              )
-              .catch(() => {});
           }),
         ),
       );
@@ -693,7 +678,7 @@ function ChatPage() {
       setInput('');
       await fetchBlueprint();
       const nextMessages = await fetchChatMessages();
-      chat.setMessages(nextMessages);
+      await Effect.runPromise(chatClient.setMessages(chatId, nextMessages)).catch(() => {});
     } catch (err) {
       await runtime
         .runPromise(
@@ -857,8 +842,9 @@ function ChatPage() {
   );
 
   controlsEzRegistry.set('autopilot.controls.clearMessages', () =>
-    Effect.sync(() => {
-      clearHistory();
+    Effect.gen(function* () {
+      yield* chatClient.clearHistory(chatId);
+      yield* Effect.sync(() => setInput(''));
     }),
   );
 
@@ -906,7 +892,9 @@ function ChatPage() {
 	        <div ref={chatMountRef} className="flex-1 min-h-0 flex flex-col overflow-hidden">
 	          <EffuseMount
 	            run={runAutopilotChatRef}
-	            deps={[autopilotChatData]}
+	            // Avoid rerendering the Effuse DOM on each keystroke; it causes caret/selection glitches
+	            // because Effuse replaces the input element.
+	            deps={[renderedTailKey, isBusy, isAtBottom, toolContractsByName]}
 	            ezRegistry={chatEzRegistry}
 	            className="flex-1 min-h-0 flex flex-col overflow-hidden"
 	          />

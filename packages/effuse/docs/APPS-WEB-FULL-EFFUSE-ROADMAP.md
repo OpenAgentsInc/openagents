@@ -303,6 +303,19 @@ This is the key gap vs. Typed: Typed templates can bind events and update state 
 - reconnection works
 - SSR safety: server render should not attempt WebSocket calls
 
+**Phase 6 Log (Implemented 2026-02-07)**
+
+- Added an Effect-first `ChatService` that replaces React chat hooks by driving the Agents websocket protocol directly (PartySocket `AgentClient`) and using the AI SDK `Chat` class for message streaming/state:
+  - `apps/web/src/effect/chat.ts`
+  - registered in the app layer: `apps/web/src/effect/layer.ts`
+- Added `@effect-atom` state for chat snapshot + input + scroll state:
+  - `apps/web/src/effect/atoms/chat.ts`
+- Updated `/autopilot` to remove `useAgent` / `useAgentChat` and drive the Effuse chat UI from atoms + Effects:
+  - `apps/web/src/routes/autopilot.tsx`
+  - still uses Effuse `data-ez` handlers; send/stop/clear are now Effects calling `ChatService`.
+- Prevented caret glitches by avoiding Effuse re-render on every input keystroke (same pattern as `/login`): `apps/web/src/routes/autopilot.tsx`
+- Verified: `cd apps/web && npm run lint` and `cd apps/web && npm run build`
+
 ---
 
 ### Phase 7: Effuse SSR + Hydration (Reduce Client Work, Remove “Render After Hydration”)
