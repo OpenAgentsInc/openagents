@@ -18,7 +18,7 @@
   "assets": {
     "directory": "dist/effuse-client",
     "binding": "ASSETS",
-    "run_worker_first": ["/*"],
+    "run_worker_first": true,
     "not_found_handling": "none",
     "html_handling": "none"
   },
@@ -42,7 +42,10 @@
   ],
   "vars": {
     "WORKOS_REDIRECT_URI": "https://openagents.com/callback",
-    "OA_ADMIN_EMAILS": "chris@openagents.com"
+    "OA_ADMIN_EMAILS": "chris@openagents.com",
+    // Required for Effect ConvexService (SSR + RPC + DO replication).
+    // This is not secret and can be overridden via `wrangler deploy --var VITE_CONVEX_URL:...`.
+    "VITE_CONVEX_URL": "https://aware-caterpillar-962.convex.cloud"
   }
   // Production secrets (from .env.production): run once before deploy:
   //   npm run wrangler:secrets

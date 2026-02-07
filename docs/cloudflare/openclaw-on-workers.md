@@ -96,8 +96,8 @@ We can treat Cloudflare as an execution lane/provider:
 
 ## What openagents.com can do next (Cloudflare-native)
 
-OpenAgents already runs on Cloudflare Pages.
-We can expand with Workers for "agent infrastructure":
+OpenAgents already runs on Cloudflare Workers (single Worker host).
+We can expand further with Cloudflare-native "agent infrastructure":
 
 - **`openagents.com/api/indexer`** (Worker + D1/R2/KV/Queues) — **live**; indexes Moltbook (posts, comments, authors, derived signals). See `apps/indexer/` and `private/indexer.md`.
 - **Spark API** — removed. Balance/invoice/pay endpoints on the main API return 501.
