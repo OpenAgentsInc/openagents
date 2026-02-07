@@ -132,7 +132,7 @@ const renderDocument = (input: {
   const metaTags = input.meta
     .map(
       ([name, content]) =>
-        `<meta name="${escapeHtml(name)}" content="${escapeHtml(content)}" />`,
+        `<meta name="${escapeHtml(name)}" content="${escapeHtml(content)}" data-effuse-meta="1" />`,
     )
     .join("")
 

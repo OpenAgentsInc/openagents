@@ -967,6 +967,7 @@ Work log:
 - 2026-02-07: hardening: tightened strict hydration conformance by asserting `RouterService.start` does not execute loaders on boot (not just “no swap”) (`packages/effuse/tests/conformance-shell-outlet.test.ts`).
 - 2026-02-07: hardening: expanded `DomService.swap` focus/caret contract tests to cover textarea selection restoration and outer-swap focus restoration (caret preservation for Blueprint-like editing flows) (`packages/effuse/tests/dom-swap.test.ts`).
 - 2026-02-07: hardening: added `runRoute` contract tests covering guard short-circuiting, stage attribution (`guard`/`loader`/`head`/`view`) on defects, and hydration/navigation defaults/overrides (`packages/effuse/tests/run-route.test.ts`).
+- 2026-02-07: hardening: ensured SSR route meta tags include `data-effuse-meta="1"` so RouterService head management can reliably clear/replace them on client navigations (prevents duplicate stale meta tags after the first SPA navigation) (`apps/web/src/effuse-host/ssr.ts`).
 
 Add/Change:
 
