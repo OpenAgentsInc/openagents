@@ -102,11 +102,12 @@ const sidebarModel = (overrides?: Partial<AutopilotSidebarModel>): AutopilotSide
 const blueprintModel = (overrides?: Partial<AutopilotBlueprintPanelModel>): AutopilotBlueprintPanelModel => ({
   updatedAtLabel: "just now",
   isLoading: false,
-  isEditing: false,
   canEdit: true,
   isSaving: false,
   errorText: null,
-  blueprintText: "{\\n  \\\"name\\\": \\\"autopilot\\\"\\n}",
+  mode: "form",
+  rawErrorText: null,
+  rawDraft: "{\\n  \\\"name\\\": \\\"autopilot\\\"\\n}",
   draft: {
     userHandle: "bobo",
     agentName: "autopilot",
@@ -274,23 +275,23 @@ export const autopilotStories: ReadonlyArray<Story> = [
   },
   {
     id: "autopilot-organisms-blueprint-view",
-    title: "Autopilot/Organisms/Blueprint Panel (View)",
+    title: "Autopilot/Organisms/Blueprint Panel (Form)",
     kind: "organism",
     render: () =>
       html`
         <div class="h-screen min-h-0 w-[360px] border border-border-dark bg-bg-secondary">
-          ${autopilotBlueprintPanelTemplate(blueprintModel({ isEditing: false }))}
+          ${autopilotBlueprintPanelTemplate(blueprintModel({ mode: "form" }))}
         </div>
       `,
   },
   {
     id: "autopilot-organisms-blueprint-editing",
-    title: "Autopilot/Organisms/Blueprint Panel (Editing)",
+    title: "Autopilot/Organisms/Blueprint Panel (Raw)",
     kind: "organism",
     render: () =>
       html`
         <div class="h-screen min-h-0 w-[360px] border border-border-dark bg-bg-secondary">
-          ${autopilotBlueprintPanelTemplate(blueprintModel({ isEditing: true }))}
+          ${autopilotBlueprintPanelTemplate(blueprintModel({ mode: "raw" }))}
         </div>
       `,
   },
@@ -306,4 +307,3 @@ export const autopilotStories: ReadonlyArray<Story> = [
       `,
   },
 ] as const
-
