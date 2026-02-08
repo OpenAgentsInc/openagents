@@ -63,6 +63,7 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
   let slideIndex = 0
   let stepIndex = 1
   let totalSteps = 1
+  let isFullscreen = false
 
   let renderScheduled = false
 
@@ -80,7 +81,7 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
       return
     }
 
-    const out = renderDeck({ doc, slideIndex, stepIndex })
+    const out = renderDeck({ doc, slideIndex, stepIndex, presenting: isFullscreen })
     slideIndex = out.slideIndex
     stepIndex = out.stepIndex
     totalSteps = out.totalSteps
@@ -193,6 +194,25 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
     }
   }
 
+  const setFullscreen = async (enabled: boolean) => {
+    try {
+      if (enabled) {
+        if (document.fullscreenElement) return
+        // Prefer taking over the whole viewport for presentation.
+        await root.requestFullscreen()
+      } else {
+        if (!document.fullscreenElement) return
+        await document.exitFullscreen()
+      }
+    } catch (err) {
+      console.error("[deck] fullscreen toggle failed", err)
+    }
+  }
+
+  const toggleFullscreen = async () => {
+    await setFullscreen(!document.fullscreenElement)
+  }
+
   const onKeyDown = (e: KeyboardEvent) => {
     // Avoid interfering with typing if the deck ever includes inputs.
     const target = e.target
@@ -219,6 +239,11 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
         e.preventDefault()
         prevSlide()
         break
+      case "f":
+      case "F":
+        e.preventDefault()
+        void toggleFullscreen()
+        break
       case "r":
       case "R":
         e.preventDefault()
@@ -229,7 +254,23 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
     }
   }
 
+  const onClick = (e: MouseEvent) => {
+    const target = e.target
+    if (!(target instanceof Element)) return
+    const btn = target.closest("[data-deck-action='toggle-fullscreen']")
+    if (!btn) return
+    e.preventDefault()
+    void toggleFullscreen()
+  }
+
+  const onFullscreenChange = () => {
+    isFullscreen = Boolean(document.fullscreenElement)
+    scheduleRender()
+  }
+
   window.addEventListener("keydown", onKeyDown)
+  root.addEventListener("click", onClick)
+  document.addEventListener("fullscreenchange", onFullscreenChange)
 
   // Initial load.
   void loadDeck()
@@ -237,6 +278,8 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
   return {
     cleanup: () => {
       window.removeEventListener("keydown", onKeyDown)
+      root.removeEventListener("click", onClick)
+      document.removeEventListener("fullscreenchange", onFullscreenChange)
     },
   }
 }
