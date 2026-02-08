@@ -306,4 +306,32 @@ export const autopilotStories: ReadonlyArray<Story> = [
         </div>
       `,
   },
+  {
+    id: "autopilot-dashboard-preview",
+    title: "Autopilot/Dashboard preview (sidebar + chat)",
+    kind: "organism",
+    render: () =>
+      html`
+        <div class="flex h-full min-h-0 w-full min-w-0 rounded border border-border-dark bg-bg-secondary overflow-hidden">
+          <div class="shrink-0 h-full">
+            ${autopilotSidebarTemplate(sidebarModel({ collapsed: false }))}
+          </div>
+          <div class="flex-1 min-w-0 flex flex-col border-l border-border-dark">
+            ${autopilotChatTemplate(
+              chatData({
+                messages: [
+                  messageUser("m1", "make a plan for the MVP"),
+                  messageAssistantText("m2", "Working on it…\n\n### Phase 1\n- Route contract\n- Cache rules\n", "streaming"),
+                  messageAssistantTool("m3"),
+                ],
+                isBusy: true,
+                isAtBottom: false,
+                inputValue: "next steps?",
+                auth: authAuthed,
+              }),
+            )}
+          </div>
+        </div>
+      `,
+  },
 ] as const

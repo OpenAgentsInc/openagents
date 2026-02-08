@@ -1,6 +1,8 @@
 import { html } from "@openagentsinc/effuse"
 import type { TemplateResult } from "@openagentsinc/effuse"
 
+import { getStoryById } from "../storybook"
+
 import {
   isRefNode,
   parseDeckDocument,
@@ -283,9 +285,12 @@ const renderNode = (
       const gapStyle = toGapStyle(theme, props.gap) ?? ""
       const align = asString(props.align) ?? "stretch"
       const justify = asString(props.justify) ?? "start"
+      const fill = props.fill === true
+      const position = asString(props.position) ?? ""
+      const posStyle = position === "relative" ? "position:relative;" : ""
       return html`<div
-        class="flex flex-col min-h-0"
-        style="${gapStyle} align-items:${align}; justify-content:${justify};"
+        class="flex flex-col min-h-0${fill ? " flex-1" : ""}"
+        style="${posStyle} ${gapStyle} align-items:${align}; justify-content:${justify};"
       >
         ${renderChildren(doc, theme, runtime, children)}
       </div>`
@@ -308,6 +313,19 @@ const renderNode = (
         children,
       )}</div>`
     }
+    case "Layer": {
+      const inset = props.inset !== false
+      const zIndex = asNumber(props.zIndex) ?? 0
+      const bg = asString(props.background) ?? ""
+      const bgStyle = bg ? `background:${bg};` : ""
+      const pointerEvents = props.pointerEvents === false ? "pointer-events:none;" : ""
+      return html`<div
+        class="absolute inset-0 min-h-0 min-w-0 overflow-hidden h-full"
+        style="z-index:${zIndex}; min-height:100%; ${bgStyle} ${pointerEvents}"
+      >
+        ${renderChildren(doc, theme, runtime, children)}
+      </div>`
+    }
     case "Spacer": {
       const sizeResolved = resolveTokenValue(theme, props.size)
       const size = asNumber(sizeResolved) ?? 16
@@ -326,16 +344,20 @@ const renderNode = (
 
       const cls =
         style === "h1"
-          ? "text-[56px] leading-[1.06] tracking-tight font-semibold use-font-square721 [font-family:var(--font-square721)]"
+          ? "text-[96px] leading-[1.06] tracking-tight font-semibold [font-family:var(--font-sans)]"
           : style === "h2"
-            ? "text-[40px] leading-[1.12] tracking-tight font-semibold use-font-square721 [font-family:var(--font-square721)]"
+            ? "text-[36px] leading-[1.2] font-normal tracking-[0.1em] use-font-square721 [font-family:var(--font-square721)]"
             : style === "h3"
               ? "text-[28px] leading-[1.18] font-semibold use-font-square721 [font-family:var(--font-square721)]"
-              : style === "caption"
-                ? "text-[14px] leading-5 text-text-dim"
-                : style === "code"
-                  ? "text-[18px] leading-6 font-mono"
-                  : "text-[22px] leading-7"
+              : style === "problemLabel"
+                ? "text-[18px] leading-5 tracking-wider uppercase text-white/70 [font-family:var(--font-sans)]"
+                : style === "problemHeadline"
+                  ? "text-[66px] leading-[1.06] tracking-tight font-semibold [font-family:var(--font-sans)]"
+                  : style === "caption"
+                    ? "text-[16px] leading-6 text-white/80"
+                    : style === "code"
+                      ? "text-[18px] leading-6 font-mono"
+                      : "text-[22px] leading-7"
 
       return html`<div class="${cls}" style="text-align:${align}; ${colorStyle}">
         ${renderChildren(doc, theme, runtime, children)}
@@ -397,6 +419,26 @@ const renderNode = (
       const total = runtime.slideCount
       const text = format === "current" ? String(current) : format === "total" ? String(total) : `${current}/${total}`
       return html`<span class="text-[12px] text-text-dim font-mono">${text}</span>`
+    }
+    case "Embed": {
+      const src = asString(props.src) ?? ""
+      const title = asString(props.title) ?? "Embedded content"
+      const minHeight = asNumber(props.minHeight) ?? 320
+      if (!src) return html`<div class="text-xs text-text-dim rounded border border-border-dark p-3">[Embed: missing src]</div>`
+      return html`<iframe
+        src="${src}"
+        title="${title}"
+        class="w-full h-full min-w-0 min-h-0 rounded border-0 bg-bg-primary overflow-hidden"
+        style="min-height:${px(minHeight)}; height:100%;"
+        referrerpolicy="no-referrer"
+      ></iframe>`
+    }
+    case "Story": {
+      const storyId = asString(props.storyId) ?? ""
+      if (!storyId) return html`<div class="text-xs text-text-dim rounded border border-border-dark p-3">[Story: missing storyId]</div>`
+      const story = getStoryById(storyId)
+      if (!story) return html`<div class="text-xs text-text-dim rounded border border-border-dark p-3">[Story not found: ${storyId}]</div>`
+      return html`<div class="h-full w-full min-h-0 min-w-0 overflow-hidden">${story.render()}</div>`
     }
     default:
       return renderUnknownNode(node.type)
@@ -466,11 +508,32 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
 
   const slideBgResolved = resolveTokenValue(theme, slide.background)
   const surfaceBg = typeof slideBgResolved === "string" ? slideBgResolved : "rgba(0,0,0,0.35)"
+  /* Slightly transparent in presenting so shell dots grid shows through */
+  const surfaceBgPresenting = "rgba(0,0,0,0.25)"
 
   const runtime = { slideIndex, slideCount, stepIndex, totalSteps }
+  const isFullbleed = slide.layout === "solution"
 
   const template = html`
-    <div class="relative w-full h-full overflow-hidden text-text-primary font-mono">
+    <div class="relative w-full h-full min-h-0 overflow-hidden text-text-primary font-mono">
+      ${isFullbleed && presenting
+        ? html`
+            <div class="absolute inset-0 min-w-0 min-h-0 flex flex-col h-full" style="min-height:100%;">
+              ${filteredNodes.map((n) => renderNode(doc, theme, runtime, n))}
+            </div>
+          `
+        : presenting
+          ? html`
+            <div
+              class="absolute inset-0 flex flex-col min-h-0"
+              style="background:${surfaceBgPresenting};"
+            >
+              <div class="flex-1 min-h-0 p-12 flex flex-col">
+                ${filteredNodes.map((n) => renderNode(doc, theme, runtime, n))}
+              </div>
+            </div>
+          `
+          : html`
       <div class="absolute inset-0 flex items-center justify-center p-6">
         <div
           class="relative shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_80px_rgba(0,0,0,0.65)] rounded overflow-hidden border border-border-dark backdrop-blur-md"
@@ -484,16 +547,15 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
 
       <div class="absolute top-4 right-4 flex items-center gap-2">
         ${hatcheryActionButton({
-          label: presenting ? "Exit" : "Fullscreen",
+          label: "Fullscreen",
           action: "toggle-fullscreen",
-          subtle: presenting,
+          subtle: false,
         })}
-        ${presenting
-          ? null
-          : html`<div class="text-[12px] text-text-dim font-mono">
-              ${slide.id}${totalSteps > 1 ? html` · step ${stepIndex}/${totalSteps}` : null}
-            </div>`}
+        <div class="text-[12px] text-text-dim font-mono">
+          ${slide.id}${totalSteps > 1 ? html` · step ${stepIndex}/${totalSteps}` : null}
+        </div>
       </div>
+          `}
 
       ${presenting
         ? null

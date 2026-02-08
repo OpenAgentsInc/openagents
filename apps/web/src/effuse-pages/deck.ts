@@ -19,11 +19,12 @@ export const deckPageShellTemplate = (): TemplateResult => {
       data-deck-shell="1"
       class="fixed inset-0 overflow-hidden text-white"
     >
-      <div class="absolute inset-0" style="${deckBackgroundStyle()}">
-        <div data-hud-bg="dots-grid" class="absolute inset-0 pointer-events-none"></div>
-      </div>
-      <div data-deck-slot="content" class="relative z-10 h-screen w-full overflow-hidden">
-        <div class="p-6 text-xs text-white/75">Loading deck…</div>
+      <div class="absolute inset-0" style="${deckBackgroundStyle()}"></div>
+      <div data-deck-slot="content" class="relative h-screen min-h-screen w-full overflow-hidden">
+        <div data-hud-bg="dots-grid" class="absolute inset-0 z-0 pointer-events-none"></div>
+        <div data-deck-slide class="absolute inset-0 z-10 h-full min-h-full w-full">
+          <div class="p-6 text-xs text-white/75">Loading deck…</div>
+        </div>
       </div>
     </div>
   `

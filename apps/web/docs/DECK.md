@@ -46,6 +46,15 @@ This prevents accidental deployment and ensures deck content isn't reachable on 
 
 If the deck file is missing or invalid, `/deck` will show an error with the expected file path.
 
+**Refresh behavior:** The controller cache-busts the deck URL on each load, so after you edit `deck.json` you can refresh the page (or press **R**) and see changes without restarting the dev server.
+
+### What you can do
+
+- **Layouts:** Use `title` (centered hero + footer), `title-body` (header/body/footer), or `solution` (full-bleed component behind text with a dark overlay).
+- **Live components:** Embed a Storybook story or any same-origin URL via `Story` or `Embed` nodes—either inline in the body or full-bleed behind text (see below).
+- **Fullscreen:** Press **F** to present. In fullscreen the slide fills edge-to-edge (no border, no on-screen exit button); press **F** again to exit.
+- **Dots grid:** A dot-pattern background is rendered behind the slide content so it appears in both windowed and fullscreen views.
+
 ## Selecting A Deck File
 
 By default, `/deck` loads:
@@ -73,6 +82,7 @@ Security constraints (local dev only anyway, but still constrained):
 - Next slide: `PageDown`
 - Previous slide: `PageUp`
 - Reload the deck JSON from disk: `R`
+- Toggle fullscreen (edge-to-edge, no on-screen exit): `F`
 
 ## Deck Content: Gitignored By Design
 
@@ -148,6 +158,7 @@ Rules:
 - Slides provide content via either:
   - `regions` (when using a layout with `Slot` nodes), or
   - `content` (freeform node list).
+- Layouts can define different slot names. The **solution** layout uses a `background` slot (in addition to `header`, `body`, `footer`) for full-bleed content behind the text overlay.
 
 ### Layouts + `Slot`
 
@@ -163,6 +174,16 @@ During render:
 
 - the layout tree is cloned
 - each `Slot(name)` is replaced with a `Fragment` containing `slide.regions[name]` (or empty if absent)
+
+### Built-in layout patterns
+
+Three layout patterns are used in the default deck; you can define them in `layouts` and reference them with `slide.layout`:
+
+| Layout       | Slots                    | Use case |
+|-------------|--------------------------|----------|
+| **title**   | `header`, `body`, `footer` | Hero slide: centered title/subheadline (put content in `body` with a centered `Column`), byline in `footer`. Root Column uses `fill: true` and `justify: "space-between"` so footer sits at the bottom. |
+| **title-body** | `header`, `body`, `footer` | Standard content slide: heading in header, main content in body, slide number or chrome in footer. |
+| **solution** | `background`, `header`, `body`, `footer` | Full-bleed component behind text: put a `Story` or `Embed` in `background`; it is rendered in a full-screen layer with a semi-transparent black overlay and your header/body/footer on top. Root Column needs `position: "relative"`. See “Full-bleed component with text overlay” below. |
 
 ### Theme Tokens + `$token`
 
@@ -238,7 +259,10 @@ The current renderer supports the following `type` values:
 - `Row`
   - props: `gap`, `align`, `justify`
 - `Column`
-  - props: `gap`, `align`, `justify`
+  - props: `gap`, `align`, `justify`, `fill` (boolean; when true, column gets `flex-1` to fill available height—use for full-height layouts like title slides), `position` (optional; e.g. `"relative"` so absolute children are positioned relative to it)
+- `Layer`
+  - props: `zIndex` (number; default 0), `background` (optional CSS background, e.g. `rgba(0,0,0,0.75)`), `pointerEvents` (optional; set to `false` so the layer doesn’t capture clicks), `inset` (optional; default true; layer is `absolute inset-0` to fill parent)
+  - Use for stacked layouts: put a full-bleed embed (Story/Embed) in a Layer at z-0, a semi-transparent overlay Layer at z-10 with `pointerEvents: false`, and content in a Layer at z-20. Parent Column should have `position: "relative"`.
 - `Box`
   - props: `padding`, `border` (truthy = show border), `background`, `color`, `width`, `height`
 - `Spacer`
@@ -250,7 +274,7 @@ The current renderer supports the following `type` values:
 
 - `Text`
   - props: `style` (`h1|h2|h3|body|caption|code`), `align`, `color`
-  - note: sizes are currently hardcoded per `style` (tokens not wired for font sizes yet)
+  - note: sizes and fonts are hardcoded per `style` in the renderer (e.g. h1 large sans, h2 Square721, caption for bylines). Tokens are not wired for font sizes yet.
 - `Inline`
   - props: `text`
 - `List`
@@ -277,17 +301,50 @@ The current renderer supports the following `type` values:
 - `SlideNumber`
   - props: `format` (`current|total|current/total`)
 
+### Live embeds (synced with Storybook)
+
+- `Embed`
+  - props: `src` (required), `title` (optional), `minHeight` (optional, px; default 320)
+  - Renders an iframe. Use for any same-origin URL (e.g. app routes). Deck is local-only so embedding is safe.
+- `Story`
+  - props: `storyId` (required)
+  - Renders the story **inline** (no iframe): looks up the story by id via `getStoryById`, calls `story.render()`, and embeds the result in the slide. Stays in sync with `apps/web/src/storybook/stories/`. Full height/width when inside a `Layer` (wrapper and story root use `h-full`). Use stories that size with `h-full` (e.g. `autopilot-dashboard-preview`) for full-bleed.
+
+### Ways to show live components
+
+You can show a Storybook story or embedded URL in two ways:
+
+1. **Inline in the slide body**  
+   Use a `Story` or `Embed` node inside the `body` region (e.g. under a `title-body` layout). `Story` renders the story template inline (no iframe); `Embed` uses an iframe with `minHeight`. Good for “here’s a component” slides.
+
+2. **Full-bleed behind text (Solution-style)**  
+   Use the **solution** layout (or a custom layout that follows the same pattern): the component goes in the `background` region and is drawn in a full-screen layer; a dark overlay (e.g. 75% black) sits on top; header/body/footer render above that so the title and copy stay readable and the component is visible behind. See the next subsection and the `solution` layout in `apps/web/public/decks/deck.json`.
+
+### Full-bleed component with text overlay (e.g. Solution slide)
+
+To get “component fullscreen behind, text on top”:
+
+1. Use a layout whose root is a **Column** with `fill: true` and `position: "relative"`.
+2. Add three **Layer** children in order:
+   - **Layer** (z-0): contains a single **Slot** named `background`. Put your `Story` or `Embed` in the slide’s `background` region so it fills the slide.
+   - **Layer** (z-10): `background: "rgba(0,0,0,0.75)"`, `pointerEvents: false`, no children. This is the semi-transparent overlay so text contrasts; `pointerEvents: false` keeps the header/body/footer interactive.
+   - **Layer** (z-20): contains a **Column** with the usual **Slot**s for `header`, `body`, and `footer`. Your title and body copy go here and appear on top of the overlay.
+
+The `solution` layout and the `solution` slide in `apps/web/public/decks/deck.json` implement this. The dashboard Storybook story (`autopilot-dashboard-preview`) is in `background`; “Solution” and the body text are in `header` and `body`.
+
 Unknown node types render as an error placeholder.
 
 ## Minimal Example Deck (`apps/web/public/decks/deck.json`)
 
-Create the file with something like:
+Create the file with something like the following. It defines a **title** layout (full-height column with centered title/subheadline and footer at bottom), a **title-body** layout for content slides, and optionally a **solution** layout for full-bleed component + text overlay slides.
+
+**Title slide:** title "OpenAgents", subheadline "The Agents Platform", name/role/email in the bottom right. **Problem slide:** headline + body copy. **Solution slide:** uses the `solution` layout with a Story in `background` and "Solution" + body text in header/body. The full deck in `apps/web/public/decks/deck.json` (gitignored; copy from this doc or create it) includes all three layouts and the Problem + Solution slides.
 
 ```json
 {
   "dsl": "effuse.slide-deck",
   "version": "0.1.0",
-  "meta": { "title": "Effuse Deck (Local)" },
+  "meta": { "title": "OpenAgents" },
   "theme": {
     "tokens": {
       "color.bg": "oklch(0.13 0 0)",
@@ -295,6 +352,20 @@ Create the file with something like:
     }
   },
   "layouts": {
+    "title": {
+      "type": "Column",
+      "props": {
+        "gap": { "$token": "space.2" },
+        "fill": true,
+        "justify": "space-between",
+        "align": "center"
+      },
+      "children": [
+        { "type": "Slot", "props": { "name": "header" } },
+        { "type": "Slot", "props": { "name": "body" } },
+        { "type": "Slot", "props": { "name": "footer" } }
+      ]
+    },
     "title-body": {
       "type": "Column",
       "props": { "gap": { "$token": "space.2" } },
@@ -311,19 +382,40 @@ Create the file with something like:
     "defaultSlideLayout": "title-body",
     "slides": [
       {
-        "id": "s1",
+        "id": "title",
+        "layout": "title",
+        "regions": {
+          "header": [],
+          "body": [
+            { "type": "Column", "props": { "fill": true, "justify": "center", "align": "center", "gap": 28 }, "children": [
+              { "type": "Text", "props": { "style": "h1" }, "children": ["OpenAgents"] },
+              { "type": "Text", "props": { "style": "h2" }, "children": ["The Agents Platform"] }
+            ] }
+          ],
+          "footer": [
+            { "type": "Footer", "props": {
+              "right": [
+                { "type": "Column", "props": { "gap": 2, "align": "end" }, "children": [
+                  { "type": "Text", "props": { "style": "caption" }, "children": ["Christopher David"] },
+                  { "type": "Text", "props": { "style": "caption" }, "children": ["Founder & CEO"] },
+                  { "type": "Text", "props": { "style": "caption" }, "children": ["chris@openagents.com"] }
+                ] }
+              ]
+            } }
+          ]
+        }
+      },
+      {
+        "id": "problem",
         "regions": {
           "header": [
-            { "type": "Text", "props": { "style": "h1" }, "children": ["Hello, deck"] }
+            { "type": "Text", "props": { "style": "h1" }, "children": ["Problem"] }
           ],
           "body": [
             {
-              "type": "List",
-              "props": { "ordered": false, "gap": 12 },
-              "children": [
-                { "type": "ListItem", "children": ["First point"] },
-                { "type": "ListItem", "props": { "build": { "in": 2 } }, "children": ["Second point (step 2)"] }
-              ]
+              "type": "Text",
+              "props": { "style": "body" },
+              "children": ["There is no single place to deploy and run the best AI agents—the market is fragmented across runtimes, tools, and vendors."]
             }
           ],
           "footer": [
