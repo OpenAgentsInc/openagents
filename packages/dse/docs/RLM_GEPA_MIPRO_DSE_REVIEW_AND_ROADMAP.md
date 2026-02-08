@@ -5,23 +5,39 @@ Generated: 2026-02-08
 This doc connects:
 
 - The repo-wide docs index: `packages/dse/docs/RLM_GEPA_MIPRO_SUMMARY.md`
-- What is actually implemented today in TypeScript/Effect DSE (`packages/dse/` + `apps/autopilot-worker/`)
+- What is actually implemented today in TypeScript/Effect DSE (`packages/dse/`)
+- How that relates to the current **Convex-first Autopilot MVP** execution plane (`apps/web/`) vs the legacy DO-SQLite integration (`apps/autopilot-worker/`)
 - What is actually implemented today in the Rust DSPy stack (`crates/dsrs/`, plus `crates/rlm/` + `crates/frlm/`)
 
 If anything here conflicts with code behavior, code wins.
 
 See also: `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 
+## MVP Execution Plane Note (Convex-First)
+
+Autopilot MVP is **Convex-first**:
+
+- No per-user Durable Objects / DO-SQLite for chat/user space in the MVP execution plane.
+- Cloudflare Worker runs inference and enforces budgets/receipts, while Convex is the canonical state store.
+
+References:
+
+- Decision doc: `docs/autopilot/anon-chat-execution-plane.md`
+- DO deprecation shims (410s): `apps/web/src/effuse-host/worker.ts`
+
+`apps/autopilot-worker/` still exists (DO-SQLite + DSE wiring) and is useful as a reference integration, but it is **not** the MVP hot path.
+
 ## Quick Status (What We Have Today)
 
 ### DSE (TypeScript/Effect)
 
-Implemented and in production paths:
+Implemented (library + tests) and integrated in at least one non-MVP surface (`apps/autopilot-worker/`):
 
 - Typed `Signature` + Prompt IR + deterministic hashes
 - `Predict(signature)` with policy resolution, schema decode, bounded repair, and predict receipts
+- Execution budgets enforced in DirectPredict (`params.budgets.{maxTimeMs,maxLmCalls,maxOutputChars}`) with budget snapshots recorded in predict receipts (commit `42507656f`)
 - `BlobStore` and Prompt IR context entries that can reference content-addressed blobs
-- `PolicyRegistry` abstraction with an in-memory implementation (package) and Durable Object SQLite implementation (worker integration)
+- `PolicyRegistry` abstraction with an in-memory implementation (package) and a DO-SQLite implementation (`apps/autopilot-worker/`, legacy/non-MVP)
 - Evaluation harness: datasets, metrics (deterministic + judge), reward signals (weighted aggregation), eval cache (in-memory)
 - Compile loop (TS/Effect-native), but currently with **MVP optimizers**, not MIPROv2/GEPA
 
@@ -30,7 +46,7 @@ Not implemented yet (in DSE):
 - RLM as an inference-time strategy (`RlmPredict`, VarSpace, recursion, sub-LM budgeting)
 - GEPA optimizer (reflective evolution + Pareto frontier over per-example wins)
 - MIPROv2 optimizer (multi-stage instruction proposal + demo bootstrapping + structured search)
-- Runtime enforcement for several constraints declared in signatures/params (timeouts, tool-call budgets, etc.)
+- Runtime enforcement for several constraints declared in signatures/params (tool-call budgets, per-tool timeouts, signature timeoutMs, etc.)
 
 ### Rust DSPy stack (dsrs/rlm/frlm)
 
@@ -71,12 +87,17 @@ Artifacts + evaluation + compile:
 - Compile job spec + hashing: `packages/dse/src/compile/job.ts`
 - Compile loop (current optimizers): `packages/dse/src/compile/compile.ts`
 
-Autopilot Worker integration (Durable Object SQLite):
+Legacy Autopilot Worker integration (Durable Object SQLite):
 
 - DO tables + service layers (PolicyRegistry + BlobStore + ReceiptRecorder): `apps/autopilot-worker/src/dseServices.ts`
 - In-repo signature catalog (Bootstrap + Blueprint tool selection signatures): `apps/autopilot-worker/src/dseCatalog.ts`
 - Tool contract to `@effect/ai` tool conversion: `apps/autopilot-worker/src/effect/ai/toolkit.ts`
 - End-to-end tests covering DSE introspection + artifact store/promote/rollback: `apps/autopilot-worker/tests/index.test.ts`
+
+Autopilot MVP (`apps/web`, Convex-first):
+
+- Execution plane: `apps/web/src/effuse-host/autopilot.ts` + `apps/web/convex/autopilot/*` (today this uses `@effect/ai` directly; DSE runtime integration is future work).
+- Contract endpoints for UI introspection (exports DSE catalogs): `apps/web/src/effuse-host/contracts.ts`
 
 ## Where MIPRO/GEPA/RLM Are Implemented Today (Rust Reference Only)
 
@@ -108,7 +129,7 @@ What is still roadmap-only:
 
 - Phase 2.5 RLM inference strategy (swappable execution mode, two-bucket context, recursion, sub-model role, iteration receipts).
 - Any real MIPROv2/GEPA implementation in TS DSE (beyond today’s grid/greedy MVP optimizers).
-- Phase 3 budgets enforcement that matches the docs (time/steps/tool calls/LM calls, output bounds).
+- Phase 3 budgets enforcement that matches the docs (tool calls, RLM iteration/sub-LM budgets, etc.). DirectPredict time/LM-call/output budgets are implemented (commit `42507656f`).
 
 ## Gap Analysis (DSE vs “Real” MIPROv2 / GEPA / RLM)
 
@@ -174,7 +195,7 @@ Suggested shape:
 
 Minimum viable DSE RLM should follow `docs/autopilot/rlm-synergies.md`:
 
-- Add a `VarSpace` service (DO-backed in Autopilot worker) that stores named variables pointing to `BlobRef`s (large inputs) and derived small JSON/text values.
+- Add a `VarSpace` service (Convex-backed for the MVP execution plane; optional DO-backed later) that stores named variables pointing to `BlobRef`s (large inputs) and derived small JSON/text values.
 - Add an RLM kernel with a *structured action DSL* (no arbitrary code at first).
 - Action: `preview(blob, start, end)`.
 - Action: `search(blob, query)` (regex/keyword).
@@ -186,7 +207,7 @@ Minimum viable DSE RLM should follow `docs/autopilot/rlm-synergies.md`:
 Where this likely lands:
 
 - DSE core: new runtime modules and receipt formats in `packages/dse/src/runtime/`.
-- Autopilot worker: DO SQLite tables for VarSpace + trace/iteration receipts near `apps/autopilot-worker/src/dseServices.ts`.
+- MVP Autopilot (`apps/web`): Convex tables/services for VarSpace + trace/iteration receipts (see `docs/autopilot/anon-chat-execution-plane.md` for the “Convex-first” posture).
 
 ### 3) Promote “MIPROv2-like” optimizers in DSE compile
 
