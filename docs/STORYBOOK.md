@@ -19,6 +19,11 @@ There are 2 ways to run it:
   - screenshots each canvas in headless Chromium
   - compares to a committed baseline PNG
 
+Autopilot-specific posture:
+
+- Add “wire transcript” stories that render chat from a deterministic `messageParts` transcript fixture and show the raw JSON alongside the rendered UI.
+- See `docs/autopilot/STREAM_TESTING.md` for the fixture format and goals.
+
 ## Where It Lives
 
 - Story registry + definitions:
