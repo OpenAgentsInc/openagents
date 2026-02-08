@@ -10,8 +10,10 @@ import {
 import { appRoutes } from "../effuse-app/routes"
 import type { AppServices } from "../effect/layer"
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext"
+import { TelemetryService } from "../effect/telemetry"
 
 import { getWorkerRuntime } from "./runtime"
+import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId"
 import type { Route, RouteContext, RouteMatch, RouteRun } from "@openagentsinc/effuse"
 import type { WorkerEnv } from "./env"
 
@@ -175,6 +177,17 @@ export const handleSsrRequest = async (
   const matched = matchRoute(appRoutes as ReadonlyArray<AnyRoute>, url)
 
   const { runtime } = getWorkerRuntime(env)
+  const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing"
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService
+    }),
+  )
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: request.method,
+    pathname: url.pathname,
+  })
 
   const awaitRequestAbort = Effect.async<never, RequestAbortedError>((resume, fiberSignal) => {
     if (request.signal.aborted) {
@@ -299,12 +312,15 @@ export const handleSsrRequest = async (
     Effect.raceFirst(awaitRequestAbort),
     // Provide request-scoped context for services (AuthService, ConvexService, etc.).
     Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+    Effect.provideService(TelemetryService, requestTelemetry),
     Effect.catchAll((error) => {
       if (error instanceof RequestAbortedError) {
         return Effect.succeed(
           new Response(null, { status: 499, headers: { "cache-control": "no-store" } }),
         )
       }
+
+      console.error(`[ssr] ${formatRequestIdLogToken(requestId)}`, error)
 
       const html = renderDocument({
         title: "Error",

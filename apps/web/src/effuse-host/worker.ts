@@ -4,6 +4,12 @@ import { handleAuthRequest } from "./auth"
 import { handleCallbackRequest } from "./callback"
 import { handleContractsRequest } from "./contracts"
 import { handleSsrRequest } from "./ssr"
+import {
+  formatRequestIdLogToken,
+  getOrCreateRequestId,
+  withRequestIdHeader,
+  withResponseRequestIdHeader,
+} from "./requestId"
 import type { WorkerEnv } from "./env"
 
 /**
@@ -42,38 +48,48 @@ export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
     ctx.passThroughOnException()
 
-    const url = new URL(request.url)
+    const requestId = getOrCreateRequestId(request)
+    const requestWithId = withRequestIdHeader(request, requestId)
+    const url = new URL(requestWithId.url)
 
     // Autopilot execution plane (Convex-first MVP).
     if (url.pathname.startsWith("/api/autopilot/")) {
-      const response = await handleAutopilotRequest(request, env, ctx)
-      if (response) return response
+      const response = await handleAutopilotRequest(requestWithId, env, ctx)
+      if (response) return withResponseRequestIdHeader(response, requestId)
     }
 
     if (url.pathname.startsWith("/api/contracts/")) {
-      const response = await handleContractsRequest(request)
-      if (response) return response
+      const response = await handleContractsRequest(requestWithId)
+      if (response) return withResponseRequestIdHeader(response, requestId)
     }
 
     // WorkOS OAuth callback (legacy path configured as WORKOS_REDIRECT_URI).
     if (url.pathname === "/callback") {
-      return handleCallbackRequest(request)
+      const response = await handleCallbackRequest(requestWithId)
+      return withResponseRequestIdHeader(response, requestId)
     }
 
     if (url.pathname.startsWith("/api/auth/")) {
-      const response = await handleAuthRequest(request, env)
-      if (response) return response
+      const response = await handleAuthRequest(requestWithId, env)
+      if (response) return withResponseRequestIdHeader(response, requestId)
     }
 
     // Static assets.
-    const asset = await tryServeAsset(request, env)
-    if (asset) return asset
+    const asset = await tryServeAsset(requestWithId, env)
+    if (asset) return withResponseRequestIdHeader(asset, requestId)
 
     // SSR (GET/HEAD only).
     if (request.method === "GET" || request.method === "HEAD") {
-      return handleSsrRequest(request, env)
+      try {
+        const response = await handleSsrRequest(requestWithId, env)
+        return withResponseRequestIdHeader(response, requestId)
+      } catch (err) {
+        // Always surface an ID users can report + operators can tail logs for.
+        console.error(`[worker:ssr] ${formatRequestIdLogToken(requestId)}`, err)
+        return withResponseRequestIdHeader(new Response("SSR failed", { status: 500 }), requestId)
+      }
     }
 
-    return new Response("Not found", { status: 404 })
+    return withResponseRequestIdHeader(new Response("Not found", { status: 404 }), requestId)
   },
 } satisfies ExportedHandler<WorkerEnv>

@@ -1,6 +1,7 @@
 import { createAuthService } from "@workos/authkit-session"
 
 import { WebCookieSessionStorage } from "../auth/sessionCookieStorage"
+import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId"
 
 const authkit = createAuthService<Request, Response>({
   sessionStorageFactory: (config) => new WebCookieSessionStorage(config),
@@ -33,7 +34,8 @@ export const handleCallbackRequest = async (request: Request): Promise<Response>
 
     return new Response(null, { status: 302, headers })
   } catch (err) {
-    console.error("[auth.callback]", err)
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing"
+    console.error(`[auth.callback] ${formatRequestIdLogToken(requestId)}`, err)
     return new Response("Callback failed", { status: 500 })
   }
 }
