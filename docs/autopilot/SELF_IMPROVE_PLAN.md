@@ -374,7 +374,11 @@ Implementation sketch:
 Testable outcomes:
 
 - storybook story showing each new DSE card type: `apps/web/src/storybook/stories/autopilot.ts`
+- the story should be driven by a golden wire transcript fixture (so the UI and tests consume the exact same `messageParts` shapes):
+  - `docs/autopilot/fixtures/dse-kitchen-sink.stream.v1.jsonl`
 - worker test that appends a `dse.signature.ok` part and asserts it renders into a non-empty assistant message model (snapshot/e2e style)
+  - use a realistic tool-loop transcript fixture as the target (e.g. “review my recent gmail things”):
+    - `docs/autopilot/fixtures/autopilot-gmail-review.stream.v1.jsonl`
 
 ### Stage 3: Run one DSE signature in the MVP hot path
 
