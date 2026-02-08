@@ -10,6 +10,7 @@ import { modulesPageTemplate } from "../effuse-pages/modules"
 import { signaturesPageTemplate } from "../effuse-pages/signatures"
 import { toolsPageTemplate } from "../effuse-pages/tools"
 import { marketingShellTemplate } from "../effuse-pages/marketingShell"
+import { deckPageShellTemplate } from "../effuse-pages/deck"
 import { storybookCanvasTemplate, storybookManagerTemplate } from "../effuse-pages/storybook"
 
 import { AuthService } from "../effect/auth"
@@ -57,6 +58,9 @@ const matchStorybook = (url: URL): RouteMatch | null => {
 
   return null
 }
+
+const isLocalHost = (host: string): boolean =>
+  host === "localhost" || host === "127.0.0.1" || host === "::1"
 
 const sessionDehydrate = (ctx: RouteContext): Effect.Effect<RouteOkHints["dehydrate"] | undefined, never, AppServices> =>
   Effect.gen(function* () {
@@ -151,6 +155,21 @@ const autopilot: Route<{}, AppServices> = {
   loader: (ctx) => okWithSession(ctx, {}),
   view: () => Effect.succeed(autopilotRouteShellTemplate()),
   head: () => Effect.succeed({ title: "Autopilot" }),
+}
+
+const deck: Route<{}, AppServices> = {
+  id: "/deck",
+  match: matchExact("/deck"),
+  guard: (ctx) =>
+    Effect.sync(() => {
+      if (!isLocalHost(ctx.url.hostname)) {
+        return RouteOutcome.notFound()
+      }
+      return
+    }),
+  loader: () => Effect.succeed(RouteOutcome.ok({})),
+  view: () => Effect.succeed(deckPageShellTemplate()),
+  head: () => Effect.succeed({ title: "Deck" }),
 }
 
 const modules: Route<ModulesPageData, AppServices> = {
@@ -250,6 +269,7 @@ export const appRoutes = [
   home,
   login,
   autopilot,
+  deck,
   storybook,
   modules,
   signatures,
