@@ -11,7 +11,8 @@ import { clearAuthClientCache } from "../../effect/auth"
 import { UiBlobStore } from "../blobStore"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
-import type { AgentApi, AgentToolContract } from "../../effect/agentApi"
+import type { AutopilotStore } from "../../effect/autopilotStore"
+import type { ContractsApi, ToolContract } from "../../effect/contracts"
 import type { ChatClient } from "../../effect/chat"
 import type { AppRuntime } from "../../effect/runtime"
 import type { TelemetryClient } from "../../effect/telemetry"
@@ -20,6 +21,7 @@ import type { AutopilotRouteRenderInput } from "../../effuse-pages/autopilotRout
 import type { RenderedMessage as EffuseRenderedMessage } from "../../effuse-pages/autopilot"
 
 const ANON_CHAT_STORAGE_KEY = "autopilot-anon-chat-id"
+const ANON_CHAT_KEY_STORAGE_KEY = "autopilot-anon-chat-key"
 
 function randomId(size = 12): string {
   let out = ""
@@ -35,6 +37,16 @@ function getOrCreateAnonChatId(): string {
     sessionStorage.setItem(ANON_CHAT_STORAGE_KEY, id)
   }
   return id
+}
+
+function getOrCreateAnonChatKey(): string {
+  if (typeof sessionStorage === "undefined") return `key-${randomId(24)}`
+  let key = sessionStorage.getItem(ANON_CHAT_KEY_STORAGE_KEY)
+  if (!key) {
+    key = `key-${randomId(24)}`
+    sessionStorage.setItem(ANON_CHAT_KEY_STORAGE_KEY, key)
+  }
+  return key
 }
 
 function sanitizeBlueprintForDisplay(value: unknown): unknown {
@@ -216,7 +228,8 @@ export const mountAutopilotController = (input: {
   readonly runtime: AppRuntime
   readonly atoms: AtomRegistry
   readonly telemetry: TelemetryClient
-  readonly api: AgentApi
+  readonly store: AutopilotStore
+  readonly contracts: ContractsApi
   readonly chat: ChatClient
   readonly router: RouterService<any>
   readonly navigate: (href: string) => void
@@ -224,8 +237,9 @@ export const mountAutopilotController = (input: {
   const atoms = input.atoms
 
   const initialSession = atoms.get(SessionAtom)
-  const anonChatId = getOrCreateAnonChatId()
-  const chatId = initialSession.userId ?? anonChatId
+  void initialSession
+  const chatId = getOrCreateAnonChatId()
+  const anonKey = getOrCreateAnonChatKey()
 
   // Atom-backed UI state
   let session = initialSession
@@ -251,7 +265,7 @@ export const mountAutopilotController = (input: {
     characterBoundaries: string
   }
   let blueprintDraft: BlueprintDraft | null = null
-  let toolContractsByName: Record<string, AgentToolContract> | null = null
+  let toolContractsByName: Record<string, ToolContract> | null = null
 
   // Draft input in a ref-like variable so keystrokes don't force rerenders.
   let inputDraft = ""
@@ -498,7 +512,9 @@ export const mountAutopilotController = (input: {
     blueprintError = null
 
     try {
-      const json = await input.runtime.runPromise(input.api.getBlueprint(chatId))
+      const json = await input.runtime.runPromise(
+        input.store.getBlueprint({ threadId: chatId, anonKey }),
+      )
       blueprint = json
       blueprintUpdatedAt = Date.now()
       if (!isEditingBlueprint) {
@@ -537,8 +553,8 @@ export const mountAutopilotController = (input: {
 
   const fetchToolContracts = async () => {
     try {
-      const contracts = await input.runtime.runPromise(input.api.getToolContracts(chatId))
-      const map: Record<string, AgentToolContract> = {}
+      const contracts = await input.runtime.runPromise(input.contracts.getToolContracts())
+      const map: Record<string, ToolContract> = {}
       for (const c of contracts) map[c.name] = c
       toolContractsByName = map
       scheduleRender()
@@ -766,7 +782,9 @@ export const mountAutopilotController = (input: {
           ],
         })
       )
-      await input.runtime.runPromise(input.api.importBlueprint(chatId, next))
+      await input.runtime.runPromise(
+        input.store.importBlueprint({ threadId: chatId, anonKey, blueprint: next }),
+      )
       isEditingBlueprint = false
       await fetchBlueprint()
     } catch (err) {
@@ -830,7 +848,9 @@ export const mountAutopilotController = (input: {
 
       void (async () => {
         try {
-          const blueprintJson = await input.runtime.runPromise(input.api.getBlueprint(chatId))
+          const blueprintJson = await input.runtime.runPromise(
+            input.store.getBlueprint({ threadId: chatId, anonKey }),
+          )
           const blob = new Blob([JSON.stringify(blueprintJson, null, 2)], { type: "application/json" })
           const url = URL.createObjectURL(blob)
           const link = document.createElement("a")
@@ -877,13 +897,11 @@ export const mountAutopilotController = (input: {
     scheduleRender()
 
     try {
-      await input.runtime.runPromise(input.api.resetAgent(chatId))
+      await input.runtime.runPromise(input.store.resetThread({ threadId: chatId, anonKey }))
       inputDraft = ""
       const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]')
       if (inputEl) inputEl.value = ""
       await fetchBlueprint()
-      const nextMessages = await input.runtime.runPromise(input.api.getMessages(chatId)).catch(() => [])
-      await input.runtime.runPromise(input.chat.setMessages(chatId, nextMessages)).catch(() => {})
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       Effect.runPromise(

@@ -1,55 +1,44 @@
-import { Context, Effect, Layer, SubscriptionRef } from "effect"
-import { AgentClient } from "agents/client"
-import { AgentApiService } from "./agentApi"
-import { RequestContextService } from "./requestContext"
-import { TelemetryService } from "./telemetry"
-import { MessageType, type ChatMessage, type ChatPart } from "./chatProtocol"
+import { Context, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
 
-import type * as AiResponse from "@effect/ai/Response"
+import { api } from "../../convex/_generated/api";
+import { AuthService } from "./auth";
+import { ConvexService } from "./convex";
+import { RequestContextService } from "./requestContext";
+import { TelemetryService } from "./telemetry";
+
+import type * as AiResponse from "@effect/ai/Response";
+import type { ChatMessage, ChatPart } from "./chatProtocol";
 
 export type ChatSnapshot = {
-  readonly messages: ReadonlyArray<ChatMessage>
-  readonly status: ChatStatus
-  readonly errorText: string | null
-}
+  readonly messages: ReadonlyArray<ChatMessage>;
+  readonly status: ChatStatus;
+  readonly errorText: string | null;
+};
 
-export type ChatStatus = "ready" | "submitted" | "streaming" | "error"
-
-type ActiveStream = {
-  readonly id: string
-  readonly messageId: string
-  parts: Array<ChatPart>
-}
+export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
 
 type ChatSession = {
-  readonly chatId: string
-  readonly agent: AgentClient | null
-  readonly agentUrlString: string | null
-  readonly state: SubscriptionRef.SubscriptionRef<ChatSnapshot>
-  readonly localRequestIds: Set<string>
-  messages: Array<ChatMessage>
-  manualStatus: ChatStatus | null
-  manualErrorText: string | null
-  activeStream: ActiveStream | null
-  dispose: () => void
-}
+  readonly threadId: string;
+  readonly state: SubscriptionRef.SubscriptionRef<ChatSnapshot>;
+  messages: Array<ChatMessage>;
+  readonly localStatus: { status: ChatStatus | null; errorText: string | null };
+  dispose: () => void;
+  activeRunId: string | null;
+};
 
 export type ChatClient = {
   readonly open: (
-    chatId: string,
-  ) => Effect.Effect<SubscriptionRef.SubscriptionRef<ChatSnapshot>, never, RequestContextService>
-  readonly send: (chatId: string, text: string) => Effect.Effect<void, Error, RequestContextService>
-  readonly stop: (chatId: string) => Effect.Effect<void, never, RequestContextService>
-  readonly clearHistory: (chatId: string) => Effect.Effect<void, never, RequestContextService>
-  readonly setMessages: (
-    chatId: string,
-    messages: ReadonlyArray<ChatMessage>,
-  ) => Effect.Effect<void, never, RequestContextService>
-}
+    threadId: string,
+  ) => Effect.Effect<SubscriptionRef.SubscriptionRef<ChatSnapshot>, never, RequestContextService>;
+  readonly send: (threadId: string, text: string) => Effect.Effect<void, Error, RequestContextService>;
+  readonly stop: (threadId: string) => Effect.Effect<void, never, RequestContextService>;
+  readonly clearHistory: (threadId: string) => Effect.Effect<void, never, RequestContextService>;
+};
 
-export class ChatService extends Context.Tag(
-  "@openagents/web/ChatService",
-)<ChatService, ChatClient>() {}
+export class ChatService extends Context.Tag("@openagents/web/ChatService")<
+  ChatService,
+  ChatClient
+>() {}
 
 const initialSnapshot = (): ChatSnapshot => ({
   messages: [],
@@ -57,138 +46,94 @@ const initialSnapshot = (): ChatSnapshot => ({
   errorText: null,
 });
 
-function randomId(size = 8): string {
-  let out = ""
-  while (out.length < size) out += Math.random().toString(36).slice(2)
-  return out.slice(0, size)
+const ANON_THREAD_ID_KEY = "autopilot-anon-chat-id";
+const ANON_THREAD_KEY_KEY = "autopilot-anon-chat-key";
+
+function randomId(size = 16): string {
+  let out = "";
+  while (out.length < size) out += Math.random().toString(36).slice(2);
+  return out.slice(0, size);
 }
 
-function safeJsonParse(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
+function getOrCreateAnonThreadId(): string {
+  if (typeof sessionStorage === "undefined") return `anon-${randomId(12)}`;
+  let id = sessionStorage.getItem(ANON_THREAD_ID_KEY);
+  if (!id) {
+    id = `anon-${randomId(12)}`;
+    sessionStorage.setItem(ANON_THREAD_ID_KEY, id);
   }
+  return id;
 }
 
-function cloneParts(parts: unknown): Array<ChatPart> {
-  return Array.isArray(parts) ? [...(parts as Array<ChatPart>)] : []
-}
-
-function applyMessageUpdated(
-  prevMessages: ReadonlyArray<ChatMessage>,
-  updatedMessage: ChatMessage,
-): Array<ChatMessage> {
-  let idx = prevMessages.findIndex((m) => m.id === updatedMessage.id)
-
-  if (idx < 0) {
-    const updatedToolCallIds = new Set(
-      updatedMessage.parts
-        .filter((p) => p && typeof p === "object" && "toolCallId" in p && (p as any).toolCallId)
-        .map((p) => String((p as any).toolCallId)),
-    )
-    if (updatedToolCallIds.size > 0) {
-      idx = prevMessages.findIndex((m) =>
-        m.parts.some(
-          (p) =>
-            p &&
-            typeof p === "object" &&
-            "toolCallId" in p &&
-            updatedToolCallIds.has(String((p as any).toolCallId)),
-        ),
-      )
-    }
+function getOrCreateAnonKey(): string {
+  if (typeof sessionStorage === "undefined") return `key-${randomId(24)}`;
+  let key = sessionStorage.getItem(ANON_THREAD_KEY_KEY);
+  if (!key) {
+    key = `key-${randomId(24)}`;
+    sessionStorage.setItem(ANON_THREAD_KEY_KEY, key);
   }
-
-  if (idx < 0 && updatedMessage.role === "assistant") {
-    // Last-resort reconciliation: when we locally stream a synthetic assistant message,
-    // the server may later broadcast the canonical message with a different id.
-    // Prefer replacing the latest assistant message over appending duplicates.
-    for (let i = prevMessages.length - 1; i >= 0; i--) {
-      const m = prevMessages[i]
-      if (m && m.role === "assistant") {
-        idx = i
-        break
-      }
-    }
-  }
-
-  if (idx >= 0) {
-    const updated = [...prevMessages]
-    // Preserve the existing message id to avoid key churn when server updates a
-    // message that was locally streamed with a synthetic id.
-    updated[idx] = { ...updatedMessage, id: prevMessages[idx].id }
-    return updated
-  }
-
-  return [...prevMessages, updatedMessage]
+  return key;
 }
 
 function stableStringify(value: unknown): string {
-  if (value == null) return String(value)
-  if (typeof value === "string") return value
+  if (value == null) return String(value);
+  if (typeof value === "string") return value;
   try {
-    return JSON.stringify(value)
+    return JSON.stringify(value);
   } catch {
-    return String(value)
+    return String(value);
   }
 }
+
+type ActiveStream = {
+  readonly id: string;
+  readonly messageId: string;
+  parts: Array<ChatPart>;
+};
 
 function applyRemoteChunk(active: ActiveStream, chunkData: AiResponse.StreamPartEncoded): ActiveStream {
   switch (chunkData?.type) {
     case "text-start": {
-      active.parts.push({ type: "text", text: "", state: "streaming" })
-      return active
+      active.parts.push({ type: "text", text: "", state: "streaming" });
+      return active;
     }
     case "text-delta": {
-      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any
+      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any;
       if (lastTextPart && lastTextPart.type === "text") {
-        lastTextPart.text += String((chunkData as any).delta ?? "")
+        lastTextPart.text += String((chunkData as any).delta ?? "");
       } else {
-        active.parts.push({ type: "text", text: String((chunkData as any).delta ?? "") })
+        active.parts.push({ type: "text", text: String((chunkData as any).delta ?? "") });
       }
-      return active
+      return active;
     }
     case "text-end": {
-      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any
-      if (lastTextPart && "state" in lastTextPart) lastTextPart.state = "done"
-      return active
+      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any;
+      if (lastTextPart && "state" in lastTextPart) lastTextPart.state = "done";
+      return active;
     }
     case "reasoning-start":
     case "reasoning-delta":
     case "reasoning-end": {
       // Autopilot must not render reasoning. Ignore these parts on the UI wire.
-      return active
-    }
-    case "file": {
-      active.parts.push({
-        type: "file",
-        mediaType: (chunkData as any).mediaType,
-        url: (chunkData as any).url,
-      })
-      return active
-    }
-    case "source": {
-      // Sources are not currently rendered in the Effuse UI.
-      return active
+      return active;
     }
     case "tool-call": {
-      const toolName = String((chunkData as any).name ?? "tool")
+      const toolName = String((chunkData as any).name ?? "tool");
       active.parts.push({
         type: `tool-${toolName}`,
         toolCallId: String((chunkData as any).id ?? ""),
         toolName,
         state: "input-available",
         input: (chunkData as any).params,
-      })
-      return active
+      } as any);
+      return active;
     }
     case "tool-result": {
-      const toolCallId = String((chunkData as any).id ?? "")
-      const isFailure = Boolean((chunkData as any).isFailure)
-      const result = (chunkData as any).result
+      const toolCallId = String((chunkData as any).id ?? "");
+      const isFailure = Boolean((chunkData as any).isFailure);
+      const result = (chunkData as any).result;
 
-      let didUpdate = false
+      let didUpdate = false;
       active.parts = active.parts.map((p) => {
         if (
           p &&
@@ -197,19 +142,19 @@ function applyRemoteChunk(active: ActiveStream, chunkData: AiResponse.StreamPart
           String((p as any).toolCallId) === toolCallId &&
           "state" in p
         ) {
-          didUpdate = true
+          didUpdate = true;
           return {
             ...(p as any),
             state: isFailure ? "output-error" : "output-available",
             output: result,
             ...(isFailure ? { errorText: stableStringify(result) } : {}),
-          }
+          };
         }
-        return p
-      })
+        return p;
+      });
 
       if (!didUpdate) {
-        const toolName = String((chunkData as any).name ?? "tool")
+        const toolName = String((chunkData as any).name ?? "tool");
         active.parts.push({
           type: `tool-${toolName}`,
           toolCallId,
@@ -217,277 +162,185 @@ function applyRemoteChunk(active: ActiveStream, chunkData: AiResponse.StreamPart
           state: isFailure ? "output-error" : "output-available",
           output: result,
           ...(isFailure ? { errorText: stableStringify(result) } : {}),
-        } as any)
+        } as any);
       }
 
-      return active
-    }
-    case "finish":
-    case "error": {
-      return active
+      return active;
     }
     default:
-      return active
+      return active;
   }
 }
 
-function toChatSnapshot(session: ChatSession): ChatSnapshot {
-  const status: ChatStatus =
-    session.manualStatus ?? (session.activeStream ? "streaming" : "ready")
-  return {
-    messages: session.messages,
-    status,
-    errorText: session.manualErrorText,
-  };
+function toChatSnapshot(session: ChatSession, messages: ReadonlyArray<ChatMessage>): ChatSnapshot {
+  const computedStatus: ChatStatus =
+    session.activeRunId != null ? "streaming" : "ready";
+
+  const status = session.localStatus.status ?? computedStatus;
+  const errorText = session.localStatus.errorText;
+
+  return { messages, status, errorText };
 }
 
 function updateSnapshot(session: ChatSession): void {
   // SubscriptionRef is pure (no Env). Safe to run on the default runtime.
-  Effect.runFork(SubscriptionRef.set(session.state, toChatSnapshot(session)));
+  Effect.runFork(SubscriptionRef.set(session.state, toChatSnapshot(session, session.messages)));
 }
 
 export const ChatServiceLive = Layer.effect(
   ChatService,
   Effect.gen(function* () {
-    const api = yield* AgentApiService;
+    const convex = yield* ConvexService;
+    const auth = yield* AuthService;
     const telemetry = yield* TelemetryService;
     const sessions = new Map<string, ChatSession>();
 
-    const open = Effect.fn('ChatService.open')(function* (chatId: string) {
-      const existing = sessions.get(chatId);
+    const open = Effect.fn("ChatService.open")(function* (threadId: string) {
+      const existing = sessions.get(threadId);
       if (existing) return existing.state;
 
-      // SSR safety: do not attempt to create WebSockets during server render.
-      if (typeof window === 'undefined') {
+      // SSR safety: do not attempt realtime subscriptions during server render.
+      if (typeof window === "undefined") {
         const state = yield* SubscriptionRef.make(initialSnapshot());
-        sessions.set(chatId, {
-          chatId,
-          agent: null,
-          agentUrlString: null,
+        sessions.set(threadId, {
+          threadId,
           state,
-          localRequestIds: new Set(),
           messages: [],
-          manualStatus: null,
-          manualErrorText: null,
-          activeStream: null,
+          localStatus: { status: null, errorText: null },
           dispose: () => {},
+          activeRunId: null,
         });
         return state;
       }
 
-      const initialMessages = yield* api.getMessages(chatId).pipe(Effect.catchAll(() => Effect.succeed([])));
+      // Ensure thread exists for anon, then best-effort claim when authed.
+      const anonThreadId = getOrCreateAnonThreadId();
+      const anonKey = getOrCreateAnonKey();
 
-      // Dev-only: Vite's HTTP proxy handles `/agents/**` fetches, but WebSocket proxying is unreliable
-      // under TanStack Start + Cloudflare Vite plugin. Connect the AgentClient directly to the worker
-      // port to prevent reconnect loops (seen as repeated 101s in the network panel).
-      const isDev = Boolean((import.meta as any).env?.DEV);
-      const shouldBypassViteWsProxy = isDev && window.location.port === '3000';
-      const workerHost = shouldBypassViteWsProxy ? `${window.location.hostname}:8787` : window.location.host;
-      const workerProtocol = shouldBypassViteWsProxy
-        ? 'ws'
-        : window.location.protocol === 'https:'
-          ? 'wss'
-          : 'ws';
+      // We intentionally allow callers to pass any threadId, but for MVP we only
+      // use the per-tab anon thread id as the canonical thread id.
+      if (threadId !== anonThreadId) {
+        // Keep the internal keying stable: if a different id is requested, still
+        // create a session for it (used by tests/experiments).
+      }
 
-      const agent = new AgentClient({
-        agent: 'chat',
-        name: chatId,
-        host: workerHost,
-        protocol: workerProtocol,
-      });
-      const agentOrigin = shouldBypassViteWsProxy ? `http://${workerHost}` : window.location.origin;
-      const agentUrlString = new URL(`/agents/chat/${chatId}`, agentOrigin).toString();
+      yield* convex
+        .mutation(api.autopilot.threads.ensureAnonThread, { threadId, anonKey } as any)
+        .pipe(Effect.catchAll(() => Effect.void));
 
-      const state = yield* SubscriptionRef.make<ChatSnapshot>({
-        messages: initialMessages,
-        status: 'ready',
-        errorText: null,
-      });
+      const sessionState = yield* SubscriptionRef.make(initialSnapshot());
 
-	      const session: ChatSession = {
-        chatId,
-        agent,
-        agentUrlString,
-        state,
-        localRequestIds: new Set(),
-        messages: [...initialMessages],
-        manualStatus: null,
-        manualErrorText: null,
-        activeStream: null,
+      const session: ChatSession = {
+        threadId,
+        state: sessionState,
+        messages: [],
+        localStatus: { status: null, errorText: null },
         dispose: () => {},
+        activeRunId: null,
       };
 
-	      const onChatResponseChunk = (parsed: any, isLocal: boolean) => {
-        const id = String(parsed.id ?? '');
-        if (!id) return;
+      sessions.set(threadId, session);
 
-        const isContinuation = parsed.continuation === true;
-        const done = Boolean(parsed.done);
-        const errored = Boolean(parsed.error);
+      const claimIfAuthed = Effect.gen(function* () {
+        const s = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)));
+        if (!s.userId) return;
+        yield* convex
+          .mutation(api.autopilot.threads.claimAnonThread, { threadId, anonKey } as any)
+          .pipe(Effect.catchAll(() => Effect.void));
+      });
 
-        // For local streams, the activeStream is always created by `send()`.
-        // For remote/broadcast streams, we reconstruct state here.
-	        if (!session.activeStream || session.activeStream.id !== id) {
-	          let messageId = randomId(16);
-	          let existingParts: Array<ChatPart> = [];
+      yield* claimIfAuthed.pipe(Effect.catchAll(() => Effect.void));
 
-	          if (!isLocal && isContinuation) {
-	            for (let i = session.messages.length - 1; i >= 0; i--) {
-	              const m = session.messages[i];
-	              if (m && m.role === 'assistant') {
-	                messageId = m.id;
-	                existingParts = cloneParts(m.parts);
-	                break;
-	              }
-            }
+      const stream = convex.subscribeQuery(api.autopilot.messages.getThreadSnapshot, {
+        threadId,
+        anonKey,
+      } as any);
+
+      const fiber = yield* Stream.runForEach(stream, (snap: any) =>
+        Effect.sync(() => {
+          const messagesRaw = Array.isArray(snap?.messages) ? (snap.messages as any[]) : [];
+          const partsRaw = Array.isArray(snap?.parts) ? (snap.parts as any[]) : [];
+
+          // Rebuild messages deterministically from Convex rows.
+          const byMessageId = new Map<string, ActiveStream>();
+          let activeRunId: string | null = null;
+
+          const partsSorted = [...partsRaw]
+            .filter((p) => p && typeof p === "object")
+            .sort((a, b) => Number((a as any).seq) - Number((b as any).seq));
+
+          for (const p of partsSorted) {
+            const messageId = String((p as any).messageId ?? "");
+            const runId = String((p as any).runId ?? "");
+            const part = (p as any).part as AiResponse.StreamPartEncoded | undefined;
+            if (!messageId || !runId || !part || typeof part !== "object") continue;
+
+            const active = byMessageId.get(messageId) ?? { id: runId, messageId, parts: [] };
+            byMessageId.set(messageId, applyRemoteChunk(active, part));
           }
 
-          session.activeStream = { id, messageId, parts: existingParts };
-          session.manualStatus = 'streaming';
-          session.manualErrorText = null;
-        }
+          const messages: Array<ChatMessage> = [];
+          for (const m of messagesRaw) {
+            const messageId = String(m?.messageId ?? "");
+            const role = String(m?.role ?? "");
+            const status = String(m?.status ?? "");
+            const text = typeof m?.text === "string" ? m.text : "";
+            const runId = typeof m?.runId === "string" ? m.runId : null;
 
-        const active = session.activeStream;
-
-        if (String(parsed.body ?? '').trim()) {
-          const chunkData = safeJsonParse(String(parsed.body ?? '')) as any;
-          if (chunkData) {
-            try {
-              applyRemoteChunk(active, chunkData);
-
-              const prev = session.messages;
-              const existingIdx = prev.findIndex((m) => m.id === active.messageId);
-	              const partialMessage = {
-	                id: active.messageId,
-	                role: 'assistant',
-	                parts: [...active.parts],
-	              } satisfies ChatMessage;
-
-              if (existingIdx >= 0) {
-                const next = [...prev];
-                next[existingIdx] = partialMessage;
-                session.messages = next;
+            if (!messageId) continue;
+            if (role === "user") {
+              messages.push({ id: messageId, role: "user", parts: [{ type: "text", text }] });
+              continue;
+            }
+            if (role === "assistant") {
+              const active = byMessageId.get(messageId);
+              if (active) {
+                messages.push({ id: messageId, role: "assistant", parts: [...active.parts] });
+              } else if (text.trim()) {
+                messages.push({ id: messageId, role: "assistant", parts: [{ type: "text", text, state: "done" }] });
               } else {
-                session.messages = [...prev, partialMessage];
+                messages.push({ id: messageId, role: "assistant", parts: [] });
               }
-            } catch (err) {
-              console.warn(
-                '[ChatService] Failed to apply stream chunk:',
-                err instanceof Error ? err.message : String(err),
-                'body:',
-                String(parsed.body ?? '').slice(0, 100),
-              );
+
+              if (status === "streaming" && runId) {
+                activeRunId = runId;
+              }
+              continue;
             }
           }
-        }
 
-        if (done || errored) {
-          if (errored) {
-            session.manualStatus = 'error';
-            session.manualErrorText = typeof parsed.body === 'string' ? parsed.body : 'Chat stream failed.';
-          } else {
-            session.manualStatus = null;
-            session.manualErrorText = null;
+          session.activeRunId = activeRunId;
+          session.messages = messages;
+
+          // Clear local "submitted" status once we observe streaming or ready state from Convex.
+          if (session.localStatus.status === "submitted") {
+            session.localStatus.status = null;
+            session.localStatus.errorText = null;
           }
 
-          session.localRequestIds.delete(id);
-          session.activeStream = null;
-        }
-
-        updateSnapshot(session);
-      };
-
-      const onAgentMessage = (event: MessageEvent) => {
-        if (typeof (event as any).data !== 'string') return;
-        const parsed = safeJsonParse((event as any).data) as any;
-        if (!parsed || typeof parsed !== 'object') return;
-
-        switch (parsed.type) {
-          case MessageType.CF_AGENT_CHAT_CLEAR: {
-            session.manualStatus = null;
-            session.manualErrorText = null;
-            session.activeStream = null;
-            session.messages = [];
-            updateSnapshot(session);
-            return;
-          }
-	          case MessageType.CF_AGENT_CHAT_MESSAGES: {
-	            const msgs = Array.isArray(parsed.messages) ? (parsed.messages as Array<ChatMessage>) : [];
-	            session.manualStatus = null;
-	            session.manualErrorText = null;
-	            session.activeStream = null;
-	            session.messages = msgs;
-            updateSnapshot(session);
-            return;
-          }
-	          case MessageType.CF_AGENT_MESSAGE_UPDATED: {
-	            const msg: unknown = parsed.message;
-	            if (!msg || typeof msg !== "object") return;
-	            session.messages = applyMessageUpdated(session.messages, msg as ChatMessage);
-	            updateSnapshot(session);
-	            return;
-	          }
-          case MessageType.CF_AGENT_STREAM_RESUMING: {
-            const id = String(parsed.id ?? '');
-            if (!id) return;
-
-            session.activeStream = { id, messageId: randomId(16), parts: [] };
-            session.manualStatus = 'streaming';
-            updateSnapshot(session);
-
-            try {
-              agent.send(JSON.stringify({ type: MessageType.CF_AGENT_STREAM_RESUME_ACK, id }));
-            } catch {
-              // ignore
-            }
-            return;
-          }
-          case MessageType.CF_AGENT_USE_CHAT_RESPONSE: {
-            const id = String(parsed.id ?? '');
-            if (!id) return;
-
-            const isLocal = session.localRequestIds.has(id);
-            onChatResponseChunk(parsed, isLocal);
-            return;
-          }
-          default:
-            return;
-        }
-      };
-
-      agent.addEventListener('message', onAgentMessage);
+          updateSnapshot(session);
+        }),
+      ).pipe(Effect.forkDaemon);
 
       session.dispose = () => {
-        try {
-          agent.removeEventListener('message', onAgentMessage);
-        } catch {
-          // ignore
-        }
-        try {
-          agent.close();
-        } catch {
-          // ignore
-        }
+        Effect.runFork(Fiber.interrupt(fiber));
       };
 
-      sessions.set(chatId, session);
-      updateSnapshot(session);
+      yield* telemetry.withNamespace("chat.service").event("chat.open", { threadId });
 
-      yield* telemetry.withNamespace('chat.service').event('chat.open', { chatId });
-
-      return state;
+      return sessionState;
     });
 
-	    const withSession = <TValue, TError, R>(
-	      chatId: string,
-	      f: (session: ChatSession) => Effect.Effect<TValue, TError, R>,
-	    ): Effect.Effect<TValue, TError, R | RequestContextService> =>
-	      open(chatId).pipe(
-	        Effect.flatMap(() => {
-	          const session = sessions.get(chatId);
-	          if (!session || !session.agent || !session.agentUrlString) {
+    const withSession = <TValue, TError, R>(
+      threadId: string,
+      f: (session: ChatSession) => Effect.Effect<TValue, TError, R>,
+    ): Effect.Effect<TValue, TError, R | RequestContextService> =>
+      open(threadId).pipe(
+        Effect.flatMap(() => {
+          const session = sessions.get(threadId);
+          if (!session) {
             return Effect.sync(() => {
-              console.warn('[ChatService] Session missing after open()', { chatId });
+              console.warn("[ChatService] Session missing after open()", { threadId });
               return undefined as unknown as TValue;
             });
           }
@@ -495,132 +348,86 @@ export const ChatServiceLive = Layer.effect(
         }),
       );
 
-	    const send = Effect.fn('ChatService.send')(function* (chatId: string, text: string) {
-	      yield* withSession(chatId, (session) =>
-	        Effect.sync(() => {
-	          const userMsgId = randomId(16);
-	          const userMsg = {
-	            id: userMsgId,
-	            role: 'user',
-	            parts: [{ type: 'text', text }],
-	          } satisfies ChatMessage;
+    const send = Effect.fn("ChatService.send")(function* (threadId: string, text: string) {
+      const anonKey = getOrCreateAnonKey();
 
-          // Request messages are the transcript up through the new user message.
-          const requestMessages = [...session.messages, userMsg];
-          session.messages = requestMessages;
-
-          const requestId = randomId(16);
-          session.localRequestIds.add(requestId);
-
-          // Create a synthetic assistant message in the UI so the first paint
-          // shows "streaming" immediately; server will later broadcast the
-          // canonical message (we reconcile in applyMessageUpdated()).
-          session.activeStream = {
-            id: requestId,
-            messageId: randomId(16),
-            parts: [],
-          };
-          session.manualStatus = 'streaming';
-          session.manualErrorText = null;
-
+      yield* withSession(threadId, (session) =>
+        Effect.sync(() => {
+          session.localStatus.status = "submitted";
+          session.localStatus.errorText = null;
           updateSnapshot(session);
+        }),
+      );
 
-          try {
-            session.agent!.send(
-              JSON.stringify({
-                id: requestId,
-                type: MessageType.CF_AGENT_USE_CHAT_REQUEST,
-                url: session.agentUrlString!,
-                init: {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({
-                    id: chatId,
-                    messages: requestMessages,
-                    trigger: 'submit-message',
-                    messageId: userMsgId,
-                  }),
-                },
-              }),
-            );
-          } catch (err) {
-            session.localRequestIds.delete(requestId);
-            session.activeStream = null;
-            session.manualStatus = 'error';
-            session.manualErrorText = err instanceof Error ? err.message : String(err);
+      // Fire the Worker endpoint; streaming updates arrive via Convex subscription.
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch("/api/autopilot/send", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ threadId, anonKey, text }),
+          }),
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+      });
+
+      if (!response.ok) {
+        const body = yield* Effect.tryPromise({ try: () => response.text(), catch: () => "" }).pipe(
+          Effect.catchAll(() => Effect.succeed("")),
+        );
+        const msg = body.trim() ? body.trim() : `HTTP ${response.status}`;
+        yield* withSession(threadId, (session) =>
+          Effect.sync(() => {
+            session.localStatus.status = "error";
+            session.localStatus.errorText = msg;
             updateSnapshot(session);
-            throw err instanceof Error ? err : new Error(String(err));
-          }
-        }).pipe(
-          Effect.tapError((err) =>
-            telemetry.withNamespace('chat.service').log('error', 'chat.send_failed', { chatId, message: String(err) }),
-          ),
-        ),
-      );
-    });
+          }),
+        );
+        return yield* Effect.fail(new Error(msg));
+      }
 
-    const stop = Effect.fn('ChatService.stop')(function* (chatId: string) {
-      yield* withSession(chatId, (session) =>
+      // Best-effort clear local submitted state; subscription will set streaming.
+      yield* withSession(threadId, (session) =>
         Effect.sync(() => {
-          const activeId = session.activeStream?.id;
-          if (activeId) {
-            try {
-              session.agent!.send(JSON.stringify({ id: activeId, type: MessageType.CF_AGENT_CHAT_REQUEST_CANCEL }));
-            } catch {
-              // ignore
-            }
-          }
-          session.localRequestIds.clear();
-          session.activeStream = null;
-          session.manualStatus = null;
-          session.manualErrorText = null;
-          updateSnapshot(session);
+          session.localStatus.status = null;
+          session.localStatus.errorText = null;
         }),
       );
     });
 
-    const clearHistory = Effect.fn('ChatService.clearHistory')(function* (chatId: string) {
-      yield* withSession(chatId, (session) =>
-        Effect.sync(() => {
-          session.manualStatus = null;
-          session.manualErrorText = null;
-          session.activeStream = null;
-          session.messages = [];
-          try {
-            session.agent!.send(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }));
-          } catch {
-            // ignore
-          }
-          updateSnapshot(session);
-        }),
-      );
-    });
+    const stop = Effect.fn("ChatService.stop")(function* (threadId: string) {
+      const anonKey = getOrCreateAnonKey();
 
-    const setMessages = Effect.fn("ChatService.setMessages")(function* (
-      chatId: string,
-      messages: ReadonlyArray<ChatMessage>,
-    ) {
-      yield* withSession(chatId, (session) =>
-        Effect.sync(() => {
-          session.manualStatus = null;
-          session.manualErrorText = null;
-          session.activeStream = null;
-          session.messages = [...messages];
-          try {
-            session.agent!.send(
-              JSON.stringify({
-                messages: Array.isArray(messages) ? messages : [],
-                type: MessageType.CF_AGENT_CHAT_MESSAGES,
+      yield* withSession(threadId, (session) =>
+        Effect.gen(function* () {
+          const runId = session.activeRunId;
+          if (!runId) return;
+
+          yield* Effect.tryPromise({
+            try: () =>
+              fetch("/api/autopilot/cancel", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                cache: "no-store",
+                body: JSON.stringify({ threadId, anonKey, runId }),
               }),
-            );
-          } catch {
-            // ignore
-          }
-          updateSnapshot(session);
+            catch: () => null,
+          }).pipe(Effect.catchAll(() => Effect.void));
+
+          session.localStatus.status = null;
+          session.localStatus.errorText = null;
         }),
       );
     });
 
-    return ChatService.of({ open, send, stop, clearHistory, setMessages });
+    const clearHistory = Effect.fn("ChatService.clearHistory")(function* (threadId: string) {
+      const anonKey = getOrCreateAnonKey();
+
+      yield* convex
+        .mutation(api.autopilot.messages.clearMessages, { threadId, anonKey, keepWelcome: true } as any)
+        .pipe(Effect.catchAll(() => Effect.void));
+    });
+
+    return ChatService.of({ open, send, stop, clearHistory });
   }),
 );

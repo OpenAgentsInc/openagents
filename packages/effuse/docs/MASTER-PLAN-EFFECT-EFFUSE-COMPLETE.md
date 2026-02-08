@@ -73,14 +73,17 @@ Effuse core (see `README.md`, `ARCHITECTURE.md`, `SPEC.md`, `DOM.md`, `EZ.md`):
 `apps/web` integration (see `INDEX.md`, `effuse-conversion-apps-web.md`, `ROUTER-AND-APPS-WEB-INTEGRATION.md`, `APPS-WEB-FULL-EFFUSE-ROADMAP.md`):
 
 - Effect runtime in router context, shared server runtime via `MemoMap`
-- Effect RPC mounted at `POST /api/rpc` (ADR-0027)
+- (legacy) Effect RPC was mounted at `POST /api/rpc` (ADR-0027). As of 2026-02-08, the Effuse Worker host uses narrower HTTP endpoints (auth/contracts/autopilot) instead of a general RPC mount.
 - Minimal SSR atom hydration via `@effect-atom/atom` (and currently `@effect-atom/atom-react` while React is still the host) (ADR-0027)
 - `apps/web` is now “Effuse everywhere” at the page level (templates + swaps + EZ actions + Effect-owned state), while React/TanStack still provide the hosting substrate (file routes, SSR glue, providers).
 - Shared Effuse UI primitives live in `@openagentsinc/effuse-ui` (Tailwind-first helpers).
 - Autopilot chat is Effect-first (`ChatService`) and the UI is driven by atoms (not React hooks).
 - Key routes are SSR-rendered as Effuse HTML and hydrated without DOM teardown (via mount-level `ssrHtml`), even before TanStack is removed.
-- Today the agent/AI plane runs as a separate Worker (`apps/autopilot-worker`) and the web app connects to it over WebSockets (Cloudflare Agents SDK).
-- **MVP direction (resolved):** Autopilot chat becomes **Convex-first** (chunked streaming written into Convex; browser subscribes via Convex WS). Per-user Cloudflare execution planes (DO/DO SQLite) are deferred to post-MVP optimizations.
+- **MVP direction (resolved, implemented 2026-02-08):** Autopilot chat is **Convex-first**:
+  - the `apps/web` Worker runs inference (Cloudflare `AI` binding) and writes chunked `messageParts` to Convex
+  - the browser subscribes to Convex for realtime updates (Convex WS)
+  - the legacy Agents SDK + `/agents/*` Durable Object transport is removed from `apps/web`
+  - per-user Cloudflare execution planes (DO/DO SQLite) are deferred to post-MVP optimizations.
 
 This master plan starts from that baseline and describes how to **remove the remaining substrate**.
 
@@ -215,14 +218,14 @@ Where TanStack/React used framework boundaries (loaders, error boundaries, provi
 - **Error normalization middleware**: map typed failures to user-safe responses/templates, and avoid double-logging by centralizing error emission.
 - **Abort/cancellation middleware**: navigation cancels in-flight loaders; server requests observe abort signals and terminate safely.
 
-### 3.3 Server: `EffuseWebHost` (SSR + RPC + Static)
+### 3.3 Server: `EffuseWebHost` (SSR + APIs + Static)
 
 Replace TanStack Start’s server runtime with an Effuse host (implemented with Effect) that:
 
 - Serves static assets (the built client bundle)
-- Handles `POST /api/rpc` (Effect RPC) and any other API endpoints
+- Handles HTTP API endpoints (e.g. `/api/auth/*`, `/api/contracts/*`, `/api/autopilot/*`)
 - Performs SSR for `GET /*` via the same route contract
-- Emits consistent telemetry across SSR, RPC, and auth endpoints
+- Emits consistent telemetry across SSR and API endpoints
 
 ### 3.3.1 Backend Targets (Multi-Backend, Cloudflare First)
 
@@ -553,19 +556,24 @@ Provider posture:
 - If the current provider is OpenRouter, prefer `@effect/ai-openrouter`.
 - Provider-specific “extras” (OpenAI web search / file search / code interpreter) are allowed, but must still produce standard `Response` tool parts so UI + receipts remain consistent.
 
-Current implementation in this repo (as of 2026-02-07, legacy):
+Current implementation in this repo (as of 2026-02-08):
 
-- AI chat runs on Cloudflare Workers using the **Agents SDK + Durable Object-backed sessions** pattern (colocated transcript + connection state), as demonstrated in:
-  - `apps/autopilot-worker/src/server.ts` (our production worker)
-  - `apps/cloudflare-agent-sdk-demo/src/server.ts` (reference demo)
-- The model provider is **Cloudflare Workers AI** via the `env.AI` binding (see `apps/autopilot-worker/wrangler.jsonc`), with a current model id of `@cf/openai/gpt-oss-120b` (`apps/autopilot-worker/src/server.ts`).
-- The browser streams over **WebSockets** using `agents/client` and the `CF_AGENT_*` message envelope, with the payload standardized on `@effect/ai/Response` `StreamPartEncoded` end-to-end (no SSE bridge). Reasoning parts are filtered on the wire.
+- Inference runs in the **single `apps/web` Cloudflare Worker host** using `@effect/ai/LanguageModel` with the Cloudflare Workers AI `env.AI` binding (model id: `@cf/openai/gpt-oss-120b`).
+- Streaming is implemented as **chunked writes into Convex** (`messageParts`), and the UI streams by subscribing over Convex WebSockets.
+- The Worker exposes:
+  - `POST /api/autopilot/send` (create run + start background stream)
+  - `POST /api/autopilot/cancel` (best-effort cancel + persisted cancelRequested flag)
+  - `GET /api/contracts/*` (tool/signature/module contracts for the UI)
+- The legacy `/agents/*` Durable Object + Agents SDK transport is removed from `apps/web`.
 
-Inference placement (MVP target, resolved):
+Legacy implementation (kept for reference / post-MVP):
 
-- Inference runs in the **single Cloudflare Worker host** (Effect `LanguageModel.streamText`, tool execution, budgets, receipts).
-- Streaming is implemented as **chunked writes into Convex** (`messageParts` + receipts), and the UI streams by subscribing over Convex WebSockets.
-- The `/agents/*` Durable Object + Agents SDK transport is not required for the MVP; it may remain temporarily as a legacy implementation during migration.
+- `apps/autopilot-worker/src/server.ts` still contains the older DO + Agents SDK transport pattern and `CF_AGENT_*` envelope logic.
+
+Inference placement (MVP, implemented):
+
+- Inference runs in the **single Cloudflare Worker host** (Effect `LanguageModel.streamText`, tool execution as needed, budgets/receipts enforcement as we harden).
+- Streaming is **Convex-first**: chunked parts written into Convex; browser subscribes via Convex WS.
 
 Integration requirements (Effuse-side):
 
@@ -731,7 +739,7 @@ Everything below is “what’s left”.
 - `cd packages/effuse && npm test`
 - `cd apps/web && npm run lint`
 - `cd apps/web && npm run build`
-- smoke: `cd apps/web && wrangler dev` (or equivalent dev wiring) and exercise `/`, `/login`, `/autopilot`, `/api/rpc`
+- smoke: `cd apps/web && wrangler dev` (or equivalent dev wiring) and exercise `/`, `/login`, `/autopilot`, `/api/auth/session`, `/api/contracts/tools`
 
 ### Phase 1: Tighten Effuse Contracts + Conformance Harness
 
@@ -873,36 +881,36 @@ DoD:
 Work log:
 - 2026-02-07: added parallel Effuse Worker host entry + SSR + API mounts in `apps/web/src/effuse-host/*` and config `apps/web/wrangler.effuse.jsonc`.
 - 2026-02-07: added a dedicated Effuse-only client bootstrap entry (`apps/web/src/effuse-app/client.ts`) and build config (`apps/web/vite.effuse.config.ts`) to produce stable `effuse-client.{js,css}` assets.
-- 2026-02-07: added DO SQLite “user-space” Durable Object with append-only event log and best-effort Convex replication (`apps/web/src/effuse-host/do/userSpace.ts`), proxied via `/api/user-space/*` in the Worker.
-- 2026-02-07: routed `/agents/*` through the Worker using the Cloudflare Agents SDK and re-exported the proven `Chat` DO from `apps/autopilot-worker/src/server.ts` via `apps/web/src/effuse-host/do/chat.ts`.
-- 2026-02-07: expanded Convex schema and added `convex/userSpace/replicateEvents` (idempotent by `eventId`); regenerated `apps/web/convex/_generated/*`.
+- 2026-02-08: implemented **Convex-first Autopilot** execution plane in `apps/web` (MVP):
+  - removed legacy Durable Object + Agents SDK transport (`/agents/*`) from `apps/web`
+  - removed DO bindings from Wrangler configs
+  - added Convex schema + functions for threads/messages/parts/runs/blueprints/receipts
+  - added Worker endpoints: `POST /api/autopilot/send`, `POST /api/autopilot/cancel`, `GET /api/contracts/*`
+  - refactored client `ChatService` to subscribe to Convex and call the Worker HTTP endpoints (no browser WebSocket transport)
+  - removed the `agents` dependency from `apps/web`
 
 Add/Change (apps/web host):
 
 - new: `apps/web/src/effuse-host/worker.ts` (Cloudflare Worker fetch handler)
 - new: `apps/web/src/effuse-host/ssr.ts` (SSR entry: request -> `RouteRun` -> HTML + headers/cookies + dehydrate payload)
 - new: `apps/web/src/effuse-host/assets.ts` (static asset serving strategy; stable asset names in v1, manifest integration later)
-- new: `apps/web/src/effuse-host/rpc.ts` mounts the existing RPC handler using:
-  - `apps/web/src/effect/api/*` (already exists)
 - new: `apps/web/src/effuse-host/auth.ts` mounts existing WorkOS endpoints using:
   - `apps/web/src/auth/workosAuth.ts` (already exists)
+- new: `apps/web/src/effuse-host/autopilot.ts` (Convex-first run creation + chunked streaming -> Convex)
+- new: `apps/web/src/effuse-host/contracts.ts` (serves tool/signature/module contracts to the UI)
 - new: `apps/web/src/effuse-app/client.ts` (Effuse-only client entry)
 - new: `apps/web/vite.effuse.config.ts` (builds stable `effuse-client.{js,css}`)
 
-Add/Change (apps/web user-space plane, Cloudflare DO SQLite):
+Add/Change (Convex-first Autopilot storage + APIs):
 
-- new: `apps/web/src/effuse-host/do/userSpace.ts` (Durable Object implementing “user-space + agents” using DO SQLite)
-- new: `apps/web/src/effuse-host/do/chat.ts` (Agent Durable Object implementing WebSocket chat + transcript; port the proven implementation from `apps/autopilot-worker/src/server.ts`)
-- new: `apps/web/src/effect/userSpace.ts` (`UserSpaceService` for reading/writing user-space from route loaders, EZ actions, and server endpoints)
-- new: `apps/web/wrangler.effuse.jsonc` add Durable Object bindings + migrations for `Chat` + `UserSpaceDO`, plus Workers AI binding (`env.AI`) and static assets binding
-
-Add/Change (Convex projection from the execution plane):
-
-- change: `apps/web/convex/schema.ts` add tables required by §3.5.5:
-  - `users`, `agents`, `threads`, `userSpaceEvents` (append-only), and any minimal index tables needed for navigation
-- new: `apps/web/convex/userSpace/replicateEvents.ts` Convex mutation: idempotent upsert of events by `eventId`, plus index updates
-- new: `apps/web/src/effect/convexReplication.ts` (`ConvexReplicationService`): Effect wrapper for the replication mutation with retries/backoff + bounded payload handling (BlobRefs)
-- change: `apps/web/src/effuse-host/do/userSpace.ts` emit events for every canonical mutation and `ctx.waitUntil` replication (do not block user flows)
+- change: `apps/web/convex/schema.ts` now includes canonical tables for MVP chat + blueprint state:
+  - `threads`, `messages`, `messageParts`, `runs`, `blueprints`, `receipts`
+- new: `apps/web/convex/autopilot/*`:
+  - thread creation + anon-to-owned claim (`threads.ts`)
+  - message snapshots + run lifecycle + chunked part append (`messages.ts`)
+  - blueprint get/set/reset (`blueprint.ts`)
+  - reset thread helper (`reset.ts`)
+  - access control helper (`access.ts`)
 
 Parallel deploy options:
 
@@ -913,7 +921,7 @@ Parallel deploy options:
 DoD:
 
 - `wrangler dev` can serve SSR HTML + boot the client router without TanStack Start.
-- `/api/rpc` and `/api/auth/*` still work and are request-scoped (budgets + telemetry).
+- `/api/auth/*`, `/api/autopilot/*`, and `/api/contracts/*` work and are request-scoped where required.
 
 ### Phase 6: Cut Over Production Host (Remove TanStack Start Server Runtime)
 
@@ -1280,16 +1288,13 @@ These tests are the framework’s “non-negotiable” gates. They should be fas
 
 Goal: verify the **single Worker** host in-process in a Workers runtime (no browser).
 
-Implemented suites (2026-02-07):
+Implemented suites (2026-02-08):
 
 - `apps/web/tests/worker/ssr.test.ts`
   - SSR respects abort signal
   - max HTML byte cap enforced
   - `RouteOkHints` applied (headers/cookies/cache-control)
   - SSR dehydrate payload is namespaced by routeId and HTML-safe
-- `apps/web/tests/worker/api-rpc.test.ts`
-  - `/api/rpc` works in Worker runtime, request-scoped, and never cached
-  - emits receipts/telemetry correlation (when enabled)
 - `apps/web/tests/worker/auth.test.ts`
   - `GET /api/auth/session` ok without external network
   - WorkOS refresh `Set-Cookie` header is persisted (when stubbing refresh path)
@@ -1297,20 +1302,15 @@ Implemented suites (2026-02-07):
 - `apps/web/tests/worker/assets.test.ts`
   - `ASSETS` binding serves `/effuse-client.css` + `/effuse-client.js`
   - asset requests never fall through to SSR
-
-Required suites for Convex-first MVP (not implemented yet):
-
-- `apps/web/tests/worker/chat-streaming-convex.test.ts`
+- `apps/web/tests/worker/chat-streaming-convex.test.ts` (2026-02-08)
   - Worker starts a run and writes `messageParts` into Convex in **chunked** batches (no per-token writes)
-  - idempotency: `(runId, seq)` upserts are retry-safe (no duplicate parts)
-  - terminal parts: `finish.usage` recorded; canceled runs finalize predictably
-  - BlobRef discipline: large tool/model payloads are stored as blobs and only refs are written into Convex
+  - terminal behavior: `finish.usage` is written; canceled runs finalize predictably
 
 Harness:
 
 - runs under a Workers runtime pool (`@cloudflare/vitest-pool-workers`) via `apps/web/vitest.config.ts` + `apps/web/wrangler.jsonc`
 - configured with `singleWorker: true` to avoid flaky isolated-runtime startup on localhost module fallback ports
-- uses `cloudflare:test` `env` bindings (DO namespaces, `ASSETS`, `AI`) from Wrangler config
+- uses `cloudflare:test` `env` bindings (`ASSETS`, `AI`) from Wrangler config (no DO namespaces required for MVP)
 - external services are stubbed/blocked by default in tests (WorkOS paths mocked; AI provider stubbed; Convex calls stubbed or routed to a local test deployment)
 - run: `cd apps/web && npm test`
 
@@ -1318,25 +1318,12 @@ Harness:
 
 Goal (post-MVP): verify DO SQLite invariants and Convex projection semantics *without* a browser.
 
-Implemented suites (2026-02-07):
+Status (2026-02-08):
 
-- `apps/web/tests/do/userSpace.test.ts`
-  - append-only event log: seq monotonic, stable ids, deterministic ordering
-  - idempotent apply by `eventId`
-- `apps/web/tests/do/replication.test.ts`
-  - replication is scheduled once per `eventId` (duplicate apply does not re-trigger Convex calls)
-  - `ctx.waitUntil` replication does not block responses
-
-Harness:
-
-- runs under a Workers runtime pool (`@cloudflare/vitest-pool-workers`) via `apps/web/vitest.config.ts` + `apps/web/wrangler.jsonc`
-- uses `cloudflare:test` `env` bindings (DO namespace: `UserSpaceDO`) from Wrangler config
-- run: `cd apps/web && npm test`
-
-Deferred (not implemented yet):
-
-- large payloads stored in BlobStore/R2 test store; DO receipts store only refs
-- Convex projection stores metadata + BlobRefs only (no large inline payloads)
+- DO/DO-SQLite suites are intentionally **deferred** for the Convex-first MVP, and the legacy DO code/tests were removed from `apps/web`.
+- When we reintroduce a DO execution/workspace plane post-MVP, we should add this suite back with:
+  - DO SQLite event log invariants (seq monotonic, idempotent apply by `eventId`)
+  - replication/projection invariants into Convex (idempotent, bounded payloads via BlobRefs)
 
 ### 9.4 Chat Streaming + AI Receipts Integration (MVP: Convex, Post-MVP: DO) (L4/L5 boundary)
 

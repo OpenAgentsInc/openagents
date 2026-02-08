@@ -1,13 +1,12 @@
 import { Atom, Result } from '@effect-atom/atom';
 import { Cause, Effect } from 'effect';
-import { AgentRpcClientService } from '../api/agentRpcClient';
-import { AgentApiService } from '../agentApi';
+import { ContractsApiService } from "../contracts";
 import { AppAtomRuntime } from './appRuntime';
 
 import type { ModuleItem, ModulesPageData } from '../../effuse-pages/modules';
 import type { SignatureItem, SignaturesPageData } from '../../effuse-pages/signatures';
 import type { ToolItem, ToolsPageData } from '../../effuse-pages/tools';
-import type { AgentToolContract, DseModuleContract, DseSignatureContract } from '../agentApi';
+import type { ToolContract, ModuleContract, SignatureContract } from "../contracts";
 
 function safeStableStringify(value: unknown, indent = 2): string {
   if (value == null) return String(value);
@@ -42,51 +41,30 @@ function errorTextFromResult<TValue, TError>(
 export const ModuleContractsAtom = Atom.family((userId: string) =>
   AppAtomRuntime.atom(
     Effect.gen(function* () {
-      const rpc = yield* AgentRpcClientService;
-      return yield* rpc.agent.getModuleContracts({ chatId: userId });
-    }).pipe(
-      // Keep the legacy HTTP path as a fallback while RPC is being proven out.
-      Effect.catchAll(() =>
-        Effect.gen(function* () {
-          const api = yield* AgentApiService;
-          return yield* api.getModuleContracts(userId);
-        }),
-      ),
-    ),
+      void userId;
+      const api = yield* ContractsApiService;
+      return yield* api.getModuleContracts();
+    }),
   ).pipe(Atom.keepAlive, Atom.withLabel(`ModuleContractsAtom(${userId})`)),
 );
 
 export const ToolContractsAtom = Atom.family((userId: string) =>
   AppAtomRuntime.atom(
     Effect.gen(function* () {
-      const rpc = yield* AgentRpcClientService;
-      return yield* rpc.agent.getToolContracts({ chatId: userId });
-    }).pipe(
-      // Keep the legacy HTTP path as a fallback while RPC is being proven out.
-      Effect.catchAll(() =>
-        Effect.gen(function* () {
-          const api = yield* AgentApiService;
-          return yield* api.getToolContracts(userId);
-        }),
-      ),
-    ),
+      void userId;
+      const api = yield* ContractsApiService;
+      return yield* api.getToolContracts();
+    }),
   ).pipe(Atom.keepAlive, Atom.withLabel(`ToolContractsAtom(${userId})`)),
 );
 
 export const SignatureContractsAtom = Atom.family((userId: string) =>
   AppAtomRuntime.atom(
     Effect.gen(function* () {
-      const rpc = yield* AgentRpcClientService;
-      return yield* rpc.agent.getSignatureContracts({ chatId: userId });
-    }).pipe(
-      // Keep the legacy HTTP path as a fallback while RPC is being proven out.
-      Effect.catchAll(() =>
-        Effect.gen(function* () {
-          const api = yield* AgentApiService;
-          return yield* api.getSignatureContracts(userId);
-        }),
-      ),
-    ),
+      void userId;
+      const api = yield* ContractsApiService;
+      return yield* api.getSignatureContracts();
+    }),
   ).pipe(Atom.keepAlive, Atom.withLabel(`SignatureContractsAtom(${userId})`)),
 );
 
@@ -97,7 +75,7 @@ export const ModulesPageDataAtom = Atom.family((userId: string) =>
     if (errorText) return { errorText, sorted: null } satisfies ModulesPageData;
 
     if (Result.isSuccess(result)) {
-      const mods = result.value as ReadonlyArray<DseModuleContract>;
+      const mods = result.value as ReadonlyArray<ModuleContract>;
       const sorted = [...mods]
         .sort((a, b) => a.moduleId.localeCompare(b.moduleId))
         .map(
@@ -121,7 +99,7 @@ export const ToolsPageDataAtom = Atom.family((userId: string) =>
     if (errorText) return { errorText, sorted: null } satisfies ToolsPageData;
 
     if (Result.isSuccess(result)) {
-      const tools = result.value as ReadonlyArray<AgentToolContract>;
+      const tools = result.value as ReadonlyArray<ToolContract>;
       const sorted = [...tools]
         .sort((a, b) => a.name.localeCompare(b.name))
         .map(
@@ -147,7 +125,7 @@ export const SignaturesPageDataAtom = Atom.family((userId: string) =>
     if (errorText) return { errorText, sorted: null } satisfies SignaturesPageData;
 
     if (Result.isSuccess(result)) {
-      const sigs = result.value as ReadonlyArray<DseSignatureContract>;
+      const sigs = result.value as ReadonlyArray<SignatureContract>;
       const sorted = [...sigs]
         .sort((a, b) => a.signatureId.localeCompare(b.signatureId))
         .map(

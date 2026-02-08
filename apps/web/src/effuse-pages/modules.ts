@@ -68,7 +68,7 @@ export function modulesPageTemplate(data: ModulesPageData): TemplateResult {
               <div>
                 <div class="text-xs text-text-dim uppercase tracking-wider">Module Contracts</div>
                 <div class="text-[11px] text-text-muted mt-1">
-                  Source: Autopilot Worker \`GET /agents/chat/:id/module-contracts\`
+                  Source: Worker \`GET /api/contracts/modules\`
                 </div>
               </div>
               <a href="/tools" class="text-[11px] text-text-muted hover:text-text-primary">View tools →</a>

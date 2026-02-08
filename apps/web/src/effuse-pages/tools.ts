@@ -73,7 +73,7 @@ export function toolsPageTemplate(data: ToolsPageData): TemplateResult {
               <div>
                 <div class="text-xs text-text-dim uppercase tracking-wider">Tool Contracts</div>
                 <div class="text-[11px] text-text-muted mt-1">
-                  Source: Autopilot Worker \`GET /agents/chat/:id/tool-contracts\`
+                  Source: Worker \`GET /api/contracts/tools\`
                 </div>
               </div>
               <a href="/signatures" class="text-[11px] text-text-muted hover:text-text-primary">View signatures →</a>

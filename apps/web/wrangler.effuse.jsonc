@@ -28,22 +28,10 @@
     "@openagentsinc/effuse-ui": "../../packages/effuse-ui/src/index.ts",
     "@openagentsinc/hud": "../../packages/hud/src/index.ts"
   },
-  "durable_objects": {
-    "bindings": [
-      { "name": "Chat", "class_name": "Chat" },
-      { "name": "UserSpaceDO", "class_name": "UserSpaceDO" }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["Chat", "UserSpaceDO"]
-    }
-  ],
   "vars": {
     "WORKOS_REDIRECT_URI": "https://openagents.com/callback",
     "OA_ADMIN_EMAILS": "chris@openagents.com",
-    // Required for Effect ConvexService (SSR + RPC + DO replication).
+    // Required for Effect ConvexService (SSR + client WS + Worker autopilot endpoints).
     // This is not secret and can be overridden via `wrangler deploy --var VITE_CONVEX_URL:...`.
     "VITE_CONVEX_URL": "https://aware-caterpillar-962.convex.cloud"
   }

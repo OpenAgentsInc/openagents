@@ -12,10 +12,7 @@ export type WorkerAssets = {
 export type WorkerEnv = {
   readonly ASSETS?: WorkerAssets
   readonly AI?: Ai
-  readonly Chat?: DurableObjectNamespace
-  readonly UserSpaceDO?: DurableObjectNamespace
 
   // Vite-style env var name is used on both client + worker to keep config simple.
   readonly VITE_CONVEX_URL?: string
 }
-
