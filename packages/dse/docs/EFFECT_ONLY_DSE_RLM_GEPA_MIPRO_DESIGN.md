@@ -270,10 +270,108 @@ Integration tests (worker-level):
 - Existing DO-backed artifact store/promote/rollback tests in `apps/autopilot-worker/tests/index.test.ts`.
 - Add an RLM “smoke test” once VarSpace/trace endpoints exist: verify iteration receipts are recorded and budgets are enforced.
 
-## Suggested Deliverables (Effect-only, in-order)
+## Implementation Roadmap (Effect-only, Testable Steps)
 
-1. Add `ExecutionBudget` service and enforce budgets in DirectPredict.
-2. Add `PredictStrategy` abstraction and preserve DirectPredict semantics.
-3. Implement RLM-lite kernel + VarSpace + trace events + RlmPredict strategy.
-4. Extend compile with proposal-based instruction candidate generation (MIPRO-like).
-5. Add Pareto frontier + reflection/proposal loop (GEPA-like).
+Each step should land with:
+
+- One or more tests that fail before the change and pass after.
+- A clear verification command set (`packages/dse` unit tests, plus `apps/autopilot-worker` integration tests when DO wiring changes).
+
+### Step 0: Keep The Baseline Green (already true today)
+
+- Scope: no behavior changes.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+- Verification: `cd apps/autopilot-worker && npm test && npm run typecheck`
+
+### Step 1: Add Execution Budgets To DirectPredict
+
+- Goal: enforce time/LM-call/output bounds in `Predict.make` (DirectPredict), and record budget snapshots in receipts.
+- Code: add `packages/dse/src/runtime/budget.ts` (`ExecutionBudgetService`) with an in-memory implementation.
+- Code: extend `packages/dse/src/params.ts` with optional budget knobs (for example `budgets.maxLmCalls`, `budgets.maxOutputChars`, `budgets.maxTimeMs`).
+- Code: wire budget checks into `packages/dse/src/runtime/predict.ts` and record an optional `budget` field in `packages/dse/src/runtime/receipt.ts`.
+- Tests: add `packages/dse/test/budget.test.ts` to assert budgets fail closed (for example `maxLmCalls=0` rejects, `maxOutputChars` rejects on oversized outputs).
+- Tests: update `packages/dse/test/predict.test.ts` to provide an `ExecutionBudgetService` layer.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 2: Add TraceRecorder And Emit Predict Trace Events
+
+- Goal: provide a bounded trace stream for debug/replay without relying on free-form logs.
+- Code: add `packages/dse/src/runtime/trace.ts` (`TraceRecorderService`) with `noop` and in-memory implementations.
+- Code: emit trace events from `packages/dse/src/runtime/predict.ts` (start, renderedPromptHash, LM response metadata, decode/repair attempts, end).
+- Tests: add `packages/dse/test/trace.test.ts` verifying trace ordering and bounds (truncation/limits).
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 3: Introduce PredictStrategy Selection (Direct vs RLM)
+
+- Goal: make inference strategy swappable while keeping `DseSignature` stable.
+- Code: add `packages/dse/src/runtime/predictStrategy.ts` (or similar) with strategy ids `direct.v1` and `rlm_lite.v1`.
+- Code: keep existing `Predict.make` API, but resolve strategy from the active artifact params (default to `direct.v1`).
+- Tests: add `packages/dse/test/strategy.test.ts` verifying default is `direct.v1` and selection is pinned by artifact params.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 4: Add VarSpace And RLM Action Schemas (No RlmPredict Yet)
+
+- Goal: build the deterministic kernel foundation before wiring it into prediction.
+- Code: add `packages/dse/src/runtime/varSpace.ts` (`VarSpaceService`) with an in-memory implementation.
+- Code: add `packages/dse/src/runtime/rlm/action.ts` defining the action DSL with Effect Schema decode (preview/search/chunk/write_var/final).
+- Code: add `packages/dse/src/runtime/rlm/kernel.ts` implementing deterministic action execution (no LM calls yet).
+- Tests: add `packages/dse/test/rlmKernel.test.ts` for preview/search determinism and stable failure modes for invalid inputs.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 5: Implement RlmPredict Minimal Loop (preview + final)
+
+- Goal: ship the smallest end-to-end RLM loop with strict budgets and trace events.
+- Code: add `packages/dse/src/runtime/rlm/predict.ts` implementing `RlmPredict` with `maxIterations` and a strict JSON action contract.
+- Code: reuse `BlobStore` + `VarSpace` + `TraceRecorder` + `ExecutionBudget`.
+- Tests: add `packages/dse/test/rlmPredict.test.ts` with a fake `LmClient` that emits a `preview` action then a `final` action.
+- Tests: verify iteration receipts/trace events are emitted and budget counters increment correctly.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 6: Expand RLM Actions (search, chunk, write_var) And Observation Summaries
+
+- Goal: make RLM useful for long context without tool execution.
+- Code: extend `packages/dse/src/runtime/rlm/kernel.ts` with bounded outputs and deterministic truncation rules.
+- Code: implement bounded observation summaries appended to token space each iteration (avoid leaking full blob data).
+- Tests: extend `packages/dse/test/rlmPredict.test.ts` to cover `search` and `chunk` flows.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 7: Add sub_lm And Explicit Model Roles
+
+- Goal: enable recursion while keeping costs bounded and auditable.
+- Code: extend `packages/dse/src/params.ts` to support role-based model selection (for example `modelRoles.main`, `modelRoles.sub`, `modelRoles.judge`, `modelRoles.repair`).
+- Code: add an RLM action `sub_lm` that calls `LmClient` with the `sub` role configuration and records `onSubLmCall`.
+- Tests: add a fake `LmClient` that distinguishes calls (main vs sub) and assert the right routing/budget counters.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 8: Durable Object Storage For VarSpace And Trace Events
+
+- Goal: make RLM durable per-thread in production.
+- Code: extend DO tables and layers in `apps/autopilot-worker/src/dseServices.ts` to persist `VarSpace` and `TraceRecorder`.
+- Code: add minimal DO endpoints for reading trace events and varspace keys (bounded, debug-only).
+- Tests: add a worker integration test in `apps/autopilot-worker/tests/index.test.ts` that runs a tiny RLM loop and asserts trace events are persisted and budget failures return structured errors.
+- Verification: `cd apps/autopilot-worker && npm test && npm run typecheck`
+
+### Step 9: MIPRO-Like Instruction Proposal Optimizer (Effect-only)
+
+- Goal: go beyond grid search by generating instruction variants via a pinned proposal signature.
+- Code: extend `packages/dse/src/compile/job.ts` optimizer ids to include `instruction_propose.v1`.
+- Code: implement proposal-based compilation in `packages/dse/src/compile/compile.ts` (or a new module under `packages/dse/src/compile/optimizers/`).
+- Code: define a compiler-owned proposal signature (in `packages/dse/src/compile/signatures.ts`) and require its artifact to be pinned in the compile run report.
+- Tests: add `packages/dse/test/compilePropose.test.ts` using a fake `LmClient` that returns deterministic candidate lists, and verify the best candidate is selected by reward.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 10: GEPA-Like Optimizer (Pareto Frontier + Reflect/Propose)
+
+- Goal: implement a reflection-driven evolutionary loop with diversity preserved by coverage.
+- Code: add `packages/dse/src/compile/pareto.ts` and a `gepa_lite.v1` optimizer implementation.
+- Code: define a pinned reflect/propose signature (inputs: parent instruction + failure summaries; output: mutated instruction).
+- Tests: add `packages/dse/test/compileGepaLite.test.ts` with a fake `LmClient` that proposes improving mutations; assert frontier retains multiple candidates and best reward improves within budget.
+- Verification: `cd packages/dse && bun test && bun run typecheck`
+
+### Step 11: Wire Compile/Promote Into A Real Surface (Worker + Web)
+
+- Goal: make “compile -> artifact -> promote -> rollback” usable without manual DB pokes.
+- Code (worker): add a compile-job endpoint that runs compile with explicit budgets and stores the resulting artifact; promotion stays explicit.
+- Code (web): add a minimal UI to submit compile jobs, view reports, and promote/rollback artifacts.
+- Tests (worker): integration tests asserting compile jobs are bounded and produce stored artifacts.
+- Verification: `cd apps/autopilot-worker && npm test && npm run typecheck`
