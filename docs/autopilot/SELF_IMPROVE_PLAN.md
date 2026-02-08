@@ -469,6 +469,18 @@ Testable outcomes:
 
 - convex query returns dataset deterministically sorted by `exampleId`
 
+Implementation log:
+
+- 2026-02-08: Added `dseExamples` Convex table + indexes (Convex-first labeled dataset storage):
+  - `apps/web/convex/schema.ts`
+- 2026-02-08: Added Convex functions to upsert and list examples (deterministic by `exampleId`, split filtering):
+  - `apps/web/convex/dse/examples.ts`
+- 2026-02-08: Added tests proving deterministic ordering + split filtering + upsert behavior:
+  - `apps/web/tests/convex/dse-examples.test.ts`
+- 2026-02-08: Verified:
+  - `cd apps/web && npm test && npm run lint`
+  - `cd packages/dse && bun test && bun run typecheck`
+
 ### Stage 5: Compile job runner (manual promotion)
 
 Implement an admin-only compile endpoint:
