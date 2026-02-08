@@ -152,6 +152,6 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     await waitOnExecutionContext(ctxLocal);
     expect(responseLocal.status).toBe(200);
     const body = await responseLocal.text();
-    expect(body).toContain("data-deck-root");
+    expect(body).toContain("data-deck-shell");
   });
 });

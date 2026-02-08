@@ -1,15 +1,29 @@
 import { Effect } from "effect"
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse"
+import { whitePreset } from "@openagentsinc/hud"
 import type { TemplateResult } from "@openagentsinc/effuse"
+
+const deckBackgroundStyle = (): string => {
+  const backgroundImage = [
+    `radial-gradient(120% 85% at 50% 0%, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 55%)`,
+    `radial-gradient(ellipse 100% 100% at 50% 50%, transparent 12%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.88) 100%)`,
+    whitePreset.backgroundImage,
+  ].join(", ")
+
+  return `background-color: ${whitePreset.backgroundColor}; background-image: ${backgroundImage};`
+}
 
 export const deckPageShellTemplate = (): TemplateResult => {
   return html`
     <div
-      data-deck-root="1"
-      class="fixed inset-0 overflow-hidden bg-bg-primary text-text-primary font-mono"
+      data-deck-shell="1"
+      class="fixed inset-0 overflow-hidden text-white"
     >
-      <div class="p-6 text-xs text-text-dim">
-        Loading deck…
+      <div class="absolute inset-0" style="${deckBackgroundStyle()}">
+        <div data-hud-bg="dots-grid" class="absolute inset-0 pointer-events-none"></div>
+      </div>
+      <div data-deck-slot="content" class="relative z-10 h-screen w-full overflow-hidden">
+        <div class="p-6 text-xs text-white/75">Loading deck…</div>
       </div>
     </div>
   `
@@ -26,4 +40,3 @@ export const runDeckShell = (container: Element): Effect.Effect<void> =>
       return Effect.void
     }),
   )
-

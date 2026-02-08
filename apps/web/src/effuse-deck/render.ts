@@ -178,6 +178,75 @@ const renderChildren = (
   children: ReadonlyArray<DeckNodeChild> | undefined,
 ): TemplateResult => html`${(children ?? []).map((c) => renderNode(doc, theme, runtime, c))}`
 
+function cx(...parts: Array<string | null | undefined | false>): string {
+  return parts.filter(Boolean).join(" ")
+}
+
+const hatcheryActionButton = (input: {
+  readonly label: string
+  readonly action: string
+  readonly subtle?: boolean
+}): TemplateResult => {
+  const minHeightClass = "min-h-8"
+  const contentSizeClass = "px-3 py-1 gap-1.5 text-xs"
+  const opacityClass = input.subtle ? "opacity-60 hover:opacity-100" : "opacity-100"
+
+  return html`
+    <button
+      type="button"
+      data-deck-action="${input.action}"
+      class="${cx(
+        "group relative inline-flex max-w-full items-stretch justify-stretch",
+        minHeightClass,
+        "m-0 border-0 bg-transparent p-0",
+        "cursor-pointer select-none",
+        "text-white transition-[color,opacity] duration-200 ease-out",
+        "uppercase tracking-[0.08em] font-semibold",
+        "use-font-square721 [font-family:var(--font-square721)]",
+        "focus-visible:outline-none",
+        opacityClass,
+      )}"
+    >
+      <svg
+        class="${cx(
+          "pointer-events-none absolute inset-0 h-full w-full",
+          "opacity-75 transition-[opacity,transform] duration-200 ease-out",
+          "group-hover:opacity-100 group-hover:scale-[1.02]",
+          "group-focus-visible:opacity-100 group-focus-visible:scale-[1.02]",
+        )}"
+        viewBox="0 0 100 40"
+        preserveAspectRatio="none"
+        role="presentation"
+        aria-hidden="true"
+      >
+        <polygon
+          class="fill-[hsla(0,0%,100%,0.08)]"
+          points="6,0 94,0 100,6 100,34 94,40 6,40 0,34 0,6"
+        />
+        <polygon
+          class="${cx(
+            "fill-none",
+            "stroke-[hsla(0,0%,100%,0.9)] [stroke-width:2]",
+            "transition-[stroke] duration-200 ease-out",
+            "group-hover:stroke-[hsla(0,0%,100%,1)]",
+            "group-focus-visible:stroke-[hsla(0,0%,100%,1)]",
+          )}"
+          points="6,0 94,0 100,6 100,34 94,40 6,40 0,34 0,6"
+        />
+      </svg>
+      <span
+        class="${cx(
+          "relative flex w-full min-w-0 max-w-full flex-wrap items-center justify-center",
+          contentSizeClass,
+          "leading-[1.2] whitespace-normal text-center [overflow-wrap:anywhere]",
+        )}"
+      >
+        ${input.label}
+      </span>
+    </button>
+  `
+}
+
 const renderNode = (
   doc: DeckDocument,
   theme: DeckTheme | undefined,
@@ -257,11 +326,11 @@ const renderNode = (
 
       const cls =
         style === "h1"
-          ? "text-[56px] leading-[1.06] tracking-tight font-semibold"
+          ? "text-[56px] leading-[1.06] tracking-tight font-semibold use-font-square721 [font-family:var(--font-square721)]"
           : style === "h2"
-            ? "text-[40px] leading-[1.12] tracking-tight font-semibold"
+            ? "text-[40px] leading-[1.12] tracking-tight font-semibold use-font-square721 [font-family:var(--font-square721)]"
             : style === "h3"
-              ? "text-[28px] leading-[1.18] font-semibold"
+              ? "text-[28px] leading-[1.18] font-semibold use-font-square721 [font-family:var(--font-square721)]"
               : style === "caption"
                 ? "text-[14px] leading-5 text-text-dim"
                 : style === "code"
@@ -395,23 +464,17 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
   const ratio = w / h
   const slideWidth = `min(100%, calc(100vh * ${ratio.toFixed(6)}))`
 
-  const deckBgResolved = resolveTokenValue(theme, doc.deck.background)
   const slideBgResolved = resolveTokenValue(theme, slide.background)
-  const background =
-    typeof slideBgResolved === "string"
-      ? slideBgResolved
-      : typeof deckBgResolved === "string"
-        ? deckBgResolved
-        : "var(--color-bg-primary)"
+  const surfaceBg = typeof slideBgResolved === "string" ? slideBgResolved : "rgba(0,0,0,0.35)"
 
   const runtime = { slideIndex, slideCount, stepIndex, totalSteps }
 
   const template = html`
-    <div class="relative w-full h-full overflow-hidden text-text-primary font-mono" style="background:${background};">
+    <div class="relative w-full h-full overflow-hidden text-text-primary font-mono">
       <div class="absolute inset-0 flex items-center justify-center p-6">
         <div
-          class="relative shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_80px_rgba(0,0,0,0.65)] rounded overflow-hidden bg-bg-secondary border border-border-dark"
-          style="aspect-ratio: ${w} / ${h}; width: ${slideWidth};"
+          class="relative shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_80px_rgba(0,0,0,0.65)] rounded overflow-hidden border border-border-dark backdrop-blur-md"
+          style="aspect-ratio: ${w} / ${h}; width: ${slideWidth}; background:${surfaceBg};"
         >
           <div class="absolute inset-0 p-12 flex flex-col min-h-0">
             ${filteredNodes.map((n) => renderNode(doc, theme, runtime, n))}
@@ -420,16 +483,11 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
       </div>
 
       <div class="absolute top-4 right-4 flex items-center gap-2">
-        <button
-          type="button"
-          data-deck-action="toggle-fullscreen"
-          class="text-[12px] font-mono border border-border-dark rounded px-2 py-1 bg-bg-secondary text-text-dim hover:text-text-primary hover:border-border-hover transition ${presenting
-            ? "opacity-30 hover:opacity-100"
-            : "opacity-100"}"
-          aria-label="${presenting ? "Exit fullscreen" : "Enter fullscreen"}"
-        >
-          ${presenting ? "Exit" : "Fullscreen"}
-        </button>
+        ${hatcheryActionButton({
+          label: presenting ? "Exit" : "Fullscreen",
+          action: "toggle-fullscreen",
+          subtle: presenting,
+        })}
         ${presenting
           ? null
           : html`<div class="text-[12px] text-text-dim font-mono">

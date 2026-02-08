@@ -2,6 +2,10 @@ import { Effect } from "effect"
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse"
 
 import { parseDeckJsonString, renderDeck } from "../../effuse-deck/render"
+import {
+  cleanupMarketingDotsGridBackground,
+  hydrateMarketingDotsGridBackground,
+} from "../../effuse-pages/marketingShell"
 
 import type { DeckDocument } from "../../effuse-deck/dsl"
 
@@ -45,7 +49,12 @@ const errorTemplate = (deckSrc: string, message: string): ReturnType<typeof html
 `
 
 export const mountDeckController = (input: { readonly container: Element }): DeckController => {
-  const root = input.container.querySelector("[data-deck-root]")
+  const shell = input.container.querySelector("[data-deck-shell]") ?? input.container.querySelector("[data-deck-root]")
+  if (!(shell instanceof HTMLElement)) {
+    return { cleanup: () => {} }
+  }
+
+  const root = shell.querySelector("[data-deck-slot='content']") ?? shell
   if (!(root instanceof HTMLElement)) {
     return { cleanup: () => {} }
   }
@@ -199,7 +208,7 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
       if (enabled) {
         if (document.fullscreenElement) return
         // Prefer taking over the whole viewport for presentation.
-        await root.requestFullscreen()
+        await shell.requestFullscreen()
       } else {
         if (!document.fullscreenElement) return
         await document.exitFullscreen()
@@ -272,6 +281,8 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
   root.addEventListener("click", onClick)
   document.addEventListener("fullscreenchange", onFullscreenChange)
 
+  Effect.runPromise(hydrateMarketingDotsGridBackground(shell)).catch(() => {})
+
   // Initial load.
   void loadDeck()
 
@@ -280,6 +291,7 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
       window.removeEventListener("keydown", onKeyDown)
       root.removeEventListener("click", onClick)
       document.removeEventListener("fullscreenchange", onFullscreenChange)
+      cleanupMarketingDotsGridBackground(shell)
     },
   }
 }
