@@ -6,6 +6,38 @@ import { handleContractsRequest } from "./contracts"
 import { handleSsrRequest } from "./ssr"
 import type { WorkerEnv } from "./env"
 
+/**
+ * Cloudflare Durable Object compatibility shims.
+ *
+ * Production currently has existing DO instances created under these class names.
+ * Even though the MVP path is Convex-first, Cloudflare requires that we continue
+ * exporting the classes (or explicitly delete them via a migration) to deploy.
+ *
+ * Note: These classes are not on the MVP hot path; they exist to keep deploys
+ * unblocked while we decommission/migrate old execution-plane state.
+ */
+export class UserSpaceDO {
+  constructor(
+    readonly _state: DurableObjectState,
+    readonly _env: WorkerEnv,
+  ) {}
+
+  async fetch(_request: Request): Promise<Response> {
+    return new Response("UserSpaceDO is deprecated (Convex-first MVP).", { status: 410 })
+  }
+}
+
+export class Chat {
+  constructor(
+    readonly _state: DurableObjectState,
+    readonly _env: WorkerEnv,
+  ) {}
+
+  async fetch(_request: Request): Promise<Response> {
+    return new Response("Chat DO is deprecated (Convex-first MVP).", { status: 410 })
+  }
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
     ctx.passThroughOnException()
