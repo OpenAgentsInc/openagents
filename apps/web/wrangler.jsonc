@@ -30,6 +30,16 @@
     "@openagentsinc/effuse-ui": "../../packages/effuse-ui/src/index.ts",
     "@openagentsinc/hud": "../../packages/hud/src/index.ts"
   },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Chat", "UserSpaceDO"]
+    },
+    {
+      "tag": "v2",
+      "deleted_classes": ["Chat", "UserSpaceDO"]
+    }
+  ],
   "vars": {
     "WORKOS_REDIRECT_URI": "https://openagents.com/callback",
     "OA_ADMIN_EMAILS": "chris@openagents.com",
