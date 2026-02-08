@@ -51,6 +51,31 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => [
     }),
   },
   {
+    id: "apps-web.navigation.start-for-free",
+    tags: ["e2e", "browser", "apps/web"],
+    timeoutMs: 120_000,
+    steps: Effect.gen(function* () {
+      const ctx = yield* TestContext
+      const browser = yield* BrowserService
+
+      yield* browser.withPage((page) =>
+        Effect.gen(function* () {
+          yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
+          yield* step("click Start for free", page.click('a[href="/autopilot"]'))
+          yield* step("wait for /autopilot", page.waitForFunction("location.pathname === '/autopilot'", { timeoutMs: 15_000 }))
+
+          yield* step(
+            "assert autopilot shell exists",
+            Effect.gen(function* () {
+              const shell = yield* page.evaluate<boolean>("!!document.querySelector('[data-autopilot-shell]')")
+              yield* assertTrue(shell, "Expected [data-autopilot-shell] to exist on /autopilot")
+            }),
+          )
+        }),
+      )
+    }),
+  },
+  {
     id: "apps-web.http.assets",
     tags: ["e2e", "http", "apps/web"],
     timeoutMs: 60_000,
