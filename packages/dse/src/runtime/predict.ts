@@ -13,6 +13,7 @@ import {
   type HashError
 } from "../hashes.js";
 import { decodeJsonOutputWithMode, OutputDecodeError } from "./decode.js";
+import { BudgetExceededError, ExecutionBudgetService } from "./budget.js";
 import { BlobStoreService } from "./blobStore.js";
 import { LmClientError, LmClientService } from "./lm.js";
 import { PolicyRegistryError, PolicyRegistryService } from "./policyRegistry.js";
@@ -23,9 +24,11 @@ export type PredictEnv =
   | LmClientService
   | PolicyRegistryService
   | BlobStoreService
-  | ReceiptRecorderService;
+  | ReceiptRecorderService
+  | ExecutionBudgetService;
 
 export type PredictError =
+  | BudgetExceededError
   | LmClientError
   | PolicyRegistryError
   | PromptRenderError
@@ -35,10 +38,12 @@ export type PredictError =
 
 export function make<I, O>(signature: DseSignature<I, O>) {
   return Effect.fn(`dse.Predict(${signature.id})`)(function* (input: I) {
+    const receiptId = crypto.randomUUID();
     const startedAtMs = Date.now();
     const lm = yield* LmClientService;
     const registry = yield* PolicyRegistryService;
     const receipts = yield* ReceiptRecorderService;
+    const budgets = yield* ExecutionBudgetService;
 
     const active = yield* registry.getActive(signature.id);
     const artifact = active
@@ -54,6 +59,11 @@ export function make<I, O>(signature: DseSignature<I, O>) {
     }
 
     const params: DseParams = artifact?.params ?? signature.defaults.params;
+    const budget = yield* budgets.start({
+      runId: receiptId,
+      startedAtMs,
+      limits: params.budgets ?? {}
+    });
 
     const decodeMode = params.decode?.mode ?? "strict_json";
     const maxRepairs = Math.max(0, params.decode?.maxRepairs ?? 0);
@@ -69,22 +79,6 @@ export function make<I, O>(signature: DseSignature<I, O>) {
     // For now, compiled_id is the canonical policy hash (params). Artifacts, when present,
     // carry their own compiled_id which should match this value.
     const compiled_id = artifact?.compiled_id ?? paramsHashValue;
-
-    const messages = yield* renderPromptMessages({
-      signature,
-      input,
-      params
-    });
-
-    const renderedHash = yield* renderedPromptHash(messages);
-
-    const response = yield* lm.complete({
-      messages,
-      modelId: params.model?.modelId,
-      temperature: params.model?.temperature,
-      topP: params.model?.topP,
-      maxTokens: params.model?.maxTokens ?? signature.defaults.constraints.maxTokens
-    });
 
     const outputSchemaJson = JSONSchema.make(signature.output);
 
@@ -111,88 +105,144 @@ export function make<I, O>(signature: DseSignature<I, O>) {
     const decodeOnce = (rawText: string) =>
       decodeJsonOutputWithMode(signature.output, rawText, { mode: decodeMode });
 
-    let rawText = response.text;
-    let decoded: O | null = null;
+    let renderedHash: string | undefined;
     let repairs = 0;
-    let lastError: OutputDecodeError | null = null;
+    let usage: { readonly promptTokens?: number; readonly completionTokens?: number; readonly totalTokens?: number } | undefined;
+    let outputHash: string | undefined;
 
-    while (true) {
-      const attempt = yield* Effect.either(decodeOnce(rawText));
-      if (attempt._tag === "Right") {
-        decoded = attempt.right;
-        break;
+    const errorSummary = (error: unknown): { readonly errorName: string; readonly message: string } => {
+      if (error && typeof error === "object") {
+        const name = (error as any)._tag ?? (error as any).name;
+        const message = (error as any).message;
+        if (typeof message === "string") {
+          return { errorName: typeof name === "string" ? name : "PredictError", message };
+        }
       }
+      return { errorName: "PredictError", message: String(error) };
+    };
 
-      lastError = attempt.left;
+    const recordReceipt = (
+      result: { readonly _tag: "Ok" } | { readonly _tag: "Error"; readonly errorName: string; readonly message: string }
+    ) =>
+      Effect.gen(function* () {
+        const endedAtMs = Date.now();
+        const budgetSnapshot = yield* budget.snapshot();
 
-      if (repairs >= maxRepairs) {
-        return yield* Effect.fail(lastError);
-      }
-
-      const repaired = yield* lm.complete({
-        messages: [
-          ...messages,
-          { role: "assistant", content: rawText.slice(0, 5000) },
-          { role: "user", content: repairPromptFor(rawText, lastError) }
-        ],
-        modelId: params.model?.modelId,
-        temperature: 0,
-        topP: 1,
-        maxTokens: Math.min(256, params.model?.maxTokens ?? 256)
+        yield* receipts.record({
+          format: "openagents.dse.predict_receipt",
+          formatVersion: 1,
+          receiptId,
+          createdAt: new Date().toISOString(),
+          signatureId: signature.id,
+          compiled_id,
+          hashes: {
+            inputSchemaHash,
+            outputSchemaHash,
+            promptIrHash: promptHash,
+            ...(renderedHash ? { renderedPromptHash: renderedHash } : {}),
+            paramsHash: paramsHashValue,
+            ...(outputHash ? { outputHash } : {})
+          },
+          model: {
+            ...(params.model?.modelId ? { modelId: params.model.modelId } : {}),
+            ...(typeof params.model?.temperature === "number"
+              ? { temperature: params.model.temperature }
+              : {}),
+            ...(typeof params.model?.topP === "number" ? { topP: params.model.topP } : {}),
+            ...(typeof params.model?.maxTokens === "number"
+              ? { maxTokens: params.model.maxTokens }
+              : {})
+          },
+          ...(usage ? { usage } : {}),
+          timing: {
+            startedAtMs,
+            endedAtMs,
+            durationMs: Math.max(0, endedAtMs - startedAtMs)
+          },
+          ...(repairs > 0 ? { repairCount: repairs } : {}),
+          budget: budgetSnapshot,
+          result
+        });
       });
 
-      rawText = repaired.text;
-      repairs++;
-    }
+    const main = Effect.gen(function* () {
+      const messages = yield* renderPromptMessages({
+        signature,
+        input,
+        params
+      });
 
-    const outputEncoded = yield* Effect.try({
-      try: () => Schema.encodeSync(signature.output)(decoded),
-      catch: (cause) =>
-        OutputDecodeError.make({
-          message: "Failed to encode decoded output",
-          cause
-        })
+      renderedHash = yield* renderedPromptHash(messages);
+
+      yield* budget.checkTime();
+      yield* budget.onLmCall();
+      const response = yield* lm.complete({
+        messages,
+        modelId: params.model?.modelId,
+        temperature: params.model?.temperature,
+        topP: params.model?.topP,
+        maxTokens: params.model?.maxTokens ?? signature.defaults.constraints.maxTokens
+      });
+
+      usage = response.usage;
+      yield* budget.onOutputChars(response.text.length);
+
+      let rawText = response.text;
+      let decoded: O | null = null;
+      let lastError: OutputDecodeError | null = null;
+
+      while (true) {
+        const attempt = yield* Effect.either(decodeOnce(rawText));
+        if (attempt._tag === "Right") {
+          decoded = attempt.right;
+          break;
+        }
+
+        lastError = attempt.left;
+
+        if (repairs >= maxRepairs) {
+          return yield* Effect.fail(lastError);
+        }
+
+        yield* budget.onLmCall();
+        const repaired = yield* lm.complete({
+          messages: [
+            ...messages,
+            { role: "assistant", content: rawText.slice(0, 5000) },
+            { role: "user", content: repairPromptFor(rawText, lastError) }
+          ],
+          modelId: params.model?.modelId,
+          temperature: 0,
+          topP: 1,
+          maxTokens: Math.min(256, params.model?.maxTokens ?? 256)
+        });
+
+        yield* budget.onOutputChars(repaired.text.length);
+
+        rawText = repaired.text;
+        repairs++;
+      }
+
+      const outputEncoded = yield* Effect.try({
+        try: () => Schema.encodeSync(signature.output)(decoded),
+        catch: (cause) =>
+          OutputDecodeError.make({
+            message: "Failed to encode decoded output",
+            cause
+          })
+      });
+
+      outputHash = yield* sha256IdFromCanonicalJson(outputEncoded);
+
+      return decoded;
     });
 
-    const outputHash = yield* sha256IdFromCanonicalJson(outputEncoded);
-
-    const endedAtMs = Date.now();
-
-    yield* receipts.record({
-      format: "openagents.dse.predict_receipt",
-      formatVersion: 1,
-      receiptId: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      signatureId: signature.id,
-      compiled_id,
-      hashes: {
-        inputSchemaHash,
-        outputSchemaHash,
-        promptIrHash: promptHash,
-        renderedPromptHash: renderedHash,
-        paramsHash: paramsHashValue,
-        outputHash
-      },
-      model: {
-        ...(params.model?.modelId ? { modelId: params.model.modelId } : {}),
-        ...(typeof params.model?.temperature === "number"
-          ? { temperature: params.model.temperature }
-          : {}),
-        ...(typeof params.model?.topP === "number" ? { topP: params.model.topP } : {}),
-        ...(typeof params.model?.maxTokens === "number"
-          ? { maxTokens: params.model.maxTokens }
-          : {})
-      },
-      ...(response.usage ? { usage: response.usage } : {}),
-      timing: {
-        startedAtMs,
-        endedAtMs,
-        durationMs: Math.max(0, endedAtMs - startedAtMs)
-      },
-      ...(repairs > 0 ? { repairCount: repairs } : {}),
-      result: { _tag: "Ok" }
-    });
-
-    return decoded;
+    return yield* main.pipe(
+      Effect.tap(() => recordReceipt({ _tag: "Ok" })),
+      Effect.tapError((error) => {
+        const summary = errorSummary(error);
+        return recordReceipt({ _tag: "Error", errorName: summary.errorName, message: summary.message });
+      })
+    );
   });
 }

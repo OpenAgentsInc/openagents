@@ -12,6 +12,7 @@ import * as PromptIR from "../src/promptIr.js";
 import * as Signature from "../src/signature.js";
 
 import { LmClientService, type LmRequest, type LmResponse } from "../src/runtime/lm.js";
+import { layerNoop as budgetLayerNoop } from "../src/runtime/budget.js";
 import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
 import { layerNoop as receiptLayerNoop } from "../src/runtime/receipt.js";
 
@@ -151,7 +152,7 @@ test("Eval.evaluate produces stable summary and uses eval cache keys", async () 
     set: (keyId, value) => Effect.sync(() => void cacheMap.set(keyId, value))
   });
 
-  const layer = Layer.mergeAll(fakeLm.layer, blobs, receipts);
+  const layer = Layer.mergeAll(fakeLm.layer, blobs, receipts, budgetLayerNoop());
 
   const runEval = () =>
     Effect.runPromise(
@@ -263,7 +264,11 @@ test("Judge metrics are pinned to a compiled artifact and recorded in reports", 
       dataset: ds,
       reward,
       includeExampleDetails: true
-    }).pipe(Effect.provide(Layer.mergeAll(fakeLm.layer, blobs, receipts, cache)))
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(fakeLm.layer, blobs, receipts, budgetLayerNoop(), cache)
+      )
+    )
   );
 
   const signal = res.examples?.[0]?.signals?.[0];
@@ -271,4 +276,3 @@ test("Judge metrics are pinned to a compiled artifact and recorded in reports", 
   expect(signal?.metric?.judge?.signatureId).toBe(judgeSig.id);
   expect(signal?.metric?.judge?.compiled_id).toBe(judgeArtifact.compiled_id);
 });
-

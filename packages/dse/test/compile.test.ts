@@ -13,6 +13,7 @@ import * as PromptIR from "../src/promptIr.js";
 import * as Signature from "../src/signature.js";
 
 import { LmClientService, type LmRequest, type LmResponse } from "../src/runtime/lm.js";
+import { layerNoop as budgetLayerNoop } from "../src/runtime/budget.js";
 import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
 import { layerNoop as receiptLayerNoop } from "../src/runtime/receipt.js";
 
@@ -50,7 +51,13 @@ function makeFakeLmClientForCompile() {
 }
 
 function envForCompile(fakeLmLayer: Layer.Layer<LmClientService>) {
-  return Layer.mergeAll(fakeLmLayer, blobLayerInMemory(), receiptLayerNoop(), EvalCache.layerInMemory());
+  return Layer.mergeAll(
+    fakeLmLayer,
+    blobLayerInMemory(),
+    receiptLayerNoop(),
+    budgetLayerNoop(),
+    EvalCache.layerInMemory()
+  );
 }
 
 test("Compile.instruction_grid selects the best instruction variant", async () => {

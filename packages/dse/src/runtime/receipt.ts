@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
+import { DseExecutionBudgetsV1Schema, type DseExecutionBudgetsV1 } from "../params.js";
+
 export type PredictReceiptV1 = {
   readonly format: "openagents.dse.predict_receipt";
   readonly formatVersion: 1;
@@ -41,6 +43,17 @@ export type PredictReceiptV1 = {
   };
 
   readonly repairCount?: number | undefined;
+
+  readonly budget?:
+    | {
+        readonly limits: DseExecutionBudgetsV1;
+        readonly usage: {
+          readonly elapsedMs: number;
+          readonly lmCalls: number;
+          readonly outputChars: number;
+        };
+      }
+    | undefined;
 
   readonly result:
     | { readonly _tag: "Ok" }
@@ -89,6 +102,17 @@ export const PredictReceiptV1Schema: Schema.Schema<PredictReceiptV1> =
     }),
 
     repairCount: Schema.optional(Schema.Number),
+
+    budget: Schema.optional(
+      Schema.Struct({
+        limits: DseExecutionBudgetsV1Schema,
+        usage: Schema.Struct({
+          elapsedMs: Schema.Number,
+          lmCalls: Schema.Number,
+          outputChars: Schema.Number
+        })
+      })
+    ),
 
     result: Schema.Union(
       Schema.Struct({ _tag: Schema.Literal("Ok") }),

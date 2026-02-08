@@ -1,5 +1,18 @@
 import { Schema } from "effect";
 
+export type DseExecutionBudgetsV1 = {
+  readonly maxTimeMs?: number | undefined;
+  readonly maxLmCalls?: number | undefined;
+  readonly maxOutputChars?: number | undefined;
+};
+
+export const DseExecutionBudgetsV1Schema: Schema.Schema<DseExecutionBudgetsV1> =
+  Schema.Struct({
+    maxTimeMs: Schema.optional(Schema.Number),
+    maxLmCalls: Schema.optional(Schema.Number),
+    maxOutputChars: Schema.optional(Schema.Number)
+  });
+
 export type DseParamsV1 = {
   readonly paramsVersion: 1;
 
@@ -39,6 +52,8 @@ export type DseParamsV1 = {
         readonly timeoutMsByToolName?: Readonly<Record<string, number>> | undefined;
       }
     | undefined;
+
+  readonly budgets?: DseExecutionBudgetsV1 | undefined;
 };
 
 export type DseParams = DseParamsV1;
@@ -80,5 +95,6 @@ export const DseParamsV1Schema: Schema.Schema<DseParamsV1> = Schema.Struct({
         Schema.Record({ key: Schema.String, value: Schema.Number })
       )
     })
-  )
+  ),
+  budgets: Schema.optional(DseExecutionBudgetsV1Schema)
 });
