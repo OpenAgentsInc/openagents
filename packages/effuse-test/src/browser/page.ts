@@ -10,8 +10,15 @@ export type WaitOptions = {
   readonly intervalMs?: number
 }
 
+export type Viewport = {
+  readonly width: number
+  readonly height: number
+  readonly deviceScaleFactor?: number
+}
+
 export type Page = {
   readonly addInitScript: (source: string) => Effect.Effect<void, unknown, ProbeService | TestContext>
+  readonly setViewport: (viewport: Viewport) => Effect.Effect<void, unknown, ProbeService | TestContext>
   readonly goto: (url: string) => Effect.Effect<void, unknown, ProbeService | TestContext>
   readonly click: (selector: string) => Effect.Effect<void, unknown, ProbeService | TestContext>
   readonly fill: (selector: string, value: string) => Effect.Effect<void, unknown, ProbeService | TestContext>

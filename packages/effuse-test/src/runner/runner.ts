@@ -48,6 +48,12 @@ const filterTests = (tests: ReadonlyArray<TestCase<TestEnv>>, options: RunnerOpt
     out = out.filter((t) => !t.tags.includes("prod"))
   }
 
+  // Visual snapshots are opt-in (local baselines, heavier runtime).
+  const wantsVisual = options.tags?.includes("visual") ?? false
+  if (!wantsVisual) {
+    out = out.filter((t) => !t.tags.includes("visual"))
+  }
+
   if (options.tags && options.tags.length > 0) {
     const required = new Set(options.tags)
     out = out.filter((t) => t.tags.some((tag) => required.has(tag)))
