@@ -167,6 +167,27 @@ function applyRemoteChunk(active: ActiveStream, chunkData: AiResponse.StreamPart
 
       return active;
     }
+    case "error": {
+      const raw = (chunkData as any).error;
+      const message =
+        typeof raw === "string"
+          ? raw
+          : raw == null
+            ? "Unknown error"
+            : stableStringify(raw);
+
+      // Render the error as visible assistant text so users are never left with a silent stall.
+      active.parts.push({
+        type: "text",
+        text: message ? `Error: ${message}` : "Error",
+        state: "done",
+      });
+      return active;
+    }
+    case "finish": {
+      // No-op for now; message finalization is reflected via message.status/text.
+      return active;
+    }
     default:
       return active;
   }
@@ -365,6 +386,7 @@ export const ChatServiceLive = Layer.effect(
           fetch("/api/autopilot/send", {
             method: "POST",
             headers: { "content-type": "application/json" },
+            credentials: "include",
             cache: "no-store",
             body: JSON.stringify({ threadId, anonKey, text }),
           }),
@@ -408,6 +430,7 @@ export const ChatServiceLive = Layer.effect(
               fetch("/api/autopilot/cancel", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
+                credentials: "include",
                 cache: "no-store",
                 body: JSON.stringify({ threadId, anonKey, runId }),
               }),

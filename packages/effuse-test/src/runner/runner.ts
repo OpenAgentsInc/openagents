@@ -15,6 +15,7 @@ import { startWranglerDev } from "./TestServer.ts"
 export type RunnerOptions = {
   readonly projectDir: string
   readonly serverPort: number
+  readonly baseUrl?: string
   readonly viewerPort: number
   readonly headless: boolean
   readonly watch: boolean
@@ -40,6 +41,13 @@ const filterTests = (tests: ReadonlyArray<TestCase<TestEnv>>, options: RunnerOpt
     const re = new RegExp(options.grep)
     out = out.filter((t) => re.test(t.id))
   }
+
+  // Safety default: never run production-targeting tests unless explicitly requested.
+  const wantsProd = options.tags?.includes("prod") ?? false
+  if (!wantsProd) {
+    out = out.filter((t) => !t.tags.includes("prod"))
+  }
+
   if (options.tags && options.tags.length > 0) {
     const required = new Set(options.tags)
     out = out.filter((t) => t.tags.some((tag) => required.has(tag)))
@@ -75,7 +83,14 @@ export const run = (options: RunnerOptions): Effect.Effect<void, Error> =>
         broadcast: viewer?.broadcast,
       })
 
-      const server = yield* startWranglerDev({ projectDir: options.projectDir, port: options.serverPort })
+      const baseUrl = options.baseUrl?.replace(/\/+$/, "")
+      if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
+        return yield* Effect.fail(new Error(`--base-url must start with http(s)://, got: ${baseUrl}`))
+      }
+
+      const server = baseUrl
+        ? ({ baseUrl } satisfies { readonly baseUrl: string })
+        : yield* startWranglerDev({ projectDir: options.projectDir, port: options.serverPort })
       const browserLayer = needsBrowser ? BrowserServiceLive({ headless: options.headless }) : BrowserServiceNone
 
       const mainLayer = Layer.mergeAll(probeLayer, browserLayer)

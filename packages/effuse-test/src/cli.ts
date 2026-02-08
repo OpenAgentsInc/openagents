@@ -19,6 +19,14 @@ const serverPort = Options.integer("server-port").pipe(
   Options.withDefault(3010),
 )
 
+const baseUrl = Options.text("base-url").pipe(
+  Options.withAlias("u"),
+  Options.optional,
+  Options.withDescription(
+    "Use an existing server base URL instead of starting wrangler dev (e.g. https://autopilot-web.openagents.workers.dev)",
+  ),
+)
+
 const viewerPort = Options.integer("viewer-port").pipe(
   Options.withDescription("Port for the live viewer UI (only used in --watch)"),
   Options.withDefault(3020),
@@ -41,8 +49,8 @@ const tag = Options.text("tag").pipe(
 
 const runCommand = Command.make(
   "run",
-  { project, serverPort, viewerPort, watch, headed, headless, grep, tag },
-  ({ project, serverPort, viewerPort, watch, headed, headless, grep, tag }) => {
+  { project, serverPort, baseUrl, viewerPort, watch, headed, headless, grep, tag },
+  ({ project, serverPort, baseUrl, viewerPort, watch, headed, headless, grep, tag }) => {
     if (headed && headless) {
       return Effect.fail(new Error("Cannot set both --headed and --headless"))
     }
@@ -50,12 +58,14 @@ const runCommand = Command.make(
     const resolvedProject = Path.resolve(process.cwd(), project)
     const shouldWatch = watch
     const finalHeadless = shouldWatch ? false : headed ? false : headless ? true : true
+    const resolvedBaseUrl = Option.getOrUndefined(baseUrl)
     const tagsRaw = Option.getOrUndefined(tag)
     const tags = tagsRaw ? tagsRaw.split(",").map((s) => s.trim()).filter(Boolean) : undefined
 
     return run({
       projectDir: resolvedProject,
       serverPort,
+      baseUrl: resolvedBaseUrl,
       viewerPort,
       headless: finalHeadless,
       watch: shouldWatch,

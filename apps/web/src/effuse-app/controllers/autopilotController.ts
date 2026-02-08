@@ -8,7 +8,10 @@ import { AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from "../../effect/atom
 import { AutopilotSidebarCollapsedAtom, AutopilotSidebarUserMenuOpenAtom } from "../../effect/atoms/autopilotUi"
 import { SessionAtom } from "../../effect/atoms/session"
 import { clearAuthClientCache } from "../../effect/auth"
+import { AuthService } from "../../effect/auth"
+import { ConvexService } from "../../effect/convex"
 import { UiBlobStore } from "../blobStore"
+import { api } from "../../../convex/_generated/api"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { AutopilotStore } from "../../effect/autopilotStore"
@@ -27,6 +30,14 @@ function randomId(size = 12): string {
   let out = ""
   while (out.length < size) out += Math.random().toString(36).slice(2)
   return out.slice(0, size)
+}
+
+function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase()
+}
+
+function normalizeCode(raw: string): string {
+  return raw.replace(/\s+/g, "")
 }
 
 function getOrCreateAnonChatId(): string {
@@ -249,6 +260,13 @@ export const mountAutopilotController = (input: {
   let isAtBottom = atoms.get(AutopilotChatIsAtBottomAtom(chatId))
 
   // Local controller state (was React useState/useRef)
+  type AuthStep = "closed" | "email" | "code"
+  let authStep: AuthStep = "closed"
+  let authEmail = ""
+  let authCode = ""
+  let authBusy = false
+  let authErrorText: string | null = null
+
   let isExportingBlueprint = false
   let isResettingAgent = false
   let blueprint: unknown | null = null
@@ -396,6 +414,16 @@ export const mountAutopilotController = (input: {
       isBusy,
       isAtBottom,
       inputValue: inputDraft,
+      errorText: chatSnapshot.errorText,
+      auth: {
+        isAuthed: Boolean(session.userId),
+        authedEmail: session.user?.email ?? null,
+        step: authStep,
+        email: authEmail,
+        code: authCode,
+        isBusy: authBusy,
+        errorText: authErrorText,
+      },
     }
 
     const makeDraftFromBlueprint = (value: unknown): BlueprintDraft => {
@@ -472,7 +500,7 @@ export const mountAutopilotController = (input: {
     }
 
     const sidebarKey = `${collapsed ? 1 : 0}:${window.location.pathname}:${session.user?.id ?? "null"}:${userMenuOpen ? 1 : 0}`
-    const chatKey = `${renderedTailKey}:${isBusy ? 1 : 0}:${isAtBottom ? 1 : 0}:${toolContractsKey}`
+    const chatKey = `${renderedTailKey}:${isBusy ? 1 : 0}:${isAtBottom ? 1 : 0}:${toolContractsKey}:${chatSnapshot.errorText ?? ""}:${session.userId ?? "null"}:${authStep}:${authBusy ? 1 : 0}:${authEmail}:${authCode}:${authErrorText ?? ""}`
 
     const blueprintKey = (() => {
       if (isEditingBlueprint) {
@@ -652,6 +680,12 @@ export const mountAutopilotController = (input: {
     } finally {
       clearAuthClientCache()
       atoms.set(SessionAtom as any, { userId: null, user: null })
+      try {
+        sessionStorage.removeItem(ANON_CHAT_STORAGE_KEY)
+        sessionStorage.removeItem(ANON_CHAT_KEY_STORAGE_KEY)
+      } catch {
+        // ignore
+      }
       input.navigate("/")
     }
   }
@@ -707,6 +741,156 @@ export const mountAutopilotController = (input: {
 
       yield* Effect.sync(() => setTimeout(() => scrollToBottom("auto"), 0))
     })
+  )
+
+  const setAuth = (next: Partial<{
+    step: AuthStep
+    email: string
+    code: string
+    isBusy: boolean
+    errorText: string | null
+  }>) => {
+    if (next.step !== undefined) authStep = next.step
+    if (next.email !== undefined) authEmail = next.email
+    if (next.code !== undefined) authCode = next.code
+    if (next.isBusy !== undefined) authBusy = next.isBusy
+    if (next.errorText !== undefined) authErrorText = next.errorText
+    scheduleRender()
+  }
+
+  const startMagicCode = async (emailRaw: string) => {
+    const email = normalizeEmail(emailRaw)
+    if (!email || !email.includes("@") || email.length > 320) {
+      setAuth({ errorText: "Enter a valid email address." })
+      return
+    }
+
+    setAuth({ isBusy: true, errorText: null, email })
+    try {
+      const res = await fetch("/api/auth/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify({ email }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json || (json as any).ok !== true) {
+        setAuth({ errorText: "Failed to send code. Try again." })
+        return
+      }
+      setAuth({ step: "code", errorText: null })
+    } catch (err) {
+      setAuth({ errorText: err instanceof Error ? err.message : "Failed to send code." })
+    } finally {
+      setAuth({ isBusy: false })
+    }
+  }
+
+  const verifyMagicCode = async (emailRaw: string, codeRaw: string) => {
+    const email = normalizeEmail(emailRaw)
+    const code = normalizeCode(codeRaw)
+    if (!email || !email.includes("@") || email.length > 320) {
+      setAuth({ errorText: "Enter a valid email address." })
+      return
+    }
+    if (!/^[0-9]{4,10}$/.test(code)) {
+      setAuth({ errorText: "Enter the numeric code from your email." })
+      return
+    }
+
+    setAuth({ isBusy: true, errorText: null, email, code })
+    try {
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify({ email, code }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json || (json as any).ok !== true) {
+        setAuth({ errorText: "Invalid code. Try again." })
+        return
+      }
+
+      // Refresh Auth/Convex token caches and update SessionAtom.
+      clearAuthClientCache()
+
+      const authSession = await input.runtime.runPromise(
+        Effect.gen(function* () {
+          const auth = yield* AuthService
+          return yield* auth.getSession()
+        }),
+      )
+
+      atoms.set(SessionAtom as any, {
+        userId: authSession.userId,
+        user: authSession.user
+          ? {
+              id: authSession.user.id,
+              email: authSession.user.email,
+              firstName: authSession.user.firstName,
+              lastName: authSession.user.lastName,
+            }
+          : null,
+      })
+
+      // Claim the anon thread (migrate transcript + blueprint ownership).
+      await input.runtime.runPromise(
+        Effect.gen(function* () {
+          const convex = yield* ConvexService
+          return yield* convex.mutation(api.autopilot.threads.claimAnonThread, { threadId: chatId, anonKey } as any)
+        }),
+      )
+
+      setAuth({ step: "closed", code: "", errorText: null })
+    } catch (err) {
+      setAuth({ errorText: err instanceof Error ? err.message : "Verification failed." })
+    } finally {
+      setAuth({ isBusy: false })
+    }
+  }
+
+  input.ez.set("autopilot.auth.open", () =>
+    Effect.sync(() => setAuth({ step: "email", errorText: null })),
+  )
+
+  input.ez.set("autopilot.auth.close", () =>
+    Effect.sync(() => setAuth({ step: "closed", errorText: null })),
+  )
+
+  input.ez.set("autopilot.auth.email.input", ({ params }) =>
+    Effect.sync(() => setAuth({ email: String((params as any).email ?? ""), errorText: null })),
+  )
+
+  input.ez.set("autopilot.auth.email.submit", ({ params }) =>
+    Effect.sync(() => {
+      const email = String((params as any).email ?? authEmail ?? "")
+      void startMagicCode(email)
+    }),
+  )
+
+  input.ez.set("autopilot.auth.code.input", ({ params }) =>
+    Effect.sync(() => setAuth({ code: String((params as any).code ?? ""), errorText: null })),
+  )
+
+  input.ez.set("autopilot.auth.code.back", () =>
+    Effect.sync(() => setAuth({ step: "email", code: "", errorText: null })),
+  )
+
+  input.ez.set("autopilot.auth.code.resend", () =>
+    Effect.sync(() => {
+      void startMagicCode(authEmail)
+    }),
+  )
+
+  input.ez.set("autopilot.auth.code.submit", ({ params }) =>
+    Effect.sync(() => {
+      const email = String((params as any).email ?? authEmail ?? "")
+      const code = String((params as any).code ?? authCode ?? "")
+      void verifyMagicCode(email, code)
+    }),
   )
 
   const onStartEditBlueprint = () => {
@@ -950,6 +1134,14 @@ export const mountAutopilotController = (input: {
       input.ez.delete("autopilot.chat.scrollBottom")
       input.ez.delete("autopilot.chat.stop")
       input.ez.delete("autopilot.chat.send")
+      input.ez.delete("autopilot.auth.open")
+      input.ez.delete("autopilot.auth.close")
+      input.ez.delete("autopilot.auth.email.input")
+      input.ez.delete("autopilot.auth.email.submit")
+      input.ez.delete("autopilot.auth.code.input")
+      input.ez.delete("autopilot.auth.code.back")
+      input.ez.delete("autopilot.auth.code.resend")
+      input.ez.delete("autopilot.auth.code.submit")
       input.ez.delete("autopilot.blueprint.toggleEdit")
       input.ez.delete("autopilot.blueprint.refresh")
       input.ez.delete("autopilot.blueprint.save")
