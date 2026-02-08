@@ -12,6 +12,8 @@ export type InMemoryDb = {
   readonly insert: (table: string, doc: Record<string, any>) => Promise<string>;
   readonly patch: (id: string, patch: Record<string, any>) => Promise<void>;
   readonly delete: (id: string) => Promise<void>;
+  /** Clears all tables and resets internal id counters. */
+  readonly reset: () => void;
   /** Test-only table access. */
   readonly __tables: Record<string, AnyDoc[]>;
 };
@@ -145,7 +147,12 @@ export const makeInMemoryDb = (options?: { readonly seedTables?: Record<string, 
     insert,
     patch,
     delete: del,
+    reset: () => {
+      for (const [k, v] of Object.entries(tables)) {
+        if (Array.isArray(v)) tables[k] = [];
+      }
+      nextId = 1;
+    },
     __tables: tables,
   };
 };
-
