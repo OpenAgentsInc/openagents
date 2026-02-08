@@ -1,6 +1,6 @@
 # Master Plan: Complete Effuse Stack (No React, No TanStack)
 
-**Status:** Draft (2026-02-07)  
+**Status:** Implemented (2026-02-08)  
 **Audience:** implementers of `@openagentsinc/effuse` + maintainers of `apps/web`  
 **Goal:** define the end-state architecture and migration plan where **Effuse (built on Effect) fully replaces React + TanStack** for the OpenAgents web app, while staying consistent with Effuse’s design constraints (no VDOM, explicit swaps, Effect-native services).
 
@@ -1006,6 +1006,7 @@ Work log:
 - 2026-02-07: hardening: added a wire-protocol regression gate: the chat WebSocket stream must emit valid `@effect/ai/Response` parts (`tool-call`/`tool-result`/`finish`) and MUST NOT forward reasoning parts (`reasoning-*`) (`apps/autopilot-worker/tests/index.test.ts`).
 - 2026-02-07: hardening: added RouterService outcome contract tests for redirect handling (replace semantics + loop cutoff), not-found rendering, and loader fail rendering (view not executed) (`packages/effuse/tests/router-outcomes.test.ts`).
 - 2026-02-07: hardening: improved default Router error UI so non-`Error` failures (notably `RouterError`) render a useful message instead of `[object Object]` (`packages/effuse/src/router/router.ts`).
+- 2026-02-08: hardening: `/autopilot` UI now renders chat errors visibly (no silent stalls) and supports email verification inside the chat panel (send code + verify code) with anon thread claim-on-auth (`apps/web/src/effect/chat.ts`, `apps/web/src/effuse-pages/autopilot.ts`, `apps/web/src/effuse-app/controllers/autopilotController.ts`).
 
 Add/Change:
 
@@ -1033,6 +1034,7 @@ Work log:
 - 2026-02-07: wired `apps/web` `npm run test:e2e` to call the Effuse Test Runner.
 - 2026-02-07: added a dev/test-only swap counter in `DomService.swap` (`globalThis.__effuseSwapCount`) to assert strict hydration “no swap” in real-browser E2E.
 - 2026-02-07: added a no-browser runner mode (when selected tests do not have the `browser` tag) and added no-browser HTTP smoke tests (`apps-web.http.*`) plus a browser history back/forward gate (`apps-web.navigation.back-forward`).
+- 2026-02-08: added production-target test support: Effuse Test Runner can run against an existing `--base-url` (skips `wrangler dev`), and prod tests are gated behind an explicit `--tag prod` (`packages/effuse-test/src/cli.ts`, `packages/effuse-test/src/runner/runner.ts`, `packages/effuse-test/src/suites/apps-web.ts`).
 
 Add/Change:
 
@@ -1374,6 +1376,10 @@ Implemented suites (2026-02-07):
     - asserts: initial load has SSR `[data-effuse-shell]` + `[data-effuse-outlet]`
     - asserts: strict boot performs **no initial outlet swap** (`window.__effuseSwapCount === 0`)
     - asserts: click `/login` swaps outlet and preserves shell node identity
+  - `apps-web.prod.autopilot.chat-send-shows-response-or-error` (2026-02-08; `prod` tag)
+    - asserts: unauthed `/autopilot` can send a message and the UI shows either an assistant response or a visible error banner (never a silent stall)
+  - `apps-web.prod.autopilot.login-via-chat` (2026-02-08; optional; requires `EFFUSE_TEST_MAGIC_EMAIL` + `EFFUSE_TEST_MAGIC_CODE`)
+    - asserts: email verification can be completed through the `/autopilot` chat UI and the authed banner renders
 
 Harness:
 
@@ -1386,6 +1392,7 @@ Run:
 
 - `cd apps/web && npm run test:e2e`
 - or `cd packages/effuse-test && bun run src/cli.ts run --project ../../apps/web`
+- production smoke (explicit): `cd packages/effuse-test && bun run src/cli.ts run --project ../../apps/web --base-url https://autopilot-web.openagents.workers.dev --tag prod`
 
 Minimum assertions (expand from here):
 
@@ -1615,6 +1622,7 @@ Options (v1 subset):
 - `--watch` (headed + viewer)
 - `--headed` / `--headless`
 - `--server-port <n>`
+- `--base-url <url>` (skip `wrangler dev` and run tests against an existing server; prod tests MUST be explicitly enabled with `--tag prod`)
 - `--viewer-port <n>`
 - `--grep <pattern>`
 - `--tag <tag1,tag2>`
