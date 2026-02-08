@@ -342,9 +342,18 @@ The goal is a smallest end-to-end vertical slice: **one signature improves on a 
 - DSE unit tests: `cd packages/dse && bun test && bun run typecheck`
 - Web worker + Convex tests: `cd apps/web && npm test && npm run lint`
 
+Implementation log:
+
+- 2026-02-08: Verified Stage 0 is green by running the commands above.
+- 2026-02-08: Fixed an `apps/web` lint failure blocking Stage 0 by wiring `Layer.props.inset` into the renderer (`apps/web/src/effuse-deck/render.ts`).
+
 ### Stage 1: Budgeted, receiptful Predict (done)
 
 - DirectPredict budgets + receipt snapshots are implemented (commit `42507656f`).
+
+Implementation log:
+
+- 2026-02-08: Re-verified budget enforcement and receipt budget snapshots by running `cd packages/dse && bun test` (includes `test/budget.test.ts`).
 
 ### Stage 2: Convex-backed DSE stores (artifacts + active pointer + receipts)
 
