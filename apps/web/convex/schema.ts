@@ -131,4 +131,24 @@ export default defineSchema({
     actorUserId: v.optional(v.string()),
     createdAtMs: v.number(),
   }).index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
+
+  /**
+   * DSE labeled examples dataset (global, not per-thread).
+   *
+   * This is the minimal storage needed to run evaluation/compile jobs in the
+   * Convex-first MVP without Durable Objects.
+   */
+  dseExamples: defineTable({
+    signatureId: v.string(),
+    exampleId: v.string(),
+    inputJson: v.any(),
+    expectedJson: v.any(),
+    split: v.optional(v.union(v.literal("train"), v.literal("dev"), v.literal("test"))),
+    tags: v.optional(v.array(v.string())),
+    source: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_signatureId_exampleId", ["signatureId", "exampleId"])
+    .index("by_signatureId_updatedAtMs", ["signatureId", "updatedAtMs"]),
 });
