@@ -60,24 +60,6 @@ function getOrCreateAnonChatKey(): string {
   return key
 }
 
-function sanitizeBlueprintForDisplay(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeBlueprintForDisplay)
-  }
-
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>
-    const out: Record<string, unknown> = {}
-    for (const [key, child] of Object.entries(record)) {
-      const safeKey = key === "addressAs" ? "handle" : key
-      out[safeKey] = sanitizeBlueprintForDisplay(child)
-    }
-    return out
-  }
-
-  return value
-}
-
 type UiPart = ChatMessage["parts"][number]
 
 type RenderPart =
@@ -270,11 +252,17 @@ export const mountAutopilotController = (input: {
   let isExportingBlueprint = false
   let isResettingAgent = false
   let blueprint: unknown | null = null
+  // When switching from Raw -> Form without saving, we need to preserve unknown keys
+  // from the raw draft. Store a parsed base blueprint here and apply form edits on top.
+  let blueprintEditBase: unknown | null = null
   let blueprintError: string | null = null
   let blueprintLoading = false
   let blueprintUpdatedAt: number | null = null
-  let isEditingBlueprint = false
+  let blueprintMode: "form" | "raw" = "form"
   let isSavingBlueprint = false
+  // Slot key freezing: once the user starts typing, keep blueprint slot stable even if
+  // background blueprint polling updates blueprintUpdatedAt (avoid clobbering caret).
+  let blueprintKeyFrozenAt: number | null = null
   type BlueprintDraft = {
     userHandle: string
     agentName: string
@@ -283,7 +271,97 @@ export const mountAutopilotController = (input: {
     characterBoundaries: string
   }
   let blueprintDraft: BlueprintDraft | null = null
+  let blueprintDraftDirty = false
+  let blueprintRawDraft: string | null = null
+  let blueprintRawDirty = false
+  let blueprintRawError: string | null = null
   let toolContractsByName: Record<string, ToolContract> | null = null
+
+  const makeDraftFromBlueprint = (value: unknown): BlueprintDraft => {
+    const b: any = value ?? {}
+    const docs = b?.docs ?? {}
+    const identity = docs.identity ?? {}
+    const user = docs.user ?? {}
+    const character = docs.character ?? {}
+
+    const boundaries: string = Array.isArray(character.boundaries)
+      ? character.boundaries
+          .map((s: unknown) => (typeof s === "string" ? s : ""))
+          .filter(Boolean)
+          .join("\n")
+      : ""
+
+    return {
+      userHandle: typeof user.addressAs === "string" ? user.addressAs : "",
+      agentName: typeof identity.name === "string" ? identity.name : "",
+      identityVibe: typeof identity.vibe === "string" ? identity.vibe : "",
+      characterVibe: typeof character.vibe === "string" ? character.vibe : "",
+      characterBoundaries: boundaries,
+    }
+  }
+
+  const cloneJson = (value: unknown): any => {
+    try {
+      return JSON.parse(JSON.stringify(value ?? {}))
+    } catch {
+      return {}
+    }
+  }
+
+  const ensureRecord = (obj: any, key: string): any => {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {}
+    const existing = obj[key]
+    if (existing && typeof existing === "object" && !Array.isArray(existing)) return existing
+    const created: Record<string, unknown> = {}
+    obj[key] = created
+    return created
+  }
+
+  const applyDraftFields = (base: unknown, draft: BlueprintDraft): any => {
+    const next = cloneJson(base)
+    const nowBoundaries = draft.characterBoundaries
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    const docs = ensureRecord(next, "docs")
+    const user = ensureRecord(docs, "user")
+    const identity = ensureRecord(docs, "identity")
+    const character = ensureRecord(docs, "character")
+
+    const nextHandle = draft.userHandle.trim()
+    if (nextHandle) user.addressAs = nextHandle
+
+    const nextName = draft.agentName.trim()
+    if (nextName) identity.name = nextName
+
+    const nextIdentityVibe = draft.identityVibe.trim()
+    if (nextIdentityVibe) identity.vibe = nextIdentityVibe
+
+    const nextCharacterVibe = draft.characterVibe.trim()
+    if (nextCharacterVibe) character.vibe = nextCharacterVibe
+
+    character.boundaries = nowBoundaries
+
+    return next
+  }
+
+  const applySaveMetadata = (next: any, nowIso: string) => {
+    if (!next || typeof next !== "object" || Array.isArray(next)) return
+    next.exportedAt = nowIso
+
+    const docs = ensureRecord(next, "docs")
+    const bump = (section: any) => {
+      if (!section || typeof section !== "object" || Array.isArray(section)) return
+      section.updatedAt = nowIso
+      section.updatedBy = "user"
+      section.version = Number(section.version ?? 1) + 1
+    }
+
+    bump(ensureRecord(docs, "user"))
+    bump(ensureRecord(docs, "identity"))
+    bump(ensureRecord(docs, "character"))
+  }
 
   // Draft input in a ref-like variable so keystrokes don't force rerenders.
   let inputDraft = ""
@@ -459,33 +537,26 @@ export const mountAutopilotController = (input: {
       },
     }
 
-    const makeDraftFromBlueprint = (value: unknown): BlueprintDraft => {
-      const b: any = value ?? {}
-      const docs = b?.docs ?? {}
-      const identity = docs.identity ?? {}
-      const user = docs.user ?? {}
-      const character = docs.character ?? {}
+    const baseBlueprint = blueprintEditBase ?? blueprint
+    const formDraft =
+      blueprintDraft ??
+      (baseBlueprint
+        ? makeDraftFromBlueprint(baseBlueprint)
+        : {
+            userHandle: "",
+            agentName: "",
+            identityVibe: "",
+            characterVibe: "",
+            characterBoundaries: "",
+          })
 
-      const boundaries: string = Array.isArray(character.boundaries)
-        ? character.boundaries
-            .map((s: unknown) => (typeof s === "string" ? s : ""))
-            .filter(Boolean)
-            .join("\n")
-        : ""
-
-      return {
-        userHandle: typeof user.addressAs === "string" ? user.addressAs : "",
-        agentName: typeof identity.name === "string" ? identity.name : "",
-        identityVibe: typeof identity.vibe === "string" ? identity.vibe : "",
-        characterVibe: typeof character.vibe === "string" ? character.vibe : "",
-        characterBoundaries: boundaries,
-      }
-    }
-
-    const blueprintText = (() => {
-      if (!blueprint) return null
+    const computedRawDraft = (() => {
+      if (blueprintMode !== "raw") return null
+      if (blueprintRawDraft != null) return blueprintRawDraft
+      if (!baseBlueprint) return null
       try {
-        return JSON.stringify(sanitizeBlueprintForDisplay(blueprint), null, 2)
+        const preview = applyDraftFields(baseBlueprint, formDraft)
+        return JSON.stringify(preview, null, 2)
       } catch {
         return null
       }
@@ -494,23 +565,13 @@ export const mountAutopilotController = (input: {
     const blueprintPanelModel = {
       updatedAtLabel: blueprintUpdatedAt ? new Date(blueprintUpdatedAt).toLocaleTimeString() : null,
       isLoading: blueprintLoading,
-      isEditing: isEditingBlueprint,
       canEdit: Boolean(blueprint),
       isSaving: isSavingBlueprint,
       errorText: blueprintError,
-      blueprintText,
-      draft: isEditingBlueprint
-        ? (blueprintDraft ??
-            (blueprint
-              ? makeDraftFromBlueprint(blueprint)
-              : {
-                  userHandle: "",
-                  agentName: "",
-                  identityVibe: "",
-                  characterVibe: "",
-                  characterBoundaries: "",
-                }))
-        : null,
+      mode: blueprintMode,
+      rawErrorText: blueprintRawError,
+      rawDraft: computedRawDraft,
+      draft: baseBlueprint ? formDraft : null,
     }
 
     const controlsModel = {
@@ -535,12 +596,8 @@ export const mountAutopilotController = (input: {
     const sidebarKey = `${collapsed ? 1 : 0}:${window.location.pathname}:${session.user?.id ?? "null"}:${userMenuOpen ? 1 : 0}`
     const chatKey = `${renderedTailKey}:${isBusy ? 1 : 0}:${isAtBottom ? 1 : 0}:${toolContractsKey}:${chatSnapshot.errorText ?? ""}:${session.userId ?? "null"}:${authStep}:${authBusy ? 1 : 0}:${authEmail}:${authCode}:${authErrorText ?? ""}`
 
-    const blueprintKey = (() => {
-      if (isEditingBlueprint) {
-        return `edit:${isSavingBlueprint ? 1 : 0}:${blueprintError ?? ""}`
-      }
-      return `view:${isSavingBlueprint ? 1 : 0}:${blueprintLoading ? 1 : 0}:${blueprintError ?? ""}:${blueprintUpdatedAt ?? 0}`
-    })()
+    const blueprintKeyUpdatedAt = blueprintKeyFrozenAt ?? blueprintUpdatedAt ?? 0
+    const blueprintKey = `blueprint:${blueprintMode}:${isSavingBlueprint ? 1 : 0}:${blueprintLoading ? 1 : 0}:${blueprintError ?? ""}:${blueprintRawError ?? ""}:${blueprintKeyUpdatedAt}`
 
     const controlsKey = `${isExportingBlueprint ? 1 : 0}:${isBusy ? 1 : 0}:${isResettingAgent ? 1 : 0}`
 
@@ -578,25 +635,18 @@ export const mountAutopilotController = (input: {
       )
       blueprint = json
       blueprintUpdatedAt = Date.now()
-      if (!isEditingBlueprint) {
-        // Keep draft in sync when not actively editing.
-        const b: any = json ?? {}
-        const docs = b?.docs ?? {}
-        const identity = docs.identity ?? {}
-        const user = docs.user ?? {}
-        const character = docs.character ?? {}
-        blueprintDraft = {
-          userHandle: typeof user.addressAs === "string" ? user.addressAs : "",
-          agentName: typeof identity.name === "string" ? identity.name : "",
-          identityVibe: typeof identity.vibe === "string" ? identity.vibe : "",
-          characterVibe: typeof character.vibe === "string" ? character.vibe : "",
-          characterBoundaries: Array.isArray(character.boundaries)
-            ? character.boundaries
-                .map((s: unknown) => (typeof s === "string" ? s : ""))
-                .filter(Boolean)
-                .join("\n")
-            : "",
-        }
+      // Keep drafts in sync only when the user hasn't started editing locally.
+      // Once the user types, we freeze the blueprint slot key to avoid clobbering caret.
+      const hasLocalEdits =
+        blueprintDraftDirty || blueprintRawDirty || blueprintKeyFrozenAt != null || blueprintEditBase != null
+      if (!hasLocalEdits) {
+        blueprintEditBase = json
+        blueprintDraft = json ? makeDraftFromBlueprint(json) : null
+        blueprintDraftDirty = false
+        blueprintRawDraft = null
+        blueprintRawDirty = false
+        blueprintRawError = null
+        blueprintKeyFrozenAt = null
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -930,83 +980,110 @@ export const mountAutopilotController = (input: {
     }),
   )
 
-  const onStartEditBlueprint = () => {
+  const setBlueprintMode = (mode: "form" | "raw") => {
+    if (mode === blueprintMode) return
     if (!blueprint) return
-    // Initialize draft from current blueprint.
-    const b: any = blueprint ?? {}
-    const docs = b?.docs ?? {}
-    const identity = docs.identity ?? {}
-    const user = docs.user ?? {}
-    const character = docs.character ?? {}
-    blueprintDraft = {
-      userHandle: typeof user.addressAs === "string" ? user.addressAs : "",
-      agentName: typeof identity.name === "string" ? identity.name : "",
-      identityVibe: typeof identity.vibe === "string" ? identity.vibe : "",
-      characterVibe: typeof character.vibe === "string" ? character.vibe : "",
-      characterBoundaries: Array.isArray(character.boundaries)
-        ? character.boundaries
-            .map((s: unknown) => (typeof s === "string" ? s : ""))
-            .filter(Boolean)
-            .join("\n")
-        : "",
-    }
-    isEditingBlueprint = true
-    scheduleRender()
-  }
 
-  const onCancelEditBlueprint = () => {
-    isEditingBlueprint = false
+    blueprintRawError = null
+
+    // If switching to Raw, materialize a JSON draft that includes current form edits.
+    if (mode === "raw") {
+      const base = blueprintEditBase ?? blueprint
+      const draft = blueprintDraft ?? makeDraftFromBlueprint(base)
+      try {
+        const preview = applyDraftFields(base, draft)
+        blueprintRawDraft = JSON.stringify(preview, null, 2)
+        blueprintRawDirty = false
+      } catch {
+        blueprintRawDraft = blueprintRawDraft ?? null
+      }
+    }
+
+    // If switching to Form from Raw, parse the raw JSON once so we preserve unknown keys.
+    if (mode === "form" && blueprintMode === "raw") {
+      const text = blueprintRawDraft ?? ""
+      if (text.trim().length > 0) {
+        try {
+          const parsed = JSON.parse(text)
+          blueprintEditBase = parsed
+          blueprintDraft = makeDraftFromBlueprint(parsed)
+          // If the user edited raw JSON, treat the form as dirty (unsaved).
+          if (blueprintRawDirty) {
+            blueprintDraftDirty = true
+          }
+          blueprintRawDirty = false
+        } catch (err) {
+          blueprintRawError = err instanceof Error ? err.message : "Invalid JSON."
+          // Stay in raw mode until JSON parses.
+          scheduleRender()
+          return
+        }
+      }
+    }
+
+    blueprintMode = mode
+    // Freeze blueprint slot on mode switch to avoid background polling clobbering the editor.
+    if (blueprintKeyFrozenAt == null && blueprintUpdatedAt != null) {
+      blueprintKeyFrozenAt = blueprintUpdatedAt
+    }
     scheduleRender()
   }
 
   const onSaveBlueprint = async () => {
-    if (!blueprintDraft || !blueprint || isSavingBlueprint) return
+    if (!blueprint || isSavingBlueprint) return
     isSavingBlueprint = true
     blueprintError = null
+    blueprintRawError = null
     scheduleRender()
 
     const nowIso = new Date().toISOString()
-    const nextBoundaries = blueprintDraft.characterBoundaries
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean)
-
-    const next: any = JSON.parse(JSON.stringify(blueprint))
-    next.exportedAt = nowIso
-
-    next.docs.user.addressAs = blueprintDraft.userHandle.trim() || next.docs.user.addressAs
-    next.docs.user.updatedAt = nowIso
-    next.docs.user.updatedBy = "user"
-    next.docs.user.version = Number(next.docs.user.version ?? 1) + 1
-
-    next.docs.identity.name = blueprintDraft.agentName.trim() || next.docs.identity.name
-    next.docs.identity.vibe = blueprintDraft.identityVibe.trim() || next.docs.identity.vibe
-    next.docs.identity.updatedAt = nowIso
-    next.docs.identity.updatedBy = "user"
-    next.docs.identity.version = Number(next.docs.identity.version ?? 1) + 1
-
-    next.docs.character.vibe = blueprintDraft.characterVibe.trim() || next.docs.character.vibe
-    next.docs.character.boundaries = nextBoundaries
-    next.docs.character.updatedAt = nowIso
-    next.docs.character.updatedBy = "user"
-    next.docs.character.version = Number(next.docs.character.version ?? 1) + 1
+    let next: any
+    let changed: ReadonlyArray<string> = []
 
     try {
+      if (blueprintMode === "raw") {
+        const text = blueprintRawDraft ?? ""
+        if (text.trim().length === 0) {
+          blueprintRawError = "Blueprint JSON is empty."
+          return
+        }
+        try {
+          next = JSON.parse(text)
+        } catch (err) {
+          blueprintRawError = err instanceof Error ? err.message : "Invalid JSON."
+          return
+        }
+        applySaveMetadata(next, nowIso)
+        changed = ["raw.json"]
+      } else {
+        const base = blueprintEditBase ?? blueprint
+        const draft = blueprintDraft ?? makeDraftFromBlueprint(base)
+        next = applyDraftFields(base, draft)
+        applySaveMetadata(next, nowIso)
+        changed = [
+          "user.handle",
+          "identity.name",
+          "identity.vibe",
+          "character.vibe",
+          "character.boundaries",
+        ]
+      }
+
       await Effect.runPromise(
         input.telemetry.withNamespace("ui.blueprint").event("blueprint.save", {
-          changed: [
-            "user.handle",
-            "identity.name",
-            "identity.vibe",
-            "character.vibe",
-            "character.boundaries",
-          ],
+          changed,
         })
       )
       await input.runtime.runPromise(
         input.store.importBlueprint({ threadId: chatId, anonKey, blueprint: next }),
       )
-      isEditingBlueprint = false
+      // Clear local edit state so the panel tracks server updates again.
+      blueprintEditBase = null
+      blueprintDraftDirty = false
+      blueprintRawDirty = false
+      blueprintRawDraft = null
+      blueprintRawError = null
+      blueprintKeyFrozenAt = null
       await fetchBlueprint()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -1020,10 +1097,12 @@ export const mountAutopilotController = (input: {
     }
   }
 
-  input.ez.set("autopilot.blueprint.toggleEdit", () =>
+  input.ez.set("autopilot.blueprint.setMode", ({ params }) =>
     Effect.sync(() => {
-      if (isEditingBlueprint) onCancelEditBlueprint()
-      else onStartEditBlueprint()
+      const mode = String((params as any).mode ?? "")
+      if (mode === "form" || mode === "raw") {
+        setBlueprintMode(mode)
+      }
     })
   )
 
@@ -1036,6 +1115,20 @@ export const mountAutopilotController = (input: {
   input.ez.set("autopilot.blueprint.save", () =>
     Effect.sync(() => {
       void onSaveBlueprint()
+    })
+  )
+
+  input.ez.set("autopilot.blueprint.rawDraft", ({ params }) =>
+    Effect.sync(() => {
+      const p = params as any
+      if (p.raw === undefined) return
+      blueprintRawDraft = String(p.raw)
+      blueprintRawDirty = true
+      blueprintRawError = null
+
+      if (blueprintKeyFrozenAt == null && blueprintUpdatedAt != null) {
+        blueprintKeyFrozenAt = blueprintUpdatedAt
+      }
     })
   )
 
@@ -1058,6 +1151,12 @@ export const mountAutopilotController = (input: {
       if (p.identityVibe !== undefined) draft.identityVibe = String(p.identityVibe)
       if (p.characterVibe !== undefined) draft.characterVibe = String(p.characterVibe)
       if (p.characterBoundaries !== undefined) draft.characterBoundaries = String(p.characterBoundaries)
+
+      blueprintDraftDirty = true
+      blueprintRawError = null
+      if (blueprintKeyFrozenAt == null && blueprintUpdatedAt != null) {
+        blueprintKeyFrozenAt = blueprintUpdatedAt
+      }
     })
   )
 
@@ -1180,9 +1279,10 @@ export const mountAutopilotController = (input: {
       input.ez.delete("autopilot.auth.code.back")
       input.ez.delete("autopilot.auth.code.resend")
       input.ez.delete("autopilot.auth.code.submit")
-      input.ez.delete("autopilot.blueprint.toggleEdit")
+      input.ez.delete("autopilot.blueprint.setMode")
       input.ez.delete("autopilot.blueprint.refresh")
       input.ez.delete("autopilot.blueprint.save")
+      input.ez.delete("autopilot.blueprint.rawDraft")
       input.ez.delete("autopilot.blueprint.draft")
       input.ez.delete("autopilot.controls.exportBlueprint")
       input.ez.delete("autopilot.controls.clearMessages")
