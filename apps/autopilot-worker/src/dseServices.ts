@@ -2,6 +2,7 @@ import { Effect, JSONSchema, Layer, Schema } from "effect";
 
 import {
   BlobStore,
+  Budget,
   CompiledArtifact,
   Hash,
   Policy,
@@ -193,7 +194,10 @@ export async function ensureDefaultArtifacts(
 }
 
 export function layerDseFromSql(sql: SqlTag): Layer.Layer<
-  Policy.PolicyRegistryService | BlobStore.BlobStoreService | Receipt.ReceiptRecorderService
+  | Policy.PolicyRegistryService
+  | BlobStore.BlobStoreService
+  | Receipt.ReceiptRecorderService
+  | Budget.ExecutionBudgetService
 > {
   const policyLayer = Layer.succeed(
     Policy.PolicyRegistryService,
@@ -365,7 +369,9 @@ export function layerDseFromSql(sql: SqlTag): Layer.Layer<
     })
   );
 
-  return Layer.mergeAll(policyLayer, blobLayer, receiptLayer);
+  const budgetLayer = Budget.layerInMemory();
+
+  return Layer.mergeAll(policyLayer, blobLayer, receiptLayer, budgetLayer);
 }
 
 export function rollbackActiveArtifact(sql: SqlTag, signatureId: string): {

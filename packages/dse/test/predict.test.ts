@@ -7,6 +7,7 @@ import * as Params from "../src/params.js";
 import * as Hashes from "../src/hashes.js";
 
 import { LmClientService, type LmRequest, type LmResponse } from "../src/runtime/lm.js";
+import { layerNoop as budgetLayerNoop } from "../src/runtime/budget.js";
 import { layerInMemory } from "../src/runtime/policyRegistry.js";
 import { make as makePredict } from "../src/runtime/predict.js";
 import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
@@ -91,7 +92,13 @@ test("Predict applies active policy params (instruction + few-shot selection)", 
   const predict = makePredict(sig);
   const program = predict({ message: "Call me Chris." }).pipe(
     Effect.provide(
-      Layer.mergeAll(lmLayer, policyLayer, blobLayer, receiptRecorder.layer)
+      Layer.mergeAll(
+        lmLayer,
+        policyLayer,
+        blobLayer,
+        receiptRecorder.layer,
+        budgetLayerNoop()
+      )
     )
   );
 

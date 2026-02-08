@@ -21,6 +21,7 @@ export * as Lm from "./runtime/lm.js";
 export * as Policy from "./runtime/policyRegistry.js";
 export * as Predict from "./runtime/predict.js";
 export * as BlobStore from "./runtime/blobStore.js";
+export * as Budget from "./runtime/budget.js";
 export * as Receipt from "./runtime/receipt.js";
 
 export * as EvalCache from "./eval/cache.js";
