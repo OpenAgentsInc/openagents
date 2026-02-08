@@ -136,4 +136,22 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     const body = await response.text();
     expect(body).toContain("Tool Contracts");
   });
+
+  it("GET /deck is local-only (404 on non-local host, 200 on localhost)", async () => {
+    state.authed = false;
+
+    const requestProd = new Request("http://example.com/deck", { method: "GET" });
+    const ctxProd = createExecutionContext();
+    const responseProd = await worker.fetch(requestProd, env, ctxProd);
+    await waitOnExecutionContext(ctxProd);
+    expect(responseProd.status).toBe(404);
+
+    const requestLocal = new Request("http://localhost:3000/deck", { method: "GET" });
+    const ctxLocal = createExecutionContext();
+    const responseLocal = await worker.fetch(requestLocal, env, ctxLocal);
+    await waitOnExecutionContext(ctxLocal);
+    expect(responseLocal.status).toBe(200);
+    const body = await responseLocal.text();
+    expect(body).toContain("data-deck-root");
+  });
 });

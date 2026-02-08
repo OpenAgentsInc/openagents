@@ -19,6 +19,7 @@ import { TelemetryService } from "../effect/telemetry"
 import { hydrateAtomRegistryFromDocument, makeAtomRegistry } from "./atomRegistry"
 import { mountAutopilotController } from "./controllers/autopilotController"
 import { mountModulesController, mountSignaturesController, mountToolsController } from "./controllers/contractsController"
+import { mountDeckController } from "./controllers/deckController"
 import { mountHomeController } from "./controllers/homeController"
 import { mountLoginController } from "./controllers/loginController"
 import { loadPostHog } from "./posthog"
@@ -152,15 +153,17 @@ export const bootEffuseApp = (options?: BootOptions): void => {
               ? "autopilot"
               : pathname === "/"
                 ? "home"
-              : pathname === "/login"
-                ? "login"
-                : pathname === "/modules"
-                  ? "modules"
-                  : pathname === "/tools"
-                    ? "tools"
-                    : pathname === "/signatures"
-                      ? "signatures"
-                      : "none"
+                : pathname === "/login"
+                  ? "login"
+                  : pathname === "/deck"
+                    ? "deck"
+                  : pathname === "/modules"
+                    ? "modules"
+                    : pathname === "/tools"
+                      ? "tools"
+                      : pathname === "/signatures"
+                        ? "signatures"
+                        : "none"
 
           if (desired === active?.kind) return
           stopActive()
@@ -202,6 +205,13 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                   telemetry,
                   navigate,
                 }).cleanup,
+              }
+              return
+            }
+            case "deck": {
+              active = {
+                kind: "deck",
+                cleanup: mountDeckController({ container: outlet }).cleanup,
               }
               return
             }
