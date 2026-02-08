@@ -315,12 +315,13 @@ const renderNode = (
     }
     case "Layer": {
       const inset = props.inset !== false
+      const insetClass = inset ? " inset-0" : ""
       const zIndex = asNumber(props.zIndex) ?? 0
       const bg = asString(props.background) ?? ""
       const bgStyle = bg ? `background:${bg};` : ""
       const pointerEvents = props.pointerEvents === false ? "pointer-events:none;" : ""
       return html`<div
-        class="absolute inset-0 min-h-0 min-w-0 overflow-hidden h-full"
+        class="absolute${insetClass} min-h-0 min-w-0 overflow-hidden h-full"
         style="z-index:${zIndex}; min-height:100%; ${bgStyle} ${pointerEvents}"
       >
         ${renderChildren(doc, theme, runtime, children)}
