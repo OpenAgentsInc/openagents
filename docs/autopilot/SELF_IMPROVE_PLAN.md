@@ -495,6 +495,23 @@ Testable outcomes:
 - compile produces an artifact whose `compiled_id` matches `paramsHash`
 - compile report persists and is reproducible (same inputs => same `jobHash`)
 
+Implementation log:
+
+- 2026-02-08: Added Convex storage for compile run reports (immutable, keyed by jobHash+datasetHash):
+  - table: `apps/web/convex/schema.ts` (`dseCompileReports`)
+  - functions: `apps/web/convex/dse/compileReports.ts`
+- 2026-02-08: Added Worker endpoint to run `Compile.compile(...)` using Workers AI + Convex `dseExamples` dataset, then persist artifact + compile report (manual promotion, no `setActive`):
+  - route: `POST /api/dse/compile`
+  - handler: `apps/web/src/effuse-host/dseCompile.ts`
+  - wiring: `apps/web/src/effuse-host/worker.ts`
+- 2026-02-08: Added tests proving compile writes artifact+report and is idempotent by (jobHash, datasetHash):
+  - Convex store tests: `apps/web/tests/convex/dse-compile-reports.test.ts`
+  - Worker endpoint test: `apps/web/tests/worker/dse-compile-endpoint.test.ts`
+- 2026-02-08: Verified:
+  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npm test && npm run lint`
+  - `cd packages/dse && bun test && bun run typecheck`
+
 ### Stage 6: Promotion gating + canary (optional, post-MVP)
 
 Add:

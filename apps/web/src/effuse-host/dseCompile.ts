@@ -1,0 +1,279 @@
+import { Effect, Layer, Schema } from "effect";
+
+import {
+  BlobStore,
+  Budget,
+  CanonicalJson,
+  Compile,
+  CompileJob,
+  CompiledArtifact,
+  EvalCache,
+  EvalDataset,
+  EvalMetric,
+  EvalReward,
+  Lm,
+  Receipt,
+} from "@openagentsinc/dse";
+
+import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
+
+import { api } from "../../convex/_generated/api";
+import { AuthService } from "../effect/auth";
+import { ConvexService } from "../effect/convex";
+import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
+import { TelemetryService } from "../effect/telemetry";
+
+import { makeWorkersAiDseLmClient } from "./dse";
+import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
+import type { WorkerEnv } from "./env";
+import { getWorkerRuntime } from "./runtime";
+
+const MODEL_ID = "@cf/openai/gpt-oss-120b";
+
+const json = (body: unknown, init?: ResponseInit): Response =>
+  new Response(JSON.stringify(body), {
+    ...init,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      ...(init?.headers ?? {}),
+    },
+  });
+
+const readJson = async (request: Request): Promise<any> => {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
+};
+
+type CompileBody = {
+  readonly signatureId?: unknown;
+};
+
+const mapStoredSplitToDseSplit = (split: unknown): EvalDataset.DatasetSplit | undefined => {
+  if (split === "train") return "train";
+  if (split === "holdout") return "holdout";
+  // Stage 4 stored "dev"; map it to DSE's "holdout" semantics for compile/eval.
+  if (split === "dev") return "holdout";
+  if (split === "test") return "test";
+  return undefined;
+};
+
+const findSignatureById = (signatureId: string) => {
+  for (const sig of Object.values(dseCatalogSignatures) as any[]) {
+    if (sig && typeof sig === "object" && String((sig as any).id ?? "") === signatureId) return sig as any;
+  }
+  return null;
+};
+
+export const handleDseCompileRequest = async (
+  request: Request,
+  env: WorkerEnv,
+  _ctx: ExecutionContext,
+): Promise<Response | null> => {
+  const url = new URL(request.url);
+  if (url.pathname !== "/api/dse/compile") return null;
+
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+  const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
+
+  if (!env.AI) {
+    return json({ ok: false, error: "ai_unbound" }, { status: 500, headers: { "cache-control": "no-store" } });
+  }
+  const aiBinding = env.AI;
+
+  const body = (await readJson(request)) as CompileBody | null;
+  const signatureId = typeof body?.signatureId === "string" ? body.signatureId : "";
+  if (!signatureId) {
+    return json(
+      { ok: false, error: "invalid_input", message: "Expected body: { signatureId: string }" },
+      { status: 400, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  const signature = findSignatureById(signatureId);
+  if (!signature) {
+    return json({ ok: false, error: "unknown_signature" }, { status: 404, headers: { "cache-control": "no-store" } });
+  }
+
+  const { runtime } = getWorkerRuntime(env);
+
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService;
+    }),
+  );
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: request.method,
+    pathname: url.pathname,
+  });
+
+  const program = Effect.gen(function* () {
+    const telemetry = yield* TelemetryService;
+    const t = telemetry.withNamespace("dse.compile");
+
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) {
+      return yield* Effect.fail(new Error("unauthorized"));
+    }
+
+    const convex = yield* ConvexService;
+
+    // Load dataset examples from Convex (global store; auth required).
+    const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 } as any);
+    const raw = Array.isArray((exRes as any)?.examples) ? ((exRes as any).examples as any[]) : [];
+
+    const decodeInput = Schema.decodeUnknownSync((signature as any).input);
+    const decodeOutput = Schema.decodeUnknownSync((signature as any).output);
+
+    const examples = raw.map((r) => ({
+      exampleId: String(r?.exampleId ?? ""),
+      input: decodeInput(r?.inputJson),
+      expected: decodeOutput(r?.expectedJson),
+      split: mapStoredSplitToDseSplit(r?.split),
+      tags: Array.isArray(r?.tags) ? (r.tags as unknown[]).filter((t) => typeof t === "string") : undefined,
+      meta: r?.meta,
+    }));
+
+    const datasetId = `convex:dseExamples:${signatureId}`;
+    const dataset = yield* EvalDataset.make({ datasetId, examples });
+
+    const datasetHash = yield* EvalDataset.datasetHash(dataset);
+
+    // Minimal deterministic reward: exact canonical JSON match for the decoded output.
+    const metric = EvalMetric.deterministic<any, any>({
+      metricId: "exact_json_match.v1",
+      metricVersion: 1,
+      score: (pred, expected) =>
+        CanonicalJson.canonicalJson(pred) === CanonicalJson.canonicalJson(expected) ? 1 : 0,
+      notes: (pred, expected) =>
+        CanonicalJson.canonicalJson(pred) === CanonicalJson.canonicalJson(expected) ? undefined : "mismatch",
+    });
+
+    const reward = EvalReward.makeBundle({
+      rewardId: "reward_exact_json_match.v1",
+      rewardVersion: 1,
+      signals: [
+        EvalReward.signalFormatValidity({ weight: 0.2 }),
+        EvalReward.signalMetric(metric, { weight: 0.8, signalId: "exact_json_match.signal.v1" }),
+      ],
+    });
+
+    // Minimal search space + optimizer (MVP): compile the current defaults, record the report.
+    const searchSpace: CompileJob.CompileSearchSpaceV1 = {};
+    const optimizer: CompileJob.CompileOptimizerV1 = { id: "instruction_grid.v1" };
+
+    const jobSpec: CompileJob.CompileJobSpecV1 = {
+      format: "openagents.dse.compile_job",
+      formatVersion: 1,
+      signatureId,
+      datasetId,
+      metricId: reward.rewardId,
+      searchSpace,
+      optimizer,
+    };
+
+    const jobHash = yield* CompileJob.compileJobHash(jobSpec);
+
+    // If we already ran this job against this exact dataset version, return it (idempotent).
+    const existing = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash } as any);
+    const existingReport = (existing as any)?.report ?? null;
+    if (existingReport) {
+      yield* t.event("compile.cached", { signatureId, jobHash, datasetHash });
+      return {
+        ok: true as const,
+        signatureId,
+        jobHash,
+        datasetId,
+        datasetHash,
+        compiled_id: String(existingReport.compiled_id ?? ""),
+        existed: true as const,
+      };
+    }
+
+    yield* t.event("compile.started", { signatureId, jobHash, datasetHash, examples: dataset.examples.length });
+
+    const dseLmClient = makeWorkersAiDseLmClient({ binding: aiBinding, defaultModelId: MODEL_ID });
+
+    // Compile environment: budgets + blob store on, receipts are discarded (compile is not thread-scoped).
+    const compileEnv = Layer.mergeAll(
+      BlobStore.layerInMemory(),
+      Budget.layerInMemory(),
+      Receipt.layerNoop(),
+      EvalCache.layerInMemory(),
+    );
+
+    const result = yield* Compile.compile({
+      signature,
+      dataset,
+      reward,
+      searchSpace,
+      optimizer,
+    }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(compileEnv));
+
+    // Sanity check: hash inputs match our precomputed ids.
+    if (result.report.jobHash !== jobHash) {
+      yield* Effect.fail(new Error("job_hash_mismatch"));
+    }
+    if (result.report.datasetHash !== datasetHash) {
+      yield* Effect.fail(new Error("dataset_hash_mismatch"));
+    }
+
+    const artifactJson = Schema.encodeSync(CompiledArtifact.DseCompiledArtifactV1Schema)(result.artifact);
+
+    yield* convex.mutation(api.dse.artifacts.putArtifact, {
+      signatureId: result.artifact.signatureId,
+      compiled_id: result.artifact.compiled_id,
+      json: artifactJson,
+    } as any);
+
+    yield* convex.mutation(api.dse.compileReports.putReport, {
+      signatureId,
+      jobHash,
+      datasetId,
+      datasetHash,
+      compiled_id: result.artifact.compiled_id,
+      json: {
+        format: "openagents.dse.compile_report",
+        formatVersion: 1,
+        job: jobSpec,
+        report: result.report,
+      },
+    } as any);
+
+    yield* t.event("compile.finished", {
+      signatureId,
+      jobHash,
+      datasetHash,
+      compiled_id: result.artifact.compiled_id,
+      candidates: result.report.evaluatedCandidates.length,
+    });
+
+    return {
+      ok: true as const,
+      signatureId,
+      jobHash,
+      datasetId,
+      datasetHash,
+      compiled_id: result.artifact.compiled_id,
+      existed: false as const,
+    };
+  }).pipe(
+    Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+    Effect.provideService(TelemetryService, requestTelemetry),
+  );
+
+  const exit = await runtime.runPromiseExit(program);
+  if (exit._tag === "Failure") {
+    const msg = String((exit as any)?.cause ?? "compile_failed");
+    const status = msg.includes("unauthorized") ? 401 : 500;
+    console.error(`[dse.compile] ${formatRequestIdLogToken(requestId)}`, msg);
+    return json({ ok: false, error: msg }, { status, headers: { "cache-control": "no-store" } });
+  }
+
+  return json(exit.value, { status: 200, headers: { "cache-control": "no-store" } });
+};
