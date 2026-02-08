@@ -10,9 +10,11 @@ import { modulesPageTemplate } from "../effuse-pages/modules"
 import { signaturesPageTemplate } from "../effuse-pages/signatures"
 import { toolsPageTemplate } from "../effuse-pages/tools"
 import { marketingShellTemplate } from "../effuse-pages/marketingShell"
+import { storybookCanvasTemplate, storybookManagerTemplate } from "../effuse-pages/storybook"
 
 import { AuthService } from "../effect/auth"
 import { SessionAtom } from "../effect/atoms/session"
+import { getStoryById, listStoryMeta } from "../storybook"
 
 import type { Route, RouteMatch } from "@openagentsinc/effuse"
 import type { LoginPageModel } from "../effuse-pages/login"
@@ -34,6 +36,26 @@ const matchChatLegacy = (url: URL): RouteMatch | null => {
   const rest = url.pathname.slice("/chat/".length)
   if (!rest || rest.includes("/")) return null
   return { pathname: url.pathname, params: { chatId: rest }, search: url.searchParams }
+}
+
+const matchStorybook = (url: URL): RouteMatch | null => {
+  if (url.pathname === "/__storybook") {
+    return { pathname: url.pathname, params: { view: "index" }, search: url.searchParams }
+  }
+
+  const prefix = "/__storybook/canvas/"
+  if (url.pathname.startsWith(prefix)) {
+    const raw = url.pathname.slice(prefix.length)
+    if (!raw || raw.includes("/")) return null
+    try {
+      const storyId = decodeURIComponent(raw)
+      return { pathname: url.pathname, params: { view: "canvas", storyId }, search: url.searchParams }
+    } catch {
+      return null
+    }
+  }
+
+  return null
 }
 
 const sessionDehydrate = (ctx: RouteContext): Effect.Effect<RouteOkHints["dehydrate"] | undefined, never, AppServices> =>
@@ -176,6 +198,46 @@ const tools: Route<ToolsPageData, AppServices> = {
   head: () => Effect.succeed({ title: "Tools" }),
 }
 
+type StorybookData =
+  | {
+      readonly mode: "index"
+      readonly stories: ReturnType<typeof listStoryMeta>
+      readonly defaultStoryId: string | null
+    }
+  | { readonly mode: "canvas"; readonly storyId: string }
+
+const storybook: Route<StorybookData, AppServices> = {
+  id: "/__storybook",
+  match: matchStorybook,
+  loader: (ctx) =>
+    Effect.sync(() => {
+      const view = ctx.match.params.view
+      const stories = listStoryMeta()
+
+      if (view === "canvas") {
+        const storyId = ctx.match.params.storyId ?? ""
+        const story = storyId ? getStoryById(storyId) : null
+        if (!story) return RouteOutcome.notFound()
+        return RouteOutcome.ok({ mode: "canvas", storyId })
+      }
+
+      const defaultStoryId = stories.length > 0 ? stories[0]!.id : null
+      return RouteOutcome.ok({ mode: "index", stories, defaultStoryId })
+    }),
+  view: (_ctx, data) =>
+    Effect.succeed(
+      data.mode === "canvas"
+        ? storybookCanvasTemplate(getStoryById(data.storyId)!)
+        : storybookManagerTemplate({ stories: data.stories, defaultStoryId: data.defaultStoryId }),
+    ),
+  head: (_ctx, data) =>
+    Effect.succeed(
+      data.mode === "canvas"
+        ? { title: getStoryById(data.storyId)?.title ?? "Story" }
+        : { title: "Storybook" },
+    ),
+}
+
 // Legacy route: keep /chat/:id redirecting to /autopilot.
 const chatLegacyRedirect: Route<{}, AppServices> = {
   id: "/chat/$chatId",
@@ -188,6 +250,7 @@ export const appRoutes = [
   home,
   login,
   autopilot,
+  storybook,
   modules,
   signatures,
   tools,

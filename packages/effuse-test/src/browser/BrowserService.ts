@@ -11,7 +11,7 @@ import { CurrentSpanId } from "../effect/span.ts"
 import type { BrowserLaunchOptions, SpanId, TestEvent } from "../spec.ts"
 import { TestContext } from "../runner/TestContext.ts"
 import { connectCdp } from "./cdp.ts"
-import type { Page } from "./page.ts"
+import type { Page, Viewport } from "./page.ts"
 
 type ChromeTarget = {
   readonly id: string
@@ -274,6 +274,19 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
           const addInitScript = (source: string) =>
             serviceSpan("page.addInitScript", Effect.promise(() => session.send("Page.addScriptToEvaluateOnNewDocument", { source })))
 
+          const setViewport = (viewport: Viewport) =>
+            serviceSpan(
+              "page.setViewport",
+              Effect.promise(() =>
+                session.send("Emulation.setDeviceMetricsOverride", {
+                  width: viewport.width,
+                  height: viewport.height,
+                  deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
+                  mobile: false,
+                }),
+              ),
+            )
+
           const goto = (url: string) =>
             serviceSpan(`page.goto ${url}`, Effect.gen(function* () {
               yield* Effect.promise(() => session.send("Page.navigate", { url }))
@@ -348,6 +361,7 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
 
           const page: Page = {
             addInitScript,
+            setViewport,
             goto,
             click,
             fill,

@@ -1,10 +1,12 @@
 import { Effect, Scope } from "effect"
+import * as Path from "node:path"
 
 import { BrowserService } from "../browser/BrowserService.ts"
 import type { ProbeService } from "../effect/ProbeService.ts"
 import type { TestCase } from "../spec.ts"
 import { TestContext } from "../runner/TestContext.ts"
 import { assertEqual, assertTrue, step } from "../runner/Test.ts"
+import { assertPngSnapshot, snapshotPathForStory } from "../runner/visualSnapshot.ts"
 
 type AppsWebEnv = BrowserService | ProbeService | TestContext | Scope.Scope
 
@@ -318,6 +320,86 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
         )
       }),
     },
+    {
+      id: "apps-web.visual.storybook",
+      tags: ["e2e", "browser", "apps/web", "visual", "storybook"],
+      timeoutMs: 300_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+        const browser = yield* BrowserService
+
+        // Fetch story list from the running server (source of truth for visual suite coverage).
+        const storiesRes = yield* step(
+          "GET /__storybook/api/stories",
+          Effect.tryPromise({
+            try: () => fetch(`${ctx.baseUrl}/__storybook/api/stories`, { redirect: "manual" }),
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        const storiesJson = yield* step(
+          "read stories json",
+          Effect.tryPromise({
+            try: async () => (await storiesRes.json()) as { readonly stories: ReadonlyArray<{ readonly id: string }> },
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        const storyIds = storiesJson.stories.map((s) => s.id).filter(Boolean)
+        yield* step(
+          "assert stories present",
+          assertTrue(storyIds.length > 0, "Expected storybook API to return at least one story"),
+        )
+
+        yield* browser.withPage((page) =>
+          Effect.gen(function* () {
+            yield* step("set viewport", page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 1 }))
+
+            // Improve determinism: disable transitions/animations.
+            yield* step(
+              "inject reduce motion style",
+              page.addInitScript(`
+                (() => {
+                  const style = document.createElement('style');
+                  style.setAttribute('data-effuse-test', 'reduce-motion');
+                  style.textContent = '*{animation:none!important;transition:none!important;caret-color:transparent!important}';
+                  document.documentElement.appendChild(style);
+                })();
+              `),
+            )
+
+            for (const storyId of storyIds) {
+              const url = `${ctx.baseUrl}/__storybook/canvas/${encodeURIComponent(storyId)}`
+              const fileBase = storyId.replaceAll(/[^a-zA-Z0-9._-]+/g, "_")
+              const actualPath = Path.join(ctx.artifactsDir, "storybook", `${fileBase}.png`)
+              const diffPath = Path.join(ctx.artifactsDir, "storybook", `${fileBase}.diff.png`)
+              const baselinePath = snapshotPathForStory(storyId)
+
+              yield* step(`goto ${storyId}`, page.goto(url))
+              yield* step(
+                `wait for story ready ${storyId}`,
+                page.waitForFunction("!!document.querySelector('[data-story-ready=\"1\"]')", { timeoutMs: 30_000 }),
+              )
+              yield* step(
+                `wait for fonts ${storyId}`,
+                page.evaluate("document.fonts ? document.fonts.ready.then(() => true) : true"),
+              )
+
+              yield* step(`screenshot ${storyId}`, page.screenshot(actualPath))
+              yield* step(
+                `compare snapshot ${storyId}`,
+                assertPngSnapshot({
+                  name: storyId,
+                  actualPngPath: actualPath,
+                  diffPngPath: diffPath,
+                  baselinePngPath: baselinePath,
+                }),
+              )
+            }
+          }),
+        )
+      }),
+    },
   ]
 
   const magicEmail = process.env.EFFUSE_TEST_MAGIC_EMAIL
@@ -392,4 +474,3 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
   return tests
 }
-

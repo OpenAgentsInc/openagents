@@ -4,6 +4,7 @@ import { handleAuthRequest } from "./auth"
 import { handleCallbackRequest } from "./callback"
 import { handleContractsRequest } from "./contracts"
 import { handleSsrRequest } from "./ssr"
+import { handleStorybookApiRequest } from "./storybook"
 import {
   formatRequestIdLogToken,
   getOrCreateRequestId,
@@ -73,6 +74,10 @@ export default {
       const response = await handleAuthRequest(requestWithId, env)
       if (response) return withResponseRequestIdHeader(response, requestId)
     }
+
+    // Storybook metadata API (used by visual regression tests).
+    const storybookApi = await handleStorybookApiRequest(requestWithId)
+    if (storybookApi) return withResponseRequestIdHeader(storybookApi, requestId)
 
     // Static assets.
     const asset = await tryServeAsset(requestWithId, env)
