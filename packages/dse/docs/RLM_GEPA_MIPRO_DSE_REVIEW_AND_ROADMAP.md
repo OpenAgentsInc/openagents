@@ -10,6 +10,8 @@ This doc connects:
 
 If anything here conflicts with code behavior, code wins.
 
+See also: `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
+
 ## Quick Status (What We Have Today)
 
 ### DSE (TypeScript/Effect)

@@ -9,3 +9,9 @@
 - **Compile** runs a small, explicit optimizer loop to emit immutable compiled artifacts.
 
 This package is intentionally small and contract-driven. The corresponding spec lives at `docs/autopilot/dse.md`.
+
+Additional design notes:
+
+- `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
+- `packages/dse/docs/RLM_GEPA_MIPRO_DSE_REVIEW_AND_ROADMAP.md`
+- `packages/dse/docs/RLM_GEPA_MIPRO_SUMMARY.md`
