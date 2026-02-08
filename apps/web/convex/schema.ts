@@ -89,10 +89,46 @@ export default defineSchema({
   receipts: defineTable({
     threadId: v.string(),
     runId: v.string(),
-    kind: v.union(v.literal("model"), v.literal("tool")),
+    kind: v.union(v.literal("model"), v.literal("tool"), v.literal("dse.predict")),
     json: v.any(),
+    // Optional receipt metadata (used by DSE predict receipts).
+    receiptId: v.optional(v.string()),
+    signatureId: v.optional(v.string()),
+    compiled_id: v.optional(v.string()),
     createdAtMs: v.number(),
   })
     .index("by_runId_createdAtMs", ["runId", "createdAtMs"])
-    .index("by_threadId_createdAtMs", ["threadId", "createdAtMs"]),
+    .index("by_threadId_createdAtMs", ["threadId", "createdAtMs"])
+    .index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"])
+    .index("by_receiptId", ["receiptId"]),
+
+  /**
+   * DSE compiled artifact store and active pointer registry (global, not per-thread).
+   *
+   * These tables back the `PolicyRegistryService` used by DSE `Predict`.
+   */
+  dseArtifacts: defineTable({
+    signatureId: v.string(),
+    compiled_id: v.string(),
+    json: v.any(),
+    createdAtMs: v.number(),
+  })
+    .index("by_signatureId_compiled_id", ["signatureId", "compiled_id"])
+    .index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
+
+  dseActiveArtifacts: defineTable({
+    signatureId: v.string(),
+    compiled_id: v.string(),
+    updatedAtMs: v.number(),
+  }).index("by_signatureId", ["signatureId"]),
+
+  dseActiveArtifactHistory: defineTable({
+    signatureId: v.string(),
+    action: v.union(v.literal("set"), v.literal("clear"), v.literal("rollback")),
+    fromCompiledId: v.optional(v.string()),
+    toCompiledId: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    actorUserId: v.optional(v.string()),
+    createdAtMs: v.number(),
+  }).index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
 });

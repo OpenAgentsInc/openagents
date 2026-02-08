@@ -367,6 +367,22 @@ Testable outcomes:
 
 - worker test proves “store → promote → rollback” works in Convex (analogous to `apps/autopilot-worker/tests/index.test.ts`, but in `apps/web/tests/worker/`)
 
+Implementation log:
+
+- 2026-02-08: Added Convex schema + functions for DSE artifact storage and active-pointer registry:
+  - tables: `apps/web/convex/schema.ts` (`dseArtifacts`, `dseActiveArtifacts`, `dseActiveArtifactHistory`)
+  - functions: `apps/web/convex/dse/artifacts.ts`, `apps/web/convex/dse/active.ts`
+- 2026-02-08: Added a Convex mutation for DSE predict receipt recording (thread-scoped, anon allowed via `anonKey`):
+  - function: `apps/web/convex/dse/receipts.ts`
+  - schema: extended `receipts.kind` to include `dse.predict` and added optional metadata fields for indexing (`receiptId`, `signatureId`, `compiled_id`).
+- 2026-02-08: Added contract tests proving “store → promote → rollback” and “recordPredictReceipt” work end-to-end against the in-process Convex implementations:
+  - `apps/web/tests/convex/dse-store.test.ts`
+- 2026-02-08: Regenerated Convex bindings so `api.dse.*` is available:
+  - `cd apps/web && npx convex codegen`
+- 2026-02-08: Verified:
+  - `cd apps/web && npm test && npm run lint`
+  - `cd packages/dse && bun test && bun run typecheck`
+
 ### Stage 2.5: Add DSE chat parts + UI components (required)
 
 Add a DSE “action part” protocol and render it in chat.
