@@ -321,7 +321,7 @@ const renderNode = (
       const bgStyle = bg ? `background:${bg};` : ""
       const pointerEvents = props.pointerEvents === false ? "pointer-events:none;" : ""
       return html`<div
-        class="absolute${insetClass} min-h-0 min-w-0 overflow-hidden h-full"
+        class="absolute${insetClass} min-h-0 min-w-0 overflow-hidden h-full flex flex-col"
         style="z-index:${zIndex}; min-height:100%; ${bgStyle} ${pointerEvents}"
       >
         ${renderChildren(doc, theme, runtime, children)}
