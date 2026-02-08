@@ -5,13 +5,22 @@ import type { EffectMutationCtx, EffectQueryCtx } from "../effect/ctx";
 import { effectMutation, effectQuery } from "../effect/functions";
 import { tryPromise } from "../effect/tryPromise";
 
+import { getSubject } from "../autopilot/access";
+
 const nowMs = () => Date.now();
+
+const requireAuthed = (ctx: EffectQueryCtx | EffectMutationCtx) =>
+  getSubject(ctx).pipe(
+    Effect.flatMap((subject) => (subject ? Effect.succeed(subject) : Effect.fail(new Error("unauthorized")))),
+  );
 
 export const putArtifactImpl = (
   ctx: EffectMutationCtx,
   args: { readonly signatureId: string; readonly compiled_id: string; readonly json: unknown },
 ) =>
   Effect.gen(function* () {
+    yield* requireAuthed(ctx);
+
     const existing = yield* tryPromise(() =>
       ctx.db
         .query("dseArtifacts")
@@ -119,4 +128,3 @@ export const listArtifacts = effectQuery({
   }),
   handler: listArtifactsImpl,
 });
-

@@ -16,6 +16,7 @@ import type * as autopilot_reset from "../autopilot/reset.js";
 import type * as autopilot_threads from "../autopilot/threads.js";
 import type * as dse_active from "../dse/active.js";
 import type * as dse_artifacts from "../dse/artifacts.js";
+import type * as dse_canary from "../dse/canary.js";
 import type * as dse_compileReports from "../dse/compileReports.js";
 import type * as dse_examples from "../dse/examples.js";
 import type * as dse_receipts from "../dse/receipts.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   "autopilot/threads": typeof autopilot_threads;
   "dse/active": typeof dse_active;
   "dse/artifacts": typeof dse_artifacts;
+  "dse/canary": typeof dse_canary;
   "dse/compileReports": typeof dse_compileReports;
   "dse/examples": typeof dse_examples;
   "dse/receipts": typeof dse_receipts;

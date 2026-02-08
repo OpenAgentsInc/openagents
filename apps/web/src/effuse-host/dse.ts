@@ -67,23 +67,54 @@ export const makeWorkersAiDseLmClient = (input: {
   };
 };
 
-export const layerDsePolicyRegistryFromConvex: Layer.Layer<
-  Policy.PolicyRegistryService,
-  never,
-  ConvexService | RequestContextService
-> = Layer.effect(
-  Policy.PolicyRegistryService,
-  Effect.gen(function* () {
-    const convex = yield* ConvexService;
-    const requestContext = yield* RequestContextService;
+const stableBucket100 = (key: string): number => {
+  // FNV-1a 32-bit hash, then mod 100. Deterministic across runtimes.
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % 100;
+};
+
+export const layerDsePolicyRegistryFromConvex = (input: {
+  readonly threadId: string;
+}): Layer.Layer<Policy.PolicyRegistryService, never, ConvexService | RequestContextService> =>
+  Layer.effect(
+    Policy.PolicyRegistryService,
+    Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      const requestContext = yield* RequestContextService;
 
       const getActive: Policy.PolicyRegistry["getActive"] = (signatureId) =>
-        convex.query(api.dse.active.getActive, { signatureId } as any).pipe(
-          Effect.provideService(RequestContextService, requestContext),
-          Effect.map((res: any) => {
-            const compiled_id = typeof res?.compiled_id === "string" ? res.compiled_id : null;
-            return compiled_id ? { compiledId: compiled_id } : null;
-          }),
+        Effect.gen(function* () {
+          // Stage 6: optional canary selection (deterministic per thread).
+          const canaryRes = yield* convex
+            .query(api.dse.canary.getCanary, { signatureId, threadId: input.threadId } as any)
+            .pipe(Effect.provideService(RequestContextService, requestContext));
+
+          const canary = (canaryRes as any)?.canary ?? null;
+          if (canary && typeof canary === "object") {
+            const enabled = Boolean((canary as any).enabled);
+            const rolloutPct = Number((canary as any).rolloutPct ?? 0);
+            const salt = String((canary as any).salt ?? "");
+            const canaryCompiled = String((canary as any).canary_compiled_id ?? "");
+            const controlCompiled = String((canary as any).control_compiled_id ?? "");
+
+            if (enabled && rolloutPct > 0 && canaryCompiled && controlCompiled) {
+              const bucket = stableBucket100(`${salt}:${input.threadId}:${signatureId}`);
+              const chosen = bucket < rolloutPct ? canaryCompiled : controlCompiled;
+              return { compiledId: chosen };
+            }
+          }
+
+          const res = yield* convex
+            .query(api.dse.active.getActive, { signatureId } as any)
+            .pipe(Effect.provideService(RequestContextService, requestContext));
+
+          const compiled_id = typeof (res as any)?.compiled_id === "string" ? (res as any).compiled_id : null;
+          return compiled_id ? { compiledId: compiled_id } : null;
+        }).pipe(
           Effect.mapError((cause) =>
             Policy.PolicyRegistryError.make({ message: "Failed to read active DSE policy", cause }),
           ),
@@ -160,9 +191,9 @@ export const layerDsePolicyRegistryFromConvex: Layer.Layer<
           }),
         );
 
-    return Policy.PolicyRegistryService.of({ getActive, setActive, clearActive, getArtifact, putArtifact });
-  }),
-);
+      return Policy.PolicyRegistryService.of({ getActive, setActive, clearActive, getArtifact, putArtifact });
+    }),
+  );
 
 export const layerDseReceiptRecorderFromConvex = (input: {
   readonly threadId: string;
@@ -217,7 +248,7 @@ export const layerDsePredictEnvForAutopilotRun = (input: {
   ConvexService | RequestContextService
 > =>
   Layer.mergeAll(
-    layerDsePolicyRegistryFromConvex,
+    layerDsePolicyRegistryFromConvex({ threadId: input.threadId }),
     BlobStore.layerInMemory(),
     Budget.layerInMemory(),
     layerDseReceiptRecorderFromConvex(input),

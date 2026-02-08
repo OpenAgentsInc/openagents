@@ -4,6 +4,7 @@ import { handleAuthRequest } from "./auth"
 import { handleCallbackRequest } from "./callback"
 import { handleContractsRequest } from "./contracts"
 import { handleDseCompileRequest } from "./dseCompile"
+import { handleDseAdminRequest } from "./dseAdmin"
 import { handleSsrRequest } from "./ssr"
 import { handleStorybookApiRequest } from "./storybook"
 import {
@@ -68,6 +69,8 @@ export default {
     if (url.pathname.startsWith("/api/dse/")) {
       const response = await handleDseCompileRequest(requestWithId, env, ctx)
       if (response) return withResponseRequestIdHeader(response, requestId)
+      const admin = await handleDseAdminRequest(requestWithId, env, ctx)
+      if (admin) return withResponseRequestIdHeader(admin, requestId)
     }
 
     // WorkOS OAuth callback (legacy path configured as WORKOS_REDIRECT_URI).

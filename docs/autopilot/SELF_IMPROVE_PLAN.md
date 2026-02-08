@@ -521,6 +521,38 @@ Add:
 - canary rollout (requires runtime selection beyond “single active pointer”)
 - automatic rollback when regression detected
 
+Implementation log:
+
+- 2026-02-08: Added holdout split support to the Convex examples dataset (kept legacy `"dev"` for backwards compatibility):
+  - `apps/web/convex/schema.ts` (`dseExamples.split`)
+  - `apps/web/convex/dse/examples.ts`
+- 2026-02-08: Added Convex canary config storage + history:
+  - tables: `apps/web/convex/schema.ts` (`dseCanaries`, `dseCanaryHistory`)
+  - functions: `apps/web/convex/dse/canary.ts` (`getCanary`, `startCanary`, `stopCanary`)
+- 2026-02-08: Implemented Worker runtime selection beyond “single active pointer”:
+  - deterministic per-thread canary bucketing in `PolicyRegistryService.getActive` (stable hash of `salt:threadId:signatureId`)
+  - implementation: `apps/web/src/effuse-host/dse.ts`
+- 2026-02-08: Implemented admin-only Worker endpoints for gated promotion + canary control (Convex-first, Effect-only):
+  - `POST /api/dse/promote` (holdout delta gate, then `setActive`)
+  - `POST /api/dse/canary/start` (holdout delta gate, then `startCanary`)
+  - `POST /api/dse/canary/stop`
+  - handler: `apps/web/src/effuse-host/dseAdmin.ts`
+  - wiring: `apps/web/src/effuse-host/worker.ts`
+- 2026-02-08: Added MVP auto-stop behavior (“rollback” = disable canary config) driven by predict receipts:
+  - increments `okCount/errorCount` when the receipt’s `compiled_id` matches the current canary compiled id
+  - auto-stops canary when `total >= minSamples` and `errorRate > maxErrorRate`
+  - implementation: `apps/web/convex/dse/receipts.ts`
+- 2026-02-08: Hardened write paths for global DSE state to require auth (so anon chat traffic cannot mutate artifacts/actives):
+  - `apps/web/convex/dse/artifacts.ts` (`putArtifact`)
+  - `apps/web/convex/dse/active.ts` (`setActive`, `clearActive`, `rollbackActive`)
+- 2026-02-08: Added/updated tests:
+  - Convex canary storage + auto-stop: `apps/web/tests/convex/dse-canary.test.ts`
+  - Worker hot-path canary selection: `apps/web/tests/worker/dse-signature-hot-path.test.ts`
+- 2026-02-08: Verified:
+  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npm test && npm run lint`
+  - `cd packages/dse && bun test && bun run typecheck`
+
 ## Suggested “First Signature” For Self-Improve
 
 `@openagents/autopilot/blueprint/SelectTool.v1` is ideal because:

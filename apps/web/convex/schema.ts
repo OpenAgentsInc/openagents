@@ -143,7 +143,8 @@ export default defineSchema({
     exampleId: v.string(),
     inputJson: v.any(),
     expectedJson: v.any(),
-    split: v.optional(v.union(v.literal("train"), v.literal("dev"), v.literal("test"))),
+    // "dev" was the initial name; "holdout" matches the DSE compile terminology.
+    split: v.optional(v.union(v.literal("train"), v.literal("dev"), v.literal("holdout"), v.literal("test"))),
     tags: v.optional(v.array(v.string())),
     source: v.optional(v.string()),
     createdAtMs: v.number(),
@@ -169,4 +170,39 @@ export default defineSchema({
   })
     .index("by_signatureId_jobHash_datasetHash", ["signatureId", "jobHash", "datasetHash"])
     .index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
+
+  /**
+   * DSE canary rollout config (global, not per-thread).
+   *
+   * Used by the Worker `PolicyRegistryService` to select between control and
+   * canary compiled artifacts deterministically per thread.
+   */
+  dseCanaries: defineTable({
+    signatureId: v.string(),
+    control_compiled_id: v.string(),
+    canary_compiled_id: v.string(),
+    rolloutPct: v.number(), // 0..100
+    salt: v.string(),
+    enabled: v.boolean(),
+    // Basic health counters to support MVP auto-stop behavior.
+    okCount: v.number(),
+    errorCount: v.number(),
+    minSamples: v.number(),
+    maxErrorRate: v.number(), // 0..1
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_signatureId", ["signatureId"]),
+
+  dseCanaryHistory: defineTable({
+    signatureId: v.string(),
+    action: v.union(v.literal("start"), v.literal("stop"), v.literal("auto_stop"), v.literal("update")),
+    control_compiled_id: v.optional(v.string()),
+    canary_compiled_id: v.optional(v.string()),
+    rolloutPct: v.optional(v.number()),
+    okCount: v.optional(v.number()),
+    errorCount: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    actorUserId: v.optional(v.string()),
+    createdAtMs: v.number(),
+  }).index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
 });

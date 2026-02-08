@@ -9,6 +9,11 @@ import { getSubject } from "../autopilot/access";
 
 const nowMs = () => Date.now();
 
+const requireAuthed = (ctx: EffectQueryCtx | EffectMutationCtx) =>
+  getSubject(ctx).pipe(
+    Effect.flatMap((subject) => (subject ? Effect.succeed(subject) : Effect.fail(new Error("unauthorized")))),
+  );
+
 const recordHistory = (
   ctx: EffectMutationCtx,
   input: {
@@ -65,6 +70,8 @@ export const setActiveImpl = (
   args: { readonly signatureId: string; readonly compiled_id: string; readonly reason?: string | undefined },
 ) =>
   Effect.gen(function* () {
+    yield* requireAuthed(ctx);
+
     const artifact = yield* tryPromise(() =>
       ctx.db
         .query("dseArtifacts")
@@ -119,6 +126,8 @@ export const clearActiveImpl = (
   args: { readonly signatureId: string; readonly reason?: string | undefined },
 ) =>
   Effect.gen(function* () {
+    yield* requireAuthed(ctx);
+
     const existing = yield* tryPromise(() =>
       ctx.db
         .query("dseActiveArtifacts")
@@ -155,6 +164,8 @@ export const rollbackActiveImpl = (
   args: { readonly signatureId: string; readonly reason?: string | undefined },
 ) =>
   Effect.gen(function* () {
+    yield* requireAuthed(ctx);
+
     const existing = yield* tryPromise(() =>
       ctx.db
         .query("dseActiveArtifacts")
@@ -218,4 +229,3 @@ export const rollbackActive = effectMutation({
   returns: v.object({ ok: v.boolean(), compiled_id: v.union(v.null(), v.string()) }),
   handler: rollbackActiveImpl,
 });
-
