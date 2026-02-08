@@ -444,5 +444,6 @@ Add:
 - DSE spec (contract + compile posture): `docs/autopilot/dse.md`
 - Autopilot optimization phases: `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`
 - Convex-first execution plane: `docs/autopilot/anon-chat-execution-plane.md`
+- Stream testing posture + wire transcript fixtures: `docs/autopilot/STREAM_TESTING.md`
 - RLM/GEPA/MIPRO plan (Effect-only, Convex-first aligned): `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 - DSE vs Rust reference optimizers review: `packages/dse/docs/RLM_GEPA_MIPRO_DSE_REVIEW_AND_ROADMAP.md`
