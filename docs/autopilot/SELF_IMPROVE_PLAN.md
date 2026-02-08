@@ -442,6 +442,18 @@ Testable outcomes:
   - receipt recorded with `signatureId` + resolved `compiled_id`
   - the chat stream includes a `dse.signature.*` part for the run (visible in UI)
 
+Implementation log:
+
+- 2026-02-08: Added Worker-side DSE runtime wiring (Workers AI LM client; Convex-backed policy registry + receipt recorder; in-memory budget + blob store layers):
+  - `apps/web/src/effuse-host/dse.ts`
+- 2026-02-08: Wired a best-effort DSE signature call into the `apps/web` autopilot streaming hot path and emitted `dse.signature` chat parts:
+  - `apps/web/src/effuse-host/autopilot.ts`
+- 2026-02-08: Added a Worker test asserting the signature runs, a receipt is recorded, and `dse.signature.*` parts are appended to the chat stream:
+  - `apps/web/tests/worker/dse-signature-hot-path.test.ts`
+- 2026-02-08: Verified:
+  - `cd apps/web && npm test && npm run lint`
+  - `cd packages/dse && bun test && bun run typecheck`
+
 ### Stage 4: Create a labeled dataset in Convex
 
 Add `dseExamples` in Convex:
