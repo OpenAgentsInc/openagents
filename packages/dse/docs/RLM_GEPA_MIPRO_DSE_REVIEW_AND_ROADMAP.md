@@ -37,7 +37,7 @@ Implemented (separate from DSE):
 - `crates/dsrs/` implements optimizers including **MIPROv2** and **GEPA**.
 - `crates/rlm/` + `crates/frlm/` implement RLM/FRLM concepts and supporting signatures/tools.
 
-This is useful as an algorithmic reference for TS DSE, but DSE’s hard constraint is TS-only compilation/runtime.
+Important constraint for `apps/web` + `packages/dse`: we should assume we **cannot** directly reuse Rust crate implementations inside the Effect/Workers runtime. Any production plan for DSE must be **TypeScript/Effect-native** (or behind a network boundary as a separate service).
 
 ## Where DSE Is Implemented (Code Map)
 
@@ -76,13 +76,15 @@ Autopilot Worker integration (Durable Object SQLite):
 - Tool contract to `@effect/ai` tool conversion: `apps/autopilot-worker/src/effect/ai/toolkit.ts`
 - End-to-end tests covering DSE introspection + artifact store/promote/rollback: `apps/autopilot-worker/tests/index.test.ts`
 
-## Where MIPRO/GEPA/RLM Are Implemented Today (Rust Reference)
+## Where MIPRO/GEPA/RLM Are Implemented Today (Rust Reference Only)
 
 - MIPROv2 optimizer: `crates/dsrs/src/optimizer/mipro.rs`
 - GEPA optimizer: `crates/dsrs/src/optimizer/gepa.rs`
 - Pareto frontier helpers (used by GEPA): `crates/dsrs/src/optimizer/pareto.rs`
 - RLM crate (recursive execution engine + tools): `crates/rlm/`
 - FRLM crate (federated conductor + signatures): `crates/frlm/`
+
+These are useful for reading/understanding the intended semantics, but DSE’s implementation plan should not require importing or executing them in `apps/web`.
 
 ## Comparison Against The Existing Roadmap Docs
 
@@ -229,16 +231,16 @@ This is Phase 3 from `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md` and should 
 - Enforce timeouts and call budgets in `Predict` (and later `RlmPredict`) using signature constraints and params.
 - Record budget consumption and early-stop reasons in receipts.
 
-### 6) Keep Rust dsrs/rlm as a reference and test oracle
+### 6) Do Not Depend On Rust For DSE (apps/web), Use It Only As Reading Material
 
-Even though DSE compilation/runtime must be TS-only, we can still use Rust implementations as:
+Even though DSE compilation/runtime must be TS-only, we can optionally use Rust implementations as:
 
-- A behavioral reference for optimizer semantics (MIPROv2/GEPA).
-- A source of test cases and expected invariants.
+- Reading material for optimizer semantics (MIPROv2/GEPA) and RLM/FRLM concepts.
+- A source of invariants we can encode in TS tests (without calling Rust code).
 
 Concretely:
 
-- Mirror a small subset of dsrs unit tests at the “contract level” in `packages/dse/test/` (fake LM, deterministic inputs).
+- Mirror a small subset of dsrs unit tests at the “contract level” in `packages/dse/test/` (fake LM, deterministic inputs), but keep the test logic entirely in TS.
 - Keep optimizer ids/versioning explicit so we can evolve without breaking artifacts.
 
 ## Key DSE Implementation Commits (For Archaeology)
