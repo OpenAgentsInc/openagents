@@ -405,6 +405,27 @@ Testable outcomes:
   - use a realistic tool-loop transcript fixture as the target (e.g. “review my recent gmail things”):
     - `docs/autopilot/fixtures/autopilot-gmail-review.stream.v1.jsonl`
 
+Implementation log:
+
+- 2026-02-08: Added an isomorphic chat wire decoder that upserts `dse.*` action parts by stable `id`:
+  - `apps/web/src/effect/chatWire.ts`
+  - `apps/web/src/effect/chat.ts` (now uses `applyChatWirePart(...)`)
+- 2026-02-08: Added first-class DSE chat card rendering in the Autopilot chat template:
+  - `apps/web/src/effuse-pages/autopilot.ts` (signature/compile/promote/rollback/budget cards)
+- 2026-02-08: Centralized “wire parts → UI render parts” mapping and updated the live Autopilot controller to use it:
+  - `apps/web/src/effuse-app/controllers/autopilotChatParts.ts`
+  - `apps/web/src/effuse-app/controllers/autopilotController.ts`
+- 2026-02-08: Added importable TS mirrors of the golden JSONL fixtures (required for Worker/Storybook bundling):
+  - `apps/web/src/fixtures/wireTranscripts.ts`
+  - source refs: `docs/autopilot/fixtures/*.stream.v1.jsonl`
+- 2026-02-08: Added a Storybook story that renders the DSE kitchen sink transcript and shows the raw JSON:
+  - `apps/web/src/storybook/stories/autopilot.ts`
+- 2026-02-08: Added worker tests proving the fixtures render through the real chat template:
+  - `apps/web/tests/worker/dse-chat-parts-rendering.test.ts`
+- 2026-02-08: Verified:
+  - `cd apps/web && npm test && npm run lint`
+  - `cd packages/dse && bun test && bun run typecheck`
+
 ### Stage 3: Run one DSE signature in the MVP hot path
 
 Pick one signature (recommended: `@openagents/autopilot/blueprint/SelectTool.v1`) and execute it inside the `apps/web` Worker:

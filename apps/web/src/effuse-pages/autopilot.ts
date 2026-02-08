@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html, renderToolPart } from "@openagentsinc/effuse";
-import type { ToolPartModel } from "@openagentsinc/effuse";
+import type { BoundedText, ToolPartModel } from "@openagentsinc/effuse";
 import { streamdown } from "../lib/effuseStreamdown";
 import type { TemplateResult } from "@openagentsinc/effuse";
 
@@ -17,7 +17,92 @@ export type RenderToolPart = {
   readonly model: ToolPartModel;
 };
 
-export type RenderPart = RenderTextPart | RenderToolPart;
+export type DseBudgetModel = {
+  readonly limits?: Record<string, number> | undefined;
+  readonly usage?: Record<string, number> | undefined;
+};
+
+export type DseSignatureCardModel = {
+  readonly id: string;
+  readonly state: string;
+  readonly signatureId: string;
+  readonly compiled_id?: string | undefined;
+  readonly receiptId?: string | undefined;
+  readonly durationMs?: number | undefined;
+  readonly budget?: DseBudgetModel | undefined;
+  readonly outputPreview?: BoundedText | undefined;
+  readonly errorText?: BoundedText | undefined;
+};
+
+export type DseCompileCardModel = {
+  readonly id: string;
+  readonly state: string;
+  readonly signatureId: string;
+  readonly jobHash: string;
+  readonly candidates?: number | undefined;
+  readonly best?: { readonly compiled_id: string; readonly reward?: number | undefined } | undefined;
+  readonly reportId?: string | undefined;
+  readonly errorText?: BoundedText | undefined;
+};
+
+export type DsePromoteCardModel = {
+  readonly id: string;
+  readonly state: string;
+  readonly signatureId: string;
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
+  readonly reason?: string | undefined;
+};
+
+export type DseRollbackCardModel = {
+  readonly id: string;
+  readonly state: string;
+  readonly signatureId: string;
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
+  readonly reason?: string | undefined;
+};
+
+export type DseBudgetExceededCardModel = {
+  readonly id: string;
+  readonly state: string;
+  readonly message?: string | undefined;
+  readonly budget?: DseBudgetModel | undefined;
+};
+
+export type RenderDseSignaturePart = {
+  readonly kind: "dse-signature";
+  readonly model: DseSignatureCardModel;
+};
+
+export type RenderDseCompilePart = {
+  readonly kind: "dse-compile";
+  readonly model: DseCompileCardModel;
+};
+
+export type RenderDsePromotePart = {
+  readonly kind: "dse-promote";
+  readonly model: DsePromoteCardModel;
+};
+
+export type RenderDseRollbackPart = {
+  readonly kind: "dse-rollback";
+  readonly model: DseRollbackCardModel;
+};
+
+export type RenderDseBudgetExceededPart = {
+  readonly kind: "dse-budget-exceeded";
+  readonly model: DseBudgetExceededCardModel;
+};
+
+export type RenderPart =
+  | RenderTextPart
+  | RenderToolPart
+  | RenderDseSignaturePart
+  | RenderDseCompilePart
+  | RenderDsePromotePart
+  | RenderDseRollbackPart
+  | RenderDseBudgetExceededPart;
 
 export type RenderedMessage = {
   readonly id: string;
@@ -44,6 +129,132 @@ export type AutopilotChatData = {
   readonly inputValue: string;
   readonly errorText: string | null;
   readonly auth: AutopilotAuthModel;
+};
+
+const dseStateBadge = (state: string): TemplateResult => {
+  const label = state === "ok" ? "ok" : state === "error" ? "error" : state === "start" ? "running" : state;
+  const cls =
+    state === "ok"
+      ? "border-status-done/40 bg-status-done/10 text-status-done"
+      : state === "error"
+        ? "border-status-blocked/40 bg-status-blocked/10 text-status-blocked"
+        : "border-status-pending/40 bg-status-pending/10 text-status-pending";
+
+  return html`<span class="inline-flex items-center rounded border px-2 py-0.5 text-[11px] uppercase tracking-wide ${cls}"
+    >${label}</span
+  >`;
+};
+
+const dseRow = (label: string, value: TemplateResult | string | number | null | undefined): TemplateResult => {
+  if (value == null || value === "") return html``;
+  return html`
+    <div class="grid grid-cols-[108px_1fr] gap-2 text-xs leading-relaxed">
+      <div class="text-text-dim">${label}</div>
+      <div class="text-text-primary font-mono break-words">${value}</div>
+    </div>
+  `;
+};
+
+const dseBoundedText = (value: BoundedText): TemplateResult => {
+  const truncated = value.truncated ? " (truncated)" : "";
+  const blob =
+    value.truncated && value.blob
+      ? html`<div class="mt-1 text-[11px] text-text-muted font-mono">blob: ${value.blob.id}${truncated}</div>`
+      : value.truncated
+        ? html`<div class="mt-1 text-[11px] text-text-muted font-mono">${truncated}</div>`
+        : null;
+
+  return html`
+    <div class="rounded border border-border-dark bg-bg-secondary/60 px-2 py-2">
+      <pre class="whitespace-pre-wrap break-words text-xs leading-relaxed font-mono text-text-primary">${value.preview}</pre>
+      ${blob}
+    </div>
+  `;
+};
+
+const dseCardShell = (opts: { readonly title: string; readonly state: string; readonly body: TemplateResult }): TemplateResult => {
+  return html`
+    <section
+      data-dse-card="1"
+      data-dse-card-title="${opts.title}"
+      data-dse-card-state="${opts.state}"
+      class="rounded border border-border-dark bg-surface-primary/35 px-3 py-3"
+    >
+      <header class="flex items-center justify-between gap-3">
+        <div class="text-xs text-text-dim uppercase tracking-wider">${opts.title}</div>
+        ${dseStateBadge(opts.state)}
+      </header>
+      <div class="mt-2 flex flex-col gap-2">${opts.body}</div>
+    </section>
+  `;
+};
+
+const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
+  const budget = m.budget?.usage
+    ? `elapsedMs=${m.budget?.usage?.elapsedMs ?? "?"} lmCalls=${m.budget?.usage?.lmCalls ?? "?"} outputChars=${m.budget?.usage?.outputChars ?? "?"}`
+    : null;
+
+  const body = html`
+    ${dseRow("signatureId", m.signatureId)}
+    ${dseRow("compiled_id", m.compiled_id)}
+    ${dseRow("durationMs", m.durationMs)}
+    ${dseRow("receiptId", m.receiptId)}
+    ${budget ? dseRow("budget", budget) : html``}
+    ${m.outputPreview ? html`<div>${dseRow("outputPreview", "")}${dseBoundedText(m.outputPreview)}</div>` : html``}
+    ${m.errorText ? html`<div>${dseRow("error", "")}${dseBoundedText(m.errorText)}</div>` : html``}
+  `;
+
+  return dseCardShell({ title: "DSE Signature", state: m.state, body });
+};
+
+const renderDseCompileCard = (m: DseCompileCardModel): TemplateResult => {
+  const best = m.best ? `${m.best.compiled_id}${m.best.reward != null ? ` (reward=${m.best.reward})` : ""}` : null;
+
+  const body = html`
+    ${dseRow("signatureId", m.signatureId)}
+    ${dseRow("jobHash", m.jobHash)}
+    ${dseRow("candidates", m.candidates)}
+    ${dseRow("best", best)}
+    ${dseRow("reportId", m.reportId)}
+    ${m.errorText ? html`<div>${dseRow("error", "")}${dseBoundedText(m.errorText)}</div>` : html``}
+  `;
+
+  return dseCardShell({ title: "DSE Compile", state: m.state, body });
+};
+
+const renderDsePromoteCard = (m: DsePromoteCardModel): TemplateResult => {
+  const body = html`
+    ${dseRow("signatureId", m.signatureId)}
+    ${dseRow("from", m.from)}
+    ${dseRow("to", m.to)}
+    ${m.reason ? dseRow("reason", m.reason) : html``}
+  `;
+
+  return dseCardShell({ title: "DSE Promote", state: m.state, body });
+};
+
+const renderDseRollbackCard = (m: DseRollbackCardModel): TemplateResult => {
+  const body = html`
+    ${dseRow("signatureId", m.signatureId)}
+    ${dseRow("from", m.from)}
+    ${dseRow("to", m.to)}
+    ${m.reason ? dseRow("reason", m.reason) : html``}
+  `;
+
+  return dseCardShell({ title: "DSE Rollback", state: m.state, body });
+};
+
+const renderDseBudgetExceededCard = (m: DseBudgetExceededCardModel): TemplateResult => {
+  const budget = m.budget?.usage
+    ? `elapsedMs=${m.budget?.usage?.elapsedMs ?? "?"} lmCalls=${m.budget?.usage?.lmCalls ?? "?"} outputChars=${m.budget?.usage?.outputChars ?? "?"}`
+    : null;
+
+  const body = html`
+    ${m.message ? dseRow("message", m.message) : html``}
+    ${budget ? dseRow("budget", budget) : html``}
+  `;
+
+  return dseCardShell({ title: "DSE Budget Stop", state: m.state, body });
 };
 
 export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult => {
@@ -76,9 +287,18 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           caret: "block",
         });
       }
-      // Default tool card rendering: enforces toolCallId visibility + BlobRef view-full affordance.
-      // Style is inherited from the surrounding typography.
-      return renderToolPart(p.model);
+      if (p.kind === "tool") {
+        // Default tool card rendering: enforces toolCallId visibility + BlobRef view-full affordance.
+        // Style is inherited from the surrounding typography.
+        return renderToolPart(p.model);
+      }
+      if (p.kind === "dse-signature") return renderDseSignatureCard(p.model);
+      if (p.kind === "dse-compile") return renderDseCompileCard(p.model);
+      if (p.kind === "dse-promote") return renderDsePromoteCard(p.model);
+      if (p.kind === "dse-rollback") return renderDseRollbackCard(p.model);
+      if (p.kind === "dse-budget-exceeded") return renderDseBudgetExceededCard(p.model);
+
+      return html``;
     });
 
     return html`

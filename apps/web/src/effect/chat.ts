@@ -6,8 +6,9 @@ import { ConvexService } from "./convex";
 import { RequestContextService } from "./requestContext";
 import { TelemetryService } from "./telemetry";
 
-import type * as AiResponse from "@effect/ai/Response";
-import type { ChatMessage, ChatPart } from "./chatProtocol";
+import type { ChatMessage } from "./chatProtocol";
+import { applyChatWirePart } from "./chatWire";
+import type { ActiveStream } from "./chatWire";
 
 export type ChatSnapshot = {
   readonly messages: ReadonlyArray<ChatMessage>;
@@ -73,124 +74,6 @@ function getOrCreateAnonKey(): string {
     sessionStorage.setItem(ANON_THREAD_KEY_KEY, key);
   }
   return key;
-}
-
-function stableStringify(value: unknown): string {
-  if (value == null) return String(value);
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-type ActiveStream = {
-  readonly id: string;
-  readonly messageId: string;
-  parts: Array<ChatPart>;
-};
-
-function applyRemoteChunk(active: ActiveStream, chunkData: AiResponse.StreamPartEncoded): ActiveStream {
-  switch (chunkData?.type) {
-    case "text-start": {
-      active.parts.push({ type: "text", text: "", state: "streaming" });
-      return active;
-    }
-    case "text-delta": {
-      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any;
-      if (lastTextPart && lastTextPart.type === "text") {
-        lastTextPart.text += String((chunkData as any).delta ?? "");
-      } else {
-        active.parts.push({ type: "text", text: String((chunkData as any).delta ?? "") });
-      }
-      return active;
-    }
-    case "text-end": {
-      const lastTextPart = [...active.parts].reverse().find((p) => p?.type === "text") as any;
-      if (lastTextPart && "state" in lastTextPart) lastTextPart.state = "done";
-      return active;
-    }
-    case "reasoning-start":
-    case "reasoning-delta":
-    case "reasoning-end": {
-      // Autopilot must not render reasoning. Ignore these parts on the UI wire.
-      return active;
-    }
-    case "tool-call": {
-      const toolName = String((chunkData as any).name ?? "tool");
-      active.parts.push({
-        type: `tool-${toolName}`,
-        toolCallId: String((chunkData as any).id ?? ""),
-        toolName,
-        state: "input-available",
-        input: (chunkData as any).params,
-      } as any);
-      return active;
-    }
-    case "tool-result": {
-      const toolCallId = String((chunkData as any).id ?? "");
-      const isFailure = Boolean((chunkData as any).isFailure);
-      const result = (chunkData as any).result;
-
-      let didUpdate = false;
-      active.parts = active.parts.map((p) => {
-        if (
-          p &&
-          typeof p === "object" &&
-          "toolCallId" in p &&
-          String((p as any).toolCallId) === toolCallId &&
-          "state" in p
-        ) {
-          didUpdate = true;
-          return {
-            ...(p as any),
-            state: isFailure ? "output-error" : "output-available",
-            output: result,
-            ...(isFailure ? { errorText: stableStringify(result) } : {}),
-          };
-        }
-        return p;
-      });
-
-      if (!didUpdate) {
-        const toolName = String((chunkData as any).name ?? "tool");
-        active.parts.push({
-          type: `tool-${toolName}`,
-          toolCallId,
-          toolName,
-          state: isFailure ? "output-error" : "output-available",
-          output: result,
-          ...(isFailure ? { errorText: stableStringify(result) } : {}),
-        } as any);
-      }
-
-      return active;
-    }
-    case "error": {
-      const raw = (chunkData as any).error;
-      const message =
-        typeof raw === "string"
-          ? raw
-          : raw == null
-            ? "Unknown error"
-            : stableStringify(raw);
-
-      // Render the error as visible assistant text so users are never left with a silent stall.
-      active.parts.push({
-        type: "text",
-        text: message ? `Error: ${message}` : "Error",
-        state: "done",
-      });
-      return active;
-    }
-    case "finish": {
-      // No-op for now; message finalization is reflected via message.status/text.
-      return active;
-    }
-    default:
-      return active;
-  }
 }
 
 function toChatSnapshot(session: ChatSession, messages: ReadonlyArray<ChatMessage>): ChatSnapshot {
@@ -293,11 +176,11 @@ export const ChatServiceLive = Layer.effect(
           for (const p of partsSorted) {
             const messageId = String((p as any).messageId ?? "");
             const runId = String((p as any).runId ?? "");
-            const part = (p as any).part as AiResponse.StreamPartEncoded | undefined;
+            const part = (p as any).part as unknown;
             if (!messageId || !runId || !part || typeof part !== "object") continue;
 
-            const active = byMessageId.get(messageId) ?? { id: runId, messageId, parts: [] };
-            byMessageId.set(messageId, applyRemoteChunk(active, part));
+            const active: ActiveStream = byMessageId.get(messageId) ?? { id: runId, messageId, parts: [] };
+            byMessageId.set(messageId, applyChatWirePart(active, part));
           }
 
           const messages: Array<ChatMessage> = [];
