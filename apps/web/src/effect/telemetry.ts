@@ -53,21 +53,27 @@ const createTelemetry = (options: {
   const mergeFields = (fields?: TelemetryFields): TelemetryFields =>
     namespace ? { namespace, ...baseFields, ...(fields ?? {}) } : { ...baseFields, ...(fields ?? {}) };
 
+  // Stable token to grep/tail in Worker logs (`wrangler tail --search ...`).
+  const requestToken = (() => {
+    const requestId = baseFields["requestId"];
+    return typeof requestId === "string" && requestId.length > 0 ? ` oa_req=${requestId}` : "";
+  })();
+
   const emit = (level: TelemetryLevel, message: string, fields?: TelemetryFields) =>
     Effect.sync(() => {
       const payload = mergeFields(fields);
       switch (level) {
         case 'error':
-          console.error(`[telemetry] ${message}`, payload);
+          console.error(`[telemetry]${requestToken} ${message}`, payload);
           return;
         case 'warn':
-          console.warn(`[telemetry] ${message}`, payload);
+          console.warn(`[telemetry]${requestToken} ${message}`, payload);
           return;
         case 'info':
-          console.info(`[telemetry] ${message}`, payload);
+          console.info(`[telemetry]${requestToken} ${message}`, payload);
           return;
         default:
-          console.debug(`[telemetry] ${message}`, payload);
+          console.debug(`[telemetry]${requestToken} ${message}`, payload);
       }
     });
 
@@ -76,13 +82,13 @@ const createTelemetry = (options: {
     event: (name, properties) =>
       Effect.sync(() => {
         const payload = mergeFields(properties);
-        console.log(`[telemetry:event] ${name}`, payload);
+        console.log(`[telemetry:event]${requestToken} ${name}`, payload);
         posthogCapture(name, payload);
       }),
     identify: (distinctId, properties) =>
       Effect.sync(() => {
         const payload = mergeFields(properties);
-        console.log(`[telemetry:identify] ${distinctId}`, payload);
+        console.log(`[telemetry:identify]${requestToken} ${distinctId}`, payload);
         posthogIdentify(distinctId, payload);
       }),
     withNamespace: (nextNamespace) =>
