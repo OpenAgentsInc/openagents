@@ -10,7 +10,8 @@ This doc proposes an **Effect-only** (TypeScript + Effect) architecture for:
 
 Constraints assumed:
 
-- `apps/web` and `apps/autopilot-worker` run in Cloudflare Workers/DOs.
+- Autopilot MVP is **Convex-first** in `apps/web` (no per-user Durable Objects / DO-SQLite execution plane; DO classes are deprecated shims).
+- `apps/autopilot-worker` is a DO-SQLite-based reference integration (non-MVP).
 - DSE runtime and compiler loops must be **TypeScript/Effect-native**.
 - Rust implementations in `crates/*` are **reference only** (do not depend on them at runtime).
 
@@ -43,7 +44,7 @@ Think in three layers:
 3. **Compilation** (Effect programs): candidate generation + evaluation + selection + artifact emission + promotion.
 
 `packages/dse/` owns (1), plus default implementations for (2) that are portable (in-memory, noop).
-Apps (Workers + DOs) own production implementations of (2) (SQLite-backed registries, blob storage, etc.).
+Apps (Workers) own production implementations of (2) for the MVP, typically backed by **Convex** (canonical state) and blob storage (R2 or equivalent). Durable Objects / DO-SQLite can be reintroduced post-MVP as an execution-plane optimization, but are not assumed.
 
 ## Effect Services (Runtime)
 
@@ -67,24 +68,39 @@ Notes:
 
 ### Budget service
 
-`ExecutionBudget` should be the single guardrail API used by both runtime and compilation.
+Status: **implemented (v1 subset)** in `packages/dse/src/runtime/budget.ts` as `ExecutionBudgetService`.
 
-Proposed interface sketch:
+Current enforced limits:
+
+- `maxTimeMs`
+- `maxLmCalls`
+- `maxOutputChars`
+
+Current API surface:
 
 ```ts
-export type Budget = {
-  readonly start: (options: { readonly runId: string; readonly limits: BudgetLimits }) => Effect.Effect<void>
-  readonly checkTime: Effect.Effect<void>
-  readonly onLmCall: (meta: { readonly modelId?: string; readonly role?: string }) => Effect.Effect<void>
-  readonly onToolCall: (meta: { readonly toolName: string }) => Effect.Effect<void>
-  readonly onRlmIteration: Effect.Effect<void>
-  readonly onSubLmCall: Effect.Effect<void>
-  readonly onOutputChars: (n: number) => Effect.Effect<void>
-  readonly snapshot: Effect.Effect<BudgetSnapshot>
+export type ExecutionBudget = {
+  readonly start: (options: {
+    readonly runId: string
+    readonly startedAtMs?: number | undefined
+    readonly limits: { readonly maxTimeMs?: number; readonly maxLmCalls?: number; readonly maxOutputChars?: number }
+  }) => Effect.Effect<BudgetHandle>
+}
+
+export type BudgetHandle = {
+  readonly checkTime: () => Effect.Effect<void, BudgetExceededError>
+  readonly onLmCall: () => Effect.Effect<void, BudgetExceededError>
+  readonly onOutputChars: (n: number) => Effect.Effect<void, BudgetExceededError>
+  readonly snapshot: () => Effect.Effect<BudgetSnapshotV1>
 }
 ```
 
-Budget limits should be serializable and included in receipts.
+Planned extensions for RLM + tools:
+
+- `onToolCall`, `onRlmIteration`, `onSubLmCall`
+- tool-call limits and per-tool timeouts
+
+Budget limits and budget usage snapshots should remain serializable and included in receipts.
 
 ## DSE Runtime: Predict
 
@@ -101,7 +117,7 @@ DirectPredict is the current behavior in `packages/dse/src/runtime/predict.ts`:
 
 Effect-only improvements needed for parity with the roadmap:
 
-- Enforce timeouts and budgets via `ExecutionBudget` and `SignatureConstraints`.
+- Enforce timeouts and budgets via `ExecutionBudget` and `SignatureConstraints` (budgets are implemented for DirectPredict; signature timeout/tool budgets still pending).
 - Record tool receipts (when tools are used) and link them to the predict receipt/run id.
 
 ### PredictStrategy abstraction (needed for RLM)
@@ -129,7 +145,7 @@ Represent variable space as a service:
 - `VarSpace`: `get(varName)`, `put(varName, valueRef)`, `list()`.
 - Values should be references, not copies. Prefer `BlobRef` plus small JSON values.
 
-VarSpace should be per-thread (Autopilot DO), keyed by `{ threadId, runId }` or `{ threadId }` depending on retention needs.
+VarSpace should be per-thread (Convex thread in the MVP execution plane), keyed by `{ threadId, runId }` or `{ threadId }` depending on retention needs.
 
 ### RLM-lite action DSL (no arbitrary code)
 
@@ -240,22 +256,27 @@ Multi-objective support:
 ### Promotion and rollback
 
 Promotion should remain pointer-only via `PolicyRegistry.setActive(signatureId, compiledId)`.
-Rollback should remain history-based (DO table already exists in `apps/autopilot-worker/src/dseServices.ts`).
+Rollback should remain history-based (append-only “active artifact history”), but in the MVP execution plane this history should live in **Convex**. (`apps/autopilot-worker/src/dseServices.ts` shows the same pattern in DO-SQLite, but that’s non-MVP.)
 
-## Storage (Workers/DO)
+## Storage (Convex-first MVP)
 
-Minimum DO tables/services needed for the Effect-only end-state:
+Minimum Convex tables/services needed for the Effect-only end-state (names illustrative):
 
-- `dse_artifacts`: immutable compiled artifacts keyed by `(signature_id, compiled_id)`
-- `dse_active_artifacts`: pointer to active compiled id per signature
-- `dse_active_artifact_history`: append-only history for rollback
-- `dse_receipts`: append-only predict receipts
-- `dse_blobs`: content-addressed text blobs
+- `dseArtifacts`: immutable compiled artifacts keyed by `{ signatureId, compiled_id }`
+- `dseActiveArtifacts`: pointer to active `compiled_id` per `signatureId`
+- `dseActiveArtifactHistory`: append-only history for rollback
+- `dseReceipts`: append-only predict receipts (and later tool/trace receipts) keyed by `runId` / `receiptId`
+- `dseBlobs`: content-addressed blobs (or pointers to R2) keyed by `blobId` / hash
 
 Additional tables for RLM:
 
-- `dse_varspace`: `{ thread_id, run_id, var_name, value_kind, blob_id?, json?, created_at }`
-- `dse_trace_events`: `{ thread_id, run_id, seq, json, created_at }` (bounded retention)
+- `dseVarSpace`: `{ threadId, runId?, varName, valueKind, blobId?, json?, createdAt }`
+- `dseTraceEvents`: `{ threadId, runId, seq, json, createdAt }` (bounded retention)
+
+Notes:
+
+- Writes should be idempotent and bounded; follow the chunked/append-only posture in `docs/autopilot/anon-chat-execution-plane.md`.
+- Post-MVP, a DO-SQLite execution plane can mirror the same logical schema (see the reference integration in `apps/autopilot-worker/src/dseServices.ts`).
 
 ## Testing Strategy (Effect-only)
 
@@ -267,21 +288,21 @@ Unit tests (package-level):
 
 Integration tests (worker-level):
 
-- Existing DO-backed artifact store/promote/rollback tests in `apps/autopilot-worker/tests/index.test.ts`.
-- Add an RLM “smoke test” once VarSpace/trace endpoints exist: verify iteration receipts are recorded and budgets are enforced.
+- Existing Convex-first Worker + Convex tests in `apps/web/tests/worker/` (for example `apps/web/tests/worker/chat-streaming-convex.test.ts`).
+- Add a DSE/RLM “smoke test” once Convex-backed VarSpace/trace endpoints exist: verify iteration receipts are recorded and budgets are enforced.
 
 ## Implementation Roadmap (Effect-only, Testable Steps)
 
 Each step should land with:
 
 - One or more tests that fail before the change and pass after.
-- A clear verification command set (`packages/dse` unit tests, plus `apps/autopilot-worker` integration tests when DO wiring changes).
+- A clear verification command set (`packages/dse` unit tests, plus `apps/web` worker/Convex tests for MVP wiring changes).
 
 ### Step 0: Keep The Baseline Green (already true today)
 
 - Scope: no behavior changes.
 - Verification: `cd packages/dse && bun test && bun run typecheck`
-- Verification: `cd apps/autopilot-worker && npm test && npm run typecheck`
+- Verification: `cd apps/web && npm test && npm run lint`
 
 ### Step 1: Add Execution Budgets To DirectPredict
 
@@ -292,6 +313,7 @@ Each step should land with:
 - Tests: add `packages/dse/test/budget.test.ts` to assert budgets fail closed (for example `maxLmCalls=0` rejects, `maxOutputChars` rejects on oversized outputs).
 - Tests: update `packages/dse/test/predict.test.ts` to provide an `ExecutionBudgetService` layer.
 - Verification: `cd packages/dse && bun test && bun run typecheck`
+- Status: implemented (commit `42507656f`).
 
 ### Step 2: Add TraceRecorder And Emit Predict Trace Events
 
@@ -343,13 +365,13 @@ Each step should land with:
 - Tests: add a fake `LmClient` that distinguishes calls (main vs sub) and assert the right routing/budget counters.
 - Verification: `cd packages/dse && bun test && bun run typecheck`
 
-### Step 8: Durable Object Storage For VarSpace And Trace Events
+### Step 8: Convex Storage For VarSpace And Trace Events
 
-- Goal: make RLM durable per-thread in production.
-- Code: extend DO tables and layers in `apps/autopilot-worker/src/dseServices.ts` to persist `VarSpace` and `TraceRecorder`.
-- Code: add minimal DO endpoints for reading trace events and varspace keys (bounded, debug-only).
-- Tests: add a worker integration test in `apps/autopilot-worker/tests/index.test.ts` that runs a tiny RLM loop and asserts trace events are persisted and budget failures return structured errors.
-- Verification: `cd apps/autopilot-worker && npm test && npm run typecheck`
+- Goal: make RLM durable per-thread in the **Convex-first MVP** execution plane.
+- Code: extend Convex schema + functions in `apps/web/convex/` to persist `VarSpace` and `TraceRecorder` (bounded, append-only).
+- Code: add minimal Worker endpoints under `apps/web/src/effuse-host/` for reading trace events/varspace keys (bounded, debug-only).
+- Tests: add a worker integration test under `apps/web/tests/worker/` that runs a tiny RLM loop and asserts trace events are persisted and budget failures return structured errors.
+- Verification: `cd apps/web && npm test && npm run lint`
 
 ### Step 9: MIPRO-Like Instruction Proposal Optimizer (Effect-only)
 
