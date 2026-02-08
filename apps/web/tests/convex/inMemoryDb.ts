@@ -111,6 +111,7 @@ export const makeInMemoryDb = (options?: { readonly seedTables?: Record<string, 
     dseActiveArtifacts: [],
     dseActiveArtifactHistory: [],
     dseExamples: [],
+    dseCompileReports: [],
     ...(options?.seedTables ?? {}),
   };
 

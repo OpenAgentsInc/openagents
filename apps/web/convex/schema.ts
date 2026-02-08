@@ -151,4 +151,22 @@ export default defineSchema({
   })
     .index("by_signatureId_exampleId", ["signatureId", "exampleId"])
     .index("by_signatureId_updatedAtMs", ["signatureId", "updatedAtMs"]),
+
+  /**
+   * DSE compile run reports (global, not per-thread).
+   *
+   * Reports are immutable and keyed by (signatureId, jobHash, datasetHash).
+   * This makes compile runs replayable/auditable without a DO-backed store.
+   */
+  dseCompileReports: defineTable({
+    signatureId: v.string(),
+    jobHash: v.string(),
+    datasetId: v.string(),
+    datasetHash: v.string(),
+    compiled_id: v.string(),
+    json: v.any(),
+    createdAtMs: v.number(),
+  })
+    .index("by_signatureId_jobHash_datasetHash", ["signatureId", "jobHash", "datasetHash"])
+    .index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
 });

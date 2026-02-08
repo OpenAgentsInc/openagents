@@ -3,6 +3,7 @@ import { handleAutopilotRequest } from "./autopilot"
 import { handleAuthRequest } from "./auth"
 import { handleCallbackRequest } from "./callback"
 import { handleContractsRequest } from "./contracts"
+import { handleDseCompileRequest } from "./dseCompile"
 import { handleSsrRequest } from "./ssr"
 import { handleStorybookApiRequest } from "./storybook"
 import {
@@ -61,6 +62,11 @@ export default {
 
     if (url.pathname.startsWith("/api/contracts/")) {
       const response = await handleContractsRequest(requestWithId)
+      if (response) return withResponseRequestIdHeader(response, requestId)
+    }
+
+    if (url.pathname.startsWith("/api/dse/")) {
+      const response = await handleDseCompileRequest(requestWithId, env, ctx)
       if (response) return withResponseRequestIdHeader(response, requestId)
     }
 
