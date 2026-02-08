@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html, renderToolPart } from "@openagentsinc/effuse";
 import type { ToolPartModel } from "@openagentsinc/effuse";
+import { streamdown } from "../lib/effuseStreamdown";
 
 /** Text part for display (state for streaming done) */
 export type RenderTextPart = {
@@ -74,7 +75,11 @@ export function runAutopilotChat(
 
       const partEls = m.renderParts.map((p) => {
         if (p.kind === "text") {
-          return html`<div class="whitespace-pre-wrap break-words">${p.text}</div>`;
+          return streamdown(p.text, {
+            mode: "streaming",
+            isAnimating: p.state === "streaming",
+            caret: "block",
+          });
         }
         // Default tool card rendering: enforces toolCallId visibility + BlobRef view-full affordance.
         // Style is inherited from the surrounding typography.
