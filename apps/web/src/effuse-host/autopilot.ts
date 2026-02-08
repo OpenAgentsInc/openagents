@@ -13,6 +13,7 @@ import { RequestContextService, makeServerRequestContext } from "../effect/reque
 import { TelemetryService } from "../effect/telemetry";
 
 import { getWorkerRuntime } from "./runtime";
+import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
@@ -143,6 +144,18 @@ const runAutopilotStream = (input: {
   readonly controller: AbortController;
 }) => {
   const { runtime } = getWorkerRuntime(input.env);
+  const url = new URL(input.request.url);
+  const requestId = input.request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService;
+    }),
+  );
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: input.request.method,
+    pathname: url.pathname,
+  });
 
   const effect = Effect.gen(function* () {
     const telemetry = yield* TelemetryService;
@@ -313,7 +326,14 @@ const runAutopilotStream = (input: {
 
       yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status });
     }
-  }).pipe(Effect.provideService(RequestContextService, makeServerRequestContext(input.request)));
+  }).pipe(
+    Effect.provideService(RequestContextService, makeServerRequestContext(input.request)),
+    Effect.provideService(TelemetryService, requestTelemetry),
+    Effect.catchAll((err) => {
+      console.error(`[autopilot.stream] ${formatRequestIdLogToken(requestId)}`, err);
+      return Effect.void;
+    }),
+  );
 
   return runtime.runPromise(effect).finally(() => {
     activeRuns.delete(input.runId);
@@ -327,6 +347,7 @@ export const handleAutopilotRequest = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/autopilot/")) return null;
+  const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
 
   if (url.pathname === "/api/autopilot/send") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -345,6 +366,16 @@ export const handleAutopilotRequest = async (
     }
 
     const { runtime } = getWorkerRuntime(env);
+    const telemetryBase = runtime.runSync(
+      Effect.gen(function* () {
+        return yield* TelemetryService;
+      }),
+    );
+    const requestTelemetry = telemetryBase.withFields({
+      requestId,
+      method: request.method,
+      pathname: url.pathname,
+    });
     const exit = await runtime.runPromiseExit(
       Effect.gen(function* () {
         const convex = yield* ConvexService;
@@ -356,10 +387,14 @@ export const handleAutopilotRequest = async (
           ...(anonKey ? { anonKey } : {}),
           text,
         } as any);
-      }).pipe(Effect.provideService(RequestContextService, makeServerRequestContext(request))),
+      }).pipe(
+        Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+        Effect.provideService(TelemetryService, requestTelemetry),
+      ),
     );
 
     if (exit._tag === "Failure") {
+      console.error(`[autopilot.send] ${formatRequestIdLogToken(requestId)} create_run_failed`, exit.cause);
       return json({ ok: false, error: "create_run_failed" }, { status: 500, headers: { "cache-control": "no-store" } });
     }
 
@@ -404,6 +439,16 @@ export const handleAutopilotRequest = async (
     activeRuns.get(runId)?.controller.abort();
 
     const { runtime } = getWorkerRuntime(env);
+    const telemetryBase = runtime.runSync(
+      Effect.gen(function* () {
+        return yield* TelemetryService;
+      }),
+    );
+    const requestTelemetry = telemetryBase.withFields({
+      requestId,
+      method: request.method,
+      pathname: url.pathname,
+    });
     const exit = await runtime.runPromiseExit(
       Effect.gen(function* () {
         const convex = yield* ConvexService;
@@ -413,10 +458,14 @@ export const handleAutopilotRequest = async (
           ...(anonKey ? { anonKey } : {}),
           runId,
         } as any);
-      }).pipe(Effect.provideService(RequestContextService, makeServerRequestContext(request))),
+      }).pipe(
+        Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+        Effect.provideService(TelemetryService, requestTelemetry),
+      ),
     );
 
     if (exit._tag === "Failure") {
+      console.error(`[autopilot.cancel] ${formatRequestIdLogToken(requestId)} cancel_failed`, exit.cause);
       return json({ ok: false, error: "cancel_failed" }, { status: 500, headers: { "cache-control": "no-store" } });
     }
 

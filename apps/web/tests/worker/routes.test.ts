@@ -52,6 +52,7 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("x-oa-request-id")).toBeTruthy();
     expect(response.headers.get("content-type") ?? "").toContain("text/html");
     const body = await response.text();
     expect(body).toContain("data-autopilot-shell");

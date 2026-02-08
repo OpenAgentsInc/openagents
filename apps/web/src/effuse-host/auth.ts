@@ -11,6 +11,7 @@ import { RequestContextService, makeServerRequestContext } from "../effect/reque
 import { TelemetryService } from "../effect/telemetry"
 
 import { getWorkerRuntime } from "./runtime"
+import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId"
 import type { WorkerEnv } from "./env"
 
 type SessionPayload = {
@@ -113,6 +114,18 @@ const handleStart = async (request: Request, env: WorkerEnv): Promise<Response> 
   }
 
   const { runtime } = getWorkerRuntime(env)
+  const url = new URL(request.url)
+  const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing"
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService
+    }),
+  )
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: request.method,
+    pathname: url.pathname,
+  })
   return runtime.runPromise(
     Effect.gen(function* () {
       const telemetry = yield* TelemetryService
@@ -121,8 +134,9 @@ const handleStart = async (request: Request, env: WorkerEnv): Promise<Response> 
       return json({ ok: true })
     }).pipe(
       Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+      Effect.provideService(TelemetryService, requestTelemetry),
       Effect.catchAll((err) => {
-        console.error("[auth.start]", err)
+        console.error(`[auth.start] ${formatRequestIdLogToken(requestId)}`, err)
         return Effect.succeed(json({ ok: false, error: "send_failed" }, { status: 500 }))
       }),
     ),
@@ -151,6 +165,18 @@ const handleVerify = async (request: Request, env: WorkerEnv): Promise<Response>
   }
 
   const { runtime } = getWorkerRuntime(env)
+  const url = new URL(request.url)
+  const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing"
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService
+    }),
+  )
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: request.method,
+    pathname: url.pathname,
+  })
   return runtime.runPromise(
     Effect.gen(function* () {
       const telemetry = yield* TelemetryService
@@ -172,8 +198,9 @@ const handleVerify = async (request: Request, env: WorkerEnv): Promise<Response>
       )
     }).pipe(
       Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+      Effect.provideService(TelemetryService, requestTelemetry),
       Effect.catchAll((err) => {
-        console.error("[auth.verify]", err)
+        console.error(`[auth.verify] ${formatRequestIdLogToken(requestId)}`, err)
         return Effect.succeed(json({ ok: false, error: "verify_failed" }, { status: 401 }))
       }),
     ),
@@ -181,8 +208,19 @@ const handleVerify = async (request: Request, env: WorkerEnv): Promise<Response>
 }
 
 const handleSignout = async (request: Request, env: WorkerEnv): Promise<Response> => {
-  void request
   const { runtime } = getWorkerRuntime(env)
+  const url = new URL(request.url)
+  const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing"
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService
+    }),
+  )
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: request.method,
+    pathname: url.pathname,
+  })
   return runtime.runPromise(
     Effect.gen(function* () {
       const telemetry = yield* TelemetryService
@@ -199,8 +237,9 @@ const handleSignout = async (request: Request, env: WorkerEnv): Promise<Response
         },
       )
     }).pipe(
+      Effect.provideService(TelemetryService, requestTelemetry),
       Effect.catchAll((err) => {
-        console.error("[auth.signout]", err)
+        console.error(`[auth.signout] ${formatRequestIdLogToken(requestId)}`, err)
         return Effect.succeed(json({ ok: false, error: "signout_failed" }, { status: 500 }))
       }),
     ),
