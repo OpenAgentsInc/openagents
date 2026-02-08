@@ -5,6 +5,8 @@ import * as AiToolkit from "@effect/ai/Toolkit";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect/ai/languageModel";
+import { Lm, Predict } from "@openagentsinc/dse";
+import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
 
 import { api } from "../../convex/_generated/api";
 import { AuthService } from "../effect/auth";
@@ -12,6 +14,7 @@ import { ConvexService, type ConvexServiceApi } from "../effect/convex";
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
 import { TelemetryService } from "../effect/telemetry";
 
+import { layerDsePredictEnvForAutopilotRun, makeWorkersAiDseLmClient } from "./dse";
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
@@ -19,6 +22,8 @@ import type { WorkerEnv } from "./env";
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
+
+const predictBlueprintSelectTool = Predict.make(dseCatalogSignatures.blueprint_select_tool);
 
 const json = (body: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(body), {
@@ -94,7 +99,7 @@ const flushPartsToConvex = (input: {
   readonly anonKey: string | null;
   readonly runId: string;
   readonly messageId: string;
-  readonly parts: ReadonlyArray<{ readonly seq: number; readonly part: AiResponse.StreamPartEncoded }>;
+  readonly parts: ReadonlyArray<{ readonly seq: number; readonly part: unknown }>;
 }) =>
   input.convex.mutation(api.autopilot.messages.appendParts, {
     threadId: input.threadId,
@@ -201,7 +206,7 @@ const runAutopilotStream = (input: {
 
     let seq = 0;
     let bufferedDelta = "";
-    let bufferedParts: Array<{ readonly seq: number; readonly part: AiResponse.StreamPartEncoded }> = [];
+    let bufferedParts: Array<{ readonly seq: number; readonly part: unknown }> = [];
     let lastFlushAtMs = Date.now();
     let outputText = "";
     let cancelCheckAtMs = 0;
@@ -263,6 +268,107 @@ const runAutopilotStream = (input: {
         ),
       );
     });
+
+    // Stage 3: Execute one DSE signature in the MVP hot path (Convex-first).
+    // This is best-effort and must never block the main chat response.
+    yield* Effect.gen(function* () {
+      if (input.controller.signal.aborted) return;
+
+      const lastUserMessageText = (() => {
+        for (let i = messagesRaw.length - 1; i >= 0; i--) {
+          const m = messagesRaw[i];
+          if (!m || typeof m !== "object") continue;
+          if (String((m as any).role ?? "") !== "user") continue;
+          const text = String((m as any).text ?? "");
+          if (text.trim()) return text;
+        }
+        return "";
+      })();
+      if (!lastUserMessageText) return;
+
+      // Fetch Blueprint hint from Convex (tiny, stable context).
+      const bp = yield* convex
+        .query(api.autopilot.blueprint.getBlueprint, {
+          threadId: input.threadId,
+          ...(input.anonKey ? { anonKey: input.anonKey } : {}),
+        } as any)
+        .pipe(Effect.catchAll(() => Effect.succeed({ ok: true, blueprint: null } as any)));
+
+      const blueprint = (bp as any)?.blueprint ?? null;
+      const userHandle = String(blueprint?.docs?.user?.addressAs ?? "Unknown");
+      const agentName = String(blueprint?.docs?.identity?.name ?? "Autopilot");
+
+      const signatureId = dseCatalogSignatures.blueprint_select_tool.id;
+      const partId = `dsepart_sig_${input.runId}_blueprint_select_tool`;
+
+      bufferedParts.push({
+        seq: seq++,
+        part: {
+          type: "dse.signature",
+          v: 1,
+          id: partId,
+          state: "start",
+          tsMs: Date.now(),
+          signatureId,
+        },
+      });
+      yield* flush(true);
+
+      let recordedReceipt: any | null = null;
+
+      const dseLmClient = makeWorkersAiDseLmClient({ binding: input.env.AI, defaultModelId: MODEL_ID });
+      const dseEnv = layerDsePredictEnvForAutopilotRun({
+        threadId: input.threadId,
+        anonKey: input.anonKey,
+        runId: input.runId,
+        onReceipt: (r) => {
+          recordedReceipt = r as any;
+        },
+      });
+
+      const exit = yield* Effect.exit(
+        predictBlueprintSelectTool({
+          message: lastUserMessageText,
+          blueprintHint: { userHandle, agentName },
+        }).pipe(
+          Effect.provideService(Lm.LmClientService, dseLmClient),
+          Effect.provide(dseEnv),
+        ),
+      );
+
+      const state = exit._tag === "Success" ? "ok" : "error";
+
+      const errorText =
+        exit._tag === "Failure"
+          ? (() => {
+              const cause = (exit as any)?.cause;
+              if (cause && typeof cause === "object" && "message" in cause) return String((cause as any).message);
+              return String(cause ?? "DSE predict failed");
+            })()
+          : null;
+
+      bufferedParts.push({
+        seq: seq++,
+        part: {
+          type: "dse.signature",
+          v: 1,
+          id: partId,
+          state,
+          tsMs: Date.now(),
+          signatureId,
+          ...(recordedReceipt?.compiled_id ? { compiled_id: String(recordedReceipt.compiled_id) } : {}),
+          ...(recordedReceipt?.timing?.durationMs ? { timing: { durationMs: Number(recordedReceipt.timing.durationMs) } } : {}),
+          ...(recordedReceipt?.budget ? { budget: recordedReceipt.budget } : {}),
+          ...(recordedReceipt?.receiptId ? { receiptId: String(recordedReceipt.receiptId) } : {}),
+          ...(exit._tag === "Success" ? { outputPreview: (exit as any).value } : {}),
+          ...(errorText ? { errorText } : {}),
+        },
+      });
+      yield* flush(true);
+    }).pipe(
+      // Must never block the main chat response.
+      Effect.catchAllCause((cause) => t.log("warn", "dse.router_failed", { message: String(cause) })),
+    );
 
     const stream = AiLanguageModel.streamText({
       prompt,
