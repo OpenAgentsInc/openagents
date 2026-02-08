@@ -2,7 +2,10 @@
 
 This repo has a React-free “storybook” for **Effuse templates** and a matching **visual regression** test suite.
 
-It is implemented as normal Effuse routes inside `apps/web` so it runs in the **same Cloudflare Worker host** and uses the **same CSS + client boot** as production.
+There are 2 ways to run it:
+
+- **UI-only (default):** Vite dev server (fast iteration, no Worker bindings, no Convex/Auth side effects).
+- **Worker-hosted (optional):** Wrangler dev serving the real `apps/web` Worker (prod-parity for SSR/headers/assets).
 
 ## What You Get
 
@@ -44,9 +47,9 @@ Visual testing harness:
 
 ### 2) Env Vars
 
-Both the Worker host and the Effuse client bootstrap expect `VITE_CONVEX_URL` to be available at runtime.
+UI-only storybook does **not** require any env vars.
 
-In practice, you should have `apps/web/.env.local` containing at least:
+The **Worker-hosted** storybook (and the visual suite) expects `VITE_CONVEX_URL` to be available at runtime. In practice, you should have `apps/web/.env.local` containing at least:
 
 ```bash
 VITE_CONVEX_URL="https://<your-dev-deployment>.convex.cloud"
@@ -61,13 +64,23 @@ npm run storybook
 
 Open:
 
-- `http://localhost:6006/__storybook`
+- `http://localhost:6006/` (also supports `http://localhost:6006/__storybook`)
 
 Notes:
-- `npm run storybook` runs:
-  - `vite build -c vite.effuse.config.ts --watch` (writes `dist/effuse-client/*`)
-  - `wrangler dev --port 6006` (serves Worker + static assets binding)
-- The storybook UI is just another route in the Worker, so it looks like production.
+- This is **UI-only** and does not start `wrangler dev`.
+
+### 4) (Optional) Run Storybook In The Worker Host
+
+If you need prod-parity (SSR, Worker asset binding, response headers), run:
+
+```bash
+cd apps/web
+npm run storybook:worker
+```
+
+Open:
+
+- `http://localhost:6006/__storybook`
 
 ## Using Storybook
 
@@ -174,20 +187,22 @@ Notes:
 
 - Open the canvas URL directly: `/__storybook/canvas/<id>`
 - Check the browser console for runtime errors
-- Verify CSS/JS assets are served:
+- If running **Worker-hosted** (`npm run storybook:worker`), verify Effuse client assets are served:
   - `GET /effuse-client.css`
   - `GET /effuse-client.js`
 
 ### CSS looks missing
 
-Storybook depends on the Effuse client build being present in `dist/effuse-client/`.
+UI-only storybook (`npm run storybook`) serves CSS via Vite and should not depend on `dist/effuse-client`.
+
+Worker-hosted storybook (`npm run storybook:worker`) depends on the Effuse client build being present in `dist/effuse-client/`.
 If you started `wrangler dev` without `dev:client`, assets may be stale or missing.
 
 Use:
 
 ```bash
 cd apps/web
-npm run storybook
+npm run storybook:worker
 ```
 
 ### Visual tests cannot find Chrome
@@ -206,4 +221,3 @@ The visual suite already:
 
 If a story is still flaky, it probably contains time-based content or nondeterministic layout.
 Fix the story to be deterministic rather than increasing thresholds.
-
