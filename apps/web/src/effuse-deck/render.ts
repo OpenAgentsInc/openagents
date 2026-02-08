@@ -357,6 +357,7 @@ export type DeckRenderInput = {
   readonly doc: DeckDocument
   readonly slideIndex: number
   readonly stepIndex: number
+  readonly presenting?: boolean
 }
 
 export type DeckRenderOutput = {
@@ -371,6 +372,7 @@ export type DeckRenderOutput = {
 
 export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
   const doc = input.doc
+  const presenting = Boolean(input.presenting)
   const theme: DeckTheme | undefined = doc.theme ? { tokens: doc.theme.tokens, defaults: doc.theme.defaults } : undefined
 
   const slides = doc.deck.slides
@@ -417,18 +419,39 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
         </div>
       </div>
 
-      <div class="absolute top-4 left-4 text-[12px] text-text-dim">
-        ${deckTitle ? deckTitle : "Deck"}
+      <div class="absolute top-4 right-4 flex items-center gap-2">
+        <button
+          type="button"
+          data-deck-action="toggle-fullscreen"
+          class="text-[12px] font-mono border border-border-dark rounded px-2 py-1 bg-bg-secondary text-text-dim hover:text-text-primary hover:border-border-hover transition ${presenting
+            ? "opacity-30 hover:opacity-100"
+            : "opacity-100"}"
+          aria-label="${presenting ? "Exit fullscreen" : "Enter fullscreen"}"
+        >
+          ${presenting ? "Exit" : "Fullscreen"}
+        </button>
+        ${presenting
+          ? null
+          : html`<div class="text-[12px] text-text-dim font-mono">
+              ${slide.id}${totalSteps > 1 ? html` · step ${stepIndex}/${totalSteps}` : null}
+            </div>`}
       </div>
-      <div class="absolute top-4 right-4 text-[12px] text-text-dim font-mono">
-        ${slide.id}${totalSteps > 1 ? html` · step ${stepIndex}/${totalSteps}` : null}
-      </div>
-      <div class="absolute bottom-4 right-4 text-[12px] text-text-dim font-mono">
-        ${slideIndex + 1}/${slideCount}
-      </div>
-      <div class="absolute bottom-4 left-4 text-[12px] text-text-dim">
-        <span class="opacity-80">Keys:</span> <span class="font-mono">←/→</span> step, <span class="font-mono">PgUp/PgDn</span> slide, <span class="font-mono">R</span> reload
-      </div>
+
+      ${presenting
+        ? null
+        : html`
+            <div class="absolute top-4 left-4 text-[12px] text-text-dim">
+              ${deckTitle ? deckTitle : "Deck"}
+            </div>
+            <div class="absolute bottom-4 right-4 text-[12px] text-text-dim font-mono">
+              ${slideIndex + 1}/${slideCount}
+            </div>
+            <div class="absolute bottom-4 left-4 text-[12px] text-text-dim">
+              <span class="opacity-80">Keys:</span> <span class="font-mono">←/→</span> step,
+              <span class="font-mono">PgUp/PgDn</span> slide, <span class="font-mono">R</span> reload,
+              <span class="font-mono">F</span> fullscreen
+            </div>
+          `}
     </div>
   `
 
