@@ -1,7 +1,7 @@
 /**
- * Ensures Square721 (hatchery/display font) is loaded before we show
- * elements that use it, to avoid a flash of fallback font (FOUC).
- * Adds `fonts-ready` to document.documentElement when the font is available.
+ * Ensures Square721 (hatchery/display font) and Berkeley Mono (deck title) are
+ * loaded before we show elements that use them, to avoid a flash of fallback font (FOUC).
+ * Adds `fonts-ready` to document.documentElement when the fonts are available.
  */
 export function initFontReady(): void {
   if (typeof document === "undefined" || !document.fonts) {
@@ -11,13 +11,17 @@ export function initFontReady(): void {
 
   const addReady = () => document.documentElement.classList.add("fonts-ready")
 
-  if (document.fonts.check("1em Square721")) {
+  const squareReady = document.fonts.check("1em Square721")
+  const berkeleyReady = document.fonts.check("1em Berkeley Mono")
+  if (squareReady && berkeleyReady) {
     addReady()
     return
   }
 
-  document.fonts
-    .load("1em Square721")
+  Promise.all([
+    squareReady ? Promise.resolve() : document.fonts.load("1em Square721"),
+    berkeleyReady ? Promise.resolve() : document.fonts.load("1em Berkeley Mono"),
+  ])
     .then(addReady)
     .catch(() => addReady())
 

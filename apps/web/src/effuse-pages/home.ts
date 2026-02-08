@@ -18,7 +18,7 @@ export function homePageTemplate(year = new Date().getFullYear()): TemplateResul
         <h1 class="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
           Introducing Autopilot
         </h1>
-        <p class="mx-auto mt-4 max-w-2xl text-pretty text-lg text-white/80 sm:text-xl">
+        <p class="mx-auto mt-4 max-w-2xl text-pretty text-xl text-white/80 sm:text-2xl">
           Your personal agent, no Mac Mini required
         </p>
 

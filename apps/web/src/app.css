@@ -27,6 +27,15 @@ html.fonts-ready .use-font-square721 {
   opacity: 1;
 }
 
+/* Berkeley Mono: display mono (deck title, etc.) */
+@font-face {
+  font-family: 'Berkeley Mono';
+  src: url('/fonts/BerkeleyMonoVariable-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Vera Mono: monospace for chat (from repo src/gui/assets/fonts) */
 @font-face {
   font-family: 'Vera Mono';
@@ -88,6 +97,8 @@ html.fonts-ready .use-font-square721 {
   --font-body: "Vera Mono", "SF Mono", ui-monospace, monospace;
   --font-mono: "Vera Mono", "SF Mono", ui-monospace, monospace;
   --font-square721: "Square721", ui-serif, Georgia, serif;
+  --font-berkeley: "Berkeley Mono", ui-monospace, monospace;
+  --font-sans: Arial, Helvetica, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {

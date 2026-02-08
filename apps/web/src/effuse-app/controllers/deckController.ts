@@ -54,7 +54,7 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
     return { cleanup: () => {} }
   }
 
-  const root = shell.querySelector("[data-deck-slot='content']") ?? shell
+  const root = shell.querySelector("[data-deck-slide]") ?? shell.querySelector("[data-deck-slot='content']") ?? shell
   if (!(root instanceof HTMLElement)) {
     return { cleanup: () => {} }
   }
@@ -127,7 +127,12 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
     scheduleRender()
 
     try {
-      const res = await fetch(deckSrc, { cache: "no-store", credentials: "same-origin" })
+      const cacheBust = `${deckSrc}${deckSrc.includes("?") ? "&" : "?"}t=${Date.now()}`
+      const res = await fetch(cacheBust, {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
+      })
       if (!res.ok) {
         status = "error"
         errorText = `Failed to fetch ${deckSrc} (${res.status})`
@@ -281,7 +286,10 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
   root.addEventListener("click", onClick)
   document.addEventListener("fullscreenchange", onFullscreenChange)
 
-  Effect.runPromise(hydrateMarketingDotsGridBackground(shell)).catch(() => {})
+  // Run dots after the shell is in the DOM so the canvas can size and draw.
+  requestAnimationFrame(() => {
+    Effect.runPromise(hydrateMarketingDotsGridBackground(shell)).catch(() => {})
+  })
 
   // Initial load.
   void loadDeck()
