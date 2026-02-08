@@ -26,6 +26,10 @@ import {
 } from "../../convex/autopilot/messages";
 import { resetThreadImpl } from "../../convex/autopilot/reset";
 
+import { getArtifactImpl, listArtifactsImpl, putArtifactImpl } from "../../convex/dse/artifacts";
+import { clearActiveImpl, getActiveImpl, rollbackActiveImpl, setActiveImpl } from "../../convex/dse/active";
+import { recordPredictReceiptImpl } from "../../convex/dse/receipts";
+
 type UserIdentity = { readonly subject: string };
 
 type TestAuth = {
@@ -48,6 +52,9 @@ const queryHandlers: Record<string, QueryHandler> = {
   "autopilot/blueprint:getBlueprint": getBlueprintImpl as any,
   "autopilot/messages:getThreadSnapshot": getThreadSnapshotImpl as any,
   "autopilot/messages:isCancelRequested": isCancelRequestedImpl as any,
+  "dse/artifacts:getArtifact": getArtifactImpl as any,
+  "dse/artifacts:listArtifacts": listArtifactsImpl as any,
+  "dse/active:getActive": getActiveImpl as any,
 };
 
 const mutationHandlers: Record<string, MutationHandler> = {
@@ -62,6 +69,11 @@ const mutationHandlers: Record<string, MutationHandler> = {
   "autopilot/messages:requestCancel": requestCancelImpl as any,
   "autopilot/messages:clearMessages": clearMessagesImpl as any,
   "autopilot/reset:resetThread": resetThreadImpl as any,
+  "dse/artifacts:putArtifact": putArtifactImpl as any,
+  "dse/active:setActive": setActiveImpl as any,
+  "dse/active:clearActive": clearActiveImpl as any,
+  "dse/active:rollbackActive": rollbackActiveImpl as any,
+  "dse/receipts:recordPredictReceipt": recordPredictReceiptImpl as any,
 };
 
 const notImplemented = (kind: string, name: string): ConvexServiceError =>

@@ -38,6 +38,9 @@ export const resetAllImpl = (ctx: EffectMutationCtx, args: { readonly secret: st
 
     // Children first.
     const deleted: Record<string, number> = {};
+    deleted.dseActiveArtifactHistory = yield* deleteAllFrom(ctx, "dseActiveArtifactHistory");
+    deleted.dseActiveArtifacts = yield* deleteAllFrom(ctx, "dseActiveArtifacts");
+    deleted.dseArtifacts = yield* deleteAllFrom(ctx, "dseArtifacts");
     deleted.receipts = yield* deleteAllFrom(ctx, "receipts");
     deleted.messageParts = yield* deleteAllFrom(ctx, "messageParts");
     deleted.runs = yield* deleteAllFrom(ctx, "runs");
@@ -59,4 +62,3 @@ export const resetAll = effectMutation({
   returns: v.object({ ok: v.boolean(), deleted: v.record(v.string(), v.number()) }),
   handler: resetAllImpl,
 });
-
