@@ -1,6 +1,5 @@
 import { Effect } from "effect"
-import { boundText, html } from "@openagentsinc/effuse"
-import type { EzAction, RouterService, ToolPartStatus } from "@openagentsinc/effuse"
+import type { EzAction, RouterService } from "@openagentsinc/effuse"
 
 import { cleanupAuthedDotsGridBackground, hydrateAuthedDotsGridBackground } from "../../effuse-pages/authedShell"
 import { runAutopilotRoute } from "../../effuse-pages/autopilotRoute"
@@ -10,8 +9,8 @@ import { SessionAtom } from "../../effect/atoms/session"
 import { clearAuthClientCache } from "../../effect/auth"
 import { AuthService } from "../../effect/auth"
 import { ConvexService } from "../../effect/convex"
-import { UiBlobStore } from "../blobStore"
 import { api } from "../../../convex/_generated/api"
+import { toAutopilotRenderParts } from "./autopilotChatParts"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { AutopilotStore } from "../../effect/autopilotStore"
@@ -58,157 +57,6 @@ function getOrCreateAnonChatKey(): string {
     sessionStorage.setItem(ANON_CHAT_KEY_STORAGE_KEY, key)
   }
   return key
-}
-
-type UiPart = ChatMessage["parts"][number]
-
-type RenderPart =
-  | { kind: "text"; text: string; state?: "streaming" | "done" }
-  | {
-      kind: "tool"
-      toolName: string
-      toolCallId: string
-      state: string
-      input: unknown
-      output?: unknown
-      errorText?: string
-      preliminary?: boolean
-      approval?: { id: string; approved?: boolean; reason?: string }
-    }
-
-function isTextPart(part: unknown): part is Extract<UiPart, { type: "text" }> {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "text" &&
-    typeof (part as any).text === "string"
-  )
-}
-
-function isToolPart(
-  part: unknown,
-): part is
-  | (Extract<UiPart, { type: `tool-${string}` }> & {
-      toolCallId: string
-      state: string
-      input?: unknown
-      output?: unknown
-      errorText?: string
-      preliminary?: boolean
-      approval?: { id: string; approved?: boolean; reason?: string }
-      rawInput?: unknown
-    })
-  | (Extract<UiPart, { type: "dynamic-tool" }> & {
-      toolName: string
-      toolCallId: string
-      state: string
-      input?: unknown
-      output?: unknown
-      errorText?: string
-      preliminary?: boolean
-      approval?: { id: string; approved?: boolean; reason?: string }
-      rawInput?: unknown
-    }) {
-  if (!part || typeof part !== "object") return false
-  const type = (part as any).type
-  if (type === "dynamic-tool") {
-    return (
-      typeof (part as any).toolName === "string" &&
-      typeof (part as any).toolCallId === "string" &&
-      typeof (part as any).state === "string"
-    )
-  }
-  return (
-    typeof type === "string" &&
-    type.startsWith("tool-") &&
-    typeof (part as any).toolCallId === "string" &&
-    typeof (part as any).state === "string"
-  )
-}
-
-function getToolPartName(part: { type: string; toolName?: string }): string {
-  if (part.type === "dynamic-tool") return String(part.toolName ?? "tool")
-  if (part.type.startsWith("tool-")) return part.type.slice("tool-".length)
-  return part.type
-}
-
-function safeStableStringify(value: unknown, indent = 2): string {
-  if (value == null) return String(value)
-  if (typeof value === "string") return value
-  try {
-    return JSON.stringify(value, null, indent)
-  } catch {
-    return String(value)
-  }
-}
-
-function toRenderableParts(parts: ReadonlyArray<UiPart>): Array<RenderPart> {
-  const out: Array<RenderPart> = []
-
-  for (const p of parts) {
-    if (isTextPart(p)) {
-      if (p.text.length === 0) continue
-      const prev = out.at(-1)
-      if (prev?.kind === "text" && prev.state === p.state) {
-        prev.text += p.text
-      } else {
-        out.push({ kind: "text", text: p.text, state: p.state })
-      }
-      continue
-    }
-
-    if (isToolPart(p)) {
-      const toolName = getToolPartName(p as any)
-      const state = String((p as any).state ?? "")
-      const rawInput = (p as any).rawInput
-      const input = (p as any).input ?? rawInput
-      out.push({
-        kind: "tool",
-        toolName,
-        toolCallId: String((p as any).toolCallId),
-        state,
-        input,
-        output: (p as any).output,
-        errorText: typeof (p as any).errorText === "string" ? (p as any).errorText : undefined,
-        preliminary: Boolean((p as any).preliminary),
-        approval:
-          (p as any).approval && typeof (p as any).approval === "object"
-            ? {
-                id: String((p as any).approval.id ?? ""),
-                approved:
-                  typeof (p as any).approval.approved === "boolean"
-                    ? (p as any).approval.approved
-                    : undefined,
-                reason:
-                  typeof (p as any).approval.reason === "string"
-                    ? (p as any).approval.reason
-                    : undefined,
-              }
-            : undefined,
-      })
-      continue
-    }
-  }
-
-  return out
-}
-
-const TOOL_IO_MAX_CHARS = 4000
-
-const toToolStatus = (state: string): ToolPartStatus => {
-  switch (state) {
-    case "output-available":
-      return "tool-result"
-    case "output-error":
-      return "tool-error"
-    case "output-denied":
-      return "tool-denied"
-    case "approval-requested":
-    case "approval-responded":
-      return "tool-approval"
-    default:
-      return state.startsWith("input-") ? "tool-call" : "tool-call"
-  }
 }
 
 export type AutopilotController = {
@@ -423,14 +271,16 @@ export const mountAutopilotController = (input: {
 
     const messages = chatSnapshot.messages
 
-    const renderedMessages = messages
+    const renderedMessages: Array<EffuseRenderedMessage> = messages
       .filter(
         (m): m is ChatMessage & { readonly role: "user" | "assistant" } =>
           m.role === "user" || m.role === "assistant",
       )
       .map((msg) => {
-        const parts = Array.isArray((msg as any).parts) ? ((msg as any).parts as ReadonlyArray<UiPart>) : []
-        const renderParts = toRenderableParts(parts)
+        const parts = Array.isArray((msg as any).parts)
+          ? ((msg as any).parts as ReadonlyArray<ChatMessage["parts"][number]>)
+          : []
+        const renderParts = toAutopilotRenderParts({ parts, toolContractsByName })
         return { id: msg.id, role: msg.role, renderParts }
       })
       .filter((m) => m.role === "user" || m.renderParts.length > 0)
@@ -443,85 +293,36 @@ export const mountAutopilotController = (input: {
       if (lastPart.kind === "text") {
         return `${renderedMessages.length}:${last.id}:text:${lastPart.text.length}:${lastPart.state ?? ""}`
       }
-      return `${renderedMessages.length}:${last.id}:tool:${lastPart.toolName}:${lastPart.state}:${safeStableStringify(lastPart.output ?? "").length}`
+      if (lastPart.kind === "tool") {
+        const outputLen = lastPart.model.details?.output?.preview?.length ?? 0
+        const errorLen = lastPart.model.details?.error?.preview?.length ?? 0
+        return `${renderedMessages.length}:${last.id}:tool:${lastPart.model.toolName}:${lastPart.model.status}:${lastPart.model.summary}:${outputLen}:${errorLen}`
+      }
+      if (lastPart.kind === "dse-signature") {
+        const previewLen = lastPart.model.outputPreview?.preview?.length ?? 0
+        const errLen = lastPart.model.errorText?.preview?.length ?? 0
+        return `${renderedMessages.length}:${last.id}:dse-signature:${lastPart.model.signatureId}:${lastPart.model.state}:${lastPart.model.compiled_id ?? ""}:${previewLen}:${errLen}`
+      }
+      if (lastPart.kind === "dse-compile") {
+        return `${renderedMessages.length}:${last.id}:dse-compile:${lastPart.model.signatureId}:${lastPart.model.state}:${lastPart.model.jobHash}:${lastPart.model.best?.compiled_id ?? ""}`
+      }
+      if (lastPart.kind === "dse-promote") {
+        return `${renderedMessages.length}:${last.id}:dse-promote:${lastPart.model.signatureId}:${lastPart.model.from ?? ""}:${lastPart.model.to ?? ""}`
+      }
+      if (lastPart.kind === "dse-rollback") {
+        return `${renderedMessages.length}:${last.id}:dse-rollback:${lastPart.model.signatureId}:${lastPart.model.from ?? ""}:${lastPart.model.to ?? ""}`
+      }
+      if (lastPart.kind === "dse-budget-exceeded") {
+        return `${renderedMessages.length}:${last.id}:dse-budget-exceeded:${lastPart.model.state}:${(lastPart.model.message ?? "").length}`
+      }
+
+      return `${renderedMessages.length}:${last.id}:${(lastPart as any).kind ?? "part"}`
     })()
 
     const toolContractsKey = toolContractsByName ? Object.keys(toolContractsByName).sort().join(",") : ""
 
     const autopilotChatData = {
-      messages: renderedMessages.map((m): EffuseRenderedMessage => ({
-        id: m.id,
-        role: m.role,
-        renderParts: m.renderParts.map((p) => {
-          if (p.kind === "text") {
-            return { kind: "text" as const, text: p.text, state: p.state }
-          }
-          const meta = toolContractsByName?.[p.toolName]
-          const putText = ({ text, mime }: { readonly text: string; readonly mime?: string }) =>
-            Effect.sync(() => UiBlobStore.putText({ text, mime }))
-
-          const input = Effect.runSync(
-            boundText({
-              text: safeStableStringify(p.input),
-              maxChars: TOOL_IO_MAX_CHARS,
-              putText,
-              mime: "application/json",
-            }),
-          )
-
-          const outputText = p.output !== undefined ? safeStableStringify(p.output) : null
-          const output = outputText
-            ? Effect.runSync(
-                boundText({
-                  text: outputText,
-                  maxChars: TOOL_IO_MAX_CHARS,
-                  putText,
-                  mime: "application/json",
-                }),
-              )
-            : undefined
-
-          const error =
-            p.errorText && p.errorText.length > 0
-              ? Effect.runSync(
-                  boundText({
-                    text: p.errorText,
-                    maxChars: TOOL_IO_MAX_CHARS,
-                    putText,
-                    mime: "text/plain",
-                  }),
-                )
-              : undefined
-
-          const extra =
-            meta?.usage || meta?.description
-              ? html`
-                  <div data-effuse-tool-meta="1">
-                    ${meta.usage ? html`<div data-effuse-tool-usage="1">${meta.usage}</div>` : null}
-                    ${meta.description
-                      ? html`<div data-effuse-tool-description="1">${meta.description}</div>`
-                      : null}
-                  </div>
-                `
-              : null
-
-          return {
-            kind: "tool" as const,
-            model: {
-              status: toToolStatus(p.state),
-              toolName: p.toolName,
-              toolCallId: p.toolCallId,
-              summary: p.state,
-              details: {
-                extra,
-                input,
-                output,
-                error,
-              },
-            },
-          }
-        }),
-      })),
+      messages: renderedMessages,
       isBusy,
       isAtBottom,
       inputValue: inputDraft,

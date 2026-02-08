@@ -4,6 +4,10 @@ import { autopilotBlueprintPanelTemplate } from "../../effuse-pages/autopilotBlu
 import { autopilotChatTemplate } from "../../effuse-pages/autopilot"
 import { autopilotControlsTemplate } from "../../effuse-pages/autopilotControls"
 import { autopilotSidebarTemplate } from "../../effuse-pages/autopilotSidebar"
+import { applyChatWirePart } from "../../effect/chatWire"
+import type { ActiveStream } from "../../effect/chatWire"
+import { toAutopilotRenderParts } from "../../effuse-app/controllers/autopilotChatParts"
+import { dseKitchenSinkStreamV1 } from "../../fixtures/wireTranscripts"
 
 import type { ToolPartModel } from "@openagentsinc/effuse"
 import type { AutopilotChatData, AutopilotAuthModel, RenderedMessage } from "../../effuse-pages/autopilot"
@@ -124,6 +128,30 @@ const controlsModel = (overrides?: Partial<AutopilotControlsModel>): AutopilotCo
   isResettingAgent: false,
   ...overrides,
 })
+
+const chatDataFromWireTranscript = (opts: {
+  readonly stream: ReadonlyArray<{ readonly seq: number; readonly part: unknown }>
+  readonly userText?: string
+  readonly auth?: AutopilotAuthModel
+}): AutopilotChatData => {
+  const active: ActiveStream = { id: "run-fixture", messageId: "m-fixture", parts: [] }
+  const sorted = [...opts.stream].sort((a, b) => a.seq - b.seq)
+  for (const ev of sorted) {
+    applyChatWirePart(active, ev.part)
+  }
+
+  const assistantParts = toAutopilotRenderParts({ parts: active.parts })
+  const userText = opts.userText ?? "render the DSE kitchen sink wire transcript"
+  const auth = opts.auth ?? authAuthed
+
+  return chatData({
+    messages: [
+      messageUser("m-user", userText),
+      { id: "m-assistant", role: "assistant", renderParts: assistantParts } satisfies RenderedMessage,
+    ],
+    auth,
+  })
+}
 
 export const autopilotStories: ReadonlyArray<Story> = [
   {
@@ -333,5 +361,33 @@ export const autopilotStories: ReadonlyArray<Story> = [
           </div>
         </div>
       `,
+  },
+  {
+    id: "autopilot-organisms-wire-transcript-dse-kitchen-sink",
+    title: "Autopilot/Organisms/Wire Transcript (DSE Kitchen Sink)",
+    kind: "organism",
+    render: () => {
+      const data = chatDataFromWireTranscript({
+        stream: dseKitchenSinkStreamV1,
+        userText: "show me every DSE card type (kitchen sink)",
+        auth: authAuthed,
+      })
+
+      const rawJson = dseKitchenSinkStreamV1.map((l) => JSON.stringify(l)).join("\n")
+
+      return html`
+        <div class="flex h-screen min-h-0 w-full min-w-0 border border-border-dark bg-bg-secondary overflow-hidden">
+          <div class="flex-1 min-w-0 flex flex-col">
+            ${autopilotChatTemplate(data)}
+          </div>
+          <aside class="hidden lg:flex w-[520px] min-w-0 border-l border-border-dark bg-bg-secondary">
+            <div class="flex-1 min-h-0 overflow-auto p-4">
+              <div class="text-xs text-text-dim uppercase tracking-wider">Wire transcript (V1)</div>
+              <pre class="mt-2 whitespace-pre-wrap break-words rounded border border-border-dark bg-surface-primary/35 px-3 py-2 text-[11px] leading-relaxed font-mono text-text-primary">${rawJson}</pre>
+            </div>
+          </aside>
+        </div>
+      `
+    },
   },
 ] as const
