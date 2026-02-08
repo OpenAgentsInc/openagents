@@ -277,7 +277,6 @@ export function runAutopilotChat(
                       data-ez-trigger="input"
                       data-autopilot-chat-input="1"
                       value="${data.inputValue}"
-                      ${data.isBusy ? "disabled" : ""}
                       class="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
                     />
                     ${data.isBusy

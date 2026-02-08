@@ -297,6 +297,39 @@ export const mountAutopilotController = (input: {
     ;(bottom as HTMLElement | null)?.scrollIntoView({ block: "end", behavior })
   }
 
+  const focusChatInput = (options?: { readonly force?: boolean }) => {
+    const force = options?.force ?? false
+    const active = document.activeElement
+    if (!force && active && active !== document.body && active !== document.documentElement) {
+      const chatForm = input.container.querySelector("#chat-form")
+      // If focus is outside the chat UI (e.g. blueprint editor), don't steal focus.
+      if (!chatForm || !chatForm.contains(active)) return
+    }
+
+    const inputEl =
+      input.container.querySelector<HTMLInputElement>('[data-autopilot-chat-input="1"]') ??
+      input.container.querySelector<HTMLInputElement>('input[name="message"]')
+    if (!inputEl || inputEl.disabled) return
+
+    try {
+      inputEl.focus({ preventScroll: true })
+    } catch {
+      try {
+        inputEl.focus()
+      } catch {
+        // ignore
+      }
+    }
+
+    // Keep the caret at the end (useful when we restore focus after send).
+    try {
+      const len = inputEl.value.length
+      inputEl.setSelectionRange(len, len)
+    } catch {
+      // ignore
+    }
+  }
+
   const scheduleRender = () => {
     if (renderScheduled) return
     renderScheduled = true
@@ -725,6 +758,10 @@ export const mountAutopilotController = (input: {
       yield* Effect.sync(() => {
         if (inputEl) inputEl.value = ""
         inputDraft = ""
+
+        // Clicking the Send button transfers focus to the button; return focus
+        // to the chat input so users can keep typing immediately.
+        focusChatInput({ force: true })
       })
 
       yield* Effect.tryPromise({
@@ -1110,6 +1147,7 @@ export const mountAutopilotController = (input: {
   void fetchToolContracts()
   ensureBlueprintPolling(prevBusy)
   scheduleRender()
+  queueMicrotask(() => focusChatInput({ force: true }))
 
   return {
     cleanup: () => {
