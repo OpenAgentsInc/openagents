@@ -19,6 +19,8 @@ const state = vi.hoisted(() => ({
   cancelRequested: new Set<string>(),
   nextRun: 1,
   lastUserText: "hi",
+  canary: null as any,
+  artifacts: new Map<string, any>(),
 }));
 
 vi.mock("@effect/ai/LanguageModel", async (importOriginal) => {
@@ -90,7 +92,13 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         };
       }
 
-      if (isRecord(args) && typeof args.threadId === "string" && !("runId" in args) && !("maxMessages" in args)) {
+      if (
+        isRecord(args) &&
+        typeof args.threadId === "string" &&
+        !("runId" in args) &&
+        !("maxMessages" in args) &&
+        !("signatureId" in args)
+      ) {
         state.blueprintCalls.push({ ref, args });
         return {
           ok: true,
@@ -103,13 +111,20 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         };
       }
 
-      if (isRecord(args) && typeof args.signatureId === "string" && !("compiled_id" in args)) {
+      // Canary query (signatureId + threadId).
+      if (isRecord(args) && typeof args.signatureId === "string" && typeof args.threadId === "string" && !("compiled_id" in args)) {
+        return { ok: true, canary: state.canary };
+      }
+
+      // Active pointer query (signatureId only).
+      if (isRecord(args) && typeof args.signatureId === "string" && !("compiled_id" in args) && !("threadId" in args)) {
         state.dseGetActiveCalls.push({ ref, args });
         return { ok: true, compiled_id: null, updatedAtMs: null };
       }
 
       if (isRecord(args) && typeof args.signatureId === "string" && typeof args.compiled_id === "string") {
-        return { ok: true, artifact: null };
+        const key = `${String(args.signatureId)}::${String(args.compiled_id)}`;
+        return { ok: true, artifact: state.artifacts.get(key) ?? null };
       }
 
       if (isRecord(args) && typeof args.threadId === "string" && typeof args.runId === "string") {
@@ -178,6 +193,8 @@ describe("apps/web worker autopilot: Stage 3 DSE signature in hot path", () => {
     state.blueprintCalls.length = 0;
     state.dseGetActiveCalls.length = 0;
     state.recordPredictReceiptCalls.length = 0;
+    state.canary = null;
+    state.artifacts.clear();
 
     const ORIGIN = "http://example.com";
 
@@ -228,5 +245,99 @@ describe("apps/web worker autopilot: Stage 3 DSE signature in hot path", () => {
     expect(ok?.compiled_id).toBe(recorded.receipt.compiled_id);
     expect(ok?.receiptId).toBe(recorded.receipt.receiptId);
     expect(ok?.outputPreview?.action).toBe("none");
+  });
+
+  it("uses the canary compiled_id when a canary rollout is enabled (Stage 6)", async () => {
+    state.createRunCalls.length = 0;
+    state.appendPartsCalls.length = 0;
+    state.finalizeRunCalls.length = 0;
+    state.snapshotCalls.length = 0;
+    state.blueprintCalls.length = 0;
+    state.dseGetActiveCalls.length = 0;
+    state.recordPredictReceiptCalls.length = 0;
+    state.artifacts.clear();
+
+    const signatureId = "@openagents/autopilot/blueprint/SelectTool.v1";
+    const controlId = "control1";
+    const canaryId = "canary1";
+
+    const mkArtifact = (compiled_id: string) => ({
+      format: "openagents.dse.compiled_artifact",
+      formatVersion: 1,
+      signatureId,
+      compiled_id,
+      createdAt: "2026-02-08T00:00:00Z",
+      hashes: {
+        inputSchemaHash: "h_in",
+        outputSchemaHash: "h_out",
+        promptIrHash: "h_prompt",
+        paramsHash: compiled_id,
+      },
+      params: { paramsVersion: 1, decode: { mode: "strict_json", maxRepairs: 0 } },
+      eval: { evalVersion: 1, kind: "unscored" },
+      optimizer: { id: "test" },
+      provenance: {},
+    });
+
+    state.artifacts.set(`${signatureId}::${controlId}`, mkArtifact(controlId));
+    state.artifacts.set(`${signatureId}::${canaryId}`, mkArtifact(canaryId));
+
+    state.canary = {
+      signatureId,
+      enabled: true,
+      control_compiled_id: controlId,
+      canary_compiled_id: canaryId,
+      rolloutPct: 100,
+      salt: "salt-1",
+      okCount: 0,
+      errorCount: 0,
+      minSamples: 1,
+      maxErrorRate: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    };
+
+    const ORIGIN = "http://example.com";
+    const request = new Request(`${ORIGIN}/api/autopilot/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ threadId: "thread-canary-1", anonKey: "anon-key-1", text: "What can you do?" }),
+    });
+
+    const ctx = createExecutionContext();
+    const envWithAi = Object.assign(Object.create(env as any), {
+      AI: {
+        run: async () => ({
+          choices: [{ message: { content: "{\"action\":\"none\"}" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+      },
+    }) as any;
+
+    const response = await worker.fetch(request, envWithAi, ctx);
+    if (response.status !== 200) {
+      throw new Error(`Unexpected status ${response.status}: ${await response.text()}`);
+    }
+
+    const json = (await response.json()) as any;
+    expect(json.ok).toBe(true);
+
+    await waitOnExecutionContext(ctx);
+
+    // Canary selection happens in PolicyRegistryService.getActive; the active pointer query should be skipped.
+    expect(state.dseGetActiveCalls.length).toBe(0);
+
+    expect(state.recordPredictReceiptCalls.length).toBeGreaterThan(0);
+    const recorded = state.recordPredictReceiptCalls.at(-1)?.args as any;
+    expect(recorded?.receipt?.signatureId).toBe(signatureId);
+    expect(recorded?.receipt?.compiled_id).toBe(canaryId);
+
+    const appended = state.appendPartsCalls.flatMap((c) => (Array.isArray(c.args.parts) ? c.args.parts : []));
+    const sigParts = appended
+      .map((p: any) => p?.part)
+      .filter((p: any) => p?.type === "dse.signature" && p?.signatureId === signatureId);
+
+    const ok = sigParts.find((p: any) => p?.state === "ok");
+    expect(ok?.compiled_id).toBe(canaryId);
   });
 });

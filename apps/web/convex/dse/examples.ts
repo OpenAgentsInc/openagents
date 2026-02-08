@@ -18,12 +18,12 @@ const asStringArray = (u: unknown): Array<string> | null => {
   return out;
 };
 
-const splitSchema = v.union(v.literal("train"), v.literal("dev"), v.literal("test"));
+const splitSchema = v.union(v.literal("train"), v.literal("dev"), v.literal("holdout"), v.literal("test"));
 
-type Split = "train" | "dev" | "test";
+type Split = "train" | "dev" | "holdout" | "test";
 
 const splitOrNull = (u: unknown): Split | null =>
-  u === "train" || u === "dev" || u === "test" ? (u as Split) : null;
+  u === "train" || u === "dev" || u === "holdout" || u === "test" ? (u as Split) : null;
 
 const requireAuthed = (ctx: EffectQueryCtx | EffectMutationCtx) =>
   getSubject(ctx).pipe(
