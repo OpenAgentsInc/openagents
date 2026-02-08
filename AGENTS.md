@@ -68,6 +68,47 @@ Everything is logged and replayable
 - Tool calls must emit deterministic hashes + receipts.
 - Decisions must be recorded with counterfactuals when migrating from legacy heuristics.
 
+---
+
+## Telemetry + Debugging (apps/web)
+
+When debugging anything in `apps/web` (local or prod), **correlate by request id first**.
+
+### Cloudflare Worker request correlation
+
+- Every Worker response includes `x-oa-request-id` (derived from `cf-ray` when present; otherwise a UUID).
+- Every Worker telemetry log/event line includes a grep-friendly token: `oa_req=<id>`.
+
+Get the request id:
+- Browser: DevTools → Network → failing request → Response Headers → `x-oa-request-id`
+- CLI:
+  ```bash
+  curl -I https://autopilot-web.openagents.workers.dev/autopilot | rg -i "x-oa-request-id|cf-ray"
+  ```
+
+Tail prod Worker logs for just that request:
+```bash
+cd apps/web
+npx wrangler tail autopilot-web --format pretty --search "oa_req=<PASTE_ID>"
+```
+
+Local:
+- Local `wrangler dev` logs already include `oa_req=<id>`; search your terminal output for the token.
+
+### Convex correlation
+
+Convex failures typically include a Convex request id like `[Request ID: <id>]`.
+
+```bash
+cd apps/web
+npx convex logs --prod --jsonl | rg "<CONVEX_REQUEST_ID>"
+```
+
+When to do this:
+- Any user report of a blank page, SSR 500, or “no response” UI stall.
+- Any `ConvexServiceError` in console output.
+- Before changing logic “blind”: pull the `x-oa-request-id` and confirm the actual failing path.
+
 Adapters do serialization/parsing only
 - Adapters do not own validation/retry logic. Runtime (or meta-operators like Refine) owns retries/guardrails.
 
@@ -166,6 +207,16 @@ Workspace:
 ```bash
 cargo build --release
 cargo test
+```
+
+Web (apps/web):
+
+```bash
+cd apps/web
+npm run lint
+npm test
+npm run dev
+npm run deploy
 ```
 
 Autopilot:
