@@ -6,10 +6,6 @@ declare global {
   interface Env {
     ASSETS: { fetch: (request: Request) => Promise<Response> }
 
-    // Durable Objects / Agents SDK
-    Chat: DurableObjectNamespace
-    UserSpaceDO: DurableObjectNamespace
-
     // Workers AI
     AI: Ai
 
@@ -17,4 +13,3 @@ declare global {
     VITE_CONVEX_URL: string
   }
 }
-

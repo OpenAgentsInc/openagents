@@ -8,10 +8,11 @@ import {
   mountEzRuntimeWith,
 } from "@openagentsinc/effuse"
 
-import { AgentApiService } from "../effect/agentApi"
 import { AuthService } from "../effect/auth"
+import { AutopilotStoreService } from "../effect/autopilotStore"
 import { ChatService } from "../effect/chat"
 import { getAppConfig } from "../effect/config"
+import { ContractsApiService } from "../effect/contracts"
 import { SessionAtom } from "../effect/atoms/session"
 import { makeAppRuntime } from "../effect/runtime"
 import { TelemetryService } from "../effect/telemetry"
@@ -74,9 +75,14 @@ export const bootEffuseApp = (options?: BootOptions): void => {
       return yield* TelemetryService
     }),
   )
-  const api = runtime.runSync(
+  const store = runtime.runSync(
     Effect.gen(function* () {
-      return yield* AgentApiService
+      return yield* AutopilotStoreService
+    }),
+  )
+  const contracts = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* ContractsApiService
     }),
   )
   const chat = runtime.runSync(
@@ -176,7 +182,8 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                   runtime,
                   atoms,
                   telemetry,
-                  api,
+                  store,
+                  contracts,
                   chat,
                   router,
                   navigate,

@@ -126,65 +126,65 @@ If we later enforce “one thread per user id”, we can:
 
 ## Current State (What The Code Does Today)
 
-### `/autopilot` chooses a chat id
+### `/autopilot` chooses a thread id + anon secret
 
-- The Autopilot controller picks:
-  - `chatId = session.userId ?? anonChatId`
-  - `anonChatId` is stored in `sessionStorage` under `autopilot-anon-chat-id` and looks like `anon-<random>` (per-tab-session).  
-    Source: `apps/web/src/effuse-app/controllers/autopilotController.ts`
+- The Autopilot controller uses a per-tab anon thread identity:
+  - `threadId` is stored in `sessionStorage` under `autopilot-anon-chat-id` and looks like `anon-<random>`
+  - `anonKey` (secret) is stored in `sessionStorage` under `autopilot-anon-chat-key`
+  - When authed, the thread can be claimed (owner set) without copying data.
+  - Source: `apps/web/src/effuse-app/controllers/autopilotController.ts`
 
-### The browser connects to Agents WebSockets using that chat id
+### The browser subscribes to Convex and calls Worker endpoints
 
-- The chat client uses Cloudflare Agents SDK:
-  - WebSocket target: `WS /agents/chat/:chatId`
-  - REST: `GET /agents/chat/:chatId/get-messages`, plus blueprint + contracts endpoints.
-  - Implementation uses `AgentClient({ agent: "chat", name: chatId, ... })`.  
-    Source: `apps/web/src/effect/chat.ts`, `apps/web/src/effect/agentApi.ts`
+- The chat client is Convex-first:
+  - Realtime updates come from `ConvexService.subscribeQuery(api.autopilot.messages.getThreadSnapshot, { threadId, anonKey })`
+  - `send()` calls `POST /api/autopilot/send` (no WebSocket transport for chat)
+  - `stop()` calls `POST /api/autopilot/cancel`
+  - Source: `apps/web/src/effect/chat.ts`
 
-### The Worker routes `/agents/*` directly to Agents SDK routing
+### The Worker runs inference and writes chunked parts into Convex
 
-- `apps/web` Worker does:
-  - `if (url.pathname.startsWith("/agents")) return routeAgentRequest(request, env as any)`
-  - No guardrails before dispatch.
-  - This is currently required because `/autopilot` MUST work for unauthed users.  
-    Source: `apps/web/src/effuse-host/worker.ts`
+- `apps/web` Worker:
+  - creates a run via Convex (`createRun`)
+  - streams model output via `@effect/ai/LanguageModel.streamText`
+  - flushes **chunked** `messageParts` into Convex via `appendParts` (time/size bounded; never per-token)
+  - finalizes the run via `finalizeRun`
+  - persists cancellation via `requestCancel` (and best-effort aborts in-isolate)
+  - Source: `apps/web/src/effuse-host/autopilot.ts`, `apps/web/convex/autopilot/messages.ts`
 
-### The Chat DO persists state in DO SQLite for *any* chat id (including `anon-*`)
+### Access control
 
-- The Agent DO (`Chat extends Agent<Env>`) creates/persists:
-  - `cf_ai_chat_agent_messages` transcript table
-  - `autopilot_blueprint_state` table
-  - DSE + AI/tool receipt tables
-  - It loads messages from DB on construct and persists updates back into SQLite.
-  - There are **no auth checks** in the DO for which client may access which chat id.
-    Source: `apps/autopilot-worker/src/server.ts` (re-exported from `apps/web/src/effuse-host/do/chat.ts`)
+- Convex enforces thread access:
+  - authed users: owner-based checks
+  - anon users: `anonKey` secret required (thread id is not a bearer token)
+  - Source: `apps/web/convex/autopilot/access.ts`
 
-Result: opening `/autopilot` while unauthed allocates a new DO instance keyed by `anon-...` and (today) writes persistent state.
+Result: opening `/autopilot` while unauthed creates/uses a Convex thread keyed by `threadId`, and the UI “streams” by subscribing to Convex state changes.
 
 ## Why Re-Assess
 
 ### 1) Cost + abuse surface
 
-- Anonymous visitors can create unlimited `anon-*` chat ids (new tab/session) and drive:
+- Anonymous visitors can create unlimited `anon-*` thread ids (new tab/session) and drive:
   - Workers AI usage (real cost)
-  - DO CPU time
-  - Potentially unbounded DO SQLite storage writes (transcripts, blueprint, receipts).
+  - Worker CPU time
+  - Convex write load (messages + `messageParts`)
 
 We will need a free-tier budget anyway; the question is where to enforce it and how expensive the anon execution plane should be.
 
 ### 2) Storage bloat and unclear retention
 
-- `sessionStorage` ids are ephemeral, but DO SQLite persistence is durable.
+- `sessionStorage` ids are ephemeral, but Convex persistence is durable.
 - This is a mismatch: we persist “forever” for ids that are typically abandoned in minutes.
 
 ### 3) Security / chat id hijack risk
 
-- Today, **anyone can connect to any `chatId`** because neither the Worker nor the DO checks identity.
-- For authed users, `chatId = WorkOS userId` is *not* intended to be public.
-  - Even if WorkOS ids are unguessable, accidental leakage is plausible (logs, screenshots, copied URLs, etc.).
-- For anon ids, the id itself is acting like an auth token, but it is only ~12 chars of base36 and stored client-side.
+- Previously, id-as-bearer + missing checks meant **anyone could connect to any chat id**.
+- Today, access is enforced in Convex:
+  - authed users are owner-checked
+  - anon users must present `anonKey` (treat this as a secret; do not log it; rotate/clear on claim)
 
-We need an explicit access-control story regardless of which plane we choose.
+We still need an explicit access-control story (especially around anon secrets and sharing) regardless of which plane we choose post-MVP.
 
 ### 4) Product posture: “Try it” vs “Own it”
 
@@ -194,7 +194,7 @@ The user journey we likely want:
 2. **Authenticate**: unlock identity, ownership, and continuity.
 3. **Credits/billing** (later): unlock durable workspace + heavier tools + longer context.
 
-The current implementation gives anon users nearly the same backend surface as authed users.
+We should keep anon UX lightweight (budgets, retention, limited tools) and make “claim on auth” the normal path to durable ownership.
 
 ## MVP Implications (Abuse Control, Security, Credits)
 

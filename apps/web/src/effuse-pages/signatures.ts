@@ -79,7 +79,7 @@ export function signaturesPageTemplate(data: SignaturesPageData): TemplateResult
               <div>
                 <div class="text-xs text-text-dim uppercase tracking-wider">Signature Contracts</div>
                 <div class="text-[11px] text-text-muted mt-1">
-                  Source: Autopilot Worker \`GET /agents/chat/:id/signature-contracts\`
+                  Source: Worker \`GET /api/contracts/signatures\`
                 </div>
               </div>
               <a href="/modules" class="text-[11px] text-text-muted hover:text-text-primary">View modules →</a>
