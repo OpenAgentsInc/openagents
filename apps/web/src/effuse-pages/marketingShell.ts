@@ -20,6 +20,7 @@ const marketingBackgroundStyle = (): string => {
 export const marketingShellTemplate = (input: {
   readonly isHome: boolean
   readonly isLogin: boolean
+  readonly prelaunch?: boolean
   readonly content: TemplateResult
 }): TemplateResult => {
   return html`
@@ -29,7 +30,7 @@ export const marketingShellTemplate = (input: {
       </div>
       <div class="relative z-10 flex h-screen min-h-0 w-full flex-col">
         <div data-marketing-slot="header">
-          ${marketingHeaderTemplate(input.isHome, input.isLogin)}
+          ${marketingHeaderTemplate(input.isHome, input.isLogin, input.prelaunch ?? false)}
         </div>
         <div data-marketing-slot="content" class="flex flex-1 min-h-0 flex-col">
           ${input.content}
@@ -68,21 +69,23 @@ export const runMarketingShell = (
   input: {
     readonly isHome: boolean
     readonly isLogin: boolean
+    readonly prelaunch?: boolean
     readonly content: TemplateResult
   },
 ): Effect.Effect<void> => {
   return Effect.gen(function* () {
     const dom = yield* DomServiceTag
+    const prelaunch = input.prelaunch ?? false
 
     const shell = container.querySelector(`[data-marketing-shell]`)
     if (!shell) {
-      yield* dom.render(container, marketingShellTemplate(input))
+      yield* dom.render(container, marketingShellTemplate({ ...input, prelaunch }))
       return
     }
 
     const headerSlot = container.querySelector(`[data-marketing-slot="header"]`)
     if (headerSlot instanceof Element) {
-      yield* dom.render(headerSlot, marketingHeaderTemplate(input.isHome, input.isLogin))
+      yield* dom.render(headerSlot, marketingHeaderTemplate(input.isHome, input.isLogin, prelaunch))
     }
 
     const contentSlot = container.querySelector(`[data-marketing-slot="content"]`)
