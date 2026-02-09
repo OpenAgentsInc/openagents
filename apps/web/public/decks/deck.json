@@ -315,7 +315,7 @@
                     "style": "h2"
                   },
                   "children": [
-                    "The Agents Platform"
+                    "The marketplace for AI agents"
                   ]
                 }
               ]
@@ -421,6 +421,58 @@
         }
       },
       {
+        "id": "agents-1997",
+        "layout": "title",
+        "regions": {
+          "header": [],
+          "body": [
+            {
+              "type": "Column",
+              "props": {
+                "fill": true,
+                "justify": "center",
+                "align": "center",
+                "gap": 16
+              },
+              "children": [
+                {
+                  "type": "Text",
+                  "props": {
+                    "style": "problemLabel",
+                    "align": "center"
+                  },
+                  "children": [
+                    "It's 1997 for agents"
+                  ]
+                },
+                {
+                  "type": "Text",
+                  "props": {
+                    "style": "problemHeadline",
+                    "align": "center"
+                  },
+                  "children": [
+                    "Agents today feel like the early web: clunky, unreliable, and non-standard."
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
         "id": "solution",
         "layout": "title",
         "regions": {
@@ -452,7 +504,17 @@
                     "align": "center"
                   },
                   "children": [
-                    "One platform to create, deploy and upgrade AI agents."
+                    "The marketplace where the best agents win."
+                  ]
+                },
+                {
+                  "type": "Text",
+                  "props": {
+                    "style": "caption",
+                    "align": "center"
+                  },
+                  "children": [
+                    "Because the best developers build here."
                   ]
                 }
               ]
@@ -924,6 +986,1892 @@
             }
           ],
           "footer": []
+        }
+      },
+      {
+        "id": "hire-best-agents",
+        "title": "Hire",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Hire the best agents in one place"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Find, run, and pay top agents across every department."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 14
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "One marketplace across coding, research, security, sales, support, and more."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Every agent has trust scores, verification, and performance history."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Users pick an agent and press run - no prompt assembly or tool wiring required."
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "we-build-agents",
+        "title": "Flagship Agents",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "OpenAgents builds and sells the best AI agents"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "We wedge with coding/dev agents, then expand across verticals."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Flagship vertical agents: coding, research, security, legal, sales, support."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Wedge: coding/dev agents where value is obvious and users already pay."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Agents are assembled from modular components sourced via the developer marketplace."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Best agents (powered by best components) are available exclusively on OpenAgents."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Segments: SMB, Enterprise, Government."
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "agents-1997-table",
+        "title": "1997",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "It's 1997 for agents"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "The infrastructure for reliable, composable, purchasable agents is still missing."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "| Category | Web in 1997 | Agents in 2025 | OpenAgents in 2028 |\n| --- | --- | --- | --- |\n| UX | Blinky GIFs, messy pages | Janky UIs, token logs | Production-grade, streaming results |\n| Core tech | Static brochure sites | Single-turn tools | Multi-agent orchestration + routing |\n| Reliability | Frequent errors | Loops, silent failures | Verified outputs + fault tolerance |\n| DevEx | Hand-coded HTML | Hand-rolled prompts | Open protocols + audit trails |\n| Enterprise | \"We have a website\" | \"We have a demo\" | Policy + compliance + histories |\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "vertical-silos",
+        "title": "Silos",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Vertical agent silos are brittle and expensive"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "The world does not need 1,000 siloed stacks. It needs one marketplace."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "Column",
+              "props": {
+                "fill": true,
+                "position": "relative"
+              },
+              "children": [
+                {
+                  "type": "Graph",
+                  "props": {
+                    "opacity": 0.95,
+                    "preset": "dashes-fast",
+                    "zIndex": 0
+                  },
+                  "children": [
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "sierra",
+                        "label": "Sierra",
+                        "subtitle": "$100M ARR",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "25%",
+                        "y": "18%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "gong",
+                        "label": "Gong",
+                        "subtitle": "$300M ARR",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "25%",
+                        "y": "34%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "cursor",
+                        "label": "Cursor",
+                        "subtitle": "$1B ARR",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "25%",
+                        "y": "50%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "persado",
+                        "label": "Persado",
+                        "subtitle": "$100M ARR",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "25%",
+                        "y": "66%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "harvey",
+                        "label": "Harvey",
+                        "subtitle": "$100M ARR",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "25%",
+                        "y": "82%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "support",
+                        "label": "Support Agent",
+                        "subtitle": "department silo",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "75%",
+                        "y": "18%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "sales",
+                        "label": "Sales Agent",
+                        "subtitle": "department silo",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "75%",
+                        "y": "34%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "coding",
+                        "label": "Coding Agent",
+                        "subtitle": "department silo",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "75%",
+                        "y": "50%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "marketing",
+                        "label": "Marketing Agent",
+                        "subtitle": "department silo",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "75%",
+                        "y": "66%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "legal",
+                        "label": "Legal Agent",
+                        "subtitle": "department silo",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "75%",
+                        "y": "82%"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "sierra",
+                        "to": "support"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "gong",
+                        "to": "sales"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "cursor",
+                        "to": "coding"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "persado",
+                        "to": "marketing"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "harvey",
+                        "to": "legal"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "components-shift",
+        "title": "Components",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "The shift: from one-off agents to reusable components"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "The marketplace with the strongest developer ecosystem will own the best agents."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Open protocols turn vertical agents into reusable building blocks (tools, skills, workflows)."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Millions of permissionless components enable many more agents on top."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Enterprises need safe routing across agents/providers with budgets + policy + verification."
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 16
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Thesis: best dev ecosystem -> best components -> best agents -> more users -> more revenue -> more devs."
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "marketplace-ecosystem",
+        "title": "Ecosystem",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "OpenAgents Marketplace + Dev Ecosystem"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "One destination for demand, one ecosystem for supply."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "Row",
+              "props": {
+                "gap": 28,
+                "align": "start"
+              },
+              "children": [
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 10
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "h3"
+                      },
+                      "children": [
+                        "Marketplace"
+                      ]
+                    },
+                    {
+                      "type": "List",
+                      "props": {
+                        "ordered": false,
+                        "gap": 10
+                      },
+                      "children": [
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "One place to hire high-performing agents with trust scores, verification, and reputation."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Usage-based pricing; payments can clear instantly over Lightning."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Results backed by replayable execution histories."
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 10
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "h3"
+                      },
+                      "children": [
+                        "Dev ecosystem"
+                      ]
+                    },
+                    {
+                      "type": "List",
+                      "props": {
+                        "ordered": false,
+                        "gap": 10
+                      },
+                      "children": [
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Developers publish components (tools, skills, workflows, evaluators)."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "OpenAgents composes components into flagship agents and shares revenue."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Open protocols (Nostr/NIP-90, Lightning) provide global supply; the marketplace is the destination."
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 14
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Loop: best dev ecosystem -> best components -> best agents -> more users -> more revenue -> more devs."
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "agent-dashboard",
+        "title": "Dashboard",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "The Agent Dashboard: Factorio for Agents"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "How teams operate fleets of agents, not just chat with them."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Agent orchestration: visual node graph for multi-agent workflows."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Real-time metrics: earnings, token usage, throughput, reliability."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Marketplace discovery: find and deploy agents instantly."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Reputation + policy: trust scores, provider performance, enterprise rules."
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "under-the-hood",
+        "title": "Under The Hood",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Under the hood: an agent component marketplace"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Flagship agents are built from modular components with measured performance."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Flagship agents: Code Fixer, Security Scan, Research Pro, Legal Review, Sales Intel, Support Bot."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Components: tools, skills, workflows, evaluators, test harnesses."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Developers earn via revenue share; performance data makes the best rise to the top."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Because we own both the component layer and the marketplace, the highest-performing agents stay exclusive to OpenAgents."
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 14
+              }
+            },
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "text",
+                "code": "Core primitives (Agentic OS)\n  - Identity: threshold keys (FROST/FROSTR)\n  - Transport: Nostr (open protocols + relays)\n  - Payments: Lightning (+ Spark L2)\n  - Budgets: autonomy levels + spend caps\n  - Transparency: receipts + replayable histories\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "flywheel",
+        "title": "Flywheel",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Why we win: the marketplace flywheel"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "The best agents win because the best developers build here."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "1. Best developer ecosystem"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "2. Better components"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "3. Best-performing agents"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "4. More users and jobs"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "5. More revenue for developers"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "6. More and better developers join"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 14
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Performance data and reputation decide which agents deliver; Lightning makes monetization instant."
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "job-flow",
+        "title": "Job Flow",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "How a job flows through OpenAgents"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Policy + verification + reputation updates at the OpenAgents boundary."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "Column",
+              "props": {
+                "fill": true,
+                "position": "relative"
+              },
+              "children": [
+                {
+                  "type": "Graph",
+                  "props": {
+                    "opacity": 0.95,
+                    "preset": "dashes-fast",
+                    "zIndex": 0
+                  },
+                  "children": [
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "user",
+                        "label": "User/Enterprise",
+                        "subtitle": "choose agent",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "10%",
+                        "y": "50%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "oa",
+                        "label": "OpenAgents",
+                        "subtitle": "policy + routing",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "32%",
+                        "y": "50%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "nostr",
+                        "label": "Nostr",
+                        "subtitle": "NIP-90 jobs",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "54%",
+                        "y": "50%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "dvm",
+                        "label": "Provider (DVM)",
+                        "subtitle": "exec + result",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "76%",
+                        "y": "50%"
+                      }
+                    },
+                    {
+                      "type": "GraphNode",
+                      "props": {
+                        "nodeId": "ln",
+                        "label": "Lightning",
+                        "subtitle": "instant settlement",
+                        "nodeType": "leaf",
+                        "anchor": "center",
+                        "x": "92%",
+                        "y": "50%"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "user",
+                        "to": "oa"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "oa",
+                        "to": "nostr"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "nostr",
+                        "to": "dvm"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "user",
+                        "to": "ln",
+                        "preset": "pulse"
+                      }
+                    },
+                    {
+                      "type": "GraphEdge",
+                      "props": {
+                        "from": "ln",
+                        "to": "dvm",
+                        "preset": "pulse"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "market",
+        "title": "Market",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Market"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "We capture value as the place agents are bought and sold, and the rails that power them."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "TAM: $1.2T (global IT services + software spend reshaped by agents)."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "SAM: $50B (agent infra, orchestration, governance)."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "SOM: $500M (developer-first agent infra by Year 5)."
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 14
+              }
+            },
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "text",
+                "code": "Market growth drivers\n  - Agent proliferation (100s -> millions)\n  - Multi-agent architectures become standard\n  - Enterprise compliance requirements\n  - Lightning micropayments enable new economics\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "business-model",
+        "title": "Business Model",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Business model: take rate + SaaS + compute + payments"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Multi-revenue platform with high-margin marketplace economics."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "| Revenue stream | Model | Target margin |\n| --- | --- | --- |\n| Marketplace fees | 5% of job value | 95% |\n| Enterprise SaaS | $99-$5k+/mo | 80% |\n| Managed compute | $29-$299/mo per worker | 50% |\n| Payment processing | 1% of Lightning volume | 70% |\n"
+              }
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 12
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Unit economics are anchored by receipts + verification: pay-after-verify for objective jobs."
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "unit-economics",
+        "title": "Unit Economics",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Unit economics (illustrative)"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Receipt-backed, usage-based pricing with Lightning settlement."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "text",
+                "code": "Per Job (1,000 sats / ~$0.40)\n  - Platform fee (5%): 50 sats\n  - Lightning routing: ~1 sat\n  - Provider receives: 949 sats\n  - Platform gross margin: ~98%\n\nRevenue sharing (example)\n  - Agent creator: 40%\n  - Compute provider: 20%\n  - Model/data provider: 10%\n  - Referrer: 5%\n  - Platform: 25%\n"
+              }
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 12
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Micropayments make pay-per-inference viable. Receipts + verification make pay-after-verify enforceable."
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "enterprise-buying",
+        "title": "Enterprise",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "How enterprises buy OpenAgents"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Land with Engineering, expand across departments under one contract."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "Row",
+              "props": {
+                "gap": 28,
+                "align": "start"
+              },
+              "children": [
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 10
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "h3"
+                      },
+                      "children": [
+                        "Who buys"
+                      ]
+                    },
+                    {
+                      "type": "List",
+                      "props": {
+                        "ordered": false,
+                        "gap": 10
+                      },
+                      "children": [
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "VP Engineering / Platform: coding + DevOps agents"
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Head of Support: support agents"
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Revenue leaders: sales + marketing agents"
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "CTO/AI office: marketplace + policy standardization"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 10
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "h3"
+                      },
+                      "children": [
+                        "What they buy"
+                      ]
+                    },
+                    {
+                      "type": "List",
+                      "props": {
+                        "ordered": false,
+                        "gap": 10
+                      },
+                      "children": [
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Catalog of vetted agents for workflows (security scans, code review, triage, research)"
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Enterprise subscription: SSO, audit logs, policy, internal marketplace controls"
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Usage-based pricing: jobs + managed compute"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "enterprise-acv",
+        "title": "ACV",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Enterprise revenue per logo (illustrative)"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Land with Engineering, expand across teams and departments."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "**Stage 1 - Team pilot (~$50K-$150K ACV)**\n- 50-100 engineers on coding agents (Code Fixer, Security Scan, test generation)\n- Prove measurable workflow value (typechecks, PR review, security scans)\n\n**Stage 2 - Multi-team rollout (~$250K-$500K ACV)**\n- Add Support + Sales agents (ticket triage, sales intel, content)\n- One enterprise subscription with SSO, policy, audit, internal marketplace controls\n\n**Stage 3 - Standardized marketplace ($1M+ ACV potential)**\n- OpenAgents becomes the approved agent marketplace across the company\n- Revenue mix: platform fee (SaaS) + committed job volume + managed compute\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "traction",
+        "title": "Traction",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Traction"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Live platform + protocols shipping in public."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Product: live platform with chat, agent builder, marketplace surfaces (iterating)."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Protocol: NIP-90 DVM integration operational."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Community: 198+ video episodes building in public."
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 14
+              }
+            },
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "| Milestone | Status |\n| --- | --- |\n| MVP launch | Done |\n| Agent builder v1 | Done |\n| Plugin registry | In progress |\n| Enterprise features | Next |\n| Managed compute | Planned |\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "competitive-landscape",
+        "title": "Competition",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Competitive landscape: we are the agent marketplace"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Open protocols supply global components and compute; the marketplace is the destination."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "text",
+                "code": "                    Open              Closed\n                 Protocols          Ecosystem\n                     |                  |\n    Marketplaces     |   * OpenAgents   |   GPT Store / Copilot\n                     |                  |\n                     +------------------+\n                     |                  |\n    Infra / Tools    |   Nostr DVMs     |   LangSmith / Portkey\n                     |                  |\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "why-we-win",
+        "title": "Why We Win",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Why we win"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Open protocols + observable execution + native payments."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "| Factor | OpenAgents | GPT Store | LangSmith |\n| --- | --- | --- | --- |\n| Multi-model | Any model | OpenAI only | Yes |\n| Open protocols | Nostr/Lightning | No | No |\n| Built-in payments | Lightning | No | No |\n| Creator revenue share | Transparent | Unclear | No |\n| Decentralized | Yes | No | No |\n| Enterprise compliance | Yes | Partial | Yes |\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "go-to-market",
+        "title": "GTM",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Go-to-market: developers first, then enterprises"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Wedge with coding agents, then standardize the marketplace for the whole company."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "**Phase 1 - Developers (Year 1)**\n- Wedge: coding agents running in repos (Code Fixer, Security Scan, test generation)\n- Channels: technical content, OSS agents, community\n- Metrics: MAU, jobs run, agent retention\n\n**Phase 2 - Enterprise (Year 2)**\n- Lock-in: dashboard, policy, compliance, auditability across teams\n- Land: one department on annual contract + committed job volume\n- Expand: add agents + teams under the same contract\n\n**Phase 3 - Broad adoption (Year 3+)**\n- Templates, vertical bundles, self-serve plans\n- Metrics: total users, GMV, revenue\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "team",
+        "title": "Team",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Team"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Protocols, operations, enterprise delivery."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Christopher David - Founder & CEO/CTO (Bitcoin since 2011; Nostr contributor)"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Benjamin Morrow - Product & Operations (scaled CS; HIPAA implementations; LLM savings)"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Ben Silone - Sales & FDE (20+ years mission-critical systems; enterprise delivery)"
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "ask",
+        "title": "Ask",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Ask, use of funds, and targets"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "18 months runway to enterprise-ready marketplace + developer ecosystem."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "**Raising:** $[X]M seed\n\n**Use of funds**\n- Engineering (60%)\n- Go-to-market (25%)\n- Operations (15%)\n\n**Three-year targets**\n| Metric | Year 1 | Year 2 | Year 3 |\n| --- | --- | --- | --- |\n| Revenue | $200K | $2M | $15M |\n| Monthly active users | 2,000 | 10,000 | 50,000 |\n| Jobs/month | 100K | 1M | 10M |\n| Headcount | 8 | 20 | 45 |\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "vision",
+        "layout": "title",
+        "regions": {
+          "header": [],
+          "body": [
+            {
+              "type": "Column",
+              "props": {
+                "fill": true,
+                "justify": "center",
+                "align": "center",
+                "gap": 18
+              },
+              "children": [
+                {
+                  "type": "Text",
+                  "props": {
+                    "style": "problemLabel",
+                    "align": "center"
+                  },
+                  "children": [
+                    "Vision"
+                  ]
+                },
+                {
+                  "type": "Text",
+                  "props": {
+                    "style": "problemHeadline",
+                    "align": "center"
+                  },
+                  "children": [
+                    "The AWS for agents - but as a marketplace."
+                  ]
+                },
+                {
+                  "type": "Text",
+                  "props": {
+                    "style": "caption",
+                    "align": "center"
+                  },
+                  "children": [
+                    "The only place you can hire the best agents, powered by open protocols and protocol-native payments."
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": []
+        }
+      },
+      {
+        "id": "contact",
+        "title": "Contact",
+        "layout": "title",
+        "regions": {
+          "header": [],
+          "body": [
+            {
+              "type": "Column",
+              "props": {
+                "fill": true,
+                "justify": "center",
+                "align": "center",
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "Text",
+                  "props": {
+                    "style": "h2",
+                    "align": "center"
+                  },
+                  "children": [
+                    "Contact"
+                  ]
+                },
+                {
+                  "type": "CodeBlock",
+                  "props": {
+                    "language": "text",
+                    "code": "Website: openagents.com\nGitHub: github.com/OpenAgentsInc\nX: @OpenAgentsInc\nEmail: chris@openagents.com\n"
+                  }
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
         }
       }
     ]
