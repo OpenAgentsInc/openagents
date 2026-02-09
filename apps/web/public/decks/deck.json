@@ -341,37 +341,45 @@
               "props": {
                 "right": [
                   {
-                    "type": "Column",
+                    "type": "Box",
                     "props": {
-                      "gap": 2,
-                      "align": "end"
+                      "padding": 16
                     },
                     "children": [
                       {
-                        "type": "Text",
+                        "type": "Column",
                         "props": {
-                          "style": "caption"
+                          "gap": 2,
+                          "align": "end"
                         },
                         "children": [
-                          "Christopher David"
-                        ]
-                      },
-                      {
-                        "type": "Text",
-                        "props": {
-                          "style": "caption"
-                        },
-                        "children": [
-                          "Founder & CEO"
-                        ]
-                      },
-                      {
-                        "type": "Text",
-                        "props": {
-                          "style": "caption"
-                        },
-                        "children": [
-                          "chris@openagents.com"
+                          {
+                            "type": "Text",
+                            "props": {
+                              "style": "caption"
+                            },
+                            "children": [
+                              "Christopher David"
+                            ]
+                          },
+                          {
+                            "type": "Text",
+                            "props": {
+                              "style": "caption"
+                            },
+                            "children": [
+                              "Founder & CEO"
+                            ]
+                          },
+                          {
+                            "type": "Text",
+                            "props": {
+                              "style": "caption"
+                            },
+                            "children": [
+                              "chris@openagents.com"
+                            ]
+                          }
                         ]
                       }
                     ]
