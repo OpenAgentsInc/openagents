@@ -27,10 +27,6 @@
 .DS_Store
 *.pem
 
-# local-only slide decks (served from public/ in dev; never commit content)
-/public/decks/*.json
-/public/decks/**/*.json
-
 # debug
 npm-debug.log*
 yarn-debug.log*
