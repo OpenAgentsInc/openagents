@@ -1,10 +1,8 @@
-import { AuthKitCore, getConfigurationProvider, getWorkOS, sessionEncryption } from "@workos/authkit-session"
 import { Effect } from "effect"
 import { SignJWT, calculateJwkThumbprint, importJWK } from "jose"
 
-import { WebCookieSessionStorage } from "./sessionCookieStorage"
-
 export const E2E_JWT_ISSUER = "https://openagents.com/e2e"
+export const E2E_COOKIE_NAME = "oa-e2e"
 
 export type E2eUser = {
   readonly id: string
@@ -16,8 +14,6 @@ export type E2eUser = {
 const nowSeconds = (): number => Math.floor(Date.now() / 1000)
 
 const asError = (u: unknown): Error => (u instanceof Error ? u : new Error(String(u)))
-
-const getAuthKitConfig = () => getConfigurationProvider().getConfig()
 
 const publicJwkFromPrivate = (privateJwk: Record<string, unknown>): Record<string, unknown> => {
   // RSA private JWK contains { kty, n, e, d, p, q, dp, dq, qi, ... }.
@@ -87,34 +83,72 @@ export const mintE2eJwt = (input: {
     catch: asError,
   })
 
-export const makeAuthKitSessionSetCookie = (input: { readonly accessToken: string; readonly user: E2eUser }) =>
-  Effect.tryPromise({
-    try: async () => {
-      const config = getAuthKitConfig()
-      const workos = getWorkOS()
+const b64urlToUtf8 = (b64url: string): string => {
+  const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = b64 + "===".slice((b64.length + 3) % 4)
+  const bin = atob(padded)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new TextDecoder().decode(bytes)
+}
 
-      const core = new AuthKitCore(config, workos, sessionEncryption)
-      const sessionData = await core.encryptSession({
-        accessToken: input.accessToken,
-        // AuthKitCore expects a refresh token in the session structure. We do not use it for E2E bypass.
-        refreshToken: `e2e_${crypto.randomUUID()}`,
-        user: {
-          id: input.user.id,
-          email: input.user.email ?? undefined,
-          firstName: input.user.firstName ?? undefined,
-          lastName: input.user.lastName ?? undefined,
-        } as any,
-        impersonator: undefined,
-      })
+export type E2eJwtClaims = {
+  readonly sub: string
+  readonly iss?: string | undefined
+  readonly exp?: number | undefined
+  readonly iat?: number | undefined
+  readonly email?: string | null | undefined
+  readonly firstName?: string | null | undefined
+  readonly lastName?: string | null | undefined
+}
 
-      const storage = new WebCookieSessionStorage(config)
-      const { headers } = await storage.saveSession(undefined, sessionData)
-      const setCookieHeader = headers?.["Set-Cookie"]
-      if (typeof setCookieHeader !== "string") {
-        throw new Error("missing Set-Cookie header from session storage")
-      }
+export const decodeE2eJwtClaims = (token: string): E2eJwtClaims | null => {
+  const parts = token.split(".")
+  if (parts.length !== 3) return null
+  try {
+    const payload = JSON.parse(b64urlToUtf8(parts[1] ?? "")) as any
+    const sub = typeof payload?.sub === "string" ? payload.sub : ""
+    if (!sub) return null
+    const iss = typeof payload?.iss === "string" ? payload.iss : undefined
+    const exp = typeof payload?.exp === "number" ? payload.exp : undefined
+    const iat = typeof payload?.iat === "number" ? payload.iat : undefined
+    const email = payload?.email == null ? null : typeof payload?.email === "string" ? payload.email : null
+    const firstName = payload?.firstName == null ? null : typeof payload?.firstName === "string" ? payload.firstName : null
+    const lastName = payload?.lastName == null ? null : typeof payload?.lastName === "string" ? payload.lastName : null
+    return { sub, iss, exp, iat, email, firstName, lastName }
+  } catch {
+    return null
+  }
+}
 
-      return { setCookieHeader }
-    },
-    catch: asError,
-  })
+export const makeE2eSetCookieHeader = (token: string): string => {
+  // HttpOnly: browser JS never reads this. The app uses /api/auth/session to surface the session.
+  return `${E2E_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; Max-Age=${60 * 60}; HttpOnly; Secure; SameSite=Lax`
+}
+
+export const makeE2eClearCookieHeader = (): string =>
+  `${E2E_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`
+
+export const readCookie = (cookieHeader: string | null, name: string): string | null => {
+  if (!cookieHeader) return null
+  // Fast path: split by `;` (cookies are small).
+  const parts = cookieHeader.split(";")
+  for (const p of parts) {
+    const s = p.trim()
+    if (!s) continue
+    const eq = s.indexOf("=")
+    if (eq <= 0) continue
+    const k = s.slice(0, eq).trim()
+    if (k !== name) continue
+    const v = s.slice(eq + 1)
+    try {
+      return decodeURIComponent(v)
+    } catch {
+      return v
+    }
+  }
+  return null
+}
+
+export const readE2eTokenFromRequest = (request: Request): string | null =>
+  readCookie(request.headers.get("cookie"), E2E_COOKIE_NAME)

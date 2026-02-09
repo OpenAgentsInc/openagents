@@ -12,13 +12,6 @@ import { createRunImpl } from "../../convex/autopilot/messages";
 
 const run = <A>(effect: Effect.Effect<A>) => Effect.runPromise(effect);
 
-const anonCtx = (db: any) => ({
-  db,
-  auth: {
-    getUserIdentity: () => Effect.succeed(Option.none()),
-  },
-});
-
 const authedCtx = (db: any, subject = "user-1") => ({
   db,
   auth: {
