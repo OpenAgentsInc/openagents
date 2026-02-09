@@ -5,6 +5,7 @@ build
 
 target
 .DS_Store
+.tmp/
 expo/.tmp
 convex_local_storage/
 convex/.env.local
