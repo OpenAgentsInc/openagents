@@ -253,6 +253,7 @@ RLM treats “context” as external state (repo + logs + indexes) accessed via 
 In OpenAgents:
 - RLM is an execution mode (not “a prompt template”).
 - Context ops are tools and must be logged + metered like any other tool call.
+  - See `docs/autopilot/context-failures.md` for the context failure taxonomy (context rot vs poisoning vs confusion) and the telemetry signals we need for routing.
 
 ### 3.2 Implementation requirements
 

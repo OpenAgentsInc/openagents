@@ -101,6 +101,25 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 ---
 
+## Context & Long-Context
+
+| Term | Definition |
+|------|------------|
+| **Context rot** | A context failure mode where model quality degrades as the *tokenized prompt* grows past a model's soft limit. Not a hard context window overflow: the model still produces outputs, but accuracy and coherence drop in ways that can be hard to notice in long-running agents. |
+| **Soft context limit** | An empirical threshold (in prompt tokens and prompt composition) after which quality begins to degrade. Typically far below a model's advertised maximum context window. Used for routing and safety leashes. |
+| **Context pressure** | A runtime estimate of "how risky it is to keep adding tokenized context" (e.g., based on prompt tokens, retrieved snippet size/count, tool log bloat). Used to trigger strategy changes (RLM, retrieval, compaction) before context rot sets in. |
+| **Token space** | The model's in-window prompt: the tokenized messages sent to the LLM. Subject to context limits and soft-limit quality effects. |
+| **Variable space / programmatic context** | External state not directly in the prompt (repo snapshots, logs, large blobs, indexes) referenced by handles/variables and accessed via operations (read/grep/chunk/peek). The core RLM trick is controlling what moves from variable space into token space. |
+| **Context ops** | Operations over external context (peek/read_lines/grep/chunk/symbols/summarize). In OpenAgents these are tool calls: schema-validated, metered/budgeted, and logged with receipts/provenance. |
+| **BlobRef** | Content-addressed reference to a large blob stored outside token space (e.g., in a BlobStore). Enables prompts/traces to carry stable handles rather than duplicating large text. |
+| **VarSpace** | Named variable store used by RLM strategies. Maps variable names to small JSON values or BlobRefs (and derived artifacts), enabling long-context work without stuffing everything into token space. |
+| **Symbolic recursion** | Code-driven recursion/fanout where the executor/kernel generates O(N) sub-queries over chunks/fragments; the model does not need to "write" O(N) recursive calls inside its own output. Key for scaling to very large contexts. |
+| **RLM (Recursive Language Model)** | Inference-time execution mode for long contexts: maintain variable space + token space, run an iterative controller loop (REPL/action DSL/kernel ops), and optionally use sub-model calls. The goal is to mitigate context rot by keeping token space small while still operating over huge inputs. |
+| **FRLM (Federated RLM)** | RLM that federates sub-queries across multiple venues/backends (local, cloud APIs, swarm/NIP-90), bounded by explicit budgets and logged with receipts. |
+| **Trace mining** | Post-hoc analysis of traces (REPLAY events, receipts, per-iteration RLM events) to extract repeating tactics and distill them into explicit signatures/modules/graphs that are faster and more reliable than an exploratory RLM loop. |
+
+---
+
 ## Product & Commercial Terms
 
 | Term | Definition |
@@ -218,6 +237,7 @@ ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
 |-----------|------------|
 | `step_utility` vs `step_utility_norm` | Canonical `step_utility` is **-1.0..+1.0** from `ToolResultSignature`. `ToolStepUtilitySignature` outputs `step_utility_norm` in range **0.0..1.0** (the `_norm` suffix distinguishes it). |
 | `policy_version` vs `policy_bundle_id` | Canonical is **policy_bundle_id**. `policy_version` may be used as display metadata derived from bundle. |
+| `RLM` (Recursive Language Models) vs `rlm` (reward-signal evaluation crate in external runtimes) | In OpenAgents docs, `RLM` means **Recursive Language Models** (long-context execution). If referencing a reward-signal evaluator crate named `rlm` (e.g., in Horizons), call it **reward-signal evaluation (`rlm` crate)** to avoid acronym collision. |
 | `rlog` vs `trajectory` vs `REPLAY.jsonl` | `rlog` and `trajectory` are conceptual terms for session logs. `ReplayBundle` is current implementation. `REPLAY.jsonl v1` is target interoperable format. |
 
 ---

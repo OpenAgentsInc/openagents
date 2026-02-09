@@ -101,3 +101,5 @@ Post-MVP (optional):
 - Effuse architecture and migration plan: `packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md`
 - Autopilot bootstrap state plan: `docs/autopilot/bootstrap-plan.md`
 - Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
+- Context failures taxonomy (rot/poisoning/confusion): `docs/autopilot/context-failures.md`
+- RLM integration plan + trace mining workflow: `docs/autopilot/rlm-synergies.md`, `docs/autopilot/rlm-trace-mining.md`

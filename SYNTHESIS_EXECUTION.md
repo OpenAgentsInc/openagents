@@ -434,22 +434,33 @@ See [crates/adjutant/docs/](./crates/adjutant/docs/) for full documentation.
 
 ### RLM / FRLM — Recursive Language Models
 
-**RLM:** Iterative prompt-execute loop for complex analysis.
+**RLM:** Long-context execution mode that mitigates context rot by splitting context into token space vs variable space and running an iterative controller loop over explicit context operations.
 
-RLM (Recursive Language Model) extends traditional LLM inference with a command loop. Instead of getting a single response, the model can emit commands like `RUN cargo test` that are executed locally, with results fed back into the conversation. The loop continues until the model emits `FINAL <result>`, indicating it's done reasoning. This enables complex multi-step analysis where the model can explore, test hypotheses, and refine its understanding iteratively.
+RLM (Recursive Language Model) is not "a bigger prompt". It is an execution substrate:
 
-FRLM (Federated RLM) takes this further by distributing sub-queries across multiple backends. When a query is too expensive or specialized for local inference, FRLM can fan out to the swarm (NIP-90 jobs via Nostr), to cloud APIs (Codex, Cerebras), or keep it local depending on cost and privacy constraints. The federation is transparent to the caller—you get back a unified result regardless of how many backends contributed. This enables agents to punch above their local compute weight by tapping into the network when needed.
+- Large inputs (repo, logs, artifacts) live in **variable space** as handles (BlobRefs/SpanRefs/fragments).
+- The controller LM sees variable names/handles plus tiny previews and chooses **context ops** (grep/read_lines/chunk/symbols/peek) to pull bounded evidence into token space.
+- The run proceeds as a loop until the controller emits a final answer (or a budget is hit).
+
+Two scaling patterns matter:
+
+- **REPL loop:** the controller emits commands/actions which are executed and fed back (good for smaller long-context problems and for debugging).
+- **Symbolic recursion (orchestrated):** code drives O(N) traversal/fanout over chunks and uses the LM for per-chunk extraction and synthesis. This avoids requiring the controller LM to "write" O(N) recursive subcalls. (See `crates/rlm/docs/METHODS.md`.)
+
+High-level shape:
 
 ```
-Query → LlmClient → Parse Commands → Executor → [Loop until FINAL]
+Query
+  -> Context handles (BlobStore/VarSpace/fragments)
+  -> Controller LM
+  -> [context ops + optional sub-LM calls] (budgeted)
+  -> bounded observations (token space)
+  -> FINAL (schema decoded)
 ```
 
-Commands: `RUN <program>`, `FINAL <result>`, code blocks
+Budgets are not optional: max iterations, max subcalls, max tool calls, max time, and (for FRLM) per-venue spend caps.
 
-**FRLM:** Federated RLM — distributes sub-queries across:
-- Local (FM/RLM)
-- Swarm (NIP-90 via Nostr)
-- Datacenter (API)
+**FRLM:** Federated RLM. Distributes sub-queries across venues/backends (local, cloud APIs, swarm/NIP-90) and aggregates results, bounded by budgets and recorded with trace events.
 
 ```bash
 pylon rlm "Explain this codebase" --local-only

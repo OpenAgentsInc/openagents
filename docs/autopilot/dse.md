@@ -236,6 +236,19 @@ At minimum the runtime environment SHOULD include:
    - prompt hash, output hash (when possible)
    - token usage and latency (when possible)
 
+### 4.3.1 Inference Strategy (Direct vs RLM)
+
+`Predict(signature)` SHOULD be policy-driven, not hardcoded to a single execution strategy.
+
+At minimum, DSE needs:
+
+- `direct.v1`: today's "single LM call" predict (plus optional repair).
+- `rlm_lite.v1`: an RLM-style strategy for long contexts (two-bucket context, VarSpace + BlobRefs, action DSL / kernel ops, iteration budgets).
+
+Strategy selection MUST be pinned inside the compiled artifact (or derived deterministically from it) so runs are replayable and auditable. This is the contract that makes "RLM as an inference-time strategy" possible without changing signatures.
+
+See `docs/autopilot/rlm-synergies.md` and `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`.
+
 ### 4.4 Adapter boundary rule (match OpenAgents invariant)
 
 Formatting/parsing is “adapter work”. Validation/retry/timeouts/receipts are “runtime work”.
@@ -457,6 +470,20 @@ export type PromptBlock<I, O> =
   | { readonly _tag: "Context"; readonly entries: ReadonlyArray<ContextEntry> }
 ```
 
+### 5.3.1 Context entries and BlobRefs (token-space hygiene)
+
+`ContextEntry` SHOULD support both:
+
+- small, inline JSON values (safe to render directly)
+- **BlobRef-backed** entries for large text (stored outside token space)
+
+Prompt rendering MUST dereference BlobRefs via a BlobStore and enforce strict preview/truncation rules. This is foundational for:
+
+- avoiding context rot by default (don't stuff huge blobs into token space)
+- making RLM strategies viable (variable space holds the long context)
+
+Reference implementation in code: `packages/dse/src/promptIr.ts`, `packages/dse/src/runtime/blobStore.ts`, `packages/dse/src/runtime/render.ts`.
+
 ### 5.4 Few-shot examples are structured
 
 `FewShotBlock` MUST store examples structurally:
@@ -545,6 +572,12 @@ Illustrative v1 shape:
 ```ts
 type DseParamsV1 = {
   readonly paramsVersion: 1
+
+  // Inference strategy selection (pinned by compiled artifact)
+  readonly strategy?: {
+    readonly id: string // e.g. "direct.v1" | "rlm_lite.v1"
+    readonly config?: unknown
+  }
 
   // Instruction selection
   readonly instruction?: {

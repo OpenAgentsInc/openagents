@@ -490,6 +490,33 @@ Implementation log:
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
 
+### Stage 4.5: Trace mining (RLM + non-RLM) -> distilled agents
+
+The Feb 9, 2026 RLM writeup makes a key point we should operationalize: **RLM traces are an agent discovery mechanism**. We should treat exploratory RLM runs (and normal Predict/tool traces) as raw material for:
+
+- building labeled datasets cheaply (export receipts/traces -> label -> import examples)
+- discovering repeating tactics that should become typed signatures/modules/graphs
+- reducing latency by distilling the "best trace" into a compiled DSE policy
+
+Concrete deliverables:
+
+- A documented workflow for trace review and distillation: `docs/autopilot/rlm-trace-mining.md`
+- Trace fields we must be able to mine (minimum):
+  - scope keys: `threadId`, `runId`, `signatureId`, `compiled_id`
+  - strategy id: direct vs RLM (and RLM variant)
+  - budgets (limits + usage), including RLM iteration/subcall counters
+  - context pressure snapshot + contributing inputs
+  - evidence access: BlobRefs/SpanRefs + preview sizes (what entered token space)
+  - stuck/thrash detection outcomes
+- At least one distilled artifact:
+  - a small signature/module/graph extracted from traces, evaluated on holdout, and promotable like any other DSE artifact
+
+Testable outcomes:
+
+- Given a run trace, we can produce:
+  - a small set of candidate examples for `dseExamples`
+  - a short "tactics" description that maps to an explicit DSE surface (signature/module/params)
+
 ### Stage 5: Compile job runner (manual promotion)
 
 Implement an admin-only compile endpoint:
