@@ -17,7 +17,12 @@ export function marketingHeaderTemplate(
   const showNav = isHome && !isLogin && !prelaunch;
   return html`
     <header class="flex h-14 w-full shrink-0 items-center justify-between px-6">
-      <span class="select-none text-lg font-semibold text-white">OpenAgents</span>
+      <a
+        href="/"
+        class="select-none text-lg font-semibold text-white hover:text-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+      >
+        OpenAgents
+      </a>
       <div class="flex items-center gap-3" aria-hidden="${showNav ? 'false' : 'true'}">
         ${showNav
       ? html`

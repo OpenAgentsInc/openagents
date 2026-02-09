@@ -174,6 +174,8 @@ const PRELAUNCH_BYPASS_COOKIE_MAX_AGE = 604800 // 7 days
 
 /** When prelaunch is on, only these pathnames are allowed without ?key= or cookie. */
 const PRELAUNCH_ALLOWED_PATHNAMES = new Set(["/", "/deck"])
+/** Even with bypass (cookie or ?key=), these routes stay blocked in prelaunch mode. */
+const PRELAUNCH_ALWAYS_BLOCKED_PATHNAMES = new Set(["/login"])
 
 function hasPrelaunchBypass(
   request: Request,
@@ -217,9 +219,19 @@ export function getPrelaunchRedirectIfRequired(
   const config = getWorkerAppConfig(env)
   if (!config.prelaunch) return null
   if (isLocalDevRequest(request, url)) return null
+  const pathname = normalizePathname(url.pathname)
+  if (PRELAUNCH_ALWAYS_BLOCKED_PATHNAMES.has(pathname)) return new Response(null, {
+    status: 302,
+    headers: new Headers({
+      location: "/",
+      "cache-control": "no-store, no-cache, must-revalidate",
+      pragma: "no-cache",
+      expires: "0",
+      "x-oa-prelaunch": "redirect",
+    }),
+  })
   const bypassGranted = hasPrelaunchBypass(request, url, config.prelaunchBypassKey)
   if (bypassGranted) return null
-  const pathname = normalizePathname(url.pathname)
   if (PRELAUNCH_ALLOWED_PATHNAMES.has(pathname)) return null
   return new Response(null, {
     status: 302,
@@ -241,6 +253,12 @@ export const handleSsrRequest = async (
   const config = getWorkerAppConfig(env)
   const bypassGranted = hasPrelaunchBypass(request, url, config.prelaunchBypassKey)
   const pathname = normalizePathname(url.pathname)
+  if (config.prelaunch && !isLocalDevRequest(request, url) && PRELAUNCH_ALWAYS_BLOCKED_PATHNAMES.has(pathname)) {
+    return new Response(null, {
+      status: 302,
+      headers: new Headers({ location: "/", "cache-control": "no-store" }),
+    })
+  }
   const allowedWithoutBypass = PRELAUNCH_ALLOWED_PATHNAMES.has(pathname)
   if (config.prelaunch && !isLocalDevRequest(request, url) && !bypassGranted && !allowedWithoutBypass) {
     return new Response(null, {
