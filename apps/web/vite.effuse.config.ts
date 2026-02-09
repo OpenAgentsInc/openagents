@@ -20,6 +20,7 @@ function syncDecksFile(filename: string) {
 
 /** Watch public/decks and sync to dist so deck JSON edits show up without full rebuild. */
 function watchDecksPlugin() {
+  let watcher: fs.FSWatcher | null = null
   return {
     name: "watch-decks",
     buildStart() {
@@ -29,8 +30,15 @@ function watchDecksPlugin() {
         const p = path.join(publicDecksDir, name)
         if (fs.statSync(p).isFile()) syncDecksFile(name)
       }
+
+      // Only start a filesystem watcher during watch builds (`vite build --watch`).
+      // In non-watch builds, this keeps the process alive and causes `npm run build` to hang.
+      // Rollup exposes this via `this.meta.watchMode`.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const watchMode = Boolean((this as any)?.meta?.watchMode)
+      if (!watchMode || watcher) return
       try {
-        fs.watch(publicDecksDir, { recursive: false }, (_event, filename) => {
+        watcher = fs.watch(publicDecksDir, { recursive: false }, (_event, filename) => {
           if (filename) syncDecksFile(filename)
         })
       } catch {
