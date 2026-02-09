@@ -34,14 +34,14 @@ type WorkersAiChatMessage =
   | { readonly role: "system"; readonly content: string }
   | { readonly role: "user"; readonly content: string }
   | {
-      readonly role: "assistant"
-      readonly content: string
-      readonly tool_calls?: ReadonlyArray<{
-        readonly id: string
-        readonly type: "function"
-        readonly function: { readonly name: string; readonly arguments: string }
-      }>
-    }
+    readonly role: "assistant"
+    readonly content: string
+    readonly tool_calls?: ReadonlyArray<{
+      readonly id: string
+      readonly type: "function"
+      readonly function: { readonly name: string; readonly arguments: string }
+    }>
+  }
   | { readonly role: "tool"; readonly name: string; readonly content: string; readonly tool_call_id: string }
 
 type WorkersAiTool = {

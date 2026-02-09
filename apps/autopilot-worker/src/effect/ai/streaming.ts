@@ -17,4 +17,3 @@ export function decodeWirePart(text: string): WirePart | null {
     return null
   }
 }
-

@@ -141,8 +141,8 @@ const renderDocument = (input: {
   const dehydrateScript =
     input.dehydrateJson != null
       ? `<script id="effuse-dehydrate" type="application/json">${escapeJsonForHtmlScript(
-          input.dehydrateJson,
-        )}</script>`
+        input.dehydrateJson,
+      )}</script>`
       : ""
 
   // NOTE: In Phase 5 we serve a dedicated Effuse client bundle (no React/TanStack).
