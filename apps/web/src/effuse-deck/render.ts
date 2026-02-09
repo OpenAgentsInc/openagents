@@ -863,9 +863,6 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
           action: "toggle-fullscreen",
           subtle: false,
         })}
-        <div class="text-[12px] text-text-dim font-mono">
-          ${slide.id}${totalSteps > 1 ? html` · step ${stepIndex}/${totalSteps}` : null}
-        </div>
       </div>
           `}
 
