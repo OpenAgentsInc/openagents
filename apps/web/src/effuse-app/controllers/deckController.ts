@@ -127,11 +127,12 @@ export const mountDeckController = (input: { readonly container: Element }): Dec
     scheduleRender()
 
     try {
-      const cacheBust = `${deckSrc}${deckSrc.includes("?") ? "&" : "?"}t=${Date.now()}`
+      // Unique URL per load so browser/intermediaries never return a cached deck.
+      const cacheBust = `${deckSrc}${deckSrc.includes("?") ? "&" : "?"}v=${Date.now()}-${Math.random().toString(36).slice(2)}`
       const res = await fetch(cacheBust, {
         cache: "no-store",
         credentials: "same-origin",
-        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
+        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache", "Accept": "application/json" },
       })
       if (!res.ok) {
         status = "error"

@@ -1,4 +1,4 @@
-import { tryServeAsset } from "./assets"
+import { tryServeAsset, tryServeDeckAsset } from "./assets"
 import { handleAutopilotRequest } from "./autopilot"
 import { handleAuthRequest } from "./auth"
 import { handleCallbackRequest } from "./callback"
@@ -87,6 +87,10 @@ export default {
     // Storybook metadata API (used by visual regression tests).
     const storybookApi = await handleStorybookApiRequest(requestWithId)
     if (storybookApi) return withResponseRequestIdHeader(storybookApi, requestId)
+
+    // Deck JSON: serve with no-cache so refresh always gets latest.
+    const deckAsset = await tryServeDeckAsset(requestWithId, env)
+    if (deckAsset) return withResponseRequestIdHeader(deckAsset, requestId)
 
     // Static assets.
     const asset = await tryServeAsset(requestWithId, env)

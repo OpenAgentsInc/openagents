@@ -10,7 +10,17 @@ import { toAutopilotRenderParts } from "../../effuse-app/controllers/autopilotCh
 import { dseKitchenSinkStreamV1 } from "../../fixtures/wireTranscripts"
 
 import type { ToolPartModel } from "@openagentsinc/effuse"
-import type { AutopilotChatData, AutopilotAuthModel, RenderedMessage } from "../../effuse-pages/autopilot"
+import type {
+  AutopilotChatData,
+  AutopilotAuthModel,
+  DseBudgetExceededCardModel,
+  DseCompileCardModel,
+  DsePromoteCardModel,
+  DseRollbackCardModel,
+  DseSignatureCardModel,
+  RenderedMessage,
+  RenderPart,
+} from "../../effuse-pages/autopilot"
 import type { AutopilotBlueprintPanelModel } from "../../effuse-pages/autopilotBlueprint"
 import type { AutopilotControlsModel } from "../../effuse-pages/autopilotControls"
 import type { AutopilotSidebarModel } from "../../effuse-pages/autopilotSidebar"
@@ -30,6 +40,23 @@ const toolPartExample: ToolPartModel = {
       preview: "export const hello = 'world'\\n",
       truncated: true,
       blob: { id: "blob_01", hash: "sha256:deadbeef", size: 420, mime: "text/plain" },
+    },
+  },
+}
+
+const toolPartRepoTree: ToolPartModel = {
+  status: "tool-result",
+  toolName: "github.getRepoTree",
+  toolCallId: "toolcall_repo",
+  summary: "List repo openagents/apps/api",
+  details: {
+    input: {
+      preview: JSON.stringify({ owner: "openagents", repo: "apps/api", ref: "main" }, null, 2),
+      truncated: false,
+    },
+    output: {
+      preview: "src/\n  routes/\n  health.ts\n  index.ts\npackage.json\n",
+      truncated: false,
     },
   },
 }
@@ -84,6 +111,70 @@ const messageAssistantTool = (id: string): RenderedMessage => ({
   role: "assistant",
   renderParts: [{ kind: "tool", model: toolPartExample }],
 })
+
+const messageAssistantToolWith = (id: string, model: ToolPartModel): RenderedMessage => ({
+  id,
+  role: "assistant",
+  renderParts: [{ kind: "tool", model }],
+})
+
+const messageAssistantParts = (id: string, renderParts: ReadonlyArray<RenderPart>): RenderedMessage => ({
+  id,
+  role: "assistant",
+  renderParts,
+})
+
+const dseSignatureExample: DseSignatureCardModel = {
+  id: "dse_sig_1",
+  state: "ok",
+  signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+  compiled_id: "c_health_router_v1",
+  receiptId: "rcpt_select_1",
+  durationMs: 98,
+  budget: {
+    limits: { maxTimeMs: 2500, maxLmCalls: 1, maxOutputChars: 8000 },
+    usage: { elapsedMs: 98, lmCalls: 1, outputChars: 512 },
+  },
+  outputPreview: { preview: '{"toolName":"github.getRepoTree","reason":"List repo for health endpoint"}', truncated: false },
+}
+
+const dseCompileExample: DseCompileCardModel = {
+  id: "dse_compile_1",
+  state: "ok",
+  signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+  jobHash: "job_a1b2_health",
+  candidates: 12,
+  best: { compiled_id: "c_health_router_v2", reward: 0.74 },
+  reportId: "compile_report_health_1",
+}
+
+const dsePromoteExample: DsePromoteCardModel = {
+  id: "dse_promote_1",
+  state: "ok",
+  signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+  from: "c_health_router_v1",
+  to: "c_health_router_v2",
+  reason: "compile job job_a1b2_health improved reward 0.62 → 0.74",
+}
+
+const dseRollbackExample: DseRollbackCardModel = {
+  id: "dse_rollback_1",
+  state: "ok",
+  signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+  from: "c_health_router_v2",
+  to: "c_health_router_v1",
+  reason: "manual rollback after canary regression",
+}
+
+const dseBudgetExceededExample: DseBudgetExceededCardModel = {
+  id: "dse_budget_1",
+  state: "error",
+  message: "Stopped after exceeding maxLmCalls=2",
+  budget: {
+    limits: { maxLmCalls: 2 },
+    usage: { elapsedMs: 1200, lmCalls: 3, outputChars: 0 },
+  },
+}
 
 const chatData = (overrides?: Partial<AutopilotChatData>): AutopilotChatData => ({
   messages: [],
@@ -151,6 +242,103 @@ const chatDataFromWireTranscript = (opts: {
     ],
     auth,
   })
+}
+
+/** Exported for deck: onboarding flow (greeting → setup questions → user asks to connect GitHub). */
+export const autopilotOnboardingFlowStory: Story = {
+  id: "autopilot-onboarding-flow",
+  title: "Autopilot/Onboarding flow (name, blueprint, connect GitHub)",
+  kind: "organism",
+  render: () =>
+    html`
+      <div class="flex h-full min-h-0 w-full min-w-0 rounded border border-border-dark bg-bg-secondary overflow-hidden">
+        <div class="shrink-0 h-full">
+          ${autopilotSidebarTemplate(sidebarModel({ collapsed: false }))}
+        </div>
+        <div class="flex-1 min-w-0 flex flex-col border-l border-border-dark">
+          ${autopilotChatTemplate(
+            chatData({
+              messages: [
+                messageAssistantText("a1", "Autopilot online.\n\nGreetings, user. What shall I call you?", "done"),
+                messageUser("u1", "Chris"),
+                messageAssistantText(
+                  "a2",
+                  "Hi Chris. What would you like me to call myself? (Agent name—e.g. Autopilot, DevBuddy)",
+                  "done",
+                ),
+                messageUser("u2", "Autopilot is fine"),
+                messageAssistantText(
+                  "a3",
+                  "Got it. How should I sound—calm, direct, casual? (Agent vibe)",
+                  "done",
+                ),
+                messageUser("u3", "Direct and concise"),
+                messageAssistantText(
+                  "a4",
+                  "I'll keep responses direct. Anything off-limits? (e.g. no personal data, no financial advice)",
+                  "done",
+                ),
+                messageUser("u4", "No personal info, keep it work-focused"),
+                messageAssistantText(
+                  "a5",
+                  "All set. I can help with code, your repo, and tasks. Connect a GitHub repo to pull in context, or just ask.",
+                  "done",
+                ),
+                messageUser("u5", "Connect my GitHub repo"),
+              ],
+              isBusy: false,
+              isAtBottom: true,
+              inputValue: "",
+              auth: authClosed,
+            }),
+          )}
+        </div>
+      </div>
+    `,
+}
+
+/** Exported for deck renderer so this story is always resolvable when deck loads. */
+export const autopilotPostOnboardingStory: Story = {
+  id: "autopilot-post-onboarding",
+  title: "Autopilot/Post onboarding (GitHub connected, coding)",
+  kind: "organism",
+  render: () =>
+    html`
+      <div class="flex h-full min-h-0 w-full min-w-0 rounded border border-border-dark bg-bg-secondary overflow-hidden">
+        <div class="shrink-0 h-full">
+          ${autopilotSidebarTemplate(sidebarModel({ collapsed: false }))}
+        </div>
+        <div class="flex-1 min-w-0 flex flex-col border-l border-border-dark">
+          ${autopilotChatTemplate(
+            chatData({
+              messages: [
+                messageUser("m1", "Add a health check endpoint to the API"),
+                messageAssistantText("m2", "Checking your repo structure…\n\n", "done"),
+                messageAssistantToolWith("m3", toolPartRepoTree),
+                messageAssistantParts("m3b", [
+                  { kind: "text", text: "Running policy + compile pipeline:\n\n", state: "done" },
+                  { kind: "dse-signature", model: dseSignatureExample },
+                  { kind: "dse-compile", model: dseCompileExample },
+                  { kind: "dse-promote", model: dsePromoteExample },
+                  { kind: "text", text: "Rollback / budget stop examples:\n\n", state: "done" },
+                  { kind: "dse-rollback", model: dseRollbackExample },
+                  { kind: "dse-budget-exceeded", model: dseBudgetExceededExample },
+                ]),
+                messageAssistantText(
+                  "m4",
+                  "I see `src/` with `routes/` and `health.ts` already. I'll add a GET `/health` that returns service status:\n\n```ts\n// src/routes/health.ts\nexport async function healthHandler(req: Request) {\n  return Response.json({ ok: true, ts: Date.now() });\n}\n```\n\nShould I apply this patch?",
+                  "done",
+                ),
+              ],
+              isBusy: false,
+              isAtBottom: true,
+              inputValue: "",
+              auth: authAuthed,
+            }),
+          )}
+        </div>
+      </div>
+    `,
 }
 
 export const autopilotStories: ReadonlyArray<Story> = [
@@ -362,6 +550,34 @@ export const autopilotStories: ReadonlyArray<Story> = [
         </div>
       `,
   },
+  {
+    id: "autopilot-dashboard-first-visit",
+    title: "Autopilot/Dashboard first visit (intro only)",
+    kind: "organism",
+    render: () =>
+      html`
+        <div class="flex h-full min-h-0 w-full min-w-0 rounded border border-border-dark bg-bg-secondary overflow-hidden">
+          <div class="shrink-0 h-full">
+            ${autopilotSidebarTemplate(sidebarModel({ collapsed: false }))}
+          </div>
+          <div class="flex-1 min-w-0 flex flex-col border-l border-border-dark">
+            ${autopilotChatTemplate(
+              chatData({
+                messages: [
+                  messageAssistantText("intro", "Autopilot online.\n\nGreetings, user. What shall I call you?", "streaming"),
+                ],
+                isBusy: false,
+                isAtBottom: true,
+                inputValue: "",
+                auth: authClosed,
+              }),
+            )}
+          </div>
+        </div>
+      `,
+  },
+  autopilotOnboardingFlowStory,
+  autopilotPostOnboardingStory,
   {
     id: "autopilot-organisms-wire-transcript-dse-kitchen-sink",
     title: "Autopilot/Organisms/Wire Transcript (DSE Kitchen Sink)",

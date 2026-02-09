@@ -165,7 +165,7 @@ const dseBoundedText = (value: BoundedText): TemplateResult => {
         : null;
 
   return html`
-    <div class="rounded border border-border-dark bg-bg-secondary/60 px-2 py-2">
+    <div class="rounded border border-border-dark bg-[#0a0a0a] px-2 py-2">
       <pre class="whitespace-pre-wrap break-words text-xs leading-relaxed font-mono text-text-primary">${value.preview}</pre>
       ${blob}
     </div>
@@ -178,7 +178,7 @@ const dseCardShell = (opts: { readonly title: string; readonly state: string; re
       data-dse-card="1"
       data-dse-card-title="${opts.title}"
       data-dse-card-state="${opts.state}"
-      class="rounded border border-border-dark bg-surface-primary/35 px-3 py-3"
+      class="rounded border border-border-dark bg-[#0a0a0a] px-3 py-3"
     >
       <header class="flex items-center justify-between gap-3">
         <div class="text-xs text-text-dim uppercase tracking-wider">${opts.title}</div>
@@ -314,7 +314,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           <button
             type="button"
             data-ez="autopilot.chat.scrollBottom"
-            class="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+            class="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-[#0a0a0a] text-text-primary border border-border-dark hover:bg-[#111111] hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
           >
             Scroll to bottom
           </button>
@@ -333,34 +333,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
     : null;
 
   const authPanel = (() => {
-    if (data.auth.isAuthed) {
-      return html`
-        <div data-autopilot-auth="1" data-autopilot-auth-step="authed" class="mt-2 text-xs text-text-dim">
-          Signed in as <span class="text-text-primary">${data.auth.authedEmail ?? "user"}</span>
-        </div>
-      `;
-    }
-
-    if (data.auth.step === "closed") {
-      return html`
-        <div
-          data-autopilot-auth="1"
-          data-autopilot-auth-step="closed"
-          class="mt-2 flex items-center justify-between gap-3 rounded border border-border-dark bg-surface-primary/35 px-3 py-2"
-        >
-          <div class="text-xs text-text-dim">
-            Verify your email to claim this chat and keep your Blueprint.
-          </div>
-          <button
-            type="button"
-            data-ez="autopilot.auth.open"
-            class="inline-flex h-8 items-center justify-center rounded px-3 text-xs font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono shrink-0"
-          >
-            Verify email
-          </button>
-        </div>
-      `;
-    }
+    if (data.auth.isAuthed || data.auth.step === "closed") return null;
 
     const errorBlock = data.auth.errorText
       ? html`<div class="mt-2 rounded border border-status-blocked/40 bg-status-blocked/10 px-3 py-2 text-xs text-status-blocked">
@@ -374,7 +347,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           data-autopilot-auth="1"
           data-autopilot-auth-step="email"
           data-ez="autopilot.auth.email.submit"
-          class="mt-2 rounded border border-border-dark bg-surface-primary/35 px-3 py-3"
+          class="mt-2 rounded border border-border-dark bg-[#0a0a0a] px-3 py-3"
         >
           <div class="flex items-center justify-between gap-3">
             <div class="text-xs text-text-dim">Enter your email and we'll send a one-time code.</div>
@@ -395,7 +368,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
               data-ez="autopilot.auth.email.input"
               data-ez-trigger="input"
               value="${data.auth.email}"
-              class="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+              class="h-9 flex-1 rounded border border-border-dark bg-[#0a0a0a] px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
             />
             <button
               type="submit"
@@ -416,7 +389,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
         data-autopilot-auth="1"
         data-autopilot-auth-step="code"
         data-ez="autopilot.auth.code.submit"
-        class="mt-2 rounded border border-border-dark bg-surface-primary/35 px-3 py-3"
+        class="mt-2 rounded border border-border-dark bg-[#0a0a0a] px-3 py-3"
       >
         <div class="text-xs text-text-dim">
           Enter the code sent to <span class="text-text-primary">${data.auth.email || "your email"}</span>.
@@ -430,7 +403,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
             data-ez="autopilot.auth.code.input"
             data-ez-trigger="input"
             value="${data.auth.code}"
-            class="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+            class="h-9 flex-1 rounded border border-border-dark bg-[#0a0a0a] px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
           />
           <button
             type="submit"
@@ -462,13 +435,13 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
   })();
 
   return html`
-    <div class="flex-1 min-h-0 flex flex-col overflow-hidden" data-autopilot-chat>
-      <header class="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
+    <div class="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#0a0a0a]" data-autopilot-chat>
+      <header class="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-[#0a0a0a] shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
         <span class="text-xs text-text-dim uppercase tracking-wider">Autopilot</span>
       </header>
-      <section class="flex-1 min-h-0 flex flex-col p-4">
+      <section class="flex-1 min-h-0 flex flex-col p-4 bg-[#0a0a0a]">
         <div class="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
-          <div class="flex-1 min-h-0 rounded border border-border-dark bg-surface-primary/35 shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset] flex flex-col">
+          <div class="flex-1 min-h-0 rounded border border-border-dark bg-[#0a0a0a] shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset] flex flex-col">
             <div class="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
               <div
                 data-scroll-id="autopilot-chat-scroll"
@@ -486,7 +459,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
                 <form
                   id="chat-form"
                   data-ez="autopilot.chat.send"
-                  class="flex items-center gap-2 rounded border border-border-dark bg-bg-secondary p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+                  class="flex items-center gap-2 rounded border border-border-dark bg-[#0a0a0a] p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
                 >
                   <input
                     name="message"
@@ -497,14 +470,14 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
                     data-ez-trigger="input"
                     data-autopilot-chat-input="1"
                     value="${data.inputValue}"
-                    class="h-9 flex-1 rounded border border-border-dark bg-surface-primary px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+                    class="h-9 flex-1 rounded border border-border-dark bg-[#0a0a0a] px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
                   />
                   ${data.isBusy
                     ? html`
                         <button
                           type="button"
                           data-ez="autopilot.chat.stop"
-                          class="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-surface-primary text-text-primary border border-border-dark hover:bg-surface-secondary hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+                          class="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-[#0a0a0a] text-text-primary border border-border-dark hover:bg-[#111111] hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
                         >
                           Stop
                         </button>

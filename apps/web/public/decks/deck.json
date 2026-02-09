@@ -149,6 +149,29 @@
           ]
         }
       ]
+    },
+    "fullbleed": {
+      "type": "Column",
+      "props": {
+        "fill": true,
+        "position": "relative"
+      },
+      "children": [
+        {
+          "type": "Layer",
+          "props": {
+            "zIndex": 0
+          },
+          "children": [
+            {
+              "type": "Slot",
+              "props": {
+                "name": "background"
+              }
+            }
+          ]
+        }
+      ]
     }
   },
   "deck": {
@@ -399,16 +422,8 @@
       },
       {
         "id": "solution",
+        "layout": "title",
         "regions": {
-          "background": [
-            {
-              "type": "Story",
-              "props": {
-                "storyId": "autopilot-dashboard-preview",
-                "title": "Dashboard preview (live)"
-              }
-            }
-          ],
           "header": [],
           "body": [
             {
@@ -437,7 +452,7 @@
                     "align": "center"
                   },
                   "children": [
-                    "One platform to create, deploy & upgrade AI agents."
+                    "One platform to create, deploy and upgrade AI agents."
                   ]
                 }
               ]
@@ -455,8 +470,67 @@
               }
             }
           ]
-        },
-        "layout": "solution"
+        }
+      },
+      {
+        "id": "home-introducing-autopilot",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "home-introducing-autopilot",
+                "title": "Introducing Autopilot"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "dashboard-preview",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "autopilot-dashboard-first-visit",
+                "title": "Dashboard first visit"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "autopilot-onboarding-flow",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "autopilot-onboarding-flow",
+                "title": "Onboarding: name, blueprint, connect GitHub"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "autopilot-post-onboarding",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "autopilot-post-onboarding",
+                "title": "After onboarding: GitHub connected, real repo, coding"
+              }
+            }
+          ]
+        }
       },
       {
         "id": "self-improve",
