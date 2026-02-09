@@ -327,7 +327,22 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           data-autopilot-chat-error="1"
           class="mt-2 rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-300"
         >
-          ${data.errorText}
+          <div class="whitespace-pre-wrap">${data.errorText}</div>
+          ${
+            data.auth.isAuthed
+              ? html`
+                  <div class="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-ez="autopilot.chat.retryInit"
+                      class="inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium bg-white/10 text-white border border-white/20 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 font-mono"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                `
+              : null
+          }
         </div>
       `
     : null;
