@@ -15,7 +15,7 @@ export const aiToolFromContract = <I, O>(contract: DseToolContract<I, O>) => {
     // `Schema.Struct<any>` to avoid TS inferring the "fields" overload and
     // collapsing parameters to `{}` under `exactOptionalPropertyTypes`.
     .setParameters(contract.input as unknown as Schema.Struct<any>)
-    .setSuccess((contract.output ?? Schema.Unknown) as any)
+    .setSuccess((contract.output ?? Schema.Unknown) as Schema.Schema<unknown>)
 
   return tool
 }

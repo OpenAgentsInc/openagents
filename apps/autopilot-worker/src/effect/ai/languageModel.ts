@@ -111,6 +111,14 @@ function parseToolCallParams(raw: unknown): unknown {
   return {}
 }
 
+type WorkersAiToolCallRaw = {
+  id?: string
+  type?: string
+  name?: string
+  arguments?: string
+  function?: { name?: string; arguments?: string }
+}
+
 function toToolCallParts(rawToolCalls: unknown[]): Array<Response.ToolCallPartEncoded> {
   const out: Array<Response.ToolCallPartEncoded> = []
 
@@ -118,12 +126,12 @@ function toToolCallParts(rawToolCalls: unknown[]): Array<Response.ToolCallPartEn
     const raw = rawToolCalls[idx]
     if (!raw || typeof raw !== "object") continue
 
-    const record = raw as any
+    const record = raw as WorkersAiToolCallRaw
     const fallbackId = `call_${idx}`
 
     // OpenAI-style: { id, type, function: { name, arguments } }
     if (record.function && typeof record.function === "object") {
-      const fn = record.function as any
+      const fn = record.function
       const id = typeof record.id === "string" && record.id.length > 0 ? record.id : fallbackId
       const name = typeof fn.name === "string" ? fn.name : "tool"
       const params = parseToolCallParams(fn.arguments)
@@ -248,7 +256,7 @@ function mapToolChoice(choice: LanguageModel.ProviderOptions["toolChoice"]): Wor
 
 function toolChoiceSingleToolName(choice: LanguageModel.ProviderOptions["toolChoice"]): string | null {
   if (choice && typeof choice === "object" && "tool" in choice) {
-    const toolName = (choice as any).tool
+    const toolName = (choice as { tool: unknown }).tool
     return typeof toolName === "string" ? toolName : null
   }
   return null
@@ -261,8 +269,14 @@ type PartialToolCall = {
   readonly function?: { readonly name?: string; readonly arguments?: string }
 }
 
+type MergedToolCall = {
+  id: string
+  type: string
+  function: { name: string; arguments: string }
+}
+
 function mergePartialToolCalls(partialCalls: ReadonlyArray<PartialToolCall>): unknown[] {
-  const mergedByIndex: Record<number, any> = {}
+  const mergedByIndex: Record<number, MergedToolCall> = {}
 
   for (const call of partialCalls) {
     const idx = call.index
@@ -318,7 +332,7 @@ export const makeWorkersAiLanguageModel = (options: {
           }
 
           const output = (await options.binding.run(
-            options.model as any,
+            options.model as Parameters<Ai["run"]>[0],
             {
               model: options.model,
               max_tokens: options.maxOutputTokens,
@@ -329,14 +343,16 @@ export const makeWorkersAiLanguageModel = (options: {
                 : {}),
               ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
               ...(typeof options.topP === "number" ? { top_p: options.topP } : {}),
-            } as any,
+            } as Parameters<Ai["run"]>[1],
             {},
           )) as WorkersAiNonStreamOutput
 
           const reasoning = output.choices?.[0]?.message?.reasoning_content
           const text =
-            (output as any)?.choices?.[0]?.message?.content ??
-            (typeof (output as any)?.response === "string" ? (output as any).response : JSON.stringify((output as any)?.response ?? ""))
+            output.choices?.[0]?.message?.content ??
+            (typeof output.response === "string"
+              ? output.response
+              : JSON.stringify(output.response ?? ""))
 
           const rawToolCalls = getToolCalls(output)
           const toolCalls = toToolCallParts(rawToolCalls)
@@ -382,7 +398,7 @@ export const makeWorkersAiLanguageModel = (options: {
         }
 
         const response = await options.binding.run(
-          options.model as any,
+          options.model as Parameters<Ai["run"]>[0],
           {
             model: options.model,
             max_tokens: options.maxOutputTokens,
@@ -394,7 +410,7 @@ export const makeWorkersAiLanguageModel = (options: {
               : {}),
             ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
             ...(typeof options.topP === "number" ? { top_p: options.topP } : {}),
-          } as any,
+          } as Parameters<Ai["run"]>[1],
           {},
         )
 

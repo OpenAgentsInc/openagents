@@ -27,6 +27,8 @@ import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
+import type { DseGetReportResult, DseListExamplesResult } from "./convexTypes";
+import type { DseSignature } from "@openagentsinc/dse";
 
 const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
 const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
@@ -61,9 +63,10 @@ const mapStoredSplitToDseSplit = (split: unknown): EvalDataset.DatasetSplit | un
   return undefined;
 };
 
-const findSignatureById = (signatureId: string) => {
-  for (const sig of Object.values(dseCatalogSignatures) as any[]) {
-    if (sig && typeof sig === "object" && String((sig as any).id ?? "") === signatureId) return sig as any;
+const findSignatureById = (signatureId: string): DseSignature<unknown, unknown> | null => {
+  for (const sig of Object.values(dseCatalogSignatures)) {
+    if (sig && typeof sig === "object" && "id" in sig && String(sig.id) === signatureId)
+      return sig as DseSignature<unknown, unknown>;
   }
   return null;
 };
@@ -125,11 +128,12 @@ export const handleDseCompileRequest = async (
     const convex = yield* ConvexService;
 
     // Load dataset examples from Convex (global store; auth required).
-    const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 } as any);
-    const raw = Array.isArray((exRes as any)?.examples) ? ((exRes as any).examples as any[]) : [];
+    const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 });
+    const listResult = exRes as DseListExamplesResult;
+    const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
 
-    const decodeInput = Schema.decodeUnknownSync((signature as any).input);
-    const decodeOutput = Schema.decodeUnknownSync((signature as any).output);
+    const decodeInput = Schema.decodeUnknownSync(signature.input);
+    const decodeOutput = Schema.decodeUnknownSync(signature.output);
 
     const examples = raw.map((r) => ({
       exampleId: String(r?.exampleId ?? ""),
@@ -181,8 +185,9 @@ export const handleDseCompileRequest = async (
     const jobHash = yield* CompileJob.compileJobHash(jobSpec);
 
     // If we already ran this job against this exact dataset version, return it (idempotent).
-    const existing = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash } as any);
-    const existingReport = (existing as any)?.report ?? null;
+    const existing = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash });
+    const reportResult = existing as DseGetReportResult;
+    const existingReport = reportResult?.report ?? null;
     if (existingReport) {
       yield* t.event("compile.cached", { signatureId, jobHash, datasetHash });
       return {
@@ -234,7 +239,7 @@ export const handleDseCompileRequest = async (
       signatureId: result.artifact.signatureId,
       compiled_id: result.artifact.compiled_id,
       json: artifactJson,
-    } as any);
+    });
 
     yield* convex.mutation(api.dse.compileReports.putReport, {
       signatureId,
@@ -248,7 +253,7 @@ export const handleDseCompileRequest = async (
         job: jobSpec,
         report: result.report,
       },
-    } as any);
+    });
 
     yield* t.event("compile.finished", {
       signatureId,
@@ -274,7 +279,7 @@ export const handleDseCompileRequest = async (
 
   const exit = await runtime.runPromiseExit(program);
   if (exit._tag === "Failure") {
-    const msg = String((exit as any)?.cause ?? "compile_failed");
+    const msg = String(exit._tag === "Failure" ? exit.cause : "compile_failed");
     const status = msg.includes("unauthorized") ? 401 : 500;
     console.error(`[dse.compile] ${formatRequestIdLogToken(requestId)}`, msg);
     return json({ ok: false, error: msg }, { status, headers: { "cache-control": "no-store" } });

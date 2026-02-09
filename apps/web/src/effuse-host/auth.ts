@@ -90,7 +90,7 @@ const handleSession = async (request: Request): Promise<Response> => {
   // If WorkOS refreshed the session, persist it back into the cookie.
   if (refreshedSessionData) {
     const { headers } = await authkit.saveSession(undefined, refreshedSessionData)
-    const setCookie = (headers as any)?.["Set-Cookie"]
+    const setCookie = (headers as unknown as Record<string, string>)["Set-Cookie"];
     if (typeof setCookie === "string") {
       return json(payload, { status: 200, headers: { "Set-Cookie": setCookie } })
     }
