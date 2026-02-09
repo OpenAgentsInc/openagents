@@ -263,6 +263,36 @@ The current renderer supports the following `type` values:
 - `Layer`
   - props: `zIndex` (number; default 0), `background` (optional CSS background, e.g. `rgba(0,0,0,0.75)`), `pointerEvents` (optional; set to `false` so the layer doesn’t capture clicks), `inset` (optional; default true; layer is `absolute inset-0` to fill parent)
   - Use for stacked layouts: put a full-bleed embed (Story/Embed) in a Layer at z-0, a semi-transparent overlay Layer at z-10 with `pointerEvents: false`, and content in a Layer at z-20. Parent Column should have `position: "relative"`.
+- `Graph`
+  - Purpose: draw an SVG graph of nodes + edges at explicit positions (good for background “systems diagrams” on title/problem slides).
+  - props:
+    - `width`, `height` (optional; default `deck.size` if present, else `1920x…` derived from aspect ratio)
+    - `opacity` (0..1; default `0.65`)
+    - `zIndex` (number; default `-1` so it renders behind slide content)
+    - `inset` (boolean; default true; renders as `absolute inset-0`)
+    - `fit` (`"stretch"|"contain"|"cover"`; default `"stretch"`, maps to SVG `preserveAspectRatio`)
+    - `preset` (`"dots"|"dashes"|"dots-slow"|"dashes-fast"|"pulse"`; default `"dots-slow"`)
+    - `pointerEvents` (boolean; default false)
+    - `className` (string; optional)
+  - children: `GraphNode` + `GraphEdge`
+- `GraphNode`
+  - props:
+    - `nodeId` (string; required; identifier used by edges)
+    - `nodeType` (`"root"|"leaf"|"skeleton"`; default `"leaf"`) controls sizing + node chrome
+    - `x`, `y` (required): position in the graph canvas
+      - number = pixels (in the graph canvas coordinate system)
+      - string `"15%"` = percent of canvas width/height
+      - string `"120px"` = pixels
+    - `anchor` (`"top-left"|"top-right"|"bottom-left"|"bottom-right"|"center"`; default `"top-left"`) interprets `x/y`
+    - `label` (string; default `nodeId`)
+    - `subtitle` (string; optional)
+    - `status` (`"ok"|"live"|"running"|"pending"|"error"`; optional)
+    - `badge` (`{ "label": "...", "tone": "neutral|info|success|warning|destructive" }`; optional)
+- `GraphEdge`
+  - props:
+    - `from`, `to` (required; node ids)
+    - `preset` (optional; same set as `Graph.preset`; overrides per-edge)
+    - `color` (optional CSS color; overrides per-edge)
 - `Box`
   - props: `padding`, `border` (truthy = show border), `background`, `color`, `width`, `height`
 - `Spacer`
@@ -388,6 +418,18 @@ Create the file with something like the following. It defines a **title** layout
           "header": [],
           "body": [
             { "type": "Column", "props": { "fill": true, "justify": "center", "align": "center", "gap": 28 }, "children": [
+              { "type": "Graph", "props": { "opacity": 0.55, "preset": "dots-slow" }, "children": [
+                { "type": "GraphNode", "props": { "nodeId": "runtime", "label": "Runtime", "subtitle": "tools + receipts", "nodeType": "leaf", "x": "15%", "y": "12%" } },
+                { "type": "GraphNode", "props": { "nodeId": "compiler", "label": "Compiler", "subtitle": "Signatures + Modules", "nodeType": "leaf", "x": "78%", "y": "16%" } },
+                { "type": "GraphNode", "props": { "nodeId": "market", "label": "Market", "subtitle": "budgets + lanes", "nodeType": "leaf", "x": "80%", "y": "82%" } },
+                { "type": "GraphNode", "props": { "nodeId": "verify", "label": "Verification", "subtitle": "tests + replay", "nodeType": "leaf", "x": "12%", "y": "82%" } },
+                { "type": "GraphNode", "props": { "nodeId": "autopilot", "label": "Autopilot", "subtitle": "product surface", "nodeType": "root", "anchor": "center", "x": "50%", "y": "52%" } },
+
+                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "runtime" } },
+                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "compiler" } },
+                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "market" } },
+                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "verify" } }
+              ] },
               { "type": "Text", "props": { "style": "h1" }, "children": ["OpenAgents"] },
               { "type": "Text", "props": { "style": "h2" }, "children": ["The Agents Platform"] }
             ] }
@@ -439,4 +481,3 @@ To add a new node type:
    - define prop parsing + mapping to Effuse template HTML
 2. Update validation in `apps/web/src/effuse-deck/dsl.ts` if you want stricter enforcement.
 3. Add/extend tests in `apps/web/tests` (contract-level tests are preferred).
-

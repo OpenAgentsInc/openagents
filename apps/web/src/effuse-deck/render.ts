@@ -1,6 +1,22 @@
 import { html } from "@openagentsinc/effuse"
 import type { TemplateResult } from "@openagentsinc/effuse"
 
+import {
+  LeafNode,
+  NODE_SIZES,
+  RootNode,
+  SkeletonNode,
+  TreeConnectionLine,
+  TreeElementNode,
+  type AnimationConfig,
+  type FlowNode,
+  type FlowNodeBadge,
+  type FlowNodeBadgeTone,
+  type FlowNodeStatus,
+  type FlowNodeType,
+  type Point,
+} from "@openagentsinc/effuse-flow"
+
 import { getStoryById } from "../storybook"
 
 import {
@@ -27,6 +43,132 @@ const asNumber = (value: unknown): number | null => (typeof value === "number" &
 const asString = (value: unknown): string | null => (typeof value === "string" ? value : null)
 
 const px = (value: number): string => `${Math.round(value)}px`
+
+const isFlowNodeType = (value: unknown): value is FlowNodeType =>
+  value === "root" || value === "leaf" || value === "skeleton"
+
+const isFlowNodeStatus = (value: unknown): value is FlowNodeStatus =>
+  value === "ok" || value === "live" || value === "running" || value === "pending" || value === "error"
+
+const isFlowBadgeTone = (value: unknown): value is FlowNodeBadgeTone =>
+  value === "neutral" ||
+  value === "info" ||
+  value === "success" ||
+  value === "warning" ||
+  value === "destructive"
+
+const isGraphPresetName = (value: unknown): value is "dots" | "dashes" | "dots-slow" | "dashes-fast" | "pulse" =>
+  value === "dots" || value === "dashes" || value === "dots-slow" || value === "dashes-fast" || value === "pulse"
+
+const computeDeckCanvasSize = (doc: DeckDocument): { readonly width: number; readonly height: number } => {
+  const size = doc.deck.size
+  if (size && Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0) {
+    return { width: Math.round(size.width), height: Math.round(size.height) }
+  }
+
+  const { w, h } = computeAspectRatio(doc)
+  // Default to a common deck canvas size so "pixel" placement is stable across viewports.
+  const baseWidth = 1920
+  const ratio = w / h
+  const height = Math.round(baseWidth / ratio)
+  return { width: baseWidth, height }
+}
+
+const parseGraphLength = (theme: DeckTheme | undefined, raw: unknown, axis: number): number | null => {
+  const resolved = resolveTokenValue(theme, raw)
+  const n = asNumber(resolved)
+  if (n != null) return n
+
+  const s = asString(resolved)?.trim()
+  if (!s) return null
+
+  if (s.endsWith("%")) {
+    const pct = Number(s.slice(0, -1))
+    return Number.isFinite(pct) ? (axis * pct) / 100 : null
+  }
+
+  if (s.endsWith("px")) {
+    const pxVal = Number(s.slice(0, -2))
+    return Number.isFinite(pxVal) ? pxVal : null
+  }
+
+  const num = Number(s)
+  return Number.isFinite(num) ? num : null
+}
+
+type GraphAnchor = "center" | "top-left" | "top-right" | "bottom-left" | "bottom-right"
+
+const parseGraphAnchor = (value: unknown): GraphAnchor => {
+  switch (value) {
+    case "center":
+    case "top-left":
+    case "top-right":
+    case "bottom-left":
+    case "bottom-right":
+      return value
+    default:
+      return "top-left"
+  }
+}
+
+const anchorToCenter = (
+  anchor: GraphAnchor,
+  anchorPos: Point,
+  size: { readonly width: number; readonly height: number },
+): Point => {
+  switch (anchor) {
+    case "center":
+      return anchorPos
+    case "top-left":
+      return { x: anchorPos.x + size.width / 2, y: anchorPos.y + size.height / 2 }
+    case "top-right":
+      return { x: anchorPos.x - size.width / 2, y: anchorPos.y + size.height / 2 }
+    case "bottom-left":
+      return { x: anchorPos.x + size.width / 2, y: anchorPos.y - size.height / 2 }
+    case "bottom-right":
+      return { x: anchorPos.x - size.width / 2, y: anchorPos.y - size.height / 2 }
+  }
+}
+
+const pickNodeTemplate = (node: FlowNode): TemplateResult => {
+  const type = node.metadata?.type
+  if (type === "root") return RootNode({ node: node as any })
+  if (type === "skeleton") return SkeletonNode({ node: node as any })
+  return LeafNode({ node: node as any })
+}
+
+const routeEdge = (
+  a: { readonly center: Point; readonly size: { readonly width: number; readonly height: number } },
+  b: { readonly center: Point; readonly size: { readonly width: number; readonly height: number } },
+): ReadonlyArray<Point> => {
+  const dx = b.center.x - a.center.x
+  const dy = b.center.y - a.center.y
+
+  // Prefer a clean 90-degree "Z" route that matches the old flow-graph aesthetic.
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const start: Point = {
+      x: dx >= 0 ? a.center.x + a.size.width / 2 : a.center.x - a.size.width / 2,
+      y: a.center.y,
+    }
+    const end: Point = {
+      x: dx >= 0 ? b.center.x - b.size.width / 2 : b.center.x + b.size.width / 2,
+      y: b.center.y,
+    }
+    const midX = start.x + (end.x - start.x) * 0.5
+    return [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]
+  }
+
+  const start: Point = {
+    x: a.center.x,
+    y: dy >= 0 ? a.center.y + a.size.height / 2 : a.center.y - a.size.height / 2,
+  }
+  const end: Point = {
+    x: b.center.x,
+    y: dy >= 0 ? b.center.y - b.size.height / 2 : b.center.y + b.size.height / 2,
+  }
+  const midY = start.y + (end.y - start.y) * 0.5
+  return [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]
+}
 
 const toGapStyle = (theme: DeckTheme | undefined, gap: unknown): string | null => {
   const resolved = resolveTokenValue(theme, gap)
@@ -184,6 +326,15 @@ function cx(...parts: Array<string | null | undefined | false>): string {
   return parts.filter(Boolean).join(" ")
 }
 
+const parseFlowBadge = (value: unknown): FlowNodeBadge | undefined => {
+  if (!isRecord(value)) return undefined
+  const label = asString(value["label"])
+  if (!label) return undefined
+  const toneRaw = value["tone"]
+  const tone = isFlowBadgeTone(toneRaw) ? toneRaw : undefined
+  return { label, ...(tone ? { tone } : {}) }
+}
+
 const hatcheryActionButton = (input: {
   readonly label: string
   readonly action: string
@@ -326,6 +477,166 @@ const renderNode = (
       >
         ${renderChildren(doc, theme, runtime, children)}
       </div>`
+    }
+    case "Graph": {
+      const deckCanvas = computeDeckCanvasSize(doc)
+      const widthResolved = resolveTokenValue(theme, props.width)
+      const heightResolved = resolveTokenValue(theme, props.height)
+      const width = asNumber(widthResolved) ?? deckCanvas.width
+      const height = asNumber(heightResolved) ?? deckCanvas.height
+
+      const inset = props.inset !== false
+      const zIndex = asNumber(resolveTokenValue(theme, props.zIndex)) ?? -1
+      const opacityRaw = resolveTokenValue(theme, props.opacity)
+      const opacity = typeof opacityRaw === "number" && Number.isFinite(opacityRaw) ? Math.max(0, Math.min(1, opacityRaw)) : 0.65
+
+      const fit = asString(props.fit) ?? "stretch"
+      const preserveAspectRatio = fit === "contain" ? "xMidYMid meet" : fit === "cover" ? "xMidYMid slice" : "none"
+
+      const pointerEvents = props.pointerEvents === true ? "" : "pointer-events:none;"
+
+      const presetRaw = resolveTokenValue(theme, props.preset)
+      const graphPreset = isGraphPresetName(presetRaw) ? presetRaw : "dots-slow"
+
+      type NodeResolved = {
+        readonly id: string
+        readonly node: FlowNode
+        readonly center: Point
+        readonly size: { readonly width: number; readonly height: number }
+      }
+
+      const nodes: NodeResolved[] = []
+      const byId = new Map<string, NodeResolved>()
+      const edges: Array<{ readonly key: string; readonly path: ReadonlyArray<Point>; readonly animation: AnimationConfig }> = []
+      const errors: string[] = []
+
+      // Pass 1: parse nodes + edge specs.
+      const edgeSpecs: Array<{ readonly from: string; readonly to: string; readonly preset?: string; readonly color?: string }> = []
+
+      for (const c of children) {
+        if (typeof c === "string" || isRefNode(c)) continue
+        if (c.type === "GraphNode") {
+          const p = (c.props ?? {}) as Record<string, unknown>
+          const id = asString(p.nodeId) ?? asString(p.id)
+          if (!id) {
+            errors.push("GraphNode missing props.nodeId")
+            continue
+          }
+
+          const nodeTypeRaw = resolveTokenValue(theme, p.nodeType ?? p.type)
+          const nodeType: FlowNodeType = isFlowNodeType(nodeTypeRaw) ? nodeTypeRaw : "leaf"
+          const size = NODE_SIZES[nodeType] ?? NODE_SIZES.leaf
+
+          const x = parseGraphLength(theme, p.x, width)
+          const y = parseGraphLength(theme, p.y, height)
+          if (x == null || y == null) {
+            errors.push(`GraphNode(${id}) missing/invalid x/y`)
+            continue
+          }
+
+          const anchor = parseGraphAnchor(resolveTokenValue(theme, p.anchor))
+          const center = anchorToCenter(anchor, { x, y }, size)
+
+          const label = asString(resolveTokenValue(theme, p.label)) ?? id
+          const subtitle = asString(resolveTokenValue(theme, p.subtitle)) ?? undefined
+          const statusRaw = resolveTokenValue(theme, p.status)
+          const status = isFlowNodeStatus(statusRaw) ? statusRaw : undefined
+          const badge = parseFlowBadge(resolveTokenValue(theme, p.badge))
+
+          const flowNode: FlowNode = {
+            id,
+            label,
+            metadata: {
+              type: nodeType,
+              ...(subtitle ? { subtitle } : {}),
+              ...(status ? { status } : {}),
+              ...(badge ? { badge } : {}),
+            },
+          }
+
+          const resolved: NodeResolved = { id, node: flowNode, center, size }
+          nodes.push(resolved)
+          byId.set(id, resolved)
+          continue
+        }
+
+        if (c.type === "GraphEdge") {
+          const p = (c.props ?? {}) as Record<string, unknown>
+          const from = asString(p.from)
+          const to = asString(p.to)
+          if (!from || !to) {
+            errors.push("GraphEdge missing props.from/props.to")
+            continue
+          }
+          const preset = asString(resolveTokenValue(theme, p.preset)) ?? undefined
+          const color = asString(resolveTokenValue(theme, p.color)) ?? undefined
+          edgeSpecs.push({ from, to, ...(preset ? { preset } : {}), ...(color ? { color } : {}) })
+          continue
+        }
+      }
+
+      // Pass 2: route + render edges.
+      for (const spec of edgeSpecs) {
+        const a = byId.get(spec.from)
+        const b = byId.get(spec.to)
+        if (!a || !b) {
+          errors.push(`GraphEdge references missing node: ${spec.from} -> ${spec.to}`)
+          continue
+        }
+
+        const preset = isGraphPresetName(spec.preset) ? spec.preset : graphPreset
+        const animation: AnimationConfig = spec.color ? { preset, color: spec.color } : { preset }
+        const path = routeEdge(a, b)
+        edges.push({ key: `${spec.from}-${spec.to}`, path, animation })
+      }
+
+      const className = asString(props.className) ?? ""
+
+      const graphVars = [
+        "--oa-flow-bg: transparent;",
+        "--oa-flow-panel: rgba(255,255,255,0.05);",
+        "--oa-flow-panel2: rgba(255,255,255,0.07);",
+        "--oa-flow-text: rgba(255,255,255,0.92);",
+        "--oa-flow-muted: rgba(255,255,255,0.62);",
+        "--oa-flow-stroke: rgba(255,255,255,0.10);",
+        "--oa-flow-connection-stroke: rgba(255,255,255,0.12);",
+      ].join(" ")
+
+      return html`
+        <div
+          class="${cx("oa-deck-graph", inset ? "absolute inset-0" : "relative", className)}"
+          style="z-index:${zIndex}; opacity:${opacity}; ${pointerEvents} ${graphVars}"
+          data-deck-graph="1"
+        >
+          ${errors.length > 0
+            ? html`<div class="absolute top-3 left-3 text-[12px] text-red-400 font-mono bg-black/50 rounded px-2 py-1">
+                ${errors.join(" · ")}
+              </div>`
+            : null}
+          <svg
+            viewBox="${`0 0 ${Math.round(width)} ${Math.round(height)}`}"
+            preserveAspectRatio="${preserveAspectRatio}"
+            class="w-full h-full"
+          >
+            <g data-deck-graph-edges="1">
+              ${edges.map((e) => html`<g data-deck-graph-edge="${e.key}">${TreeConnectionLine({ path: e.path, animation: e.animation })}</g>`)}
+            </g>
+            <g data-deck-graph-nodes="1">
+              ${nodes.map((n) =>
+                TreeElementNode({
+                  id: n.id,
+                  position: n.center,
+                  children: pickNodeTemplate(n.node),
+                }),
+              )}
+            </g>
+          </svg>
+        </div>
+      `
+    }
+    case "GraphNode":
+    case "GraphEdge": {
+      return html`<div class="text-xs text-red-400">[${node.type} must be a child of Graph]</div>`
     }
     case "Spacer": {
       const sizeResolved = resolveTokenValue(theme, props.size)
@@ -519,14 +830,14 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
     <div class="relative w-full h-full min-h-0 overflow-hidden text-text-primary font-mono">
       ${isFullbleed && presenting
         ? html`
-            <div class="absolute inset-0 min-w-0 min-h-0 flex flex-col h-full" style="min-height:100%;">
+            <div class="absolute inset-0 z-0 min-w-0 min-h-0 flex flex-col h-full" style="min-height:100%;">
               ${filteredNodes.map((n) => renderNode(doc, theme, runtime, n))}
             </div>
           `
         : presenting
           ? html`
             <div
-              class="absolute inset-0 flex flex-col min-h-0"
+              class="absolute inset-0 z-0 flex flex-col min-h-0"
               style="background:${surfaceBgPresenting};"
             >
               <div class="flex-1 min-h-0 p-12 flex flex-col">
@@ -540,7 +851,7 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
           class="relative shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_80px_rgba(0,0,0,0.65)] rounded overflow-hidden border border-border-dark backdrop-blur-md"
           style="aspect-ratio: ${w} / ${h}; width: ${slideWidth}; background:${surfaceBg};"
         >
-          <div class="absolute inset-0 p-12 flex flex-col min-h-0">
+          <div class="absolute inset-0 z-0 p-12 flex flex-col min-h-0">
             ${filteredNodes.map((n) => renderNode(doc, theme, runtime, n))}
           </div>
         </div>
