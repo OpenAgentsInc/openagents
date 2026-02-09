@@ -191,9 +191,23 @@ function normalizePathname(pathname: string): string {
   return s || "/"
 }
 
+const isLocalHost = (hostname: string): boolean =>
+  hostname === "localhost" ||
+  hostname === "127.0.0.1" ||
+  hostname === "::1" ||
+  hostname === "0.0.0.0"
+
+/** True when request is from local dev (localhost / 127.0.0.1 / 0.0.0.0). Uses Host header as fallback. */
+function isLocalDevRequest(request: Request, url: URL): boolean {
+  if (isLocalHost(url.hostname)) return true
+  const host = request.headers.get("Host") ?? ""
+  const hostname = host.split(":")[0] ?? host
+  return isLocalHost(hostname)
+}
+
 /**
  * Returns a 302 redirect to / when prelaunch is on and the request is not allowed.
- * Call this at the very start of the Worker for GET/HEAD so /autopilot is never served.
+ * Redirect is skipped on localhost so /autopilot works in local dev.
  */
 export function getPrelaunchRedirectIfRequired(
   request: Request,
@@ -202,6 +216,7 @@ export function getPrelaunchRedirectIfRequired(
 ): Response | null {
   const config = getWorkerAppConfig(env)
   if (!config.prelaunch) return null
+  if (isLocalDevRequest(request, url)) return null
   const bypassGranted = hasPrelaunchBypass(request, url, config.prelaunchBypassKey)
   if (bypassGranted) return null
   const pathname = normalizePathname(url.pathname)
@@ -227,7 +242,7 @@ export const handleSsrRequest = async (
   const bypassGranted = hasPrelaunchBypass(request, url, config.prelaunchBypassKey)
   const pathname = normalizePathname(url.pathname)
   const allowedWithoutBypass = PRELAUNCH_ALLOWED_PATHNAMES.has(pathname)
-  if (config.prelaunch && !bypassGranted && !allowedWithoutBypass) {
+  if (config.prelaunch && !isLocalDevRequest(request, url) && !bypassGranted && !allowedWithoutBypass) {
     return new Response(null, {
       status: 302,
       headers: new Headers({ location: "/", "cache-control": "no-store" }),
