@@ -130,6 +130,7 @@ const renderDocument = (input: {
   readonly meta: ReadonlyArray<readonly [string, string]>
   readonly bodyHtml: string
   readonly dehydrateJson: string | null
+  readonly prelaunch: boolean
 }): string => {
   const metaTags = input.meta
     .map(
@@ -137,6 +138,10 @@ const renderDocument = (input: {
         `<meta name="${escapeHtml(name)}" content="${escapeHtml(content)}" data-effuse-meta="1" />`,
     )
     .join("")
+
+  // Client runtime needs prelaunch mode to match SSR, otherwise CSR navigations can
+  // accidentally "turn off" prelaunch-only UI like the countdown.
+  const prelaunchMeta = `<meta name="oa-prelaunch" content="${input.prelaunch ? "1" : "0"}" />`
 
   const dehydrateScript =
     input.dehydrateJson != null
@@ -157,6 +162,7 @@ const renderDocument = (input: {
     "<meta charset=\"utf-8\" />",
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />",
     `<title>${escapeHtml(input.title)}</title>`,
+    prelaunchMeta,
     metaTags,
     `<link rel="stylesheet" href="${cssHref}" />`,
     dehydrateScript,
@@ -308,6 +314,7 @@ export const handleSsrRequest = async (
         meta: [],
         bodyHtml: defaultNotFoundHtml(url),
         dehydrateJson: null,
+        prelaunch: config.prelaunch,
       })
       if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
         return new Response("<!doctype html><h1>SSR output too large</h1>", {
@@ -338,6 +345,7 @@ export const handleSsrRequest = async (
           meta: [],
           bodyHtml: defaultNotFoundHtml(url),
           dehydrateJson: null,
+          prelaunch: config.prelaunch,
         })
         if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
           return new Response("<!doctype html><h1>SSR output too large</h1>", {
@@ -356,6 +364,7 @@ export const handleSsrRequest = async (
           meta: [],
           bodyHtml: defaultFailHtml(url, run.error),
           dehydrateJson: null,
+          prelaunch: config.prelaunch,
         })
         if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
           return new Response("<!doctype html><h1>SSR output too large</h1>", {
@@ -384,6 +393,7 @@ export const handleSsrRequest = async (
           meta,
           bodyHtml,
           dehydrateJson: dehydrate,
+          prelaunch: config.prelaunch,
         })
         if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
           return new Response("<!doctype html><h1>SSR output too large</h1>", {
@@ -427,6 +437,7 @@ export const handleSsrRequest = async (
         meta: [],
         bodyHtml: defaultFailHtml(url, error),
         dehydrateJson: null,
+        prelaunch: config.prelaunch,
       })
 
       if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {

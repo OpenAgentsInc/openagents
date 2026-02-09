@@ -21,6 +21,14 @@ export const getAppConfig = (): AppConfig => {
   if (!convexUrl) {
     throw new Error('missing VITE_CONVEX_URL env var');
   }
-  const prelaunch = parsePrelaunch((import.meta as any).env.VITE_PRELAUNCH as string | undefined);
+  // Prefer SSR-provided runtime prelaunch flag so CSR navigations match the server.
+  // This avoids "turning off" the countdown after a client-side navigation.
+  const ssrPrelaunch =
+    typeof document !== 'undefined'
+      ? document.querySelector('meta[name="oa-prelaunch"]')?.getAttribute('content') ?? undefined
+      : undefined;
+  const prelaunch = parsePrelaunch(
+    (ssrPrelaunch ?? ((import.meta as any).env.VITE_PRELAUNCH as string | undefined)) as string | undefined,
+  );
   return { convexUrl, prelaunch, prelaunchBypassKey: null };
 };
