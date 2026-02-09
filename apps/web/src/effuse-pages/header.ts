@@ -36,6 +36,8 @@ export function marketingHeaderTemplate(
         href: '/login',
         label: 'Start for free',
         variant: 'outline',
+        // Too cramped on mobile; homepage already has a primary CTA.
+        className: 'hidden sm:inline-flex',
       })}
             `
       : ''}
