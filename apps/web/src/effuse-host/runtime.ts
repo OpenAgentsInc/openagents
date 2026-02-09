@@ -14,7 +14,9 @@ export const getWorkerAppConfig = (env: WorkerEnv): AppConfig => {
     throw new Error("missing VITE_CONVEX_URL (Worker env var)")
   }
   const prelaunch = parsePrelaunch(env.VITE_PRELAUNCH ?? process.env.VITE_PRELAUNCH)
-  return { convexUrl, prelaunch }
+  const prelaunchBypassKey =
+    (env.PRELAUNCH_BYPASS_KEY ?? process.env.PRELAUNCH_BYPASS_KEY) ?? null
+  return { convexUrl, prelaunch, prelaunchBypassKey }
 }
 
 /**

@@ -17,4 +17,6 @@ export type WorkerEnv = {
   readonly VITE_CONVEX_URL?: string
   /** When set (e.g. "1" or "true"), prelaunch mode: homepage shows countdown, other routes redirect to /. */
   readonly VITE_PRELAUNCH?: string
+  /** Secret: when set, ?key={this} on /autopilot (etc.) bypasses prelaunch. Set via wrangler secret put PRELAUNCH_BYPASS_KEY. */
+  readonly PRELAUNCH_BYPASS_KEY?: string
 }

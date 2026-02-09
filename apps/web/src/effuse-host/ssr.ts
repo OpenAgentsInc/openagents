@@ -169,18 +169,35 @@ const renderDocument = (input: {
   ].join("")
 }
 
+const PRELAUNCH_BYPASS_COOKIE = "prelaunch_bypass=1"
+const PRELAUNCH_BYPASS_COOKIE_MAX_AGE = 604800 // 7 days
+
+function hasPrelaunchBypass(
+  request: Request,
+  url: URL,
+  bypassKey: string | null,
+): boolean {
+  if (!bypassKey) return false
+  const cookie = request.headers.get("Cookie") ?? ""
+  if (cookie.includes(PRELAUNCH_BYPASS_COOKIE)) return true
+  return url.searchParams.get("key") === bypassKey
+}
+
 export const handleSsrRequest = async (
   request: Request,
   env: WorkerEnv,
 ): Promise<Response> => {
   const url = new URL(request.url)
   const config = getWorkerAppConfig(env)
-  if (config.prelaunch && url.pathname !== "/") {
+  const bypassGranted = hasPrelaunchBypass(request, url, config.prelaunchBypassKey)
+  if (config.prelaunch && url.pathname !== "/" && !bypassGranted) {
     return new Response(null, {
       status: 302,
       headers: new Headers({ location: "/", "cache-control": "no-store" }),
     })
   }
+  const setBypassCookie =
+    !!config.prelaunchBypassKey && url.searchParams.get("key") === config.prelaunchBypassKey
   const matched = matchRoute(appRoutes as ReadonlyArray<AnyRoute>, url)
 
   const { runtime } = getWorkerRuntime(env)
@@ -311,6 +328,12 @@ export const handleSsrRequest = async (
         }
         applyCachePolicy(headers, { cache: run.hints?.cache, cookies: run.hints?.cookies as any })
         applyCookieMutations(headers, run.hints?.cookies as any)
+        if (setBypassCookie) {
+          headers.append(
+            "Set-Cookie",
+            `prelaunch_bypass=1; Path=/; Max-Age=${PRELAUNCH_BYPASS_COOKIE_MAX_AGE}; Secure; SameSite=Lax`,
+          )
+        }
 
         return new Response(html, { status: 200, headers })
       }

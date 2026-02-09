@@ -19,6 +19,7 @@ source "$ENV_FILE"
 set +a
 
 # Secrets the Worker needs at runtime (from wrangler.jsonc comments + AuthKit)
+# PRELAUNCH_BYPASS_KEY: optional; when set, ?key={value} on /autopilot bypasses prelaunch (set via wrangler secret put PRELAUNCH_BYPASS_KEY)
 SECRET_NAMES=(
   WORKOS_CLIENT_ID
   WORKOS_API_KEY
@@ -26,6 +27,7 @@ SECRET_NAMES=(
   AUTOPILOT_CODEX_SECRET
   OA_INTERNAL_KEY
   PUBLIC_API_URL
+  PRELAUNCH_BYPASS_KEY
 )
 
 for name in "${SECRET_NAMES[@]}"; do

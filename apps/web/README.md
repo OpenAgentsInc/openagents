@@ -72,6 +72,20 @@ This app uses WorkOS AuthKit for authentication. Key features:
 - **Route loader protection**: Protected routes use loaders to check authentication
 - **Client and server functions**: `useAuth()` for client components, `getAuth()` for server loaders
 
+## Deploy
+
+Full deploy (Convex + Vite build + Cloudflare Worker):
+
+```bash
+npm run deploy
+```
+
+**If it seems to time out after the Vite build:** the next step is `wrangler deploy`, which bundles the Worker (TypeScript + local packages) and uploads assets. That step can take **1–3+ minutes** with little output. Run it in a normal terminal (not an IDE runner with a short timeout). If the full deploy was interrupted after the build, you can finish with:
+
+```bash
+npm run deploy:worker
+```
+
 ## Learn more
 
 To learn more about developing your project with Convex, check out:
