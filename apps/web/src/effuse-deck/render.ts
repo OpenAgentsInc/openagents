@@ -21,6 +21,8 @@ import { getStoryById } from "../storybook"
 import { autopilotStories } from "../storybook/stories/autopilot"
 import { homeStories } from "../storybook/stories/home"
 
+import { streamdown } from "../lib/effuseStreamdown"
+
 import { DECK_STORY_BY_ID } from "./deckStories"
 
 import {
@@ -50,6 +52,24 @@ const px = (value: number): string => `${Math.round(value)}px`
 
 const isFlowNodeType = (value: unknown): value is FlowNodeType =>
   value === "root" || value === "leaf" || value === "skeleton"
+
+const looksLikeMarkdownTable = (markdown: string): boolean => {
+  const lines = markdown
+    .split(/\r?\n/g)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+
+  if (lines.length < 2) return false
+
+  const header = lines[0]!
+  const divider = lines[1]!
+
+  if (!header.includes("|")) return false
+
+  // Matches: | --- | --- |, |:---|---:|, etc. Requires at least 2 columns.
+  const dividerRe = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/
+  return dividerRe.test(divider)
+}
 
 const isFlowNodeStatus = (value: unknown): value is FlowNodeStatus =>
   value === "ok" || value === "live" || value === "running" || value === "pending" || value === "error"
@@ -706,6 +726,15 @@ const renderNode = (
     case "CodeBlock": {
       const code = asString(props.code) ?? ""
       const language = asString(props.language) ?? ""
+      const lang = language.trim().toLowerCase()
+
+      if ((lang === "markdown" || lang === "md") && looksLikeMarkdownTable(code)) {
+        // Render tables as real HTML (not preformatted code) so they're legible in decks.
+        return html`<div class="w-full overflow-auto">
+          ${streamdown(code, { mode: "static", parseIncompleteMarkdown: false })}
+        </div>`
+      }
+
       return html`<pre class="rounded border border-border-dark bg-surface-primary p-4 overflow-auto text-[14px] leading-5">
 <code class="font-mono" data-language="${language}">${code}</code>
 </pre>`
