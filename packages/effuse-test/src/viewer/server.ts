@@ -14,7 +14,24 @@ type ViewerServerInternal = ViewerServer & { readonly _server: ReturnType<typeof
 
 export const startViewerServer = (port: number): Effect.Effect<ViewerServer, never, Scope.Scope> =>
   Effect.acquireRelease(
-    Effect.sync(() => {
+    Effect.promise(async () => {
+      const entry = new URL("./client.ts", import.meta.url).pathname
+      const build = await Bun.build({
+        entrypoints: [entry],
+        target: "browser",
+        format: "esm",
+        splitting: false,
+        minify: false,
+        sourcemap: "inline",
+      })
+
+      if (!build.success) {
+        const msg = build.logs.map((l) => l.message).join("\n")
+        throw new Error(`viewer bundle failed:\n${msg}`)
+      }
+
+      const js = await build.outputs[0]!.text()
+
       const clients = new Set<ServerWebSocket<{ readonly kind: "events" }>>()
       const server = Bun.serve<{ readonly kind: "events" }>({
         port,
@@ -28,6 +45,11 @@ export const startViewerServer = (port: number): Effect.Effect<ViewerServer, nev
           if (url.pathname === "/") {
             return new Response(VIEWER_HTML, {
               headers: { "content-type": "text/html; charset=utf-8" },
+            })
+          }
+          if (url.pathname === "/viewer.js") {
+            return new Response(js, {
+              headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" },
             })
           }
           return new Response("not found", { status: 404 })
