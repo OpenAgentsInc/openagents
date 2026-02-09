@@ -63,14 +63,28 @@ const matchStorybook = (url: URL): RouteMatch | null => {
 const isLocalHost = (host: string): boolean =>
   host === "localhost" || host === "127.0.0.1" || host === "::1"
 
-/** When prelaunch is on, redirect to home. Use as first guard on non-home routes. */
+/** When prelaunch is on, redirect to home unless bypass (query key or cookie). */
 const prelaunchRedirectGuard = (
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): Effect.Effect<RouteOutcome<never> | undefined, never, AppServices> =>
   Effect.gen(function* () {
     const config = yield* AppConfigService
-    if (config.prelaunch) return RouteOutcome.redirect("/", 302)
-    return undefined
+    if (!config.prelaunch) return undefined
+    const bypass = yield* (ctx._tag === "Server"
+      ? Effect.sync(() => {
+          const key = config.prelaunchBypassKey
+          if (!key) return false
+          const cookie = ctx.request.headers.get("Cookie") ?? ""
+          if (cookie.includes("prelaunch_bypass=1")) return true
+          return ctx.url.searchParams.get("key") === key
+        })
+      : Effect.sync(
+          () =>
+            typeof document !== "undefined" &&
+            document.cookie.includes("prelaunch_bypass=1"),
+        ))
+    if (bypass) return undefined
+    return RouteOutcome.redirect("/", 302)
   })
 
 const sessionDehydrate = (ctx: RouteContext): Effect.Effect<RouteOkHints["dehydrate"] | undefined, never, AppServices> =>

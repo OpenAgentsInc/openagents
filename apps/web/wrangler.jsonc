@@ -1,7 +1,5 @@
 /**
  * Cloudflare Workers config for apps/web.
- * Custom domain openagents.com: add in Dashboard → Workers & Pages → autopilot-web → Settings → Domains & routes
- * (remove openagents.com from the old worker first, then add route for openagents.com/* to this worker).
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
@@ -10,6 +8,10 @@
   "compatibility_date": "2025-12-17",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/effuse-host/worker.ts",
+  "route": {
+    "pattern": "openagents.com/*",
+    "zone_name": "openagents.com"
+  },
   "observability": {
     "enabled": true
   },
@@ -51,6 +53,5 @@
   }
   // Production secrets (from .env.production): run once before deploy:
   //   npm run wrangler:secrets
-  // This pushes WORKOS_CLIENT_ID, WORKOS_API_KEY, WORKOS_COOKIE_PASSWORD,
-  // AUTOPILOT_CODEX_SECRET, OA_INTERNAL_KEY, PUBLIC_API_URL to the Worker.
+  // Includes PRELAUNCH_BYPASS_KEY (optional): when set, /autopilot?key={value} bypasses prelaunch.
 }
