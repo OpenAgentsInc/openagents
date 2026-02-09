@@ -33,6 +33,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             yield* assertEqual(res.status, 200, "Expected GET / to return 200")
             const ct = res.headers.get("content-type") ?? ""
             yield* assertTrue(ct.includes("text/html"), `Expected text/html content-type, got: ${ct}`)
+            const reqId = res.headers.get("x-oa-request-id") ?? ""
+            yield* assertTrue(reqId.length > 0, "Expected x-oa-request-id response header to be present")
           }),
         )
 
@@ -49,6 +51,98 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
           Effect.gen(function* () {
             yield* assertTrue(html.includes("data-effuse-shell"), "Expected SSR HTML to include data-effuse-shell")
             yield* assertTrue(html.includes("data-effuse-outlet"), "Expected SSR HTML to include data-effuse-outlet")
+          }),
+        )
+      }),
+    },
+    {
+      id: "apps-web.prod.http.prelaunch-countdown-present",
+      tags: ["e2e", "http", "apps/web", "prod"],
+      timeoutMs: 60_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+
+        const res = yield* step(
+          "GET / (prod)",
+          Effect.tryPromise({
+            try: () => fetch(`${ctx.baseUrl}/`, { redirect: "manual" }),
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        const html = yield* step(
+          "read body",
+          Effect.tryPromise({
+            try: () => res.text(),
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        yield* step(
+          "assert prelaunch markers present",
+          Effect.gen(function* () {
+            // Prelaunch must be stable on initial SSR.
+            yield* assertTrue(
+              html.includes('meta name="oa-prelaunch" content="1"'),
+              "Expected SSR HTML to include <meta name=\"oa-prelaunch\" content=\"1\"> in prod",
+            )
+            yield* assertTrue(
+              html.includes('data-prelaunch-countdown="1"'),
+              "Expected SSR HTML to include data-prelaunch-countdown=\"1\" in prod",
+            )
+          }),
+        )
+      }),
+    },
+    {
+      id: "apps-web.prod.http.login-blocked-in-prelaunch",
+      tags: ["e2e", "http", "apps/web", "prod"],
+      timeoutMs: 60_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+
+        const res = yield* step(
+          "GET /login (prod)",
+          Effect.tryPromise({
+            try: () => fetch(`${ctx.baseUrl}/login`, { redirect: "manual" }),
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        yield* step(
+          "assert redirected to /",
+          Effect.gen(function* () {
+            yield* assertTrue(res.status === 302 || res.status === 301, `Expected redirect status for /login, got ${res.status}`)
+            const loc = res.headers.get("location") ?? ""
+            yield* assertTrue(loc === "/" || loc.startsWith("/?"), `Expected Location to be / (or /?*), got: ${loc}`)
+          }),
+        )
+      }),
+    },
+    {
+      id: "apps-web.prod.http.autopilot-blocked-without-bypass",
+      tags: ["e2e", "http", "apps/web", "prod"],
+      timeoutMs: 60_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+
+        const res = yield* step(
+          "GET /autopilot (prod, no cookies)",
+          Effect.tryPromise({
+            try: () => fetch(`${ctx.baseUrl}/autopilot`, { redirect: "manual" }),
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        yield* step(
+          "assert redirected to /",
+          Effect.gen(function* () {
+            yield* assertTrue(
+              res.status === 302 || res.status === 301,
+              `Expected redirect status for /autopilot without bypass in prelaunch, got ${res.status}`,
+            )
+            const loc = res.headers.get("location") ?? ""
+            yield* assertTrue(loc === "/" || loc.startsWith("/?"), `Expected Location to be / (or /?*), got: ${loc}`)
           }),
         )
       }),
@@ -101,6 +195,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             yield* assertEqual(css.status, 200, "Expected GET /effuse-client.css to return 200")
             const ct = css.headers.get("content-type") ?? ""
             yield* assertTrue(ct.includes("text/css"), `Expected text/css content-type, got: ${ct}`)
+            const reqId = css.headers.get("x-oa-request-id") ?? ""
+            yield* assertTrue(reqId.length > 0, "Expected x-oa-request-id on CSS response")
             const body = yield* Effect.tryPromise({
               try: () => css.text(),
               catch: (error) => (error instanceof Error ? error : new Error(String(error))),
@@ -122,6 +218,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             yield* assertEqual(js.status, 200, "Expected GET /effuse-client.js to return 200")
             const ct = js.headers.get("content-type") ?? ""
             yield* assertTrue(ct.includes("javascript"), `Expected javascript content-type, got: ${ct}`)
+            const reqId = js.headers.get("x-oa-request-id") ?? ""
+            yield* assertTrue(reqId.length > 0, "Expected x-oa-request-id on JS response")
             const body = yield* Effect.tryPromise({
               try: () => js.text(),
               catch: (error) => (error instanceof Error ? error : new Error(String(error))),
