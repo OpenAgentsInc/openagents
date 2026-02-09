@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse"
 import { whitePreset } from "@openagentsinc/hud"
 import type { TemplateResult } from "@openagentsinc/effuse"
+import { FLOW_STYLES_CSS } from "@openagentsinc/effuse-flow"
 
 const deckBackgroundStyle = (): string => {
   const backgroundImage = [
@@ -19,6 +20,7 @@ export const deckPageShellTemplate = (): TemplateResult => {
       data-deck-shell="1"
       class="fixed inset-0 overflow-hidden text-white"
     >
+      <style>${FLOW_STYLES_CSS}</style>
       <div class="absolute inset-0" style="${deckBackgroundStyle()}"></div>
       <div data-deck-slot="content" class="relative h-screen min-h-screen w-full overflow-hidden">
         <div data-hud-bg="dots-grid" class="absolute inset-0 z-0 pointer-events-none"></div>
