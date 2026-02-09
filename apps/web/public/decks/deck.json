@@ -518,17 +518,86 @@
                     "align": "center"
                   },
                   "children": [
-                    "The marketplace where the best agents win."
+                    "A unifying platform that's a one-stop shop for deploying & managing the best AI agents."
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "we-build-agents",
+        "title": "Flagship Agents",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "OpenAgents builds and sells the best AI agents"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "We wedge with coding/dev agents, then expand across verticals."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Flagship vertical agents: coding, research, security, legal, sales, support."
                   ]
                 },
                 {
-                  "type": "Text",
-                  "props": {
-                    "style": "caption",
-                    "align": "center"
-                  },
+                  "type": "ListItem",
                   "children": [
-                    "Because the best developers build here."
+                    "Wedge: coding/dev agents where value is obvious and users already pay."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Agents are assembled from modular components sourced via the developer marketplace."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Best agents (powered by best components) are available exclusively on OpenAgents."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Segments: SMB, Enterprise, Government."
                   ]
                 }
               ]
@@ -1050,85 +1119,6 @@
                   "type": "ListItem",
                   "children": [
                     "Users pick an agent and press run - no prompt assembly or tool wiring required."
-                  ]
-                }
-              ]
-            }
-          ],
-          "footer": [
-            {
-              "type": "Footer",
-              "props": {
-                "right": [
-                  {
-                    "type": "SlideNumber"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "id": "we-build-agents",
-        "title": "Flagship Agents",
-        "regions": {
-          "header": [
-            {
-              "type": "Text",
-              "props": {
-                "style": "h3"
-              },
-              "children": [
-                "OpenAgents builds and sells the best AI agents"
-              ]
-            },
-            {
-              "type": "Text",
-              "props": {
-                "style": "caption"
-              },
-              "children": [
-                "We wedge with coding/dev agents, then expand across verticals."
-              ]
-            }
-          ],
-          "body": [
-            {
-              "type": "List",
-              "props": {
-                "ordered": false,
-                "gap": 12
-              },
-              "children": [
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "Flagship vertical agents: coding, research, security, legal, sales, support."
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "Wedge: coding/dev agents where value is obvious and users already pay."
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "Agents are assembled from modular components sourced via the developer marketplace."
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "Best agents (powered by best components) are available exclusively on OpenAgents."
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "Segments: SMB, Enterprise, Government."
                   ]
                 }
               ]
