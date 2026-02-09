@@ -419,16 +419,17 @@ Create the file with something like the following. It defines a **title** layout
           "body": [
             { "type": "Column", "props": { "fill": true, "justify": "center", "align": "center", "gap": 28 }, "children": [
               { "type": "Graph", "props": { "opacity": 0.55, "preset": "dots-slow" }, "children": [
-                { "type": "GraphNode", "props": { "nodeId": "runtime", "label": "Runtime", "subtitle": "tools + receipts", "nodeType": "leaf", "x": "15%", "y": "12%" } },
-                { "type": "GraphNode", "props": { "nodeId": "compiler", "label": "Compiler", "subtitle": "Signatures + Modules", "nodeType": "leaf", "x": "78%", "y": "16%" } },
-                { "type": "GraphNode", "props": { "nodeId": "market", "label": "Market", "subtitle": "budgets + lanes", "nodeType": "leaf", "x": "80%", "y": "82%" } },
-                { "type": "GraphNode", "props": { "nodeId": "verify", "label": "Verification", "subtitle": "tests + replay", "nodeType": "leaf", "x": "12%", "y": "82%" } },
-                { "type": "GraphNode", "props": { "nodeId": "autopilot", "label": "Autopilot", "subtitle": "product surface", "nodeType": "root", "anchor": "center", "x": "50%", "y": "52%" } },
+                { "type": "GraphNode", "props": { "nodeId": "runtime", "label": "Runtime", "subtitle": "tools + receipts", "nodeType": "leaf", "anchor": "center", "x": "50%", "y": "16%" } },
+                { "type": "GraphNode", "props": { "nodeId": "compiler", "label": "Compiler", "subtitle": "Signatures + Modules", "nodeType": "leaf", "anchor": "center", "x": "79%", "y": "34%" } },
+                { "type": "GraphNode", "props": { "nodeId": "market", "label": "Market", "subtitle": "budgets + lanes", "nodeType": "leaf", "anchor": "center", "x": "69%", "y": "74%" } },
+                { "type": "GraphNode", "props": { "nodeId": "verify", "label": "Verification", "subtitle": "tests + replay", "nodeType": "leaf", "anchor": "center", "x": "31%", "y": "74%" } },
+                { "type": "GraphNode", "props": { "nodeId": "autopilot", "label": "Autopilot", "subtitle": "product surface", "nodeType": "leaf", "anchor": "center", "x": "21%", "y": "34%" } },
 
-                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "runtime" } },
-                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "compiler" } },
-                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "market" } },
-                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "verify" } }
+                { "type": "GraphEdge", "props": { "from": "runtime", "to": "compiler" } },
+                { "type": "GraphEdge", "props": { "from": "compiler", "to": "market" } },
+                { "type": "GraphEdge", "props": { "from": "market", "to": "verify" } },
+                { "type": "GraphEdge", "props": { "from": "verify", "to": "autopilot" } },
+                { "type": "GraphEdge", "props": { "from": "autopilot", "to": "runtime" } }
               ] },
               { "type": "Text", "props": { "style": "h1" }, "children": ["OpenAgents"] },
               { "type": "Text", "props": { "style": "h2" }, "children": ["The Agents Platform"] }
