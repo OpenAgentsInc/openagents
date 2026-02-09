@@ -20,6 +20,13 @@ import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
+import type {
+  CreateRunResult,
+  GetBlueprintResult,
+  GetThreadSnapshotResult,
+  IsCancelRequestedResult,
+  ThreadSnapshotMessage,
+} from "./convexTypes";
 
 /** Cloudflare Workers AI model (fallback when OpenRouter is used or only option when OPENROUTER_API_KEY is unset). */
 const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
@@ -82,6 +89,10 @@ type BlueprintHint = {
     readonly status?: string;
     readonly stage?: string;
   };
+  readonly docs?: {
+    readonly user?: { readonly addressAs?: string };
+    readonly identity?: { readonly name?: string };
+  };
 } | null;
 
 const BOOTSTRAP_ASK_USER_HANDLE_SYSTEM =
@@ -95,7 +106,7 @@ const concatTextFromPromptMessages = (
   messages: ReadonlyArray<{ readonly role: string; readonly text: string }>,
   blueprint: BlueprintHint = null,
 ): AiPrompt.RawInput => {
-  const out: Array<any> = [];
+  const out: Array<{ role: string; content: string | Array<{ type: "text"; text: string }> }> = [];
 
   let systemContent =
     "You are Autopilot.\n" +
@@ -113,7 +124,7 @@ const concatTextFromPromptMessages = (
 
   for (const m of messages) {
     const role = m.role === "assistant" ? "assistant" : "user";
-    out.push({ role, content: [{ type: "text", text: m.text }] } as any);
+    out.push({ role, content: [{ type: "text" as const, text: m.text }] });
   }
 
   return out as unknown as AiPrompt.RawInput;
@@ -133,7 +144,7 @@ const flushPartsToConvex = (input: {
     runId: input.runId,
     messageId: input.messageId,
     parts: input.parts.map((p) => ({ seq: p.seq, part: p.part })),
-  } as any);
+  });
 
 const finalizeRunInConvex = (input: {
   readonly convex: ConvexServiceApi;
@@ -151,7 +162,7 @@ const finalizeRunInConvex = (input: {
     messageId: input.messageId,
     status: input.status,
     ...(typeof input.text === "string" ? { text: input.text } : {}),
-  } as any);
+  });
 
 const isCancelRequested = (input: {
   readonly convex: ConvexServiceApi;
@@ -163,7 +174,7 @@ const isCancelRequested = (input: {
     threadId: input.threadId,
     ...(input.anonKey ? { anonKey: input.anonKey } : {}),
     runId: input.runId,
-  } as any);
+  });
 
 const runAutopilotStream = (input: {
   readonly env: WorkerEnv & { readonly AI: Ai };
@@ -196,23 +207,27 @@ const runAutopilotStream = (input: {
     yield* t.event("run.started", { threadId: input.threadId, runId: input.runId });
 
     // Load prompt context from Convex (messages only; omit parts).
-    const snapshot = yield* convex.query(api.autopilot.messages.getThreadSnapshot, {
+    const rawSnapshot = yield* convex.query(api.autopilot.messages.getThreadSnapshot, {
       threadId: input.threadId,
       ...(input.anonKey ? { anonKey: input.anonKey } : {}),
       maxMessages: 120,
       maxParts: 0,
-    } as any);
+    });
+    const snapshot: GetThreadSnapshotResult = rawSnapshot as GetThreadSnapshotResult;
 
     const bp = yield* convex
       .query(api.autopilot.blueprint.getBlueprint, {
         threadId: input.threadId,
         ...(input.anonKey ? { anonKey: input.anonKey } : {}),
-      } as any)
-      .pipe(Effect.catchAll(() => Effect.succeed({ ok: true, blueprint: null } as any)));
+      })
+      .pipe(
+        Effect.catchAll(() =>
+          Effect.succeed({ ok: true as const, blueprint: null, updatedAtMs: 0 } satisfies GetBlueprintResult),
+        ),
+      );
+    const blueprint = (bp as GetBlueprintResult).blueprint as BlueprintHint | null;
 
-    const blueprint = (bp as any)?.blueprint ?? null;
-
-    const messagesRaw = Array.isArray((snapshot as any)?.messages) ? ((snapshot as any).messages as any[]) : [];
+    const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray(snapshot.messages) ? snapshot.messages : [];
 
     const promptMessages = messagesRaw
       .filter((m) => m && typeof m === "object")
@@ -262,7 +277,12 @@ const runAutopilotStream = (input: {
 
     const materializeDelta = () => {
       if (bufferedDelta.length === 0) return;
-      const part: AiResponse.StreamPartEncoded = { type: "text-delta", delta: bufferedDelta } as any;
+      const part: AiResponse.StreamPartEncoded = {
+        type: "text-delta",
+        id: crypto.randomUUID(),
+        delta: bufferedDelta,
+        metadata: {},
+      };
       bufferedParts.push({ seq: seq++, part });
       bufferedDelta = "";
     };
@@ -293,8 +313,13 @@ const runAutopilotStream = (input: {
           threadId: input.threadId,
           anonKey: input.anonKey,
           runId: input.runId,
-        }).pipe(Effect.catchAll(() => Effect.succeed({ ok: true, cancelRequested: false } as any)));
-        if ((cancel as any)?.cancelRequested) {
+        }).pipe(
+          Effect.catchAll(() =>
+            Effect.succeed({ ok: true as const, cancelRequested: false } satisfies IsCancelRequestedResult),
+          ),
+        );
+        const cancelResult = cancel as IsCancelRequestedResult;
+        if (cancelResult.cancelRequested) {
           input.controller.abort();
           return;
         }
@@ -327,8 +352,8 @@ const runAutopilotStream = (input: {
         for (let i = messagesRaw.length - 1; i >= 0; i--) {
           const m = messagesRaw[i];
           if (!m || typeof m !== "object") continue;
-          if (String((m as any).role ?? "") !== "user") continue;
-          const text = String((m as any).text ?? "");
+          if (String(m.role ?? "") !== "user") continue;
+          const text = String(m.text ?? "");
           if (text.trim()) return text;
         }
         return "";
@@ -354,7 +379,16 @@ const runAutopilotStream = (input: {
       });
       yield* flush(true);
 
-      let recordedReceipt: any | null = null;
+      type DseReceiptShape = {
+        compiled_id?: string;
+        timing?: { durationMs?: number };
+        budget?: unknown;
+        receiptId?: string;
+      };
+      let recordedReceipt: DseReceiptShape | null = null;
+      const setRecordedReceipt = (r: unknown) => {
+        recordedReceipt = r as DseReceiptShape;
+      };
 
       const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
         env: input.env,
@@ -365,9 +399,7 @@ const runAutopilotStream = (input: {
         threadId: input.threadId,
         anonKey: input.anonKey,
         runId: input.runId,
-        onReceipt: (r) => {
-          recordedReceipt = r as any;
-        },
+        onReceipt: setRecordedReceipt,
       });
 
       const exit = yield* Effect.exit(
@@ -385,12 +417,14 @@ const runAutopilotStream = (input: {
       const errorText =
         exit._tag === "Failure"
           ? (() => {
-              const cause = (exit as any)?.cause;
-              if (cause && typeof cause === "object" && "message" in cause) return String((cause as any).message);
+              const cause = exit.cause;
+              if (cause && typeof cause === "object" && "message" in cause)
+                return String((cause as unknown as { message: string }).message);
               return String(cause ?? "DSE predict failed");
             })()
           : null;
 
+      const receipt = recordedReceipt as DseReceiptShape | null;
       bufferedParts.push({
         seq: seq++,
         part: {
@@ -400,11 +434,11 @@ const runAutopilotStream = (input: {
           state,
           tsMs: Date.now(),
           signatureId,
-          ...(recordedReceipt?.compiled_id ? { compiled_id: String(recordedReceipt.compiled_id) } : {}),
-          ...(recordedReceipt?.timing?.durationMs ? { timing: { durationMs: Number(recordedReceipt.timing.durationMs) } } : {}),
-          ...(recordedReceipt?.budget ? { budget: recordedReceipt.budget } : {}),
-          ...(recordedReceipt?.receiptId ? { receiptId: String(recordedReceipt.receiptId) } : {}),
-          ...(exit._tag === "Success" ? { outputPreview: (exit as any).value } : {}),
+          ...(receipt?.compiled_id != null ? { compiled_id: String(receipt.compiled_id) } : {}),
+          ...(receipt?.timing?.durationMs != null ? { timing: { durationMs: Number(receipt.timing.durationMs) } } : {}),
+          ...(receipt?.budget != null ? { budget: receipt.budget } : {}),
+          ...(receipt?.receiptId != null ? { receiptId: String(receipt.receiptId) } : {}),
+          ...(exit._tag === "Success" ? { outputPreview: exit.value } : {}),
           ...(errorText ? { errorText } : {}),
         },
       });
@@ -421,8 +455,8 @@ const runAutopilotStream = (input: {
           ),
         );
         const handle =
-          extractExit._tag === "Success" && (extractExit as any).value?.handle
-            ? String((extractExit as any).value.handle).trim()
+          extractExit._tag === "Success" && extractExit.value && "handle" in extractExit.value && extractExit.value.handle
+            ? String(extractExit.value.handle).trim()
             : "";
         if (handle && handle !== "Unknown") {
           yield* convex
@@ -430,8 +464,8 @@ const runAutopilotStream = (input: {
               threadId: input.threadId,
               ...(input.anonKey ? { anonKey: input.anonKey } : {}),
               handle,
-            } as any)
-            .pipe(Effect.catchAll(() => Effect.succeed({ ok: false } as any)));
+            })
+            .pipe(Effect.catchAll(() => Effect.succeed({ ok: false })));
         }
       }
     }).pipe(
@@ -448,11 +482,11 @@ const runAutopilotStream = (input: {
     const runStream = Stream.runForEach(stream, (part) =>
       Effect.sync(() => {
         if (input.controller.signal.aborted) return;
-        const encoded = encodeStreamPart(part as any);
-        if (shouldIgnoreWirePart(encoded as any)) return;
+        const encoded = encodeStreamPart(part) as AiResponse.StreamPartEncoded;
+        if (shouldIgnoreWirePart(encoded)) return;
 
         if (encoded.type === "text-delta") {
-          const delta = String((encoded as any).delta ?? "");
+          const delta = String(encoded.delta ?? "");
           bufferedDelta += delta;
           outputText += delta;
           return;
@@ -462,7 +496,7 @@ const runAutopilotStream = (input: {
         materializeDelta();
 
         // Encoded parts are small; we buffer them and flush on the same cadence as text.
-        bufferedParts.push({ seq: seq++, part: encoded as any });
+        bufferedParts.push({ seq: seq++, part: encoded });
       }).pipe(Effect.zipRight(flush(false))),
     ).pipe(Effect.provide(modelLayer));
 
@@ -479,7 +513,7 @@ const runAutopilotStream = (input: {
       status = input.controller.signal.aborted ? "canceled" : "error";
       yield* t.log("error", "run.failed", { message: err instanceof Error ? err.message : String(err) });
       // Best-effort: append a terminal error part.
-      const errorPart: AiResponse.StreamPartEncoded = { type: "error", error: String(err) } as any;
+      const errorPart: AiResponse.StreamPartEncoded = { type: "error", error: String(err), metadata: {} };
       yield* flushPartsToConvex({
         convex,
         threadId: input.threadId,
@@ -561,7 +595,7 @@ export const handleAutopilotRequest = async (
           threadId,
           ...(anonKey ? { anonKey } : {}),
           text,
-        } as any);
+        });
       }).pipe(
         Effect.provideService(RequestContextService, makeServerRequestContext(request)),
         Effect.provideService(TelemetryService, requestTelemetry),
@@ -573,7 +607,7 @@ export const handleAutopilotRequest = async (
       return json({ ok: false, error: "create_run_failed" }, { status: 500, headers: { "cache-control": "no-store" } });
     }
 
-    const value = exit.value as any;
+    const value = exit.value as CreateRunResult;
     const runId = String(value.runId ?? "");
     const assistantMessageId = String(value.assistantMessageId ?? "");
 
@@ -632,7 +666,7 @@ export const handleAutopilotRequest = async (
           threadId,
           ...(anonKey ? { anonKey } : {}),
           runId,
-        } as any);
+        });
       }).pipe(
         Effect.provideService(RequestContextService, makeServerRequestContext(request)),
         Effect.provideService(TelemetryService, requestTelemetry),

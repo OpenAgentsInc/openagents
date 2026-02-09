@@ -27,6 +27,14 @@ import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
+import type {
+  DseGetActiveResult,
+  DseGetArtifactResult,
+  DseGetReportResult,
+  DseListExamplesResult,
+  DseStopCanaryResult,
+} from "./convexTypes";
+import type { DseSignature } from "@openagentsinc/dse";
 
 const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
 const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
@@ -57,9 +65,10 @@ const mapStoredSplitToDseSplit = (split: unknown): EvalDataset.DatasetSplit | un
   return undefined;
 };
 
-const findSignatureById = (signatureId: string) => {
-  for (const sig of Object.values(dseCatalogSignatures) as any[]) {
-    if (sig && typeof sig === "object" && String((sig as any).id ?? "") === signatureId) return sig as any;
+const findSignatureById = (signatureId: string): DseSignature<unknown, unknown> | null => {
+  for (const sig of Object.values(dseCatalogSignatures)) {
+    if (sig && typeof sig === "object" && "id" in sig && String(sig.id) === signatureId)
+      return sig as DseSignature<unknown, unknown>;
   }
   return null;
 };
@@ -109,7 +118,8 @@ const compileEnv = Layer.mergeAll(
 );
 
 const decodeCompileReportHoldoutReward = (reportJson: unknown): number => {
-  const holdout = (reportJson as any)?.report?.holdoutReward;
+  const report = reportJson as { report?: { holdoutReward?: number } };
+  const holdout = report?.report?.holdoutReward;
   const n = typeof holdout === "number" ? holdout : NaN;
   if (!Number.isFinite(n)) throw new Error("invalid_compile_report");
   return n;
@@ -165,7 +175,7 @@ const runAuthedDseAdmin = async <A>(
   );
 
   if (exit._tag === "Failure") {
-    const msg = String((exit as any)?.cause ?? "dse_admin_failed");
+    const msg = String(exit._tag === "Failure" ? exit.cause : "dse_admin_failed");
     const status = msg.includes("unauthorized") ? 401 : msg.includes("invalid_input") ? 400 : 500;
     console.error(`[dse.admin] ${formatRequestIdLogToken(requestId)}`, msg);
     return json({ ok: false, error: msg }, { status, headers: { "cache-control": "no-store" } });
@@ -212,11 +222,12 @@ export const handleDseAdminRequest = async (
 
       const convex = yield* ConvexService;
 
-      const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 } as any);
-      const raw = Array.isArray((exRes as any)?.examples) ? ((exRes as any).examples as any[]) : [];
+      const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 });
+      const listResult = exRes as DseListExamplesResult;
+      const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
 
-      const decodeInput = Schema.decodeUnknownSync((signature as any).input);
-      const decodeOutput = Schema.decodeUnknownSync((signature as any).output);
+      const decodeInput = Schema.decodeUnknownSync(signature.input);
+      const decodeOutput = Schema.decodeUnknownSync(signature.output);
 
       const examples = raw.map((r) => ({
         exampleId: String(r?.exampleId ?? ""),
@@ -238,8 +249,9 @@ export const handleDseAdminRequest = async (
       const { jobSpec, reward } = compileJobSpecForSignature({ signatureId, datasetId });
       const jobHash = yield* CompileJob.compileJobHash(jobSpec);
 
-      const reportRes = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash } as any);
-      const report = (reportRes as any)?.report ?? null;
+      const reportRes = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash });
+      const reportResult = reportRes as DseGetReportResult;
+      const report = reportResult?.report ?? null;
       if (!report) return yield* Effect.fail(new Error("compile_report_not_found"));
       if (String(report.compiled_id ?? "") !== compiled_id) return yield* Effect.fail(new Error("compiled_id_mismatch"));
 
@@ -248,13 +260,18 @@ export const handleDseAdminRequest = async (
         catch: () => new Error("invalid_compile_report"),
       });
 
-      const activeRes = yield* convex.query(api.dse.active.getActive, { signatureId } as any);
-      const control_compiled_id = typeof (activeRes as any)?.compiled_id === "string" ? (activeRes as any).compiled_id : null;
+      const activeRes = yield* convex.query(api.dse.active.getActive, { signatureId });
+      const activeResult = activeRes as DseGetActiveResult;
+      const control_compiled_id = typeof activeResult?.compiled_id === "string" ? activeResult.compiled_id : null;
 
       let baselineHoldoutReward = 0;
       if (control_compiled_id) {
-        const baseArtifactRes = yield* convex.query(api.dse.artifacts.getArtifact, { signatureId, compiled_id: control_compiled_id } as any);
-        const baseRaw = (baseArtifactRes as any)?.artifact ?? null;
+        const baseArtifactRes = yield* convex.query(api.dse.artifacts.getArtifact, {
+          signatureId,
+          compiled_id: control_compiled_id,
+        });
+        const baseArtifactResult = baseArtifactRes as DseGetArtifactResult;
+        const baseRaw = baseArtifactResult?.artifact ?? null;
         if (!baseRaw) return yield* Effect.fail(new Error("control_artifact_missing"));
 
         const baseArtifact = yield* Effect.try({
@@ -294,10 +311,12 @@ export const handleDseAdminRequest = async (
         signatureId,
         compiled_id,
         reason: `promote baselineHoldout=${baselineHoldoutReward.toFixed(4)} candidateHoldout=${candidateHoldoutReward.toFixed(4)} delta=${delta.toFixed(4)} minDelta=${minHoldoutDelta.toFixed(4)} jobHash=${jobHash} datasetHash=${datasetHash}`,
-      } as any);
+      });
 
       // Canary config becomes stale after a promotion; clear it best-effort.
-      yield* convex.mutation(api.dse.canary.stopCanary, { signatureId, reason: "promoted" } as any).pipe(Effect.catchAll(() => Effect.void));
+      yield* convex.mutation(api.dse.canary.stopCanary, { signatureId, reason: "promoted" }).pipe(
+        Effect.catchAll(() => Effect.void),
+      );
 
       yield* t.event("promote.ok", {
         signatureId,
@@ -360,11 +379,12 @@ export const handleDseAdminRequest = async (
 
       const convex = yield* ConvexService;
 
-      const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 } as any);
-      const raw = Array.isArray((exRes as any)?.examples) ? ((exRes as any).examples as any[]) : [];
+      const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 });
+      const listResult = exRes as DseListExamplesResult;
+      const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
 
-      const decodeInput = Schema.decodeUnknownSync((signature as any).input);
-      const decodeOutput = Schema.decodeUnknownSync((signature as any).output);
+      const decodeInput = Schema.decodeUnknownSync(signature.input);
+      const decodeOutput = Schema.decodeUnknownSync(signature.output);
 
       const examples = raw.map((r) => ({
         exampleId: String(r?.exampleId ?? ""),
@@ -385,8 +405,9 @@ export const handleDseAdminRequest = async (
       const { jobSpec, reward } = compileJobSpecForSignature({ signatureId, datasetId });
       const jobHash = yield* CompileJob.compileJobHash(jobSpec);
 
-      const reportRes = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash } as any);
-      const report = (reportRes as any)?.report ?? null;
+      const reportRes = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash });
+      const reportResult = reportRes as DseGetReportResult;
+      const report = reportResult?.report ?? null;
       if (!report) return yield* Effect.fail(new Error("compile_report_not_found"));
       if (String(report.compiled_id ?? "") !== canary_compiled_id) return yield* Effect.fail(new Error("compiled_id_mismatch"));
 
@@ -395,12 +416,17 @@ export const handleDseAdminRequest = async (
         catch: () => new Error("invalid_compile_report"),
       });
 
-      const activeRes = yield* convex.query(api.dse.active.getActive, { signatureId } as any);
-      const control_compiled_id = typeof (activeRes as any)?.compiled_id === "string" ? (activeRes as any).compiled_id : null;
+      const activeRes = yield* convex.query(api.dse.active.getActive, { signatureId });
+      const activeResult = activeRes as DseGetActiveResult;
+      const control_compiled_id = typeof activeResult?.compiled_id === "string" ? activeResult.compiled_id : null;
       if (!control_compiled_id) return yield* Effect.fail(new Error("control_missing"));
 
-      const baseArtifactRes = yield* convex.query(api.dse.artifacts.getArtifact, { signatureId, compiled_id: control_compiled_id } as any);
-      const baseRaw = (baseArtifactRes as any)?.artifact ?? null;
+      const baseArtifactRes = yield* convex.query(api.dse.artifacts.getArtifact, {
+        signatureId,
+        compiled_id: control_compiled_id,
+      });
+      const baseArtifactResult = baseArtifactRes as DseGetArtifactResult;
+      const baseRaw = baseArtifactResult?.artifact ?? null;
       if (!baseRaw) return yield* Effect.fail(new Error("control_artifact_missing"));
 
       const baseArtifact = yield* Effect.try({
@@ -441,7 +467,7 @@ export const handleDseAdminRequest = async (
         ...(minSamples !== undefined ? { minSamples } : {}),
         ...(maxErrorRate !== undefined ? { maxErrorRate } : {}),
         ...(reason ? { reason } : {}),
-      } as any);
+      });
 
       yield* t.event("canary.started", {
         signatureId,
@@ -492,10 +518,18 @@ export const handleDseAdminRequest = async (
       if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
 
       const convex = yield* ConvexService;
-      const stopped = yield* convex.mutation(api.dse.canary.stopCanary, { signatureId, ...(reason ? { reason } : {}) } as any);
-      yield* t.event("canary.stopped", { signatureId, existed: Boolean((stopped as any)?.existed), ...(reason ? { reason } : {}) });
+      const stopped = yield* convex.mutation(api.dse.canary.stopCanary, {
+        signatureId,
+        ...(reason ? { reason } : {}),
+      });
+      const stopResult = stopped as DseStopCanaryResult;
+      yield* t.event("canary.stopped", {
+        signatureId,
+        existed: Boolean(stopResult?.existed),
+        ...(reason ? { reason } : {}),
+      });
 
-      return { ok: true, signatureId, existed: Boolean((stopped as any)?.existed) } as const;
+      return { ok: true, signatureId, existed: Boolean(stopResult?.existed) } as const;
     });
 
     return runAuthedDseAdmin(request, env, program);

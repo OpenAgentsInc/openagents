@@ -6,7 +6,28 @@ import { api } from "../../convex/_generated/api";
 import { ConvexService } from "../effect/convex";
 import { RequestContextService } from "../effect/requestContext";
 
+import type {
+  DseCanaryResult,
+  DseGetActiveResult,
+  DseGetArtifactResult,
+} from "./convexTypes";
+
 const asError = (u: unknown): Error => (u instanceof Error ? u : new Error(String(u)));
+
+function isPolicyRegistryError(cause: unknown): cause is Policy.PolicyRegistryError {
+  return (
+    cause !== null &&
+    typeof cause === "object" &&
+    "_tag" in cause &&
+    (cause as { _tag: string })._tag === "PolicyRegistryError"
+  );
+}
+
+type WorkersAiCompletionOutput = {
+  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+  response?: string;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
 
 export const makeWorkersAiDseLmClient = (input: {
   readonly binding: Ai;
@@ -22,23 +43,24 @@ export const makeWorkersAiDseLmClient = (input: {
             content: m.content,
           }));
 
+          // Cloudflare AI binding expects model key from AiModels; we pass string at runtime.
           const output = (await input.binding.run(
-            modelId as any,
+            modelId as Parameters<Ai["run"]>[0],
             {
               model: modelId,
               max_tokens: req.maxTokens ?? 256,
-              messages: messages as any,
+              messages,
               ...(typeof req.temperature === "number" ? { temperature: req.temperature } : {}),
               ...(typeof req.topP === "number" ? { top_p: req.topP } : {}),
-            } as any,
+            } as Parameters<Ai["run"]>[1],
             {},
-          )) as any;
+          )) as WorkersAiCompletionOutput;
 
           const text =
             output?.choices?.[0]?.message?.content ??
             (typeof output?.response === "string" ? output.response : JSON.stringify(output?.response ?? ""));
 
-          const usageRaw = output?.usage as any;
+          const usageRaw = output?.usage;
           const promptTokens = typeof usageRaw?.prompt_tokens === "number" ? usageRaw.prompt_tokens : undefined;
           const completionTokens =
             typeof usageRaw?.completion_tokens === "number" ? usageRaw.completion_tokens : undefined;
@@ -99,7 +121,10 @@ export const makeOpenRouterDseLmClient = (input: {
             const text = await res.text();
             throw new Error(`OpenRouter API error ${res.status}: ${text}`);
           }
-          const output = (await res.json()) as any;
+          const output = (await res.json()) as {
+            choices?: Array<{ message?: { content?: string } }>;
+            usage?: { prompt_tokens?: number; completion_tokens?: number };
+          };
           const text = output?.choices?.[0]?.message?.content ?? "";
           const usageRaw = output?.usage;
           const promptTokens = typeof usageRaw?.prompt_tokens === "number" ? usageRaw.prompt_tokens : undefined;
@@ -188,16 +213,17 @@ export const layerDsePolicyRegistryFromConvex = (input: {
         Effect.gen(function* () {
           // Stage 6: optional canary selection (deterministic per thread).
           const canaryRes = yield* convex
-            .query(api.dse.canary.getCanary, { signatureId, threadId: input.threadId } as any)
+            .query(api.dse.canary.getCanary, { signatureId, threadId: input.threadId })
             .pipe(Effect.provideService(RequestContextService, requestContext));
 
-          const canary = (canaryRes as any)?.canary ?? null;
+          const canaryResult = canaryRes as DseCanaryResult;
+          const canary = canaryResult?.canary ?? null;
           if (canary && typeof canary === "object") {
-            const enabled = Boolean((canary as any).enabled);
-            const rolloutPct = Number((canary as any).rolloutPct ?? 0);
-            const salt = String((canary as any).salt ?? "");
-            const canaryCompiled = String((canary as any).canary_compiled_id ?? "");
-            const controlCompiled = String((canary as any).control_compiled_id ?? "");
+            const enabled = Boolean(canary.enabled);
+            const rolloutPct = Number(canary.rolloutPct ?? 0);
+            const salt = String(canary.salt ?? "");
+            const canaryCompiled = String(canary.canary_compiled_id ?? "");
+            const controlCompiled = String(canary.control_compiled_id ?? "");
 
             if (enabled && rolloutPct > 0 && canaryCompiled && controlCompiled) {
               const bucket = stableBucket100(`${salt}:${input.threadId}:${signatureId}`);
@@ -207,10 +233,11 @@ export const layerDsePolicyRegistryFromConvex = (input: {
           }
 
           const res = yield* convex
-            .query(api.dse.active.getActive, { signatureId } as any)
+            .query(api.dse.active.getActive, { signatureId })
             .pipe(Effect.provideService(RequestContextService, requestContext));
 
-          const compiled_id = typeof (res as any)?.compiled_id === "string" ? (res as any).compiled_id : null;
+          const activeResult = res as DseGetActiveResult;
+          const compiled_id = typeof activeResult?.compiled_id === "string" ? activeResult.compiled_id : null;
           return compiled_id ? { compiledId: compiled_id } : null;
         }).pipe(
           Effect.mapError((cause) =>
@@ -224,7 +251,7 @@ export const layerDsePolicyRegistryFromConvex = (input: {
             signatureId,
             compiled_id: policy.compiledId,
             reason: "PolicyRegistryService.setActive",
-          } as any)
+          })
           .pipe(
             Effect.provideService(RequestContextService, requestContext),
             Effect.asVoid,
@@ -235,7 +262,7 @@ export const layerDsePolicyRegistryFromConvex = (input: {
 
       const clearActive: Policy.PolicyRegistry["clearActive"] = (signatureId) =>
         convex
-          .mutation(api.dse.active.clearActive, { signatureId, reason: "PolicyRegistryService.clearActive" } as any)
+          .mutation(api.dse.active.clearActive, { signatureId, reason: "PolicyRegistryService.clearActive" })
           .pipe(
             Effect.provideService(RequestContextService, requestContext),
             Effect.asVoid,
@@ -246,11 +273,12 @@ export const layerDsePolicyRegistryFromConvex = (input: {
 
       const getArtifact: Policy.PolicyRegistry["getArtifact"] = (signatureId, compiledId) =>
         convex
-          .query(api.dse.artifacts.getArtifact, { signatureId, compiled_id: compiledId } as any)
+          .query(api.dse.artifacts.getArtifact, { signatureId, compiled_id: compiledId })
           .pipe(
             Effect.provideService(RequestContextService, requestContext),
-            Effect.flatMap((res: any) => {
-              const raw = res?.artifact as unknown;
+            Effect.flatMap((res) => {
+              const artifactRes = res as DseGetArtifactResult;
+              const raw = artifactRes?.artifact;
               if (!raw) return Effect.succeed(null);
               return Effect.try({
                 try: () => Schema.decodeUnknownSync(CompiledArtifact.DseCompiledArtifactV1Schema)(raw),
@@ -262,8 +290,7 @@ export const layerDsePolicyRegistryFromConvex = (input: {
               });
             }),
             Effect.mapError((cause) => {
-              // Preserve typed PolicyRegistryError when thrown above.
-              if (cause && typeof cause === "object" && (cause as any)._tag === "PolicyRegistryError") return cause as any;
+              if (isPolicyRegistryError(cause)) return cause;
               return Policy.PolicyRegistryError.make({ message: "Failed to read DSE artifact", cause: asError(cause) });
             }),
           );
@@ -279,12 +306,12 @@ export const layerDsePolicyRegistryFromConvex = (input: {
               signatureId: artifact.signatureId,
               compiled_id: artifact.compiled_id,
               json: encoded,
-            } as any),
+            }),
           ),
           Effect.provideService(RequestContextService, requestContext),
           Effect.asVoid,
           Effect.mapError((cause) => {
-            if (cause && typeof cause === "object" && (cause as any)._tag === "PolicyRegistryError") return cause as any;
+            if (isPolicyRegistryError(cause)) return cause;
             return Policy.PolicyRegistryError.make({ message: "Failed to write DSE artifact", cause: asError(cause) });
           }),
         );
@@ -319,7 +346,7 @@ export const layerDseReceiptRecorderFromConvex = (input: {
               ...(input.anonKey ? { anonKey: input.anonKey } : {}),
               runId: input.runId,
               receipt,
-            } as any),
+            }),
           ),
           Effect.provideService(RequestContextService, requestContext),
           Effect.asVoid,

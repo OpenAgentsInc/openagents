@@ -363,8 +363,8 @@ export const handleSsrRequest = async (
         if (run.hints?.headers) {
           for (const [k, v] of run.hints.headers) headers.append(k, v)
         }
-        applyCachePolicy(headers, { cache: run.hints?.cache, cookies: run.hints?.cookies as any })
-        applyCookieMutations(headers, run.hints?.cookies as any)
+        applyCachePolicy(headers, { cache: run.hints?.cache, cookies: run.hints?.cookies })
+        applyCookieMutations(headers, run.hints?.cookies)
         if (setBypassCookie) {
           headers.append(
             "Set-Cookie",

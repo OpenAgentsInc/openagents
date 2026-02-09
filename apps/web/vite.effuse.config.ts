@@ -34,8 +34,7 @@ function watchDecksPlugin() {
       // Only start a filesystem watcher during watch builds (`vite build --watch`).
       // In non-watch builds, this keeps the process alive and causes `npm run build` to hang.
       // Rollup exposes this via `this.meta.watchMode`.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const watchMode = Boolean((this as any)?.meta?.watchMode)
+      const watchMode = Boolean((this as { meta?: { watchMode?: boolean } })?.meta?.watchMode)
       if (!watchMode || watcher) return
       try {
         watcher = fs.watch(publicDecksDir, { recursive: false }, (_event, filename) => {

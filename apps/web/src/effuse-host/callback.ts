@@ -27,7 +27,7 @@ export const handleCallbackRequest = async (request: Request): Promise<Response>
     headers.set("location", location)
 
     // Persist WorkOS session cookie.
-    const setCookie = (result.headers as any)?.["Set-Cookie"]
+    const setCookie = (result.headers as unknown as Record<string, string>)["Set-Cookie"];
     if (typeof setCookie === "string") {
       headers.append("Set-Cookie", setCookie)
     }
