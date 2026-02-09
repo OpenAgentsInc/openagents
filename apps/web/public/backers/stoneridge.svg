@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120">
+  <rect width="320" height="120" rx="12" fill="#0b1221"/>
+  <rect x="12" y="12" width="296" height="96" rx="10" fill="#0f172a" stroke="#14b8a6" stroke-width="2"/>
+  <text x="160" y="68" font-family="Helvetica,Arial,sans-serif" font-size="32" font-weight="700" fill="#e5e7eb" text-anchor="middle">Stone Ridge</text>
+</svg>

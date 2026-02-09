@@ -172,6 +172,9 @@ const renderDocument = (input: {
 const PRELAUNCH_BYPASS_COOKIE = "prelaunch_bypass=1"
 const PRELAUNCH_BYPASS_COOKIE_MAX_AGE = 604800 // 7 days
 
+/** When prelaunch is on, only these pathnames are allowed without ?key= or cookie. */
+const PRELAUNCH_ALLOWED_PATHNAMES = new Set(["/", "/deck"])
+
 function hasPrelaunchBypass(
   request: Request,
   url: URL,
@@ -183,6 +186,38 @@ function hasPrelaunchBypass(
   return url.searchParams.get("key") === bypassKey
 }
 
+function normalizePathname(pathname: string): string {
+  const s = pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname
+  return s || "/"
+}
+
+/**
+ * Returns a 302 redirect to / when prelaunch is on and the request is not allowed.
+ * Call this at the very start of the Worker for GET/HEAD so /autopilot is never served.
+ */
+export function getPrelaunchRedirectIfRequired(
+  request: Request,
+  url: URL,
+  env: WorkerEnv,
+): Response | null {
+  const config = getWorkerAppConfig(env)
+  if (!config.prelaunch) return null
+  const bypassGranted = hasPrelaunchBypass(request, url, config.prelaunchBypassKey)
+  if (bypassGranted) return null
+  const pathname = normalizePathname(url.pathname)
+  if (PRELAUNCH_ALLOWED_PATHNAMES.has(pathname)) return null
+  return new Response(null, {
+    status: 302,
+    headers: new Headers({
+      location: "/",
+      "cache-control": "no-store, no-cache, must-revalidate",
+      pragma: "no-cache",
+      expires: "0",
+      "x-oa-prelaunch": "redirect",
+    }),
+  })
+}
+
 export const handleSsrRequest = async (
   request: Request,
   env: WorkerEnv,
@@ -190,7 +225,9 @@ export const handleSsrRequest = async (
   const url = new URL(request.url)
   const config = getWorkerAppConfig(env)
   const bypassGranted = hasPrelaunchBypass(request, url, config.prelaunchBypassKey)
-  if (config.prelaunch && url.pathname !== "/" && !bypassGranted) {
+  const pathname = normalizePathname(url.pathname)
+  const allowedWithoutBypass = PRELAUNCH_ALLOWED_PATHNAMES.has(pathname)
+  if (config.prelaunch && !bypassGranted && !allowedWithoutBypass) {
     return new Response(null, {
       status: 302,
       headers: new Headers({ location: "/", "cache-control": "no-store" }),

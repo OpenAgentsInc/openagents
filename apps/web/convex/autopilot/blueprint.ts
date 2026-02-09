@@ -85,6 +85,88 @@ export const setBlueprint = effectMutation({
   handler: setBlueprintImpl,
 });
 
+/**
+ * Apply user handle during bootstrap and advance to ask_agent_name.
+ * Only applies when bootstrapState.stage === "ask_user_handle".
+ */
+export const applyBootstrapUserHandleImpl = (
+  ctx: EffectMutationCtx,
+  args: {
+    readonly threadId: string;
+    readonly anonKey?: string | undefined;
+    readonly handle: string;
+  },
+) =>
+  Effect.gen(function* () {
+    const thread = yield* assertThreadAccess(ctx, args);
+
+    const handle = String(args.handle ?? "").trim();
+    if (!handle) return { ok: true, applied: false, updatedAtMs: 0 };
+
+    const row = yield* tryPromise(() =>
+      ctx.db
+        .query("blueprints")
+        .withIndex("by_threadId", (q) => q.eq("threadId", args.threadId))
+        .unique(),
+    );
+
+    const current = row ? ((row as any).blueprint ?? null) : makeDefaultBlueprintState(args.threadId);
+    if (!current || typeof current !== "object") return { ok: true, applied: false, updatedAtMs: 0 };
+
+    const bs = (current as any).bootstrapState;
+    const status = bs?.status;
+    const stage = bs?.stage;
+    if (status === "complete" || stage !== "ask_user_handle") {
+      return { ok: true, applied: false, updatedAtMs: (row as any)?.updatedAtMs ?? 0 };
+    }
+
+    const now = new Date().toISOString();
+    const updated = {
+      ...current,
+      docs: {
+        ...(current as any).docs,
+        user: {
+          ...((current as any).docs?.user ?? {}),
+          addressAs: handle,
+          name: handle,
+          updatedAt: now,
+          updatedBy: "agent",
+        },
+      },
+      bootstrapState: {
+        ...bs,
+        stage: "ask_agent_name",
+      },
+    };
+
+    const updatedAtMs = nowMs();
+    if (row) {
+      yield* tryPromise(() => ctx.db.patch((row as any)._id, { blueprint: updated, updatedAtMs }));
+    } else {
+      yield* tryPromise(() =>
+        ctx.db.insert("blueprints", { threadId: args.threadId, blueprint: updated, updatedAtMs }),
+      );
+    }
+
+    yield* tryPromise(() => ctx.db.patch((thread as any)._id, { updatedAtMs }));
+
+    return { ok: true, applied: true, updatedAtMs };
+  });
+
+export const applyBootstrapUserHandle = effectMutation({
+  args: {
+    threadId: v.string(),
+    anonKey: v.optional(v.string()),
+    handle: v.string(),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    applied: v.boolean(),
+    updatedAtMs: v.number(),
+  }),
+  handler: applyBootstrapUserHandleImpl,
+});
+
 export const resetBlueprintImpl = (
   ctx: EffectMutationCtx,
   args: { readonly threadId: string; readonly anonKey?: string | undefined },

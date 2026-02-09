@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import type { EzAction, RouterService } from "@openagentsinc/effuse"
 
-import { cleanupAuthedDotsGridBackground, hydrateAuthedDotsGridBackground } from "../../effuse-pages/authedShell"
+import { cleanupMarketingDotsGridBackground, hydrateMarketingDotsGridBackground } from "../../effuse-pages/marketingShell"
 import { runAutopilotRoute } from "../../effuse-pages/autopilotRoute"
 import { AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from "../../effect/atoms/chat"
 import { AutopilotSidebarCollapsedAtom, AutopilotSidebarUserMenuOpenAtom } from "../../effect/atoms/autopilotUi"
@@ -84,7 +84,7 @@ export const mountAutopilotController = (input: {
 
   // Atom-backed UI state
   let session = initialSession
-  let collapsed = atoms.get(AutopilotSidebarCollapsedAtom)
+  let _collapsed = atoms.get(AutopilotSidebarCollapsedAtom)
   let userMenuOpen = atoms.get(AutopilotSidebarUserMenuOpenAtom)
   let chatSnapshot = atoms.get(ChatSnapshotAtom(chatId))
   let isAtBottom = atoms.get(AutopilotChatIsAtBottomAtom(chatId))
@@ -363,7 +363,7 @@ export const mountAutopilotController = (input: {
       }
     })()
 
-    const blueprintPanelModel = {
+    const _blueprintPanelModel = {
       updatedAtLabel: blueprintUpdatedAt ? new Date(blueprintUpdatedAt).toLocaleTimeString() : null,
       isLoading: blueprintLoading,
       canEdit: Boolean(blueprint),
@@ -375,42 +375,11 @@ export const mountAutopilotController = (input: {
       draft: baseBlueprint ? formDraft : null,
     }
 
-    const controlsModel = {
-      isExportingBlueprint,
-      isBusy,
-      isResettingAgent,
-    }
-
-    const sidebarModel = {
-      collapsed,
-      pathname: window.location.pathname,
-      user: session.user
-        ? {
-            email: session.user.email,
-            firstName: session.user.firstName,
-            lastName: session.user.lastName,
-          }
-        : null,
-      userMenuOpen,
-    }
-
-    const sidebarKey = `${collapsed ? 1 : 0}:${window.location.pathname}:${session.user?.id ?? "null"}:${userMenuOpen ? 1 : 0}`
     const chatKey = `${renderedTailKey}:${isBusy ? 1 : 0}:${isAtBottom ? 1 : 0}:${toolContractsKey}:${chatSnapshot.errorText ?? ""}:${session.userId ?? "null"}:${authStep}:${authBusy ? 1 : 0}:${authEmail}:${authCode}:${authErrorText ?? ""}`
 
-    const blueprintKeyUpdatedAt = blueprintKeyFrozenAt ?? blueprintUpdatedAt ?? 0
-    const blueprintKey = `blueprint:${blueprintMode}:${isSavingBlueprint ? 1 : 0}:${blueprintLoading ? 1 : 0}:${blueprintError ?? ""}:${blueprintRawError ?? ""}:${blueprintKeyUpdatedAt}`
-
-    const controlsKey = `${isExportingBlueprint ? 1 : 0}:${isBusy ? 1 : 0}:${isResettingAgent ? 1 : 0}`
-
     const renderInput: AutopilotRouteRenderInput = {
-      sidebarModel,
-      sidebarKey,
       chatData: autopilotChatData,
       chatKey,
-      blueprintModel: blueprintPanelModel,
-      blueprintKey,
-      controlsModel,
-      controlsKey,
     }
 
     Effect.runPromise(runAutopilotRoute(input.container, renderInput)).catch(() => {})
@@ -495,7 +464,7 @@ export const mountAutopilotController = (input: {
   }, { immediate: false })
 
   const unsubCollapsed = atoms.subscribe(AutopilotSidebarCollapsedAtom, (next) => {
-    collapsed = next
+    _collapsed = next
     scheduleRender()
   }, { immediate: false })
 
@@ -1042,7 +1011,7 @@ export const mountAutopilotController = (input: {
   )
 
   // Start background work + initial render/hydration.
-  Effect.runPromise(hydrateAuthedDotsGridBackground(input.container)).catch(() => {})
+  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
   void fetchBlueprint()
   void fetchToolContracts()
   ensureBlueprintPolling(prevBusy)
@@ -1089,7 +1058,7 @@ export const mountAutopilotController = (input: {
       input.ez.delete("autopilot.controls.clearMessages")
       input.ez.delete("autopilot.controls.resetAgent")
 
-      cleanupAuthedDotsGridBackground(input.container)
+      cleanupMarketingDotsGridBackground(input.container)
     },
   }
 }

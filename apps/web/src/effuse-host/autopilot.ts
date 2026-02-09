@@ -5,6 +5,8 @@ import * as AiToolkit from "@effect/ai/Toolkit";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect/ai/languageModel";
+import { makeOpenRouterLanguageModel } from "../../../autopilot-worker/src/effect/ai/openRouterLanguageModel";
+import { makeFallbackLanguageModel } from "../../../autopilot-worker/src/effect/ai/fallbackLanguageModel";
 import { Lm, Predict } from "@openagentsinc/dse";
 import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
 
@@ -14,16 +16,20 @@ import { ConvexService, type ConvexServiceApi } from "../effect/convex";
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
 import { TelemetryService } from "../effect/telemetry";
 
-import { layerDsePredictEnvForAutopilotRun, makeWorkersAiDseLmClient } from "./dse";
+import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 
-const MODEL_ID = "@cf/openai/gpt-oss-120b";
+/** Cloudflare Workers AI model (fallback when OpenRouter is used or only option when OPENROUTER_API_KEY is unset). */
+const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
+/** OpenRouter model used as primary when OPENROUTER_API_KEY is set. */
+const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
 const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
 
 const predictBlueprintSelectTool = Predict.make(dseCatalogSignatures.blueprint_select_tool);
+const predictExtractUserHandle = Predict.make(dseCatalogSignatures.bootstrap_extract_user_handle);
 
 const json = (body: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(body), {
@@ -70,20 +76,40 @@ const encodeStreamPart = Schema.encodeSync(AiResponse.StreamPart(emptyToolkit));
 const shouldIgnoreWirePart = (part: AiResponse.StreamPartEncoded): boolean =>
   part.type === "reasoning-start" || part.type === "reasoning-delta" || part.type === "reasoning-end";
 
+/** Blueprint shape (minimal) for bootstrap-aware prompt. */
+type BlueprintHint = {
+  readonly bootstrapState?: {
+    readonly status?: string;
+    readonly stage?: string;
+  };
+} | null;
+
+const BOOTSTRAP_ASK_USER_HANDLE_SYSTEM =
+  "\n\nBootstrap (strict): You are collecting the user's preferred handle (what to call them). " +
+  "Do NOT say generic greetings like \"Hello! How can I assist you today?\" or \"How can I help?\". " +
+  "If the user has not given a name (e.g. they said \"hi\", \"hello\", or something that is not a name), " +
+  "respond only by re-asking: \"What shall I call you?\" Do not add filler. " +
+  "Keep asking until they give a name, then confirm and move on.";
+
 const concatTextFromPromptMessages = (
   messages: ReadonlyArray<{ readonly role: string; readonly text: string }>,
+  blueprint: BlueprintHint = null,
 ): AiPrompt.RawInput => {
   const out: Array<any> = [];
 
-  // Minimal system prompt (MVP). Blueprint context/tool prompts can be layered later.
-  out.push({
-    role: "system",
-    content:
-      "You are Autopilot.\n" +
-      "- Be concise, direct, and pragmatic.\n" +
-      "- Do not claim web browsing capability.\n" +
-      "- Do not reveal internal reasoning.\n",
-  });
+  let systemContent =
+    "You are Autopilot.\n" +
+    "- Be concise, direct, and pragmatic.\n" +
+    "- Do not claim web browsing capability.\n" +
+    "- Do not reveal internal reasoning.\n";
+
+  const status = blueprint?.bootstrapState?.status;
+  const stage = blueprint?.bootstrapState?.stage;
+  if (status !== "complete" && stage === "ask_user_handle") {
+    systemContent += BOOTSTRAP_ASK_USER_HANDLE_SYSTEM;
+  }
+
+  out.push({ role: "system", content: systemContent });
 
   for (const m of messages) {
     const role = m.role === "assistant" ? "assistant" : "user";
@@ -177,6 +203,15 @@ const runAutopilotStream = (input: {
       maxParts: 0,
     } as any);
 
+    const bp = yield* convex
+      .query(api.autopilot.blueprint.getBlueprint, {
+        threadId: input.threadId,
+        ...(input.anonKey ? { anonKey: input.anonKey } : {}),
+      } as any)
+      .pipe(Effect.catchAll(() => Effect.succeed({ ok: true, blueprint: null } as any)));
+
+    const blueprint = (bp as any)?.blueprint ?? null;
+
     const messagesRaw = Array.isArray((snapshot as any)?.messages) ? ((snapshot as any).messages as any[]) : [];
 
     const promptMessages = messagesRaw
@@ -187,16 +222,30 @@ const runAutopilotStream = (input: {
       .filter((m) => m.text.trim().length > 0);
 
     const tail = promptMessages.slice(-MAX_CONTEXT_MESSAGES);
-    const rawPrompt = concatTextFromPromptMessages(tail);
+    const rawPrompt = concatTextFromPromptMessages(tail, blueprint);
     const prompt = AiPrompt.make(rawPrompt);
 
+    const workersAiModel = makeWorkersAiLanguageModel({
+      binding: input.env.AI,
+      model: MODEL_ID_CF,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+    });
+    const openRouterApiKey = typeof input.env.OPENROUTER_API_KEY === "string" && input.env.OPENROUTER_API_KEY.length > 0
+      ? input.env.OPENROUTER_API_KEY
+      : null;
     const modelLayer = Layer.effect(
       AiLanguageModel.LanguageModel,
-      makeWorkersAiLanguageModel({
-        binding: input.env.AI,
-        model: MODEL_ID,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
-      }),
+      openRouterApiKey
+        ? Effect.gen(function* () {
+            const fallback = yield* workersAiModel;
+            const primary = yield* makeOpenRouterLanguageModel({
+              apiKey: openRouterApiKey,
+              model: PRIMARY_MODEL_OPENROUTER,
+              maxOutputTokens: MAX_OUTPUT_TOKENS,
+            });
+            return yield* makeFallbackLanguageModel(primary, fallback);
+          })
+        : workersAiModel,
     );
 
     // Chunking policy.
@@ -286,15 +335,6 @@ const runAutopilotStream = (input: {
       })();
       if (!lastUserMessageText) return;
 
-      // Fetch Blueprint hint from Convex (tiny, stable context).
-      const bp = yield* convex
-        .query(api.autopilot.blueprint.getBlueprint, {
-          threadId: input.threadId,
-          ...(input.anonKey ? { anonKey: input.anonKey } : {}),
-        } as any)
-        .pipe(Effect.catchAll(() => Effect.succeed({ ok: true, blueprint: null } as any)));
-
-      const blueprint = (bp as any)?.blueprint ?? null;
       const userHandle = String(blueprint?.docs?.user?.addressAs ?? "Unknown");
       const agentName = String(blueprint?.docs?.identity?.name ?? "Autopilot");
 
@@ -316,7 +356,11 @@ const runAutopilotStream = (input: {
 
       let recordedReceipt: any | null = null;
 
-      const dseLmClient = makeWorkersAiDseLmClient({ binding: input.env.AI, defaultModelId: MODEL_ID });
+      const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+        env: input.env,
+        defaultModelIdCf: MODEL_ID_CF,
+        primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+      });
       const dseEnv = layerDsePredictEnvForAutopilotRun({
         threadId: input.threadId,
         anonKey: input.anonKey,
@@ -365,6 +409,31 @@ const runAutopilotStream = (input: {
         },
       });
       yield* flush(true);
+
+      // When in ask_user_handle, extract handle from user message and persist so next turn advances.
+      const stage = blueprint?.bootstrapState?.stage;
+      const bootstrapComplete = blueprint?.bootstrapState?.status === "complete";
+      if (!bootstrapComplete && stage === "ask_user_handle") {
+        const extractExit = yield* Effect.exit(
+          predictExtractUserHandle({ message: lastUserMessageText }).pipe(
+            Effect.provideService(Lm.LmClientService, dseLmClient),
+            Effect.provide(dseEnv),
+          ),
+        );
+        const handle =
+          extractExit._tag === "Success" && (extractExit as any).value?.handle
+            ? String((extractExit as any).value.handle).trim()
+            : "";
+        if (handle && handle !== "Unknown") {
+          yield* convex
+            .mutation(api.autopilot.blueprint.applyBootstrapUserHandle, {
+              threadId: input.threadId,
+              ...(input.anonKey ? { anonKey: input.anonKey } : {}),
+              handle,
+            } as any)
+            .pipe(Effect.catchAll(() => Effect.succeed({ ok: false } as any)));
+        }
+      }
     }).pipe(
       // Must never block the main chat response.
       Effect.catchAllCause((cause) => t.log("warn", "dse.router_failed", { message: String(cause) })),

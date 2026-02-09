@@ -44,21 +44,38 @@ const getRedirectPathname = (response: Response): string => {
 };
 
 describe("apps/web worker real routes (SSR + guards)", () => {
-  it("GET /autopilot works for anon and includes autopilot shell", async () => {
+  it("GET /autopilot redirects to / when prelaunch is on (no bypass)", async () => {
     state.authed = false;
     const request = new Request("http://example.com/autopilot", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/");
+  });
+
+  it("GET /autopilot with valid ?key= bypass returns 200 and autopilot shell", async () => {
+    state.authed = false;
+    const bypassKey = (env as { PRELAUNCH_BYPASS_KEY?: string }).PRELAUNCH_BYPASS_KEY;
+    if (!bypassKey) {
+      console.warn("PRELAUNCH_BYPASS_KEY not set in test env; skipping /autopilot bypass test");
+      return;
+    }
+    const request = new Request(`http://example.com/autopilot?key=${encodeURIComponent(bypassKey)}`, {
+      method: "GET",
+    });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
     expect(response.status).toBe(200);
     expect(response.headers.get("x-oa-request-id")).toBeTruthy();
-    expect(response.headers.get("content-type") ?? "").toContain("text/html");
     const body = await response.text();
     expect(body).toContain("data-autopilot-shell");
   });
 
-  it("GET /chat/:id redirects to /autopilot (legacy path)", async () => {
+  it("GET /chat/:id redirects to / when prelaunch is on (legacy path blocked)", async () => {
     state.authed = false;
     const request = new Request("http://example.com/chat/abc", { method: "GET" });
     const ctx = createExecutionContext();
@@ -66,7 +83,7 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(302);
-    expect(getRedirectPathname(response)).toBe("/autopilot");
+    expect(getRedirectPathname(response)).toBe("/");
   });
 
   it("GET /tools redirects to / when anon", async () => {
@@ -102,19 +119,18 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     expect(getRedirectPathname(response)).toBe("/");
   });
 
-  it("GET /login renders the login page when anon", async () => {
+  it("GET /login redirects to / when prelaunch is on (anon)", async () => {
     state.authed = false;
     const request = new Request("http://example.com/login", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
-    expect(response.status).toBe(200);
-    const body = await response.text();
-    expect(body).toContain('id="login-email"');
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/");
   });
 
-  it("GET /login redirects to /autopilot when authed", async () => {
+  it("GET /login redirects to / when prelaunch is on (authed)", async () => {
     state.authed = true;
     const request = new Request("http://example.com/login", { method: "GET" });
     const ctx = createExecutionContext();
@@ -122,19 +138,18 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toBe(302);
-    expect(getRedirectPathname(response)).toBe("/autopilot");
+    expect(getRedirectPathname(response)).toBe("/");
   });
 
-  it("GET /tools renders when authed", async () => {
+  it("GET /tools redirects to / when prelaunch is on (authed)", async () => {
     state.authed = true;
     const request = new Request("http://example.com/tools", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
 
-    expect(response.status).toBe(200);
-    const body = await response.text();
-    expect(body).toContain("Tool Contracts");
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/");
   });
 
   it("GET /deck is local-only (404 on non-local host, 200 on localhost)", async () => {

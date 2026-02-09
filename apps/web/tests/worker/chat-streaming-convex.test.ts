@@ -119,6 +119,11 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         return { ok: true, cancelRequested: state.cancelRequested.has(runId) };
       }
 
+      // getBlueprint(threadId, anonKey?) — used for bootstrap-aware prompt and DSE hint.
+      if (isRecord(args) && typeof args.threadId === "string" && !("maxMessages" in args) && !("runId" in args)) {
+        return { ok: true, blueprint: null, updatedAtMs: 0 };
+      }
+
       throw new Error(`Unexpected Convex query in tests: ${String(ref?.name ?? ref)}`);
     });
 
@@ -139,6 +144,11 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         const runId = String(args.runId ?? "");
         if (runId) state.cancelRequested.add(runId);
         return { ok: true };
+      }
+
+      // applyBootstrapUserHandle(threadId, anonKey?, handle)
+      if (isRecord(args) && typeof args.threadId === "string" && typeof args.handle === "string") {
+        return { ok: true, applied: true, updatedAtMs: Date.now() };
       }
 
       if (isRecord(args) && typeof args.threadId === "string" && typeof args.text === "string") {

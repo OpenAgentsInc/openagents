@@ -8,10 +8,13 @@
   "compatibility_date": "2025-12-17",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/effuse-host/worker.ts",
-  "route": {
-    "pattern": "openagents.com/*",
-    "zone_name": "openagents.com"
-  },
+  "routes": [
+    { "pattern": "openagents.com/api/autopilot/*", "zone_name": "openagents.com" },
+    { "pattern": "openagents.com/api/auth/*", "zone_name": "openagents.com" },
+    { "pattern": "openagents.com/api/contracts/*", "zone_name": "openagents.com" },
+    { "pattern": "openagents.com/api/dse/*", "zone_name": "openagents.com" },
+    { "pattern": "openagents.com/*", "zone_name": "openagents.com" }
+  ],
   "observability": {
     "enabled": true
   },
@@ -54,4 +57,5 @@
   // Production secrets (from .env.production): run once before deploy:
   //   npm run wrangler:secrets
   // Includes PRELAUNCH_BYPASS_KEY (optional): when set, /autopilot?key={value} bypasses prelaunch.
+  // Includes OPENROUTER_API_KEY (optional): when set, primary inference uses OpenRouter (moonshotai/kimi-k2.5) with Cloudflare Workers AI as fallback.
 }

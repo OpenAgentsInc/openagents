@@ -746,7 +746,27 @@ const renderNode = (
         ""
       const alt = asString(props.alt) ?? ""
       if (!url) return html`<div class="text-xs text-text-dim">[missing image url]</div>`
-      return html`<img src="${url}" alt="${alt}" class="max-w-full max-h-full object-contain" />`
+      const objectFit = asString(props.objectFit) ?? "contain"
+      const fill = objectFit === "cover"
+      const maxW = asNumber(props.maxWidth)
+      const maxH = asNumber(props.maxHeight)
+      const sizeStyle =
+        maxW != null || maxH != null
+          ? [maxW != null ? `max-width:${px(maxW)}` : "", maxH != null ? `max-height:${px(maxH)}` : ""]
+              .filter(Boolean)
+              .join("; ")
+          : ""
+      const imgClass = fill
+        ? "absolute inset-0 w-full h-full object-cover"
+        : "max-w-full max-h-full object-contain"
+      const wrapperClass = fill ? "absolute inset-0" : ""
+      if (fill) {
+        return html`<div class="${wrapperClass}"><img src="${url}" alt="${alt}" class="${imgClass}" /></div>`
+      }
+      if (sizeStyle) {
+        return html`<img src="${url}" alt="${alt}" class="${imgClass}" style="${sizeStyle}" />`
+      }
+      return html`<img src="${url}" alt="${alt}" class="${imgClass}" />`
     }
     case "Header":
     case "Footer": {

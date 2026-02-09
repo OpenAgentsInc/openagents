@@ -19,4 +19,6 @@ export type WorkerEnv = {
   readonly VITE_PRELAUNCH?: string
   /** Secret: when set, ?key={this} on /autopilot (etc.) bypasses prelaunch. Set via wrangler secret put PRELAUNCH_BYPASS_KEY. */
   readonly PRELAUNCH_BYPASS_KEY?: string
+  /** OpenRouter API key. When set, primary inference uses OpenRouter (e.g. moonshotai/kimi-k2.5) with Cloudflare Workers AI as fallback. Set via wrangler secret put OPENROUTER_API_KEY. */
+  readonly OPENROUTER_API_KEY?: string
 }

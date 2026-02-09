@@ -23,12 +23,13 @@ import { ConvexService } from "../effect/convex";
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
 import { TelemetryService } from "../effect/telemetry";
 
-import { makeWorkersAiDseLmClient } from "./dse";
+import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
 
-const MODEL_ID = "@cf/openai/gpt-oss-120b";
+const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
+const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
 
 const json = (body: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(body), {
@@ -261,7 +262,11 @@ export const handleDseAdminRequest = async (
           catch: (cause) => new Error(`invalid_control_artifact: ${String(cause)}`),
         });
 
-        const dseLmClient = makeWorkersAiDseLmClient({ binding: aiBinding, defaultModelId: MODEL_ID });
+        const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+          env: { OPENROUTER_API_KEY: env.OPENROUTER_API_KEY, AI: aiBinding },
+          defaultModelIdCf: MODEL_ID_CF,
+          primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+        });
         const evalRes = yield* Eval.evaluate({
           signature,
           artifact: baseArtifact,
@@ -403,7 +408,11 @@ export const handleDseAdminRequest = async (
         catch: (cause) => new Error(`invalid_control_artifact: ${String(cause)}`),
       });
 
-      const dseLmClient = makeWorkersAiDseLmClient({ binding: aiBinding, defaultModelId: MODEL_ID });
+      const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+        env: { OPENROUTER_API_KEY: env.OPENROUTER_API_KEY, AI: aiBinding },
+        defaultModelIdCf: MODEL_ID_CF,
+        primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+      });
       const evalRes = yield* Eval.evaluate({
         signature,
         artifact: baseArtifact,

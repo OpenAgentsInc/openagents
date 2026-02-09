@@ -589,19 +589,11 @@ export const autopilotStories: ReadonlyArray<Story> = [
         auth: authAuthed,
       })
 
-      const rawJson = dseKitchenSinkStreamV1.map((l) => JSON.stringify(l)).join("\n")
-
       return html`
-        <div class="flex h-screen min-h-0 w-full min-w-0 border border-border-dark bg-bg-secondary overflow-hidden">
+        <div class="flex h-full min-h-0 w-full min-w-0 rounded border border-border-dark bg-bg-secondary overflow-hidden">
           <div class="flex-1 min-w-0 flex flex-col">
             ${autopilotChatTemplate(data)}
           </div>
-          <aside class="hidden lg:flex w-[520px] min-w-0 border-l border-border-dark bg-bg-secondary">
-            <div class="flex-1 min-h-0 overflow-auto p-4">
-              <div class="text-xs text-text-dim uppercase tracking-wider">Wire transcript (V1)</div>
-              <pre class="mt-2 whitespace-pre-wrap break-words rounded border border-border-dark bg-surface-primary/35 px-3 py-2 text-[11px] leading-relaxed font-mono text-text-primary">${rawJson}</pre>
-            </div>
-          </aside>
         </div>
       `
     },
