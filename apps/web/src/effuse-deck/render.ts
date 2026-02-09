@@ -691,11 +691,12 @@ const renderNode = (
       const gap = asNumber(gapResolved) ?? 12
       const cls = ordered ? "list-decimal" : "list-disc"
       const tag = ordered ? "ol" : "ul"
+      const textCls = "text-[24px] leading-[1.35] text-white/90 [font-family:var(--font-sans)]"
       return tag === "ol"
-        ? html`<ol class="${cls} pl-6" style="display:flex; flex-direction:column; gap:${px(gap)};">
+        ? html`<ol class="${cls} ${textCls} pl-6" style="display:flex; flex-direction:column; gap:${px(gap)};">
             ${children.map((c) => renderNode(doc, theme, runtime, c))}
           </ol>`
-        : html`<ul class="${cls} pl-6" style="display:flex; flex-direction:column; gap:${px(gap)};">
+        : html`<ul class="${cls} ${textCls} pl-6" style="display:flex; flex-direction:column; gap:${px(gap)};">
             ${children.map((c) => renderNode(doc, theme, runtime, c))}
           </ul>`
     }
