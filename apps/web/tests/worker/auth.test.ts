@@ -141,10 +141,11 @@ describe('apps/web worker auth', () => {
       await waitOnExecutionContext(ctx);
 
       expect(response.status).toBe(200);
-      expect(response.headers.get('set-cookie')).toBe('oa-session=; Path=/; Max-Age=0');
+      const setCookie = response.headers.get('set-cookie') ?? '';
+      expect(setCookie).toContain('oa-session=; Path=/; Max-Age=0');
+      expect(setCookie).toContain('oa-e2e=');
       expect(await response.json()).toEqual({ ok: true });
       expect(clearSessionCookie).toHaveBeenCalledTimes(1);
     }
   });
 });
-

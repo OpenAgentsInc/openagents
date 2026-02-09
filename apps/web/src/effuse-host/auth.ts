@@ -2,7 +2,15 @@ import { createAuthService } from "@workos/authkit-session"
 import { Effect } from "effect"
 
 import { WebCookieSessionStorage } from "../auth/sessionCookieStorage"
-import { makeAuthKitSessionSetCookie, makeE2eJwks, mintE2eJwt } from "../auth/e2eAuth"
+import {
+  decodeE2eJwtClaims,
+  E2E_JWT_ISSUER,
+  makeE2eClearCookieHeader,
+  makeE2eJwks,
+  makeE2eSetCookieHeader,
+  readE2eTokenFromRequest,
+  mintE2eJwt,
+} from "../auth/e2eAuth"
 import {
   clearSessionCookie,
   sendMagicAuthCode,
@@ -145,7 +153,7 @@ const handleE2eLogin = async (request: Request, env: WorkerEnv): Promise<Respons
   return runtime.runPromise(
     Effect.gen(function* () {
       const accessToken = yield* mintE2eJwt({ privateJwkJson, user })
-      const { setCookieHeader } = yield* makeAuthKitSessionSetCookie({ accessToken, user })
+      const setCookieHeader = makeE2eSetCookieHeader(accessToken)
       return json(
         { ok: true, userId: user.id, email: user.email },
         {
@@ -183,13 +191,38 @@ const handleSession = async (request: Request): Promise<Response> => {
       }
     : null
 
-  const payload: SessionPayload = {
-    ok: true,
-    userId: user?.id ?? null,
-    sessionId: auth.user ? (auth.sessionId ?? null) : null,
-    token: auth.user ? auth.accessToken : null,
-    user,
-  }
+  // WorkOS session is primary. If absent, fall back to E2E session cookie.
+  const e2eToken = !user ? readE2eTokenFromRequest(request) : null
+  const e2eClaims = e2eToken ? decodeE2eJwtClaims(e2eToken) : null
+
+  const now = Math.floor(Date.now() / 1000)
+  const e2eValid =
+    e2eClaims &&
+    (typeof e2eClaims.iss !== "string" || e2eClaims.iss === E2E_JWT_ISSUER) &&
+    (typeof e2eClaims.exp !== "number" || e2eClaims.exp > now) &&
+    typeof e2eClaims.sub === "string" &&
+    e2eClaims.sub.length > 0
+
+  const payload: SessionPayload = e2eValid
+    ? {
+        ok: true,
+        userId: e2eClaims.sub,
+        sessionId: null,
+        token: e2eToken!,
+        user: {
+          id: e2eClaims.sub,
+          email: e2eClaims.email ?? null,
+          firstName: e2eClaims.firstName ?? null,
+          lastName: e2eClaims.lastName ?? null,
+        },
+      }
+    : {
+        ok: true,
+        userId: user?.id ?? null,
+        sessionId: auth.user ? (auth.sessionId ?? null) : null,
+        token: auth.user ? auth.accessToken : null,
+        user,
+      }
 
   // If WorkOS refreshed the session, persist it back into the cookie.
   if (refreshedSessionData) {
@@ -331,15 +364,10 @@ const handleSignout = async (request: Request, env: WorkerEnv): Promise<Response
       const { setCookieHeader } = yield* clearSessionCookie()
       yield* telemetry.withNamespace("auth.session").event("session.cleared")
 
-      return json(
-        { ok: true },
-        {
-          status: 200,
-          headers: {
-            "Set-Cookie": setCookieHeader,
-          },
-        },
-      )
+      const headers = new Headers({ "content-type": "application/json; charset=utf-8" })
+      headers.append("Set-Cookie", setCookieHeader)
+      headers.append("Set-Cookie", makeE2eClearCookieHeader())
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers })
     }).pipe(
       Effect.provideService(TelemetryService, requestTelemetry),
       Effect.catchAll((err) => {

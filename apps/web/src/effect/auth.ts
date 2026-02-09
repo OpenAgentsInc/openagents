@@ -1,6 +1,7 @@
 import { Context, Effect, FiberRef, Layer, Schema } from 'effect';
 import { TelemetryService } from './telemetry';
 import { RequestContextService } from './requestContext';
+import { decodeE2eJwtClaims, E2E_JWT_ISSUER, readE2eTokenFromRequest } from '../auth/e2eAuth';
 
 export class AuthServiceError extends Schema.TaggedError<AuthServiceError>()('AuthServiceError', {
   operation: Schema.String,
@@ -171,6 +172,32 @@ if (typeof window === 'undefined') {
 const fetchServerAuthState = Effect.fn('AuthService.fetchServerAuthState')(function* (request: Request) {
   const cached = yield* FiberRef.get(serverCache);
   if (cached) return cached;
+
+  // E2E bypass: use a Worker-minted JWT cookie (no WorkOS session).
+  const e2eToken = readE2eTokenFromRequest(request);
+  if (typeof e2eToken === 'string' && e2eToken.length > 0) {
+    const claims = decodeE2eJwtClaims(e2eToken);
+    const now = Math.floor(Date.now() / 1000);
+    const valid =
+      claims &&
+      (typeof claims.iss !== 'string' || claims.iss === E2E_JWT_ISSUER) &&
+      (typeof claims.exp !== 'number' || claims.exp > now) &&
+      typeof claims.sub === 'string' &&
+      claims.sub.length > 0;
+
+    if (valid) {
+      const user = AuthSessionUser.make({
+        id: claims.sub,
+        email: claims.email ?? null,
+        firstName: claims.firstName ?? null,
+        lastName: claims.lastName ?? null,
+      });
+      const session = AuthSession.make({ userId: user.id, sessionId: null, user });
+      const next: CachedAuthState = { session, token: e2eToken, fetchedAtMs: Date.now() };
+      yield* FiberRef.set(serverCache, next);
+      return next;
+    }
+  }
 
   const getAuthKit = getWorkosAuthKit;
   if (!getAuthKit) {
