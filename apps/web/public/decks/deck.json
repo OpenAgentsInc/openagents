@@ -47,20 +47,34 @@
       "props": {
         "gap": {
           "$token": "space.2"
-        }
+        },
+        "fill": true,
+        "justify": "space-between",
+        "align": "center"
       },
       "children": [
         {
-          "type": "Slot",
+          "type": "Column",
           "props": {
-            "name": "header"
-          }
-        },
-        {
-          "type": "Slot",
-          "props": {
-            "name": "body"
-          }
+            "fill": true,
+            "justify": "center",
+            "align": "center",
+            "gap": 18
+          },
+          "children": [
+            {
+              "type": "Slot",
+              "props": {
+                "name": "header"
+              }
+            },
+            {
+              "type": "Slot",
+              "props": {
+                "name": "body"
+              }
+            }
+          ]
         },
         {
           "type": "Slot",
