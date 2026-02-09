@@ -43,11 +43,12 @@ export const ANIMATION_PRESETS: Record<
   PresetName,
   { readonly dashLength: number; readonly gapLength: number; readonly speed: number; readonly strokeWidth: number; readonly color: string }
 > = {
-  dots: { dashLength: 2, gapLength: 8, speed: 2, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
-  dashes: { dashLength: 8, gapLength: 6, speed: 2, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
-  "dots-slow": { dashLength: 2, gapLength: 8, speed: 3.5, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
-  "dashes-fast": { dashLength: 8, gapLength: 6, speed: 1, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
-  pulse: { dashLength: 4, gapLength: 4, speed: 1.5, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
+  // `speed` is the SVG animate `dur` in seconds; lower = faster.
+  dots: { dashLength: 2, gapLength: 8, speed: 1.2, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
+  dashes: { dashLength: 8, gapLength: 6, speed: 1.1, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
+  "dots-slow": { dashLength: 2, gapLength: 8, speed: 1.8, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
+  "dashes-fast": { dashLength: 8, gapLength: 6, speed: 0.45, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
+  pulse: { dashLength: 4, gapLength: 4, speed: 0.85, strokeWidth: 2.5, color: "var(--oa-flow-connection-stroke)" },
 }
 
 const DEFAULT_PRESET: PresetName = "dots"
