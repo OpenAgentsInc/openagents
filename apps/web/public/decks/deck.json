@@ -495,6 +495,53 @@
         }
       },
       {
+        "id": "agents-1997-table",
+        "title": "1997",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "It's 1997 for agents"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "The infrastructure for reliable, composable, purchasable agents is still missing."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "CodeBlock",
+              "props": {
+                "language": "markdown",
+                "code": "| Category | Web in 1997 | Agents in 2026 | OpenAgents in 2026 |\n| --- | --- | --- | --- |\n| UX | Blinky GIFs, messy pages | Janky UIs, hard to configure | Production-grade, streaming results |\n| Core tech | Static brochure sites | Tools in a loop | Multi-agent orchestration + routing |\n| Reliability | Frequent errors | Brittle; silent failures | Verified outputs + fault tolerance |\n| DevEx | Hand-coded HTML | Hand-rolled prompts | Open protocols + audit trails |\n| Enterprise | \"We have a website\" | \"We have a demo\" | Policy + compliance + histories |\n"
+              }
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
         "id": "solution",
         "layout": "title",
         "regions": {
@@ -529,6 +576,417 @@
                     "A unifying platform that's a one-stop shop for deploying & managing the best AI agents."
                   ]
                 }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "hire-best-agents",
+        "title": "Hire",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Hire the best agents in one place"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Find, run, and pay top agents across every department."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 14
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "One marketplace across coding, research, security, sales, support, and more."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Every agent has trust scores, verification, and performance history."
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "Users pick an agent and press run - no prompt assembly or tool wiring required."
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "autopilot-hero",
+        "title": "Autopilot",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Image",
+              "props": {
+                "url": "/decks/autopilot.png",
+                "alt": "Autopilot",
+                "objectFit": "cover"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "home-introducing-autopilot",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "home-introducing-autopilot",
+                "title": "Introducing Autopilot"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "dashboard-preview",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "autopilot-dashboard-first-visit",
+                "title": "Dashboard first visit"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "autopilot-onboarding-flow",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "autopilot-onboarding-flow",
+                "title": "Onboarding: name, blueprint, connect GitHub"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "autopilot-post-onboarding",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "autopilot-post-onboarding",
+                "title": "After onboarding: GitHub connected, real repo, coding"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "autopilot-dse-kitchen-sink",
+        "layout": "fullbleed",
+        "regions": {
+          "background": [
+            {
+              "type": "Story",
+              "props": {
+                "storyId": "autopilot-organisms-wire-transcript-dse-kitchen-sink",
+                "title": "DSE components (signature, tool, compile, promote, rollback, budget)"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "marketplace-ecosystem",
+        "title": "Ecosystem",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "OpenAgents Marketplace + Dev Ecosystem"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "One destination for demand, one ecosystem for supply."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "Row",
+              "props": {
+                "gap": 28,
+                "align": "start"
+              },
+              "children": [
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 10
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "h3"
+                      },
+                      "children": [
+                        "Marketplace"
+                      ]
+                    },
+                    {
+                      "type": "List",
+                      "props": {
+                        "ordered": false,
+                        "gap": 10
+                      },
+                      "children": [
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "One place to hire high-performing agents with trust scores, verification, and reputation."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Usage-based pricing; payments can clear instantly over Lightning."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Results backed by replayable execution histories."
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 10
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "h3"
+                      },
+                      "children": [
+                        "Dev ecosystem"
+                      ]
+                    },
+                    {
+                      "type": "List",
+                      "props": {
+                        "ordered": false,
+                        "gap": 10
+                      },
+                      "children": [
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Developers publish components (tools, skills, workflows, evaluators)."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "OpenAgents composes components into flagship agents and shares revenue."
+                          ]
+                        },
+                        {
+                          "type": "ListItem",
+                          "children": [
+                            "Open protocols (Nostr/NIP-90, Lightning) provide global supply; the marketplace is the destination."
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 14
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Loop: best dev ecosystem -> best components -> best agents -> more users -> more revenue -> more devs."
+              ]
+            }
+          ],
+          "footer": [
+            {
+              "type": "Footer",
+              "props": {
+                "right": [
+                  {
+                    "type": "SlideNumber"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "flywheel",
+        "title": "Flywheel",
+        "regions": {
+          "header": [
+            {
+              "type": "Text",
+              "props": {
+                "style": "h3"
+              },
+              "children": [
+                "Why we win: the marketplace flywheel"
+              ]
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "The best agents win because the best developers build here."
+              ]
+            }
+          ],
+          "body": [
+            {
+              "type": "List",
+              "props": {
+                "ordered": false,
+                "gap": 12
+              },
+              "children": [
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "1. Best developer ecosystem"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "2. Better components"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "3. Best-performing agents"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "4. More users and jobs"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "5. More revenue for developers"
+                  ]
+                },
+                {
+                  "type": "ListItem",
+                  "children": [
+                    "6. More and better developers join"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Spacer",
+              "props": {
+                "size": 14
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "caption"
+              },
+              "children": [
+                "Performance data and reputation decide which agents deliver; Lightning makes monetization instant."
               ]
             }
           ],
@@ -626,557 +1084,144 @@
         }
       },
       {
-        "id": "home-introducing-autopilot",
-        "layout": "fullbleed",
+        "id": "who-are-we",
+        "title": "Who are we",
         "regions": {
-          "background": [
+          "header": [
             {
-              "type": "Story",
+              "type": "Text",
               "props": {
-                "storyId": "home-introducing-autopilot",
-                "title": "Introducing Autopilot"
-              }
+                "style": "h3"
+              },
+              "children": [
+                "Who are we"
+              ]
             }
-          ]
-        }
-      },
-      {
-        "id": "dashboard-preview",
-        "layout": "fullbleed",
-        "regions": {
-          "background": [
-            {
-              "type": "Story",
-              "props": {
-                "storyId": "autopilot-dashboard-first-visit",
-                "title": "Dashboard first visit"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "id": "autopilot-onboarding-flow",
-        "layout": "fullbleed",
-        "regions": {
-          "background": [
-            {
-              "type": "Story",
-              "props": {
-                "storyId": "autopilot-onboarding-flow",
-                "title": "Onboarding: name, blueprint, connect GitHub"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "id": "autopilot-post-onboarding",
-        "layout": "fullbleed",
-        "regions": {
-          "background": [
-            {
-              "type": "Story",
-              "props": {
-                "storyId": "autopilot-post-onboarding",
-                "title": "After onboarding: GitHub connected, real repo, coding"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "id": "self-improve",
-        "layout": "title",
-        "regions": {
-          "header": [],
+          ],
           "body": [
             {
               "type": "Column",
               "props": {
-                "fill": true,
-                "position": "relative"
+                "gap": 16,
+                "align": "center"
               },
               "children": [
                 {
-                  "type": "Graph",
+                  "type": "Text",
                   "props": {
-                    "opacity": 0.95,
-                    "preset": "dashes-fast",
-                    "zIndex": 0
+                    "style": "body"
+                  },
+                  "children": [
+                    "Christopher David, Founder & CEO"
+                  ]
+                },
+                {
+                  "type": "List",
+                  "props": {
+                    "ordered": false,
+                    "gap": 8
                   },
                   "children": [
                     {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "user",
-                        "label": "User",
-                        "subtitle": "review gmail",
-                        "nodeType": "leaf",
-                        "x": "14%",
-                        "y": "18%",
-                        "status": "ok"
-                      }
+                      "type": "ListItem",
+                      "children": [
+                        "Bitcoin class of '11, Nostr class of '21"
+                      ]
                     },
                     {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "ui",
-                        "label": "Autopilot UI",
-                        "subtitle": "Effuse chat",
-                        "nodeType": "leaf",
-                        "x": "14%",
-                        "y": "32%",
-                        "status": "live"
-                      }
+                      "type": "ListItem",
+                      "children": [
+                        "Author of NIP-28, NIP-SA, NIP-AC"
+                      ]
                     },
                     {
-                      "type": "GraphNode",
+                      "type": "ListItem",
+                      "children": [
+                        "Grew gig marketplace to $10M+ rev."
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 6,
+                    "align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
                       "props": {
-                        "nodeId": "worker",
-                        "label": "Worker",
-                        "subtitle": "Convex-first",
-                        "nodeType": "leaf",
-                        "x": "14%",
-                        "y": "46%",
-                        "status": "running"
-                      }
+                        "style": "caption"
+                      },
+                      "children": [
+                        "backed by"
+                      ]
                     },
                     {
-                      "type": "GraphNode",
+                      "type": "Row",
                       "props": {
-                        "nodeId": "convex",
-                        "label": "Convex",
-                        "subtitle": "messageParts",
-                        "nodeType": "leaf",
-                        "x": "14%",
-                        "y": "64%",
-                        "status": "ok"
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "assistant",
-                        "label": "Assistant",
-                        "subtitle": "streamed text",
-                        "nodeType": "leaf",
-                        "x": "14%",
-                        "y": "82%",
-                        "status": "ok"
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "sig_select",
-                        "label": "dse.signature",
-                        "subtitle": "SelectTool.v1",
-                        "nodeType": "leaf",
-                        "x": "36%",
-                        "y": "28%",
-                        "status": "ok",
-                        "badge": {
-                          "label": "212ms",
-                          "tone": "info"
+                        "gap": 24,
+                        "align": "center",
+                        "justify": "center"
+                      },
+                      "children": [
+                        {
+                          "type": "Image",
+                          "props": {
+                            "url": "/backers/wolf.svg",
+                            "alt": "Wolf",
+                            "maxWidth": 100
+                          }
+                        },
+                        {
+                          "type": "Image",
+                          "props": {
+                            "url": "/backers/hivemind.png",
+                            "alt": "Hivemind",
+                            "maxWidth": 100
+                          }
+                        },
+                        {
+                          "type": "Image",
+                          "props": {
+                            "url": "/backers/stoneridge.png",
+                            "alt": "Stone Ridge",
+                            "maxWidth": 100
+                          }
                         }
-                      }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "props": {
+                    "gap": 4,
+                    "align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "caption"
+                      },
+                      "children": [
+                        "Contact: chris@openagents.com"
+                      ]
                     },
                     {
-                      "type": "GraphNode",
+                      "type": "Text",
                       "props": {
-                        "nodeId": "tool_connect",
-                        "label": "dse.tool",
-                        "subtitle": "gmail.connect",
-                        "nodeType": "leaf",
-                        "x": "36%",
-                        "y": "42%",
-                        "status": "ok"
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "tool_list",
-                        "label": "dse.tool",
-                        "subtitle": "gmail.listThreads",
-                        "nodeType": "leaf",
-                        "x": "36%",
-                        "y": "56%",
-                        "status": "ok",
-                        "badge": {
-                          "label": "2 calls",
-                          "tone": "neutral"
-                        }
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "sig_write",
-                        "label": "dse.signature",
-                        "subtitle": "WriteResponse.v1",
-                        "nodeType": "leaf",
-                        "x": "36%",
-                        "y": "70%",
-                        "status": "ok",
-                        "badge": {
-                          "label": "rcpt",
-                          "tone": "success"
-                        }
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "observe",
-                        "label": "Observe",
-                        "subtitle": "receipts + hashes",
-                        "nodeType": "leaf",
-                        "x": "64%",
-                        "y": "24%",
-                        "status": "ok"
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "label",
-                        "label": "Label",
-                        "subtitle": "judge / expected",
-                        "nodeType": "leaf",
-                        "x": "84%",
-                        "y": "24%",
-                        "status": "pending"
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "eval",
-                        "label": "Evaluate",
-                        "subtitle": "reward bundle",
-                        "nodeType": "leaf",
-                        "x": "64%",
-                        "y": "40%",
-                        "status": "ok",
-                        "badge": {
-                          "label": "0.59",
-                          "tone": "warning"
-                        }
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "compile",
-                        "label": "Compile",
-                        "subtitle": "MIPRO / GEPA",
-                        "nodeType": "leaf",
-                        "x": "84%",
-                        "y": "44%",
-                        "status": "ok",
-                        "badge": {
-                          "label": "24 cand",
-                          "tone": "info"
-                        }
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "promote",
-                        "label": "Promote",
-                        "subtitle": "canary rollout",
-                        "nodeType": "leaf",
-                        "x": "64%",
-                        "y": "60%",
-                        "status": "ok",
-                        "badge": {
-                          "label": "10%",
-                          "tone": "success"
-                        }
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "monitor",
-                        "label": "Monitor",
-                        "subtitle": "quality/cost",
-                        "nodeType": "leaf",
-                        "x": "84%",
-                        "y": "64%",
-                        "status": "running",
-                        "badge": {
-                          "label": "p95",
-                          "tone": "warning"
-                        }
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "rollback",
-                        "label": "Rollback",
-                        "subtitle": "pointer-only",
-                        "nodeType": "leaf",
-                        "x": "64%",
-                        "y": "78%",
-                        "status": "pending"
-                      }
-                    },
-                    {
-                      "type": "GraphNode",
-                      "props": {
-                        "nodeId": "policy",
-                        "label": "Policy Registry",
-                        "subtitle": "active compiled_id",
-                        "nodeType": "leaf",
-                        "x": "84%",
-                        "y": "82%",
-                        "status": "ok",
-                        "badge": {
-                          "label": "c_8a1b",
-                          "tone": "neutral"
-                        }
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "user",
-                        "to": "ui"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "ui",
-                        "to": "worker"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "worker",
-                        "to": "sig_select"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "sig_select",
-                        "to": "tool_connect"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "tool_connect",
-                        "to": "tool_list"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "tool_list",
-                        "to": "sig_write"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "sig_write",
-                        "to": "assistant"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "assistant",
-                        "to": "convex"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "convex",
-                        "to": "observe"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "observe",
-                        "to": "label"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "label",
-                        "to": "eval"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "eval",
-                        "to": "compile",
-                        "preset": "pulse"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "compile",
-                        "to": "promote",
-                        "preset": "pulse"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "promote",
-                        "to": "policy"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "policy",
-                        "to": "worker",
-                        "preset": "pulse"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "promote",
-                        "to": "monitor"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "monitor",
-                        "to": "rollback"
-                      }
-                    },
-                    {
-                      "type": "GraphEdge",
-                      "props": {
-                        "from": "rollback",
-                        "to": "policy"
-                      }
+                        "style": "caption"
+                      },
+                      "children": [
+                        "Follow on X: @OpenAgentsInc"
+                      ]
                     }
                   ]
                 }
               ]
-            }
-          ],
-          "footer": []
-        }
-      },
-      {
-        "id": "hire-best-agents",
-        "title": "Hire",
-        "regions": {
-          "header": [
-            {
-              "type": "Text",
-              "props": {
-                "style": "h3"
-              },
-              "children": [
-                "Hire the best agents in one place"
-              ]
-            },
-            {
-              "type": "Text",
-              "props": {
-                "style": "caption"
-              },
-              "children": [
-                "Find, run, and pay top agents across every department."
-              ]
-            }
-          ],
-          "body": [
-            {
-              "type": "List",
-              "props": {
-                "ordered": false,
-                "gap": 14
-              },
-              "children": [
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "One marketplace across coding, research, security, sales, support, and more."
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "Every agent has trust scores, verification, and performance history."
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "Users pick an agent and press run - no prompt assembly or tool wiring required."
-                  ]
-                }
-              ]
-            }
-          ],
-          "footer": [
-            {
-              "type": "Footer",
-              "props": {
-                "right": [
-                  {
-                    "type": "SlideNumber"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "id": "agents-1997-table",
-        "title": "1997",
-        "regions": {
-          "header": [
-            {
-              "type": "Text",
-              "props": {
-                "style": "h3"
-              },
-              "children": [
-                "It's 1997 for agents"
-              ]
-            },
-            {
-              "type": "Text",
-              "props": {
-                "style": "caption"
-              },
-              "children": [
-                "The infrastructure for reliable, composable, purchasable agents is still missing."
-              ]
-            }
-          ],
-          "body": [
-            {
-              "type": "CodeBlock",
-              "props": {
-                "language": "markdown",
-                "code": "| Category | Web in 1997 | Agents in 2025 | OpenAgents in 2028 |\n| --- | --- | --- | --- |\n| UX | Blinky GIFs, messy pages | Janky UIs, token logs | Production-grade, streaming results |\n| Core tech | Static brochure sites | Single-turn tools | Multi-agent orchestration + routing |\n| Reliability | Frequent errors | Loops, silent failures | Verified outputs + fault tolerance |\n| DevEx | Hand-coded HTML | Hand-rolled prompts | Open protocols + audit trails |\n| Enterprise | \"We have a website\" | \"We have a demo\" | Policy + compliance + histories |\n"
-              }
             }
           ],
           "footer": [
@@ -1490,158 +1535,6 @@
         }
       },
       {
-        "id": "marketplace-ecosystem",
-        "title": "Ecosystem",
-        "regions": {
-          "header": [
-            {
-              "type": "Text",
-              "props": {
-                "style": "h3"
-              },
-              "children": [
-                "OpenAgents Marketplace + Dev Ecosystem"
-              ]
-            },
-            {
-              "type": "Text",
-              "props": {
-                "style": "caption"
-              },
-              "children": [
-                "One destination for demand, one ecosystem for supply."
-              ]
-            }
-          ],
-          "body": [
-            {
-              "type": "Row",
-              "props": {
-                "gap": 28,
-                "align": "start"
-              },
-              "children": [
-                {
-                  "type": "Column",
-                  "props": {
-                    "gap": 10
-                  },
-                  "children": [
-                    {
-                      "type": "Text",
-                      "props": {
-                        "style": "h3"
-                      },
-                      "children": [
-                        "Marketplace"
-                      ]
-                    },
-                    {
-                      "type": "List",
-                      "props": {
-                        "ordered": false,
-                        "gap": 10
-                      },
-                      "children": [
-                        {
-                          "type": "ListItem",
-                          "children": [
-                            "One place to hire high-performing agents with trust scores, verification, and reputation."
-                          ]
-                        },
-                        {
-                          "type": "ListItem",
-                          "children": [
-                            "Usage-based pricing; payments can clear instantly over Lightning."
-                          ]
-                        },
-                        {
-                          "type": "ListItem",
-                          "children": [
-                            "Results backed by replayable execution histories."
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "Column",
-                  "props": {
-                    "gap": 10
-                  },
-                  "children": [
-                    {
-                      "type": "Text",
-                      "props": {
-                        "style": "h3"
-                      },
-                      "children": [
-                        "Dev ecosystem"
-                      ]
-                    },
-                    {
-                      "type": "List",
-                      "props": {
-                        "ordered": false,
-                        "gap": 10
-                      },
-                      "children": [
-                        {
-                          "type": "ListItem",
-                          "children": [
-                            "Developers publish components (tools, skills, workflows, evaluators)."
-                          ]
-                        },
-                        {
-                          "type": "ListItem",
-                          "children": [
-                            "OpenAgents composes components into flagship agents and shares revenue."
-                          ]
-                        },
-                        {
-                          "type": "ListItem",
-                          "children": [
-                            "Open protocols (Nostr/NIP-90, Lightning) provide global supply; the marketplace is the destination."
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "Spacer",
-              "props": {
-                "size": 14
-              }
-            },
-            {
-              "type": "Text",
-              "props": {
-                "style": "caption"
-              },
-              "children": [
-                "Loop: best dev ecosystem -> best components -> best agents -> more users -> more revenue -> more devs."
-              ]
-            }
-          ],
-          "footer": [
-            {
-              "type": "Footer",
-              "props": {
-                "right": [
-                  {
-                    "type": "SlideNumber"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      {
         "id": "agent-dashboard",
         "title": "Dashboard",
         "regions": {
@@ -1784,106 +1677,6 @@
                 "language": "text",
                 "code": "Core primitives (Agentic OS)\n  - Identity: threshold keys (FROST/FROSTR)\n  - Transport: Nostr (open protocols + relays)\n  - Payments: Lightning (+ Spark L2)\n  - Budgets: autonomy levels + spend caps\n  - Transparency: receipts + replayable histories\n"
               }
-            }
-          ],
-          "footer": [
-            {
-              "type": "Footer",
-              "props": {
-                "right": [
-                  {
-                    "type": "SlideNumber"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "id": "flywheel",
-        "title": "Flywheel",
-        "regions": {
-          "header": [
-            {
-              "type": "Text",
-              "props": {
-                "style": "h3"
-              },
-              "children": [
-                "Why we win: the marketplace flywheel"
-              ]
-            },
-            {
-              "type": "Text",
-              "props": {
-                "style": "caption"
-              },
-              "children": [
-                "The best agents win because the best developers build here."
-              ]
-            }
-          ],
-          "body": [
-            {
-              "type": "List",
-              "props": {
-                "ordered": false,
-                "gap": 12
-              },
-              "children": [
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "1. Best developer ecosystem"
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "2. Better components"
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "3. Best-performing agents"
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "4. More users and jobs"
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "5. More revenue for developers"
-                  ]
-                },
-                {
-                  "type": "ListItem",
-                  "children": [
-                    "6. More and better developers join"
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "Spacer",
-              "props": {
-                "size": 14
-              }
-            },
-            {
-              "type": "Text",
-              "props": {
-                "style": "caption"
-              },
-              "children": [
-                "Performance data and reputation decide which agents deliver; Lightning makes monetization instant."
-              ]
             }
           ],
           "footer": [

@@ -437,3 +437,7 @@ Treat this as a reference implementation to port into Convex; DO-only endpoints 
   - Keep in code (simpler), or store versioned in DB for hotfixes?
 - Do we want a formal "bootstrap wizard" UI before chat, or keep it purely conversational?
 - For Blueprint exports/imports, what is the blob store for large artifacts (`BlobRef`): Cloudflare R2 vs Convex file storage (or both)?
+
+## See also
+
+- [Bootstrap flow and greeting fix](./bootstrap-flow-and-greeting-fix.md) — How the “ask user handle” stage works in the web app and worker, avoiding generic greetings and re-asking until a name is given; Convex + DSE flow for persisting the handle.

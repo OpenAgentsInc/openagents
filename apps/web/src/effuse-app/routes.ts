@@ -196,10 +196,10 @@ const autopilot: Route<{}, AppServices> = {
 const deck: Route<{}, AppServices> = {
   id: "/deck",
   match: matchExact("/deck"),
+  hydration: "soft",
   guard: (ctx) =>
     Effect.gen(function* () {
-      const redirect = yield* prelaunchRedirectGuard(ctx)
-      if (redirect) return redirect
+      yield* Effect.void
       if (!isLocalHost(ctx.url.hostname)) return RouteOutcome.notFound()
       return undefined
     }),

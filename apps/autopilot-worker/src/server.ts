@@ -187,6 +187,7 @@ const SYSTEM_PROMPT_BASE =
   "- Only mention tools when the Tools section is present.\n" +
   "- Bootstrap is a state machine. Follow bootstrapState.stage; do not repeat earlier bootstrap questions.\n" +
   "- Do not ask the user to confirm their answers during bootstrap. Apply the answer and proceed.\n" +
+  "- Never say generic greetings like \"Hello! How can I assist you today?\" or \"How can I help?\". During bootstrap, stay on the current question until the user answers it.\n" +
   "- Never ask for personal info (physical address, email, phone, legal name, etc.).\n" +
   "  Ask only for a preferred handle (what to call the user).\n" +
   "- Avoid the word \"address\" in user-facing messages. Say \"call you\" or \"handle\".\n";

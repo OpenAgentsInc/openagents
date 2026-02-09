@@ -135,10 +135,10 @@ const dseStateBadge = (state: string): TemplateResult => {
   const label = state === "ok" ? "ok" : state === "error" ? "error" : state === "start" ? "running" : state;
   const cls =
     state === "ok"
-      ? "border-status-done/40 bg-status-done/10 text-status-done"
+      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
       : state === "error"
-        ? "border-status-blocked/40 bg-status-blocked/10 text-status-blocked"
-        : "border-status-pending/40 bg-status-pending/10 text-status-pending";
+        ? "border-red-400/40 bg-red-500/10 text-red-300"
+        : "border-white/30 bg-white/10 text-white/80";
 
   return html`<span class="inline-flex items-center rounded border px-2 py-0.5 text-[11px] uppercase tracking-wide ${cls}"
     >${label}</span
@@ -149,8 +149,8 @@ const dseRow = (label: string, value: TemplateResult | string | number | null | 
   if (value == null || value === "") return html``;
   return html`
     <div class="grid grid-cols-[108px_1fr] gap-2 text-xs leading-relaxed">
-      <div class="text-text-dim">${label}</div>
-      <div class="text-text-primary font-mono break-words">${value}</div>
+      <div class="text-white/60">${label}</div>
+      <div class="text-white/90 font-mono break-words">${value}</div>
     </div>
   `;
 };
@@ -159,14 +159,14 @@ const dseBoundedText = (value: BoundedText): TemplateResult => {
   const truncated = value.truncated ? " (truncated)" : "";
   const blob =
     value.truncated && value.blob
-      ? html`<div class="mt-1 text-[11px] text-text-muted font-mono">blob: ${value.blob.id}${truncated}</div>`
+      ? html`<div class="mt-1 text-[11px] text-white/50 font-mono">blob: ${value.blob.id}${truncated}</div>`
       : value.truncated
-        ? html`<div class="mt-1 text-[11px] text-text-muted font-mono">${truncated}</div>`
+        ? html`<div class="mt-1 text-[11px] text-white/50 font-mono">${truncated}</div>`
         : null;
 
   return html`
-    <div class="rounded border border-border-dark bg-[#0a0a0a] px-2 py-2">
-      <pre class="whitespace-pre-wrap break-words text-xs leading-relaxed font-mono text-text-primary">${value.preview}</pre>
+    <div class="rounded-lg border border-white/15 bg-white/5 px-2 py-2">
+      <pre class="whitespace-pre-wrap break-words text-xs leading-relaxed font-mono text-white/90">${value.preview}</pre>
       ${blob}
     </div>
   `;
@@ -178,10 +178,10 @@ const dseCardShell = (opts: { readonly title: string; readonly state: string; re
       data-dse-card="1"
       data-dse-card-title="${opts.title}"
       data-dse-card-state="${opts.state}"
-      class="rounded border border-border-dark bg-[#0a0a0a] px-3 py-3"
+      class="rounded-lg border border-white/15 bg-white/5 px-3 py-3"
     >
       <header class="flex items-center justify-between gap-3">
-        <div class="text-xs text-text-dim uppercase tracking-wider">${opts.title}</div>
+        <div class="text-xs text-white/60 uppercase tracking-wider">${opts.title}</div>
         ${dseStateBadge(opts.state)}
       </header>
       <div class="mt-2 flex flex-col gap-2">${opts.body}</div>
@@ -268,8 +268,8 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
         : "";
     const messageClass =
       m.role === "user"
-        ? "max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono self-end rounded border bg-accent-subtle text-text-primary border-accent-muted"
-        : "max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono self-start text-text-primary";
+        ? "max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono self-end rounded-lg border border-white/20 bg-white/10 text-white"
+        : "max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono self-start text-white/90";
 
     if (m.role === "user") {
       return html`
@@ -314,7 +314,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           <button
             type="button"
             data-ez="autopilot.chat.scrollBottom"
-            class="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded px-3 text-xs font-medium bg-[#0a0a0a] text-text-primary border border-border-dark hover:bg-[#111111] hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
+            class="absolute -top-12 left-1/2 -translate-x-1/2 inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-medium bg-white/10 text-white border border-white/20 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 font-mono"
           >
             Scroll to bottom
           </button>
@@ -325,7 +325,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
     ? html`
         <div
           data-autopilot-chat-error="1"
-          class="mt-2 rounded border border-status-blocked/40 bg-status-blocked/10 px-3 py-2 text-xs text-status-blocked"
+          class="mt-2 rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-300"
         >
           ${data.errorText}
         </div>
@@ -336,7 +336,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
     if (data.auth.isAuthed || data.auth.step === "closed") return null;
 
     const errorBlock = data.auth.errorText
-      ? html`<div class="mt-2 rounded border border-status-blocked/40 bg-status-blocked/10 px-3 py-2 text-xs text-status-blocked">
+      ? html`<div class="mt-2 rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
           ${data.auth.errorText}
         </div>`
       : null;
@@ -347,14 +347,14 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           data-autopilot-auth="1"
           data-autopilot-auth-step="email"
           data-ez="autopilot.auth.email.submit"
-          class="mt-2 rounded border border-border-dark bg-[#0a0a0a] px-3 py-3"
+          class="mt-2 rounded-lg border border-white/20 bg-white/5 px-3 py-3 backdrop-blur-sm"
         >
           <div class="flex items-center justify-between gap-3">
-            <div class="text-xs text-text-dim">Enter your email and we'll send a one-time code.</div>
+            <div class="text-xs text-white/70">Enter your email and we'll send a one-time code.</div>
             <button
               type="button"
               data-ez="autopilot.auth.close"
-              class="text-xs text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+              class="text-xs text-white/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
               Not now
             </button>
@@ -368,12 +368,12 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
               data-ez="autopilot.auth.email.input"
               data-ez-trigger="input"
               value="${data.auth.email}"
-              class="h-9 flex-1 rounded border border-border-dark bg-[#0a0a0a] px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+              class="h-9 flex-1 rounded-md border border-white/20 bg-transparent px-3 text-sm text-white placeholder:text-white/50 outline-none focus:ring-1 focus:ring-white/30 font-mono"
             />
             <button
               type="submit"
               ${data.auth.isBusy ? "disabled" : ""}
-              class="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono shrink-0 disabled:opacity-60"
+              class="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium bg-white text-black hover:bg-white/90 font-mono shrink-0 disabled:opacity-60"
             >
               ${data.auth.isBusy ? "Sending..." : "Send code"}
             </button>
@@ -389,10 +389,10 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
         data-autopilot-auth="1"
         data-autopilot-auth-step="code"
         data-ez="autopilot.auth.code.submit"
-        class="mt-2 rounded border border-border-dark bg-[#0a0a0a] px-3 py-3"
+        class="mt-2 rounded-lg border border-white/20 bg-white/5 px-3 py-3 backdrop-blur-sm"
       >
-        <div class="text-xs text-text-dim">
-          Enter the code sent to <span class="text-text-primary">${data.auth.email || "your email"}</span>.
+        <div class="text-xs text-white/70">
+          Enter the code sent to <span class="text-white">${data.auth.email || "your email"}</span>.
         </div>
         <div class="mt-2 flex items-center gap-2">
           <input
@@ -403,12 +403,12 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
             data-ez="autopilot.auth.code.input"
             data-ez-trigger="input"
             value="${data.auth.code}"
-            class="h-9 flex-1 rounded border border-border-dark bg-[#0a0a0a] px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
+            class="h-9 flex-1 rounded-md border border-white/20 bg-transparent px-3 text-sm text-white placeholder:text-white/50 outline-none focus:ring-1 focus:ring-white/30 font-mono"
           />
           <button
             type="submit"
             ${data.auth.isBusy ? "disabled" : ""}
-            class="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono shrink-0 disabled:opacity-60"
+            class="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium bg-white text-black hover:bg-white/90 font-mono shrink-0 disabled:opacity-60"
           >
             ${data.auth.isBusy ? "Verifying..." : "Verify"}
           </button>
@@ -417,14 +417,14 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           <button
             type="button"
             data-ez="autopilot.auth.code.back"
-            class="text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+            class="text-white/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           >
             Back
           </button>
           <button
             type="button"
             data-ez="autopilot.auth.code.resend"
-            class="text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+            class="text-white/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           >
             Resend code
           </button>
@@ -435,65 +435,58 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
   })();
 
   return html`
-    <div class="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#0a0a0a]" data-autopilot-chat>
-      <header class="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-[#0a0a0a] shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
-        <span class="text-xs text-text-dim uppercase tracking-wider">Autopilot</span>
-      </header>
-      <section class="flex-1 min-h-0 flex flex-col p-4 bg-[#0a0a0a]">
-        <div class="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-4xl">
-          <div class="flex-1 min-h-0 rounded border border-border-dark bg-[#0a0a0a] shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset] flex flex-col">
-            <div class="flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 lg:px-8">
-              <div
-                data-scroll-id="autopilot-chat-scroll"
-                class="flex-1 overflow-y-auto overseer-scroll pr-1 scroll-smooth"
-              >
-                <div class="flex flex-col gap-3">
-                  ${messageEls}
-                  <div data-autopilot-bottom></div>
-                </div>
-              </div>
-              <div class="relative mt-3">
-                ${scrollButton}
-                ${errorBanner}
-                ${authPanel}
-                <form
-                  id="chat-form"
-                  data-ez="autopilot.chat.send"
-                  class="flex items-center gap-2 rounded border border-border-dark bg-[#0a0a0a] p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
-                >
-                  <input
-                    name="message"
-                    type="text"
-                    placeholder="Message Autopilot…"
-                    autocomplete="off"
-                    data-ez="autopilot.chat.input"
-                    data-ez-trigger="input"
-                    data-autopilot-chat-input="1"
-                    value="${data.inputValue}"
-                    class="h-9 flex-1 rounded border border-border-dark bg-[#0a0a0a] px-3 text-sm text-text-primary placeholder:text-text-dim outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus font-mono"
-                  />
-                  ${data.isBusy
-                    ? html`
-                        <button
-                          type="button"
-                          data-ez="autopilot.chat.stop"
-                          class="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-[#0a0a0a] text-text-primary border border-border-dark hover:bg-[#111111] hover:border-border-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus font-mono"
-                        >
-                          Stop
-                        </button>
-                      `
-                    : html`
-                        <button
-                          type="submit"
-                          data-autopilot-chat-send="1"
-                          class="inline-flex h-9 items-center justify-center rounded px-3 text-sm font-medium bg-accent text-bg-primary border border-accent hover:bg-accent-muted hover:border-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent font-mono"
-                        >
-                          Send
-                        </button>
-                      `}
-                </form>
-              </div>
+    <div class="flex-1 min-h-0 flex flex-col overflow-hidden" data-autopilot-chat>
+      <section class="flex-1 min-h-0 flex flex-col px-4 py-4 sm:px-6 lg:px-8">
+        <div class="flex-1 flex flex-col min-h-0 mx-auto w-full max-w-2xl">
+          <div
+            data-scroll-id="autopilot-chat-scroll"
+            class="flex-1 overflow-y-auto overseer-scroll pr-1 scroll-smooth min-h-0"
+          >
+            <div class="flex flex-col gap-4 py-2">
+              ${messageEls}
+              <div data-autopilot-bottom></div>
             </div>
+          </div>
+          <div class="relative mt-4 shrink-0">
+            ${scrollButton}
+            ${errorBanner}
+            ${authPanel}
+            <form
+              id="chat-form"
+              data-ez="autopilot.chat.send"
+              class="flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 p-2 backdrop-blur-sm"
+            >
+              <input
+                name="message"
+                type="text"
+                placeholder="Message Autopilot…"
+                autocomplete="off"
+                data-ez="autopilot.chat.input"
+                data-ez-trigger="input"
+                data-autopilot-chat-input="1"
+                value="${data.inputValue}"
+                class="h-10 flex-1 rounded-md border-0 bg-transparent px-3 text-sm text-white placeholder:text-white/50 outline-none focus:ring-1 focus:ring-white/30 font-mono"
+              />
+              ${data.isBusy
+                ? html`
+                    <button
+                      type="button"
+                      data-ez="autopilot.chat.stop"
+                      class="inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-medium text-white/90 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 font-mono"
+                    >
+                      Stop
+                    </button>
+                  `
+                : html`
+                    <button
+                      type="submit"
+                      data-autopilot-chat-send="1"
+                      class="inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-medium bg-white text-black hover:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white font-mono"
+                    >
+                      Send
+                    </button>
+                  `}
+            </form>
           </div>
         </div>
       </section>

@@ -67,6 +67,104 @@ export const makeWorkersAiDseLmClient = (input: {
   };
 };
 
+const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
+
+export const makeOpenRouterDseLmClient = (input: {
+  readonly apiKey: string;
+  readonly defaultModelId: string;
+  readonly fetch?: typeof fetch;
+}): Lm.LmClient => {
+  const doFetch = input.fetch ?? fetch;
+  return {
+    complete: (req) =>
+      Effect.tryPromise({
+        try: async () => {
+          const modelId = req.modelId ?? input.defaultModelId;
+          const messages = req.messages.map((m) => ({ role: m.role, content: m.content }));
+          const res = await doFetch(`${OPENROUTER_BASE}/chat/completions`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${input.apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              max_tokens: req.maxTokens ?? 256,
+              messages,
+              ...(typeof req.temperature === "number" ? { temperature: req.temperature } : {}),
+              ...(typeof req.topP === "number" ? { top_p: req.topP } : {}),
+            }),
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`OpenRouter API error ${res.status}: ${text}`);
+          }
+          const output = (await res.json()) as any;
+          const text = output?.choices?.[0]?.message?.content ?? "";
+          const usageRaw = output?.usage;
+          const promptTokens = typeof usageRaw?.prompt_tokens === "number" ? usageRaw.prompt_tokens : undefined;
+          const completionTokens = typeof usageRaw?.completion_tokens === "number" ? usageRaw.completion_tokens : undefined;
+          const totalTokens =
+            promptTokens !== undefined && completionTokens !== undefined ? promptTokens + completionTokens : undefined;
+          return {
+            text: typeof text === "string" ? text : String(text),
+            ...(promptTokens !== undefined || completionTokens !== undefined || totalTokens !== undefined
+              ? {
+                  usage: {
+                    ...(promptTokens !== undefined ? { promptTokens } : {}),
+                    ...(completionTokens !== undefined ? { completionTokens } : {}),
+                    ...(totalTokens !== undefined ? { totalTokens } : {}),
+                  },
+                }
+              : {}),
+          } satisfies Lm.LmResponse;
+        },
+        catch: (cause) =>
+          Lm.LmClientError.make({
+            message: "OpenRouter DSE LM client failed",
+            cause,
+          }),
+      }),
+  };
+};
+
+export type DseLmClientEnv = {
+  readonly OPENROUTER_API_KEY?: string;
+  readonly AI?: Ai;
+};
+
+/** DSE LM client: OpenRouter (moonshotai/kimi-k2.5) primary when OPENROUTER_API_KEY is set, Cloudflare Workers AI fallback. */
+export const makeDseLmClientWithOpenRouterPrimary = (input: {
+  readonly env: DseLmClientEnv;
+  readonly defaultModelIdCf: string;
+  readonly primaryModelOpenRouter: string;
+}): Lm.LmClient => {
+  const cfClient = input.env.AI
+    ? makeWorkersAiDseLmClient({ binding: input.env.AI, defaultModelId: input.defaultModelIdCf })
+    : null;
+  const openRouterKey =
+    typeof input.env.OPENROUTER_API_KEY === "string" && input.env.OPENROUTER_API_KEY.length > 0
+      ? input.env.OPENROUTER_API_KEY
+      : null;
+  const openRouterClient = openRouterKey
+    ? makeOpenRouterDseLmClient({
+        apiKey: openRouterKey,
+        defaultModelId: input.primaryModelOpenRouter,
+      })
+    : null;
+
+  if (!cfClient) {
+    return openRouterClient ?? { complete: () => Effect.fail(Lm.LmClientError.make({ message: "No AI binding", cause: undefined })) };
+  }
+  if (!openRouterClient) {
+    return cfClient;
+  }
+  return {
+    complete: (req) =>
+      openRouterClient.complete(req).pipe(Effect.catchAll(() => cfClient.complete(req))),
+  };
+};
+
 const stableBucket100 = (key: string): number => {
   // FNV-1a 32-bit hash, then mod 100. Deterministic across runtimes.
   let h = 2166136261;

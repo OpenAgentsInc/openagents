@@ -5,10 +5,9 @@ import { handleCallbackRequest } from "./callback"
 import { handleContractsRequest } from "./contracts"
 import { handleDseCompileRequest } from "./dseCompile"
 import { handleDseAdminRequest } from "./dseAdmin"
-import { handleSsrRequest } from "./ssr"
+import { getPrelaunchRedirectIfRequired } from "./ssr"
 import { handleStorybookApiRequest } from "./storybook"
 import {
-  formatRequestIdLogToken,
   getOrCreateRequestId,
   withRequestIdHeader,
   withResponseRequestIdHeader,
@@ -55,6 +54,12 @@ export default {
     const requestWithId = withRequestIdHeader(request, requestId)
     const url = new URL(requestWithId.url)
 
+    // Prelaunch gate: redirect GET/HEAD for non-allowed paths before any other handling.
+    if (request.method === "GET" || request.method === "HEAD") {
+      const prelaunchRedirect = getPrelaunchRedirectIfRequired(requestWithId, url, env)
+      if (prelaunchRedirect) return withResponseRequestIdHeader(prelaunchRedirect, requestId)
+    }
+
     // Autopilot execution plane (Convex-first MVP).
     if (url.pathname.startsWith("/api/autopilot/")) {
       const response = await handleAutopilotRequest(requestWithId, env, ctx)
@@ -95,18 +100,6 @@ export default {
     // Static assets.
     const asset = await tryServeAsset(requestWithId, env)
     if (asset) return withResponseRequestIdHeader(asset, requestId)
-
-    // SSR (GET/HEAD only).
-    if (request.method === "GET" || request.method === "HEAD") {
-      try {
-        const response = await handleSsrRequest(requestWithId, env)
-        return withResponseRequestIdHeader(response, requestId)
-      } catch (err) {
-        // Always surface an ID users can report + operators can tail logs for.
-        console.error(`[worker:ssr] ${formatRequestIdLogToken(requestId)}`, err)
-        return withResponseRequestIdHeader(new Response("SSR failed", { status: 500 }), requestId)
-      }
-    }
 
     return withResponseRequestIdHeader(new Response("Not found", { status: 404 }), requestId)
   },
