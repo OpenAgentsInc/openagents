@@ -28,7 +28,7 @@ export function marketingHeaderTemplate(
                 Log in
               </a>
               ${hatcheryButton({
-        href: '/autopilot',
+        href: '/login',
         label: 'Start for free',
         variant: 'outline',
       })}

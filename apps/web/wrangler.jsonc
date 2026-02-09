@@ -52,7 +52,7 @@
     // Required for Effect ConvexService (SSR + client WS + Worker autopilot endpoints).
     // This is not secret and can be overridden via `wrangler deploy --var VITE_CONVEX_URL:...`.
     "VITE_CONVEX_URL": "https://aware-caterpillar-962.convex.cloud",
-    // Prelaunch: "0" for local dev (so /autopilot works). Production deploy passes --var VITE_PRELAUNCH:1.
+    // Prelaunch: default "0". To enable, deploy with `wrangler deploy --var VITE_PRELAUNCH:1`.
     "VITE_PRELAUNCH": "0"
   }
   // Production secrets (from .env.production): run once before deploy:
