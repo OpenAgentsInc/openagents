@@ -3,13 +3,11 @@ import type { EzAction, RouterService } from "@openagentsinc/effuse"
 
 import { cleanupMarketingDotsGridBackground, hydrateMarketingDotsGridBackground } from "../../effuse-pages/marketingShell"
 import { runAutopilotRoute } from "../../effuse-pages/autopilotRoute"
-import { AutopilotChatIsAtBottomAtom, ChatSnapshotAtom } from "../../effect/atoms/chat"
+import { AutopilotChatIsAtBottomAtom, ChatSnapshotAtom, OwnedThreadIdAtom } from "../../effect/atoms/chat"
 import { AutopilotSidebarCollapsedAtom, AutopilotSidebarUserMenuOpenAtom } from "../../effect/atoms/autopilotUi"
 import { SessionAtom } from "../../effect/atoms/session"
 import { clearAuthClientCache } from "../../effect/auth"
 import { AuthService } from "../../effect/auth"
-import { ConvexService } from "../../effect/convex"
-import { api } from "../../../convex/_generated/api"
 import { toAutopilotRenderParts } from "./autopilotChatParts"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
@@ -22,41 +20,12 @@ import type { ChatMessage } from "../../effect/chatProtocol"
 import type { AutopilotRouteRenderInput } from "../../effuse-pages/autopilotRoute"
 import type { RenderedMessage as EffuseRenderedMessage } from "../../effuse-pages/autopilot"
 
-const ANON_CHAT_STORAGE_KEY = "autopilot-anon-chat-id"
-const ANON_CHAT_KEY_STORAGE_KEY = "autopilot-anon-chat-key"
-
-function randomId(size = 12): string {
-  let out = ""
-  while (out.length < size) out += Math.random().toString(36).slice(2)
-  return out.slice(0, size)
-}
-
 function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase()
 }
 
 function normalizeCode(raw: string): string {
   return raw.replace(/\s+/g, "")
-}
-
-function getOrCreateAnonChatId(): string {
-  if (typeof sessionStorage === "undefined") return `anon-${randomId(8)}`
-  let id = sessionStorage.getItem(ANON_CHAT_STORAGE_KEY)
-  if (!id) {
-    id = `anon-${randomId(12)}`
-    sessionStorage.setItem(ANON_CHAT_STORAGE_KEY, id)
-  }
-  return id
-}
-
-function getOrCreateAnonChatKey(): string {
-  if (typeof sessionStorage === "undefined") return `key-${randomId(24)}`
-  let key = sessionStorage.getItem(ANON_CHAT_KEY_STORAGE_KEY)
-  if (!key) {
-    key = `key-${randomId(24)}`
-    sessionStorage.setItem(ANON_CHAT_KEY_STORAGE_KEY, key)
-  }
-  return key
 }
 
 export type AutopilotController = {
@@ -75,19 +44,22 @@ export const mountAutopilotController = (input: {
   readonly router: RouterService<any>
   readonly navigate: (href: string) => void
 }): AutopilotController => {
+  let disposed = false
+  let focusedOnMount = false
+
   const atoms = input.atoms
 
   const initialSession = atoms.get(SessionAtom)
   void initialSession
-  const chatId = getOrCreateAnonChatId()
-  const anonKey = getOrCreateAnonChatKey()
+  let ownedThreadId = atoms.get(OwnedThreadIdAtom)
+  let chatId = initialSession.userId ? (ownedThreadId ?? "") : ""
 
   // Atom-backed UI state
   let session = initialSession
   let _collapsed = atoms.get(AutopilotSidebarCollapsedAtom)
   let userMenuOpen = atoms.get(AutopilotSidebarUserMenuOpenAtom)
-  let chatSnapshot = atoms.get(ChatSnapshotAtom(chatId))
-  let isAtBottom = atoms.get(AutopilotChatIsAtBottomAtom(chatId))
+  let chatSnapshot = chatId ? atoms.get(ChatSnapshotAtom(chatId)) : { messages: [], status: "ready" as const, errorText: null }
+  let isAtBottom = chatId ? atoms.get(AutopilotChatIsAtBottomAtom(chatId)) : true
 
   // Local controller state (was React useState/useRef)
   type AuthStep = "closed" | "email" | "code"
@@ -382,7 +354,15 @@ export const mountAutopilotController = (input: {
       chatKey,
     }
 
-    Effect.runPromise(runAutopilotRoute(input.container, renderInput)).catch(() => {})
+    Effect.runPromise(runAutopilotRoute(input.container, renderInput))
+      .then(() => {
+        if (disposed) return
+        if (focusedOnMount) return
+        if (typeof window !== "undefined" && window.location.pathname !== "/autopilot") return
+        focusedOnMount = true
+        focusChatInput({ force: true })
+      })
+      .catch(() => {})
 
     // Scroll after render when new content arrives and the user is pinned to bottom.
     if (isAtBottom && renderedMessages.length > 0 && renderedTailKey !== lastTailKey) {
@@ -392,6 +372,7 @@ export const mountAutopilotController = (input: {
   }
 
   const fetchBlueprint = async (options?: { silent?: boolean }) => {
+    if (!chatId) return
     const silent = options?.silent ?? false
     if (!silent) {
       blueprintLoading = true
@@ -401,7 +382,7 @@ export const mountAutopilotController = (input: {
 
     try {
       const json = await input.runtime.runPromise(
-        input.store.getBlueprint({ threadId: chatId, anonKey }),
+        input.store.getBlueprint({ threadId: chatId }),
       )
       blueprint = json
       blueprintUpdatedAt = Date.now()
@@ -458,10 +439,53 @@ export const mountAutopilotController = (input: {
   }
 
   // Subscribe to atoms.
+  let subscribedForChatId: string | null = null
+  let unsubChat: (() => void) | null = null
+  let unsubIsAtBottom: (() => void) | null = null
+
   const unsubSession = atoms.subscribe(SessionAtom, (next) => {
     session = next
+    if (!next.userId) {
+      atoms.set(OwnedThreadIdAtom as any, null)
+      chatId = ""
+    } else {
+      if (!atoms.get(OwnedThreadIdAtom)) {
+        input.runtime.runPromise(input.chat.getOwnedThreadId()).then(
+          (id) => {
+            if (!disposed) atoms.set(OwnedThreadIdAtom as any, id)
+          },
+          () => {},
+        )
+      }
+      chatId = ownedThreadId ?? ""
+    }
     scheduleRender()
   }, { immediate: false })
+
+  const unsubOwnedThreadId = atoms.subscribe(OwnedThreadIdAtom, (next) => {
+    ownedThreadId = next
+    chatId = session.userId ? (next ?? "") : ""
+    if (next && next !== subscribedForChatId) {
+      if (unsubChat) unsubChat()
+      if (unsubIsAtBottom) unsubIsAtBottom()
+      subscribedForChatId = next
+      unsubChat = atoms.subscribe(ChatSnapshotAtom(next), (snap) => {
+        chatSnapshot = snap
+        const busy = snap.status === "submitted" || snap.status === "streaming"
+        ensureBlueprintPolling(busy)
+        if (prevBusy && !busy) void fetchBlueprint({ silent: true })
+        prevBusy = busy
+        scheduleRender()
+      }, { immediate: false })
+      unsubIsAtBottom = atoms.subscribe(AutopilotChatIsAtBottomAtom(next), (nextIsAtBottom) => {
+        isAtBottom = nextIsAtBottom
+        scheduleRender()
+      }, { immediate: false })
+    }
+    scheduleRender()
+  }, { immediate: false })
+
+  let prevBusy = chatSnapshot.status === "submitted" || chatSnapshot.status === "streaming"
 
   const unsubCollapsed = atoms.subscribe(AutopilotSidebarCollapsedAtom, (next) => {
     _collapsed = next
@@ -473,23 +497,12 @@ export const mountAutopilotController = (input: {
     scheduleRender()
   }, { immediate: false })
 
-  const unsubIsAtBottom = atoms.subscribe(AutopilotChatIsAtBottomAtom(chatId), (next) => {
-    isAtBottom = next
-    scheduleRender()
-  }, { immediate: false })
-
-  let prevBusy = chatSnapshot.status === "submitted" || chatSnapshot.status === "streaming"
-  const unsubChat = atoms.subscribe(ChatSnapshotAtom(chatId), (next) => {
-    chatSnapshot = next
-    const busy = next.status === "submitted" || next.status === "streaming"
-    ensureBlueprintPolling(busy)
-    if (prevBusy && !busy) {
-      // Refresh once after finishing.
-      void fetchBlueprint({ silent: true })
-    }
-    prevBusy = busy
-    scheduleRender()
-  }, { immediate: false })
+  if (session.userId && !atoms.get(OwnedThreadIdAtom)) {
+    input.runtime.runPromise(input.chat.getOwnedThreadId()).then(
+      (id) => { if (!disposed) atoms.set(OwnedThreadIdAtom as any, id) },
+      () => {},
+    )
+  }
 
   // Event listeners.
   const onDocClick = (e: MouseEvent) => {
@@ -508,8 +521,8 @@ export const mountAutopilotController = (input: {
     const target = e.target
     if (!(target instanceof HTMLElement)) return
     if (target.getAttribute("data-scroll-id") !== "autopilot-chat-scroll") return
-    const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight)
-    atoms.set(AutopilotChatIsAtBottomAtom(chatId), distanceFromBottom <= thresholdPx)
+    const cid = session.userId ? (ownedThreadId ?? "") : ""
+    if (cid) atoms.set(AutopilotChatIsAtBottomAtom(cid), target.scrollHeight - (target.scrollTop + target.clientHeight) <= thresholdPx)
   }
   document.addEventListener("scroll", onScrollCapture, true)
 
@@ -533,12 +546,7 @@ export const mountAutopilotController = (input: {
     } finally {
       clearAuthClientCache()
       atoms.set(SessionAtom as any, { userId: null, user: null })
-      try {
-        sessionStorage.removeItem(ANON_CHAT_STORAGE_KEY)
-        sessionStorage.removeItem(ANON_CHAT_KEY_STORAGE_KEY)
-      } catch {
-        // ignore
-      }
+      atoms.set(OwnedThreadIdAtom as any, null)
       input.navigate("/")
     }
   }
@@ -693,14 +701,6 @@ export const mountAutopilotController = (input: {
           : null,
       })
 
-      // Claim the anon thread (migrate transcript + blueprint ownership).
-      await input.runtime.runPromise(
-        Effect.gen(function* () {
-          const convex = yield* ConvexService
-          return yield* convex.mutation(api.autopilot.threads.claimAnonThread, { threadId: chatId, anonKey } as any)
-        }),
-      )
-
       setAuth({ step: "closed", code: "", errorText: null })
     } catch (err) {
       setAuth({ errorText: err instanceof Error ? err.message : "Verification failed." })
@@ -845,7 +845,7 @@ export const mountAutopilotController = (input: {
         })
       )
       await input.runtime.runPromise(
-        input.store.importBlueprint({ threadId: chatId, anonKey, blueprint: next }),
+        input.store.importBlueprint({ threadId: chatId, blueprint: next }),
       )
       // Clear local edit state so the panel tracks server updates again.
       blueprintEditBase = null
@@ -939,7 +939,7 @@ export const mountAutopilotController = (input: {
       void (async () => {
         try {
           const blueprintJson = await input.runtime.runPromise(
-            input.store.getBlueprint({ threadId: chatId, anonKey }),
+            input.store.getBlueprint({ threadId: chatId }),
           )
           const blob = new Blob([JSON.stringify(blueprintJson, null, 2)], { type: "application/json" })
           const url = URL.createObjectURL(blob)
@@ -987,7 +987,7 @@ export const mountAutopilotController = (input: {
     scheduleRender()
 
     try {
-      await input.runtime.runPromise(input.store.resetThread({ threadId: chatId, anonKey }))
+      await input.runtime.runPromise(input.store.resetThread({ threadId: chatId }))
       inputDraft = ""
       const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]')
       if (inputEl) inputEl.value = ""
@@ -1016,15 +1016,16 @@ export const mountAutopilotController = (input: {
   void fetchToolContracts()
   ensureBlueprintPolling(prevBusy)
   scheduleRender()
-  queueMicrotask(() => focusChatInput({ force: true }))
 
   return {
     cleanup: () => {
+      disposed = true
       unsubSession()
+      unsubOwnedThreadId()
       unsubCollapsed()
       unsubUserMenu()
-      unsubChat()
-      unsubIsAtBottom()
+      if (unsubChat) unsubChat()
+      if (unsubIsAtBottom) unsubIsAtBottom()
 
       if (blueprintPollInterval != null) {
         window.clearInterval(blueprintPollInterval)

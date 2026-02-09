@@ -2,6 +2,7 @@ import { createAuthService } from "@workos/authkit-session"
 import { Effect } from "effect"
 
 import { WebCookieSessionStorage } from "../auth/sessionCookieStorage"
+import { makeAuthKitSessionSetCookie, makeE2eJwks, mintE2eJwt } from "../auth/e2eAuth"
 import {
   clearSessionCookie,
   sendMagicAuthCode,
@@ -36,6 +37,13 @@ type VerifyBody = {
   readonly code?: unknown
 }
 
+type E2eLoginBody = {
+  readonly seed?: unknown
+  readonly email?: unknown
+  readonly firstName?: unknown
+  readonly lastName?: unknown
+}
+
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     ...init,
@@ -57,6 +65,102 @@ function normalizeCode(raw: string): string {
 const authkit = createAuthService<Request, Response>({
   sessionStorageFactory: (config) => new WebCookieSessionStorage(config),
 })
+
+const requireE2eBypassAuth = (request: Request, env: WorkerEnv): boolean => {
+  const secret = typeof env.OA_E2E_BYPASS_SECRET === "string" ? env.OA_E2E_BYPASS_SECRET : ""
+  if (!secret) return false
+  const authz = request.headers.get("authorization") ?? ""
+  return authz === `Bearer ${secret}`
+}
+
+const handleE2eJwks = async (env: WorkerEnv): Promise<Response> => {
+  const privateJwkJson = typeof env.OA_E2E_JWT_PRIVATE_JWK === "string" ? env.OA_E2E_JWT_PRIVATE_JWK : ""
+  if (!privateJwkJson) return new Response("Not found", { status: 404 })
+
+  const { runtime } = getWorkerRuntime(env)
+  return runtime.runPromise(
+    makeE2eJwks({ privateJwkJson }).pipe(
+      Effect.match({
+        onFailure: () => json({ ok: false, error: "jwks_failed" }, { status: 500 }),
+        onSuccess: (jwks) => json(jwks, { status: 200 }),
+      }),
+    ),
+  )
+}
+
+const normalizeSeed = (raw: unknown): string | null => {
+  if (typeof raw !== "string") return null
+  const s = raw.trim()
+  if (!s) return null
+  if (s.length > 200) return null
+  return s
+}
+
+const normalizeName = (raw: unknown): string | null => {
+  if (typeof raw !== "string") return null
+  const s = raw.trim()
+  if (!s) return null
+  return s.slice(0, 80)
+}
+
+const sha256Hex = async (text: string): Promise<string> => {
+  const bytes = new TextEncoder().encode(text)
+  const digest = await crypto.subtle.digest("SHA-256", bytes)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+}
+
+const handleE2eLogin = async (request: Request, env: WorkerEnv): Promise<Response> => {
+  const privateJwkJson = typeof env.OA_E2E_JWT_PRIVATE_JWK === "string" ? env.OA_E2E_JWT_PRIVATE_JWK : ""
+  if (!privateJwkJson) return new Response("Not found", { status: 404 })
+  if (!requireE2eBypassAuth(request, env)) return new Response("Unauthorized", { status: 401 })
+
+  let body: E2eLoginBody
+  try {
+    body = (await request.json()) as E2eLoginBody
+  } catch {
+    body = {}
+  }
+
+  const seed = normalizeSeed(body.seed)
+  const emailRaw = typeof body.email === "string" ? body.email : ""
+  const email = emailRaw ? normalizeEmail(emailRaw) : null
+  const firstName = normalizeName(body.firstName)
+  const lastName = normalizeName(body.lastName)
+
+  const userId =
+    seed != null
+      ? `user_e2e_${(await sha256Hex(seed)).slice(0, 26)}`
+      : `user_e2e_${crypto.randomUUID().replaceAll("-", "").slice(0, 26)}`
+
+  const user = {
+    id: userId,
+    email: email ?? `${userId}@e2e.openagents.invalid`,
+    firstName: firstName ?? "E2E",
+    lastName: lastName ?? "Test",
+  }
+
+  const { runtime } = getWorkerRuntime(env)
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const accessToken = yield* mintE2eJwt({ privateJwkJson, user })
+      const { setCookieHeader } = yield* makeAuthKitSessionSetCookie({ accessToken, user })
+      return json(
+        { ok: true, userId: user.id, email: user.email },
+        {
+          status: 200,
+          headers: { "Set-Cookie": setCookieHeader },
+        },
+      )
+    }).pipe(
+      Effect.catchAll((err) => {
+        console.error("[auth.e2e.login]", err)
+        return Effect.succeed(json({ ok: false, error: "e2e_login_failed" }, { status: 500 }))
+      }),
+    ),
+  )
+}
 
 const handleSession = async (request: Request): Promise<Response> => {
   let auth: any
@@ -251,6 +355,16 @@ export const handleAuthRequest = async (
   env: WorkerEnv,
 ): Promise<Response | null> => {
   const url = new URL(request.url)
+
+  if (url.pathname === "/api/auth/e2e/jwks") {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 })
+    return handleE2eJwks(env)
+  }
+
+  if (url.pathname === "/api/auth/e2e/login") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 })
+    return handleE2eLogin(request, env)
+  }
 
   if (url.pathname === "/api/auth/session") {
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405 })

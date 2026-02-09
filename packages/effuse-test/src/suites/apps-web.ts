@@ -254,73 +254,6 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
       }),
     },
     {
-      id: "apps-web.prod.autopilot.chat-send-shows-response-or-error",
-      tags: ["e2e", "browser", "apps/web", "prod"],
-      timeoutMs: 180_000,
-      steps: Effect.gen(function* () {
-        const ctx = yield* TestContext
-        const browser = yield* BrowserService
-
-        yield* browser.withPage((page) =>
-          Effect.gen(function* () {
-            const prompt = `effuse-test:${Date.now()}:${Math.random().toString(16).slice(2)}`
-
-            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
-            yield* step(
-              "wait for shell",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-shell]')", { timeoutMs: 20_000 }),
-            )
-
-            const initialAssistantCount = yield* step(
-              "count initial assistant messages",
-              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
-            )
-
-            yield* step("type into chat input", page.fill('[data-autopilot-chat-input=\"1\"]', prompt))
-            yield* step("click Send", page.click('[data-autopilot-chat-send=\"1\"]'))
-
-            yield* step(
-              "wait for user bubble to contain prompt",
-              page.waitForFunction(
-                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').includes(${JSON.stringify(
-                  prompt,
-                )}))`,
-                { timeoutMs: 30_000 },
-              ),
-            )
-
-            yield* step(
-              "wait for assistant response OR visible error banner",
-              page.waitForFunction(
-                `(
-                  !!document.querySelector('[data-autopilot-chat-error=\"1\"]')
-                  || document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${initialAssistantCount}
-                )`,
-                { timeoutMs: 120_000 },
-              ),
-            )
-
-            yield* step(
-              "assert no silent stall",
-              Effect.gen(function* () {
-                const errorBanner = yield* page.evaluate<boolean>(
-                  "!!document.querySelector('[data-autopilot-chat-error=\"1\"]')",
-                )
-                const assistantCount = yield* page.evaluate<number>(
-                  "document.querySelectorAll('[data-chat-role=\"assistant\"]').length",
-                )
-
-                yield* assertTrue(
-                  errorBanner || assistantCount > initialAssistantCount,
-                  "Expected either an assistant message or a visible error banner after sending",
-                )
-              }),
-            )
-          }),
-        )
-      }),
-    },
-    {
       id: "apps-web.visual.storybook",
       tags: ["e2e", "browser", "apps/web", "visual", "storybook"],
       timeoutMs: 300_000,
@@ -401,6 +334,163 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
       }),
     },
   ]
+
+  const e2eSecret = process.env.EFFUSE_TEST_E2E_BYPASS_SECRET
+  if (e2eSecret && e2eSecret.length > 0) {
+    tests.push({
+      id: "apps-web.prod.autopilot.e2e-login",
+      tags: ["e2e", "browser", "apps/web", "prod", "auth"],
+      timeoutMs: 120_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+        const browser = yield* BrowserService
+
+        yield* browser.withPage((page) =>
+          Effect.gen(function* () {
+            // Ensure same-origin so cookies are set correctly.
+            yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
+
+            const seed = `effuse-test:${ctx.runId}:${ctx.testId}`
+            const loginRes = yield* step(
+              "POST /api/auth/e2e/login",
+              page.evaluate<{ readonly ok: boolean; readonly userId: string }>(`(() => {
+  return fetch('/api/auth/e2e/login', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': 'Bearer ' + ${JSON.stringify(e2eSecret)}
+    },
+    body: JSON.stringify({ seed: ${JSON.stringify(seed)} })
+  }).then(async (res) => {
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json || json.ok !== true) {
+      throw new Error('e2e login failed: HTTP ' + res.status + ' ' + JSON.stringify(json));
+    }
+    return json;
+  });
+})()`),
+            )
+
+            yield* step(
+              "assert session is authed",
+              Effect.gen(function* () {
+                const session = yield* page.evaluate<{ readonly ok: boolean; readonly userId: string | null }>(`(() => {
+  return fetch('/api/auth/session', { method: 'GET', cache: 'no-store', credentials: 'include' })
+    .then(res => res.json())
+    .catch(() => null);
+})()`)
+                yield* assertTrue(session?.ok === true, "Expected /api/auth/session ok === true after e2e login")
+                yield* assertTrue(
+                  typeof session?.userId === "string" && session.userId.length > 0,
+                  "Expected /api/auth/session to include userId after e2e login",
+                )
+                yield* assertEqual(
+                  session.userId,
+                  loginRes.userId,
+                  "Expected /api/auth/session userId to match /api/auth/e2e/login response",
+                )
+              }),
+            )
+          }),
+        )
+      }),
+    })
+
+    tests.push({
+      id: "apps-web.prod.autopilot.chat-send-shows-response-or-error",
+      tags: ["e2e", "browser", "apps/web", "prod"],
+      timeoutMs: 180_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+        const browser = yield* BrowserService
+
+        yield* browser.withPage((page) =>
+          Effect.gen(function* () {
+            // Login via E2E bypass first (prod gating requires auth).
+            yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
+            const seed = `effuse-test:${ctx.runId}:${ctx.testId}:chat`
+            yield* step(
+              "e2e login",
+              page.evaluate(`(() => {
+  return fetch('/api/auth/e2e/login', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': 'Bearer ' + ${JSON.stringify(e2eSecret)}
+    },
+    body: JSON.stringify({ seed: ${JSON.stringify(seed)} })
+  }).then(async (res) => {
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json || json.ok !== true) {
+      throw new Error('e2e login failed: HTTP ' + res.status + ' ' + JSON.stringify(json));
+    }
+    return json;
+  });
+})()`),
+            )
+
+            const prompt = `effuse-test:${Date.now()}:${Math.random().toString(16).slice(2)}`
+
+            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
+            yield* step(
+              "wait for shell",
+              page.waitForFunction("!!document.querySelector('[data-autopilot-shell]')", { timeoutMs: 30_000 }),
+            )
+
+            const initialAssistantCount = yield* step(
+              "count initial assistant messages",
+              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
+            )
+
+            yield* step("type into chat input", page.fill('[data-autopilot-chat-input=\"1\"]', prompt))
+            yield* step("click Send", page.click('[data-autopilot-chat-send=\"1\"]'))
+
+            yield* step(
+              "wait for user bubble to contain prompt",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').includes(${JSON.stringify(
+                  prompt,
+                )}))`,
+                { timeoutMs: 30_000 },
+              ),
+            )
+
+            yield* step(
+              "wait for assistant response OR visible error banner",
+              page.waitForFunction(
+                `(
+                  !!document.querySelector('[data-autopilot-chat-error=\"1\"]')
+                  || document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${initialAssistantCount}
+                )`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+
+            yield* step(
+              "assert no silent stall",
+              Effect.gen(function* () {
+                const errorBanner = yield* page.evaluate<boolean>(
+                  "!!document.querySelector('[data-autopilot-chat-error=\"1\"]')",
+                )
+                const assistantCount = yield* page.evaluate<number>(
+                  "document.querySelectorAll('[data-chat-role=\"assistant\"]').length",
+                )
+
+                yield* assertTrue(
+                  errorBanner || assistantCount > initialAssistantCount,
+                  "Expected either an assistant message or a visible error banner after sending",
+                )
+              }),
+            )
+          }),
+        )
+      }),
+    })
+  }
 
   const magicEmail = process.env.EFFUSE_TEST_MAGIC_EMAIL
   const magicCode = process.env.EFFUSE_TEST_MAGIC_CODE

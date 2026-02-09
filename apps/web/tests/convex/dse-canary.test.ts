@@ -8,7 +8,7 @@ import { setActiveImpl } from "../../convex/dse/active";
 import { getCanaryImpl, startCanaryImpl, stopCanaryImpl } from "../../convex/dse/canary";
 import { recordPredictReceiptImpl } from "../../convex/dse/receipts";
 
-import { ensureAnonThreadImpl } from "../../convex/autopilot/threads";
+import { ensureOwnedThreadImpl } from "../../convex/autopilot/threads";
 import { createRunImpl } from "../../convex/autopilot/messages";
 
 const run = <A>(effect: Effect.Effect<A>) => Effect.runPromise(effect);
@@ -69,7 +69,7 @@ describe("convex/dse Stage 6 canary config + auto-stop", () => {
   it("auto-stops a canary when error rate exceeds threshold (observed via dse.predict receipts)", async () => {
     const db = makeInMemoryDb();
     const admin = authedCtx(db, "admin-1");
-    const anon = anonCtx(db);
+    const user = authedCtx(db, "user-1");
 
     const signatureId = "@openagents/test/Sig.v1";
     await run(putArtifactImpl(admin, { signatureId, compiled_id: "control", json: { ok: true } }));
@@ -87,10 +87,9 @@ describe("convex/dse Stage 6 canary config + auto-stop", () => {
       }),
     );
 
-    const threadId = "thread-1";
-    const anonKey = "anon-1";
-    await run(ensureAnonThreadImpl(anon, { threadId, anonKey }));
-    const created = await run(createRunImpl(anon, { threadId, anonKey, text: "hi" }));
+    const ensured = await run(ensureOwnedThreadImpl(user));
+    const threadId = ensured.threadId;
+    const created = await run(createRunImpl(user, { threadId, text: "hi" }));
 
     const mkReceipt = (id: string) => ({
       format: "openagents.dse.predict_receipt",
@@ -110,8 +109,8 @@ describe("convex/dse Stage 6 canary config + auto-stop", () => {
       result: { _tag: "Error", errorName: "Oops", message: "bad" },
     });
 
-    await run(recordPredictReceiptImpl(anon, { threadId, anonKey, runId: created.runId, receipt: mkReceipt("r1") }));
-    await run(recordPredictReceiptImpl(anon, { threadId, anonKey, runId: created.runId, receipt: mkReceipt("r2") }));
+    await run(recordPredictReceiptImpl(user, { threadId, runId: created.runId, receipt: mkReceipt("r1") }));
+    await run(recordPredictReceiptImpl(user, { threadId, runId: created.runId, receipt: mkReceipt("r2") }));
 
     // Canary config should be removed.
     expect(db.__tables.dseCanaries).toHaveLength(0);
@@ -121,4 +120,3 @@ describe("convex/dse Stage 6 canary config + auto-stop", () => {
     expect(String(last.reason ?? "")).toContain("error_rate_exceeded");
   });
 });
-

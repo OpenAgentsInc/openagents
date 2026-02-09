@@ -7,7 +7,7 @@ import { putArtifactImpl } from "../../convex/dse/artifacts";
 import { clearActiveImpl, getActiveImpl, rollbackActiveImpl, setActiveImpl } from "../../convex/dse/active";
 import { recordPredictReceiptImpl } from "../../convex/dse/receipts";
 
-import { ensureAnonThreadImpl } from "../../convex/autopilot/threads";
+import { ensureOwnedThreadImpl } from "../../convex/autopilot/threads";
 import { createRunImpl } from "../../convex/autopilot/messages";
 
 const run = <A>(effect: Effect.Effect<A>) => Effect.runPromise(effect);
@@ -73,20 +73,17 @@ describe("convex/dse Stage 2 stores (artifacts + active pointer + receipts)", ()
     );
   });
 
-  it("records DSE predict receipts into the thread receipts stream (anon allowed with anonKey)", async () => {
+  it("records DSE predict receipts into the thread receipts stream (owner-only)", async () => {
     const db = makeInMemoryDb();
-    const ctx = anonCtx(db);
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
 
-    const threadId = "thread-1";
-    const anonKey = "anon-1";
-
-    await run(ensureAnonThreadImpl(ctx, { threadId, anonKey }));
-    const created = await run(createRunImpl(ctx, { threadId, anonKey, text: "hi" }));
+    const created = await run(createRunImpl(ctx, { threadId, text: "hi" }));
 
     await run(
       recordPredictReceiptImpl(ctx, {
         threadId,
-        anonKey,
         runId: created.runId,
         receipt: {
           format: "openagents.dse.predict_receipt",
@@ -115,4 +112,3 @@ describe("convex/dse Stage 2 stores (artifacts + active pointer + receipts)", ()
     expect(db.__tables.receipts[0]?.compiled_id).toBe("c1");
   });
 });
-

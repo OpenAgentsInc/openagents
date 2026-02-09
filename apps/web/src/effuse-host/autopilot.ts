@@ -57,13 +57,11 @@ const readJson = async (request: Request): Promise<any> => {
 
 type SendBody = {
   readonly threadId?: unknown;
-  readonly anonKey?: unknown;
   readonly text?: unknown;
 };
 
 type CancelBody = {
   readonly threadId?: unknown;
-  readonly anonKey?: unknown;
   readonly runId?: unknown;
 };
 
@@ -133,14 +131,12 @@ const concatTextFromPromptMessages = (
 const flushPartsToConvex = (input: {
   readonly convex: ConvexServiceApi;
   readonly threadId: string;
-  readonly anonKey: string | null;
   readonly runId: string;
   readonly messageId: string;
   readonly parts: ReadonlyArray<{ readonly seq: number; readonly part: unknown }>;
 }) =>
   input.convex.mutation(api.autopilot.messages.appendParts, {
     threadId: input.threadId,
-    ...(input.anonKey ? { anonKey: input.anonKey } : {}),
     runId: input.runId,
     messageId: input.messageId,
     parts: input.parts.map((p) => ({ seq: p.seq, part: p.part })),
@@ -149,7 +145,6 @@ const flushPartsToConvex = (input: {
 const finalizeRunInConvex = (input: {
   readonly convex: ConvexServiceApi;
   readonly threadId: string;
-  readonly anonKey: string | null;
   readonly runId: string;
   readonly messageId: string;
   readonly status: "final" | "error" | "canceled";
@@ -157,7 +152,6 @@ const finalizeRunInConvex = (input: {
 }) =>
   input.convex.mutation(api.autopilot.messages.finalizeRun, {
     threadId: input.threadId,
-    ...(input.anonKey ? { anonKey: input.anonKey } : {}),
     runId: input.runId,
     messageId: input.messageId,
     status: input.status,
@@ -167,12 +161,10 @@ const finalizeRunInConvex = (input: {
 const isCancelRequested = (input: {
   readonly convex: ConvexServiceApi;
   readonly threadId: string;
-  readonly anonKey: string | null;
   readonly runId: string;
 }) =>
   input.convex.query(api.autopilot.messages.isCancelRequested, {
     threadId: input.threadId,
-    ...(input.anonKey ? { anonKey: input.anonKey } : {}),
     runId: input.runId,
   });
 
@@ -180,7 +172,6 @@ const runAutopilotStream = (input: {
   readonly env: WorkerEnv & { readonly AI: Ai };
   readonly request: Request;
   readonly threadId: string;
-  readonly anonKey: string | null;
   readonly runId: string;
   readonly assistantMessageId: string;
   readonly controller: AbortController;
@@ -206,10 +197,9 @@ const runAutopilotStream = (input: {
     const t = telemetry.withNamespace("autopilot.stream");
     yield* t.event("run.started", { threadId: input.threadId, runId: input.runId });
 
-    // Load prompt context from Convex (messages only; omit parts).
+    // Load prompt context from Convex (messages only; omit parts). Owner-only.
     const rawSnapshot = yield* convex.query(api.autopilot.messages.getThreadSnapshot, {
       threadId: input.threadId,
-      ...(input.anonKey ? { anonKey: input.anonKey } : {}),
       maxMessages: 120,
       maxParts: 0,
     });
@@ -218,7 +208,6 @@ const runAutopilotStream = (input: {
     const bp = yield* convex
       .query(api.autopilot.blueprint.getBlueprint, {
         threadId: input.threadId,
-        ...(input.anonKey ? { anonKey: input.anonKey } : {}),
       })
       .pipe(
         Effect.catchAll(() =>
@@ -311,7 +300,6 @@ const runAutopilotStream = (input: {
         const cancel = yield* isCancelRequested({
           convex,
           threadId: input.threadId,
-          anonKey: input.anonKey,
           runId: input.runId,
         }).pipe(
           Effect.catchAll(() =>
@@ -332,7 +320,6 @@ const runAutopilotStream = (input: {
       yield* flushPartsToConvex({
         convex,
         threadId: input.threadId,
-        anonKey: input.anonKey,
         runId: input.runId,
         messageId: input.assistantMessageId,
         parts: batch,
@@ -397,7 +384,6 @@ const runAutopilotStream = (input: {
       });
       const dseEnv = layerDsePredictEnvForAutopilotRun({
         threadId: input.threadId,
-        anonKey: input.anonKey,
         runId: input.runId,
         onReceipt: setRecordedReceipt,
       });
@@ -462,7 +448,6 @@ const runAutopilotStream = (input: {
           yield* convex
             .mutation(api.autopilot.blueprint.applyBootstrapUserHandle, {
               threadId: input.threadId,
-              ...(input.anonKey ? { anonKey: input.anonKey } : {}),
               handle,
             })
             .pipe(Effect.catchAll(() => Effect.succeed({ ok: false })));
@@ -517,7 +502,6 @@ const runAutopilotStream = (input: {
       yield* flushPartsToConvex({
         convex,
         threadId: input.threadId,
-        anonKey: input.anonKey,
         runId: input.runId,
         messageId: input.assistantMessageId,
         parts: [{ seq: seq++, part: errorPart }],
@@ -526,7 +510,6 @@ const runAutopilotStream = (input: {
       yield* finalizeRunInConvex({
         convex,
         threadId: input.threadId,
-        anonKey: input.anonKey,
         runId: input.runId,
         messageId: input.assistantMessageId,
         status,
@@ -563,7 +546,6 @@ export const handleAutopilotRequest = async (
 
     const body = (await readJson(request)) as SendBody | null;
     const threadId = typeof body?.threadId === "string" ? body.threadId : "";
-    const anonKey = typeof body?.anonKey === "string" ? body.anonKey : null;
     const text = typeof body?.text === "string" ? body.text : "";
 
     if (!threadId || !text.trim()) {
@@ -588,12 +570,11 @@ export const handleAutopilotRequest = async (
     const exit = await runtime.runPromiseExit(
       Effect.gen(function* () {
         const convex = yield* ConvexService;
-        // Ensure auth is loaded (so ConvexService server client can setAuth token).
+        // Ensure auth is loaded (so ConvexService server client can setAuth token). Owner-only; no anon.
         yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(Effect.catchAll(() => Effect.void));
 
         return yield* convex.mutation(api.autopilot.messages.createRun, {
           threadId,
-          ...(anonKey ? { anonKey } : {}),
           text,
         });
       }).pipe(
@@ -620,7 +601,6 @@ export const handleAutopilotRequest = async (
 	        env: envWithAi,
 	        request,
 	        threadId,
-	        anonKey,
 	        runId,
 	        assistantMessageId,
 	        controller,
@@ -638,7 +618,6 @@ export const handleAutopilotRequest = async (
 
     const body = (await readJson(request)) as CancelBody | null;
     const threadId = typeof body?.threadId === "string" ? body.threadId : "";
-    const anonKey = typeof body?.anonKey === "string" ? body.anonKey : null;
     const runId = typeof body?.runId === "string" ? body.runId : "";
     if (!threadId || !runId) {
       return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
@@ -664,7 +643,6 @@ export const handleAutopilotRequest = async (
         yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(Effect.catchAll(() => Effect.void));
         return yield* convex.mutation(api.autopilot.messages.requestCancel, {
           threadId,
-          ...(anonKey ? { anonKey } : {}),
           runId,
         });
       }).pipe(

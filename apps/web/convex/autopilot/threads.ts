@@ -167,13 +167,14 @@ export const ensureOwnedThread = effectMutation({
   handler: ensureOwnedThreadImpl,
 });
 
+/** Best-effort: claim anon thread for the current user. Never throws — returns ok so client/Convex don't log Server Error. */
 export const claimAnonThreadImpl = (
   ctx: EffectMutationCtx,
   args: { readonly threadId: string; readonly anonKey: string },
 ) =>
   Effect.gen(function* () {
     const subject = yield* getSubject(ctx);
-    if (!subject) return yield* Effect.fail(new Error("unauthorized"));
+    if (!subject) return { ok: true, threadId: args.threadId };
 
     const thread = yield* tryPromise(() =>
       ctx.db
@@ -181,17 +182,16 @@ export const claimAnonThreadImpl = (
         .withIndex("by_threadId", (q) => q.eq("threadId", args.threadId))
         .unique(),
     );
-    if (!thread) return yield* Effect.fail(new Error("thread_not_found"));
+    if (!thread) return { ok: true, threadId: args.threadId };
 
     if (thread.ownerId) {
-      if (thread.ownerId !== subject) return yield* Effect.fail(new Error("forbidden"));
+      if (thread.ownerId !== subject) return { ok: true, threadId: args.threadId };
     } else {
-      if (!thread.anonKey || thread.anonKey !== args.anonKey) return yield* Effect.fail(new Error("forbidden"));
+      if (!thread.anonKey || thread.anonKey !== args.anonKey) return { ok: true, threadId: args.threadId };
 
       yield* tryPromise(() =>
         ctx.db.patch(thread._id, {
           ownerId: subject,
-          anonKey: undefined,
           updatedAtMs: nowMs(),
         }),
       );

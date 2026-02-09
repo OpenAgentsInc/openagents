@@ -109,24 +109,25 @@ describe("convex/autopilot MVP impls", () => {
 
     expect(db.__tables.threads).toHaveLength(1);
     expect(db.__tables.threads[0].ownerId).toBe("user-1");
-    expect(db.__tables.threads[0].anonKey).toBeUndefined();
+    // Legacy threads may retain anonKey even after claim; access is owner-only in the product path.
+    expect(db.__tables.threads[0].anonKey).toBe(anonKey);
 
     expect(db.__tables.users).toHaveLength(1);
     expect(db.__tables.users[0]).toMatchObject({ userId: "user-1", defaultThreadId: threadId });
 
-    // Other users cannot claim an already-owned thread.
-    await expect(run(claimAnonThreadImpl(authedCtx(db, "user-2"), { threadId, anonKey }))).rejects.toThrow(/forbidden/);
+    // Best-effort: legacy callers should not throw. Ownership must remain unchanged.
+    const other = await run(claimAnonThreadImpl(authedCtx(db, "user-2"), { threadId, anonKey }));
+    expect(other).toEqual({ ok: true, threadId });
+    expect(db.__tables.threads[0].ownerId).toBe("user-1");
   });
 
   it("createRun + appendParts + finalizeRun persists canonical chat state (idempotent parts)", async () => {
     const db = makeInMemoryDb();
-    const threadId = "thread-run-1";
-    const anonKey = "anon-run-1";
-    const ctx = anonCtx(db);
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
 
-    await run(ensureAnonThreadImpl(ctx, { threadId, anonKey }));
-
-    const created = await run(createRunImpl(ctx, { threadId, anonKey, text: "hello" }));
+    const created = await run(createRunImpl(ctx, { threadId, text: "hello" }));
     expect(created.ok).toBe(true);
     expect(typeof created.runId).toBe("string");
     expect(typeof created.userMessageId).toBe("string");
@@ -135,7 +136,6 @@ describe("convex/autopilot MVP impls", () => {
     const appended = await run(
       appendPartsImpl(ctx, {
         threadId,
-        anonKey,
         runId: created.runId,
         messageId: created.assistantMessageId,
         parts: [
@@ -152,7 +152,6 @@ describe("convex/autopilot MVP impls", () => {
     const finalized = await run(
       finalizeRunImpl(ctx, {
         threadId,
-        anonKey,
         runId: created.runId,
         messageId: created.assistantMessageId,
         status: "final",
@@ -161,7 +160,7 @@ describe("convex/autopilot MVP impls", () => {
     );
     expect(finalized).toEqual({ ok: true });
 
-    const snapshot = await run(getThreadSnapshotImpl(ctx, { threadId, anonKey, maxMessages: 200, maxParts: 5000 }));
+    const snapshot = await run(getThreadSnapshotImpl(ctx, { threadId, maxMessages: 200, maxParts: 5000 }));
     expect(snapshot.ok).toBe(true);
 
     const roles = snapshot.messages.map((m: any) => m.role);
@@ -178,35 +177,30 @@ describe("convex/autopilot MVP impls", () => {
 
   it("cancel is persisted on the run (requestCancel + isCancelRequested)", async () => {
     const db = makeInMemoryDb();
-    const threadId = "thread-cancel-1";
-    const anonKey = "anon-cancel-1";
-    const ctx = anonCtx(db);
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
+    const created = await run(createRunImpl(ctx, { threadId, text: "hi" }));
 
-    await run(ensureAnonThreadImpl(ctx, { threadId, anonKey }));
-    const created = await run(createRunImpl(ctx, { threadId, anonKey, text: "hi" }));
-
-    const before = await run(isCancelRequestedImpl(ctx, { threadId, anonKey, runId: created.runId }));
+    const before = await run(isCancelRequestedImpl(ctx, { threadId, runId: created.runId }));
     expect(before).toEqual({ ok: true, cancelRequested: false });
 
-    await run(requestCancelImpl(ctx, { threadId, anonKey, runId: created.runId }));
+    await run(requestCancelImpl(ctx, { threadId, runId: created.runId }));
 
-    const after = await run(isCancelRequestedImpl(ctx, { threadId, anonKey, runId: created.runId }));
+    const after = await run(isCancelRequestedImpl(ctx, { threadId, runId: created.runId }));
     expect(after).toEqual({ ok: true, cancelRequested: true });
   });
 
   it("resetThread deletes messages/parts/runs/receipts and re-seeds welcome + default blueprint", async () => {
     const db = makeInMemoryDb();
-    const threadId = "thread-reset-1";
-    const anonKey = "anon-reset-1";
-    const ctx = anonCtx(db);
-
-    await run(ensureAnonThreadImpl(ctx, { threadId, anonKey }));
-    const created = await run(createRunImpl(ctx, { threadId, anonKey, text: "hello" }));
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
+    const created = await run(createRunImpl(ctx, { threadId, text: "hello" }));
 
     await run(
       appendPartsImpl(ctx, {
         threadId,
-        anonKey,
         runId: created.runId,
         messageId: created.assistantMessageId,
         parts: [{ seq: 0, part: { type: "text-delta", id: "t1", delta: "x" } }],
@@ -216,9 +210,9 @@ describe("convex/autopilot MVP impls", () => {
     await db.insert("receipts", { threadId, runId: created.runId, kind: "model", json: { ok: true }, createdAtMs: 1 });
 
     // Mutate blueprint away from default to ensure reset restores it.
-    await run(setBlueprintImpl(ctx, { threadId, anonKey, blueprint: { foo: "bar" } }));
+    await run(setBlueprintImpl(ctx, { threadId, blueprint: { foo: "bar" } }));
 
-    await run(resetThreadImpl(ctx, { threadId, anonKey }));
+    await run(resetThreadImpl(ctx, { threadId }));
 
     expect(db.__tables.runs).toHaveLength(0);
     expect(db.__tables.messageParts).toHaveLength(0);
@@ -232,7 +226,7 @@ describe("convex/autopilot MVP impls", () => {
       text: FIRST_OPEN_WELCOME_MESSAGE,
     });
 
-    const blueprint = await run(getBlueprintImpl(ctx, { threadId, anonKey }));
+    const blueprint = await run(getBlueprintImpl(ctx, { threadId }));
     expect(blueprint.ok).toBe(true);
     expect(blueprint.blueprint?.bootstrapState?.threadId).toBe(threadId);
     expect(blueprint.blueprint?.docs?.identity?.name).toBe("Autopilot");
@@ -240,50 +234,44 @@ describe("convex/autopilot MVP impls", () => {
 
   it("blueprint get/set/reset works (Convex canonical state)", async () => {
     const db = makeInMemoryDb();
-    const threadId = "thread-blueprint-1";
-    const anonKey = "anon-blueprint-1";
-    const ctx = anonCtx(db);
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
 
-    await run(ensureAnonThreadImpl(ctx, { threadId, anonKey }));
-
-    const initial = await run(getBlueprintImpl(ctx, { threadId, anonKey }));
+    const initial = await run(getBlueprintImpl(ctx, { threadId }));
     expect(initial.ok).toBe(true);
     expect(initial.blueprint?.bootstrapState?.threadId).toBe(threadId);
 
-    const set = await run(setBlueprintImpl(ctx, { threadId, anonKey, blueprint: { hello: "world" } }));
+    const set = await run(setBlueprintImpl(ctx, { threadId, blueprint: { hello: "world" } }));
     expect(set.ok).toBe(true);
-    const afterSet = await run(getBlueprintImpl(ctx, { threadId, anonKey }));
+    const afterSet = await run(getBlueprintImpl(ctx, { threadId }));
     expect(afterSet.blueprint).toEqual({ hello: "world" });
 
-    const reset = await run(resetBlueprintImpl(ctx, { threadId, anonKey }));
+    const reset = await run(resetBlueprintImpl(ctx, { threadId }));
     expect(reset.ok).toBe(true);
-    const afterReset = await run(getBlueprintImpl(ctx, { threadId, anonKey }));
+    const afterReset = await run(getBlueprintImpl(ctx, { threadId }));
     expect(afterReset.blueprint?.bootstrapState?.threadId).toBe(threadId);
     expect(afterReset.blueprint?.docs?.identity?.name).toBe("Autopilot");
   });
 
   it("thread snapshots can be requested with maxMessages/maxParts = 0", async () => {
     const db = makeInMemoryDb();
-    const threadId = "thread-snapshot-0";
-    const anonKey = "anon-snapshot-0";
-    const ctx = anonCtx(db);
-
-    await run(ensureAnonThreadImpl(ctx, { threadId, anonKey }));
-    const created = await run(createRunImpl(ctx, { threadId, anonKey, text: "hi" }));
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
+    const created = await run(createRunImpl(ctx, { threadId, text: "hi" }));
     await run(
       appendPartsImpl(ctx, {
         threadId,
-        anonKey,
         runId: created.runId,
         messageId: created.assistantMessageId,
         parts: [{ seq: 0, part: { type: "text-delta", delta: "x" } }],
       }),
     );
 
-    const snapshot = await run(getThreadSnapshotImpl(ctx, { threadId, anonKey, maxMessages: 0, maxParts: 0 }));
+    const snapshot = await run(getThreadSnapshotImpl(ctx, { threadId, maxMessages: 0, maxParts: 0 }));
     expect(snapshot.ok).toBe(true);
     expect(snapshot.messages).toEqual([]);
     expect(snapshot.parts).toEqual([]);
   });
 });
-

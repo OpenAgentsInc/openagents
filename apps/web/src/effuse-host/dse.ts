@@ -322,7 +322,6 @@ export const layerDsePolicyRegistryFromConvex = (input: {
 
 export const layerDseReceiptRecorderFromConvex = (input: {
   readonly threadId: string;
-  readonly anonKey: string | null;
   readonly runId: string;
   readonly onReceipt?: ((receipt: Receipt.Receipt) => void) | undefined;
 }): Layer.Layer<Receipt.ReceiptRecorderService, never, ConvexService | RequestContextService> =>
@@ -343,7 +342,6 @@ export const layerDseReceiptRecorderFromConvex = (input: {
           Effect.zipRight(
             convex.mutation(api.dse.receipts.recordPredictReceipt, {
               threadId: input.threadId,
-              ...(input.anonKey ? { anonKey: input.anonKey } : {}),
               runId: input.runId,
               receipt,
             }),
@@ -361,7 +359,6 @@ export const layerDseReceiptRecorderFromConvex = (input: {
 
 export const layerDsePredictEnvForAutopilotRun = (input: {
   readonly threadId: string;
-  readonly anonKey: string | null;
   readonly runId: string;
   readonly onReceipt?: ((receipt: Receipt.Receipt) => void) | undefined;
 }): Layer.Layer<

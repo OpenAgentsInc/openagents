@@ -9,16 +9,12 @@ describe("apps/web TestConvexKit", () => {
   it("supports subscribeQuery updates (in-process, wipeable)", async () => {
     const kit = makeTestConvexKit();
 
-    const threadId = "thread-1";
-    const anonKey = "anon-1";
-
-    await Effect.runPromise(
-      kit.service.mutation(api.autopilot.threads.ensureAnonThread, { threadId, anonKey } as any),
-    );
+    kit.setUser("user-1");
+    const ensured = await Effect.runPromise(kit.service.mutation(api.autopilot.threads.ensureOwnedThread, {} as any));
+    const threadId = (ensured as any).threadId as string;
 
     const stream = kit.service.subscribeQuery(api.autopilot.messages.getThreadSnapshot, {
       threadId,
-      anonKey,
       maxMessages: 200,
       maxParts: 5000,
     } as any);
@@ -46,7 +42,7 @@ describe("apps/web TestConvexKit", () => {
       yield* Deferred.await(firstSeen);
 
       // Trigger an update while the subscription is active.
-      yield* kit.service.mutation(api.autopilot.messages.createRun, { threadId, anonKey, text: "hi" } as any);
+      yield* kit.service.mutation(api.autopilot.messages.createRun, { threadId, text: "hi" } as any);
 
       const chunk = yield* Fiber.join(fiber);
       return Chunk.toReadonlyArray(chunk) as any[];

@@ -28,6 +28,8 @@ type ChatSession = {
 };
 
 export type ChatClient = {
+  /** Resolve the current user's owned thread id (requires auth). */
+  readonly getOwnedThreadId: () => Effect.Effect<string, Error, RequestContextService>;
   readonly open: (
     threadId: string,
   ) => Effect.Effect<SubscriptionRef.SubscriptionRef<ChatSnapshot>, never, RequestContextService>;
@@ -46,35 +48,6 @@ const initialSnapshot = (): ChatSnapshot => ({
   status: "ready",
   errorText: null,
 });
-
-const ANON_THREAD_ID_KEY = "autopilot-anon-chat-id";
-const ANON_THREAD_KEY_KEY = "autopilot-anon-chat-key";
-
-function randomId(size = 16): string {
-  let out = "";
-  while (out.length < size) out += Math.random().toString(36).slice(2);
-  return out.slice(0, size);
-}
-
-function getOrCreateAnonThreadId(): string {
-  if (typeof sessionStorage === "undefined") return `anon-${randomId(12)}`;
-  let id = sessionStorage.getItem(ANON_THREAD_ID_KEY);
-  if (!id) {
-    id = `anon-${randomId(12)}`;
-    sessionStorage.setItem(ANON_THREAD_ID_KEY, id);
-  }
-  return id;
-}
-
-function getOrCreateAnonKey(): string {
-  if (typeof sessionStorage === "undefined") return `key-${randomId(24)}`;
-  let key = sessionStorage.getItem(ANON_THREAD_KEY_KEY);
-  if (!key) {
-    key = `key-${randomId(24)}`;
-    sessionStorage.setItem(ANON_THREAD_KEY_KEY, key);
-  }
-  return key;
-}
 
 function toChatSnapshot(session: ChatSession, messages: ReadonlyArray<ChatMessage>): ChatSnapshot {
   const computedStatus: ChatStatus =
@@ -95,7 +68,7 @@ export const ChatServiceLive = Layer.effect(
   ChatService,
   Effect.gen(function* () {
     const convex = yield* ConvexService;
-    const auth = yield* AuthService;
+    yield* AuthService;
     const telemetry = yield* TelemetryService;
     const sessions = new Map<string, ChatSession>();
 
@@ -117,21 +90,6 @@ export const ChatServiceLive = Layer.effect(
         return state;
       }
 
-      // Ensure thread exists for anon, then best-effort claim when authed.
-      const anonThreadId = getOrCreateAnonThreadId();
-      const anonKey = getOrCreateAnonKey();
-
-      // We intentionally allow callers to pass any threadId, but for MVP we only
-      // use the per-tab anon thread id as the canonical thread id.
-      if (threadId !== anonThreadId) {
-        // Keep the internal keying stable: if a different id is requested, still
-        // create a session for it (used by tests/experiments).
-      }
-
-      yield* convex
-        .mutation(api.autopilot.threads.ensureAnonThread, { threadId, anonKey } as any)
-        .pipe(Effect.catchAll(() => Effect.void));
-
       const sessionState = yield* SubscriptionRef.make(initialSnapshot());
 
       const session: ChatSession = {
@@ -145,19 +103,8 @@ export const ChatServiceLive = Layer.effect(
 
       sessions.set(threadId, session);
 
-      const claimIfAuthed = Effect.gen(function* () {
-        const s = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)));
-        if (!s.userId) return;
-        yield* convex
-          .mutation(api.autopilot.threads.claimAnonThread, { threadId, anonKey } as any)
-          .pipe(Effect.catchAll(() => Effect.void));
-      });
-
-      yield* claimIfAuthed.pipe(Effect.catchAll(() => Effect.void));
-
       const stream = convex.subscribeQuery(api.autopilot.messages.getThreadSnapshot, {
         threadId,
-        anonKey,
       } as any);
 
       const fiber = yield* Stream.runForEach(stream, (snap: any) =>
@@ -235,6 +182,16 @@ export const ChatServiceLive = Layer.effect(
       return sessionState;
     });
 
+    const getOwnedThreadId = Effect.fn("ChatService.getOwnedThreadId")(function* () {
+      const result = yield* convex
+        .mutation(api.autopilot.threads.ensureOwnedThread, {})
+        .pipe(
+          Effect.map((r) => (r as { ok: boolean; threadId: string }).threadId),
+          Effect.mapError((e) => (e instanceof Error ? e : new Error(String(e)))),
+        );
+      return result;
+    });
+
     const withSession = <TValue, TError, R>(
       threadId: string,
       f: (session: ChatSession) => Effect.Effect<TValue, TError, R>,
@@ -253,8 +210,6 @@ export const ChatServiceLive = Layer.effect(
       );
 
     const send = Effect.fn("ChatService.send")(function* (threadId: string, text: string) {
-      const anonKey = getOrCreateAnonKey();
-
       yield* withSession(threadId, (session) =>
         Effect.sync(() => {
           session.localStatus.status = "submitted";
@@ -263,7 +218,6 @@ export const ChatServiceLive = Layer.effect(
         }),
       );
 
-      // Fire the Worker endpoint; streaming updates arrive via Convex subscription.
       const response = yield* Effect.tryPromise({
         try: () =>
           fetch("/api/autopilot/send", {
@@ -271,7 +225,7 @@ export const ChatServiceLive = Layer.effect(
             headers: { "content-type": "application/json" },
             credentials: "include",
             cache: "no-store",
-            body: JSON.stringify({ threadId, anonKey, text }),
+            body: JSON.stringify({ threadId, text }),
           }),
         catch: (err) => (err instanceof Error ? err : new Error(String(err))),
       });
@@ -301,8 +255,6 @@ export const ChatServiceLive = Layer.effect(
     });
 
     const stop = Effect.fn("ChatService.stop")(function* (threadId: string) {
-      const anonKey = getOrCreateAnonKey();
-
       yield* withSession(threadId, (session) =>
         Effect.gen(function* () {
           const runId = session.activeRunId;
@@ -315,7 +267,7 @@ export const ChatServiceLive = Layer.effect(
                 headers: { "content-type": "application/json" },
                 credentials: "include",
                 cache: "no-store",
-                body: JSON.stringify({ threadId, anonKey, runId }),
+                body: JSON.stringify({ threadId, runId }),
               }),
             catch: () => null,
           }).pipe(Effect.catchAll(() => Effect.void));
@@ -327,13 +279,11 @@ export const ChatServiceLive = Layer.effect(
     });
 
     const clearHistory = Effect.fn("ChatService.clearHistory")(function* (threadId: string) {
-      const anonKey = getOrCreateAnonKey();
-
       yield* convex
-        .mutation(api.autopilot.messages.clearMessages, { threadId, anonKey, keepWelcome: true } as any)
+        .mutation(api.autopilot.messages.clearMessages, { threadId, keepWelcome: true } as any)
         .pipe(Effect.catchAll(() => Effect.void));
     });
 
-    return ChatService.of({ open, send, stop, clearHistory });
+    return ChatService.of({ getOwnedThreadId, open, send, stop, clearHistory });
   }),
 );
