@@ -153,14 +153,12 @@ const handleE2eLogin = async (request: Request, env: WorkerEnv): Promise<Respons
   return runtime.runPromise(
     Effect.gen(function* () {
       const accessToken = yield* mintE2eJwt({ privateJwkJson, user })
-      const setCookieHeader = makeE2eSetCookieHeader(accessToken)
-      return json(
-        { ok: true, userId: user.id, email: user.email },
-        {
-          status: 200,
-          headers: { "Set-Cookie": setCookieHeader },
-        },
-      )
+      const headers = new Headers({ "content-type": "application/json; charset=utf-8" })
+      // Auth cookie (E2E-only).
+      headers.append("Set-Cookie", makeE2eSetCookieHeader(accessToken))
+      // Prelaunch bypass cookie (so tests can access /autopilot even when VITE_PRELAUNCH=1).
+      headers.append("Set-Cookie", "prelaunch_bypass=1; Path=/; Max-Age=604800; Secure; SameSite=Lax")
+      return new Response(JSON.stringify({ ok: true, userId: user.id, email: user.email }), { status: 200, headers })
     }).pipe(
       Effect.catchAll((err) => {
         console.error("[auth.e2e.login]", err)
