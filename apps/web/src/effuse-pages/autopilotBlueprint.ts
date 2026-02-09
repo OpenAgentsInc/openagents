@@ -25,7 +25,7 @@ export const autopilotBlueprintPanelTemplate = (
 ): TemplateResult => {
   return html`
     <div class="flex flex-col h-full min-h-0 w-full">
-      <div class="flex items-center justify-between h-11 px-3 border-b border-border-dark">
+      <div class="flex items-center justify-between h-12 px-3 border-b border-border-dark shrink-0">
         <div class="text-xs text-text-dim uppercase tracking-wider">Blueprint</div>
         <div class="flex items-center gap-2">
           ${model.updatedAtLabel

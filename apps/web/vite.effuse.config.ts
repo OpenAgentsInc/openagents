@@ -1,9 +1,44 @@
+import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite"
 import tsConfigPaths from "vite-tsconfig-paths"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+const publicDecksDir = path.resolve(__dirname, "public/decks")
+const outDecksDir = path.resolve(__dirname, "dist/effuse-client/decks")
+
+function syncDecksFile(filename: string) {
+  const src = path.join(publicDecksDir, filename)
+  const rel = path.relative(publicDecksDir, src)
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return
+  if (!fs.existsSync(src) || !fs.statSync(src).isFile()) return
+  fs.mkdirSync(outDecksDir, { recursive: true })
+  fs.copyFileSync(src, path.join(outDecksDir, filename))
+}
+
+/** Watch public/decks and sync to dist so deck JSON edits show up without full rebuild. */
+function watchDecksPlugin() {
+  return {
+    name: "watch-decks",
+    buildStart() {
+      if (!fs.existsSync(publicDecksDir)) return
+      fs.mkdirSync(outDecksDir, { recursive: true })
+      for (const name of fs.readdirSync(publicDecksDir)) {
+        const p = path.join(publicDecksDir, name)
+        if (fs.statSync(p).isFile()) syncDecksFile(name)
+      }
+      try {
+        fs.watch(publicDecksDir, { recursive: false }, (_event, filename) => {
+          if (filename) syncDecksFile(filename)
+        })
+      } catch {
+        // watch can fail in some environments
+      }
+    },
+  }
+}
 
 /**
  * Dedicated build for the Effuse-only client bootstrap.
@@ -24,6 +59,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    watchDecksPlugin(),
     tsConfigPaths({
       projects: ["./tsconfig.json"],
     }),

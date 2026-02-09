@@ -18,6 +18,10 @@ import {
 } from "@openagentsinc/effuse-flow"
 
 import { getStoryById } from "../storybook"
+import { autopilotStories } from "../storybook/stories/autopilot"
+import { homeStories } from "../storybook/stories/home"
+
+import { DECK_STORY_BY_ID } from "./deckStories"
 
 import {
   isRefNode,
@@ -439,9 +443,11 @@ const renderNode = (
       const fill = props.fill === true
       const position = asString(props.position) ?? ""
       const posStyle = position === "relative" ? "position:relative;" : ""
+      const centered = align === "center" && justify === "center"
+      const widthStyle = centered ? "width:80%; max-width:80%; min-width:0;" : ""
       return html`<div
         class="flex flex-col min-h-0${fill ? " flex-1" : ""}"
-        style="${posStyle} ${gapStyle} align-items:${align}; justify-content:${justify};"
+        style="${posStyle} ${widthStyle} ${gapStyle} align-items:${align}; justify-content:${justify};"
       >
         ${renderChildren(doc, theme, runtime, children)}
       </div>`
@@ -748,7 +754,14 @@ const renderNode = (
     case "Story": {
       const storyId = asString(props.storyId) ?? ""
       if (!storyId) return html`<div class="text-xs text-text-dim rounded border border-border-dark p-3">[Story: missing storyId]</div>`
-      const story = getStoryById(storyId)
+      const story =
+        DECK_STORY_BY_ID[storyId] ??
+        getStoryById(storyId) ??
+        (() => {
+          for (const s of autopilotStories) if (s.id === storyId) return s
+          for (const s of homeStories) if (s.id === storyId) return s
+          return null
+        })()
       if (!story) return html`<div class="text-xs text-text-dim rounded border border-border-dark p-3">[Story not found: ${storyId}]</div>`
       return html`<div class="h-full w-full min-h-0 min-w-0 overflow-hidden">${story.render()}</div>`
     }
@@ -824,7 +837,7 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
   const surfaceBgPresenting = "rgba(0,0,0,0.25)"
 
   const runtime = { slideIndex, slideCount, stepIndex, totalSteps }
-  const isFullbleed = slide.layout === "solution"
+  const isFullbleed = slide.layout === "solution" || slide.layout === "fullbleed"
 
   const template = html`
     <div class="relative w-full h-full min-h-0 overflow-hidden text-text-primary font-mono">
@@ -840,7 +853,7 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
               class="absolute inset-0 z-0 flex flex-col min-h-0"
               style="background:${surfaceBgPresenting};"
             >
-              <div class="flex-1 min-h-0 p-12 flex flex-col">
+              <div class="flex-1 min-h-0 flex flex-col">
                 ${filteredNodes.map((n) => renderNode(doc, theme, runtime, n))}
               </div>
             </div>
@@ -851,7 +864,7 @@ export const renderDeck = (input: DeckRenderInput): DeckRenderOutput => {
           class="relative shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_80px_rgba(0,0,0,0.65)] rounded overflow-hidden border border-border-dark backdrop-blur-md"
           style="aspect-ratio: ${w} / ${h}; width: ${slideWidth}; background:${surfaceBg};"
         >
-          <div class="absolute inset-0 z-0 p-12 flex flex-col min-h-0">
+          <div class="absolute inset-0 z-0 flex flex-col min-h-0">
             ${filteredNodes.map((n) => renderNode(doc, theme, runtime, n))}
           </div>
         </div>
