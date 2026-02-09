@@ -43,31 +43,90 @@ const getRedirectPathname = (response: Response): string => {
   return new URL(location, "http://example.com").pathname;
 };
 
+const setEnvVar = (key: keyof WorkerEnv, value: string | undefined): (() => void) => {
+  const prev = (env as any)[key] as string | undefined;
+  if (value === undefined) {
+    delete (env as any)[key];
+  } else {
+    (env as any)[key] = value;
+  }
+  return () => {
+    if (prev === undefined) delete (env as any)[key];
+    else (env as any)[key] = prev;
+  };
+};
+
 describe("apps/web worker real routes (SSR + guards)", () => {
   it("GET /autopilot redirects to / when prelaunch is on (no bypass)", async () => {
     state.authed = false;
+    const restore = setEnvVar("VITE_PRELAUNCH", "1");
     const request = new Request("http://example.com/autopilot", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
+    restore();
 
     expect(response.status).toBe(302);
     expect(getRedirectPathname(response)).toBe("/");
   });
 
-  it("GET /autopilot with valid ?key= bypass returns 200 and autopilot shell", async () => {
+  it("GET /autopilot redirects to /login when prelaunch is off and anon", async () => {
     state.authed = false;
-    const bypassKey = (env as { PRELAUNCH_BYPASS_KEY?: string }).PRELAUNCH_BYPASS_KEY;
-    if (!bypassKey) {
-      console.warn("PRELAUNCH_BYPASS_KEY not set in test env; skipping /autopilot bypass test");
-      return;
-    }
-    const request = new Request(`http://example.com/autopilot?key=${encodeURIComponent(bypassKey)}`, {
+    const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "0");
+    const request = new Request("http://example.com/autopilot", { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+    restorePrelaunch();
+
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/login");
+  });
+
+  it("GET /autopilot returns 200 when prelaunch is off and authed", async () => {
+    state.authed = true;
+    const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "0");
+    const request = new Request("http://example.com/autopilot", { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+    restorePrelaunch();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-oa-request-id")).toBeTruthy();
+    const body = await response.text();
+    expect(body).toContain("data-autopilot-shell");
+  });
+
+  it("GET /autopilot with valid ?key= bypass skips prelaunch but still requires auth", async () => {
+    state.authed = false;
+    const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "1");
+    const restoreKey = setEnvVar("PRELAUNCH_BYPASS_KEY", "bypass");
+    const request = new Request(`http://example.com/autopilot?key=${encodeURIComponent("bypass")}`, {
       method: "GET",
     });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
+    restoreKey();
+    restorePrelaunch();
+
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/login");
+  });
+
+  it("GET /autopilot with valid ?key= bypass returns 200 when authed", async () => {
+    state.authed = true;
+    const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "1");
+    const restoreKey = setEnvVar("PRELAUNCH_BYPASS_KEY", "bypass");
+    const request = new Request(`http://example.com/autopilot?key=${encodeURIComponent("bypass")}`, {
+      method: "GET",
+    });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+    restoreKey();
+    restorePrelaunch();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-oa-request-id")).toBeTruthy();
@@ -77,10 +136,12 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
   it("GET /chat/:id redirects to / when prelaunch is on (legacy path blocked)", async () => {
     state.authed = false;
+    const restore = setEnvVar("VITE_PRELAUNCH", "1");
     const request = new Request("http://example.com/chat/abc", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
+    restore();
 
     expect(response.status).toBe(302);
     expect(getRedirectPathname(response)).toBe("/");
@@ -121,10 +182,12 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
   it("GET /login redirects to / when prelaunch is on (anon)", async () => {
     state.authed = false;
+    const restore = setEnvVar("VITE_PRELAUNCH", "1");
     const request = new Request("http://example.com/login", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
+    restore();
 
     expect(response.status).toBe(302);
     expect(getRedirectPathname(response)).toBe("/");
@@ -132,10 +195,12 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
   it("GET /login redirects to / when prelaunch is on (authed)", async () => {
     state.authed = true;
+    const restore = setEnvVar("VITE_PRELAUNCH", "1");
     const request = new Request("http://example.com/login", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
+    restore();
 
     expect(response.status).toBe(302);
     expect(getRedirectPathname(response)).toBe("/");
@@ -143,10 +208,12 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
   it("GET /tools redirects to / when prelaunch is on (authed)", async () => {
     state.authed = true;
+    const restore = setEnvVar("VITE_PRELAUNCH", "1");
     const request = new Request("http://example.com/tools", { method: "GET" });
     const ctx = createExecutionContext();
     const response = await worker.fetch(request, env, ctx);
     await waitOnExecutionContext(ctx);
+    restore();
 
     expect(response.status).toBe(302);
     expect(getRedirectPathname(response)).toBe("/");

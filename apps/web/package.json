@@ -28,7 +28,7 @@
     "deploy": "npm run deploy:convex && npm run deploy:build && npm run deploy:worker",
     "deploy:convex": "bash -c 'set -a; [ -f .env.production ] && . ./.env.production; set +a; npx convex deploy --yes'",
     "deploy:build": "bash -c 'set -a; [ -f .env ] && . ./.env; [ -f .env.production ] && . ./.env.production; set +a; VITE_CONVEX_URL=${VITE_CONVEX_URL:-https://aware-caterpillar-962.convex.cloud} npm run build'",
-    "deploy:worker": "node -e \"try{require('fs').unlinkSync('.wrangler/deploy/config.json')}catch(e){}\" && wrangler deploy --var VITE_PRELAUNCH:1",
+    "deploy:worker": "node -e \"try{require('fs').unlinkSync('.wrangler/deploy/config.json')}catch(e){}\" && wrangler deploy",
     "wrangler:secrets": "bash scripts/sync-wrangler-secrets.sh",
     "cf-typegen": "wrangler types",
     "format": "prettier --write .",

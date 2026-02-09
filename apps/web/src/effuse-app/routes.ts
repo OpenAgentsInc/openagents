@@ -197,7 +197,18 @@ const login: Route<LoginPageModel, AppServices> = {
 const autopilot: Route<{}, AppServices> = {
   id: "/autopilot",
   match: matchExact("/autopilot"),
-  guard: (ctx) => prelaunchRedirectGuard(ctx),
+  guard: (ctx) =>
+    Effect.gen(function* () {
+      const redirect = yield* prelaunchRedirectGuard(ctx)
+      if (redirect) return redirect
+
+      const auth = yield* AuthService
+      const session = yield* auth
+        .getSession()
+        .pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
+      if (!session.userId) return RouteOutcome.redirect("/login", 302)
+      return
+    }),
   loader: (ctx) => okWithSession(ctx, {}),
   view: () => Effect.succeed(autopilotRouteShellTemplate()),
   head: () => Effect.succeed({ title: "Autopilot" }),
