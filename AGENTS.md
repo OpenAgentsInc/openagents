@@ -74,6 +74,9 @@ Everything is logged and replayable
 
 When debugging anything in `apps/web` (local or prod), **correlate by request id first**.
 
+Full writeup (including production E2E auth bypass + how to run/debug prod smoke tests):
+- `docs/autopilot/PROD_E2E_TESTING.md`
+
 ### Cloudflare Worker request correlation
 
 - Every Worker response includes `x-oa-request-id` (derived from `cf-ray` when present; otherwise a UUID).
@@ -108,6 +111,23 @@ When to do this:
 - Any user report of a blank page, SSR 500, or “no response” UI stall.
 - Any `ConvexServiceError` in console output.
 - Before changing logic “blind”: pull the `x-oa-request-id` and confirm the actual failing path.
+
+### Production E2E Smoke Tests (apps/web)
+
+We have an Effect-native E2E runner (`packages/effuse-test`) that can run against a **production URL** and log in
+deterministically via an E2E-only auth bypass route (gated by a Cloudflare Worker secret).
+
+Read: `docs/autopilot/PROD_E2E_TESTING.md`
+
+Quick smoke:
+
+```bash
+cd apps/web
+EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
+  npm run test:e2e -- --base-url https://openagents.com --tag prod --grep "apps-web\\.prod\\.autopilot"
+```
+
+Artifacts land in `output/effuse-test/<runId>/` (look at `events.jsonl` first).
 
 Adapters do serialization/parsing only
 - Adapters do not own validation/retry logic. Runtime (or meta-operators like Refine) owns retries/guardrails.
