@@ -13,6 +13,7 @@ import { marketingShellTemplate } from "../effuse-pages/marketingShell"
 import { deckPageShellTemplate } from "../effuse-pages/deck"
 import { storybookCanvasTemplate, storybookManagerTemplate } from "../effuse-pages/storybook"
 
+import { AppConfigService } from "../effect/config"
 import { AuthService } from "../effect/auth"
 import { SessionAtom } from "../effect/atoms/session"
 import { getStoryById, listStoryMeta } from "../storybook"
@@ -62,6 +63,16 @@ const matchStorybook = (url: URL): RouteMatch | null => {
 const isLocalHost = (host: string): boolean =>
   host === "localhost" || host === "127.0.0.1" || host === "::1"
 
+/** When prelaunch is on, redirect to home. Use as first guard on non-home routes. */
+const prelaunchRedirectGuard = (
+  _ctx: RouteContext,
+): Effect.Effect<RouteOutcome<never> | undefined, never, AppServices> =>
+  Effect.gen(function* () {
+    const config = yield* AppConfigService
+    if (config.prelaunch) return RouteOutcome.redirect("/", 302)
+    return undefined
+  })
+
 const sessionDehydrate = (ctx: RouteContext): Effect.Effect<RouteOkHints["dehydrate"] | undefined, never, AppServices> =>
   Effect.gen(function* () {
     if (ctx._tag !== "Server") return undefined
@@ -103,17 +114,25 @@ const okWithSession = <A>(
     return RouteOutcome.ok(data, dehydrate ? { dehydrate } : undefined)
   })
 
-type HomeData = { readonly year: number }
+type HomeData = { readonly year: number; readonly prelaunch: boolean }
 const home: Route<HomeData, AppServices> = {
   id: "/",
   match: matchExact("/"),
-  loader: (ctx) => okWithSession(ctx, { year: new Date().getFullYear() }),
+  loader: (ctx) =>
+    Effect.gen(function* () {
+      const config = yield* AppConfigService
+      return yield* okWithSession(ctx, {
+        year: new Date().getFullYear(),
+        prelaunch: config.prelaunch,
+      })
+    }),
   view: (_ctx, data) =>
     Effect.succeed(
       marketingShellTemplate({
         isHome: true,
         isLogin: false,
-        content: homePageTemplate(data.year),
+        prelaunch: data.prelaunch,
+        content: homePageTemplate(data.year, data.prelaunch),
       }),
     ),
   head: () => Effect.succeed({ title: "OpenAgents" }),
@@ -130,8 +149,10 @@ const defaultLoginModel: LoginPageModel = {
 const login: Route<LoginPageModel, AppServices> = {
   id: "/login",
   match: matchExact("/login"),
-  guard: (_ctx) =>
+  guard: (ctx) =>
     Effect.gen(function* () {
+      const redirect = yield* prelaunchRedirectGuard(ctx)
+      if (redirect) return redirect
       const auth = yield* AuthService
       const session = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
       if (session.userId) return RouteOutcome.redirect("/autopilot", 302)
@@ -152,6 +173,7 @@ const login: Route<LoginPageModel, AppServices> = {
 const autopilot: Route<{}, AppServices> = {
   id: "/autopilot",
   match: matchExact("/autopilot"),
+  guard: (ctx) => prelaunchRedirectGuard(ctx),
   loader: (ctx) => okWithSession(ctx, {}),
   view: () => Effect.succeed(autopilotRouteShellTemplate()),
   head: () => Effect.succeed({ title: "Autopilot" }),
@@ -161,11 +183,11 @@ const deck: Route<{}, AppServices> = {
   id: "/deck",
   match: matchExact("/deck"),
   guard: (ctx) =>
-    Effect.sync(() => {
-      if (!isLocalHost(ctx.url.hostname)) {
-        return RouteOutcome.notFound()
-      }
-      return
+    Effect.gen(function* () {
+      const redirect = yield* prelaunchRedirectGuard(ctx)
+      if (redirect) return redirect
+      if (!isLocalHost(ctx.url.hostname)) return RouteOutcome.notFound()
+      return undefined
     }),
   loader: () => Effect.succeed(RouteOutcome.ok({})),
   view: () => Effect.succeed(deckPageShellTemplate()),
@@ -175,8 +197,10 @@ const deck: Route<{}, AppServices> = {
 const modules: Route<ModulesPageData, AppServices> = {
   id: "/modules",
   match: matchExact("/modules"),
-  guard: (_ctx) =>
+  guard: (ctx) =>
     Effect.gen(function* () {
+      const redirect = yield* prelaunchRedirectGuard(ctx)
+      if (redirect) return redirect
       const auth = yield* AuthService
       const session = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
       if (!session.userId) return RouteOutcome.redirect("/", 302)
@@ -190,8 +214,10 @@ const modules: Route<ModulesPageData, AppServices> = {
 const signatures: Route<SignaturesPageData, AppServices> = {
   id: "/signatures",
   match: matchExact("/signatures"),
-  guard: (_ctx) =>
+  guard: (ctx) =>
     Effect.gen(function* () {
+      const redirect = yield* prelaunchRedirectGuard(ctx)
+      if (redirect) return redirect
       const auth = yield* AuthService
       const session = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
       if (!session.userId) return RouteOutcome.redirect("/", 302)
@@ -205,8 +231,10 @@ const signatures: Route<SignaturesPageData, AppServices> = {
 const tools: Route<ToolsPageData, AppServices> = {
   id: "/tools",
   match: matchExact("/tools"),
-  guard: (_ctx) =>
+  guard: (ctx) =>
     Effect.gen(function* () {
+      const redirect = yield* prelaunchRedirectGuard(ctx)
+      if (redirect) return redirect
       const auth = yield* AuthService
       const session = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
       if (!session.userId) return RouteOutcome.redirect("/", 302)
@@ -228,6 +256,7 @@ type StorybookData =
 const storybook: Route<StorybookData, AppServices> = {
   id: "/__storybook",
   match: matchStorybook,
+  guard: (ctx) => prelaunchRedirectGuard(ctx),
   loader: (ctx) =>
     Effect.sync(() => {
       const view = ctx.match.params.view
@@ -261,6 +290,7 @@ const storybook: Route<StorybookData, AppServices> = {
 const chatLegacyRedirect: Route<{}, AppServices> = {
   id: "/chat/$chatId",
   match: matchChatLegacy,
+  guard: (ctx) => prelaunchRedirectGuard(ctx),
   loader: () => Effect.succeed(RouteOutcome.redirect("/autopilot", 302)),
   view: () => Effect.succeed(homePageTemplate()),
 }

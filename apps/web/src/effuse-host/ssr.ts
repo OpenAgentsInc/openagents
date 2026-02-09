@@ -12,7 +12,7 @@ import type { AppServices } from "../effect/layer"
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext"
 import { TelemetryService } from "../effect/telemetry"
 
-import { getWorkerRuntime } from "./runtime"
+import { getWorkerAppConfig, getWorkerRuntime } from "./runtime"
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId"
 import type { Route, RouteContext, RouteMatch, RouteRun } from "@openagentsinc/effuse"
 import type { WorkerEnv } from "./env"
@@ -174,6 +174,13 @@ export const handleSsrRequest = async (
   env: WorkerEnv,
 ): Promise<Response> => {
   const url = new URL(request.url)
+  const config = getWorkerAppConfig(env)
+  if (config.prelaunch && url.pathname !== "/") {
+    return new Response(null, {
+      status: 302,
+      headers: new Headers({ location: "/", "cache-control": "no-store" }),
+    })
+  }
   const matched = matchRoute(appRoutes as ReadonlyArray<AnyRoute>, url)
 
   const { runtime } = getWorkerRuntime(env)

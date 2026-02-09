@@ -5,12 +5,16 @@ import type { AppConfig } from "../effect/config"
 
 import type { WorkerEnv } from "./env"
 
+const parsePrelaunch = (v: string | undefined): boolean =>
+  v === "1" || v === "true" || v === "yes"
+
 export const getWorkerAppConfig = (env: WorkerEnv): AppConfig => {
   const convexUrl = env.VITE_CONVEX_URL ?? process.env.VITE_CONVEX_URL
   if (!convexUrl) {
     throw new Error("missing VITE_CONVEX_URL (Worker env var)")
   }
-  return { convexUrl }
+  const prelaunch = parsePrelaunch(env.VITE_PRELAUNCH ?? process.env.VITE_PRELAUNCH)
+  return { convexUrl, prelaunch }
 }
 
 /**

@@ -2,6 +2,8 @@ import { Context } from 'effect';
 
 export type AppConfig = {
   readonly convexUrl: string;
+  /** Prelaunch mode: homepage shows countdown, other routes disabled. */
+  readonly prelaunch: boolean;
 };
 
 export class AppConfigService extends Context.Tag('@openagents/web/AppConfig')<
@@ -9,10 +11,14 @@ export class AppConfigService extends Context.Tag('@openagents/web/AppConfig')<
   AppConfig
 >() {}
 
+const parsePrelaunch = (v: string | undefined): boolean =>
+  v === '1' || v === 'true' || v === 'yes';
+
 export const getAppConfig = (): AppConfig => {
   const convexUrl = (import.meta as any).env.VITE_CONVEX_URL as string | undefined;
   if (!convexUrl) {
     throw new Error('missing VITE_CONVEX_URL env var');
   }
-  return { convexUrl };
+  const prelaunch = parsePrelaunch((import.meta as any).env.VITE_PRELAUNCH as string | undefined);
+  return { convexUrl, prelaunch };
 };

@@ -15,4 +15,6 @@ export type WorkerEnv = {
 
   // Vite-style env var name is used on both client + worker to keep config simple.
   readonly VITE_CONVEX_URL?: string
+  /** When set (e.g. "1" or "true"), prelaunch mode: homepage shows countdown, other routes redirect to /. */
+  readonly VITE_PRELAUNCH?: string
 }
