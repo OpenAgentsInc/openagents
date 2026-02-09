@@ -5,6 +5,12 @@ import { AppAtomRuntime } from './appRuntime';
 
 import type { ChatSnapshot } from '../chat';
 
+/** Current user's owned thread id (set when logged in and after ensureOwnedThread). Null when not loaded or not logged in. */
+export const OwnedThreadIdAtom = Atom.make<string | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel('OwnedThreadIdAtom'),
+);
+
 const EMPTY_SNAPSHOT: ChatSnapshot = {
   messages: [],
   status: 'ready',

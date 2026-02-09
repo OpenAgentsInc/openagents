@@ -6,6 +6,7 @@ import type { EffectMutationCtx, EffectQueryCtx } from "../effect/ctx";
 
 export type AutopilotAccessInput = {
   readonly threadId: string;
+  /** @deprecated Anon removed; owner-only access. */
   readonly anonKey?: string | undefined;
 };
 
@@ -39,11 +40,6 @@ export const assertThreadAccess = (
     const subject = yield* getSubject(ctx);
     if (subject && thread.ownerId === subject) return thread;
 
-    // Anonymous access: require anonKey match (do not accept threadId as bearer token).
-    const anonKey = typeof input.anonKey === "string" ? input.anonKey : "";
-    if (!subject && thread.anonKey && thread.anonKey === anonKey) return thread;
-
-    // Authed user may still claim an anon thread out-of-band (claim mutation).
     return yield* Effect.fail(new Error("forbidden"));
   });
 

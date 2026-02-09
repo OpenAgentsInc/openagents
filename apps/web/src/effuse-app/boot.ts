@@ -1,6 +1,7 @@
 import { Effect, Stream } from "effect"
 import {
   BrowserHistory,
+  DomServiceTag,
   EffuseLive,
   html,
   makeEzRegistry,
@@ -8,12 +9,13 @@ import {
   mountEzRuntimeWith,
 } from "@openagentsinc/effuse"
 
-import { AuthService } from "../effect/auth"
+import { AuthService, clearAuthClientCache } from "../effect/auth"
 import { AutopilotStoreService } from "../effect/autopilotStore"
 import { ChatService } from "../effect/chat"
 import { getAppConfig } from "../effect/config"
 import { ContractsApiService } from "../effect/contracts"
-import { SessionAtom } from "../effect/atoms/session"
+import { OwnedThreadIdAtom } from "../effect/atoms/chat"
+import { SessionAtom, type Session } from "../effect/atoms/session"
 import { makeAppRuntime } from "../effect/runtime"
 import { TelemetryService } from "../effect/telemetry"
 import { hydrateAtomRegistryFromDocument, makeAtomRegistry } from "./atomRegistry"
@@ -22,6 +24,7 @@ import { mountModulesController, mountSignaturesController, mountToolsController
 import { mountDeckController } from "./controllers/deckController"
 import { mountHomeController } from "./controllers/homeController"
 import { mountLoginController } from "./controllers/loginController"
+import { identityPillTemplate } from "../effuse-pages/identityPill"
 import { loadPostHog } from "./posthog"
 import { appRoutes } from "./routes"
 import { UiBlobStore } from "./blobStore"
@@ -133,6 +136,46 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             .runPromise(router.navigate(href).pipe(Effect.provide(EffuseLive)))
             .catch(() => {})
         }
+
+        // Identity pill: fixed bottom-left, shows user or "Not logged in", always visible.
+        const pillContainer = document.createElement("div")
+        pillContainer.setAttribute("data-identity-pill-root", "1")
+        pillContainer.style.cssText =
+          "position:fixed;bottom:12px;left:12px;z-index:9999;pointer-events:auto"
+        shell.appendChild(pillContainer)
+
+        const signOut = async () => {
+          try {
+            await fetch("/api/auth/signout", { method: "POST", credentials: "include" })
+          } catch {
+            // best-effort
+          } finally {
+            clearAuthClientCache()
+            atoms.set(SessionAtom as any, { userId: null, user: null })
+            atoms.set(OwnedThreadIdAtom as any, null)
+            navigate("/")
+          }
+        }
+
+        ezRegistry.set("app.identity.logout", () =>
+          Effect.sync(() => {
+            void signOut()
+          }),
+        )
+
+        const renderIdentityPill = (session: Session) => {
+          runtime
+            .runPromise(
+              Effect.gen(function* () {
+                const dom = yield* DomServiceTag
+                yield* dom.render(pillContainer, identityPillTemplate(session))
+              }).pipe(Effect.provide(EffuseLive)),
+            )
+            .catch(() => {})
+        }
+
+        renderIdentityPill(atoms.get(SessionAtom))
+        atoms.subscribe(SessionAtom, renderIdentityPill, { immediate: false })
 
         type ActiveController = { readonly kind: string; readonly cleanup: () => void }
         let active: ActiveController | null = null

@@ -9,9 +9,10 @@ const parsePrelaunch = (v: string | undefined): boolean =>
   v === "1" || v === "true" || v === "yes"
 
 export const getWorkerAppConfig = (env: WorkerEnv): AppConfig => {
-  const convexUrl = env.VITE_CONVEX_URL ?? process.env.VITE_CONVEX_URL
+  const convexUrl =
+    env.VITE_CONVEX_URL ?? process.env.VITE_CONVEX_URL ?? env.CONVEX_URL ?? process.env.CONVEX_URL
   if (!convexUrl) {
-    throw new Error("missing VITE_CONVEX_URL (Worker env var)")
+    throw new Error("missing VITE_CONVEX_URL or CONVEX_URL (Worker env var)")
   }
   const prelaunch = parsePrelaunch(env.VITE_PRELAUNCH ?? process.env.VITE_PRELAUNCH)
   const prelaunchBypassKey =

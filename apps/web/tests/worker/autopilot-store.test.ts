@@ -8,7 +8,7 @@ import { ConvexService } from "../../src/effect/convex";
 import { RequestContextService } from "../../src/effect/requestContext";
 
 describe("apps/web AutopilotStore", () => {
-  it("ensures anon thread before querying blueprint (race hardening)", async () => {
+  it("queries blueprint for an owned thread (no anon ensure)", async () => {
     const calls: Array<string> = [];
 
     const fakeConvex: ConvexServiceApi = {
@@ -22,8 +22,7 @@ describe("apps/web AutopilotStore", () => {
       mutation: (ref: any, args: any) =>
         Effect.sync(() => {
           const name = getFunctionName(ref as any);
-          if (name === "autopilot/threads:ensureAnonThread") calls.push("mutation:ensureAnonThread");
-          else calls.push("mutation:other");
+          calls.push(`mutation:${name}`);
           return { ok: true, threadId: args?.threadId ?? "" } as any;
         }),
       action: () =>
@@ -40,10 +39,10 @@ describe("apps/web AutopilotStore", () => {
 
     const blueprint = await Effect.gen(function* () {
       const store = yield* AutopilotStoreService;
-      return yield* store.getBlueprint({ threadId: "thread-1", anonKey: "anon-1" });
+      return yield* store.getBlueprint({ threadId: "thread-1" });
     }).pipe(Effect.provide(testLayer), Effect.runPromise);
 
     expect(blueprint).toEqual({ ok: true });
-    expect(calls).toEqual(["mutation:ensureAnonThread", "query:getBlueprint"]);
+    expect(calls).toEqual(["query:getBlueprint"]);
   });
 });
