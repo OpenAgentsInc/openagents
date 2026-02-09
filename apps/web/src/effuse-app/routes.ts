@@ -80,6 +80,10 @@ const prelaunchRedirectGuard = (
     const config = yield* AppConfigService
     if (!config.prelaunch) return undefined
     if (isLocalDev(ctx)) return undefined
+    const pathname = ctx.url.pathname.endsWith("/") && ctx.url.pathname.length > 1
+      ? ctx.url.pathname.slice(0, -1)
+      : ctx.url.pathname
+    if (pathname === "/login") return RouteOutcome.redirect("/", 302)
     const bypass = yield* (ctx._tag === "Server"
       ? Effect.sync(() => {
           const key = config.prelaunchBypassKey
