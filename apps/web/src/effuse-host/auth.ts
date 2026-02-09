@@ -168,7 +168,7 @@ const handleE2eLogin = async (request: Request, env: WorkerEnv): Promise<Respons
   )
 }
 
-const handleSession = async (request: Request): Promise<Response> => {
+const handleSession = async (request: Request, env: WorkerEnv): Promise<Response> => {
   let auth: any
   let refreshedSessionData: string | undefined
   try {
@@ -188,6 +188,36 @@ const handleSession = async (request: Request): Promise<Response> => {
         lastName: auth.user.lastName ?? null,
       }
     : null
+
+  // Convex auth token:
+  // - Prefer a Worker-minted JWT (stable issuer, JWKS served from this Worker).
+  // - Fall back to the WorkOS access token when configured/available.
+  //
+  // Rationale: WorkOS sessions can be present even when `accessToken` is absent/opaque. When that
+  // happens, the UI would appear "authed" but Convex would be unauthenticated and core mutations
+  // (e.g. ensureOwnedThread) would fail with a silent "Server Error Called by client".
+  const privateJwkJson = typeof env.OA_E2E_JWT_PRIVATE_JWK === "string" ? env.OA_E2E_JWT_PRIVATE_JWK : ""
+  let oaJwt: string | null = null
+  if (user && privateJwkJson) {
+    try {
+      const { runtime } = getWorkerRuntime(env)
+      oaJwt = await runtime.runPromise(
+        mintE2eJwt({
+          privateJwkJson,
+          user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+          },
+          // Short-lived; clients refresh via /api/auth/session (cached for a few seconds client-side).
+          ttlSeconds: 60 * 30,
+        }),
+      )
+    } catch {
+      oaJwt = null
+    }
+  }
 
   // WorkOS session is primary. If absent, fall back to E2E session cookie.
   const e2eToken = !user ? readE2eTokenFromRequest(request) : null
@@ -218,7 +248,7 @@ const handleSession = async (request: Request): Promise<Response> => {
         ok: true,
         userId: user?.id ?? null,
         sessionId: auth.user ? (auth.sessionId ?? null) : null,
-        token: auth.user ? auth.accessToken : null,
+        token: oaJwt ?? (auth.user ? (auth.accessToken ?? null) : null),
         user,
       }
 
@@ -394,7 +424,7 @@ export const handleAuthRequest = async (
 
   if (url.pathname === "/api/auth/session") {
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405 })
-    return handleSession(request)
+    return handleSession(request, env)
   }
 
   if (url.pathname === "/api/auth/start") {

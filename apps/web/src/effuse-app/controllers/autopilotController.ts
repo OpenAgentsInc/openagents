@@ -446,6 +446,33 @@ export const mountAutopilotController = (input: {
   let unsubChat: (() => void) | null = null
   let unsubIsAtBottom: (() => void) | null = null
 
+  const ensureOwnedThreadId = (): void => {
+    if (!session.userId) return
+    chatInitErrorText = null
+    scheduleRender()
+    input.runtime.runPromise(input.chat.getOwnedThreadId()).then(
+      (id) => {
+        if (disposed) return
+        if (id && id.length > 0) {
+          atoms.set(OwnedThreadIdAtom as any, id)
+          chatInitErrorText = null
+        } else {
+          chatInitErrorText = "Failed to initialize chat (empty thread id)."
+        }
+        scheduleRender()
+      },
+      (err) => {
+        const e = err instanceof Error ? err : new Error(String(err))
+        Effect.runPromise(
+          input.telemetry.withNamespace("chat").log("error", "ensureOwnedThread.failed", { message: e.message }),
+        ).catch(() => {})
+        if (disposed) return
+        chatInitErrorText = e.message || "Failed to initialize chat."
+        scheduleRender()
+      },
+    )
+  }
+
   const unsubSession = atoms.subscribe(SessionAtom, (next) => {
     session = next
     if (!next.userId) {
@@ -453,14 +480,7 @@ export const mountAutopilotController = (input: {
       chatId = ""
       chatInitErrorText = null
     } else {
-      if (!atoms.get(OwnedThreadIdAtom)) {
-        input.runtime.runPromise(input.chat.getOwnedThreadId()).then(
-          (id) => {
-            if (!disposed) atoms.set(OwnedThreadIdAtom as any, id)
-          },
-          () => {},
-        )
-      }
+      if (!atoms.get(OwnedThreadIdAtom)) ensureOwnedThreadId()
       chatId = ownedThreadId ?? ""
     }
     scheduleRender()
@@ -501,12 +521,7 @@ export const mountAutopilotController = (input: {
     scheduleRender()
   }, { immediate: false })
 
-  if (session.userId && !atoms.get(OwnedThreadIdAtom)) {
-    input.runtime.runPromise(input.chat.getOwnedThreadId()).then(
-      (id) => { if (!disposed) atoms.set(OwnedThreadIdAtom as any, id) },
-      () => {},
-    )
-  }
+  if (session.userId && !atoms.get(OwnedThreadIdAtom)) ensureOwnedThreadId()
 
   // Event listeners.
   const onDocClick = (e: MouseEvent) => {
@@ -574,6 +589,12 @@ export const mountAutopilotController = (input: {
 
   input.ez.set("autopilot.chat.stop", () =>
     Effect.promise(() => input.runtime.runPromise(input.chat.stop(chatId)))
+  )
+
+  input.ez.set("autopilot.chat.retryInit", () =>
+    Effect.sync(() => {
+      ensureOwnedThreadId()
+    }),
   )
 
   input.ez.set("autopilot.chat.send", ({ el, params }) =>

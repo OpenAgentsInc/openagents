@@ -1,5 +1,6 @@
 import { Effect, Scope } from "effect"
 import * as Path from "node:path"
+import * as Fs from "node:fs/promises"
 
 import { BrowserService } from "../browser/BrowserService.ts"
 import type { ProbeService } from "../effect/ProbeService.ts"
@@ -582,6 +583,174 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
                   errorBanner || assistantCount > initialAssistantCount,
                   "Expected either an assistant message or a visible error banner after sending",
                 )
+              }),
+            )
+          }),
+        )
+      }),
+    })
+
+    tests.push({
+      id: "apps-web.prod.autopilot.bootstrap-initial-conversation",
+      tags: ["e2e", "browser", "apps/web", "prod"],
+      timeoutMs: 240_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+        const browser = yield* BrowserService
+
+        yield* browser.withPage((page) =>
+          Effect.gen(function* () {
+            yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
+
+            // New user per-run: different seed => different userId => new default thread.
+            const seed = `effuse-test:${ctx.runId}:${ctx.testId}:${Date.now()}:${Math.random().toString(16).slice(2)}`
+            yield* step(
+              "e2e login (new user)",
+              page.evaluate(`(() => {
+  return fetch('/api/auth/e2e/login', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': 'Bearer ' + ${JSON.stringify(e2eSecret)}
+    },
+    body: JSON.stringify({ seed: ${JSON.stringify(seed)} })
+  }).then(async (res) => {
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json || json.ok !== true) {
+      throw new Error('e2e login failed: HTTP ' + res.status + ' ' + JSON.stringify(json));
+    }
+    return json;
+  });
+})()`),
+            )
+
+            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
+            yield* step(
+              "wait for shell",
+              page.waitForFunction("!!document.querySelector('[data-autopilot-shell]')", { timeoutMs: 30_000 }),
+            )
+
+            // Wait for the first welcome assistant message.
+            yield* step(
+              "wait for welcome message",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => (el.textContent || '').includes('Autopilot online.'))`,
+                { timeoutMs: 30_000 },
+              ),
+            )
+
+            const assistantCount0 = yield* step(
+              "count assistant messages (baseline)",
+              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
+            )
+
+            const transcript0 = yield* step(
+              "read initial transcript",
+              page.evaluate(`(() => {
+  return Array.from(document.querySelectorAll('[data-chat-role]')).map((el) => ({
+    role: el.getAttribute('data-chat-role'),
+    text: (el.textContent || '').trim(),
+  }));
+})()`),
+            )
+
+            // Turn 1: user says "hi" => assistant must re-ask name (no generic greeting).
+            const msg1 = "hi"
+            yield* step("type hi", page.fill('[data-autopilot-chat-input=\"1\"]', msg1))
+            yield* step("click Send (hi)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step(
+              "wait for user bubble hi",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').trim() === ${JSON.stringify(
+                  msg1,
+                )})`,
+                { timeoutMs: 30_000 },
+              ),
+            )
+
+            yield* step(
+              "wait for new assistant message (after hi)",
+              page.waitForFunction(
+                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount0}`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+
+            yield* step(
+              "assert hi response re-asks name (no filler)",
+              Effect.gen(function* () {
+                const lastAssistantText = yield* page.evaluate<string>(`(() => {
+  const els = Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]'));
+  const el = els.at(-1);
+  return (el?.textContent || '').trim();
+})()`)
+
+                yield* assertTrue(
+                  lastAssistantText.includes("What shall I call you?"),
+                  `Expected last assistant message to include \"What shall I call you?\", got: ${lastAssistantText}`,
+                )
+                const lower = lastAssistantText.toLowerCase()
+                yield* assertTrue(
+                  !lower.includes("how can i help") && !lower.includes("assist you today"),
+                  `Expected last assistant message to avoid generic help filler, got: ${lastAssistantText}`,
+                )
+              }),
+            )
+
+            const assistantCount1 = yield* step(
+              "count assistant messages (after hi)",
+              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
+            )
+
+            // Turn 2: user gives handle.
+            const handle = "Bobo"
+            yield* step("type handle", page.fill('[data-autopilot-chat-input=\"1\"]', handle))
+            yield* step("click Send (handle)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step(
+              "wait for user bubble handle",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').trim() === ${JSON.stringify(
+                  handle,
+                )})`,
+                { timeoutMs: 30_000 },
+              ),
+            )
+            yield* step(
+              "wait for new assistant message (after handle)",
+              page.waitForFunction(
+                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount1}`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+            yield* step(
+              "wait for assistant to acknowledge handle",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => {
+  const t = (el.textContent || '').toLowerCase();
+  return t.includes(${JSON.stringify(handle.toLowerCase())}) && !t.includes('is that ok') && !t.includes('is that okay');
+})`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+
+            const transcript2 = yield* step(
+              "read transcript after bootstrap turns",
+              page.evaluate(`(() => {
+  return Array.from(document.querySelectorAll('[data-chat-role]')).map((el) => ({
+    role: el.getAttribute('data-chat-role'),
+    text: (el.textContent || '').trim(),
+  }));
+})()`),
+            )
+
+            const outPath = Path.join(ctx.artifactsDir, "bootstrap-transcript.json")
+            yield* step(
+              "write transcript artifact",
+              Effect.tryPromise({
+                try: () => Fs.writeFile(outPath, JSON.stringify({ initial: transcript0, after: transcript2 }, null, 2), "utf8"),
+                catch: (error) => (error instanceof Error ? error : new Error(String(error))),
               }),
             )
           }),

@@ -385,7 +385,38 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
 
       const withPage = <A, E, R>(f: (page: Page) => Effect.Effect<A, E, R>) =>
         Effect.scoped(
-          Effect.acquireUseRelease(openPage, (page) => f(page), (page) => page.close),
+          Effect.acquireUseRelease(
+            openPage,
+            (page) =>
+              f(page).pipe(
+                Effect.catchAll((err) =>
+                  Effect.gen(function* () {
+                    // Capture browser artifacts at the failure point (inside the page scope),
+                    // so we don't lose access when the scope unwinds.
+                    const ctx = yield* TestContext
+                    const dir = Path.join(ctx.artifactsDir, "browser-failure")
+                    const screenshotPath = Path.join(dir, "failure.png")
+                    const htmlPath = Path.join(dir, "failure.html")
+
+                    yield* page.screenshot(screenshotPath).pipe(Effect.catchAll(() => Effect.void))
+                    const html = yield* page
+                      .htmlSnapshot()
+                      .pipe(
+                        Effect.catchAll(() =>
+                          Effect.succeed("<!doctype html><h1>htmlSnapshot failed</h1>"),
+                        ),
+                      )
+                    yield* Effect.promise(() => Fs.mkdir(Path.dirname(htmlPath), { recursive: true }))
+                    yield* Effect.promise(() => Fs.writeFile(htmlPath, html, "utf8")).pipe(
+                      Effect.catchAll(() => Effect.void),
+                    )
+
+                    return yield* Effect.fail(err)
+                  }),
+                ),
+              ),
+            (page) => page.close,
+          ),
         ) as Effect.Effect<A, E, Scope.Scope | R>
 
       const captureFailureArtifacts = (opts: { screenshotPath: string; htmlPath: string }) =>
