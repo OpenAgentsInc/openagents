@@ -683,19 +683,19 @@ const renderNode = (
       const cls =
         style === "h1"
           ? "text-[96px] leading-[1.06] tracking-tight font-semibold [font-family:var(--font-sans)]"
-          : style === "h2"
+        : style === "h2"
             ? "text-[36px] leading-[1.2] font-normal tracking-[0.1em] use-font-square721 [font-family:var(--font-square721)]"
-            : style === "h3"
-              ? "text-[28px] leading-[1.18] font-semibold use-font-square721 [font-family:var(--font-square721)]"
-              : style === "problemLabel"
+        : style === "h3"
+              ? "text-[38px] leading-[1.14] font-semibold use-font-square721 [font-family:var(--font-square721)]"
+        : style === "problemLabel"
                 ? "text-[18px] leading-5 tracking-wider uppercase text-white/70 [font-family:var(--font-sans)]"
-                : style === "problemHeadline"
+        : style === "problemHeadline"
                   ? "text-[66px] leading-[1.06] tracking-tight font-semibold [font-family:var(--font-sans)]"
-                  : style === "caption"
-                    ? "text-[16px] leading-6 text-white/80"
-                    : style === "code"
-                      ? "text-[18px] leading-6 font-mono"
-                      : "text-[22px] leading-7"
+        : style === "caption"
+                    ? "text-[18px] leading-7 text-white/80"
+        : style === "code"
+                      ? "text-[20px] leading-7 font-mono"
+                      : "text-[24px] leading-8"
 
       return html`<div class="${cls}" style="text-align:${align}; ${colorStyle}">
         ${renderChildren(doc, theme, runtime, children)}
@@ -711,7 +711,7 @@ const renderNode = (
       const gap = asNumber(gapResolved) ?? 12
       const cls = ordered ? "list-decimal" : "list-disc"
       const tag = ordered ? "ol" : "ul"
-      const textCls = "text-[24px] leading-[1.35] text-white/90 [font-family:var(--font-sans)]"
+      const textCls = "text-[28px] leading-[1.32] text-white/90 [font-family:var(--font-sans)]"
       return tag === "ol"
         ? html`<ol class="${cls} ${textCls} pl-6" style="display:flex; flex-direction:column; gap:${px(gap)};">
             ${children.map((c) => renderNode(doc, theme, runtime, c))}
