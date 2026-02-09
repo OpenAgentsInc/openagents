@@ -61,15 +61,25 @@ const matchStorybook = (url: URL): RouteMatch | null => {
 }
 
 const isLocalHost = (host: string): boolean =>
-  host === "localhost" || host === "127.0.0.1" || host === "::1"
+  host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0"
 
-/** When prelaunch is on, redirect to home unless bypass (query key or cookie). */
+/** True when request is from local dev. Uses Host header on server, window.location on client. */
+const isLocalDev = (ctx: RouteContext): boolean => {
+  if (ctx._tag === "Server") {
+    const hostname = ctx.url.hostname || (ctx.request.headers.get("Host") ?? "").split(":")[0]
+    return isLocalHost(hostname)
+  }
+  return typeof window !== "undefined" && isLocalHost(window.location.hostname)
+}
+
+/** When prelaunch is on, redirect to home unless bypass (query key or cookie). Skipped on localhost. */
 const prelaunchRedirectGuard = (
   ctx: RouteContext,
 ): Effect.Effect<RouteOutcome<never> | undefined, never, AppServices> =>
   Effect.gen(function* () {
     const config = yield* AppConfigService
     if (!config.prelaunch) return undefined
+    if (isLocalDev(ctx)) return undefined
     const bypass = yield* (ctx._tag === "Server"
       ? Effect.sync(() => {
           const key = config.prelaunchBypassKey

@@ -66,6 +66,12 @@ const defaultParams = {
   decode: { mode: "strict_json", maxRepairs: 0 }
 } satisfies Params.DseParamsV1;
 
+/** Decode params for router signatures: tolerate markdown/leading text and allow one repair. */
+const routerDecodeParams = {
+  ...defaultParams,
+  decode: { mode: "jsonish" as const, maxRepairs: 1 }
+} satisfies Params.DseParamsV1;
+
 export const signatures = {
   bootstrap_extract_user_handle: Signature.make({
     id: "@openagents/autopilot/bootstrap/ExtractUserHandle.v1",
@@ -278,7 +284,7 @@ export const signatures = {
         PromptIR.outputJsonSchema(JSONSchema.make(BlueprintToolSelection))
       ]
     },
-    defaults: { params: defaultParams }
+    defaults: { params: routerDecodeParams }
   })
 } satisfies Record<string, DseSignature<any, any>>;
 
