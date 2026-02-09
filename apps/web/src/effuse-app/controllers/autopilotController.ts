@@ -53,6 +53,9 @@ export const mountAutopilotController = (input: {
   void initialSession
   let ownedThreadId = atoms.get(OwnedThreadIdAtom)
   let chatId = initialSession.userId ? (ownedThreadId ?? "") : ""
+  // When session becomes authed but OwnedThreadId isn't resolved yet, actions must surface errors
+  // even before ChatSnapshotAtom(chatId) is wired. This prevents "silent stall" on Send.
+  let chatInitErrorText: string | null = null
 
   // Atom-backed UI state
   let session = initialSession
@@ -298,7 +301,7 @@ export const mountAutopilotController = (input: {
       isBusy,
       isAtBottom,
       inputValue: inputDraft,
-      errorText: chatSnapshot.errorText,
+      errorText: chatSnapshot.errorText ?? chatInitErrorText,
       auth: {
         isAuthed: Boolean(session.userId),
         authedEmail: session.user?.email ?? null,
@@ -448,6 +451,7 @@ export const mountAutopilotController = (input: {
     if (!next.userId) {
       atoms.set(OwnedThreadIdAtom as any, null)
       chatId = ""
+      chatInitErrorText = null
     } else {
       if (!atoms.get(OwnedThreadIdAtom)) {
         input.runtime.runPromise(input.chat.getOwnedThreadId()).then(
@@ -583,6 +587,54 @@ export const mountAutopilotController = (input: {
       const text = String((params as any).message ?? "").trim()
       if (!text) return
 
+      // Guard against a common race: session is authed but owned thread id hasn't resolved yet.
+      // Without this, send() would target an empty threadId and the UI would appear to do nothing.
+      let effectiveChatId = chatId
+      if (!effectiveChatId) {
+        if (!session.userId) {
+          yield* Effect.sync(() => {
+            chatInitErrorText = null
+            setAuth({ step: "email", errorText: null })
+          })
+          return
+        }
+
+        const ensured = yield* Effect.tryPromise({
+          try: () => input.runtime.runPromise(input.chat.getOwnedThreadId()),
+          catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+        }).pipe(
+          Effect.tapError((err) =>
+            input.telemetry
+              .withNamespace("chat")
+              .log("error", "ensureOwnedThread.failed", { message: err.message })
+              .pipe(Effect.catchAll(() => Effect.void)),
+          ),
+          Effect.catchAll((err) =>
+            Effect.sync(() => {
+              chatInitErrorText = err instanceof Error && err.message ? err.message : "Failed to initialize chat."
+              scheduleRender()
+              return ""
+            }),
+          ),
+        )
+
+        yield* Effect.sync(() => {
+          if (ensured && ensured.length > 0) {
+            atoms.set(OwnedThreadIdAtom as any, ensured)
+            ownedThreadId = ensured
+            chatId = ensured
+            // Prime snapshot so error banners can render deterministically even before the
+            // OwnedThreadIdAtom subscription callback runs.
+            chatSnapshot = atoms.get(ChatSnapshotAtom(ensured))
+            chatInitErrorText = null
+            scheduleRender()
+          }
+        })
+
+        effectiveChatId = ensured
+        if (!effectiveChatId) return
+      }
+
       yield* Effect.sync(() => {
         if (inputEl) inputEl.value = ""
         inputDraft = ""
@@ -593,7 +645,7 @@ export const mountAutopilotController = (input: {
       })
 
       yield* Effect.tryPromise({
-        try: () => input.runtime.runPromise(input.chat.send(chatId, text)),
+        try: () => input.runtime.runPromise(input.chat.send(effectiveChatId, text)),
         catch: (err) => (err instanceof Error ? err : new Error(String(err))),
       }).pipe(
         Effect.catchAll(() =>
