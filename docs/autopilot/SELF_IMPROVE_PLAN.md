@@ -216,6 +216,15 @@ At minimum, add first-class renderers for:
 - **Budget stop card** (`dse.budget_exceeded`)
   - clearly indicates “stopped due to budget” (not a silent failure)
 
+### Deck visualization (local-only)
+
+For local presentations and design reviews, the deck viewer (`/deck`) supports a `Graph` DSL node that can render a static “full DSE run” diagram using the same flow-node UI (nodes + animated connections).
+
+See:
+
+- Deck DSL + `Graph` docs: `apps/web/docs/DECK.md`
+- Example slide (graph-only, no overlay text in the slide content): `self-improve` in the example JSON in `apps/web/docs/DECK.md`
+
 Where this wiring lives:
 
 - Wire decode/accumulation: `apps/web/src/effect/chat.ts` (extend `applyRemoteChunk`)

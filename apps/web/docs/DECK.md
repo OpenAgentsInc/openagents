@@ -368,7 +368,7 @@ Unknown node types render as an error placeholder.
 
 Create the file with something like the following. It defines a **title** layout (full-height column with centered title/subheadline and footer at bottom), a **title-body** layout for content slides, and optionally a **solution** layout for full-bleed component + text overlay slides.
 
-**Title slide:** title "OpenAgents", subheadline "The Agents Platform", name/role/email in the bottom right. **Problem slide:** headline + body copy. **Solution slide:** uses the `solution` layout with a Story in `background` and "Solution" + body text in header/body. The full deck in `apps/web/public/decks/deck.json` (gitignored; copy from this doc or create it) includes all three layouts and the Problem + Solution slides.
+**Title slide:** title "OpenAgents", subheadline "The Agents Platform", name/role/email in the bottom right. **Problem slide:** headline + body copy. **Solution slide:** uses the `solution` layout with a Story in `background` and "Solution" + body text in header/body. **Self-improve slide:** graph-only visualization of what an end-to-end DSE run can look like (runtime parts + compile/promote loop), rendered with `Graph` nodes (no extra overlay text).
 
 ```json
 {
@@ -463,6 +463,67 @@ Create the file with something like the following. It defines a **title** layout
           "footer": [
             { "type": "Footer", "props": { "right": [{ "type": "SlideNumber" }] } }
           ]
+        }
+      },
+      {
+        "id": "self-improve",
+        "layout": "title",
+        "regions": {
+          "header": [],
+          "body": [
+            {
+              "type": "Column",
+              "props": { "fill": true, "position": "relative" },
+              "children": [
+                {
+                  "type": "Graph",
+                  "props": { "opacity": 0.95, "preset": "dashes-fast", "zIndex": 0 },
+                  "children": [
+                    { "type": "GraphNode", "props": { "nodeId": "user", "label": "User", "subtitle": "review gmail", "nodeType": "leaf", "x": "14%", "y": "18%", "status": "ok" } },
+                    { "type": "GraphNode", "props": { "nodeId": "ui", "label": "Autopilot UI", "subtitle": "Effuse chat", "nodeType": "leaf", "x": "14%", "y": "32%", "status": "live" } },
+                    { "type": "GraphNode", "props": { "nodeId": "worker", "label": "Worker", "subtitle": "Convex-first", "nodeType": "leaf", "x": "14%", "y": "46%", "status": "running" } },
+                    { "type": "GraphNode", "props": { "nodeId": "convex", "label": "Convex", "subtitle": "messageParts", "nodeType": "leaf", "x": "14%", "y": "64%", "status": "ok" } },
+                    { "type": "GraphNode", "props": { "nodeId": "assistant", "label": "Assistant", "subtitle": "streamed text", "nodeType": "leaf", "x": "14%", "y": "82%", "status": "ok" } },
+
+                    { "type": "GraphNode", "props": { "nodeId": "sig_select", "label": "dse.signature", "subtitle": "SelectTool.v1", "nodeType": "leaf", "x": "36%", "y": "28%", "status": "ok", "badge": { "label": "212ms", "tone": "info" } } },
+                    { "type": "GraphNode", "props": { "nodeId": "tool_connect", "label": "dse.tool", "subtitle": "gmail.connect", "nodeType": "leaf", "x": "36%", "y": "42%", "status": "ok" } },
+                    { "type": "GraphNode", "props": { "nodeId": "tool_list", "label": "dse.tool", "subtitle": "gmail.listThreads", "nodeType": "leaf", "x": "36%", "y": "56%", "status": "ok", "badge": { "label": "2 calls", "tone": "neutral" } } },
+                    { "type": "GraphNode", "props": { "nodeId": "sig_write", "label": "dse.signature", "subtitle": "WriteResponse.v1", "nodeType": "leaf", "x": "36%", "y": "70%", "status": "ok", "badge": { "label": "rcpt", "tone": "success" } } },
+
+                    { "type": "GraphNode", "props": { "nodeId": "observe", "label": "Observe", "subtitle": "receipts + hashes", "nodeType": "leaf", "x": "64%", "y": "24%", "status": "ok" } },
+                    { "type": "GraphNode", "props": { "nodeId": "label", "label": "Label", "subtitle": "judge / expected", "nodeType": "leaf", "x": "84%", "y": "24%", "status": "pending" } },
+                    { "type": "GraphNode", "props": { "nodeId": "eval", "label": "Evaluate", "subtitle": "reward bundle", "nodeType": "leaf", "x": "64%", "y": "40%", "status": "ok", "badge": { "label": "0.59", "tone": "warning" } } },
+                    { "type": "GraphNode", "props": { "nodeId": "compile", "label": "Compile", "subtitle": "MIPRO / GEPA", "nodeType": "leaf", "x": "84%", "y": "44%", "status": "ok", "badge": { "label": "24 cand", "tone": "info" } } },
+                    { "type": "GraphNode", "props": { "nodeId": "promote", "label": "Promote", "subtitle": "canary rollout", "nodeType": "leaf", "x": "64%", "y": "60%", "status": "ok", "badge": { "label": "10%", "tone": "success" } } },
+                    { "type": "GraphNode", "props": { "nodeId": "monitor", "label": "Monitor", "subtitle": "quality/cost", "nodeType": "leaf", "x": "84%", "y": "64%", "status": "running", "badge": { "label": "p95", "tone": "warning" } } },
+                    { "type": "GraphNode", "props": { "nodeId": "rollback", "label": "Rollback", "subtitle": "pointer-only", "nodeType": "leaf", "x": "64%", "y": "78%", "status": "pending" } },
+                    { "type": "GraphNode", "props": { "nodeId": "policy", "label": "Policy Registry", "subtitle": "active compiled_id", "nodeType": "leaf", "x": "84%", "y": "82%", "status": "ok", "badge": { "label": "c_8a1b", "tone": "neutral" } } },
+
+                    { "type": "GraphEdge", "props": { "from": "user", "to": "ui" } },
+                    { "type": "GraphEdge", "props": { "from": "ui", "to": "worker" } },
+                    { "type": "GraphEdge", "props": { "from": "worker", "to": "sig_select" } },
+                    { "type": "GraphEdge", "props": { "from": "sig_select", "to": "tool_connect" } },
+                    { "type": "GraphEdge", "props": { "from": "tool_connect", "to": "tool_list" } },
+                    { "type": "GraphEdge", "props": { "from": "tool_list", "to": "sig_write" } },
+                    { "type": "GraphEdge", "props": { "from": "sig_write", "to": "assistant" } },
+                    { "type": "GraphEdge", "props": { "from": "assistant", "to": "convex" } },
+                    { "type": "GraphEdge", "props": { "from": "convex", "to": "observe" } },
+
+                    { "type": "GraphEdge", "props": { "from": "observe", "to": "label" } },
+                    { "type": "GraphEdge", "props": { "from": "label", "to": "eval" } },
+                    { "type": "GraphEdge", "props": { "from": "eval", "to": "compile", "preset": "pulse" } },
+                    { "type": "GraphEdge", "props": { "from": "compile", "to": "promote", "preset": "pulse" } },
+                    { "type": "GraphEdge", "props": { "from": "promote", "to": "policy" } },
+                    { "type": "GraphEdge", "props": { "from": "policy", "to": "worker", "preset": "pulse" } },
+                    { "type": "GraphEdge", "props": { "from": "promote", "to": "monitor" } },
+                    { "type": "GraphEdge", "props": { "from": "monitor", "to": "rollback" } },
+                    { "type": "GraphEdge", "props": { "from": "rollback", "to": "policy" } }
+                  ]
+                }
+              ]
+            }
+          ],
+          "footer": []
         }
       }
     ]
