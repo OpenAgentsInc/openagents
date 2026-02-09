@@ -1,0 +1,122 @@
+# RLM Trace Mining and Distillation
+
+- **Status:** Draft (process doc)
+- **Last updated:** 2026-02-09
+- **Conflict rules:**
+  - If terminology conflicts: `docs/GLOSSARY.md` wins.
+  - If behavior conflicts with code: code wins.
+
+Goal: treat RLM runs as an *exploration pass* for long-context problems, then distill the repeating tactics into explicit, typed behavior (signatures/modules/graphs) that DSE can compile and ship.
+
+Related docs:
+
+- Context rot and other failures: `docs/autopilot/context-failures.md`
+- RLM integration plan: `docs/autopilot/rlm-synergies.md`
+- DSE spec: `docs/autopilot/dse.md`
+- Effect-only RLM/DSE design: `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
+
+---
+
+## 1) What counts as a "trace" in OpenAgents
+
+For trace mining we care about *actionable structure*, not internal monologue.
+
+Minimum trace streams:
+
+- **Tool receipts**: tool name, params hash, output hash, latency, side effects.
+- **Predict receipts** (DSE): signature id, compiled_id, prompt hashes, budgets, outcome (ok/error).
+- **RLM iteration events** (when present): per-iteration actions, blob/span accesses, sub-LM calls, derived-variable writes.
+- **Session replay**: `ReplayBundle` today; target `REPLAY.jsonl` v1 per `crates/dsrs/docs/REPLAY.md`.
+
+For FRLM runs (`pylon rlm`), traces are also stored locally:
+
+- `pylon rlm --log` (default true) persists trace events to a local SQLite DB.
+
+---
+
+## 2) What we must log to make traces useful
+
+Without these fields, trace mining collapses into vibes:
+
+- **Scope keys**: `threadId`, `runId`, `signatureId`, `compiled_id` (when applicable).
+- **Strategy id**: direct vs RLM (and RLM variant).
+- **Budgets**: limits + per-run usage counters (time, lm calls, tool calls, output chars, iterations, subcalls).
+- **Context pressure snapshots:** what was the pressure estimate and what inputs drove it.
+- **Evidence access**:
+  - blob/span identifiers (BlobRef or SpanRef)
+  - how much was surfaced into token space (preview sizes)
+- **Progress signals**:
+  - "new evidence" events per iteration (did we read anything new)
+  - stuck/thrash detection outcomes (if triggered)
+
+---
+
+## 3) Workflow: RLM explore -> distill -> compile -> ship
+
+### 3.1 Choose a long-context workload
+
+Pick a task where direct prompting is unstable:
+
+- repo-scale Q&A with evidence requirements
+- log analysis
+- "needle in haystack" retrieval
+
+### 3.2 Run an exploratory RLM pass (verbose, budgeted)
+
+Two practical entry points today:
+
+1. **FRLM via Pylon** (fanout + trace DB):
+
+```bash
+pylon rlm "Explain why this build fails" --file ./output/build.log --budget 2000 --fanout 10
+pylon rlm history --limit 20
+```
+
+2. **RLM engine (local)**:
+
+- For algorithmic guidance and pitfalls (especially symbolic recursion), read `crates/rlm/docs/METHODS.md`.
+
+### 3.3 Review traces and extract repeating tactics
+
+Look for repeated patterns like:
+
+- initial situating: sample, inspect, characterize the context
+- a chunking policy that works reliably for the domain
+- repeated evidence ops: grep/read_lines/symbols
+- per-chunk extraction and a final synthesis pass
+- early stop conditions when confidence is high
+
+The output of this step should be a short list of "tactics" described as:
+
+- preconditions (when to apply)
+- operations sequence (tools + data flow)
+- stop/verify criteria
+- budgets required
+
+### 3.4 Distill into typed building blocks
+
+Distillation targets (in order of preference):
+
+- A **Signature** (decision point) when it gates action or routing.
+- A **Module** or small **graph IR** when the behavior is a repeatable pipeline.
+- A compiler-visible **param surface** when the best approach varies (instruction blocks, chunking knobs, role selection, budgets).
+
+Avoid the anti-pattern: copying "the best trace" into a prompt string.
+
+### 3.5 Compile and compare
+
+Use DSE eval/compile to compare:
+
+- distilled pipeline (fast path)
+- RLM exploratory pass (fallback)
+- direct predict (baseline)
+
+Promote only if the distilled behavior is measurably better on holdout (quality and/or cost/latency).
+
+---
+
+## 4) Guardrails
+
+- **Keep traces replayable**: bounded, structured events; stable ids; hash full payloads even if previews are truncated.
+- **Do not treat RLM as a universal fix**: poisoning/confusion still require provenance and verification (`docs/autopilot/context-failures.md`).
+- **Prefer symbolic recursion for large N**: do not require the controller LM to emit O(N) subcalls.

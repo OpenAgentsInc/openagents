@@ -2,7 +2,7 @@
 
 This doc explores **Horizons** (`~/code/Horizons`, [Synth Laboratories](https://github.com/synth-laboratories/Horizons))—a Rust-first runtime for shipping agent systems—and how it aligns with our **Autopilot**, **Effect**, and **DSE** approach. It summarizes what we can learn and where shared patterns or integration could add value.
 
-**Horizons in one sentence:** Event-driven orchestration, project-scoped state, **DAG graph execution** (LLM / tool / Python nodes), auditable actions, with optional **Monty** for in-process Python in graphs, plus standalone crates for **memory** (Voyager), **optimization** (mipro_v2), and **evaluation** (RLM).
+**Horizons in one sentence:** Event-driven orchestration, project-scoped state, **DAG graph execution** (LLM / tool / Python nodes), auditable actions, with optional **Monty** for in-process Python in graphs, plus standalone crates for **memory** (Voyager), **optimization** (mipro_v2), and **reward-signal evaluation** (crate `rlm`).
 
 ---
 
@@ -25,7 +25,8 @@ This doc explores **Horizons** (`~/code/Horizons`, [Synth Laboratories](https://
 
 ### 1.3 Standalone crates (no Horizons dependency)
 
-- **rlm:** Reward verification. `RewardSignal`s with weights; `VerificationCase` → `RewardOutcome` in [0,1]; `EvalReport` (Markdown/JSON). LLM-backed signals supported.
+- **rlm:** Reward verification (reward-signal evaluation). `RewardSignal`s with weights; `VerificationCase` → `RewardOutcome` in [0,1]; `EvalReport` (Markdown/JSON). LLM-backed signals supported.
+  - Note: this is **not** "Recursive Language Models (RLM)" long-context execution. See `docs/autopilot/rlm-synergies.md` and the glossary entry for `RLM` to avoid acronym collisions.
 - **mipro_v2:** Batch prompt/policy optimization. Dataset → train/holdout split; `VariantSampler` generates candidates; `Evaluator` (LLM + metric) on holdout; best candidate, early stopping, iteration.
 - **voyager:** Long-term agent memory. Scope `{ org_id, agent_id }`; append-only `MemoryItem`; optional `index_text` for embeddings; retrieval (vector + recency bias); optional batch summarization. Backend-agnostic (in-memory, pgvector, etc.).
 
@@ -41,7 +42,7 @@ This doc explores **Horizons** (`~/code/Horizons`, [Synth Laboratories](https://
 | Our constraint / goal | Horizons angle |
 |-----------------------|----------------|
 | **No containers** (Autopilot spec) | Graph engine runs in-process; Python via subprocess or **Monty**. Optional sandbox backends (Docker, Daytona) exist for *core agents* but graph execution itself is no-container. |
-| **DSE: signatures, modules, compile, artifacts** | Graph nodes are a DAG of “steps”; verifier graphs are explicit eval pipelines. **mipro_v2** is a direct analogue to our compile loop: policy variants, holdout eval, best candidate. **RLM** is evaluation: signals + aggregation → reward. |
+| **DSE: signatures, modules, compile, artifacts** | Graph nodes are a DAG of “steps”; verifier graphs are explicit eval pipelines. **mipro_v2** is a direct analogue to our compile loop: policy variants, holdout eval, best candidate. **Reward-signal evaluation (`rlm` crate)** is evaluation: signals + aggregation → reward. |
 | **Effect: typed, testable boundaries** | Horizons uses traits (e.g. `ToolExecutor`, `LlmClientApi`, `VectorStore`). We use Effect services. Same idea: swappable implementations, clear boundaries. |
 | **Auditable, replayable** | Events, audit entries, trace in graph runs. We want receipts and REPLAY; they have structured trace and event bus. |
 | **One agent per user** (Autopilot) | Horizons is multi-tenant (org/project); we could adopt project-scoped state and still enforce one logical “agent” per user within a project. |
@@ -64,7 +65,7 @@ We have **DSE modules**: Effect programs `I -> Effect<R, E, O>`, composed in pip
 
 **Learning:** Explicit DAG + node types + state passing + budgets is a good execution model. We don’t have to adopt YAML; we can keep Effect as the composition language but still enforce a graph-like shape (acyclic, declared inputs/outputs per step).
 
-### 3.2 Verifier graphs and RLM (evaluation)
+### 3.2 Verifier graphs and reward-signal evaluation (`rlm` crate)
 
 Horizons ships **built-in verifier graphs**: e.g. summarize artifacts → single LLM call with rubric + trace → `outcome_reward` and optional `event_rewards`. The **rlm** crate is standalone: `RewardSignal`s, weighted aggregation, `EvalReport`.
 

@@ -228,10 +228,13 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 
 **Objective:** mitigate context rot for huge inputs by adding an RLM execution strategy that works with existing signature contracts.
 
+Context rot is a **quality** failure past soft limits (not just "context window exceeded"). See `docs/autopilot/context-failures.md` for the taxonomy (rot vs poisoning vs confusion) and the telemetry we need to detect it.
+
 - **RLM strategy (Effect-first)**
   - Add `RlmPredict(signature)` as a swappable inference-time strategy.
   - Persist a variable space (`VarSpace`) whose values are typed metadata + blob references (aligns with Phase 0 `BlobStore`).
   - Start with an RLM-lite “action DSL” kernel (deterministic, replayable). Keep arbitrary code execution behind a strict boundary (see Phase 6 + Monty model).
+  - Prefer **symbolic recursion** for large contexts: kernel/code-driven fanout over chunks (do not require the controller LM to emit O(N) subcalls). Reference: `crates/rlm/docs/METHODS.md`.
 
 - **Recursion and model roles**
   - Add explicit `sub` model role (in addition to main/judge/repair) and pin role selection in artifacts.
@@ -242,6 +245,7 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 
 - **Receipts and replay**
   - Emit structured per-iteration trace events: actions executed, blobs accessed (by ref/hash), sub-LM calls, and derived-variable writes.
+  - Treat traces as an input to distillation: mine repeating tactics and convert them into typed signatures/modules/graphs (see `docs/autopilot/rlm-trace-mining.md`).
 
 **Exit criteria**
 - At least one long-context Autopilot workload (logs/codebase subset/evidence sourcing) runs reliably under strict budgets with auditable receipts.

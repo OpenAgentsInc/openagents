@@ -336,7 +336,7 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
                 const ok = yield* evaluate<boolean>(fnOrExpression as any)
                 if (ok) return
                 if (Date.now() > deadline) {
-                  throw new Error("Timed out in waitForFunction")
+                  return yield* Effect.fail(new Error("Timed out in waitForFunction"))
                 }
                 yield* Effect.sleep(`${intervalMs} millis`)
               }

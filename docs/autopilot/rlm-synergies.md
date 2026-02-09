@@ -1,13 +1,27 @@
 # RLMs (“Recursive Language Models”) and OpenAgents Autopilot / Effect / DSE: Synergies and Integration Plan
 
-- **Source analyzed:** “SPy is the easiest way to use RLMs” (Isaac Miller, 2026-02-03) — excerpt provided in chat
-- **Related docs:** `docs/autopilot/dse.md`, `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`
+- **Sources analyzed:**
+  - “The Potential of RLMs: Handling Your Long Context Today & Designing Your Agent Tomorrow” (dbreunig.com, 2026-02-09) — excerpt provided in chat
+  - “SPy is the easiest way to use RLMs” (Isaac Miller, 2026-02-03) — excerpt provided in chat
+- **Related docs:** `docs/autopilot/dse.md`, `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`, `docs/autopilot/context-failures.md`, `docs/autopilot/rlm-trace-mining.md`, `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`, `crates/rlm/docs/METHODS.md`
 
 This doc translates the RLM pattern described in the article into **DSE + Autopilot** terms and proposes an Effect-first integration plan.
 
 ---
 
 ## 1) RLM recap (what matters for us)
+
+### 1.0 Context rot (why we care)
+
+The motivating failure mode is **context rot**: as the tokenized prompt grows beyond a model's *soft context limit*, quality degrades while the model continues to emit plausible-looking output. This is a quality failure, not a capacity failure.
+
+For agent systems, context rot is particularly dangerous because it is:
+
+- **Silent**: outputs keep coming, but correctness erodes.
+- **Cumulative**: long sessions and large repos/logs gradually push us past soft limits.
+- **Hard to debug**: the failure often looks like "the agent got worse" rather than a clear exception.
+
+RLM is an inference-time strategy to mitigate this by keeping **token space** small and treating long context as **external state** accessed via operations. (It does not solve other context failures like poisoning/confusion; see `docs/autopilot/context-failures.md`.)
 
 ### 1.1 Two buckets of context
 
@@ -27,6 +41,8 @@ The “recursive” part is the main model’s ability to call a **sub-model** (
 
 This is similar to agent “subtasks,” but with a crucial difference:
 - results land in **manipulable variable space**, not automatically in the main prompt.
+
+Important nuance for scaling: for large contexts (many chunks), you generally do **not** want the controller model to emit O(N) recursive subcalls itself. Prefer **symbolic recursion** (kernel/code-driven fanout) where code iterates chunks and invokes sub-LM calls programmatically. See `crates/rlm/docs/METHODS.md`.
 
 ### 1.3 Budgets
 
@@ -65,6 +81,22 @@ RLM “variable space” maps cleanly onto:
 
 Microcode’s paste placeholder pattern and our Phase 0 “Blob references for large context” are the same underlying idea: **don’t duplicate large blobs in token space; reference them**.
 
+### 2.3 RLM traces as an agent discovery mechanism (distill later)
+
+The article's most actionable product idea is not just "RLM prevents context rot", but: **RLM traces can reveal the agent you should actually build**.
+
+In OpenAgents terms, the target workflow is:
+
+1. Run an exploratory RLM pass on long-context tasks (strict budgets, verbose trace).
+2. Review traces to find repeating tactics (search patterns, chunking plans, evidence aggregation, verifier passes).
+3. Distill those tactics into explicit, typed building blocks:
+   - signatures (decision points and verifiable transforms)
+   - modules/graphs (repeatable pipelines)
+   - compiler knobs (instruction blocks, chunking policy, role selection, budgets)
+4. Compile/evaluate/promote the distilled behavior via DSE so the "production path" is low-latency and reliable.
+
+See `docs/autopilot/rlm-trace-mining.md` for the concrete trace-mining loop and what to log.
+
 ---
 
 ## 3) Effect-first design: DSE RLM as an inference strategy
@@ -100,6 +132,7 @@ The article assumes Python code in a sandbox. For us, the integration should be 
   - `preview(var, slice)`
   - `search(blobRef, query)` (regex/keyword)
   - `load(blobRef, range)` / `chunk(blobRef, size)`
+  - `extract_over_chunks(chunks, sub_prompt_template, role="sub")` (kernel-driven fanout; symbolic recursion)
   - `json_parse(text)` / `extract(schema, text)`
   - `sub_lm(prompt, inputs...)`
   - `tool_call(name, args)`
@@ -169,6 +202,11 @@ Compilation would output a `compiled_id` that pins:
   - log Q&A / evidence sourcing
 - Evaluate `DirectPredict` vs `RlmPredict` and promote when net utility is positive.
 
+### Phase 2.5 (trace mining and distillation)
+
+- Mine RLM traces for repeatable tactics and distill them into typed signatures/modules/graphs.
+- Use distilled pipelines by default and keep RLM as a fallback for high-context or novel cases.
+
 ### Phase 3 (compile knobs specific to RLM)
 
 - Add compiler search spaces for:
@@ -204,5 +242,6 @@ This yields a concrete Autopilot capability:
 - **Cost blowups**: RLM can quietly do many subcalls; budgets must be enforced and recorded.
 - **Non-determinism**: the kernel must be deterministic; randomness must be seeded and logged.
 - **Privacy/retention**: blob storage + varspace must obey privacy modes and redaction/truncation policies.
+- **Model strength gating**: weaker controller models can get confused, lose progress, and burn iteration budget. Gate RLM behind routing that considers model capability and "stuck/thrash" signals.
+- **Does not fix poisoning/confusion**: RLM mitigates context rot by managing token space. It does not make untrusted/incorrect context safe. See `docs/autopilot/context-failures.md`.
 - **Debugging**: prefer structured traces (“what actions ran”) over raw “internal monologue.”
-
