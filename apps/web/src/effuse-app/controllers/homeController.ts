@@ -241,12 +241,32 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     }
 
     const doRender = () => {
+      const lastAssistantIndex =
+        step === "authed" && homeSnapshot.messages.length > 0
+          ? (() => {
+              for (let i = homeSnapshot.messages.length - 1; i >= 0; i--) {
+                if (homeSnapshot.messages[i]?.role === "assistant") return i
+              }
+              return -1
+            })()
+          : -1
+
       const displayMessages: Array<{ role: "user" | "assistant"; text: string }> =
         step === "authed" && homeSnapshot.messages.length > 0
-          ? homeSnapshot.messages.map((m) => ({
-              role: m.role as "user" | "assistant",
-              text: textFromParts(m.parts ?? []) || (m.role === "assistant" ? "(no text)" : ""),
-            }))
+          ? homeSnapshot.messages.map((m, i) => {
+              const raw = textFromParts(m.parts ?? [])
+              const isLastAssistant = m.role === "assistant" && i === lastAssistantIndex
+              const fallback =
+                m.role === "assistant"
+                  ? homeSnapshot.status === "streaming" && isLastAssistant && !raw
+                    ? "..."
+                    : "(no text)"
+                  : ""
+              return {
+                role: m.role as "user" | "assistant",
+                text: raw || (m.role === "assistant" ? fallback : ""),
+              }
+            })
           : step === "authed"
             ? [{ role: "assistant" as const, text: "Autopilot online. Awaiting instructions." }]
             : messages
