@@ -228,6 +228,18 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         .join("")
     }
 
+    /** Placeholder for chat input based on last assistant message (onboarding hints). */
+    const chatPlaceholderFromLastAssistant = (
+      lastAssistantText: string,
+    ): string => {
+      const t = lastAssistantText.toLowerCase()
+      if (t.includes("what shall i call you")) return "Enter your name or handle"
+      if (t.includes("what should you call me")) return "Enter agent name (e.g. Autopilot)"
+      if (t.includes("operating vibe") || t.includes("pick one short")) return "Enter a short vibe (e.g. calm, direct)"
+      if (t.includes("boundaries or preferences") || t.includes("reply 'none' or list")) return "Reply 'none' or list a few bullets"
+      return "Type a message..."
+    }
+
     const doRender = () => {
       const displayMessages: Array<{ role: "user" | "assistant"; text: string }> =
         step === "authed" && homeSnapshot.messages.length > 0
@@ -239,6 +251,17 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             ? [{ role: "assistant" as const, text: "Autopilot online. Awaiting instructions." }]
             : messages
 
+      const lastAssistantText =
+        step === "authed"
+          ? (() => {
+              for (let i = displayMessages.length - 1; i >= 0; i--) {
+                if (displayMessages[i]?.role === "assistant") return displayMessages[i].text
+              }
+              return ""
+            })()
+          : ""
+      const authedPlaceholder = chatPlaceholderFromLastAssistant(lastAssistantText)
+
       const formHtml =
         step === "authed"
           ? html`
@@ -246,7 +269,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 <input
                   type="text"
                   name="message"
-                  placeholder="Type a message..."
+                  placeholder="${authedPlaceholder}"
                   class="${chatInputClass}"
                   data-oa-home-chat-input="1"
                 />
