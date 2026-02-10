@@ -634,11 +634,27 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
             // Wait for the first welcome assistant message.
             yield* step(
-              "wait for welcome message",
+              "wait for welcome message (or error)",
               page.waitForFunction(
-                `Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => (el.textContent || '').includes('Autopilot online.'))`,
+                `(
+                  Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => (el.textContent || '').includes('Autopilot online.'))
+                  || !!document.querySelector('[data-autopilot-chat-error=\"1\"]')
+                )`,
                 { timeoutMs: 30_000 },
               ),
+            )
+
+            yield* step(
+              "fail fast if error banner is visible",
+              Effect.gen(function* () {
+                const errorText = yield* page.evaluate<string>(`(() => {
+  const el = document.querySelector('[data-autopilot-chat-error=\"1\"]');
+  return el ? ((el.textContent || '').trim()) : '';
+})()`)
+                if (errorText) {
+                  throw new Error(`Autopilot chat error banner: ${errorText}`)
+                }
+              }),
             )
 
             const assistantCount0 = yield* step(
