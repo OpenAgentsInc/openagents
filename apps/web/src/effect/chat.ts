@@ -1,4 +1,4 @@
-import { Context, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
+import { Cause, Context, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
 
 import { api } from "../../convex/_generated/api";
 import { AuthService } from "./auth";
@@ -126,7 +126,8 @@ export const ChatServiceLive = Layer.effect(
             const part = (p as any).part as unknown;
             if (!messageId || !runId || !part || typeof part !== "object") continue;
 
-            const active: ActiveStream = byMessageId.get(messageId) ?? { id: runId, messageId, parts: [] };
+            const active: ActiveStream =
+              byMessageId.get(messageId) ?? { id: runId, messageId, parts: [] };
             byMessageId.set(messageId, applyChatWirePart(active, part));
           }
 
@@ -148,7 +149,11 @@ export const ChatServiceLive = Layer.effect(
               if (active) {
                 messages.push({ id: messageId, role: "assistant", parts: [...active.parts] });
               } else if (text.trim()) {
-                messages.push({ id: messageId, role: "assistant", parts: [{ type: "text", text, state: "done" }] });
+                messages.push({
+                  id: messageId,
+                  role: "assistant",
+                  parts: [{ type: "text", text, state: "done" }],
+                });
               } else {
                 messages.push({ id: messageId, role: "assistant", parts: [] });
               }
@@ -171,7 +176,26 @@ export const ChatServiceLive = Layer.effect(
 
           updateSnapshot(session);
         }),
-      ).pipe(Effect.forkDaemon);
+      )
+        .pipe(
+          Effect.catchAllCause((cause) =>
+            Effect.gen(function* () {
+              const message = Cause.pretty(cause).trim() || "Chat subscription failed."
+              yield* telemetry
+                .withNamespace("chat.service")
+                .log("error", "chat.subscribe_failed", { threadId, message })
+                .pipe(Effect.catchAll(() => Effect.void))
+
+              // Surface to UI instead of silently stalling with an empty chat.
+              yield* Effect.sync(() => {
+                session.localStatus.status = "error"
+                session.localStatus.errorText = message
+                updateSnapshot(session)
+              })
+            }),
+          ),
+          Effect.forkDaemon,
+        );
 
       session.dispose = () => {
         Effect.runFork(Fiber.interrupt(fiber));
