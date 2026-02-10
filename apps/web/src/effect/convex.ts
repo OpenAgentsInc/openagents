@@ -38,6 +38,15 @@ export type ConvexServiceApi = {
    * Useful for debugging "hang" scenarios where mutations/subscriptions never resolve.
    */
   readonly connectionState: () => Effect.Effect<ConnectionState | null, never, RequestContextService>;
+
+  /**
+   * Client-only: force Convex to re-read the latest auth token.
+   *
+   * Convex can enter a sticky `noAuth` state when the app boots unauthenticated.
+   * When a user later signs in (e.g. magic-auth verify), we must call `setAuth()`
+   * again so Convex pauses the socket and fetches a token.
+   */
+  readonly refreshAuth: () => Effect.Effect<void, never, RequestContextService>;
 };
 
 export class ConvexService extends Context.Tag('@openagents/web/ConvexService')<
@@ -116,10 +125,39 @@ export const ConvexServiceLive = Layer.scoped(
 
       const connectionState = () => Effect.sync(() => null);
 
-      return ConvexService.of({ query, mutation, action, subscribeQuery, connectionState });
+      const refreshAuth = () => Effect.void;
+
+      return ConvexService.of({ query, mutation, action, subscribeQuery, connectionState, refreshAuth });
     }
 
     // Client: one WS client for the app.
+    const fetchToken = async (fetchArgs: { readonly forceRefreshToken: boolean }) => {
+      const startedAt = Date.now();
+      let token: string | null = null;
+      try {
+        token = await auth
+          .getAccessToken({ forceRefreshToken: fetchArgs.forceRefreshToken })
+          .pipe(
+            Effect.catchAll((err) => {
+              console.warn('[convex:setAuth] getAccessToken failed', err);
+              return Effect.succeed(null);
+            }),
+            Effect.provideService(RequestContextService, makeDefaultRequestContext()),
+            Effect.runPromise,
+          );
+      } catch (err) {
+        console.warn('[convex:setAuth] runPromise failed', err);
+      }
+      const ms = Date.now() - startedAt;
+      console.log('[convex:setAuth]', {
+        forceRefreshToken: fetchArgs.forceRefreshToken,
+        hasToken: !!token,
+        tokenLength: token?.length ?? 0,
+        ms,
+      });
+      return token ?? null;
+    };
+
     const client = yield* Effect.acquireRelease(
       Effect.sync(() => {
         const c = new ConvexClient(config.convexUrl, { unsavedChangesWarning: false });
@@ -166,27 +204,7 @@ export const ConvexServiceLive = Layer.scoped(
         (c as any).__oaUnsubConnectionState = unsubConnection;
         (c as any).__oaIsE2e = isE2e;
 
-        c.setAuth(async () => {
-          const startedAt = Date.now();
-          let token: string | null = null;
-          try {
-            token = await auth
-              .getAccessToken({ forceRefreshToken: true })
-              .pipe(
-                Effect.catchAll((err) => {
-                  console.warn('[convex:setAuth] getAccessToken failed', err);
-                  return Effect.succeed(null);
-                }),
-                Effect.provideService(RequestContextService, makeDefaultRequestContext()),
-                Effect.runPromise,
-              );
-          } catch (err) {
-            console.warn('[convex:setAuth] runPromise failed', err);
-          }
-          const ms = Date.now() - startedAt;
-          console.log('[convex:setAuth]', { hasToken: !!token, tokenLength: token?.length ?? 0, ms });
-          return token ?? null;
-        });
+        c.setAuth(fetchToken);
         return c;
       }),
       (c) =>
@@ -275,6 +293,13 @@ export const ConvexServiceLive = Layer.scoped(
 
     const connectionState = () => Effect.sync(() => client.connectionState());
 
-    return ConvexService.of({ query, mutation, action, subscribeQuery, connectionState });
+    const refreshAuth = Effect.fn('ConvexService.refreshAuth')(function* () {
+      yield* RequestContextService;
+      yield* Effect.sync(() => {
+        client.setAuth(fetchToken);
+      });
+    });
+
+    return ConvexService.of({ query, mutation, action, subscribeQuery, connectionState, refreshAuth });
   }),
 );

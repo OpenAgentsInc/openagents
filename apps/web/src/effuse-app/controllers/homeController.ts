@@ -9,13 +9,12 @@ import {
 import {
   AuthSession,
   AuthSessionUser,
-  AuthService,
   clearAuthClientCache,
   setClientAuthFromVerify,
 } from "../../effect/auth"
 import type { ChatSnapshot } from "../../effect/chat"
 import { ChatSnapshotAtom } from "../../effect/atoms/chat"
-import { SessionAtom } from "../../effect/atoms/session"
+import { SessionAtom, type Session } from "../../effect/atoms/session"
 import { formatCountdown } from "../../effuse-pages/home"
 import {
   cleanupMarketingDotsGridBackground,
@@ -37,6 +36,7 @@ type HomeChatDeps = {
   readonly navigate: (href: string) => void
   readonly signOut: () => void | Promise<void>
   readonly chat: ChatClient
+  readonly refreshConvexAuth?: () => void | Promise<void>
 }
 
 const CHAT_PANE_ID = "home-chat"
@@ -135,11 +135,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       onPaneClosed: closeOverlay,
     })
 
-    const session = deps?.atoms?.get(SessionAtom as any) ?? { userId: null, user: null }
+    const session: Session = (deps?.atoms?.get(SessionAtom as any) as Session) ?? { userId: null, user: null }
     const isAuthed = session.user != null
 
     const renderIdentityCard = (userEmail: string) => {
-      let cardEl = overlay.querySelector("[data-oa-home-identity-card]")
+      let cardEl = overlay.querySelector<HTMLElement>("[data-oa-home-identity-card]")
       if (!cardEl) {
         cardEl = document.createElement("div")
         cardEl.setAttribute("data-oa-home-identity-card", "1")
@@ -202,7 +202,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let unsubHomeChat: (() => void) | null = null
 
     if (isAuthed && deps?.atoms) {
-      const currentSession = deps.atoms.get(SessionAtom as any)
+      const currentSession = deps.atoms.get(SessionAtom as any) as Session
       if (currentSession?.user?.email) renderIdentityCard(currentSession.user.email)
       if (deps.chat) {
         deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
@@ -371,14 +371,14 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
             if (step === "authed") {
               if (homeSnapshot.status === "submitted" || homeSnapshot.status === "streaming") return
-              if (!raw || !deps?.chat) return
-              const text = raw
-              const ensureThenSend = () => {
-                let tid = homeThreadId
-                if (tid) {
-                  if (input) input.value = ""
-                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => { })
-                  doRender()
+	              if (!raw || !deps?.chat) return
+	              const text = raw
+	              const ensureThenSend = () => {
+	                const tid = homeThreadId
+	                if (tid) {
+	                  if (input) input.value = ""
+	                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => { })
+	                  doRender()
                   return
                 }
                 deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
@@ -424,18 +424,18 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               isBusy = true
               messages.push({ role: "assistant", text: "Sending code…" })
               doRender()
-              fetch("/api/auth/start", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ email: nextEmail }),
-              })
-                .then((r) => r.json().catch(() => null))
-                .then((data: { ok?: boolean; error?: string }) => {
-                  isBusy = false
-                  if (data?.ok) {
-                    email = nextEmail
-                    step = "code"
+	              fetch("/api/auth/start", {
+	                method: "POST",
+	                headers: { "content-type": "application/json" },
+	                credentials: "include",
+	                body: JSON.stringify({ email: nextEmail }),
+	              })
+	                .then((r) => r.json().catch(() => null) as Promise<{ ok?: boolean; error?: string } | null>)
+	                .then((data) => {
+	                  isBusy = false
+	                  if (data?.ok) {
+	                    email = nextEmail
+	                    step = "code"
                     messages.push({
                       role: "assistant",
                       text: `Check ${email}. Enter six digit verification code:`,
@@ -478,27 +478,39 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               credentials: "include",
               body: JSON.stringify({ email, code }),
             })
-              .then((r) => r.json().catch(() => null))
-              .then(async (data: {
-                ok?: boolean
-                error?: string
-                userId?: string
-                token?: string
-                user?: { id: string; email?: string | null; firstName?: string | null; lastName?: string | null }
-              }) => {
+              .then((r) =>
+                r.json().catch(() => null) as Promise<{
+                  ok?: boolean
+                  error?: string
+                  userId?: string
+                  token?: string
+                  user?: {
+                    id: string
+                    email?: string | null
+                    firstName?: string | null
+                    lastName?: string | null
+                  }
+                } | null>,
+              )
+              .then(async (data) => {
                 isBusy = false
                 if (!data?.ok) {
                   messages.push({
                     role: "assistant",
-                    text: data?.error === "invalid_code" ? "Invalid code. Please try again." : "Verification failed. Try again.",
+                    text:
+                      data?.error === "invalid_code"
+                        ? "Invalid code. Please try again."
+                        : "Verification failed. Try again.",
                   })
                   doRender()
                   return
                 }
+
                 clearAuthClientCache()
                 const token = typeof data.token === "string" ? data.token : null
                 const userPayload = data.user && typeof data.user.id === "string" ? data.user : null
                 const userId = typeof data.userId === "string" ? data.userId : userPayload?.id ?? null
+
                 if (token && userPayload && userId && deps) {
                   const user = AuthSessionUser.make({
                     id: userPayload.id,
@@ -517,48 +529,54 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                       lastName: userPayload.lastName ?? null,
                     },
                   })
+
+                  try {
+                    await deps.refreshConvexAuth?.()
+                  } catch {
+                    // ignore
+                  }
+
                   if (userPayload.email) renderIdentityCard(userPayload.email)
                   messages.length = 0
                   messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
                   step = "authed"
-                  if (deps.chat) {
-                    deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
-                      (id) => {
-                        if (id && id.length > 0) {
-                          homeThreadId = id
-                          deps.atoms.get(ChatSnapshotAtom(id))
-                          if (unsubHomeChat) unsubHomeChat()
-                          unsubHomeChat = deps.atoms.subscribe(
-                            ChatSnapshotAtom(id),
-                            (snap) => {
-                              homeSnapshot = snap
-                              doRender()
-                            },
-                            { immediate: true },
-                          )
-                        }
-                        messages.length = 0
-                        messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
-                        step = "authed"
-                        doRender()
-                      },
-                      () => {
-                        messages.length = 0
-                        messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
-                        step = "authed"
-                        doRender()
-                      },
-                    )
-                  }
+
+                  deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
+                    (id) => {
+                      if (id && id.length > 0) {
+                        homeThreadId = id
+                        deps.atoms.get(ChatSnapshotAtom(id))
+                        if (unsubHomeChat) unsubHomeChat()
+                        unsubHomeChat = deps.atoms.subscribe(
+                          ChatSnapshotAtom(id),
+                          (snap) => {
+                            homeSnapshot = snap
+                            doRender()
+                          },
+                          { immediate: true },
+                        )
+                      }
+
+                      messages.length = 0
+                      messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
+                      step = "authed"
+                      doRender()
+                    },
+                    () => {
+                      messages.length = 0
+                      messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
+                      step = "authed"
+                      doRender()
+                    },
+                  )
+
                   doRender()
                   return
                 }
-                try {
-                  localStorage.setItem("oa-open-chat-after-reload", "1")
-                } catch {
-                  // ignore
-                }
-                window.location.reload()
+
+                messages.push({ role: "assistant", text: "Signed in, but couldn't initialize chat. Please try again." })
+                step = "authed"
+                doRender()
               })
               .catch(() => {
                 isBusy = false
@@ -578,16 +596,6 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
   trigger.addEventListener("click", handler, { capture: true })
 
-  // If we landed after magic-auth verify reload, open the chat pane once session is ready.
-  try {
-    if (typeof localStorage !== "undefined" && localStorage.getItem("oa-open-chat-after-reload") === "1" && deps) {
-      localStorage.removeItem("oa-open-chat-after-reload")
-      setTimeout(() => trigger.click(), 400)
-    }
-  } catch {
-    // ignore
-  }
-
   return () => trigger.removeEventListener("click", handler, { capture: true })
 }
 
@@ -598,6 +606,7 @@ export const mountHomeController = (input: {
   readonly navigate?: (href: string) => void
   readonly signOut?: () => void | Promise<void>
   readonly chat?: ChatClient
+  readonly refreshConvexAuth?: () => void | Promise<void>
 }): HomeController => {
   Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => { })
 
@@ -610,6 +619,7 @@ export const mountHomeController = (input: {
         navigate: input.navigate,
         signOut: input.signOut,
         chat: input.chat,
+        refreshConvexAuth: input.refreshConvexAuth,
       }
       : undefined
   const stopOpenChatPane = openChatPaneOnHome(input.container, deps)

@@ -93,7 +93,9 @@ export const withDseAdminSecretServices = <A, R>(
 
     const connectionState: ConvexServiceApi["connectionState"] = () => Effect.succeed(null);
 
-    const convexService = ConvexService.of({ query, mutation, action, subscribeQuery, connectionState });
+    const refreshAuth: ConvexServiceApi["refreshAuth"] = () => Effect.void;
+
+    const convexService = ConvexService.of({ query, mutation, action, subscribeQuery, connectionState, refreshAuth });
 
     return yield* program.pipe(
       Effect.provideService(AuthService, AuthService.of(authService)),

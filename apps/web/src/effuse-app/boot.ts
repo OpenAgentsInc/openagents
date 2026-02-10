@@ -12,6 +12,7 @@ import {
 import { AuthService, clearAuthClientCache } from "../effect/auth"
 import { AutopilotStoreService } from "../effect/autopilotStore"
 import { ChatService } from "../effect/chat"
+import { ConvexService } from "../effect/convex"
 import { getAppConfig } from "../effect/config"
 import { ContractsApiService } from "../effect/contracts"
 import { OwnedThreadIdAtom } from "../effect/atoms/chat"
@@ -78,12 +79,12 @@ export const bootEffuseApp = (options?: BootOptions): void => {
       return yield* TelemetryService
     }),
   )
-  const store = runtime.runSync(
+  const _store = runtime.runSync(
     Effect.gen(function* () {
       return yield* AutopilotStoreService
     }),
   )
-  const contracts = runtime.runSync(
+  const _contracts = runtime.runSync(
     Effect.gen(function* () {
       return yield* ContractsApiService
     }),
@@ -93,16 +94,37 @@ export const bootEffuseApp = (options?: BootOptions): void => {
       return yield* ChatService
     }),
   )
+  const convex = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* ConvexService
+    }),
+  )
 
   // Identify user in PostHog (best-effort) when SessionAtom becomes authenticated.
   let lastIdentifiedUserId: string | null = null
+  let lastConvexAuthedUserId: string | null = null
   atoms.subscribe(
     SessionAtom,
     (session) => {
-      if (!session.userId) return
-      if (session.userId === lastIdentifiedUserId) return
-      lastIdentifiedUserId = session.userId
-      Effect.runPromise(telemetry.withNamespace("auth.workos").identify(session.userId, { userId: session.userId })).catch(() => { })
+      if (!session.userId) {
+        lastIdentifiedUserId = null
+        lastConvexAuthedUserId = null
+        return
+      }
+
+      if (session.userId !== lastIdentifiedUserId) {
+        lastIdentifiedUserId = session.userId
+        Effect.runPromise(
+          telemetry.withNamespace("auth.workos").identify(session.userId, { userId: session.userId }),
+        ).catch(() => { })
+      }
+
+      // Convex can become "stuck" unauthenticated if it booted before a user logged in.
+      // Refresh auth whenever we observe a new authenticated userId.
+      if (session.userId !== lastConvexAuthedUserId) {
+        lastConvexAuthedUserId = session.userId
+        runtime.runPromise(convex.refreshAuth()).catch(() => { })
+      }
     },
     { immediate: true },
   )
@@ -236,6 +258,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                   navigate,
                   signOut: () => void signOut(),
                   chat,
+                  refreshConvexAuth: () => runtime.runPromise(convex.refreshAuth()),
                 }).cleanup,
               }
               return

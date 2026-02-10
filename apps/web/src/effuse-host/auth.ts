@@ -250,7 +250,7 @@ const handleSession = async (request: Request, env: WorkerEnv): Promise<Response
   // Stale/bad cookie: clear whenever we have a cookie but no user so the next request (e.g. after verify) doesn't send it.
   if (hasCookie && !hasUser) {
     try {
-      const { setCookieHeader } = await getWorkerRuntime(env).runPromise(clearSessionCookie())
+      const { setCookieHeader } = await getWorkerRuntime(env).runtime.runPromise(clearSessionCookie())
       return json(payload, { status: 200, headers: { "Set-Cookie": setCookieHeader } })
     } catch (e) {
       console.error("[auth.session] clearSessionCookie failed", e)
