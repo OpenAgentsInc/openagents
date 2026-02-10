@@ -19,6 +19,7 @@ import type * as dse_artifacts from "../dse/artifacts.js";
 import type * as dse_blobs from "../dse/blobs.js";
 import type * as dse_canary from "../dse/canary.js";
 import type * as dse_compileReports from "../dse/compileReports.js";
+import type * as dse_evalReports from "../dse/evalReports.js";
 import type * as dse_examples from "../dse/examples.js";
 import type * as dse_opsAdmin from "../dse/opsAdmin.js";
 import type * as dse_opsRuns from "../dse/opsRuns.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   "dse/blobs": typeof dse_blobs;
   "dse/canary": typeof dse_canary;
   "dse/compileReports": typeof dse_compileReports;
+  "dse/evalReports": typeof dse_evalReports;
   "dse/examples": typeof dse_examples;
   "dse/opsAdmin": typeof dse_opsAdmin;
   "dse/opsRuns": typeof dse_opsRuns;

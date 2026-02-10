@@ -177,6 +177,8 @@ export default defineSchema({
     split: v.optional(v.union(v.literal("train"), v.literal("dev"), v.literal("holdout"), v.literal("test"))),
     tags: v.optional(v.array(v.string())),
     source: v.optional(v.string()),
+    // Optional, bounded metadata used by eval/compile tooling (for example, blob texts for blobref seeding).
+    meta: v.optional(v.any()),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   })
@@ -199,6 +201,30 @@ export default defineSchema({
     createdAtMs: v.number(),
   })
     .index("by_signatureId_jobHash_datasetHash", ["signatureId", "jobHash", "datasetHash"])
+    .index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
+
+  /**
+   * DSE eval reports (global, not per-thread).
+   *
+   * Unlike compile reports, eval reports are tied to a specific compiled artifact.
+   * They are immutable and keyed by a stable evalHash so agent-run tooling can be idempotent.
+   */
+  dseEvalReports: defineTable({
+    signatureId: v.string(),
+    evalHash: v.string(),
+    compiled_id: v.string(),
+    datasetId: v.string(),
+    datasetHash: v.string(),
+    rewardId: v.string(),
+    rewardVersion: v.number(),
+    split: v.optional(v.string()),
+    selectedExampleIdsHash: v.optional(v.string()),
+    n: v.optional(v.number()),
+    json: v.any(),
+    createdAtMs: v.number(),
+  })
+    .index("by_signatureId_evalHash", ["signatureId", "evalHash"])
+    .index("by_signatureId_compiled_id_createdAtMs", ["signatureId", "compiled_id", "createdAtMs"])
     .index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
 
   /**

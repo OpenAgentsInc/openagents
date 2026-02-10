@@ -255,6 +255,37 @@ Current endpoints and storage:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
+- 2026-02-10T04:54:49Z Phase 7: judge-based rewards for recap/summarization + Convex-stored eval reports.
+- Added judge signature:
+  - `@openagents/autopilot/judge/ThreadSummaryQuality.v1` in `apps/autopilot-worker/src/dseCatalog.ts`
+- Added pinned judge artifact (compiled + hashed):
+  - `apps/web/src/effuse-host/dsePinnedArtifacts.ts` (`THREAD_SUMMARY_JUDGE_ARTIFACT_V1`)
+  - test: `apps/web/tests/worker/dse-pinned-artifacts.test.ts` ensures hashes match the signature contract + params
+- Added judge-based reward bundle and wired it for recap/summarization signatures:
+  - `reward_thread_summary_judge.v1` in `apps/web/src/effuse-host/dseJobs.ts`
+  - applied to:
+    - `@openagents/autopilot/canary/RecapThread.v1`
+    - `@openagents/autopilot/rlm/SummarizeThread.v1`
+- Extended datasets to support BlobRef-backed examples safely:
+  - added optional `meta` field to `dseExamples` (for blob texts to seed `BlobStore`)
+  - helper: `apps/web/src/effuse-host/dseDatasetBlobs.ts`
+  - compile + baseline eval paths now seed `BlobStore` from example metadata when present
+- Added Convex eval reports:
+  - table: `dseEvalReports` in `apps/web/convex/schema.ts`
+  - queries/mutations: `apps/web/convex/dse/evalReports.ts`
+  - tests: `apps/web/tests/convex/dse-eval-reports.test.ts`
+- Added Worker endpoint:
+  - `POST /api/dse/eval` (stores a stable `evalHash` + full JSON report into Convex)
+  - test: `apps/web/tests/worker/dse-eval-endpoint.test.ts` asserts judge pin info is present in stored report JSON
+- Added read-only visualization for eval reports:
+  - signature page now lists eval reports
+  - new `/dse/eval-report/:evalHash/:signatureId` detail page
+  - test: `apps/web/tests/worker/routes.test.ts`
+- Tests / verification:
+  - `cd apps/web && npx convex codegen` (ok)
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
+
 - 2026-02-10T08:28:52Z Phase 2: added canonical headless runner script + unit tests.
 - Added runner:
   - `apps/web/scripts/dse-overnight.ts` (CLI)

@@ -40,6 +40,7 @@ export const putExampleImpl = (
     readonly split?: Split | undefined;
     readonly tags?: ReadonlyArray<string> | undefined;
     readonly source?: string | undefined;
+    readonly meta?: unknown | undefined;
   },
 ) =>
   Effect.gen(function* () {
@@ -61,6 +62,7 @@ export const putExampleImpl = (
       split: args.split,
       tags: Array.isArray(args.tags) ? [...args.tags] : undefined,
       source: typeof args.source === "string" ? args.source : undefined,
+      meta: args.meta,
       updatedAtMs: now,
     };
 
@@ -78,6 +80,7 @@ export const putExampleImpl = (
         split: args.split,
         tags: Array.isArray(args.tags) ? [...args.tags] : undefined,
         source: typeof args.source === "string" ? args.source : undefined,
+        meta: args.meta,
         createdAtMs: now,
         updatedAtMs: now,
       }),
@@ -95,6 +98,7 @@ export const putExample = effectMutation({
     split: v.optional(splitSchema),
     tags: v.optional(v.array(v.string())),
     source: v.optional(v.string()),
+    meta: v.optional(v.any()),
   },
   returns: v.object({ ok: v.boolean(), existed: v.boolean() }),
   handler: putExampleImpl,
@@ -128,6 +132,7 @@ export const getExampleImpl = (
         split: splitOrNull((row as any).split),
         tags: asStringArray((row as any).tags),
         source: typeof (row as any).source === "string" ? String((row as any).source) : null,
+        meta: (row as any).meta ?? null,
         createdAtMs: Number((row as any).createdAtMs ?? 0),
         updatedAtMs: Number((row as any).updatedAtMs ?? 0),
       },
@@ -151,6 +156,7 @@ export const getExample = effectQuery({
         split: v.union(v.null(), splitSchema),
         tags: v.union(v.null(), v.array(v.string())),
         source: v.union(v.null(), v.string()),
+        meta: v.union(v.null(), v.any()),
         createdAtMs: v.number(),
         updatedAtMs: v.number(),
       }),
@@ -192,6 +198,7 @@ export const listExamplesImpl = (
         split: splitOrNull(r.split),
         tags: asStringArray(r.tags),
         source: typeof r.source === "string" ? String(r.source) : null,
+        meta: r.meta ?? null,
         createdAtMs: Number(r.createdAtMs ?? 0),
         updatedAtMs: Number(r.updatedAtMs ?? 0),
       }))
@@ -220,6 +227,7 @@ export const listExamples = effectQuery({
         split: v.union(v.null(), splitSchema),
         tags: v.union(v.null(), v.array(v.string())),
         source: v.union(v.null(), v.string()),
+        meta: v.union(v.null(), v.any()),
         createdAtMs: v.number(),
         updatedAtMs: v.number(),
       }),

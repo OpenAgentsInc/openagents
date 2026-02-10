@@ -1,6 +1,12 @@
 import { CanonicalJson, CompileJob, EvalMetric, EvalReward } from "@openagentsinc/dse";
 
+import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
+
+import { THREAD_SUMMARY_JUDGE_ARTIFACT_V1 } from "./dsePinnedArtifacts";
+
 export const SELECT_TOOL_SIGNATURE_ID = "@openagents/autopilot/blueprint/SelectTool.v1";
+export const RECAP_THREAD_SIGNATURE_ID = "@openagents/autopilot/canary/RecapThread.v1";
+export const SUMMARIZE_THREAD_SIGNATURE_ID = "@openagents/autopilot/rlm/SummarizeThread.v1";
 
 export const convexDatasetIdForExamples = (signatureId: string): string => `convex:dseExamples:${signatureId}`;
 
@@ -19,6 +25,33 @@ export const rewardExactJsonMatch = (): EvalReward.RewardBundle<any, any, any> =
     signals: [
       EvalReward.signalFormatValidity({ weight: 0.2 }),
       EvalReward.signalMetric(metric, { weight: 0.8, signalId: "exact_json_match.signal.v1" }),
+    ],
+  });
+};
+
+export const rewardThreadSummaryJudge = (): EvalReward.RewardBundle<any, any, any> => {
+  const judgeSig = dseCatalogSignatures.judge_thread_summary_quality;
+
+  const metric = EvalMetric.judge<any, any, any, any, any>({
+    metricId: "thread_summary_judge.v1",
+    metricVersion: 1,
+    judgeSignature: judgeSig,
+    judgeArtifact: THREAD_SUMMARY_JUDGE_ARTIFACT_V1,
+    buildJudgeInput: ({ input, pred, expected }) => ({
+      question: String((input as any)?.question ?? ""),
+      predSummary: String((pred as any)?.summary ?? ""),
+      expectedSummary: String((expected as any)?.summary ?? ""),
+    }),
+    scoreFromJudgeOutput: (o) => Number((o as any)?.score ?? 0),
+    notesFromJudgeOutput: (o) => (typeof (o as any)?.notes === "string" ? String((o as any).notes) : undefined),
+  });
+
+  return EvalReward.makeBundle({
+    rewardId: "reward_thread_summary_judge.v1",
+    rewardVersion: 1,
+    signals: [
+      EvalReward.signalFormatValidity({ weight: 0.2 }),
+      EvalReward.signalMetric(metric, { weight: 0.8, signalId: "thread_summary_judge.signal.v1" }),
     ],
   });
 };
@@ -94,6 +127,34 @@ const selectToolInstructionVariants = (): ReadonlyArray<CompileJob.InstructionVa
   },
 ];
 
+const recapInstructionVariants = (): ReadonlyArray<CompileJob.InstructionVariantV1> => [
+  {
+    id: "v1.base_bullets",
+    text:
+      "Goal: recap prior context in this thread relevant to Input.question.\n" +
+      "\n" +
+      "Rules:\n" +
+      "- Ground your recap only in the provided thread context.\n" +
+      "- Do NOT invent details.\n" +
+      "- Prefer short bullets.\n" +
+      "- Keep it short and actionable.\n" +
+      "\n" +
+      "Output JSON { summary } with summary <= 1200 chars.",
+  },
+  {
+    id: "v1.hallucination_penalty",
+    text:
+      "Recap relevant prior context.\n" +
+      "\n" +
+      "Hard rules:\n" +
+      "- If you are not sure a detail is in the provided thread context, do NOT include it.\n" +
+      "- Prefer 'unknown' over guessing.\n" +
+      "- Keep it terse (bullets).\n" +
+      "\n" +
+      "Output JSON only: { summary } where summary <= 1200 chars.",
+  },
+];
+
 export type DseCompileJob = {
   readonly jobSpec: CompileJob.CompileJobSpecV1;
   readonly reward: EvalReward.RewardBundle<any, any, any>;
@@ -102,7 +163,7 @@ export type DseCompileJob = {
 };
 
 export const compileJobForSignature = (input: { readonly signatureId: string; readonly datasetId: string }): DseCompileJob => {
-  const reward = rewardExactJsonMatch();
+  let reward: EvalReward.RewardBundle<any, any, any> = rewardExactJsonMatch();
 
   let searchSpace: CompileJob.CompileSearchSpaceV1 = {};
   let optimizer: CompileJob.CompileOptimizerV1 = { id: "instruction_grid.v1" };
@@ -110,6 +171,12 @@ export const compileJobForSignature = (input: { readonly signatureId: string; re
   if (input.signatureId === SELECT_TOOL_SIGNATURE_ID) {
     // Overnight: make SelectTool compile non-trivial by evaluating multiple instruction variants.
     searchSpace = { instructionVariants: selectToolInstructionVariants() };
+    optimizer = { id: "instruction_grid.v1" };
+  }
+  if (input.signatureId === RECAP_THREAD_SIGNATURE_ID || input.signatureId === SUMMARIZE_THREAD_SIGNATURE_ID) {
+    // Phase 7: judge-based reward (subjective output). Start with a small instruction grid.
+    reward = rewardThreadSummaryJudge();
+    searchSpace = { instructionVariants: recapInstructionVariants() };
     optimizer = { id: "instruction_grid.v1" };
   }
 

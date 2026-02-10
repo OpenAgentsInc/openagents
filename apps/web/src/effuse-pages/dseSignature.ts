@@ -47,6 +47,16 @@ export type DseCompileReportListItem = {
   readonly createdAtMs: number;
 };
 
+export type DseEvalReportListItem = {
+  readonly evalHash: string;
+  readonly compiled_id: string;
+  readonly datasetHash: string;
+  readonly rewardId: string;
+  readonly split: string | null;
+  readonly n: number | null;
+  readonly createdAtMs: number;
+};
+
 export type DseExampleListItem = {
   readonly exampleId: string;
   readonly split: "train" | "dev" | "holdout" | "test" | null;
@@ -73,6 +83,7 @@ export type DseSignaturePageData = {
   readonly canary: DseCanaryConfig | null;
   readonly canaryHistory: ReadonlyArray<DseCanaryHistoryItem> | null;
   readonly compileReports: ReadonlyArray<DseCompileReportListItem> | null;
+  readonly evalReports: ReadonlyArray<DseEvalReportListItem> | null;
   readonly examples: ReadonlyArray<DseExampleListItem> | null;
   readonly receipts: ReadonlyArray<DseReceiptListItem> | null;
 };
@@ -106,6 +117,7 @@ export function dseSignaturePageTemplate(data: DseSignaturePageData): TemplateRe
           data.activeHistory == null ||
           data.canaryHistory == null ||
           data.compileReports == null ||
+          data.evalReports == null ||
           data.examples == null ||
           data.receipts == null
         ? html`<div class="text-xs text-text-dim">Loading…</div>`
@@ -248,6 +260,48 @@ export function dseSignaturePageTemplate(data: DseSignaturePageData): TemplateRe
                               <div class="mt-1 text-[11px] text-text-muted">
                                 <span class="text-text-dim uppercase tracking-wider text-[10px]">dataset</span>
                                 <span class="ml-2 break-all">${r.datasetHash}</span>
+                              </div>
+                            </div>
+                          `;
+                        })}
+                      </div>
+                    `,
+              )}
+
+              ${sectionShell(
+                "Eval Reports",
+                "Source: Convex `dseEvalReports`",
+                data.evalReports.length === 0
+                  ? html`<div class="text-xs text-text-dim">(no reports)</div>`
+                  : html`
+                      <div class="flex flex-col gap-2">
+                        ${data.evalReports.map((r) => {
+                          const href = `/dse/eval-report/${encodeURIComponent(r.evalHash)}/${encodeURIComponent(
+                            data.signatureId,
+                          )}`;
+                          return html`
+                            <div class="rounded border border-border-dark/70 bg-bg-secondary/30 px-3 py-2">
+                              <div class="flex items-baseline justify-between gap-3">
+                                <a href="${href}" class="text-[11px] text-text-primary hover:underline break-all">
+                                  ${r.evalHash}
+                                </a>
+                                <span class="text-[10px] text-text-dim">${formatMs(r.createdAtMs)}</span>
+                              </div>
+                              <div class="mt-1 text-[11px] text-text-muted">
+                                <span class="text-text-dim uppercase tracking-wider text-[10px]">compiled</span>
+                                <span class="ml-2 text-text-primary break-all">${r.compiled_id}</span>
+                              </div>
+                              <div class="mt-1 text-[11px] text-text-muted">
+                                <span class="text-text-dim uppercase tracking-wider text-[10px]">dataset</span>
+                                <span class="ml-2 break-all">${r.datasetHash}</span>
+                              </div>
+                              <div class="mt-1 text-[11px] text-text-muted">
+                                <span class="text-text-dim uppercase tracking-wider text-[10px]">reward</span>
+                                <span class="ml-2 break-all">${r.rewardId}</span>
+                                <span class="ml-4 text-text-dim uppercase tracking-wider text-[10px]">split</span>
+                                <span class="ml-2">${r.split ?? "-"}</span>
+                                <span class="ml-4 text-text-dim uppercase tracking-wider text-[10px]">n</span>
+                                <span class="ml-2">${r.n ?? "-"}</span>
                               </div>
                             </div>
                           `;

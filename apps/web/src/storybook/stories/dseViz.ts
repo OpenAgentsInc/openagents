@@ -139,6 +139,7 @@ export const dseVizStories: ReadonlyArray<Story> = [
             createdAtMs: Date.now() - 60_000 * 30,
           },
         ],
+        evalReports: [],
         examples: [
           {
             exampleId: "selecttool_001",

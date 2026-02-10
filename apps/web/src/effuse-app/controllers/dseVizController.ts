@@ -6,15 +6,18 @@ import {
   runAuthedShell,
 } from "../../effuse-pages/authedShell";
 import { dseCompileReportPageTemplate } from "../../effuse-pages/dseCompileReport";
+import { dseEvalReportPageTemplate } from "../../effuse-pages/dseEvalReport";
 import { dseOpsRunDetailPageTemplate } from "../../effuse-pages/dseOpsRunDetail";
 import { dseOpsRunsPageTemplate } from "../../effuse-pages/dseOpsRuns";
 import { dseSignaturePageTemplate } from "../../effuse-pages/dseSignature";
 import {
   DseCompileReportPageDataAtom,
+  DseEvalReportPageDataAtom,
   DseOpsRunDetailPageDataAtom,
   DseOpsRunsPageDataAtom,
   DseSignaturePageDataAtom,
   makeCompileReportKey,
+  makeEvalReportKey,
   makeOpsRunDetailKey,
   makeSignatureKey,
 } from "../../effect/atoms/dseViz";
@@ -32,6 +35,7 @@ type DseRoute =
   | { readonly kind: "run"; readonly runId: string }
   | { readonly kind: "signature"; readonly signatureId: string }
   | { readonly kind: "report"; readonly signatureId: string; readonly jobHash: string; readonly datasetHash: string }
+  | { readonly kind: "evalReport"; readonly signatureId: string; readonly evalHash: string }
   | { readonly kind: "invalid"; readonly message: string };
 
 const decodeSegment = (raw: string): string | null => {
@@ -76,6 +80,17 @@ const parseDseRouteFromPathname = (pathname: string): DseRoute => {
     return { kind: "report", signatureId, jobHash, datasetHash };
   }
 
+  const evalPrefix = "/dse/eval-report/";
+  if (pathname.startsWith(evalPrefix)) {
+    const rest = pathname.slice(evalPrefix.length);
+    const parts = rest.split("/").filter((p) => p.length > 0);
+    if (parts.length < 2) return { kind: "invalid", message: "Invalid eval report path." };
+    const evalHash = decodeSegment(parts[0] ?? "");
+    const signatureId = decodeSegment(parts.slice(1).join("/"));
+    if (!signatureId || !evalHash) return { kind: "invalid", message: "Invalid eval report params." };
+    return { kind: "evalReport", signatureId, evalHash };
+  }
+
   return { kind: "invalid", message: "Unknown DSE route." };
 };
 
@@ -107,6 +122,8 @@ export const mountDseVizController = (input: {
                 ? runAuthedShell(input.container, dseSignaturePageTemplate(data as any))
                 : route.kind === "report"
                   ? runAuthedShell(input.container, dseCompileReportPageTemplate(data as any))
+                  : route.kind === "evalReport"
+                    ? runAuthedShell(input.container, dseEvalReportPageTemplate(data as any))
                   : runAuthedShell(
                       input.container,
                       dseOpsRunsPageTemplate({ errorText: (route as any).message ?? "Invalid route", runs: [] }),
@@ -132,6 +149,9 @@ export const mountDseVizController = (input: {
         return;
       case "report":
         renderAtom(DseCompileReportPageDataAtom(makeCompileReportKey(route.signatureId, route.jobHash, route.datasetHash)));
+        return;
+      case "evalReport":
+        renderAtom(DseEvalReportPageDataAtom(makeEvalReportKey(route.signatureId, route.evalHash)));
         return;
       default:
         stopPage();
