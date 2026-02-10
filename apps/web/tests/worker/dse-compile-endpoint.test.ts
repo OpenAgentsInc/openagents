@@ -186,6 +186,16 @@ describe("apps/web worker DSE compile endpoint (Stage 5)", () => {
     expect(state.putArtifactCalls.length).toBe(1);
     expect(state.putReportCalls.length).toBe(1);
 
+    // Phase 4: compile must be non-trivial for SelectTool (multiple instruction variants).
+    const storedJob = state.putReportCalls[0]?.args?.json?.job as any;
+    expect(storedJob?.signatureId).toBe("@openagents/autopilot/blueprint/SelectTool.v1");
+    expect(Array.isArray(storedJob?.searchSpace?.instructionVariants)).toBe(true);
+    expect(storedJob.searchSpace.instructionVariants.length).toBeGreaterThanOrEqual(2);
+
+    const storedReport = state.putReportCalls[0]?.args?.json?.report as any;
+    expect(Array.isArray(storedReport?.evaluatedCandidates)).toBe(true);
+    expect(storedReport.evaluatedCandidates.length).toBeGreaterThanOrEqual(2);
+
     // Artifact compiled_id should match paramsHash (compile invariant).
     const storedArtifact = state.putArtifactCalls[0]?.args?.json as any;
     expect(storedArtifact.compiled_id).toBe(storedArtifact.hashes?.paramsHash);

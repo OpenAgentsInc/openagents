@@ -3,14 +3,11 @@ import { Effect, Layer, Schema } from "effect";
 import {
   BlobStore,
   Budget,
-  CanonicalJson,
   CompileJob,
   CompiledArtifact,
   Eval,
   EvalCache,
   EvalDataset,
-  EvalMetric,
-  EvalReward,
   Lm,
   Receipt,
   TraceMining,
@@ -27,6 +24,7 @@ import { TelemetryService } from "../effect/telemetry";
 
 import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
+import { compileJobForSignature, convexDatasetIdForExamples } from "./dseJobs";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
@@ -74,43 +72,6 @@ const findSignatureById = (signatureId: string): DseSignature<unknown, unknown> 
       return sig as DseSignature<unknown, unknown>;
   }
   return null;
-};
-
-const rewardExactJsonMatch = () => {
-  const metric = EvalMetric.deterministic<any, any>({
-    metricId: "exact_json_match.v1",
-    metricVersion: 1,
-    score: (pred, expected) => (CanonicalJson.canonicalJson(pred) === CanonicalJson.canonicalJson(expected) ? 1 : 0),
-    notes: (pred, expected) =>
-      CanonicalJson.canonicalJson(pred) === CanonicalJson.canonicalJson(expected) ? undefined : "mismatch",
-  });
-
-  return EvalReward.makeBundle({
-    rewardId: "reward_exact_json_match.v1",
-    rewardVersion: 1,
-    signals: [
-      EvalReward.signalFormatValidity({ weight: 0.2 }),
-      EvalReward.signalMetric(metric, { weight: 0.8, signalId: "exact_json_match.signal.v1" }),
-    ],
-  });
-};
-
-const compileJobSpecForSignature = (input: { readonly signatureId: string; readonly datasetId: string }) => {
-  const reward = rewardExactJsonMatch();
-  const searchSpace: CompileJob.CompileSearchSpaceV1 = {};
-  const optimizer: CompileJob.CompileOptimizerV1 = { id: "instruction_grid.v1" };
-
-  const jobSpec: CompileJob.CompileJobSpecV1 = {
-    format: "openagents.dse.compile_job",
-    formatVersion: 1,
-    signatureId: input.signatureId,
-    datasetId: input.datasetId,
-    metricId: reward.rewardId,
-    searchSpace,
-    optimizer,
-  };
-
-  return { jobSpec, reward };
 };
 
 const compileEnv = Layer.mergeAll(
@@ -741,7 +702,7 @@ export const handleDseAdminRequest = async (
         tags: Array.isArray(r?.tags) ? (r.tags as unknown[]).filter((t) => typeof t === "string") : undefined,
       }));
 
-      const datasetId = `convex:dseExamples:${signatureId}`;
+      const datasetId = convexDatasetIdForExamples(signatureId);
       const dataset = yield* EvalDataset.make({ datasetId, examples });
       const datasetHash = yield* EvalDataset.datasetHash(dataset);
 
@@ -750,7 +711,7 @@ export const handleDseAdminRequest = async (
         return yield* Effect.fail(new Error("holdout_required"));
       }
 
-      const { jobSpec, reward } = compileJobSpecForSignature({ signatureId, datasetId });
+      const { jobSpec, reward } = compileJobForSignature({ signatureId, datasetId });
       const jobHash = yield* CompileJob.compileJobHash(jobSpec);
 
       const reportRes = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash });
@@ -897,7 +858,7 @@ export const handleDseAdminRequest = async (
         split: mapStoredSplitToDseSplit(r?.split),
       }));
 
-      const datasetId = `convex:dseExamples:${signatureId}`;
+      const datasetId = convexDatasetIdForExamples(signatureId);
       const dataset = yield* EvalDataset.make({ datasetId, examples });
       const datasetHash = yield* EvalDataset.datasetHash(dataset);
 
@@ -906,7 +867,7 @@ export const handleDseAdminRequest = async (
         return yield* Effect.fail(new Error("holdout_required"));
       }
 
-      const { jobSpec, reward } = compileJobSpecForSignature({ signatureId, datasetId });
+      const { jobSpec, reward } = compileJobForSignature({ signatureId, datasetId });
       const jobHash = yield* CompileJob.compileJobHash(jobSpec);
 
       const reportRes = yield* convex.query(api.dse.compileReports.getReport, { signatureId, jobHash, datasetHash });

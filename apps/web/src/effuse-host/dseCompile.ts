@@ -3,14 +3,11 @@ import { Effect, Layer, Schema } from "effect";
 import {
   BlobStore,
   Budget,
-  CanonicalJson,
   Compile,
   CompileJob,
   CompiledArtifact,
   EvalCache,
   EvalDataset,
-  EvalMetric,
-  EvalReward,
   Lm,
   Receipt,
   VarSpace,
@@ -26,6 +23,7 @@ import { TelemetryService } from "../effect/telemetry";
 
 import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
+import { compileJobForSignature, convexDatasetIdForExamples } from "./dseJobs";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
@@ -148,43 +146,12 @@ export const handleDseCompileRequest = async (
       meta: r?.meta,
     }));
 
-    const datasetId = `convex:dseExamples:${signatureId}`;
+    const datasetId = convexDatasetIdForExamples(signatureId);
     const dataset = yield* EvalDataset.make({ datasetId, examples });
 
     const datasetHash = yield* EvalDataset.datasetHash(dataset);
 
-    // Minimal deterministic reward: exact canonical JSON match for the decoded output.
-    const metric = EvalMetric.deterministic<any, any>({
-      metricId: "exact_json_match.v1",
-      metricVersion: 1,
-      score: (pred, expected) =>
-        CanonicalJson.canonicalJson(pred) === CanonicalJson.canonicalJson(expected) ? 1 : 0,
-      notes: (pred, expected) =>
-        CanonicalJson.canonicalJson(pred) === CanonicalJson.canonicalJson(expected) ? undefined : "mismatch",
-    });
-
-    const reward = EvalReward.makeBundle({
-      rewardId: "reward_exact_json_match.v1",
-      rewardVersion: 1,
-      signals: [
-        EvalReward.signalFormatValidity({ weight: 0.2 }),
-        EvalReward.signalMetric(metric, { weight: 0.8, signalId: "exact_json_match.signal.v1" }),
-      ],
-    });
-
-    // Minimal search space + optimizer (MVP): compile the current defaults, record the report.
-    const searchSpace: CompileJob.CompileSearchSpaceV1 = {};
-    const optimizer: CompileJob.CompileOptimizerV1 = { id: "instruction_grid.v1" };
-
-    const jobSpec: CompileJob.CompileJobSpecV1 = {
-      format: "openagents.dse.compile_job",
-      formatVersion: 1,
-      signatureId,
-      datasetId,
-      metricId: reward.rewardId,
-      searchSpace,
-      optimizer,
-    };
+    const { jobSpec, reward, searchSpace, optimizer } = compileJobForSignature({ signatureId, datasetId });
 
     const jobHash = yield* CompileJob.compileJobHash(jobSpec);
 
