@@ -361,7 +361,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
         : "";
     const messageClass =
       m.role === "user"
-        ? "max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono self-end rounded-lg border border-white/20 bg-white/10 text-white"
+        ? "max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono self-end rounded-lg border border-white/20 bg-white/10 text-white/55"
         : "max-w-[90%] px-3 py-2 text-sm leading-relaxed font-mono self-start text-white/90";
 
     if (m.role === "user") {
