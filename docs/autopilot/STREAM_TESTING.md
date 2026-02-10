@@ -1,7 +1,7 @@
 # Autopilot Stream Testing (Wire Transcripts)
 
-- **Status:** Proposed (docs-first; code to follow)
-- **Last updated:** 2026-02-08
+- **Status:** Implemented (v1 fixtures + renderer tests; more E2E-style transcript tests can be added)
+- **Last updated:** 2026-02-10
 - **Scope:** `apps/web` Convex-first MVP streaming + future DSE action parts
 - **If this doc conflicts with code behavior:** code wins
 
@@ -13,12 +13,15 @@ This document defines a test posture where you can run a local test and get:
 
 ## What We Have Today (Reality Check)
 
-Autopilot MVP streaming is already tested at the Worker/Convex boundary, but it is not yet a “full tool loop”:
+Autopilot MVP streaming is already tested at the Worker/Convex boundary. We also have deterministic UI rendering tests
+that consume the same wire transcript fixtures the docs describe.
 
 - Worker streaming test (writes chunked parts, cancel behavior):
   - `apps/web/tests/worker/chat-streaming-convex.test.ts`
 - Convex canonical-state tests (idempotent parts, transcript persistence):
   - `apps/web/tests/convex/autopilot-mvp.test.ts`
+- Wire transcript UI rendering (fixtures -> `messageParts` -> chat template):
+  - `apps/web/tests/worker/dse-chat-parts-rendering.test.ts`
 - UI template determinism + visual regression harness:
   - Storybook/visual docs: `docs/STORYBOOK.md`
   - Effuse contract tests: `packages/effuse/docs/TESTING.md`
@@ -116,6 +119,8 @@ Target: add an Effuse story that renders:
 
 Then the existing visual suite (`docs/STORYBOOK.md`) can screenshot it, giving us a stable UI contract.
 
+Status: implemented in `apps/web/src/storybook/stories/autopilot.ts`.
+
 ## Commands You Can Run Today
 
 Even before DSE/tool-loop integration lands, these validate the current streaming plane:
@@ -128,6 +133,13 @@ npm test -- chat-streaming-convex
 ```bash
 cd apps/web
 npm test -- autopilot-mvp
+```
+
+And to verify the UI rendering contract against the golden wire transcript fixtures:
+
+```bash
+cd apps/web
+npm test -- dse-chat-parts-rendering
 ```
 
 And for UI determinism/visual regression:
@@ -149,4 +161,3 @@ The “Gmail review” fixture is a **target behavior transcript**:
 - It intentionally shows a full tool loop (connect, search, get threads, summarize, render).
 - Tool names in the fixture are placeholders; when we implement Gmail for real we should align names/schemas with the canonical tool registry.
 - No secrets are present; it is safe to commit.
-

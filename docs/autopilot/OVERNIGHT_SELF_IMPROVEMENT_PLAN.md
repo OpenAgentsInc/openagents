@@ -488,6 +488,10 @@ Current endpoints and storage:
   - `docs/autopilot/SELF_IMPROVE_RUNBOOK.md`
   - `docs/autopilot/rlm-trace-mining.md`
 
+- 2026-02-10T11:56:25Z Docs: updated stream testing doc status + commands to match current implementation.
+- Updated:
+  - `docs/autopilot/STREAM_TESTING.md`
+
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
