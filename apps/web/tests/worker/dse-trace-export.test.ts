@@ -144,6 +144,15 @@ describe("apps/web worker DSE trace export endpoint (Phase F)", () => {
     expect(call.split).toBe("train");
     expect(call.tags).toEqual(["trace_export", "strategy:rlm_lite.v1", "seed"]);
     expect(typeof call.source).toBe("string");
+    expect(call.meta).toEqual({
+      kind: "openagents.trace_export.v1",
+      receiptId: "r1",
+      signatureId: "@openagents/test/Sig.v1",
+      threadId: "t1",
+      runId: "run1",
+      strategyId: "rlm_lite.v1",
+      compiled_id: "c1",
+      rlmTrace: { blobId: "sha256:trace", eventCount: 3 },
+    });
   });
 });
-

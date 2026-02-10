@@ -349,3 +349,16 @@ Current endpoints and storage:
   - `cd apps/web && npx convex codegen` (ok)
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T11:08:58Z Phase 8: headless trace mining pipeline (review -> export -> tagging).
+- Added an ops-admin receipt listing endpoint (headless via `OA_DSE_ADMIN_SECRET`):
+  - `GET /api/dse/receipts/list?signatureId=...&limit=...&requireRlmTrace=1&resultTag=Ok&strategyId=rlm_lite.v1`
+- Extended trace export to persist structured linkage metadata on exported examples:
+  - `/api/dse/trace/export` now writes `meta.kind=openagents.trace_export.v1` with `receiptId`, `threadId/runId`, `rlmTrace.blobId`, `strategyId`, `compiled_id`.
+- Added a headless miner script:
+  - `apps/web/scripts/dse-trace-mine.ts` (CLI) + `apps/web/scripts/dse-trace-mine-lib.ts` (testable)
+  - Uses Bearer auth and calls: receipts list -> trace export (writes to `dseExamples`)
+  - Auto-tags exported rows with `trace_mined` + any user-provided tags.
+- Tests / verification:
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)

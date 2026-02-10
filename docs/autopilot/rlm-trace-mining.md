@@ -130,6 +130,28 @@ Goal: turn one good exploratory run (receipt + RLM trace) into a candidate label
 - `inputJson` (from RLM trace `Input`)
 - `expectedJson` (from RLM trace `Final.output`)
 
+#### Headless (many receipts): review -> export -> tagging
+
+For scale-up, use the headless miner (Bearer `OA_DSE_ADMIN_SECRET`) which:
+
+1. lists candidate predict receipts for a signature
+2. exports candidate examples into `dseExamples`
+3. tags exported rows (adds `trace_mined` by default)
+
+```bash
+OA_DSE_ADMIN_SECRET="..." \
+  bun run apps/web/scripts/dse-trace-mine.ts \
+    --base-url http://localhost:3000 \
+    --signature-id "@openagents/autopilot/canary/RecapThread.v1" \
+    --split train \
+    --tag seed
+```
+
+Under the hood it calls:
+
+- `GET /api/dse/receipts/list?...` (ops-admin only)
+- `POST /api/dse/trace/export` (upserts into `dseExamples`)
+
 #### Step 1: find the DSE predict receipt id
 
 In the Autopilot UI, inspect the `dse.signature` chat card for the run and copy `receiptId`.

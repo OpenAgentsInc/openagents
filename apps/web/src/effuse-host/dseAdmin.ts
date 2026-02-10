@@ -25,7 +25,7 @@ import { RequestContextService, makeServerRequestContext } from "../effect/reque
 import { TelemetryService } from "../effect/telemetry";
 
 import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary } from "./dse";
-import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
+import { DSE_OPS_ADMIN_SUBJECT, isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
 import { collectDatasetBlobsFromExamples, seedBlobStoreFromDatasetBlobs } from "./dseDatasetBlobs";
 import { compileJobForSignature, convexDatasetIdForExamples } from "./dseJobs";
 import { PINNED_DSE_ARTIFACTS } from "./dsePinnedArtifacts";
@@ -819,6 +819,58 @@ export const handleDseAdminRequest = async (
     return runAuthedDseAdmin(request, env, program, "admin_secret_only");
   }
 
+  if (url.pathname === "/api/dse/receipts/list") {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+
+    const signatureId = (url.searchParams.get("signatureId") ?? "").trim();
+    const limitRaw = url.searchParams.get("limit");
+    const limit =
+      typeof limitRaw === "string" && limitRaw.trim().length > 0
+        ? Math.max(0, Math.min(200, Math.floor(Number(limitRaw))))
+        : 50;
+
+    const requireRlmTraceRaw = (url.searchParams.get("requireRlmTrace") ?? "").trim().toLowerCase();
+    const requireRlmTrace = requireRlmTraceRaw === "1" || requireRlmTraceRaw === "true" || requireRlmTraceRaw === "yes";
+
+    const resultTagRaw = (url.searchParams.get("resultTag") ?? "").trim();
+    const resultTag = resultTagRaw === "Ok" || resultTagRaw === "Error" ? (resultTagRaw as "Ok" | "Error") : null;
+
+    const strategyIdRaw = (url.searchParams.get("strategyId") ?? "").trim();
+    const strategyId = strategyIdRaw.length > 0 ? strategyIdRaw : null;
+
+    if (!signatureId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    // Fail closed: only allow known signatures.
+    if (!findSignatureById(signatureId)) {
+      return json({ ok: false, error: "unknown_signature" }, { status: 404, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const auth = yield* AuthService;
+      const session = yield* auth.getSession();
+      if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+      if (session.userId !== DSE_OPS_ADMIN_SUBJECT) return yield* Effect.fail(new Error("unauthorized"));
+
+      const convex = yield* ConvexService;
+      const res = yield* convex.query(api.dse.receipts.listPredictReceiptsBySignatureIdAdmin, { signatureId, limit });
+      const raw = Array.isArray((res as any)?.receipts) ? ((res as any).receipts as Array<any>) : [];
+
+      const receipts = raw.filter((r) => {
+        if (requireRlmTrace && !(typeof r?.rlmTraceBlobId === "string" && r.rlmTraceBlobId.length > 0)) return false;
+        if (resultTag && String(r?.resultTag ?? "") !== resultTag) return false;
+        if (strategyId && String(r?.strategyId ?? "") !== strategyId) return false;
+        return true;
+      });
+
+      return { ok: true as const, receipts };
+    });
+
+    // Allow headless ops usage via admin-secret mode.
+    return runAuthedDseAdmin(request, env, program, "session_or_admin_secret");
+  }
+
   if (url.pathname.startsWith("/api/dse/receipt/")) {
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
 
@@ -980,9 +1032,26 @@ export const handleDseAdminRequest = async (
         new Set([...(candidate.tags ?? []), ...tags].map((s) => String(s).trim()).filter((s) => s.length > 0)),
       ).slice(0, 50);
 
+      const meta = {
+        kind: "openagents.trace_export.v1",
+        receiptId: receipt.receiptId,
+        signatureId: candidate.signatureId,
+        threadId,
+        runId,
+        strategyId: receipt.strategyId ?? null,
+        compiled_id: receipt.compiled_id ?? null,
+        rlmTrace: {
+          blobId,
+          eventCount:
+            typeof receipt.rlmTrace?.eventCount === "number" && Number.isFinite(receipt.rlmTrace.eventCount)
+              ? Math.max(0, Math.floor(receipt.rlmTrace.eventCount))
+              : null,
+        },
+      };
+
       if (dryRun) {
         yield* t.event("trace_export.dry_run", { signatureId: candidate.signatureId, exampleId, receiptId });
-        return { ok: true as const, dryRun: true as const, signatureId: candidate.signatureId, exampleId, candidate };
+        return { ok: true as const, dryRun: true as const, signatureId: candidate.signatureId, exampleId, candidate, meta };
       }
 
       const putRes = yield* convex.mutation(api.dse.examples.putExample, {
@@ -993,6 +1062,7 @@ export const handleDseAdminRequest = async (
         ...(split ? { split } : {}),
         ...(mergedTags.length ? { tags: mergedTags } : {}),
         ...(candidate.source ? { source: candidate.source } : {}),
+        meta,
       });
 
       yield* t.event("trace_export.ok", { signatureId: candidate.signatureId, exampleId, receiptId });
