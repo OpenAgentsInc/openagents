@@ -260,7 +260,10 @@ Production smoke guidance:
 
 ## Implementation Log
 
-### 2026-02-10: Phase A (Instrumentation and Signals) — implemented in DSE
+This section records what actually landed in code (not just what was planned), with the primary commit(s) that introduced it.
+It is ordered by phase (A..H) so it can be read as a build log.
+
+### 2026-02-10: Phase A (Instrumentation and Signals) — implemented in DSE (`27b5ca737`)
 
 - Added prompt render observability:
   - prompt render stats (`PromptRenderStatsV1`) emitted by the renderer, including BlobRef evidence access + preview sizes
@@ -275,58 +278,7 @@ Production smoke guidance:
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
 
-### 2026-02-10: Phase F (Trace mining -> distillation -> compile) — implemented in DSE + `apps/web`
-
-- Made RLM-lite traces exportable into candidate labeled examples:
-  - trace blob format now includes `signatureId` + `receiptId`, and emits an `Input` event (encoded input JSON)
-  - implementation: `packages/dse/src/runtime/predict.ts`
-- Added a trace export helper that converts (predict receipt + RLM trace blob) into a `dseExamples`-shaped candidate:
-  - extracts `inputJson` from the trace `Input` event and `expectedJson` from the trace `Final.output`
-  - implementation: `packages/dse/src/traceMining/exportExamples.ts`, `packages/dse/src/traceMining/rlmTrace.ts`
-  - test: `packages/dse/test/traceExport.test.ts`
-- Added a Convex-first trace export pipeline for operators:
-  - Convex query to fetch a DSE predict receipt by `receiptId`: `apps/web/convex/dse/receipts.ts`
-  - Worker admin endpoint `POST /api/dse/trace/export` writes/upserts the candidate into `dseExamples`: `apps/web/src/effuse-host/dseAdmin.ts`
-  - Worker test: `apps/web/tests/worker/dse-trace-export.test.ts`
-- Implemented and evaluated one distilled “tactic” as a pinned predict strategy:
-  - new strategy `distilled.search_line_extract.v1`: deterministic search+parse fast path (0 LM calls) with RLM-lite fallback for novelty/high uncertainty
-  - implemented in `Predict(signature)` dispatch: `packages/dse/src/runtime/predict.ts`
-  - holdout-enabled dummy dataset splits (train vs holdout): `packages/dse/src/eval/longContextBench.ts`
-  - test comparing direct vs distilled vs RLM on holdout: `packages/dse/test/distilledLongContextQa.test.ts`
-- Documented the trace-review and export workflow:
-  - `docs/autopilot/rlm-trace-mining.md`
-- Verified (TypeScript):
-  - `cd packages/dse && bun test && bun run typecheck`
-  - `cd apps/web && npx convex codegen`
-  - `cd apps/web && npm test && npm run lint`
-
-### 2026-02-10: Phase G (Compile knobs for RLM and distilled pipelines) — implemented in DSE
-
-- Made RLM/distilled strategy behavior artifact-tunable via params:
-  - added `params.modelRoles` (main/sub/repair/judge) and `params.rlmLite` (controller instructions, extraction system, chunk defaults, subRole)
-  - runtime uses roles in both direct + RLM-lite paths (main for controller, sub/main selectable for sub-LM calls)
-  - implementation: `packages/dse/src/params.ts`, `packages/dse/src/runtime/predict.ts`, `packages/dse/src/runtime/rlmKernel.ts`
-- Added compiler-visible search spaces for long-context strategy knobs:
-  - strategy selection (`direct.v1` vs `rlm_lite.v1` vs distilled strategies)
-  - controller instruction variants
-  - chunking policy variants (RLM controller hint surface)
-  - sub-role selection (`main` vs `sub`)
-  - budget profiles
-  - implementation: `packages/dse/src/compile/job.ts`
-- Added a knob-aware optimizer loop that can refine candidates using failure summaries:
-  - `knobs_grid.v1`: bounded staged grid over the knob search spaces
-  - `knobs_grid_refine.v1`: second-pass refinement using per-example failures (decode/evidence/budget) to propose param patches
-  - implementation: `packages/dse/src/compile/compile.ts`
-- Added tests proving Phase G produces measurable improvements via compiled artifacts:
-  - compile chooses `distilled.search_line_extract.v1` over `direct.v1` on long-context QA
-  - refine loop patches RLM controller instructions to recover from decode failures
-  - implementation: `packages/dse/test/compileKnobsPhaseG.test.ts`
-- Verified (TypeScript):
-  - `cd packages/dse && bun test && bun run typecheck`
-  - `cd apps/autopilot-worker && npm run typecheck`
-  - `cd apps/web && npm run lint`
-
-### 2026-02-10: Phase B (PredictStrategy abstraction + RLM counters) — implemented in DSE
+### 2026-02-10: Phase B (PredictStrategy abstraction + RLM counters) — implemented in DSE (`84dc7231a`)
 
 - Added `params.strategy` to DSE params so inference strategy is pinned in compiled artifacts:
   - `packages/dse/src/params.ts`
@@ -347,7 +299,7 @@ Production smoke guidance:
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
 
-### 2026-02-10: Phase C (RLM-lite Kernel + VarSpace) — implemented in DSE
+### 2026-02-10: Phase C (RLM-lite Kernel + VarSpace) — implemented in DSE (`81113b0f7`)
 
 - Added `VarSpace` service (small JSON values + BlobRefs, bounded in-memory implementation):
   - `packages/dse/src/runtime/varSpace.ts`
@@ -374,7 +326,7 @@ Production smoke guidance:
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
 
-### 2026-02-10: Phase D (Autopilot integration: routing + UI + Convex persistence) — implemented in `apps/web`
+### 2026-02-10: Phase D (Autopilot integration: routing + UI + Convex persistence) — implemented in `apps/web` (`1f6f4dd8b`)
 
 - Added Convex-backed persistence for RLM state (scoped by `threadId` + `runId`):
   - new tables: `dseBlobs`, `dseVarSpace`
@@ -407,7 +359,7 @@ Production smoke guidance:
   - `cd apps/autopilot-worker && npm run typecheck`
   - `cd apps/web && npm test && npm run lint`
 
-### 2026-02-10: Phase E (Long-context datasets + evaluation) — implemented in DSE
+### 2026-02-10: Phase E (Long-context datasets + evaluation) — implemented in DSE (`aa52adbc4`)
 
 - Added canonical long-context bench signature + datasets (dummy but meaningful):
   - `@openagents/autopilot/eval/LongContextQa.v1` (answer + BlobRef evidence quote)
@@ -430,3 +382,54 @@ Production smoke guidance:
   - implementation: `packages/dse/test/longContextBench.test.ts`
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
+
+### 2026-02-10: Phase F (Trace mining -> distillation -> compile) — implemented in DSE + `apps/web` (`5a9879388`)
+
+- Made RLM-lite traces exportable into candidate labeled examples:
+  - trace blob format now includes `signatureId` + `receiptId`, and emits an `Input` event (encoded input JSON)
+  - implementation: `packages/dse/src/runtime/predict.ts`
+- Added a trace export helper that converts (predict receipt + RLM trace blob) into a `dseExamples`-shaped candidate:
+  - extracts `inputJson` from the trace `Input` event and `expectedJson` from the trace `Final.output`
+  - implementation: `packages/dse/src/traceMining/exportExamples.ts`, `packages/dse/src/traceMining/rlmTrace.ts`
+  - test: `packages/dse/test/traceExport.test.ts`
+- Added a Convex-first trace export pipeline for operators:
+  - Convex query to fetch a DSE predict receipt by `receiptId`: `apps/web/convex/dse/receipts.ts`
+  - Worker admin endpoint `POST /api/dse/trace/export` writes/upserts the candidate into `dseExamples`: `apps/web/src/effuse-host/dseAdmin.ts`
+  - Worker test: `apps/web/tests/worker/dse-trace-export.test.ts`
+- Implemented and evaluated one distilled “tactic” as a pinned predict strategy:
+  - new strategy `distilled.search_line_extract.v1`: deterministic search+parse fast path (0 LM calls) with RLM-lite fallback for novelty/high uncertainty
+  - implemented in `Predict(signature)` dispatch: `packages/dse/src/runtime/predict.ts`
+  - holdout-enabled dummy dataset splits (train vs holdout): `packages/dse/src/eval/longContextBench.ts`
+  - test comparing direct vs distilled vs RLM on holdout: `packages/dse/test/distilledLongContextQa.test.ts`
+- Documented the trace-review and export workflow:
+  - `docs/autopilot/rlm-trace-mining.md`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npm test && npm run lint`
+
+### 2026-02-10: Phase G (Compile knobs for RLM and distilled pipelines) — implemented in DSE (`e923a820f`)
+
+- Made RLM/distilled strategy behavior artifact-tunable via params:
+  - added `params.modelRoles` (main/sub/repair/judge) and `params.rlmLite` (controller instructions, extraction system, chunk defaults, subRole)
+  - runtime uses roles in both direct + RLM-lite paths (main for controller, sub/main selectable for sub-LM calls)
+  - implementation: `packages/dse/src/params.ts`, `packages/dse/src/runtime/predict.ts`, `packages/dse/src/runtime/rlmKernel.ts`
+- Added compiler-visible search spaces for long-context strategy knobs:
+  - strategy selection (`direct.v1` vs `rlm_lite.v1` vs distilled strategies)
+  - controller instruction variants
+  - chunking policy variants (RLM controller hint surface)
+  - sub-role selection (`main` vs `sub`)
+  - budget profiles
+  - implementation: `packages/dse/src/compile/job.ts`
+- Added a knob-aware optimizer loop that can refine candidates using failure summaries:
+  - `knobs_grid.v1`: bounded staged grid over the knob search spaces
+  - `knobs_grid_refine.v1`: second-pass refinement using per-example failures (decode/evidence/budget) to propose param patches
+  - implementation: `packages/dse/src/compile/compile.ts`
+- Added tests proving Phase G produces measurable improvements via compiled artifacts:
+  - compile chooses `distilled.search_line_extract.v1` over `direct.v1` on long-context QA
+  - refine loop patches RLM controller instructions to recover from decode failures
+  - implementation: `packages/dse/test/compileKnobsPhaseG.test.ts`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/autopilot-worker && npm run typecheck`
+  - `cd apps/web && npm run lint`
