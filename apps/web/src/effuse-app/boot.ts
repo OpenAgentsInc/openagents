@@ -21,6 +21,7 @@ import { TelemetryService } from "../effect/telemetry"
 import { hydrateAtomRegistryFromDocument, makeAtomRegistry } from "./atomRegistry"
 import { mountAutopilotController } from "./controllers/autopilotController"
 import { mountModulesController, mountSignaturesController, mountToolsController } from "./controllers/contractsController"
+import { mountDseVizController } from "./controllers/dseVizController"
 import { mountDeckController } from "./controllers/deckController"
 import { mountHomeController } from "./controllers/homeController"
 import { mountLoginController } from "./controllers/loginController"
@@ -206,6 +207,8 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                   ? "login"
                   : pathname === "/deck"
                     ? "deck"
+                  : pathname.startsWith("/dse")
+                    ? `dse:${pathname}`
                   : pathname === "/modules"
                     ? "modules"
                     : pathname === "/tools"
@@ -217,7 +220,9 @@ export const bootEffuseApp = (options?: BootOptions): void => {
           if (desired === active?.kind) return
           stopActive()
 
-          switch (desired) {
+          const desiredKind = desired.startsWith("dse:") ? "dse" : desired
+
+          switch (desiredKind) {
             case "home": {
               active = {
                 kind: "home",
@@ -261,6 +266,13 @@ export const bootEffuseApp = (options?: BootOptions): void => {
               active = {
                 kind: "deck",
                 cleanup: mountDeckController({ container: outlet }).cleanup,
+              }
+              return
+            }
+            case "dse": {
+              active = {
+                kind: desired,
+                cleanup: mountDseVizController({ container: outlet, atoms }).cleanup,
               }
               return
             }

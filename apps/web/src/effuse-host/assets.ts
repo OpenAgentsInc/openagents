@@ -1,12 +1,45 @@
 import type { WorkerEnv } from "./env"
 
+const KNOWN_ASSET_EXTENSIONS = new Set([
+  "js",
+  "mjs",
+  "cjs",
+  "css",
+  "map",
+  "json",
+  "txt",
+  "xml",
+  "ico",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "svg",
+  "webp",
+  "avif",
+  "wasm",
+  "woff",
+  "woff2",
+  "ttf",
+  "otf",
+  "eot",
+])
+
 const isLikelyAssetPath = (pathname: string): boolean => {
   if (pathname === "/favicon.ico") return true
   if (pathname === "/robots.txt") return true
   if (pathname === "/sitemap.xml") return true
   if (pathname.startsWith("/assets/")) return true
-  // Vite dev/build often uses dotted filenames for chunks.
-  if (pathname.includes(".") && !pathname.endsWith("/")) return true
+  // Vite dev/build often uses dotted filenames for chunks (e.g. *.js, *.css, *.map).
+  // Only treat as an asset when the final path segment has a known extension.
+  if (!pathname.endsWith("/")) {
+    const seg = pathname.split("/").slice(-1)[0] ?? ""
+    const idx = seg.lastIndexOf(".")
+    if (idx > 0 && idx < seg.length - 1) {
+      const ext = seg.slice(idx + 1).toLowerCase()
+      if (KNOWN_ASSET_EXTENSIONS.has(ext)) return true
+    }
+  }
   return false
 }
 

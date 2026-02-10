@@ -9,6 +9,7 @@ declare module "cloudflare:test" {
 
 const state = vi.hoisted(() => ({
   authed: false,
+  userId: "user-1",
 }));
 
 vi.mock("@workos/authkit-session", async (importOriginal) => {
@@ -21,7 +22,7 @@ vi.mock("@workos/authkit-session", async (importOriginal) => {
         if (state.authed) {
           return {
             auth: {
-              user: { id: "user-1", email: "user@example.com", firstName: "U", lastName: "S" },
+              user: { id: state.userId, email: "user@example.com", firstName: "U", lastName: "S" },
               sessionId: "sess-1",
               accessToken: "token-1",
             },
@@ -235,5 +236,82 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     expect(responseLocal.status).toBe(200);
     const body = await responseLocal.text();
     expect(body).toContain("data-deck-shell");
+  });
+
+  it("GET /dse redirects to / when anon", async () => {
+    state.authed = false;
+    const request = new Request("http://example.com/dse", { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/");
+  });
+
+  it("GET /dse redirects to / when authed but not ops admin", async () => {
+    state.authed = true;
+    state.userId = "user-1";
+    const request = new Request("http://example.com/dse", { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/");
+  });
+
+  it("GET /dse returns 200 when authed as ops admin", async () => {
+    state.authed = true;
+    state.userId = "user_dse_admin";
+    const request = new Request("http://example.com/dse", { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("DSE Ops Runs");
+  });
+
+  it("GET /dse/ops/:runId returns 200 when authed as ops admin", async () => {
+    state.authed = true;
+    state.userId = "user_dse_admin";
+    const request = new Request("http://example.com/dse/ops/test-run", { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Ops Run Detail");
+  });
+
+  it("GET /dse/signature/:id returns 200 when authed as ops admin", async () => {
+    state.authed = true;
+    state.userId = "user_dse_admin";
+    const sig = encodeURIComponent("@openagents/autopilot/blueprint/SelectTool.v1");
+    const request = new Request(`http://example.com/dse/signature/${sig}`, { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Signature Detail");
+  });
+
+  it("GET /dse/compile-report/... returns 200 when authed as ops admin", async () => {
+    state.authed = true;
+    state.userId = "user_dse_admin";
+    const sig = encodeURIComponent("@openagents/autopilot/blueprint/SelectTool.v1");
+    const request = new Request(`http://example.com/dse/compile-report/job_hash/dataset_hash/${sig}`, { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Compile Report");
   });
 });

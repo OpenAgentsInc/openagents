@@ -638,7 +638,11 @@ export const handleDseAdminRequest = async (
       if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
 
       const convex = yield* ConvexService;
-      const recRes = yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptId, { receiptId });
+      const isOpsAdmin = session.userId === "user_dse_admin";
+      const recRes = yield* convex.query(
+        isOpsAdmin ? api.dse.receipts.getPredictReceiptByReceiptIdAdmin : api.dse.receipts.getPredictReceiptByReceiptId,
+        { receiptId },
+      );
       const receiptRow = (recRes as any)?.receipt ?? null;
       if (!receiptRow) return { ok: true as const, receipt: null };
 
@@ -657,7 +661,8 @@ export const handleDseAdminRequest = async (
       };
     });
 
-    return runAuthedDseAdmin(request, env, program);
+    // Allow headless ops usage via admin-secret mode (and ops-admin session bypass thread access).
+    return runAuthedDseAdmin(request, env, program, "session_or_admin_secret");
   }
 
   if (url.pathname.startsWith("/api/dse/blob/")) {
@@ -677,7 +682,11 @@ export const handleDseAdminRequest = async (
 
       const convex = yield* ConvexService;
 
-      const recRes = yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptId, { receiptId });
+      const isOpsAdmin = session.userId === "user_dse_admin";
+      const recRes = yield* convex.query(
+        isOpsAdmin ? api.dse.receipts.getPredictReceiptByReceiptIdAdmin : api.dse.receipts.getPredictReceiptByReceiptId,
+        { receiptId },
+      );
       const receiptRow = (recRes as any)?.receipt ?? null;
       if (!receiptRow) return yield* Effect.fail(new Error("receipt_not_found"));
 
@@ -685,7 +694,7 @@ export const handleDseAdminRequest = async (
       const runId = String(receiptRow?.runId ?? "");
       if (!threadId || !runId) return yield* Effect.fail(new Error("receipt_missing_scope"));
 
-      const blobRes = yield* convex.query(api.dse.blobs.getText, { threadId, runId, blobId });
+      const blobRes = yield* convex.query(isOpsAdmin ? api.dse.blobs.getTextAdmin : api.dse.blobs.getText, { threadId, runId, blobId });
       const text = (blobRes as any)?.text ?? null;
       if (typeof text !== "string" || text.length === 0) return yield* Effect.fail(new Error("blob_not_found"));
 
@@ -698,7 +707,8 @@ export const handleDseAdminRequest = async (
       });
     });
 
-    return runAuthedDseAdminRaw(request, env, program);
+    // Allow headless ops usage via admin-secret mode (and ops-admin session bypass thread access).
+    return runAuthedDseAdminRaw(request, env, program, "session_or_admin_secret");
   }
 
   if (url.pathname === "/api/dse/trace/export") {

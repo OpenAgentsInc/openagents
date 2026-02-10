@@ -9,6 +9,10 @@ import { loginPageTemplate } from "../effuse-pages/login"
 import { modulesPageTemplate } from "../effuse-pages/modules"
 import { signaturesPageTemplate } from "../effuse-pages/signatures"
 import { toolsPageTemplate } from "../effuse-pages/tools"
+import { dseCompileReportPageTemplate } from "../effuse-pages/dseCompileReport"
+import { dseOpsRunDetailPageTemplate } from "../effuse-pages/dseOpsRunDetail"
+import { dseOpsRunsPageTemplate } from "../effuse-pages/dseOpsRuns"
+import { dseSignaturePageTemplate } from "../effuse-pages/dseSignature"
 import { marketingShellTemplate } from "../effuse-pages/marketingShell"
 import { deckPageShellTemplate } from "../effuse-pages/deck"
 import { storybookCanvasTemplate, storybookManagerTemplate } from "../effuse-pages/storybook"
@@ -20,6 +24,10 @@ import { getStoryById, listStoryMeta } from "../storybook"
 
 import type { Route, RouteMatch } from "@openagentsinc/effuse"
 import type { LoginPageModel } from "../effuse-pages/login"
+import type { DseCompileReportPageData } from "../effuse-pages/dseCompileReport"
+import type { DseOpsRunDetailPageData } from "../effuse-pages/dseOpsRunDetail"
+import type { DseOpsRunsPageData } from "../effuse-pages/dseOpsRuns"
+import type { DseSignaturePageData } from "../effuse-pages/dseSignature"
 import type { ModulesPageData } from "../effuse-pages/modules"
 import type { SignaturesPageData } from "../effuse-pages/signatures"
 import type { ToolsPageData } from "../effuse-pages/tools"
@@ -38,6 +46,36 @@ const matchChatLegacy = (url: URL): RouteMatch | null => {
   const rest = url.pathname.slice("/chat/".length)
   if (!rest || rest.includes("/")) return null
   return { pathname: url.pathname, params: { chatId: rest }, search: url.searchParams }
+}
+
+const matchDseOpsRun = (url: URL): RouteMatch | null => {
+  const prefix = "/dse/ops/"
+  if (!url.pathname.startsWith(prefix)) return null
+  const rest = url.pathname.slice(prefix.length)
+  if (!rest || rest.includes("/")) return null
+  return { pathname: url.pathname, params: { runId: rest }, search: url.searchParams }
+}
+
+const matchDseSignature = (url: URL): RouteMatch | null => {
+  const prefix = "/dse/signature/"
+  if (!url.pathname.startsWith(prefix)) return null
+  const rest = url.pathname.slice(prefix.length)
+  if (!rest) return null
+  return { pathname: url.pathname, params: { signatureId: rest }, search: url.searchParams }
+}
+
+const matchDseCompileReport = (url: URL): RouteMatch | null => {
+  const prefix = "/dse/compile-report/"
+  if (!url.pathname.startsWith(prefix)) return null
+  const rest = url.pathname.slice(prefix.length)
+  const parts = rest.split("/").filter((p) => p.length > 0)
+  if (parts.length < 3) return null
+  const signatureId = parts.slice(2).join("/")
+  return {
+    pathname: url.pathname,
+    params: { jobHash: parts[0]!, datasetHash: parts[1]!, signatureId },
+    search: url.searchParams,
+  }
 }
 
 const matchStorybook = (url: URL): RouteMatch | null => {
@@ -250,6 +288,113 @@ const modules: Route<ModulesPageData, AppServices> = {
   head: () => Effect.succeed({ title: "Modules" }),
 }
 
+// Keep DSE ops pages admin-only (headless ops + receipts can cross thread boundaries).
+const DSE_OPS_ADMIN_SUBJECT = "user_dse_admin"
+
+const dseOpsRuns: Route<DseOpsRunsPageData, AppServices> = {
+  id: "/dse",
+  match: matchExact("/dse"),
+  guard: (ctx) =>
+    Effect.gen(function* () {
+      const redirect = yield* prelaunchRedirectGuard(ctx)
+      if (redirect) return redirect
+      const auth = yield* AuthService
+      const session = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
+      if (!session.userId) return RouteOutcome.redirect("/", 302)
+      if (session.userId !== DSE_OPS_ADMIN_SUBJECT) return RouteOutcome.redirect("/", 302)
+      return
+    }),
+  loader: (ctx) => okWithSession(ctx, { errorText: null, runs: null }),
+  view: (_ctx, data) => Effect.succeed(authedShellTemplate(dseOpsRunsPageTemplate(data))),
+  head: () => Effect.succeed({ title: "DSE Ops Runs" }),
+}
+
+const dseOpsRunDetail: Route<DseOpsRunDetailPageData, AppServices> = {
+  id: "/dse/ops/$runId",
+  match: matchDseOpsRun,
+  guard: dseOpsRuns.guard,
+  loader: (ctx) =>
+    okWithSession(ctx, {
+      runId: (() => {
+        const raw = String(ctx.match.params.runId ?? "")
+        try {
+          return decodeURIComponent(raw)
+        } catch {
+          return raw
+        }
+      })(),
+      errorText: null,
+      run: null,
+      events: null,
+    }),
+  view: (_ctx, data) => Effect.succeed(authedShellTemplate(dseOpsRunDetailPageTemplate(data))),
+  head: (_ctx, data) => Effect.succeed({ title: `DSE Ops Run ${data.runId}` }),
+}
+
+const dseSignature: Route<DseSignaturePageData, AppServices> = {
+  id: "/dse/signature/$signatureId",
+  match: matchDseSignature,
+  guard: dseOpsRuns.guard,
+  loader: (ctx) =>
+    okWithSession(ctx, {
+      signatureId: (() => {
+        const raw = String(ctx.match.params.signatureId ?? "")
+        try {
+          return decodeURIComponent(raw)
+        } catch {
+          return raw
+        }
+      })(),
+      errorText: null,
+      active: null,
+      activeHistory: null,
+      canary: null,
+      canaryHistory: null,
+      compileReports: null,
+      examples: null,
+      receipts: null,
+    }),
+  view: (_ctx, data) => Effect.succeed(authedShellTemplate(dseSignaturePageTemplate(data))),
+  head: (_ctx, data) => Effect.succeed({ title: `DSE ${data.signatureId}` }),
+}
+
+const dseCompileReport: Route<DseCompileReportPageData, AppServices> = {
+  id: "/dse/compile-report/$jobHash/$datasetHash/$signatureId",
+  match: matchDseCompileReport,
+  guard: dseOpsRuns.guard,
+  loader: (ctx) =>
+    okWithSession(ctx, {
+      signatureId: (() => {
+        const raw = String(ctx.match.params.signatureId ?? "")
+        try {
+          return decodeURIComponent(raw)
+        } catch {
+          return raw
+        }
+      })(),
+      jobHash: (() => {
+        const raw = String(ctx.match.params.jobHash ?? "")
+        try {
+          return decodeURIComponent(raw)
+        } catch {
+          return raw
+        }
+      })(),
+      datasetHash: (() => {
+        const raw = String(ctx.match.params.datasetHash ?? "")
+        try {
+          return decodeURIComponent(raw)
+        } catch {
+          return raw
+        }
+      })(),
+      errorText: null,
+      report: null,
+    }),
+  view: (_ctx, data) => Effect.succeed(authedShellTemplate(dseCompileReportPageTemplate(data))),
+  head: (_ctx, data) => Effect.succeed({ title: `DSE Compile Report ${data.jobHash}` }),
+}
+
 const signatures: Route<SignaturesPageData, AppServices> = {
   id: "/signatures",
   match: matchExact("/signatures"),
@@ -340,6 +485,10 @@ export const appRoutes = [
   autopilot,
   deck,
   storybook,
+  dseOpsRuns,
+  dseOpsRunDetail,
+  dseSignature,
+  dseCompileReport,
   modules,
   signatures,
   tools,
