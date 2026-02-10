@@ -77,6 +77,14 @@ Worker secrets that must be present in the deployed Worker environment:
 - `OA_E2E_JWT_PRIVATE_JWK` (used by the Worker to mint an ops-admin JWT for Convex access)
 - (prod E2E only) `OA_E2E_BYPASS_SECRET` (enables deterministic login via `/api/auth/e2e/*`)
   - Runner-side env `EFFUSE_TEST_E2E_BYPASS_SECRET` must match this secret
+- `OPENROUTER_API_KEY` (required for some compile/eval paths; RLM-lite trigger is gated without it)
+
+To sync secrets from `.env.production` into Cloudflare Worker secrets:
+
+```bash
+cd apps/web
+npm run wrangler:secrets
+```
 
 Local (no E2E):
 
@@ -526,6 +534,10 @@ Current endpoints and storage:
 - 2026-02-10T11:58:43Z Doc maintenance: updated Phase 6 + code surface section to match shipped read-only pages and the current Worker API surface.
 
 - 2026-02-10T12:01:48Z Docs: updated `docs/autopilot/DSE_PLAYBOOK.md` to include the canonical headless overnight runner and link back to this runbook.
+
+- 2026-02-10T12:04:12Z Ops: updated the Worker secret sync script to include DSE/RLM overnight secrets.
+- Updated:
+  - `apps/web/scripts/sync-wrangler-secrets.sh`
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
