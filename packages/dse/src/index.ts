@@ -22,6 +22,9 @@ export * as Policy from "./runtime/policyRegistry.js";
 export * as Predict from "./runtime/predict.js";
 export * as BlobStore from "./runtime/blobStore.js";
 export * as Budget from "./runtime/budget.js";
+export * as VarSpace from "./runtime/varSpace.js";
+export * as ToolExecutor from "./runtime/toolExecutor.js";
+export * as RlmKernel from "./runtime/rlmKernel.js";
 export * as Receipt from "./runtime/receipt.js";
 
 export * as EvalCache from "./eval/cache.js";

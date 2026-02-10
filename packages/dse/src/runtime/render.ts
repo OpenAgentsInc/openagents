@@ -183,6 +183,7 @@ export function renderPromptMessagesWithStats<I, O>(options: {
   readonly signature: DseSignature<I, O>;
   readonly input: I;
   readonly params: DseParams;
+  readonly blobContextMode?: "inline_preview" | "metadata_only" | undefined;
 }): Effect.Effect<
   { readonly messages: ReadonlyArray<LmMessage>; readonly stats: PromptRenderStatsV1 },
   PromptRenderError,
@@ -217,6 +218,8 @@ export function renderPromptMessagesWithStats<I, O>(options: {
     const MAX_BLOB_STATS = 200;
     const blobs: Array<PromptRenderBlobStatV1> = [];
 
+    const blobContextMode = options.blobContextMode ?? "inline_preview";
+
     const renderContextEntry = (
       e: ContextEntry
     ): Effect.Effect<string, PromptRenderError> => {
@@ -240,9 +243,12 @@ export function renderPromptMessagesWithStats<I, O>(options: {
 
           const MAX_CONTEXT_CHARS = 20_000;
           const truncatedFlag = text.length > MAX_CONTEXT_CHARS;
-          const previewText = truncatedFlag
-            ? text.slice(0, MAX_CONTEXT_CHARS) + "\n...[truncated]"
-            : text;
+          const previewText =
+            blobContextMode === "inline_preview"
+              ? truncatedFlag
+                ? text.slice(0, MAX_CONTEXT_CHARS) + "\n...[truncated]"
+                : text
+              : "";
 
           blobEntryCount++;
           blobContentChars += text.length;
@@ -266,9 +272,13 @@ export function renderPromptMessagesWithStats<I, O>(options: {
           if (e.blob.mime) metaParts.push(`mime=${e.blob.mime}`);
           metaParts.push(`size=${e.blob.size}`);
 
-          return Effect.succeed(
-            `${e.key} (${metaParts.join(" ")}):\n${previewText}`
-          );
+          if (blobContextMode === "metadata_only") {
+            return Effect.succeed(
+              `${e.key} (${metaParts.join(" ")}): [blob omitted; use RLM ops to preview/search/chunk]`
+            );
+          }
+
+          return Effect.succeed(`${e.key} (${metaParts.join(" ")}):\n${previewText}`);
         }),
         Effect.catchAll((cause) =>
           Effect.fail(
