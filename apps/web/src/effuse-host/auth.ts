@@ -169,15 +169,30 @@ const handleE2eLogin = async (request: Request, env: WorkerEnv): Promise<Respons
 }
 
 const handleSession = async (request: Request, env: WorkerEnv): Promise<Response> => {
+  const hasCookie = request.headers.get("cookie")?.length ? true : false
   let auth: any
   let refreshedSessionData: string | undefined
+  let withAuthThrew = false
   try {
     const result = await authkit.withAuth(request)
     auth = result.auth
     refreshedSessionData = result.refreshedSessionData
-  } catch {
+  } catch (err) {
+    withAuthThrew = true
+    const errMsg = err instanceof Error ? err.message : String(err)
+    const errStack = err instanceof Error ? err.stack : undefined
+    console.error("[auth.session] withAuth failed", { hasCookie, err: errMsg, stack: errStack?.slice(0, 500) })
     auth = { user: null }
     refreshedSessionData = undefined
+  }
+
+  const hasUser = !!auth?.user
+  const hasAccessToken = !!(auth?.user && auth?.accessToken)
+  if (hasCookie && !hasUser) {
+    console.warn("[auth.session] cookie present but no user from withAuth", { hasCookie, withAuthThrew })
+  }
+  if (hasUser && !hasAccessToken) {
+    console.warn("[auth.session] user present but no accessToken", { hasUser, keys: auth ? Object.keys(auth) : [] })
   }
 
   const user = auth.user
@@ -189,40 +204,9 @@ const handleSession = async (request: Request, env: WorkerEnv): Promise<Response
       }
     : null
 
-  // Convex auth token:
-  // - Prefer a Worker-minted JWT (stable issuer, JWKS served from this Worker).
-  // - Fall back to the WorkOS access token when configured/available.
-  //
-  // Rationale: WorkOS sessions can be present even when `accessToken` is absent/opaque. When that
-  // happens, the UI would appear "authed" but Convex would be unauthenticated and core mutations
-  // (e.g. ensureOwnedThread) would fail with a silent "Server Error Called by client".
-  const privateJwkJson = typeof env.OA_E2E_JWT_PRIVATE_JWK === "string" ? env.OA_E2E_JWT_PRIVATE_JWK : ""
-  let oaJwt: string | null = null
-  if (user && privateJwkJson) {
-    try {
-      const { runtime } = getWorkerRuntime(env)
-      oaJwt = await runtime.runPromise(
-        mintE2eJwt({
-          privateJwkJson,
-          user: {
-            id: user.id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-          },
-          // Short-lived; clients refresh via /api/auth/session (cached for a few seconds client-side).
-          ttlSeconds: 60 * 30,
-        }),
-      )
-    } catch {
-      oaJwt = null
-    }
-  }
-
-  // WorkOS session is primary. If absent, fall back to E2E session cookie.
+  // E2E/agent path: no WorkOS user, but valid E2E JWT cookie (for headless/E2E tests).
   const e2eToken = !user ? readE2eTokenFromRequest(request) : null
   const e2eClaims = e2eToken ? decodeE2eJwtClaims(e2eToken) : null
-
   const now = Math.floor(Date.now() / 1000)
   const e2eValid =
     e2eClaims &&
@@ -231,6 +215,8 @@ const handleSession = async (request: Request, env: WorkerEnv): Promise<Response
     typeof e2eClaims.sub === "string" &&
     e2eClaims.sub.length > 0
 
+  // Human web: use WorkOS session token only. Convex auth.config validates WorkOS JWTs.
+  // Do not prefer E2E-minted JWT here; that path is for agents/Expo only.
   const payload: SessionPayload = e2eValid
     ? {
         ok: true,
@@ -248,7 +234,7 @@ const handleSession = async (request: Request, env: WorkerEnv): Promise<Response
         ok: true,
         userId: user?.id ?? null,
         sessionId: auth.user ? (auth.sessionId ?? null) : null,
-        token: oaJwt ?? (auth.user ? (auth.accessToken ?? null) : null),
+        token: auth.user ? (auth.accessToken ?? null) : null,
         user,
       }
 
@@ -258,6 +244,16 @@ const handleSession = async (request: Request, env: WorkerEnv): Promise<Response
     const setCookie = (headers as unknown as Record<string, string>)["Set-Cookie"];
     if (typeof setCookie === "string") {
       return json(payload, { status: 200, headers: { "Set-Cookie": setCookie } })
+    }
+  }
+
+  // Stale/bad cookie: clear whenever we have a cookie but no user so the next request (e.g. after verify) doesn't send it.
+  if (hasCookie && !hasUser) {
+    try {
+      const { setCookieHeader } = await getWorkerRuntime(env).runPromise(clearSessionCookie())
+      return json(payload, { status: 200, headers: { "Set-Cookie": setCookieHeader } })
+    } catch (e) {
+      console.error("[auth.session] clearSessionCookie failed", e)
     }
   }
 
@@ -354,27 +350,33 @@ const handleVerify = async (request: Request, env: WorkerEnv): Promise<Response>
       })
       yield* telemetry.withNamespace("auth.magic").event("magic_code.verified", { userId })
 
-      const body: { ok: true; userId: string; token?: string } = { ok: true, userId }
-      if (isExpoClient) {
-        // Prefer Worker-minted E2E JWT so Convex accepts it (same issuer as web session). Fall back to WorkOS token.
-        if (privateJwkJson && magicUser) {
-          try {
-            const oaJwt = yield* mintE2eJwt({
-              privateJwkJson,
-              user: {
-                id: magicUser.id,
-                email: magicUser.email,
-                firstName: magicUser.firstName,
-                lastName: magicUser.lastName,
-              },
-              ttlSeconds: 60 * 60 * 24, // 24h for mobile
-            })
-            body.token = oaJwt
-          } catch {
-            if (accessToken) body.token = accessToken
-          }
-        } else if (accessToken) {
-          body.token = accessToken
+      const body: {
+        ok: true
+        userId: string
+        token?: string
+        user?: { id: string; email: string | null; firstName: string | null; lastName: string | null }
+      } = {
+        ok: true,
+        userId,
+        ...(accessToken ? { token: accessToken } : {}),
+        ...(magicUser ? { user: { id: magicUser.id, email: magicUser.email ?? null, firstName: magicUser.firstName ?? null, lastName: magicUser.lastName ?? null } } : {}),
+      }
+      if (isExpoClient && !body.token && privateJwkJson && magicUser) {
+        // Prefer Worker-minted E2E JWT for mobile so Convex accepts it (same issuer as web session).
+        try {
+          const oaJwt = yield* mintE2eJwt({
+            privateJwkJson,
+            user: {
+              id: magicUser.id,
+              email: magicUser.email,
+              firstName: magicUser.firstName,
+              lastName: magicUser.lastName,
+            },
+            ttlSeconds: 60 * 60 * 24, // 24h for mobile
+          })
+          body.token = oaJwt
+        } catch {
+          // keep WorkOS token if set above
         }
       }
 
