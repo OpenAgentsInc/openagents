@@ -8,7 +8,7 @@ Uncaught (FiberFailure) Error: unauthorized
 
 The failure occurs when the app calls the Convex mutation `ensureOwnedThread`. The user appears signed in (session state shows a user) but Convex receives no auth token, so the mutation rejects with `unauthorized`.
 
-**Status:** Still occurring after multiple attempted fixes. This document records every intervention, why it was insufficient, and the underlying problems.
+**Status:** Fix implemented and deployed on **2026-02-10**. This document records every intervention, why it was insufficient, the underlying problems, and the final fix.
 
 ---
 
@@ -103,28 +103,20 @@ Any break in (1)–(4) results in Convex seeing no token and `ensureOwnedThread`
   - **apps/web/src/effuse-host/auth.ts:** Verify handler now returns `token` (WorkOS access token) and `user` in the JSON body for web (not only Expo) (lines 353–363).
   - **apps/web/src/effect/auth.ts:** Added `setClientAuthFromVerify(session, token)` to prime the client-only cache so `getSession` / `getAccessToken` can return the token without a network call (lines 69–72).
   - **apps/web/src/effuse-app/controllers/homeController.ts:** After verify success, if the response has `token` and `user`, we call `clearAuthClientCache()`, then `setClientAuthFromVerify(session, token)`, set `SessionAtom`, and run `getOwnedThreadId()` in-pane (no reload, no localStorage) (lines 499–555).
-- **Why it still fails:** The Convex setAuth callback in **apps/web/src/effect/convex.ts** (line 174) calls:
+- **Why it still failed originally:** There were two intertwined issues:
+  1. Our Convex `setAuth` callback was always doing `auth.getAccessToken({ forceRefreshToken: true })`, so even though we primed the in-memory cache from verify, Convex would immediately hit `GET /api/auth/session` (bringing the cookie timing race back).
+  2. More importantly: when Convex boots unauthenticated and its initial token fetch returns `null`, Convex can transition into a sticky `noAuth` state. In that state it will **not** start fetching tokens just because the app later logged in; you must call `client.setAuth(...)` again to restart the auth manager.
 
-  ```ts
-  auth.getAccessToken({ forceRefreshToken: true })
-  ```
+  This is why a full page reload “fixed” it: reload reconstructs the Convex client and runs `setAuth` again after the cookie exists.
 
-  In **apps/web/src/effect/auth.ts**, `fetchClientAuthState` (lines 103–109) uses the cache **only** when:
+### 3.11 Definitive fix: refresh Convex auth after login (no reload)
 
-  ```ts
-  if (!options.forceRefreshToken && clientCache && now - clientCache.fetchedAtMs < CLIENT_CACHE_TTL_MS)
-    return clientCache;
-  ```
+- **Change:**
+  - **apps/web/src/effect/convex.ts:** `setAuth(fetchToken)` now respects Convex’s `{ forceRefreshToken }` argument instead of always forcing refresh. Added `ConvexService.refreshAuth()` which re-calls `client.setAuth(fetchToken)` to restart Convex auth after login.
+  - **apps/web/src/effuse-app/boot.ts:** When `SessionAtom.userId` becomes authenticated (or changes), call `convex.refreshAuth()` (best-effort).
+  - **apps/web/src/effuse-app/controllers/homeController.ts:** After verify success, prime the client auth cache with the verify response token, set `SessionAtom`, call `refreshConvexAuth()` (wired from boot), then call `getOwnedThreadId()`; removed reload + localStorage flow.
 
-  So when `forceRefreshToken` is **true**, we **never** use the cache; we **always** fetch GET /api/auth/session. So right after verify:
-
-  1. We prime the cache with `setClientAuthFromVerify(session, token)`.
-  2. We call `getOwnedThreadId()` → Convex mutation → setAuth runs.
-  3. setAuth calls `getAccessToken({ forceRefreshToken: true })` → `fetchClientAuthState({ forceRefreshToken: true })` → **cache is skipped** → fetch /api/auth/session.
-  4. That fetch may still run before the verify response’s Set-Cookie is applied, or with a stale cookie, so the session response has no token.
-  5. Convex gets null → unauthorized.
-
-So the no-reload path **never actually used the primed cache** for the Convex setAuth call. The cache is only used when `forceRefreshToken` is false (e.g. normal getSession), but setAuth was deliberately set to force refresh.
+- **Why this works:** The verify response includes a WorkOS access token immediately (no dependency on cookie application timing). By priming the in-memory cache and re-triggering Convex `setAuth()` on login, Convex authenticates before `ensureOwnedThread` runs.
 
 ---
 
@@ -132,7 +124,8 @@ So the no-reload path **never actually used the primed cache** for the Convex se
 
 1. **Cookie timing:** The browser may not have applied the verify response’s Set-Cookie before the very next request (e.g. the session fetch triggered by Convex setAuth). So the session endpoint sometimes sees no cookie or an old cookie.
 2. **Stale cookie after sign-out:** After sign-out, a cookie can still be present (e.g. empty or “cleared” value). The Worker then sees “cookie present but no user” (withAuth doesn’t throw, just returns null). We now clear that cookie in the session response, but that doesn’t help the first request right after verify if that request is the one that runs before the new cookie is there.
-3. **Convex setAuth ignores primed cache:** We added a no-reload path that primes the client cache with the verify response’s token. But Convex setAuth uses `forceRefreshToken: true`, so `fetchClientAuthState` always hits the network and never returns the primed cache. So the race with the cookie remains, and the fix doesn’t take effect for the call that matters (setAuth).
+3. **Convex sticky `noAuth` + no re-setAuth on login:** If Convex boots unauthenticated (token fetch returns `null`), it can settle into `noAuth` and won’t start fetching tokens later just because the app logged in. Without calling `client.setAuth(...)` again after verify, Convex keeps sending unauthenticated requests and `ensureOwnedThread` fails.
+4. **setAuth forced refresh / ignored Convex fetch args:** Our `setAuth` callback ignored Convex’s `{ forceRefreshToken }` parameter and always forced a session fetch, which amplified the cookie timing race and prevented reliably using the verify-primed token.
 
 ---
 
@@ -158,14 +151,10 @@ So the no-reload path **never actually used the primed cache** for the Convex se
 
 ## 6. Recommended next steps
 
-1. **Use primed cache when Convex setAuth runs right after verify**  
-   In **apps/web/src/effect/auth.ts**, in `fetchClientAuthState`, when `forceRefreshToken` is true, still return `clientCache` if it exists and has a token and was set very recently (e.g. `now - clientCache.fetchedAtMs < 2000`). That way the token we set in `setClientAuthFromVerify` is actually used by the next setAuth call instead of triggering a session fetch that may run before the cookie is set.
-
-2. **Alternatively:** In **apps/web/src/effect/convex.ts**, call `getAccessToken({ forceRefreshToken: false })` so the first call after verify uses the primed cache. (Tradeoff: other callers may rely on force refresh to pick up new tokens; need to confirm.)
-
-3. **Keep the reload fallback:** When the verify response does **not** include `token`/`user` (e.g. old deploy or error path), keep using the existing reload + localStorage flow so we don’t regress.
-
-4. **Observability:** Add a small piece of client-side logging when we **do** use the primed cache (e.g. “used verify-primed token”) so we can confirm in production that the no-reload path is taking effect.
+1. **Re-trigger Convex auth on login:** Add a client-only `ConvexService.refreshAuth()` that re-calls `client.setAuth(fetchToken)` and call it whenever `SessionAtom.userId` becomes authenticated. (Implemented.)
+2. **Respect Convex’s `forceRefreshToken` argument:** `fetchToken` should use the `forceRefreshToken` value Convex passes in, not always force refresh. (Implemented.)
+3. **Remove reload/localStorage flow:** Keep the entire verify → authed → Convex path in-page by using the verify response token to prime the in-memory cache and refreshing Convex auth before the first authed mutation. (Implemented.)
+4. **Keep the verify-primed cache as a safety net:** Returning the primed cache for a short window can still be useful if any code path forces a refresh at the wrong time. (Still present in `apps/web/src/effect/auth.ts`.)
 
 ---
 
@@ -180,6 +169,10 @@ This document should be updated when any of the above fixes are implemented or w
 
 ---
 
-## 8. Fix applied (use primed cache when recent)
+## 8. Fix applied (Convex re-auth on login; no reload)
 
-In **apps/web/src/effect/auth.ts**, `fetchClientAuthState` was updated so that when `forceRefreshToken` is true we still return `clientCache` if it has a token and was set within the last 3 seconds (`VERIFY_PRIME_MAX_AGE_MS`). That way the token set by `setClientAuthFromVerify` after verify is used by the Convex setAuth callback instead of triggering a session fetch that may run before the cookie is applied. If the issue persists, revert or extend the window and re-check Worker/Convex logs.
+We now explicitly refresh Convex auth when the user becomes authenticated (magic-auth verify):
+
+- `apps/web/src/effect/convex.ts`: `setAuth(fetchToken)` respects Convex `{ forceRefreshToken }`, and `ConvexService.refreshAuth()` re-calls `client.setAuth(fetchToken)` so Convex exits sticky `noAuth`.
+- `apps/web/src/effuse-app/boot.ts`: calls `convex.refreshAuth()` when `SessionAtom.userId` becomes authenticated.
+- `apps/web/src/effuse-app/controllers/homeController.ts`: after verify, primes auth cache from the verify response token, calls `refreshConvexAuth()`, then calls `getOwnedThreadId()` without any full-page reload or localStorage coordination.

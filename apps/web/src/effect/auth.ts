@@ -6,20 +6,20 @@ import { decodeE2eJwtClaims, E2E_JWT_ISSUER, readE2eTokenFromRequest } from '../
 export class AuthServiceError extends Schema.TaggedError<AuthServiceError>()('AuthServiceError', {
   operation: Schema.String,
   error: Schema.Defect,
-}) {}
+}) { }
 
 export class AuthSessionUser extends Schema.Class<AuthSessionUser>('AuthSessionUser')({
   id: Schema.String,
   email: Schema.NullOr(Schema.String),
   firstName: Schema.NullOr(Schema.String),
   lastName: Schema.NullOr(Schema.String),
-}) {}
+}) { }
 
 export class AuthSession extends Schema.Class<AuthSession>('AuthSession')({
   userId: Schema.NullOr(Schema.String),
   sessionId: Schema.NullOr(Schema.String),
   user: Schema.NullOr(AuthSessionUser),
-}) {}
+}) { }
 
 type AuthSessionResponse = {
   readonly ok: boolean;
@@ -50,7 +50,7 @@ export type AuthServiceApi = {
   }) => Effect.Effect<string | null, AuthServiceError, RequestContextService>;
 };
 
-export class AuthService extends Context.Tag('@openagents/web/AuthService')<AuthService, AuthServiceApi>() {}
+export class AuthService extends Context.Tag('@openagents/web/AuthService')<AuthService, AuthServiceApi>() { }
 
 type CachedAuthState = {
   readonly session: AuthSession;
@@ -87,11 +87,11 @@ const normalizeSessionFromResponse = (raw: AuthSessionResponse): { session: Auth
   const user =
     raw.user && typeof raw.user === 'object'
       ? AuthSessionUser.make({
-          id: String(raw.user.id),
-          email: raw.user.email == null ? null : String(raw.user.email),
-          firstName: raw.user.firstName == null ? null : String(raw.user.firstName),
-          lastName: raw.user.lastName == null ? null : String(raw.user.lastName),
-        })
+        id: String(raw.user.id),
+        email: raw.user.email == null ? null : String(raw.user.email),
+        firstName: raw.user.firstName == null ? null : String(raw.user.firstName),
+        lastName: raw.user.lastName == null ? null : String(raw.user.lastName),
+      })
       : null;
 
   return {
@@ -231,11 +231,11 @@ const fetchServerAuthState = Effect.fn('AuthService.fetchServerAuthState')(funct
 
   const user = result.auth.user
     ? AuthSessionUser.make({
-        id: result.auth.user.id,
-        email: result.auth.user.email ?? null,
-        firstName: result.auth.user.firstName ?? null,
-        lastName: result.auth.user.lastName ?? null,
-      })
+      id: result.auth.user.id,
+      email: result.auth.user.email ?? null,
+      firstName: result.auth.user.firstName ?? null,
+      lastName: result.auth.user.lastName ?? null,
+    })
     : null;
 
   const session = AuthSession.make({

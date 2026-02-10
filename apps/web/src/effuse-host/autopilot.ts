@@ -1076,7 +1076,7 @@ const runAutopilotStream = (input: {
         };
 
         type BootstrapApplyResult = { appliedVibe?: string };
-        const applyBootstrap = Effect.gen(function* (): Generator<Effect.Effect<any>, BootstrapApplyResult, any> {
+        const applyBootstrap = Effect.gen(function* () {
           if (bootstrapStage === "ask_user_handle") {
             const handle = extractHandle(lastUserText);
             if (!handle) return {};
