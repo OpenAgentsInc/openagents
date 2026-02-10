@@ -33,6 +33,7 @@ AGENTS.local.md
 .env*.local
 *.env
 *.env.*
+!**/.env*.example
 # Ignore ts-rs generated types (Phase 2); CI/codegen will manage these
 packages/tricoder/src/types/generated/
 
