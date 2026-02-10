@@ -156,6 +156,41 @@ If something goes wrong, the receipt + trace should answer:
 - what blobs/spans were accessed?
 - how many iterations/subcalls were used?
 
+### 5.1 DSE Debug Panel: Run A Canary Recap (direct vs rlm_lite)
+
+We now ship a **Phase D canary surface** in the `/autopilot` UI so operators can run the same recap signature under
+either strategy and see the receipts/traces end-to-end.
+
+Where:
+
+- `/autopilot` bottom-right controls → **DSE Debug**
+
+How to use it:
+
+1. Pick **Strategy**:
+   - `direct.v1` (single-call predict, blob previews inlined)
+   - `rlm_lite.v1` (bounded RLM loop, blob previews omitted; controller uses RLM ops)
+2. Pick a **Budget** profile:
+   - `small / medium / long` (these map to `params.budgets` and include RLM-specific counters)
+3. Click **Run recap (canary)**.
+
+What you should see:
+
+- A user command message (audit trail): `/dse recap strategy=... budget=...`
+- An assistant message with a `dse.signature` debug card for:
+  - signature: `@openagents/autopilot/canary/RecapThread.v1`
+  - `strategyId`, budgets (limits + usage), prompt render stats, context pressure
+  - `rlmTrace` handle when `rlm_lite.v1` runs
+- Links on the card:
+  - **receipt**: `GET /api/dse/receipt/:receiptId`
+  - **trace**: `GET /api/dse/blob/:receiptId/:blobId` (raw blob text; for RLM traces it is JSON)
+
+Why this exists:
+
+- It makes RLM-lite **observable** (you can see the strategy + budgets + evidence handles).
+- It makes RLM-lite **debuggable** (you can open the trace and see the kernel actions/observations).
+- It creates an operator-friendly path to compare `direct` vs `rlm_lite` without changing signature code.
+
 ## 6) Operator Workflow: Trace -> Example -> Compile -> Promote/Canary
 
 This is the core "self-improve" loop.

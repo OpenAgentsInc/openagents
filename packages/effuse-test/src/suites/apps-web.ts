@@ -591,6 +591,140 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
     })
 
     tests.push({
+      id: "apps-web.prod.autopilot.dse-canary-recap-shows-debug-card-and-trace",
+      tags: ["e2e", "browser", "apps/web", "prod", "dse"],
+      timeoutMs: 180_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+        const browser = yield* BrowserService
+
+        yield* browser.withPage((page) =>
+          Effect.gen(function* () {
+            // Login via E2E bypass first (prod gating requires auth).
+            yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
+            const seed = `effuse-test:${ctx.runId}:${ctx.testId}:dse`
+            yield* step(
+              "e2e login",
+              page.evaluate(`(() => {
+  return fetch('/api/auth/e2e/login', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': 'Bearer ' + ${JSON.stringify(e2eSecret)}
+    },
+    body: JSON.stringify({ seed: ${JSON.stringify(seed)} })
+  }).then(async (res) => {
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json || json.ok !== true) {
+      throw new Error('e2e login failed: HTTP ' + res.status + ' ' + JSON.stringify(json));
+    }
+    return json;
+  });
+})()`),
+            )
+
+            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
+            yield* step(
+              "wait for shell",
+              page.waitForFunction("!!document.querySelector('[data-autopilot-shell]')", { timeoutMs: 30_000 }),
+            )
+
+            yield* step(
+              "wait for DSE controls",
+              page.waitForFunction("!!document.querySelector('[data-ez=\"autopilot.controls.dse.recap\"]')", {
+                timeoutMs: 30_000,
+              }),
+            )
+
+            yield* step(
+              "select strategy=rlm_lite.v1",
+              page.evaluate(`(() => {
+  const el = document.querySelector('select[data-ez="autopilot.controls.dse.strategy"]');
+  if (!el) throw new Error('missing strategy select');
+  (el as HTMLSelectElement).value = 'rlm_lite.v1';
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+})()`),
+            )
+
+            yield* step(
+              "select budget=small",
+              page.evaluate(`(() => {
+  const el = document.querySelector('select[data-ez="autopilot.controls.dse.budget"]');
+  if (!el) throw new Error('missing budget select');
+  (el as HTMLSelectElement).value = 'small';
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+})()`),
+            )
+
+            yield* step("click Run recap (canary)", page.click('[data-ez=\"autopilot.controls.dse.recap\"]'))
+
+            yield* step(
+              "wait for DSE card to appear",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-dse-card=\"1\"]')).some(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1'))`,
+                { timeoutMs: 60_000 },
+              ),
+            )
+
+            yield* step(
+              "assert DSE card shows strategy + iteration counters",
+              Effect.gen(function* () {
+                const ok = yield* page.evaluate<boolean>(`(() => {
+  const cards = Array.from(document.querySelectorAll('[data-dse-card=\"1\"]'));
+  const card = cards.find(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1'));
+  if (!card) return false;
+  const t = (card.textContent || '');
+  return t.includes('strategyId') && t.includes('rlm_lite.v1') && (t.includes('rlmIterations=') || t.includes('subLmCalls='));
+})()`)
+                yield* assertTrue(
+                  ok,
+                  "Expected DSE card to include strategyId=rlm_lite.v1 and rlmIterations/subLmCalls counters",
+                )
+              }),
+            )
+
+            const traceHref = yield* step(
+              "read trace href",
+              page.evaluate<string | null>(`(() => {
+  const el = document.querySelector('[data-dse-open-trace=\"1\"]') as HTMLAnchorElement | null;
+  return el ? el.getAttribute('href') : null;
+})()`),
+            )
+
+            yield* step(
+              "assert trace link exists",
+              assertTrue(typeof traceHref === "string" && traceHref.length > 0, "Expected trace link href"),
+            )
+
+            yield* step(
+              "fetch trace and assert events",
+              Effect.gen(function* () {
+                const trace = yield* page.evaluate<any>(`(() => {
+  const href = ${JSON.stringify(traceHref)};
+  if (!href) return null;
+  return fetch(href, { method: 'GET', cache: 'no-store', credentials: 'include' })
+    .then(res => res.text())
+    .then(text => {
+      try { return JSON.parse(text); } catch { return { _parseError: true, text }; }
+    })
+    .catch(() => null);
+})()`)
+                yield* assertTrue(trace && trace.format === "openagents.dse.rlm_trace", "Expected trace.format === openagents.dse.rlm_trace")
+                const events = Array.isArray(trace?.events) ? trace.events : []
+                const hasIter = events.some((e: any) => e && typeof e === "object" && e._tag === "Iteration")
+                const hasFinal = events.some((e: any) => e && typeof e === "object" && e._tag === "Final")
+                yield* assertTrue(hasIter, "Expected at least one Iteration event in trace.events")
+                yield* assertTrue(hasFinal, "Expected at least one Final event in trace.events")
+              }),
+            )
+          }),
+        )
+      }),
+    })
+
+    tests.push({
       id: "apps-web.prod.autopilot.bootstrap-initial-conversation",
       tags: ["e2e", "browser", "apps/web", "prod"],
       timeoutMs: 240_000,

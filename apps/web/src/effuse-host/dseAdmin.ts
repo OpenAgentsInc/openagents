@@ -195,6 +195,42 @@ const runAuthedDseAdmin = async <A>(
   return json(exit.value, { status: 200, headers: { "cache-control": "no-store" } });
 };
 
+const runAuthedDseAdminRaw = async (
+  request: Request,
+  env: WorkerEnv,
+  program: Effect.Effect<Response, unknown, ConvexService | AuthService | TelemetryService | RequestContextService>,
+): Promise<Response> => {
+  const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
+  const { runtime } = getWorkerRuntime(env);
+
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService;
+    }),
+  );
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: request.method,
+    pathname: new URL(request.url).pathname,
+  });
+
+  const exit = await runtime.runPromiseExit(
+    program.pipe(
+      Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+      Effect.provideService(TelemetryService, requestTelemetry),
+    ),
+  );
+
+  if (exit._tag === "Failure") {
+    const msg = String(exit._tag === "Failure" ? exit.cause : "dse_admin_failed");
+    const status = msg.includes("unauthorized") ? 401 : msg.includes("invalid_input") ? 400 : 500;
+    console.error(`[dse.admin] ${formatRequestIdLogToken(requestId)}`, msg);
+    return json({ ok: false, error: msg }, { status, headers: { "cache-control": "no-store" } });
+  }
+
+  return exit.value;
+};
+
 export const handleDseAdminRequest = async (
   request: Request,
   env: WorkerEnv,
@@ -202,6 +238,83 @@ export const handleDseAdminRequest = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/dse/")) return null;
+
+  if (url.pathname.startsWith("/api/dse/receipt/")) {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+
+    const receiptId = url.pathname.slice("/api/dse/receipt/".length).trim();
+    if (!receiptId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const auth = yield* AuthService;
+      const session = yield* auth.getSession();
+      if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+      const convex = yield* ConvexService;
+      const recRes = yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptId, { receiptId });
+      const receiptRow = (recRes as any)?.receipt ?? null;
+      if (!receiptRow) return { ok: true as const, receipt: null };
+
+      const receiptJson = receiptRow?.json ?? null;
+      const receipt = yield* Effect.try({
+        try: () => Schema.decodeUnknownSync(Receipt.PredictReceiptV1Schema)(receiptJson),
+        catch: () => new Error("invalid_receipt"),
+      });
+
+      return {
+        ok: true as const,
+        receipt,
+        threadId: String(receiptRow?.threadId ?? ""),
+        runId: String(receiptRow?.runId ?? ""),
+        createdAtMs: Number(receiptRow?.createdAtMs ?? 0),
+      };
+    });
+
+    return runAuthedDseAdmin(request, env, program);
+  }
+
+  if (url.pathname.startsWith("/api/dse/blob/")) {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+
+    const rest = url.pathname.slice("/api/dse/blob/".length);
+    const [receiptId, blobId] = rest.split("/").filter((p) => p.length > 0);
+
+    if (!receiptId || !blobId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const auth = yield* AuthService;
+      const session = yield* auth.getSession();
+      if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+      const convex = yield* ConvexService;
+
+      const recRes = yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptId, { receiptId });
+      const receiptRow = (recRes as any)?.receipt ?? null;
+      if (!receiptRow) return yield* Effect.fail(new Error("receipt_not_found"));
+
+      const threadId = String(receiptRow?.threadId ?? "");
+      const runId = String(receiptRow?.runId ?? "");
+      if (!threadId || !runId) return yield* Effect.fail(new Error("receipt_missing_scope"));
+
+      const blobRes = yield* convex.query(api.dse.blobs.getText, { threadId, runId, blobId });
+      const text = (blobRes as any)?.text ?? null;
+      if (typeof text !== "string" || text.length === 0) return yield* Effect.fail(new Error("blob_not_found"));
+
+      return new Response(text, {
+        status: 200,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    });
+
+    return runAuthedDseAdminRaw(request, env, program);
+  }
 
   if (url.pathname === "/api/dse/trace/export") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });

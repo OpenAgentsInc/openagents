@@ -8,7 +8,7 @@ import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect
 import { makeOpenRouterLanguageModel } from "../../../autopilot-worker/src/effect/ai/openRouterLanguageModel";
 import { makeFallbackLanguageModel } from "../../../autopilot-worker/src/effect/ai/fallbackLanguageModel";
 
-import { BlobStore, Lm, Predict } from "@openagentsinc/dse";
+import { BlobStore, Lm, Params, Predict, Receipt } from "@openagentsinc/dse";
 import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
 
 import { api } from "../../convex/_generated/api";
@@ -38,6 +38,60 @@ const MAX_OUTPUT_TOKENS = 512;
 
 const predictRlmSummarizeThread = Predict.make(dseCatalogSignatures.rlm_summarize_thread);
 
+type DseBudgetProfile = "small" | "medium" | "long";
+type DseStrategyId = "direct.v1" | "rlm_lite.v1";
+
+const budgetsForProfile = (profile: DseBudgetProfile): Params.DseExecutionBudgetsV1 => {
+  switch (profile) {
+    case "small":
+      return {
+        maxTimeMs: 10_000,
+        maxLmCalls: 20,
+        maxToolCalls: 0,
+        maxOutputChars: 40_000,
+        maxRlmIterations: 6,
+        maxSubLmCalls: 10,
+      };
+    case "long":
+      return {
+        maxTimeMs: 40_000,
+        maxLmCalls: 80,
+        maxToolCalls: 0,
+        maxOutputChars: 140_000,
+        maxRlmIterations: 18,
+        maxSubLmCalls: 40,
+      };
+    case "medium":
+    default:
+      return {
+        maxTimeMs: 20_000,
+        maxLmCalls: 40,
+        maxToolCalls: 0,
+        maxOutputChars: 80_000,
+        maxRlmIterations: 10,
+        maxSubLmCalls: 20,
+      };
+  }
+};
+
+const makeCanaryRecapSignature = (input: {
+  readonly strategyId: DseStrategyId;
+  readonly budgets: Params.DseExecutionBudgetsV1;
+}) => {
+  const base = dseCatalogSignatures.canary_recap_thread;
+  return {
+    ...base,
+    defaults: {
+      ...base.defaults,
+      params: {
+        ...base.defaults.params,
+        strategy: { id: input.strategyId },
+        budgets: input.budgets,
+      } satisfies Params.DseParamsV1,
+    },
+  };
+};
+
 const json = (body: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(body), {
     ...init,
@@ -63,6 +117,13 @@ type SendBody = {
 type CancelBody = {
   readonly threadId?: unknown;
   readonly runId?: unknown;
+};
+
+type DseRecapBody = {
+  readonly threadId?: unknown;
+  readonly strategyId?: unknown;
+  readonly budgetProfile?: unknown;
+  readonly question?: unknown;
 };
 
 type RunHandle = {
@@ -201,6 +262,395 @@ const isCancelRequested = (input: {
     threadId: input.threadId,
     runId: input.runId,
   });
+
+const runDseCanaryRecap = (input: {
+  readonly env: WorkerEnv & { readonly AI: Ai };
+  readonly request: Request;
+  readonly threadId: string;
+  readonly runId: string;
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
+  readonly controller: AbortController;
+  readonly strategyId: DseStrategyId;
+  readonly budgetProfile: DseBudgetProfile;
+  readonly question: string;
+  readonly e2eMode: "stub" | "off";
+}) => {
+  const { runtime } = getWorkerRuntime(input.env);
+  const url = new URL(input.request.url);
+  const requestId = input.request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
+
+  const telemetryBase = runtime.runSync(
+    Effect.gen(function* () {
+      return yield* TelemetryService;
+    }),
+  );
+  const requestTelemetry = telemetryBase.withFields({
+    requestId,
+    method: input.request.method,
+    pathname: url.pathname,
+  });
+
+  const effect = Effect.gen(function* () {
+    const telemetry = yield* TelemetryService;
+    const convex = yield* ConvexService;
+    const t = telemetry.withNamespace("autopilot.dse_canary_recap");
+
+    // Ensure auth is loaded (so ConvexService server client can setAuth token). Owner-only; no anon.
+    const session = yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(
+      Effect.catchAll(() => Effect.succeed({ userId: null } as any)),
+    );
+
+    yield* t.event("run.started", {
+      threadId: input.threadId,
+      runId: input.runId,
+      strategyId: input.strategyId,
+      budgetProfile: input.budgetProfile,
+      e2eMode: input.e2eMode,
+    });
+
+    let seq = 0;
+    const partId = `dsepart_sig_${input.runId}_canary_recap_thread`;
+    const signatureId = dseCatalogSignatures.canary_recap_thread.id;
+    const strategyReason = "forced_by_user";
+
+    const flushParts = (parts: ReadonlyArray<unknown>) =>
+      flushPartsToConvex({
+        convex,
+        threadId: input.threadId,
+        runId: input.runId,
+        messageId: input.assistantMessageId,
+        parts: parts.map((part) => ({ seq: seq++, part })),
+      });
+
+    const exit = yield* Effect.exit(
+      Effect.gen(function* () {
+        // Check cancellation early.
+        if (input.controller.signal.aborted) return yield* Effect.fail(new Error("canceled"));
+        const cancel = yield* isCancelRequested({ convex, threadId: input.threadId, runId: input.runId }).pipe(
+          Effect.catchAll(() => Effect.succeed({ ok: true as const, cancelRequested: false } as any)),
+        );
+        if ((cancel as any)?.cancelRequested) return yield* Effect.fail(new Error("canceled"));
+
+        const budgets = budgetsForProfile(input.budgetProfile);
+
+        yield* flushParts([
+          {
+            type: "dse.signature",
+            v: 1,
+            id: partId,
+            state: "start",
+            tsMs: Date.now(),
+            signatureId,
+            strategyId: input.strategyId,
+            strategyReason,
+            budget: { limits: budgets },
+          },
+        ]);
+
+        // E2E-only deterministic stub mode (no external model calls).
+        const isE2eUser = typeof (session as any)?.userId === "string" && String((session as any).userId).startsWith("user_e2e_");
+        if (input.e2eMode === "stub" && isE2eUser) {
+          const startedAtMs = Date.now();
+          const receiptId = crypto.randomUUID();
+          const summary = `E2E stub recap (${input.strategyId}, ${input.budgetProfile}).\n- This is deterministic and exists to assert UI wiring.\n- receiptId=${receiptId}`;
+
+          const traceDoc = {
+            format: "openagents.dse.rlm_trace",
+            formatVersion: 1,
+            signatureId,
+            receiptId,
+            strategyId: input.strategyId,
+            events: [
+              { _tag: "Iteration", i: 1, note: "stub" },
+              { _tag: "Iteration", i: 2, note: "stub" },
+              { _tag: "Final", output: { summary } },
+            ],
+          };
+
+          const tracePut = yield* convex.mutation(api.dse.blobs.putText, {
+            threadId: input.threadId,
+            runId: input.runId,
+            text: JSON.stringify(traceDoc, null, 2),
+            mime: "application/json",
+          });
+
+          const traceBlob = (tracePut as any)?.blob ?? null;
+
+          const receipt: Receipt.PredictReceiptV1 = {
+            format: "openagents.dse.predict_receipt",
+            formatVersion: 1,
+            receiptId,
+            runId: receiptId,
+            createdAt: new Date().toISOString(),
+            signatureId,
+            compiled_id: "e2e_stub",
+            strategyId: input.strategyId,
+            hashes: {
+              inputSchemaHash: "e2e_stub",
+              outputSchemaHash: "e2e_stub",
+              promptIrHash: "e2e_stub",
+              paramsHash: "e2e_stub",
+            },
+            model: { modelId: "e2e_stub" },
+            timing: {
+              startedAtMs,
+              endedAtMs: startedAtMs + 1,
+              durationMs: 1,
+            },
+            budget: {
+              limits: budgets,
+              usage: {
+                elapsedMs: 1,
+                lmCalls: 0,
+                toolCalls: 0,
+                rlmIterations: 2,
+                subLmCalls: 0,
+                outputChars: summary.length,
+              },
+            },
+            ...(traceBlob && typeof traceBlob === "object"
+              ? { rlmTrace: { blob: traceBlob as any, eventCount: Array.isArray(traceDoc.events) ? traceDoc.events.length : 0 } }
+              : {}),
+            result: { _tag: "Ok" },
+          };
+
+          yield* convex.mutation(api.dse.receipts.recordPredictReceipt, {
+            threadId: input.threadId,
+            runId: input.runId,
+            receipt,
+          });
+
+          // Emit assistant-visible text via stream wire parts so it renders alongside DSE cards.
+          const textParts = [
+            { type: "text-start", id: crypto.randomUUID(), metadata: {} },
+            { type: "text-delta", id: crypto.randomUUID(), delta: summary, metadata: {} },
+            { type: "text-end", id: crypto.randomUUID(), metadata: {} },
+          ];
+
+          yield* flushParts([
+            {
+              type: "dse.signature",
+              v: 1,
+              id: partId,
+              state: "ok",
+              tsMs: Date.now(),
+              signatureId,
+              compiled_id: receipt.compiled_id,
+              receiptId: receipt.receiptId,
+              timing: receipt.timing,
+              budget: receipt.budget,
+              strategyId: receipt.strategyId,
+              strategyReason,
+              contextPressure: receipt.contextPressure,
+              promptRenderStats: receipt.promptRenderStats,
+              rlmTrace: receipt.rlmTrace,
+              outputPreview: { summary },
+            },
+            ...textParts,
+          ]);
+
+          return { summary };
+        }
+
+        // Real path: DSE Predict (direct or rlm-lite strategy pinned in params).
+        if (input.controller.signal.aborted) return yield* Effect.fail(new Error("canceled"));
+
+        const rawSnapshot = yield* convex.query(api.autopilot.messages.getThreadSnapshot, {
+          threadId: input.threadId,
+          maxMessages: 240,
+          maxParts: 0,
+        });
+        const snapshot = rawSnapshot as GetThreadSnapshotResult;
+        const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray((snapshot as any)?.messages)
+          ? ((snapshot as any).messages as any)
+          : [];
+
+        const history = messagesRaw
+          .filter((m) => m && typeof m === "object")
+          .filter((m) => String((m as any).role ?? "") === "user" || String((m as any).role ?? "") === "assistant")
+          .filter((m) => String((m as any).status ?? "") !== "streaming" || String((m as any).messageId ?? "") !== input.assistantMessageId)
+          .filter((m) => String((m as any).messageId ?? "") !== input.userMessageId)
+          .map((m) => ({ role: String((m as any).role ?? "user"), text: String((m as any).text ?? "") }))
+          .filter((m) => m.text.trim().length > 0);
+
+        const historyText = history.map((m) => `${m.role}: ${m.text}`).join("\n\n");
+
+        const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+          env: input.env,
+          defaultModelIdCf: MODEL_ID_CF,
+          primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+        });
+
+        type DseReceiptShape = {
+          compiled_id?: string;
+          strategyId?: string;
+          timing?: { durationMs?: number };
+          budget?: unknown;
+          receiptId?: string;
+          contextPressure?: unknown;
+          promptRenderStats?: unknown;
+          rlmTrace?: unknown;
+        };
+        let recordedReceipt: DseReceiptShape | null = null;
+        const onReceipt = (r: unknown) => {
+          recordedReceipt = r as DseReceiptShape;
+        };
+
+        const dseEnv = layerDsePredictEnvForAutopilotRun({
+          threadId: input.threadId,
+          runId: input.runId,
+          onReceipt,
+        });
+
+        const sig = makeCanaryRecapSignature({
+          strategyId: input.strategyId,
+          budgets,
+        });
+        const predict = Predict.make(sig);
+
+        const predictExit = yield* Effect.exit(
+          Effect.gen(function* () {
+            const blobStore = yield* BlobStore.BlobStoreService;
+
+            // Bound history size so Convex blobs remain reasonable.
+            const MAX_HISTORY_CHARS = 200_000;
+            const boundedHistory =
+              historyText.length > MAX_HISTORY_CHARS ? historyText.slice(historyText.length - MAX_HISTORY_CHARS) : historyText;
+
+            // Pre-chunk history into stable BlobRefs so both direct and RLM strategies see the same input shape.
+            const chunkChars = 20_000;
+            const maxChunks = 12;
+            const chunkTexts: Array<string> = [];
+            for (let i = 0; i < boundedHistory.length && chunkTexts.length < maxChunks; i += chunkChars) {
+              chunkTexts.push(boundedHistory.slice(i, Math.min(boundedHistory.length, i + chunkChars)));
+            }
+
+            const threadChunks = yield* Effect.forEach(
+              chunkTexts,
+              (text) => blobStore.putText({ text, mime: "text/plain" }),
+              { concurrency: 3, discard: false },
+            );
+
+            return yield* predict({ question: input.question, threadChunks });
+          }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)),
+        );
+
+        const receipt = recordedReceipt as DseReceiptShape | null;
+        const promptRenderStats = receipt?.promptRenderStats as any;
+        const trimmedPromptRenderStats =
+          promptRenderStats &&
+          typeof promptRenderStats === "object" &&
+          promptRenderStats.context &&
+          typeof promptRenderStats.context === "object" &&
+          Array.isArray(promptRenderStats.context.blobs) &&
+          promptRenderStats.context.blobs.length > 20
+            ? {
+                ...promptRenderStats,
+                context: {
+                  ...promptRenderStats.context,
+                  blobsDropped:
+                    Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
+                  blobs: promptRenderStats.context.blobs.slice(0, 20),
+                },
+              }
+            : receipt?.promptRenderStats;
+
+        const state = predictExit._tag === "Success" ? "ok" : "error";
+        const errorText =
+          predictExit._tag === "Failure"
+            ? (() => {
+                const cause = predictExit.cause as any;
+                if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
+                return String(cause ?? "DSE predict failed");
+              })()
+            : null;
+
+        const summary = predictExit._tag === "Success" ? String((predictExit.value as any)?.summary ?? "").trim() : "";
+        const boundedSummary = summary.length > 2000 ? summary.slice(0, 2000).trim() : summary;
+
+        const textParts =
+          state === "ok" && boundedSummary
+            ? [
+                { type: "text-start", id: crypto.randomUUID(), metadata: {} },
+                { type: "text-delta", id: crypto.randomUUID(), delta: boundedSummary, metadata: {} },
+                { type: "text-end", id: crypto.randomUUID(), metadata: {} },
+              ]
+            : [];
+
+        yield* flushParts([
+          {
+            type: "dse.signature",
+            v: 1,
+            id: partId,
+            state,
+            tsMs: Date.now(),
+            signatureId,
+            compiled_id: receipt?.compiled_id,
+            receiptId: receipt?.receiptId,
+            timing: receipt?.timing,
+            budget: receipt?.budget,
+            strategyId: receipt?.strategyId,
+            strategyReason,
+            contextPressure: receipt?.contextPressure,
+            promptRenderStats: trimmedPromptRenderStats,
+            rlmTrace: receipt?.rlmTrace,
+            ...(state === "ok" ? { outputPreview: predictExit._tag === "Success" ? predictExit.value : undefined } : {}),
+            ...(errorText ? { errorText } : {}),
+          },
+          ...textParts,
+        ]);
+
+        if (state === "ok") return { summary: boundedSummary };
+        return yield* Effect.fail(new Error(errorText ?? "DSE recap failed"));
+      }),
+    );
+
+    if (exit._tag === "Failure") {
+      const msg = String(exit.cause);
+      const canceled = msg.includes("canceled") || input.controller.signal.aborted;
+      yield* finalizeRunInConvex({
+        convex,
+        threadId: input.threadId,
+        runId: input.runId,
+        messageId: input.assistantMessageId,
+        status: canceled ? "canceled" : "error",
+        text: canceled ? "Canceled." : "DSE recap failed.",
+      }).pipe(Effect.catchAll(() => Effect.void));
+
+      yield* t.event("run.finished", {
+        threadId: input.threadId,
+        runId: input.runId,
+        status: canceled ? "canceled" : "error",
+      });
+      return;
+    }
+
+    // Mark assistant message finalized for client status consistency. We intentionally keep message text small
+    // because the recap is already visible via streamed text parts.
+    yield* finalizeRunInConvex({
+      convex,
+      threadId: input.threadId,
+      runId: input.runId,
+      messageId: input.assistantMessageId,
+      status: "final",
+      text: "",
+    }).pipe(Effect.catchAll(() => Effect.void));
+
+    yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status: "final" });
+  }).pipe(
+    Effect.provideService(RequestContextService, makeServerRequestContext(input.request)),
+    Effect.provideService(TelemetryService, requestTelemetry),
+    Effect.catchAll((err) => {
+      console.error(`[autopilot.dse_canary_recap] ${formatRequestIdLogToken(requestId)}`, err);
+      return Effect.void;
+    }),
+  );
+
+  return runtime.runPromise(effect).finally(() => {
+    activeRuns.delete(input.runId);
+  });
+};
 
 const runAutopilotStream = (input: {
   readonly env: WorkerEnv & { readonly AI: Ai };
@@ -815,6 +1265,95 @@ export const handleAutopilotRequest = async (
         runId,
         assistantMessageId,
         controller,
+      }),
+    );
+
+    return json(
+      { ok: true, threadId, runId, assistantMessageId },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  if (url.pathname === "/api/autopilot/dse/recap") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    const body = (await readJson(request)) as DseRecapBody | null;
+    const threadId = typeof body?.threadId === "string" ? body.threadId : "";
+    const strategyIdRaw = typeof body?.strategyId === "string" ? body.strategyId : "direct.v1";
+    const budgetProfileRaw = typeof body?.budgetProfile === "string" ? body.budgetProfile : "medium";
+    const question = typeof body?.question === "string" && body.question.trim().length > 0 ? body.question.trim() : "Recap this thread.";
+
+    const strategyId: DseStrategyId =
+      strategyIdRaw === "rlm_lite.v1" ? "rlm_lite.v1" : "direct.v1";
+    const budgetProfile: DseBudgetProfile =
+      budgetProfileRaw === "small" || budgetProfileRaw === "medium" || budgetProfileRaw === "long"
+        ? (budgetProfileRaw as DseBudgetProfile)
+        : "medium";
+
+    if (!threadId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    if (!env.AI) {
+      return json({ ok: false, error: "ai_unbound" }, { status: 500, headers: { "cache-control": "no-store" } });
+    }
+
+    const e2eModeHeader = request.headers.get("x-oa-e2e-mode");
+    const e2eMode: "stub" | "off" = e2eModeHeader === "stub" ? "stub" : "off";
+
+    const { runtime } = getWorkerRuntime(env);
+    const telemetryBase = runtime.runSync(
+      Effect.gen(function* () {
+        return yield* TelemetryService;
+      }),
+    );
+    const requestTelemetry = telemetryBase.withFields({
+      requestId,
+      method: request.method,
+      pathname: url.pathname,
+    });
+
+    const exit = await runtime.runPromiseExit(
+      Effect.gen(function* () {
+        const convex = yield* ConvexService;
+        // Ensure auth is loaded (so ConvexService server client can setAuth token). Owner-only; no anon.
+        yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(Effect.catchAll(() => Effect.void));
+
+        const text = `/dse recap strategy=${strategyId} budget=${budgetProfile}`;
+        return yield* convex.mutation(api.autopilot.messages.createRun, { threadId, text });
+      }).pipe(
+        Effect.provideService(RequestContextService, makeServerRequestContext(request)),
+        Effect.provideService(TelemetryService, requestTelemetry),
+      ),
+    );
+
+    if (exit._tag === "Failure") {
+      console.error(`[autopilot.dse_recap] ${formatRequestIdLogToken(requestId)} create_run_failed`, exit.cause);
+      return json({ ok: false, error: "create_run_failed" }, { status: 500, headers: { "cache-control": "no-store" } });
+    }
+
+    const value = exit.value as CreateRunResult;
+    const runId = String(value.runId ?? "");
+    const userMessageId = String((value as any).userMessageId ?? "");
+    const assistantMessageId = String(value.assistantMessageId ?? "");
+
+    const controller = new AbortController();
+    activeRuns.set(runId, { controller, startedAtMs: Date.now() });
+
+    const envWithAi = env as WorkerEnv & { readonly AI: Ai };
+    ctx.waitUntil(
+      runDseCanaryRecap({
+        env: envWithAi,
+        request,
+        threadId,
+        runId,
+        userMessageId,
+        assistantMessageId,
+        controller,
+        strategyId,
+        budgetProfile,
+        question,
+        e2eMode,
       }),
     );
 

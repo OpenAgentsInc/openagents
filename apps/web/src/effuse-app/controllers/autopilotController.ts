@@ -74,6 +74,10 @@ export const mountAutopilotController = (input: {
 
   let isExportingBlueprint = false
   let isResettingAgent = false
+  let dseStrategyId: "direct.v1" | "rlm_lite.v1" = "direct.v1"
+  let dseBudgetProfile: "small" | "medium" | "long" = "medium"
+  let isRunningDseRecap = false
+  let dseErrorText: string | null = null
   let blueprint: unknown | null = null
   // When switching from Raw -> Form without saving, we need to preserve unknown keys
   // from the raw draft. Store a parsed base blueprint here and apply form edits on top.
@@ -356,8 +360,12 @@ export const mountAutopilotController = (input: {
     const controlsData = {
       isExportingBlueprint,
       isResettingAgent,
+      dseStrategyId,
+      dseBudgetProfile,
+      isRunningDseRecap,
+      dseErrorText,
     }
-    const controlsKey = `${isExportingBlueprint ? 1 : 0}:${isResettingAgent ? 1 : 0}`
+    const controlsKey = `${isExportingBlueprint ? 1 : 0}:${isResettingAgent ? 1 : 0}:${dseStrategyId}:${dseBudgetProfile}:${isRunningDseRecap ? 1 : 0}:${dseErrorText ?? ""}`
 
     const renderInput: AutopilotRouteRenderInput = {
       chatData: autopilotChatData,
@@ -1135,6 +1143,128 @@ export const mountAutopilotController = (input: {
     })
   )
 
+  input.ez.set("autopilot.controls.dse.strategy", ({ params }) =>
+    Effect.sync(() => {
+      const next = String((params as any).strategyId ?? "")
+      if (next === "direct.v1" || next === "rlm_lite.v1") {
+        dseStrategyId = next
+        dseErrorText = null
+        scheduleRender()
+      }
+    }),
+  )
+
+  input.ez.set("autopilot.controls.dse.budget", ({ params }) =>
+    Effect.sync(() => {
+      const next = String((params as any).budgetProfile ?? "")
+      if (next === "small" || next === "medium" || next === "long") {
+        dseBudgetProfile = next
+        dseErrorText = null
+        scheduleRender()
+      }
+    }),
+  )
+
+  input.ez.set("autopilot.controls.dse.recap", () =>
+    Effect.gen(function* () {
+      if (isRunningDseRecap) return
+
+      // Don't overlap with an in-flight chat run. It makes debugging harder and can interleave cards.
+      const chatBusy = chatSnapshot.status === "submitted" || chatSnapshot.status === "streaming"
+      if (chatBusy) {
+        yield* Effect.sync(() => {
+          dseErrorText = "Wait for the current run to finish (or Stop it) before running the canary recap."
+          scheduleRender()
+        })
+        return
+      }
+
+      isRunningDseRecap = true
+      dseErrorText = null
+      scheduleRender()
+
+      try {
+        // Ensure we have a thread id.
+        let effectiveChatId = chatId
+        if (!effectiveChatId) {
+          if (!session.userId) {
+            yield* Effect.sync(() => setAuth({ step: "email", errorText: null }))
+            return
+          }
+
+          const ensured = yield* Effect.tryPromise({
+            try: () => input.runtime.runPromise(input.chat.getOwnedThreadId()),
+            catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+          }).pipe(
+            Effect.tapError((err) =>
+              input.telemetry
+                .withNamespace("chat")
+                .log("error", "ensureOwnedThread.failed", { message: err.message })
+                .pipe(Effect.catchAll(() => Effect.void)),
+            ),
+            Effect.catchAll((err) =>
+              Effect.sync(() => {
+                dseErrorText = err instanceof Error && err.message ? err.message : "Failed to initialize chat."
+                scheduleRender()
+                return ""
+              }),
+            ),
+          )
+
+          yield* Effect.sync(() => {
+            if (ensured && ensured.length > 0) {
+              atoms.set(OwnedThreadIdAtom as any, ensured)
+              ownedThreadId = ensured
+              chatId = ensured
+              chatSnapshot = atoms.get(ChatSnapshotAtom(ensured))
+              chatInitErrorText = null
+              scheduleRender()
+            }
+          })
+
+          effectiveChatId = ensured
+          if (!effectiveChatId) return
+        }
+
+        const response = yield* Effect.tryPromise({
+          try: () =>
+            fetch("/api/autopilot/dse/recap", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                // In production E2E runs, we want deterministic behavior; the server only honors
+                // this for E2E-auth sessions (oa-e2e cookie).
+                "x-oa-e2e-mode": "stub",
+              },
+              credentials: "include",
+              cache: "no-store",
+              body: JSON.stringify({
+                threadId: effectiveChatId,
+                strategyId: dseStrategyId,
+                budgetProfile: dseBudgetProfile,
+              }),
+            }),
+          catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+        })
+
+        if (!response.ok) {
+          const body = yield* Effect.tryPromise({ try: () => response.text(), catch: () => "" }).pipe(
+            Effect.catchAll(() => Effect.succeed("")),
+          )
+          const msg = body.trim() ? body.trim() : `HTTP ${response.status}`
+          yield* Effect.sync(() => {
+            dseErrorText = msg
+            scheduleRender()
+          })
+          return
+        }
+      } finally {
+        isRunningDseRecap = false
+        scheduleRender()
+      }
+    }),
+  )
+
   // Start background work + initial render/hydration.
   Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
   void fetchBlueprint()
@@ -1177,6 +1307,9 @@ export const mountAutopilotController = (input: {
       input.ez.delete("autopilot.controls.exportBlueprint")
       input.ez.delete("autopilot.controls.clearMessages")
       input.ez.delete("autopilot.controls.resetAgent")
+      input.ez.delete("autopilot.controls.dse.strategy")
+      input.ez.delete("autopilot.controls.dse.budget")
+      input.ez.delete("autopilot.controls.dse.recap")
 
       cleanupMarketingDotsGridBackground(input.container)
     },

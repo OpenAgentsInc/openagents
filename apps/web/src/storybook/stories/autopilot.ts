@@ -216,6 +216,10 @@ const blueprintModel = (overrides?: Partial<AutopilotBlueprintPanelModel>): Auto
 const controlsModel = (overrides?: Partial<AutopilotControlsModel>): AutopilotControlsModel => ({
   isExportingBlueprint: false,
   isResettingAgent: false,
+  dseStrategyId: "direct.v1",
+  dseBudgetProfile: "medium",
+  isRunningDseRecap: false,
+  dseErrorText: null,
   ...overrides,
 })
 

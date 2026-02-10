@@ -1,7 +1,7 @@
 # DSE / dse: DSPy, but Effect TS (Full Spec)
 
 - **Status:** Draft (intended design; not fully implemented)
-- **Last updated:** 2026-02-06
+- **Last updated:** 2026-02-10
 - **Source of truth (eventual):** `packages/dse/`
 - **If this doc conflicts with code behavior:** code wins
 
@@ -21,6 +21,11 @@ The goal is not “Effect wrappers around an LLM client”. The goal is to make 
 
 For a plain-language "how to use what is implemented today" guide (operator workflow + Autopilot UX + RLM-lite),
 see: `docs/autopilot/DSE_PLAYBOOK.md`.
+
+Notable Phase D UX that exists today:
+
+- `/autopilot` includes a **DSE Debug** panel that can run a canary recap signature under `direct.v1` or `rlm_lite.v1`,
+  and surfaces receipt/trace links (documented in `docs/autopilot/DSE_PLAYBOOK.md` §5.1).
 
 ---
 
