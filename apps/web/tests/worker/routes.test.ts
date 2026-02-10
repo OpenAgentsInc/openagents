@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { WorkerEnv } from "../../src/effuse-host/env";
 
 declare module "cloudflare:test" {
-  interface ProvidedEnv extends WorkerEnv {}
+  interface ProvidedEnv extends WorkerEnv { }
 }
 
 const state = vi.hoisted(() => ({
@@ -115,7 +115,7 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     expect(response.headers.get("set-cookie") ?? "").toContain("prelaunch_bypass=1");
   });
 
-  it("GET / returns 200 when prelaunch is on and bypass cookie is present (homepage loads)", async () => {
+  it("GET / hides countdown when prelaunch is on and bypass cookie is present", async () => {
     state.authed = false;
     const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "1");
     const restoreKey = setEnvVar("PRELAUNCH_BYPASS_KEY", "bypass");
@@ -131,7 +131,8 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
     expect(response.status).toBe(200);
     const body = await response.text();
-    expect(body).toContain("Introducing Autopilot");
+    expect(body).toContain("Start for free");
+    expect(body).not.toContain("data-prelaunch-countdown");
   });
 
   it("GET /autopilot with valid ?key= bypass skips prelaunch but still requires auth", async () => {
