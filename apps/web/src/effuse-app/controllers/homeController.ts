@@ -7,6 +7,8 @@ import {
 } from "@openagentsinc/effuse-panes"
 
 import { AuthService, clearAuthClientCache } from "../../effect/auth"
+import type { ChatSnapshot } from "../../effect/chat"
+import { ChatSnapshotAtom } from "../../effect/atoms/chat"
 import { SessionAtom } from "../../effect/atoms/session"
 import { formatCountdown } from "../../effuse-pages/home"
 import {
@@ -15,6 +17,7 @@ import {
 } from "../../effuse-pages/marketingShell"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
+import type { ChatClient } from "../../effect/chat"
 import type { AppRuntime } from "../../effect/runtime"
 
 export type HomeController = {
@@ -26,11 +29,10 @@ type HomeChatDeps = {
   readonly atoms: AtomRegistry
   readonly navigate: (href: string) => void
   readonly signOut: () => void | Promise<void>
+  readonly chat: ChatClient
 }
 
 const CHAT_PANE_ID = "home-chat"
-const IDENTITY_PANE_ID = "home-identity"
-const IDENTITY_PANE_RECT = { x: 16, y: 16, width: 260, height: 52 }
 
 const normalizeEmail = (raw: string): string => raw.trim().toLowerCase()
 
@@ -98,9 +100,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       "[data-oa-home-chat-overlay]:focus, [data-oa-home-chat-overlay] [data-oa-pane-system]:focus { outline: none !important; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane-title] { cursor: grab; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane-title]:active { cursor: grabbing; }\n" +
-      "[data-oa-home-chat-overlay] [data-oa-pane-system][data-oa-pane-dragging=\"1\"] [data-oa-pane-title] { cursor: grabbing; }\n" +
-      "[data-oa-home-chat-overlay] [data-pane-id=\"home-identity\"] [data-oa-pane-title] { display: none; }\n" +
-      "[data-oa-home-chat-overlay] [data-pane-id=\"home-identity\"] [data-oa-pane-content] { padding: 0; }"
+      "[data-oa-home-chat-overlay] [data-oa-pane-system][data-oa-pane-dragging=\"1\"] [data-oa-pane-title] { cursor: grabbing; }"
     overlay.appendChild(paneStyle)
     const paneRoot = document.createElement("div")
     paneRoot.style.cssText = "width:100%;height:100%;"
@@ -131,14 +131,41 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     const session = deps?.atoms?.get(SessionAtom as any) ?? { userId: null, user: null }
     const isAuthed = session.user != null
 
-    if (isAuthed && deps) {
-      paneSystem.store.addPane({
-        id: IDENTITY_PANE_ID,
-        kind: "generic",
-        title: "",
-        rect: IDENTITY_PANE_RECT,
-        dismissable: false,
-      })
+    const renderIdentityCard = (userEmail: string) => {
+      let cardEl = overlay.querySelector("[data-oa-home-identity-card]")
+      if (!cardEl) {
+        cardEl = document.createElement("div")
+        cardEl.setAttribute("data-oa-home-identity-card", "1")
+        cardEl.style.cssText = "position:fixed;top:12px;left:12px;z-index:10000;pointer-events:auto;"
+        overlay.appendChild(cardEl)
+      }
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const dom = yield* DomServiceTag
+          yield* dom.render(
+            cardEl as Element,
+            html`
+              <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-black/80 px-3 py-2 text-xs font-mono text-white/90 shadow-lg backdrop-blur-sm">
+                <span class="truncate max-w-[180px]" title="${userEmail}">${userEmail}</span>
+                <button
+                  type="button"
+                  data-oa-home-identity-logout="1"
+                  class="shrink-0 rounded px-1.5 py-0.5 text-white/60 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                >
+                  Log out
+                </button>
+              </div>
+            `,
+          )
+        }).pipe(Effect.provide(EffuseLive)),
+      ).then(() => {
+        const btn = (cardEl as Element).querySelector("[data-oa-home-identity-logout]")
+        if (btn) {
+          btn.addEventListener("click", () => {
+            void Promise.resolve(deps?.signOut?.()).then(() => closeOverlay())
+          })
+        }
+      }, () => {})
     }
 
     paneSystem.store.addPane({
@@ -161,52 +188,70 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let step: Step = isAuthed ? "authed" : "email"
     let email = ""
     let isBusy = false
-    let identityPaneAdded = isAuthed
+    let homeThreadId: string | null = null
+    let homeSnapshot: ChatSnapshot = { messages: [], status: "ready", errorText: null }
+    let unsubHomeChat: (() => void) | null = null
+
+    if (isAuthed && deps?.atoms) {
+      const currentSession = deps.atoms.get(SessionAtom as any)
+      if (currentSession?.user?.email) renderIdentityCard(currentSession.user.email)
+      if (deps.chat) {
+        deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
+          (id) => {
+            if (id && id.length > 0) {
+              homeThreadId = id
+              deps.atoms.get(ChatSnapshotAtom(id))
+              unsubHomeChat = deps.atoms.subscribe(
+                ChatSnapshotAtom(id),
+                (snap) => {
+                  homeSnapshot = snap
+                  doRender()
+                },
+                { immediate: true },
+              )
+              doRender()
+            }
+          },
+          () => {},
+        )
+      }
+    }
 
     const chatInputClass =
       "w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white/90 text-sm font-mono placeholder-white/40 focus:outline-none focus:border-white/20"
 
-    const renderIdentityPaneContent = (userEmail: string) => {
-      const identitySlot = paneRoot.querySelector(`[data-pane-id="${IDENTITY_PANE_ID}"] [data-oa-pane-content]`)
-      if (!(identitySlot instanceof Element)) return
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const dom = yield* DomServiceTag
-          yield* dom.render(
-            identitySlot,
-            html`
-              <div class="flex h-full items-center justify-between gap-2 px-3 text-xs font-mono text-white/90">
-                <span class="truncate" title="${userEmail}">${userEmail}</span>
-                <button
-                  type="button"
-                  data-oa-home-identity-logout="1"
-                  class="shrink-0 rounded px-2 py-1 text-white/60 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
-                >
-                  Log out
-                </button>
-              </div>
-            `,
-          )
-        }).pipe(Effect.provide(EffuseLive)),
-      ).then(() => {
-        const btn = identitySlot.querySelector("[data-oa-home-identity-logout]")
-        if (btn) {
-          btn.addEventListener("click", () => {
-            void Promise.resolve(deps?.signOut?.()).then(() => closeOverlay())
-          })
-        }
-      }, () => {})
-    }
-
-    if (identityPaneAdded && deps?.atoms) {
-      const currentSession = deps.atoms.get(SessionAtom as any)
-      if (currentSession?.user?.email) renderIdentityPaneContent(currentSession.user.email)
+    const textFromParts = (parts: ReadonlyArray<{ type?: string; text?: string }>): string => {
+      if (!parts?.length) return ""
+      return parts
+        .filter((p) => p?.type === "text" && typeof (p as any).text === "string")
+        .map((p) => (p as any).text)
+        .join("")
     }
 
     const doRender = () => {
+      const displayMessages: Array<{ role: "user" | "assistant"; text: string }> =
+        step === "authed" && homeSnapshot.messages.length > 0
+          ? homeSnapshot.messages.map((m) => ({
+              role: m.role as "user" | "assistant",
+              text: textFromParts(m.parts ?? []) || (m.role === "assistant" ? "(no text)" : ""),
+            }))
+          : step === "authed"
+            ? [{ role: "assistant" as const, text: "Autopilot online. Awaiting instructions." }]
+            : messages
+
       const formHtml =
         step === "authed"
-          ? html``
+          ? html`
+              <form data-oa-home-chat-form="1" data-oa-home-chat-step="authed" class="p-2 border-t border-white/10">
+                <input
+                  type="text"
+                  name="message"
+                  placeholder="Type a message..."
+                  class="${chatInputClass}"
+                  data-oa-home-chat-input="1"
+                />
+              </form>
+            `
           : step === "email"
             ? html`
                 <form data-oa-home-chat-form="1" data-oa-home-chat-step="email" class="p-2 border-t border-white/10">
@@ -237,7 +282,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
       const messagesHtml = html`
         <div class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
-          ${messages.map(
+          ${displayMessages.map(
             (m) =>
               html`<div
                 class="text-sm font-mono ${m.role === "user" ? "text-white/80 text-right" : "text-white/90"}"
@@ -263,10 +308,48 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           if (!(form instanceof HTMLFormElement)) return
           form.addEventListener("submit", (e: Event) => {
             e.preventDefault()
-            if (isBusy) return
             const input = form.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
             const raw = input?.value?.trim() ?? ""
 
+            if (step === "authed") {
+              if (homeSnapshot.status === "submitted" || homeSnapshot.status === "streaming") return
+              if (!raw || !deps?.chat) return
+              const text = raw
+              const ensureThenSend = () => {
+                let tid = homeThreadId
+                if (tid) {
+                  if (input) input.value = ""
+                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => {})
+                  doRender()
+                  return
+                }
+                deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
+                  (id) => {
+                    if (id && id.length > 0) {
+                      homeThreadId = id
+                      deps.atoms.get(ChatSnapshotAtom(id))
+                      if (unsubHomeChat) unsubHomeChat()
+                      unsubHomeChat = deps.atoms.subscribe(
+                        ChatSnapshotAtom(id),
+                        (snap) => {
+                          homeSnapshot = snap
+                          doRender()
+                        },
+                        { immediate: true },
+                      )
+                      if (input) input.value = ""
+                      deps.runtime.runPromise(deps.chat.send(id, text)).catch(() => {})
+                    }
+                    doRender()
+                  },
+                  () => doRender(),
+                )
+              }
+              ensureThenSend()
+              return
+            }
+
+            if (isBusy) return
             if (step === "email") {
               messages.push({ role: "user", text: raw || "(empty)" })
               if (!raw) {
@@ -372,19 +455,39 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                   })
                 }
                 messages.push({ role: "assistant", text: "You're signed in." })
-                if (deps && !identityPaneAdded) {
-                  identityPaneAdded = true
-                  paneSystem.store.addPane({
-                    id: IDENTITY_PANE_ID,
-                    kind: "generic",
-                    title: "",
-                    rect: IDENTITY_PANE_RECT,
-                    dismissable: false,
-                  })
-                  paneSystem.store.bringToFront(CHAT_PANE_ID)
-                  paneSystem.render()
+                if (deps) {
                   const newSession = deps.atoms.get(SessionAtom as any)
-                  if (newSession?.user?.email) renderIdentityPaneContent(newSession.user.email)
+                  if (newSession?.user?.email) renderIdentityCard(newSession.user.email)
+                  if (deps.chat) {
+                    deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
+                      (id) => {
+                        if (id && id.length > 0) {
+                          homeThreadId = id
+                          deps.atoms.get(ChatSnapshotAtom(id))
+                          if (unsubHomeChat) unsubHomeChat()
+                          unsubHomeChat = deps.atoms.subscribe(
+                            ChatSnapshotAtom(id),
+                            (snap) => {
+                              homeSnapshot = snap
+                              doRender()
+                            },
+                            { immediate: true },
+                          )
+                        }
+                        messages.length = 0
+                        messages.push({ role: "assistant", text: "Autopilot online. Awaiting instructions." })
+                        step = "authed"
+                        doRender()
+                      },
+                      () => {
+                        messages.length = 0
+                        messages.push({ role: "assistant", text: "Autopilot online. Awaiting instructions." })
+                        step = "authed"
+                        doRender()
+                      },
+                    )
+                    return
+                  }
                 }
                 messages.length = 0
                 messages.push({ role: "assistant", text: "Autopilot online. Awaiting instructions." })
@@ -397,10 +500,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 doRender()
               })
           })
-          if (step !== "authed") {
-            const inputEl = paneContentSlot.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
-            if (inputEl) requestAnimationFrame(() => inputEl.focus())
-          }
+          const inputEl = paneContentSlot.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
+          if (inputEl) requestAnimationFrame(() => inputEl.focus())
         },
         () => {},
       )
@@ -419,17 +520,19 @@ export const mountHomeController = (input: {
   readonly atoms?: AtomRegistry
   readonly navigate?: (href: string) => void
   readonly signOut?: () => void | Promise<void>
+  readonly chat?: ChatClient
 }): HomeController => {
   Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
 
   const stopCountdown = startPrelaunchCountdownTicker(input.container)
   const deps: HomeChatDeps | undefined =
-    input.runtime && input.atoms && input.navigate && input.signOut
+    input.runtime && input.atoms && input.navigate && input.signOut && input.chat
       ? {
           runtime: input.runtime,
           atoms: input.atoms,
           navigate: input.navigate,
           signOut: input.signOut,
+          chat: input.chat,
         }
       : undefined
   const stopOpenChatPane = openChatPaneOnHome(input.container, deps)

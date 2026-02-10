@@ -19,12 +19,10 @@ import { SessionAtom, type Session } from "../effect/atoms/session"
 import { makeAppRuntime } from "../effect/runtime"
 import { TelemetryService } from "../effect/telemetry"
 import { hydrateAtomRegistryFromDocument, makeAtomRegistry } from "./atomRegistry"
-import { mountAutopilotController } from "./controllers/autopilotController"
 import { mountModulesController, mountSignaturesController, mountToolsController } from "./controllers/contractsController"
 import { mountDseVizController } from "./controllers/dseVizController"
 import { mountDeckController } from "./controllers/deckController"
 import { mountHomeController } from "./controllers/homeController"
-import { mountLoginController } from "./controllers/loginController"
 import { identityPillTemplate } from "../effuse-pages/identityPill"
 import { loadPostHog } from "./posthog"
 import { appRoutes } from "./routes"
@@ -198,14 +196,11 @@ export const bootEffuseApp = (options?: BootOptions): void => {
         }
 
         const startForPath = (pathname: string) => {
+          // /autopilot and /login are deprecated and redirect to /; show home until redirect completes.
           const desired =
-            pathname === "/autopilot"
-              ? "autopilot"
-              : pathname === "/"
-                ? "home"
-                : pathname === "/login"
-                  ? "login"
-                  : pathname === "/deck"
+            pathname === "/" || pathname === "/autopilot" || pathname === "/login"
+              ? "home"
+              : pathname === "/deck"
                     ? "deck"
                   : pathname.startsWith("/dse")
                     ? `dse:${pathname}`
@@ -232,38 +227,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                   atoms,
                   navigate,
                   signOut: () => void signOut(),
-                }).cleanup,
-              }
-              return
-            }
-            case "autopilot": {
-              active = {
-                kind: "autopilot",
-                cleanup: mountAutopilotController({
-                  container: outlet,
-                  ez: ezRegistry,
-                  runtime,
-                  atoms,
-                  telemetry,
-                  store,
-                  contracts,
                   chat,
-                  router,
-                  navigate,
-                }).cleanup,
-              }
-              return
-            }
-            case "login": {
-              active = {
-                kind: "login",
-                cleanup: mountLoginController({
-                  container: outlet,
-                  ez: ezRegistry,
-                  runtime,
-                  atoms,
-                  telemetry,
-                  navigate,
                 }).cleanup,
               }
               return
