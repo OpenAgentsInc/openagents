@@ -608,6 +608,15 @@ type DseParamsV1 = {
     readonly maxTokens?: number
   }
 
+  // Role-based model overrides (artifact-pinnable). When present, these override `model` for that role.
+  // This is how we keep RLM controller vs sub-LM calls explicit and tunable.
+  readonly modelRoles?: {
+    readonly main?: DseParamsV1["model"]
+    readonly sub?: DseParamsV1["model"]
+    readonly repair?: DseParamsV1["model"]
+    readonly judge?: DseParamsV1["model"]
+  }
+
   // Decode/repair knobs
   readonly decode?: {
     readonly mode: "strict_json" | "jsonish"
@@ -621,6 +630,30 @@ type DseParamsV1 = {
     readonly allowedToolNames?: ReadonlyArray<string>
     readonly maxToolCalls?: number
     readonly timeoutMsByToolName?: Record<string, number>
+  }
+
+  // RLM-lite strategy knobs (artifact-pinnable).
+  // These do not change the signature IO contract; they change how the RLM controller operates.
+  readonly rlmLite?: {
+    readonly controllerInstructions?: string
+    readonly extractionSystem?: string
+    readonly chunkDefaults?: {
+      readonly chunkChars: number
+      readonly overlapChars?: number
+      readonly maxChunks?: number
+    }
+    readonly subRole?: "sub" | "main"
+  }
+
+  // Execution budgets (artifact-pinnable). These are enforced at runtime and recorded in receipts.
+  // RLM-lite fails closed unless `maxRlmIterations` and `maxSubLmCalls` are explicitly pinned.
+  readonly budgets?: {
+    readonly maxTimeMs?: number
+    readonly maxLmCalls?: number
+    readonly maxToolCalls?: number
+    readonly maxRlmIterations?: number
+    readonly maxSubLmCalls?: number
+    readonly maxOutputChars?: number
   }
 }
 ```
@@ -638,11 +671,22 @@ Optimizers need a serializable search space definition, e.g.:
 - instruction variants list
 - few-shot pool reference (ids + hashes)
 - which knobs are in scope (model/decode/tools)
+- RLM-lite knob variants (controller/chunking/roles/budget profiles)
 
 That search space SHOULD live in the compile job spec (`CompileJobSpecV1.searchSpace`) so:
 
 - compilation is reproducible from artifacts
 - we can compute a stable `compileJobHash`
+
+Concrete (implemented) search space fields live in `packages/dse/src/compile/job.ts` and include:
+
+- `strategyVariants` (e.g. `direct.v1` vs `rlm_lite.v1` vs distilled tactics)
+- `instructionVariants`
+- `fewShot` (pool + kMax)
+- `rlmControllerInstructionVariants`
+- `rlmChunkingPolicyVariants`
+- `rlmSubRoleVariants` (`sub` vs `main`)
+- `budgetProfiles`
 
 ### 6.2 Param tree is explicit
 

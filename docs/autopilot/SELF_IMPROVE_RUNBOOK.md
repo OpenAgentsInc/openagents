@@ -57,6 +57,9 @@ This is the operational loop DSE is designed for:
    - Convert good runs and failures into `dseExamples` rows.
    - Prefer trace/receipt export paths when possible (they preserve the real input/output contracts).
    - Keep a real holdout split. Don’t tune on holdout.
+   - Headless scale-up:
+     - `apps/web/scripts/dse-trace-mine.ts` mines many receipts and exports/tag examples into Convex.
+     - Reference: `docs/autopilot/rlm-trace-mining.md`.
 
 3. **Evaluate**
    - Compare current default (`direct.v1`) against `rlm_lite.v1` (or a candidate artifact) on the same dataset slice.
@@ -80,6 +83,9 @@ This is the operational loop DSE is designed for:
 
 7. **Lock it in**
    - Add/adjust tests and fixtures so the improvement cannot silently regress.
+
+For the fully programmatic overnight loop (compile -> canary -> promote/rollback) with all logs stored in Convex,
+use `apps/web/scripts/dse-overnight.ts` and follow `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`.
 
 ## 3) How I’ll Apply This To RLM-lite Specifically
 
@@ -147,4 +153,3 @@ This is the checklist I will follow when asked to improve Autopilot behavior via
 - Prompt injection / poisoning:
   - Fix: provenance-first observations and never trusting untrusted text without verification.
   - Reference: `docs/autopilot/context-failures.md`
-

@@ -449,6 +449,10 @@ It is ordered by phase (A..H) so it can be read as a build log.
   - `knobs_grid.v1`: bounded staged grid over the knob search spaces
   - `knobs_grid_refine.v1`: second-pass refinement using per-example failures (decode/evidence/budget) to propose param patches
   - implementation: `packages/dse/src/compile/compile.ts`
+- Wired Phase G knobs into Autopilot’s production compile jobs (`2941dfa0c`):
+  - recap/summarization compile jobs now include `rlmControllerInstructionVariants`, `rlmChunkingPolicyVariants`, `rlmSubRoleVariants`, and `budgetProfiles`
+  - optimizer set to `knobs_grid_refine.v1` so compiled artifacts pin the selected knobs
+  - implementation: `apps/web/src/effuse-host/dseJobs.ts`, verified via `apps/web/tests/worker/dse-compile-endpoint.test.ts`
 - Added tests proving Phase G produces measurable improvements via compiled artifacts:
   - compile chooses `distilled.search_line_extract.v1` over `direct.v1` on long-context QA
   - refine loop patches RLM controller instructions to recover from decode failures
