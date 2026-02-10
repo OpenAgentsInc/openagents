@@ -200,6 +200,13 @@ export type PaneSystemTheme = {
 export const DEFAULT_PANE_SYSTEM_THEME: PaneSystemTheme;
 
 export type PaneSystemConfig = {
+  enableDotsBackground: boolean;
+  enableCanvasPan: boolean;
+  enablePaneDrag: boolean;
+  enablePaneResize: boolean;
+  enableKeyboardShortcuts: boolean;
+  enableHotbar: boolean;
+
   paneTitleHeight: number;
   paneResizeHandle: number;
   gridDotDistance: number;
@@ -243,4 +250,3 @@ Notes:
 - `mountPaneSystemDom()` injects a `<style>` element into `root`.
 - The returned `render()` method is explicit; calling it is your responsibility after store changes.
 - `destroy()` removes event listeners and DOM nodes created by the adapter.
-

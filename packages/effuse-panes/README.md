@@ -23,6 +23,7 @@ Useful deep dives:
 - `docs/API_REFERENCE.md`
 - `docs/PARITY_CHECKLIST.md`
 - `docs/INTEGRATION_EFFUSE.md`
+- `docs/MOBILE.md`
 - `docs/THEMING_AND_STYLING.md`
 - `docs/TROUBLESHOOTING.md`
 

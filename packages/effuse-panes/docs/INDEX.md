@@ -48,9 +48,11 @@ The Effuse/DOM port exists to enable:
    - What matches WGPUI today, and what is still missing for 100% parity.
 6. `THEMING_AND_STYLING.md`:
    - How the DOM adapter injects CSS and how to override theme tokens.
-7. `TESTING.md`:
+7. `MOBILE.md`:
+   - Brainstorming for how the pane system should degrade or change on phones/tablets.
+8. `TESTING.md`:
    - How to run and extend unit tests for the core logic.
-8. `TROUBLESHOOTING.md`:
+9. `TROUBLESHOOTING.md`:
    - Pointer capture, focus, embedding gotchas.
 
 ## Quick Start (Minimal)
@@ -78,4 +80,3 @@ sys.render();
 From here, you can render your pane content into:
 
 `[data-pane-id="events"] [data-oa-pane-content]`
-

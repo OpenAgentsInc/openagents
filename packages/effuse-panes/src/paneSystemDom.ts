@@ -23,6 +23,22 @@ export const DEFAULT_PANE_SYSTEM_THEME: PaneSystemTheme = {
 };
 
 export type PaneSystemConfig = Readonly<{
+  /**
+   * If true, the root gets a dotted background grid (CSS radial-gradient) and
+   * canvas panning updates the background offset.
+   */
+  enableDotsBackground: boolean;
+  /** If true, dragging the empty background pans all panes (desktop HUD behavior). */
+  enableCanvasPan: boolean;
+  /** If true, panes can be dragged by their title bar. */
+  enablePaneDrag: boolean;
+  /** If true, panes can be resized from edges/corners. */
+  enablePaneResize: boolean;
+  /** If true, Escape + Cmd/Ctrl+0..9 shortcuts are attached to the root. */
+  enableKeyboardShortcuts: boolean;
+  /** If true, render the hotbar DOM and enable hotbar clicks/shortcuts. */
+  enableHotbar: boolean;
+
   paneTitleHeight: number;
   paneResizeHandle: number;
   gridDotDistance: number;
@@ -39,6 +55,12 @@ export type PaneSystemConfig = Readonly<{
 }>;
 
 export const DEFAULT_PANE_SYSTEM_CONFIG: PaneSystemConfig = {
+  enableDotsBackground: true,
+  enableCanvasPan: true,
+  enablePaneDrag: true,
+  enablePaneResize: true,
+  enableKeyboardShortcuts: true,
+  enableHotbar: true,
   paneTitleHeight: 28,
   paneResizeHandle: 10,
   gridDotDistance: 32,
@@ -143,7 +165,7 @@ const cssText = (cfg: PaneSystemConfig): string => {
     position:absolute;
     left:50%;
     transform:translateX(-50%);
-    bottom:${cfg.hotbarFloatGap}px;
+    bottom: calc(${cfg.hotbarFloatGap}px + env(safe-area-inset-bottom, 0px));
     height:${cfg.hotbarHeight}px;
     display:flex;
     align-items:center;
@@ -229,10 +251,11 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
   let paneResize: PaneResizeState | undefined;
   let canvasPan: CanvasPanState | undefined;
   let backgroundOffset: Point = { x: 0, y: 0 };
+  let pendingRaf: number | undefined;
 
   // DOM
   root.setAttribute("data-oa-pane-system", "1");
-  root.setAttribute("data-oa-dots", "1");
+  if (cfg.enableDotsBackground) root.setAttribute("data-oa-dots", "1");
 
   const styleEl = document.createElement("style");
   styleEl.setAttribute("data-oa-pane-style", "1");
@@ -245,11 +268,11 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
 
   const hotbarEl = document.createElement("div");
   hotbarEl.setAttribute("data-oa-hotbar", "1");
-  root.appendChild(hotbarEl);
+  if (cfg.enableHotbar) root.appendChild(hotbarEl);
 
   const setHotbarItems = (items: ReadonlyArray<HotbarSlot>): void => {
     hotbar.setItems(items);
-    render();
+    renderNow();
   };
 
   if (cfg.hotbarItems.length) setHotbarItems(cfg.hotbarItems);
@@ -297,7 +320,21 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     if (titleText instanceof HTMLElement) titleText.textContent = pane.title;
   };
 
-  const render = (): void => {
+  function cancelPendingRender(): void {
+    if (pendingRaf === undefined) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(pendingRaf);
+    } catch {
+      // ignore
+    }
+    pendingRaf = undefined;
+  }
+
+  function renderNow(): void {
+    // If we have a scheduled render and a caller wants sync output, cancel it.
+    cancelPendingRender();
+
     // Ensure background offset matches dot grid distance.
     const ox = ((backgroundOffset.x % cfg.gridDotDistance) + cfg.gridDotDistance) % cfg.gridDotDistance;
     const oy = ((backgroundOffset.y % cfg.gridDotDistance) + cfg.gridDotDistance) % cfg.gridDotDistance;
@@ -332,27 +369,46 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     // Replace layer children if changed.
     layer.replaceChildren(...nextChildren);
 
-    // Hotbar
-    const hotbarItems = hotbar.items();
-    const hotbarButtons: HTMLButtonElement[] = [];
-    for (const item of hotbarItems) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.setAttribute("data-oa-hotbar-item", "1");
-      btn.setAttribute("data-oa-hotbar-slot", String(item.slot));
-      btn.setAttribute("data-active", item.active ? "1" : "0");
-      btn.setAttribute("data-ghost", item.ghost ? "1" : "0");
-      btn.setAttribute("data-flash", hotbar.isSlotFlashing(item.slot) ? "1" : "0");
-      btn.title = item.title;
-      btn.textContent = item.icon || "";
-      hotbarButtons.push(btn);
+    if (cfg.enableHotbar) {
+      // Hotbar
+      const hotbarItems = hotbar.items();
+      const hotbarButtons: HTMLButtonElement[] = [];
+      for (const item of hotbarItems) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.setAttribute("data-oa-hotbar-item", "1");
+        btn.setAttribute("data-oa-hotbar-slot", String(item.slot));
+        btn.setAttribute("data-active", item.active ? "1" : "0");
+        btn.setAttribute("data-ghost", item.ghost ? "1" : "0");
+        btn.setAttribute("data-flash", hotbar.isSlotFlashing(item.slot) ? "1" : "0");
+        btn.title = item.title;
+        btn.textContent = item.icon || "";
+        hotbarButtons.push(btn);
+      }
+      hotbarEl.replaceChildren(...hotbarButtons);
     }
-    hotbarEl.replaceChildren(...hotbarButtons);
+  }
+
+  const scheduleRender = (): void => {
+    if (pendingRaf !== undefined) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (typeof requestAnimationFrame !== "function") {
+        renderNow();
+        return;
+      }
+      pendingRaf = requestAnimationFrame(() => {
+        pendingRaf = undefined;
+        renderNow();
+      });
+    } catch {
+      renderNow();
+    }
   };
 
   const closePane = (id: string): void => {
     store.removePane(id, true);
-    render();
+    renderNow();
   };
 
   const closeActivePane = (): void => {
@@ -378,7 +434,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     }
 
     // Hotbar click never starts pan/drag/resize.
-    if (target instanceof Element && target.closest("[data-oa-hotbar]")) {
+    if (cfg.enableHotbar && target instanceof Element && target.closest("[data-oa-hotbar]")) {
       return;
     }
 
@@ -399,6 +455,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
 
     // Start canvas pan when clicking background (not pane).
     if (!overPane) {
+      if (!cfg.enableCanvasPan) return;
       canvasPan = { last: point };
       root.setPointerCapture(ev.pointerId);
       ev.preventDefault();
@@ -407,23 +464,25 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
 
     // Bring pane to front.
     store.bringToFront(overPaneId);
-    render();
+    renderNow();
 
     const pane = store.pane(overPaneId);
     if (!pane) return;
     const paneBounds = boundsForPane(pane);
 
     // Resize wins if cursor is on an edge/corner.
-    const edge = resizer.edgeAt(paneBounds, point);
-    if (edge !== ResizeEdge.None) {
-      paneResize = { paneId: overPaneId, edge, origin: point, startRect: pane.rect };
-      root.setPointerCapture(ev.pointerId);
-      ev.preventDefault();
-      return;
+    if (cfg.enablePaneResize) {
+      const edge = resizer.edgeAt(paneBounds, point);
+      if (edge !== ResizeEdge.None) {
+        paneResize = { paneId: overPaneId, edge, origin: point, startRect: pane.rect };
+        root.setPointerCapture(ev.pointerId);
+        ev.preventDefault();
+        return;
+      }
     }
 
     // Drag only if clicking within title bar.
-    if (target instanceof Element) {
+    if (cfg.enablePaneDrag && target instanceof Element) {
       const title = target.closest("[data-oa-pane-title]");
       if (title instanceof Element) {
         paneDrag = { paneId: overPaneId, origin: point, startRect: pane.rect };
@@ -446,7 +505,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
         y: (backgroundOffset.y + dy) % cfg.gridDotDistance,
       };
       canvasPan = { last: point };
-      render();
+      scheduleRender();
       return;
     }
 
@@ -464,7 +523,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
         cfg.paneConstraints,
       );
       store.updateRect(paneResize.paneId, rect);
-      render();
+      scheduleRender();
       return;
     }
 
@@ -476,7 +535,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
         cfg.paneConstraints,
       );
       store.updateRect(paneDrag.paneId, rect);
-      render();
+      scheduleRender();
       return;
     }
   };
@@ -488,19 +547,19 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       const rect = store.pane(paneResize.paneId)?.rect;
       if (rect) store.setLastPosition(normalizePaneRect(rect, cfg.paneConstraints));
       paneResize = undefined;
-      render();
+      renderNow();
       return;
     }
     if (paneDrag) {
       const rect = store.pane(paneDrag.paneId)?.rect;
       if (rect) store.setLastPosition(normalizePaneRect(rect, cfg.paneConstraints));
       paneDrag = undefined;
-      render();
+      renderNow();
       return;
     }
     if (canvasPan) {
       canvasPan = undefined;
-      render();
+      renderNow();
       return;
     }
   };
@@ -514,12 +573,13 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     // Hotbar shortcuts: Cmd/Ctrl + (0-9)
     const meta = ev.metaKey || ev.ctrlKey;
     if (meta && ev.key.length === 1 && ev.key >= "0" && ev.key <= "9") {
+      if (!cfg.enableHotbar) return;
       const slot = Number(ev.key);
       hotbar.flashSlot(slot);
-      render();
+      renderNow();
       cfg.onHotbarSlotClick?.(slot);
       // Flash clears lazily; schedule a re-render near its expiry.
-      setTimeout(() => render(), 100);
+      setTimeout(() => renderNow(), 100);
       ev.preventDefault();
     }
   };
@@ -540,13 +600,14 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointermove", onPointerMove);
   root.addEventListener("pointerup", onPointerUp);
-  root.addEventListener("keydown", onKeyDown);
-  hotbarEl.addEventListener("click", onHotbarClick);
+  if (cfg.enableKeyboardShortcuts) root.addEventListener("keydown", onKeyDown);
+  if (cfg.enableHotbar) hotbarEl.addEventListener("click", onHotbarClick);
 
   // Ensure keyboard shortcuts work when root is clicked.
-  root.tabIndex = 0;
+  if (cfg.enableKeyboardShortcuts) root.tabIndex = 0;
 
   const destroy = (): void => {
+    cancelPendingRender();
     root.removeEventListener("pointerdown", onPointerDown);
     root.removeEventListener("pointermove", onPointerMove);
     root.removeEventListener("pointerup", onPointerUp);
@@ -557,7 +618,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     hotbarEl.remove();
   };
 
-  render();
+  renderNow();
 
-  return { store, hotbar, setHotbarItems, destroy, render };
+  return { store, hotbar, setHotbarItems, destroy, render: renderNow };
 };
