@@ -603,7 +603,9 @@ export const mountAutopilotController = (input: {
       clearAuthClientCache()
       atoms.set(SessionAtom as any, { userId: null, user: null })
       atoms.set(OwnedThreadIdAtom as any, null)
-      input.navigate("/")
+      // Full reload so Convex client and all in-memory state (including cached auth token) are dropped.
+      // Prevents the next user from seeing the previous user's chats.
+      window.location.replace("/")
     }
   }
 
