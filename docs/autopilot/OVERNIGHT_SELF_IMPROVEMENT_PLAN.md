@@ -272,3 +272,15 @@ Current endpoints and storage:
 - Tests:
   - `apps/web/tests/fixtures/dse-selecttool-dataset.test.ts` (fixture integrity + splits)
   - `apps/web/tests/worker/dse-examples-import-endpoint.test.ts` (endpoint shape + upsert calls)
+
+- 2026-02-10T09:00:40Z Phase 4: centralized compile job spec + made SelectTool compile non-trivial.
+- Centralized job spec definition (single source of truth):
+  - `apps/web/src/effuse-host/dseJobs.ts`
+  - shared by both compile (`apps/web/src/effuse-host/dseCompile.ts`) and gating (`apps/web/src/effuse-host/dseAdmin.ts`)
+- Made `@openagents/autopilot/blueprint/SelectTool.v1` compile non-trivial:
+  - instruction-variant search space (4 variants) under `instruction_grid.v1` (deterministic reward remains `exact_json_match`)
+- Tests / verification:
+  - `apps/web/tests/worker/dse-compile-endpoint.test.ts` asserts instruction variants + candidate count >= 2
+  - `apps/web/tests/worker/dse-admin-jobhash-gating.test.ts` asserts promote/canary gating uses the shared job hash
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
