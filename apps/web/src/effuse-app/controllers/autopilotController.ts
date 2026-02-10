@@ -189,7 +189,6 @@ export const mountAutopilotController = (input: {
   // Draft input in a ref-like variable so keystrokes don't force rerenders.
   let inputDraft = ""
 
-  let blueprintPollInterval: number | null = null
   let lastTailKey = ""
   let renderScheduled = false
 
@@ -439,19 +438,6 @@ export const mountAutopilotController = (input: {
     }
   }
 
-  const ensureBlueprintPolling = (busy: boolean) => {
-    if (busy && blueprintPollInterval == null) {
-      blueprintPollInterval = window.setInterval(() => {
-        void fetchBlueprint({ silent: true })
-      }, 1000)
-      return
-    }
-    if (!busy && blueprintPollInterval != null) {
-      window.clearInterval(blueprintPollInterval)
-      blueprintPollInterval = null
-    }
-  }
-
   // Subscribe to atoms.
   let subscribedForChatId: string | null = null
   let unsubChat: (() => void) | null = null
@@ -541,7 +527,6 @@ export const mountAutopilotController = (input: {
       unsubChat = atoms.subscribe(ChatSnapshotAtom(next), (snap) => {
         chatSnapshot = snap
         const busy = snap.status === "submitted" || snap.status === "streaming"
-        ensureBlueprintPolling(busy)
         if (prevBusy && !busy) void fetchBlueprint({ silent: true })
         prevBusy = busy
         scheduleRender()
@@ -1132,7 +1117,6 @@ export const mountAutopilotController = (input: {
   Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
   void fetchBlueprint()
   void fetchToolContracts()
-  ensureBlueprintPolling(prevBusy)
   scheduleRender()
 
   return {
@@ -1144,11 +1128,6 @@ export const mountAutopilotController = (input: {
       unsubUserMenu()
       if (unsubChat) unsubChat()
       if (unsubIsAtBottom) unsubIsAtBottom()
-
-      if (blueprintPollInterval != null) {
-        window.clearInterval(blueprintPollInterval)
-        blueprintPollInterval = null
-      }
 
       document.removeEventListener("click", onDocClick)
       document.removeEventListener("scroll", onScrollCapture, true)
