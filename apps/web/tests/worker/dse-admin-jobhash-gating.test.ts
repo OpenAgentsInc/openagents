@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Effect } from "effect";
 
-import { CompileJob } from "@openagentsinc/dse";
+import { CompileJob, EvalDataset } from "@openagentsinc/dse";
 
 import {
   SELECT_TOOL_SIGNATURE_ID,
@@ -158,6 +158,31 @@ describe("apps/web worker DSE admin gating (Phase 4)", () => {
 
     expect(state.getReportCalls.length).toBe(1);
     expect(state.getReportCalls[0]?.args?.jobHash).toBe(state.expectedJobHash);
+
+    // Dataset hash must include tags (must align with /api/dse/compile).
+    const expectedDataset = await Effect.runPromise(
+      EvalDataset.make({
+        datasetId,
+        examples: [
+          {
+            exampleId: "holdout1",
+            input: { message: "Hi", blueprintHint: { userHandle: "Ada", agentName: "Autopilot" } },
+            expected: { action: "none" },
+            split: "holdout",
+            tags: ["seed"],
+          },
+          {
+            exampleId: "train1",
+            input: { message: "What can you do?", blueprintHint: { userHandle: "Ada", agentName: "Autopilot" } },
+            expected: { action: "none" },
+            split: "train",
+            tags: ["seed"],
+          },
+        ],
+      }),
+    );
+    const expectedDatasetHash = await Effect.runPromise(EvalDataset.datasetHash(expectedDataset));
+    expect(state.getReportCalls[0]?.args?.datasetHash).toBe(expectedDatasetHash);
   });
 
   it("canary/start uses shared jobHash and rejects mismatched canary_compiled_id", async () => {
@@ -196,6 +221,32 @@ describe("apps/web worker DSE admin gating (Phase 4)", () => {
 
     expect(state.getReportCalls.length).toBe(1);
     expect(state.getReportCalls[0]?.args?.jobHash).toBe(state.expectedJobHash);
+
+    // Canary gating must look up the compile report by the same datasetHash as /api/dse/compile.
+    // (Historically canary/start omitted tags and computed a mismatched datasetHash, causing compile_report_not_found.)
+    const expectedDataset = await Effect.runPromise(
+      EvalDataset.make({
+        datasetId,
+        examples: [
+          {
+            exampleId: "holdout1",
+            input: { message: "Hi", blueprintHint: { userHandle: "Ada", agentName: "Autopilot" } },
+            expected: { action: "none" },
+            split: "holdout",
+            tags: ["seed"],
+          },
+          {
+            exampleId: "train1",
+            input: { message: "What can you do?", blueprintHint: { userHandle: "Ada", agentName: "Autopilot" } },
+            expected: { action: "none" },
+            split: "train",
+            tags: ["seed"],
+          },
+        ],
+      }),
+    );
+    const expectedDatasetHash = await Effect.runPromise(EvalDataset.datasetHash(expectedDataset));
+    expect(state.getReportCalls[0]?.args?.datasetHash).toBe(expectedDatasetHash);
   });
 
   it("keeps SelectTool compile non-trivial (instruction variants) by definition", () => {

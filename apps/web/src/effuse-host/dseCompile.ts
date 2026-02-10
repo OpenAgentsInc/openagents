@@ -32,7 +32,7 @@ import { getWorkerRuntime } from "./runtime";
 import type { DseGetReportResult, DseListExamplesResult } from "./convexTypes";
 import type { DseSignature } from "@openagentsinc/dse";
 
-const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
+const MODEL_ID_CF = "@cf/openai/gpt-oss-20b";
 const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
 
 const json = (body: unknown, init?: ResponseInit): Response =>

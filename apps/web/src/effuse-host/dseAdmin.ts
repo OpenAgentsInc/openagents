@@ -41,7 +41,7 @@ import type {
 } from "./convexTypes";
 import type { DseSignature } from "@openagentsinc/dse";
 
-const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
+const MODEL_ID_CF = "@cf/openai/gpt-oss-20b";
 const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
 
 const json = (body: unknown, init?: ResponseInit): Response =>
@@ -586,10 +586,17 @@ export const handleDseAdminRequest = async (
 
       let okCount = 0;
       let errorCount = 0;
+      const inputs = Array.from({ length: count }, (_, i) => exampleInputs[i % exampleInputs.length]);
+      const exits = yield* Effect.forEach(
+        inputs,
+        (input) =>
+          Effect.exit(
+            predict(input).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)),
+          ),
+        { concurrency: Math.min(4, count) },
+      );
 
-      for (let i = 0; i < count; i++) {
-        const input = exampleInputs[i % exampleInputs.length];
-        const exit = yield* Effect.exit(predict(input).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)));
+      for (const exit of exits) {
         if (exit._tag === "Success") okCount++;
         else errorCount++;
       }
@@ -1286,6 +1293,8 @@ export const handleDseAdminRequest = async (
         input: decodeInput(r?.inputJson),
         expected: decodeOutput(r?.expectedJson),
         split: mapStoredSplitToDseSplit(r?.split),
+        // Keep datasetHash aligned with /api/dse/compile (datasetHash includes tags).
+        tags: Array.isArray(r?.tags) ? (r.tags as unknown[]).filter((t) => typeof t === "string") : undefined,
         meta: (r as any)?.meta,
       }));
 
@@ -1314,21 +1323,66 @@ export const handleDseAdminRequest = async (
 
       const activeRes = yield* convex.query(api.dse.active.getActive, { signatureId });
       const activeResult = activeRes as DseGetActiveResult;
-      const control_compiled_id = typeof activeResult?.compiled_id === "string" ? activeResult.compiled_id : null;
-      if (!control_compiled_id) return yield* Effect.fail(new Error("control_missing"));
+      let control_compiled_id = typeof activeResult?.compiled_id === "string" ? activeResult.compiled_id : null;
 
-      const baseArtifactRes = yield* convex.query(api.dse.artifacts.getArtifact, {
-        signatureId,
-        compiled_id: control_compiled_id,
-      });
-      const baseArtifactResult = baseArtifactRes as DseGetArtifactResult;
-      const baseRaw = baseArtifactResult?.artifact ?? null;
-      if (!baseRaw) return yield* Effect.fail(new Error("control_artifact_missing"));
+      // First-run bootstrap: if there's no active control pointer yet, seed a control artifact from signature defaults
+      // and set it active. Canary gating needs an explicit baseline artifact.
+      let baseArtifact: CompiledArtifact.DseCompiledArtifactV1;
+      if (!control_compiled_id) {
+        const params = signature.defaults.params;
+        const [inputSchemaHash, outputSchemaHash, promptIrHash, paramsHash] = yield* Effect.all([
+          Hashes.schemaJsonHash(signature.input),
+          Hashes.schemaJsonHash(signature.output),
+          Hashes.promptIrHash(signature.prompt),
+          Hashes.compiledIdForParams(params),
+        ]);
 
-      const baseArtifact = yield* Effect.try({
-        try: () => Schema.decodeUnknownSync(CompiledArtifact.DseCompiledArtifactV1Schema)(baseRaw),
-        catch: (cause) => new Error(`invalid_control_artifact: ${String(cause)}`),
-      });
+        baseArtifact = {
+          format: "openagents.dse.compiled_artifact",
+          formatVersion: 1,
+          signatureId,
+          compiled_id: paramsHash,
+          createdAt: new Date().toISOString(),
+          hashes: {
+            inputSchemaHash,
+            outputSchemaHash,
+            promptIrHash,
+            paramsHash,
+          },
+          params: params as any,
+          eval: { evalVersion: 1, kind: "unscored" },
+          optimizer: { id: "seed_control_defaults.v1" },
+          provenance: {},
+        };
+
+        const artifactJson = Schema.encodeSync(CompiledArtifact.DseCompiledArtifactV1Schema)(baseArtifact);
+        yield* convex.mutation(api.dse.artifacts.putArtifact, {
+          signatureId,
+          compiled_id: baseArtifact.compiled_id,
+          json: artifactJson,
+        });
+        yield* convex.mutation(api.dse.active.setActive, {
+          signatureId,
+          compiled_id: baseArtifact.compiled_id,
+          reason: "seed_control_defaults",
+        });
+
+        control_compiled_id = baseArtifact.compiled_id;
+        yield* t.event("canary.control_seeded", { signatureId, control_compiled_id });
+      } else {
+        const baseArtifactRes = yield* convex.query(api.dse.artifacts.getArtifact, {
+          signatureId,
+          compiled_id: control_compiled_id,
+        });
+        const baseArtifactResult = baseArtifactRes as DseGetArtifactResult;
+        const baseRaw = baseArtifactResult?.artifact ?? null;
+        if (!baseRaw) return yield* Effect.fail(new Error("control_artifact_missing"));
+
+        baseArtifact = yield* Effect.try({
+          try: () => Schema.decodeUnknownSync(CompiledArtifact.DseCompiledArtifactV1Schema)(baseRaw),
+          catch: (cause) => new Error(`invalid_control_artifact: ${String(cause)}`),
+        });
+      }
 
       const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
         env: { OPENROUTER_API_KEY: env.OPENROUTER_API_KEY, AI: aiBinding },

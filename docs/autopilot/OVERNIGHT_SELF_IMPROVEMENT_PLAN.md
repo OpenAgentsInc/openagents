@@ -678,3 +678,49 @@ Current endpoints and storage:
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T14:03:37Z Ops: hardened the overnight runner so failures are actionable from CLI output (not just Convex).
+- Fixed `runOvernight` to include the `phase5` object in stdout JSON (it was only stored in Convex via `/ops/run/finish` previously).
+- Wrapped fetch failures in the overnight runner with path + timeout context:
+  - e.g. `dse_admin_fetch_failed path=/api/dse/compile timeoutMs=... err=...`
+- Added tests:
+  - `apps/web/tests/scripts/dse-overnight.test.ts` asserts `phase5` is present and timeouts include `path=...` and `timeoutMs=...`.
+- Prod debug: re-ran the headless overnight loop against `https://openagents.com` (no E2E) and confirmed prod compile was hanging:
+  - ops run id: `opsrun_9a1d8b92-a8ad-4af3-83f5-b2e57759eb5f`
+  - failure: `dse_admin_fetch_failed path=/api/dse/compile timeoutMs=600000 err=The operation timed out.`
+  - direct `curl` to `/api/dse/compile` also received 0 bytes for 900s (client timeout).
+- Fix: added an OpenRouter LM hard timeout + per-request circuit breaker so we can fall back to Workers AI instead of stalling indefinitely:
+  - `apps/web/src/effuse-host/dse.ts`:
+    - OpenRouter fetch timeout (default 15s)
+    - once OpenRouter fails, disable it for the remainder of the request (compile/eval can issue many subcalls)
+- Tests / verification:
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T14:56:01Z Prod unblock: made Phase 5 “compile -> canary -> traffic -> promote” complete end-to-end in production via the headless runner.
+- Fixed canary gating bugs:
+  - `/api/dse/canary/start` now computes `datasetHash` including example `tags`, matching `/api/dse/compile` (previously omitted tags -> `compile_report_not_found`).
+  - `/api/dse/canary/start` now seeds an explicit baseline control artifact from `signature.defaults.params` when no active pointer exists (previously `control_missing` blocked first canary).
+  - test coverage: `apps/web/tests/worker/dse-admin-jobhash-gating.test.ts` asserts canary/promote look up compile reports with the tag-inclusive `datasetHash`.
+- Made the ops “traffic generator” usable within Bun’s implicit ~5m HTTP timeout:
+  - `/api/dse/exercise/predict` now runs predicts with bounded parallelism (`concurrency <= 4`) instead of fully serial.
+- Made prod compile feasible and deterministic:
+  - Switched DSE endpoints default Workers AI model to `@cf/openai/gpt-oss-20b` (lower latency, still 128k context):
+    - `apps/web/src/effuse-host/dseCompile.ts`
+    - `apps/web/src/effuse-host/dseAdmin.ts`
+  - Increased offline eval/compile throughput: `packages/dse/src/eval/evaluate.ts` now evaluates examples with `concurrency: 4` (was 1).
+- Deployed Worker to production multiple times during this iteration (`cd apps/web && npm run deploy:worker`) to validate fixes immediately.
+- Verified prod compile succeeds:
+  - request id: `dbg_compile_selecttool_prod_4`
+  - compiled_id: `sha256:862f69e8a655c716e8eac0fe22fcfbdcf304702a8c729fa3a91e67cd2a9ee61a`
+  - datasetHash: `sha256:57e3ad2d003681f24eda6cf416da26d3299ea57c6bc324505ad878ce99b5d286`
+  - subsequent compiles return cached (`existed: true`).
+- Verified full prod overnight loop (no E2E) succeeds:
+  - ops run id: `opsrun_4796ab2c-1544-4f17-9d88-500d171c454e`
+  - canary clean at `minSamples=20` (`errorRate=0`)
+  - promoted control -> canary:
+    - from: `sha256:414e0b59c4b40c53169ac5a178e18544adaedb79b0870d77622f2af7ef473737`
+    - to: `sha256:862f69e8a655c716e8eac0fe22fcfbdcf304702a8c729fa3a91e67cd2a9ee61a`
+- Tests / verification:
+  - `cd packages/dse && bun test && bun run typecheck` (ok)
+  - `cd apps/web && npm run lint && npm test` (ok)

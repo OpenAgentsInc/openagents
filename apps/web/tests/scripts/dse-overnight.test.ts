@@ -132,6 +132,7 @@ describe("apps/web/scripts/dse-overnight", () => {
 
     expect(summary.ok).toBe(true)
     expect(summary.runId).toBe("opsrun_1")
+    expect((summary as any).phase5?.signatureId).toBe("@openagents/autopilot/blueprint/SelectTool.v1")
 
     const paths = calls.map((c) => new URL(c.url).pathname)
     expect(paths[0]).toBe("/api/dse/ops/run/start")
@@ -263,6 +264,7 @@ describe("apps/web/scripts/dse-overnight", () => {
     })
 
     expect(summary.ok).toBe(true)
+    expect((summary as any).phase5?.signatureId).toBe("@openagents/autopilot/blueprint/SelectTool.v1")
 
     const e2e = cmdCalls.find((c) => c.command === "npm" && c.args.includes("test:e2e"))
     expect(e2e).toBeTruthy()
@@ -464,6 +466,7 @@ describe("apps/web/scripts/dse-overnight", () => {
 
     expect(summary.ok).toBe(false)
     expect(summary.errors.join("\n")).toContain("req=req_promote_fail")
+    expect(String((summary as any).phase5?.error ?? "")).toContain("req=req_promote_fail")
 
     const stopCalled = calls.some((c) => new URL(c.url).pathname === "/api/dse/canary/stop")
     expect(stopCalled).toBe(true)
@@ -472,5 +475,66 @@ describe("apps/web/scripts/dse-overnight", () => {
     expect(finishCall).toBeTruthy()
     expect(finishCall?.body?.status).toBe("failed")
     expect(finishCall?.body?.runId).toBe("opsrun_3")
+  })
+
+  it("wraps fetch timeouts with path+timeoutMs and returns phase5 details", async () => {
+    const calls: Array<{ url: string; body: any }> = []
+
+    const fetchFn = async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const bodyText = typeof init?.body === "string" ? init.body : ""
+      const body = bodyText ? JSON.parse(bodyText) : null
+      calls.push({ url: String(url), body })
+
+      if (String(url).endsWith("/api/dse/ops/run/start")) return jsonOk({ existed: false, runId: "opsrun_timeout" })
+      if (String(url).endsWith("/api/dse/ops/run/event")) return jsonOk({})
+      if (String(url).endsWith("/api/dse/ops/run/finish")) return jsonOk({})
+
+      if (String(url).endsWith("/api/dse/examples/import")) return jsonOk({ total: 2, inserted: 2, updated: 0 })
+
+      if (String(url).endsWith("/api/dse/compile")) {
+        throw new Error("The operation timed out.")
+      }
+
+      return new Response("not found", { status: 404 })
+    }
+
+    const runCommand = async () => ({
+      ok: true,
+      code: 0,
+      stdout: "sha\n",
+      stderr: "",
+      durationMs: 1,
+      timedOut: false,
+    })
+
+    const parsed = parseOvernightArgs(["--base-url", "https://example.com", "--no-verify", "--no-e2e"])
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const summary = await runOvernight({
+      options: parsed.options,
+      env: { OA_DSE_ADMIN_SECRET: "secret" },
+      fetchFn,
+      runCommand,
+      readTextFile: async () =>
+        JSON.stringify({
+          exampleId: "ex1",
+          inputJson: { message: "Hi", blueprintHint: { userHandle: "Ada", agentName: "Autopilot" } },
+          expectedJson: { action: "none" },
+          split: "train",
+          tags: ["dataset:test"],
+        }),
+    })
+
+    expect(summary.ok).toBe(false)
+    expect(summary.errors.join("\n")).toContain("dse_admin_fetch_failed")
+    expect(summary.errors.join("\n")).toContain("path=/api/dse/compile")
+    expect(summary.errors.join("\n")).toContain("timeoutMs=600000")
+    expect((summary as any).phase5?.signatureId).toBe("@openagents/autopilot/blueprint/SelectTool.v1")
+
+    const finishCall = calls.find((c) => new URL(c.url).pathname === "/api/dse/ops/run/finish")
+    expect(finishCall).toBeTruthy()
+    expect(finishCall?.body?.status).toBe("failed")
+    expect(finishCall?.body?.runId).toBe("opsrun_timeout")
   })
 })
