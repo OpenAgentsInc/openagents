@@ -18,7 +18,7 @@ During prelaunch, production only allows access with a bypass:
 
 ## Home page chat pane (no navigation)
 
-On the homepage, **“Start for free”** opens a **floating chat pane on the same page** (no navigation to `/autopilot`). The pane shows the initial message “Autopilot online.” and can be closed. The E2E test `apps-web.navigation.start-for-free` asserts this behavior. To **send a message and see a response**, use the full Autopilot route: E2E login → goto `/autopilot` → send (see “Running Prod E2E” below).
+On the homepage, **“Start for free”** opens a **floating chat pane on the same page** (no navigation to `/autopilot`). The pane shows the initial message “Autopilot initialized. Enter your email address to begin.” and can be closed. The E2E test `apps-web.navigation.start-for-free` asserts this behavior. To **send a message and see a response**, use the full Autopilot route: E2E login → goto `/autopilot` → send (see “Running Prod E2E” below).
 
 ## What’s Now Possible
 

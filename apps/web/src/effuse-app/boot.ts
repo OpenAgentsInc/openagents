@@ -138,12 +138,12 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             .catch(() => {})
         }
 
-        // Identity pill: fixed bottom-left, shows user or "Not logged in".
-        // Only show on /autopilot (avoid leaking debug UI into marketing pages).
+        // Identity pill: fixed top-left pane-style, shows user email and Log out.
+        // Only show on /autopilot (home uses its own identity pane in the chat overlay).
         const pillContainer = document.createElement("div")
         pillContainer.setAttribute("data-identity-pill-root", "1")
         pillContainer.style.cssText =
-          "position:fixed;bottom:12px;left:12px;z-index:9999;pointer-events:auto;display:none"
+          "position:fixed;top:12px;left:12px;z-index:9999;pointer-events:auto;display:none"
         shell.appendChild(pillContainer)
 
         const setIdentityPillVisible = (pathname: string) => {
@@ -226,7 +226,13 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             case "home": {
               active = {
                 kind: "home",
-                cleanup: mountHomeController({ container: outlet }).cleanup,
+                cleanup: mountHomeController({
+                  container: outlet,
+                  runtime,
+                  atoms,
+                  navigate,
+                  signOut: () => void signOut(),
+                }).cleanup,
               }
               return
             }
