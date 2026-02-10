@@ -86,6 +86,32 @@ cd apps/web
 npm run wrangler:secrets
 ```
 
+Important:
+
+- `npm run wrangler:secrets` only pushes keys that are set in `apps/web/.env.production`. Missing keys are skipped.
+- In particular, ops-admin + prod E2E typically require setting these Worker secrets explicitly:
+  - `OA_DSE_ADMIN_SECRET`
+  - `OA_E2E_JWT_PRIVATE_JWK` (RSA private JWK JSON)
+  - `OA_E2E_BYPASS_SECRET`
+
+Suggested secret bootstrap (run from `apps/web`):
+
+```bash
+# 1) Headless DSE ops admin bearer secret (any random string is fine)
+node -e 'console.log(`oa_dse_${require(\"crypto\").randomUUID()}`)' | npx wrangler secret put OA_DSE_ADMIN_SECRET
+
+# 2) E2E JWT signing key (RSA private JWK, used for ops-admin Convex JWT minting too)
+node --input-type=module -e 'import { generateKeyPair, exportJWK } from \"jose\"; const { privateKey } = await generateKeyPair(\"RS256\", { extractable: true }); console.log(JSON.stringify(await exportJWK(privateKey)));' | npx wrangler secret put OA_E2E_JWT_PRIVATE_JWK
+
+# 3) E2E bypass secret (must match runner-side EFFUSE_TEST_E2E_BYPASS_SECRET)
+node -e 'console.log(`oa_e2e_${require(\"crypto\").randomUUID()}`)' | npx wrangler secret put OA_E2E_BYPASS_SECRET
+```
+
+Notes:
+
+- Rotating `OA_E2E_JWT_PRIVATE_JWK` changes the public keys served at `/api/auth/e2e/jwks`; Convex verifies E2E/ops-admin JWTs against that JWKS URL (see `apps/web/convex/auth.config.ts`).
+- After rotating secrets, deploy the Worker (`cd apps/web && npm run deploy:worker`) before running the overnight loop.
+
 Local prerequisites (run once per session, in a separate terminal):
 
 ```bash
@@ -528,6 +554,10 @@ Current endpoints and storage:
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T12:51:12Z Docs: added a concrete “secret bootstrap/rotation” section for ops-admin + prod E2E (`OA_DSE_ADMIN_SECRET`, `OA_E2E_JWT_PRIVATE_JWK`, `OA_E2E_BYPASS_SECRET`) and clarified that `npm run wrangler:secrets` skips missing keys.
+- Updated:
+  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
 - 2026-02-10T12:48:56Z Ops: ran a local headless ops-admin smoke attempt and confirmed a concrete failure mode:
   - Convex rejects ops-admin JWTs with `InvalidAuthHeader` when `OA_E2E_JWT_PRIVATE_JWK` does not match the JWKS Convex trusts (`apps/web/convex/auth.config.ts` -> `https://openagents.com/api/auth/e2e/jwks`).
