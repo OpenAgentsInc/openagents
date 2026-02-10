@@ -1,8 +1,6 @@
 import { ComponentType, FC, useMemo, useRef, useState } from "react"
 // eslint-disable-next-line no-restricted-imports
 import { TextInput, TextStyle, ViewStyle } from "react-native"
-import * as AuthSession from "expo-auth-session"
-import * as WebBrowser from "expo-web-browser"
 
 import { Button } from "@/components/Button"
 import { PressableIcon } from "@/components/Icon"
@@ -11,12 +9,17 @@ import { Text } from "@/components/Text"
 import { TextField, type TextFieldAccessoryProps } from "@/components/TextField"
 import { useAuth } from "@/context/AuthContext"
 import type { AppStackScreenProps } from "@/navigators/navigationTypes"
-import { authStart, authVerify, ssoExchangeCode, ssoGetAuthorizeUrl } from "@/services/authApi"
+import { authStart, authVerify } from "@/services/authApi"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
 
-// Required for WebBrowser.openAuthSessionAsync to work correctly with redirects.
-WebBrowser.maybeCompleteAuthSession()
+function emailValidationError(email: string): string {
+  const trimmed = email.trim()
+  if (!trimmed) return "can't be blank"
+  if (trimmed.length < 6) return "must be at least 6 characters"
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "must be a valid email address"
+  return ""
+}
 
 type LoginStep = "email" | "code"
 
@@ -30,10 +33,10 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
   const [isBusy, setIsBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [codeMasked, setCodeMasked] = useState(false)
-  const { setSession, validationError } = useAuth()
+  const { setSession } = useAuth()
   const { themed, theme: { colors } } = useAppTheme()
 
-  const emailError = step === "email" ? validationError : ""
+  const emailError = step === "email" ? emailValidationError(email) : ""
   const displayError = error ?? (step === "email" ? emailError : "")
 
   const handleSendCode = async () => {
@@ -63,6 +66,7 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
     const result = await authVerify(email, normalizedCode)
     setIsBusy(false)
     if (result.ok) {
+      console.log("[LoginScreen] verify ok, token present:", !!result.token)
       setSession({
         userId: result.userId,
         email,
@@ -89,45 +93,6 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
     setIsBusy(false)
     if (!result.ok) {
       setError("Failed to resend code. Try again.")
-    }
-  }
-
-  const handleSso = async () => {
-    if (isBusy) return
-    setError(null)
-    setIsBusy(true)
-    const redirectUri = AuthSession.makeRedirectUri({ useProxy: false }).toString()
-    const urlResult = await ssoGetAuthorizeUrl(redirectUri)
-    if (!urlResult.ok) {
-      setIsBusy(false)
-      setError("Could not start sign-in. Try again.")
-      return
-    }
-    const browserResult = await WebBrowser.openAuthSessionAsync(urlResult.url, redirectUri)
-    setIsBusy(false)
-    if (browserResult.type !== "success" || !browserResult.url) {
-      if (browserResult.type === "cancel") return
-      setError("Sign-in was cancelled or failed.")
-      return
-    }
-    const codeMatch = /[?&]code=([^&]+)/.exec(browserResult.url)
-    const authCode = codeMatch ? decodeURIComponent(codeMatch[1]) : null
-    if (!authCode) {
-      setError("Sign-in response was invalid.")
-      return
-    }
-    setIsBusy(true)
-    const exchangeResult = await ssoExchangeCode(authCode)
-    setIsBusy(false)
-    if (exchangeResult.ok) {
-      setSession({
-        userId: exchangeResult.userId,
-        email: exchangeResult.user.email ?? undefined,
-        token: exchangeResult.token,
-        user: exchangeResult.user,
-      })
-    } else {
-      setError("Sign-in failed. Try again.")
     }
   }
 
@@ -227,15 +192,6 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
           />
         </>
       )}
-
-      <Text style={themed($divider)} tx="loginScreen:or" />
-      <Button
-        tx="loginScreen:signInWithSso"
-        style={themed($ssoButton)}
-        preset="default"
-        onPress={handleSso}
-        disabled={isBusy}
-      />
     </Screen>
   )
 }
@@ -269,12 +225,3 @@ const $secondaryButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginTop: spacing.sm,
 })
 
-const $divider: ThemedStyle<TextStyle> = ({ spacing }) => ({
-  marginTop: spacing.xl,
-  marginBottom: spacing.sm,
-  textAlign: "center",
-})
-
-const $ssoButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  marginTop: spacing.xs,
-})

@@ -1,9 +1,16 @@
 /* eslint-env node */
 // Learn more https://docs.expo.io/guides/customizing-metro
+const path = require("path")
 const { getDefaultConfig } = require("expo/metro-config")
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname)
+
+// Resolve Convex API from apps/web (shared backend)
+config.watchFolders = [path.resolve(__dirname), path.resolve(__dirname, "..", "web")]
+config.resolver.extraNodeModules = {
+  convex: path.resolve(__dirname, "node_modules", "convex"),
+}
 
 config.transformer.getTransformOptions = async () => ({
   transform: {

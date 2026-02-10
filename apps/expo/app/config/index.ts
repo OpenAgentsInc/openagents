@@ -23,6 +23,12 @@ if (__DEV__) {
   ExtraConfig = DevConfig
 }
 
-const Config = { ...BaseConfig, ...ExtraConfig }
+const convexUrl =
+  (typeof process !== "undefined" && (process as any).env?.EXPO_PUBLIC_CONVEX_URL) ||
+  (__DEV__
+    ? "https://quaint-leopard-209.convex.cloud"
+    : "https://aware-caterpillar-962.convex.cloud")
+
+const Config = { ...BaseConfig, ...ExtraConfig, convexUrl }
 
 export default Config

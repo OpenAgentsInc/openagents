@@ -342,25 +342,48 @@ const handleVerify = async (request: Request, env: WorkerEnv): Promise<Response>
     method: request.method,
     pathname: url.pathname,
   })
+  const isExpoClient = request.headers.get("X-Client") === "openagents-expo"
+  const privateJwkJson = typeof env.OA_E2E_JWT_PRIVATE_JWK === "string" ? env.OA_E2E_JWT_PRIVATE_JWK : ""
   return runtime.runPromise(
     Effect.gen(function* () {
       const telemetry = yield* TelemetryService
-      const { userId, setCookieHeader } = yield* verifyMagicAuthCode({
+      const { userId, setCookieHeader, accessToken, user: magicUser } = yield* verifyMagicAuthCode({
         request,
         email,
         code,
       })
       yield* telemetry.withNamespace("auth.magic").event("magic_code.verified", { userId })
 
-      return json(
-        { ok: true, userId },
-        {
-          status: 200,
-          headers: {
-            "Set-Cookie": setCookieHeader,
-          },
+      const body: { ok: true; userId: string; token?: string } = { ok: true, userId }
+      if (isExpoClient) {
+        // Prefer Worker-minted E2E JWT so Convex accepts it (same issuer as web session). Fall back to WorkOS token.
+        if (privateJwkJson && magicUser) {
+          try {
+            const oaJwt = yield* mintE2eJwt({
+              privateJwkJson,
+              user: {
+                id: magicUser.id,
+                email: magicUser.email,
+                firstName: magicUser.firstName,
+                lastName: magicUser.lastName,
+              },
+              ttlSeconds: 60 * 60 * 24, // 24h for mobile
+            })
+            body.token = oaJwt
+          } catch {
+            if (accessToken) body.token = accessToken
+          }
+        } else if (accessToken) {
+          body.token = accessToken
+        }
+      }
+
+      return json(body, {
+        status: 200,
+        headers: {
+          "Set-Cookie": setCookieHeader,
         },
-      )
+      })
     }).pipe(
       Effect.provideService(RequestContextService, makeServerRequestContext(request)),
       Effect.provideService(TelemetryService, requestTelemetry),
