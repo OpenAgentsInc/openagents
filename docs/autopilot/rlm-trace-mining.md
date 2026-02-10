@@ -171,6 +171,9 @@ Behavior:
 - creates/updates `dseExamples` for the receipt’s `signatureId`
 - default `exampleId` is `trace:<receiptId>` (override via `exampleId`)
 - tags include `trace_export` and `strategy:<strategyId>` plus any user tags
+- exported rows include structured linkage metadata in `dseExamples.meta`:
+  - `kind=openagents.trace_export.v1`
+  - `receiptId`, `threadId/runId`, `rlmTrace.blobId`, `strategyId`, `compiled_id`
 
 #### Step 3: compile and promote
 

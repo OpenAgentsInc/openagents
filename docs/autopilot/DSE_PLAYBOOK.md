@@ -197,8 +197,11 @@ This is the core "self-improve" loop.
 
 Prereqs:
 
-- You must be authenticated (these endpoints rely on the browser session cookie).
+- You must be authenticated (these endpoints rely on the browser session cookie), OR use headless ops auth (Bearer `OA_DSE_ADMIN_SECRET`).
 - Some endpoints require model access (`env.AI` binding and `OPENROUTER_API_KEY`) because they run eval/compile.
+- Headless ops auth requires Worker secrets to be configured:
+  - `OA_DSE_ADMIN_SECRET` (authorizes requests)
+  - `OA_E2E_JWT_PRIVATE_JWK` (Worker-minted JWT for privileged Convex reads/writes)
 
 ### 6.1 Export a labeled example from an RLM trace
 
@@ -227,6 +230,28 @@ This derives:
 
 and upserts it into Convex `dseExamples`.
 
+### 6.1.1 Headless (many receipts): trace review -> export -> tagging
+
+For scale-up, use the headless miner script (runs entirely via Bearer `OA_DSE_ADMIN_SECRET`):
+
+```bash
+OA_DSE_ADMIN_SECRET="..." \
+  bun run apps/web/scripts/dse-trace-mine.ts \
+    --base-url https://openagents.com \
+    --signature-id "@openagents/autopilot/canary/RecapThread.v1" \
+    --split train \
+    --tag seed
+```
+
+What it does:
+
+- lists candidate receipts via `GET /api/dse/receipts/list?...` (ops-admin only)
+- exports examples via `POST /api/dse/trace/export` (upserts `dseExamples`)
+- tags exported rows with `trace_mined` (always) plus any user tags
+- writes structured linkage into `dseExamples.meta` (`kind=openagents.trace_export.v1`, includes `receiptId`, `threadId/runId`, `rlmTrace.blobId`, `strategyId`, `compiled_id`)
+
+Reference: `docs/autopilot/rlm-trace-mining.md`.
+
 ### 6.2 Compile an artifact for a signature
 
 Compile is "run evaluation loops and choose better params".
@@ -252,8 +277,18 @@ This creates (or reuses) a compile report keyed by `(signatureId, jobHash, datas
 - a compiled artifact (`compiled_id`)
 - a compile report (including holdout reward)
 
-Note: the compile engine supports richer search spaces and optimizers (including strategy + RLM knob selection),
-but the current `/api/dse/compile` endpoint is intentionally minimal. See Phase G in:
+Compile jobs are signature-specific and defined in `apps/web/src/effuse-host/dseJobs.ts`.
+
+Notable implemented compile search spaces:
+
+- `@openagents/autopilot/blueprint/SelectTool.v1`: instruction variant grid (`instruction_grid.v1`)
+- `@openagents/autopilot/canary/RecapThread.v1` and `@openagents/autopilot/rlm/SummarizeThread.v1`: knob grid + refinement (`knobs_grid_refine.v1`) over:
+  - controller instruction blocks
+  - chunking policy hints (`chunkDefaults`)
+  - sub-role selection (`main` vs `sub`)
+  - budget profiles (time/lmCalls/iterations/subcalls/output)
+
+Reference for the underlying design and optimizer behavior:
 
 - `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
 - `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`

@@ -350,27 +350,34 @@ Current endpoints and storage:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
-- 2026-02-10T11:08:58Z Phase 8: headless trace mining pipeline (review -> export -> tagging).
+- 2026-02-10T11:08:58Z Phase 8: headless trace mining pipeline (review -> export -> tagging) (`dc8b1f2f2`).
 - Added an ops-admin receipt listing endpoint (headless via `OA_DSE_ADMIN_SECRET`):
   - `GET /api/dse/receipts/list?signatureId=...&limit=...&requireRlmTrace=1&resultTag=Ok&strategyId=rlm_lite.v1`
+  - implementation: `apps/web/src/effuse-host/dseAdmin.ts`
 - Extended trace export to persist structured linkage metadata on exported examples:
   - `/api/dse/trace/export` now writes `meta.kind=openagents.trace_export.v1` with `receiptId`, `threadId/runId`, `rlmTrace.blobId`, `strategyId`, `compiled_id`.
+  - implementation: `apps/web/src/effuse-host/dseAdmin.ts`, test: `apps/web/tests/worker/dse-trace-export.test.ts`
 - Added a headless miner script:
   - `apps/web/scripts/dse-trace-mine.ts` (CLI) + `apps/web/scripts/dse-trace-mine-lib.ts` (testable)
   - Uses Bearer auth and calls: receipts list -> trace export (writes to `dseExamples`)
   - Auto-tags exported rows with `trace_mined` + any user-provided tags.
+  - tests: `apps/web/tests/scripts/dse-trace-mine.test.ts`, `apps/web/tests/worker/dse-receipts-list.test.ts`
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
-- 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports.
+- 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
   - chunking policy variants (`rlmChunkingPolicyVariants`)
   - sub-role selection (`rlmSubRoleVariants`)
   - budget profiles (`budgetProfiles`)
   - optimizer: `knobs_grid_refine.v1` (bounded)
+  - implementation: `apps/web/src/effuse-host/dseJobs.ts`
 - Added a small predict-cost penalty signal to the recap judge reward so budget profiles are meaningfully selectable.
+  - implementation: `apps/web/src/effuse-host/dseJobs.ts`
+- Tests:
+  - `apps/web/tests/worker/dse-compile-endpoint.test.ts` asserts recap compile jobs include knob search spaces and store a compile report.
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
