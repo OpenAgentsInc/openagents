@@ -215,6 +215,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let dseBudgetProfile: "small" | "medium" | "long" = "medium"
     let isRunningDseRecap = false
     let dseErrorText: string | null = null
+    let hasScrolledToBottomOnce = false
 
     const startAuthedChat = (input0: { readonly userId: string; readonly user: Session["user"] | null; readonly token: string | null }) => {
       if (!deps?.atoms || !deps.chat) return
@@ -556,7 +557,13 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       ).then(
         () => {
           const messagesEl = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
-          if (messagesEl instanceof HTMLElement) messagesEl.scrollTop = savedScrollTop
+          if (messagesEl instanceof HTMLElement) {
+            messagesEl.scrollTop = savedScrollTop
+            if (!hasScrolledToBottomOnce) {
+              messagesEl.scrollTop = messagesEl.scrollHeight - messagesEl.clientHeight
+              hasScrolledToBottomOnce = true
+            }
+          }
 
           const strategySel = paneContentSlot.querySelector("[data-oa-home-dse-strategy]")
           if (strategySel instanceof HTMLSelectElement) {
