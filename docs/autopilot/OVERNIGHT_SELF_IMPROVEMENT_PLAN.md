@@ -237,7 +237,7 @@ Exit criteria:
   - dataset rows, compile report, artifact, canary history, and either promotion or rollback history
   - plus a single `dseOpsRuns` record linking them all.
 
-### Phase 6 (Later): Read-Only Visualization
+### Phase 6: Read-Only Visualization
 
 Objective: display the Convex-stored loop evidence on web pages, without control surfaces.
 
@@ -248,6 +248,14 @@ Deliverables:
   - per-signature history (active pointer changes, canary history, compile reports)
   - datasets + example diffs
   - links to receipts + traces
+
+Implemented pages (Effuse, Convex-backed):
+
+- `/dse` ops runs list (`apps/web/src/effuse-pages/dseOpsRuns.ts`)
+- `/dse/ops/:runId` ops run detail + events timeline (`apps/web/src/effuse-pages/dseOpsRunDetail.ts`)
+- `/dse/signature/:signatureId` per-signature view (`apps/web/src/effuse-pages/dseSignature.ts`)
+- `/dse/compile-report/:jobHash/:datasetHash/:signatureId` compile report JSON view (`apps/web/src/effuse-pages/dseCompileReport.ts`)
+- `/dse/eval-report/:evalHash/:signatureId` eval report JSON view (`apps/web/src/effuse-pages/dseEvalReport.ts`)
 
 Exit criteria:
 
@@ -316,8 +324,31 @@ Exit criteria:
 
 Current endpoints and storage:
 
-- Compile: `POST /api/dse/compile` (`apps/web/src/effuse-host/dseCompile.ts`)
-- Promote/canary/trace export/receipt+blob reads: `apps/web/src/effuse-host/dseAdmin.ts`
+- Ops run recording:
+  - `POST /api/dse/ops/run/start`
+  - `POST /api/dse/ops/run/event`
+  - `POST /api/dse/ops/run/finish`
+- Dataset import:
+  - `POST /api/dse/examples/import`
+- Compile/eval:
+  - `POST /api/dse/compile` (`apps/web/src/effuse-host/dseCompile.ts`)
+  - `POST /api/dse/eval`
+- Canary + promotion:
+  - `POST /api/dse/canary/start`, `POST /api/dse/canary/stop`
+  - `GET /api/dse/canary/status?signatureId=...`
+  - `POST /api/dse/promote`
+- Exercisers (Phase 5 traffic generation):
+  - `POST /api/dse/exercise/thread/ensure`
+  - `POST /api/dse/exercise/predict`
+- Trace mining:
+  - `GET /api/dse/receipts/list?...` (ops-admin)
+  - `POST /api/dse/trace/export`
+- Debug reads:
+  - `GET /api/dse/receipt/:receiptId`
+  - `GET /api/dse/blob/:receiptId/:blobId`
+- Most admin endpoints live in `apps/web/src/effuse-host/dseAdmin.ts` and are auth-gated by either:
+  - browser session cookies (WorkOS), or
+  - `Authorization: Bearer <OA_DSE_ADMIN_SECRET>` (headless ops mode).
 - Convex DSE tables/functions: `apps/web/convex/dse/*`
 - Target signatures: `apps/autopilot-worker/src/dseCatalog.ts`
 - Prod E2E suite: `packages/effuse-test/src/suites/apps-web.ts`
@@ -492,6 +523,7 @@ Current endpoints and storage:
 - Updated:
   - `docs/autopilot/STREAM_TESTING.md`
 
+- 2026-02-10T11:58:43Z Doc maintenance: updated Phase 6 + code surface section to match shipped read-only pages and the current Worker API surface.
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
