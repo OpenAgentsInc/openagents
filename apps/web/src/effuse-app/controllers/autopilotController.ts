@@ -354,9 +354,18 @@ export const mountAutopilotController = (input: {
 
     const chatKey = `${renderedTailKey}:${isBusy ? 1 : 0}:${isAtBottom ? 1 : 0}:${toolContractsKey}:${chatSnapshot.errorText ?? ""}:${session.userId ?? "null"}:${authStep}:${authBusy ? 1 : 0}:${authEmail}:${authCode}:${authErrorText ?? ""}`
 
+    const controlsData = {
+      isExportingBlueprint,
+      isBusy,
+      isResettingAgent,
+    }
+    const controlsKey = `${isExportingBlueprint ? 1 : 0}:${isBusy ? 1 : 0}:${isResettingAgent ? 1 : 0}`
+
     const renderInput: AutopilotRouteRenderInput = {
       chatData: autopilotChatData,
       chatKey,
+      controlsData,
+      controlsKey,
     }
 
     Effect.runPromise(runAutopilotRoute(input.container, renderInput))
