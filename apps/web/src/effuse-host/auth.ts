@@ -1,4 +1,4 @@
-import { createAuthService } from "@workos/authkit-session"
+import { createAuthService, getConfig } from "@workos/authkit-session"
 import { Effect } from "effect"
 
 import { WebCookieSessionStorage } from "../auth/sessionCookieStorage"
@@ -406,6 +406,61 @@ const handleSignout = async (request: Request, env: WorkerEnv): Promise<Response
   )
 }
 
+type SsoExchangeBody = {
+  readonly code?: unknown
+}
+
+const handleSsoAuthorizeUrl = async (request: Request): Promise<Response> => {
+  const url = new URL(request.url)
+  const redirectUri = url.searchParams.get("redirect_uri")
+  if (!redirectUri || redirectUri.length === 0) {
+    return json({ ok: false, error: "missing_redirect_uri" }, { status: 400 })
+  }
+  try {
+    const authUrl = await authkit.getSignInUrl({ redirectUri })
+    return json({ ok: true, url: authUrl })
+  } catch (err) {
+    console.error("[auth.sso.authorize-url]", err)
+    return json({ ok: false, error: "authorize_url_failed" }, { status: 500 })
+  }
+}
+
+const handleSsoExchange = async (request: Request): Promise<Response> => {
+  let body: SsoExchangeBody
+  try {
+    body = (await request.json()) as SsoExchangeBody
+  } catch {
+    return json({ ok: false, error: "invalid_json" }, { status: 400 })
+  }
+  const code = typeof body.code === "string" ? body.code.trim() : ""
+  if (!code) {
+    return json({ ok: false, error: "missing_code" }, { status: 400 })
+  }
+  try {
+    const config = getConfig()
+    const workos = authkit.getWorkOS()
+    const authResponse = await workos.userManagement.authenticateWithCode({
+      code,
+      clientId: config.clientId,
+    })
+    const user = authResponse.user
+    return json({
+      ok: true,
+      userId: user.id,
+      user: {
+        id: user.id,
+        email: user.email ?? null,
+        firstName: user.firstName ?? null,
+        lastName: user.lastName ?? null,
+      },
+      token: authResponse.accessToken,
+    })
+  } catch (err) {
+    console.error("[auth.sso.exchange]", err)
+    return json({ ok: false, error: "exchange_failed" }, { status: 401 })
+  }
+}
+
 export const handleAuthRequest = async (
   request: Request,
   env: WorkerEnv,
@@ -440,6 +495,16 @@ export const handleAuthRequest = async (
   if (url.pathname === "/api/auth/signout") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 })
     return handleSignout(request, env)
+  }
+
+  if (url.pathname === "/api/auth/sso/authorize-url") {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 })
+    return handleSsoAuthorizeUrl(request)
+  }
+
+  if (url.pathname === "/api/auth/sso/exchange") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 })
+    return handleSsoExchange(request)
   }
 
   return null

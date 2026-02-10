@@ -8,6 +8,7 @@ const en = {
     logOut: "Log Out",
   },
   welcomeScreen: {
+    signedInAs: "Signed in as {{email}}",
     postscript:
       "psst  — This probably isn't what your app looks like. (Unless your designer handed you these screens, and in that case, ship it!)",
     readyForLaunch: "Your app, almost ready for launch!",
@@ -34,20 +35,36 @@ const en = {
   },
   loginScreen: {
     logIn: "Log In",
-    enterDetails:
-      "Enter your details below to unlock top secret info. You'll never guess what we've got waiting. Or maybe you will; it's not rocket science here.",
+    enterDetails: "Sign in with your email or use SSO.",
     emailFieldLabel: "Email",
     passwordFieldLabel: "Password",
     emailFieldPlaceholder: "Enter your email address",
     passwordFieldPlaceholder: "Super secret password here",
     tapToLogIn: "Tap to log in!",
     hint: "Hint: you can use any email address and your favorite password :)",
+    sendCode: "Send code",
+    codeFieldLabel: "Verification code",
+    codeFieldPlaceholder: "Enter the code we sent to your email",
+    verifyCode: "Verify code",
+    resendCode: "Resend code",
+    backToEmail: "Back to email",
+    or: "or",
+    signInWithSso: "Sign in with SSO",
   },
   demoNavigator: {
+    feedTab: "Feed",
     componentsTab: "Components",
     debugTab: "Debug",
     communityTab: "Community",
     podcastListTab: "Podcast",
+    profileTab: "Profile",
+  },
+  profileScreen: {
+    title: "Profile",
+    subtitle: "You're signed in with the account below.",
+    nameLabel: "Name",
+    emailLabel: "Email",
+    userIdLabel: "User ID",
   },
   demoCommunityScreen: {
     title: "Connect with the community",

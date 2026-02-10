@@ -7,4 +7,6 @@
  */
 export default {
   API_URL: "https://api.rss2json.com/v1/",
+  // Use production auth for dev by default; override with EXPO_AUTH_API_URL if needed.
+  authApiUrl: "https://openagents.com",
 }

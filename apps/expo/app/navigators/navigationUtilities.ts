@@ -145,6 +145,19 @@ export function useNavigationPersistence(storage: Storage, persistenceKey: strin
     }
   }
 
+  /**
+   * Restored state is valid only if it includes current tab routes (e.g. Feed).
+   * Old persisted state from before adding new tabs would otherwise hide them.
+   */
+  const isRestoredStateValid = (state: NavigationProps["initialState"] | null): boolean => {
+    if (!state?.routes) return false
+    const demoRoute = state.routes.find((r) => r.name === "Demo")
+    const tabState = demoRoute?.state as { routes?: { name: string }[] } | undefined
+    const tabRoutes = tabState?.routes ?? []
+    const hasFeed = tabRoutes.some((r) => r.name === "Feed")
+    return hasFeed
+  }
+
   const restoreState = async () => {
     try {
       const initialUrl = await Linking.getInitialURL()
@@ -152,7 +165,12 @@ export function useNavigationPersistence(storage: Storage, persistenceKey: strin
       // Only restore the state if app has not started from a deep link
       if (!initialUrl) {
         const state = (await storage.load(persistenceKey)) as NavigationProps["initialState"] | null
-        if (state) setInitialNavigationState(state)
+        if (state && isRestoredStateValid(state)) {
+          setInitialNavigationState(state)
+        } else if (state) {
+          // Stale state (e.g. missing Feed tab) – clear it so we use default nav
+          storage.remove(persistenceKey)
+        }
       }
     } finally {
       if (isMounted()) setIsRestored(true)
