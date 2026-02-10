@@ -35,6 +35,7 @@ export type DseSignatureCardModel = {
   readonly contextPressure?: BoundedText | undefined;
   readonly promptRenderStats?: BoundedText | undefined;
   readonly rlmTrace?: BoundedText | undefined;
+  readonly rlmTraceBlobId?: string | undefined;
   readonly outputPreview?: BoundedText | undefined;
   readonly errorText?: BoundedText | undefined;
 };
@@ -212,9 +213,35 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
     ${dseRow("compiled_id", m.compiled_id)}
     ${dseRow("durationMs", m.durationMs)}
     ${dseRow("receiptId", m.receiptId)}
+    ${m.receiptId
+      ? dseRow(
+          "receipt",
+          html`<a
+            href="/api/dse/receipt/${m.receiptId}"
+            target="_blank"
+            rel="noreferrer"
+            data-dse-open-receipt="1"
+            class="underline decoration-white/30 hover:decoration-white/70"
+            >Open</a
+          >`,
+        )
+      : html``}
     ${dseRow("strategyId", m.strategyId)}
     ${dseRow("strategyReason", m.strategyReason)}
     ${budget ? dseRow("budget", budget) : html``}
+    ${m.receiptId && m.rlmTraceBlobId
+      ? dseRow(
+          "trace",
+          html`<a
+            href="/api/dse/blob/${m.receiptId}/${m.rlmTraceBlobId}"
+            target="_blank"
+            rel="noreferrer"
+            data-dse-open-trace="1"
+            class="underline decoration-white/30 hover:decoration-white/70"
+            >Open</a
+          >`,
+        )
+      : html``}
     ${m.contextPressure ? html`<div>${dseRow("contextPressure", "")}${dseBoundedText(m.contextPressure)}</div>` : html``}
     ${m.promptRenderStats ? html`<div>${dseRow("promptRenderStats", "")}${dseBoundedText(m.promptRenderStats)}</div>` : html``}
     ${m.rlmTrace ? html`<div>${dseRow("rlmTrace", "")}${dseBoundedText(m.rlmTrace)}</div>` : html``}

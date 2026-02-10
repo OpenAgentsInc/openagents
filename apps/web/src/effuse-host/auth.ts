@@ -437,11 +437,11 @@ const handleSsoExchange = async (request: Request): Promise<Response> => {
     return json({ ok: false, error: "missing_code" }, { status: 400 })
   }
   try {
-    const config = getConfig()
     const workos = authkit.getWorkOS()
+    const clientId = getConfig("clientId")
     const authResponse = await workos.userManagement.authenticateWithCode({
       code,
-      clientId: config.clientId,
+      clientId,
     })
     const user = authResponse.user
     return json({

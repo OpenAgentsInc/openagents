@@ -354,6 +354,81 @@ export const signatures = {
       } satisfies Params.DseParamsV1
     }
   })
+  ,
+
+  /**
+   * Phase D canary signature: same IO contract for direct.v1 vs rlm_lite.v1 comparison.
+   *
+   * Notes:
+   * - In direct.v1, the prompt renderer will inline bounded previews of `threadChunks`.
+   * - In rlm_lite.v1, blob previews are omitted and the controller must use RLM ops to inspect chunks.
+   */
+  canary_recap_thread: Signature.make({
+    id: "@openagents/autopilot/canary/RecapThread.v1",
+    input: Schema.Struct({
+      question: Schema.String.annotations({
+        description: "The user's question / recap intent."
+      }),
+      threadChunks: ThreadChunks
+    }).annotations({
+      description:
+        "Long-context recap input. The chunks should be a bounded/truncated representation of the thread."
+    }),
+    output: Schema.Struct({
+      summary: Schema.String.annotations({
+        description:
+          "A concise recap with decisions, context, and open questions. Keep it short and actionable."
+      })
+    }),
+    prompt: {
+      version: 1,
+      blocks: [
+        PromptIR.system(
+          "You are Autopilot. You produce concise, actionable recaps of prior context."
+        ),
+        PromptIR.instruction(
+          "Goal: recap prior context in this thread relevant to Input.question.\n" +
+            "\n" +
+            "Rules:\n" +
+            "- Ground your recap only in the provided thread context.\n" +
+            "- Do NOT invent details.\n" +
+            "- Prefer short bullets over long prose.\n" +
+            "\n" +
+            "Working with long context:\n" +
+            "- The history is provided as BlobRefs in Input.threadChunks.\n" +
+            "- If chunk contents are not visible, use bounded RLM ops (preview/search/chunk + extract_over_chunks) to inspect them.\n" +
+            "- Do NOT do O(N) SubLm calls for N chunks; prefer extract_over_chunks.\n" +
+            "\n" +
+            "Output:\n" +
+            "- Return JSON { summary }.\n" +
+            "- summary <= 1200 chars."
+        ),
+        PromptIR.outputJsonSchema(
+          JSONSchema.make(
+            Schema.Struct({
+              summary: Schema.String
+            })
+          )
+        )
+      ]
+    },
+    defaults: {
+      params: {
+        ...defaultParams,
+        strategy: { id: "direct.v1" },
+        budgets: {
+          // Defaults are intentionally conservative. Phase D UI overrides via budget profiles.
+          maxTimeMs: 15_000,
+          maxLmCalls: 20,
+          maxToolCalls: 0,
+          maxOutputChars: 60_000,
+          // Included so rlm_lite.v1 can be pinned without forgetting the required loop budgets.
+          maxRlmIterations: 10,
+          maxSubLmCalls: 20
+        }
+      } satisfies Params.DseParamsV1
+    }
+  })
 } satisfies Record<string, DseSignature<any, any>>;
 
 export const modules: ReadonlyArray<DseModuleContractExportV1> = [

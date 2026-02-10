@@ -359,6 +359,30 @@ It is ordered by phase (A..H) so it can be read as a build log.
   - `cd apps/autopilot-worker && npm run typecheck`
   - `cd apps/web && npm test && npm run lint`
 
+### 2026-02-10: Phase D (UI canary recap + debug endpoints + E2E visibility) — implemented in this commit
+
+- Added a strategy-neutral **canary recap** signature so operators can run the same IO contract under both strategies:
+  - signature id: `@openagents/autopilot/canary/RecapThread.v1`
+  - implementation: `apps/autopilot-worker/src/dseCatalog.ts`
+- Added an Autopilot execution-plane route to run the canary recap with a pinned strategy + budget profile:
+  - `POST /api/autopilot/dse/recap` accepts `{ threadId, strategyId, budgetProfile, question? }`
+  - emits a `dse.signature` debug card and assistant-visible recap text, and records a predict receipt + (for RLM-lite) an `rlmTrace`
+  - implementation: `apps/web/src/effuse-host/autopilot.ts`
+- Added two read-only debug endpoints (auth required) for replay/debug:
+  - `GET /api/dse/receipt/:receiptId` (validated predict receipt JSON)
+  - `GET /api/dse/blob/:receiptId/:blobId` (raw blob text, used for `openagents.dse.rlm_trace`)
+  - implementation: `apps/web/src/effuse-host/dseAdmin.ts`
+- UI surface:
+  - `/autopilot` bottom-right **DSE Debug** panel: pick `direct.v1` vs `rlm_lite.v1`, budget profile, run canary recap
+  - DSE signature cards now include direct links to open the receipt/trace
+  - implementation: `apps/web/src/effuse-pages/autopilotControls.ts`, `apps/web/src/effuse-app/controllers/autopilotController.ts`, `apps/web/src/effuse-pages/autopilot.ts`, `apps/web/src/effuse-app/controllers/autopilotChatParts.ts`
+- E2E test asserts UI visibility:
+  - runs canary recap, asserts debug card presence + trace link, fetches trace and asserts Iteration/Final events
+  - implementation: `packages/effuse-test/src/suites/apps-web.ts`
+- Determinism for production E2E:
+  - the canary recap route supports an **E2E-only stub mode** (`x-oa-e2e-mode: stub`) that is honored only for E2E-auth sessions
+  - allows browser tests to verify UI wiring without external model flakiness
+
 ### 2026-02-10: Phase E (Long-context datasets + evaluation) — implemented in DSE (`aa52adbc4`)
 
 - Added canonical long-context bench signature + datasets (dummy but meaningful):

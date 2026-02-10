@@ -313,6 +313,14 @@ export function toAutopilotRenderParts(input: {
     }
 
     if (isDseSignaturePart(p)) {
+      const rlmTraceBlobId =
+        p.rlmTrace &&
+        typeof p.rlmTrace === "object" &&
+        (p.rlmTrace as any).blob &&
+        typeof (p.rlmTrace as any).blob.id === "string"
+          ? String((p.rlmTrace as any).blob.id)
+          : undefined
+
       const previewText = p.outputPreview !== undefined ? safeStableStringify(p.outputPreview) : null
       const outputPreview = previewText
         ? Effect.runSync(
@@ -386,6 +394,7 @@ export function toAutopilotRenderParts(input: {
         contextPressure,
         promptRenderStats,
         rlmTrace,
+        rlmTraceBlobId,
         outputPreview,
         errorText,
       }
