@@ -227,7 +227,7 @@ export function getPrelaunchRedirectIfRequired(
   if (!config.prelaunch) return null
   if (isLocalDevRequest(request, url)) return null
   const pathname = normalizePathname(url.pathname)
-  // If the prelaunch bypass key is present on the homepage URL, take the user directly into Autopilot.
+  // If the prelaunch bypass key is present on the homepage URL, mint bypass cookie and stay on home.
   // Important: this response must mint the bypass cookie because SSR is skipped on redirects.
   if (
     pathname === "/" &&
@@ -235,7 +235,7 @@ export function getPrelaunchRedirectIfRequired(
     url.searchParams.get("key") === config.prelaunchBypassKey
   ) {
     const headers = new Headers({
-      location: "/autopilot",
+      location: "/",
       "cache-control": "no-store, no-cache, must-revalidate",
       pragma: "no-cache",
       expires: "0",

@@ -2,10 +2,8 @@ import { Hydration, Registry } from "@effect-atom/atom"
 import { Effect } from "effect"
 import { RouteOutcome } from "@openagentsinc/effuse"
 
-import { autopilotRouteShellTemplate } from "../effuse-pages/autopilotRoute"
 import { authedShellTemplate } from "../effuse-pages/authedShell"
 import { homePageTemplate } from "../effuse-pages/home"
-import { loginPageTemplate } from "../effuse-pages/login"
 import { modulesPageTemplate } from "../effuse-pages/modules"
 import { signaturesPageTemplate } from "../effuse-pages/signatures"
 import { toolsPageTemplate } from "../effuse-pages/tools"
@@ -24,7 +22,6 @@ import { SessionAtom } from "../effect/atoms/session"
 import { getStoryById, listStoryMeta } from "../storybook"
 
 import type { Route, RouteMatch } from "@openagentsinc/effuse"
-import type { LoginPageModel } from "../effuse-pages/login"
 import type { DseCompileReportPageData } from "../effuse-pages/dseCompileReport"
 import type { DseEvalReportPageData } from "../effuse-pages/dseEvalReport"
 import type { DseOpsRunDetailPageData } from "../effuse-pages/dseOpsRunDetail"
@@ -230,56 +227,24 @@ const home: Route<HomeData, AppServices> = {
   head: () => Effect.succeed({ title: "OpenAgents" }),
 }
 
-const defaultLoginModel: LoginPageModel = {
-  step: "email",
-  email: "",
-  code: "",
-  isBusy: false,
-  errorText: null,
-}
-
-const login: Route<LoginPageModel, AppServices> = {
+// Deprecated: redirect to home (auth is now in the home chat pane).
+const loginRedirect: Route<{}, AppServices> = {
   id: "/login",
   match: matchExact("/login"),
-  guard: (ctx) =>
-    Effect.gen(function* () {
-      const redirect = yield* prelaunchRedirectGuard(ctx)
-      if (redirect) return redirect
-      const auth = yield* AuthService
-      const session = yield* auth.getSession().pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
-      if (session.userId) return RouteOutcome.redirect("/autopilot", 302)
-      return
-    }),
-  loader: (ctx) => okWithSession(ctx, defaultLoginModel),
-  view: (_ctx, model) =>
-    Effect.succeed(
-      marketingShellTemplate({
-        isHome: false,
-        isLogin: true,
-        content: loginPageTemplate(model),
-      }),
-    ),
-  head: () => Effect.succeed({ title: "Log in" }),
+  guard: (ctx) => prelaunchRedirectGuard(ctx),
+  loader: () => Effect.succeed(RouteOutcome.redirect("/", 302)),
+  view: () => Effect.succeed(homePageTemplate()),
+  head: () => Effect.succeed({ title: "OpenAgents" }),
 }
 
-const autopilot: Route<{}, AppServices> = {
+// Deprecated: redirect to home (autopilot is now in the home chat pane).
+const autopilotRedirect: Route<{}, AppServices> = {
   id: "/autopilot",
   match: matchExact("/autopilot"),
-  guard: (ctx) =>
-    Effect.gen(function* () {
-      const redirect = yield* prelaunchRedirectGuard(ctx)
-      if (redirect) return redirect
-
-      const auth = yield* AuthService
-      const session = yield* auth
-        .getSession()
-        .pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
-      if (!session.userId) return RouteOutcome.redirect("/login", 302)
-      return
-    }),
-  loader: (ctx) => okWithSession(ctx, {}),
-  view: () => Effect.succeed(autopilotRouteShellTemplate()),
-  head: () => Effect.succeed({ title: "Autopilot" }),
+  guard: (ctx) => prelaunchRedirectGuard(ctx),
+  loader: () => Effect.succeed(RouteOutcome.redirect("/", 302)),
+  view: () => Effect.succeed(homePageTemplate()),
+  head: () => Effect.succeed({ title: "OpenAgents" }),
 }
 
 const deck: Route<{}, AppServices> = {
@@ -526,19 +491,19 @@ const storybook: Route<StorybookData, AppServices> = {
     ),
 }
 
-// Legacy route: keep /chat/:id redirecting to /autopilot.
+// Legacy route: redirect /chat/:id to home.
 const chatLegacyRedirect: Route<{}, AppServices> = {
   id: "/chat/$chatId",
   match: matchChatLegacy,
   guard: (ctx) => prelaunchRedirectGuard(ctx),
-  loader: () => Effect.succeed(RouteOutcome.redirect("/autopilot", 302)),
+  loader: () => Effect.succeed(RouteOutcome.redirect("/", 302)),
   view: () => Effect.succeed(homePageTemplate()),
 }
 
 export const appRoutes = [
   home,
-  login,
-  autopilot,
+  loginRedirect,
+  autopilotRedirect,
   deck,
   storybook,
   dseOpsRuns,
