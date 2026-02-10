@@ -355,10 +355,9 @@ export const mountAutopilotController = (input: {
 
     const controlsData = {
       isExportingBlueprint,
-      isBusy,
       isResettingAgent,
     }
-    const controlsKey = `${isExportingBlueprint ? 1 : 0}:${isBusy ? 1 : 0}:${isResettingAgent ? 1 : 0}`
+    const controlsKey = `${isExportingBlueprint ? 1 : 0}:${isResettingAgent ? 1 : 0}`
 
     const renderInput: AutopilotRouteRenderInput = {
       chatData: autopilotChatData,
@@ -1069,6 +1068,18 @@ export const mountAutopilotController = (input: {
 
   input.ez.set("autopilot.controls.clearMessages", () =>
     Effect.gen(function* () {
+      if (!chatId) {
+        if (!session.userId) {
+          yield* Effect.sync(() => setAuth({ step: "email", errorText: null }))
+          return
+        }
+        yield* Effect.sync(() => window.alert("Chat is still initializing. Try again in a moment."))
+        return
+      }
+
+      // If a run is currently streaming, clear will immediately be repopulated by new parts.
+      // Stop first so Clear Messages is a reliable escape hatch.
+      yield* Effect.promise(() => input.runtime.runPromise(input.chat.stop(chatId))).pipe(Effect.catchAll(() => Effect.void))
       yield* Effect.promise(() => input.runtime.runPromise(input.chat.clearHistory(chatId)))
       yield* Effect.sync(() => {
         inputDraft = ""
@@ -1080,9 +1091,18 @@ export const mountAutopilotController = (input: {
 
   const resetAgent = async () => {
     if (isResettingAgent) return
-    const isBusy = chatSnapshot.status === "submitted" || chatSnapshot.status === "streaming"
-    if (isBusy) return
-    const confirmed = window.confirm("Reset agent?\n\nThis will clear messages and reset your Blueprint to defaults.")
+    if (!chatId) {
+      if (!session.userId) {
+        setAuth({ step: "email", errorText: null })
+        return
+      }
+      window.alert("Chat is still initializing. Try again in a moment.")
+      return
+    }
+
+    const confirmed = window.confirm(
+      "Reset agent?\n\nThis will stop any in-progress run, clear messages, and reset your Blueprint to defaults.",
+    )
     if (!confirmed) return
 
     isResettingAgent = true
@@ -1090,6 +1110,8 @@ export const mountAutopilotController = (input: {
     scheduleRender()
 
     try {
+      // Best-effort stop so reset is always a working escape hatch (even if a run got stuck).
+      await input.runtime.runPromise(input.chat.stop(chatId)).catch(() => {})
       await input.runtime.runPromise(input.store.resetThread({ threadId: chatId }))
       inputDraft = ""
       const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]')
