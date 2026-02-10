@@ -72,7 +72,10 @@ function openChatPaneOnHome(container: Element): () => void {
     paneStyle.setAttribute("data-oa-home-chat-pane-style", "1")
     paneStyle.textContent =
       "[data-oa-home-chat-overlay] [data-oa-pane] { background: rgba(0,0,0,0.5) !important; }\n" +
-      "[data-oa-home-chat-overlay], [data-oa-home-chat-overlay] [data-oa-pane-system], [data-oa-home-chat-overlay] [data-oa-pane-layer] { user-select: none; -webkit-user-select: none; }"
+      "[data-oa-home-chat-overlay], [data-oa-home-chat-overlay] [data-oa-pane-system], [data-oa-home-chat-overlay] [data-oa-pane-layer] { user-select: none; -webkit-user-select: none; }\n" +
+      "[data-oa-home-chat-overlay] [data-oa-pane-title] { cursor: grab; }\n" +
+      "[data-oa-home-chat-overlay] [data-oa-pane-title]:active { cursor: grabbing; }\n" +
+      "[data-oa-home-chat-overlay] [data-oa-pane-system][data-oa-pane-dragging=\"1\"] [data-oa-pane-title] { cursor: grabbing; }"
     overlay.appendChild(paneStyle)
     const paneRoot = document.createElement("div")
     paneRoot.style.cssText = "width:100%;height:100%;"
@@ -168,6 +171,8 @@ function openChatPaneOnHome(container: Element): () => void {
             }
             renderContent()
           })
+          const input = paneContentSlot.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
+          if (input) requestAnimationFrame(() => input.focus())
         },
         () => {},
       )
