@@ -17,7 +17,15 @@ import { BudgetExceededError, ExecutionBudgetService } from "./budget.js";
 import { BlobStoreService } from "./blobStore.js";
 import { LmClientError, LmClientService } from "./lm.js";
 import { PolicyRegistryError, PolicyRegistryService } from "./policyRegistry.js";
-import { PromptRenderError, renderPromptMessages } from "./render.js";
+import {
+  contextPressureFromRenderStats,
+  type ContextPressureV1
+} from "./contextPressure.js";
+import {
+  PromptRenderError,
+  renderPromptMessagesWithStats,
+  type PromptRenderStatsV1
+} from "./render.js";
 import { ReceiptRecorderError, ReceiptRecorderService } from "./receipt.js";
 
 export type PredictEnv =
@@ -109,6 +117,11 @@ export function make<I, O>(signature: DseSignature<I, O>) {
     let repairs = 0;
     let usage: { readonly promptTokens?: number; readonly completionTokens?: number; readonly totalTokens?: number } | undefined;
     let outputHash: string | undefined;
+    let promptRenderStats: PromptRenderStatsV1 | undefined;
+    let contextPressure: ContextPressureV1 | undefined;
+
+    // Phase A: explicit strategy id for trace mining and replay.
+    const strategyId = "direct.v1";
 
     const errorSummary = (error: unknown): { readonly errorName: string; readonly message: string } => {
       if (error && typeof error === "object") {
@@ -132,9 +145,11 @@ export function make<I, O>(signature: DseSignature<I, O>) {
           format: "openagents.dse.predict_receipt",
           formatVersion: 1,
           receiptId,
+          runId: receiptId,
           createdAt: new Date().toISOString(),
           signatureId: signature.id,
           compiled_id,
+          strategyId,
           hashes: {
             inputSchemaHash,
             outputSchemaHash,
@@ -159,6 +174,8 @@ export function make<I, O>(signature: DseSignature<I, O>) {
             endedAtMs,
             durationMs: Math.max(0, endedAtMs - startedAtMs)
           },
+          ...(promptRenderStats ? { promptRenderStats } : {}),
+          ...(contextPressure ? { contextPressure } : {}),
           ...(repairs > 0 ? { repairCount: repairs } : {}),
           budget: budgetSnapshot,
           result
@@ -166,11 +183,14 @@ export function make<I, O>(signature: DseSignature<I, O>) {
       });
 
     const main = Effect.gen(function* () {
-      const messages = yield* renderPromptMessages({
+      const rendered = yield* renderPromptMessagesWithStats({
         signature,
         input,
         params
       });
+      const messages = rendered.messages;
+      promptRenderStats = rendered.stats;
+      contextPressure = contextPressureFromRenderStats(rendered.stats);
 
       renderedHash = yield* renderedPromptHash(messages);
 

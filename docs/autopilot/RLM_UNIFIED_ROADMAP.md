@@ -256,3 +256,21 @@ Production smoke guidance:
 
 - `docs/autopilot/PROD_E2E_TESTING.md`
 
+---
+
+## Implementation Log
+
+### 2026-02-10: Phase A (Instrumentation and Signals) — implemented in DSE
+
+- Added prompt render observability:
+  - prompt render stats (`PromptRenderStatsV1`) emitted by the renderer, including BlobRef evidence access + preview sizes
+  - implementation: `packages/dse/src/runtime/render.ts`
+- Added a heuristic v1 context pressure signal derived from rendered prompt chars:
+  - implementation: `packages/dse/src/runtime/contextPressure.ts`
+- Extended DSE predict receipts to include:
+  - `runId` (defaults to `receiptId` for now)
+  - `strategyId` (defaults to `direct.v1`)
+  - `promptRenderStats` + `contextPressure`
+  - implementation: `packages/dse/src/runtime/receipt.ts`, `packages/dse/src/runtime/predict.ts`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
