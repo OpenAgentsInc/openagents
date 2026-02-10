@@ -1,7 +1,6 @@
 import { Effect, Stream } from "effect"
 import {
   BrowserHistory,
-  DomServiceTag,
   EffuseLive,
   html,
   makeEzRegistry,
@@ -16,7 +15,7 @@ import { ConvexService } from "../effect/convex"
 import { getAppConfig } from "../effect/config"
 import { ContractsApiService } from "../effect/contracts"
 import { OwnedThreadIdAtom } from "../effect/atoms/chat"
-import { SessionAtom, type Session } from "../effect/atoms/session"
+import { SessionAtom } from "../effect/atoms/session"
 import { makeAppRuntime } from "../effect/runtime"
 import { TelemetryService } from "../effect/telemetry"
 import { hydrateAtomRegistryFromDocument, makeAtomRegistry } from "./atomRegistry"
@@ -24,7 +23,6 @@ import { mountModulesController, mountSignaturesController, mountToolsController
 import { mountDseVizController } from "./controllers/dseVizController"
 import { mountDeckController } from "./controllers/deckController"
 import { mountHomeController } from "./controllers/homeController"
-import { identityPillTemplate } from "../effuse-pages/identityPill"
 import { loadPostHog } from "./posthog"
 import { appRoutes } from "./routes"
 import { UiBlobStore } from "./blobStore"
@@ -158,18 +156,6 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             .catch(() => { })
         }
 
-        // Identity pill: fixed top-left pane-style, shows user email and Log out.
-        // Only show on /autopilot (home uses its own identity pane in the chat overlay).
-        const pillContainer = document.createElement("div")
-        pillContainer.setAttribute("data-identity-pill-root", "1")
-        pillContainer.style.cssText =
-          "position:fixed;top:12px;left:12px;z-index:9999;pointer-events:auto;display:none"
-        shell.appendChild(pillContainer)
-
-        const setIdentityPillVisible = (pathname: string) => {
-          pillContainer.style.display = pathname === "/autopilot" ? "block" : "none"
-        }
-
         const signOut = async () => {
           try {
             await fetch("/api/auth/signout", { method: "POST", credentials: "include" })
@@ -191,21 +177,6 @@ export const bootEffuseApp = (options?: BootOptions): void => {
           }),
         )
 
-        const renderIdentityPill = (session: Session) => {
-          runtime
-            .runPromise(
-              Effect.gen(function* () {
-                const dom = yield* DomServiceTag
-                yield* dom.render(pillContainer, identityPillTemplate(session))
-              }).pipe(Effect.provide(EffuseLive)),
-            )
-            .catch(() => { })
-        }
-
-        renderIdentityPill(atoms.get(SessionAtom))
-        atoms.subscribe(SessionAtom, renderIdentityPill, { immediate: false })
-        setIdentityPillVisible(window.location.pathname)
-
         type ActiveController = { readonly kind: string; readonly cleanup: () => void }
         let active: ActiveController | null = null
 
@@ -220,10 +191,8 @@ export const bootEffuseApp = (options?: BootOptions): void => {
         }
 
         const startForPath = (pathname: string) => {
-          // /autopilot and /login are deprecated and redirect to /; show home until redirect completes.
-          // All other non-root routes redirect to / (server does the same for unmatched document routes).
           const desired =
-            pathname === "/" || pathname === "/autopilot" || pathname === "/login"
+            pathname === "/"
               ? "home"
               : pathname === "/deck"
                 ? "deck"
@@ -310,8 +279,6 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             lastPathname = pathname
             Effect.runPromise(telemetry.withNamespace("app").event("page_view", { path: pathname })).catch(() => { })
           }
-
-          setIdentityPillVisible(pathname)
 
           if (state.status === "navigating") {
             stopActive()

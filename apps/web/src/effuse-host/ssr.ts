@@ -216,7 +216,7 @@ function isLocalDevRequest(request: Request, url: URL): boolean {
 
 /**
  * Returns a 302 redirect to / when prelaunch is on and the request is not allowed.
- * Redirect is skipped on localhost so /autopilot works in local dev.
+ * Redirect is skipped on localhost for local dev ergonomics.
  */
 export function getPrelaunchRedirectIfRequired(
   request: Request,
@@ -331,9 +331,20 @@ export const handleSsrRequest = async (
   const effect = Effect.gen(function* () {
     // Unmatched document routes (e.g. /hatchery) redirect to home; assets/API are handled earlier.
     if (!matched) {
+      const headers = new Headers({
+        location: "/",
+        "cache-control": "no-store, no-cache, must-revalidate",
+      })
+      if (setBypassCookie) {
+        // Preserve prelaunch bypass when a legacy path (or typo) includes ?key=.
+        headers.append(
+          "Set-Cookie",
+          `prelaunch_bypass=1; Path=/; Max-Age=${PRELAUNCH_BYPASS_COOKIE_MAX_AGE}; Secure; SameSite=Lax`,
+        )
+      }
       return new Response(null, {
         status: 302,
-        headers: new Headers({ location: "/", "cache-control": "no-store, no-cache, must-revalidate" }),
+        headers,
       })
     }
 
@@ -346,8 +357,8 @@ export const handleSsrRequest = async (
         const headers = new Headers({ location, "cache-control": "no-store" })
         if (setBypassCookie) {
           // Important: the prelaunch bypass key is often used on routes that immediately redirect
-          // (e.g. /autopilot -> /login when unauthenticated). Mint the bypass cookie here so the
-          // redirect chain doesn't lose bypass and fall back to the countdown page.
+          // (e.g. auth endpoints or legacy routes that redirect to /). Mint the bypass cookie here so
+          // a redirect chain doesn't lose bypass and fall back to the countdown page.
           headers.append(
             "Set-Cookie",
             `prelaunch_bypass=1; Path=/; Max-Age=${PRELAUNCH_BYPASS_COOKIE_MAX_AGE}; Secure; SameSite=Lax`,

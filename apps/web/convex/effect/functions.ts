@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { action, mutation, query } from '../_generated/server';
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from '../_generated/server';
 import { makeEffectActionCtx, makeEffectMutationCtx, makeEffectQueryCtx } from './ctx';
 
 import type { DefaultArgsForOptionalValidator } from 'convex/server';
@@ -10,50 +10,74 @@ type EffectHandler<TContext, TArgs, TReturn> = (ctx: TContext, args: TArgs) => E
 
 type HandlerArgs<TArgs extends PropertyValidators> = DefaultArgsForOptionalValidator<TArgs>[0];
 
-export const effectQuery = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>({
-  args,
-  returns,
-  handler,
-}: {
+export const effectQuery = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>(input: {
   readonly args: TArgs;
   readonly returns: TReturns;
   readonly handler: EffectHandler<EffectQueryCtx, HandlerArgs<TArgs>, Infer<TReturns>>;
 }) =>
   query({
-    args,
-    returns,
+    args: input.args,
+    returns: input.returns,
     handler: (ctx, ...handlerArgs: DefaultArgsForOptionalValidator<TArgs>) =>
-      Effect.runPromise(handler(makeEffectQueryCtx(ctx), handlerArgs[0])),
+      Effect.runPromise(input.handler(makeEffectQueryCtx(ctx), handlerArgs[0])),
   });
 
-export const effectMutation = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>({
-  args,
-  returns,
-  handler,
-}: {
+export const effectInternalQuery = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>(input: {
+  readonly args: TArgs;
+  readonly returns: TReturns;
+  readonly handler: EffectHandler<EffectQueryCtx, HandlerArgs<TArgs>, Infer<TReturns>>;
+}) =>
+  internalQuery({
+    args: input.args,
+    returns: input.returns,
+    handler: (ctx, ...handlerArgs: DefaultArgsForOptionalValidator<TArgs>) =>
+      Effect.runPromise(input.handler(makeEffectQueryCtx(ctx), handlerArgs[0])),
+  });
+
+export const effectMutation = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>(input: {
   readonly args: TArgs;
   readonly returns: TReturns;
   readonly handler: EffectHandler<EffectMutationCtx, HandlerArgs<TArgs>, Infer<TReturns>>;
 }) =>
   mutation({
-    args,
-    returns,
+    args: input.args,
+    returns: input.returns,
     handler: (ctx, ...handlerArgs: DefaultArgsForOptionalValidator<TArgs>) =>
-      Effect.runPromise(handler(makeEffectMutationCtx(ctx), handlerArgs[0])),
+      Effect.runPromise(input.handler(makeEffectMutationCtx(ctx), handlerArgs[0])),
   });
 
-export const effectAction = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>({
-  args,
-  returns,
-  handler,
-}: {
+export const effectInternalMutation = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>(input: {
+  readonly args: TArgs;
+  readonly returns: TReturns;
+  readonly handler: EffectHandler<EffectMutationCtx, HandlerArgs<TArgs>, Infer<TReturns>>;
+}) =>
+  internalMutation({
+    args: input.args,
+    returns: input.returns,
+    handler: (ctx, ...handlerArgs: DefaultArgsForOptionalValidator<TArgs>) =>
+      Effect.runPromise(input.handler(makeEffectMutationCtx(ctx), handlerArgs[0])),
+  });
+
+export const effectAction = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>(input: {
   readonly args: TArgs;
   readonly returns: TReturns;
   readonly handler: EffectHandler<EffectActionCtx, HandlerArgs<TArgs>, Infer<TReturns>>;
 }) =>
   action({
-    args,
-    returns,
+    args: input.args,
+    returns: input.returns,
     handler: (ctx, ...handlerArgs: DefaultArgsForOptionalValidator<TArgs>) =>
-      Effect.runPromise(handler(makeEffectActionCtx(ctx), handlerArgs[0])),
+      Effect.runPromise(input.handler(makeEffectActionCtx(ctx), handlerArgs[0])),
+  });
+
+export const effectInternalAction = <TArgs extends PropertyValidators, TReturns extends Validator<any, any, any>>(input: {
+  readonly args: TArgs;
+  readonly returns: TReturns;
+  readonly handler: EffectHandler<EffectActionCtx, HandlerArgs<TArgs>, Infer<TReturns>>;
+}) =>
+  internalAction({
+    args: input.args,
+    returns: input.returns,
+    handler: (ctx, ...handlerArgs: DefaultArgsForOptionalValidator<TArgs>) =>
+      Effect.runPromise(input.handler(makeEffectActionCtx(ctx), handlerArgs[0])),
   });

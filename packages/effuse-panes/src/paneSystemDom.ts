@@ -388,14 +388,36 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     }
 
     const nextChildren: HTMLElement[] = [];
+    type ScrollState = { el: HTMLElement; top: number };
+    const scrollStates: ScrollState[][] = [];
     for (const pane of ordered) {
       const el = existing.get(pane.id) ?? renderPaneEl(pane);
+      const content = el.querySelector("[data-oa-pane-content]");
+      const states: ScrollState[] = [];
+      if (content instanceof HTMLElement) {
+        states.push({ el: content, top: content.scrollTop });
+        const inner = content.querySelector("[data-oa-home-chat-messages]");
+        if (inner instanceof HTMLElement) {
+          states.push({ el: inner, top: inner.scrollTop });
+        }
+      }
+      scrollStates.push(states);
       applyPaneStyles(pane, el);
       nextChildren.push(el);
     }
 
     // Replace layer children if changed.
     layer.replaceChildren(...nextChildren);
+
+    // Restore scroll positions (moving nodes can reset scroll in some browsers).
+    nextChildren.forEach((el, i) => {
+      const states = scrollStates[i];
+      if (states) {
+        states.forEach(({ el: target, top }) => {
+          target.scrollTop = top;
+        });
+      }
+    });
 
     if (cfg.enableHotbar) {
       // Hotbar

@@ -188,7 +188,7 @@ const chatData = (overrides?: Partial<AutopilotChatData>): AutopilotChatData => 
 
 const sidebarModel = (overrides?: Partial<AutopilotSidebarModel>): AutopilotSidebarModel => ({
   collapsed: false,
-  pathname: "/autopilot",
+  pathname: "/",
   user: { email: "you@example.com", firstName: "Chris", lastName: "D" },
   userMenuOpen: false,
   ...overrides,

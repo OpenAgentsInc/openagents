@@ -22,7 +22,7 @@ const authClosed: AutopilotAuthModel = {
 
 const sidebarModel: AutopilotSidebarModel = {
   collapsed: false,
-  pathname: "/autopilot",
+  pathname: "/",
   user: null,
   userMenuOpen: false,
 }
