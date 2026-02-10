@@ -66,6 +66,9 @@ export type PredictReceiptV1 = {
         readonly usage: {
           readonly elapsedMs: number;
           readonly lmCalls: number;
+          readonly toolCalls?: number | undefined;
+          readonly rlmIterations?: number | undefined;
+          readonly subLmCalls?: number | undefined;
           readonly outputChars: number;
         };
       }
@@ -131,6 +134,9 @@ export const PredictReceiptV1Schema: Schema.Schema<PredictReceiptV1> =
         usage: Schema.Struct({
           elapsedMs: Schema.Number,
           lmCalls: Schema.Number,
+          toolCalls: Schema.optional(Schema.Number),
+          rlmIterations: Schema.optional(Schema.Number),
+          subLmCalls: Schema.optional(Schema.Number),
           outputChars: Schema.Number
         })
       })

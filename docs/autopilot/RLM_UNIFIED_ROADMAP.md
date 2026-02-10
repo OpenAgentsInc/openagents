@@ -1,7 +1,7 @@
 # Unified Roadmap: Context Rot -> RLM -> Trace Mining -> Distilled Agents
 
 - **Status:** Proposed (execution roadmap)
-- **Last updated:** 2026-02-09
+- **Last updated:** 2026-02-10
 - **Conflict rules:**
   - If sequencing conflicts with the global roadmap: `docs/ROADMAP.md` wins.
   - If terminology conflicts: `docs/GLOSSARY.md` wins.
@@ -272,5 +272,26 @@ Production smoke guidance:
   - `strategyId` (defaults to `direct.v1`)
   - `promptRenderStats` + `contextPressure`
   - implementation: `packages/dse/src/runtime/receipt.ts`, `packages/dse/src/runtime/predict.ts`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
+
+### 2026-02-10: Phase B (PredictStrategy abstraction + RLM counters) — implemented in DSE
+
+- Added `params.strategy` to DSE params so inference strategy is pinned in compiled artifacts:
+  - `packages/dse/src/params.ts`
+- Implemented strategy selection in `Predict(signature)`:
+  - `direct.v1` runs the existing single-call predict (+ repair)
+  - `rlm_lite.v1` is recognized but currently fails fast with a typed `PredictStrategyError` (Phase C will provide the RLM kernel)
+  - `packages/dse/src/runtime/predict.ts`
+- Stabilized TypeScript Effect inference for strategy dispatch:
+  - `makePredict` now has an explicit return type and dispatch returns a single `Effect<O, PredictError, PredictEnv>` shape
+  - prevents env/error types from degrading to `unknown` under `exactOptionalPropertyTypes`
+  - `packages/dse/src/runtime/predict.ts`
+- Extended execution budgets for upcoming RLM behavior:
+  - new budget limits: `maxToolCalls`, `maxRlmIterations`, `maxSubLmCalls`
+  - new usage counters + handle methods: `onToolCall`, `onRlmIteration`, `onSubLmCall`
+  - `packages/dse/src/runtime/budget.ts`, `packages/dse/src/params.ts`
+- Updated predict receipt schema to carry the expanded budget usage counters:
+  - `packages/dse/src/runtime/receipt.ts`
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
