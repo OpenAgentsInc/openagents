@@ -2,7 +2,7 @@ import { Effect, JSONSchema, Schema } from "effect";
 
 import type { DseSignature } from "../signature.js";
 import type { DseParams } from "../params.js";
-import type { BlobRef } from "../blob.js";
+import { isBlobRef, type BlobRef } from "../blob.js";
 
 import { canonicalJson } from "../internal/canonicalJson.js";
 import {
@@ -367,6 +367,8 @@ export function make<I, O>(
         const doc = {
           format: "openagents.dse.rlm_trace",
           formatVersion: 1,
+          signatureId: signature.id,
+          receiptId,
           strategyId,
           events: traceEvents
         };
@@ -382,6 +384,19 @@ export function make<I, O>(
       // Seed VarSpace from the signature prompt context entries so blobs live in programmatic space.
       const run = Effect.gen(function* () {
         const vars = yield* VarSpaceService;
+
+        const encodedInput = yield* Effect.try({
+          try: () => Schema.encodeSync(signature.input)(input),
+          catch: (cause) =>
+            RlmKernelError.make({
+              message: "Failed to encode signature input for RLM trace export",
+              cause
+            })
+        });
+
+        // Phase F: include the encoded signature input in the trace so we can export candidate
+        // labeled examples (inputJson + expectedJson) from RLM traces.
+        pushTrace({ _tag: "Input", input: encodedInput });
 
         const seedJsonIfAbsent = (name: string, value: unknown) =>
           vars.get(name).pipe(
@@ -554,12 +569,159 @@ export function make<I, O>(
       return yield* run;
     });
 
+    // Phase F: a distilled tactic derived from common RLM traces for long-context "needle in haystack"
+    // tasks. It attempts a deterministic search + parse pass first (0 LM calls), and falls back to
+    // RLM-lite (or direct) when the tactic doesn't apply.
+    const distilledSearchLineExtractPredict: Effect.Effect<O, PredictError, PredictEnv> = Effect.gen(function* () {
+      const rendered = yield* renderPromptMessagesWithStats({
+        signature,
+        input,
+        params,
+        blobContextMode: "metadata_only"
+      });
+      promptRenderStats = rendered.stats;
+      contextPressure = contextPressureFromRenderStats(rendered.stats);
+      renderedHash = yield* renderedPromptHash(rendered.messages);
+
+      const encodedInput = yield* Effect.try({
+        try: () => Schema.encodeSync(signature.input)(input),
+        catch: (cause) =>
+          PredictStrategyError.make({
+            strategyId,
+            message: `distilled.search_line_extract.v1 failed to encode input: ${String(cause)}`
+          })
+      });
+
+      const record =
+        encodedInput && typeof encodedInput === "object"
+          ? (encodedInput as Record<string, unknown>)
+          : null;
+
+      const question = typeof record?.question === "string" ? String(record.question) : null;
+      const blobsRaw = Array.isArray(record?.blobs) ? (record.blobs as ReadonlyArray<unknown>) : null;
+      const blobs: Array<BlobRef> = blobsRaw
+        ? blobsRaw.filter((b): b is BlobRef => isBlobRef(b))
+        : [];
+
+      if (!question || blobs.length === 0) {
+        // Not applicable; fall back to baseline behavior.
+        return yield* directPredict;
+      }
+
+      const queries: Array<string> = [];
+
+      for (const m of question.matchAll(/\"([^\"]{3,})\"/g)) {
+        const s = String(m[1] ?? "").trim();
+        if (s.length > 0) queries.push(s);
+      }
+
+      if (question.includes("unexpected EOF while reading headers")) {
+        queries.push("unexpected EOF while reading headers");
+      }
+
+      const qLower = question.toLowerCase();
+      if (qLower.includes("oa_req")) queries.push("oa_req=");
+      if (question.includes("NEEDLE")) queries.push("export const NEEDLE");
+
+      if (queries.length === 0) {
+        // Fallback heuristic: search for a short prefix of the question.
+        queries.push(question.slice(0, 80).trim());
+      }
+
+      const uniqQueries = Array.from(
+        new Set(
+          queries
+            .map((q) => q.trim())
+            .filter((q) => q.length >= 3)
+        )
+      ).sort((a, b) => b.length - a.length);
+
+      const blobStore = yield* BlobStoreService;
+
+      const lineAroundIndex = (text: string, index: number): string => {
+        const start = text.lastIndexOf("\n", Math.max(0, index - 1));
+        const end = text.indexOf("\n", index);
+        const from = start === -1 ? 0 : start + 1;
+        const to = end === -1 ? text.length : end;
+        return text.slice(from, to);
+      };
+
+      for (const blob of blobs) {
+        yield* budget.checkTime();
+
+        const text = yield* blobStore.getText(blob.id).pipe(
+          Effect.catchAll(() =>
+            Effect.fail(
+              PredictStrategyError.make({
+                strategyId,
+                message: `distilled.search_line_extract.v1 failed to read blob (blobId=${blob.id})`
+              })
+            )
+          )
+        );
+
+        if (text == null) continue;
+
+        for (const query of uniqQueries) {
+          const idx = text.indexOf(query);
+          if (idx < 0) continue;
+
+          const quote = lineAroundIndex(text, idx);
+          if (quote.trim().length === 0) continue;
+
+          let answer: string | null = null;
+          const oaReq = quote.match(/oa_req=([^\s]+)/);
+          if (oaReq && oaReq[1]) answer = String(oaReq[1]);
+
+          const needle = quote.match(/NEEDLE\\s*=\\s*\"([^\"]+)\"/);
+          if (!answer && needle && needle[1]) answer = String(needle[1]);
+
+          if (!answer) continue;
+
+          const candidateUnknown = {
+            answer,
+            evidence: { blobId: blob.id, quote }
+          };
+
+          let decoded: O | null = null;
+          try {
+            decoded = Schema.decodeUnknownSync(signature.output)(candidateUnknown);
+          } catch {
+            decoded = null;
+          }
+
+          if (!decoded) continue;
+
+          const outputEncoded = yield* Effect.try({
+            try: () => Schema.encodeSync(signature.output)(decoded),
+            catch: (cause) =>
+              OutputDecodeError.make({
+                message: "Failed to encode decoded output (distilled strategy)",
+                cause
+              })
+          });
+
+          outputHash = yield* sha256IdFromCanonicalJson(outputEncoded);
+          return decoded;
+        }
+      }
+
+      // No confident extraction; fall back to a more general strategy.
+      const snap = yield* budget.snapshot();
+      const canRlm =
+        snap.limits.maxRlmIterations !== undefined && snap.limits.maxSubLmCalls !== undefined;
+      if (canRlm) return yield* rlmLitePredict;
+      return yield* directPredict;
+    });
+
     const main: Effect.Effect<O, PredictError, PredictEnv> = (() => {
       switch (strategyId) {
         case "direct.v1":
           return directPredict;
         case "rlm_lite.v1":
           return rlmLitePredict;
+        case "distilled.search_line_extract.v1":
+          return distilledSearchLineExtractPredict;
         default:
           return Effect.fail(
             PredictStrategyError.make({

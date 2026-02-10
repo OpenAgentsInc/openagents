@@ -1,8 +1,8 @@
 import { v } from "convex/values";
 import { Effect } from "effect";
 
-import type { EffectMutationCtx } from "../effect/ctx";
-import { effectMutation } from "../effect/functions";
+import type { EffectMutationCtx, EffectQueryCtx } from "../effect/ctx";
+import { effectMutation, effectQuery } from "../effect/functions";
 import { tryPromise } from "../effect/tryPromise";
 
 import { assertThreadAccess } from "../autopilot/access";
@@ -137,4 +137,51 @@ export const recordPredictReceipt = effectMutation({
   },
   returns: v.object({ ok: v.boolean() }),
   handler: recordPredictReceiptImpl,
+});
+
+export const getPredictReceiptByReceiptIdImpl = (
+  ctx: EffectQueryCtx,
+  args: { readonly receiptId: string },
+) =>
+  Effect.gen(function* () {
+    const row = yield* tryPromise(() =>
+      ctx.db.query("receipts").withIndex("by_receiptId", (q) => q.eq("receiptId", args.receiptId)).unique(),
+    );
+
+    if (!row) return { ok: true as const, receipt: null };
+
+    const kind = String((row as any).kind ?? "");
+    if (kind !== "dse.predict") return { ok: true as const, receipt: null };
+
+    const threadId = String((row as any).threadId ?? "");
+    const runId = String((row as any).runId ?? "");
+
+    yield* assertThreadAccess(ctx, { threadId });
+
+    return {
+      ok: true as const,
+      receipt: {
+        threadId,
+        runId,
+        json: (row as any).json ?? null,
+        createdAtMs: Number((row as any).createdAtMs ?? 0),
+      },
+    };
+  });
+
+export const getPredictReceiptByReceiptId = effectQuery({
+  args: { receiptId: v.string() },
+  returns: v.object({
+    ok: v.boolean(),
+    receipt: v.union(
+      v.null(),
+      v.object({
+        threadId: v.string(),
+        runId: v.string(),
+        json: v.any(),
+        createdAtMs: v.number(),
+      }),
+    ),
+  }),
+  handler: getPredictReceiptByReceiptIdImpl,
 });

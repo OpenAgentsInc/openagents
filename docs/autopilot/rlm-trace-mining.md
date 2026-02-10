@@ -1,7 +1,7 @@
 # RLM Trace Mining and Distillation
 
 - **Status:** Draft (process doc)
-- **Last updated:** 2026-02-09
+- **Last updated:** 2026-02-10
 - **Conflict rules:**
   - If terminology conflicts: `docs/GLOSSARY.md` wins.
   - If behavior conflicts with code: code wins.
@@ -48,6 +48,14 @@ Without these fields, trace mining collapses into vibes:
 - **Progress signals**:
   - "new evidence" events per iteration (did we read anything new)
   - stuck/thrash detection outcomes (if triggered)
+
+Implementation note (DSE RLM-lite):
+
+- RLM-lite traces are persisted as a BlobStore JSON document with format `openagents.dse.rlm_trace` and include:
+  - `signatureId`, `receiptId`, `strategyId`
+  - an `Input` event (encoded signature input JSON)
+  - per-iteration `action` + `observation` events, including the `Final` output payload
+- This is the minimum needed to export candidate labeled examples from traces.
 
 ---
 
@@ -112,6 +120,44 @@ Use DSE eval/compile to compare:
 - direct predict (baseline)
 
 Promote only if the distilled behavior is measurably better on holdout (quality and/or cost/latency).
+
+### 3.6 Export candidates from traces into `dseExamples` (Convex-first)
+
+Goal: turn one good exploratory run (receipt + RLM trace) into a candidate labeled example row:
+
+- `signatureId`
+- `exampleId`
+- `inputJson` (from RLM trace `Input`)
+- `expectedJson` (from RLM trace `Final.output`)
+
+#### Step 1: find the DSE predict receipt id
+
+In the Autopilot UI, inspect the `dse.signature` chat card for the run and copy `receiptId`.
+
+#### Step 2: export via the Worker endpoint
+
+Use the admin endpoint (authed):
+
+```bash
+curl -X POST "http://localhost:8787/api/dse/trace/export" \
+  -H "content-type: application/json" \
+  -d '{"receiptId":"<RECEIPT_ID>","split":"train","tags":["seed"],"dryRun":false}'
+```
+
+Behavior:
+
+- creates/updates `dseExamples` for the receipt’s `signatureId`
+- default `exampleId` is `trace:<receiptId>` (override via `exampleId`)
+- tags include `trace_export` and `strategy:<strategyId>` plus any user tags
+
+#### Step 3: compile and promote
+
+After exporting enough examples:
+
+1. compile: `POST /api/dse/compile` (writes artifact + compile report)
+2. promote: `POST /api/dse/promote` (holdout delta gate; writes active pointer; canary cleared)
+
+Reference: `docs/autopilot/SELF_IMPROVE_PLAN.md` (Stage 5/6 endpoints).
 
 ---
 
