@@ -18,13 +18,23 @@ export type HomeController = {
 
 const CHAT_PANE_ID = "home-chat"
 
+/** Basic email check: non-empty, has @, has domain with at least one dot. */
+function looksLikeEmail(value: string): boolean {
+  const s = value.trim()
+  if (!s) return false
+  const at = s.indexOf("@")
+  if (at <= 0 || at === s.length - 1) return false
+  const after = s.slice(at + 1)
+  return after.includes(".") && !after.startsWith(".") && !after.endsWith(".")
+}
+
 function startPrelaunchCountdownTicker(container: Element): () => void {
   const wrapper = container.querySelector("[data-prelaunch-countdown]")
   const display = container.querySelector("[data-countdown-display]")
   const targetAttr = wrapper?.getAttribute("data-countdown-target")
-  if (!display || !targetAttr) return () => {}
+  if (!display || !targetAttr) return () => { }
   const targetMs = Number(targetAttr)
-  if (Number.isNaN(targetMs)) return () => {}
+  if (Number.isNaN(targetMs)) return () => { }
 
   const tick = () => {
     const left = targetMs - Date.now()
@@ -37,7 +47,7 @@ function startPrelaunchCountdownTicker(container: Element): () => void {
 
 function openChatPaneOnHome(container: Element): () => void {
   const trigger = container.querySelector("[data-oa-open-chat-pane]")
-  if (!trigger) return () => {}
+  if (!trigger) return () => { }
 
   const handler = (ev: Event): void => {
     ev.preventDefault()
@@ -61,7 +71,8 @@ function openChatPaneOnHome(container: Element): () => void {
     const paneStyle = document.createElement("style")
     paneStyle.setAttribute("data-oa-home-chat-pane-style", "1")
     paneStyle.textContent =
-      "[data-oa-home-chat-overlay] [data-oa-pane] { background: rgba(0,0,0,0.5) !important; }"
+      "[data-oa-home-chat-overlay] [data-oa-pane] { background: rgba(0,0,0,0.5) !important; }\n" +
+      "[data-oa-home-chat-overlay], [data-oa-home-chat-overlay] [data-oa-pane-system], [data-oa-home-chat-overlay] [data-oa-pane-layer] { user-select: none; -webkit-user-select: none; }"
     overlay.appendChild(paneStyle)
     const paneRoot = document.createElement("div")
     paneRoot.style.cssText = "width:100%;height:100%;"
@@ -98,29 +109,71 @@ function openChatPaneOnHome(container: Element): () => void {
     paneSystem.render()
 
     const paneContentSlot = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-content]`)
-    if (paneContentSlot instanceof Element) {
+    if (!(paneContentSlot instanceof Element)) return
+
+    const messages: Array<{ role: "user" | "assistant"; text: string }> = [
+      { role: "assistant", text: "Autopilot online." },
+    ]
+
+    const chatInputClass =
+      "w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white/90 text-sm font-mono placeholder-white/40 focus:outline-none focus:border-white/20"
+
+    const renderContent = () => {
+      const messagesHtml = html`
+        <div class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
+          ${messages.map(
+            (m) =>
+              html`<div
+                class="text-sm font-mono ${m.role === "user" ? "text-white/80 text-right" : "text-white/90"}"
+                data-chat-role="${m.role}"
+              >
+                ${m.text}
+              </div>`,
+          )}
+        </div>
+        <form data-oa-home-chat-form="1" class="p-2 border-t border-white/10">
+          <input
+            type="text"
+            name="email"
+            placeholder="Enter your email address"
+            autocomplete="email"
+            class="${chatInputClass}"
+            data-oa-home-chat-input="1"
+          />
+        </form>
+      `
       Effect.runPromise(
         Effect.gen(function* () {
           const dom = yield* DomServiceTag
           yield* dom.render(
             paneContentSlot,
-            html`
-              <div class="flex flex-col h-full min-h-0">
-                <p class="p-4 text-sm text-white/90 font-mono flex-shrink-0">Autopilot online.</p>
-                <div class="mt-auto p-2 border-t border-white/10">
-                  <input
-                    type="text"
-                    placeholder="Type a message..."
-                    class="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white/90 text-sm font-mono placeholder-white/40 focus:outline-none focus:border-white/20"
-                    data-oa-home-chat-input="1"
-                  />
-                </div>
-              </div>
-            `,
+            html`<div class="flex flex-col h-full min-h-0">${messagesHtml}</div>`,
           )
         }).pipe(Effect.provide(EffuseLive)),
-      ).catch(() => {})
+      ).then(
+        () => {
+          const form = paneContentSlot.querySelector("[data-oa-home-chat-form]")
+          if (!(form instanceof HTMLFormElement)) return
+          form.addEventListener("submit", (e: Event) => {
+            e.preventDefault()
+            const input = form.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
+            const raw = input?.value?.trim() ?? ""
+            messages.push({ role: "user", text: raw || "(empty)" })
+            if (!raw) {
+              messages.push({ role: "assistant", text: "Please enter your email address." })
+            } else if (!looksLikeEmail(raw)) {
+              messages.push({ role: "assistant", text: "Please enter a valid email address." })
+            } else {
+              messages.push({ role: "assistant", text: "Logging in..." })
+            }
+            renderContent()
+          })
+        },
+        () => {},
+      )
     }
+
+    renderContent()
   }
 
   trigger.addEventListener("click", handler, { capture: true })
@@ -130,7 +183,7 @@ function openChatPaneOnHome(container: Element): () => void {
 export const mountHomeController = (input: {
   readonly container: Element
 }): HomeController => {
-  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
+  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => { })
 
   const stopCountdown = startPrelaunchCountdownTicker(input.container)
   const stopOpenChatPane = openChatPaneOnHome(input.container)
@@ -143,4 +196,3 @@ export const mountHomeController = (input: {
     },
   }
 }
-
