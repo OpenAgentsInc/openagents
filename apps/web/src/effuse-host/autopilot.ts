@@ -94,30 +94,25 @@ type BlueprintHint = {
 } | null;
 
 const BOOTSTRAP_ASK_USER_HANDLE_SYSTEM =
-  "\n\nBootstrap (strict): You are collecting the user's preferred handle (what to call them). " +
-  "Do NOT say generic greetings like \"Hello! How can I assist you today?\" or \"How can I help?\". " +
-  "If the user has not given a name (e.g. they said \"hi\", \"hello\", or something that is not a name), " +
-  "respond only by re-asking: \"What shall I call you?\" Do not add filler. " +
-  "If they give a name/handle, confirm and immediately ask the next bootstrap question: " +
-  "\"What should you call me?\" (Default: Autopilot). Ask one question at a time.";
+  "\n\nBootstrap: You are onboarding the user and collecting the user's preferred handle (what to call them). " +
+  "If the user asks a question or says a greeting without giving a handle, answer briefly (1-2 sentences), then ask exactly: \"What shall I call you?\". " +
+  "Once the user provides a handle, reply with exactly: \"Confirmed, <handle>. What should you call me?\" (Default: Autopilot). " +
+  "Ask one question at a time and do not get stuck in the onboarding loop.";
 
 const BOOTSTRAP_ASK_AGENT_NAME_SYSTEM =
-  "\n\nBootstrap (strict): You are collecting what the user should call you (your name). " +
-  "Ask only: \"What should you call me?\" (Default: Autopilot). " +
-  "If they give a name, confirm and immediately ask the next bootstrap question: " +
-  "\"Pick one short operating vibe for me.\"";
+  "\n\nBootstrap: You are collecting what the user should call you (your name). " +
+  "If the user asks a question instead of giving a name, answer briefly (1-2 sentences), then ask exactly: \"What should you call me?\" (Default: Autopilot). " +
+  "Once the user provides a name, reply with exactly: \"Confirmed. Pick one short operating vibe for me.\"";
 
 const BOOTSTRAP_ASK_VIBE_SYSTEM =
-  "\n\nBootstrap (strict): You are collecting a short operating vibe for yourself (one short phrase). " +
-  "Ask only: \"Pick one short operating vibe for me.\" " +
-  "If they give a vibe, confirm and immediately ask the next bootstrap question: " +
-  "\"Any boundaries or preferences? Reply 'none' or list a few bullets.\"";
+  "\n\nBootstrap: You are collecting a short operating vibe for yourself (one short phrase). " +
+  "If the user asks a question instead of giving a vibe, answer briefly (1-2 sentences), then ask exactly: \"Pick one short operating vibe for me.\". " +
+  "Once the user provides a vibe, reply with exactly: \"Vibe confirmed: <vibe>. Any boundaries or preferences? Reply 'none' or list a few bullets.\"";
 
 const BOOTSTRAP_ASK_BOUNDARIES_SYSTEM =
-  "\n\nBootstrap (strict): You are collecting optional boundaries/preferences. " +
-  "Ask only: \"Any boundaries or preferences? Reply 'none' or list a few bullets.\" " +
-  "If they say none, confirm setup is complete and ask: \"What would you like to do first?\" " +
-  "If they provide boundaries, acknowledge them, confirm setup is complete, and ask: \"What would you like to do first?\"";
+  "\n\nBootstrap: You are collecting optional boundaries/preferences. " +
+  "If the user asks a question instead of giving boundaries, answer briefly (1-2 sentences), then ask exactly: \"Any boundaries or preferences? Reply 'none' or list a few bullets.\". " +
+  "Once the user says none OR provides boundaries, confirm setup is complete and ask exactly: \"What would you like to do first?\"";
 
 const concatTextFromPromptMessages = (
   messages: ReadonlyArray<{ readonly role: string; readonly text: string }>,
@@ -567,69 +562,101 @@ const runAutopilotStream = (input: {
     let status: "final" | "error" | "canceled" = "final";
 
     try {
+      // Best-effort bootstrap persistence: we still run inference so the assistant can answer questions,
+      // but we opportunistically persist onboarding answers when they look like answers (not questions).
       if (bootstrapStatus !== "complete" && bootstrapStage) {
         const clamp = (s: string, max: number): string => {
-          const t = s.trim();
-          if (t.length <= max) return t;
-          return t.slice(0, max).trim();
+          const t0 = s.trim();
+          if (t0.length <= max) return t0;
+          return t0.slice(0, max).trim();
         };
 
         const looksLikeGreeting = (s: string): boolean => {
-          const t = s.trim().toLowerCase();
+          const t0 = s.trim().toLowerCase();
           return (
-            t === "hi" ||
-            t === "hello" ||
-            t === "hey" ||
-            t === "yo" ||
-            t === "sup" ||
-            t === "howdy" ||
-            t === "hiya" ||
-            t === "hi!" ||
-            t === "hello!" ||
-            t === "hey!"
+            t0 === "hi" ||
+            t0 === "hello" ||
+            t0 === "hey" ||
+            t0 === "yo" ||
+            t0 === "sup" ||
+            t0 === "howdy" ||
+            t0 === "hiya" ||
+            t0 === "hi!" ||
+            t0 === "hello!" ||
+            t0 === "hey!"
           );
         };
 
-        const reply = yield* Effect.gen(function* () {
-          // Always render an assistant response during bootstrap so users never hit a silent stall.
+        const looksLikeQuestion = (s: string): boolean => {
+          const t0 = s.trim();
+          if (!t0) return false;
+          if (t0.includes("?")) return true;
+          // Guard against "what is this" without punctuation.
+          return /^(what|why|how|where|when|who|can|could|should|do|does|is|are)\b/i.test(t0);
+        };
+
+        const stripTrailingPunct = (s: string): string => s.replace(/[.!?,;:]+$/g, "").trim();
+
+        const extractHandle = (raw: string): string | null => {
+          const t0 = stripTrailingPunct(clamp(raw, 120));
+          if (!t0) return null;
+          if (looksLikeGreeting(t0)) return null;
+          if (looksLikeQuestion(t0)) return null;
+          if (t0.includes("\n")) return null;
+
+          const m = t0.match(/\b(?:call me|my name is|i am|i'm|im)\s+(.+)$/i);
+          const candidate = stripTrailingPunct(m ? m[1] : t0);
+          const words = candidate.split(/\s+/g).filter(Boolean);
+          if (words.length === 0) return null;
+          if (words.length > 4) return null; // likely a sentence, not a handle
+          return clamp(words.join(" "), 64);
+        };
+
+        const extractShortValue = (raw: string, max: number): string | null => {
+          const t0 = stripTrailingPunct(clamp(raw, max * 2));
+          if (!t0) return null;
+          if (looksLikeGreeting(t0)) return null;
+          if (looksLikeQuestion(t0)) return null;
+          return clamp(t0, max);
+        };
+
+        const applyBootstrap = Effect.gen(function* () {
           if (bootstrapStage === "ask_user_handle") {
-            const handle = clamp(lastUserText, 64);
-            if (!handle || looksLikeGreeting(handle)) return "What shall I call you?";
-            yield* convex
-              .mutation(api.autopilot.blueprint.applyBootstrapUserHandle, {
-                threadId: input.threadId,
-                handle,
-              })
-              .pipe(Effect.catchAll(() => Effect.void));
-            return `Confirmed, ${handle}. What should you call me?`;
+            const handle = extractHandle(lastUserText);
+            if (!handle) return;
+            yield* convex.mutation(api.autopilot.blueprint.applyBootstrapUserHandle, {
+              threadId: input.threadId,
+              handle,
+            });
+            return;
           }
 
           if (bootstrapStage === "ask_agent_name") {
-            const name = clamp(lastUserText, 64);
-            if (!name || looksLikeGreeting(name)) return "What should you call me?";
-            yield* convex
-              .mutation(api.autopilot.blueprint.applyBootstrapAgentName, {
-                threadId: input.threadId,
-                name,
-              })
-              .pipe(Effect.catchAll(() => Effect.void));
-            return `Got it. Pick one short operating vibe for me.`;
+            const name = extractShortValue(lastUserText, 64);
+            if (!name) return;
+            yield* convex.mutation(api.autopilot.blueprint.applyBootstrapAgentName, {
+              threadId: input.threadId,
+              name,
+            });
+            return;
           }
 
           if (bootstrapStage === "ask_vibe") {
-            const vibe = clamp(lastUserText, 140);
-            if (!vibe) return "Pick one short operating vibe for me.";
-            yield* convex
-              .mutation(api.autopilot.blueprint.applyBootstrapAgentVibe, {
-                threadId: input.threadId,
-                vibe,
-              })
-              .pipe(Effect.catchAll(() => Effect.void));
-            return `Noted. Any boundaries or preferences? Reply 'none' or list a few bullets.`;
+            const vibe = extractShortValue(lastUserText, 140);
+            if (!vibe) return;
+            yield* convex.mutation(api.autopilot.blueprint.applyBootstrapAgentVibe, {
+              threadId: input.threadId,
+              vibe,
+            });
+            return;
           }
 
           if (bootstrapStage === "ask_boundaries") {
-            const lowered = lastUserText.toLowerCase();
+            const t0 = stripTrailingPunct(clamp(lastUserText, 800));
+            if (!t0) return;
+            if (looksLikeQuestion(t0)) return;
+
+            const lowered = t0.toLowerCase();
             const isNone =
               lowered === "none" ||
               lowered === "no" ||
@@ -641,43 +668,36 @@ const runAutopilotStream = (input: {
 
             const boundaries = isNone
               ? []
-              : lastUserText
+              : t0
                   .split(/\n|,|;+/g)
                   .map((b) => b.trim())
                   .map((b) => (b.startsWith("- ") ? b.slice(2).trim() : b))
                   .filter((b) => b.length > 0)
                   .slice(0, 16);
 
-            if (!isNone && boundaries.length === 0) {
-              return "Any boundaries or preferences? Reply 'none' or list a few bullets.";
-            }
+            if (!isNone && boundaries.length === 0) return;
 
-            yield* convex
-              .mutation(api.autopilot.blueprint.applyBootstrapComplete, {
-                threadId: input.threadId,
-                ...(boundaries.length > 0 ? { boundaries } : {}),
-              } as any)
-              .pipe(Effect.catchAll(() => Effect.void));
-            return "Setup complete. What would you like to do first?";
+            yield* convex.mutation(api.autopilot.blueprint.applyBootstrapComplete, {
+              threadId: input.threadId,
+              ...(boundaries.length > 0 ? { boundaries } : {}),
+            } as any);
+            return;
           }
-
-          return "What would you like to do first?";
         }).pipe(
           Effect.catchAllCause((cause) =>
-            t.log("warn", "bootstrap.apply_failed", { message: String(cause) }).pipe(
-              Effect.as("Bootstrap failed. Please retry."),
-            ),
+            t.log("warn", "bootstrap.apply_failed", { message: String(cause) }),
           ),
         );
 
-        outputText = reply;
-      } else {
-        yield* runStream;
-        yield* flush(true);
+        // Persist bootstrap answers before streaming so stage progression is reliable.
+        yield* applyBootstrap;
+      }
 
-        if (input.controller.signal.aborted) {
-          status = "canceled";
-        }
+      yield* runStream;
+      yield* flush(true);
+
+      if (input.controller.signal.aborted) {
+        status = "canceled";
       }
     } catch (err) {
       status = input.controller.signal.aborted ? "canceled" : "error";
