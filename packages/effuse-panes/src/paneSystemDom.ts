@@ -168,6 +168,17 @@ const cssText = (cfg: PaneSystemConfig): string => {
   [data-oa-pane-system][data-oa-pane-dragging="1"] [data-oa-pane-title]{ cursor:grabbing; }
   [data-oa-pane][data-active="1"] [data-oa-pane-title]{ border-bottom-color:${t.accent}; }
   [data-oa-pane-title-text]{ font-size:12px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  [data-oa-pane-title-actions]{ display:flex; align-items:center; gap:4px; }
+  [data-oa-pane-title-actions] button{
+    width:20px; height:20px;
+    display:inline-flex; align-items:center; justify-content:center;
+    border:1px solid transparent; background:transparent;
+    color:${t.text}; opacity:0.9; border-radius:4px;
+    padding:0; margin:0; cursor:pointer; user-select:none;
+  }
+  [data-oa-pane-title-actions] button:hover{
+    border-color:${t.border}; background:rgba(255,255,255,0.04);
+  }
   [data-oa-pane-close]{
     width:20px;
     height:20px;
@@ -319,6 +330,10 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     titleText.textContent = pane.title;
 
     title.appendChild(titleText);
+
+    const titleActions = document.createElement("div");
+    titleActions.setAttribute("data-oa-pane-title-actions", "1");
+    title.appendChild(titleActions);
 
     if (pane.dismissable) {
       const closeBtn = document.createElement("button");
