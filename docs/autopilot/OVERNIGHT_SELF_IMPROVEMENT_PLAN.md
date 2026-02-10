@@ -101,6 +101,15 @@ EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
   bun run apps/web/scripts/dse-overnight.ts --base-url https://openagents.com
 ```
 
+By default, the overnight runner runs only the single “DSE recap visibility” prod E2E test.
+To run the full Autopilot prod suite instead:
+
+```bash
+OA_DSE_ADMIN_SECRET="..." \
+EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
+  bun run apps/web/scripts/dse-overnight.ts --base-url https://openagents.com --e2e-grep "apps-web\\.prod\\.autopilot"
+```
+
 Where to look for results (read-only pages backed by Convex):
 
 - `/dse` (ops run list)
@@ -548,6 +557,11 @@ Current endpoints and storage:
 - 2026-02-10T12:13:09Z Ops: made the overnight runner CLI resilient to being invoked from any working directory (auto-`chdir` to repo root).
 - Updated:
   - `apps/web/scripts/dse-overnight.ts`
+
+- 2026-02-10T12:17:41Z Ops: fixed the overnight runner to respect `--e2e-grep` (and added a unit test).
+- Updated:
+  - `apps/web/scripts/dse-overnight-lib.ts`
+  - `apps/web/tests/scripts/dse-overnight.test.ts`
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)

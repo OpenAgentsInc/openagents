@@ -758,17 +758,17 @@ export const runOvernight = async (input: {
         const res = await input.runCommand({
           cwd: "apps/web",
           command: "npm",
-          args: [
-            "run",
-            "test:e2e",
-            "--",
-            "--base-url",
-            input.options.baseUrl,
-            "--tag",
-            "prod",
-            "--grep",
-            "apps-web\\\\.prod\\\\.autopilot",
-          ],
+            args: [
+              "run",
+              "test:e2e",
+              "--",
+              "--base-url",
+              input.options.baseUrl,
+              "--tag",
+              "prod",
+              "--grep",
+              input.options.e2eGrep,
+            ],
           env: {
             EFFUSE_TEST_E2E_BYPASS_SECRET: input.env.EFFUSE_TEST_E2E_BYPASS_SECRET,
           },

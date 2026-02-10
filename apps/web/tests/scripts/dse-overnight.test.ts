@@ -149,6 +149,136 @@ describe("apps/web/scripts/dse-overnight", () => {
     }
   })
 
+  it("invokes prod e2e using the configured --e2e-grep value", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const cmdCalls: Array<{ cwd: string; command: string; args: string[]; env?: Record<string, string | undefined> }> = []
+
+    const fetchFn = async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      calls.push({ url: String(url), init })
+      if (String(url).endsWith("/api/dse/ops/run/start")) {
+        return jsonOk({ existed: false, runId: "opsrun_e2e" })
+      }
+      if (String(url).endsWith("/api/dse/ops/run/event")) {
+        return jsonOk({})
+      }
+      if (String(url).endsWith("/api/dse/ops/run/finish")) {
+        return jsonOk({})
+      }
+      if (String(url).endsWith("/api/dse/examples/import")) {
+        return jsonOk({ total: 2, inserted: 1, updated: 1 })
+      }
+      if (String(url).endsWith("/api/dse/compile")) {
+        return jsonOk({
+          signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+          jobHash: "sha256:job",
+          datasetHash: "sha256:ds",
+          datasetId: "convex:dseExamples:@openagents/autopilot/blueprint/SelectTool.v1",
+          compiled_id: "sha256:compiled",
+          existed: false,
+        })
+      }
+      if (String(url).endsWith("/api/dse/exercise/thread/ensure")) {
+        return jsonOk({ threadId: "thread_ops" })
+      }
+      if (String(url).endsWith("/api/dse/canary/start")) {
+        return jsonOk({
+          signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+          control_compiled_id: "sha256:control",
+          canary_compiled_id: "sha256:compiled",
+          rolloutPct: 20,
+        })
+      }
+      if (String(url).endsWith("/api/dse/exercise/predict")) {
+        return jsonOk({
+          signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+          threadId: "thread_ops",
+          runId: "run_x",
+          count: 20,
+          okCount: 20,
+          errorCount: 0,
+          receiptIds: [],
+        })
+      }
+      if (String(url).includes("/api/dse/canary/status")) {
+        return jsonOk({
+          canary: {
+            signatureId: "@openagents/autopilot/blueprint/SelectTool.v1",
+            enabled: true,
+            control_compiled_id: "sha256:control",
+            canary_compiled_id: "sha256:compiled",
+            rolloutPct: 20,
+            salt: "salt",
+            okCount: 20,
+            errorCount: 0,
+            minSamples: 20,
+            maxErrorRate: 0.2,
+            createdAtMs: 1,
+            updatedAtMs: 2,
+          },
+        })
+      }
+      if (String(url).endsWith("/api/dse/promote")) {
+        return jsonOk({ signatureId: "@openagents/autopilot/blueprint/SelectTool.v1", from: "sha256:control", to: "sha256:compiled" })
+      }
+      if (String(url).endsWith("/api/dse/canary/stop")) {
+        return jsonOk({ existed: true })
+      }
+      return new Response("not found", { status: 404 })
+    }
+
+    const runCommand = async ({ cwd, command, args, env }: any) => {
+      cmdCalls.push({ cwd, command, args, env })
+      if (command === "git") {
+        return { ok: true, code: 0, stdout: "sha\n", stderr: "", durationMs: 1, timedOut: false }
+      }
+      return { ok: true, code: 0, stdout: "ok\n", stderr: "", durationMs: 1, timedOut: false }
+    }
+
+    const parsed = parseOvernightArgs(["--base-url", "https://example.com", "--no-verify", "--e2e", "--e2e-grep", "mygrep"])
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const summary = await runOvernight({
+      options: parsed.options,
+      env: { OA_DSE_ADMIN_SECRET: "secret", EFFUSE_TEST_E2E_BYPASS_SECRET: "e2e" },
+      fetchFn,
+      runCommand,
+      readTextFile: async () =>
+        [
+          JSON.stringify({
+            exampleId: "ex1",
+            inputJson: { message: "Hi", blueprintHint: { userHandle: "Ada", agentName: "Autopilot" } },
+            expectedJson: { action: "none" },
+            split: "train",
+            tags: ["dataset:test"],
+          }),
+          JSON.stringify({
+            exampleId: "ex2",
+            inputJson: { message: "Call me Ada", blueprintHint: { userHandle: "Unknown", agentName: "Autopilot" } },
+            expectedJson: { action: "tool", toolName: "user_update" },
+            split: "holdout",
+            tags: ["dataset:test"],
+          }),
+        ].join("\n"),
+    })
+
+    expect(summary.ok).toBe(true)
+
+    const e2e = cmdCalls.find((c) => c.command === "npm" && c.args.includes("test:e2e"))
+    expect(e2e).toBeTruthy()
+    expect(e2e?.args).toContain("--grep")
+    const grepIdx = e2e?.args.findIndex((a) => a === "--grep") ?? -1
+    expect(grepIdx).toBeGreaterThanOrEqual(0)
+    expect(e2e?.args[grepIdx + 1]).toBe("mygrep")
+    expect(e2e?.env?.EFFUSE_TEST_E2E_BYPASS_SECRET).toBe("e2e")
+
+    // Ensure auth header is attached.
+    for (const c of calls) {
+      const h = (c.init?.headers ?? {}) as any
+      expect(String(h.authorization ?? "")).toContain("Bearer secret")
+    }
+  })
+
   it("still finishes the ops run when a verify step fails", async () => {
     const calls: Array<{ url: string; body: any }> = []
 
