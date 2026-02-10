@@ -3,6 +3,7 @@ import { Effect, Layer, Schema } from "effect";
 import {
   BlobStore,
   Budget,
+  Hashes,
   CompileJob,
   CompiledArtifact,
   Eval,
@@ -25,7 +26,9 @@ import { TelemetryService } from "../effect/telemetry";
 
 import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
+import { collectDatasetBlobsFromExamples, seedBlobStoreFromDatasetBlobs } from "./dseDatasetBlobs";
 import { compileJobForSignature, convexDatasetIdForExamples } from "./dseJobs";
+import { PINNED_DSE_ARTIFACTS } from "./dsePinnedArtifacts";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
@@ -149,9 +152,18 @@ type TraceExportBody = {
   readonly dryRun?: unknown;
 };
 
+type EvalRunBody = {
+  readonly signatureId?: unknown;
+  readonly compiled_id?: unknown;
+  readonly split?: unknown;
+  readonly limit?: unknown;
+  readonly includeExampleDetails?: unknown;
+  readonly opsRunId?: unknown;
+};
+
 type ExamplesImportBody = {
   readonly signatureId?: unknown;
-  /** JSONL string of rows: { exampleId, inputJson, expectedJson, split?, tags? } */
+  /** JSONL string of rows: { exampleId, inputJson, expectedJson, split?, tags?, meta? } */
   readonly jsonl?: unknown;
   /** Alternative to jsonl: direct JSON array of rows. */
   readonly examples?: unknown;
@@ -288,6 +300,187 @@ export const handleDseAdminRequest = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/dse/")) return null;
+
+  if (url.pathname === "/api/dse/eval") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+    if (!env.AI) return json({ ok: false, error: "ai_unbound" }, { status: 500, headers: { "cache-control": "no-store" } });
+    const aiBinding = env.AI;
+
+    const body = (await readJson(request)) as EvalRunBody | null;
+    const signatureId = typeof body?.signatureId === "string" ? body.signatureId : "";
+    const compiled_id = typeof body?.compiled_id === "string" ? body.compiled_id : "";
+
+    const splitRaw = typeof body?.split === "string" ? body.split : "holdout";
+    const split =
+      splitRaw === "train" || splitRaw === "dev" || splitRaw === "holdout" || splitRaw === "test" ? splitRaw : "holdout";
+
+    const limitRaw = typeof body?.limit === "number" ? body.limit : 500;
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(500, Math.floor(limitRaw))) : 500;
+
+    const includeExampleDetails = body?.includeExampleDetails === undefined ? true : Boolean(body.includeExampleDetails);
+
+    const opsRunId = typeof body?.opsRunId === "string" ? body.opsRunId.trim() : "";
+
+    if (!signatureId || !compiled_id) {
+      return json(
+        { ok: false, error: "invalid_input", message: "Expected body: { signatureId: string, compiled_id: string, split?: string }" },
+        { status: 400, headers: { "cache-control": "no-store" } },
+      );
+    }
+
+    const signature = findSignatureById(signatureId);
+    if (!signature) {
+      return json({ ok: false, error: "unknown_signature" }, { status: 404, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const telemetry = yield* TelemetryService;
+      const t = telemetry.withNamespace("dse.eval");
+
+      const auth = yield* AuthService;
+      const session = yield* auth.getSession();
+      if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+      const convex = yield* ConvexService;
+
+      // Ensure pinned artifacts (notably judges) are present in Convex for replayability.
+      for (const art of PINNED_DSE_ARTIFACTS) {
+        const encoded = Schema.encodeSync(CompiledArtifact.DseCompiledArtifactV1Schema)(art);
+        yield* convex.mutation(api.dse.artifacts.putArtifact, {
+          signatureId: art.signatureId,
+          compiled_id: art.compiled_id,
+          json: encoded,
+        });
+      }
+
+      const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit });
+      const listResult = exRes as DseListExamplesResult;
+      const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
+      const datasetBlobs = collectDatasetBlobsFromExamples(raw);
+
+      const decodeInput = Schema.decodeUnknownSync(signature.input);
+      const decodeOutput = Schema.decodeUnknownSync(signature.output);
+
+      const examples = raw.map((r) => ({
+        exampleId: String(r?.exampleId ?? ""),
+        input: decodeInput(r?.inputJson),
+        expected: decodeOutput(r?.expectedJson),
+        split: mapStoredSplitToDseSplit(r?.split),
+        tags: Array.isArray(r?.tags) ? (r.tags as unknown[]).filter((tt) => typeof tt === "string") : undefined,
+        meta: (r as any)?.meta,
+      }));
+
+      const datasetId = convexDatasetIdForExamples(signatureId);
+      const dataset = yield* EvalDataset.make({ datasetId, examples });
+
+      const datasetFiltered = EvalDataset.filter(dataset, { split: mapStoredSplitToDseSplit(split) ?? split });
+      const datasetHash = yield* EvalDataset.datasetHash(datasetFiltered);
+
+      const { reward } = compileJobForSignature({ signatureId, datasetId });
+
+      const artifactRes = yield* convex.query(api.dse.artifacts.getArtifact, { signatureId, compiled_id });
+      const artifactResult = artifactRes as DseGetArtifactResult;
+      const rawArtifact = artifactResult?.artifact ?? null;
+      if (!rawArtifact) return yield* Effect.fail(new Error("artifact_not_found"));
+
+      const artifact = yield* Effect.try({
+        try: () => Schema.decodeUnknownSync(CompiledArtifact.DseCompiledArtifactV1Schema)(rawArtifact),
+        catch: () => new Error("invalid_artifact"),
+      });
+
+      const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+        env: { OPENROUTER_API_KEY: env.OPENROUTER_API_KEY, AI: aiBinding },
+        defaultModelIdCf: MODEL_ID_CF,
+        primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+      });
+
+      if (opsRunId) {
+        yield* convex
+          .mutation(api.dse.opsRuns.appendEvent, {
+            runId: opsRunId,
+            level: "info",
+            phase: "phase7.eval.start",
+            message: `eval started signatureId=${signatureId} compiled_id=${compiled_id} split=${split}`,
+            json: { signatureId, compiled_id, split, datasetExamples: datasetFiltered.examples.length },
+          })
+          .pipe(Effect.catchAll(() => Effect.void));
+      }
+
+      const evalRes = yield* Effect.gen(function* () {
+        if (datasetBlobs.length > 0) {
+          yield* seedBlobStoreFromDatasetBlobs({ blobs: datasetBlobs });
+        }
+        return yield* Eval.evaluate({
+          signature,
+          artifact,
+          dataset: datasetFiltered,
+          reward,
+          includeExampleDetails,
+        });
+      }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(compileEnv));
+
+      const evalHash = yield* Hashes.sha256IdFromCanonicalJson({
+        signatureId,
+        compiled_id,
+        datasetHash: evalRes.summary.datasetHash ?? datasetHash,
+        rewardId: evalRes.summary.metricId ?? reward.rewardId,
+        rewardVersion: evalRes.summary.metricVersion ?? reward.rewardVersion,
+        split,
+        selectedExampleIdsHash: evalRes.summary.selectedExampleIdsHash ?? "",
+      });
+
+      const stored = yield* convex.mutation(api.dse.evalReports.putReport, {
+        signatureId,
+        evalHash,
+        compiled_id,
+        datasetId,
+        datasetHash: evalRes.summary.datasetHash ?? datasetHash,
+        rewardId: reward.rewardId,
+        rewardVersion: reward.rewardVersion,
+        split,
+        selectedExampleIdsHash: evalRes.summary.selectedExampleIdsHash,
+        n: evalRes.summary.n,
+        json: {
+          format: "openagents.dse.eval_report",
+          formatVersion: 1,
+          summary: evalRes.summary,
+          ...(includeExampleDetails ? { examples: evalRes.examples ?? [] } : {}),
+        },
+      });
+
+      yield* t.event("eval.finished", {
+        signatureId,
+        compiled_id,
+        split,
+        datasetHash: evalRes.summary.datasetHash ?? datasetHash,
+        evalHash,
+        existed: Boolean((stored as any)?.existed),
+      });
+
+      if (opsRunId) {
+        yield* convex
+          .mutation(api.dse.opsRuns.appendEvent, {
+            runId: opsRunId,
+            level: "info",
+            phase: "phase7.eval.finish",
+            message: `eval finished signatureId=${signatureId} compiled_id=${compiled_id} evalHash=${evalHash}`,
+            json: { signatureId, compiled_id, split, evalHash, existed: Boolean((stored as any)?.existed) },
+          })
+          .pipe(Effect.catchAll(() => Effect.void));
+      }
+
+      return {
+        ok: true as const,
+        signatureId,
+        compiled_id,
+        split,
+        evalHash,
+        existed: Boolean((stored as any)?.existed),
+      };
+    });
+
+    return runAuthedDseAdmin(request, env, program, "session_or_admin_secret");
+  }
 
   if (url.pathname === "/api/dse/canary/status") {
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
@@ -599,6 +792,8 @@ export const handleDseAdminRequest = async (
           ...(split ? { split } : {}),
           ...(mergedTags.length ? { tags: mergedTags } : {}),
           source,
+          // Optional metadata (for example: blob texts used to seed BlobStore during eval/compile).
+          ...(row?.meta !== undefined ? { meta: row.meta } : {}),
         });
 
         const existed = Boolean((res as any)?.existed);
@@ -847,6 +1042,7 @@ export const handleDseAdminRequest = async (
       const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 });
       const listResult = exRes as DseListExamplesResult;
       const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
+      const datasetBlobs = collectDatasetBlobsFromExamples(raw);
 
       const decodeInput = Schema.decodeUnknownSync(signature.input);
       const decodeOutput = Schema.decodeUnknownSync(signature.output);
@@ -857,6 +1053,7 @@ export const handleDseAdminRequest = async (
         expected: decodeOutput(r?.expectedJson),
         split: mapStoredSplitToDseSplit(r?.split),
         tags: Array.isArray(r?.tags) ? (r.tags as unknown[]).filter((t) => typeof t === "string") : undefined,
+        meta: (r as any)?.meta,
       }));
 
       const datasetId = convexDatasetIdForExamples(signatureId);
@@ -906,11 +1103,16 @@ export const handleDseAdminRequest = async (
           defaultModelIdCf: MODEL_ID_CF,
           primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
         });
-        const evalRes = yield* Eval.evaluate({
-          signature,
-          artifact: baseArtifact,
-          dataset: holdout,
-          reward,
+        const evalRes = yield* Effect.gen(function* () {
+          if (datasetBlobs.length > 0) {
+            yield* seedBlobStoreFromDatasetBlobs({ blobs: datasetBlobs });
+          }
+          return yield* Eval.evaluate({
+            signature,
+            artifact: baseArtifact,
+            dataset: holdout,
+            reward,
+          });
         }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(compileEnv));
 
         baselineHoldoutReward = Number(evalRes.summary.reward ?? 0);
@@ -1004,6 +1206,7 @@ export const handleDseAdminRequest = async (
       const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 });
       const listResult = exRes as DseListExamplesResult;
       const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
+      const datasetBlobs = collectDatasetBlobsFromExamples(raw);
 
       const decodeInput = Schema.decodeUnknownSync(signature.input);
       const decodeOutput = Schema.decodeUnknownSync(signature.output);
@@ -1013,6 +1216,7 @@ export const handleDseAdminRequest = async (
         input: decodeInput(r?.inputJson),
         expected: decodeOutput(r?.expectedJson),
         split: mapStoredSplitToDseSplit(r?.split),
+        meta: (r as any)?.meta,
       }));
 
       const datasetId = convexDatasetIdForExamples(signatureId);
@@ -1061,11 +1265,16 @@ export const handleDseAdminRequest = async (
         defaultModelIdCf: MODEL_ID_CF,
         primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
       });
-      const evalRes = yield* Eval.evaluate({
-        signature,
-        artifact: baseArtifact,
-        dataset: holdout,
-        reward,
+      const evalRes = yield* Effect.gen(function* () {
+        if (datasetBlobs.length > 0) {
+          yield* seedBlobStoreFromDatasetBlobs({ blobs: datasetBlobs });
+        }
+        return yield* Eval.evaluate({
+          signature,
+          artifact: baseArtifact,
+          dataset: holdout,
+          reward,
+        });
       }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(compileEnv));
 
       const baselineHoldoutReward = Number(evalRes.summary.reward ?? 0);

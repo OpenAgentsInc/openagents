@@ -23,7 +23,9 @@ import { TelemetryService } from "../effect/telemetry";
 
 import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
-import { compileJobForSignature, convexDatasetIdForExamples } from "./dseJobs";
+import { collectDatasetBlobsFromExamples, seedBlobStoreFromDatasetBlobs } from "./dseDatasetBlobs";
+import { RECAP_THREAD_SIGNATURE_ID, SUMMARIZE_THREAD_SIGNATURE_ID, compileJobForSignature, convexDatasetIdForExamples } from "./dseJobs";
+import { PINNED_DSE_ARTIFACTS } from "./dsePinnedArtifacts";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
@@ -129,10 +131,23 @@ export const handleDseCompileRequest = async (
 
     const convex = yield* ConvexService;
 
+    // Phase 7: only ensure pinned judge artifacts for signatures that use judge-based rewards.
+    if (signatureId === RECAP_THREAD_SIGNATURE_ID || signatureId === SUMMARIZE_THREAD_SIGNATURE_ID) {
+      for (const art of PINNED_DSE_ARTIFACTS) {
+        const encoded = Schema.encodeSync(CompiledArtifact.DseCompiledArtifactV1Schema)(art);
+        yield* convex.mutation(api.dse.artifacts.putArtifact, {
+          signatureId: art.signatureId,
+          compiled_id: art.compiled_id,
+          json: encoded,
+        });
+      }
+    }
+
     // Load dataset examples from Convex (global store; auth required).
     const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, limit: 500 });
     const listResult = exRes as DseListExamplesResult;
     const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
+    const datasetBlobs = collectDatasetBlobsFromExamples(raw);
 
     const decodeInput = Schema.decodeUnknownSync(signature.input);
     const decodeOutput = Schema.decodeUnknownSync(signature.output);
@@ -189,12 +204,24 @@ export const handleDseCompileRequest = async (
       VarSpace.layerInMemory(),
     );
 
-    const result = yield* Compile.compile({
-      signature,
-      dataset,
-      reward,
-      searchSpace,
-      optimizer,
+    const result = yield* Effect.gen(function* () {
+      // Phase 7: seed BlobStore for datasets whose inputs contain BlobRefs (e.g. recap/summarization).
+      if (datasetBlobs.length > 0) {
+        const seeded = yield* seedBlobStoreFromDatasetBlobs({ blobs: datasetBlobs });
+        yield* t.event("compile.dataset_blobs_seeded", {
+          signatureId,
+          seeded: seeded.seeded,
+          totalChars: seeded.totalChars,
+        });
+      }
+
+      return yield* Compile.compile({
+        signature,
+        dataset,
+        reward,
+        searchSpace,
+        optimizer,
+      });
     }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(compileEnv));
 
     // Sanity check: hash inputs match our precomputed ids.

@@ -10,6 +10,7 @@ import { modulesPageTemplate } from "../effuse-pages/modules"
 import { signaturesPageTemplate } from "../effuse-pages/signatures"
 import { toolsPageTemplate } from "../effuse-pages/tools"
 import { dseCompileReportPageTemplate } from "../effuse-pages/dseCompileReport"
+import { dseEvalReportPageTemplate } from "../effuse-pages/dseEvalReport"
 import { dseOpsRunDetailPageTemplate } from "../effuse-pages/dseOpsRunDetail"
 import { dseOpsRunsPageTemplate } from "../effuse-pages/dseOpsRuns"
 import { dseSignaturePageTemplate } from "../effuse-pages/dseSignature"
@@ -25,6 +26,7 @@ import { getStoryById, listStoryMeta } from "../storybook"
 import type { Route, RouteMatch } from "@openagentsinc/effuse"
 import type { LoginPageModel } from "../effuse-pages/login"
 import type { DseCompileReportPageData } from "../effuse-pages/dseCompileReport"
+import type { DseEvalReportPageData } from "../effuse-pages/dseEvalReport"
 import type { DseOpsRunDetailPageData } from "../effuse-pages/dseOpsRunDetail"
 import type { DseOpsRunsPageData } from "../effuse-pages/dseOpsRuns"
 import type { DseSignaturePageData } from "../effuse-pages/dseSignature"
@@ -74,6 +76,20 @@ const matchDseCompileReport = (url: URL): RouteMatch | null => {
   return {
     pathname: url.pathname,
     params: { jobHash: parts[0]!, datasetHash: parts[1]!, signatureId },
+    search: url.searchParams,
+  }
+}
+
+const matchDseEvalReport = (url: URL): RouteMatch | null => {
+  const prefix = "/dse/eval-report/"
+  if (!url.pathname.startsWith(prefix)) return null
+  const rest = url.pathname.slice(prefix.length)
+  const parts = rest.split("/").filter((p) => p.length > 0)
+  if (parts.length < 2) return null
+  const signatureId = parts.slice(1).join("/")
+  return {
+    pathname: url.pathname,
+    params: { evalHash: parts[0]!, signatureId },
     search: url.searchParams,
   }
 }
@@ -351,6 +367,7 @@ const dseSignature: Route<DseSignaturePageData, AppServices> = {
       canary: null,
       canaryHistory: null,
       compileReports: null,
+      evalReports: null,
       examples: null,
       receipts: null,
     }),
@@ -393,6 +410,35 @@ const dseCompileReport: Route<DseCompileReportPageData, AppServices> = {
     }),
   view: (_ctx, data) => Effect.succeed(authedShellTemplate(dseCompileReportPageTemplate(data))),
   head: (_ctx, data) => Effect.succeed({ title: `DSE Compile Report ${data.jobHash}` }),
+}
+
+const dseEvalReport: Route<DseEvalReportPageData, AppServices> = {
+  id: "/dse/eval-report/$evalHash/$signatureId",
+  match: matchDseEvalReport,
+  guard: dseOpsRuns.guard,
+  loader: (ctx) =>
+    okWithSession(ctx, {
+      signatureId: (() => {
+        const raw = String(ctx.match.params.signatureId ?? "")
+        try {
+          return decodeURIComponent(raw)
+        } catch {
+          return raw
+        }
+      })(),
+      evalHash: (() => {
+        const raw = String(ctx.match.params.evalHash ?? "")
+        try {
+          return decodeURIComponent(raw)
+        } catch {
+          return raw
+        }
+      })(),
+      errorText: null,
+      report: null,
+    }),
+  view: (_ctx, data) => Effect.succeed(authedShellTemplate(dseEvalReportPageTemplate(data))),
+  head: (_ctx, data) => Effect.succeed({ title: `DSE Eval Report ${data.evalHash}` }),
 }
 
 const signatures: Route<SignaturesPageData, AppServices> = {
@@ -489,6 +535,7 @@ export const appRoutes = [
   dseOpsRunDetail,
   dseSignature,
   dseCompileReport,
+  dseEvalReport,
   modules,
   signatures,
   tools,

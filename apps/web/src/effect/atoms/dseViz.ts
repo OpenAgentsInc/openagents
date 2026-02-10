@@ -6,6 +6,7 @@ import { ConvexService } from "../convex";
 import { AppAtomRuntime } from "./appRuntime";
 
 import type { DseCompileReportPageData } from "../../effuse-pages/dseCompileReport";
+import type { DseEvalReportPageData } from "../../effuse-pages/dseEvalReport";
 import type { DseOpsRunDetailPageData } from "../../effuse-pages/dseOpsRunDetail";
 import type { DseOpsRunsPageData } from "../../effuse-pages/dseOpsRuns";
 import type { DseSignaturePageData } from "../../effuse-pages/dseSignature";
@@ -165,6 +166,7 @@ const DseSignatureResultAtom = Atom.family((key: string) =>
         canaryRes,
         canaryHistRes,
         reportsRes,
+        evalReportsRes,
         examplesRes,
         receiptsRes,
       ] = yield* Effect.all([
@@ -173,6 +175,7 @@ const DseSignatureResultAtom = Atom.family((key: string) =>
         convex.query(api.dse.canary.getCanary, { signatureId }),
         convex.query(api.dse.canary.listCanaryHistory, { signatureId, limit: 50 }),
         convex.query(api.dse.compileReports.listReports, { signatureId, limit: 20 }),
+        convex.query(api.dse.evalReports.listReports, { signatureId, limit: 20 }),
         convex.query(api.dse.examples.listExamples, { signatureId, limit: 60 }),
         convex.query(api.dse.receipts.listPredictReceiptsBySignatureIdAdmin, { signatureId, limit: 50 }),
       ]);
@@ -183,6 +186,7 @@ const DseSignatureResultAtom = Atom.family((key: string) =>
         canaryRes: canaryRes as any,
         canaryHistRes: canaryHistRes as any,
         reportsRes: reportsRes as any,
+        evalReportsRes: evalReportsRes as any,
         examplesRes: examplesRes as any,
         receiptsRes: receiptsRes as any,
       };
@@ -221,6 +225,7 @@ export const DseSignaturePageDataAtom = Atom.family((key: string) =>
         canary: null,
         canaryHistory: null,
         compileReports: null,
+        evalReports: null,
         examples: null,
         receipts: null,
       } satisfies DseSignaturePageData;
@@ -234,6 +239,7 @@ export const DseSignaturePageDataAtom = Atom.family((key: string) =>
         canary: null,
         canaryHistory: null,
         compileReports: null,
+        evalReports: null,
         examples: null,
         receipts: null,
       } satisfies DseSignaturePageData;
@@ -301,6 +307,19 @@ export const DseSignaturePageDataAtom = Atom.family((key: string) =>
       createdAtMs: Number(r.createdAtMs ?? 0),
     }));
 
+    const evalReportsRaw: any[] = Array.isArray((result.value as any).evalReportsRes?.reports)
+      ? (result.value as any).evalReportsRes.reports
+      : [];
+    const evalReports = evalReportsRaw.map((r) => ({
+      evalHash: String(r.evalHash ?? ""),
+      compiled_id: String(r.compiled_id ?? ""),
+      datasetHash: String(r.datasetHash ?? ""),
+      rewardId: String(r.rewardId ?? ""),
+      split: typeof r.split === "string" ? String(r.split) : null,
+      n: typeof r.n === "number" ? Number(r.n) : null,
+      createdAtMs: Number(r.createdAtMs ?? 0),
+    }));
+
     const examplesRaw: any[] = Array.isArray((result.value as any).examplesRes?.examples)
       ? (result.value as any).examplesRes.examples
       : [];
@@ -340,6 +359,7 @@ export const DseSignaturePageDataAtom = Atom.family((key: string) =>
       canary,
       canaryHistory,
       compileReports,
+      evalReports,
       examples,
       receipts,
     } satisfies DseSignaturePageData;
@@ -391,3 +411,65 @@ const DseCompileReportResultAtom = Atom.family((key: string) =>
 
 export const makeCompileReportKey = (signatureId: string, jobHash: string, datasetHash: string): string =>
   encodeReportKey({ signatureId, jobHash, datasetHash });
+
+type EvalReportKey = { readonly signatureId: string; readonly evalHash: string };
+const encodeEvalKey = (k: EvalReportKey): string => safeStableStringify(k, 0, 5000);
+const decodeEvalKey = (raw: string): EvalReportKey => {
+  try {
+    const v = JSON.parse(raw) as any;
+    const signatureId = typeof v?.signatureId === "string" ? v.signatureId : "";
+    const evalHash = typeof v?.evalHash === "string" ? v.evalHash : "";
+    return { signatureId, evalHash };
+  } catch {
+    return { signatureId: "", evalHash: "" };
+  }
+};
+
+export const DseEvalReportPageDataAtom = Atom.family((key: string) =>
+  Atom.make((get) => {
+    const { signatureId, evalHash } = decodeEvalKey(key);
+    const result = get(DseEvalReportResultAtom(key));
+    const err = errorTextFromResult(result, "Failed to load eval report.");
+    if (err) return { signatureId, evalHash, errorText: err, report: null } satisfies DseEvalReportPageData;
+    if (!Result.isSuccess(result))
+      return { signatureId, evalHash, errorText: null, report: null } satisfies DseEvalReportPageData;
+
+    const report = (result.value as any)?.report ?? null;
+    if (!report) return { signatureId, evalHash, errorText: null, report: null } satisfies DseEvalReportPageData;
+
+    return {
+      signatureId,
+      evalHash,
+      errorText: null,
+      report: {
+        signatureId: String(report.signatureId ?? signatureId),
+        evalHash: String(report.evalHash ?? evalHash),
+        compiled_id: String(report.compiled_id ?? ""),
+        datasetId: String(report.datasetId ?? ""),
+        datasetHash: String(report.datasetHash ?? ""),
+        rewardId: String(report.rewardId ?? ""),
+        rewardVersion: Number(report.rewardVersion ?? 0),
+        split: typeof report.split === "string" ? String(report.split) : null,
+        n: typeof report.n === "number" ? Number(report.n) : null,
+        createdAtMs: Number(report.createdAtMs ?? 0),
+        jsonPretty: safeStableStringify(report.json, 2, 300_000),
+      },
+    } satisfies DseEvalReportPageData;
+  }).pipe(Atom.keepAlive, Atom.withLabel(`DseEvalReportPageDataAtom(${key})`)),
+);
+
+const DseEvalReportResultAtom = Atom.family((key: string) =>
+  AppAtomRuntime.atom(
+    Effect.gen(function* () {
+      const { signatureId, evalHash } = decodeEvalKey(key);
+      if (!signatureId || !evalHash) return { ok: false, error: "invalid_key" };
+      const convex = yield* ConvexService;
+      const res = yield* convex.query(api.dse.evalReports.getReport, { signatureId, evalHash });
+      return res as any;
+    }),
+  )
+    .pipe(Atom.keepAlive, Atom.withLabel(`DseEvalReportResultAtom(${key})`)),
+);
+
+export const makeEvalReportKey = (signatureId: string, evalHash: string): string =>
+  encodeEvalKey({ signatureId, evalHash });

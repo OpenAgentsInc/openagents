@@ -357,6 +357,86 @@ export const signatures = {
   ,
 
   /**
+   * Judge signature (Phase 7): score a thread recap/summary output against a reference.
+   *
+   * Important: this is an explicit signature, and should be pinned to a compiled artifact
+   * when used as a metric (avoid circular drift).
+   */
+  judge_thread_summary_quality: Signature.make({
+    id: "@openagents/autopilot/judge/ThreadSummaryQuality.v1",
+    input: Schema.Struct({
+      question: Schema.String.annotations({
+        description: "The user's recap intent / question."
+      }),
+      predSummary: Schema.String.annotations({
+        description: "The model-produced recap/summary to be judged."
+      }),
+      expectedSummary: Schema.String.annotations({
+        description:
+          "A reference summary used for grading. Treat as the ground truth for this eval."
+      })
+    }).annotations({
+      description:
+        "Judge input for recap/summarization evaluation. This judge compares pred vs expected and scores 0..1."
+    }),
+    output: Schema.Struct({
+      score: Schema.Number.annotations({
+        description:
+          "Score in [0,1]. 1 = matches expected and avoids hallucinations; 0 = incorrect/unhelpful."
+      }),
+      notes: Schema.optional(Schema.String).annotations({
+        description: "Short reason for the score (keep it bounded)."
+      })
+    }).annotations({
+      description: "Judge output: score + short notes."
+    }),
+    prompt: {
+      version: 1,
+      blocks: [
+        PromptIR.system(
+          "You are a strict judge for recap/summarization quality."
+        ),
+        PromptIR.instruction(
+          "Task: score predSummary against expectedSummary for the given question.\n" +
+            "\n" +
+            "Rubric:\n" +
+            "- Reward factual alignment with expectedSummary.\n" +
+            "- Penalize hallucinations: if predSummary adds details not supported by expectedSummary, score <= 0.3.\n" +
+            "- Reward clarity and concision (prefer short bullets).\n" +
+            "\n" +
+            "Output:\n" +
+            "- Return JSON only: { score, notes? }.\n" +
+            "- score MUST be a number in [0,1].\n" +
+            "- notes (if present) MUST be <= 400 chars."
+        ),
+        PromptIR.outputJsonSchema(
+          JSONSchema.make(
+            Schema.Struct({
+              score: Schema.Number,
+              notes: Schema.optional(Schema.String)
+            })
+          )
+        )
+      ]
+    },
+    defaults: {
+      params: {
+        ...defaultParams,
+        strategy: { id: "direct.v1" },
+        model: {
+          temperature: 0,
+          maxTokens: 256
+        },
+        budgets: {
+          maxTimeMs: 10_000,
+          maxLmCalls: 5,
+          maxOutputChars: 20_000
+        }
+      } satisfies Params.DseParamsV1
+    }
+  }),
+
+  /**
    * Phase D canary signature: same IO contract for direct.v1 vs rlm_lite.v1 comparison.
    *
    * Notes:

@@ -314,4 +314,19 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     const body = await response.text();
     expect(body).toContain("Compile Report");
   });
+
+  it("GET /dse/eval-report/... returns 200 when authed as ops admin", async () => {
+    state.authed = true;
+    state.userId = "user_dse_admin";
+    const sig = encodeURIComponent("@openagents/autopilot/canary/RecapThread.v1");
+    const evalHash = encodeURIComponent("sha256:eval_hash");
+    const request = new Request(`http://example.com/dse/eval-report/${evalHash}/${sig}`, { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Eval Report");
+  });
 });
