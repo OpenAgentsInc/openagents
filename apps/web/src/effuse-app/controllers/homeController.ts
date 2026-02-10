@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse"
+import { DomServiceTag, EffuseLive, html, renderToolPart } from "@openagentsinc/effuse"
 import {
   mountPaneSystemDom,
   calculateNewPanePosition,
@@ -20,11 +20,19 @@ import {
   cleanupMarketingDotsGridBackground,
   hydrateMarketingDotsGridBackground,
 } from "../../effuse-pages/marketingShell"
+import {
+  renderDseBudgetExceededCard,
+  renderDseCompileCard,
+  renderDsePromoteCard,
+  renderDseRollbackCard,
+  renderDseSignatureCard,
+} from "../../effuse-pages/autopilot"
 import { streamdown } from "../../lib/effuseStreamdown"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { ChatClient } from "../../effect/chat"
 import type { AppRuntime } from "../../effect/runtime"
+import { toAutopilotRenderParts } from "./autopilotChatParts"
 
 export type HomeController = {
   readonly cleanup: () => void
@@ -135,16 +143,19 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       onPaneClosed: closeOverlay,
     })
 
-    const session: Session = (deps?.atoms?.get(SessionAtom as any) as Session) ?? { userId: null, user: null }
-    const isAuthed = session.user != null
+    const sessionFromAtoms: Session =
+      (deps?.atoms?.get(SessionAtom as any) as Session) ?? { userId: null, user: null }
+    const isAuthedFromAtoms = sessionFromAtoms.user != null
 
     const renderIdentityCard = (userEmail: string) => {
-      let cardEl = overlay.querySelector<HTMLElement>("[data-oa-home-identity-card]")
+      const existing = overlay.querySelector("[data-oa-home-identity-card]")
+      let cardEl: HTMLElement | null = existing instanceof HTMLElement ? existing : null
       if (!cardEl) {
-        cardEl = document.createElement("div")
-        cardEl.setAttribute("data-oa-home-identity-card", "1")
-        cardEl.style.cssText = "position:fixed;top:12px;left:12px;z-index:10000;pointer-events:auto;"
-        overlay.appendChild(cardEl)
+        const next = document.createElement("div")
+        next.setAttribute("data-oa-home-identity-card", "1")
+        next.style.cssText = "position:fixed;top:12px;left:12px;z-index:10000;pointer-events:auto;"
+        overlay.appendChild(next)
+        cardEl = next
       }
       Effect.runPromise(
         Effect.gen(function* () {
@@ -166,7 +177,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           )
         }).pipe(Effect.provide(EffuseLive)),
       ).then(() => {
-        const btn = (cardEl as Element).querySelector("[data-oa-home-identity-logout]")
+        const btn = cardEl.querySelector("[data-oa-home-identity-logout]")
         if (btn) {
           btn.addEventListener("click", () => {
             void Promise.resolve(deps?.signOut?.()).then(() => closeOverlay())
@@ -191,49 +202,108 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     type Step = "email" | "code" | "authed"
     /** Shown when authed but thread not loaded yet; must match Convex FIRST_OPEN_WELCOME_MESSAGE so onboarding isn't skipped. */
     const ONBOARDING_FIRST_MESSAGE = "Autopilot online.\n\nGreetings, user. What shall I call you?"
-    const messages: Array<{ role: "user" | "assistant"; text: string }> = isAuthed
+    const messages: Array<{ role: "user" | "assistant"; text: string }> = isAuthedFromAtoms
       ? [{ role: "assistant", text: ONBOARDING_FIRST_MESSAGE }]
       : [{ role: "assistant", text: "Autopilot initialized. Enter your email address to begin." }]
-    let step: Step = isAuthed ? "authed" : "email"
+    let step: Step = isAuthedFromAtoms ? "authed" : "email"
     let email = ""
     let isBusy = false
     let homeThreadId: string | null = null
     let homeSnapshot: ChatSnapshot = { messages: [], status: "ready", errorText: null }
     let unsubHomeChat: (() => void) | null = null
+    let dseStrategyId: "direct.v1" | "rlm_lite.v1" = "direct.v1"
+    let dseBudgetProfile: "small" | "medium" | "long" = "medium"
+    let isRunningDseRecap = false
+    let dseErrorText: string | null = null
 
-    if (isAuthed && deps?.atoms) {
-      const currentSession = deps.atoms.get(SessionAtom as any) as Session
-      if (currentSession?.user?.email) renderIdentityCard(currentSession.user.email)
-      if (deps.chat) {
-        deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
-          (id) => {
-            if (id && id.length > 0) {
-              homeThreadId = id
-              deps.atoms.get(ChatSnapshotAtom(id))
-              unsubHomeChat = deps.atoms.subscribe(
-                ChatSnapshotAtom(id),
-                (snap) => {
-                  homeSnapshot = snap
-                  doRender()
-                },
-                { immediate: true },
-              )
-              doRender()
-            }
-          },
-          () => { },
-        )
+    const startAuthedChat = (input0: { readonly userId: string; readonly user: Session["user"] | null; readonly token: string | null }) => {
+      if (!deps?.atoms || !deps.chat) return
+
+      deps.atoms.set(SessionAtom as any, { userId: input0.userId, user: input0.user })
+
+      // Prime the in-memory auth token cache so Convex can authenticate immediately without waiting
+      // for cookie timing (especially important in tests and right after verify/login).
+      if (input0.token && input0.user && input0.user.email) {
+        try {
+          const user = AuthSessionUser.make({
+            id: input0.user.id,
+            email: input0.user.email ?? null,
+            firstName: input0.user.firstName ?? null,
+            lastName: input0.user.lastName ?? null,
+          })
+          const session = AuthSession.make({ userId: input0.userId, sessionId: null, user })
+          clearAuthClientCache()
+          setClientAuthFromVerify(session, input0.token)
+        } catch {
+          // ignore
+        }
       }
+
+      void Promise.resolve(deps.refreshConvexAuth?.()).catch(() => { })
+
+      if (input0.user?.email) renderIdentityCard(input0.user.email)
+
+      messages.length = 0
+      messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
+      step = "authed"
+      doRender()
+
+      deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
+        (id) => {
+          if (id && id.length > 0) {
+            homeThreadId = id
+            deps.atoms.get(ChatSnapshotAtom(id))
+            if (unsubHomeChat) unsubHomeChat()
+            unsubHomeChat = deps.atoms.subscribe(
+              ChatSnapshotAtom(id),
+              (snap) => {
+                homeSnapshot = snap
+                doRender()
+              },
+              { immediate: true },
+            )
+          }
+          doRender()
+        },
+        () => doRender(),
+      )
+    }
+
+    if (isAuthedFromAtoms && deps?.atoms) {
+      const current = deps.atoms.get(SessionAtom as any) as Session
+      startAuthedChat({ userId: current.userId ?? "", user: current.user ?? null, token: null })
+    } else if (!isAuthedFromAtoms && deps?.atoms) {
+      // If the user already has a valid session cookie (e.g. E2E bypass login), detect it
+      // so the home overlay doesn't force re-entering email.
+      fetch("/api/auth/session", { method: "GET", cache: "no-store", credentials: "include" })
+        .then((r) => r.json().catch(() => null) as Promise<any>)
+        .then((data) => {
+          if (!data || data.ok !== true) return
+          const userId = typeof data.userId === "string" ? data.userId : null
+          const token = typeof data.token === "string" && data.token.length > 0 ? data.token : null
+          const user =
+            data.user && typeof data.user.id === "string"
+              ? {
+                  id: String(data.user.id),
+                  email: data.user.email ?? null,
+                  firstName: data.user.firstName ?? null,
+                  lastName: data.user.lastName ?? null,
+                }
+              : null
+          if (!userId) return
+          startAuthedChat({ userId, user, token })
+        })
+        .catch(() => { })
     }
 
     const chatInputClass =
       "w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white/90 text-sm font-mono placeholder-white/40 focus:outline-none focus:border-white/20"
 
-    const textFromParts = (parts: ReadonlyArray<{ type?: string; text?: string }>): string => {
+    const textFromRenderParts = (parts: ReadonlyArray<{ kind?: string; text?: string }>): string => {
       if (!parts?.length) return ""
       return parts
-        .filter((p) => p?.type === "text" && typeof (p as any).text === "string")
-        .map((p) => (p as any).text)
+        .filter((p) => p?.kind === "text" && typeof (p as any).text === "string")
+        .map((p) => String((p as any).text ?? ""))
         .join("")
     }
 
@@ -260,125 +330,364 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           })()
           : -1
 
-      const displayMessages: Array<{ role: "user" | "assistant"; text: string }> =
+      const renderedMessages =
         step === "authed" && homeSnapshot.messages.length > 0
-          ? homeSnapshot.messages.map((m, i) => {
-            const raw = textFromParts(m.parts ?? [])
-            const isLastAssistant = m.role === "assistant" && i === lastAssistantIndex
-            const fallback =
-              m.role === "assistant"
-                ? homeSnapshot.status === "streaming" && isLastAssistant && !raw
-                  ? "..."
-                  : "(no text)"
-                : ""
-            return {
-              role: m.role as "user" | "assistant",
-              text: raw || (m.role === "assistant" ? fallback : ""),
-            }
-          })
-          : step === "authed"
-            ? [{ role: "assistant" as const, text: ONBOARDING_FIRST_MESSAGE }]
-            : messages
+          ? homeSnapshot.messages
+            .filter((m) => m && typeof m === "object")
+            .filter((m) => String((m as any).role ?? "") === "user" || String((m as any).role ?? "") === "assistant")
+            .map((m, i) => {
+              const partsRaw = Array.isArray((m as any).parts) ? ((m as any).parts as ReadonlyArray<any>) : []
+              let renderParts = toAutopilotRenderParts({ parts: partsRaw, toolContractsByName: null })
+
+              // If the run is streaming but no text has arrived yet, show a stable placeholder to avoid a blank bubble.
+              if (
+                String((m as any).role) === "assistant" &&
+                i === lastAssistantIndex &&
+                homeSnapshot.status === "streaming" &&
+                renderParts.length === 0
+              ) {
+                renderParts = [{ kind: "text" as const, text: "...", state: "streaming" as const }]
+              }
+
+              return {
+                id: String((m as any).id ?? ""),
+                role: String((m as any).role ?? "") as "user" | "assistant",
+                renderParts,
+              }
+            })
+          : null
 
       const lastAssistantText =
-        step === "authed"
+        step === "authed" && renderedMessages
           ? (() => {
-            for (let i = displayMessages.length - 1; i >= 0; i--) {
-              if (displayMessages[i]?.role === "assistant") return displayMessages[i].text
+            for (let i = renderedMessages.length - 1; i >= 0; i--) {
+              if (renderedMessages[i]?.role === "assistant") {
+                return textFromRenderParts(renderedMessages[i].renderParts as any)
+              }
             }
             return ""
           })()
           : ""
       const authedPlaceholder = chatPlaceholderFromLastAssistant(lastAssistantText)
 
+      const controlsHtml =
+        step === "authed"
+          ? html`
+              <div
+                data-oa-home-chat-controls="1"
+                class="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/10 bg-black/40"
+              >
+                <div class="text-[11px] font-mono text-white/50 truncate">
+                  ${homeThreadId ? `thread: ${homeThreadId}` : "thread: (loading...)"}
+                </div>
+                <div class="flex items-center gap-2">
+                  <select
+                    data-oa-home-dse-strategy="1"
+                    class="h-8 rounded border border-white/15 bg-black/40 px-2 text-[11px] font-mono text-white/80"
+                    ${isRunningDseRecap ? "disabled" : ""}
+                  >
+                    <option value="direct.v1" ${dseStrategyId === "direct.v1" ? "selected" : ""}>direct.v1</option>
+                    <option value="rlm_lite.v1" ${dseStrategyId === "rlm_lite.v1" ? "selected" : ""}>rlm_lite.v1</option>
+                  </select>
+                  <select
+                    data-oa-home-dse-budget="1"
+                    class="h-8 rounded border border-white/15 bg-black/40 px-2 text-[11px] font-mono text-white/80"
+                    ${isRunningDseRecap ? "disabled" : ""}
+                  >
+                    <option value="small" ${dseBudgetProfile === "small" ? "selected" : ""}>small</option>
+                    <option value="medium" ${dseBudgetProfile === "medium" ? "selected" : ""}>medium</option>
+                    <option value="long" ${dseBudgetProfile === "long" ? "selected" : ""}>long</option>
+                  </select>
+                  <button
+                    type="button"
+                    data-oa-home-dse-recap="1"
+                    class="h-8 rounded border border-white/15 bg-white/10 px-2 text-[11px] font-mono text-white/80 hover:bg-white/20 disabled:opacity-60"
+                    ${isRunningDseRecap || !homeThreadId ? "disabled" : ""}
+                  >
+                    ${isRunningDseRecap ? "Running..." : "Run recap"}
+                  </button>
+                </div>
+              </div>
+            `
+          : null
+
+      const errorHtml =
+        step === "authed" && (homeSnapshot.errorText || dseErrorText)
+          ? html`
+              <div
+                data-oa-home-chat-error="1"
+                class="mx-4 mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-300"
+              >
+                <div class="whitespace-pre-wrap">${homeSnapshot.errorText ?? dseErrorText ?? ""}</div>
+              </div>
+            `
+          : null
+
       const formHtml =
         step === "authed"
           ? html`
               <form data-oa-home-chat-form="1" data-oa-home-chat-step="authed" class="p-2 border-t border-white/10">
-                <input
-                  type="text"
-                  name="message"
-                  placeholder="${authedPlaceholder}"
-                  class="${chatInputClass}"
-                  data-oa-home-chat-input="1"
-                />
+                <div class="flex items-center gap-2">
+                  <input
+                    type="text"
+                    name="message"
+                    placeholder="${authedPlaceholder}"
+                    autocomplete="off"
+                    class="${chatInputClass}"
+                    data-oa-home-chat-input="1"
+                  />
+                  ${homeSnapshot.status === "submitted" || homeSnapshot.status === "streaming"
+                    ? html`<button
+                        type="button"
+                        data-oa-home-chat-stop="1"
+                        class="h-9 rounded border border-white/15 bg-white/5 px-3 text-xs font-mono text-white/70 hover:bg-white/10"
+                      >
+                        Stop
+                      </button>`
+                    : html`<button
+                        type="submit"
+                        data-oa-home-chat-send="1"
+                        class="h-9 rounded border border-white/15 bg-white/10 px-3 text-xs font-mono text-white/80 hover:bg-white/20"
+                      >
+                        Send
+                      </button>`}
+                </div>
               </form>
             `
           : step === "email"
             ? html`
                 <form data-oa-home-chat-form="1" data-oa-home-chat-step="email" class="p-2 border-t border-white/10">
-                  <input
-                    type="text"
-                    name="email"
-                    placeholder="your@email.com"
-                    autocomplete="email"
-                    class="${chatInputClass}"
-                    data-oa-home-chat-input="1"
-                  />
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="text"
+                      name="email"
+                      placeholder="your@email.com"
+                      autocomplete="email"
+                      class="${chatInputClass}"
+                      data-oa-home-chat-input="1"
+                    />
+                    <button
+                      type="submit"
+                      data-oa-home-chat-send="1"
+                      class="h-9 rounded border border-white/15 bg-white/10 px-3 text-xs font-mono text-white/80 hover:bg-white/20"
+                    >
+                      Continue
+                    </button>
+                  </div>
                 </form>
               `
             : html`
                 <form data-oa-home-chat-form="1" data-oa-home-chat-step="code" class="p-2 border-t border-white/10">
-                  <input
-                    type="text"
-                    name="code"
-                    inputmode="numeric"
-                    autocomplete="one-time-code"
-                    placeholder="123456"
-                    maxlength="6"
-                    class="${chatInputClass}"
-                    data-oa-home-chat-input="1"
-                  />
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="text"
+                      name="code"
+                      inputmode="numeric"
+                      autocomplete="one-time-code"
+                      placeholder="123456"
+                      maxlength="6"
+                      class="${chatInputClass}"
+                      data-oa-home-chat-input="1"
+                    />
+                    <button
+                      type="submit"
+                      data-oa-home-chat-send="1"
+                      class="h-9 rounded border border-white/15 bg-white/10 px-3 text-xs font-mono text-white/80 hover:bg-white/20"
+                    >
+                      Verify
+                    </button>
+                  </div>
                 </form>
               `
 
-      const messagesHtml = html`
-        <div class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
-          ${displayMessages.map((m) =>
-        m.role === "user"
-          ? html`<div
-                  class="text-sm font-mono text-white/55 text-right max-w-[80%] self-end"
-                  data-chat-role="user"
-                >
-                  ${m.text}
-                </div>`
-          : html`<div
-                  class="text-sm font-mono text-white/90"
-                  data-chat-role="assistant"
-                >
-                  ${streamdown(m.text, { mode: "static" })}
-                </div>`,
-      )}
-        </div>
-        ${formHtml}
-      `
+      const messagesHtml =
+        renderedMessages
+          ? html`
+              <div data-oa-home-chat-messages="1" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
+                ${renderedMessages.map((m) => {
+                  if (m.role === "user") {
+                    const userText = textFromRenderParts(m.renderParts as any)
+                    return html`<div
+                      class="text-sm font-mono text-white/55 text-right max-w-[80%] self-end"
+                      data-chat-role="user"
+                    >
+                      ${userText}
+                    </div>`
+                  }
+
+                  const partEls = (m.renderParts as any[]).map((p) => {
+                    if (p.kind === "text") {
+                      return streamdown(p.text, {
+                        mode: "streaming",
+                        isAnimating: p.state === "streaming",
+                        caret: "block",
+                      })
+                    }
+                    if (p.kind === "tool") return renderToolPart(p.model)
+                    if (p.kind === "dse-signature") return renderDseSignatureCard(p.model)
+                    if (p.kind === "dse-compile") return renderDseCompileCard(p.model)
+                    if (p.kind === "dse-promote") return renderDsePromoteCard(p.model)
+                    if (p.kind === "dse-rollback") return renderDseRollbackCard(p.model)
+                    if (p.kind === "dse-budget-exceeded") return renderDseBudgetExceededCard(p.model)
+                    return html``
+                  })
+
+                  return html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
+                    <div class="flex flex-col gap-2">${partEls}</div>
+                  </div>`
+                })}
+              </div>
+            `
+          : html`
+              <div data-oa-home-chat-messages="1" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
+                ${(step === "authed" ? [{ role: "assistant" as const, text: ONBOARDING_FIRST_MESSAGE }] : messages).map((m) =>
+                  m.role === "user"
+                    ? html`<div
+                        class="text-sm font-mono text-white/55 text-right max-w-[80%] self-end"
+                        data-chat-role="user"
+                      >
+                        ${m.text}
+                      </div>`
+                    : html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
+                        ${streamdown(m.text, { mode: "static" })}
+                      </div>`,
+                )}
+              </div>
+            `
+
+      const messagesContainer = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
+      const savedScrollTop = messagesContainer instanceof HTMLElement ? messagesContainer.scrollTop : 0
+
       Effect.runPromise(
         Effect.gen(function* () {
           const dom = yield* DomServiceTag
           yield* dom.render(
             paneContentSlot,
-            html`<div class="flex flex-col h-full min-h-0">${messagesHtml}</div>`,
+            html`
+              <div
+                class="flex flex-col h-full min-h-0"
+                data-oa-home-chat-root="1"
+                data-oa-home-chat-status="${homeSnapshot.status}"
+              >
+                ${controlsHtml}
+                ${errorHtml}
+                ${messagesHtml}
+                ${formHtml}
+              </div>
+            `,
           )
         }).pipe(Effect.provide(EffuseLive)),
       ).then(
         () => {
+          const messagesEl = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
+          if (messagesEl instanceof HTMLElement) messagesEl.scrollTop = savedScrollTop
+
+          const strategySel = paneContentSlot.querySelector("[data-oa-home-dse-strategy]")
+          if (strategySel instanceof HTMLSelectElement) {
+            strategySel.addEventListener("change", () => {
+              const v = String(strategySel.value ?? "direct.v1")
+              dseStrategyId = v === "rlm_lite.v1" ? "rlm_lite.v1" : "direct.v1"
+            })
+          }
+
+          const budgetSel = paneContentSlot.querySelector("[data-oa-home-dse-budget]")
+          if (budgetSel instanceof HTMLSelectElement) {
+            budgetSel.addEventListener("change", () => {
+              const v = String(budgetSel.value ?? "medium")
+              dseBudgetProfile = v === "small" ? "small" : v === "long" ? "long" : "medium"
+            })
+          }
+
+          const recapBtn = paneContentSlot.querySelector("[data-oa-home-dse-recap]")
+          if (recapBtn instanceof HTMLButtonElement) {
+            recapBtn.addEventListener("click", () => {
+              const tid = homeThreadId
+              if (!tid) return
+              if (isRunningDseRecap) return
+              isRunningDseRecap = true
+              dseErrorText = null
+              doRender()
+              fetch("/api/autopilot/dse/recap", {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  ...(String((globalThis as any).__OA_E2E_MODE ?? "") === "stub"
+                    ? { "x-oa-e2e-mode": "stub" }
+                    : {}),
+                },
+                credentials: "include",
+                cache: "no-store",
+                body: JSON.stringify({
+                  threadId: tid,
+                  strategyId: dseStrategyId,
+                  budgetProfile: dseBudgetProfile,
+                  question: "Recap this thread.",
+                }),
+              })
+                .then((r) => r.json().catch(() => null) as Promise<{ ok?: boolean; error?: string } | null>)
+                .then((data) => {
+                  isRunningDseRecap = false
+                  if (!data?.ok) {
+                    dseErrorText = data?.error ? `DSE recap failed: ${data.error}` : "DSE recap failed."
+                  }
+                  doRender()
+                })
+                .catch(() => {
+                  isRunningDseRecap = false
+                  dseErrorText = "DSE recap failed."
+                  doRender()
+                })
+            })
+          }
+
+          const stopBtn = paneContentSlot.querySelector("[data-oa-home-chat-stop]")
+          if (stopBtn instanceof HTMLButtonElement) {
+            stopBtn.addEventListener("click", () => {
+              const tid = homeThreadId
+              if (!tid || !deps?.chat) return
+              deps.runtime.runPromise(deps.chat.stop(tid)).catch(() => { })
+            })
+          }
+
+          const authedForm = paneContentSlot.querySelector("[data-oa-home-chat-form][data-oa-home-chat-step=\"authed\"]")
+          const messageInput = authedForm?.querySelector("[data-oa-home-chat-input]")
+          if (messageInput instanceof HTMLInputElement) {
+            let scrollTopToRestore: number | null = null
+            messageInput.addEventListener("mousedown", () => {
+              const el = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
+              if (el instanceof HTMLElement) scrollTopToRestore = el.scrollTop
+            }, { capture: true })
+            messageInput.addEventListener("focus", () => {
+              if (scrollTopToRestore === null) return
+              const el = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
+              if (el instanceof HTMLElement) {
+                const saved = scrollTopToRestore
+                scrollTopToRestore = null
+                requestAnimationFrame(() => {
+                  el.scrollTop = saved
+                })
+              }
+            })
+          }
+
           const form = paneContentSlot.querySelector("[data-oa-home-chat-form]")
           if (!(form instanceof HTMLFormElement)) return
           form.addEventListener("submit", (e: Event) => {
             e.preventDefault()
-            const input = form.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
+            const input0 = form.querySelector("[data-oa-home-chat-input]")
+            const input = input0 instanceof HTMLInputElement ? input0 : null
             const raw = input?.value?.trim() ?? ""
 
             if (step === "authed") {
               if (homeSnapshot.status === "submitted" || homeSnapshot.status === "streaming") return
-	              if (!raw || !deps?.chat) return
-	              const text = raw
-	              const ensureThenSend = () => {
-	                const tid = homeThreadId
-	                if (tid) {
-	                  if (input) input.value = ""
-	                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => { })
-	                  doRender()
+              if (!raw || !deps?.chat) return
+              const text = raw
+              const ensureThenSend = () => {
+                const tid = homeThreadId
+                if (tid) {
+                  if (input) input.value = ""
+                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => { })
+                  doRender()
                   return
                 }
                 deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
@@ -424,18 +733,18 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               isBusy = true
               messages.push({ role: "assistant", text: "Sending code…" })
               doRender()
-	              fetch("/api/auth/start", {
-	                method: "POST",
-	                headers: { "content-type": "application/json" },
-	                credentials: "include",
-	                body: JSON.stringify({ email: nextEmail }),
-	              })
-	                .then((r) => r.json().catch(() => null) as Promise<{ ok?: boolean; error?: string } | null>)
-	                .then((data) => {
-	                  isBusy = false
-	                  if (data?.ok) {
-	                    email = nextEmail
-	                    step = "code"
+              fetch("/api/auth/start", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ email: nextEmail }),
+              })
+                .then((r) => r.json().catch(() => null) as Promise<{ ok?: boolean; error?: string } | null>)
+                .then((data) => {
+                  isBusy = false
+                  if (data?.ok) {
+                    email = nextEmail
+                    step = "code"
                     messages.push({
                       role: "assistant",
                       text: `Check ${email}. Enter six digit verification code:`,
@@ -584,7 +893,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 doRender()
               })
           })
-          const inputEl = paneContentSlot.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
+          const inputEl0 = paneContentSlot.querySelector("[data-oa-home-chat-input]")
+          const inputEl = inputEl0 instanceof HTMLInputElement ? inputEl0 : null
           if (inputEl) requestAnimationFrame(() => inputEl.focus())
         },
         () => { },
