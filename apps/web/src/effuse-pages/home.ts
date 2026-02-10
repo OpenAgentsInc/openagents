@@ -56,7 +56,6 @@ export function homePageTemplate(
       : html`
               <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <span data-oa-open-chat-pane="1">${hatcheryButton({
-                  href: '#',
                   label: 'Start for free',
                   size: 'large',
                   className: 'w-full max-w-xs sm:w-auto',

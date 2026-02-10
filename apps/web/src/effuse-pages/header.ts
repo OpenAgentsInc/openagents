@@ -6,15 +6,14 @@ import type { TemplateResult } from '@openagentsinc/effuse';
 
 /**
  * Renders the marketing layout header (logo + optional nav).
- * When isHome is false or isLogin is true, nav is hidden with visibility/pointer-events so layout does not reflow.
- * When prelaunch is true, nav (Log in, Start for free) is hidden.
+ * On homepage we show only the logo (center CTA is in the hero); nav is hidden when isHome, isLogin, or prelaunch.
  */
 export function marketingHeaderTemplate(
   isHome: boolean,
   isLogin: boolean,
   prelaunch = false,
 ): TemplateResult {
-  const showNav = isHome && !isLogin && !prelaunch;
+  const showNav = !isHome && !isLogin && !prelaunch;
   return html`
     <header class="flex h-14 w-full shrink-0 items-center justify-between px-6">
       <a
@@ -24,23 +23,8 @@ export function marketingHeaderTemplate(
         OpenAgents
       </a>
       <div class="flex items-center gap-3" aria-hidden="${showNav ? 'false' : 'true'}">
-        ${showNav
-      ? html`
-              <a
-                href="/login"
-                class="mr-5 text-base font-medium text-white/90 hover:text-white use-font-square721 [font-family:var(--font-square721)]"
-              >
-                Log in
-              </a>
-              ${hatcheryButton({
-        href: '/login',
-        label: 'Start for free',
-        variant: 'outline',
-        // Too cramped on mobile; homepage already has a primary CTA.
-        className: 'hidden sm:inline-flex',
-      })}
-            `
-      : ''}
+        ${showNav ? html`<a href="/login" class="mr-5 text-base font-medium text-white/90 hover:text-white use-font-square721 [font-family:var(--font-square721)]">Log in</a>
+              ${hatcheryButton({ href: '/login', label: 'Start for free', variant: 'outline', className: 'hidden sm:inline-flex' })}` : ''}
       </div>
     </header>
   `;
