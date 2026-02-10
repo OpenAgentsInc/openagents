@@ -433,3 +433,19 @@ It is ordered by phase (A..H) so it can be read as a build log.
   - `cd packages/dse && bun test && bun run typecheck`
   - `cd apps/autopilot-worker && npm run typecheck`
   - `cd apps/web && npm run lint`
+
+### 2026-02-10: Phase H (Poisoning/Confusion hardening) — implemented in DSE
+
+- Added provenance-first observations so every token-space excerpt includes a SpanRef-like handle:
+  - `PreviewResult` now includes `target` + `span` (source + char offsets + optional line range) + `trust`/`origin`
+  - `SearchResult` now includes `target` + per-snippet `span` + `trust`/`origin`
+  - implementation: `packages/dse/src/runtime/rlmKernel.ts`
+- Reduced prompt-injection surface and context duplication in the RLM controller loop:
+  - controller system rules treat observation text/snippets as untrusted data and prefer verification via tool calls
+  - `RLM state` now redacts observation text/snippets (keeps spans + sizes) so we don't re-inject untrusted text every iteration
+  - implementation: `packages/dse/src/runtime/predict.ts`
+- Improved auditability of verification steps:
+  - `ToolCallResult` now includes `toolName` + `trust`/`origin` (without inlining tool output)
+  - implementation: `packages/dse/src/runtime/rlmKernel.ts`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`

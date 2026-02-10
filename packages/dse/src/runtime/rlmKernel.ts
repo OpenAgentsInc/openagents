@@ -20,6 +20,16 @@ export class RlmKernelError extends Schema.TaggedError<RlmKernelError>()(
   }
 ) {}
 
+/**
+ * Phase H: Poisoning/Confusion hardening primitives.
+ *
+ * We treat all variable-space text as untrusted by default and attach provenance
+ * (SpanRef-like metadata) to every excerpt that enters token space via an Observation.
+ */
+export type RlmTrustLabelV1 = "trusted" | "semi_trusted" | "untrusted";
+
+export type RlmContentOriginV1 = "input" | "tool" | "lm" | "derived" | "unknown";
+
 export type RlmTargetV1 =
   | { readonly _tag: "Var"; readonly name: string }
   | { readonly _tag: "Blob"; readonly blobId: string };
@@ -28,6 +38,21 @@ export const RlmTargetV1Schema: Schema.Schema<RlmTargetV1> = Schema.Union(
   Schema.Struct({ _tag: Schema.Literal("Var"), name: Schema.String }),
   Schema.Struct({ _tag: Schema.Literal("Blob"), blobId: Schema.String })
 );
+
+export type RlmSourceV1 =
+  | { readonly _tag: "Blob"; readonly blobId: string }
+  | { readonly _tag: "VarJson"; readonly name: string }
+  | { readonly _tag: "VarBlob"; readonly name: string; readonly blobId: string };
+
+export type RlmSpanRefV1 = {
+  readonly _tag: "SpanRef";
+  readonly source: RlmSourceV1;
+  readonly startChar: number;
+  readonly endChar: number;
+  readonly totalChars: number;
+  readonly startLine?: number | undefined;
+  readonly endLine?: number | undefined;
+};
 
 export type RlmModelConfigV1 = {
   readonly modelId?: string | undefined;
@@ -172,6 +197,10 @@ export const RlmActionV1Schema: Schema.Schema<RlmActionV1> = Schema.Union(
 export type RlmObservationV1 =
   | {
       readonly _tag: "PreviewResult";
+      readonly trust: RlmTrustLabelV1;
+      readonly origin: RlmContentOriginV1;
+      readonly target: RlmTargetV1;
+      readonly span: RlmSpanRefV1;
       readonly offset: number;
       readonly length: number;
       readonly totalChars: number;
@@ -180,10 +209,18 @@ export type RlmObservationV1 =
     }
   | {
       readonly _tag: "SearchResult";
+      readonly trust: RlmTrustLabelV1;
+      readonly origin: RlmContentOriginV1;
+      readonly target: RlmTargetV1;
+      readonly totalChars: number;
       readonly query: string;
       readonly totalMatches: number;
       readonly truncated: boolean;
-      readonly matches: ReadonlyArray<{ readonly index: number; readonly snippet: string }>;
+      readonly matches: ReadonlyArray<{
+        readonly index: number;
+        readonly snippet: string;
+        readonly span: RlmSpanRefV1;
+      }>;
     }
   | {
       readonly _tag: "LoadResult";
@@ -200,9 +237,10 @@ export type RlmObservationV1 =
   | { readonly _tag: "WriteVarResult"; readonly name: string; readonly kind: "json" | "blob" }
   | {
       readonly _tag: "SubLmResult";
+      readonly trust: RlmTrustLabelV1;
+      readonly origin: RlmContentOriginV1;
       readonly intoVar: string;
       readonly blob: BlobRef;
-      readonly preview: string;
     }
   | {
       readonly _tag: "ExtractOverChunksResult";
@@ -210,7 +248,14 @@ export type RlmObservationV1 =
       readonly chunkCount: number;
       readonly outputsVar: string;
     }
-  | { readonly _tag: "ToolCallResult"; readonly intoVar: string; readonly kind: "json" | "blob" };
+  | {
+      readonly _tag: "ToolCallResult";
+      readonly trust: RlmTrustLabelV1;
+      readonly origin: RlmContentOriginV1;
+      readonly toolName: string;
+      readonly intoVar: string;
+      readonly kind: "json" | "blob";
+    };
 
 export type RlmKernelStep =
   | { readonly _tag: "Continue"; readonly observation: RlmObservationV1 }
@@ -223,6 +268,26 @@ function byteLengthUtf8(text: string): number {
 function normalizeBoundedInt(n: number | undefined, options: { readonly min: number; readonly max: number }): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : options.min;
   return Math.max(options.min, Math.min(options.max, v));
+}
+
+function lineRangeFromCharSpan(
+  text: string,
+  startChar: number,
+  endChar: number,
+  options?: { readonly maxScanChars?: number | undefined }
+): { readonly startLine: number; readonly endLine: number } | null {
+  // Computing absolute line numbers is O(endChar). For very large blobs, skip it.
+  const maxScanChars = Math.max(0, Math.floor(options?.maxScanChars ?? 200_000));
+  if (endChar > maxScanChars) return null;
+
+  let line = 1;
+  let startLine = 1;
+  for (let i = 0; i < endChar; i++) {
+    if (i === startChar) startLine = line;
+    if (text.charCodeAt(i) === 10) line++; // '\n'
+  }
+  const endLine = line;
+  return { startLine, endLine };
 }
 
 function resolveModelConfig(
@@ -270,9 +335,13 @@ function isBlobRefArray(value: unknown): value is ReadonlyArray<BlobRef> {
   return value.every((v) => v && typeof v === "object" && typeof (v as any).id === "string");
 }
 
-function resolveTargetText(
+function resolveTargetTextWithSource(
   target: RlmTargetV1
-): Effect.Effect<string, RlmKernelError, BlobStoreService | VarSpaceService> {
+): Effect.Effect<
+  { readonly text: string; readonly source: RlmSourceV1 },
+  RlmKernelError,
+  BlobStoreService | VarSpaceService
+> {
   return Effect.gen(function* () {
     const blobs = yield* BlobStoreService;
     const vars = yield* VarSpaceService;
@@ -288,7 +357,7 @@ function resolveTargetText(
           RlmKernelError.make({ message: `Missing blob (blobId=${target.blobId})` })
         );
       }
-      return text;
+      return { text, source: { _tag: "Blob", blobId: target.blobId } };
     }
 
     const v = yield* vars.get(target.name).pipe(
@@ -313,11 +382,11 @@ function resolveTargetText(
           RlmKernelError.make({ message: `Missing blob for var (name=${target.name} blobId=${v.blob.id})` })
         );
       }
-      return text;
+      return { text, source: { _tag: "VarBlob", name: target.name, blobId: v.blob.id } };
     }
 
     // Keep JSON values addressable as text (small by VarSpace constraint).
-    return canonicalJson(v.value);
+    return { text: canonicalJson(v.value), source: { _tag: "VarJson", name: target.name } };
   });
 }
 
@@ -342,16 +411,31 @@ export function executeRlmAction(options: {
 
     switch (action._tag) {
       case "Preview": {
-        const text = yield* resolveTargetText(action.target);
+        const resolved = yield* resolveTargetTextWithSource(action.target);
+        const text = resolved.text;
         const offset = normalizeBoundedInt(action.offset, { min: 0, max: Math.max(0, text.length) });
         const length = normalizeBoundedInt(action.length, { min: 1, max: 10_000 });
         const end = Math.min(text.length, offset + length);
         const slice = text.slice(offset, end);
         const truncated = end < text.length;
+
+        const span: RlmSpanRefV1 = {
+          _tag: "SpanRef",
+          source: resolved.source,
+          startChar: offset,
+          endChar: end,
+          totalChars: text.length,
+          ...(lineRangeFromCharSpan(text, offset, end) ?? {})
+        };
+
         return {
           _tag: "Continue",
           observation: {
             _tag: "PreviewResult",
+            trust: "untrusted",
+            origin: "unknown",
+            target: action.target,
+            span,
             offset,
             length,
             totalChars: text.length,
@@ -361,14 +445,15 @@ export function executeRlmAction(options: {
         };
       }
       case "Search": {
-        const text = yield* resolveTargetText(action.target);
+        const resolved = yield* resolveTargetTextWithSource(action.target);
+        const text = resolved.text;
         const query = action.query;
         const maxMatches = normalizeBoundedInt(action.maxMatches, { min: 1, max: 200 });
         const contextChars = normalizeBoundedInt(action.contextChars, { min: 0, max: 500 });
 
         let i = 0;
         let totalMatches = 0;
-        const matches: Array<{ readonly index: number; readonly snippet: string }> = [];
+        const matches: Array<{ readonly index: number; readonly snippet: string; readonly span: RlmSpanRefV1 }> = [];
         while (true) {
           const idx = text.indexOf(query, i);
           if (idx === -1) break;
@@ -378,7 +463,18 @@ export function executeRlmAction(options: {
             const start = Math.max(0, idx - contextChars);
             const end = Math.min(text.length, idx + query.length + contextChars);
             const snippet = text.slice(start, end);
-            matches.push({ index: idx, snippet });
+            matches.push({
+              index: idx,
+              snippet,
+              span: {
+                _tag: "SpanRef",
+                source: resolved.source,
+                startChar: start,
+                endChar: end,
+                totalChars: text.length,
+                ...(lineRangeFromCharSpan(text, start, end) ?? {})
+              }
+            });
           }
 
           i = idx + Math.max(1, query.length);
@@ -388,6 +484,10 @@ export function executeRlmAction(options: {
           _tag: "Continue",
           observation: {
             _tag: "SearchResult",
+            trust: "untrusted",
+            origin: "unknown",
+            target: action.target,
+            totalChars: text.length,
             query,
             totalMatches,
             truncated: totalMatches > matches.length,
@@ -425,7 +525,8 @@ export function executeRlmAction(options: {
         };
       }
       case "Chunk": {
-        const text = yield* resolveTargetText(action.target);
+        const resolved = yield* resolveTargetTextWithSource(action.target);
+        const text = resolved.text;
         const chunkChars = normalizeBoundedInt(action.chunkChars, { min: 1, max: 20_000 });
         const overlapChars = normalizeBoundedInt(action.overlapChars, { min: 0, max: Math.max(0, chunkChars - 1) });
         const maxChunks = normalizeBoundedInt(action.maxChunks, { min: 1, max: 200 });
@@ -518,10 +619,9 @@ export function executeRlmAction(options: {
           )
         );
 
-        const preview = response.text.slice(0, 500);
         return {
           _tag: "Continue",
-          observation: { _tag: "SubLmResult", intoVar: action.intoVar, blob, preview }
+          observation: { _tag: "SubLmResult", trust: "untrusted", origin: "lm", intoVar: action.intoVar, blob }
         };
       }
       case "ExtractOverChunks": {
@@ -684,7 +784,14 @@ export function executeRlmAction(options: {
           );
           return {
             _tag: "Continue",
-            observation: { _tag: "ToolCallResult", intoVar: action.intoVar, kind: "json" }
+            observation: {
+              _tag: "ToolCallResult",
+              trust: "untrusted",
+              origin: "tool",
+              toolName: action.toolName,
+              intoVar: action.intoVar,
+              kind: "json"
+            }
           };
         }
 
@@ -700,7 +807,14 @@ export function executeRlmAction(options: {
         );
         return {
           _tag: "Continue",
-          observation: { _tag: "ToolCallResult", intoVar: action.intoVar, kind: "blob" }
+          observation: {
+            _tag: "ToolCallResult",
+            trust: "untrusted",
+            origin: "tool",
+            toolName: action.toolName,
+            intoVar: action.intoVar,
+            kind: "blob"
+          }
         };
       }
       case "Final":
