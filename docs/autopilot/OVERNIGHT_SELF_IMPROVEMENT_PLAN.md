@@ -482,6 +482,12 @@ Current endpoints and storage:
 
 - 2026-02-10T11:49:02Z Doc maintenance: filled in Phases 7–9 sections and corrected “Non-Goals” to match the implemented judge/eval capability.
 
+- 2026-02-10T11:53:16Z Docs: updated operator-facing guidance to match the new collapsed `dse.signature` UI on `/autopilot`.
+- Updated:
+  - `docs/autopilot/DSE_PLAYBOOK.md`
+  - `docs/autopilot/SELF_IMPROVE_RUNBOOK.md`
+  - `docs/autopilot/rlm-trace-mining.md`
+
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)

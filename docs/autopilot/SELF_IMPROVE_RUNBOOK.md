@@ -52,6 +52,7 @@ This is the operational loop DSE is designed for:
      - budgets (limits + usage)
      - receipts + (if RLM) `rlmTrace`
    - In UI, this is the `dse.signature` card (see `docs/autopilot/DSE_PLAYBOOK.md`).
+     - On `/autopilot`, signature cards are collapsed by default; click to expand to copy `receiptId` / open trace links.
 
 2. **Export / Label**
    - Convert good runs and failures into `dseExamples` rows.
@@ -117,7 +118,7 @@ This is the checklist I will follow when asked to improve Autopilot behavior via
 
 2. **Reproduce and capture evidence**
    - Use the DSE Debug controls in `/autopilot` (or equivalent) to run both strategies.
-   - Capture `receiptId` and (if RLM) the trace.
+   - Capture `receiptId` and (if RLM) the trace (expand the signature card to reveal receipt/trace links).
 
 3. **Create or expand a dataset**
    - Add a small, high-signal dataset slice:

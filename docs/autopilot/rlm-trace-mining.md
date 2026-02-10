@@ -155,6 +155,7 @@ Under the hood it calls:
 #### Step 1: find the DSE predict receipt id
 
 In the Autopilot UI, inspect the `dse.signature` chat card for the run and copy `receiptId`.
+On `/autopilot`, signature cards are collapsed by default; click the one-line summary to expand it.
 
 #### Step 2: export via the Worker endpoint
 
