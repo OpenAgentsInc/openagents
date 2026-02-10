@@ -86,6 +86,18 @@ cd apps/web
 npm run wrangler:secrets
 ```
 
+Local prerequisites (run once per session, in a separate terminal):
+
+```bash
+cd apps/web
+npm run dev
+```
+
+Local notes:
+
+- `wrangler dev` loads `.env.local`/`.env`; ensure it contains `OA_DSE_ADMIN_SECRET` + `OA_E2E_JWT_PRIVATE_JWK`.
+- The overnight runner must use the same `OA_DSE_ADMIN_SECRET` value as the running Worker.
+
 Local (no E2E):
 
 ```bash
@@ -505,6 +517,10 @@ Current endpoints and storage:
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T12:26:37Z Docs: clarified local prerequisites for running the overnight loop against `http://localhost:3000` (start `npm run dev`, secret alignment notes).
+- Updated:
+  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
 - 2026-02-10T12:24:42Z Ops: propagate `x-oa-request-id` into overnight runner HTTP errors (so failures are correlatable from the CLI summary + ops run events).
 - Updated:
