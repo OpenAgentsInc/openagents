@@ -389,7 +389,7 @@ describe("apps/web/scripts/dse-overnight", () => {
       if (String(url).endsWith("/api/dse/promote")) {
         return new Response(JSON.stringify({ ok: false, error: "boom" }), {
           status: 500,
-          headers: { "content-type": "application/json; charset=utf-8" },
+          headers: { "content-type": "application/json; charset=utf-8", "x-oa-request-id": "req_promote_fail" },
         })
       }
 
@@ -427,6 +427,7 @@ describe("apps/web/scripts/dse-overnight", () => {
     })
 
     expect(summary.ok).toBe(false)
+    expect(summary.errors.join("\n")).toContain("req=req_promote_fail")
 
     const stopCalled = calls.some((c) => new URL(c.url).pathname === "/api/dse/canary/stop")
     expect(stopCalled).toBe(true)

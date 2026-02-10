@@ -506,6 +506,14 @@ Current endpoints and storage:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
+- 2026-02-10T12:24:42Z Ops: propagate `x-oa-request-id` into overnight runner HTTP errors (so failures are correlatable from the CLI summary + ops run events).
+- Updated:
+  - `apps/web/scripts/dse-overnight-lib.ts`
+  - `apps/web/tests/scripts/dse-overnight.test.ts`
+- Tests / verification:
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
+
 - 2026-02-10T05:40:55Z Autopilot UI: DSE signature cards collapsed by default; prod E2E updated to expand before asserting debug visibility.
 - `/autopilot` now renders `dse.signature` parts as a one-line summary + expandable details:
   - implementation: `apps/web/src/effuse-pages/autopilot.ts` (`<details data-dse-signature-details="1">`)
