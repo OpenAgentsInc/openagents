@@ -147,7 +147,8 @@ Today, the most visible use is long-context summarization:
 2. In `/autopilot`, request a recap of older messages (or use `/rlm` if supported in the UI).
 3. Autopilot will run an RLM-lite DSE signature to summarize older history and inject a bounded summary into the main prompt.
 4. In the chat UI, look for a `dse.signature` card:
-   - it should show `signatureId`, `compiled_id`, `strategyId`, budgets/usage, and `rlmTrace`.
+   - signature cards are collapsed by default on `/autopilot` (you’ll see a one-line summary like “Recapping thread”).
+   - click the summary to expand and see `signatureId`, `compiled_id`, `strategyId`, budgets/usage, and `rlmTrace`.
 
 If something goes wrong, the receipt + trace should answer:
 
@@ -181,6 +182,7 @@ What you should see:
   - signature: `@openagents/autopilot/canary/RecapThread.v1`
   - `strategyId`, budgets (limits + usage), prompt render stats, context pressure
   - `rlmTrace` handle when `rlm_lite.v1` runs
+- Note: signature cards are collapsed by default; expand to see the full receipt/budget/trace details.
 - Links on the card:
   - **receipt**: `GET /api/dse/receipt/:receiptId`
   - **trace**: `GET /api/dse/blob/:receiptId/:blobId` (raw blob text; for RLM traces it is JSON)
@@ -209,6 +211,7 @@ Goal: turn a good RLM run into a candidate dataset row (`dseExamples`).
 
 - Find a `receiptId` for a run that includes `rlmTrace`.
   - In Autopilot, the `dse.signature` card is the easiest place to copy `receiptId` and see whether `rlmTrace` exists.
+  - If the signature card is collapsed (default), click the one-line summary to expand it.
 - Call the admin endpoint (auth required):
 
 ```js
