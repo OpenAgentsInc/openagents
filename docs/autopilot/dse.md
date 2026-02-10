@@ -19,6 +19,9 @@ The goal is not “Effect wrappers around an LLM client”. The goal is to make 
 - shippable (compiled artifacts with deterministic IDs)
 - production-safe (runtime loads artifacts; compilation is explicit and auditable)
 
+For a plain-language "how to use what is implemented today" guide (operator workflow + Autopilot UX + RLM-lite),
+see: `docs/autopilot/DSE_PLAYBOOK.md`.
+
 ---
 
 ## 0) Context and Motivation
