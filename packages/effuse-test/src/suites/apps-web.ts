@@ -661,20 +661,36 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             yield* step("click Run recap (canary)", page.click('[data-ez=\"autopilot.controls.dse.recap\"]'))
 
             yield* step(
-              "wait for DSE card to appear",
+              "wait for DSE signature card to appear",
               page.waitForFunction(
-                `Array.from(document.querySelectorAll('[data-dse-card=\"1\"]')).some(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1'))`,
+                `Array.from(document.querySelectorAll('[data-dse-signature-details=\"1\"]')).some(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1'))`,
                 { timeoutMs: 60_000 },
               ),
             )
 
             yield* step(
-              "assert DSE card shows strategy + iteration counters",
+              "expand recap signature card (collapsible UI)",
+              page.evaluate(`(() => {
+  const cards = Array.from(document.querySelectorAll('[data-dse-signature-details=\"1\"]'));
+  const card = cards.find(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1')) as HTMLDetailsElement | undefined;
+  if (!card) throw new Error('missing recap signature card');
+  if (!card.open) {
+    const summary = card.querySelector('[data-dse-signature-summary=\"1\"]') as HTMLElement | null;
+    if (!summary) throw new Error('missing recap signature summary');
+    summary.click();
+  }
+  if (!card.open) throw new Error('failed to expand recap signature card');
+})()`),
+            )
+
+            yield* step(
+              "assert expanded DSE card shows strategy + iteration counters",
               Effect.gen(function* () {
                 const ok = yield* page.evaluate<boolean>(`(() => {
-  const cards = Array.from(document.querySelectorAll('[data-dse-card=\"1\"]'));
-  const card = cards.find(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1'));
+  const cards = Array.from(document.querySelectorAll('[data-dse-signature-details=\"1\"]'));
+  const card = cards.find(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1')) as HTMLDetailsElement | undefined;
   if (!card) return false;
+  if (!card.open) return false;
   const t = (card.textContent || '');
   return t.includes('strategyId') && t.includes('rlm_lite.v1') && (t.includes('rlmIterations=') || t.includes('subLmCalls='));
 })()`)
@@ -688,8 +704,14 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             const traceHref = yield* step(
               "read trace href",
               page.evaluate<string | null>(`(() => {
-  const el = document.querySelector('[data-dse-open-trace=\"1\"]') as HTMLAnchorElement | null;
-  return el ? el.getAttribute('href') : null;
+  const cards = Array.from(document.querySelectorAll('[data-dse-signature-details=\"1\"]'));
+  const card = cards.find(el => (el.textContent || '').includes('@openagents/autopilot/canary/RecapThread.v1')) as HTMLDetailsElement | undefined;
+  if (!card || !card.open) return null;
+  const el = card.querySelector('[data-dse-open-trace=\"1\"]') as HTMLAnchorElement | null;
+  if (!el) return null;
+  const rects = el.getClientRects();
+  if (!rects || rects.length === 0) return null;
+  return el.getAttribute('href') || null;
 })()`),
             )
 
