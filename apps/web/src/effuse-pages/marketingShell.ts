@@ -32,7 +32,7 @@ export const marketingShellTemplate = (input: {
         <div data-marketing-slot="header">
           ${marketingHeaderTemplate(input.isHome, input.isLogin, input.prelaunch ?? false)}
         </div>
-        <div data-marketing-slot="content" class="flex flex-1 min-h-0 flex-col">
+        <div data-marketing-slot="content" class="relative flex flex-1 min-h-0 flex-col">
           ${input.content}
         </div>
       </div>

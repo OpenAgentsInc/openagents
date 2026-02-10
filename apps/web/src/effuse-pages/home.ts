@@ -33,7 +33,7 @@ export function homePageTemplate(
   const initialCountdown = prelaunch ? formatCountdown(Math.max(0, PRELAUNCH_LAUNCH_MS - now)) : '';
 
   return html`
-    <main class="mx-auto flex w-full max-w-5xl flex-1 items-center justify-center">
+    <main class="mx-auto flex w-full max-w-5xl flex-1 items-center justify-center transition-opacity duration-200" data-oa-home-hero="1">
       <div class="w-full max-w-3xl text-center text-white">
         <h1 class="select-none text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
           Introducing Autopilot

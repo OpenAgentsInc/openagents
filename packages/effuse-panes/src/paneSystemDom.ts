@@ -139,7 +139,10 @@ const cssText = (cfg: PaneSystemConfig): string => {
     box-sizing:border-box;
     border-bottom:1px solid ${t.border};
     user-select:none;
+    cursor:grab;
   }
+  [data-oa-pane-title]:active{ cursor:grabbing; }
+  [data-oa-pane-system][data-oa-pane-dragging="1"] [data-oa-pane-title]{ cursor:grabbing; }
   [data-oa-pane][data-active="1"] [data-oa-pane-title]{ border-bottom-color:${t.accent}; }
   [data-oa-pane-title-text]{ font-size:12px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   [data-oa-pane-close]{
@@ -489,6 +492,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       const title = target.closest("[data-oa-pane-title]");
       if (title instanceof Element) {
         paneDrag = { paneId: overPaneId, origin: point, startRect: pane.rect };
+        root.setAttribute("data-oa-pane-dragging", "1");
         root.setPointerCapture(ev.pointerId);
         ev.preventDefault();
         return;
@@ -557,6 +561,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       const rect = store.pane(paneDrag.paneId)?.rect;
       if (rect) store.setLastPosition(normalizePaneRect(rect, cfg.paneConstraints));
       paneDrag = undefined;
+      root.removeAttribute("data-oa-pane-dragging");
       renderNow();
       return;
     }
