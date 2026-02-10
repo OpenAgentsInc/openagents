@@ -197,6 +197,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
 
         const startForPath = (pathname: string) => {
           // /autopilot and /login are deprecated and redirect to /; show home until redirect completes.
+          // All other non-root routes redirect to / (server does the same for unmatched document routes).
           const desired =
             pathname === "/" || pathname === "/autopilot" || pathname === "/login"
               ? "home"
@@ -211,6 +212,11 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                       : pathname === "/signatures"
                         ? "signatures"
                         : "none"
+
+          if (desired === "none") {
+            navigate("/")
+            return
+          }
 
           if (desired === active?.kind) return
           stopActive()

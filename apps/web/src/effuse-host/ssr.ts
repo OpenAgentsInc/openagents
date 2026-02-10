@@ -329,23 +329,11 @@ export const handleSsrRequest = async (
   })
 
   const effect = Effect.gen(function* () {
+    // Unmatched document routes (e.g. /hatchery) redirect to home; assets/API are handled earlier.
     if (!matched) {
-      const html = renderDocument({
-        title: "Not found",
-        meta: [],
-        bodyHtml: defaultNotFoundHtml(url),
-        dehydrateJson: null,
-        prelaunch: config.prelaunch,
-      })
-      if (byteLengthUtf8(html) > MAX_SSR_HTML_BYTES) {
-        return new Response("<!doctype html><h1>SSR output too large</h1>", {
-          status: 500,
-          headers: htmlHeadersNoStore(),
-        })
-      }
-      return new Response(html, {
-        status: 404,
-        headers: htmlHeadersNoStore(),
+      return new Response(null, {
+        status: 302,
+        headers: new Headers({ location: "/", "cache-control": "no-store, no-cache, must-revalidate" }),
       })
     }
 
