@@ -6,6 +6,14 @@
 - **End-to-end roadmap:** `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
 - **If this doc conflicts with code behavior:** code wins
 
+DSE is the part of Autopilot that turns “agent behavior” from a pile of prompts into something you can **define, measure, and ship safely**. Instead of hand-editing strings and hoping things get better, you describe each behavior as a **Signature**: a named, versioned step with a clear input and output shape. When Autopilot runs a Signature, it produces the same kind of artifact you expect from real software: receipts, budgets, and traceable evidence of what happened.
+
+What this enables is a disciplined improvement loop. You can run a Signature on a dataset, score it with a metric, and then “compile” a better version by choosing better instructions, better examples, or a better strategy. The result is a **compiled artifact** with a stable ID that you can pin, roll out, canary, and roll back—so improvements are **auditable** and **reversible**, not mystery changes that drift over time.
+
+DSE also makes long-context work safer. When conversations, logs, or repos get too big, quality can quietly collapse (“context rot”). DSE supports an alternate strategy called **RLM-lite** that keeps large context out of the model’s token window and instead works in a bounded loop with strict budgets and explicit evidence handles. In the UI, you’ll be able to see when this happened, why it triggered, what it looked at, and what limits it hit—so “agent work” stays debuggable and trustworthy.
+
+This playbook explains how to use what’s implemented today: how to run Signatures, read receipts and traces, export examples from real runs, compile improvements offline, and promote artifacts safely into production. The goal is simple: **ship agent behavior like software**—versioned, tested, observable, and improving over time without surprises.
+
 This is the plain-language guide for using what we have implemented now:
 
 - DSE `Predict(signature)` with artifact-pinned strategies (`direct.v1`, `rlm_lite.v1`, distilled tactics),
