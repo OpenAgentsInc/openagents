@@ -215,13 +215,15 @@ EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
   npm run test:e2e -- --base-url https://openagents.com --tag prod
 ```
 
-Run just Autopilot prod tests:
+Run just Autopilot prod tests (visit prod with E2E login, open /autopilot, send a message, assert response or error):
 
 ```bash
 cd apps/web
 EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
   npm run test:e2e -- --base-url https://openagents.com --tag prod --grep "apps-web\\.prod\\.autopilot"
 ```
+
+To verify **key bypass + start a chat and see the response** manually: open `https://openagents.com/?key=<PRELAUNCH_BYPASS_KEY>` (key is a Worker secret). You are redirected to `/autopilot` with the bypass cookie; if anonymous you are then sent to `/login`. Log in (e.g. magic code or E2E via API), then go to `/autopilot` and send a message to see the response. The automated equivalent is the prod test above (E2E login → /autopilot → send → assert).
 
 Useful flags:
 
