@@ -17,6 +17,80 @@ export class PromptRenderError extends Schema.TaggedError<PromptRenderError>()(
   }
 ) {}
 
+export type PromptRenderBlobStatV1 = {
+  readonly blobId: string;
+  readonly mime?: string | undefined;
+  readonly declaredSize?: number | undefined;
+  readonly contentChars: number;
+  readonly previewChars: number;
+  readonly truncated: boolean;
+};
+
+export const PromptRenderBlobStatV1Schema: Schema.Schema<PromptRenderBlobStatV1> =
+  Schema.Struct({
+    blobId: Schema.String,
+    mime: Schema.optional(Schema.String),
+    declaredSize: Schema.optional(Schema.Number),
+    contentChars: Schema.Number,
+    previewChars: Schema.Number,
+    truncated: Schema.Boolean
+  });
+
+export type PromptRenderStatsV1 = {
+  readonly format: "openagents.dse.prompt_render_stats";
+  readonly formatVersion: 1;
+
+  readonly messageCount: number;
+  readonly totalChars: number;
+
+  readonly byRole: {
+    readonly systemChars: number;
+    readonly userChars: number;
+  };
+
+  readonly context: {
+    readonly inlineEntryCount: number;
+    readonly inlineValueChars: number;
+
+    readonly blobEntryCount: number;
+    readonly blobContentChars: number;
+    readonly blobContentPreviewChars: number;
+
+    readonly blobsDropped: number;
+    readonly blobs: ReadonlyArray<PromptRenderBlobStatV1>;
+  };
+
+  readonly fewShot: {
+    readonly exampleCount: number;
+    readonly totalChars: number;
+  };
+};
+
+export const PromptRenderStatsV1Schema: Schema.Schema<PromptRenderStatsV1> =
+  Schema.Struct({
+    format: Schema.Literal("openagents.dse.prompt_render_stats"),
+    formatVersion: Schema.Literal(1),
+    messageCount: Schema.Number,
+    totalChars: Schema.Number,
+    byRole: Schema.Struct({
+      systemChars: Schema.Number,
+      userChars: Schema.Number
+    }),
+    context: Schema.Struct({
+      inlineEntryCount: Schema.Number,
+      inlineValueChars: Schema.Number,
+      blobEntryCount: Schema.Number,
+      blobContentChars: Schema.Number,
+      blobContentPreviewChars: Schema.Number,
+      blobsDropped: Schema.Number,
+      blobs: Schema.Array(PromptRenderBlobStatV1Schema)
+    }),
+    fewShot: Schema.Struct({
+      exampleCount: Schema.Number,
+      totalChars: Schema.Number
+    })
+  });
+
 function applyParamsToPromptIr<I, O>(
   signatureId: string,
   prompt: PromptIR<I, O>,
@@ -105,11 +179,15 @@ function joinNonEmpty(parts: ReadonlyArray<string>): string {
   return parts.map((p) => p.trim()).filter((p) => p.length > 0).join("\n\n");
 }
 
-export function renderPromptMessages<I, O>(options: {
+export function renderPromptMessagesWithStats<I, O>(options: {
   readonly signature: DseSignature<I, O>;
   readonly input: I;
   readonly params: DseParams;
-}): Effect.Effect<ReadonlyArray<LmMessage>, PromptRenderError, BlobStoreService> {
+}): Effect.Effect<
+  { readonly messages: ReadonlyArray<LmMessage>; readonly stats: PromptRenderStatsV1 },
+  PromptRenderError,
+  BlobStoreService
+> {
   return Effect.gen(function* () {
     const sig = options.signature;
     const blobStore = yield* BlobStoreService;
@@ -129,9 +207,24 @@ export function renderPromptMessages<I, O>(options: {
       )
     );
 
-    const renderContextEntry = (e: ContextEntry): Effect.Effect<string, PromptRenderError> => {
+    let inlineEntryCount = 0;
+    let inlineValueChars = 0;
+    let blobEntryCount = 0;
+    let blobContentChars = 0;
+    let blobContentPreviewChars = 0;
+    let blobsDropped = 0;
+
+    const MAX_BLOB_STATS = 200;
+    const blobs: Array<PromptRenderBlobStatV1> = [];
+
+    const renderContextEntry = (
+      e: ContextEntry
+    ): Effect.Effect<string, PromptRenderError> => {
       if ("value" in e) {
-        return Effect.succeed(`${e.key}: ${canonicalJson(e.value)}`);
+        const rendered = canonicalJson(e.value);
+        inlineEntryCount++;
+        inlineValueChars += rendered.length;
+        return Effect.succeed(`${e.key}: ${rendered}`);
       }
 
       return blobStore.getText(e.blob.id).pipe(
@@ -146,17 +239,36 @@ export function renderPromptMessages<I, O>(options: {
           }
 
           const MAX_CONTEXT_CHARS = 20_000;
-          const truncated =
-            text.length > MAX_CONTEXT_CHARS
-              ? text.slice(0, MAX_CONTEXT_CHARS) + "\n...[truncated]"
-              : text;
+          const truncatedFlag = text.length > MAX_CONTEXT_CHARS;
+          const previewText = truncatedFlag
+            ? text.slice(0, MAX_CONTEXT_CHARS) + "\n...[truncated]"
+            : text;
+
+          blobEntryCount++;
+          blobContentChars += text.length;
+          blobContentPreviewChars += previewText.length;
+
+          if (blobs.length < MAX_BLOB_STATS) {
+            blobs.push({
+              blobId: e.blob.id,
+              ...(e.blob.mime ? { mime: e.blob.mime } : {}),
+              ...(typeof e.blob.size === "number" ? { declaredSize: e.blob.size } : {}),
+              contentChars: text.length,
+              previewChars: previewText.length,
+              truncated: truncatedFlag
+            });
+          } else {
+            blobsDropped++;
+          }
 
           const metaParts: Array<string> = [];
           metaParts.push(`blobId=${e.blob.id}`);
           if (e.blob.mime) metaParts.push(`mime=${e.blob.mime}`);
           metaParts.push(`size=${e.blob.size}`);
 
-          return Effect.succeed(`${e.key} (${metaParts.join(" ")}):\n${truncated}`);
+          return Effect.succeed(
+            `${e.key} (${metaParts.join(" ")}):\n${previewText}`
+          );
         }),
         Effect.catchAll((cause) =>
           Effect.fail(
@@ -214,6 +326,10 @@ export function renderPromptMessages<I, O>(options: {
     );
 
     const fewShotBlocks = prompt.blocks.filter((b) => b._tag === "FewShot");
+    const fewShotExampleCount = fewShotBlocks.reduce(
+      (acc, b) => acc + (b._tag === "FewShot" ? b.examples.length : 0),
+      0
+    );
     const fewShotSections = yield* Effect.forEach(fewShotBlocks, (b) => {
       if (b._tag !== "FewShot" || b.examples.length === 0) {
         return Effect.succeed("");
@@ -247,6 +363,7 @@ export function renderPromptMessages<I, O>(options: {
     });
 
     const fewShotText = joinNonEmpty(fewShotSections);
+    const fewShotTotalChars = fewShotText.length;
 
     const encodedInput = yield* Effect.try({
       try: () => encodeInput(options.input),
@@ -273,6 +390,47 @@ export function renderPromptMessages<I, O>(options: {
     if (systemText) messages.push({ role: "system", content: systemText });
     messages.push({ role: "user", content: userText });
 
-    return messages;
+    let systemChars = 0;
+    let userChars = 0;
+    let totalChars = 0;
+    for (const m of messages) {
+      const n = m.content.length;
+      totalChars += n;
+      if (m.role === "system") systemChars += n;
+      if (m.role === "user") userChars += n;
+    }
+
+    const stats: PromptRenderStatsV1 = {
+      format: "openagents.dse.prompt_render_stats",
+      formatVersion: 1,
+      messageCount: messages.length,
+      totalChars,
+      byRole: { systemChars, userChars },
+      context: {
+        inlineEntryCount,
+        inlineValueChars,
+        blobEntryCount,
+        blobContentChars,
+        blobContentPreviewChars,
+        blobsDropped,
+        blobs
+      },
+      fewShot: {
+        exampleCount: fewShotExampleCount,
+        totalChars: fewShotTotalChars
+      }
+    };
+
+    return { messages, stats };
   });
+}
+
+export function renderPromptMessages<I, O>(options: {
+  readonly signature: DseSignature<I, O>;
+  readonly input: I;
+  readonly params: DseParams;
+}): Effect.Effect<ReadonlyArray<LmMessage>, PromptRenderError, BlobStoreService> {
+  return renderPromptMessagesWithStats(options).pipe(
+    Effect.map((r) => r.messages)
+  );
 }

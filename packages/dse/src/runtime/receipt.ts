@@ -1,16 +1,28 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
 import { DseExecutionBudgetsV1Schema, type DseExecutionBudgetsV1 } from "../params.js";
+import {
+  ContextPressureV1Schema,
+  type ContextPressureV1
+} from "./contextPressure.js";
+import {
+  PromptRenderStatsV1Schema,
+  type PromptRenderStatsV1
+} from "./render.js";
 
 export type PredictReceiptV1 = {
   readonly format: "openagents.dse.predict_receipt";
   readonly formatVersion: 1;
 
   readonly receiptId: string;
+  readonly runId?: string | undefined;
   readonly createdAt: string;
 
   readonly signatureId: string;
   readonly compiled_id: string;
+
+  // Execution strategy identifier (e.g. direct.v1). Optional for backward compatibility.
+  readonly strategyId?: string | undefined;
 
   readonly hashes: {
     readonly inputSchemaHash: string;
@@ -42,6 +54,10 @@ export type PredictReceiptV1 = {
     readonly durationMs: number;
   };
 
+  // Observability v1: prompt render stats and derived context pressure.
+  readonly promptRenderStats?: PromptRenderStatsV1 | undefined;
+  readonly contextPressure?: ContextPressureV1 | undefined;
+
   readonly repairCount?: number | undefined;
 
   readonly budget?:
@@ -66,10 +82,13 @@ export const PredictReceiptV1Schema: Schema.Schema<PredictReceiptV1> =
     formatVersion: Schema.Literal(1),
 
     receiptId: Schema.String,
+    runId: Schema.optional(Schema.String),
     createdAt: Schema.String,
 
     signatureId: Schema.String,
     compiled_id: Schema.String,
+
+    strategyId: Schema.optional(Schema.String),
 
     hashes: Schema.Struct({
       inputSchemaHash: Schema.String,
@@ -100,6 +119,9 @@ export const PredictReceiptV1Schema: Schema.Schema<PredictReceiptV1> =
       endedAtMs: Schema.Number,
       durationMs: Schema.Number
     }),
+
+    promptRenderStats: Schema.optional(PromptRenderStatsV1Schema),
+    contextPressure: Schema.optional(ContextPressureV1Schema),
 
     repairCount: Schema.optional(Schema.Number),
 
