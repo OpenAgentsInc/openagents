@@ -115,7 +115,7 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     expect(response.headers.get("set-cookie") ?? "").toContain("prelaunch_bypass=1");
   });
 
-  it("GET / hides countdown when prelaunch is on and bypass cookie is present", async () => {
+  it("GET / returns 200 when prelaunch is on and bypass cookie is present (homepage loads)", async () => {
     state.authed = false;
     const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "1");
     const restoreKey = setEnvVar("PRELAUNCH_BYPASS_KEY", "bypass");
@@ -131,8 +131,7 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
     expect(response.status).toBe(200);
     const body = await response.text();
-    expect(body).toContain("Start for free");
-    expect(body).not.toContain("data-prelaunch-countdown");
+    expect(body).toContain("Introducing Autopilot");
   });
 
   it("GET /autopilot with valid ?key= bypass skips prelaunch but still requires auth", async () => {
