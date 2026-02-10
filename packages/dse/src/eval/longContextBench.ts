@@ -138,7 +138,7 @@ export function makeDummyLongContextLogQaDataset(): Effect.Effect<
       examples: [
         {
           exampleId: "log_small.oa_req",
-          split: "test",
+          split: "train",
           tags: ["log", "small", "needle_in_preview"],
           input: {
             question:
@@ -155,7 +155,7 @@ export function makeDummyLongContextLogQaDataset(): Effect.Effect<
         },
         {
           exampleId: "log_large.oa_req",
-          split: "test",
+          split: "holdout",
           tags: ["log", "large", "needle_beyond_preview"],
           input: {
             question:
@@ -208,7 +208,7 @@ export function makeDummyRepoNeedleDataset(): Effect.Effect<
       examples: [
         {
           exampleId: "repo_small.NEEDLE_value",
-          split: "test",
+          split: "train",
           tags: ["repo", "small", "needle_in_preview"],
           input: {
             question:
@@ -222,7 +222,7 @@ export function makeDummyRepoNeedleDataset(): Effect.Effect<
         },
         {
           exampleId: "repo_large.NEEDLE_value",
-          split: "test",
+          split: "holdout",
           tags: ["repo", "large", "needle_beyond_preview"],
           input: {
             question:

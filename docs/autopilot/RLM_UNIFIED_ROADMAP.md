@@ -275,6 +275,31 @@ Production smoke guidance:
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
 
+### 2026-02-10: Phase F (Trace mining -> distillation -> compile) — implemented in DSE + `apps/web`
+
+- Made RLM-lite traces exportable into candidate labeled examples:
+  - trace blob format now includes `signatureId` + `receiptId`, and emits an `Input` event (encoded input JSON)
+  - implementation: `packages/dse/src/runtime/predict.ts`
+- Added a trace export helper that converts (predict receipt + RLM trace blob) into a `dseExamples`-shaped candidate:
+  - extracts `inputJson` from the trace `Input` event and `expectedJson` from the trace `Final.output`
+  - implementation: `packages/dse/src/traceMining/exportExamples.ts`, `packages/dse/src/traceMining/rlmTrace.ts`
+  - test: `packages/dse/test/traceExport.test.ts`
+- Added a Convex-first trace export pipeline for operators:
+  - Convex query to fetch a DSE predict receipt by `receiptId`: `apps/web/convex/dse/receipts.ts`
+  - Worker admin endpoint `POST /api/dse/trace/export` writes/upserts the candidate into `dseExamples`: `apps/web/src/effuse-host/dseAdmin.ts`
+  - Worker test: `apps/web/tests/worker/dse-trace-export.test.ts`
+- Implemented and evaluated one distilled “tactic” as a pinned predict strategy:
+  - new strategy `distilled.search_line_extract.v1`: deterministic search+parse fast path (0 LM calls) with RLM-lite fallback for novelty/high uncertainty
+  - implemented in `Predict(signature)` dispatch: `packages/dse/src/runtime/predict.ts`
+  - holdout-enabled dummy dataset splits (train vs holdout): `packages/dse/src/eval/longContextBench.ts`
+  - test comparing direct vs distilled vs RLM on holdout: `packages/dse/test/distilledLongContextQa.test.ts`
+- Documented the trace-review and export workflow:
+  - `docs/autopilot/rlm-trace-mining.md`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npm test && npm run lint`
+
 ### 2026-02-10: Phase B (PredictStrategy abstraction + RLM counters) — implemented in DSE
 
 - Added `params.strategy` to DSE params so inference strategy is pinned in compiled artifacts:

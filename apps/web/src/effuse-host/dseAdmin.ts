@@ -13,6 +13,7 @@ import {
   EvalReward,
   Lm,
   Receipt,
+  TraceMining,
   VarSpace,
 } from "@openagentsinc/dse";
 
@@ -150,6 +151,14 @@ type CanaryStopBody = {
   readonly reason?: unknown;
 };
 
+type TraceExportBody = {
+  readonly receiptId?: unknown;
+  readonly exampleId?: unknown;
+  readonly split?: unknown;
+  readonly tags?: unknown;
+  readonly dryRun?: unknown;
+};
+
 const runAuthedDseAdmin = async <A>(
   request: Request,
   env: WorkerEnv,
@@ -193,6 +202,103 @@ export const handleDseAdminRequest = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/dse/")) return null;
+
+  if (url.pathname === "/api/dse/trace/export") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    const body = (await readJson(request)) as TraceExportBody | null;
+    const receiptId = typeof body?.receiptId === "string" ? body.receiptId : "";
+    const exampleIdOverride = typeof body?.exampleId === "string" ? body.exampleId : null;
+    const splitRaw = typeof body?.split === "string" ? body.split : null;
+    const tagsRaw = Array.isArray(body?.tags) ? body?.tags : null;
+    const dryRun = body?.dryRun === undefined ? false : Boolean(body.dryRun);
+
+    const tags =
+      tagsRaw
+        ?.map((t) => (typeof t === "string" ? t.trim() : ""))
+        .filter((t) => t.length > 0)
+        .slice(0, 50) ?? [];
+
+    const split =
+      splitRaw === "train" || splitRaw === "dev" || splitRaw === "holdout" || splitRaw === "test"
+        ? (splitRaw as "train" | "dev" | "holdout" | "test")
+        : undefined;
+
+    if (!receiptId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const telemetry = yield* TelemetryService;
+      const t = telemetry.withNamespace("dse.trace_export");
+
+      const auth = yield* AuthService;
+      const session = yield* auth.getSession();
+      if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+      const convex = yield* ConvexService;
+
+      const recRes = yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptId, { receiptId });
+      const receiptRow = (recRes as any)?.receipt ?? null;
+      if (!receiptRow) return yield* Effect.fail(new Error("receipt_not_found"));
+
+      const threadId = String(receiptRow?.threadId ?? "");
+      const runId = String(receiptRow?.runId ?? "");
+      const receiptJson = receiptRow?.json ?? null;
+
+      const receipt = yield* Effect.try({
+        try: () => Schema.decodeUnknownSync(Receipt.PredictReceiptV1Schema)(receiptJson),
+        catch: () => new Error("invalid_receipt"),
+      });
+
+      const blobId = receipt.rlmTrace?.blob?.id;
+      if (!blobId) return yield* Effect.fail(new Error("missing_rlm_trace"));
+
+      const blobRes = yield* convex.query(api.dse.blobs.getText, { threadId, runId, blobId });
+      const traceText = (blobRes as any)?.text;
+      if (typeof traceText !== "string" || traceText.length === 0) {
+        return yield* Effect.fail(new Error("trace_blob_not_found"));
+      }
+
+      const candidate = yield* TraceMining.candidateExampleFromRlmTrace({
+        receipt,
+        traceText,
+      });
+
+      const exampleId = exampleIdOverride ?? candidate.exampleId;
+
+      const mergedTags = Array.from(
+        new Set([...(candidate.tags ?? []), ...tags].map((s) => String(s).trim()).filter((s) => s.length > 0)),
+      ).slice(0, 50);
+
+      if (dryRun) {
+        yield* t.event("trace_export.dry_run", { signatureId: candidate.signatureId, exampleId, receiptId });
+        return { ok: true as const, dryRun: true as const, signatureId: candidate.signatureId, exampleId, candidate };
+      }
+
+      const putRes = yield* convex.mutation(api.dse.examples.putExample, {
+        signatureId: candidate.signatureId,
+        exampleId,
+        inputJson: candidate.inputJson,
+        expectedJson: candidate.expectedJson,
+        ...(split ? { split } : {}),
+        ...(mergedTags.length ? { tags: mergedTags } : {}),
+        ...(candidate.source ? { source: candidate.source } : {}),
+      });
+
+      yield* t.event("trace_export.ok", { signatureId: candidate.signatureId, exampleId, receiptId });
+
+      return {
+        ok: true as const,
+        dryRun: false as const,
+        existed: Boolean((putRes as any)?.existed),
+        signatureId: candidate.signatureId,
+        exampleId,
+      };
+    });
+
+    return runAuthedDseAdmin(request, env, program);
+  }
 
   if (url.pathname === "/api/dse/promote") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });

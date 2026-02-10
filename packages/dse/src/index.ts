@@ -27,6 +27,8 @@ export * as ToolExecutor from "./runtime/toolExecutor.js";
 export * as RlmKernel from "./runtime/rlmKernel.js";
 export * as Receipt from "./runtime/receipt.js";
 
+export * as TraceMining from "./traceMining/exportExamples.js";
+
 export * as EvalCache from "./eval/cache.js";
 export * as EvalDataset from "./eval/dataset.js";
 export * as EvalMetric from "./eval/metric.js";
