@@ -52,6 +52,8 @@ export type PaneSystemConfig = Readonly<{
   theme: PaneSystemTheme;
   hotbarItems: ReadonlyArray<HotbarSlot>;
   onHotbarSlotClick?: (slot: number) => void;
+  /** Called after a pane is removed (e.g. when user clicks close). */
+  onPaneClosed?: (id: string) => void;
 }>;
 
 export const DEFAULT_PANE_SYSTEM_CONFIG: PaneSystemConfig = {
@@ -409,6 +411,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
   const closePane = (id: string): void => {
     store.removePane(id, true);
     renderNow();
+    cfg.onPaneClosed?.(id);
   };
 
   const closeActivePane = (): void => {

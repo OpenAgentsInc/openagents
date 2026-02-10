@@ -48,6 +48,7 @@
     "@openagentsinc/dse": "file:../../packages/dse",
     "@openagentsinc/effuse": "file:../../packages/effuse",
     "@openagentsinc/effuse-flow": "file:../../packages/effuse-flow",
+    "@openagentsinc/effuse-panes": "file:../../packages/effuse-panes",
     "@openagentsinc/effuse-ui": "file:../../packages/effuse-ui",
     "@openagentsinc/hud": "file:../../packages/hud",
     "@workos/authkit-session": "^0.3.4",

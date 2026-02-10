@@ -113,9 +113,9 @@ export const mountAutopilotController = (input: {
 
     const boundaries: string = Array.isArray(character.boundaries)
       ? character.boundaries
-          .map((s: unknown) => (typeof s === "string" ? s : ""))
-          .filter(Boolean)
-          .join("\n")
+        .map((s: unknown) => (typeof s === "string" ? s : ""))
+        .filter(Boolean)
+        .join("\n")
       : ""
 
     return {
@@ -198,7 +198,7 @@ export const mountAutopilotController = (input: {
 
   const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     const bottom = document.querySelector("[data-autopilot-bottom]")
-    ;(bottom as HTMLElement | null)?.scrollIntoView({ block: "end", behavior })
+      ; (bottom as HTMLElement | null)?.scrollIntoView({ block: "end", behavior })
   }
 
   const focusChatInput = (options?: { readonly force?: boolean }) => {
@@ -249,7 +249,7 @@ export const mountAutopilotController = (input: {
 
     const messages = chatSnapshot.messages
 
-    let renderedMessages: Array<EffuseRenderedMessage> = messages
+    const renderedMessages: Array<EffuseRenderedMessage> = messages
       .filter(
         (m): m is ChatMessage & { readonly role: "user" | "assistant" } =>
           m.role === "user" || m.role === "assistant",
@@ -262,21 +262,6 @@ export const mountAutopilotController = (input: {
         return { id: msg.id, role: msg.role, renderParts }
       })
       .filter((m) => m.role === "user" || m.renderParts.length > 0)
-
-    const showWelcomeMessage =
-      renderedMessages.length === 0 &&
-      typeof window !== "undefined" &&
-      window.location.search.includes("welcome=1")
-    if (showWelcomeMessage) {
-      renderedMessages = [
-        {
-          id: "welcome-initial",
-          role: "assistant",
-          renderParts: [{ kind: "text", text: "Autopilot online." }],
-        },
-        ...renderedMessages,
-      ]
-    }
 
     const renderedTailKey = (() => {
       const last = renderedMessages.at(-1)
@@ -339,12 +324,12 @@ export const mountAutopilotController = (input: {
       (baseBlueprint
         ? makeDraftFromBlueprint(baseBlueprint)
         : {
-            userHandle: "",
-            agentName: "",
-            identityVibe: "",
-            characterVibe: "",
-            characterBoundaries: "",
-          })
+          userHandle: "",
+          agentName: "",
+          identityVibe: "",
+          characterVibe: "",
+          characterBoundaries: "",
+        })
 
     const computedRawDraft = (() => {
       if (blueprintMode !== "raw") return null
@@ -397,7 +382,7 @@ export const mountAutopilotController = (input: {
         focusedOnMount = true
         focusChatInput({ force: true })
       })
-      .catch(() => {})
+      .catch(() => { })
 
     // Scroll after render when new content arrives and the user is pinned to bottom.
     if (isAtBottom && renderedMessages.length > 0 && renderedTailKey !== lastTailKey) {
@@ -438,7 +423,7 @@ export const mountAutopilotController = (input: {
       const message = err instanceof Error ? err.message : String(err)
       Effect.runPromise(
         input.telemetry.withNamespace("ui.blueprint").log("error", "blueprint.fetch_failed", { message })
-      ).catch(() => {})
+      ).catch(() => { })
       blueprintError = message || "Failed to load Blueprint."
     } finally {
       if (!silent) {
@@ -472,7 +457,7 @@ export const mountAutopilotController = (input: {
     const startedAt = Date.now()
     void Effect.runPromise(
       input.telemetry.withNamespace("chat").event("ensureOwnedThread.start", { userId: session.userId }),
-    ).catch(() => {})
+    ).catch(() => { })
 
     let settled = false
     const timeoutMs = 30_000
@@ -485,7 +470,7 @@ export const mountAutopilotController = (input: {
           userId: session.userId,
           ms: Date.now() - startedAt,
         }),
-      ).catch(() => {})
+      ).catch(() => { })
       scheduleRender()
     }, timeoutMs)
 
@@ -499,7 +484,7 @@ export const mountAutopilotController = (input: {
           chatInitErrorText = null
           void Effect.runPromise(
             input.telemetry.withNamespace("chat").event("ensureOwnedThread.ok", { threadId: id, ms: Date.now() - startedAt }),
-          ).catch(() => {})
+          ).catch(() => { })
         } else {
           chatInitErrorText = "Failed to initialize chat (empty thread id)."
         }
@@ -511,7 +496,7 @@ export const mountAutopilotController = (input: {
         const e = err instanceof Error ? err : new Error(String(err))
         Effect.runPromise(
           input.telemetry.withNamespace("chat").log("error", "ensureOwnedThread.failed", { message: e.message }),
-        ).catch(() => {})
+        ).catch(() => { })
         if (disposed) return
         chatInitErrorText = e.message || "Failed to initialize chat."
         scheduleRender()
@@ -818,11 +803,11 @@ export const mountAutopilotController = (input: {
         userId: authSession.userId,
         user: authSession.user
           ? {
-              id: authSession.user.id,
-              email: authSession.user.email,
-              firstName: authSession.user.firstName,
-              lastName: authSession.user.lastName,
-            }
+            id: authSession.user.id,
+            email: authSession.user.email,
+            firstName: authSession.user.firstName,
+            lastName: authSession.user.lastName,
+          }
           : null,
       })
 
@@ -984,7 +969,7 @@ export const mountAutopilotController = (input: {
       const message = err instanceof Error ? err.message : String(err)
       Effect.runPromise(
         input.telemetry.withNamespace("ui.blueprint").log("error", "blueprint.save_failed", { message })
-      ).catch(() => {})
+      ).catch(() => { })
       blueprintError = message || "Failed to save Blueprint."
     } finally {
       isSavingBlueprint = false
@@ -1079,7 +1064,7 @@ export const mountAutopilotController = (input: {
           const message = err instanceof Error ? err.message : String(err)
           Effect.runPromise(
             input.telemetry.withNamespace("ui.blueprint").log("error", "blueprint.export_failed", { message })
-          ).catch(() => {})
+          ).catch(() => { })
           window.alert("Failed to export Blueprint JSON.")
         } finally {
           isExportingBlueprint = false
@@ -1134,7 +1119,7 @@ export const mountAutopilotController = (input: {
 
     try {
       // Best-effort stop so reset is always a working escape hatch (even if a run got stuck).
-      await input.runtime.runPromise(input.chat.stop(chatId)).catch(() => {})
+      await input.runtime.runPromise(input.chat.stop(chatId)).catch(() => { })
       await input.runtime.runPromise(input.store.resetThread({ threadId: chatId }))
       inputDraft = ""
       const inputEl = document.querySelector<HTMLInputElement>('input[name="message"]')
@@ -1144,7 +1129,7 @@ export const mountAutopilotController = (input: {
       const message = err instanceof Error ? err.message : String(err)
       Effect.runPromise(
         input.telemetry.withNamespace("ui.chat").log("error", "agent.reset_failed", { message })
-      ).catch(() => {})
+      ).catch(() => { })
       window.alert("Failed to reset agent.")
     } finally {
       isResettingAgent = false
@@ -1281,7 +1266,7 @@ export const mountAutopilotController = (input: {
   )
 
   // Start background work + initial render/hydration.
-  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
+  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => { })
   void fetchBlueprint()
   void fetchToolContracts()
   scheduleRender()
