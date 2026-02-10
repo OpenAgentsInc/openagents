@@ -6,6 +6,7 @@ import { effectMutation, effectQuery } from "../effect/functions";
 import { tryPromise } from "../effect/tryPromise";
 
 import { assertThreadAccess } from "../autopilot/access";
+import { requireOpsAdmin } from "./opsAdmin";
 
 const nowMs = () => Date.now();
 
@@ -184,4 +185,51 @@ export const getPredictReceiptByReceiptId = effectQuery({
     ),
   }),
   handler: getPredictReceiptByReceiptIdImpl,
+});
+
+export const getPredictReceiptByReceiptIdAdminImpl = (
+  ctx: EffectQueryCtx,
+  args: { readonly receiptId: string },
+) =>
+  Effect.gen(function* () {
+    yield* requireOpsAdmin(ctx);
+
+    const row = yield* tryPromise(() =>
+      ctx.db.query("receipts").withIndex("by_receiptId", (q) => q.eq("receiptId", args.receiptId)).unique(),
+    );
+
+    if (!row) return { ok: true as const, receipt: null };
+
+    const kind = String((row as any).kind ?? "");
+    if (kind !== "dse.predict") return { ok: true as const, receipt: null };
+
+    const threadId = String((row as any).threadId ?? "");
+    const runId = String((row as any).runId ?? "");
+
+    return {
+      ok: true as const,
+      receipt: {
+        threadId,
+        runId,
+        json: (row as any).json ?? null,
+        createdAtMs: Number((row as any).createdAtMs ?? 0),
+      },
+    };
+  });
+
+export const getPredictReceiptByReceiptIdAdmin = effectQuery({
+  args: { receiptId: v.string() },
+  returns: v.object({
+    ok: v.boolean(),
+    receipt: v.union(
+      v.null(),
+      v.object({
+        threadId: v.string(),
+        runId: v.string(),
+        json: v.any(),
+        createdAtMs: v.number(),
+      }),
+    ),
+  }),
+  handler: getPredictReceiptByReceiptIdAdminImpl,
 });

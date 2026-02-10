@@ -26,6 +26,7 @@ import { RequestContextService, makeServerRequestContext } from "../effect/reque
 import { TelemetryService } from "../effect/telemetry";
 
 import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
+import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
@@ -159,13 +160,45 @@ type TraceExportBody = {
   readonly dryRun?: unknown;
 };
 
+type OpsRunStartBody = {
+  readonly runId?: unknown;
+  readonly commitSha?: unknown;
+  readonly baseUrl?: unknown;
+  readonly signatureIds?: unknown;
+  readonly notes?: unknown;
+  readonly links?: unknown;
+};
+
+type OpsRunEventBody = {
+  readonly runId?: unknown;
+  readonly level?: unknown;
+  readonly phase?: unknown;
+  readonly message?: unknown;
+  readonly json?: unknown;
+  readonly tsMs?: unknown;
+};
+
+type OpsRunFinishBody = {
+  readonly runId?: unknown;
+  readonly status?: unknown;
+  readonly summaryJson?: unknown;
+};
+
+type DseAuthMode = "session_only" | "session_or_admin_secret" | "admin_secret_only";
+
 const runAuthedDseAdmin = async <A>(
   request: Request,
   env: WorkerEnv,
   program: Effect.Effect<A, unknown, ConvexService | AuthService | TelemetryService | RequestContextService>,
+  authMode: DseAuthMode = "session_only",
 ): Promise<Response> => {
   const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
-  const { runtime } = getWorkerRuntime(env);
+  const { runtime, config } = getWorkerRuntime(env);
+
+  const adminSecretOk = isDseAdminSecretAuthorized(request, env);
+  if (authMode === "admin_secret_only" && !adminSecretOk) {
+    return json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+  }
 
   const telemetryBase = runtime.runSync(
     Effect.gen(function* () {
@@ -179,7 +212,7 @@ const runAuthedDseAdmin = async <A>(
   });
 
   const exit = await runtime.runPromiseExit(
-    program.pipe(
+    (authMode !== "session_only" && adminSecretOk ? withDseAdminSecretServices(env, config.convexUrl, program) : program).pipe(
       Effect.provideService(RequestContextService, makeServerRequestContext(request)),
       Effect.provideService(TelemetryService, requestTelemetry),
     ),
@@ -199,9 +232,15 @@ const runAuthedDseAdminRaw = async (
   request: Request,
   env: WorkerEnv,
   program: Effect.Effect<Response, unknown, ConvexService | AuthService | TelemetryService | RequestContextService>,
+  authMode: DseAuthMode = "session_only",
 ): Promise<Response> => {
   const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
-  const { runtime } = getWorkerRuntime(env);
+  const { runtime, config } = getWorkerRuntime(env);
+
+  const adminSecretOk = isDseAdminSecretAuthorized(request, env);
+  if (authMode === "admin_secret_only" && !adminSecretOk) {
+    return json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+  }
 
   const telemetryBase = runtime.runSync(
     Effect.gen(function* () {
@@ -215,7 +254,7 @@ const runAuthedDseAdminRaw = async (
   });
 
   const exit = await runtime.runPromiseExit(
-    program.pipe(
+    (authMode !== "session_only" && adminSecretOk ? withDseAdminSecretServices(env, config.convexUrl, program) : program).pipe(
       Effect.provideService(RequestContextService, makeServerRequestContext(request)),
       Effect.provideService(TelemetryService, requestTelemetry),
     ),
@@ -238,6 +277,81 @@ export const handleDseAdminRequest = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/dse/")) return null;
+
+  if (url.pathname === "/api/dse/ops/run/start") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    const body = (await readJson(request)) as OpsRunStartBody | null;
+    const runIdRaw = typeof body?.runId === "string" ? body.runId.trim() : "";
+    const runId = runIdRaw.length > 0 ? runIdRaw : `opsrun_${crypto.randomUUID()}`;
+    const commitSha = typeof body?.commitSha === "string" ? body.commitSha : undefined;
+    const baseUrl = typeof body?.baseUrl === "string" ? body.baseUrl : undefined;
+    const signatureIds = Array.isArray(body?.signatureIds) ? body?.signatureIds : undefined;
+    const notes = typeof body?.notes === "string" ? body.notes : undefined;
+    const links = body && "links" in body ? (body as any).links : undefined;
+
+    const program = Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      return yield* convex.mutation(api.dse.opsRuns.startRun, {
+        runId,
+        ...(commitSha ? { commitSha } : {}),
+        ...(baseUrl ? { baseUrl } : {}),
+        ...(signatureIds ? { signatureIds } : {}),
+        ...(notes ? { notes } : {}),
+        ...(links === undefined ? {} : { links }),
+      });
+    });
+
+    return runAuthedDseAdmin(request, env, program, "admin_secret_only");
+  }
+
+  if (url.pathname === "/api/dse/ops/run/event") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    const body = (await readJson(request)) as OpsRunEventBody | null;
+    const runId = typeof body?.runId === "string" ? body.runId : "";
+    const levelRaw = body?.level;
+    const level = levelRaw === "warn" || levelRaw === "error" ? levelRaw : ("info" as const);
+    const phase = typeof body?.phase === "string" ? body.phase : undefined;
+    const message = typeof body?.message === "string" ? body.message : "";
+    const json = body && "json" in body ? (body as any).json : undefined;
+    const tsMs = typeof body?.tsMs === "number" ? body.tsMs : undefined;
+
+    const program = Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      return yield* convex.mutation(api.dse.opsRuns.appendEvent, {
+        runId,
+        level,
+        ...(phase ? { phase } : {}),
+        message,
+        ...(json === undefined ? {} : { json }),
+        ...(tsMs === undefined ? {} : { tsMs }),
+      });
+    });
+
+    return runAuthedDseAdmin(request, env, program, "admin_secret_only");
+  }
+
+  if (url.pathname === "/api/dse/ops/run/finish") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    const body = (await readJson(request)) as OpsRunFinishBody | null;
+    const runId = typeof body?.runId === "string" ? body.runId : "";
+    const statusRaw = body?.status;
+    const status = statusRaw === "failed" ? ("failed" as const) : ("finished" as const);
+    const summaryJson = body && "summaryJson" in body ? (body as any).summaryJson : undefined;
+
+    const program = Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      return yield* convex.mutation(api.dse.opsRuns.finishRun, {
+        runId,
+        status,
+        ...(summaryJson === undefined ? {} : { summaryJson }),
+      });
+    });
+
+    return runAuthedDseAdmin(request, env, program, "admin_secret_only");
+  }
 
   if (url.pathname.startsWith("/api/dse/receipt/")) {
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
@@ -319,6 +433,8 @@ export const handleDseAdminRequest = async (
   if (url.pathname === "/api/dse/trace/export") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
+    const adminSecretOk = isDseAdminSecretAuthorized(request, env);
+
     const body = (await readJson(request)) as TraceExportBody | null;
     const receiptId = typeof body?.receiptId === "string" ? body.receiptId : "";
     const exampleIdOverride = typeof body?.exampleId === "string" ? body.exampleId : null;
@@ -351,7 +467,9 @@ export const handleDseAdminRequest = async (
 
       const convex = yield* ConvexService;
 
-      const recRes = yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptId, { receiptId });
+      const recRes = adminSecretOk
+        ? yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptIdAdmin, { receiptId })
+        : yield* convex.query(api.dse.receipts.getPredictReceiptByReceiptId, { receiptId });
       const receiptRow = (recRes as any)?.receipt ?? null;
       if (!receiptRow) return yield* Effect.fail(new Error("receipt_not_found"));
 
@@ -367,7 +485,9 @@ export const handleDseAdminRequest = async (
       const blobId = receipt.rlmTrace?.blob?.id;
       if (!blobId) return yield* Effect.fail(new Error("missing_rlm_trace"));
 
-      const blobRes = yield* convex.query(api.dse.blobs.getText, { threadId, runId, blobId });
+      const blobRes = adminSecretOk
+        ? yield* convex.query(api.dse.blobs.getTextAdmin, { threadId, runId, blobId })
+        : yield* convex.query(api.dse.blobs.getText, { threadId, runId, blobId });
       const traceText = (blobRes as any)?.text;
       if (typeof traceText !== "string" || traceText.length === 0) {
         return yield* Effect.fail(new Error("trace_blob_not_found"));
@@ -410,7 +530,7 @@ export const handleDseAdminRequest = async (
       };
     });
 
-    return runAuthedDseAdmin(request, env, program);
+    return runAuthedDseAdmin(request, env, program, "session_or_admin_secret");
   }
 
   if (url.pathname === "/api/dse/promote") {
@@ -563,7 +683,7 @@ export const handleDseAdminRequest = async (
       } as const;
     });
 
-    return runAuthedDseAdmin(request, env, program);
+    return runAuthedDseAdmin(request, env, program, "session_or_admin_secret");
   }
 
   if (url.pathname === "/api/dse/canary/start") {
@@ -716,7 +836,7 @@ export const handleDseAdminRequest = async (
       } as const;
     });
 
-    return runAuthedDseAdmin(request, env, program);
+    return runAuthedDseAdmin(request, env, program, "session_or_admin_secret");
   }
 
   if (url.pathname === "/api/dse/canary/stop") {
@@ -753,7 +873,7 @@ export const handleDseAdminRequest = async (
       return { ok: true, signatureId, existed: Boolean(stopResult?.existed) } as const;
     });
 
-    return runAuthedDseAdmin(request, env, program);
+    return runAuthedDseAdmin(request, env, program, "session_or_admin_secret");
   }
 
   return null;

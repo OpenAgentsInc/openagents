@@ -36,4 +36,12 @@ export type WorkerEnv = {
    * Stored as a Wrangler secret.
    */
   readonly OA_E2E_JWT_PRIVATE_JWK?: string
+
+  /**
+   * DSE admin secret (headless ops).
+   *
+   * When set, selected `/api/dse/*` endpoints accept:
+   * `Authorization: Bearer <OA_DSE_ADMIN_SECRET>`
+   */
+  readonly OA_DSE_ADMIN_SECRET?: string
 }

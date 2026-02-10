@@ -25,6 +25,7 @@ import { RequestContextService, makeServerRequestContext } from "../effect/reque
 import { TelemetryService } from "../effect/telemetry";
 
 import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
+import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import { getWorkerRuntime } from "./runtime";
@@ -103,7 +104,9 @@ export const handleDseCompileRequest = async (
     return json({ ok: false, error: "unknown_signature" }, { status: 404, headers: { "cache-control": "no-store" } });
   }
 
-  const { runtime } = getWorkerRuntime(env);
+  const adminSecretOk = isDseAdminSecretAuthorized(request, env);
+
+  const { runtime, config } = getWorkerRuntime(env);
 
   const telemetryBase = runtime.runSync(
     Effect.gen(function* () {
@@ -279,7 +282,9 @@ export const handleDseCompileRequest = async (
     Effect.provideService(TelemetryService, requestTelemetry),
   );
 
-  const exit = await runtime.runPromiseExit(program);
+  const authedProgram = adminSecretOk ? withDseAdminSecretServices(env, config.convexUrl, program) : program;
+
+  const exit = await runtime.runPromiseExit(authedProgram);
   if (exit._tag === "Failure") {
     const msg = String(exit._tag === "Failure" ? exit.cause : "compile_failed");
     const status = msg.includes("unauthorized") ? 401 : 500;

@@ -235,4 +235,39 @@ export default defineSchema({
     actorUserId: v.optional(v.string()),
     createdAtMs: v.number(),
   }).index("by_signatureId_createdAtMs", ["signatureId", "createdAtMs"]),
+
+  /**
+   * DSE overnight ops runs (global, admin-only).
+   *
+   * These records exist so agents can run the improvement loop headlessly and
+   * persist a single “what happened” trail in Convex for later visualization.
+   */
+  dseOpsRuns: defineTable({
+    runId: v.string(),
+    status: v.union(v.literal("running"), v.literal("finished"), v.literal("failed")),
+    startedAtMs: v.number(),
+    endedAtMs: v.optional(v.number()),
+    // Metadata (all optional; keep bounded).
+    commitSha: v.optional(v.string()),
+    baseUrl: v.optional(v.string()),
+    actorUserId: v.optional(v.string()),
+    signatureIds: v.optional(v.array(v.string())),
+    notes: v.optional(v.string()),
+    links: v.optional(v.any()),
+    summaryJson: v.optional(v.any()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_runId", ["runId"])
+    .index("by_createdAtMs", ["createdAtMs"]),
+
+  dseOpsRunEvents: defineTable({
+    runId: v.string(),
+    tsMs: v.number(),
+    level: v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
+    phase: v.optional(v.string()),
+    message: v.string(),
+    json: v.optional(v.any()),
+    createdAtMs: v.number(),
+  }).index("by_runId_createdAtMs", ["runId", "createdAtMs"]),
 });
