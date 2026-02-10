@@ -70,7 +70,16 @@ function mergeParams(base: DseParams, patch: Partial<DseParams>): DseParams {
   const next: any = { ...base };
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
-    if (k === "instruction" || k === "fewShot" || k === "model" || k === "decode" || k === "tools") {
+    if (
+      k === "strategy" ||
+      k === "instruction" ||
+      k === "fewShot" ||
+      k === "model" ||
+      k === "modelRoles" ||
+      k === "decode" ||
+      k === "tools" ||
+      k === "rlmLite"
+    ) {
       next[k] = { ...(base as any)[k], ...(v as any) };
     } else {
       next[k] = v;
@@ -132,6 +141,91 @@ function instructionGrid(
   );
 }
 
+function strategyGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): ReadonlyArray<DseParams> {
+  const variants = searchSpace.strategyVariants;
+  if (!variants || variants.length === 0) return [base];
+  const sorted = [...variants].sort((a, b) => a.id.localeCompare(b.id));
+  return sorted.map((v) => mergeParams(base, { strategy: { id: v.strategyId } }));
+}
+
+function rlmControllerInstructionGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): ReadonlyArray<DseParams> {
+  const variants = searchSpace.rlmControllerInstructionVariants;
+  if (!variants || variants.length === 0) return [base];
+  const sorted = [...variants].sort((a, b) => a.id.localeCompare(b.id));
+  return sorted.map((v) => mergeParams(base, { rlmLite: { controllerInstructions: v.text } } as any));
+}
+
+function rlmChunkingPolicyGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): ReadonlyArray<DseParams> {
+  const variants = searchSpace.rlmChunkingPolicyVariants;
+  if (!variants || variants.length === 0) return [base];
+  const sorted = [...variants].sort((a, b) => a.id.localeCompare(b.id));
+  return sorted.map((v) =>
+    mergeParams(base, {
+      rlmLite: {
+        chunkDefaults: {
+          chunkChars: v.chunkChars,
+          ...(typeof v.overlapChars === "number" ? { overlapChars: v.overlapChars } : {}),
+          ...(typeof v.maxChunks === "number" ? { maxChunks: v.maxChunks } : {})
+        }
+      }
+    } as any)
+  );
+}
+
+function rlmSubRoleGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): ReadonlyArray<DseParams> {
+  const variants = searchSpace.rlmSubRoleVariants;
+  if (!variants || variants.length === 0) return [base];
+  const sorted = [...variants].sort((a, b) => a.id.localeCompare(b.id));
+  return sorted.map((v) => mergeParams(base, { rlmLite: { subRole: v.subRole } } as any));
+}
+
+function budgetProfileGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): ReadonlyArray<DseParams> {
+  const profiles = searchSpace.budgetProfiles;
+  if (!profiles || profiles.length === 0) return [base];
+  const sorted = [...profiles].sort((a, b) => a.id.localeCompare(b.id));
+  return sorted.map((p) => {
+    const merged = { ...(base.budgets ?? {}), ...(p.budgets ?? {}) };
+    return mergeParams(base, { budgets: merged } as any);
+  });
+}
+
+function knobsGrid(base: DseParams, searchSpace: CompileSearchSpaceV1, options?: { readonly maxCandidates?: number }): ReadonlyArray<DseParams> {
+  const maxCandidates = Math.max(1, Math.floor(options?.maxCandidates ?? 128));
+
+  // Deterministic staged grid expansion to limit combinatorial blowups.
+  let seeds: Array<DseParams> = [base];
+
+  const expand = (fn: (p: DseParams) => ReadonlyArray<DseParams>) => {
+    const next: Array<DseParams> = [];
+    for (const s of seeds) {
+      for (const v of fn(s)) {
+        next.push(v);
+        if (next.length >= maxCandidates) break;
+      }
+      if (next.length >= maxCandidates) break;
+    }
+    seeds = next.length > 0 ? next : seeds;
+  };
+
+  expand((p) => strategyGrid(p, searchSpace));
+  expand((p) => instructionGrid(p, searchSpace));
+  expand((p) => rlmControllerInstructionGrid(p, searchSpace));
+  expand((p) => rlmChunkingPolicyGrid(p, searchSpace));
+  expand((p) => rlmSubRoleGrid(p, searchSpace));
+  expand((p) => budgetProfileGrid(p, searchSpace));
+
+  // Always include the base params (so "no-op" is a candidate) and de-dupe deterministically.
+  const uniq: Array<DseParams> = [];
+  const seen = new Set<string>();
+  for (const p of [base, ...seeds]) {
+    const key = JSON.stringify(p);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(p);
+  }
+  return uniq.slice(0, maxCandidates);
+}
+
 function greedyFewShotForward(
   base: DseParams,
   searchSpace: CompileSearchSpaceV1
@@ -179,7 +273,11 @@ export function compile<I, O, Y>(
       promptIrHash(options.signature.prompt)
     ]);
 
-    const evaluateParams = (params: DseParams, dataset: Dataset<I, Y>) =>
+    const evaluateParams = (
+      params: DseParams,
+      dataset: Dataset<I, Y>,
+      evalOptions?: { readonly includeExampleDetails?: boolean | undefined }
+    ) =>
       Effect.gen(function* () {
         const compiled_id = yield* paramsHash(params);
         const artifact: DseCompiledArtifactV1 = {
@@ -204,20 +302,43 @@ export function compile<I, O, Y>(
           signature: options.signature,
           artifact,
           dataset,
-          reward: options.reward
+          reward: options.reward,
+          includeExampleDetails: evalOptions?.includeExampleDetails ?? false
         });
 
         return {
           compiled_id,
           params,
           reward: evalRes.summary.reward ?? 0,
-          evalSummary: evalRes.summary
+          evalSummary: evalRes.summary,
+          ...(evalRes.examples ? { examples: evalRes.examples } : {})
         };
       });
 
     const runInstructionGrid = () =>
       Effect.gen(function* () {
         const paramSets = instructionGrid(baseParams, options.searchSpace);
+        const scored = yield* Effect.forEach(
+          paramSets,
+          (p) =>
+            evaluateParams(p, train).pipe(
+              Effect.map((r) => ({ compiled_id: r.compiled_id, params: r.params, reward: r.reward } satisfies CandidateScoreV1))
+            ),
+          { concurrency: 1 }
+        );
+        const best = pickBest(scored);
+        return { scored, best };
+      });
+
+    const runKnobsGrid = () =>
+      Effect.gen(function* () {
+        const maxCandidates = (() => {
+          const c = (options.optimizer.config as any)?.maxCandidates;
+          if (typeof c !== "number" || !Number.isFinite(c)) return 128;
+          return Math.max(1, Math.min(500, Math.floor(c)));
+        })();
+
+        const paramSets = knobsGrid(baseParams, options.searchSpace, { maxCandidates });
         const scored = yield* Effect.forEach(
           paramSets,
           (p) =>
@@ -296,12 +417,81 @@ export function compile<I, O, Y>(
       const r = yield* runGreedyFewShot(baseScore);
       evaluatedCandidates = [baseScore, ...r.scored];
       best = r.best;
-    } else {
+    } else if (optimizerId === "joint_instruction_grid_then_fewshot_greedy_forward.v1") {
       // Joint: instruction grid, then greedy few-shot from the best instruction.
       const r1 = yield* runInstructionGrid();
       const r2 = yield* runGreedyFewShot(r1.best);
       evaluatedCandidates = [...r1.scored, ...r2.scored];
       best = r2.best;
+    } else if (optimizerId === "knobs_grid.v1" || optimizerId === "knobs_grid_refine.v1") {
+      const r = yield* runKnobsGrid();
+      evaluatedCandidates = [...r.scored];
+      best = r.best;
+
+      if (optimizerId === "knobs_grid_refine.v1") {
+        const details = yield* evaluateParams(best.params, train, { includeExampleDetails: true });
+        const examples = (details as any).examples as ReadonlyArray<any> | undefined;
+        const failures = (examples ?? []).filter((e) => (typeof e?.reward === "number" ? e.reward < 1 : true));
+
+        const hasBudgetExceeded = failures.some((e) => String(e?.error?.errorName ?? "").includes("BudgetExceeded"));
+        const hasDecodeError = failures.some((e) => String(e?.error?.errorName ?? "").includes("OutputDecode"));
+        const hasEvidenceFail = failures.some((e) =>
+          Array.isArray(e?.signals)
+            ? e.signals.some((s: any) => s?.signalId === "evidence_quote_in_blob.v1" && Number(s?.score ?? 0) <= 0)
+            : false
+        );
+
+        const patches: Array<Partial<DseParams>> = [];
+
+        if (hasDecodeError) {
+          patches.push({
+            rlmLite: {
+              controllerInstructions:
+                "Critical: Output MUST be valid JSON matching the RLM Action schema. No markdown, no commentary, no arrays. If stuck, choose Search/Preview/Chunk, then Final."
+            } as any
+          });
+        }
+
+        if (hasEvidenceFail) {
+          patches.push({
+            rlmLite: {
+              controllerInstructions:
+                "Evidence rule: when producing Final, ensure evidence.quote is an exact substring from the cited blob. If you cannot find a quote, answer must be \"unknown\" and quote must be empty."
+            } as any
+          });
+        }
+
+        if (hasBudgetExceeded) {
+          const b0: any = best.params.budgets ?? {};
+          patches.push({
+            budgets: {
+              ...b0,
+              maxTimeMs: Math.max(0, Math.floor((b0.maxTimeMs ?? 15000) * 2)),
+              maxLmCalls: Math.max(0, Math.floor((b0.maxLmCalls ?? 20) * 2)),
+              maxRlmIterations: Math.max(0, Math.floor((b0.maxRlmIterations ?? 6) + 6)),
+              maxSubLmCalls: Math.max(0, Math.floor((b0.maxSubLmCalls ?? 10) + 10)),
+              maxOutputChars: Math.max(0, Math.floor((b0.maxOutputChars ?? 120000) * 2))
+            }
+          } as any);
+        }
+
+        if (patches.length > 0) {
+          const refined = yield* Effect.forEach(
+            patches,
+            (patch) =>
+              evaluateParams(mergeParams(best.params, patch as any), train).pipe(
+                Effect.map((r) => ({ compiled_id: r.compiled_id, params: r.params, reward: r.reward } satisfies CandidateScoreV1))
+              ),
+            { concurrency: 1 }
+          );
+          evaluatedCandidates.push(...refined);
+          best = pickBest([best, ...refined]);
+        }
+      }
+    } else {
+      return yield* Effect.fail(
+        CompileError.make({ message: `Unknown optimizer id: ${String(optimizerId)}` })
+      );
     }
 
     const trainEval = yield* evaluateParams(best.params, train);

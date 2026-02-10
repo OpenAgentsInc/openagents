@@ -89,6 +89,26 @@ export function make<I, O>(
       limits: params.budgets ?? {}
     });
 
+    const resolveModelConfig = (
+      role: "main" | "sub" | "repair" | "judge"
+    ): { readonly modelId?: string; readonly temperature?: number; readonly topP?: number; readonly maxTokens?: number } => {
+      const base = params.model ?? {};
+      const roles = params.modelRoles ?? {};
+      const override = (roles as any)[role] ?? {};
+      return {
+        ...(base.modelId ? { modelId: base.modelId } : {}),
+        ...(typeof base.temperature === "number" ? { temperature: base.temperature } : {}),
+        ...(typeof base.topP === "number" ? { topP: base.topP } : {}),
+        ...(typeof base.maxTokens === "number" ? { maxTokens: base.maxTokens } : {}),
+        ...(override.modelId ? { modelId: override.modelId } : {}),
+        ...(typeof override.temperature === "number" ? { temperature: override.temperature } : {}),
+        ...(typeof override.topP === "number" ? { topP: override.topP } : {}),
+        ...(typeof override.maxTokens === "number" ? { maxTokens: override.maxTokens } : {})
+      };
+    };
+
+    const modelMain = resolveModelConfig("main");
+
     const decodeMode = params.decode?.mode ?? "strict_json";
     const maxRepairs = Math.max(0, params.decode?.maxRepairs ?? 0);
 
@@ -176,13 +196,13 @@ export function make<I, O>(
             ...(outputHash ? { outputHash } : {})
           },
           model: {
-            ...(params.model?.modelId ? { modelId: params.model.modelId } : {}),
-            ...(typeof params.model?.temperature === "number"
-              ? { temperature: params.model.temperature }
+            ...(modelMain.modelId ? { modelId: modelMain.modelId } : {}),
+            ...(typeof modelMain.temperature === "number"
+              ? { temperature: modelMain.temperature }
               : {}),
-            ...(typeof params.model?.topP === "number" ? { topP: params.model.topP } : {}),
-            ...(typeof params.model?.maxTokens === "number"
-              ? { maxTokens: params.model.maxTokens }
+            ...(typeof modelMain.topP === "number" ? { topP: modelMain.topP } : {}),
+            ...(typeof modelMain.maxTokens === "number"
+              ? { maxTokens: modelMain.maxTokens }
               : {})
           },
           ...(usage ? { usage } : {}),
@@ -216,10 +236,10 @@ export function make<I, O>(
       yield* budget.onLmCall();
       const response = yield* lm.complete({
         messages,
-        modelId: params.model?.modelId,
-        temperature: params.model?.temperature,
-        topP: params.model?.topP,
-        maxTokens: params.model?.maxTokens ?? signature.defaults.constraints.maxTokens
+        modelId: modelMain.modelId,
+        temperature: modelMain.temperature,
+        topP: modelMain.topP,
+        maxTokens: modelMain.maxTokens ?? signature.defaults.constraints.maxTokens
       });
 
       usage = response.usage;
@@ -242,6 +262,7 @@ export function make<I, O>(
           return yield* Effect.fail(lastError);
         }
 
+        const modelRepair = resolveModelConfig("repair");
         yield* budget.onLmCall();
         const repaired = yield* lm.complete({
           messages: [
@@ -249,10 +270,10 @@ export function make<I, O>(
             { role: "assistant", content: rawText.slice(0, 5000) },
             { role: "user", content: repairPromptFor(rawText, lastError) }
           ],
-          modelId: params.model?.modelId,
+          modelId: modelRepair.modelId ?? modelMain.modelId,
           temperature: 0,
           topP: 1,
-          maxTokens: Math.min(256, params.model?.maxTokens ?? 256)
+          maxTokens: Math.min(256, modelRepair.maxTokens ?? modelMain.maxTokens ?? 256)
         });
 
         yield* budget.onOutputChars(repaired.text.length);
@@ -315,13 +336,26 @@ export function make<I, O>(
       const actionSchemaJson = JSONSchema.make(RlmActionV1Schema);
       const actionSchemaText = canonicalJson(actionSchemaJson);
 
+      const controllerExtra = params.rlmLite?.controllerInstructions;
+      const chunkDefaults = params.rlmLite?.chunkDefaults;
+      const chunkDefaultsText = chunkDefaults
+        ? [
+            "Default chunking policy (use unless you have a good reason not to):",
+            `- chunkChars=${Math.max(1, Math.floor(chunkDefaults.chunkChars))}`,
+            `- overlapChars=${Math.max(0, Math.floor(chunkDefaults.overlapChars ?? 0))}`,
+            `- maxChunks=${Math.max(1, Math.floor(chunkDefaults.maxChunks ?? 50))}`
+          ].join("\n")
+        : null;
+
       const controllerSystem = [
         baseMessages.find((m) => m.role === "system")?.content ?? "",
         "You are an RLM-lite controller. You must choose the next action to execute.",
+        ...(controllerExtra ? [controllerExtra] : []),
         "Rules:",
         "- Output MUST be a single JSON object that matches the RLM Action schema exactly.",
         "- Do not wrap in markdown fences.",
         "- Prefer bounded operations: preview/search/chunk + extract_over_chunks, then Final.",
+        ...(chunkDefaultsText ? [chunkDefaultsText] : []),
         `- Budget: maxIterations=${maxIterations} maxSubLmCalls=${maxSubLmCalls}.`,
         "RLM Action schema (JSON Schema):",
         actionSchemaText
@@ -502,10 +536,10 @@ export function make<I, O>(
           yield* budget.onLmCall();
           const resp = yield* lm.complete({
             messages: controllerMessages,
-            modelId: params.model?.modelId,
-            temperature: params.model?.temperature,
-            topP: params.model?.topP,
-            maxTokens: Math.min(1024, params.model?.maxTokens ?? 1024)
+            modelId: modelMain.modelId,
+            temperature: modelMain.temperature,
+            topP: modelMain.topP,
+            maxTokens: Math.min(1024, modelMain.maxTokens ?? 1024)
           });
           yield* budget.onOutputChars(resp.text.length);
 
