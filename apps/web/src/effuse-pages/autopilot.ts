@@ -195,6 +195,37 @@ const dseCardShell = (opts: { readonly title: string; readonly state: string; re
   `;
 };
 
+const dseSignatureOneLiner = (signatureId: string): string => {
+  const leaf = signatureId.split("/").pop() ?? signatureId;
+  const name = leaf.replace(/\.[^.]+$/, "");
+
+  // Prefer simple, stable, user-facing summaries for known signatures.
+  switch (name) {
+    case "SelectTool":
+      return "Selecting tool";
+    case "RecapThread":
+      return "Recapping thread";
+    case "SummarizeThread":
+      return "Summarizing thread";
+    case "SummarizeThreads":
+      return "Summarizing threads";
+    case "ExtractUserHandle":
+      return "Extracting user handle";
+    case "ExtractAgentName":
+      return "Extracting agent name";
+    case "ExtractAgentVibe":
+      return "Extracting agent vibe";
+    case "ThreadSummaryQuality":
+      return "Judging summary quality";
+  }
+
+  const human = name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return human.length > 0 ? `Running ${human}` : "Running signature";
+};
+
 const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
   const usage = m.budget?.usage;
   const budget = usage
@@ -249,7 +280,24 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
     ${m.errorText ? html`<div>${dseRow("error", "")}${dseBoundedText(m.errorText)}</div>` : html``}
   `;
 
-  return dseCardShell({ title: "DSE Signature", state: m.state, body });
+  return html`
+    <details
+      data-dse-card="1"
+      data-dse-card-title="DSE Signature"
+      data-dse-card-state="${m.state}"
+      data-dse-signature-details="1"
+      class="rounded-lg border border-white/15 bg-white/5 px-3 py-3"
+    >
+      <summary
+        data-dse-signature-summary="1"
+        class="cursor-pointer select-none flex items-center justify-between gap-3"
+      >
+        <div class="text-xs text-white/80 font-mono">${dseSignatureOneLiner(m.signatureId)}</div>
+        ${dseStateBadge(m.state)}
+      </summary>
+      <div class="mt-2 flex flex-col gap-2">${body}</div>
+    </details>
+  `;
 };
 
 const renderDseCompileCard = (m: DseCompileCardModel): TemplateResult => {
