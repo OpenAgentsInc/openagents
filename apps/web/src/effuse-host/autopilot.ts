@@ -545,30 +545,30 @@ const runDseCanaryRecap = (input: {
         const promptRenderStats = receipt?.promptRenderStats as any;
         const trimmedPromptRenderStats =
           promptRenderStats &&
-          typeof promptRenderStats === "object" &&
-          promptRenderStats.context &&
-          typeof promptRenderStats.context === "object" &&
-          Array.isArray(promptRenderStats.context.blobs) &&
-          promptRenderStats.context.blobs.length > 20
+            typeof promptRenderStats === "object" &&
+            promptRenderStats.context &&
+            typeof promptRenderStats.context === "object" &&
+            Array.isArray(promptRenderStats.context.blobs) &&
+            promptRenderStats.context.blobs.length > 20
             ? {
-                ...promptRenderStats,
-                context: {
-                  ...promptRenderStats.context,
-                  blobsDropped:
-                    Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
-                  blobs: promptRenderStats.context.blobs.slice(0, 20),
-                },
-              }
+              ...promptRenderStats,
+              context: {
+                ...promptRenderStats.context,
+                blobsDropped:
+                  Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
+                blobs: promptRenderStats.context.blobs.slice(0, 20),
+              },
+            }
             : receipt?.promptRenderStats;
 
         const state = predictExit._tag === "Success" ? "ok" : "error";
         const errorText =
           predictExit._tag === "Failure"
             ? (() => {
-                const cause = predictExit.cause as any;
-                if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
-                return String(cause ?? "DSE predict failed");
-              })()
+              const cause = predictExit.cause as any;
+              if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
+              return String(cause ?? "DSE predict failed");
+            })()
             : null;
 
         const summary = predictExit._tag === "Success" ? String((predictExit.value as any)?.summary ?? "").trim() : "";
@@ -577,10 +577,10 @@ const runDseCanaryRecap = (input: {
         const textParts =
           state === "ok" && boundedSummary
             ? [
-                { type: "text-start", id: crypto.randomUUID(), metadata: {} },
-                { type: "text-delta", id: crypto.randomUUID(), delta: boundedSummary, metadata: {} },
-                { type: "text-end", id: crypto.randomUUID(), metadata: {} },
-              ]
+              { type: "text-start", id: crypto.randomUUID(), metadata: {} },
+              { type: "text-delta", id: crypto.randomUUID(), delta: boundedSummary, metadata: {} },
+              { type: "text-end", id: crypto.randomUUID(), metadata: {} },
+            ]
             : [];
 
         yield* flushParts([
@@ -733,14 +733,14 @@ const runAutopilotStream = (input: {
       AiLanguageModel.LanguageModel,
       openRouterApiKey
         ? Effect.gen(function* () {
-            const fallback = yield* workersAiModel;
-            const primary = yield* makeOpenRouterLanguageModel({
-              apiKey: openRouterApiKey,
-              model: PRIMARY_MODEL_OPENROUTER,
-              maxOutputTokens: MAX_OUTPUT_TOKENS,
-            });
-            return yield* makeFallbackLanguageModel(primary, fallback);
-          })
+          const fallback = yield* workersAiModel;
+          const primary = yield* makeOpenRouterLanguageModel({
+            apiKey: openRouterApiKey,
+            model: PRIMARY_MODEL_OPENROUTER,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+          });
+          return yield* makeFallbackLanguageModel(primary, fallback);
+        })
         : workersAiModel
     );
 
@@ -922,30 +922,30 @@ const runAutopilotStream = (input: {
       const errorText =
         exit._tag === "Failure"
           ? (() => {
-              const cause = exit.cause as any;
-              if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
-              return String(cause ?? "DSE predict failed");
-            })()
+            const cause = exit.cause as any;
+            if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
+            return String(cause ?? "DSE predict failed");
+          })()
           : null;
 
       const receipt = recordedReceipt as DseReceiptShape | null;
       const promptRenderStats = receipt?.promptRenderStats as any;
       const trimmedPromptRenderStats =
         promptRenderStats &&
-        typeof promptRenderStats === "object" &&
-        promptRenderStats.context &&
-        typeof promptRenderStats.context === "object" &&
-        Array.isArray(promptRenderStats.context.blobs) &&
-        promptRenderStats.context.blobs.length > 20
+          typeof promptRenderStats === "object" &&
+          promptRenderStats.context &&
+          typeof promptRenderStats.context === "object" &&
+          Array.isArray(promptRenderStats.context.blobs) &&
+          promptRenderStats.context.blobs.length > 20
           ? {
-              ...promptRenderStats,
-              context: {
-                ...promptRenderStats.context,
-                blobsDropped:
-                  Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
-                blobs: promptRenderStats.context.blobs.slice(0, 20),
-              },
-            }
+            ...promptRenderStats,
+            context: {
+              ...promptRenderStats.context,
+              blobsDropped:
+                Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
+              blobs: promptRenderStats.context.blobs.slice(0, 20),
+            },
+          }
           : receipt?.promptRenderStats;
 
       if (exit._tag === "Success") {
@@ -1125,11 +1125,11 @@ const runAutopilotStream = (input: {
             const boundaries = isNone
               ? []
               : t0
-                  .split(/\n|,|;+/g)
-                  .map((b) => b.trim())
-                  .map((b) => (b.startsWith("- ") ? b.slice(2).trim() : b))
-                  .filter((b) => b.length > 0)
-                  .slice(0, 16);
+                .split(/\n|,|;+/g)
+                .map((b) => b.trim())
+                .map((b) => (b.startsWith("- ") ? b.slice(2).trim() : b))
+                .filter((b) => b.length > 0)
+                .slice(0, 16);
 
             if (!isNone && boundaries.length === 0) return {};
 

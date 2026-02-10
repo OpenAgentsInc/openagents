@@ -100,11 +100,19 @@ const normalizeSessionFromResponse = (raw: AuthSessionResponse): { session: Auth
   };
 };
 
+/** If cache was primed very recently (e.g. from verify), use it even when forceRefreshToken so setAuth gets the token. */
+const VERIFY_PRIME_MAX_AGE_MS = 3000;
+
 const fetchClientAuthState = Effect.fn('AuthService.fetchClientAuthState')(function* (options: {
   readonly forceRefreshToken: boolean;
 }) {
   const now = Date.now();
   if (!options.forceRefreshToken && clientCache && now - clientCache.fetchedAtMs < CLIENT_CACHE_TTL_MS) {
+    return clientCache;
+  }
+  // Convex setAuth uses forceRefreshToken: true, which otherwise bypasses cache. Right after verify we prime
+  // the cache with setClientAuthFromVerify; use it here so the first setAuth call gets the token without a fetch.
+  if (options.forceRefreshToken && clientCache?.token && now - clientCache.fetchedAtMs < VERIFY_PRIME_MAX_AGE_MS) {
     return clientCache;
   }
 
