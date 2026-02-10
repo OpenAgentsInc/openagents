@@ -3,6 +3,7 @@ import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse"
 import {
   mountPaneSystemDom,
   calculateNewPanePosition,
+  DEFAULT_PANE_SYSTEM_THEME,
 } from "@openagentsinc/effuse-panes"
 
 import { formatCountdown } from "../../effuse-pages/home"
@@ -42,35 +43,42 @@ function openChatPaneOnHome(container: Element): () => void {
     ev.preventDefault()
     ev.stopPropagation()
 
-    const contentSlot = container.querySelector("[data-marketing-slot=\"content\"]")
-    if (!(contentSlot instanceof HTMLElement)) return
+    const shell = container.querySelector("[data-marketing-shell]")
+    if (!(shell instanceof HTMLElement)) return
 
-    const hero = contentSlot.querySelector("[data-oa-home-hero]")
-    if (hero instanceof HTMLElement) hero.style.opacity = "0.35"
+    shell.setAttribute("data-oa-home-chat-open", "1")
+
+    const hideStyle = document.createElement("style")
+    hideStyle.setAttribute("data-oa-home-chat-hide", "1")
+    hideStyle.textContent =
+      "[data-marketing-shell][data-oa-home-chat-open] > div:nth-child(2) { visibility: hidden !important; }"
+    shell.appendChild(hideStyle)
 
     const overlay = document.createElement("div")
     overlay.setAttribute("data-oa-home-chat-overlay", "1")
     overlay.style.cssText =
-      "position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);pointer-events:auto;"
-    const paneWrapper = document.createElement("div")
-    paneWrapper.style.cssText = "width:420px;height:320px;min-width:200px;min-height:200px;flex-shrink:0;"
-    overlay.appendChild(paneWrapper)
-    contentSlot.appendChild(overlay)
+      "position:fixed;inset:0;z-index:9998;pointer-events:auto;"
+    const paneRoot = document.createElement("div")
+    paneRoot.style.cssText = "width:100%;height:100%;"
+    overlay.appendChild(paneRoot)
+    shell.appendChild(overlay)
 
-    const screen = { width: paneWrapper.clientWidth || 420, height: paneWrapper.clientHeight || 320 }
+    const screen = { width: window.innerWidth, height: window.innerHeight }
     const rect = calculateNewPanePosition(undefined, screen, 420, 320)
 
-    const paneSystem = mountPaneSystemDom(paneWrapper, {
+    const paneSystem = mountPaneSystemDom(paneRoot, {
       enableDotsBackground: false,
       enableCanvasPan: false,
       enablePaneDrag: true,
       enablePaneResize: true,
       enableKeyboardShortcuts: true,
       enableHotbar: false,
+      theme: { ...DEFAULT_PANE_SYSTEM_THEME, background: "transparent" },
       onPaneClosed: () => {
         paneSystem.destroy()
         overlay.remove()
-        if (hero instanceof HTMLElement) hero.style.opacity = ""
+        hideStyle.remove()
+        shell.removeAttribute("data-oa-home-chat-open")
       },
     })
 
@@ -84,7 +92,7 @@ function openChatPaneOnHome(container: Element): () => void {
     paneSystem.store.bringToFront(CHAT_PANE_ID)
     paneSystem.render()
 
-    const paneContentSlot = paneWrapper.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-content]`)
+    const paneContentSlot = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-content]`)
     if (paneContentSlot instanceof Element) {
       Effect.runPromise(
         Effect.gen(function* () {
