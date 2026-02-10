@@ -183,8 +183,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     if (!(paneContentSlot instanceof Element)) return
 
     type Step = "email" | "code" | "authed"
+    /** Shown when authed but thread not loaded yet; must match Convex FIRST_OPEN_WELCOME_MESSAGE so onboarding isn't skipped. */
+    const ONBOARDING_FIRST_MESSAGE = "Autopilot online.\n\nGreetings, user. What shall I call you?"
     const messages: Array<{ role: "user" | "assistant"; text: string }> = isAuthed
-      ? [{ role: "assistant", text: "Autopilot online. Awaiting instructions." }]
+      ? [{ role: "assistant", text: ONBOARDING_FIRST_MESSAGE }]
       : [{ role: "assistant", text: "Autopilot initialized. Enter your email address to begin." }]
     let step: Step = isAuthed ? "authed" : "email"
     let email = ""
@@ -269,7 +271,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             }
           })
           : step === "authed"
-            ? [{ role: "assistant" as const, text: "Autopilot online. Awaiting instructions." }]
+            ? [{ role: "assistant" as const, text: ONBOARDING_FIRST_MESSAGE }]
             : messages
 
       const lastAssistantText =
@@ -525,13 +527,13 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                           )
                         }
                         messages.length = 0
-                        messages.push({ role: "assistant", text: "Autopilot online. Awaiting instructions." })
+                        messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
                         step = "authed"
                         doRender()
                       },
                       () => {
                         messages.length = 0
-                        messages.push({ role: "assistant", text: "Autopilot online. Awaiting instructions." })
+                        messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
                         step = "authed"
                         doRender()
                       },
@@ -540,7 +542,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                   }
                 }
                 messages.length = 0
-                messages.push({ role: "assistant", text: "Autopilot online. Awaiting instructions." })
+                messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
                 step = "authed"
                 doRender()
               })
