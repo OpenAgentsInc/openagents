@@ -167,8 +167,18 @@ export const ChatServiceLive = Layer.effect(
             }
           }
 
+          const wasStreaming = session.activeRunId != null;
           session.activeRunId = activeRunId;
           session.messages = messages;
+
+          if (!wasStreaming && activeRunId) {
+            Effect.runFork(
+              telemetry
+                .withNamespace("chat.service")
+                .event("chat.streaming_started", { threadId, runId: activeRunId })
+                .pipe(Effect.catchAll(() => Effect.void)),
+            );
+          }
 
           // Clear local "submitted" status once we observe streaming or ready state from Convex.
           if (session.localStatus.status === "submitted") {
@@ -236,6 +246,11 @@ export const ChatServiceLive = Layer.effect(
       );
 
     const send = Effect.fn("ChatService.send")(function* (threadId: string, text: string) {
+      yield* telemetry
+        .withNamespace("chat.service")
+        .event("chat.send_started", { threadId, textLength: text.length })
+        .pipe(Effect.catchAll(() => Effect.void));
+
       yield* withSession(threadId, (session) =>
         Effect.sync(() => {
           session.localStatus.status = "submitted";
@@ -261,6 +276,10 @@ export const ChatServiceLive = Layer.effect(
           Effect.catchAll(() => Effect.succeed("")),
         );
         const msg = body.trim() ? body.trim() : `HTTP ${response.status}`;
+        yield* telemetry
+          .withNamespace("chat.service")
+          .event("chat.send_failed", { threadId, error: msg })
+          .pipe(Effect.catchAll(() => Effect.void));
         yield* withSession(threadId, (session) =>
           Effect.sync(() => {
             session.localStatus.status = "error";
@@ -270,6 +289,11 @@ export const ChatServiceLive = Layer.effect(
         );
         return yield* Effect.fail(new Error(msg));
       }
+
+      yield* telemetry
+        .withNamespace("chat.service")
+        .event("chat.send_complete", { threadId })
+        .pipe(Effect.catchAll(() => Effect.void));
 
       // Best-effort clear local submitted state; subscription will set streaming.
       yield* withSession(threadId, (session) =>

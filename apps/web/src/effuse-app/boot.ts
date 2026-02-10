@@ -102,7 +102,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
       if (!session.userId) return
       if (session.userId === lastIdentifiedUserId) return
       lastIdentifiedUserId = session.userId
-      Effect.runPromise(telemetry.withNamespace("auth.workos").identify(session.userId, { userId: session.userId })).catch(() => {})
+      Effect.runPromise(telemetry.withNamespace("auth.workos").identify(session.userId, { userId: session.userId })).catch(() => { })
     },
     { immediate: true },
   )
@@ -133,7 +133,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
         const navigate = (href: string) => {
           runtime
             .runPromise(router.navigate(href).pipe(Effect.provide(EffuseLive)))
-            .catch(() => {})
+            .catch(() => { })
         }
 
         // Identity pill: fixed top-left pane-style, shows user email and Log out.
@@ -175,7 +175,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
                 yield* dom.render(pillContainer, identityPillTemplate(session))
               }).pipe(Effect.provide(EffuseLive)),
             )
-            .catch(() => {})
+            .catch(() => { })
         }
 
         renderIdentityPill(atoms.get(SessionAtom))
@@ -202,9 +202,9 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             pathname === "/" || pathname === "/autopilot" || pathname === "/login"
               ? "home"
               : pathname === "/deck"
-                    ? "deck"
-                  : pathname.startsWith("/dse")
-                    ? `dse:${pathname}`
+                ? "deck"
+                : pathname.startsWith("/dse")
+                  ? `dse:${pathname}`
                   : pathname === "/modules"
                     ? "modules"
                     : pathname === "/tools"
@@ -283,7 +283,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
           const pathname = state.url.pathname
           if (pathname !== lastPathname) {
             lastPathname = pathname
-            Effect.runPromise(telemetry.withNamespace("app").event("page_view", { path: pathname })).catch(() => {})
+            Effect.runPromise(telemetry.withNamespace("app").event("page_view", { path: pathname })).catch(() => { })
           }
 
           setIdentityPillVisible(pathname)
