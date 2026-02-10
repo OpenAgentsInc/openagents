@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Redacted } from 'effect';
 import * as ManagedRuntime from 'effect/ManagedRuntime';
 import { AppConfigService } from './config';
 import { makeAppLayer } from './layer';
@@ -41,7 +41,7 @@ export const makeAppRuntime = (config: AppConfig): AppRuntime => {
           'ContractsApiService',
           'ChatService',
         ],
-        convexUrl: appConfig.convexUrl,
+        convexUrl: Redacted.make(appConfig.convexUrl),
       });
     }),
   );
