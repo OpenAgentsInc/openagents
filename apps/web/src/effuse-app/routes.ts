@@ -38,10 +38,10 @@ import type { AppServices } from "../effect/layer"
 
 const matchExact =
   (pathname: string) =>
-  (url: URL): RouteMatch | null => {
-    if (url.pathname !== pathname) return null
-    return { pathname, params: {}, search: url.searchParams }
-  }
+    (url: URL): RouteMatch | null => {
+      if (url.pathname !== pathname) return null
+      return { pathname, params: {}, search: url.searchParams }
+    }
 
 const matchChatLegacy = (url: URL): RouteMatch | null => {
   if (!url.pathname.startsWith("/chat/")) return null
@@ -136,17 +136,17 @@ const prelaunchRedirectGuard = (
     if (isLocalDev(ctx)) return undefined
     const bypass = yield* (ctx._tag === "Server"
       ? Effect.sync(() => {
-          const key = config.prelaunchBypassKey
-          if (!key) return false
-          const cookie = ctx.request.headers.get("Cookie") ?? ""
-          if (cookie.includes("prelaunch_bypass=1")) return true
-          return ctx.url.searchParams.get("key") === key
-        })
+        const key = config.prelaunchBypassKey
+        if (!key) return false
+        const cookie = ctx.request.headers.get("Cookie") ?? ""
+        if (cookie.includes("prelaunch_bypass=1")) return true
+        return ctx.url.searchParams.get("key") === key
+      })
       : Effect.sync(
-          () =>
-            typeof document !== "undefined" &&
-            document.cookie.includes("prelaunch_bypass=1"),
-        ))
+        () =>
+          typeof document !== "undefined" &&
+          document.cookie.includes("prelaunch_bypass=1"),
+      ))
     if (bypass) return undefined
     return RouteOutcome.redirect("/", 302)
   })
@@ -168,11 +168,11 @@ const sessionDehydrate = (ctx: RouteContext): Effect.Effect<RouteOkHints["dehydr
     const user =
       session.user && typeof session.user === "object"
         ? {
-            id: session.user.id,
-            email: session.user.email,
-            firstName: session.user.firstName,
-            lastName: session.user.lastName,
-          }
+          id: session.user.id,
+          email: session.user.email,
+          firstName: session.user.firstName,
+          lastName: session.user.lastName,
+        }
         : null
 
     const atomRegistry = Registry.make()
@@ -199,11 +199,23 @@ const home: Route<HomeData, AppServices> = {
   loader: (ctx) =>
     Effect.gen(function* () {
       const config = yield* AppConfigService
+      const bypass = yield* (ctx._tag === "Server"
+        ? Effect.sync(() => {
+            const key = config.prelaunchBypassKey
+            if (!key) return false
+            const cookie = ctx.request.headers.get("Cookie") ?? ""
+            if (cookie.includes("prelaunch_bypass=1")) return true
+            return ctx.url.searchParams.get("key") === key
+          })
+        : Effect.sync(
+            () =>
+              typeof document !== "undefined" &&
+              document.cookie.includes("prelaunch_bypass=1"),
+          ))
       return yield* okWithSession(ctx, {
         year: new Date().getFullYear(),
-        // Homepage countdown remains visible during prelaunch even if a bypass cookie exists.
-        // Bypass only controls access to gated routes (/autopilot, /login, etc).
-        prelaunch: config.prelaunch,
+        // UI-only prelaunch: bypass users should not see the countdown.
+        prelaunch: config.prelaunch && !bypass,
       })
     }),
   view: (_ctx, data) =>
@@ -477,10 +489,10 @@ const tools: Route<ToolsPageData, AppServices> = {
 
 type StorybookData =
   | {
-      readonly mode: "index"
-      readonly stories: ReturnType<typeof listStoryMeta>
-      readonly defaultStoryId: string | null
-    }
+    readonly mode: "index"
+    readonly stories: ReturnType<typeof listStoryMeta>
+    readonly defaultStoryId: string | null
+  }
   | { readonly mode: "canvas"; readonly storyId: string }
 
 const storybook: Route<StorybookData, AppServices> = {
