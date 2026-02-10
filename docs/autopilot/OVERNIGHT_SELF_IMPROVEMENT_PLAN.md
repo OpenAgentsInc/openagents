@@ -540,6 +540,8 @@ Current endpoints and storage:
   - `apps/web/scripts/sync-wrangler-secrets.sh`
 
 - 2026-02-10T12:06:43Z Docs: updated `docs/autopilot/SELF_IMPROVE_PLAN.md` to reflect that the staged plan is now implemented and the canonical execution runbook is this doc.
+
+- 2026-02-10T12:10:22Z Docs: updated `docs/autopilot/PROD_E2E_TESTING.md` to reference the overnight runner + `npm run wrangler:secrets` for syncing required prod E2E secrets.
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
