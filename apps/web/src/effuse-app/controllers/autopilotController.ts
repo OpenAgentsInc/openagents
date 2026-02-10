@@ -450,18 +450,45 @@ export const mountAutopilotController = (input: {
     if (!session.userId) return
     chatInitErrorText = null
     scheduleRender()
+    const startedAt = Date.now()
+    void Effect.runPromise(
+      input.telemetry.withNamespace("chat").event("ensureOwnedThread.start", { userId: session.userId }),
+    ).catch(() => {})
+
+    let settled = false
+    const timeoutMs = 30_000
+    const t = window.setTimeout(() => {
+      if (disposed) return
+      if (settled) return
+      chatInitErrorText = "Timed out initializing chat. Check Convex connection/auth."
+      void Effect.runPromise(
+        input.telemetry.withNamespace("chat").log("error", "ensureOwnedThread.timeout", {
+          userId: session.userId,
+          ms: Date.now() - startedAt,
+        }),
+      ).catch(() => {})
+      scheduleRender()
+    }, timeoutMs)
+
     input.runtime.runPromise(input.chat.getOwnedThreadId()).then(
       (id) => {
+        settled = true
+        window.clearTimeout(t)
         if (disposed) return
         if (id && id.length > 0) {
           atoms.set(OwnedThreadIdAtom as any, id)
           chatInitErrorText = null
+          void Effect.runPromise(
+            input.telemetry.withNamespace("chat").event("ensureOwnedThread.ok", { threadId: id, ms: Date.now() - startedAt }),
+          ).catch(() => {})
         } else {
           chatInitErrorText = "Failed to initialize chat (empty thread id)."
         }
         scheduleRender()
       },
       (err) => {
+        settled = true
+        window.clearTimeout(t)
         const e = err instanceof Error ? err : new Error(String(err))
         Effect.runPromise(
           input.telemetry.withNamespace("chat").log("error", "ensureOwnedThread.failed", { message: e.message }),
@@ -489,6 +516,13 @@ export const mountAutopilotController = (input: {
   const unsubOwnedThreadId = atoms.subscribe(OwnedThreadIdAtom, (next) => {
     ownedThreadId = next
     chatId = session.userId ? (next ?? "") : ""
+    if (next) {
+      // Prime snapshot so ChatSnapshotAtom is evaluated and ChatService.open starts the WS subscription
+      // immediately. Without this, the UI can "silently stall" on an empty chat until a later change.
+      chatSnapshot = atoms.get(ChatSnapshotAtom(next))
+    } else {
+      chatSnapshot = { messages: [], status: "ready" as const, errorText: null }
+    }
     if (next && next !== subscribedForChatId) {
       if (unsubChat) unsubChat()
       if (unsubIsAtBottom) unsubIsAtBottom()
@@ -500,11 +534,11 @@ export const mountAutopilotController = (input: {
         if (prevBusy && !busy) void fetchBlueprint({ silent: true })
         prevBusy = busy
         scheduleRender()
-      }, { immediate: false })
+      }, { immediate: true })
       unsubIsAtBottom = atoms.subscribe(AutopilotChatIsAtBottomAtom(next), (nextIsAtBottom) => {
         isAtBottom = nextIsAtBottom
         scheduleRender()
-      }, { immediate: false })
+      }, { immediate: true })
     }
     scheduleRender()
   }, { immediate: false })

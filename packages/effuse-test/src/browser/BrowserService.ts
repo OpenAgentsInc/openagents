@@ -22,6 +22,7 @@ type ActivePage = {
   readonly page: Page
   readonly screenshot: (filePath: string) => Effect.Effect<void, unknown, ProbeService | TestContext>
   readonly htmlSnapshot: () => Effect.Effect<string, unknown, ProbeService | TestContext>
+  readonly consoleSnapshot: () => Effect.Effect<unknown, unknown, ProbeService | TestContext>
 }
 
 export class BrowserService extends Context.Tag("@openagentsinc/effuse-test/BrowserService")<
@@ -248,6 +249,52 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
           yield* Effect.promise(() => session.send("Page.enable"))
           yield* Effect.promise(() => session.send("Runtime.enable"))
 
+          // Capture browser console/errors in a way we can snapshot on failure without relying on CDP events.
+          // This also captures runtime errors before the app hydrates.
+          yield* Effect.promise(() =>
+            session.send("Page.addScriptToEvaluateOnNewDocument", {
+              source: `(() => {
+  const entries = [];
+  // Expose for test harness snapshots (safe: contains only strings).
+  globalThis.__effuseTestConsole = entries;
+
+  const toStr = (v) => {
+    try {
+      if (typeof v === 'string') return v;
+      return JSON.stringify(v);
+    } catch {
+      try { return String(v); } catch { return '[unstringifiable]'; }
+    }
+  };
+
+  const wrap = (level, orig) => (...args) => {
+    try {
+      entries.push({ ts: Date.now(), level, args: args.map(toStr) });
+    } catch {}
+    try { orig.apply(console, args); } catch {}
+  };
+
+  const orig = {
+    log: console.log,
+    info: console.info,
+    warn: console.warn,
+    error: console.error,
+    debug: console.debug,
+  };
+  for (const k of Object.keys(orig)) {
+    try { console[k] = wrap(k, orig[k]); } catch {}
+  }
+
+  window.addEventListener('error', (e) => {
+    try { entries.push({ ts: Date.now(), level: 'error', args: ['window.error', toStr(e.message), toStr(e.filename), toStr(e.lineno), toStr(e.colno)] }); } catch {}
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    try { entries.push({ ts: Date.now(), level: 'error', args: ['window.unhandledrejection', toStr(e.reason)] }); } catch {}
+  });
+})();`,
+            }),
+          )
+
           const evaluate = <A = unknown>(fnOrExpression: string | (() => unknown)) =>
             serviceSpan("page.evaluate", Effect.gen(function* () {
               const expression =
@@ -344,6 +391,9 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
 
           const htmlSnapshot = () => evaluate<string>("document.documentElement.outerHTML")
 
+          const consoleSnapshot = () =>
+            evaluate<unknown>("globalThis.__effuseTestConsole ?? []")
+
           const screenshot = (filePath: string) =>
             serviceSpan(
               "page.screenshot",
@@ -373,7 +423,7 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
             close,
           }
 
-          active = { page, screenshot, htmlSnapshot }
+          active = { page, screenshot, htmlSnapshot, consoleSnapshot }
 
           return page
         }),
@@ -397,6 +447,7 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
                     const dir = Path.join(ctx.artifactsDir, "browser-failure")
                     const screenshotPath = Path.join(dir, "failure.png")
                     const htmlPath = Path.join(dir, "failure.html")
+                    const consolePath = Path.join(dir, "failure.console.json")
 
                     yield* page.screenshot(screenshotPath).pipe(Effect.catchAll(() => Effect.void))
                     const html = yield* page
@@ -408,6 +459,14 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
                       )
                     yield* Effect.promise(() => Fs.mkdir(Path.dirname(htmlPath), { recursive: true }))
                     yield* Effect.promise(() => Fs.writeFile(htmlPath, html, "utf8")).pipe(
+                      Effect.catchAll(() => Effect.void),
+                    )
+
+                    const consoleEntries = yield* page
+                      .evaluate("globalThis.__effuseTestConsole ?? []")
+                      .pipe(Effect.catchAll(() => Effect.succeed([])))
+                    yield* Effect.promise(() => Fs.mkdir(Path.dirname(consolePath), { recursive: true }))
+                    yield* Effect.promise(() => Fs.writeFile(consolePath, JSON.stringify(consoleEntries, null, 2), "utf8")).pipe(
                       Effect.catchAll(() => Effect.void),
                     )
 

@@ -1,5 +1,5 @@
 import { Context, Effect, FiberRef, Layer, Schema, Stream } from 'effect';
-import { ConvexClient, ConvexHttpClient } from 'convex/browser';
+import { ConvexClient, ConvexHttpClient, type ConnectionState } from 'convex/browser';
 import { AuthService } from './auth';
 import { AppConfigService } from './config';
 import { RequestContextService, makeDefaultRequestContext } from './requestContext';
@@ -32,6 +32,12 @@ export type ConvexServiceApi = {
     query: TQuery,
     args: FunctionArgs<TQuery>,
   ) => Stream.Stream<Awaited<FunctionReturnType<TQuery>>, ConvexServiceError>;
+
+  /**
+   * Client-only Convex websocket connection state. Returns `null` on the server.
+   * Useful for debugging "hang" scenarios where mutations/subscriptions never resolve.
+   */
+  readonly connectionState: () => Effect.Effect<ConnectionState | null, never, RequestContextService>;
 };
 
 export class ConvexService extends Context.Tag('@openagents/web/ConvexService')<
@@ -108,14 +114,61 @@ export const ConvexServiceLive = Layer.scoped(
           }),
         );
 
-      return ConvexService.of({ query, mutation, action, subscribeQuery });
+      const connectionState = () => Effect.sync(() => null);
+
+      return ConvexService.of({ query, mutation, action, subscribeQuery, connectionState });
     }
 
     // Client: one WS client for the app.
     const client = yield* Effect.acquireRelease(
       Effect.sync(() => {
         const c = new ConvexClient(config.convexUrl, { unsavedChangesWarning: false });
+
+        // Enable debug instrumentation for E2E sessions (SSR injects <meta name="oa-e2e" content="1" />).
+        // This is intentionally console-based so our browser test harness can snapshot it on failure.
+        const isE2e =
+          typeof document !== 'undefined' &&
+          document.querySelector('meta[name="oa-e2e"]')?.getAttribute('content') === '1';
+
+        let unsubConnection: (() => void) | null = null;
+        if (isE2e) {
+          const simplify = (st: ConnectionState) => ({
+            isWebSocketConnected: st.isWebSocketConnected,
+            hasInflightRequests: st.hasInflightRequests,
+            hasEverConnected: st.hasEverConnected,
+            connectionCount: st.connectionCount,
+            connectionRetries: st.connectionRetries,
+            inflightMutations: st.inflightMutations,
+            inflightActions: st.inflightActions,
+            timeOfOldestInflightRequest: st.timeOfOldestInflightRequest
+              ? st.timeOfOldestInflightRequest.toISOString()
+              : null,
+          });
+
+          try {
+            console.log('[convex:connection:init]', JSON.stringify(simplify(c.connectionState())));
+          } catch {
+            // ignore
+          }
+
+          unsubConnection = c.subscribeToConnectionState((st) => {
+            try {
+              const snapshot = simplify(st);
+              (globalThis as any).__oaDebug = (globalThis as any).__oaDebug ?? {};
+              (globalThis as any).__oaDebug.convex = { url: config.convexUrl, ...snapshot, ts: Date.now() };
+              console.log('[convex:connection]', JSON.stringify(snapshot));
+            } catch {
+              // ignore
+            }
+          });
+        }
+
+        (c as any).__oaUnsubConnectionState = unsubConnection;
+        (c as any).__oaIsE2e = isE2e;
+
         c.setAuth(async ({ forceRefreshToken }) => {
+          const isE2e = Boolean((c as any).__oaIsE2e);
+          const startedAt = Date.now();
           const token = await auth
             .getAccessToken({ forceRefreshToken: Boolean(forceRefreshToken) })
             .pipe(
@@ -125,6 +178,20 @@ export const ConvexServiceLive = Layer.scoped(
               Effect.provideService(RequestContextService, makeDefaultRequestContext()),
               Effect.runPromise,
             );
+          if (isE2e) {
+            try {
+              console.log(
+                '[convex:setAuth]',
+                JSON.stringify({
+                  forceRefreshToken: Boolean(forceRefreshToken),
+                  hasToken: !!token,
+                  ms: Date.now() - startedAt,
+                }),
+              );
+            } catch {
+              // ignore
+            }
+          }
           return token ?? null;
         });
         return c;
@@ -132,6 +199,8 @@ export const ConvexServiceLive = Layer.scoped(
       (c) =>
         Effect.sync(() => {
           try {
+            const unsub = (c as any).__oaUnsubConnectionState as (() => void) | null | undefined;
+            unsub?.();
             c.close();
           } catch {
             // ignore
@@ -211,6 +280,8 @@ export const ConvexServiceLive = Layer.scoped(
         { bufferSize: 16, strategy: 'sliding' },
       );
 
-    return ConvexService.of({ query, mutation, action, subscribeQuery });
+    const connectionState = () => Effect.sync(() => client.connectionState());
+
+    return ConvexService.of({ query, mutation, action, subscribeQuery, connectionState });
   }),
 );

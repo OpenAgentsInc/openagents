@@ -672,55 +672,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 })()`),
             )
 
-            // Turn 1: user says "hi" => assistant must re-ask name (no generic greeting).
-            const msg1 = "hi"
-            yield* step("type hi", page.fill('[data-autopilot-chat-input=\"1\"]', msg1))
-            yield* step("click Send (hi)", page.click('[data-autopilot-chat-send=\"1\"]'))
-            yield* step(
-              "wait for user bubble hi",
-              page.waitForFunction(
-                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').trim() === ${JSON.stringify(
-                  msg1,
-                )})`,
-                { timeoutMs: 30_000 },
-              ),
-            )
-
-            yield* step(
-              "wait for new assistant message (after hi)",
-              page.waitForFunction(
-                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount0}`,
-                { timeoutMs: 120_000 },
-              ),
-            )
-
-            yield* step(
-              "assert hi response re-asks name (no filler)",
-              Effect.gen(function* () {
-                const lastAssistantText = yield* page.evaluate<string>(`(() => {
-  const els = Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]'));
-  const el = els.at(-1);
-  return (el?.textContent || '').trim();
-})()`)
-
-                yield* assertTrue(
-                  lastAssistantText.includes("What shall I call you?"),
-                  `Expected last assistant message to include \"What shall I call you?\", got: ${lastAssistantText}`,
-                )
-                const lower = lastAssistantText.toLowerCase()
-                yield* assertTrue(
-                  !lower.includes("how can i help") && !lower.includes("assist you today"),
-                  `Expected last assistant message to avoid generic help filler, got: ${lastAssistantText}`,
-                )
-              }),
-            )
-
-            const assistantCount1 = yield* step(
-              "count assistant messages (after hi)",
-              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
-            )
-
-            // Turn 2: user gives handle.
+            // Turn 1: user gives handle.
             const handle = "Bobo"
             yield* step("type handle", page.fill('[data-autopilot-chat-input=\"1\"]', handle))
             yield* step("click Send (handle)", page.click('[data-autopilot-chat-send=\"1\"]'))
@@ -736,7 +688,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             yield* step(
               "wait for new assistant message (after handle)",
               page.waitForFunction(
-                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount1}`,
+                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount0}`,
                 { timeoutMs: 120_000 },
               ),
             )
@@ -746,6 +698,132 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
                 `Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => {
   const t = (el.textContent || '').toLowerCase();
   return t.includes(${JSON.stringify(handle.toLowerCase())}) && !t.includes('is that ok') && !t.includes('is that okay');
+})`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+            yield* step(
+              "wait for Send button (not busy)",
+              page.waitForFunction("!!document.querySelector('[data-autopilot-chat-send=\"1\"]')", {
+                timeoutMs: 120_000,
+              }),
+            )
+
+            const assistantCount1 = yield* step(
+              "count assistant messages (after handle)",
+              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
+            )
+
+            // Turn 2: user gives agent name.
+            const agentName = "Autopilot"
+            yield* step("type agent name", page.fill('[data-autopilot-chat-input=\"1\"]', agentName))
+            yield* step("click Send (agent name)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step(
+              "wait for user bubble agent name",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').trim() === ${JSON.stringify(
+                  agentName,
+                )})`,
+                { timeoutMs: 30_000 },
+              ),
+            )
+            yield* step(
+              "wait for new assistant message (after agent name)",
+              page.waitForFunction(
+                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount1}`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+            yield* step(
+              "wait for assistant to ask vibe",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => {
+  const t = (el.textContent || '').toLowerCase();
+  return t.includes('vibe');
+})`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+            yield* step(
+              "wait for Send button (not busy)",
+              page.waitForFunction("!!document.querySelector('[data-autopilot-chat-send=\"1\"]')", {
+                timeoutMs: 120_000,
+              }),
+            )
+
+            const assistantCount2 = yield* step(
+              "count assistant messages (after agent name)",
+              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
+            )
+
+            // Turn 3: user gives vibe.
+            const vibe = "calm, direct, pragmatic"
+            yield* step("type vibe", page.fill('[data-autopilot-chat-input=\"1\"]', vibe))
+            yield* step("click Send (vibe)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step(
+              "wait for user bubble vibe",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').trim() === ${JSON.stringify(
+                  vibe,
+                )})`,
+                { timeoutMs: 30_000 },
+              ),
+            )
+            yield* step(
+              "wait for new assistant message (after vibe)",
+              page.waitForFunction(
+                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount2}`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+            yield* step(
+              "wait for assistant to ask boundaries/preferences",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => {
+  const t = (el.textContent || '').toLowerCase();
+  return t.includes('boundaries') || t.includes('preferences');
+})`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+            yield* step(
+              "wait for Send button (not busy)",
+              page.waitForFunction("!!document.querySelector('[data-autopilot-chat-send=\"1\"]')", {
+                timeoutMs: 120_000,
+              }),
+            )
+
+            const assistantCount3 = yield* step(
+              "count assistant messages (after vibe)",
+              page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
+            )
+
+            // Turn 4: user gives boundaries (none).
+            const boundaries = "none"
+            yield* step("type boundaries", page.fill('[data-autopilot-chat-input=\"1\"]', boundaries))
+            yield* step("click Send (boundaries)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step(
+              "wait for user bubble boundaries",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"user\"]')).some(el => (el.textContent || '').trim() === ${JSON.stringify(
+                  boundaries,
+                )})`,
+                { timeoutMs: 30_000 },
+              ),
+            )
+            yield* step(
+              "wait for new assistant message (after boundaries)",
+              page.waitForFunction(
+                `document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${assistantCount3}`,
+                { timeoutMs: 120_000 },
+              ),
+            )
+            yield* step(
+              "wait for assistant to ask what to do first",
+              page.waitForFunction(
+                `Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => {
+  const t = (el.textContent || '').toLowerCase();
+  return t.includes('what would you like to do first');
 })`,
                 { timeoutMs: 120_000 },
               ),

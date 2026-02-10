@@ -29,12 +29,13 @@ import {
 } from "./render.js";
 import { ReceiptRecorderError, ReceiptRecorderService } from "./receipt.js";
 import { executeRlmAction, RlmActionV1Schema, RlmKernelError } from "./rlmKernel.js";
-import { layerInMemory as varSpaceLayerInMemory, VarSpaceService } from "./varSpace.js";
+import { VarSpaceError, VarSpaceService } from "./varSpace.js";
 
 export type PredictEnv =
   | LmClientService
   | PolicyRegistryService
   | BlobStoreService
+  | VarSpaceService
   | ReceiptRecorderService
   | ExecutionBudgetService;
 
@@ -379,36 +380,66 @@ export function make<I, O>(
       });
 
       // Seed VarSpace from the signature prompt context entries so blobs live in programmatic space.
-      const varSpaceLayer = varSpaceLayerInMemory();
-
       const run = Effect.gen(function* () {
         const vars = yield* VarSpaceService;
+
+        const seedJsonIfAbsent = (name: string, value: unknown) =>
+          vars.get(name).pipe(
+            Effect.catchAll((cause: VarSpaceError) =>
+              Effect.fail(
+                RlmKernelError.make({
+                  message: `VarSpace.get failed during seed (name=${name})`,
+                  cause
+                })
+              )
+            ),
+            Effect.flatMap((existing) => {
+              if (existing != null) return Effect.void;
+              return vars.putJson(name, value).pipe(
+                Effect.catchAll((cause: VarSpaceError) =>
+                  Effect.fail(
+                    RlmKernelError.make({
+                      message: `VarSpace.putJson failed during seed (name=${name})`,
+                      cause
+                    })
+                  )
+                )
+              );
+            })
+          );
+
+        const seedBlobIfAbsent = (name: string, blob: BlobRef) =>
+          vars.get(name).pipe(
+            Effect.catchAll((cause: VarSpaceError) =>
+              Effect.fail(
+                RlmKernelError.make({
+                  message: `VarSpace.get failed during seed (name=${name})`,
+                  cause
+                })
+              )
+            ),
+            Effect.flatMap((existing) => {
+              if (existing != null) return Effect.void;
+              return vars.putBlob(name, blob).pipe(
+                Effect.catchAll((cause: VarSpaceError) =>
+                  Effect.fail(
+                    RlmKernelError.make({
+                      message: `VarSpace.putBlob failed during seed (name=${name})`,
+                      cause
+                    })
+                  )
+                )
+              );
+            })
+          );
 
         for (const block of signature.prompt.blocks) {
           if (block._tag !== "Context") continue;
           for (const entry of block.entries) {
             if ("value" in entry) {
-              yield* vars.putJson(entry.key, entry.value).pipe(
-                Effect.catchAll((cause) =>
-                  Effect.fail(
-                    RlmKernelError.make({
-                      message: `VarSpace seed failed (key=${entry.key})`,
-                      cause
-                    })
-                  )
-                )
-              );
+              yield* seedJsonIfAbsent(entry.key, entry.value);
             } else {
-              yield* vars.putBlob(entry.key, entry.blob).pipe(
-                Effect.catchAll((cause) =>
-                  Effect.fail(
-                    RlmKernelError.make({
-                      message: `VarSpace seed failed (key=${entry.key})`,
-                      cause
-                    })
-                  )
-                )
-              );
+              yield* seedBlobIfAbsent(entry.key, entry.blob);
             }
           }
         }
@@ -517,7 +548,6 @@ export function make<I, O>(
           })
         );
       }).pipe(
-        Effect.provide(varSpaceLayer),
         Effect.ensuring(flushTraceToBlob)
       );
 
