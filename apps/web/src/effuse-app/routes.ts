@@ -199,23 +199,11 @@ const home: Route<HomeData, AppServices> = {
   loader: (ctx) =>
     Effect.gen(function* () {
       const config = yield* AppConfigService
-      const bypass = yield* (ctx._tag === "Server"
-        ? Effect.sync(() => {
-            const key = config.prelaunchBypassKey
-            if (!key) return false
-            const cookie = ctx.request.headers.get("Cookie") ?? ""
-            if (cookie.includes("prelaunch_bypass=1")) return true
-            return ctx.url.searchParams.get("key") === key
-          })
-        : Effect.sync(
-            () =>
-              typeof document !== "undefined" &&
-              document.cookie.includes("prelaunch_bypass=1"),
-          ))
       return yield* okWithSession(ctx, {
         year: new Date().getFullYear(),
-        // UI-only prelaunch: bypass users should not see the countdown.
-        prelaunch: config.prelaunch && !bypass,
+        // Homepage countdown remains visible during prelaunch even if a bypass cookie exists.
+        // Bypass only controls access to gated routes (/autopilot, /login, etc).
+        prelaunch: config.prelaunch,
       })
     }),
   view: (_ctx, data) =>
