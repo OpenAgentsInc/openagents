@@ -43,38 +43,73 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
     Effect.sync(() => {
       if (isRecord(args) && typeof args.signatureId === "string" && typeof args.limit === "number") {
         state.listExamplesCalls.push({ ref, args });
+
+        // SelectTool dataset.
+        if (args.signatureId === "@openagents/autopilot/blueprint/SelectTool.v1") {
+          return {
+            ok: true,
+            examples: [
+              {
+                signatureId: args.signatureId,
+                exampleId: "ex1",
+                inputJson: {
+                  message: "What can you do?",
+                  blueprintHint: { userHandle: "Ada", agentName: "Autopilot" },
+                },
+                expectedJson: { action: "none" },
+                split: "train",
+                tags: ["seed"],
+                source: "test",
+                createdAtMs: 1,
+                updatedAtMs: 1,
+              },
+              {
+                signatureId: args.signatureId,
+                exampleId: "ex2",
+                inputJson: {
+                  message: "Hi",
+                  blueprintHint: { userHandle: "Ada", agentName: "Autopilot" },
+                },
+                expectedJson: { action: "none" },
+                split: "train",
+                tags: ["seed"],
+                source: "test",
+                createdAtMs: 2,
+                updatedAtMs: 2,
+              },
+            ],
+          };
+        }
+
+        // RecapThread dataset (BlobRef-backed, seeded via example.meta.blobs).
+        if (args.signatureId === "@openagents/autopilot/canary/RecapThread.v1") {
+          const blobText = "Chunk 1: User said hello.\nAssistant greeted.\n";
+          const blobId = "sha256:2ed5f6344aa0ef4da9d7d79a34310c304bd0f0069d621aaeddf394589d8e3aab";
+          return {
+            ok: true,
+            examples: [
+              {
+                signatureId: args.signatureId,
+                exampleId: "ex1",
+                inputJson: {
+                  question: "What happened so far?",
+                  threadChunks: [{ id: blobId, hash: blobId, size: 45 }],
+                },
+                expectedJson: { summary: "S" },
+                split: "train",
+                tags: ["seed"],
+                source: "test",
+                meta: { blobs: [{ id: blobId, text: blobText }] },
+                createdAtMs: 1,
+                updatedAtMs: 1,
+              },
+            ],
+          };
+        }
+
         return {
           ok: true,
-          examples: [
-            {
-              signatureId: args.signatureId,
-              exampleId: "ex1",
-              inputJson: {
-                message: "What can you do?",
-                blueprintHint: { userHandle: "Ada", agentName: "Autopilot" },
-              },
-              expectedJson: { action: "none" },
-              split: "train",
-              tags: ["seed"],
-              source: "test",
-              createdAtMs: 1,
-              updatedAtMs: 1,
-            },
-            {
-              signatureId: args.signatureId,
-              exampleId: "ex2",
-              inputJson: {
-                message: "Hi",
-                blueprintHint: { userHandle: "Ada", agentName: "Autopilot" },
-              },
-              expectedJson: { action: "none" },
-              split: "train",
-              tags: ["seed"],
-              source: "test",
-              createdAtMs: 2,
-              updatedAtMs: 2,
-            },
-          ],
+          examples: [],
         };
       }
 
@@ -164,10 +199,39 @@ describe("apps/web worker DSE compile endpoint (Stage 5)", () => {
 
     const envWithAi = Object.assign(Object.create(env as any), {
       AI: {
-        run: async () => ({
-          choices: [{ message: { content: "{\"action\":\"none\"}" } }],
-          usage: { prompt_tokens: 1, completion_tokens: 1 },
-        }),
+        run: async (_model: any, input: any) => {
+          const all = Array.isArray(input?.messages) ? input.messages.map((m: any) => String(m?.content ?? "")).join("\n") : "";
+
+          // RLM-lite controller call: return a single Final action.
+          if (all.includes("RLM Action schema") || all.includes("RLM-lite controller")) {
+            return {
+              choices: [{ message: { content: "{\"_tag\":\"Final\",\"output\":{\"summary\":\"S\"}}" } }],
+              usage: { prompt_tokens: 1, completion_tokens: 1 },
+            };
+          }
+
+          // Judge call: return a score.
+          if (all.includes("\"score\"")) {
+            return {
+              choices: [{ message: { content: "{\"score\":1,\"notes\":\"ok\"}" } }],
+              usage: { prompt_tokens: 1, completion_tokens: 1 },
+            };
+          }
+
+          // Recap output.
+          if (all.includes("\"summary\"")) {
+            return {
+              choices: [{ message: { content: "{\"summary\":\"S\"}" } }],
+              usage: { prompt_tokens: 1, completion_tokens: 1 },
+            };
+          }
+
+          // SelectTool output.
+          return {
+            choices: [{ message: { content: "{\"action\":\"none\"}" } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 },
+          };
+        },
       },
     }) as any;
 
@@ -215,5 +279,63 @@ describe("apps/web worker DSE compile endpoint (Stage 5)", () => {
 
     expect(state.putArtifactCalls.length).toBe(1);
     expect(state.putReportCalls.length).toBe(1);
+  });
+
+  it("Phase 9: compile job for RecapThread includes RLM-lite knobs + budgets and stores a report", async () => {
+    state.listExamplesCalls.length = 0;
+    state.getReportCalls.length = 0;
+    state.putArtifactCalls.length = 0;
+    state.putReportCalls.length = 0;
+    state.storedReport = null;
+
+    const ORIGIN = "http://example.com";
+
+    const req = new Request(`${ORIGIN}/api/dse/compile`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ signatureId: "@openagents/autopilot/canary/RecapThread.v1" }),
+    });
+
+    const envWithAi = Object.assign(Object.create(env as any), {
+      AI: {
+        run: async (_model: any, input: any) => {
+          const all = Array.isArray(input?.messages) ? input.messages.map((m: any) => String(m?.content ?? "")).join("\n") : "";
+          if (all.includes("RLM Action schema") || all.includes("RLM-lite controller")) {
+            return { choices: [{ message: { content: "{\"_tag\":\"Final\",\"output\":{\"summary\":\"S\"}}" } }], usage: { prompt_tokens: 1, completion_tokens: 1 } };
+          }
+          if (all.includes("\"score\"")) {
+            return { choices: [{ message: { content: "{\"score\":1,\"notes\":\"ok\"}" } }], usage: { prompt_tokens: 1, completion_tokens: 1 } };
+          }
+          return { choices: [{ message: { content: "{\"summary\":\"S\"}" } }], usage: { prompt_tokens: 1, completion_tokens: 1 } };
+        },
+      },
+    }) as any;
+
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(req, envWithAi, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.ok).toBe(true);
+    expect(json.existed).toBe(false);
+
+    expect(state.putReportCalls.length).toBe(1);
+    const storedJob = state.putReportCalls[0]?.args?.json?.job as any;
+    expect(storedJob?.signatureId).toBe("@openagents/autopilot/canary/RecapThread.v1");
+    expect(storedJob?.optimizer?.id).toBe("knobs_grid_refine.v1");
+    expect(Array.isArray(storedJob?.searchSpace?.rlmControllerInstructionVariants)).toBe(true);
+    expect(storedJob.searchSpace.rlmControllerInstructionVariants.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(storedJob?.searchSpace?.rlmChunkingPolicyVariants)).toBe(true);
+    expect(Array.isArray(storedJob?.searchSpace?.rlmSubRoleVariants)).toBe(true);
+    expect(Array.isArray(storedJob?.searchSpace?.budgetProfiles)).toBe(true);
+
+    const storedReport = state.putReportCalls[0]?.args?.json?.report as any;
+    expect(Array.isArray(storedReport?.evaluatedCandidates)).toBe(true);
+    expect(storedReport.evaluatedCandidates.length).toBeGreaterThanOrEqual(2);
+
+    // Ensure we wrote an artifact for the target signature (pinned judge artifacts may also be written).
+    const recapArtifact = state.putArtifactCalls.find((c) => c.args?.signatureId === "@openagents/autopilot/canary/RecapThread.v1");
+    expect(recapArtifact).toBeTruthy();
+    expect(recapArtifact?.args?.json?.compiled_id).toBe(recapArtifact?.args?.json?.hashes?.paramsHash);
   });
 });

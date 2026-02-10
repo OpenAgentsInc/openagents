@@ -52,6 +52,13 @@ export const rewardThreadSummaryJudge = (): EvalReward.RewardBundle<any, any, an
     signals: [
       EvalReward.signalFormatValidity({ weight: 0.2 }),
       EvalReward.signalMetric(metric, { weight: 0.8, signalId: "thread_summary_judge.signal.v1" }),
+      // Phase 9: make budget profiles meaningfully selectable by including a small cost/latency penalty.
+      EvalReward.signalPredictCostPenalty({
+        weight: 0.05,
+        targetDurationMs: 800,
+        targetLmCalls: 2,
+        targetToolCalls: 0,
+      }),
     ],
   });
 };
@@ -155,6 +162,65 @@ const recapInstructionVariants = (): ReadonlyArray<CompileJob.InstructionVariant
   },
 ];
 
+const recapRlmControllerInstructionVariants = (): ReadonlyArray<CompileJob.InstructionVariantV1> => [
+  {
+    id: "v1.json_strict_and_budgeted",
+    text:
+      "Controller goals:\n" +
+      "- Keep token space bounded; use RLM ops to inspect BlobRefs.\n" +
+      "- Use extract_over_chunks for bulk extraction (avoid O(N) sub_lm calls).\n" +
+      "- When ready, produce Final with {summary} only.\n" +
+      "\n" +
+      "Hard rules:\n" +
+      "- Output must be valid JSON matching the action schema.\n" +
+      "- If you cannot find support in the blobs, omit the detail (prefer 'unknown').",
+  },
+  {
+    id: "v1.search_first_then_extract",
+    text:
+      "Preferred approach:\n" +
+      "1) Search across likely blobs for question keywords.\n" +
+      "2) Preview only the most relevant hits.\n" +
+      "3) If needed, ExtractOverChunks over a small set of chunk refs.\n" +
+      "4) Final.\n" +
+      "\n" +
+      "Avoid scanning everything unless required by the question.",
+  },
+];
+
+const recapRlmChunkingPolicyVariants = (): ReadonlyArray<CompileJob.ChunkingPolicyVariantV1> => [
+  { id: "v1.small", chunkChars: 2_000, overlapChars: 200, maxChunks: 40 },
+  { id: "v1.medium", chunkChars: 4_000, overlapChars: 300, maxChunks: 60 },
+];
+
+const recapRlmSubRoleVariants = (): ReadonlyArray<CompileJob.SubRoleVariantV1> => [
+  { id: "v1.sub", subRole: "sub" },
+  { id: "v1.main", subRole: "main" },
+];
+
+const recapBudgetProfiles = (): ReadonlyArray<CompileJob.BudgetProfileV1> => [
+  {
+    id: "v1.fast",
+    budgets: {
+      maxTimeMs: 10_000,
+      maxLmCalls: 20,
+      maxOutputChars: 80_000,
+      maxRlmIterations: 6,
+      maxSubLmCalls: 12,
+    },
+  },
+  {
+    id: "v1.default",
+    budgets: {
+      maxTimeMs: 15_000,
+      maxLmCalls: 40,
+      maxOutputChars: 120_000,
+      maxRlmIterations: 10,
+      maxSubLmCalls: 20,
+    },
+  },
+];
+
 export type DseCompileJob = {
   readonly jobSpec: CompileJob.CompileJobSpecV1;
   readonly reward: EvalReward.RewardBundle<any, any, any>;
@@ -176,8 +242,19 @@ export const compileJobForSignature = (input: { readonly signatureId: string; re
   if (input.signatureId === RECAP_THREAD_SIGNATURE_ID || input.signatureId === SUMMARIZE_THREAD_SIGNATURE_ID) {
     // Phase 7: judge-based reward (subjective output). Start with a small instruction grid.
     reward = rewardThreadSummaryJudge();
-    searchSpace = { instructionVariants: recapInstructionVariants() };
-    optimizer = { id: "instruction_grid.v1" };
+    searchSpace = {
+      // Keep a small instruction grid for the authored instruction block.
+      instructionVariants: recapInstructionVariants(),
+      // Phase 9: RLM-lite compile knobs (controller, chunking, sub-role, budgets).
+      // Only include rlm_lite strategy as a variant so the base direct.v1 params remain
+      // a single baseline candidate (avoid expanding direct across RLM-only knobs).
+      strategyVariants: [{ id: "v1.rlm_lite", strategyId: "rlm_lite.v1" }],
+      rlmControllerInstructionVariants: recapRlmControllerInstructionVariants(),
+      rlmChunkingPolicyVariants: recapRlmChunkingPolicyVariants(),
+      rlmSubRoleVariants: recapRlmSubRoleVariants(),
+      budgetProfiles: recapBudgetProfiles(),
+    };
+    optimizer = { id: "knobs_grid_refine.v1", config: { maxCandidates: 96 } };
   }
 
   const jobSpec: CompileJob.CompileJobSpecV1 = {

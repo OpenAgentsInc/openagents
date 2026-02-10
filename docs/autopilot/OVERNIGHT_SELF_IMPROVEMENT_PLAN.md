@@ -362,3 +362,15 @@ Current endpoints and storage:
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports.
+- Extended recap/summarization compile jobs to use Phase G knob search spaces:
+  - controller instruction variants (`rlmControllerInstructionVariants`)
+  - chunking policy variants (`rlmChunkingPolicyVariants`)
+  - sub-role selection (`rlmSubRoleVariants`)
+  - budget profiles (`budgetProfiles`)
+  - optimizer: `knobs_grid_refine.v1` (bounded)
+- Added a small predict-cost penalty signal to the recap judge reward so budget profiles are meaningfully selectable.
+- Tests / verification:
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
