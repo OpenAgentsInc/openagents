@@ -99,6 +99,42 @@ describe("apps/web worker real routes (SSR + guards)", () => {
     expect(body).toContain("data-autopilot-shell");
   });
 
+  it("GET /?key= bypass redirects to /autopilot and mints bypass cookie", async () => {
+    state.authed = false;
+    const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "1");
+    const restoreKey = setEnvVar("PRELAUNCH_BYPASS_KEY", "bypass");
+    const request = new Request(`http://example.com/?key=${encodeURIComponent("bypass")}`, { method: "GET" });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+    restoreKey();
+    restorePrelaunch();
+
+    expect(response.status).toBe(302);
+    expect(getRedirectPathname(response)).toBe("/autopilot");
+    expect(response.headers.get("set-cookie") ?? "").toContain("prelaunch_bypass=1");
+  });
+
+  it("GET / hides countdown when prelaunch is on and bypass cookie is present", async () => {
+    state.authed = false;
+    const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "1");
+    const restoreKey = setEnvVar("PRELAUNCH_BYPASS_KEY", "bypass");
+    const request = new Request("http://example.com/", {
+      method: "GET",
+      headers: { Cookie: "prelaunch_bypass=1" },
+    });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+    restoreKey();
+    restorePrelaunch();
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Start for free");
+    expect(body).not.toContain("data-prelaunch-countdown");
+  });
+
   it("GET /autopilot with valid ?key= bypass skips prelaunch but still requires auth", async () => {
     state.authed = false;
     const restorePrelaunch = setEnvVar("VITE_PRELAUNCH", "1");
