@@ -15,6 +15,7 @@ import {
   cleanupMarketingDotsGridBackground,
   hydrateMarketingDotsGridBackground,
 } from "../../effuse-pages/marketingShell"
+import { streamdown } from "../../lib/effuseStreamdown"
 
 import type { Registry as AtomRegistry } from "@effect-atom/atom/Registry"
 import type { ChatClient } from "../../effect/chat"
@@ -325,14 +326,20 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
       const messagesHtml = html`
         <div class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
-          ${displayMessages.map(
-            (m) =>
-              html`<div
-                class="text-sm font-mono ${m.role === "user" ? "text-white/80 text-right" : "text-white/90"}"
-                data-chat-role="${m.role}"
-              >
-                ${m.text}
-              </div>`,
+          ${displayMessages.map((m) =>
+            m.role === "user"
+              ? html`<div
+                  class="text-sm font-mono text-white/55 text-right"
+                  data-chat-role="user"
+                >
+                  ${m.text}
+                </div>`
+              : html`<div
+                  class="text-sm font-mono text-white/90"
+                  data-chat-role="assistant"
+                >
+                  ${streamdown(m.text, { mode: "static" })}
+                </div>`,
           )}
         </div>
         ${formHtml}
