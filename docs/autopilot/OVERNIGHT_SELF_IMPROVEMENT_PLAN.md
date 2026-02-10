@@ -559,6 +559,11 @@ Current endpoints and storage:
 - Updated:
   - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
+- 2026-02-10T12:56:01Z Docs/Ops: updated env example files so the overnight loop required secrets are discoverable and can be copied into non-committed `.env.production` / `.env.local`.
+- Updated:
+  - `apps/web/.env.production.example`
+  - `apps/web/.env.local.example`
+
 - 2026-02-10T12:48:56Z Ops: ran a local headless ops-admin smoke attempt and confirmed a concrete failure mode:
   - Convex rejects ops-admin JWTs with `InvalidAuthHeader` when `OA_E2E_JWT_PRIVATE_JWK` does not match the JWKS Convex trusts (`apps/web/convex/auth.config.ts` -> `https://openagents.com/api/auth/e2e/jwks`).
 - Hardened the overnight runner: if `/api/dse/ops/run/start` fails, the CLI now still emits a machine-readable JSON summary (previously it threw and emitted no summary).
