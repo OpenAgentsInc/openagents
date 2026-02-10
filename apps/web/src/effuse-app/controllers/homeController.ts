@@ -58,13 +58,18 @@ function openChatPaneOnHome(container: Element): () => void {
     overlay.setAttribute("data-oa-home-chat-overlay", "1")
     overlay.style.cssText =
       "position:fixed;inset:0;z-index:9998;pointer-events:auto;"
+    const paneStyle = document.createElement("style")
+    paneStyle.setAttribute("data-oa-home-chat-pane-style", "1")
+    paneStyle.textContent =
+      "[data-oa-home-chat-overlay] [data-oa-pane] { background: rgba(0,0,0,0.5) !important; }"
+    overlay.appendChild(paneStyle)
     const paneRoot = document.createElement("div")
     paneRoot.style.cssText = "width:100%;height:100%;"
     overlay.appendChild(paneRoot)
     shell.appendChild(overlay)
 
     const screen = { width: window.innerWidth, height: window.innerHeight }
-    const rect = calculateNewPanePosition(undefined, screen, 420, 320)
+    const rect = calculateNewPanePosition(undefined, screen, 520, 380)
 
     const paneSystem = mountPaneSystemDom(paneRoot, {
       enableDotsBackground: false,
