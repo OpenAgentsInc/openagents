@@ -178,19 +178,27 @@ export const makeOpsClient = (input: {
   const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : 15_000
 
   const post = async (path: string, body: unknown): Promise<any> => {
-    const { response, json, requestId } = await fetchJsonWithTimeout(input.fetchFn, {
-      url: `${baseUrl}${path}`,
-      timeoutMs,
-      init: {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          authorization: `Bearer ${input.adminSecret}`,
+    let response: Response
+    let json: any
+    let requestId: string | null
+    try {
+      ;({ response, json, requestId } = await fetchJsonWithTimeout(input.fetchFn, {
+        url: `${baseUrl}${path}`,
+        timeoutMs,
+        init: {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            authorization: `Bearer ${input.adminSecret}`,
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      },
-    })
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`dse_ops_fetch_failed path=${path} timeoutMs=${timeoutMs} err=${msg}`)
+    }
 
     if (!response.ok || !json || json.ok !== true) {
       const msg = json && typeof json.error === "string" ? json.error : `HTTP ${response.status}`
@@ -278,19 +286,27 @@ export const makeDseAdminClient = (input: {
   const baseUrl = input.baseUrl.replace(/\/+$/, "")
 
   const post = async (path: string, body: unknown, timeoutMs: number): Promise<{ readonly requestId: string | null; readonly result: any }> => {
-    const { response, json, requestId } = await fetchJsonWithTimeout(input.fetchFn, {
-      url: `${baseUrl}${path}`,
-      timeoutMs,
-      init: {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          authorization: `Bearer ${input.adminSecret}`,
+    let response: Response
+    let json: any
+    let requestId: string | null
+    try {
+      ;({ response, json, requestId } = await fetchJsonWithTimeout(input.fetchFn, {
+        url: `${baseUrl}${path}`,
+        timeoutMs,
+        init: {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            authorization: `Bearer ${input.adminSecret}`,
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      },
-    })
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`dse_admin_fetch_failed path=${path} timeoutMs=${timeoutMs} err=${msg}`)
+    }
 
     if (!response.ok || !json || json.ok !== true) {
       const msg = json && typeof json.error === "string" ? json.error : `HTTP ${response.status}`
@@ -300,18 +316,26 @@ export const makeDseAdminClient = (input: {
   }
 
   const get = async (path: string, timeoutMs: number): Promise<{ readonly requestId: string | null; readonly result: any }> => {
-    const { response, json, requestId } = await fetchJsonWithTimeout(input.fetchFn, {
-      url: `${baseUrl}${path}`,
-      timeoutMs,
-      init: {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          authorization: `Bearer ${input.adminSecret}`,
+    let response: Response
+    let json: any
+    let requestId: string | null
+    try {
+      ;({ response, json, requestId } = await fetchJsonWithTimeout(input.fetchFn, {
+        url: `${baseUrl}${path}`,
+        timeoutMs,
+        init: {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            authorization: `Bearer ${input.adminSecret}`,
+          },
         },
-      },
-    })
+      }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`dse_admin_fetch_failed path=${path} timeoutMs=${timeoutMs} err=${msg}`)
+    }
 
     if (!response.ok || !json || json.ok !== true) {
       const msg = json && typeof json.error === "string" ? json.error : `HTTP ${response.status}`
@@ -436,6 +460,7 @@ export const runOvernight = async (input: {
   let phase5Summary: any | undefined
 
   let runId = ""
+  let finalSummary: OvernightRunSummary | null = null
   try {
     const runIdRes = await ops.startRun({
       commitSha,
@@ -877,22 +902,21 @@ export const runOvernight = async (input: {
       errors,
     }
 
+    finalSummary = summary
     await finish(status, summary)
   }
 
-  return {
-    ok: status === "finished",
-    runId,
-    baseUrl: input.options.baseUrl,
-    verify: { ran: input.options.verify, ok: input.options.verify ? verifyOk : true },
-    e2e: { ran: input.options.runE2e, ok: input.options.runE2e ? e2eOk : true },
-    durationsMs: {
-      total: nowMs() - startedAt,
-      ...(verifyDuration !== undefined ? { verify: verifyDuration } : {}),
-      ...(e2eDuration !== undefined ? { e2e: e2eDuration } : {}),
-    },
-    errors,
-  }
+  return (
+    finalSummary ?? {
+      ok: false,
+      runId,
+      baseUrl: input.options.baseUrl,
+      verify: { ran: input.options.verify, ok: input.options.verify ? verifyOk : true },
+      e2e: { ran: input.options.runE2e, ok: input.options.runE2e ? e2eOk : true },
+      durationsMs: { total: nowMs() - startedAt },
+      errors: [...errors, "missing_final_summary"],
+    }
+  )
 }
 
 export const validateEnv = (env: Record<string, string | undefined>): OvernightEnv | null => {

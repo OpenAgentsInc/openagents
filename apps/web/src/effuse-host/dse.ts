@@ -95,28 +95,40 @@ export const makeOpenRouterDseLmClient = (input: {
   readonly apiKey: string;
   readonly defaultModelId: string;
   readonly fetch?: typeof fetch;
+  readonly timeoutMs?: number;
 }): Lm.LmClient => {
   const doFetch = input.fetch ?? fetch;
+  // OpenRouter can stall indefinitely in prod if the upstream is unhealthy; enforce a hard per-request timeout
+  // so callers can fall back to Workers AI (see `makeDseLmClientWithOpenRouterPrimary`).
+  const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : 15_000;
   return {
     complete: (req) =>
       Effect.tryPromise({
         try: async () => {
           const modelId = req.modelId ?? input.defaultModelId;
           const messages = req.messages.map((m) => ({ role: m.role, content: m.content }));
-          const res = await doFetch(`${OPENROUTER_BASE}/chat/completions`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${input.apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: modelId,
-              max_tokens: req.maxTokens ?? 256,
-              messages,
-              ...(typeof req.temperature === "number" ? { temperature: req.temperature } : {}),
-              ...(typeof req.topP === "number" ? { top_p: req.topP } : {}),
-            }),
-          });
+          const controller = new AbortController();
+          const t = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+          let res: Response;
+          try {
+            res = await doFetch(`${OPENROUTER_BASE}/chat/completions`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${input.apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: modelId,
+                max_tokens: req.maxTokens ?? 256,
+                messages,
+                ...(typeof req.temperature === "number" ? { temperature: req.temperature } : {}),
+                ...(typeof req.topP === "number" ? { top_p: req.topP } : {}),
+              }),
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(t);
+          }
           if (!res.ok) {
             const text = await res.text();
             throw new Error(`OpenRouter API error ${res.status}: ${text}`);
@@ -184,9 +196,20 @@ export const makeDseLmClientWithOpenRouterPrimary = (input: {
   if (!openRouterClient) {
     return cfClient;
   }
+
+  // Per-request client instance circuit breaker: once OpenRouter fails, don't keep paying timeouts for the rest of the
+  // current request (compile/eval can issue many subcalls).
+  let openRouterDisabled = false;
   return {
     complete: (req) =>
-      openRouterClient.complete(req).pipe(Effect.catchAll(() => cfClient.complete(req))),
+      openRouterDisabled
+        ? cfClient.complete(req)
+        : openRouterClient.complete(req).pipe(
+            Effect.catchAll(() => {
+              openRouterDisabled = true;
+              return cfClient.complete(req);
+            }),
+          ),
   };
 };
 

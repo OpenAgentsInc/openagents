@@ -224,8 +224,10 @@ export function evaluate<I, O, Y>(
         )
       );
 
+    // Compile/eval can otherwise take an extremely long time in prod (serial LM calls).
+    // Keep this modest to avoid upstream rate limits while still making overnight runs feasible.
     const results = yield* Effect.forEach(dataset1.examples, evalOne, {
-      concurrency: 1
+      concurrency: 4
     });
 
     const n = results.length;
