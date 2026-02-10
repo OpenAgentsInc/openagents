@@ -237,6 +237,18 @@ Use this to avoid scattering logic:
 
 ---
 
+## Testing Framework (What We Use)
+
+- **TypeScript unit + Worker tests:** `vitest`
+  - `apps/web` uses `@cloudflare/vitest-pool-workers` for Cloudflare Worker tests.
+- **E2E browser + visual regression:** `packages/effuse-test` (Effect-native runner, invoked via `bun`)
+  - Web scripts: `cd apps/web && npm run test:e2e`, `npm run test:visual`
+  - Docs: `docs/STORYBOOK.md`, `docs/autopilot/PROD_E2E_TESTING.md`
+- **Stream contract fixtures:** JSONL “wire transcripts” that drive UI determinism + regression tests
+  - Docs: `docs/autopilot/STREAM_TESTING.md`
+- **How we self-improve DSE/RLM:** runbook
+  - `docs/autopilot/SELF_IMPROVE_RUNBOOK.md`
+
 ## Build + test quick commands (use these before claiming done)
 
 Workspace:
