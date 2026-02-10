@@ -348,6 +348,31 @@ await fetch("/api/dse/canary/stop", {
 }).then(r => r.json())
 ```
 
+### 6.5 Run the full loop headlessly (overnight runner)
+
+If you want the full “import dataset -> compile -> canary -> traffic -> monitor -> promote/rollback” loop without clicking in a UI,
+use the canonical overnight runner:
+
+- entrypoint: `apps/web/scripts/dse-overnight.ts`
+- runbook + required Worker secrets: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+
+Examples:
+
+```bash
+# Local (no E2E)
+OA_DSE_ADMIN_SECRET="..." \
+  bun run apps/web/scripts/dse-overnight.ts --base-url http://localhost:3000 --verify --no-e2e
+```
+
+```bash
+# Prod-ish (runs E2E smoke by default)
+OA_DSE_ADMIN_SECRET="..." \
+EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
+  bun run apps/web/scripts/dse-overnight.ts --base-url https://openagents.com
+```
+
+The runner writes a single ops run record + event timeline into Convex (so we can build read-only pages later without scraping logs).
+
 ## 7) Developer Workflow: When To Use direct vs RLM-lite
 
 Use `direct.v1` when:
@@ -372,5 +397,6 @@ Use distilled strategies when:
 - Unified long-context roadmap: `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
 - Context failure definitions: `docs/autopilot/context-failures.md`
 - Trace mining workflow: `docs/autopilot/rlm-trace-mining.md`
+- Overnight self-improvement runbook (headless): `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 - DSE spec (deep details): `docs/autopilot/dse.md`
 - RLM design notes + constraints: `docs/autopilot/rlm-synergies.md`
