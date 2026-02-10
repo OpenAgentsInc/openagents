@@ -6,6 +6,7 @@ import type { DseSignature } from "../signature.js";
 import type { PredictEnv } from "../runtime/predict.js";
 import { make as makePredict } from "../runtime/predict.js";
 import { layerInMemory as layerPolicyInMemory, PolicyRegistryService } from "../runtime/policyRegistry.js";
+import { makeInMemory as makeInMemoryReceiptRecorder, type PredictReceiptV1 } from "../runtime/receipt.js";
 
 import { EvalCacheService, evalCacheKeyId, type EvalCacheKeyV1 } from "./cache.js";
 import {
@@ -38,6 +39,14 @@ export type EvalExampleResultV1 = {
   readonly rewardVersion: number;
   readonly reward: number;
   readonly signals: ReadonlyArray<RewardSignalReportV1>;
+  readonly predictMeta?:
+    | {
+        readonly strategyId?: string | undefined;
+        readonly durationMs?: number | undefined;
+        readonly contextPressure?: unknown | undefined;
+        readonly budgetUsage?: unknown | undefined;
+      }
+    | undefined;
   readonly outputHash?: string | undefined;
   readonly error?: { readonly errorName: string; readonly message: string } | undefined;
 };
@@ -124,9 +133,12 @@ export function evaluate<I, O, Y>(
           return cached;
         }
 
+        const receipts0 = makeInMemoryReceiptRecorder();
         const predictedEither = yield* Effect.either(
-          predict(example.input).pipe(Effect.provide(policy))
+          predict(example.input).pipe(Effect.provide(policy), Effect.provide(receipts0.layer))
         );
+
+        const predictReceipt = (receipts0.getReceipts()[0] ?? null) as PredictReceiptV1 | null;
 
         const pred: O | null =
           predictedEither._tag === "Right" ? predictedEither.right : null;
@@ -141,6 +153,7 @@ export function evaluate<I, O, Y>(
           input: example.input,
           expected: example.expected,
           pred,
+          ...(predictReceipt ? { predictReceipt } : {}),
           ...(predictError ? { predictError } : {}),
           ...(toolFailures ? { toolFailures } : {})
         };
@@ -184,6 +197,16 @@ export function evaluate<I, O, Y>(
           rewardVersion,
           reward,
           signals: signalReports,
+          ...(predictReceipt
+            ? {
+                predictMeta: {
+                  strategyId: predictReceipt.strategyId,
+                  durationMs: predictReceipt.timing?.durationMs,
+                  contextPressure: predictReceipt.contextPressure,
+                  budgetUsage: predictReceipt.budget?.usage
+                }
+              }
+            : {}),
           ...(outputHash ? { outputHash } : {}),
           ...(predictError ? { error: predictError } : {})
         };

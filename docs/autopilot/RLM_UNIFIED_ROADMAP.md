@@ -355,3 +355,27 @@ Production smoke guidance:
   - `cd packages/dse && bun test && bun run typecheck`
   - `cd apps/autopilot-worker && npm run typecheck`
   - `cd apps/web && npm test && npm run lint`
+
+### 2026-02-10: Phase E (Long-context datasets + evaluation) — implemented in DSE
+
+- Added canonical long-context bench signature + datasets (dummy but meaningful):
+  - `@openagents/autopilot/eval/LongContextQa.v1` (answer + BlobRef evidence quote)
+  - datasets:
+    - `autopilot.long_context.log_qa.v1` (needle-in-preview vs needle-beyond-preview)
+    - `autopilot.long_context.repo_needle.v1` (repo snapshot needle extraction)
+  - implementation: `packages/dse/src/eval/longContextBench.ts`
+- Extended prompt rendering so BlobRefs embedded in *signature input JSON* are rendered and counted:
+  - adds an `Input blobs:` section that behaves like context blob rendering (`inline_preview` vs `metadata_only`)
+  - ensures context pressure can be measured for “input-provided” blobs, not just prompt context entries
+  - implementation: `packages/dse/src/runtime/render.ts`
+- Extended eval + reward plumbing to score evidence correctness and cost:
+  - eval captures per-example predict receipts and surfaces `predictMeta` (strategy, timing, context pressure, budget usage)
+  - reward signals:
+    - `evidence_quote_in_blob.v1` checks that `evidence.quote` is an exact substring of the cited blob text
+    - `predict_cost.v1` adds a normalized penalty for duration / LM calls / tool calls
+  - implementation: `packages/dse/src/eval/evaluate.ts`, `packages/dse/src/eval/reward.ts`
+- Added an end-to-end Phase E test that demonstrates the policy we want to measure:
+  - direct fails when the needle is beyond preview; RLM-lite succeeds via `Search` + `Final`
+  - implementation: `packages/dse/test/longContextBench.test.ts`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
