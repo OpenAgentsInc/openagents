@@ -329,7 +329,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           ${displayMessages.map((m) =>
         m.role === "user"
           ? html`<div
-                  class="text-sm font-mono text-white/55 text-right"
+                  class="text-sm font-mono text-white/55 text-right max-w-[80%] self-end"
                   data-chat-role="user"
                 >
                   ${m.text}
