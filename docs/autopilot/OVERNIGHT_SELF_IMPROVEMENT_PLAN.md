@@ -263,3 +263,12 @@ Current endpoints and storage:
   - starts an ops run, emits progress events, runs local verification by default for localhost, runs prod E2E smoke for prod-ish base URLs, always finishes the ops run with a summary JSON.
 - Tests:
   - `apps/web/tests/scripts/dse-overnight.test.ts` (arg parsing + start/event/finish emission with mocked fetch)
+
+- 2026-02-10T08:39:56Z Phase 3: dataset fixture + admin-secret import endpoint.
+- Added canonical dataset fixture:
+  - `docs/autopilot/fixtures/dse-selecttool.dataset.v1.jsonl` (30+ examples, 10+ holdout)
+- Added admin-secret gated import endpoint:
+  - `POST /api/dse/examples/import` (upserts `dseExamples` via `putExample`, optional `opsRunId` emits ops-run events)
+- Tests:
+  - `apps/web/tests/fixtures/dse-selecttool-dataset.test.ts` (fixture integrity + splits)
+  - `apps/web/tests/worker/dse-examples-import-endpoint.test.ts` (endpoint shape + upsert calls)
