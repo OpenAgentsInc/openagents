@@ -95,8 +95,19 @@ npm run dev
 
 Local notes:
 
-- `wrangler dev` loads `.env.local`/`.env`; ensure it contains `OA_DSE_ADMIN_SECRET` + `OA_E2E_JWT_PRIVATE_JWK`.
-- The overnight runner must use the same `OA_DSE_ADMIN_SECRET` value as the running Worker.
+- `wrangler dev` loads `.env.local`/`.env` (non-secret vars). For ops-admin mode you must also provide:
+  - `OA_DSE_ADMIN_SECRET`
+  - `OA_E2E_JWT_PRIVATE_JWK`
+- The overnight runner uses `OA_DSE_ADMIN_SECRET`; it must match the Worker value.
+- `OA_E2E_JWT_PRIVATE_JWK` must correspond to the public key served at `https://openagents.com/api/auth/e2e/jwks` (see `apps/web/convex/auth.config.ts`).
+  - You cannot generate a random key for local ops-admin mode: Convex will reject admin JWTs with `InvalidAuthHeader` (kid/JWKS mismatch).
+
+Recommended local dev pattern (do not commit secrets):
+
+```bash
+cd apps/web
+wrangler dev --port 3001 --env-file .env.local --env-file .env.dse.local
+```
 
 Local (no E2E):
 
@@ -514,6 +525,17 @@ Current endpoints and storage:
   - Uses Bearer auth and calls: receipts list -> trace export (writes to `dseExamples`)
   - Auto-tags exported rows with `trace_mined` + any user-provided tags.
   - tests: `apps/web/tests/scripts/dse-trace-mine.test.ts`, `apps/web/tests/worker/dse-receipts-list.test.ts`
+- Tests / verification:
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T12:48:56Z Ops: ran a local headless ops-admin smoke attempt and confirmed a concrete failure mode:
+  - Convex rejects ops-admin JWTs with `InvalidAuthHeader` when `OA_E2E_JWT_PRIVATE_JWK` does not match the JWKS Convex trusts (`apps/web/convex/auth.config.ts` -> `https://openagents.com/api/auth/e2e/jwks`).
+- Hardened the overnight runner: if `/api/dse/ops/run/start` fails, the CLI now still emits a machine-readable JSON summary (previously it threw and emitted no summary).
+- Updated:
+  - `apps/web/scripts/dse-overnight-lib.ts`
+  - `apps/web/tests/scripts/dse-overnight.test.ts`
+  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md` (local ops-admin notes + recommended `wrangler dev --env-file ...` pattern)
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)

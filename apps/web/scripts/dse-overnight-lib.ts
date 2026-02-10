@@ -435,12 +435,29 @@ export const runOvernight = async (input: {
 
   let phase5Summary: any | undefined
 
-  const runIdRes = await ops.startRun({
-    commitSha,
-    baseUrl: input.options.baseUrl,
-    signatureIds: ["@openagents/autopilot/blueprint/SelectTool.v1"],
-  })
-  const runId = runIdRes.runId
+  let runId = ""
+  try {
+    const runIdRes = await ops.startRun({
+      commitSha,
+      baseUrl: input.options.baseUrl,
+      signatureIds: ["@openagents/autopilot/blueprint/SelectTool.v1"],
+    })
+    runId = runIdRes.runId
+  } catch (err) {
+    // If we can't start the ops run, we should fail fast and keep stdout machine-readable.
+    // This commonly indicates misconfigured admin secrets or Convex ops-admin JWT minting.
+    const msg = err instanceof Error ? err.message : String(err)
+    errors.push(`ops_start_failed err=${msg}`)
+    return {
+      ok: false,
+      runId: "",
+      baseUrl: input.options.baseUrl,
+      verify: { ran: false, ok: true },
+      e2e: { ran: false, ok: true },
+      durationsMs: { total: nowMs() - startedAt },
+      errors,
+    }
+  }
 
   const emit = async (e: {
     readonly level: OpsEventLevel
