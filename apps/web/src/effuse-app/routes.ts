@@ -201,17 +201,17 @@ const home: Route<HomeData, AppServices> = {
       const config = yield* AppConfigService
       const bypass = yield* (ctx._tag === "Server"
         ? Effect.sync(() => {
-            const key = config.prelaunchBypassKey
-            if (!key) return false
-            const cookie = ctx.request.headers.get("Cookie") ?? ""
-            if (cookie.includes("prelaunch_bypass=1")) return true
-            return ctx.url.searchParams.get("key") === key
-          })
+          const key = config.prelaunchBypassKey
+          if (!key) return false
+          const cookie = ctx.request.headers.get("Cookie") ?? ""
+          if (cookie.includes("prelaunch_bypass=1")) return true
+          return ctx.url.searchParams.get("key") === key
+        })
         : Effect.sync(
-            () =>
-              typeof document !== "undefined" &&
-              document.cookie.includes("prelaunch_bypass=1"),
-          ))
+          () =>
+            typeof document !== "undefined" &&
+            document.cookie.includes("prelaunch_bypass=1"),
+        ))
       return yield* okWithSession(ctx, {
         year: new Date().getFullYear(),
         // UI-only prelaunch: bypass users should not see the countdown.
@@ -274,9 +274,7 @@ const autopilot: Route<{}, AppServices> = {
       const session = yield* auth
         .getSession()
         .pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
-      // Allow anonymous access when opening chat pane with welcome message (e.g. "Start for free").
-      const welcome = ctx.url.searchParams.get("welcome") === "1"
-      if (!session.userId && !welcome) return RouteOutcome.redirect("/login", 302)
+      if (!session.userId) return RouteOutcome.redirect("/login", 302)
       return
     }),
   loader: (ctx) => okWithSession(ctx, {}),

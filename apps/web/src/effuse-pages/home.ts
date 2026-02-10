@@ -43,7 +43,7 @@ export function homePageTemplate(
         </p>
 
         ${prelaunch
-          ? html`
+      ? html`
               <div
                 class="mt-12 select-none text-6xl font-medium tabular-nums text-white sm:text-8xl use-font-square721 [font-family:var(--font-square721)]"
                 style="text-shadow: 0 0 32px rgba(255,255,255,0.9), 0 0 64px rgba(255,255,255,0.7), 0 0 96px rgba(255,255,255,0.5);"
@@ -53,14 +53,14 @@ export function homePageTemplate(
                 T−<span data-countdown-display="">${initialCountdown}</span>
               </div>
             `
-          : html`
+      : html`
               <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                ${hatcheryButton({
-                  href: '/autopilot?welcome=1',
+                <span data-oa-open-chat-pane="1">${hatcheryButton({
+                  href: '#',
                   label: 'Start for free',
                   size: 'large',
                   className: 'w-full max-w-xs sm:w-auto',
-                })}
+                })}</span>
               </div>
             `}
       </div>
