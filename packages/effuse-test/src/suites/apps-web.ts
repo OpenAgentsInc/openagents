@@ -57,7 +57,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
       }),
     },
     {
-      id: "apps-web.prod.http.prelaunch-countdown-present",
+      id: "apps-web.prod.http.prelaunch-off",
       tags: ["e2e", "http", "apps/web", "prod"],
       timeoutMs: 60_000,
       steps: Effect.gen(function* () {
@@ -80,72 +80,61 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
         )
 
         yield* step(
-          "assert prelaunch markers present",
+          "assert prelaunch is off markers present",
           Effect.gen(function* () {
-            // Prelaunch must be stable on initial SSR.
+            // Prelaunch mode must be stable on initial SSR.
             yield* assertTrue(
-              html.includes('meta name="oa-prelaunch" content="1"'),
-              "Expected SSR HTML to include <meta name=\"oa-prelaunch\" content=\"1\"> in prod",
+              html.includes('meta name="oa-prelaunch" content="0"'),
+              "Expected SSR HTML to include <meta name=\"oa-prelaunch\" content=\"0\"> in prod",
             )
             yield* assertTrue(
-              html.includes('data-prelaunch-countdown="1"'),
-              "Expected SSR HTML to include data-prelaunch-countdown=\"1\" in prod",
+              !html.includes('data-prelaunch-countdown="1"'),
+              "Expected SSR HTML to not include prelaunch countdown markers in prod",
+            )
+            yield* assertTrue(
+              html.includes('data-oa-open-chat-pane="1"'),
+              "Expected SSR HTML to include home chat CTA markers in prod",
             )
           }),
         )
       }),
     },
     {
-      id: "apps-web.prod.http.login-blocked-in-prelaunch",
+      id: "apps-web.prod.http.legacy-routes-redirect-home",
       tags: ["e2e", "http", "apps/web", "prod"],
       timeoutMs: 60_000,
       steps: Effect.gen(function* () {
         const ctx = yield* TestContext
 
-        const res = yield* step(
-          "GET /login (prod)",
-          Effect.tryPromise({
-            try: () => fetch(`${ctx.baseUrl}/login`, { redirect: "manual" }),
-            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-          }),
-        )
-
-        yield* step(
-          "assert redirected to /",
+        const assertRedirectHome = (pathname: string) =>
           Effect.gen(function* () {
-            yield* assertTrue(res.status === 302 || res.status === 301, `Expected redirect status for /login, got ${res.status}`)
-            const loc = res.headers.get("location") ?? ""
-            yield* assertTrue(loc === "/" || loc.startsWith("/?"), `Expected Location to be / (or /?*), got: ${loc}`)
-          }),
-        )
-      }),
-    },
-    {
-      id: "apps-web.prod.http.autopilot-blocked-without-bypass",
-      tags: ["e2e", "http", "apps/web", "prod"],
-      timeoutMs: 60_000,
-      steps: Effect.gen(function* () {
-        const ctx = yield* TestContext
-
-        const res = yield* step(
-          "GET /autopilot (prod, no cookies)",
-          Effect.tryPromise({
-            try: () => fetch(`${ctx.baseUrl}/autopilot`, { redirect: "manual" }),
-            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-          }),
-        )
-
-        yield* step(
-          "assert redirected to /",
-          Effect.gen(function* () {
-            yield* assertTrue(
-              res.status === 302 || res.status === 301,
-              `Expected redirect status for /autopilot without bypass in prelaunch, got ${res.status}`,
+            const res = yield* step(
+              `GET ${pathname} (prod)`,
+              Effect.tryPromise({
+                try: () => fetch(`${ctx.baseUrl}${pathname}`, { redirect: "manual" }),
+                catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+              }),
             )
-            const loc = res.headers.get("location") ?? ""
-            yield* assertTrue(loc === "/" || loc.startsWith("/?"), `Expected Location to be / (or /?*), got: ${loc}`)
-          }),
-        )
+
+            yield* step(
+              `assert ${pathname} redirected to /`,
+              Effect.gen(function* () {
+                yield* assertTrue(
+                  res.status === 302 || res.status === 301,
+                  `Expected redirect status for ${pathname}, got ${res.status}`,
+                )
+                const loc = res.headers.get("location") ?? ""
+                yield* assertTrue(
+                  loc === "/" || loc.startsWith("/?"),
+                  `Expected Location to be / (or /?*), got: ${loc}`,
+                )
+              }),
+            )
+          })
+
+        // Legacy paths: all user flows are now on the homepage.
+        yield* assertRedirectHome("/login")
+        yield* assertRedirectHome("/autopilot")
       }),
     },
     {
@@ -237,69 +226,6 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
       }),
     },
     {
-      id: "apps-web.navigation.back-forward",
-      tags: ["e2e", "browser", "apps/web"],
-      timeoutMs: 120_000,
-      steps: Effect.gen(function* () {
-        const ctx = yield* TestContext
-        const browser = yield* BrowserService
-
-        yield* browser.withPage((page) =>
-          Effect.gen(function* () {
-            yield* step("init swap counter", page.addInitScript("window.__effuseSwapCount = 0"))
-
-            yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
-            yield* step(
-              "pin shell node identity",
-              page.evaluate("window.__effuseShell = document.querySelector('[data-effuse-shell]')"),
-            )
-
-            yield* step("click Log in", page.click('a[href=\"/login\"]'))
-            yield* step(
-              "wait for /login",
-              page.waitForFunction("location.pathname === '/login'", { timeoutMs: 15_000 }),
-            )
-
-            const swapsAfterLogin = yield* step("read swaps after /login", page.evaluate<number>("window.__effuseSwapCount"))
-
-            yield* step("history.back()", page.evaluate("history.back()"))
-            yield* step("wait for /", page.waitForFunction("location.pathname === '/'"))
-
-            yield* step(
-              "assert back landed on home (no login input) + shell stable",
-              Effect.gen(function* () {
-                const emailInput = yield* page.evaluate<boolean>("!!document.querySelector('#login-email')")
-                const shellStable = yield* page.evaluate<boolean>(
-                  "window.__effuseShell === document.querySelector('[data-effuse-shell]')",
-                )
-                const swapsAfterBack = yield* page.evaluate<number>("window.__effuseSwapCount")
-
-                yield* assertTrue(!emailInput, "Expected #login-email not to exist after navigating back to /")
-                yield* assertTrue(shellStable, "Expected shell node identity to remain stable after history.back()")
-                yield* assertTrue(swapsAfterBack >= swapsAfterLogin, "Expected swap count not to decrease after history.back()")
-              }),
-            )
-
-            yield* step("history.forward()", page.evaluate("history.forward()"))
-            yield* step("wait for /login", page.waitForFunction("location.pathname === '/login'"))
-
-            yield* step(
-              "assert forward landed on /login",
-              Effect.gen(function* () {
-                const emailInput = yield* page.evaluate<boolean>("!!document.querySelector('#login-email')")
-                const swapsAfterForward = yield* page.evaluate<number>("window.__effuseSwapCount")
-                yield* assertTrue(emailInput, "Expected #login-email to exist after navigating forward to /login")
-                yield* assertTrue(
-                  swapsAfterForward >= swapsAfterLogin,
-                  "Expected swap count not to decrease after history.forward()",
-                )
-              }),
-            )
-          }),
-        )
-      }),
-    },
-    {
       id: "apps-web.hydration.strict-no-swap",
       tags: ["e2e", "browser", "apps/web"],
       timeoutMs: 120_000,
@@ -335,23 +261,23 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
               page.evaluate("window.__effuseShell = document.querySelector('[data-effuse-shell]')"),
             )
 
-            yield* step("click Log in", page.click('a[href=\"/login\"]'))
+            yield* step("open chat pane", page.click("[data-oa-open-chat-pane] a, [data-oa-open-chat-pane]"))
             yield* step(
-              "wait for /login",
-              page.waitForFunction("location.pathname === '/login'", { timeoutMs: 15_000 }),
+              "wait for chat pane",
+              page.waitForFunction("!!document.querySelector('[data-pane-id=\"home-chat\"]')", { timeoutMs: 15_000 }),
             )
 
             yield* step(
-              "assert navigation swapped outlet and preserved shell",
+              "assert no outlet swap and shell stable after opening chat pane",
               Effect.gen(function* () {
                 const swaps = yield* page.evaluate<number>("window.__effuseSwapCount")
                 const shellStable = yield* page.evaluate<boolean>(
                   "window.__effuseShell === document.querySelector('[data-effuse-shell]')",
                 )
-                const emailInput = yield* page.evaluate<boolean>("!!document.querySelector('#login-email')")
-                yield* assertTrue(swaps > 0, "Expected outlet swap count to increase after navigation")
-                yield* assertTrue(shellStable, "Expected shell node identity to remain stable across navigation")
-                yield* assertTrue(emailInput, "Expected login email input to exist after navigation")
+                const pathname = yield* page.evaluate<string>("location.pathname")
+                yield* assertEqual(pathname, "/", "Expected to remain on / after opening chat pane")
+                yield* assertEqual(swaps, 0, "Expected __effuseSwapCount to remain 0 after opening chat pane")
+                yield* assertTrue(shellStable, "Expected shell node identity to remain stable")
               }),
             )
           }),
@@ -540,10 +466,24 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
             const prompt = `effuse-test:${Date.now()}:${Math.random().toString(16).slice(2)}`
 
-            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
             yield* step(
-              "wait for shell",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-shell]')", { timeoutMs: 30_000 }),
+              "open chat pane on home",
+              Effect.gen(function* () {
+                yield* page.click("[data-oa-open-chat-pane] a, [data-oa-open-chat-pane]")
+                yield* page.waitForFunction("!!document.querySelector('[data-pane-id=\"home-chat\"]')", { timeoutMs: 15_000 })
+                yield* page.waitForFunction(
+                  "!!document.querySelector('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"authed\"]')",
+                  { timeoutMs: 30_000 },
+                )
+                yield* page.waitForFunction(
+                  `(() => {
+  const el = document.querySelector('[data-oa-home-chat-controls=\"1\"]');
+  const t = (el?.textContent || '').toLowerCase();
+  return t.includes('thread:') && !t.includes('(loading');
+})()`,
+                  { timeoutMs: 30_000 },
+                )
+              }),
             )
 
             const initialAssistantCount = yield* step(
@@ -551,8 +491,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
               page.evaluate<number>("document.querySelectorAll('[data-chat-role=\"assistant\"]').length"),
             )
 
-            yield* step("type into chat input", page.fill('[data-autopilot-chat-input=\"1\"]', prompt))
-            yield* step("click Send", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step("type into chat input", page.fill('[data-oa-home-chat-input=\"1\"]', prompt))
+            yield* step("click Send", page.click('[data-oa-home-chat-send=\"1\"]'))
 
             yield* step(
               "wait for user bubble to contain prompt",
@@ -565,11 +505,17 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             )
 
             yield* step(
-              "wait for assistant response OR visible error banner",
+              "wait for assistant response OR visible error banner (and status settles)",
               page.waitForFunction(
                 `(
-                  !!document.querySelector('[data-autopilot-chat-error=\"1\"]')
-                  || document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${initialAssistantCount}
+                  (
+                    document.querySelector('[data-oa-home-chat-root=\"1\"]')?.getAttribute('data-oa-home-chat-status') === 'ready'
+                    || document.querySelector('[data-oa-home-chat-root=\"1\"]')?.getAttribute('data-oa-home-chat-status') === 'error'
+                  )
+                  && (
+                    !!document.querySelector('[data-oa-home-chat-error=\"1\"]')
+                    || document.querySelectorAll('[data-chat-role=\"assistant\"]').length > ${initialAssistantCount}
+                  )
                 )`,
                 { timeoutMs: 120_000 },
               ),
@@ -579,7 +525,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
               "assert no silent stall",
               Effect.gen(function* () {
                 const errorBanner = yield* page.evaluate<boolean>(
-                  "!!document.querySelector('[data-autopilot-chat-error=\"1\"]')",
+                  "!!document.querySelector('[data-oa-home-chat-error=\"1\"]')",
                 )
                 const assistantCount = yield* page.evaluate<number>(
                   "document.querySelectorAll('[data-chat-role=\"assistant\"]').length",
@@ -631,23 +577,30 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 })()`),
             )
 
-            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
             yield* step(
-              "wait for shell",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-shell]')", { timeoutMs: 30_000 }),
+              "open chat pane on home (authed) and wait for DSE controls",
+              Effect.gen(function* () {
+                yield* page.click("[data-oa-open-chat-pane] a, [data-oa-open-chat-pane]")
+                yield* page.waitForFunction("!!document.querySelector('[data-pane-id=\"home-chat\"]')", { timeoutMs: 15_000 })
+                yield* page.waitForFunction(
+                  "!!document.querySelector('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"authed\"]')",
+                  { timeoutMs: 30_000 },
+                )
+                yield* page.waitForFunction("!!document.querySelector('[data-oa-home-dse-recap=\"1\"]')", {
+                  timeoutMs: 30_000,
+                })
+              }),
             )
 
             yield* step(
-              "wait for DSE controls",
-              page.waitForFunction("!!document.querySelector('[data-ez=\"autopilot.controls.dse.recap\"]')", {
-                timeoutMs: 30_000,
-              }),
+              "enable deterministic DSE recap stub mode in UI",
+              page.evaluate(`(() => { (window as any).__OA_E2E_MODE = 'stub'; })()`),
             )
 
             yield* step(
               "select strategy=rlm_lite.v1",
               page.evaluate(`(() => {
-  const el = document.querySelector('select[data-ez="autopilot.controls.dse.strategy"]');
+  const el = document.querySelector('select[data-oa-home-dse-strategy="1"]');
   if (!el) throw new Error('missing strategy select');
   (el as HTMLSelectElement).value = 'rlm_lite.v1';
   el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -657,14 +610,14 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             yield* step(
               "select budget=small",
               page.evaluate(`(() => {
-  const el = document.querySelector('select[data-ez="autopilot.controls.dse.budget"]');
+  const el = document.querySelector('select[data-oa-home-dse-budget="1"]');
   if (!el) throw new Error('missing budget select');
   (el as HTMLSelectElement).value = 'small';
   el.dispatchEvent(new Event('change', { bubbles: true }));
 })()`),
             )
 
-            yield* step("click Run recap (canary)", page.click('[data-ez=\"autopilot.controls.dse.recap\"]'))
+            yield* step("click Run recap (canary)", page.click('[data-oa-home-dse-recap=\"1\"]'))
 
             yield* step(
               "wait for DSE signature card to appear",
@@ -788,10 +741,16 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 })()`),
             )
 
-            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
             yield* step(
-              "wait for shell",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-shell]')", { timeoutMs: 30_000 }),
+              "open chat pane on home (authed)",
+              Effect.gen(function* () {
+                yield* page.click("[data-oa-open-chat-pane] a, [data-oa-open-chat-pane]")
+                yield* page.waitForFunction("!!document.querySelector('[data-pane-id=\"home-chat\"]')", { timeoutMs: 15_000 })
+                yield* page.waitForFunction(
+                  "!!document.querySelector('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"authed\"]')",
+                  { timeoutMs: 30_000 },
+                )
+              }),
             )
 
             // Wait for the first welcome assistant message.
@@ -800,7 +759,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
               page.waitForFunction(
                 `(
                   Array.from(document.querySelectorAll('[data-chat-role=\"assistant\"]')).some(el => (el.textContent || '').includes('Autopilot online.'))
-                  || !!document.querySelector('[data-autopilot-chat-error=\"1\"]')
+                  || !!document.querySelector('[data-oa-home-chat-error=\"1\"]')
                 )`,
                 { timeoutMs: 30_000 },
               ),
@@ -810,7 +769,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
               "fail fast if error banner is visible",
               Effect.gen(function* () {
                 const errorText = yield* page.evaluate<string>(`(() => {
-  const el = document.querySelector('[data-autopilot-chat-error=\"1\"]');
+  const el = document.querySelector('[data-oa-home-chat-error=\"1\"]');
   return el ? ((el.textContent || '').trim()) : '';
 })()`)
                 if (errorText) {
@@ -836,8 +795,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
             // Turn 1: user gives handle.
             const handle = "Bobo"
-            yield* step("type handle", page.fill('[data-autopilot-chat-input=\"1\"]', handle))
-            yield* step("click Send (handle)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step("type handle", page.fill('[data-oa-home-chat-input=\"1\"]', handle))
+            yield* step("click Send (handle)", page.click('[data-oa-home-chat-send=\"1\"]'))
             yield* step(
               "wait for user bubble handle",
               page.waitForFunction(
@@ -866,7 +825,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             )
             yield* step(
               "wait for Send button (not busy)",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-chat-send=\"1\"]')", {
+              page.waitForFunction("!!document.querySelector('[data-oa-home-chat-send=\"1\"]')", {
                 timeoutMs: 120_000,
               }),
             )
@@ -878,8 +837,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
             // Turn 2: user gives agent name.
             const agentName = "Autopilot"
-            yield* step("type agent name", page.fill('[data-autopilot-chat-input=\"1\"]', agentName))
-            yield* step("click Send (agent name)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step("type agent name", page.fill('[data-oa-home-chat-input=\"1\"]', agentName))
+            yield* step("click Send (agent name)", page.click('[data-oa-home-chat-send=\"1\"]'))
             yield* step(
               "wait for user bubble agent name",
               page.waitForFunction(
@@ -908,7 +867,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             )
             yield* step(
               "wait for Send button (not busy)",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-chat-send=\"1\"]')", {
+              page.waitForFunction("!!document.querySelector('[data-oa-home-chat-send=\"1\"]')", {
                 timeoutMs: 120_000,
               }),
             )
@@ -920,8 +879,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
             // Turn 3: user gives vibe.
             const vibe = "calm, direct, pragmatic"
-            yield* step("type vibe", page.fill('[data-autopilot-chat-input=\"1\"]', vibe))
-            yield* step("click Send (vibe)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step("type vibe", page.fill('[data-oa-home-chat-input=\"1\"]', vibe))
+            yield* step("click Send (vibe)", page.click('[data-oa-home-chat-send=\"1\"]'))
             yield* step(
               "wait for user bubble vibe",
               page.waitForFunction(
@@ -950,7 +909,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
             )
             yield* step(
               "wait for Send button (not busy)",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-chat-send=\"1\"]')", {
+              page.waitForFunction("!!document.querySelector('[data-oa-home-chat-send=\"1\"]')", {
                 timeoutMs: 120_000,
               }),
             )
@@ -962,8 +921,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
             // Turn 4: user gives boundaries (none).
             const boundaries = "none"
-            yield* step("type boundaries", page.fill('[data-autopilot-chat-input=\"1\"]', boundaries))
-            yield* step("click Send (boundaries)", page.click('[data-autopilot-chat-send=\"1\"]'))
+            yield* step("type boundaries", page.fill('[data-oa-home-chat-input=\"1\"]', boundaries))
+            yield* step("click Send (boundaries)", page.click('[data-oa-home-chat-send=\"1\"]'))
             yield* step(
               "wait for user bubble boundaries",
               page.waitForFunction(
@@ -1028,55 +987,49 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
 
         yield* browser.withPage((page) =>
           Effect.gen(function* () {
-            yield* step("goto /autopilot", page.goto(`${ctx.baseUrl}/autopilot`))
+            yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
+
             yield* step(
-              "wait for auth panel closed state",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-auth-step=\"closed\"]')", {
-                timeoutMs: 30_000,
+              "open chat pane (email step)",
+              Effect.gen(function* () {
+                yield* page.click("[data-oa-open-chat-pane] a, [data-oa-open-chat-pane]")
+                yield* page.waitForFunction("!!document.querySelector('[data-pane-id=\"home-chat\"]')", { timeoutMs: 15_000 })
+                yield* page.waitForFunction(
+                  "!!document.querySelector('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"email\"]')",
+                  { timeoutMs: 15_000 },
+                )
               }),
             )
 
-            yield* step("click Verify email", page.click('[data-autopilot-auth-step=\"closed\"] button'))
-            yield* step(
-              "wait for email step",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-auth-step=\"email\"]')", {
-                timeoutMs: 15_000,
-              }),
-            )
-
-            yield* step(
-              "fill email",
-              page.fill('[data-autopilot-auth-step=\"email\"] input[name=\"email\"]', magicEmail),
-            )
-            yield* step("submit email", page.click('[data-autopilot-auth-step=\"email\"] button[type=\"submit\"]'))
+            yield* step("fill email", page.fill('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"email\"] input[name=\"email\"]', magicEmail))
+            yield* step("submit email", page.click('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"email\"] [data-oa-home-chat-send=\"1\"]'))
 
             yield* step(
               "wait for code step",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-auth-step=\"code\"]')", {
+              page.waitForFunction("!!document.querySelector('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"code\"]')", {
+                timeoutMs: 30_000,
+              }),
+            )
+
+            yield* step("fill code", page.fill('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"code\"] input[name=\"code\"]', magicCode))
+            yield* step("submit code", page.click('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"code\"] [data-oa-home-chat-send=\"1\"]'))
+
+            yield* step(
+              "wait for authed step",
+              page.waitForFunction("!!document.querySelector('[data-oa-home-chat-form=\"1\"][data-oa-home-chat-step=\"authed\"]')", {
                 timeoutMs: 30_000,
               }),
             )
 
             yield* step(
-              "fill code",
-              page.fill('[data-autopilot-auth-step=\"code\"] input[name=\"code\"]', magicCode),
-            )
-            yield* step("submit code", page.click('[data-autopilot-auth-step=\"code\"] button[type=\"submit\"]'))
-
-            yield* step(
-              "wait for authed state",
-              page.waitForFunction("!!document.querySelector('[data-autopilot-auth-step=\"authed\"]')", {
-                timeoutMs: 30_000,
-              }),
-            )
-
-            yield* step(
-              "assert Signed in rendered",
+              "assert identity pill rendered",
               Effect.gen(function* () {
-                const authed = yield* page.evaluate<boolean>(
-                  "document.querySelector('[data-autopilot-auth-step=\"authed\"]')?.textContent?.includes('Signed in') ?? false",
-                )
-                yield* assertTrue(authed, "Expected auth panel to show Signed in after verification")
+                const authed = yield* page.evaluate<boolean>(`(() => {
+  const el = document.querySelector('[data-oa-home-identity-card]');
+  const t = (el?.textContent || '').toLowerCase();
+  return !!el && t.includes(${JSON.stringify(magicEmail.toLowerCase())});
+})()`)
+                yield* assertTrue(authed, "Expected home chat identity pill to include the authed email")
               }),
             )
           }),

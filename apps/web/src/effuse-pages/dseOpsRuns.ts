@@ -109,7 +109,7 @@ export function dseOpsRunsPageTemplate(data: DseOpsRunsPageData): TemplateResult
   return html`
     <header class="flex items-center h-12 px-4 gap-3 border-b border-border-dark bg-bg-secondary shrink-0 shadow-[0_1px_0_rgba(255,255,255,0.06)]">
       <a
-        href="/autopilot"
+        href="/"
         class="text-accent font-mono font-bold text-base tracking-[0.12em] leading-none uppercase hover:opacity-90"
       >
         OpenAgents
@@ -135,4 +135,3 @@ export function dseOpsRunsPageTemplate(data: DseOpsRunsPageData): TemplateResult
     </main>
   `;
 }
-

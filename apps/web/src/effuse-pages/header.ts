@@ -23,8 +23,8 @@ export function marketingHeaderTemplate(
         OpenAgents
       </a>
       <div class="flex items-center gap-3" aria-hidden="${showNav ? 'false' : 'true'}">
-        ${showNav ? html`<a href="/login" class="mr-5 text-base font-medium text-white/90 hover:text-white use-font-square721 [font-family:var(--font-square721)]">Log in</a>
-              ${hatcheryButton({ href: '/login', label: 'Start for free', variant: 'outline', className: 'hidden sm:inline-flex' })}` : ''}
+        ${showNav ? html`<a href="/" class="mr-5 text-base font-medium text-white/90 hover:text-white use-font-square721 [font-family:var(--font-square721)]">Open chat</a>
+              ${hatcheryButton({ href: '/', label: 'Start for free', variant: 'outline', className: 'hidden sm:inline-flex' })}` : ''}
       </div>
     </header>
   `;

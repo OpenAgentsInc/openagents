@@ -269,33 +269,6 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       )
     }
 
-    if (isAuthedFromAtoms && deps?.atoms) {
-      const current = deps.atoms.get(SessionAtom as any) as Session
-      startAuthedChat({ userId: current.userId ?? "", user: current.user ?? null, token: null })
-    } else if (!isAuthedFromAtoms && deps?.atoms) {
-      // If the user already has a valid session cookie (e.g. E2E bypass login), detect it
-      // so the home overlay doesn't force re-entering email.
-      fetch("/api/auth/session", { method: "GET", cache: "no-store", credentials: "include" })
-        .then((r) => r.json().catch(() => null) as Promise<any>)
-        .then((data) => {
-          if (!data || data.ok !== true) return
-          const userId = typeof data.userId === "string" ? data.userId : null
-          const token = typeof data.token === "string" && data.token.length > 0 ? data.token : null
-          const user =
-            data.user && typeof data.user.id === "string"
-              ? {
-                  id: String(data.user.id),
-                  email: data.user.email ?? null,
-                  firstName: data.user.firstName ?? null,
-                  lastName: data.user.lastName ?? null,
-                }
-              : null
-          if (!userId) return
-          startAuthedChat({ userId, user, token })
-        })
-        .catch(() => { })
-    }
-
     const chatInputClass =
       "w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white/90 text-sm font-mono placeholder-white/40 focus:outline-none focus:border-white/20"
 
@@ -370,8 +343,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           : ""
       const authedPlaceholder = chatPlaceholderFromLastAssistant(lastAssistantText)
 
+      const isLocalhost =
+        typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
       const controlsHtml =
-        step === "authed"
+        step === "authed" && isLocalhost
           ? html`
               <div
                 data-oa-home-chat-controls="1"
@@ -437,14 +413,14 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                     data-oa-home-chat-input="1"
                   />
                   ${homeSnapshot.status === "submitted" || homeSnapshot.status === "streaming"
-                    ? html`<button
+              ? html`<button
                         type="button"
                         data-oa-home-chat-stop="1"
                         class="h-9 rounded border border-white/15 bg-white/5 px-3 text-xs font-mono text-white/70 hover:bg-white/10"
                       >
                         Stop
                       </button>`
-                    : html`<button
+              : html`<button
                         type="submit"
                         data-oa-home-chat-send="1"
                         class="h-9 rounded border border-white/15 bg-white/10 px-3 text-xs font-mono text-white/80 hover:bg-white/20"
@@ -505,53 +481,53 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           ? html`
               <div data-oa-home-chat-messages="1" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
                 ${renderedMessages.map((m) => {
-                  if (m.role === "user") {
-                    const userText = textFromRenderParts(m.renderParts as any)
-                    return html`<div
-                      class="text-sm font-mono text-white/55 text-right max-w-[80%] self-end"
+            if (m.role === "user") {
+              const userText = textFromRenderParts(m.renderParts as any)
+              return html`<div
+                      class="text-sm font-mono text-white/55 text-left max-w-[80%] self-end"
                       data-chat-role="user"
                     >
                       ${userText}
                     </div>`
-                  }
+            }
 
-                  const partEls = (m.renderParts as any[]).map((p) => {
-                    if (p.kind === "text") {
-                      return streamdown(p.text, {
-                        mode: "streaming",
-                        isAnimating: p.state === "streaming",
-                        caret: "block",
-                      })
-                    }
-                    if (p.kind === "tool") return renderToolPart(p.model)
-                    if (p.kind === "dse-signature") return renderDseSignatureCard(p.model)
-                    if (p.kind === "dse-compile") return renderDseCompileCard(p.model)
-                    if (p.kind === "dse-promote") return renderDsePromoteCard(p.model)
-                    if (p.kind === "dse-rollback") return renderDseRollbackCard(p.model)
-                    if (p.kind === "dse-budget-exceeded") return renderDseBudgetExceededCard(p.model)
-                    return html``
-                  })
+            const partEls = (m.renderParts as any[]).map((p) => {
+              if (p.kind === "text") {
+                return streamdown(p.text, {
+                  mode: "streaming",
+                  isAnimating: p.state === "streaming",
+                  caret: "block",
+                })
+              }
+              if (p.kind === "tool") return renderToolPart(p.model)
+              if (p.kind === "dse-signature") return renderDseSignatureCard(p.model)
+              if (p.kind === "dse-compile") return renderDseCompileCard(p.model)
+              if (p.kind === "dse-promote") return renderDsePromoteCard(p.model)
+              if (p.kind === "dse-rollback") return renderDseRollbackCard(p.model)
+              if (p.kind === "dse-budget-exceeded") return renderDseBudgetExceededCard(p.model)
+              return html``
+            })
 
-                  return html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
+            return html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
                     <div class="flex flex-col gap-2">${partEls}</div>
                   </div>`
-                })}
+          })}
               </div>
             `
           : html`
               <div data-oa-home-chat-messages="1" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
                 ${(step === "authed" ? [{ role: "assistant" as const, text: ONBOARDING_FIRST_MESSAGE }] : messages).map((m) =>
-                  m.role === "user"
-                    ? html`<div
-                        class="text-sm font-mono text-white/55 text-right max-w-[80%] self-end"
+            m.role === "user"
+              ? html`<div
+                        class="text-sm font-mono text-white/55 text-left max-w-[80%] self-end"
                         data-chat-role="user"
                       >
                         ${m.text}
                       </div>`
-                    : html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
+              : html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
                         ${streamdown(m.text, { mode: "static" })}
                       </div>`,
-                )}
+          )}
               </div>
             `
 
@@ -899,6 +875,33 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         },
         () => { },
       )
+    }
+
+    if (isAuthedFromAtoms && deps?.atoms) {
+      const current = deps.atoms.get(SessionAtom as any) as Session
+      startAuthedChat({ userId: current.userId ?? "", user: current.user ?? null, token: null })
+    } else if (!isAuthedFromAtoms && deps?.atoms) {
+      // If the user already has a valid session cookie (e.g. E2E bypass login), detect it
+      // so the home overlay doesn't force re-entering email.
+      fetch("/api/auth/session", { method: "GET", cache: "no-store", credentials: "include" })
+        .then((r) => r.json().catch(() => null) as Promise<any>)
+        .then((data) => {
+          if (!data || data.ok !== true) return
+          const userId = typeof data.userId === "string" ? data.userId : null
+          const token = typeof data.token === "string" && data.token.length > 0 ? data.token : null
+          const user =
+            data.user && typeof data.user.id === "string"
+              ? {
+                id: String(data.user.id),
+                email: data.user.email ?? null,
+                firstName: data.user.firstName ?? null,
+                lastName: data.user.lastName ?? null,
+              }
+              : null
+          if (!userId) return
+          startAuthedChat({ userId, user, token })
+        })
+        .catch(() => { })
     }
 
     doRender()

@@ -19,7 +19,7 @@ The failure occurs when the app calls the Convex mutation `ensureOwnedThread`. T
 | **apps/web/convex/autopilot/threads.ts** | `ensureOwnedThreadImpl` (lines 104–108) calls `getSubject(ctx)`. If `subject` is null, it returns `Effect.fail(new Error("unauthorized"))`. |
 | **apps/web/convex/autopilot/access.ts** | `getSubject(ctx)` (lines 13–21) returns the Convex auth identity: `ctx.auth.getUserIdentity()` mapped to a `subject` string. If Convex has no JWT (or invalid JWT), identity is None and subject is null. |
 | **apps/web/src/effect/chat.ts** | `getOwnedThreadId()` (line 223) calls `convex.mutation(api.autopilot.threads.ensureOwnedThread, {})`. When the Convex client has no token, the mutation runs without auth and Convex returns unauthorized. |
-| **apps/web/src/effuse-app/controllers/autopilotController.ts** | `ensureOwnedThreadId()` (and related logic around 453, 514, 561, 635) triggers `getOwnedThreadId()` when the user is logged in but the owned thread is not yet loaded. |
+| **apps/web/src/effuse-app/controllers/homeController.ts** | Home chat pane calls `getOwnedThreadId()` when the user becomes authenticated, to create/load the default thread. |
 
 So the chain is: **client has session UI state → calls ensureOwnedThread → Convex setAuth supplies token → Convex validates JWT → getSubject returns subject**. The break is: **Convex setAuth is supplying no token** (or a token Convex rejects).
 
@@ -125,7 +125,7 @@ Any break in (1)–(4) results in Convex seeing no token and `ensureOwnedThread`
 1. **Cookie timing:** The browser may not have applied the verify response’s Set-Cookie before the very next request (e.g. the session fetch triggered by Convex setAuth). So the session endpoint sometimes sees no cookie or an old cookie.
 2. **Stale cookie after sign-out:** After sign-out, a cookie can still be present (e.g. empty or “cleared” value). The Worker then sees “cookie present but no user” (withAuth doesn’t throw, just returns null). We now clear that cookie in the session response, but that doesn’t help the first request right after verify if that request is the one that runs before the new cookie is there.
 3. **Convex sticky `noAuth` + no re-setAuth on login:** If Convex boots unauthenticated (token fetch returns `null`), it can settle into `noAuth` and won’t start fetching tokens later just because the app logged in. Without calling `client.setAuth(...)` again after verify, Convex keeps sending unauthenticated requests and `ensureOwnedThread` fails.
-4. **setAuth forced refresh / ignored Convex fetch args:** Our `setAuth` callback ignored Convex’s `{ forceRefreshToken }` parameter and always forced a session fetch, which amplified the cookie timing race and prevented reliably using the verify-primed token.
+4. **setAuth forced refresh / ignored Convex fetch args (fixed):** We previously ignored Convex’s `{ forceRefreshToken }` parameter and always forced a session fetch, which amplified the cookie timing race and bypassed the verify-primed token. We now respect Convex’s requested refresh behavior.
 
 ---
 
@@ -141,7 +141,7 @@ Any break in (1)–(4) results in Convex seeing no token and `ensureOwnedThread`
 | Client: prime cache after verify | `apps/web/src/effect/auth.ts` (`setClientAuthFromVerify`) |
 | Client: getOwnedThreadId mutation | `apps/web/src/effect/chat.ts` |
 | Client: post-verify flow (no-reload vs reload) | `apps/web/src/effuse-app/controllers/homeController.ts` |
-| Client: ensureOwnedThreadId usage | `apps/web/src/effuse-app/controllers/autopilotController.ts` |
+| Client: ensureOwnedThreadId usage | `apps/web/src/effuse-app/controllers/homeController.ts` |
 | Worker: session endpoint | `apps/web/src/effuse-host/auth.ts` (`handleSession`) |
 | Worker: verify endpoint (returns token + user) | `apps/web/src/effuse-host/auth.ts` (`handleVerify`) |
 | Worker: clear session cookie helper | `apps/web/src/auth/workosAuth.ts` (`clearSessionCookie`) |

@@ -226,7 +226,7 @@ const dseSignatureOneLiner = (signatureId: string): string => {
   return human.length > 0 ? `Running ${human}` : "Running signature";
 };
 
-const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
+export const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
   const usage = m.budget?.usage;
   const budget = usage
     ? [
@@ -300,7 +300,7 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
   `;
 };
 
-const renderDseCompileCard = (m: DseCompileCardModel): TemplateResult => {
+export const renderDseCompileCard = (m: DseCompileCardModel): TemplateResult => {
   const best = m.best ? `${m.best.compiled_id}${m.best.reward != null ? ` (reward=${m.best.reward})` : ""}` : null;
 
   const body = html`
@@ -315,7 +315,7 @@ const renderDseCompileCard = (m: DseCompileCardModel): TemplateResult => {
   return dseCardShell({ title: "DSE Compile", state: m.state, body });
 };
 
-const renderDsePromoteCard = (m: DsePromoteCardModel): TemplateResult => {
+export const renderDsePromoteCard = (m: DsePromoteCardModel): TemplateResult => {
   const body = html`
     ${dseRow("signatureId", m.signatureId)}
     ${dseRow("from", m.from)}
@@ -326,7 +326,7 @@ const renderDsePromoteCard = (m: DsePromoteCardModel): TemplateResult => {
   return dseCardShell({ title: "DSE Promote", state: m.state, body });
 };
 
-const renderDseRollbackCard = (m: DseRollbackCardModel): TemplateResult => {
+export const renderDseRollbackCard = (m: DseRollbackCardModel): TemplateResult => {
   const body = html`
     ${dseRow("signatureId", m.signatureId)}
     ${dseRow("from", m.from)}
@@ -337,7 +337,7 @@ const renderDseRollbackCard = (m: DseRollbackCardModel): TemplateResult => {
   return dseCardShell({ title: "DSE Rollback", state: m.state, body });
 };
 
-const renderDseBudgetExceededCard = (m: DseBudgetExceededCardModel): TemplateResult => {
+export const renderDseBudgetExceededCard = (m: DseBudgetExceededCardModel): TemplateResult => {
   const budget = m.budget?.usage
     ? `elapsedMs=${m.budget?.usage?.elapsedMs ?? "?"} lmCalls=${m.budget?.usage?.lmCalls ?? "?"} outputChars=${m.budget?.usage?.outputChars ?? "?"}`
     : null;

@@ -78,6 +78,7 @@ export default defineSchema({
     updatedAtMs: v.number(),
   })
     .index("by_runId", ["runId"])
+    .index("by_status_updatedAtMs", ["status", "updatedAtMs"])
     .index("by_threadId_updatedAtMs", ["threadId", "updatedAtMs"]),
 
   blueprints: defineTable({

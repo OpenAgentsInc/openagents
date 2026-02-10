@@ -2,7 +2,7 @@ import * as AiLanguageModel from "@effect/ai/LanguageModel";
 import * as AiPrompt from "@effect/ai/Prompt";
 import * as AiResponse from "@effect/ai/Response";
 import * as AiToolkit from "@effect/ai/Toolkit";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Cause, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect/ai/languageModel";
 import { makeOpenRouterLanguageModel } from "../../../autopilot-worker/src/effect/ai/openRouterLanguageModel";
@@ -296,6 +296,11 @@ const runDseCanaryRecap = (input: {
     pathname: url.pathname,
   });
 
+  const CONVEX_QUERY_TIMEOUT_MS = 8_000;
+  const CONVEX_MUTATION_TIMEOUT_MS = 8_000;
+  const DSE_RECAP_TIMEOUT_MS = 90_000;
+  const DSE_PREDICT_TIMEOUT_MS = 60_000;
+
   const effect = Effect.gen(function* () {
     const telemetry = yield* TelemetryService;
     const convex = yield* ConvexService;
@@ -303,6 +308,10 @@ const runDseCanaryRecap = (input: {
 
     // Ensure auth is loaded (so ConvexService server client can setAuth token). Owner-only; no anon.
     const session = yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(
+      Effect.timeoutFail({
+        duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
+        onTimeout: () => new Error("auth.getSession_timeout"),
+      }),
       Effect.catchAll(() => Effect.succeed({ userId: null } as any)),
     );
 
@@ -312,30 +321,47 @@ const runDseCanaryRecap = (input: {
       strategyId: input.strategyId,
       budgetProfile: input.budgetProfile,
       e2eMode: input.e2eMode,
-    });
+    }).pipe(Effect.catchAll(() => Effect.void));
 
+    let status: "final" | "error" | "canceled" = "final";
+    let outputText = "";
     let seq = 0;
+    let emittedTextPart = false;
     const partId = `dsepart_sig_${input.runId}_canary_recap_thread`;
     const signatureId = dseCatalogSignatures.canary_recap_thread.id;
     const strategyReason = "forced_by_user";
 
-    const flushParts = (parts: ReadonlyArray<unknown>) =>
-      flushPartsToConvex({
+    const flushParts = Effect.fn("autopilot.dse_canary_recap.flushParts")(function* (parts: ReadonlyArray<unknown>) {
+      if (input.controller.signal.aborted) return;
+      yield* flushPartsToConvex({
         convex,
         threadId: input.threadId,
         runId: input.runId,
         messageId: input.assistantMessageId,
         parts: parts.map((part) => ({ seq: seq++, part })),
-      });
+      }).pipe(
+        Effect.timeoutFail({
+          duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+          onTimeout: () => new Error("convex.append_timeout"),
+        }),
+      );
+    });
 
-    const exit = yield* Effect.exit(
-      Effect.gen(function* () {
+    const checkCanceled = Effect.fn("autopilot.dse_canary_recap.checkCanceled")(function* () {
+      if (input.controller.signal.aborted) return true;
+      const cancel = yield* isCancelRequested({ convex, threadId: input.threadId, runId: input.runId }).pipe(
+        Effect.timeoutFail({
+          duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
+          onTimeout: () => new Error("convex.isCancelRequested_timeout"),
+        }),
+        Effect.catchAll(() => Effect.succeed({ ok: true as const, cancelRequested: false } as any)),
+      );
+      return Boolean((cancel as any)?.cancelRequested);
+    });
+
+    const program = Effect.gen(function* () {
         // Check cancellation early.
-        if (input.controller.signal.aborted) return yield* Effect.fail(new Error("canceled"));
-        const cancel = yield* isCancelRequested({ convex, threadId: input.threadId, runId: input.runId }).pipe(
-          Effect.catchAll(() => Effect.succeed({ ok: true as const, cancelRequested: false } as any)),
-        );
-        if ((cancel as any)?.cancelRequested) return yield* Effect.fail(new Error("canceled"));
+        if (yield* checkCanceled()) return yield* Effect.fail(new Error("canceled"));
 
         const budgets = budgetsForProfile(input.budgetProfile);
 
@@ -354,7 +380,8 @@ const runDseCanaryRecap = (input: {
         ]);
 
         // E2E-only deterministic stub mode (no external model calls).
-        const isE2eUser = typeof (session as any)?.userId === "string" && String((session as any).userId).startsWith("user_e2e_");
+        const isE2eUser =
+          typeof (session as any)?.userId === "string" && String((session as any).userId).startsWith("user_e2e_");
         if (input.e2eMode === "stub" && isE2eUser) {
           const startedAtMs = Date.now();
           const receiptId = crypto.randomUUID();
@@ -373,12 +400,19 @@ const runDseCanaryRecap = (input: {
             ],
           };
 
-          const tracePut = yield* convex.mutation(api.dse.blobs.putText, {
-            threadId: input.threadId,
-            runId: input.runId,
-            text: JSON.stringify(traceDoc, null, 2),
-            mime: "application/json",
-          });
+          const tracePut = yield* convex
+            .mutation(api.dse.blobs.putText, {
+              threadId: input.threadId,
+              runId: input.runId,
+              text: JSON.stringify(traceDoc, null, 2),
+              mime: "application/json",
+            })
+            .pipe(
+              Effect.timeoutFail({
+                duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+                onTimeout: () => new Error("convex.dse_blobs.putText_timeout"),
+              }),
+            );
 
           const traceBlob = (tracePut as any)?.blob ?? null;
 
@@ -420,11 +454,18 @@ const runDseCanaryRecap = (input: {
             result: { _tag: "Ok" },
           };
 
-          yield* convex.mutation(api.dse.receipts.recordPredictReceipt, {
-            threadId: input.threadId,
-            runId: input.runId,
-            receipt,
-          });
+          yield* convex
+            .mutation(api.dse.receipts.recordPredictReceipt, {
+              threadId: input.threadId,
+              runId: input.runId,
+              receipt,
+            })
+            .pipe(
+              Effect.timeoutFail({
+                duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+                onTimeout: () => new Error("convex.dse_receipts.recordPredictReceipt_timeout"),
+              }),
+            );
 
           // Emit assistant-visible text via stream wire parts so it renders alongside DSE cards.
           const textParts = [
@@ -433,6 +474,7 @@ const runDseCanaryRecap = (input: {
             { type: "text-end", id: crypto.randomUUID(), metadata: {} },
           ];
 
+          emittedTextPart = true;
           yield* flushParts([
             {
               type: "dse.signature",
@@ -455,17 +497,24 @@ const runDseCanaryRecap = (input: {
             ...textParts,
           ]);
 
-          return { summary };
+          return;
         }
 
         // Real path: DSE Predict (direct or rlm-lite strategy pinned in params).
-        if (input.controller.signal.aborted) return yield* Effect.fail(new Error("canceled"));
+        if (yield* checkCanceled()) return yield* Effect.fail(new Error("canceled"));
 
-        const rawSnapshot = yield* convex.query(api.autopilot.messages.getThreadSnapshot, {
-          threadId: input.threadId,
-          maxMessages: 240,
-          maxParts: 0,
-        });
+        const rawSnapshot = yield* convex
+          .query(api.autopilot.messages.getThreadSnapshot, {
+            threadId: input.threadId,
+            maxMessages: 240,
+            maxParts: 0,
+          })
+          .pipe(
+            Effect.timeoutFail({
+              duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
+              onTimeout: () => new Error("convex.getThreadSnapshot_timeout"),
+            }),
+          );
         const snapshot = rawSnapshot as GetThreadSnapshotResult;
         const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray((snapshot as any)?.messages)
           ? ((snapshot as any).messages as any)
@@ -474,7 +523,11 @@ const runDseCanaryRecap = (input: {
         const history = messagesRaw
           .filter((m) => m && typeof m === "object")
           .filter((m) => String((m as any).role ?? "") === "user" || String((m as any).role ?? "") === "assistant")
-          .filter((m) => String((m as any).status ?? "") !== "streaming" || String((m as any).messageId ?? "") !== input.assistantMessageId)
+          .filter(
+            (m) =>
+              String((m as any).status ?? "") !== "streaming" ||
+              String((m as any).messageId ?? "") !== input.assistantMessageId,
+          )
           .filter((m) => String((m as any).messageId ?? "") !== input.userMessageId)
           .map((m) => ({ role: String((m as any).role ?? "user"), text: String((m as any).text ?? "") }))
           .filter((m) => m.text.trim().length > 0);
@@ -521,7 +574,9 @@ const runDseCanaryRecap = (input: {
             // Bound history size so Convex blobs remain reasonable.
             const MAX_HISTORY_CHARS = 200_000;
             const boundedHistory =
-              historyText.length > MAX_HISTORY_CHARS ? historyText.slice(historyText.length - MAX_HISTORY_CHARS) : historyText;
+              historyText.length > MAX_HISTORY_CHARS
+                ? historyText.slice(historyText.length - MAX_HISTORY_CHARS)
+                : historyText;
 
             // Pre-chunk history into stable BlobRefs so both direct and RLM strategies see the same input shape.
             const chunkChars = 20_000;
@@ -538,7 +593,14 @@ const runDseCanaryRecap = (input: {
             );
 
             return yield* predict({ question: input.question, threadChunks });
-          }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)),
+          }).pipe(
+            Effect.timeoutFail({
+              duration: `${DSE_PREDICT_TIMEOUT_MS} millis`,
+              onTimeout: () => new Error("dse.predict_timeout"),
+            }),
+            Effect.provideService(Lm.LmClientService, dseLmClient),
+            Effect.provide(dseEnv),
+          ),
         );
 
         const receipt = recordedReceipt as DseReceiptShape | null;
@@ -582,6 +644,7 @@ const runDseCanaryRecap = (input: {
               { type: "text-end", id: crypto.randomUUID(), metadata: {} },
             ]
             : [];
+        if (textParts.length > 0) emittedTextPart = true;
 
         yield* flushParts([
           {
@@ -606,43 +669,55 @@ const runDseCanaryRecap = (input: {
           ...textParts,
         ]);
 
-        if (state === "ok") return { summary: boundedSummary };
-        return yield* Effect.fail(new Error(errorText ?? "DSE recap failed"));
-      }),
-    );
+        if (state !== "ok") return yield* Effect.fail(new Error(errorText ?? "DSE recap failed"));
+      }).pipe(
+        Effect.timeoutFail({
+          duration: `${DSE_RECAP_TIMEOUT_MS} millis`,
+          onTimeout: () => new Error("dse.recap_timeout"),
+        }),
+      );
+
+    const exit = yield* Effect.exit(program);
 
     if (exit._tag === "Failure") {
-      const msg = String(exit.cause);
+      const msg = Cause.pretty(exit.cause).trim() || "dse_recap_failed";
       const canceled = msg.includes("canceled") || input.controller.signal.aborted;
-      yield* finalizeRunInConvex({
-        convex,
-        threadId: input.threadId,
-        runId: input.runId,
-        messageId: input.assistantMessageId,
-        status: canceled ? "canceled" : "error",
-        text: canceled ? "Canceled." : "DSE recap failed.",
-      }).pipe(Effect.catchAll(() => Effect.void));
-
-      yield* t.event("run.finished", {
-        threadId: input.threadId,
-        runId: input.runId,
-        status: canceled ? "canceled" : "error",
-      });
-      return;
+      status = canceled ? "canceled" : "error";
+      outputText = canceled ? "Canceled." : "DSE recap failed.";
+      yield* t.log("error", "run.failed", { message: msg }).pipe(Effect.catchAll(() => Effect.void));
+    } else if (input.controller.signal.aborted) {
+      status = "canceled";
+      if (outputText.trim().length === 0) outputText = "Canceled.";
     }
 
-    // Mark assistant message finalized for client status consistency. We intentionally keep message text small
-    // because the recap is already visible via streamed text parts.
+    if (status === "final") {
+      // If we didn't emit any text parts, ensure the assistant message is still visible.
+      if (!emittedTextPart && outputText.trim().length === 0) {
+        outputText = "DSE recap complete.";
+      }
+    } else if (outputText.trim().length === 0) {
+      outputText = status === "canceled" ? "Canceled." : "DSE recap failed.";
+    }
+
     yield* finalizeRunInConvex({
       convex,
       threadId: input.threadId,
       runId: input.runId,
       messageId: input.assistantMessageId,
-      status: "final",
-      text: "",
-    }).pipe(Effect.catchAll(() => Effect.void));
+      status,
+      text: outputText,
+    })
+      .pipe(
+        Effect.timeoutFail({
+          duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+          onTimeout: () => new Error("convex.finalize_timeout"),
+        }),
+      )
+      .pipe(Effect.catchAll(() => Effect.void));
 
-    yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status: "final" });
+    yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status }).pipe(
+      Effect.catchAll(() => Effect.void),
+    );
   }).pipe(
     Effect.provideService(RequestContextService, makeServerRequestContext(input.request)),
     Effect.provideService(TelemetryService, requestTelemetry),
@@ -679,76 +754,23 @@ const runAutopilotStream = (input: {
     pathname: url.pathname,
   });
 
+  // Bound worst-case wall time for worker-side Convex + model operations.
+  // This must be conservative: `ctx.waitUntil` tasks can be evicted, and upstream streams can stall.
+  const CONVEX_QUERY_TIMEOUT_MS = 8_000;
+  const CONVEX_MUTATION_TIMEOUT_MS = 8_000;
+  const MODEL_STREAM_TIMEOUT_MS = 60_000;
+
   const effect = Effect.gen(function* () {
     const telemetry = yield* TelemetryService;
     const convex = yield* ConvexService;
 
     const t = telemetry.withNamespace("autopilot.stream");
-    yield* t.event("run.started", { threadId: input.threadId, runId: input.runId });
-
-    // Load prompt context from Convex (messages only; omit parts). Owner-only.
-    const rawSnapshot = yield* convex.query(api.autopilot.messages.getThreadSnapshot, {
-      threadId: input.threadId,
-      maxMessages: 120,
-      maxParts: 0,
-    });
-    const snapshot: GetThreadSnapshotResult = rawSnapshot as GetThreadSnapshotResult;
-
-    const bp = yield* convex
-      .query(api.autopilot.blueprint.getBlueprint, {
-        threadId: input.threadId,
-      })
-      .pipe(
-        Effect.catchAll(() =>
-          Effect.succeed({ ok: true as const, blueprint: null, updatedAtMs: 0 } satisfies GetBlueprintResult),
-        ),
-      );
-    const blueprint = (bp as GetBlueprintResult).blueprint as BlueprintHint | null;
-
-    const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray(snapshot.messages) ? snapshot.messages : [];
-
-    // Bootstrap is a deterministic state machine for MVP: avoid inference until the Blueprint is complete.
-    const bootstrapStatus = String(blueprint?.bootstrapState?.status ?? "pending");
-    const bootstrapStage = String(blueprint?.bootstrapState?.stage ?? "");
-    const lastUserText = lastUserTextFromSnapshot(messagesRaw).trim();
-
-    const promptMessages = messagesRaw
-      .filter((m) => m && typeof m === "object")
-      .filter((m) => String(m.role ?? "") === "user" || String(m.role ?? "") === "assistant")
-      .filter((m) => String(m.status ?? "") !== "streaming" || String(m.messageId ?? "") !== input.assistantMessageId)
-      .map((m) => ({ role: String(m.role ?? "user"), text: String(m.text ?? "") }))
-      .filter((m) => m.text.trim().length > 0);
-
-    const tail = promptMessages.slice(-MAX_CONTEXT_MESSAGES);
-
-    const workersAiModel = makeWorkersAiLanguageModel({
-      binding: input.env.AI,
-      model: MODEL_ID_CF,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-    });
-    const openRouterApiKey = typeof input.env.OPENROUTER_API_KEY === "string" && input.env.OPENROUTER_API_KEY.length > 0
-      ? input.env.OPENROUTER_API_KEY
-      : null;
-    const modelLayer = Layer.effect(
-      AiLanguageModel.LanguageModel,
-      openRouterApiKey
-        ? Effect.gen(function* () {
-          const fallback = yield* workersAiModel;
-          const primary = yield* makeOpenRouterLanguageModel({
-            apiKey: openRouterApiKey,
-            model: PRIMARY_MODEL_OPENROUTER,
-            maxOutputTokens: MAX_OUTPUT_TOKENS,
-          });
-          return yield* makeFallbackLanguageModel(primary, fallback);
-        })
-        : workersAiModel
-    );
-
     // Chunking policy.
     const FLUSH_INTERVAL_MS = 350;
     const FLUSH_MAX_TEXT_CHARS = 1200;
     const FLUSH_MAX_PARTS = 32;
 
+    let status: "final" | "error" | "canceled" = "final";
     let seq = 0;
     let bufferedDelta = "";
     let bufferedParts: Array<{ readonly seq: number; readonly part: unknown }> = [];
@@ -794,6 +816,10 @@ const runAutopilotStream = (input: {
           threadId: input.threadId,
           runId: input.runId,
         }).pipe(
+          Effect.timeoutFail({
+            duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
+            onTimeout: () => new Error("convex.isCancelRequested_timeout"),
+          }),
           Effect.catchAll(() =>
             Effect.succeed({ ok: true as const, cancelRequested: false } satisfies IsCancelRequestedResult),
           ),
@@ -815,208 +841,294 @@ const runAutopilotStream = (input: {
         runId: input.runId,
         messageId: input.assistantMessageId,
         parts: batch,
-      }).pipe(
-        Effect.catchAll((err) =>
-          t.log("error", "convex.append_failed", { message: err instanceof Error ? err.message : String(err) }),
-        ),
+      })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+            onTimeout: () => new Error("convex.append_timeout"),
+          }),
+        )
+        .pipe(
+          Effect.catchAll((err) =>
+            t.log("error", "convex.append_failed", { message: err instanceof Error ? err.message : String(err) }),
+          ),
       );
     });
 
     let extraSystemContext: string | null = null;
 
-    // Phase D: optional RLM-lite pre-summary for long-context runs.
-    yield* Effect.gen(function* () {
-      if (input.controller.signal.aborted) return;
-      if (bootstrapStatus !== "complete") return;
-      if (!openRouterApiKey) return;
+    const streamProgram = Effect.gen(function* () {
+      yield* t.event("run.started", { threadId: input.threadId, runId: input.runId }).pipe(Effect.catchAll(() => Effect.void));
 
-      const userText = lastUserText.trim();
-      if (!userText) return;
+      // Load prompt context from Convex (messages only; omit parts). Owner-only.
+      const rawSnapshot = yield* convex
+        .query(api.autopilot.messages.getThreadSnapshot, {
+          threadId: input.threadId,
+          maxMessages: 120,
+          maxParts: 0,
+        })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
+            onTimeout: () => new Error("convex.getThreadSnapshot_timeout"),
+          }),
+        );
+      const snapshot: GetThreadSnapshotResult = rawSnapshot as GetThreadSnapshotResult;
 
-      const olderMessages = promptMessages.slice(0, Math.max(0, promptMessages.length - tail.length));
-      const olderText = olderMessages.map((m) => `${m.role}: ${m.text}`).join("\n\n");
-      const olderChars = olderText.length;
+      const bp = yield* convex
+        .query(api.autopilot.blueprint.getBlueprint, {
+          threadId: input.threadId,
+        })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
+            onTimeout: () => new Error("convex.getBlueprint_timeout"),
+          }),
+        )
+        .pipe(
+          Effect.catchAll(() =>
+            Effect.succeed({ ok: true as const, blueprint: null, updatedAtMs: 0 } satisfies GetBlueprintResult),
+          ),
+        );
+      const blueprint = (bp as GetBlueprintResult).blueprint as BlueprintHint | null;
 
-      const explicit =
-        userText.startsWith("/rlm") ||
-        /\b(recaps?|summari[sz]e|remind me|what did we (decide|agree)|earlier you said)\b/i.test(userText);
-      const highPressure = olderChars >= 20_000 || olderMessages.length >= 40;
-      if (!explicit && !highPressure) return;
+      const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray(snapshot.messages) ? snapshot.messages : [];
 
-      const strategyReason = explicit
-        ? "explicit_request"
-        : `context_pressure olderChars=${olderChars} olderMessages=${olderMessages.length}`;
+      // Bootstrap is a deterministic state machine for MVP: avoid inference until the Blueprint is complete.
+      const bootstrapStatus = String(blueprint?.bootstrapState?.status ?? "pending");
+      const bootstrapStage = String(blueprint?.bootstrapState?.stage ?? "");
+      const lastUserText = lastUserTextFromSnapshot(messagesRaw).trim();
 
-      const signatureId = dseCatalogSignatures.rlm_summarize_thread.id;
-      const partId = `dsepart_sig_${input.runId}_rlm_summarize_thread`;
+      const promptMessages = messagesRaw
+        .filter((m) => m && typeof m === "object")
+        .filter((m) => String(m.role ?? "") === "user" || String(m.role ?? "") === "assistant")
+        .filter((m) => String(m.status ?? "") !== "streaming" || String(m.messageId ?? "") !== input.assistantMessageId)
+        .map((m) => ({ role: String(m.role ?? "user"), text: String(m.text ?? "") }))
+        .filter((m) => m.text.trim().length > 0);
 
-      bufferedParts.push({
-        seq: seq++,
-        part: {
-          type: "dse.signature",
-          v: 1,
-          id: partId,
-          state: "start",
-          tsMs: Date.now(),
-          signatureId,
-          strategyReason,
-        },
+      const tail = promptMessages.slice(-MAX_CONTEXT_MESSAGES);
+
+      const workersAiModel = makeWorkersAiLanguageModel({
+        binding: input.env.AI,
+        model: MODEL_ID_CF,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
       });
-      yield* flush(true);
-
-      type DseReceiptShape = {
-        compiled_id?: string;
-        strategyId?: string;
-        timing?: { durationMs?: number };
-        budget?: unknown;
-        receiptId?: string;
-        contextPressure?: unknown;
-        promptRenderStats?: unknown;
-        rlmTrace?: unknown;
-      };
-      let recordedReceipt: DseReceiptShape | null = null;
-      const setRecordedReceipt = (r: unknown) => {
-        recordedReceipt = r as DseReceiptShape;
-      };
-
-      const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
-        env: input.env,
-        defaultModelIdCf: MODEL_ID_CF,
-        primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
-      });
-      const dseEnv = layerDsePredictEnvForAutopilotRun({
-        threadId: input.threadId,
-        runId: input.runId,
-        onReceipt: setRecordedReceipt,
-      });
-
-      const exit = yield* Effect.exit(
-        Effect.gen(function* () {
-          const blobStore = yield* BlobStore.BlobStoreService;
-
-          // Bound history size so Convex blobs remain reasonable.
-          const MAX_HISTORY_CHARS = 200_000;
-          const boundedHistory =
-            olderText.length > MAX_HISTORY_CHARS ? olderText.slice(olderText.length - MAX_HISTORY_CHARS) : olderText;
-
-          // Pre-chunk history into stable BlobRefs so the controller can use ExtractOverChunks.
-          const chunkChars = 20_000;
-          const maxChunks = 12;
-          const chunkTexts: Array<string> = [];
-          for (let i = 0; i < boundedHistory.length && chunkTexts.length < maxChunks; i += chunkChars) {
-            chunkTexts.push(boundedHistory.slice(i, Math.min(boundedHistory.length, i + chunkChars)));
-          }
-
-          const threadChunks = yield* Effect.forEach(
-            chunkTexts,
-            (text) => blobStore.putText({ text, mime: "text/plain" }),
-            { concurrency: 3, discard: false },
-          );
-
-          return yield* predictRlmSummarizeThread({ question: userText, threadChunks });
-        }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)),
+      const openRouterApiKey = typeof input.env.OPENROUTER_API_KEY === "string" && input.env.OPENROUTER_API_KEY.length > 0
+        ? input.env.OPENROUTER_API_KEY
+        : null;
+      const modelLayer = Layer.effect(
+        AiLanguageModel.LanguageModel,
+        openRouterApiKey
+          ? Effect.gen(function* () {
+            const fallback = yield* workersAiModel;
+            const primary = yield* makeOpenRouterLanguageModel({
+              apiKey: openRouterApiKey,
+              model: PRIMARY_MODEL_OPENROUTER,
+              maxOutputTokens: MAX_OUTPUT_TOKENS,
+            });
+            return yield* makeFallbackLanguageModel(primary, fallback);
+          })
+          : workersAiModel
       );
 
-      const state = exit._tag === "Success" ? "ok" : "error";
-
-      const errorText =
-        exit._tag === "Failure"
-          ? (() => {
-            const cause = exit.cause as any;
-            if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
-            return String(cause ?? "DSE predict failed");
-          })()
-          : null;
-
-      const receipt = recordedReceipt as DseReceiptShape | null;
-      const promptRenderStats = receipt?.promptRenderStats as any;
-      const trimmedPromptRenderStats =
-        promptRenderStats &&
-          typeof promptRenderStats === "object" &&
-          promptRenderStats.context &&
-          typeof promptRenderStats.context === "object" &&
-          Array.isArray(promptRenderStats.context.blobs) &&
-          promptRenderStats.context.blobs.length > 20
-          ? {
-            ...promptRenderStats,
-            context: {
-              ...promptRenderStats.context,
-              blobsDropped:
-                Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
-              blobs: promptRenderStats.context.blobs.slice(0, 20),
-            },
-          }
-          : receipt?.promptRenderStats;
-
-      if (exit._tag === "Success") {
-        const summary = String((exit.value as any)?.summary ?? "").trim();
-        if (summary) {
-          const MAX_SUMMARY_CHARS = 1500;
-          const bounded = summary.length > MAX_SUMMARY_CHARS ? summary.slice(0, MAX_SUMMARY_CHARS).trim() : summary;
-          extraSystemContext = "Prior conversation summary (RLM-lite):\n" + bounded;
-        }
-      }
-
-      bufferedParts.push({
-        seq: seq++,
-        part: {
-          type: "dse.signature",
-          v: 1,
-          id: partId,
-          state,
-          tsMs: Date.now(),
-          signatureId,
-          compiled_id: receipt?.compiled_id,
-          receiptId: receipt?.receiptId,
-          timing: receipt?.timing,
-          budget: receipt?.budget,
-          strategyId: receipt?.strategyId,
-          strategyReason,
-          contextPressure: receipt?.contextPressure,
-          promptRenderStats: trimmedPromptRenderStats,
-          rlmTrace: receipt?.rlmTrace,
-          ...(exit._tag === "Success" ? { outputPreview: exit.value } : {}),
-          ...(errorText ? { errorText } : {}),
-        },
-      });
-      yield* flush(true);
-    });
-
-    const rawPrompt = concatTextFromPromptMessages(tail, blueprint, {
-      ...(extraSystemContext ? { extraSystem: extraSystemContext } : {}),
-    });
-    const prompt = AiPrompt.make(rawPrompt);
-
-    const stream = AiLanguageModel.streamText({
-      prompt,
-      toolChoice: "none",
-      disableToolCallResolution: true,
-    });
-
-    const runStream = Stream.runForEach(stream, (part) =>
-      Effect.sync(() => {
+      // Phase D: optional RLM-lite pre-summary for long-context runs.
+      yield* Effect.gen(function* () {
         if (input.controller.signal.aborted) return;
-        const encoded = encodeStreamPart(part) as AiResponse.StreamPartEncoded;
-        if (shouldIgnoreWirePart(encoded)) return;
+        if (bootstrapStatus !== "complete") return;
+        if (!openRouterApiKey) return;
 
-        if (encoded.type === "text-delta") {
-          const delta = String(encoded.delta ?? "");
-          bufferedDelta += delta;
-          outputText += delta;
-          return;
+        const userText = lastUserText.trim();
+        if (!userText) return;
+
+        const olderMessages = promptMessages.slice(0, Math.max(0, promptMessages.length - tail.length));
+        const olderText = olderMessages.map((m) => `${m.role}: ${m.text}`).join("\n\n");
+        const olderChars = olderText.length;
+
+        const explicit =
+          userText.startsWith("/rlm") ||
+          /\b(recaps?|summari[sz]e|remind me|what did we (decide|agree)|earlier you said)\b/i.test(userText);
+        const highPressure = olderChars >= 20_000 || olderMessages.length >= 40;
+        if (!explicit && !highPressure) return;
+
+        const strategyReason = explicit
+          ? "explicit_request"
+          : `context_pressure olderChars=${olderChars} olderMessages=${olderMessages.length}`;
+
+        const signatureId = dseCatalogSignatures.rlm_summarize_thread.id;
+        const partId = `dsepart_sig_${input.runId}_rlm_summarize_thread`;
+
+        bufferedParts.push({
+          seq: seq++,
+          part: {
+            type: "dse.signature",
+            v: 1,
+            id: partId,
+            state: "start",
+            tsMs: Date.now(),
+            signatureId,
+            strategyReason,
+          },
+        });
+        yield* flush(true);
+
+        type DseReceiptShape = {
+          compiled_id?: string;
+          strategyId?: string;
+          timing?: { durationMs?: number };
+          budget?: unknown;
+          receiptId?: string;
+          contextPressure?: unknown;
+          promptRenderStats?: unknown;
+          rlmTrace?: unknown;
+        };
+        let recordedReceipt: DseReceiptShape | null = null;
+        const setRecordedReceipt = (r: unknown) => {
+          recordedReceipt = r as DseReceiptShape;
+        };
+
+        const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+          env: input.env,
+          defaultModelIdCf: MODEL_ID_CF,
+          primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+        });
+        const dseEnv = layerDsePredictEnvForAutopilotRun({
+          threadId: input.threadId,
+          runId: input.runId,
+          onReceipt: setRecordedReceipt,
+        });
+
+        const exit = yield* Effect.exit(
+          Effect.gen(function* () {
+            const blobStore = yield* BlobStore.BlobStoreService;
+
+            // Bound history size so Convex blobs remain reasonable.
+            const MAX_HISTORY_CHARS = 200_000;
+            const boundedHistory =
+              olderText.length > MAX_HISTORY_CHARS ? olderText.slice(olderText.length - MAX_HISTORY_CHARS) : olderText;
+
+            // Pre-chunk history into stable BlobRefs so the controller can use ExtractOverChunks.
+            const chunkChars = 20_000;
+            const maxChunks = 12;
+            const chunkTexts: Array<string> = [];
+            for (let i = 0; i < boundedHistory.length && chunkTexts.length < maxChunks; i += chunkChars) {
+              chunkTexts.push(boundedHistory.slice(i, Math.min(boundedHistory.length, i + chunkChars)));
+            }
+
+            const threadChunks = yield* Effect.forEach(
+              chunkTexts,
+              (text) => blobStore.putText({ text, mime: "text/plain" }),
+              { concurrency: 3, discard: false },
+            );
+
+            return yield* predictRlmSummarizeThread({ question: userText, threadChunks });
+          }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)),
+        );
+
+        const state = exit._tag === "Success" ? "ok" : "error";
+
+        const errorText =
+          exit._tag === "Failure"
+            ? (() => {
+              const cause = exit.cause as any;
+              if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
+              return String(cause ?? "DSE predict failed");
+            })()
+            : null;
+
+        const receipt = recordedReceipt as DseReceiptShape | null;
+        const promptRenderStats = receipt?.promptRenderStats as any;
+        const trimmedPromptRenderStats =
+          promptRenderStats &&
+            typeof promptRenderStats === "object" &&
+            promptRenderStats.context &&
+            typeof promptRenderStats.context === "object" &&
+            Array.isArray(promptRenderStats.context.blobs) &&
+            promptRenderStats.context.blobs.length > 20
+            ? {
+              ...promptRenderStats,
+              context: {
+                ...promptRenderStats.context,
+                blobsDropped:
+                  Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
+                blobs: promptRenderStats.context.blobs.slice(0, 20),
+              },
+            }
+            : receipt?.promptRenderStats;
+
+        if (exit._tag === "Success") {
+          const summary = String((exit.value as any)?.summary ?? "").trim();
+          if (summary) {
+            const MAX_SUMMARY_CHARS = 1500;
+            const bounded = summary.length > MAX_SUMMARY_CHARS ? summary.slice(0, MAX_SUMMARY_CHARS).trim() : summary;
+            extraSystemContext = "Prior conversation summary (RLM-lite):\n" + bounded;
+          }
         }
 
-        // For non-delta parts, materialize any pending delta first to preserve ordering.
-        materializeDelta();
+        bufferedParts.push({
+          seq: seq++,
+          part: {
+            type: "dse.signature",
+            v: 1,
+            id: partId,
+            state,
+            tsMs: Date.now(),
+            signatureId,
+            compiled_id: receipt?.compiled_id,
+            receiptId: receipt?.receiptId,
+            timing: receipt?.timing,
+            budget: receipt?.budget,
+            strategyId: receipt?.strategyId,
+            strategyReason,
+            contextPressure: receipt?.contextPressure,
+            promptRenderStats: trimmedPromptRenderStats,
+            rlmTrace: receipt?.rlmTrace,
+            ...(exit._tag === "Success" ? { outputPreview: exit.value } : {}),
+            ...(errorText ? { errorText } : {}),
+          },
+        });
+        yield* flush(true);
+      }).pipe(
+        Effect.timeoutFail({
+          duration: "20 seconds",
+          onTimeout: () => new Error("rlm_lite_timeout"),
+        }),
+        Effect.catchAll((err) =>
+          t.log("warn", "rlm_lite_failed", { message: err instanceof Error ? err.message : String(err) }),
+        ),
+      );
 
-        // Encoded parts are small; we buffer them and flush on the same cadence as text.
-        bufferedParts.push({ seq: seq++, part: encoded });
-      }).pipe(Effect.zipRight(flush(false))),
-    ).pipe(Effect.provide(modelLayer));
+      const rawPrompt = concatTextFromPromptMessages(tail, blueprint, {
+        ...(extraSystemContext ? { extraSystem: extraSystemContext } : {}),
+      });
+      const prompt = AiPrompt.make(rawPrompt);
 
-    let status: "final" | "error" | "canceled" = "final";
+      const stream = AiLanguageModel.streamText({
+        prompt,
+        toolChoice: "none",
+        disableToolCallResolution: true,
+      });
 
-    try {
+      const runStream = Stream.runForEach(stream, (part) =>
+        Effect.sync(() => {
+          if (input.controller.signal.aborted) return;
+          const encoded = encodeStreamPart(part) as AiResponse.StreamPartEncoded;
+          if (shouldIgnoreWirePart(encoded)) return;
+
+          if (encoded.type === "text-delta") {
+            const delta = String(encoded.delta ?? "");
+            bufferedDelta += delta;
+            outputText += delta;
+            return;
+          }
+
+          // For non-delta parts, materialize any pending delta first to preserve ordering.
+          materializeDelta();
+
+          // Encoded parts are small; we buffer them and flush on the same cadence as text.
+          bufferedParts.push({ seq: seq++, part: encoded });
+        }).pipe(Effect.zipRight(flush(false))),
+      ).pipe(Effect.provide(modelLayer));
+
       // Best-effort bootstrap persistence: we still run inference so the assistant can answer questions,
       // but we opportunistically persist onboarding answers when they look like answers (not questions).
       if (bootstrapStatus !== "complete" && bootstrapStage) {
@@ -1167,47 +1279,82 @@ const runAutopilotStream = (input: {
           });
           yield* flush(true);
         } else {
-          yield* runStream;
+          yield* runStream.pipe(
+            Effect.timeoutFail({
+              duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
+              onTimeout: () => new Error("model.stream_timeout"),
+            }),
+          );
           yield* flush(true);
         }
       } else {
-        yield* runStream;
+        yield* runStream.pipe(
+          Effect.timeoutFail({
+            duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
+            onTimeout: () => new Error("model.stream_timeout"),
+          }),
+        );
         yield* flush(true);
       }
+    });
 
-      if (input.controller.signal.aborted) {
-        status = "canceled";
-      }
-    } catch (err) {
+    const exit = yield* Effect.exit(streamProgram);
+
+    if (exit._tag === "Failure") {
       status = input.controller.signal.aborted ? "canceled" : "error";
-      yield* t.log("error", "run.failed", { message: err instanceof Error ? err.message : String(err) });
+      const msg = Cause.pretty(exit.cause).trim() || "stream_failed";
+      yield* t.log("error", "run.failed", { message: msg }).pipe(Effect.catchAll(() => Effect.void));
+
+      if (outputText.trim().length === 0) {
+        outputText = status === "canceled" ? "Canceled." : "Error. Please try again.";
+      }
+
       // Best-effort: append a terminal error part.
-      const errorPart: AiResponse.StreamPartEncoded = { type: "error", error: String(err), metadata: {} };
+      const errorPart: AiResponse.StreamPartEncoded = { type: "error", error: msg, metadata: {} };
       yield* flushPartsToConvex({
         convex,
         threadId: input.threadId,
         runId: input.runId,
         messageId: input.assistantMessageId,
         parts: [{ seq: seq++, part: errorPart }],
-      }).pipe(Effect.catchAll(() => Effect.void));
-    } finally {
-      // Guardrail: never finalize a run with an invisible assistant message.
-      // If the model produced no text/tool parts (e.g. only a finish part), fall back to a visible error.
-      if (status === "final" && outputText.trim().length === 0) {
-        outputText = "No response. Please try again."
-      }
-
-      yield* finalizeRunInConvex({
-        convex,
-        threadId: input.threadId,
-        runId: input.runId,
-        messageId: input.assistantMessageId,
-        status,
-        text: outputText,
-      }).pipe(Effect.catchAll(() => Effect.void));
-
-      yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status });
+      })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+            onTimeout: () => new Error("convex.append_error_timeout"),
+          }),
+        )
+        .pipe(Effect.catchAll(() => Effect.void));
+    } else if (input.controller.signal.aborted) {
+      status = "canceled";
+      if (outputText.trim().length === 0) outputText = "Canceled.";
     }
+
+    // Guardrail: never finalize a run with an invisible assistant message.
+    // If the model produced no text/tool parts (e.g. only a finish part), fall back to a visible message.
+    if (status === "final" && outputText.trim().length === 0) {
+      outputText = "No response. Please try again.";
+    }
+
+    yield* finalizeRunInConvex({
+      convex,
+      threadId: input.threadId,
+      runId: input.runId,
+      messageId: input.assistantMessageId,
+      status,
+      text: outputText,
+    })
+      .pipe(
+        Effect.timeoutFail({
+          duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+          onTimeout: () => new Error("convex.finalize_timeout"),
+        }),
+      )
+      .pipe(Effect.catchAll(() => Effect.void));
+
+    yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status }).pipe(
+      Effect.catchAll(() => Effect.void),
+    );
   }).pipe(
     Effect.provideService(RequestContextService, makeServerRequestContext(input.request)),
     Effect.provideService(TelemetryService, requestTelemetry),

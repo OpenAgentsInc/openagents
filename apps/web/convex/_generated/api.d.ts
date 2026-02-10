@@ -14,6 +14,7 @@ import type * as autopilot_defaults from "../autopilot/defaults.js";
 import type * as autopilot_messages from "../autopilot/messages.js";
 import type * as autopilot_reset from "../autopilot/reset.js";
 import type * as autopilot_threads from "../autopilot/threads.js";
+import type * as crons from "../crons.js";
 import type * as dse_active from "../dse/active.js";
 import type * as dse_artifacts from "../dse/artifacts.js";
 import type * as dse_blobs from "../dse/blobs.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   "autopilot/messages": typeof autopilot_messages;
   "autopilot/reset": typeof autopilot_reset;
   "autopilot/threads": typeof autopilot_threads;
+  crons: typeof crons;
   "dse/active": typeof dse_active;
   "dse/artifacts": typeof dse_artifacts;
   "dse/blobs": typeof dse_blobs;

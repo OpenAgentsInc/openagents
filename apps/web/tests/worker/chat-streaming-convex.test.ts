@@ -13,6 +13,7 @@ declare module "cloudflare:test" {
 
 const state = vi.hoisted(() => ({
   mode: "fast" as "fast" | "slow",
+  failSnapshot: false,
   // Records of calls made via ConvexService (worker-side).
   createRunCalls: [] as any[],
   appendPartsCalls: [] as any[],
@@ -85,8 +86,18 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
 
   const isRecord = (u: unknown): u is Record<string, any> => Boolean(u) && typeof u === "object";
 
-  const query = (ref: any, args: any) =>
-    Effect.sync(() => {
+  const query = (ref: any, args: any) => {
+    if (
+      state.failSnapshot &&
+      isRecord(args) &&
+      typeof args.threadId === "string" &&
+      typeof args.maxMessages === "number" &&
+      typeof args.maxParts === "number"
+    ) {
+      return Effect.fail(new Error("snapshot_fail"));
+    }
+
+    return Effect.sync(() => {
       if (
         isRecord(args) &&
         typeof args.threadId === "string" &&
@@ -126,6 +137,7 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
 
       throw new Error(`Unexpected Convex query in tests: ${String(ref?.name ?? ref)}`);
     });
+  };
 
   const mutation = (ref: any, args: any) =>
     Effect.sync(() => {
@@ -179,6 +191,7 @@ const { default: worker } = await import("../../src/effuse-host/worker");
 describe("apps/web worker autopilot streaming (Convex-first)", () => {
   it("writes messageParts in a single chunked batch (no per-token writes)", async () => {
     state.mode = "fast";
+    state.failSnapshot = false;
     state.createRunCalls.length = 0;
     state.appendPartsCalls.length = 0;
     state.finalizeRunCalls.length = 0;
@@ -233,6 +246,7 @@ describe("apps/web worker autopilot streaming (Convex-first)", () => {
 
   it("cancel requests are persisted (best-effort) and finalize as canceled", async () => {
     state.mode = "slow";
+    state.failSnapshot = false;
     state.cancelCalls.length = 0;
     state.appendPartsCalls.length = 0;
     state.finalizeRunCalls.length = 0;
@@ -273,5 +287,35 @@ describe("apps/web worker autopilot streaming (Convex-first)", () => {
 
     const lastFinalize = state.finalizeRunCalls.at(-1)?.args as any;
     expect(String(lastFinalize.status)).toBe("canceled");
+  });
+
+  it("finalizes as error if Convex snapshot load fails (no stuck streaming)", async () => {
+    state.mode = "fast";
+    state.failSnapshot = true;
+    state.createRunCalls.length = 0;
+    state.appendPartsCalls.length = 0;
+    state.finalizeRunCalls.length = 0;
+    state.snapshotCalls.length = 0;
+
+    const ORIGIN = "http://example.com";
+
+    const request = new Request(`${ORIGIN}/api/autopilot/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ threadId: "thread-err", anonKey: "anon-key-err", text: "hi" }),
+    });
+
+    const ctx = createExecutionContext();
+    const envWithAi = Object.assign(Object.create(env as any), { AI: {} }) as any;
+    const response = await worker.fetch(request, envWithAi, ctx);
+    if (response.status !== 200) {
+      throw new Error(`Unexpected status ${response.status}: ${await response.text()}`);
+    }
+
+    await waitOnExecutionContext(ctx);
+
+    expect(state.finalizeRunCalls.length).toBeGreaterThan(0);
+    const lastFinalize = state.finalizeRunCalls.at(-1)?.args as any;
+    expect(String(lastFinalize.status)).toBe("error");
   });
 });

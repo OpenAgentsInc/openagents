@@ -227,26 +227,6 @@ const home: Route<HomeData, AppServices> = {
   head: () => Effect.succeed({ title: "OpenAgents" }),
 }
 
-// Deprecated: redirect to home (auth is now in the home chat pane).
-const loginRedirect: Route<{}, AppServices> = {
-  id: "/login",
-  match: matchExact("/login"),
-  guard: (ctx) => prelaunchRedirectGuard(ctx),
-  loader: () => Effect.succeed(RouteOutcome.redirect("/", 302)),
-  view: () => Effect.succeed(homePageTemplate()),
-  head: () => Effect.succeed({ title: "OpenAgents" }),
-}
-
-// Deprecated: redirect to home (autopilot is now in the home chat pane).
-const autopilotRedirect: Route<{}, AppServices> = {
-  id: "/autopilot",
-  match: matchExact("/autopilot"),
-  guard: (ctx) => prelaunchRedirectGuard(ctx),
-  loader: () => Effect.succeed(RouteOutcome.redirect("/", 302)),
-  view: () => Effect.succeed(homePageTemplate()),
-  head: () => Effect.succeed({ title: "OpenAgents" }),
-}
-
 const deck: Route<{}, AppServices> = {
   id: "/deck",
   match: matchExact("/deck"),
@@ -502,8 +482,6 @@ const chatLegacyRedirect: Route<{}, AppServices> = {
 
 export const appRoutes = [
   home,
-  loginRedirect,
-  autopilotRedirect,
   deck,
   storybook,
   dseOpsRuns,
