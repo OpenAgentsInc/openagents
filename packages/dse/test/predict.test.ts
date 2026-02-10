@@ -12,6 +12,7 @@ import { layerInMemory } from "../src/runtime/policyRegistry.js";
 import { make as makePredict } from "../src/runtime/predict.js";
 import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
 import { makeInMemory as makeReceiptRecorder } from "../src/runtime/receipt.js";
+import { layerInMemory as varSpaceLayerInMemory } from "../src/runtime/varSpace.js";
 
 test("Predict applies active policy params (instruction + few-shot selection)", async () => {
   type In = { message: string };
@@ -97,7 +98,8 @@ test("Predict applies active policy params (instruction + few-shot selection)", 
         policyLayer,
         blobLayer,
         receiptRecorder.layer,
-        budgetLayerNoop()
+        budgetLayerNoop(),
+        varSpaceLayerInMemory()
       )
     )
   );

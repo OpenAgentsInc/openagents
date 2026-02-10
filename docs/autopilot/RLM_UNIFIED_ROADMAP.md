@@ -322,3 +322,36 @@ Production smoke guidance:
   - `packages/dse/src/index.ts`
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
+
+### 2026-02-10: Phase D (Autopilot integration: routing + UI + Convex persistence) — implemented in `apps/web`
+
+- Added Convex-backed persistence for RLM state (scoped by `threadId` + `runId`):
+  - new tables: `dseBlobs`, `dseVarSpace`
+  - schema: `apps/web/convex/schema.ts`
+  - functions:
+    - `apps/web/convex/dse/blobs.ts` (`putText`, `getText`)
+    - `apps/web/convex/dse/varSpace.ts` (`getVar`, `putJson`, `putBlob`, `del`, `list`)
+- Worker-side DSE environment now provides Convex-backed `BlobStore` + `VarSpace` for Autopilot runs:
+  - new layers: `layerDseBlobStoreFromConvex`, `layerDseVarSpaceFromConvex`
+  - updated: `layerDsePredictEnvForAutopilotRun`
+  - implementation: `apps/web/src/effuse-host/dse.ts`
+- Added an RLM-lite summarization signature (strategy pinned in params):
+  - signature id: `@openagents/autopilot/rlm/SummarizeThread.v1`
+  - defaults: `strategy.id = rlm_lite.v1` with strict RLM budgets (`maxRlmIterations`, `maxSubLmCalls`)
+  - implementation: `apps/autopilot-worker/src/dseCatalog.ts`
+- Integrated a gated RLM trigger into Autopilot chat:
+  - trigger: explicit `/rlm` / recap phrasing OR high “older history” pressure
+  - gate: requires `OPENROUTER_API_KEY` (avoid weak controller models in RLM loops)
+  - behavior: pre-summarize older messages via DSE + RLM-lite, inject summary into the main system prompt, and emit an auditable `dse.signature` card with `strategyId`, budgets, and `rlmTrace`
+  - implementation: `apps/web/src/effuse-host/autopilot.ts`
+- UI: surfaced RLM/DSE observability fields in chat cards:
+  - extended `dse.signature` part shape: `apps/web/src/effect/chatProtocol.ts`
+  - mapping + rendering: `apps/web/src/effuse-app/controllers/autopilotChatParts.ts`, `apps/web/src/effuse-pages/autopilot.ts`
+  - ensured the UI rerender key considers strategy/trace: `apps/web/src/effuse-app/controllers/autopilotController.ts`
+- Fixed Autopilot Worker DSE env typing by providing `VarSpace`:
+  - `apps/autopilot-worker/src/dseServices.ts`
+- Verified (TypeScript):
+  - `cd apps/web && npx convex codegen`
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/autopilot-worker && npm run typecheck`
+  - `cd apps/web && npm test && npm run lint`

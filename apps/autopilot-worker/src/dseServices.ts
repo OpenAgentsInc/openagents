@@ -7,6 +7,7 @@ import {
   Hash,
   Policy,
   Receipt,
+  VarSpace,
   type BlobRef,
   type DseSignature
 } from "@openagentsinc/dse";
@@ -196,6 +197,7 @@ export async function ensureDefaultArtifacts(
 export function layerDseFromSql(sql: SqlTag): Layer.Layer<
   | Policy.PolicyRegistryService
   | BlobStore.BlobStoreService
+  | VarSpace.VarSpaceService
   | Receipt.ReceiptRecorderService
   | Budget.ExecutionBudgetService
 > {
@@ -371,7 +373,13 @@ export function layerDseFromSql(sql: SqlTag): Layer.Layer<
 
   const budgetLayer = Budget.layerInMemory();
 
-  return Layer.mergeAll(policyLayer, blobLayer, receiptLayer, budgetLayer);
+  return Layer.mergeAll(
+    policyLayer,
+    blobLayer,
+    receiptLayer,
+    budgetLayer,
+    VarSpace.layerInMemory(),
+  );
 }
 
 export function rollbackActiveArtifact(sql: SqlTag, signatureId: string): {

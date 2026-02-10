@@ -28,8 +28,13 @@ export type DseSignatureCardModel = {
   readonly signatureId: string;
   readonly compiled_id?: string | undefined;
   readonly receiptId?: string | undefined;
+  readonly strategyId?: string | undefined;
+  readonly strategyReason?: string | undefined;
   readonly durationMs?: number | undefined;
   readonly budget?: DseBudgetModel | undefined;
+  readonly contextPressure?: BoundedText | undefined;
+  readonly promptRenderStats?: BoundedText | undefined;
+  readonly rlmTrace?: BoundedText | undefined;
   readonly outputPreview?: BoundedText | undefined;
   readonly errorText?: BoundedText | undefined;
 };
@@ -190,8 +195,16 @@ const dseCardShell = (opts: { readonly title: string; readonly state: string; re
 };
 
 const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
-  const budget = m.budget?.usage
-    ? `elapsedMs=${m.budget?.usage?.elapsedMs ?? "?"} lmCalls=${m.budget?.usage?.lmCalls ?? "?"} outputChars=${m.budget?.usage?.outputChars ?? "?"}`
+  const usage = m.budget?.usage;
+  const budget = usage
+    ? [
+        `elapsedMs=${usage.elapsedMs ?? "?"}`,
+        `lmCalls=${usage.lmCalls ?? "?"}`,
+        ...(usage.toolCalls != null ? [`toolCalls=${usage.toolCalls}`] : []),
+        ...(usage.rlmIterations != null ? [`rlmIterations=${usage.rlmIterations}`] : []),
+        ...(usage.subLmCalls != null ? [`subLmCalls=${usage.subLmCalls}`] : []),
+        `outputChars=${usage.outputChars ?? "?"}`,
+      ].join(" ")
     : null;
 
   const body = html`
@@ -199,7 +212,12 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
     ${dseRow("compiled_id", m.compiled_id)}
     ${dseRow("durationMs", m.durationMs)}
     ${dseRow("receiptId", m.receiptId)}
+    ${dseRow("strategyId", m.strategyId)}
+    ${dseRow("strategyReason", m.strategyReason)}
     ${budget ? dseRow("budget", budget) : html``}
+    ${m.contextPressure ? html`<div>${dseRow("contextPressure", "")}${dseBoundedText(m.contextPressure)}</div>` : html``}
+    ${m.promptRenderStats ? html`<div>${dseRow("promptRenderStats", "")}${dseBoundedText(m.promptRenderStats)}</div>` : html``}
+    ${m.rlmTrace ? html`<div>${dseRow("rlmTrace", "")}${dseBoundedText(m.rlmTrace)}</div>` : html``}
     ${m.outputPreview ? html`<div>${dseRow("outputPreview", "")}${dseBoundedText(m.outputPreview)}</div>` : html``}
     ${m.errorText ? html`<div>${dseRow("error", "")}${dseBoundedText(m.errorText)}</div>` : html``}
   `;

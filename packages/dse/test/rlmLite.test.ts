@@ -11,6 +11,7 @@ import { make as makePredict } from "../src/runtime/predict.js";
 import { layerInMemory as blobLayerInMemory, BlobStoreService } from "../src/runtime/blobStore.js";
 import { layerInMemory as budgetLayerInMemory } from "../src/runtime/budget.js";
 import { makeInMemory as makeReceiptRecorder } from "../src/runtime/receipt.js";
+import { layerInMemory as varSpaceLayerInMemory } from "../src/runtime/varSpace.js";
 
 test("Predict supports rlm_lite.v1 strategy with bounded iterations and emits an rlmTrace", async () => {
   type In = { question: string };
@@ -81,7 +82,8 @@ test("Predict supports rlm_lite.v1 strategy with bounded iterations and emits an
         policyLayerInMemory(),
         blobLayer,
         receipts.layer,
-        budgetLayerInMemory()
+        budgetLayerInMemory(),
+        varSpaceLayerInMemory()
       )
     )
   );
