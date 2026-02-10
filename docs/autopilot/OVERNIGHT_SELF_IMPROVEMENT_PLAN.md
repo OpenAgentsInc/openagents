@@ -524,6 +524,8 @@ Current endpoints and storage:
   - `docs/autopilot/STREAM_TESTING.md`
 
 - 2026-02-10T11:58:43Z Doc maintenance: updated Phase 6 + code surface section to match shipped read-only pages and the current Worker API surface.
+
+- 2026-02-10T12:01:48Z Docs: updated `docs/autopilot/DSE_PLAYBOOK.md` to include the canonical headless overnight runner and link back to this runbook.
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
