@@ -178,7 +178,7 @@ export const makeOpsClient = (input: {
   const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : 15_000
 
   const post = async (path: string, body: unknown): Promise<any> => {
-    const { response, json } = await fetchJsonWithTimeout(input.fetchFn, {
+    const { response, json, requestId } = await fetchJsonWithTimeout(input.fetchFn, {
       url: `${baseUrl}${path}`,
       timeoutMs,
       init: {
@@ -194,7 +194,7 @@ export const makeOpsClient = (input: {
 
     if (!response.ok || !json || json.ok !== true) {
       const msg = json && typeof json.error === "string" ? json.error : `HTTP ${response.status}`
-      throw new Error(`dse_ops_http_error path=${path} ${msg}`)
+      throw new Error(`dse_ops_http_error path=${path}${requestId ? ` req=${requestId}` : ""} ${msg}`)
     }
     return json
   }
@@ -294,7 +294,7 @@ export const makeDseAdminClient = (input: {
 
     if (!response.ok || !json || json.ok !== true) {
       const msg = json && typeof json.error === "string" ? json.error : `HTTP ${response.status}`
-      throw new Error(`dse_admin_http_error path=${path} ${msg}`)
+      throw new Error(`dse_admin_http_error path=${path}${requestId ? ` req=${requestId}` : ""} ${msg}`)
     }
     return { requestId, result: json }
   }
@@ -315,7 +315,7 @@ export const makeDseAdminClient = (input: {
 
     if (!response.ok || !json || json.ok !== true) {
       const msg = json && typeof json.error === "string" ? json.error : `HTTP ${response.status}`
-      throw new Error(`dse_admin_http_error path=${path} ${msg}`)
+      throw new Error(`dse_admin_http_error path=${path}${requestId ? ` req=${requestId}` : ""} ${msg}`)
     }
     return { requestId, result: json }
   }
