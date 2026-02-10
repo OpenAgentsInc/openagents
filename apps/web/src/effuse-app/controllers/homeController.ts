@@ -49,6 +49,32 @@ type HomeChatDeps = {
 
 const CHAT_PANE_ID = "home-chat"
 
+function copyTextToClipboard(text: string): void {
+  if (!text) return
+  const doCopy = (): boolean => {
+    try {
+      const ta = document.createElement("textarea")
+      ta.value = text
+      ta.style.position = "fixed"
+      ta.style.left = "-9999px"
+      ta.style.top = "0"
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      const ok = document.execCommand("copy")
+      document.body.removeChild(ta)
+      return ok
+    } catch {
+      return false
+    }
+  }
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => {}, () => { doCopy() })
+  } else {
+    doCopy()
+  }
+}
+
 const normalizeEmail = (raw: string): string => raw.trim().toLowerCase()
 
 /** Basic email check: non-empty, has @, has domain with at least one dot. */
@@ -531,8 +557,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             return html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
                     <div class="flex flex-col gap-2">${partEls}</div>
                     <span data-oa-copy-source style="display:none">${copyText}</span>
-                    <div class="flex items-center gap-1.5 mt-1.5 rounded-md bg-gray-800/90 px-1.5 py-1 w-fit">
-                      <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/60 hover:text-white/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded px-1.5 py-0.5">Copy</button>
+                    <div class="mt-1.5 w-fit">
+                      <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Copy</button>
                     </div>
                   </div>`
           })}
@@ -551,8 +577,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               : html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
                         ${streamdown(m.text, { mode: "static" })}
                         <span data-oa-copy-source style="display:none">${m.text}</span>
-                        <div class="flex items-center gap-1.5 mt-1.5 rounded-md bg-gray-800/90 px-1.5 py-1 w-fit">
-                          <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/60 hover:text-white/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded px-1.5 py-0.5">Copy</button>
+                        <div class="mt-1.5 w-fit">
+                          <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Copy</button>
                         </div>
                       </div>`,
           )}
@@ -594,10 +620,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               copyBtn.addEventListener("click", (e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                const md = getChatMarkdown()
-                if (md && navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(md).catch(() => {})
-                }
+                copyTextToClipboard(getChatMarkdown())
               })
               titleActions.appendChild(copyBtn)
               hasAddedPaneCopyButton = true
@@ -707,13 +730,12 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
           paneContentSlot.querySelectorAll("[data-oa-home-chat-copy]").forEach((btn) => {
             if (!(btn instanceof HTMLElement)) return
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", (e) => {
+              e.preventDefault()
               const block = btn.closest("[data-chat-role=\"assistant\"]")
               const source = block?.querySelector("[data-oa-copy-source]")
               const text = source?.textContent ?? ""
-              if (text && navigator.clipboard?.writeText) {
-                navigator.clipboard.writeText(text).catch(() => {})
-              }
+              copyTextToClipboard(text)
             })
           })
 
