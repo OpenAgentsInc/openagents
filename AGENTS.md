@@ -157,6 +157,14 @@ Doc gate for contracts
   - Propose options: commit the changes, discard the changes, or (if the user explicitly agrees) use a temporary worktree.
 - If a worktree is used (only with explicit user approval), remove it immediately after use (`git worktree remove …`) to avoid confusion and accidental deploys from the wrong checkout.
 
+### Git Hygiene (No Surprise Stash)
+
+- **Do not use `git stash` without explicit user confirmation.** This repo is often multi-agent; stashes hide work and can disrupt other agents.
+- This includes: `git stash push`, `pop`, `apply`, `drop`, and `git stash branch`.
+- If you need to park changes and the user has not explicitly approved stashing:
+  - Prefer a WIP commit on a dedicated branch, or
+  - Export a patch outside the repo (e.g. `/tmp/...`) and keep the worktree intact.
+
 ---
 
 ## "Where do I change things?" (map)
