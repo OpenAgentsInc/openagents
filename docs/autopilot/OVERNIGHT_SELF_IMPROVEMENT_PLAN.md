@@ -107,6 +107,8 @@ Where to look for results (read-only pages backed by Convex):
 - `/dse/ops/:runId` (timeline + links)
 - `/dse/signature/:signatureId` (active pointer + compile/canary history + dataset/receipts)
 
+Note: the CLI `apps/web/scripts/dse-overnight.ts` auto-sets its working directory to the repo root, so it can be run from any `cwd`.
+
 ## Phase Plan (Programmatic Loop First)
 
 This plan is **9 phases**.
@@ -542,6 +544,10 @@ Current endpoints and storage:
 - 2026-02-10T12:06:43Z Docs: updated `docs/autopilot/SELF_IMPROVE_PLAN.md` to reflect that the staged plan is now implemented and the canonical execution runbook is this doc.
 
 - 2026-02-10T12:10:22Z Docs: updated `docs/autopilot/PROD_E2E_TESTING.md` to reference the overnight runner + `npm run wrangler:secrets` for syncing required prod E2E secrets.
+
+- 2026-02-10T12:13:09Z Ops: made the overnight runner CLI resilient to being invoked from any working directory (auto-`chdir` to repo root).
+- Updated:
+  - `apps/web/scripts/dse-overnight.ts`
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)

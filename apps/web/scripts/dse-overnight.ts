@@ -1,8 +1,15 @@
 #!/usr/bin/env bun
 
 import { spawn } from "node:child_process"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { parseOvernightArgs, runOvernight, usage, validateEnv, type RunCommand } from "./dse-overnight-lib"
+
+// Ensure this CLI is runnable from any cwd: most paths (fixtures, verify steps) are repo-root relative.
+// `apps/web/scripts` -> repo root: `../../..`
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
+process.chdir(repoRoot)
 
 const runCommand: RunCommand = async ({ cwd, command, args, env, timeoutMs }) => {
   const startedAt = Date.now()
@@ -88,4 +95,3 @@ main()
     console.error(String(err))
     process.exitCode = 1
   })
-
