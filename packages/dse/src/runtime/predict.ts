@@ -2,6 +2,7 @@ import { Effect, JSONSchema, Schema } from "effect";
 
 import type { DseSignature } from "../signature.js";
 import type { DseParams } from "../params.js";
+import type { BlobRef } from "../blob.js";
 
 import { canonicalJson } from "../internal/canonicalJson.js";
 import {
@@ -27,6 +28,8 @@ import {
   type PromptRenderStatsV1
 } from "./render.js";
 import { ReceiptRecorderError, ReceiptRecorderService } from "./receipt.js";
+import { executeRlmAction, RlmActionV1Schema, RlmKernelError } from "./rlmKernel.js";
+import { layerInMemory as varSpaceLayerInMemory, VarSpaceService } from "./varSpace.js";
 
 export type PredictEnv =
   | LmClientService
@@ -49,6 +52,7 @@ export type PredictError =
   | PolicyRegistryError
   | PromptRenderError
   | OutputDecodeError
+  | RlmKernelError
   | PredictStrategyError
   | ReceiptRecorderError
   | HashError;
@@ -130,6 +134,7 @@ export function make<I, O>(
     let outputHash: string | undefined;
     let promptRenderStats: PromptRenderStatsV1 | undefined;
     let contextPressure: ContextPressureV1 | undefined;
+    let rlmTrace: { readonly blob: BlobRef; readonly eventCount: number } | undefined;
 
     // Phase B: strategy is pinned via params (and thus via compiled artifacts).
     const strategyId = params.strategy?.id ?? "direct.v1";
@@ -189,6 +194,7 @@ export function make<I, O>(
           ...(contextPressure ? { contextPressure } : {}),
           ...(repairs > 0 ? { repairCount: repairs } : {}),
           budget: budgetSnapshot,
+          ...(rlmTrace ? { rlmTrace } : {}),
           result
         });
       });
@@ -268,12 +274,255 @@ export function make<I, O>(
       return decoded;
     });
 
-    const rlmLitePredict: Effect.Effect<O, PredictError, PredictEnv> = Effect.fail(
-      PredictStrategyError.make({
-        strategyId,
-        message: "Predict strategy rlm_lite.v1 is not implemented yet (Phase C)."
-      })
-    );
+    const rlmLitePredict: Effect.Effect<O, PredictError, PredictEnv> = Effect.gen(function* () {
+      const budget0 = yield* budget.snapshot();
+      const maxIterations = budget0.limits.maxRlmIterations;
+      const maxSubLmCalls = budget0.limits.maxSubLmCalls;
+      if (maxIterations === undefined) {
+        return yield* Effect.fail(
+          PredictStrategyError.make({
+            strategyId,
+            message:
+              "rlm_lite.v1 requires budgets.maxRlmIterations to be set (pinned in params/artifact) to prevent unbounded loops."
+          })
+        );
+      }
+      if (maxSubLmCalls === undefined) {
+        return yield* Effect.fail(
+          PredictStrategyError.make({
+            strategyId,
+            message:
+              "rlm_lite.v1 requires budgets.maxSubLmCalls to be set (pinned in params/artifact) to prevent unbounded recursion/fanout."
+          })
+        );
+      }
+
+      // Render the base prompt in "metadata only" mode for blob context entries so we don't
+      // push full blob previews into token space. The full blobs remain accessible via RLM ops.
+      const rendered = yield* renderPromptMessagesWithStats({
+        signature,
+        input,
+        params,
+        blobContextMode: "metadata_only"
+      });
+      promptRenderStats = rendered.stats;
+      contextPressure = contextPressureFromRenderStats(rendered.stats);
+
+      const baseMessages = rendered.messages;
+      renderedHash = yield* renderedPromptHash(baseMessages);
+
+      const actionSchemaJson = JSONSchema.make(RlmActionV1Schema);
+      const actionSchemaText = canonicalJson(actionSchemaJson);
+
+      const controllerSystem = [
+        baseMessages.find((m) => m.role === "system")?.content ?? "",
+        "You are an RLM-lite controller. You must choose the next action to execute.",
+        "Rules:",
+        "- Output MUST be a single JSON object that matches the RLM Action schema exactly.",
+        "- Do not wrap in markdown fences.",
+        "- Prefer bounded operations: preview/search/chunk + extract_over_chunks, then Final.",
+        `- Budget: maxIterations=${maxIterations} maxSubLmCalls=${maxSubLmCalls}.`,
+        "RLM Action schema (JSON Schema):",
+        actionSchemaText
+      ]
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .join("\n\n");
+
+      const controllerMessages: Array<{ readonly role: "system" | "user" | "assistant"; readonly content: string }> = [
+        { role: "system", content: controllerSystem }
+      ];
+
+      for (const m of baseMessages) {
+        if (m.role === "system") continue;
+        controllerMessages.push(m);
+      }
+
+      const traceEvents: Array<unknown> = [];
+
+      const stableBudgetForPrompt = (snap: {
+        readonly limits: any;
+        readonly usage: any;
+      }) => ({
+        limits: snap.limits,
+        usage: {
+          lmCalls: snap.usage.lmCalls,
+          toolCalls: snap.usage.toolCalls,
+          rlmIterations: snap.usage.rlmIterations,
+          subLmCalls: snap.usage.subLmCalls,
+          outputChars: snap.usage.outputChars
+        }
+      });
+
+      const pushTrace = (event: unknown) => {
+        const MAX_EVENTS = 10_000;
+        if (traceEvents.length >= MAX_EVENTS) return;
+        traceEvents.push(event);
+      };
+
+      const flushTraceToBlob = Effect.gen(function* () {
+        if (traceEvents.length === 0) return;
+        const blobStore = yield* BlobStoreService;
+        const doc = {
+          format: "openagents.dse.rlm_trace",
+          formatVersion: 1,
+          strategyId,
+          events: traceEvents
+        };
+        const text = canonicalJson(doc);
+        const attempt = yield* Effect.either(
+          blobStore.putText({ text, mime: "application/json" })
+        );
+        if (attempt._tag === "Right") {
+          rlmTrace = { blob: attempt.right, eventCount: traceEvents.length };
+        }
+      });
+
+      // Seed VarSpace from the signature prompt context entries so blobs live in programmatic space.
+      const varSpaceLayer = varSpaceLayerInMemory();
+
+      const run = Effect.gen(function* () {
+        const vars = yield* VarSpaceService;
+
+        for (const block of signature.prompt.blocks) {
+          if (block._tag !== "Context") continue;
+          for (const entry of block.entries) {
+            if ("value" in entry) {
+              yield* vars.putJson(entry.key, entry.value).pipe(
+                Effect.catchAll((cause) =>
+                  Effect.fail(
+                    RlmKernelError.make({
+                      message: `VarSpace seed failed (key=${entry.key})`,
+                      cause
+                    })
+                  )
+                )
+              );
+            } else {
+              yield* vars.putBlob(entry.key, entry.blob).pipe(
+                Effect.catchAll((cause) =>
+                  Effect.fail(
+                    RlmKernelError.make({
+                      message: `VarSpace seed failed (key=${entry.key})`,
+                      cause
+                    })
+                  )
+                )
+              );
+            }
+          }
+        }
+
+        let lastObservation: unknown = null;
+
+        for (let iteration = 1; iteration <= Math.max(0, Math.floor(maxIterations)); iteration++) {
+          yield* budget.onRlmIteration();
+          yield* budget.checkTime();
+
+          const metas = yield* vars.list().pipe(
+            Effect.catchAll((cause) =>
+              Effect.fail(
+                RlmKernelError.make({
+                  message: "VarSpace.list failed",
+                  cause
+                })
+              )
+            )
+          );
+          const snap = yield* budget.snapshot();
+
+          const state = {
+            iteration,
+            budgets: stableBudgetForPrompt(snap),
+            vars: metas,
+            ...(lastObservation != null ? { lastObservation } : {})
+          };
+
+          controllerMessages.push({
+            role: "user",
+            content: "RLM state:\n" + canonicalJson(state)
+          });
+
+          // Keep controller history bounded (system + base prompt + recent state/action/obs).
+          const MAX_CONTROLLER_MESSAGES = 30;
+          if (controllerMessages.length > MAX_CONTROLLER_MESSAGES) {
+            const head = controllerMessages.slice(0, 2);
+            const tail = controllerMessages.slice(controllerMessages.length - (MAX_CONTROLLER_MESSAGES - 2));
+            controllerMessages.splice(0, controllerMessages.length, ...head, ...tail);
+          }
+
+          const promptHash = yield* renderedPromptHash(controllerMessages);
+
+          yield* budget.onLmCall();
+          const resp = yield* lm.complete({
+            messages: controllerMessages,
+            modelId: params.model?.modelId,
+            temperature: params.model?.temperature,
+            topP: params.model?.topP,
+            maxTokens: Math.min(1024, params.model?.maxTokens ?? 1024)
+          });
+          yield* budget.onOutputChars(resp.text.length);
+
+          controllerMessages.push({ role: "assistant", content: resp.text });
+
+          const action = yield* decodeJsonOutputWithMode(RlmActionV1Schema, resp.text, { mode: "jsonish" });
+
+          pushTrace({ iteration, promptHash, action });
+
+          const step = yield* executeRlmAction({ action, params, budget });
+          if (step._tag === "Final") {
+            // Decode into the signature output schema.
+            const decoded = yield* Effect.try({
+              try: () => Schema.decodeUnknownSync(signature.output)(step.output),
+	              catch: (cause) =>
+	                OutputDecodeError.make({
+	                  message: "RLM Final output did not match signature output schema",
+	                  cause,
+	                  outputPreview: (() => {
+	                    try {
+	                      return canonicalJson(step.output).slice(0, 500);
+	                    } catch {
+	                      return String(step.output).slice(0, 500);
+	                    }
+	                  })()
+	                })
+	            });
+
+            const outputEncoded = yield* Effect.try({
+              try: () => Schema.encodeSync(signature.output)(decoded),
+              catch: (cause) =>
+                OutputDecodeError.make({
+                  message: "Failed to encode decoded output",
+                  cause
+                })
+            });
+
+            outputHash = yield* sha256IdFromCanonicalJson(outputEncoded);
+            return decoded;
+          }
+
+          lastObservation = step.observation;
+          pushTrace({ iteration, observation: step.observation });
+
+          controllerMessages.push({
+            role: "user",
+            content: "Observation:\n" + canonicalJson(step.observation).slice(0, 10_000)
+          });
+        }
+
+        return yield* Effect.fail(
+          PredictStrategyError.make({
+            strategyId,
+            message: `rlm_lite.v1 exhausted iterations without producing Final (maxIterations=${maxIterations})`
+          })
+        );
+      }).pipe(
+        Effect.provide(varSpaceLayer),
+        Effect.ensuring(flushTraceToBlob)
+      );
+
+      return yield* run;
+    });
 
     const main: Effect.Effect<O, PredictError, PredictEnv> = (() => {
       switch (strategyId) {

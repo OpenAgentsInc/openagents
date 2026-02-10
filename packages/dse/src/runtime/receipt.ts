@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 
+import { BlobRefSchema, type BlobRef } from "../blob.js";
+
 import { DseExecutionBudgetsV1Schema, type DseExecutionBudgetsV1 } from "../params.js";
 import {
   ContextPressureV1Schema,
@@ -59,6 +61,13 @@ export type PredictReceiptV1 = {
   readonly contextPressure?: ContextPressureV1 | undefined;
 
   readonly repairCount?: number | undefined;
+
+  readonly rlmTrace?:
+    | {
+        readonly blob: BlobRef;
+        readonly eventCount: number;
+      }
+    | undefined;
 
   readonly budget?:
     | {
@@ -127,6 +136,13 @@ export const PredictReceiptV1Schema: Schema.Schema<PredictReceiptV1> =
     contextPressure: Schema.optional(ContextPressureV1Schema),
 
     repairCount: Schema.optional(Schema.Number),
+
+    rlmTrace: Schema.optional(
+      Schema.Struct({
+        blob: BlobRefSchema,
+        eventCount: Schema.Number
+      })
+    ),
 
     budget: Schema.optional(
       Schema.Struct({

@@ -295,3 +295,30 @@ Production smoke guidance:
   - `packages/dse/src/runtime/receipt.ts`
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
+
+### 2026-02-10: Phase C (RLM-lite Kernel + VarSpace) — implemented in DSE
+
+- Added `VarSpace` service (small JSON values + BlobRefs, bounded in-memory implementation):
+  - `packages/dse/src/runtime/varSpace.ts`
+- Implemented the RLM-lite kernel with a structured JSON action DSL:
+  - actions: `preview`, `search`, `load`, `chunk`, `write_var`, `extract_over_chunks`, `sub_lm`, optional `tool_call`, `final`
+  - budgets enforced at the kernel boundary (`onRlmIteration`, `onSubLmCall`, `onToolCall`, `onLmCall`, `onOutputChars`)
+  - `packages/dse/src/runtime/rlmKernel.ts`
+- Implemented `rlm_lite.v1` strategy execution in `Predict(signature)`:
+  - controller loop emits JSON actions, kernel executes them, `Final` is schema-decoded into signature output
+  - requires pinned limits: `budgets.maxRlmIterations` and `budgets.maxSubLmCalls` (fail closed if missing)
+  - `packages/dse/src/runtime/predict.ts`
+- Ensured long-blob context stays in programmatic space for RLM controller:
+  - renderer supports `blobContextMode: "metadata_only"` so blob context entries are not inlined into token space
+  - `packages/dse/src/runtime/render.ts`
+- Added per-iteration trace events:
+  - RLM trace is serialized deterministically to a blob (`openagents.dse.rlm_trace`) and referenced from the predict receipt as `rlmTrace`
+  - `packages/dse/src/runtime/predict.ts`, `packages/dse/src/runtime/receipt.ts`
+- Added optional `ToolExecutor` service contract for `tool_call` actions (behind allowlist):
+  - `packages/dse/src/runtime/toolExecutor.ts`
+- Added an end-to-end test for `rlm_lite.v1`:
+  - `packages/dse/test/rlmLite.test.ts`
+- Exported the new runtime modules:
+  - `packages/dse/src/index.ts`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
