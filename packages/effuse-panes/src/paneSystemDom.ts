@@ -3,6 +3,29 @@ import { DEFAULT_PANE_CONSTRAINTS, normalizePaneRect, type Pane, PaneStore } fro
 import { HotbarModel, type HotbarSlot } from "./hotbar.js";
 import { ResizablePane, ResizeEdge } from "./resizablePane.js";
 
+const resizeEdgeCursor = (edge: ResizeEdge): string => {
+  switch (edge) {
+    case ResizeEdge.Top:
+      return "n-resize";
+    case ResizeEdge.Bottom:
+      return "s-resize";
+    case ResizeEdge.Left:
+      return "w-resize";
+    case ResizeEdge.Right:
+      return "e-resize";
+    case ResizeEdge.TopLeft:
+      return "nwse-resize";
+    case ResizeEdge.TopRight:
+      return "nesw-resize";
+    case ResizeEdge.BottomLeft:
+      return "nesw-resize";
+    case ResizeEdge.BottomRight:
+      return "nwse-resize";
+    default:
+      return "";
+  }
+};
+
 export type PaneSystemTheme = Readonly<{
   background: string;
   surface: string;
@@ -504,6 +527,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     const point = pointFromEvent(root, ev);
 
     if (canvasPan) {
+      root.style.cursor = "grabbing";
       const dx = point.x - canvasPan.last.x;
       const dy = point.y - canvasPan.last.y;
       store.offsetAll(dx, dy);
@@ -517,6 +541,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     }
 
     if (paneResize) {
+      root.style.cursor = resizeEdgeCursor(paneResize.edge);
       const start = paneResize.startRect;
       const startBounds: Bounds = { ...start };
       const next = resizer.resizeBounds(
@@ -545,6 +570,25 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       scheduleRender();
       return;
     }
+
+    // Hover: show resize cursor over pane edges when resize is enabled
+    root.style.cursor = "";
+    if (cfg.enablePaneResize) {
+      const overPaneId = paneAt(store, point);
+      if (overPaneId !== undefined) {
+        const pane = store.pane(overPaneId);
+        if (pane) {
+          const edge = resizer.edgeAt(boundsForPane(pane), point);
+          if (edge !== ResizeEdge.None) {
+            root.style.cursor = resizeEdgeCursor(edge);
+          }
+        }
+      }
+    }
+  };
+
+  const clearCursor = (): void => {
+    root.style.cursor = "";
   };
 
   const onPointerUp = (ev: PointerEvent): void => {
@@ -554,6 +598,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       const rect = store.pane(paneResize.paneId)?.rect;
       if (rect) store.setLastPosition(normalizePaneRect(rect, cfg.paneConstraints));
       paneResize = undefined;
+      clearCursor();
       renderNow();
       return;
     }
@@ -562,14 +607,20 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       if (rect) store.setLastPosition(normalizePaneRect(rect, cfg.paneConstraints));
       paneDrag = undefined;
       root.removeAttribute("data-oa-pane-dragging");
+      clearCursor();
       renderNow();
       return;
     }
     if (canvasPan) {
       canvasPan = undefined;
+      clearCursor();
       renderNow();
       return;
     }
+  };
+
+  const onPointerLeave = (): void => {
+    clearCursor();
   };
 
   const onKeyDown = (ev: KeyboardEvent): void => {
@@ -608,6 +659,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointermove", onPointerMove);
   root.addEventListener("pointerup", onPointerUp);
+  root.addEventListener("pointerleave", onPointerLeave);
   if (cfg.enableKeyboardShortcuts) root.addEventListener("keydown", onKeyDown);
   if (cfg.enableHotbar) hotbarEl.addEventListener("click", onHotbarClick);
 
@@ -619,6 +671,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     root.removeEventListener("pointerdown", onPointerDown);
     root.removeEventListener("pointermove", onPointerMove);
     root.removeEventListener("pointerup", onPointerUp);
+    root.removeEventListener("pointerleave", onPointerLeave);
     root.removeEventListener("keydown", onKeyDown);
     hotbarEl.removeEventListener("click", onHotbarClick);
     styleEl.remove();

@@ -164,9 +164,9 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
               page.click("[data-oa-open-chat-pane] a, [data-oa-open-chat-pane]"),
             )
             yield* step(
-              "wait for chat pane to open with 'Autopilot online.'",
+              "wait for chat pane to open with 'Autopilot initialized. Enter your email address to begin.'",
               page.waitForFunction(
-                `!!document.querySelector('[data-pane-id="home-chat"]') && document.querySelector('[data-pane-id="home-chat"]')?.querySelector('[data-oa-pane-content]')?.textContent?.includes('Autopilot online.')`,
+                `!!document.querySelector('[data-pane-id="home-chat"]') && document.querySelector('[data-pane-id="home-chat"]')?.querySelector('[data-oa-pane-content]')?.textContent?.includes('Autopilot initialized. Enter your email address to begin.')`,
                 { timeoutMs: 15_000 },
               ),
             )
