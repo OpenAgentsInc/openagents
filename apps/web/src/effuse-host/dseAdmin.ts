@@ -129,6 +129,33 @@ const decodeCompileReportHoldoutReward = (reportJson: unknown): number => {
   return n;
 };
 
+const normalizeTagArray = (raw: unknown, maxItems: number): Array<string> => {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    const s = v.trim();
+    if (!s) continue;
+    out.push(s.slice(0, 120));
+    if (out.length >= maxItems) break;
+  }
+  return out;
+};
+
+const parseJsonlRows = (jsonl: string, maxLines: number): Array<unknown> => {
+  const lines = jsonl
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length > maxLines) throw new Error("invalid_input");
+
+  const out: unknown[] = [];
+  for (const line of lines) {
+    out.push(JSON.parse(line));
+  }
+  return out;
+};
+
 type PromoteBody = {
   readonly signatureId?: unknown;
   readonly compiled_id?: unknown;
@@ -158,6 +185,20 @@ type TraceExportBody = {
   readonly split?: unknown;
   readonly tags?: unknown;
   readonly dryRun?: unknown;
+};
+
+type ExamplesImportBody = {
+  readonly signatureId?: unknown;
+  /** JSONL string of rows: { exampleId, inputJson, expectedJson, split?, tags? } */
+  readonly jsonl?: unknown;
+  /** Alternative to jsonl: direct JSON array of rows. */
+  readonly examples?: unknown;
+  /** Optional ops run id; when provided, import emits dseOpsRunEvents via /dseOpsRuns.appendEvent. */
+  readonly opsRunId?: unknown;
+  /** Optional source string attached to imported examples. */
+  readonly source?: unknown;
+  /** Optional extra tags appended to each row. */
+  readonly tagsAppend?: unknown;
 };
 
 type OpsRunStartBody = {
@@ -348,6 +389,128 @@ export const handleDseAdminRequest = async (
         status,
         ...(summaryJson === undefined ? {} : { summaryJson }),
       });
+    });
+
+    return runAuthedDseAdmin(request, env, program, "admin_secret_only");
+  }
+
+  if (url.pathname === "/api/dse/examples/import") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    // Fail fast: do not parse/validate bodies unless authorized.
+    if (!isDseAdminSecretAuthorized(request, env)) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+    }
+
+    const body = (await readJson(request)) as ExamplesImportBody | null;
+    const signatureId = typeof body?.signatureId === "string" ? body.signatureId : "";
+
+    if (!signatureId) {
+      return json(
+        { ok: false, error: "invalid_input", message: "Expected body: { signatureId: string, jsonl?: string, examples?: any[] }" },
+        { status: 400, headers: { "cache-control": "no-store" } },
+      );
+    }
+
+    // Fail closed: only allow known signatures.
+    if (!findSignatureById(signatureId)) {
+      return json({ ok: false, error: "unknown_signature" }, { status: 404, headers: { "cache-control": "no-store" } });
+    }
+
+    const opsRunId = typeof body?.opsRunId === "string" ? body.opsRunId.trim() : "";
+    const sourceRaw = typeof body?.source === "string" ? body.source.trim() : "";
+    const source = sourceRaw.length > 0 ? sourceRaw.slice(0, 300) : "import:/api/dse/examples/import";
+    const tagsAppend = normalizeTagArray(body?.tagsAppend, 20);
+
+    let rows: Array<unknown> = [];
+    if (typeof body?.jsonl === "string") {
+      const jsonl = body.jsonl;
+      if (jsonl.length > 400_000) {
+        return json({ ok: false, error: "invalid_input", message: "jsonl too large" }, { status: 400, headers: { "cache-control": "no-store" } });
+      }
+      try {
+        rows = parseJsonlRows(jsonl, 500);
+      } catch {
+        return json({ ok: false, error: "invalid_input", message: "invalid jsonl" }, { status: 400, headers: { "cache-control": "no-store" } });
+      }
+    } else if (Array.isArray(body?.examples)) {
+      rows = body.examples as Array<unknown>;
+    } else {
+      return json(
+        { ok: false, error: "invalid_input", message: "Expected body.jsonl (string) or body.examples (array)" },
+        { status: 400, headers: { "cache-control": "no-store" } },
+      );
+    }
+
+    if (rows.length === 0) {
+      return json({ ok: false, error: "invalid_input", message: "No examples provided" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+    if (rows.length > 500) {
+      return json({ ok: false, error: "invalid_input", message: "Too many examples (max 500)" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const convex = yield* ConvexService;
+
+      // Optional ops-run trace: emit start/finish events so the overnight loop can link dataset ingestion.
+      if (opsRunId) {
+        yield* convex
+          .mutation(api.dse.opsRuns.appendEvent, {
+            runId: opsRunId,
+            level: "info",
+            phase: "phase3.dataset_import.start",
+            message: `dataset import started signatureId=${signatureId} rows=${rows.length}`,
+            json: { signatureId, rows: rows.length, source },
+          })
+          .pipe(Effect.catchAll(() => Effect.void));
+      }
+
+      let inserted = 0;
+      let updated = 0;
+
+      for (const r of rows) {
+        const row = r as any;
+        const exampleId = typeof row?.exampleId === "string" ? row.exampleId.trim() : "";
+        if (!exampleId) return yield* Effect.fail(new Error("invalid_input"));
+        if (exampleId.length > 200) return yield* Effect.fail(new Error("invalid_input"));
+
+        const splitRaw = typeof row?.split === "string" ? row.split : undefined;
+        const split =
+          splitRaw === "train" || splitRaw === "dev" || splitRaw === "holdout" || splitRaw === "test"
+            ? (splitRaw as "train" | "dev" | "holdout" | "test")
+            : undefined;
+
+        const tagsRow = normalizeTagArray(row?.tags, 50);
+        const mergedTags = Array.from(new Set([...tagsRow, ...tagsAppend])).slice(0, 50);
+
+        const res = yield* convex.mutation(api.dse.examples.putExample, {
+          signatureId,
+          exampleId,
+          inputJson: row?.inputJson ?? null,
+          expectedJson: row?.expectedJson ?? null,
+          ...(split ? { split } : {}),
+          ...(mergedTags.length ? { tags: mergedTags } : {}),
+          source,
+        });
+
+        const existed = Boolean((res as any)?.existed);
+        if (existed) updated++;
+        else inserted++;
+      }
+
+      if (opsRunId) {
+        yield* convex
+          .mutation(api.dse.opsRuns.appendEvent, {
+            runId: opsRunId,
+            level: "info",
+            phase: "phase3.dataset_import.finish",
+            message: `dataset import finished signatureId=${signatureId} inserted=${inserted} updated=${updated} total=${rows.length}`,
+            json: { signatureId, inserted, updated, total: rows.length, source },
+          })
+          .pipe(Effect.catchAll(() => Effect.void));
+      }
+
+      return { ok: true as const, signatureId, inserted, updated, total: rows.length };
     });
 
     return runAuthedDseAdmin(request, env, program, "admin_secret_only");
