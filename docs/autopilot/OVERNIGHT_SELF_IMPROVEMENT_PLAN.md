@@ -298,3 +298,23 @@ Current endpoints and storage:
   - `apps/web/tests/scripts/dse-overnight.test.ts` (runner sequencing + failure cleanup)
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T10:13:11Z Phase 6: read-only visualization pages (Effuse) backed by Convex.
+- Added admin-only `/dse/*` pages (read-only):
+  - `/dse` ops runs list
+  - `/dse/ops/:runId` ops run detail + events timeline
+  - `/dse/signature/:signatureId` per-signature view (active pointer/history, canary status/history, compile reports, dataset examples, receipts)
+  - `/dse/compile-report/:jobHash/:datasetHash/:signatureId` compile report JSON view
+- Added Convex read queries needed for the pages:
+  - `dse.opsRuns.listRuns`, `dse.opsRuns.getRun`, `dse.opsRuns.listRunEvents` (admin-only)
+  - `dse.active.listActiveHistory`
+  - `dse.canary.listCanaryHistory`
+  - `dse.receipts.listPredictReceiptsBySignatureIdAdmin` (admin-only list)
+- Made receipt/blob debug endpoints usable for ops admin sessions (and admin-secret mode):
+  - `/api/dse/receipt/:receiptId` uses admin query when session subject is `user_dse_admin`
+  - `/api/dse/blob/:receiptId/:blobId` uses admin query + `getTextAdmin` when session subject is `user_dse_admin`
+- Fixed Worker asset routing false-positives for dotted signature ids (e.g. `SelectTool.v1`) so `/dse/signature/...` reaches SSR.
+- Tests / verification:
+  - `cd apps/web && npx convex codegen` (ok)
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)

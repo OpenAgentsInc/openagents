@@ -233,3 +233,78 @@ export const getPredictReceiptByReceiptIdAdmin = effectQuery({
   }),
   handler: getPredictReceiptByReceiptIdAdminImpl,
 });
+
+export const listPredictReceiptsBySignatureIdAdminImpl = (
+  ctx: EffectQueryCtx,
+  args: { readonly signatureId: string; readonly limit?: number | undefined },
+) =>
+  Effect.gen(function* () {
+    yield* requireOpsAdmin(ctx);
+
+    const limit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? Math.max(0, Math.min(200, Math.floor(args.limit)))
+        : 50;
+
+    const rows: any[] =
+      limit === 0
+        ? []
+        : yield* tryPromise(() =>
+            ctx.db
+              .query("receipts")
+              .withIndex("by_signatureId_createdAtMs", (q) => q.eq("signatureId", args.signatureId))
+              .order("desc")
+              .take(limit),
+          );
+
+    const receipts = rows
+      .filter((r) => String(r.kind ?? "") === "dse.predict")
+      .map((r) => {
+        const json = (r as any).json ?? null;
+        const resultTag = asString(json?.result?._tag);
+        const strategyId = asString(json?.strategyId);
+        const rlmBlobId = asString(json?.rlmTrace?.blob?.id);
+        const rlmEventCount =
+          typeof json?.rlmTrace?.eventCount === "number" && Number.isFinite(json.rlmTrace.eventCount)
+            ? Math.max(0, Math.floor(json.rlmTrace.eventCount))
+            : null;
+
+        return {
+          receiptId: asString((r as any).receiptId) ?? asString(json?.receiptId) ?? "",
+          signatureId: asString((r as any).signatureId) ?? asString(json?.signatureId) ?? "",
+          compiled_id: asString((r as any).compiled_id) ?? asString(json?.compiled_id) ?? "",
+          threadId: String((r as any).threadId ?? ""),
+          runId: String((r as any).runId ?? ""),
+          createdAtMs: Number((r as any).createdAtMs ?? 0),
+          strategyId,
+          resultTag: resultTag === "Ok" || resultTag === "Error" ? (resultTag as "Ok" | "Error") : null,
+          rlmTraceBlobId: rlmBlobId,
+          rlmTraceEventCount: rlmEventCount,
+        };
+      })
+      .filter((r) => r.receiptId.length > 0 && r.signatureId.length > 0);
+
+    return { ok: true as const, receipts };
+  });
+
+export const listPredictReceiptsBySignatureIdAdmin = effectQuery({
+  args: { signatureId: v.string(), limit: v.optional(v.number()) },
+  returns: v.object({
+    ok: v.boolean(),
+    receipts: v.array(
+      v.object({
+        receiptId: v.string(),
+        signatureId: v.string(),
+        compiled_id: v.string(),
+        threadId: v.string(),
+        runId: v.string(),
+        createdAtMs: v.number(),
+        strategyId: v.union(v.null(), v.string()),
+        resultTag: v.union(v.null(), v.union(v.literal("Ok"), v.literal("Error"))),
+        rlmTraceBlobId: v.union(v.null(), v.string()),
+        rlmTraceEventCount: v.union(v.null(), v.number()),
+      }),
+    ),
+  }),
+  handler: listPredictReceiptsBySignatureIdAdminImpl,
+});

@@ -229,3 +229,59 @@ export const rollbackActive = effectMutation({
   returns: v.object({ ok: v.boolean(), compiled_id: v.union(v.null(), v.string()) }),
   handler: rollbackActiveImpl,
 });
+
+export const listActiveHistoryImpl = (
+  ctx: EffectQueryCtx,
+  args: { readonly signatureId: string; readonly limit?: number | undefined },
+) =>
+  Effect.gen(function* () {
+    yield* requireAuthed(ctx);
+
+    const limit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? Math.max(0, Math.min(200, Math.floor(args.limit)))
+        : 50;
+
+    const rows: any[] =
+      limit === 0
+        ? []
+        : yield* tryPromise(() =>
+            ctx.db
+              .query("dseActiveArtifactHistory")
+              .withIndex("by_signatureId_createdAtMs", (q) => q.eq("signatureId", args.signatureId))
+              .order("desc")
+              .take(limit),
+          );
+
+    return {
+      ok: true as const,
+      history: rows.map((r) => ({
+        signatureId: String(r.signatureId ?? ""),
+        action: r.action === "set" || r.action === "clear" || r.action === "rollback" ? r.action : "set",
+        fromCompiledId: typeof r.fromCompiledId === "string" ? String(r.fromCompiledId) : null,
+        toCompiledId: typeof r.toCompiledId === "string" ? String(r.toCompiledId) : null,
+        reason: typeof r.reason === "string" ? String(r.reason) : null,
+        actorUserId: typeof r.actorUserId === "string" ? String(r.actorUserId) : null,
+        createdAtMs: Number(r.createdAtMs ?? 0),
+      })),
+    };
+  });
+
+export const listActiveHistory = effectQuery({
+  args: { signatureId: v.string(), limit: v.optional(v.number()) },
+  returns: v.object({
+    ok: v.boolean(),
+    history: v.array(
+      v.object({
+        signatureId: v.string(),
+        action: v.union(v.literal("set"), v.literal("clear"), v.literal("rollback")),
+        fromCompiledId: v.union(v.null(), v.string()),
+        toCompiledId: v.union(v.null(), v.string()),
+        reason: v.union(v.null(), v.string()),
+        actorUserId: v.union(v.null(), v.string()),
+        createdAtMs: v.number(),
+      }),
+    ),
+  }),
+  handler: listActiveHistoryImpl,
+});

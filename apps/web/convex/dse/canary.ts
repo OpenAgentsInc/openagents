@@ -305,3 +305,68 @@ export const stopCanary = effectMutation({
   }),
   handler: stopCanaryImpl,
 });
+
+export const listCanaryHistoryImpl = (
+  ctx: EffectQueryCtx,
+  args: { readonly signatureId: string; readonly limit?: number | undefined },
+) =>
+  Effect.gen(function* () {
+    yield* requireAuthed(ctx);
+
+    const limit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? Math.max(0, Math.min(200, Math.floor(args.limit)))
+        : 50;
+
+    const rows: any[] =
+      limit === 0
+        ? []
+        : yield* tryPromise(() =>
+            ctx.db
+              .query("dseCanaryHistory")
+              .withIndex("by_signatureId_createdAtMs", (q) => q.eq("signatureId", args.signatureId))
+              .order("desc")
+              .take(limit),
+          );
+
+    return {
+      ok: true as const,
+      history: rows.map((r) => ({
+        signatureId: String(r.signatureId ?? ""),
+        action:
+          r.action === "start" || r.action === "stop" || r.action === "auto_stop" || r.action === "update"
+            ? r.action
+            : "start",
+        control_compiled_id: typeof r.control_compiled_id === "string" ? String(r.control_compiled_id) : null,
+        canary_compiled_id: typeof r.canary_compiled_id === "string" ? String(r.canary_compiled_id) : null,
+        rolloutPct: typeof r.rolloutPct === "number" ? Number(r.rolloutPct) : null,
+        okCount: typeof r.okCount === "number" ? Number(r.okCount) : null,
+        errorCount: typeof r.errorCount === "number" ? Number(r.errorCount) : null,
+        reason: typeof r.reason === "string" ? String(r.reason) : null,
+        actorUserId: typeof r.actorUserId === "string" ? String(r.actorUserId) : null,
+        createdAtMs: Number(r.createdAtMs ?? 0),
+      })),
+    };
+  });
+
+export const listCanaryHistory = effectQuery({
+  args: { signatureId: v.string(), limit: v.optional(v.number()) },
+  returns: v.object({
+    ok: v.boolean(),
+    history: v.array(
+      v.object({
+        signatureId: v.string(),
+        action: v.union(v.literal("start"), v.literal("stop"), v.literal("auto_stop"), v.literal("update")),
+        control_compiled_id: v.union(v.null(), v.string()),
+        canary_compiled_id: v.union(v.null(), v.string()),
+        rolloutPct: v.union(v.null(), v.number()),
+        okCount: v.union(v.null(), v.number()),
+        errorCount: v.union(v.null(), v.number()),
+        reason: v.union(v.null(), v.string()),
+        actorUserId: v.union(v.null(), v.string()),
+        createdAtMs: v.number(),
+      }),
+    ),
+  }),
+  handler: listCanaryHistoryImpl,
+});
