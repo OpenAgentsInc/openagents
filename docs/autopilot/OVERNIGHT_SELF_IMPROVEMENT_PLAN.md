@@ -538,6 +538,8 @@ Current endpoints and storage:
 - 2026-02-10T12:04:12Z Ops: updated the Worker secret sync script to include DSE/RLM overnight secrets.
 - Updated:
   - `apps/web/scripts/sync-wrangler-secrets.sh`
+
+- 2026-02-10T12:06:43Z Docs: updated `docs/autopilot/SELF_IMPROVE_PLAN.md` to reflect that the staged plan is now implemented and the canonical execution runbook is this doc.
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)

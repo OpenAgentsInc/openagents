@@ -1,7 +1,7 @@
 # Autopilot Self-Improve Plan (Convex-First MVP)
 
-- **Status:** Proposed (implementation plan)
-- **Last updated:** 2026-02-08
+- **Status:** Implemented (historical plan + implementation notes; use the runbook for execution)
+- **Last updated:** 2026-02-10
 - **Scope:** Effect-only (TypeScript + Effect) runtime + compiler loops; Convex-backed persistence for MVP
 - **If this doc conflicts with code behavior:** code wins
 
@@ -11,6 +11,34 @@ This doc answers two questions for the current Autopilot MVP:
 2. **What’s missing to make that loop real in production (Convex-first)?**
 
 It is intentionally concrete: code pointers, required data models, and a step-by-step roadmap with testable increments.
+
+## Where To Start (Today)
+
+This document is a record of the original staged plan and what was implemented.
+For “how do I run this headlessly tonight?” use:
+
+- Canonical runbook + one-command runner: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+- How to use the endpoints (operator playbook): `docs/autopilot/DSE_PLAYBOOK.md`
+
+Quick start (headless):
+
+```bash
+OA_DSE_ADMIN_SECRET="..." \
+  bun run apps/web/scripts/dse-overnight.ts --base-url https://openagents.com
+```
+
+Required Worker secrets for headless ops mode:
+
+- `OA_DSE_ADMIN_SECRET`
+- `OA_E2E_JWT_PRIVATE_JWK` (Worker-minted ops-admin JWT for Convex)
+- (prod E2E only) `OA_E2E_BYPASS_SECRET` + runner env `EFFUSE_TEST_E2E_BYPASS_SECRET`
+- `OPENROUTER_API_KEY` (required for some compile/eval paths)
+
+Where to view results:
+
+- `/dse` (ops run list)
+- `/dse/ops/:runId` (ops run detail)
+- `/dse/signature/:signatureId` (per-signature view)
 
 ## Convex-First MVP Constraint (Non-Negotiable)
 
@@ -364,7 +392,7 @@ Implementation log:
 
 - 2026-02-08: Re-verified budget enforcement and receipt budget snapshots by running `cd packages/dse && bun test` (includes `test/budget.test.ts`).
 
-### Stage 2: Convex-backed DSE stores (artifacts + active pointer + receipts)
+### Stage 2: Convex-backed DSE stores (artifacts + active pointer + receipts) (done)
 
 Add Convex tables + functions for:
 
@@ -392,7 +420,11 @@ Implementation log:
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
 
-### Stage 2.5: Add DSE chat parts + UI components (required)
+- 2026-02-10: The fully programmatic overnight loop (ops auth + run recording + headless runner + dataset import + compile/canary/promote + read-only pages) is implemented.
+  - Runbook: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+- 2026-02-10: Updated this doc’s header and “Where to start” section to reflect the implemented runbook + headless runner.
+
+### Stage 2.5: Add DSE chat parts + UI components (done)
 
 Add a DSE “action part” protocol and render it in chat.
 
@@ -517,7 +549,15 @@ Testable outcomes:
   - a small set of candidate examples for `dseExamples`
   - a short "tactics" description that maps to an explicit DSE surface (signature/module/params)
 
-### Stage 5: Compile job runner (manual promotion)
+Implementation log:
+
+- 2026-02-10: Implemented headless trace mining scale-up:
+  - receipts listing endpoint: `GET /api/dse/receipts/list?...`
+  - trace export endpoint: `POST /api/dse/trace/export`
+  - miner CLI: `apps/web/scripts/dse-trace-mine.ts`
+  - docs: `docs/autopilot/rlm-trace-mining.md`, `docs/autopilot/DSE_PLAYBOOK.md`
+
+### Stage 5: Compile job runner (manual promotion) (done)
 
 Implement an admin-only compile endpoint:
 
@@ -543,12 +583,16 @@ Implementation log:
 - 2026-02-08: Added tests proving compile writes artifact+report and is idempotent by (jobHash, datasetHash):
   - Convex store tests: `apps/web/tests/convex/dse-compile-reports.test.ts`
   - Worker endpoint test: `apps/web/tests/worker/dse-compile-endpoint.test.ts`
+- 2026-02-10: Made SelectTool compile non-trivial and centralized job spec so compile + gating cannot diverge:
+  - shared job spec: `apps/web/src/effuse-host/dseJobs.ts`
+  - deterministic search space for `@openagents/autopilot/blueprint/SelectTool.v1`: instruction variants (`instruction_grid.v1`)
+  - gating tests: `apps/web/tests/worker/dse-admin-jobhash-gating.test.ts`
 - 2026-02-08: Verified:
   - `cd apps/web && npx convex codegen`
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
 
-### Stage 6: Promotion gating + canary (optional, post-MVP)
+### Stage 6: Promotion gating + canary (done)
 
 Add:
 
@@ -589,6 +633,12 @@ Implementation log:
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
 
+Headless ops note:
+
+- All admin endpoints support a headless ops mode:
+  - `Authorization: Bearer <OA_DSE_ADMIN_SECRET>`
+  - see: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+
 ## Suggested “First Signature” For Self-Improve
 
 `@openagents/autopilot/blueprint/SelectTool.v1` is ideal because:
@@ -604,5 +654,6 @@ Implementation log:
 - Autopilot optimization phases: `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`
 - Convex-first execution plane: `docs/autopilot/anon-chat-execution-plane.md`
 - Stream testing posture + wire transcript fixtures: `docs/autopilot/STREAM_TESTING.md`
+- Overnight self-improvement runbook (headless): `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 - RLM/GEPA/MIPRO plan (Effect-only, Convex-first aligned): `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 - DSE vs Rust reference optimizers review: `packages/dse/docs/RLM_GEPA_MIPRO_DSE_REVIEW_AND_ROADMAP.md`
