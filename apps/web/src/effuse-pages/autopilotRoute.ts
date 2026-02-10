@@ -2,14 +2,16 @@ import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
 import { whitePreset } from "@openagentsinc/hud";
 import { runAutopilotChat } from "./autopilot";
+import { runAutopilotControls } from "./autopilotControls";
 
 import type { TemplateResult } from "@openagentsinc/effuse";
 import type { AutopilotChatData } from "./autopilot";
+import type { AutopilotControlsModel } from "./autopilotControls";
 
 /** Simplified layout: dots grid (like homepage), chat + input only. No sidebars. */
-type SlotName = "chat";
+type SlotName = "chat" | "controls";
 
-type SlotKeys = { chat: string };
+type SlotKeys = { chat: string; controls: string };
 
 const stateByContainer = new WeakMap<Element, SlotKeys>();
 
@@ -33,6 +35,10 @@ export const autopilotRouteShellTemplate = (): TemplateResult => {
         <div data-autopilot-slot="chat" class="flex-1 min-h-0 flex flex-col overflow-hidden">
           <div class="flex-1 min-h-0 flex items-center justify-center text-xs text-white/60">Loading…</div>
         </div>
+        <div
+          data-autopilot-slot="controls"
+          class="pointer-events-auto absolute bottom-3 right-3 z-30"
+        ></div>
       </div>
     </div>
   `;
@@ -59,6 +65,8 @@ const getSlot = (container: Element, name: SlotName): Element | null => {
 export type AutopilotRouteRenderInput = {
   readonly chatData: AutopilotChatData;
   readonly chatKey: string;
+  readonly controlsData: AutopilotControlsModel;
+  readonly controlsKey: string;
 };
 
 /**
@@ -71,12 +79,17 @@ export const runAutopilotRoute = (
   return Effect.gen(function* () {
     yield* ensureShell(container);
 
-    const prev = stateByContainer.get(container) ?? ({ chat: "" } satisfies SlotKeys);
-    const next: SlotKeys = { chat: input.chatKey };
+    const prev = stateByContainer.get(container) ?? ({ chat: "", controls: "" } satisfies SlotKeys);
+    const next: SlotKeys = { chat: input.chatKey, controls: input.controlsKey };
     const chatSlot = getSlot(container, "chat");
+    const controlsSlot = getSlot(container, "controls");
 
     if (chatSlot && (prev.chat !== next.chat || chatSlot.childNodes.length === 0)) {
       yield* runAutopilotChat(chatSlot, input.chatData);
+    }
+
+    if (controlsSlot && (prev.controls !== next.controls || controlsSlot.childNodes.length === 0)) {
+      yield* runAutopilotControls(controlsSlot, input.controlsData);
     }
 
     stateByContainer.set(container, next);
