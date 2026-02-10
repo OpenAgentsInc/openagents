@@ -559,7 +559,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           const messagesEl = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
           if (messagesEl instanceof HTMLElement) {
             messagesEl.scrollTop = savedScrollTop
-            if (!hasScrolledToBottomOnce) {
+            const hasMessages =
+              step === "authed"
+                ? homeSnapshot.messages.length > 0
+                : messages.length > 0
+            if (!hasScrolledToBottomOnce && hasMessages) {
               messagesEl.scrollTop = messagesEl.scrollHeight - messagesEl.clientHeight
               hasScrolledToBottomOnce = true
             }
