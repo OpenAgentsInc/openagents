@@ -6,6 +6,7 @@ import { effectMutation, effectQuery } from "../effect/functions";
 import { tryPromise } from "../effect/tryPromise";
 
 import { assertThreadAccess } from "../autopilot/access";
+import { requireOpsAdmin } from "./opsAdmin";
 
 const nowMs = () => Date.now();
 
@@ -123,3 +124,31 @@ export const getText = effectQuery({
   handler: getTextImpl,
 });
 
+export const getTextAdminImpl = (
+  ctx: EffectQueryCtx,
+  args: { readonly threadId: string; readonly runId: string; readonly blobId: string },
+) =>
+  Effect.gen(function* () {
+    yield* requireOpsAdmin(ctx);
+
+    const row = yield* tryPromise(() =>
+      ctx.db
+        .query("dseBlobs")
+        .withIndex("by_threadId_runId_blobId", (q) =>
+          q.eq("threadId", args.threadId).eq("runId", args.runId).eq("blobId", args.blobId),
+        )
+        .unique(),
+    );
+
+    return { ok: true as const, text: row ? String((row as any).text ?? "") : null };
+  });
+
+export const getTextAdmin = effectQuery({
+  args: {
+    threadId: v.string(),
+    runId: v.string(),
+    blobId: v.string(),
+  },
+  returns: v.object({ ok: v.boolean(), text: v.union(v.string(), v.null()) }),
+  handler: getTextAdminImpl,
+});

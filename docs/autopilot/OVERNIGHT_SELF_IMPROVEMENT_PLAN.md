@@ -232,3 +232,25 @@ Current endpoints and storage:
 - Target signatures: `apps/autopilot-worker/src/dseCatalog.ts`
 - Prod E2E suite: `packages/effuse-test/src/suites/apps-web.ts`
 
+## Implementation Log
+
+- 2026-02-10T08:19:24Z Phase 1: programmatic DSE ops auth + Convex ops run recording.
+- Added Worker env typing + admin-secret auth helper:
+  - `OA_DSE_ADMIN_SECRET` support (`Authorization: Bearer <OA_DSE_ADMIN_SECRET>`)
+  - Worker-minted admin JWT (subject=`user_dse_admin`) via `OA_E2E_JWT_PRIVATE_JWK` for headless Convex access.
+- Added Convex ops persistence:
+  - tables: `dseOpsRuns`, `dseOpsRunEvents`
+  - mutations: `startRun`, `appendEvent`, `finishRun` (admin-only).
+- Added Worker ops endpoints (admin-secret gated):
+  - `POST /api/dse/ops/run/start`
+  - `POST /api/dse/ops/run/event`
+  - `POST /api/dse/ops/run/finish`
+- Enabled admin-secret mode for DSE endpoints (no cookies required):
+  - `POST /api/dse/compile`
+  - `POST /api/dse/promote`
+  - `POST /api/dse/canary/start`, `POST /api/dse/canary/stop`
+  - `POST /api/dse/trace/export` (includes admin-only Convex reads for receipt/blob).
+- Tests / verification:
+  - `cd apps/web && npx convex codegen` (ok)
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
