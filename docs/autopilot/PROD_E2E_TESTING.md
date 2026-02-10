@@ -8,6 +8,18 @@ It exists so we can:
 - Debug “works locally / fails in prod” issues without inventing ad hoc scripts.
 - Guarantee we never ship “silent stall” UX regressions (user clicks Send, nothing happens).
 
+## Key bypass (prelaunch)
+
+During prelaunch, production only allows access with a bypass:
+
+- **URL:** `https://openagents.com/?key=<PRELAUNCH_BYPASS_KEY>` (key is a Worker secret).
+- The Worker sets the `prelaunch_bypass` cookie and **redirects to `/autopilot`**. Anonymous users are then redirected to `/login`. To actually start a chat and see a response, use the E2E login flow below (or magic-code login).
+- **E2E tests** use `POST /api/auth/e2e/login` with `EFFUSE_TEST_E2E_BYPASS_SECRET` to get a session and `prelaunch_bypass` cookie, then navigate to `/autopilot` and send a message.
+
+## Home page chat pane (no navigation)
+
+On the homepage, **“Start for free”** opens a **floating chat pane on the same page** (no navigation to `/autopilot`). The pane shows the initial message “Autopilot online.” and can be closed. The E2E test `apps-web.navigation.start-for-free` asserts this behavior. To **send a message and see a response**, use the full Autopilot route: E2E login → goto `/autopilot` → send (see “Running Prod E2E” below).
+
 ## What’s Now Possible
 
 - Run a **prod smoke suite** that:

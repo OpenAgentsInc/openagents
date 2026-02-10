@@ -159,17 +159,23 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
         yield* browser.withPage((page) =>
           Effect.gen(function* () {
             yield* step("goto /", page.goto(`${ctx.baseUrl}/`))
-            yield* step("click Start for free", page.click('a[href="/autopilot"]'))
             yield* step(
-              "wait for /autopilot",
-              page.waitForFunction("location.pathname === '/autopilot'", { timeoutMs: 15_000 }),
+              "click Start for free (opens chat pane on same page)",
+              page.click("[data-oa-open-chat-pane] a, [data-oa-open-chat-pane]"),
+            )
+            yield* step(
+              "wait for chat pane to open with 'Autopilot online.'",
+              page.waitForFunction(
+                `!!document.querySelector('[data-pane-id="home-chat"]') && document.querySelector('[data-pane-id="home-chat"]')?.querySelector('[data-oa-pane-content]')?.textContent?.includes('Autopilot online.')`,
+                { timeoutMs: 15_000 },
+              ),
             )
 
             yield* step(
-              "assert autopilot shell exists",
+              "assert still on home (no navigation)",
               Effect.gen(function* () {
-                const shell = yield* page.evaluate<boolean>("!!document.querySelector('[data-autopilot-shell]')")
-                yield* assertTrue(shell, "Expected [data-autopilot-shell] to exist on /autopilot")
+                const pathname = yield* page.evaluate<string>("location.pathname")
+                yield* assertEqual(pathname, "/", "Expected to remain on / after opening chat pane")
               }),
             )
           }),
