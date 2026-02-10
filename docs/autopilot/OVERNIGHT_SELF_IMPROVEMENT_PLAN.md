@@ -366,6 +366,20 @@ Current endpoints and storage:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
+- 2026-02-10T05:40:55Z Autopilot UI: DSE signature cards collapsed by default; prod E2E updated to expand before asserting debug visibility.
+- `/autopilot` now renders `dse.signature` parts as a one-line summary + expandable details:
+  - implementation: `apps/web/src/effuse-pages/autopilot.ts` (`<details data-dse-signature-details="1">`)
+- Updated prod E2E `apps-web.prod.autopilot.dse-canary-recap-shows-debug-card-and-trace` to:
+  - wait for the recap signature card
+  - expand it (`summary.click()`)
+  - assert strategy + counters + trace link are visible inside the expanded card
+  - implementation: `packages/effuse-test/src/suites/apps-web.ts`
+- Tests / verification:
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
+  - `cd packages/effuse-test && bun run typecheck` (ok)
+  - `cd packages/effuse-test && bun run test` (ok)
+
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
