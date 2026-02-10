@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 import { canonicalJson } from "../internal/canonicalJson.js";
 import type { DseParams } from "../params.js";
 import type { DseSignature } from "../signature.js";
+import { isBlobRef, type BlobRef } from "../blob.js";
 import type { LmMessage } from "./lm.js";
 import type { ContextEntry, PromptBlock, PromptIR } from "../promptIr.js";
 import { BlobStoreService } from "./blobStore.js";
@@ -179,6 +180,45 @@ function joinNonEmpty(parts: ReadonlyArray<string>): string {
   return parts.map((p) => p.trim()).filter((p) => p.length > 0).join("\n\n");
 }
 
+type InputBlobHit = { readonly path: string; readonly blob: BlobRef };
+
+function collectInputBlobRefs(
+  value: unknown,
+  path: string,
+  out: Array<InputBlobHit>,
+  options: { readonly depth: number; readonly maxHits: number }
+): void {
+  if (out.length >= options.maxHits) return;
+  if (options.depth <= 0) return;
+
+  if (isBlobRef(value)) {
+    out.push({ path, blob: value });
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length && out.length < options.maxHits; i++) {
+      collectInputBlobRefs(value[i], `${path}[${i}]`, out, {
+        ...options,
+        depth: options.depth - 1
+      });
+    }
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    for (const k of keys) {
+      if (out.length >= options.maxHits) break;
+      collectInputBlobRefs(obj[k], `${path}.${k}`, out, {
+        ...options,
+        depth: options.depth - 1
+      });
+    }
+  }
+}
+
 export function renderPromptMessagesWithStats<I, O>(options: {
   readonly signature: DseSignature<I, O>;
   readonly input: I;
@@ -220,23 +260,17 @@ export function renderPromptMessagesWithStats<I, O>(options: {
 
     const blobContextMode = options.blobContextMode ?? "inline_preview";
 
-    const renderContextEntry = (
-      e: ContextEntry
+    const renderBlobRefLine = (
+      key: string,
+      blob: BlobRef
     ): Effect.Effect<string, PromptRenderError> => {
-      if ("value" in e) {
-        const rendered = canonicalJson(e.value);
-        inlineEntryCount++;
-        inlineValueChars += rendered.length;
-        return Effect.succeed(`${e.key}: ${rendered}`);
-      }
-
-      return blobStore.getText(e.blob.id).pipe(
+      return blobStore.getText(blob.id).pipe(
         Effect.flatMap((text) => {
           if (text == null) {
             return Effect.fail(
               PromptRenderError.make({
                 signatureId: sig.id,
-                message: `Missing blob for context entry (blobId=${e.blob.id})`
+                message: `Missing blob for context entry (blobId=${blob.id})`
               })
             );
           }
@@ -256,9 +290,9 @@ export function renderPromptMessagesWithStats<I, O>(options: {
 
           if (blobs.length < MAX_BLOB_STATS) {
             blobs.push({
-              blobId: e.blob.id,
-              ...(e.blob.mime ? { mime: e.blob.mime } : {}),
-              ...(typeof e.blob.size === "number" ? { declaredSize: e.blob.size } : {}),
+              blobId: blob.id,
+              ...(blob.mime ? { mime: blob.mime } : {}),
+              ...(typeof blob.size === "number" ? { declaredSize: blob.size } : {}),
               contentChars: text.length,
               previewChars: previewText.length,
               truncated: truncatedFlag
@@ -268,17 +302,17 @@ export function renderPromptMessagesWithStats<I, O>(options: {
           }
 
           const metaParts: Array<string> = [];
-          metaParts.push(`blobId=${e.blob.id}`);
-          if (e.blob.mime) metaParts.push(`mime=${e.blob.mime}`);
-          metaParts.push(`size=${e.blob.size}`);
+          metaParts.push(`blobId=${blob.id}`);
+          if (blob.mime) metaParts.push(`mime=${blob.mime}`);
+          metaParts.push(`size=${blob.size}`);
 
           if (blobContextMode === "metadata_only") {
             return Effect.succeed(
-              `${e.key} (${metaParts.join(" ")}): [blob omitted; use RLM ops to preview/search/chunk]`
+              `${key} (${metaParts.join(" ")}): [blob omitted; use RLM ops to preview/search/chunk]`
             );
           }
 
-          return Effect.succeed(`${e.key} (${metaParts.join(" ")}):\n${previewText}`);
+          return Effect.succeed(`${key} (${metaParts.join(" ")}):\n${previewText}`);
         }),
         Effect.catchAll((cause) =>
           Effect.fail(
@@ -290,6 +324,19 @@ export function renderPromptMessagesWithStats<I, O>(options: {
           )
         )
       );
+    };
+
+    const renderContextEntry = (
+      e: ContextEntry
+    ): Effect.Effect<string, PromptRenderError> => {
+      if ("value" in e) {
+        const rendered = canonicalJson(e.value);
+        inlineEntryCount++;
+        inlineValueChars += rendered.length;
+        return Effect.succeed(`${e.key}: ${rendered}`);
+      }
+
+      return renderBlobRefLine(e.key, e.blob);
     };
 
     const contextSections = yield* Effect.forEach(
@@ -385,7 +432,20 @@ export function renderPromptMessagesWithStats<I, O>(options: {
         })
     });
 
-    const inputText = "Input:\n" + canonicalJson(encodedInput);
+    const inputBlobHits: Array<InputBlobHit> = [];
+    collectInputBlobRefs(encodedInput, "Input", inputBlobHits, {
+      depth: 12,
+      maxHits: 200
+    });
+
+    const inputBlobLines = yield* Effect.forEach(inputBlobHits, (h) =>
+      renderBlobRefLine(h.path, h.blob)
+    );
+
+    const inputText = joinNonEmpty([
+      "Input:\n" + canonicalJson(encodedInput),
+      inputBlobLines.length ? "Input blobs:\n" + inputBlobLines.join("\n") : ""
+    ]);
 
     const userText = joinNonEmpty([
       instructionText,
