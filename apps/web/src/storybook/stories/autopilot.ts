@@ -215,7 +215,6 @@ const blueprintModel = (overrides?: Partial<AutopilotBlueprintPanelModel>): Auto
 
 const controlsModel = (overrides?: Partial<AutopilotControlsModel>): AutopilotControlsModel => ({
   isExportingBlueprint: false,
-  isBusy: false,
   isResettingAgent: false,
   ...overrides,
 })
@@ -518,7 +517,7 @@ export const autopilotStories: ReadonlyArray<Story> = [
     render: () =>
       html`
         <div class="p-6">
-          ${autopilotControlsTemplate(controlsModel({ isBusy: false }))}
+          ${autopilotControlsTemplate(controlsModel())}
         </div>
       `,
   },

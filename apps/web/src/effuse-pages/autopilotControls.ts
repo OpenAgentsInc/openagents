@@ -4,7 +4,6 @@ import type { TemplateResult } from "@openagentsinc/effuse";
 
 export type AutopilotControlsModel = {
   readonly isExportingBlueprint: boolean;
-  readonly isBusy: boolean;
   readonly isResettingAgent: boolean;
 };
 
@@ -22,7 +21,6 @@ export const autopilotControlsTemplate = (model: AutopilotControlsModel): Templa
       <button
         type="button"
         data-ez="autopilot.controls.clearMessages"
-        ${model.isBusy ? "disabled" : ""}
         class="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
       >
         Clear messages
@@ -30,7 +28,7 @@ export const autopilotControlsTemplate = (model: AutopilotControlsModel): Templa
       <button
         type="button"
         data-ez="autopilot.controls.resetAgent"
-        ${model.isBusy || model.isResettingAgent ? "disabled" : ""}
+        ${model.isResettingAgent ? "disabled" : ""}
         class="text-xs font-mono text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded px-2 py-1"
       >
         ${model.isResettingAgent ? "Resetting..." : "Reset agent"}
