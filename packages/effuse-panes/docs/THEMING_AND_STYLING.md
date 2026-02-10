@@ -51,11 +51,13 @@ Hotbar layout:
 
 You can override any of these.
 
+Note:
+
+- The hotbar `bottom` positioning uses `env(safe-area-inset-bottom, 0px)` so it does not overlap the iOS home indicator.
+
 ## Dotted Background
 
-By default, the root is given:
-
-- `data-oa-dots="1"`
+By default (`enableDotsBackground: true`), the root is given `data-oa-dots="1"`.
 
 This enables a CSS `radial-gradient(...)` dot grid background.
 
@@ -66,6 +68,8 @@ If you want a solid background, set:
 ```ts
 root.removeAttribute("data-oa-dots");
 ```
+
+or set `enableDotsBackground: false` in `mountPaneSystemDom(root, { ... })`.
 
 or override the injected CSS with your own selectors.
 
@@ -113,4 +117,3 @@ If you build a more complete UI, you may want:
 - keyboard navigation between panes
 
 Those are currently host responsibilities.
-

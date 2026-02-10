@@ -26,6 +26,7 @@ Key references:
 - API: `packages/effuse-panes/docs/API_REFERENCE.md`
 - Effuse integration: `packages/effuse-panes/docs/INTEGRATION_EFFUSE.md`
 - Parity checklist: `packages/effuse-panes/docs/PARITY_CHECKLIST.md`
+- Mobile brainstorming: `packages/effuse-panes/docs/MOBILE.md`
 
 ## Source-Of-Truth (Rust)
 
@@ -80,4 +81,3 @@ Once mounted, the pane system gives us a stable "desktop-like" container where w
 without forcing everything into a single linear chat scroll.
 
 This makes debugging and operator workflows substantially easier, especially for long-running agents.
-
