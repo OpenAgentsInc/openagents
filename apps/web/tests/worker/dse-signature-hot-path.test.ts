@@ -100,9 +100,11 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         !("signatureId" in args)
       ) {
         state.blueprintCalls.push({ ref, args });
+        const stage = String((state as any).bootstrapStage ?? "ask_user_handle");
         return {
           ok: true,
           blueprint: {
+            bootstrapState: { status: "pending", stage },
             docs: {
               user: { addressAs: "Ada" },
               identity: { name: "Autopilot" },
@@ -152,6 +154,24 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         return { ok: true };
       }
 
+      // Bootstrap advancement mutations (Convex-first).
+      if (isRecord(args) && typeof args.threadId === "string" && typeof args.handle === "string") {
+        ;((state as any).applyBootstrapCalls ?? ((state as any).applyBootstrapCalls = [])).push({ ref, args })
+        return { ok: true, applied: true, updatedAtMs: 1 }
+      }
+      if (isRecord(args) && typeof args.threadId === "string" && typeof args.name === "string") {
+        ;((state as any).applyBootstrapCalls ?? ((state as any).applyBootstrapCalls = [])).push({ ref, args })
+        return { ok: true, applied: true, updatedAtMs: 1 }
+      }
+      if (isRecord(args) && typeof args.threadId === "string" && typeof args.vibe === "string") {
+        ;((state as any).applyBootstrapCalls ?? ((state as any).applyBootstrapCalls = [])).push({ ref, args })
+        return { ok: true, applied: true, updatedAtMs: 1 }
+      }
+      if (isRecord(args) && typeof args.threadId === "string" && "boundaries" in args) {
+        ;((state as any).applyBootstrapCalls ?? ((state as any).applyBootstrapCalls = [])).push({ ref, args })
+        return { ok: true, applied: true, updatedAtMs: 1 }
+      }
+
       if (isRecord(args) && typeof args.threadId === "string" && typeof args.runId === "string") {
         const runId = String(args.runId ?? "");
         if (runId) state.cancelRequested.add(runId);
@@ -184,8 +204,8 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
 
 const { default: worker } = await import("../../src/effuse-host/worker");
 
-describe("apps/web worker autopilot: Stage 3 DSE signature in hot path", () => {
-  it("records a DSE predict receipt and appends dse.signature parts into the chat stream", async () => {
+describe("apps/web worker autopilot: Stage 3 bootstrap advancement in hot path", () => {
+  it("advances bootstrap by persisting the user handle (ask_user_handle -> ask_agent_name)", async () => {
     state.createRunCalls.length = 0;
     state.appendPartsCalls.length = 0;
     state.finalizeRunCalls.length = 0;
@@ -195,21 +215,22 @@ describe("apps/web worker autopilot: Stage 3 DSE signature in hot path", () => {
     state.recordPredictReceiptCalls.length = 0;
     state.canary = null;
     state.artifacts.clear();
+    (state as any).applyBootstrapCalls = [];
+    (state as any).bootstrapStage = "ask_user_handle";
 
     const ORIGIN = "http://example.com";
 
     const request = new Request(`${ORIGIN}/api/autopilot/send`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ threadId: "thread-1", anonKey: "anon-key-1", text: "What can you do?" }),
+      body: JSON.stringify({ threadId: "thread-1", anonKey: "anon-key-1", text: "Ada" }),
     });
 
     const ctx = createExecutionContext();
     const envWithAi = Object.assign(Object.create(env as any), {
       AI: {
         run: async () => ({
-          // DSE signature expects strict JSON, no markdown.
-          choices: [{ message: { content: "{\"action\":\"none\"}" } }],
+          choices: [{ message: { content: "ok" } }],
           usage: { prompt_tokens: 1, completion_tokens: 1 },
         }),
       },
@@ -225,29 +246,20 @@ describe("apps/web worker autopilot: Stage 3 DSE signature in hot path", () => {
 
     await waitOnExecutionContext(ctx);
 
-    // Receipt is recorded to Convex.
-    expect(state.recordPredictReceiptCalls.length).toBeGreaterThan(0);
-    const recorded = state.recordPredictReceiptCalls.at(-1)?.args as any;
-    expect(recorded?.receipt?.signatureId).toBe("@openagents/autopilot/blueprint/SelectTool.v1");
-    expect(typeof recorded?.receipt?.compiled_id).toBe("string");
-    expect(String(recorded?.receipt?.compiled_id ?? "").length).toBeGreaterThan(0);
+    // Bootstrap advancement is persisted to Convex (best-effort).
+    const applyCalls = ((state as any).applyBootstrapCalls ?? []) as any[];
+    expect(applyCalls.length).toBeGreaterThan(0);
+    const last = applyCalls.at(-1)?.args as any;
+    expect(last?.threadId).toBe("thread-1");
+    expect(last?.handle).toBe("Ada");
 
-    // DSE signature parts are appended into the messageParts stream.
+    // No DSE signature parts are appended into the messageParts stream (bootstrap-only in hot path).
     const appended = state.appendPartsCalls.flatMap((c) => (Array.isArray(c.args.parts) ? c.args.parts : []));
-    const sigParts = appended
-      .map((p: any) => p?.part)
-      .filter((p: any) => p?.type === "dse.signature" && p?.signatureId === "@openagents/autopilot/blueprint/SelectTool.v1");
-
-    expect(sigParts.some((p: any) => p?.state === "start")).toBe(true);
-
-    const ok = sigParts.find((p: any) => p?.state === "ok");
-    expect(ok).toBeTruthy();
-    expect(ok?.compiled_id).toBe(recorded.receipt.compiled_id);
-    expect(ok?.receiptId).toBe(recorded.receipt.receiptId);
-    expect(ok?.outputPreview?.action).toBe("none");
+    const hasSigParts = appended.some((p: any) => p?.part?.type === "dse.signature");
+    expect(hasSigParts).toBe(false);
   });
 
-  it("uses the canary compiled_id when a canary rollout is enabled (Stage 6)", async () => {
+  it("advances bootstrap by persisting the agent name (ask_agent_name -> ask_vibe)", async () => {
     state.createRunCalls.length = 0;
     state.appendPartsCalls.length = 0;
     state.finalizeRunCalls.length = 0;
@@ -256,59 +268,21 @@ describe("apps/web worker autopilot: Stage 3 DSE signature in hot path", () => {
     state.dseGetActiveCalls.length = 0;
     state.recordPredictReceiptCalls.length = 0;
     state.artifacts.clear();
-
-    const signatureId = "@openagents/autopilot/blueprint/SelectTool.v1";
-    const controlId = "control1";
-    const canaryId = "canary1";
-
-    const mkArtifact = (compiled_id: string) => ({
-      format: "openagents.dse.compiled_artifact",
-      formatVersion: 1,
-      signatureId,
-      compiled_id,
-      createdAt: "2026-02-08T00:00:00Z",
-      hashes: {
-        inputSchemaHash: "h_in",
-        outputSchemaHash: "h_out",
-        promptIrHash: "h_prompt",
-        paramsHash: compiled_id,
-      },
-      params: { paramsVersion: 1, decode: { mode: "strict_json", maxRepairs: 0 } },
-      eval: { evalVersion: 1, kind: "unscored" },
-      optimizer: { id: "test" },
-      provenance: {},
-    });
-
-    state.artifacts.set(`${signatureId}::${controlId}`, mkArtifact(controlId));
-    state.artifacts.set(`${signatureId}::${canaryId}`, mkArtifact(canaryId));
-
-    state.canary = {
-      signatureId,
-      enabled: true,
-      control_compiled_id: controlId,
-      canary_compiled_id: canaryId,
-      rolloutPct: 100,
-      salt: "salt-1",
-      okCount: 0,
-      errorCount: 0,
-      minSamples: 1,
-      maxErrorRate: 1,
-      createdAtMs: 1,
-      updatedAtMs: 1,
-    };
+    (state as any).applyBootstrapCalls = [];
+    (state as any).bootstrapStage = "ask_agent_name";
 
     const ORIGIN = "http://example.com";
     const request = new Request(`${ORIGIN}/api/autopilot/send`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ threadId: "thread-canary-1", anonKey: "anon-key-1", text: "What can you do?" }),
+      body: JSON.stringify({ threadId: "thread-2", anonKey: "anon-key-1", text: "Autopilot" }),
     });
 
     const ctx = createExecutionContext();
     const envWithAi = Object.assign(Object.create(env as any), {
       AI: {
         run: async () => ({
-          choices: [{ message: { content: "{\"action\":\"none\"}" } }],
+          choices: [{ message: { content: "ok" } }],
           usage: { prompt_tokens: 1, completion_tokens: 1 },
         }),
       },
@@ -324,20 +298,10 @@ describe("apps/web worker autopilot: Stage 3 DSE signature in hot path", () => {
 
     await waitOnExecutionContext(ctx);
 
-    // Canary selection happens in PolicyRegistryService.getActive; the active pointer query should be skipped.
-    expect(state.dseGetActiveCalls.length).toBe(0);
-
-    expect(state.recordPredictReceiptCalls.length).toBeGreaterThan(0);
-    const recorded = state.recordPredictReceiptCalls.at(-1)?.args as any;
-    expect(recorded?.receipt?.signatureId).toBe(signatureId);
-    expect(recorded?.receipt?.compiled_id).toBe(canaryId);
-
-    const appended = state.appendPartsCalls.flatMap((c) => (Array.isArray(c.args.parts) ? c.args.parts : []));
-    const sigParts = appended
-      .map((p: any) => p?.part)
-      .filter((p: any) => p?.type === "dse.signature" && p?.signatureId === signatureId);
-
-    const ok = sigParts.find((p: any) => p?.state === "ok");
-    expect(ok?.compiled_id).toBe(canaryId);
+    const applyCalls = ((state as any).applyBootstrapCalls ?? []) as any[];
+    expect(applyCalls.length).toBeGreaterThan(0);
+    const last = applyCalls.at(-1)?.args as any;
+    expect(last?.threadId).toBe("thread-2");
+    expect(last?.name).toBe("Autopilot");
   });
 });

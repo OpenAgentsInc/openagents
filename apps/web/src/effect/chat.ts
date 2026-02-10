@@ -146,7 +146,7 @@ export const ChatServiceLive = Layer.effect(
             }
             if (role === "assistant") {
               const active = byMessageId.get(messageId);
-              if (active) {
+              if (active && active.parts.length > 0) {
                 messages.push({ id: messageId, role: "assistant", parts: [...active.parts] });
               } else if (text.trim()) {
                 messages.push({
@@ -155,6 +155,8 @@ export const ChatServiceLive = Layer.effect(
                   parts: [{ type: "text", text, state: "done" }],
                 });
               } else {
+                // If we only received non-renderable wire parts (e.g. finish-only), fall back to
+                // message text when present (handled above). Otherwise keep the message empty.
                 messages.push({ id: messageId, role: "assistant", parts: [] });
               }
 

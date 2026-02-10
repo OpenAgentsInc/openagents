@@ -7,8 +7,6 @@ import { Effect, Layer, Schema, Stream } from "effect";
 import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect/ai/languageModel";
 import { makeOpenRouterLanguageModel } from "../../../autopilot-worker/src/effect/ai/openRouterLanguageModel";
 import { makeFallbackLanguageModel } from "../../../autopilot-worker/src/effect/ai/fallbackLanguageModel";
-import { Lm, Predict } from "@openagentsinc/dse";
-import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
 
 import { api } from "../../convex/_generated/api";
 import { AuthService } from "../effect/auth";
@@ -16,7 +14,6 @@ import { ConvexService, type ConvexServiceApi } from "../effect/convex";
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
 import { TelemetryService } from "../effect/telemetry";
 
-import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
@@ -34,9 +31,6 @@ const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
 const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
 const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
-
-const predictBlueprintSelectTool = Predict.make(dseCatalogSignatures.blueprint_select_tool);
-const predictExtractUserHandle = Predict.make(dseCatalogSignatures.bootstrap_extract_user_handle);
 
 const json = (body: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(body), {
@@ -98,7 +92,26 @@ const BOOTSTRAP_ASK_USER_HANDLE_SYSTEM =
   "Do NOT say generic greetings like \"Hello! How can I assist you today?\" or \"How can I help?\". " +
   "If the user has not given a name (e.g. they said \"hi\", \"hello\", or something that is not a name), " +
   "respond only by re-asking: \"What shall I call you?\" Do not add filler. " +
-  "Keep asking until they give a name, then confirm and move on.";
+  "If they give a name/handle, confirm and immediately ask the next bootstrap question: " +
+  "\"What should you call me?\" (Default: Autopilot). Ask one question at a time.";
+
+const BOOTSTRAP_ASK_AGENT_NAME_SYSTEM =
+  "\n\nBootstrap (strict): You are collecting what the user should call you (your name). " +
+  "Ask only: \"What should you call me?\" (Default: Autopilot). " +
+  "If they give a name, confirm and immediately ask the next bootstrap question: " +
+  "\"Pick one short operating vibe for me.\"";
+
+const BOOTSTRAP_ASK_VIBE_SYSTEM =
+  "\n\nBootstrap (strict): You are collecting a short operating vibe for yourself (one short phrase). " +
+  "Ask only: \"Pick one short operating vibe for me.\" " +
+  "If they give a vibe, confirm and immediately ask the next bootstrap question: " +
+  "\"Any boundaries or preferences? Reply 'none' or list a few bullets.\"";
+
+const BOOTSTRAP_ASK_BOUNDARIES_SYSTEM =
+  "\n\nBootstrap (strict): You are collecting optional boundaries/preferences. " +
+  "Ask only: \"Any boundaries or preferences? Reply 'none' or list a few bullets.\" " +
+  "If they say none, confirm setup is complete and ask: \"What would you like to do first?\" " +
+  "If they provide boundaries, acknowledge them, confirm setup is complete, and ask: \"What would you like to do first?\"";
 
 const concatTextFromPromptMessages = (
   messages: ReadonlyArray<{ readonly role: string; readonly text: string }>,
@@ -114,8 +127,11 @@ const concatTextFromPromptMessages = (
 
   const status = blueprint?.bootstrapState?.status;
   const stage = blueprint?.bootstrapState?.stage;
-  if (status !== "complete" && stage === "ask_user_handle") {
-    systemContent += BOOTSTRAP_ASK_USER_HANDLE_SYSTEM;
+  if (status !== "complete") {
+    if (stage === "ask_user_handle") systemContent += BOOTSTRAP_ASK_USER_HANDLE_SYSTEM;
+    if (stage === "ask_agent_name") systemContent += BOOTSTRAP_ASK_AGENT_NAME_SYSTEM;
+    if (stage === "ask_vibe") systemContent += BOOTSTRAP_ASK_VIBE_SYSTEM;
+    if (stage === "ask_boundaries") systemContent += BOOTSTRAP_ASK_BOUNDARIES_SYSTEM;
   }
 
   out.push({ role: "system", content: systemContent });
@@ -126,6 +142,17 @@ const concatTextFromPromptMessages = (
   }
 
   return out as unknown as AiPrompt.RawInput;
+};
+
+const lastUserTextFromSnapshot = (messages: ReadonlyArray<ThreadSnapshotMessage>): string => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || typeof m !== "object") continue;
+    if (String(m.role ?? "") !== "user") continue;
+    const text = String(m.text ?? "");
+    if (text.trim()) return text;
+  }
+  return "";
 };
 
 const flushPartsToConvex = (input: {
@@ -217,6 +244,11 @@ const runAutopilotStream = (input: {
     const blueprint = (bp as GetBlueprintResult).blueprint as BlueprintHint | null;
 
     const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray(snapshot.messages) ? snapshot.messages : [];
+
+    // Bootstrap is a deterministic state machine for MVP: avoid inference until the Blueprint is complete.
+    const bootstrapStatus = String(blueprint?.bootstrapState?.status ?? "pending");
+    const bootstrapStage = String(blueprint?.bootstrapState?.stage ?? "");
+    const lastUserText = lastUserTextFromSnapshot(messagesRaw).trim();
 
     const promptMessages = messagesRaw
       .filter((m) => m && typeof m === "object")
@@ -330,134 +362,6 @@ const runAutopilotStream = (input: {
       );
     });
 
-    // Stage 3: Execute one DSE signature in the MVP hot path (Convex-first).
-    // This is best-effort and must never block the main chat response.
-    yield* Effect.gen(function* () {
-      if (input.controller.signal.aborted) return;
-
-      const lastUserMessageText = (() => {
-        for (let i = messagesRaw.length - 1; i >= 0; i--) {
-          const m = messagesRaw[i];
-          if (!m || typeof m !== "object") continue;
-          if (String(m.role ?? "") !== "user") continue;
-          const text = String(m.text ?? "");
-          if (text.trim()) return text;
-        }
-        return "";
-      })();
-      if (!lastUserMessageText) return;
-
-      const userHandle = String(blueprint?.docs?.user?.addressAs ?? "Unknown");
-      const agentName = String(blueprint?.docs?.identity?.name ?? "Autopilot");
-
-      const signatureId = dseCatalogSignatures.blueprint_select_tool.id;
-      const partId = `dsepart_sig_${input.runId}_blueprint_select_tool`;
-
-      bufferedParts.push({
-        seq: seq++,
-        part: {
-          type: "dse.signature",
-          v: 1,
-          id: partId,
-          state: "start",
-          tsMs: Date.now(),
-          signatureId,
-        },
-      });
-      yield* flush(true);
-
-      type DseReceiptShape = {
-        compiled_id?: string;
-        timing?: { durationMs?: number };
-        budget?: unknown;
-        receiptId?: string;
-      };
-      let recordedReceipt: DseReceiptShape | null = null;
-      const setRecordedReceipt = (r: unknown) => {
-        recordedReceipt = r as DseReceiptShape;
-      };
-
-      const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
-        env: input.env,
-        defaultModelIdCf: MODEL_ID_CF,
-        primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
-      });
-      const dseEnv = layerDsePredictEnvForAutopilotRun({
-        threadId: input.threadId,
-        runId: input.runId,
-        onReceipt: setRecordedReceipt,
-      });
-
-      const exit = yield* Effect.exit(
-        predictBlueprintSelectTool({
-          message: lastUserMessageText,
-          blueprintHint: { userHandle, agentName },
-        }).pipe(
-          Effect.provideService(Lm.LmClientService, dseLmClient),
-          Effect.provide(dseEnv),
-        ),
-      );
-
-      const state = exit._tag === "Success" ? "ok" : "error";
-
-      const errorText =
-        exit._tag === "Failure"
-          ? (() => {
-              const cause = exit.cause;
-              if (cause && typeof cause === "object" && "message" in cause)
-                return String((cause as unknown as { message: string }).message);
-              return String(cause ?? "DSE predict failed");
-            })()
-          : null;
-
-      const receipt = recordedReceipt as DseReceiptShape | null;
-      bufferedParts.push({
-        seq: seq++,
-        part: {
-          type: "dse.signature",
-          v: 1,
-          id: partId,
-          state,
-          tsMs: Date.now(),
-          signatureId,
-          ...(receipt?.compiled_id != null ? { compiled_id: String(receipt.compiled_id) } : {}),
-          ...(receipt?.timing?.durationMs != null ? { timing: { durationMs: Number(receipt.timing.durationMs) } } : {}),
-          ...(receipt?.budget != null ? { budget: receipt.budget } : {}),
-          ...(receipt?.receiptId != null ? { receiptId: String(receipt.receiptId) } : {}),
-          ...(exit._tag === "Success" ? { outputPreview: exit.value } : {}),
-          ...(errorText ? { errorText } : {}),
-        },
-      });
-      yield* flush(true);
-
-      // When in ask_user_handle, extract handle from user message and persist so next turn advances.
-      const stage = blueprint?.bootstrapState?.stage;
-      const bootstrapComplete = blueprint?.bootstrapState?.status === "complete";
-      if (!bootstrapComplete && stage === "ask_user_handle") {
-        const extractExit = yield* Effect.exit(
-          predictExtractUserHandle({ message: lastUserMessageText }).pipe(
-            Effect.provideService(Lm.LmClientService, dseLmClient),
-            Effect.provide(dseEnv),
-          ),
-        );
-        const handle =
-          extractExit._tag === "Success" && extractExit.value && "handle" in extractExit.value && extractExit.value.handle
-            ? String(extractExit.value.handle).trim()
-            : "";
-        if (handle && handle !== "Unknown") {
-          yield* convex
-            .mutation(api.autopilot.blueprint.applyBootstrapUserHandle, {
-              threadId: input.threadId,
-              handle,
-            })
-            .pipe(Effect.catchAll(() => Effect.succeed({ ok: false })));
-        }
-      }
-    }).pipe(
-      // Must never block the main chat response.
-      Effect.catchAllCause((cause) => t.log("warn", "dse.router_failed", { message: String(cause) })),
-    );
-
     const stream = AiLanguageModel.streamText({
       prompt,
       toolChoice: "none",
@@ -488,11 +392,117 @@ const runAutopilotStream = (input: {
     let status: "final" | "error" | "canceled" = "final";
 
     try {
-      yield* runStream;
-      yield* flush(true);
+      if (bootstrapStatus !== "complete" && bootstrapStage) {
+        const clamp = (s: string, max: number): string => {
+          const t = s.trim();
+          if (t.length <= max) return t;
+          return t.slice(0, max).trim();
+        };
 
-      if (input.controller.signal.aborted) {
-        status = "canceled";
+        const looksLikeGreeting = (s: string): boolean => {
+          const t = s.trim().toLowerCase();
+          return (
+            t === "hi" ||
+            t === "hello" ||
+            t === "hey" ||
+            t === "yo" ||
+            t === "sup" ||
+            t === "howdy" ||
+            t === "hiya" ||
+            t === "hi!" ||
+            t === "hello!" ||
+            t === "hey!"
+          );
+        };
+
+        const reply = yield* Effect.gen(function* () {
+          // Always render an assistant response during bootstrap so users never hit a silent stall.
+          if (bootstrapStage === "ask_user_handle") {
+            const handle = clamp(lastUserText, 64);
+            if (!handle || looksLikeGreeting(handle)) return "What shall I call you?";
+            yield* convex
+              .mutation(api.autopilot.blueprint.applyBootstrapUserHandle, {
+                threadId: input.threadId,
+                handle,
+              })
+              .pipe(Effect.catchAll(() => Effect.void));
+            return `Confirmed, ${handle}. What should you call me?`;
+          }
+
+          if (bootstrapStage === "ask_agent_name") {
+            const name = clamp(lastUserText, 64);
+            if (!name || looksLikeGreeting(name)) return "What should you call me?";
+            yield* convex
+              .mutation(api.autopilot.blueprint.applyBootstrapAgentName, {
+                threadId: input.threadId,
+                name,
+              })
+              .pipe(Effect.catchAll(() => Effect.void));
+            return `Got it. Pick one short operating vibe for me.`;
+          }
+
+          if (bootstrapStage === "ask_vibe") {
+            const vibe = clamp(lastUserText, 140);
+            if (!vibe) return "Pick one short operating vibe for me.";
+            yield* convex
+              .mutation(api.autopilot.blueprint.applyBootstrapAgentVibe, {
+                threadId: input.threadId,
+                vibe,
+              })
+              .pipe(Effect.catchAll(() => Effect.void));
+            return `Noted. Any boundaries or preferences? Reply 'none' or list a few bullets.`;
+          }
+
+          if (bootstrapStage === "ask_boundaries") {
+            const lowered = lastUserText.toLowerCase();
+            const isNone =
+              lowered === "none" ||
+              lowered === "no" ||
+              lowered === "nope" ||
+              lowered === "nah" ||
+              lowered === "nothing" ||
+              lowered === "n/a" ||
+              lowered === "na";
+
+            const boundaries = isNone
+              ? []
+              : lastUserText
+                  .split(/\n|,|;+/g)
+                  .map((b) => b.trim())
+                  .map((b) => (b.startsWith("- ") ? b.slice(2).trim() : b))
+                  .filter((b) => b.length > 0)
+                  .slice(0, 16);
+
+            if (!isNone && boundaries.length === 0) {
+              return "Any boundaries or preferences? Reply 'none' or list a few bullets.";
+            }
+
+            yield* convex
+              .mutation(api.autopilot.blueprint.applyBootstrapComplete, {
+                threadId: input.threadId,
+                ...(boundaries.length > 0 ? { boundaries } : {}),
+              } as any)
+              .pipe(Effect.catchAll(() => Effect.void));
+            return "Setup complete. What would you like to do first?";
+          }
+
+          return "What would you like to do first?";
+        }).pipe(
+          Effect.catchAllCause((cause) =>
+            t.log("warn", "bootstrap.apply_failed", { message: String(cause) }).pipe(
+              Effect.as("Bootstrap failed. Please retry."),
+            ),
+          ),
+        );
+
+        outputText = reply;
+      } else {
+        yield* runStream;
+        yield* flush(true);
+
+        if (input.controller.signal.aborted) {
+          status = "canceled";
+        }
       }
     } catch (err) {
       status = input.controller.signal.aborted ? "canceled" : "error";
@@ -507,6 +517,12 @@ const runAutopilotStream = (input: {
         parts: [{ seq: seq++, part: errorPart }],
       }).pipe(Effect.catchAll(() => Effect.void));
     } finally {
+      // Guardrail: never finalize a run with an invisible assistant message.
+      // If the model produced no text/tool parts (e.g. only a finish part), fall back to a visible error.
+      if (status === "final" && outputText.trim().length === 0) {
+        outputText = "No response. Please try again."
+      }
+
       yield* finalizeRunInConvex({
         convex,
         threadId: input.threadId,
@@ -592,20 +608,20 @@ export const handleAutopilotRequest = async (
     const runId = String(value.runId ?? "");
     const assistantMessageId = String(value.assistantMessageId ?? "");
 
-	    const controller = new AbortController();
-	    activeRuns.set(runId, { controller, startedAtMs: Date.now() });
+    const controller = new AbortController();
+    activeRuns.set(runId, { controller, startedAtMs: Date.now() });
 
-	    const envWithAi = env as WorkerEnv & { readonly AI: Ai };
-	    ctx.waitUntil(
-	      runAutopilotStream({
-	        env: envWithAi,
-	        request,
-	        threadId,
-	        runId,
-	        assistantMessageId,
-	        controller,
-	      }),
-	    );
+    const envWithAi = env as WorkerEnv & { readonly AI: Ai };
+    ctx.waitUntil(
+      runAutopilotStream({
+        env: envWithAi,
+        request,
+        threadId,
+        runId,
+        assistantMessageId,
+        controller,
+      }),
+    );
 
     return json(
       { ok: true, threadId, runId, assistantMessageId },

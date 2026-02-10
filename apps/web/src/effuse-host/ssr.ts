@@ -11,6 +11,7 @@ import { appRoutes } from "../effuse-app/routes"
 import type { AppServices } from "../effect/layer"
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext"
 import { TelemetryService } from "../effect/telemetry"
+import { readE2eTokenFromRequest } from "../auth/e2eAuth"
 
 import { getWorkerAppConfig, getWorkerRuntime } from "./runtime"
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId"
@@ -380,7 +381,9 @@ export const handleSsrRequest = async (
       case "Ok": {
         const bodyHtml = renderToString(run.template)
         const title = run.head?.title ?? "OpenAgents"
-        const meta = run.head?.meta ?? []
+        const metaBase = run.head?.meta ?? []
+        const hasE2e = !!readE2eTokenFromRequest(request)
+        const meta = hasE2e ? [...metaBase, ["oa-e2e", "1"] as const] : metaBase
 
         // v1 dehydrate payload: route-scoped fragment only (namespaced by routeId).
         const dehydrate =

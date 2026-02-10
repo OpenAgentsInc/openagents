@@ -4,8 +4,8 @@ import { hatcheryButton } from '@openagentsinc/effuse-ui';
 
 import type { TemplateResult } from '@openagentsinc/effuse';
 
-/** Feb 9 9:00 PM CT in ms (UTC). Used for prelaunch countdown. */
-export const PRELAUNCH_LAUNCH_MS = new Date('2026-02-10T03:00:00.000Z').getTime();
+/** Feb 9 11:00 PM CT in ms (UTC). Used for prelaunch countdown. */
+export const PRELAUNCH_LAUNCH_MS = new Date('2026-02-10T05:00:00.000Z').getTime();
 
 /** Exported for client-side countdown ticker. Returns HH:MM:SS (hours can exceed 24). */
 export function formatCountdown(msLeft: number): string {

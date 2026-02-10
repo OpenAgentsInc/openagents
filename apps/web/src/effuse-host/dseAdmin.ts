@@ -13,6 +13,7 @@ import {
   EvalReward,
   Lm,
   Receipt,
+  VarSpace,
 } from "@openagentsinc/dse";
 
 import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
@@ -115,6 +116,7 @@ const compileEnv = Layer.mergeAll(
   Budget.layerInMemory(),
   Receipt.layerNoop(),
   EvalCache.layerInMemory(),
+  VarSpace.layerInMemory(),
 );
 
 const decodeCompileReportHoldoutReward = (reportJson: unknown): number => {
