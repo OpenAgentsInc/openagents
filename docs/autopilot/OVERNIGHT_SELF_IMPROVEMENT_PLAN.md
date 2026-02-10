@@ -132,6 +132,7 @@ Recommended local dev pattern (do not commit secrets):
 
 ```bash
 cd apps/web
+cp .env.dse.local.example .env.dse.local
 wrangler dev --port 3001 --env-file .env.local --env-file .env.dse.local
 ```
 
@@ -563,6 +564,16 @@ Current endpoints and storage:
 - Updated:
   - `apps/web/.env.production.example`
   - `apps/web/.env.local.example`
+
+- 2026-02-10T13:03:12Z Docs/Ops: added a dedicated local secrets file pattern for ops-admin testing (`.env.dse.local`) and documented copying the example before starting `wrangler dev`.
+- Updated:
+  - `apps/web/.gitignore` (ignore `.env.dse.local`)
+  - `apps/web/.env.dse.local.example`
+  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+
+- 2026-02-10T13:05:15Z Ops: updated repo root `.gitignore` to allow committing `.env*.example` files (while still ignoring real `.env*` secrets), so `.env.dse.local.example` is trackable.
+- Updated:
+  - `.gitignore`
 
 - 2026-02-10T12:48:56Z Ops: ran a local headless ops-admin smoke attempt and confirmed a concrete failure mode:
   - Convex rejects ops-admin JWTs with `InvalidAuthHeader` when `OA_E2E_JWT_PRIVATE_JWK` does not match the JWKS Convex trusts (`apps/web/convex/auth.config.ts` -> `https://openagents.com/api/auth/e2e/jwks`).
