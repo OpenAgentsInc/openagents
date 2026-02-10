@@ -21,7 +21,7 @@ This is the single overnight plan to make Autopilot *actually* self-improve in a
 ## Non-Goals (Overnight)
 
 - Building any “control UI” for compile/promote/canary. (We’ll add read-only visualization later.)
-- Solving subjective tasks (recap quality) via fully automated judging. (We start with discrete, labelable signatures.)
+- Fully automated *promotion* for subjective outputs (recaps/summaries) without human review. (We can judge + store eval reports, but promotion policy needs conservatism.)
 
 ## Definition Of Done (By Morning)
 
@@ -253,6 +253,65 @@ Exit criteria:
 
 - A non-operator can answer “what improved last night?” by reading web pages backed by Convex.
 
+### Phase 7: Judge Rewards For Non-Discrete Outputs
+
+Objective: enable overnight compile/eval on recap/summarization signatures where “exact match” is not meaningful.
+
+Deliverables:
+
+- Add a judge signature (and pin its artifact):
+  - judge signature id: `@openagents/autopilot/judge/ThreadSummaryQuality.v1`
+  - pinned judge artifact: `apps/web/src/effuse-host/dsePinnedArtifacts.ts`
+- Add a judge-based reward bundle for recap/summarization signatures:
+  - reward bundle: `reward_thread_summary_judge.v1` in `apps/web/src/effuse-host/dseJobs.ts`
+  - applied to:
+    - `@openagents/autopilot/canary/RecapThread.v1`
+    - `@openagents/autopilot/rlm/SummarizeThread.v1`
+- Store eval reports in Convex:
+  - table: `dseEvalReports`
+  - endpoint: `POST /api/dse/eval`
+  - read-only pages for report inspection
+
+Exit criteria:
+
+- Recap/summarization compile/eval is possible with a pinned judge and a Convex-stored report that can be audited later.
+
+### Phase 8: Trace Mining Scale-Up (Headless)
+
+Objective: convert RLM traces into labeled examples in `dseExamples` without any UI.
+
+Deliverables:
+
+- A headless “receipt list” endpoint (ops-admin):
+  - `GET /api/dse/receipts/list?signatureId=...&limit=...&requireRlmTrace=1&resultTag=Ok&strategyId=rlm_lite.v1`
+- A trace export endpoint that can upsert examples with provenance:
+  - `POST /api/dse/trace/export` writes to `dseExamples` and stores linkage metadata in `meta`
+- A headless miner script:
+  - `apps/web/scripts/dse-trace-mine.ts` (CLI)
+  - uses Bearer admin-secret auth and calls: receipts list -> trace export
+
+Exit criteria:
+
+- We can generate new dataset rows from production traces programmatically and link back to receipts/blobs.
+
+### Phase 9: Knobs + Compiler Search Spaces (RLM + Distilled Pipelines)
+
+Objective: make the knobs that matter compiler-visible (don’t hand-tweak prompts) for long-context strategies.
+
+Deliverables:
+
+- Add search spaces to recap/summarization compile jobs:
+  - controller instruction variants
+  - chunking policy variants
+  - sub-role selection variants
+  - budget profile variants
+- Keep everything auditable in compile reports:
+  - `dseCompileReports` includes the job spec, candidates, and best selection
+
+Exit criteria:
+
+- RLM-lite strategy configs and distilled pipeline params can be compiled into artifacts and compared with eval-backed selection.
+
 ## Notes / Current Code Surface
 
 Current endpoints and storage:
@@ -420,6 +479,8 @@ Current endpoints and storage:
   - Worker secret: `OA_E2E_BYPASS_SECRET`
   - Runner env: `EFFUSE_TEST_E2E_BYPASS_SECRET` (must match)
 - Added a “How To Run (Headless, One Command)” section with canonical CLI examples and read-only result pages.
+
+- 2026-02-10T11:49:02Z Doc maintenance: filled in Phases 7–9 sections and corrected “Non-Goals” to match the implemented judge/eval capability.
 
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
