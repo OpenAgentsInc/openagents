@@ -225,6 +225,25 @@ function normalizeBoundedInt(n: number | undefined, options: { readonly min: num
   return Math.max(options.min, Math.min(options.max, v));
 }
 
+function resolveModelConfig(
+  params: DseParams,
+  role: "main" | "sub" | "repair" | "judge"
+): { readonly modelId?: string; readonly temperature?: number; readonly topP?: number; readonly maxTokens?: number } {
+  const base = params.model ?? {};
+  const roles = params.modelRoles ?? {};
+  const override = (roles as any)[role] ?? {};
+  return {
+    ...(base.modelId ? { modelId: base.modelId } : {}),
+    ...(typeof base.temperature === "number" ? { temperature: base.temperature } : {}),
+    ...(typeof base.topP === "number" ? { topP: base.topP } : {}),
+    ...(typeof base.maxTokens === "number" ? { maxTokens: base.maxTokens } : {}),
+    ...(override.modelId ? { modelId: override.modelId } : {}),
+    ...(typeof override.temperature === "number" ? { temperature: override.temperature } : {}),
+    ...(typeof override.topP === "number" ? { topP: override.topP } : {}),
+    ...(typeof override.maxTokens === "number" ? { maxTokens: override.maxTokens } : {})
+  };
+}
+
 function policyAllowsTool(params: DseParams, toolName: string): boolean {
   const allowed = params.tools?.allowedToolNames;
   if (!allowed || allowed.length === 0) return false;
@@ -474,12 +493,15 @@ export function executeRlmAction(options: {
         yield* options.budget.onLmCall();
         yield* options.budget.onSubLmCall();
 
+        const subRole = params.rlmLite?.subRole ?? "sub";
+        const roleCfg = resolveModelConfig(params, subRole === "main" ? "main" : "sub");
+
         const response = yield* lm.complete({
           messages: action.messages,
-          modelId: action.model?.modelId ?? params.model?.modelId,
-          temperature: action.model?.temperature ?? params.model?.temperature,
-          topP: action.model?.topP ?? params.model?.topP,
-          maxTokens: action.model?.maxTokens ?? Math.min(1024, params.model?.maxTokens ?? 1024)
+          modelId: action.model?.modelId ?? roleCfg.modelId,
+          temperature: action.model?.temperature ?? roleCfg.temperature,
+          topP: action.model?.topP ?? roleCfg.topP,
+          maxTokens: action.model?.maxTokens ?? Math.min(1024, roleCfg.maxTokens ?? 1024)
         });
 
         yield* options.budget.onOutputChars(response.text.length);
@@ -554,18 +576,23 @@ export function executeRlmAction(options: {
 
           yield* options.budget.onLmCall();
           yield* options.budget.onSubLmCall();
+
+          const subRole = params.rlmLite?.subRole ?? "sub";
+          const roleCfg = resolveModelConfig(params, subRole === "main" ? "main" : "sub");
+          const extractorSystem = params.rlmLite?.extractionSystem ?? "You are a focused extraction helper.";
+
           const response = yield* lm.complete({
             messages: [
-              { role: "system", content: "You are a focused extraction helper." },
+              { role: "system", content: extractorSystem },
               {
                 role: "user",
                 content: action.instruction + "\n\nChunk:\n" + chunkText
               }
             ],
-            modelId: action.model?.modelId ?? params.model?.modelId,
-            temperature: action.model?.temperature ?? params.model?.temperature,
-            topP: action.model?.topP ?? params.model?.topP,
-            maxTokens: action.model?.maxTokens ?? Math.min(1024, params.model?.maxTokens ?? 1024)
+            modelId: action.model?.modelId ?? roleCfg.modelId,
+            temperature: action.model?.temperature ?? roleCfg.temperature,
+            topP: action.model?.topP ?? roleCfg.topP,
+            maxTokens: action.model?.maxTokens ?? Math.min(1024, roleCfg.maxTokens ?? 1024)
           });
           yield* options.budget.onOutputChars(response.text.length);
 

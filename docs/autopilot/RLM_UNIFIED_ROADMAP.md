@@ -300,6 +300,32 @@ Production smoke guidance:
   - `cd apps/web && npx convex codegen`
   - `cd apps/web && npm test && npm run lint`
 
+### 2026-02-10: Phase G (Compile knobs for RLM and distilled pipelines) — implemented in DSE
+
+- Made RLM/distilled strategy behavior artifact-tunable via params:
+  - added `params.modelRoles` (main/sub/repair/judge) and `params.rlmLite` (controller instructions, extraction system, chunk defaults, subRole)
+  - runtime uses roles in both direct + RLM-lite paths (main for controller, sub/main selectable for sub-LM calls)
+  - implementation: `packages/dse/src/params.ts`, `packages/dse/src/runtime/predict.ts`, `packages/dse/src/runtime/rlmKernel.ts`
+- Added compiler-visible search spaces for long-context strategy knobs:
+  - strategy selection (`direct.v1` vs `rlm_lite.v1` vs distilled strategies)
+  - controller instruction variants
+  - chunking policy variants (RLM controller hint surface)
+  - sub-role selection (`main` vs `sub`)
+  - budget profiles
+  - implementation: `packages/dse/src/compile/job.ts`
+- Added a knob-aware optimizer loop that can refine candidates using failure summaries:
+  - `knobs_grid.v1`: bounded staged grid over the knob search spaces
+  - `knobs_grid_refine.v1`: second-pass refinement using per-example failures (decode/evidence/budget) to propose param patches
+  - implementation: `packages/dse/src/compile/compile.ts`
+- Added tests proving Phase G produces measurable improvements via compiled artifacts:
+  - compile chooses `distilled.search_line_extract.v1` over `direct.v1` on long-context QA
+  - refine loop patches RLM controller instructions to recover from decode failures
+  - implementation: `packages/dse/test/compileKnobsPhaseG.test.ts`
+- Verified (TypeScript):
+  - `cd packages/dse && bun test && bun run typecheck`
+  - `cd apps/autopilot-worker && npm run typecheck`
+  - `cd apps/web && npm run lint`
+
 ### 2026-02-10: Phase B (PredictStrategy abstraction + RLM counters) — implemented in DSE
 
 - Added `params.strategy` to DSE params so inference strategy is pinned in compiled artifacts:
