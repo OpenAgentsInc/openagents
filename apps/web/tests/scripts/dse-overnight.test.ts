@@ -328,6 +328,42 @@ describe("apps/web/scripts/dse-overnight", () => {
     expect(finishCall?.body?.runId).toBe("opsrun_2")
   })
 
+  it("returns a machine-readable failure summary when ops run start fails", async () => {
+    const fetchFn = async (url: RequestInfo | URL): Promise<Response> => {
+      if (String(url).endsWith("/api/dse/ops/run/start")) {
+        return new Response(JSON.stringify({ ok: false, error: "boom" }), {
+          status: 500,
+          headers: { "content-type": "application/json; charset=utf-8", "x-oa-request-id": "req_start_fail" },
+        })
+      }
+      return new Response("not found", { status: 404 })
+    }
+
+    const runCommand = async () => ({
+      ok: true,
+      code: 0,
+      stdout: "sha\n",
+      stderr: "",
+      durationMs: 1,
+      timedOut: false,
+    })
+
+    const parsed = parseOvernightArgs(["--base-url", "https://example.com", "--no-verify", "--no-e2e"])
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const summary = await runOvernight({
+      options: parsed.options,
+      env: { OA_DSE_ADMIN_SECRET: "secret" },
+      fetchFn,
+      runCommand,
+    })
+
+    expect(summary.ok).toBe(false)
+    expect(summary.runId).toBe("")
+    expect(summary.errors.join("\n")).toContain("req=req_start_fail")
+  })
+
   it("stops canary and finishes the ops run when phase 5 promote fails", async () => {
     const calls: Array<{ url: string; body: any }> = []
 
