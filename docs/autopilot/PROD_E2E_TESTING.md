@@ -25,6 +25,9 @@ It exists so we can:
   - `packages/effuse-test/src/cli.ts`
   - `packages/effuse-test/src/runner/runner.ts`
   - `packages/effuse-test/src/suites/apps-web.ts`
+- Overnight runner (headless, Convex-first logs):
+  - `apps/web/scripts/dse-overnight.ts`
+  - Runbook: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 - Worker auth endpoints:
   - `apps/web/src/effuse-host/auth.ts`
   - `apps/web/src/auth/e2eAuth.ts`
@@ -158,6 +161,9 @@ From `apps/web`:
 ```bash
 cd apps/web
 
+# If you keep secrets in `.env.production`, you can sync them in one go:
+npm run wrangler:secrets
+
 # Used to authenticate requests to /api/auth/e2e/login
 npx wrangler secret put OA_E2E_BYPASS_SECRET --name autopilot-web
 
@@ -192,6 +198,7 @@ Command:
 
 ```bash
 cd apps/web
+# Must match the Worker secret `OA_E2E_BYPASS_SECRET`.
 EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
   npm run test:e2e -- --base-url https://openagents.com --tag prod
 ```
@@ -259,4 +266,3 @@ npx convex logs --prod --jsonl | rg "<CONVEX_REQUEST_ID>"
 - The E2E bypass cookie is **not** a WorkOS session. It exists to make prod smoke tests deterministic without relying on inboxes.
 - Convex must accept the E2E token (it does via `apps/web/convex/auth.config.ts`), otherwise `ctx.auth.getUserIdentity()` will be empty and everything becomes “forbidden”.
 - Prelaunch mode: prod deploy runs with `VITE_PRELAUNCH=1`; `POST /api/auth/e2e/login` sets `prelaunch_bypass=1` so tests can reach `/autopilot`.
-
