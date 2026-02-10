@@ -9,6 +9,7 @@ import {
   EvalCache,
   EvalDataset,
   Lm,
+  Predict,
   Receipt,
   TraceMining,
   VarSpace,
@@ -22,7 +23,7 @@ import { ConvexService } from "../effect/convex";
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
 import { TelemetryService } from "../effect/telemetry";
 
-import { makeDseLmClientWithOpenRouterPrimary } from "./dse";
+import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { isDseAdminSecretAuthorized, withDseAdminSecretServices } from "./dseAdminSecret";
 import { compileJobForSignature, convexDatasetIdForExamples } from "./dseJobs";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
@@ -186,6 +187,14 @@ type OpsRunFinishBody = {
   readonly summaryJson?: unknown;
 };
 
+type ExercisePredictBody = {
+  readonly signatureId?: unknown;
+  readonly threadId?: unknown;
+  readonly count?: unknown;
+  readonly split?: unknown;
+  readonly limit?: unknown;
+};
+
 type DseAuthMode = "session_only" | "session_or_admin_secret" | "admin_secret_only";
 
 const runAuthedDseAdmin = async <A>(
@@ -279,6 +288,144 @@ export const handleDseAdminRequest = async (
 ): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/dse/")) return null;
+
+  if (url.pathname === "/api/dse/canary/status") {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+
+    const signatureId = String(url.searchParams.get("signatureId") ?? "").trim();
+    if (!signatureId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      return yield* convex.query(api.dse.canary.getCanary, { signatureId });
+    });
+
+    return runAuthedDseAdmin(request, env, program, "admin_secret_only");
+  }
+
+  if (url.pathname === "/api/dse/exercise/thread/ensure") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    // Body ignored (reserved for future options).
+    await readJson(request);
+
+    const program = Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      const res = yield* convex.mutation(api.autopilot.threads.ensureOwnedThread, {});
+      const threadId = String((res as any)?.threadId ?? "");
+      if (!threadId) return yield* Effect.fail(new Error("ensure_thread_failed"));
+      return { ok: true as const, threadId };
+    });
+
+    return runAuthedDseAdmin(request, env, program, "admin_secret_only");
+  }
+
+  if (url.pathname === "/api/dse/exercise/predict") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+    if (!env.AI) return json({ ok: false, error: "ai_unbound" }, { status: 500, headers: { "cache-control": "no-store" } });
+    const aiBinding = env.AI;
+
+    const body = (await readJson(request)) as ExercisePredictBody | null;
+    const signatureId = typeof body?.signatureId === "string" ? body.signatureId : "";
+    const threadIdRaw = typeof body?.threadId === "string" ? body.threadId : "";
+    const splitRaw = typeof body?.split === "string" ? body.split : "train";
+    const split = splitRaw === "train" || splitRaw === "dev" || splitRaw === "holdout" || splitRaw === "test" ? splitRaw : "train";
+    const countRaw = typeof body?.count === "number" ? body.count : 20;
+    const count = Number.isFinite(countRaw) ? Math.max(1, Math.min(200, Math.floor(countRaw))) : 20;
+    const limitRaw = typeof body?.limit === "number" ? body.limit : 200;
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(500, Math.floor(limitRaw))) : 200;
+
+    if (!signatureId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const signature = findSignatureById(signatureId);
+    if (!signature) {
+      return json({ ok: false, error: "unknown_signature" }, { status: 404, headers: { "cache-control": "no-store" } });
+    }
+
+    const program = Effect.gen(function* () {
+      const telemetry = yield* TelemetryService;
+      const t = telemetry.withNamespace("dse.exercise");
+
+      const auth = yield* AuthService;
+      const session = yield* auth.getSession();
+      if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+      const convex = yield* ConvexService;
+
+      const threadId =
+        threadIdRaw && threadIdRaw.trim().length > 0
+          ? threadIdRaw.trim()
+          : String(((yield* convex.mutation(api.autopilot.threads.ensureOwnedThread, {})) as any)?.threadId ?? "");
+      if (!threadId) return yield* Effect.fail(new Error("missing_thread"));
+
+      const exRes = yield* convex.query(api.dse.examples.listExamples, { signatureId, split, limit });
+      const listResult = exRes as DseListExamplesResult;
+      const raw = Array.isArray(listResult?.examples) ? listResult.examples : [];
+      if (raw.length === 0) return yield* Effect.fail(new Error("no_examples"));
+
+      const decodeInput = Schema.decodeUnknownSync(signature.input);
+      const exampleInputs: Array<any> = raw.map((r) => decodeInput((r as any)?.inputJson));
+
+      const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+        env: { OPENROUTER_API_KEY: env.OPENROUTER_API_KEY, AI: aiBinding },
+        defaultModelIdCf: MODEL_ID_CF,
+        primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+      });
+
+      type DseReceiptShape = { receiptId?: string; compiled_id?: string; result?: { _tag?: string } };
+      const receiptIds: string[] = [];
+      let lastCompiledId: string | undefined;
+      const onReceipt = (r: unknown) => {
+        const rr = r as DseReceiptShape;
+        if (typeof rr?.receiptId === "string" && rr.receiptId.length > 0 && receiptIds.length < 50) {
+          receiptIds.push(rr.receiptId);
+        }
+        if (typeof rr?.compiled_id === "string" && rr.compiled_id.length > 0) lastCompiledId = rr.compiled_id;
+      };
+
+      const runId = `dse_exercise_${crypto.randomUUID()}`;
+      const dseEnv = layerDsePredictEnvForAutopilotRun({ threadId, runId, onReceipt });
+      const predict = Predict.make(signature);
+
+      let okCount = 0;
+      let errorCount = 0;
+
+      for (let i = 0; i < count; i++) {
+        const input = exampleInputs[i % exampleInputs.length];
+        const exit = yield* Effect.exit(predict(input).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)));
+        if (exit._tag === "Success") okCount++;
+        else errorCount++;
+      }
+
+      yield* t.event("exercise.finished", {
+        signatureId,
+        threadId,
+        runId,
+        count,
+        okCount,
+        errorCount,
+        ...(lastCompiledId ? { compiled_id: lastCompiledId } : {}),
+      });
+
+      return {
+        ok: true as const,
+        signatureId,
+        threadId,
+        runId,
+        count,
+        okCount,
+        errorCount,
+        receiptIds,
+        ...(lastCompiledId ? { compiled_id: lastCompiledId } : {}),
+      };
+    });
+
+    return runAuthedDseAdmin(request, env, program, "admin_secret_only");
+  }
 
   if (url.pathname === "/api/dse/ops/run/start") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });

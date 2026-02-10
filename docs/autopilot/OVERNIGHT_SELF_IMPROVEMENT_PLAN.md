@@ -284,3 +284,17 @@ Current endpoints and storage:
   - `apps/web/tests/worker/dse-admin-jobhash-gating.test.ts` asserts promote/canary gating uses the shared job hash
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T09:25:39Z Phase 5: automated prod loop wiring (compile -> canary -> traffic -> monitor -> promote/stop) + endpoints.
+- Extended the canonical overnight runner to perform the Phase 5 loop and log every step to Convex:
+  - `apps/web/scripts/dse-overnight-lib.ts`
+- Added admin-secret gated “monitor/exercise” endpoints (Workers):
+  - `GET /api/dse/canary/status?signatureId=...` (poll `dseCanaries` counters)
+  - `POST /api/dse/exercise/thread/ensure` (creates/returns an ops-owned thread id)
+  - `POST /api/dse/exercise/predict` (runs N predicts for a signature on dataset examples, records receipts, drives canary counters)
+  - Impl: `apps/web/src/effuse-host/dseAdmin.ts`
+- Tests / verification:
+  - `apps/web/tests/worker/dse-exercise-endpoints.test.ts` (new endpoints)
+  - `apps/web/tests/scripts/dse-overnight.test.ts` (runner sequencing + failure cleanup)
+  - `cd apps/web && npm run lint` (ok)
+  - `cd apps/web && npm test` (ok)
