@@ -230,13 +230,13 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
   const usage = m.budget?.usage;
   const budget = usage
     ? [
-        `elapsedMs=${usage.elapsedMs ?? "?"}`,
-        `lmCalls=${usage.lmCalls ?? "?"}`,
-        ...(usage.toolCalls != null ? [`toolCalls=${usage.toolCalls}`] : []),
-        ...(usage.rlmIterations != null ? [`rlmIterations=${usage.rlmIterations}`] : []),
-        ...(usage.subLmCalls != null ? [`subLmCalls=${usage.subLmCalls}`] : []),
-        `outputChars=${usage.outputChars ?? "?"}`,
-      ].join(" ")
+      `elapsedMs=${usage.elapsedMs ?? "?"}`,
+      `lmCalls=${usage.lmCalls ?? "?"}`,
+      ...(usage.toolCalls != null ? [`toolCalls=${usage.toolCalls}`] : []),
+      ...(usage.rlmIterations != null ? [`rlmIterations=${usage.rlmIterations}`] : []),
+      ...(usage.subLmCalls != null ? [`subLmCalls=${usage.subLmCalls}`] : []),
+      `outputChars=${usage.outputChars ?? "?"}`,
+    ].join(" ")
     : null;
 
   const body = html`
@@ -246,8 +246,8 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
     ${dseRow("receiptId", m.receiptId)}
     ${m.receiptId
       ? dseRow(
-          "receipt",
-          html`<a
+        "receipt",
+        html`<a
             href="/api/dse/receipt/${m.receiptId}"
             target="_blank"
             rel="noreferrer"
@@ -255,15 +255,15 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
             class="underline decoration-white/30 hover:decoration-white/70"
             >Open</a
           >`,
-        )
+      )
       : html``}
     ${dseRow("strategyId", m.strategyId)}
     ${dseRow("strategyReason", m.strategyReason)}
     ${budget ? dseRow("budget", budget) : html``}
     ${m.receiptId && m.rlmTraceBlobId
       ? dseRow(
-          "trace",
-          html`<a
+        "trace",
+        html`<a
             href="/api/dse/blob/${m.receiptId}/${m.rlmTraceBlobId}"
             target="_blank"
             rel="noreferrer"
@@ -271,7 +271,7 @@ const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult => {
             class="underline decoration-white/30 hover:decoration-white/70"
             >Open</a
           >`,
-        )
+      )
       : html``}
     ${m.contextPressure ? html`<div>${dseRow("contextPressure", "")}${dseBoundedText(m.contextPressure)}</div>` : html``}
     ${m.promptRenderStats ? html`<div>${dseRow("promptRenderStats", "")}${dseBoundedText(m.promptRenderStats)}</div>` : html``}
@@ -355,9 +355,9 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
     const userText =
       m.role === "user"
         ? m.renderParts
-            .filter((p): p is RenderTextPart => p.kind === "text")
-            .map((p) => p.text)
-            .join("")
+          .filter((p): p is RenderTextPart => p.kind === "text")
+          .map((p) => p.text)
+          .join("")
         : "";
     const messageClass =
       m.role === "user"
@@ -421,9 +421,8 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
           class="mt-2 rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-300"
         >
           <div class="whitespace-pre-wrap">${data.errorText}</div>
-          ${
-            data.auth.isAuthed
-              ? html`
+          ${data.auth.isAuthed
+        ? html`
                   <div class="mt-2 flex items-center gap-2">
                     <button
                       type="button"
@@ -434,8 +433,8 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
                     </button>
                   </div>
                 `
-              : null
-          }
+        : null
+      }
         </div>
       `
     : null;
@@ -576,7 +575,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
                 class="h-10 flex-1 rounded-md border-0 bg-transparent px-3 text-sm text-white placeholder:text-white/50 outline-none focus:ring-1 focus:ring-white/30 font-mono"
               />
               ${data.isBusy
-                ? html`
+      ? html`
                     <button
                       type="button"
                       data-ez="autopilot.chat.stop"
@@ -585,7 +584,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
                       Stop
                     </button>
                   `
-                : html`
+      : html`
                     <button
                       type="submit"
                       data-autopilot-chat-send="1"

@@ -30,13 +30,13 @@ export function hatcheryButton(input: {
     variant === 'outline' ? 'fill-transparent' : 'fill-[hsla(0,0%,100%,0.08)]';
 
   const baseClass = cx(
-        'group relative inline-flex max-w-full items-stretch justify-stretch',
-        minHeightClass,
-        'm-0 border-0 bg-transparent p-0',
-        'cursor-pointer select-none no-underline',
-        'text-white transition-[color,opacity] duration-200 ease-out',
-        'uppercase tracking-[0.08em] font-semibold',
-        'use-font-square721 [font-family:var(--font-square721)]',
+    'group relative inline-flex max-w-full items-stretch justify-stretch',
+    minHeightClass,
+    'm-0 border-0 bg-transparent p-0',
+    'cursor-pointer select-none no-underline',
+    'text-white transition-[color,opacity] duration-200 ease-out',
+    'uppercase tracking-[0.08em] font-semibold',
+    'use-font-square721 [font-family:var(--font-square721)]',
     'focus-visible:outline-none',
     input.className ?? null
   );
@@ -44,11 +44,11 @@ export function hatcheryButton(input: {
   const svgContent = html`
     <svg
       class="${cx(
-        'pointer-events-none absolute inset-0 h-full w-full',
-        'opacity-75 transition-[opacity,transform] duration-200 ease-out',
-        'group-hover:opacity-100 group-hover:scale-[1.02]',
-        'group-focus-visible:opacity-100 group-focus-visible:scale-[1.02]'
-      )}"
+    'pointer-events-none absolute inset-0 h-full w-full',
+    'opacity-75 transition-[opacity,transform] duration-200 ease-out',
+    'group-hover:opacity-100 group-hover:scale-[1.02]',
+    'group-focus-visible:opacity-100 group-focus-visible:scale-[1.02]'
+  )}"
       viewBox="0 0 100 40"
       preserveAspectRatio="none"
       role="presentation"
@@ -60,21 +60,21 @@ export function hatcheryButton(input: {
       />
       <polygon
         class="${cx(
-          'fill-none',
-          'stroke-[hsla(0,0%,100%,0.9)] [stroke-width:2]',
-          'transition-[stroke] duration-200 ease-out',
-          'group-hover:stroke-[hsla(0,0%,100%,1)]',
-          'group-focus-visible:stroke-[hsla(0,0%,100%,1)]'
-        )}"
+    'fill-none',
+    'stroke-[hsla(0,0%,100%,0.9)] [stroke-width:2]',
+    'transition-[stroke] duration-200 ease-out',
+    'group-hover:stroke-[hsla(0,0%,100%,1)]',
+    'group-focus-visible:stroke-[hsla(0,0%,100%,1)]'
+  )}"
         points="6,0 94,0 100,6 100,34 94,40 6,40 0,34 0,6"
       />
     </svg>
     <span
       class="${cx(
-        'relative flex w-full min-w-0 max-w-full flex-wrap items-center justify-center',
-        contentSizeClass,
-        'leading-[1.2] whitespace-normal text-center [overflow-wrap:anywhere]'
-      )}"
+    'relative flex w-full min-w-0 max-w-full flex-wrap items-center justify-center',
+    contentSizeClass,
+    'leading-[1.2] whitespace-normal text-center [overflow-wrap:anywhere]'
+  )}"
     >
       ${input.label}
     </span>

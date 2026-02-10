@@ -166,7 +166,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             void Promise.resolve(deps?.signOut?.()).then(() => closeOverlay())
           })
         }
-      }, () => {})
+      }, () => { })
     }
 
     paneSystem.store.addPane({
@@ -213,7 +213,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               doRender()
             }
           },
-          () => {},
+          () => { },
         )
       }
     }
@@ -245,29 +245,29 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       const lastAssistantIndex =
         step === "authed" && homeSnapshot.messages.length > 0
           ? (() => {
-              for (let i = homeSnapshot.messages.length - 1; i >= 0; i--) {
-                if (homeSnapshot.messages[i]?.role === "assistant") return i
-              }
-              return -1
-            })()
+            for (let i = homeSnapshot.messages.length - 1; i >= 0; i--) {
+              if (homeSnapshot.messages[i]?.role === "assistant") return i
+            }
+            return -1
+          })()
           : -1
 
       const displayMessages: Array<{ role: "user" | "assistant"; text: string }> =
         step === "authed" && homeSnapshot.messages.length > 0
           ? homeSnapshot.messages.map((m, i) => {
-              const raw = textFromParts(m.parts ?? [])
-              const isLastAssistant = m.role === "assistant" && i === lastAssistantIndex
-              const fallback =
-                m.role === "assistant"
-                  ? homeSnapshot.status === "streaming" && isLastAssistant && !raw
-                    ? "..."
-                    : "(no text)"
-                  : ""
-              return {
-                role: m.role as "user" | "assistant",
-                text: raw || (m.role === "assistant" ? fallback : ""),
-              }
-            })
+            const raw = textFromParts(m.parts ?? [])
+            const isLastAssistant = m.role === "assistant" && i === lastAssistantIndex
+            const fallback =
+              m.role === "assistant"
+                ? homeSnapshot.status === "streaming" && isLastAssistant && !raw
+                  ? "..."
+                  : "(no text)"
+                : ""
+            return {
+              role: m.role as "user" | "assistant",
+              text: raw || (m.role === "assistant" ? fallback : ""),
+            }
+          })
           : step === "authed"
             ? [{ role: "assistant" as const, text: "Autopilot online. Awaiting instructions." }]
             : messages
@@ -275,11 +275,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       const lastAssistantText =
         step === "authed"
           ? (() => {
-              for (let i = displayMessages.length - 1; i >= 0; i--) {
-                if (displayMessages[i]?.role === "assistant") return displayMessages[i].text
-              }
-              return ""
-            })()
+            for (let i = displayMessages.length - 1; i >= 0; i--) {
+              if (displayMessages[i]?.role === "assistant") return displayMessages[i].text
+            }
+            return ""
+          })()
           : ""
       const authedPlaceholder = chatPlaceholderFromLastAssistant(lastAssistantText)
 
@@ -327,20 +327,20 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       const messagesHtml = html`
         <div class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
           ${displayMessages.map((m) =>
-            m.role === "user"
-              ? html`<div
+        m.role === "user"
+          ? html`<div
                   class="text-sm font-mono text-white/55 text-right"
                   data-chat-role="user"
                 >
                   ${m.text}
                 </div>`
-              : html`<div
+          : html`<div
                   class="text-sm font-mono text-white/90"
                   data-chat-role="assistant"
                 >
                   ${streamdown(m.text, { mode: "static" })}
                 </div>`,
-          )}
+      )}
         </div>
         ${formHtml}
       `
@@ -369,7 +369,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 let tid = homeThreadId
                 if (tid) {
                   if (input) input.value = ""
-                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => {})
+                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => { })
                   doRender()
                   return
                 }
@@ -388,7 +388,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                         { immediate: true },
                       )
                       if (input) input.value = ""
-                      deps.runtime.runPromise(deps.chat.send(id, text)).catch(() => {})
+                      deps.runtime.runPromise(deps.chat.send(id, text)).catch(() => { })
                     }
                     doRender()
                   },
@@ -496,11 +496,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                     userId: session.userId,
                     user: session.user
                       ? {
-                          id: session.user.id,
-                          email: session.user.email,
-                          firstName: session.user.firstName,
-                          lastName: session.user.lastName,
-                        }
+                        id: session.user.id,
+                        email: session.user.email,
+                        firstName: session.user.firstName,
+                        lastName: session.user.lastName,
+                      }
                       : null,
                   })
                 }
@@ -553,7 +553,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           const inputEl = paneContentSlot.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
           if (inputEl) requestAnimationFrame(() => inputEl.focus())
         },
-        () => {},
+        () => { },
       )
     }
 
@@ -572,18 +572,18 @@ export const mountHomeController = (input: {
   readonly signOut?: () => void | Promise<void>
   readonly chat?: ChatClient
 }): HomeController => {
-  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => {})
+  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => { })
 
   const stopCountdown = startPrelaunchCountdownTicker(input.container)
   const deps: HomeChatDeps | undefined =
     input.runtime && input.atoms && input.navigate && input.signOut && input.chat
       ? {
-          runtime: input.runtime,
-          atoms: input.atoms,
-          navigate: input.navigate,
-          signOut: input.signOut,
-          chat: input.chat,
-        }
+        runtime: input.runtime,
+        atoms: input.atoms,
+        navigate: input.navigate,
+        signOut: input.signOut,
+        chat: input.chat,
+      }
       : undefined
   const stopOpenChatPane = openChatPaneOnHome(input.container, deps)
 
