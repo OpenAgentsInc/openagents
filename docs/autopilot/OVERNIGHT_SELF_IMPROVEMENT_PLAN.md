@@ -575,6 +575,15 @@ Current endpoints and storage:
 - Updated:
   - `.gitignore`
 
+- 2026-02-10T13:21:05Z Ops: wired up production so headless ops-admin calls actually work end-to-end.
+- Added missing Worker secret:
+  - `OA_DSE_ADMIN_SECRET` (Cloudflare Worker `autopilot-web`)
+- Deployed to production:
+  - `cd apps/web && npm run deploy:worker`
+  - `cd apps/web && npm run deploy:convex` (required because Convex prod was missing `dse/opsRuns:*` functions)
+- Verified:
+  - created + finished a smoke ops run in prod: `opsrun_smoke_e9780d37b613406cbc113f92f6b7f2ee`
+
 - 2026-02-10T12:48:56Z Ops: ran a local headless ops-admin smoke attempt and confirmed a concrete failure mode:
   - Convex rejects ops-admin JWTs with `InvalidAuthHeader` when `OA_E2E_JWT_PRIVATE_JWK` does not match the JWKS Convex trusts (`apps/web/convex/auth.config.ts` -> `https://openagents.com/api/auth/e2e/jwks`).
 - Hardened the overnight runner: if `/api/dse/ops/run/start` fails, the CLI now still emits a machine-readable JSON summary (previously it threw and emitted no summary).
