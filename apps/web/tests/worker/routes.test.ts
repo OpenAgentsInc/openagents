@@ -114,6 +114,9 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
     expect(response.status).toBe(302);
     expect(getRedirectPathname(response)).toBe("/login");
+    // Critical: bypass key must mint the bypass cookie even on redirects,
+    // otherwise the /autopilot -> /login chain loses bypass and falls back to "/".
+    expect(response.headers.get("set-cookie") ?? "").toContain("prelaunch_bypass=1");
   });
 
   it("GET /autopilot with valid ?key= bypass returns 200 when authed", async () => {
@@ -205,6 +208,25 @@ describe("apps/web worker real routes (SSR + guards)", () => {
 
     expect(response.status).toBe(302);
     expect(getRedirectPathname(response)).toBe("/");
+  });
+
+  it("GET /login returns 200 when prelaunch is on and bypass cookie is present (anon)", async () => {
+    state.authed = false;
+    const restore = setEnvVar("VITE_PRELAUNCH", "1");
+    const restoreKey = setEnvVar("PRELAUNCH_BYPASS_KEY", "bypass");
+    const request = new Request("http://example.com/login", {
+      method: "GET",
+      headers: { Cookie: "prelaunch_bypass=1" },
+    });
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    await waitOnExecutionContext(ctx);
+    restoreKey();
+    restore();
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Log in to OpenAgents");
   });
 
   it("GET /tools redirects to / when prelaunch is on (authed)", async () => {

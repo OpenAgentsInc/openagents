@@ -182,7 +182,7 @@ const PRELAUNCH_BYPASS_COOKIE_MAX_AGE = 604800 // 7 days
 /** When prelaunch is on, only these pathnames are allowed without ?key= or cookie. */
 const PRELAUNCH_ALLOWED_PATHNAMES = new Set(["/", "/deck"])
 /** Even with bypass (cookie or ?key=), these routes stay blocked in prelaunch mode. */
-const PRELAUNCH_ALWAYS_BLOCKED_PATHNAMES = new Set(["/login"])
+const PRELAUNCH_ALWAYS_BLOCKED_PATHNAMES = new Set<string>([])
 
 function hasPrelaunchBypass(
   request: Request,
@@ -335,9 +335,19 @@ export const handleSsrRequest = async (
     switch (run._tag) {
       case "Redirect": {
         const location = new URL(run.href, url).toString()
+        const headers = new Headers({ location, "cache-control": "no-store" })
+        if (setBypassCookie) {
+          // Important: the prelaunch bypass key is often used on routes that immediately redirect
+          // (e.g. /autopilot -> /login when unauthenticated). Mint the bypass cookie here so the
+          // redirect chain doesn't lose bypass and fall back to the countdown page.
+          headers.append(
+            "Set-Cookie",
+            `prelaunch_bypass=1; Path=/; Max-Age=${PRELAUNCH_BYPASS_COOKIE_MAX_AGE}; Secure; SameSite=Lax`,
+          )
+        }
         return new Response(null, {
           status: run.status ?? 302,
-          headers: new Headers({ location, "cache-control": "no-store" }),
+          headers,
         })
       }
       case "NotFound": {
