@@ -137,12 +137,17 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             .catch(() => {})
         }
 
-        // Identity pill: fixed bottom-left, shows user or "Not logged in", always visible.
+        // Identity pill: fixed bottom-left, shows user or "Not logged in".
+        // Only show on /autopilot (avoid leaking debug UI into marketing pages).
         const pillContainer = document.createElement("div")
         pillContainer.setAttribute("data-identity-pill-root", "1")
         pillContainer.style.cssText =
-          "position:fixed;bottom:12px;left:12px;z-index:9999;pointer-events:auto"
+          "position:fixed;bottom:12px;left:12px;z-index:9999;pointer-events:auto;display:none"
         shell.appendChild(pillContainer)
+
+        const setIdentityPillVisible = (pathname: string) => {
+          pillContainer.style.display = pathname === "/autopilot" ? "block" : "none"
+        }
 
         const signOut = async () => {
           try {
@@ -176,6 +181,7 @@ export const bootEffuseApp = (options?: BootOptions): void => {
 
         renderIdentityPill(atoms.get(SessionAtom))
         atoms.subscribe(SessionAtom, renderIdentityPill, { immediate: false })
+        setIdentityPillVisible(window.location.pathname)
 
         type ActiveController = { readonly kind: string; readonly cleanup: () => void }
         let active: ActiveController | null = null
@@ -291,6 +297,8 @@ export const bootEffuseApp = (options?: BootOptions): void => {
             lastPathname = pathname
             Effect.runPromise(telemetry.withNamespace("app").event("page_view", { path: pathname })).catch(() => {})
           }
+
+          setIdentityPillVisible(pathname)
 
           if (state.status === "navigating") {
             stopActive()
