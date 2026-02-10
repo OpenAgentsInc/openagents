@@ -4,6 +4,8 @@ export interface ConfigBaseProps {
   exitRoutes: string[]
   /** Base URL for auth API (WorkOS magic + SSO). Same origin as apps/web. */
   authApiUrl: string
+  /** Convex deployment URL (dev vs prod). Override with EXPO_PUBLIC_CONVEX_URL. */
+  convexUrl: string
 }
 
 export type PersistNavigationConfig = ConfigBaseProps["persistNavigation"]
@@ -23,6 +25,8 @@ const BaseConfig: ConfigBaseProps = {
    */
   exitRoutes: ["Welcome"],
   authApiUrl: "https://openagents.com",
+  // Set in config/index.ts from EXPO_PUBLIC_CONVEX_URL or dev/prod default
+  convexUrl: "",
 }
 
 export default BaseConfig

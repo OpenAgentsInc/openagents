@@ -21,9 +21,14 @@ import "./utils/gestureHandler"
 import { useEffect, useState } from "react"
 import { useFonts } from "expo-font"
 import * as Linking from "expo-linking"
+import * as SplashScreen from "expo-splash-screen"
 import { KeyboardProvider } from "react-native-keyboard-controller"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
+import { ConvexProviderWithAuth } from "convex/react"
+import { ConvexReactClient } from "convex/react"
+import Config from "./config"
+import { useConvexAuthFromContext } from "./convex/useConvexAuthFromContext"
 import { AuthProvider } from "./context/AuthContext"
 import { initI18n } from "./i18n"
 import { AppNavigator } from "./navigators/AppNavigator"
@@ -63,6 +68,7 @@ const config = {
  * @returns {JSX.Element} The rendered `App` component.
  */
 export function App() {
+  console.log("[App] App() render")
   const {
     initialNavigationState,
     onNavigationStateChange,
@@ -71,40 +77,87 @@ export function App() {
 
   const [areFontsLoaded, fontLoadError] = useFonts(customFontsToLoad)
   const [isI18nInitialized, setIsI18nInitialized] = useState(false)
+  const [bootTimeout, setBootTimeout] = useState(false)
 
   useEffect(() => {
+    console.log("[App] initI18n start")
     initI18n()
-      .then(() => setIsI18nInitialized(true))
+      .then(() => {
+        console.log("[App] initI18n done")
+        setIsI18nInitialized(true)
+      })
       .then(() => loadDateFnsLocale())
+      .catch((err) => {
+        console.warn("[App] initI18n error", err)
+        setIsI18nInitialized(true)
+      })
   }, [])
 
-  // Before we show the app, we have to wait for our state to be ready.
-  // In the meantime, don't render anything. This will be the background
-  // color set in native by rootView's background color.
-  // In iOS: application:didFinishLaunchingWithOptions:
-  // In Android: https://stackoverflow.com/a/45838109/204044
-  // You can replace with your own loading component if you wish.
-  if (!isNavigationStateRestored || !isI18nInitialized || (!areFontsLoaded && !fontLoadError)) {
+  useEffect(() => {
+    const t = setTimeout(() => {
+      console.log("[App] boot timeout (3s) – forcing ready")
+      setBootTimeout(true)
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [])
+
+  const ready =
+    bootTimeout ||
+    (isNavigationStateRestored && isI18nInitialized && (areFontsLoaded || !!fontLoadError))
+
+  console.log("[App] render", {
+    isNavigationStateRestored,
+    isI18nInitialized,
+    areFontsLoaded,
+    fontLoadError: !!fontLoadError,
+    bootTimeout,
+    ready,
+    blocking: !ready ? [
+      !isNavigationStateRestored && "nav",
+      !isI18nInitialized && "i18n",
+      !areFontsLoaded && !fontLoadError && "fonts",
+    ].filter(Boolean) : null,
+  })
+
+  useEffect(() => {
+    if (!ready) return
+    SplashScreen.hideAsync().catch(() => {})
+  }, [ready])
+
+  if (!ready) {
     return null
   }
+
+  console.log("[App] past splash – rendering app tree")
 
   const linking = {
     prefixes: [prefix],
     config,
   }
 
-  // otherwise, we're ready to render the app
+  const convexUrl =
+    (typeof Config.convexUrl === "string" && Config.convexUrl) ||
+    (__DEV__
+      ? "https://quaint-leopard-209.convex.cloud"
+      : "https://aware-caterpillar-962.convex.cloud")
+  const convex = new ConvexReactClient(convexUrl, {
+    unsavedChangesWarning: false,
+    logger: false,
+  })
+
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <KeyboardProvider>
         <AuthProvider>
-          <ThemeProvider>
-            <AppNavigator
-              linking={linking}
-              initialState={initialNavigationState}
-              onStateChange={onNavigationStateChange}
-            />
-          </ThemeProvider>
+          <ConvexProviderWithAuth client={convex} useAuth={useConvexAuthFromContext}>
+            <ThemeProvider>
+              <AppNavigator
+                linking={linking}
+                initialState={initialNavigationState}
+                onStateChange={onNavigationStateChange}
+              />
+            </ThemeProvider>
+          </ConvexProviderWithAuth>
         </AuthProvider>
       </KeyboardProvider>
     </SafeAreaProvider>

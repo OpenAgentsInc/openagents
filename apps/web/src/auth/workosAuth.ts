@@ -9,6 +9,9 @@ export type MagicAuthSendResult = {
 export type MagicAuthVerifyResult = {
   readonly userId: string;
   readonly setCookieHeader: string;
+  /** WorkOS access token (JWT) for clients that need it for Convex etc. (e.g. Expo). */
+  readonly accessToken: string;
+  readonly user: { id: string; email: string | null; firstName: string | null; lastName: string | null };
 };
 
 function getAuthKitConfig() {
@@ -65,7 +68,17 @@ export function verifyMagicAuthCode(input: {
         throw new Error('missing Set-Cookie header from session storage');
       }
 
-      return { userId: auth.user.id, setCookieHeader };
+      return {
+        userId: auth.user.id,
+        setCookieHeader,
+        accessToken: auth.accessToken,
+        user: {
+          id: auth.user.id,
+          email: auth.user.email ?? null,
+          firstName: auth.user.firstName ?? null,
+          lastName: auth.user.lastName ?? null,
+        },
+      };
     },
     catch: (err) => (err instanceof Error ? err : new Error(String(err))),
   });

@@ -29,6 +29,7 @@ const AUTH_USER_KEY = "AuthProvider.authUser"
 export interface AuthProviderProps {}
 
 export const AuthProvider: FC<PropsWithChildren<AuthProviderProps>> = ({ children }) => {
+  console.log("[AuthProvider] mount")
   const [authToken, setAuthToken] = useMMKVString("AuthProvider.authToken")
   const [authEmail, setAuthEmail] = useMMKVString("AuthProvider.authEmail")
   const [authUserId, setAuthUserId] = useMMKVString("AuthProvider.authUserId")

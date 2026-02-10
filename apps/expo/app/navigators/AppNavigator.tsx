@@ -28,6 +28,7 @@ const exitRoutes = Config.exitRoutes
 const Stack = createNativeStackNavigator<AppStackParamList>()
 
 const AppStack = () => {
+  console.log("[AppNavigator] AppStack render")
   const { isAuthenticated } = useAuth()
 
   const {
