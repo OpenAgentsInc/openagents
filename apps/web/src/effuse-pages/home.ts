@@ -56,7 +56,7 @@ export function homePageTemplate(
           : html`
               <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 ${hatcheryButton({
-                  href: '/login',
+                  href: '/autopilot?welcome=1',
                   label: 'Start for free',
                   size: 'large',
                   className: 'w-full max-w-xs sm:w-auto',

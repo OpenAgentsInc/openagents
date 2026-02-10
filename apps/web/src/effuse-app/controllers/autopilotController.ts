@@ -249,7 +249,7 @@ export const mountAutopilotController = (input: {
 
     const messages = chatSnapshot.messages
 
-    const renderedMessages: Array<EffuseRenderedMessage> = messages
+    let renderedMessages: Array<EffuseRenderedMessage> = messages
       .filter(
         (m): m is ChatMessage & { readonly role: "user" | "assistant" } =>
           m.role === "user" || m.role === "assistant",
@@ -262,6 +262,21 @@ export const mountAutopilotController = (input: {
         return { id: msg.id, role: msg.role, renderParts }
       })
       .filter((m) => m.role === "user" || m.renderParts.length > 0)
+
+    const showWelcomeMessage =
+      renderedMessages.length === 0 &&
+      typeof window !== "undefined" &&
+      window.location.search.includes("welcome=1")
+    if (showWelcomeMessage) {
+      renderedMessages = [
+        {
+          id: "welcome-initial",
+          role: "assistant",
+          renderParts: [{ kind: "text", text: "Autopilot online." }],
+        },
+        ...renderedMessages,
+      ]
+    }
 
     const renderedTailKey = (() => {
       const last = renderedMessages.at(-1)

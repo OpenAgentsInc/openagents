@@ -262,7 +262,9 @@ const autopilot: Route<{}, AppServices> = {
       const session = yield* auth
         .getSession()
         .pipe(Effect.catchAll(() => Effect.succeed({ userId: null } as any)))
-      if (!session.userId) return RouteOutcome.redirect("/login", 302)
+      // Allow anonymous access when opening chat pane with welcome message (e.g. "Start for free").
+      const welcome = ctx.url.searchParams.get("welcome") === "1"
+      if (!session.userId && !welcome) return RouteOutcome.redirect("/login", 302)
       return
     }),
   loader: (ctx) => okWithSession(ctx, {}),
