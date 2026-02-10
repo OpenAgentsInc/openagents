@@ -1,6 +1,6 @@
 # Overnight Self Improvement Plan (Agent-Run, Convex-First, Prod-Verified)
 
-- **Status:** Proposed (implementation + nightly ops plan)
+- **Status:** Implemented (Phases 1–9 shipped in code; this doc is the runbook/checklist)
 - **Last updated:** 2026-02-10
 - **Priority:** programmatic loop first; UI is read-only later
 - **Primary refs (do not duplicate):**
@@ -63,19 +63,48 @@ Already implemented tables (see `apps/web/convex/schema.ts`):
 - Runtime pointers + history: `dseActiveArtifacts`, `dseActiveArtifactHistory`
 - Canary config + history: `dseCanaries`, `dseCanaryHistory`
 - RLM persistence: `dseBlobs`, `dseVarSpace`
+- Ops runs: `dseOpsRuns`, `dseOpsRunEvents`
+- Eval reports (judge-based rewards): `dseEvalReports`
 - Predict receipts: `receipts` with `kind="dse.predict"` (+ `receiptId`, `signatureId`, `compiled_id`)
-
-Missing (must add for agent-run overnight ops):
-
-- `dseOpsRuns` (one row per overnight run)
-- `dseOpsRunEvents` (append-only, bounded event stream per ops run)
 
 Why: later visualization should not require scraping local logs or `output/effuse-test/*`.
 
+## How To Run (Headless, One Command)
+
+Worker secrets that must be present in the deployed Worker environment:
+
+- `OA_DSE_ADMIN_SECRET` (authorizes DSE ops endpoints via `Authorization: Bearer ...`)
+- `OA_E2E_JWT_PRIVATE_JWK` (used by the Worker to mint an ops-admin JWT for Convex access)
+- (prod E2E only) `OA_E2E_BYPASS_SECRET` (enables deterministic login via `/api/auth/e2e/*`)
+  - Runner-side env `EFFUSE_TEST_E2E_BYPASS_SECRET` must match this secret
+
+Local (no E2E):
+
+```bash
+OA_DSE_ADMIN_SECRET="..." \
+  bun run apps/web/scripts/dse-overnight.ts --base-url http://localhost:3000 --verify --no-e2e
+```
+
+Prod-ish (runs E2E smoke by default; requires E2E bypass secret for deterministic login):
+
+```bash
+OA_DSE_ADMIN_SECRET="..." \
+EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
+  bun run apps/web/scripts/dse-overnight.ts --base-url https://openagents.com
+```
+
+Where to look for results (read-only pages backed by Convex):
+
+- `/dse` (ops run list)
+- `/dse/ops/:runId` (timeline + links)
+- `/dse/signature/:signatureId` (active pointer + compile/canary history + dataset/receipts)
+
 ## Phase Plan (Programmatic Loop First)
 
-This plan is **6 phases**. Phases 1–5 are required to make the loop agent-runnable and Convex-backed.
-Phase 6 is read-only visualization later.
+This plan is **9 phases**.
+
+- Phases 1–6 make the loop agent-runnable and Convex-backed (plus read-only visualization).
+- Phases 7–9 extend rewards/eval/trace-mining/knobs so we can self-improve non-discrete long-context signatures.
 
 ### Phase 1: Programmatic Ops Auth + Run Recording (Convex)
 
@@ -83,7 +112,9 @@ Objective: agents can operate `/api/dse/*` without a browser session, and every 
 
 Deliverables:
 
-- Worker secret: `OA_DSE_ADMIN_SECRET`
+- Worker secrets:
+  - `OA_DSE_ADMIN_SECRET`
+  - `OA_E2E_JWT_PRIVATE_JWK` (mint ops-admin JWT for Convex)
 - Admin auth mode for DSE endpoints:
   - accept `Authorization: Bearer <OA_DSE_ADMIN_SECRET>` as an alternative to WorkOS session cookies
   - applies to: compile/promote/canary/trace-export + new ops endpoints
@@ -379,6 +410,16 @@ Current endpoints and storage:
   - `cd apps/web && npm test` (ok)
   - `cd packages/effuse-test && bun run typecheck` (ok)
   - `cd packages/effuse-test && bun run test` (ok)
+
+- 2026-02-10T11:45:19Z Doc maintenance: reconciled this plan with the implemented system + added headless run instructions.
+- Updated plan status to reflect Phases 1–9 are implemented in code.
+- Updated secrets guidance for admin-secret ops mode:
+  - `OA_DSE_ADMIN_SECRET` (client-side Bearer authorization)
+  - `OA_E2E_JWT_PRIVATE_JWK` (Worker-side minting for Convex ops-admin JWT)
+- Clarified prod E2E bypass secrets:
+  - Worker secret: `OA_E2E_BYPASS_SECRET`
+  - Runner env: `EFFUSE_TEST_E2E_BYPASS_SECRET` (must match)
+- Added a “How To Run (Headless, One Command)” section with canonical CLI examples and read-only result pages.
 
 - 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
