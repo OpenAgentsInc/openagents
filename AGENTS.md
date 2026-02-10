@@ -149,6 +149,14 @@ Doc gate for contracts
   - `apps/api` → `npm run deploy` (wrangler deploy)
 - **Workflow:** Fix things, deploy, then test (e.g. hit live site or run E2E). Only pause and ask the user when they have asked you to slow down or when you lack credentials/access.
 
+### Git Hygiene (No Surprise Worktrees)
+
+- **Do not create `git worktree`s on your own initiative.**
+- If you need a clean workspace for deploy/tests but `git status` is dirty, you MUST:
+  - Tell the user what files are dirty.
+  - Propose options: commit the changes, discard the changes, or (if the user explicitly agrees) use a temporary worktree.
+- If a worktree is used (only with explicit user approval), remove it immediately after use (`git worktree remove …`) to avoid confusion and accidental deploys from the wrong checkout.
+
 ---
 
 ## "Where do I change things?" (map)
