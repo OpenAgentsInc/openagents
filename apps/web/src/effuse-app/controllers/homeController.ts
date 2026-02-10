@@ -216,6 +216,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let isRunningDseRecap = false
     let dseErrorText: string | null = null
     let hasScrolledToBottomOnce = false
+    let hasAddedPaneCopyButton = false
 
     const startAuthedChat = (input0: { readonly userId: string; readonly user: Session["user"] | null; readonly token: string | null }) => {
       if (!deps?.atoms || !deps.chat) return
@@ -279,6 +280,24 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         .filter((p) => p?.kind === "text" && typeof (p as any).text === "string")
         .map((p) => String((p as any).text ?? ""))
         .join("")
+    }
+
+    const getChatMarkdown = (): string => {
+      const blocks: string[] = []
+      if (step === "authed" && homeSnapshot.messages.length > 0) {
+        for (const m of homeSnapshot.messages) {
+          const role = String((m as any).role ?? "")
+          const partsRaw = Array.isArray((m as any).parts) ? ((m as any).parts as ReadonlyArray<any>) : []
+          const renderParts = toAutopilotRenderParts({ parts: partsRaw, toolContractsByName: null })
+          const text = textFromRenderParts(renderParts)
+          blocks.push((role === "user" ? "## User\n\n" : "## Assistant\n\n") + (text || "(no text)"))
+        }
+      } else {
+        for (const m of messages) {
+          blocks.push((m.role === "user" ? "## User\n\n" : "## Assistant\n\n") + m.text)
+        }
+      }
+      return blocks.join("\n\n")
     }
 
     /** Placeholder for chat input based on last assistant message (onboarding hints). */
@@ -508,9 +527,13 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               if (p.kind === "dse-budget-exceeded") return renderDseBudgetExceededCard(p.model)
               return html``
             })
-
+            const copyText = textFromRenderParts(m.renderParts as any)
             return html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
                     <div class="flex flex-col gap-2">${partEls}</div>
+                    <span data-oa-copy-source style="display:none">${copyText}</span>
+                    <div class="flex items-center gap-1.5 mt-1.5 rounded-md bg-gray-800/90 px-1.5 py-1 w-fit">
+                      <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/60 hover:text-white/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded px-1.5 py-0.5">Copy</button>
+                    </div>
                   </div>`
           })}
               </div>
@@ -527,6 +550,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                       </div>`
               : html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
                         ${streamdown(m.text, { mode: "static" })}
+                        <span data-oa-copy-source style="display:none">${m.text}</span>
+                        <div class="flex items-center gap-1.5 mt-1.5 rounded-md bg-gray-800/90 px-1.5 py-1 w-fit">
+                          <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/60 hover:text-white/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded px-1.5 py-0.5">Copy</button>
+                        </div>
                       </div>`,
           )}
               </div>
@@ -556,6 +583,27 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         }).pipe(Effect.provide(EffuseLive)),
       ).then(
         () => {
+          if (!hasAddedPaneCopyButton) {
+            const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
+            if (titleActions instanceof HTMLElement) {
+              const copyBtn = document.createElement("button")
+              copyBtn.setAttribute("type", "button")
+              copyBtn.setAttribute("aria-label", "Copy entire chat as markdown")
+              copyBtn.innerHTML =
+                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>'
+              copyBtn.addEventListener("click", (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const md = getChatMarkdown()
+                if (md && navigator.clipboard?.writeText) {
+                  navigator.clipboard.writeText(md).catch(() => {})
+                }
+              })
+              titleActions.appendChild(copyBtn)
+              hasAddedPaneCopyButton = true
+            }
+          }
+
           const messagesEl = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
           if (messagesEl instanceof HTMLElement) {
             messagesEl.scrollTop = savedScrollTop
@@ -656,6 +704,18 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               }
             })
           }
+
+          paneContentSlot.querySelectorAll("[data-oa-home-chat-copy]").forEach((btn) => {
+            if (!(btn instanceof HTMLElement)) return
+            btn.addEventListener("click", () => {
+              const block = btn.closest("[data-chat-role=\"assistant\"]")
+              const source = block?.querySelector("[data-oa-copy-source]")
+              const text = source?.textContent ?? ""
+              if (text && navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text).catch(() => {})
+              }
+            })
+          })
 
           const form = paneContentSlot.querySelector("[data-oa-home-chat-form]")
           if (!(form instanceof HTMLFormElement)) return
