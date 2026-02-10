@@ -254,3 +254,12 @@ Current endpoints and storage:
   - `cd apps/web && npx convex codegen` (ok)
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
+
+- 2026-02-10T08:28:52Z Phase 2: added canonical headless runner script + unit tests.
+- Added runner:
+  - `apps/web/scripts/dse-overnight.ts` (CLI)
+  - `apps/web/scripts/dse-overnight-lib.ts` (pure logic, testable)
+- Script behavior:
+  - starts an ops run, emits progress events, runs local verification by default for localhost, runs prod E2E smoke for prod-ish base URLs, always finishes the ops run with a summary JSON.
+- Tests:
+  - `apps/web/tests/scripts/dse-overnight.test.ts` (arg parsing + start/event/finish emission with mocked fetch)
