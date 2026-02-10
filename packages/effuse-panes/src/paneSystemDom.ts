@@ -168,6 +168,7 @@ const cssText = (cfg: PaneSystemConfig): string => {
   [data-oa-pane-system][data-oa-pane-dragging="1"] [data-oa-pane-title]{ cursor:grabbing; }
   [data-oa-pane][data-active="1"] [data-oa-pane-title]{ border-bottom-color:${t.accent}; }
   [data-oa-pane-title-text]{ font-size:12px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  [data-oa-pane-title-right]{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
   [data-oa-pane-title-actions]{ display:flex; align-items:center; gap:4px; }
   [data-oa-pane-title-actions] button{
     width:20px; height:20px;
@@ -331,18 +332,20 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
 
     title.appendChild(titleText);
 
+    const titleRight = document.createElement("div");
+    titleRight.setAttribute("data-oa-pane-title-right", "1");
     const titleActions = document.createElement("div");
     titleActions.setAttribute("data-oa-pane-title-actions", "1");
-    title.appendChild(titleActions);
-
+    titleRight.appendChild(titleActions);
     if (pane.dismissable) {
       const closeBtn = document.createElement("button");
       closeBtn.setAttribute("type", "button");
       closeBtn.setAttribute("data-oa-pane-close", "1");
       closeBtn.setAttribute("aria-label", "Close pane");
       closeBtn.textContent = "x";
-      title.appendChild(closeBtn);
+      titleRight.appendChild(closeBtn);
     }
+    title.appendChild(titleRight);
 
     const content = document.createElement("div");
     content.setAttribute("data-oa-pane-content", "1");
