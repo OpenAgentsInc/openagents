@@ -103,6 +103,36 @@ export default defineSchema({
     .index("by_receiptId", ["receiptId"]),
 
   /**
+   * DSE per-run BlobStore + VarSpace persistence.
+   *
+   * These back RLM-lite execution in Workers while keeping token space bounded.
+   * Scope: (threadId, runId).
+   */
+  dseBlobs: defineTable({
+    threadId: v.string(),
+    runId: v.string(),
+    blobId: v.string(),
+    mime: v.optional(v.string()),
+    text: v.string(),
+    size: v.number(),
+    createdAtMs: v.number(),
+  }).index("by_threadId_runId_blobId", ["threadId", "runId", "blobId"]),
+
+  dseVarSpace: defineTable({
+    threadId: v.string(),
+    runId: v.string(),
+    name: v.string(),
+    kind: v.union(v.literal("json"), v.literal("blob")),
+    json: v.optional(v.any()),
+    approxChars: v.optional(v.number()),
+    blob: v.optional(v.any()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_threadId_runId_name", ["threadId", "runId", "name"])
+    .index("by_threadId_runId_updatedAtMs", ["threadId", "runId", "updatedAtMs"]),
+
+  /**
    * DSE compiled artifact store and active pointer registry (global, not per-thread).
    *
    * These tables back the `PolicyRegistryService` used by DSE `Predict`.

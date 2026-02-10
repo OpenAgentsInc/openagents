@@ -1,6 +1,7 @@
 import { JSONSchema, Schema } from "effect";
 
 import {
+  Blob,
   Params,
   PromptIR,
   Signature,
@@ -71,6 +72,11 @@ const routerDecodeParams = {
   ...defaultParams,
   decode: { mode: "jsonish" as const, maxRepairs: 1 }
 } satisfies Params.DseParamsV1;
+
+const ThreadChunks = Schema.Array(Blob.BlobRefSchema).annotations({
+  description:
+    "Conversation history chunks (text blobs). These are stored in BlobStore and referenced by BlobRef handles."
+});
 
 export const signatures = {
   bootstrap_extract_user_handle: Signature.make({
@@ -285,6 +291,68 @@ export const signatures = {
       ]
     },
     defaults: { params: routerDecodeParams }
+  }),
+
+  rlm_summarize_thread: Signature.make({
+    id: "@openagents/autopilot/rlm/SummarizeThread.v1",
+    input: Schema.Struct({
+      question: Schema.String.annotations({
+        description: "The user's current message / question."
+      }),
+      threadChunks: ThreadChunks
+    }).annotations({
+      description:
+        "Long-context summary input. The chunks may be a truncated tail of older messages (bounded)."
+    }),
+    output: Schema.Struct({
+      summary: Schema.String.annotations({
+        description:
+          "A concise summary of relevant prior context. Keep it short and actionable."
+      })
+    }),
+    prompt: {
+      version: 1,
+      blocks: [
+        PromptIR.system(
+          "You are an RLM-lite controller for Autopilot. You must use the RLM action DSL to access long context."
+        ),
+        PromptIR.instruction(
+          "Goal: summarize the user's prior context relevant to the current question.\n" +
+            "\n" +
+            "Rules:\n" +
+            "- The conversation history is provided as BlobRefs in Input.threadChunks.\n" +
+            "- Do NOT attempt to hallucinate missing context.\n" +
+            "- Prefer bounded operations.\n" +
+            "\n" +
+            "Suggested approach (but adapt as needed):\n" +
+            "1) WriteVar name=\"chunks\" with the Input.threadChunks array (Json).\n" +
+            "2) Preview a few recent chunks to refresh context.\n" +
+            "3) Use ExtractOverChunks(chunksVar=\"chunks\", instruction=\"...\") to pull relevant facts without emitting O(N) SubLm calls.\n" +
+            "4) If the question references a specific topic, use Search on a small number of relevant blobs.\n" +
+            "5) Produce Final output JSON { summary } (<= 1200 chars)."
+        ),
+        PromptIR.outputJsonSchema(
+          JSONSchema.make(
+            Schema.Struct({
+              summary: Schema.String
+            })
+          )
+        )
+      ]
+    },
+    defaults: {
+      params: {
+        ...defaultParams,
+        strategy: { id: "rlm_lite.v1" },
+        budgets: {
+          maxTimeMs: 15_000,
+          maxLmCalls: 40,
+          maxOutputChars: 120_000,
+          maxRlmIterations: 10,
+          maxSubLmCalls: 20
+        }
+      } satisfies Params.DseParamsV1
+    }
   })
 } satisfies Record<string, DseSignature<any, any>>;
 

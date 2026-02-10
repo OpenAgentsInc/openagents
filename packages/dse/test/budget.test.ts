@@ -11,6 +11,7 @@ import { make as makePredict } from "../src/runtime/predict.js";
 import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
 import { layerInMemory as budgetLayerInMemory } from "../src/runtime/budget.js";
 import { makeInMemory as makeReceiptRecorder } from "../src/runtime/receipt.js";
+import { layerInMemory as varSpaceLayerInMemory } from "../src/runtime/varSpace.js";
 
 test("Predict enforces budgets.maxLmCalls (fail closed before LM call)", async () => {
   type In = { message: string };
@@ -59,7 +60,8 @@ test("Predict enforces budgets.maxLmCalls (fail closed before LM call)", async (
         policyLayerInMemory(),
         blobLayerInMemory(),
         receipts.layer,
-        budgetLayerInMemory()
+        budgetLayerInMemory(),
+        varSpaceLayerInMemory()
       )
     )
   );
@@ -122,7 +124,8 @@ test("Predict enforces budgets.maxOutputChars (fails on oversized output)", asyn
         policyLayerInMemory(),
         blobLayerInMemory(),
         receipts.layer,
-        budgetLayerInMemory()
+        budgetLayerInMemory(),
+        varSpaceLayerInMemory()
       )
     )
   );

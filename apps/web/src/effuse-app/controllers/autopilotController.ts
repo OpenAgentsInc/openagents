@@ -276,7 +276,9 @@ export const mountAutopilotController = (input: {
       if (lastPart.kind === "dse-signature") {
         const previewLen = lastPart.model.outputPreview?.preview?.length ?? 0
         const errLen = lastPart.model.errorText?.preview?.length ?? 0
-        return `${renderedMessages.length}:${last.id}:dse-signature:${lastPart.model.signatureId}:${lastPart.model.state}:${lastPart.model.compiled_id ?? ""}:${previewLen}:${errLen}`
+        const strategy = lastPart.model.strategyId ?? ""
+        const traceLen = lastPart.model.rlmTrace?.preview?.length ?? 0
+        return `${renderedMessages.length}:${last.id}:dse-signature:${lastPart.model.signatureId}:${lastPart.model.state}:${lastPart.model.compiled_id ?? ""}:${strategy}:${previewLen}:${errLen}:${traceLen}`
       }
       if (lastPart.kind === "dse-compile") {
         return `${renderedMessages.length}:${last.id}:dse-compile:${lastPart.model.signatureId}:${lastPart.model.state}:${lastPart.model.jobHash}:${lastPart.model.best?.compiled_id ?? ""}`

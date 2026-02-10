@@ -1,6 +1,6 @@
 import { Effect, Layer, Schema } from "effect";
 
-import { BlobStore, Budget, CompiledArtifact, Lm, Policy, Receipt } from "@openagentsinc/dse";
+import { BlobStore, Budget, CompiledArtifact, Lm, Policy, Receipt, VarSpace } from "@openagentsinc/dse";
 
 import { api } from "../../convex/_generated/api";
 import { ConvexService } from "../effect/convex";
@@ -357,6 +357,137 @@ export const layerDseReceiptRecorderFromConvex = (input: {
     }),
   );
 
+export const layerDseBlobStoreFromConvex = (input: {
+  readonly threadId: string;
+  readonly runId: string;
+}): Layer.Layer<BlobStore.BlobStoreService, never, ConvexService | RequestContextService> =>
+  Layer.effect(
+    BlobStore.BlobStoreService,
+    Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      const requestContext = yield* RequestContextService;
+
+      const putText: BlobStore.BlobStore["putText"] = (options) =>
+        convex
+          .mutation(api.dse.blobs.putText, {
+            threadId: input.threadId,
+            runId: input.runId,
+            text: options.text,
+            ...(options.mime ? { mime: options.mime } : {}),
+          })
+          .pipe(
+            Effect.provideService(RequestContextService, requestContext),
+            Effect.map((res) => (res as any).blob),
+            Effect.mapError((cause) =>
+              BlobStore.BlobStoreError.make({ message: "Failed to put text blob", cause }),
+            ),
+          );
+
+      const getText: BlobStore.BlobStore["getText"] = (id) =>
+        convex
+          .query(api.dse.blobs.getText, {
+            threadId: input.threadId,
+            runId: input.runId,
+            blobId: id,
+          })
+          .pipe(
+            Effect.provideService(RequestContextService, requestContext),
+            Effect.map((res) => ((res as any).text ?? null) as string | null),
+            Effect.mapError((cause) =>
+              BlobStore.BlobStoreError.make({ message: "Failed to read blob text", cause }),
+            ),
+          );
+
+      return BlobStore.BlobStoreService.of({ putText, getText });
+    }),
+  );
+
+export const layerDseVarSpaceFromConvex = (input: {
+  readonly threadId: string;
+  readonly runId: string;
+}): Layer.Layer<VarSpace.VarSpaceService, never, ConvexService | RequestContextService> =>
+  Layer.effect(
+    VarSpace.VarSpaceService,
+    Effect.gen(function* () {
+      const convex = yield* ConvexService;
+      const requestContext = yield* RequestContextService;
+
+      const get: VarSpace.VarSpace["get"] = (name) =>
+        convex
+          .query(api.dse.varSpace.getVar, {
+            threadId: input.threadId,
+            runId: input.runId,
+            name,
+          })
+          .pipe(
+            Effect.provideService(RequestContextService, requestContext),
+            Effect.map((res) => ((res as any).value ?? null) as any),
+            Effect.mapError((cause) =>
+              VarSpace.VarSpaceError.make({ message: "Failed to read var", cause }),
+            ),
+          );
+
+      const putJson: VarSpace.VarSpace["putJson"] = (name, value) =>
+        convex
+          .mutation(api.dse.varSpace.putJson, {
+            threadId: input.threadId,
+            runId: input.runId,
+            name,
+            value,
+          })
+          .pipe(
+            Effect.provideService(RequestContextService, requestContext),
+            Effect.asVoid,
+            Effect.mapError((cause) =>
+              VarSpace.VarSpaceError.make({ message: "Failed to put JSON var", cause }),
+            ),
+          );
+
+      const putBlob: VarSpace.VarSpace["putBlob"] = (name, blob) =>
+        convex
+          .mutation(api.dse.varSpace.putBlob, {
+            threadId: input.threadId,
+            runId: input.runId,
+            name,
+            blob,
+          })
+          .pipe(
+            Effect.provideService(RequestContextService, requestContext),
+            Effect.asVoid,
+            Effect.mapError((cause) =>
+              VarSpace.VarSpaceError.make({ message: "Failed to put blob var", cause }),
+            ),
+          );
+
+      const put: VarSpace.VarSpace["put"] = (name, value) =>
+        value._tag === "Blob" ? putBlob(name, value.blob) : putJson(name, value.value);
+
+      const del: VarSpace.VarSpace["del"] = (name) =>
+        convex
+          .mutation(api.dse.varSpace.del, { threadId: input.threadId, runId: input.runId, name })
+          .pipe(
+            Effect.provideService(RequestContextService, requestContext),
+            Effect.asVoid,
+            Effect.mapError((cause) =>
+              VarSpace.VarSpaceError.make({ message: "Failed to delete var", cause }),
+            ),
+          );
+
+      const list: VarSpace.VarSpace["list"] = () =>
+        convex
+          .query(api.dse.varSpace.list, { threadId: input.threadId, runId: input.runId })
+          .pipe(
+            Effect.provideService(RequestContextService, requestContext),
+            Effect.map((res) => ((res as any).vars ?? []) as ReadonlyArray<any>),
+            Effect.mapError((cause) =>
+              VarSpace.VarSpaceError.make({ message: "Failed to list vars", cause }),
+            ),
+          );
+
+      return VarSpace.VarSpaceService.of({ get, put, putJson, putBlob, del, list });
+    }),
+  );
+
 export const layerDsePredictEnvForAutopilotRun = (input: {
   readonly threadId: string;
   readonly runId: string;
@@ -364,6 +495,7 @@ export const layerDsePredictEnvForAutopilotRun = (input: {
 }): Layer.Layer<
   | Policy.PolicyRegistryService
   | BlobStore.BlobStoreService
+  | VarSpace.VarSpaceService
   | Receipt.ReceiptRecorderService
   | Budget.ExecutionBudgetService,
   never,
@@ -371,7 +503,8 @@ export const layerDsePredictEnvForAutopilotRun = (input: {
 > =>
   Layer.mergeAll(
     layerDsePolicyRegistryFromConvex({ threadId: input.threadId }),
-    BlobStore.layerInMemory(),
+    layerDseBlobStoreFromConvex({ threadId: input.threadId, runId: input.runId }),
+    layerDseVarSpaceFromConvex({ threadId: input.threadId, runId: input.runId }),
     Budget.layerInMemory(),
     layerDseReceiptRecorderFromConvex(input),
   );

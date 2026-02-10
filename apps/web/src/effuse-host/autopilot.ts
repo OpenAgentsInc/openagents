@@ -8,12 +8,16 @@ import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect
 import { makeOpenRouterLanguageModel } from "../../../autopilot-worker/src/effect/ai/openRouterLanguageModel";
 import { makeFallbackLanguageModel } from "../../../autopilot-worker/src/effect/ai/fallbackLanguageModel";
 
+import { BlobStore, Lm, Predict } from "@openagentsinc/dse";
+import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
+
 import { api } from "../../convex/_generated/api";
 import { AuthService } from "../effect/auth";
 import { ConvexService, type ConvexServiceApi } from "../effect/convex";
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
 import { TelemetryService } from "../effect/telemetry";
 
+import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
@@ -31,6 +35,8 @@ const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
 const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
 const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
+
+const predictRlmSummarizeThread = Predict.make(dseCatalogSignatures.rlm_summarize_thread);
 
 const json = (body: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(body), {
@@ -116,6 +122,7 @@ const BOOTSTRAP_ASK_BOUNDARIES_SYSTEM =
 const concatTextFromPromptMessages = (
   messages: ReadonlyArray<{ readonly role: string; readonly text: string }>,
   blueprint: BlueprintHint = null,
+  options?: { readonly extraSystem?: string | undefined },
 ): AiPrompt.RawInput => {
   const out: Array<{ role: string; content: string | Array<{ type: "text"; text: string }> }> = [];
 
@@ -132,6 +139,11 @@ const concatTextFromPromptMessages = (
     if (stage === "ask_agent_name") systemContent += BOOTSTRAP_ASK_AGENT_NAME_SYSTEM;
     if (stage === "ask_vibe") systemContent += BOOTSTRAP_ASK_VIBE_SYSTEM;
     if (stage === "ask_boundaries") systemContent += BOOTSTRAP_ASK_BOUNDARIES_SYSTEM;
+  }
+
+  const extraSystem = options?.extraSystem;
+  if (extraSystem && extraSystem.trim().length > 0) {
+    systemContent += "\n\n" + extraSystem.trim();
   }
 
   out.push({ role: "system", content: systemContent });
@@ -258,8 +270,6 @@ const runAutopilotStream = (input: {
       .filter((m) => m.text.trim().length > 0);
 
     const tail = promptMessages.slice(-MAX_CONTEXT_MESSAGES);
-    const rawPrompt = concatTextFromPromptMessages(tail, blueprint);
-    const prompt = AiPrompt.make(rawPrompt);
 
     const workersAiModel = makeWorkersAiLanguageModel({
       binding: input.env.AI,
@@ -281,7 +291,7 @@ const runAutopilotStream = (input: {
             });
             return yield* makeFallbackLanguageModel(primary, fallback);
           })
-        : workersAiModel,
+        : workersAiModel
     );
 
     // Chunking policy.
@@ -361,6 +371,171 @@ const runAutopilotStream = (input: {
         ),
       );
     });
+
+    let extraSystemContext: string | null = null;
+
+    // Phase D: optional RLM-lite pre-summary for long-context runs.
+    yield* Effect.gen(function* () {
+      if (input.controller.signal.aborted) return;
+      if (bootstrapStatus !== "complete") return;
+      if (!openRouterApiKey) return;
+
+      const userText = lastUserText.trim();
+      if (!userText) return;
+
+      const olderMessages = promptMessages.slice(0, Math.max(0, promptMessages.length - tail.length));
+      const olderText = olderMessages.map((m) => `${m.role}: ${m.text}`).join("\n\n");
+      const olderChars = olderText.length;
+
+      const explicit =
+        userText.startsWith("/rlm") ||
+        /\b(recaps?|summari[sz]e|remind me|what did we (decide|agree)|earlier you said)\b/i.test(userText);
+      const highPressure = olderChars >= 20_000 || olderMessages.length >= 40;
+      if (!explicit && !highPressure) return;
+
+      const strategyReason = explicit
+        ? "explicit_request"
+        : `context_pressure olderChars=${olderChars} olderMessages=${olderMessages.length}`;
+
+      const signatureId = dseCatalogSignatures.rlm_summarize_thread.id;
+      const partId = `dsepart_sig_${input.runId}_rlm_summarize_thread`;
+
+      bufferedParts.push({
+        seq: seq++,
+        part: {
+          type: "dse.signature",
+          v: 1,
+          id: partId,
+          state: "start",
+          tsMs: Date.now(),
+          signatureId,
+          strategyReason,
+        },
+      });
+      yield* flush(true);
+
+      type DseReceiptShape = {
+        compiled_id?: string;
+        strategyId?: string;
+        timing?: { durationMs?: number };
+        budget?: unknown;
+        receiptId?: string;
+        contextPressure?: unknown;
+        promptRenderStats?: unknown;
+        rlmTrace?: unknown;
+      };
+      let recordedReceipt: DseReceiptShape | null = null;
+      const setRecordedReceipt = (r: unknown) => {
+        recordedReceipt = r as DseReceiptShape;
+      };
+
+      const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+        env: input.env,
+        defaultModelIdCf: MODEL_ID_CF,
+        primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+      });
+      const dseEnv = layerDsePredictEnvForAutopilotRun({
+        threadId: input.threadId,
+        runId: input.runId,
+        onReceipt: setRecordedReceipt,
+      });
+
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const blobStore = yield* BlobStore.BlobStoreService;
+
+          // Bound history size so Convex blobs remain reasonable.
+          const MAX_HISTORY_CHARS = 200_000;
+          const boundedHistory =
+            olderText.length > MAX_HISTORY_CHARS ? olderText.slice(olderText.length - MAX_HISTORY_CHARS) : olderText;
+
+          // Pre-chunk history into stable BlobRefs so the controller can use ExtractOverChunks.
+          const chunkChars = 20_000;
+          const maxChunks = 12;
+          const chunkTexts: Array<string> = [];
+          for (let i = 0; i < boundedHistory.length && chunkTexts.length < maxChunks; i += chunkChars) {
+            chunkTexts.push(boundedHistory.slice(i, Math.min(boundedHistory.length, i + chunkChars)));
+          }
+
+          const threadChunks = yield* Effect.forEach(
+            chunkTexts,
+            (text) => blobStore.putText({ text, mime: "text/plain" }),
+            { concurrency: 3, discard: false },
+          );
+
+          return yield* predictRlmSummarizeThread({ question: userText, threadChunks });
+        }).pipe(Effect.provideService(Lm.LmClientService, dseLmClient), Effect.provide(dseEnv)),
+      );
+
+      const state = exit._tag === "Success" ? "ok" : "error";
+
+      const errorText =
+        exit._tag === "Failure"
+          ? (() => {
+              const cause = exit.cause as any;
+              if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
+              return String(cause ?? "DSE predict failed");
+            })()
+          : null;
+
+      const receipt = recordedReceipt as DseReceiptShape | null;
+      const promptRenderStats = receipt?.promptRenderStats as any;
+      const trimmedPromptRenderStats =
+        promptRenderStats &&
+        typeof promptRenderStats === "object" &&
+        promptRenderStats.context &&
+        typeof promptRenderStats.context === "object" &&
+        Array.isArray(promptRenderStats.context.blobs) &&
+        promptRenderStats.context.blobs.length > 20
+          ? {
+              ...promptRenderStats,
+              context: {
+                ...promptRenderStats.context,
+                blobsDropped:
+                  Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
+                blobs: promptRenderStats.context.blobs.slice(0, 20),
+              },
+            }
+          : receipt?.promptRenderStats;
+
+      if (exit._tag === "Success") {
+        const summary = String((exit.value as any)?.summary ?? "").trim();
+        if (summary) {
+          const MAX_SUMMARY_CHARS = 1500;
+          const bounded = summary.length > MAX_SUMMARY_CHARS ? summary.slice(0, MAX_SUMMARY_CHARS).trim() : summary;
+          extraSystemContext = "Prior conversation summary (RLM-lite):\n" + bounded;
+        }
+      }
+
+      bufferedParts.push({
+        seq: seq++,
+        part: {
+          type: "dse.signature",
+          v: 1,
+          id: partId,
+          state,
+          tsMs: Date.now(),
+          signatureId,
+          compiled_id: receipt?.compiled_id,
+          receiptId: receipt?.receiptId,
+          timing: receipt?.timing,
+          budget: receipt?.budget,
+          strategyId: receipt?.strategyId,
+          strategyReason,
+          contextPressure: receipt?.contextPressure,
+          promptRenderStats: trimmedPromptRenderStats,
+          rlmTrace: receipt?.rlmTrace,
+          ...(exit._tag === "Success" ? { outputPreview: exit.value } : {}),
+          ...(errorText ? { errorText } : {}),
+        },
+      });
+      yield* flush(true);
+    });
+
+    const rawPrompt = concatTextFromPromptMessages(tail, blueprint, {
+      ...(extraSystemContext ? { extraSystem: extraSystemContext } : {}),
+    });
+    const prompt = AiPrompt.make(rawPrompt);
 
     const stream = AiLanguageModel.streamText({
       prompt,

@@ -15,6 +15,7 @@ import { LmClientService, type LmRequest, type LmResponse } from "../src/runtime
 import { layerNoop as budgetLayerNoop } from "../src/runtime/budget.js";
 import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
 import { layerNoop as receiptLayerNoop } from "../src/runtime/receipt.js";
+import { layerInMemory as varSpaceLayerInMemory } from "../src/runtime/varSpace.js";
 
 function makeFakeLmClient() {
   let calls = 0;
@@ -152,7 +153,7 @@ test("Eval.evaluate produces stable summary and uses eval cache keys", async () 
     set: (keyId, value) => Effect.sync(() => void cacheMap.set(keyId, value))
   });
 
-  const layer = Layer.mergeAll(fakeLm.layer, blobs, receipts, budgetLayerNoop());
+  const layer = Layer.mergeAll(fakeLm.layer, blobs, receipts, budgetLayerNoop(), varSpaceLayerInMemory());
 
   const runEval = () =>
     Effect.runPromise(
@@ -266,7 +267,7 @@ test("Judge metrics are pinned to a compiled artifact and recorded in reports", 
       includeExampleDetails: true
     }).pipe(
       Effect.provide(
-        Layer.mergeAll(fakeLm.layer, blobs, receipts, budgetLayerNoop(), cache)
+        Layer.mergeAll(fakeLm.layer, blobs, receipts, budgetLayerNoop(), cache, varSpaceLayerInMemory())
       )
     )
   );

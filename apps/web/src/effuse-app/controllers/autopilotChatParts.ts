@@ -337,14 +337,55 @@ export function toAutopilotRenderParts(input: {
           )
         : undefined
 
+      const contextPressureText = p.contextPressure !== undefined ? safeStableStringify(p.contextPressure) : null
+      const contextPressure = contextPressureText
+        ? Effect.runSync(
+            boundText({
+              text: contextPressureText,
+              maxChars: DSE_PREVIEW_MAX_CHARS,
+              putText,
+              mime: "application/json",
+            }),
+          )
+        : undefined
+
+      const promptRenderStatsText = p.promptRenderStats !== undefined ? safeStableStringify(p.promptRenderStats) : null
+      const promptRenderStats = promptRenderStatsText
+        ? Effect.runSync(
+            boundText({
+              text: promptRenderStatsText,
+              maxChars: DSE_PREVIEW_MAX_CHARS,
+              putText,
+              mime: "application/json",
+            }),
+          )
+        : undefined
+
+      const rlmTraceText = p.rlmTrace !== undefined ? safeStableStringify(p.rlmTrace) : null
+      const rlmTrace = rlmTraceText
+        ? Effect.runSync(
+            boundText({
+              text: rlmTraceText,
+              maxChars: DSE_PREVIEW_MAX_CHARS,
+              putText,
+              mime: "application/json",
+            }),
+          )
+        : undefined
+
       const model: DseSignatureCardModel = {
         id: p.id,
         state: p.state,
         signatureId: p.signatureId,
         compiled_id: p.compiled_id,
         receiptId: p.receiptId,
+        strategyId: typeof (p as any).strategyId === "string" ? (p as any).strategyId : undefined,
+        strategyReason: typeof (p as any).strategyReason === "string" ? (p as any).strategyReason : undefined,
         durationMs: p.timing?.durationMs,
         budget: p.budget ? { limits: p.budget.limits, usage: p.budget.usage } : undefined,
+        contextPressure,
+        promptRenderStats,
+        rlmTrace,
         outputPreview,
         errorText,
       }

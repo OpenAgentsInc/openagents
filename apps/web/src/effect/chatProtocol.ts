@@ -38,8 +38,13 @@ export type ChatDseSignaturePart = ChatDseBasePart & {
   readonly signatureId: string
   readonly compiled_id?: string
   readonly receiptId?: string
+  readonly strategyId?: string
+  readonly strategyReason?: string
   readonly timing?: { readonly durationMs?: number }
   readonly budget?: { readonly limits?: Record<string, number>; readonly usage?: Record<string, number> }
+  readonly contextPressure?: unknown
+  readonly promptRenderStats?: unknown
+  readonly rlmTrace?: unknown
   readonly outputPreview?: unknown
   readonly errorText?: string
 }

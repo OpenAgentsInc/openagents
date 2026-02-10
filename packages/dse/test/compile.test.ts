@@ -16,6 +16,7 @@ import { LmClientService, type LmRequest, type LmResponse } from "../src/runtime
 import { layerNoop as budgetLayerNoop } from "../src/runtime/budget.js";
 import { layerInMemory as blobLayerInMemory } from "../src/runtime/blobStore.js";
 import { layerNoop as receiptLayerNoop } from "../src/runtime/receipt.js";
+import { layerInMemory as varSpaceLayerInMemory } from "../src/runtime/varSpace.js";
 
 function makeFakeLmClientForCompile() {
   let calls = 0;
@@ -56,7 +57,8 @@ function envForCompile(fakeLmLayer: Layer.Layer<LmClientService>) {
     blobLayerInMemory(),
     receiptLayerNoop(),
     budgetLayerNoop(),
-    EvalCache.layerInMemory()
+    EvalCache.layerInMemory(),
+    varSpaceLayerInMemory()
   );
 }
 
