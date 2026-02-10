@@ -6,7 +6,14 @@ export class BudgetExceededError extends Schema.TaggedError<BudgetExceededError>
   "BudgetExceededError",
   {
     message: Schema.String,
-    budget: Schema.Literal("maxTimeMs", "maxLmCalls", "maxOutputChars"),
+    budget: Schema.Literal(
+      "maxTimeMs",
+      "maxLmCalls",
+      "maxToolCalls",
+      "maxRlmIterations",
+      "maxSubLmCalls",
+      "maxOutputChars"
+    ),
     limit: Schema.Number,
     observed: Schema.Number
   }
@@ -17,6 +24,9 @@ export type BudgetSnapshotV1 = {
   readonly usage: {
     readonly elapsedMs: number;
     readonly lmCalls: number;
+    readonly toolCalls?: number | undefined;
+    readonly rlmIterations?: number | undefined;
+    readonly subLmCalls?: number | undefined;
     readonly outputChars: number;
   };
 };
@@ -24,6 +34,9 @@ export type BudgetSnapshotV1 = {
 export type BudgetHandle = {
   readonly checkTime: () => Effect.Effect<void, BudgetExceededError>;
   readonly onLmCall: () => Effect.Effect<void, BudgetExceededError>;
+  readonly onToolCall: () => Effect.Effect<void, BudgetExceededError>;
+  readonly onRlmIteration: () => Effect.Effect<void, BudgetExceededError>;
+  readonly onSubLmCall: () => Effect.Effect<void, BudgetExceededError>;
   readonly onOutputChars: (n: number) => Effect.Effect<void, BudgetExceededError>;
   readonly snapshot: () => Effect.Effect<BudgetSnapshotV1>;
 };
@@ -55,15 +68,24 @@ function makeHandle(options: {
 
   const maxTimeMs = normalizeLimit(options.limits.maxTimeMs);
   const maxLmCalls = normalizeLimit(options.limits.maxLmCalls);
+  const maxToolCalls = normalizeLimit(options.limits.maxToolCalls);
+  const maxRlmIterations = normalizeLimit(options.limits.maxRlmIterations);
+  const maxSubLmCalls = normalizeLimit(options.limits.maxSubLmCalls);
   const maxOutputChars = normalizeLimit(options.limits.maxOutputChars);
 
   const limits: DseExecutionBudgetsV1 = {
     ...(maxTimeMs !== undefined ? { maxTimeMs } : {}),
     ...(maxLmCalls !== undefined ? { maxLmCalls } : {}),
+    ...(maxToolCalls !== undefined ? { maxToolCalls } : {}),
+    ...(maxRlmIterations !== undefined ? { maxRlmIterations } : {}),
+    ...(maxSubLmCalls !== undefined ? { maxSubLmCalls } : {}),
     ...(maxOutputChars !== undefined ? { maxOutputChars } : {})
   };
 
   let lmCalls = 0;
+  let toolCalls = 0;
+  let rlmIterations = 0;
+  let subLmCalls = 0;
   let outputChars = 0;
 
   const elapsedMsNow = () => Math.max(0, Date.now() - startedAtMs);
@@ -101,6 +123,58 @@ function makeHandle(options: {
       }
     });
 
+  const onToolCall = () =>
+    Effect.gen(function* () {
+      toolCalls++;
+      yield* checkTime();
+      if (options.enforce && maxToolCalls !== undefined && toolCalls > maxToolCalls) {
+        return yield* Effect.fail(
+          BudgetExceededError.make({
+            message: `Budget exceeded: maxToolCalls limit=${maxToolCalls} observed=${toolCalls}`,
+            budget: "maxToolCalls",
+            limit: maxToolCalls,
+            observed: toolCalls
+          })
+        );
+      }
+    });
+
+  const onRlmIteration = () =>
+    Effect.gen(function* () {
+      rlmIterations++;
+      yield* checkTime();
+      if (
+        options.enforce &&
+        maxRlmIterations !== undefined &&
+        rlmIterations > maxRlmIterations
+      ) {
+        return yield* Effect.fail(
+          BudgetExceededError.make({
+            message: `Budget exceeded: maxRlmIterations limit=${maxRlmIterations} observed=${rlmIterations}`,
+            budget: "maxRlmIterations",
+            limit: maxRlmIterations,
+            observed: rlmIterations
+          })
+        );
+      }
+    });
+
+  const onSubLmCall = () =>
+    Effect.gen(function* () {
+      subLmCalls++;
+      yield* checkTime();
+      if (options.enforce && maxSubLmCalls !== undefined && subLmCalls > maxSubLmCalls) {
+        return yield* Effect.fail(
+          BudgetExceededError.make({
+            message: `Budget exceeded: maxSubLmCalls limit=${maxSubLmCalls} observed=${subLmCalls}`,
+            budget: "maxSubLmCalls",
+            limit: maxSubLmCalls,
+            observed: subLmCalls
+          })
+        );
+      }
+    });
+
   const onOutputChars = (n: number) =>
     Effect.gen(function* () {
       const delta = Math.max(0, Math.floor(n));
@@ -128,11 +202,22 @@ function makeHandle(options: {
       usage: {
         elapsedMs: elapsedMsNow(),
         lmCalls,
+        toolCalls,
+        rlmIterations,
+        subLmCalls,
         outputChars
       }
     }));
 
-  return { checkTime, onLmCall, onOutputChars, snapshot };
+  return {
+    checkTime,
+    onLmCall,
+    onToolCall,
+    onRlmIteration,
+    onSubLmCall,
+    onOutputChars,
+    snapshot
+  };
 }
 
 export function layerInMemory(options?: {
@@ -152,4 +237,3 @@ export function layerNoop(): Layer.Layer<ExecutionBudgetService> {
   // "noop" still tracks usage so receipts can include budget snapshots.
   return layerInMemory({ enforce: false });
 }
-

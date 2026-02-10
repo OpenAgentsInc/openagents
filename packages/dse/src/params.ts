@@ -3,6 +3,9 @@ import { Schema } from "effect";
 export type DseExecutionBudgetsV1 = {
   readonly maxTimeMs?: number | undefined;
   readonly maxLmCalls?: number | undefined;
+  readonly maxToolCalls?: number | undefined;
+  readonly maxRlmIterations?: number | undefined;
+  readonly maxSubLmCalls?: number | undefined;
   readonly maxOutputChars?: number | undefined;
 };
 
@@ -10,11 +13,24 @@ export const DseExecutionBudgetsV1Schema: Schema.Schema<DseExecutionBudgetsV1> =
   Schema.Struct({
     maxTimeMs: Schema.optional(Schema.Number),
     maxLmCalls: Schema.optional(Schema.Number),
+    maxToolCalls: Schema.optional(Schema.Number),
+    maxRlmIterations: Schema.optional(Schema.Number),
+    maxSubLmCalls: Schema.optional(Schema.Number),
     maxOutputChars: Schema.optional(Schema.Number)
   });
 
 export type DseParamsV1 = {
   readonly paramsVersion: 1;
+
+  // Inference strategy selection (pinned by compiled artifact).
+  // - "direct.v1": single LLM call (+ optional repair)
+  // - "rlm_lite.v1": RLM-style loop (Phase C)
+  readonly strategy?:
+    | {
+        readonly id: string;
+        readonly config?: unknown | undefined;
+      }
+    | undefined;
 
   readonly instruction?:
     | {
@@ -62,6 +78,12 @@ export const emptyParamsV1: DseParamsV1 = { paramsVersion: 1 };
 
 export const DseParamsV1Schema: Schema.Schema<DseParamsV1> = Schema.Struct({
   paramsVersion: Schema.Literal(1),
+  strategy: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      config: Schema.optional(Schema.Unknown)
+    })
+  ),
   instruction: Schema.optional(
     Schema.Struct({
       text: Schema.optional(Schema.String)

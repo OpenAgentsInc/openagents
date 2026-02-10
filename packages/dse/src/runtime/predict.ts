@@ -35,16 +35,27 @@ export type PredictEnv =
   | ReceiptRecorderService
   | ExecutionBudgetService;
 
+export class PredictStrategyError extends Schema.TaggedError<PredictStrategyError>()(
+  "PredictStrategyError",
+  {
+    strategyId: Schema.String,
+    message: Schema.String
+  }
+) {}
+
 export type PredictError =
   | BudgetExceededError
   | LmClientError
   | PolicyRegistryError
   | PromptRenderError
   | OutputDecodeError
+  | PredictStrategyError
   | ReceiptRecorderError
   | HashError;
 
-export function make<I, O>(signature: DseSignature<I, O>) {
+export function make<I, O>(
+  signature: DseSignature<I, O>
+): (input: I) => Effect.Effect<O, PredictError, PredictEnv> {
   return Effect.fn(`dse.Predict(${signature.id})`)(function* (input: I) {
     const receiptId = crypto.randomUUID();
     const startedAtMs = Date.now();
@@ -120,8 +131,8 @@ export function make<I, O>(signature: DseSignature<I, O>) {
     let promptRenderStats: PromptRenderStatsV1 | undefined;
     let contextPressure: ContextPressureV1 | undefined;
 
-    // Phase A: explicit strategy id for trace mining and replay.
-    const strategyId = "direct.v1";
+    // Phase B: strategy is pinned via params (and thus via compiled artifacts).
+    const strategyId = params.strategy?.id ?? "direct.v1";
 
     const errorSummary = (error: unknown): { readonly errorName: string; readonly message: string } => {
       if (error && typeof error === "object") {
@@ -182,7 +193,7 @@ export function make<I, O>(signature: DseSignature<I, O>) {
         });
       });
 
-    const main = Effect.gen(function* () {
+    const directPredict = Effect.gen(function* () {
       const rendered = yield* renderPromptMessagesWithStats({
         signature,
         input,
@@ -256,6 +267,29 @@ export function make<I, O>(signature: DseSignature<I, O>) {
 
       return decoded;
     });
+
+    const rlmLitePredict: Effect.Effect<O, PredictError, PredictEnv> = Effect.fail(
+      PredictStrategyError.make({
+        strategyId,
+        message: "Predict strategy rlm_lite.v1 is not implemented yet (Phase C)."
+      })
+    );
+
+    const main: Effect.Effect<O, PredictError, PredictEnv> = (() => {
+      switch (strategyId) {
+        case "direct.v1":
+          return directPredict;
+        case "rlm_lite.v1":
+          return rlmLitePredict;
+        default:
+          return Effect.fail(
+            PredictStrategyError.make({
+              strategyId,
+              message: `Unknown predict strategy: ${strategyId}`
+            })
+          );
+      }
+    })();
 
     return yield* main.pipe(
       Effect.tap(() => recordReceipt({ _tag: "Ok" })),
