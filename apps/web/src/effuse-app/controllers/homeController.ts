@@ -73,6 +73,8 @@ function openChatPaneOnHome(container: Element): () => void {
     paneStyle.textContent =
       "[data-oa-home-chat-overlay] [data-oa-pane] { background: rgba(0,0,0,0.5) !important; }\n" +
       "[data-oa-home-chat-overlay], [data-oa-home-chat-overlay] [data-oa-pane-system], [data-oa-home-chat-overlay] [data-oa-pane-layer] { user-select: none; -webkit-user-select: none; }\n" +
+      "[data-oa-home-chat-overlay] [data-oa-pane], [data-oa-home-chat-overlay] [data-oa-pane] * { user-select: text; -webkit-user-select: text; }\n" +
+      "[data-oa-home-chat-overlay]:focus, [data-oa-home-chat-overlay] [data-oa-pane-system]:focus { outline: none !important; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane-title] { cursor: grab; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane-title]:active { cursor: grabbing; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane-system][data-oa-pane-dragging=\"1\"] [data-oa-pane-title] { cursor: grabbing; }"
@@ -125,14 +127,14 @@ function openChatPaneOnHome(container: Element): () => void {
       const messagesHtml = html`
         <div class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
           ${messages.map(
-            (m) =>
-              html`<div
+        (m) =>
+          html`<div
                 class="text-sm font-mono ${m.role === "user" ? "text-white/80 text-right" : "text-white/90"}"
                 data-chat-role="${m.role}"
               >
                 ${m.text}
               </div>`,
-          )}
+      )}
         </div>
         <form data-oa-home-chat-form="1" class="p-2 border-t border-white/10">
           <input
@@ -174,7 +176,7 @@ function openChatPaneOnHome(container: Element): () => void {
           const input = paneContentSlot.querySelector<HTMLInputElement>("[data-oa-home-chat-input]")
           if (input) requestAnimationFrame(() => input.focus())
         },
-        () => {},
+        () => { },
       )
     }
 
