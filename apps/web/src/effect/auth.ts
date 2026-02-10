@@ -66,6 +66,11 @@ export const clearAuthClientCache = (): void => {
   clientCache = null;
 };
 
+/** Prime the client cache from verify response so getSession/getAccessToken use it without fetching (avoids reload). */
+export const setClientAuthFromVerify = (session: AuthSession, token: string | null): void => {
+  clientCache = { session, token, fetchedAtMs: Date.now() };
+};
+
 const serverCache = FiberRef.unsafeMake<CachedAuthState | null>(null);
 
 const emptySession = (): AuthSession =>
@@ -108,6 +113,7 @@ const fetchClientAuthState = Effect.fn('AuthService.fetchClientAuthState')(funct
       fetch('/api/auth/session', {
         method: 'GET',
         cache: 'no-store',
+        credentials: 'include',
         headers: { accept: 'application/json' },
       }),
     catch: (error) => AuthServiceError.make({ operation: 'fetchClientAuthState.fetch', error }),

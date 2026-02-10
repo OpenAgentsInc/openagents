@@ -1075,41 +1075,42 @@ const runAutopilotStream = (input: {
           return clamp(t0, max);
         };
 
-        const applyBootstrap = Effect.gen(function* () {
+        type BootstrapApplyResult = { appliedVibe?: string };
+        const applyBootstrap = Effect.gen(function* (): Generator<Effect.Effect<any>, BootstrapApplyResult, any> {
           if (bootstrapStage === "ask_user_handle") {
             const handle = extractHandle(lastUserText);
-            if (!handle) return;
+            if (!handle) return {};
             yield* convex.mutation(api.autopilot.blueprint.applyBootstrapUserHandle, {
               threadId: input.threadId,
               handle,
             });
-            return;
+            return {};
           }
 
           if (bootstrapStage === "ask_agent_name") {
             const name = extractShortValue(lastUserText, 64);
-            if (!name) return;
+            if (!name) return {};
             yield* convex.mutation(api.autopilot.blueprint.applyBootstrapAgentName, {
               threadId: input.threadId,
               name,
             });
-            return;
+            return {};
           }
 
           if (bootstrapStage === "ask_vibe") {
             const vibe = extractShortValue(lastUserText, 140);
-            if (!vibe) return;
+            if (!vibe) return {};
             yield* convex.mutation(api.autopilot.blueprint.applyBootstrapAgentVibe, {
               threadId: input.threadId,
               vibe,
             });
-            return;
+            return { appliedVibe: vibe };
           }
 
           if (bootstrapStage === "ask_boundaries") {
             const t0 = stripTrailingPunct(clamp(lastUserText, 800));
-            if (!t0) return;
-            if (looksLikeQuestion(t0)) return;
+            if (!t0) return {};
+            if (looksLikeQuestion(t0)) return {};
 
             const lowered = t0.toLowerCase();
             const isNone =
@@ -1130,26 +1131,49 @@ const runAutopilotStream = (input: {
                   .filter((b) => b.length > 0)
                   .slice(0, 16);
 
-            if (!isNone && boundaries.length === 0) return;
+            if (!isNone && boundaries.length === 0) return {};
 
             yield* convex.mutation(api.autopilot.blueprint.applyBootstrapComplete, {
               threadId: input.threadId,
               ...(boundaries.length > 0 ? { boundaries } : {}),
             } as any);
-            return;
+            return {};
           }
+          return {};
         }).pipe(
           Effect.catchAllCause((cause) =>
-            t.log("warn", "bootstrap.apply_failed", { message: String(cause) }),
+            t.log("warn", "bootstrap.apply_failed", { message: String(cause) }).pipe(
+              Effect.as({} as BootstrapApplyResult),
+            ),
           ),
         );
 
         // Persist bootstrap answers before streaming so stage progression is reliable.
-        yield* applyBootstrap;
-      }
+        const bootstrapResult = yield* applyBootstrap;
 
-      yield* runStream;
-      yield* flush(true);
+        // When we applied the vibe, inject the exact confirmation message so we don't rely on the model
+        // (avoids model outputting "- -" or stopping before "Any boundaries or preferences?").
+        if (bootstrapResult.appliedVibe) {
+          const injectedText = `Vibe confirmed: ${bootstrapResult.appliedVibe}. Any boundaries or preferences? Reply 'none' or list a few bullets.`;
+          outputText = injectedText;
+          bufferedParts.push({
+            seq: seq++,
+            part: {
+              type: "text-delta",
+              id: crypto.randomUUID(),
+              delta: injectedText,
+              metadata: {},
+            } as AiResponse.StreamPartEncoded,
+          });
+          yield* flush(true);
+        } else {
+          yield* runStream;
+          yield* flush(true);
+        }
+      } else {
+        yield* runStream;
+        yield* flush(true);
+      }
 
       if (input.controller.signal.aborted) {
         status = "canceled";

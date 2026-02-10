@@ -6,7 +6,13 @@ import {
   DEFAULT_PANE_SYSTEM_THEME,
 } from "@openagentsinc/effuse-panes"
 
-import { AuthService, clearAuthClientCache } from "../../effect/auth"
+import {
+  AuthSession,
+  AuthSessionUser,
+  AuthService,
+  clearAuthClientCache,
+  setClientAuthFromVerify,
+} from "../../effect/auth"
 import type { ChatSnapshot } from "../../effect/chat"
 import { ChatSnapshotAtom } from "../../effect/atoms/chat"
 import { SessionAtom } from "../../effect/atoms/session"
@@ -473,7 +479,13 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               body: JSON.stringify({ email, code }),
             })
               .then((r) => r.json().catch(() => null))
-              .then(async (data: { ok?: boolean; error?: string }) => {
+              .then(async (data: {
+                ok?: boolean
+                error?: string
+                userId?: string
+                token?: string
+                user?: { id: string; email?: string | null; firstName?: string | null; lastName?: string | null }
+              }) => {
                 isBusy = false
                 if (!data?.ok) {
                   messages.push({
@@ -484,32 +496,31 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                   return
                 }
                 clearAuthClientCache()
-                if (!deps) {
-                  messages.push({ role: "assistant", text: "You're signed in." })
-                  doRender()
-                  return
-                }
-                const sessionExit = await deps.runtime.runPromiseExit(
-                  Effect.flatMap(AuthService, (auth) => auth.getSession()),
-                )
-                if (sessionExit._tag === "Success") {
-                  const session = sessionExit.value
-                  deps.atoms.set(SessionAtom as any, {
-                    userId: session.userId,
-                    user: session.user
-                      ? {
-                        id: session.user.id,
-                        email: session.user.email,
-                        firstName: session.user.firstName,
-                        lastName: session.user.lastName,
-                      }
-                      : null,
+                const token = typeof data.token === "string" ? data.token : null
+                const userPayload = data.user && typeof data.user.id === "string" ? data.user : null
+                const userId = typeof data.userId === "string" ? data.userId : userPayload?.id ?? null
+                if (token && userPayload && userId && deps) {
+                  const user = AuthSessionUser.make({
+                    id: userPayload.id,
+                    email: userPayload.email ?? null,
+                    firstName: userPayload.firstName ?? null,
+                    lastName: userPayload.lastName ?? null,
                   })
-                }
-                messages.push({ role: "assistant", text: "You're signed in." })
-                if (deps) {
-                  const newSession = deps.atoms.get(SessionAtom as any)
-                  if (newSession?.user?.email) renderIdentityCard(newSession.user.email)
+                  const session = AuthSession.make({ userId, sessionId: null, user })
+                  setClientAuthFromVerify(session, token)
+                  deps.atoms.set(SessionAtom as any, {
+                    userId,
+                    user: {
+                      id: userPayload.id,
+                      email: userPayload.email ?? null,
+                      firstName: userPayload.firstName ?? null,
+                      lastName: userPayload.lastName ?? null,
+                    },
+                  })
+                  if (userPayload.email) renderIdentityCard(userPayload.email)
+                  messages.length = 0
+                  messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
+                  step = "authed"
                   if (deps.chat) {
                     deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
                       (id) => {
@@ -538,13 +549,16 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                         doRender()
                       },
                     )
-                    return
                   }
+                  doRender()
+                  return
                 }
-                messages.length = 0
-                messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
-                step = "authed"
-                doRender()
+                try {
+                  localStorage.setItem("oa-open-chat-after-reload", "1")
+                } catch {
+                  // ignore
+                }
+                window.location.reload()
               })
               .catch(() => {
                 isBusy = false
@@ -563,6 +577,17 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
   }
 
   trigger.addEventListener("click", handler, { capture: true })
+
+  // If we landed after magic-auth verify reload, open the chat pane once session is ready.
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem("oa-open-chat-after-reload") === "1" && deps) {
+      localStorage.removeItem("oa-open-chat-after-reload")
+      setTimeout(() => trigger.click(), 400)
+    }
+  } catch {
+    // ignore
+  }
+
   return () => trigger.removeEventListener("click", handler, { capture: true })
 }
 

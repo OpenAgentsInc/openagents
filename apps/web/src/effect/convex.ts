@@ -166,32 +166,25 @@ export const ConvexServiceLive = Layer.scoped(
         (c as any).__oaUnsubConnectionState = unsubConnection;
         (c as any).__oaIsE2e = isE2e;
 
-        c.setAuth(async ({ forceRefreshToken }) => {
-          const isE2e = Boolean((c as any).__oaIsE2e);
+        c.setAuth(async () => {
           const startedAt = Date.now();
-          const token = await auth
-            .getAccessToken({ forceRefreshToken: Boolean(forceRefreshToken) })
-            .pipe(
-              Effect.catchAll(() => Effect.succeed(null)),
-              // Bridge Effect->Promise safely and ensure the client path always runs
-              // with a non-server request context.
-              Effect.provideService(RequestContextService, makeDefaultRequestContext()),
-              Effect.runPromise,
-            );
-          if (isE2e) {
-            try {
-              console.log(
-                '[convex:setAuth]',
-                JSON.stringify({
-                  forceRefreshToken: Boolean(forceRefreshToken),
-                  hasToken: !!token,
-                  ms: Date.now() - startedAt,
+          let token: string | null = null;
+          try {
+            token = await auth
+              .getAccessToken({ forceRefreshToken: true })
+              .pipe(
+                Effect.catchAll((err) => {
+                  console.warn('[convex:setAuth] getAccessToken failed', err);
+                  return Effect.succeed(null);
                 }),
+                Effect.provideService(RequestContextService, makeDefaultRequestContext()),
+                Effect.runPromise,
               );
-            } catch {
-              // ignore
-            }
+          } catch (err) {
+            console.warn('[convex:setAuth] runPromise failed', err);
           }
+          const ms = Date.now() - startedAt;
+          console.log('[convex:setAuth]', { hasToken: !!token, tokenLength: token?.length ?? 0, ms });
           return token ?? null;
         });
         return c;
