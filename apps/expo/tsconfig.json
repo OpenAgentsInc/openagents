@@ -5,7 +5,9 @@
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "jsx": "react-native",
-    "customConditions": ["react-native"],
+    "customConditions": [
+      "react-native"
+    ],
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -22,8 +24,12 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./app/*"],
-      "@assets/*": ["./assets/*"]
+      "@/*": [
+        "./app/*"
+      ],
+      "@assets/*": [
+        "./assets/*"
+      ]
     },
     "typeRoots": [
       "./node_modules/@types",
@@ -37,9 +43,7 @@
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "**/*.tsx"
   ],
   "exclude": [
     "node_modules",

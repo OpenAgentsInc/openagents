@@ -45,6 +45,7 @@ const config = {
     Welcome: "welcome",
     Demo: {
       screens: {
+        Feed: "feed",
         DemoShowroom: {
           path: "showroom/:queryIndex?/:itemIndex?",
         },

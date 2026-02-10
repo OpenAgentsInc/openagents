@@ -22,7 +22,8 @@ export const WelcomeScreen: FC<WelcomeScreenProps> = function WelcomeScreen(_pro
   const { themed, theme } = useAppTheme()
 
   const { navigation } = _props
-  const { logout } = useAuth()
+  const { logout, authUser, authEmail } = useAuth()
+  const displayEmail = authUser?.email ?? authEmail ?? null
 
   function goNext() {
     navigation.navigate("Demo", { screen: "DemoShowroom", params: {} })
@@ -42,6 +43,14 @@ export const WelcomeScreen: FC<WelcomeScreenProps> = function WelcomeScreen(_pro
     <Screen preset="fixed" contentContainerStyle={$styles.flex1}>
       <View style={themed($topContainer)}>
         <Image style={themed($welcomeLogo)} source={welcomeLogo} resizeMode="contain" />
+        {displayEmail ? (
+          <Text
+            testID="welcome-signed-in"
+            style={themed($signedInAs)}
+            tx="welcomeScreen:signedInAs"
+            txOptions={{ email: displayEmail }}
+          />
+        ) : null}
         <Text
           testID="welcome-heading"
           style={themed($welcomeHeading)}
@@ -105,6 +114,11 @@ const $welcomeFace: ImageStyle = {
   transform: [{ scaleX: isRTL ? -1 : 1 }],
 }
 
+const $signedInAs: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  fontSize: 14,
+  color: colors.textDim,
+  marginBottom: spacing.sm,
+})
 const $welcomeHeading: ThemedStyle<TextStyle> = ({ spacing }) => ({
   marginBottom: spacing.md,
 })

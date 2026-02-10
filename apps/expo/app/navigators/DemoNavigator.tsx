@@ -9,6 +9,8 @@ import { DemoCommunityScreen } from "@/screens/DemoCommunityScreen"
 import { DemoDebugScreen } from "@/screens/DemoDebugScreen"
 import { DemoPodcastListScreen } from "@/screens/DemoPodcastListScreen"
 import { DemoShowroomScreen } from "@/screens/DemoShowroomScreen/DemoShowroomScreen"
+import { FeedScreen } from "@/screens/FeedScreen"
+import { ProfileScreen } from "@/screens/ProfileScreen"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
 
@@ -43,6 +45,17 @@ export function DemoNavigator() {
           tabBarItemStyle: themed($tabBarItem),
         }}
       >
+        <Tab.Screen
+          name="Feed"
+          component={FeedScreen}
+          options={{
+            tabBarLabel: translate("demoNavigator:feedTab"),
+            tabBarIcon: ({ focused }) => (
+              <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            ),
+          }}
+        />
+
         <Tab.Screen
           name="DemoShowroom"
           component={DemoShowroomScreen}
@@ -92,6 +105,21 @@ export function DemoNavigator() {
             tabBarLabel: translate("demoNavigator:debugTab"),
             tabBarIcon: ({ focused }) => (
               <Icon icon="debug" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            ),
+          }}
+        />
+
+        <Tab.Screen
+          name="Profile"
+          component={ProfileScreen}
+          options={{
+            tabBarLabel: translate("demoNavigator:profileTab"),
+            tabBarIcon: ({ focused }) => (
+              <Icon
+                icon="settings"
+                color={focused ? colors.tint : colors.tintInactive}
+                size={30}
+              />
             ),
           }}
         />
