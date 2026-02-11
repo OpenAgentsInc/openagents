@@ -22,6 +22,7 @@ export type SignatureContractExportV1 = {
 export function exportContractV1<I, O>(
   signature: DseSignature<I, O>
 ): SignatureContractExportV1 {
+  const promptIr: PromptIR<unknown, unknown> = signature.prompt;
   return {
     format: "openagents.dse.signature_contract",
     formatVersion: 1,
@@ -32,10 +33,9 @@ export function exportContractV1<I, O>(
     outputSchemaJson: JSONSchema.make(signature.output),
 
     // Prompt IR is already a JSON-serializable AST by construction.
-    promptIr: signature.prompt as unknown as PromptIR<unknown, unknown>,
+    promptIr,
 
     defaultParams: signature.defaults.params,
     defaultConstraints: signature.defaults.constraints
   };
 }
-

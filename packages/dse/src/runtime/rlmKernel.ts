@@ -1,6 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 
-import { BlobRefSchema, type BlobRef } from "../blob.js";
+import { BlobRefSchema, isBlobRef, type BlobRef } from "../blob.js";
 import { canonicalJson } from "../internal/canonicalJson.js";
 
 import type { DseParams } from "../params.js";
@@ -395,7 +395,14 @@ function resolveModelConfig(
 ): { readonly modelId?: string; readonly temperature?: number; readonly topP?: number; readonly maxTokens?: number } {
   const base = params.model ?? {};
   const roles = params.modelRoles ?? {};
-  const override = (roles as any)[role] ?? {};
+  const override =
+    role === "main"
+      ? roles.main ?? {}
+      : role === "sub"
+        ? roles.sub ?? {}
+        : role === "repair"
+          ? roles.repair ?? {}
+          : roles.judge ?? {};
   return {
     ...(base.modelId ? { modelId: base.modelId } : {}),
     ...(typeof base.temperature === "number" ? { temperature: base.temperature } : {}),
@@ -430,8 +437,7 @@ function toolTimeoutMs(params: DseParams, toolName: string, requestedTimeoutMs: 
 
 function isBlobRefArray(value: unknown): value is ReadonlyArray<BlobRef> {
   if (!Array.isArray(value)) return false;
-  // Fast structural check; full schema decode happens when needed.
-  return value.every((v) => v && typeof v === "object" && typeof (v as any).id === "string");
+  return value.every((v) => isBlobRef(v));
 }
 
 function resolveTargetTextWithSource(

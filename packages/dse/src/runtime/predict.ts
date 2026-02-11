@@ -14,7 +14,11 @@ import {
   type HashError
 } from "../hashes.js";
 import { decodeJsonOutputWithMode, OutputDecodeError } from "./decode.js";
-import { BudgetExceededError, ExecutionBudgetService } from "./budget.js";
+import {
+  BudgetExceededError,
+  ExecutionBudgetService,
+  type BudgetSnapshotV1
+} from "./budget.js";
 import { BlobStoreService } from "./blobStore.js";
 import { LmClientError, LmClientService } from "./lm.js";
 import { PolicyRegistryError, PolicyRegistryService } from "./policyRegistry.js";
@@ -28,7 +32,12 @@ import {
   type PromptRenderStatsV1
 } from "./render.js";
 import { ReceiptRecorderError, ReceiptRecorderService } from "./receipt.js";
-import { executeRlmAction, RlmActionV1Schema, RlmKernelError } from "./rlmKernel.js";
+import {
+  executeRlmAction,
+  RlmActionV1Schema,
+  RlmKernelError,
+  type RlmObservationV1
+} from "./rlmKernel.js";
 import { VarSpaceError, VarSpaceService } from "./varSpace.js";
 
 export type PredictEnv =
@@ -57,6 +66,16 @@ export type PredictError =
   | PredictStrategyError
   | ReceiptRecorderError
   | HashError;
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+const stringField = (value: unknown, key: string): string | undefined => {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const field = record[key];
+  return typeof field === "string" ? field : undefined;
+};
 
 export function make<I, O>(
   signature: DseSignature<I, O>
@@ -94,7 +113,14 @@ export function make<I, O>(
     ): { readonly modelId?: string; readonly temperature?: number; readonly topP?: number; readonly maxTokens?: number } => {
       const base = params.model ?? {};
       const roles = params.modelRoles ?? {};
-      const override = (roles as any)[role] ?? {};
+      const override =
+        role === "main"
+          ? roles.main ?? {}
+          : role === "sub"
+            ? roles.sub ?? {}
+            : role === "repair"
+              ? roles.repair ?? {}
+              : roles.judge ?? {};
       return {
         ...(base.modelId ? { modelId: base.modelId } : {}),
         ...(typeof base.temperature === "number" ? { temperature: base.temperature } : {}),
@@ -161,12 +187,10 @@ export function make<I, O>(
     const strategyId = params.strategy?.id ?? "direct.v1";
 
     const errorSummary = (error: unknown): { readonly errorName: string; readonly message: string } => {
-      if (error && typeof error === "object") {
-        const name = (error as any)._tag ?? (error as any).name;
-        const message = (error as any).message;
-        if (typeof message === "string") {
-          return { errorName: typeof name === "string" ? name : "PredictError", message };
-        }
+      const message = stringField(error, "message");
+      if (message) {
+        const name = stringField(error, "_tag") ?? stringField(error, "name");
+        return { errorName: name ?? "PredictError", message };
       }
       return { errorName: "PredictError", message: String(error) };
     };
@@ -377,10 +401,7 @@ export function make<I, O>(
 
       const traceEvents: Array<unknown> = [];
 
-      const stableBudgetForPrompt = (snap: {
-        readonly limits: any;
-        readonly usage: any;
-      }) => ({
+      const stableBudgetForPrompt = (snap: BudgetSnapshotV1) => ({
         limits: snap.limits,
         usage: {
           lmCalls: snap.usage.lmCalls,
@@ -495,30 +516,23 @@ export function make<I, O>(
           }
         }
 
-        let lastObservation: unknown = null;
+        let lastObservation: RlmObservationV1 | null = null;
 
-        const redactObservationForState = (obs: unknown): unknown => {
-          if (!obs || typeof obs !== "object") return obs;
-          const tag = (obs as any)._tag;
-          switch (tag) {
+        const redactObservationForState = (obs: RlmObservationV1): unknown => {
+          switch (obs._tag) {
             case "PreviewResult": {
-              const text = typeof (obs as any).text === "string" ? (obs as any).text : null;
-              const copy: any = { ...(obs as any) };
-              delete copy.text;
-              if (text != null) copy.textChars = text.length;
-              return copy;
+              const { text, ...rest } = obs;
+              return { ...rest, textChars: text.length };
             }
             case "SearchResult": {
-              const matches = Array.isArray((obs as any).matches) ? (obs as any).matches : null;
-              const copy: any = { ...(obs as any) };
-              if (matches) {
-                copy.matches = matches.map((m: any) => ({
-                  ...(typeof m?.index === "number" ? { index: m.index } : {}),
-                  ...(m?.span ? { span: m.span } : {}),
-                  ...(typeof m?.snippet === "string" ? { snippetChars: m.snippet.length } : {})
-                }));
-              }
-              return copy;
+              return {
+                ...obs,
+                matches: obs.matches.map((match) => ({
+                  index: match.index,
+                  span: match.span,
+                  snippetChars: match.snippet.length
+                }))
+              };
             }
             default:
               return obs;

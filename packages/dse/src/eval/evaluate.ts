@@ -68,22 +68,46 @@ export type EvaluateOptions<I, O, Y> = {
 
 export type EvalEnv = Exclude<PredictEnv, PolicyRegistryService> | EvalCacheService;
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+const stringField = (value: unknown, key: string): string | undefined => {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const field = record[key];
+  return typeof field === "string" ? field : undefined;
+};
+
 function predictErrorSummary(error: unknown): { readonly errorName: string; readonly message: string } {
-  if (error && typeof error === "object") {
-    const name = (error as any)._tag ?? (error as any).name;
-    const message = (error as any).message;
-    if (typeof message === "string") {
-      return { errorName: typeof name === "string" ? name : "PredictError", message };
-    }
+  const message = stringField(error, "message");
+  if (message) {
+    const name = stringField(error, "_tag") ?? stringField(error, "name");
+    return { errorName: name ?? "PredictError", message };
   }
   return { errorName: "PredictError", message: String(error) };
 }
 
 function toolFailuresFromMeta(meta: unknown): number {
-  if (!meta || typeof meta !== "object") return 0;
-  const n = (meta as any).toolFailures;
+  const record = asRecord(meta);
+  if (!record) return 0;
+  const n = record.toolFailures;
   if (typeof n !== "number" || !Number.isFinite(n)) return 0;
   return Math.max(0, Math.floor(n));
+}
+
+const signalFailureMessage = (error: unknown): string =>
+  stringField(error, "message") ?? "Signal failed";
+
+function isEvalExampleResult(value: unknown): value is EvalExampleResultV1 {
+  const record = asRecord(value);
+  if (!record) return false;
+  return (
+    typeof record.exampleId === "string" &&
+    typeof record.signatureId === "string" &&
+    typeof record.compiled_id === "string" &&
+    typeof record.reward === "number" &&
+    Array.isArray(record.signals)
+  );
 }
 
 export function evaluate<I, O, Y>(
@@ -128,9 +152,9 @@ export function evaluate<I, O, Y>(
 
         const keyId = yield* evalCacheKeyId(key);
 
-        const cached = (yield* cache.get(keyId)) as EvalExampleResultV1 | null;
-        if (cached && cached.exampleId === example.exampleId) {
-          return cached;
+        const cachedUnknown = yield* cache.get(keyId);
+        if (isEvalExampleResult(cachedUnknown) && cachedUnknown.exampleId === example.exampleId) {
+          return cachedUnknown;
         }
 
         const receipts0 = makeInMemoryReceiptRecorder();
@@ -169,10 +193,7 @@ export function evaluate<I, O, Y>(
                   signalId: signal.signalId,
                   weight: signal.weight,
                   score: 0,
-                  notes:
-                    either.left && typeof either.left === "object"
-                      ? (either.left as any).message ?? "Signal failed"
-                      : "Signal failed"
+                  notes: signalFailureMessage(either.left)
                 } satisfies RewardSignalReportV1;
               })
             ),
@@ -211,7 +232,7 @@ export function evaluate<I, O, Y>(
           ...(predictError ? { error: predictError } : {})
         };
 
-        yield* cache.set(keyId, result as unknown);
+        yield* cache.set(keyId, result);
         return result;
       }).pipe(
         Effect.catchAll((cause) =>

@@ -18,7 +18,7 @@ export const BlobRefSchema: Schema.Schema<BlobRef> = Schema.Struct({
 
 export function isBlobRef(value: unknown): value is BlobRef {
   if (!value || typeof value !== "object") return false;
-  const v = value as any;
+  const v = value as Record<string, unknown>;
   return (
     typeof v.id === "string" &&
     typeof v.hash === "string" &&
