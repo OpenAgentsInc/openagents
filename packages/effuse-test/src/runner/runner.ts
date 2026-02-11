@@ -12,6 +12,28 @@ import { startViewerServer } from "../viewer/server.ts"
 import { TestContext } from "./TestContext.ts"
 import { startWranglerDev } from "./TestServer.ts"
 
+const toError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause))
+
+export class RunnerError extends Error {
+  readonly operation: string
+  override readonly cause: unknown
+
+  constructor(operation: string, cause: unknown) {
+    const err = toError(cause)
+    super(`[Runner] ${operation}: ${err.message}`)
+    this.name = "RunnerError"
+    this.operation = operation
+    this.cause = cause
+  }
+}
+
+const tryRunnerPromise = <A>(operation: string, f: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: f,
+    catch: (cause) => new RunnerError(operation, cause),
+  })
+
 export type RunnerOptions = {
   readonly projectDir: string
   readonly serverPort: number
@@ -61,13 +83,15 @@ const filterTests = (tests: ReadonlyArray<TestCase<TestEnv>>, options: RunnerOpt
   return out
 }
 
-export const run = (options: RunnerOptions): Effect.Effect<void, Error> =>
+export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
   Effect.scoped(
     Effect.gen(function* () {
       const runId = crypto.randomUUID()
       const runStart = Date.now()
       const artifactsRoot = defaultArtifactsRoot(runId)
-      yield* Effect.promise(() => Fs.mkdir(artifactsRoot, { recursive: true }))
+      yield* tryRunnerPromise("fs.mkdir(artifacts root)", () =>
+        Fs.mkdir(artifactsRoot, { recursive: true }),
+      )
 
       const tests = filterTests(selectSuite(options.projectDir), options)
       if (tests.length === 0) {
@@ -91,7 +115,9 @@ export const run = (options: RunnerOptions): Effect.Effect<void, Error> =>
 
       const baseUrl = options.baseUrl?.replace(/\/+$/, "")
       if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
-        return yield* Effect.fail(new Error(`--base-url must start with http(s)://, got: ${baseUrl}`))
+        return yield* Effect.fail(
+          new RunnerError("validate --base-url", `--base-url must start with http(s)://, got: ${baseUrl}`),
+        )
       }
 
       const server = baseUrl
@@ -132,7 +158,9 @@ export const run = (options: RunnerOptions): Effect.Effect<void, Error> =>
           const testId = test.id
           const testStart = Date.now()
           const testArtifactsDir = Path.join(artifactsRoot, sanitizePath(testId))
-          yield* Effect.promise(() => Fs.mkdir(testArtifactsDir, { recursive: true }))
+          yield* tryRunnerPromise("fs.mkdir(test artifacts dir)", () =>
+            Fs.mkdir(testArtifactsDir, { recursive: true }),
+          )
 
           const ctxLayer = Layer.succeed(TestContext, {
             runId,
@@ -261,12 +289,16 @@ export const run = (options: RunnerOptions): Effect.Effect<void, Error> =>
         yield* probe.flush
 
         if (overall !== "passed") {
-          return yield* Effect.fail(new Error("One or more tests failed"))
+          return yield* Effect.fail(new RunnerError("test run", "One or more tests failed"))
         }
       }).pipe(Effect.provide(mainLayer))
 
       yield* main
     }),
+  ).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof RunnerError ? cause : new RunnerError("run", cause),
+    ),
   )
 
 const sanitizePath = (s: string): string => s.replaceAll(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160)

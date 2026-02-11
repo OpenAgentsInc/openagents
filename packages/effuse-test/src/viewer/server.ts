@@ -5,6 +5,28 @@ import { Effect, Scope } from "effect"
 import type { TestEvent } from "../spec.ts"
 import { VIEWER_HTML } from "./assets.ts"
 
+const toError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause))
+
+export class ViewerServerError extends Error {
+  readonly operation: string
+  override readonly cause: unknown
+
+  constructor(operation: string, cause: unknown) {
+    const err = toError(cause)
+    super(`[ViewerServer] ${operation}: ${err.message}`)
+    this.name = "ViewerServerError"
+    this.operation = operation
+    this.cause = cause
+  }
+}
+
+const tryViewerPromise = <A>(operation: string, f: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: f,
+    catch: (cause) => new ViewerServerError(operation, cause),
+  })
+
 export type ViewerServer = {
   readonly url: string
   readonly broadcast: (event: TestEvent) => void
@@ -12,9 +34,11 @@ export type ViewerServer = {
 
 type ViewerServerInternal = ViewerServer & { readonly _server: ReturnType<typeof Bun.serve> }
 
-export const startViewerServer = (port: number): Effect.Effect<ViewerServer, never, Scope.Scope> =>
+export const startViewerServer = (
+  port: number,
+): Effect.Effect<ViewerServer, ViewerServerError, Scope.Scope> =>
   Effect.acquireRelease(
-    Effect.promise(async () => {
+    tryViewerPromise("start server", async () => {
       const entry = new URL("./client.ts", import.meta.url).pathname
       const build = await Bun.build({
         entrypoints: [entry],

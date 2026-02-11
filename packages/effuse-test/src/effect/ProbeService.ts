@@ -5,6 +5,28 @@ import { Chunk, Context, Effect, Layer, Queue, Ref } from "effect"
 
 import type { TestEvent } from "../spec.ts"
 
+const toError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause))
+
+export class ProbeServiceError extends Error {
+  readonly operation: string
+  override readonly cause: unknown
+
+  constructor(operation: string, cause: unknown) {
+    const err = toError(cause)
+    super(`[ProbeService] ${operation}: ${err.message}`)
+    this.name = "ProbeServiceError"
+    this.operation = operation
+    this.cause = cause
+  }
+}
+
+const tryProbePromise = <A>(operation: string, f: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: f,
+    catch: (cause) => new ProbeServiceError(operation, cause),
+  })
+
 export class ProbeService extends Context.Tag("@openagentsinc/effuse-test/ProbeService")<
   ProbeService,
   {
@@ -19,7 +41,9 @@ export type ProbeOptions = {
   readonly capacity?: number
 }
 
-export const ProbeServiceLive = (options: ProbeOptions): Layer.Layer<ProbeService> =>
+export const ProbeServiceLive = (
+  options: ProbeOptions,
+): Layer.Layer<ProbeService, ProbeServiceError> =>
   Layer.scoped(
     ProbeService,
     Effect.gen(function* () {
@@ -27,24 +51,26 @@ export const ProbeServiceLive = (options: ProbeOptions): Layer.Layer<ProbeServic
       const queue = yield* Queue.dropping<TestEvent>(capacity)
       const inFlight = yield* Ref.make(0)
 
-      yield* Effect.promise(() => Fs.mkdir(Path.dirname(options.eventsPath), { recursive: true }))
-      yield* Effect.promise(() => Fs.writeFile(options.eventsPath, "", { flag: "w" }))
+      yield* tryProbePromise("fs.mkdir(events dir)", () =>
+        Fs.mkdir(Path.dirname(options.eventsPath), { recursive: true }),
+      )
+      yield* tryProbePromise("fs.writeFile(events init)", () =>
+        Fs.writeFile(options.eventsPath, "", { flag: "w" }),
+      )
 
       const drain = Queue.takeBetween(queue, 1, 256).pipe(
         Effect.flatMap((chunk) =>
           Ref.update(inFlight, (n) => n + 1).pipe(
             Effect.zipRight(
-              Effect.tryPromise({
-                try: () =>
-                  Fs.appendFile(
-                    options.eventsPath,
-                    `${Chunk.toReadonlyArray(chunk)
-                      .map((e) => JSON.stringify(e))
-                      .join("\n")}\n`,
-                    "utf8",
-                  ),
-                catch: () => undefined,
-              }).pipe(Effect.asVoid),
+              tryProbePromise("fs.appendFile(events)", () =>
+                Fs.appendFile(
+                  options.eventsPath,
+                  `${Chunk.toReadonlyArray(chunk)
+                    .map((e) => JSON.stringify(e))
+                    .join("\n")}\n`,
+                  "utf8",
+                ),
+              ).pipe(Effect.asVoid, Effect.catchAll(() => Effect.void)),
             ),
             Effect.zipRight(
               Effect.sync(() => {
