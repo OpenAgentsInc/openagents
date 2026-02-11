@@ -6,6 +6,7 @@ import { makeInMemoryDb } from "./inMemoryDb";
 import { FIRST_OPEN_WELCOME_MESSAGE } from "../../convex/autopilot/defaults";
 import { getBlueprintImpl, resetBlueprintImpl, setBlueprintImpl } from "../../convex/autopilot/blueprint";
 import { listFeatureRequestsForThreadImpl, recordFeatureRequestImpl } from "../../convex/autopilot/featureRequests";
+import { getThreadTraceBundleImpl } from "../../convex/autopilot/traces";
 import {
   appendPartsImpl,
   createRunImpl,
@@ -255,6 +256,84 @@ describe("convex/autopilot MVP impls", () => {
       capabilityKey: "github_cloud_codex",
       notifyWhenAvailable: true,
     });
+  });
+
+  it("returns a thread trace bundle with messages, parts, runs, receipts, and feature requests", async () => {
+    const db = makeInMemoryDb();
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
+    const created = await run(createRunImpl(ctx, { threadId, text: "trace me" }));
+
+    await run(
+      appendPartsImpl(ctx, {
+        threadId,
+        runId: created.runId,
+        messageId: created.assistantMessageId,
+        parts: [
+          { seq: 0, part: { type: "text-start", id: "trace-1" } },
+          { seq: 1, part: { type: "text-delta", id: "trace-1", delta: "hello" } },
+          { seq: 2, part: { type: "finish", reason: "stop" } },
+        ],
+      }),
+    );
+
+    await run(
+      finalizeRunImpl(ctx, {
+        threadId,
+        runId: created.runId,
+        messageId: created.assistantMessageId,
+        status: "final",
+        text: "hello",
+      }),
+    );
+
+    await db.insert("receipts", {
+      threadId,
+      runId: created.runId,
+      kind: "dse.predict",
+      json: { ok: true, receiptId: "r-test" },
+      receiptId: "r-test",
+      signatureId: "@openagents/autopilot/feedback/DetectUpgradeRequest.v1",
+      createdAtMs: 1,
+    });
+
+    await run(
+      recordFeatureRequestImpl(ctx, {
+        threadId,
+        runId: created.runId,
+        messageId: created.userMessageId,
+        userText: "connect github",
+        capabilityKey: "github_repo_access",
+        capabilityLabel: "GitHub repository access",
+        summary: "User asked for GitHub repository access.",
+        confidence: 0.9,
+        notifyWhenAvailable: false,
+        source: {
+          signatureId: "@openagents/autopilot/feedback/DetectUpgradeRequest.v1",
+        },
+      }),
+    );
+
+    const bundle = await run(
+      getThreadTraceBundleImpl(ctx, {
+        threadId,
+        includeDseState: true,
+      }),
+    );
+
+    expect(bundle.ok).toBe(true);
+    expect(bundle.thread.threadId).toBe(threadId);
+    expect(bundle.summary.messageCount).toBeGreaterThan(0);
+    expect(bundle.summary.partCount).toBeGreaterThan(0);
+    expect(bundle.summary.runCount).toBeGreaterThan(0);
+    expect(bundle.summary.receiptCount).toBeGreaterThan(0);
+    expect(bundle.summary.featureRequestCount).toBeGreaterThan(0);
+    expect(Array.isArray(bundle.messages)).toBe(true);
+    expect(Array.isArray(bundle.parts)).toBe(true);
+    expect(Array.isArray(bundle.runs)).toBe(true);
+    expect(Array.isArray(bundle.receipts)).toBe(true);
+    expect(Array.isArray(bundle.featureRequests)).toBe(true);
   });
 
   it("resetThread deletes messages/parts/runs/receipts and re-seeds welcome + default blueprint", async () => {
