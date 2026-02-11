@@ -196,6 +196,14 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
   const trigger = container.querySelector("[data-oa-open-chat-pane]")
   if (!trigger) return () => { }
 
+  const isTextEntryTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) return false
+    if (target.isContentEditable) return true
+    const tag = target.tagName
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON") return true
+    return target.closest("input, textarea, select, button, [contenteditable=\"true\"]") != null
+  }
+
   const handler = (ev: Event): void => {
     ev.preventDefault()
     ev.stopPropagation()
@@ -1671,9 +1679,36 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     doRender()
   }
 
-  trigger.addEventListener("click", handler, { capture: true })
+  const onGlobalEnter = (ev: KeyboardEvent): void => {
+    if (ev.key !== "Enter") return
+    if (ev.defaultPrevented || ev.repeat) return
+    if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return
+    if (isTextEntryTarget(ev.target)) return
 
-  return () => trigger.removeEventListener("click", handler, { capture: true })
+    const shell = container.querySelector("[data-marketing-shell]")
+    if (shell instanceof HTMLElement && shell.getAttribute("data-oa-home-chat-open") === "1") return
+
+    if (!(trigger instanceof HTMLElement)) return
+    if (!trigger.isConnected || trigger.getClientRects().length === 0) return
+
+    ev.preventDefault()
+    ev.stopPropagation()
+    trigger.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }),
+    )
+  }
+
+  trigger.addEventListener("click", handler, { capture: true })
+  window.addEventListener("keydown", onGlobalEnter, { capture: true })
+
+  return () => {
+    trigger.removeEventListener("click", handler, { capture: true })
+    window.removeEventListener("keydown", onGlobalEnter, { capture: true })
+  }
 }
 
 export const mountHomeController = (input: {
