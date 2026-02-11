@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -8,9 +8,10 @@ import {
   mountEzRuntimeWith,
   type DomService,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 describe("conformance: router-ish cancellation semantics", () => {
-  it("switch-latest: repeated triggers interrupt in-flight work for the same action element", async () => {
+  itLivePromise("switch-latest: repeated triggers interrupt in-flight work for the same action element", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<button data-ez="slow">Go</button>`
     document.body.appendChild(root)
@@ -41,7 +42,7 @@ describe("conformance: router-ish cancellation semantics", () => {
     ])
 
     await Effect.runPromise(
-      mountEzRuntimeWith(root, registry).pipe(Effect.provideService(DomServiceTag, dom))
+      mountEzRuntimeWith(root, registry).pipe(withDom(dom))
     )
 
     const btn = root.querySelector("button") as HTMLButtonElement

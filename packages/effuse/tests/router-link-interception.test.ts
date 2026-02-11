@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -10,6 +10,7 @@ import {
   type Route,
   type RouteMatch,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 const matchExact =
   (pathname: string) =>
@@ -55,7 +56,7 @@ const makeCountingMemoryHistory = (
 }
 
 describe("RouterService link interception (contract)", () => {
-  it("intercepts same-origin left-clicks (no modifiers) and navigates", async () => {
+  itLivePromise("intercepts same-origin left-clicks (no modifiers) and navigates", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -111,7 +112,7 @@ describe("RouterService link interception (contract)", () => {
           dispatchResult = link.dispatchEvent(evt)
         })
         yield* Effect.promise(() => swapped)
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(dispatchResult).toBe(false)
@@ -125,7 +126,7 @@ describe("RouterService link interception (contract)", () => {
     root.remove()
   })
 
-  it("does not intercept clicks with modifier keys", async () => {
+  itLivePromise("does not intercept clicks with modifier keys", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -179,7 +180,7 @@ describe("RouterService link interception (contract)", () => {
         })
         // Give the router a chance to do something if it incorrectly intercepted.
         yield* Effect.sleep("20 millis")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(dispatchResult).toBe(true)
@@ -191,7 +192,7 @@ describe("RouterService link interception (contract)", () => {
     root.remove()
   })
 
-  it("does not intercept cross-origin links", async () => {
+  itLivePromise("does not intercept cross-origin links", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -240,7 +241,7 @@ describe("RouterService link interception (contract)", () => {
           dispatchResult = link.dispatchEvent(evt)
         })
         yield* Effect.sleep("20 millis")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(dispatchResult).toBe(true)

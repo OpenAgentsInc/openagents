@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -10,6 +10,7 @@ import {
   type Route,
   type RouteMatch,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 const matchExact =
   (pathname: string) =>
@@ -37,7 +38,7 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("conformance: shell/outlet invariants", () => {
-  it("RouterService.start does not call DomService.swap (strict hydration)", async () => {
+  itLivePromise("RouterService.start does not call DomService.swap (strict hydration)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -83,7 +84,7 @@ describe("conformance: shell/outlet invariants", () => {
         })
 
         yield* router.start
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(swaps).toBe(0)
@@ -94,7 +95,7 @@ describe("conformance: shell/outlet invariants", () => {
     root.remove()
   })
 
-  it("strict hydration: RouterService.start does not re-run the initial loader even when the current URL matches a route", async () => {
+  itLivePromise("strict hydration: RouterService.start does not re-run the initial loader even when the current URL matches a route", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -143,7 +144,7 @@ describe("conformance: shell/outlet invariants", () => {
         yield* router.start
         // Give any mistakenly-forked initial navigation a chance to run.
         yield* Effect.sleep("20 millis")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(swaps).toBe(0)
@@ -154,7 +155,7 @@ describe("conformance: shell/outlet invariants", () => {
     root.remove()
   })
 
-  it("navigations swap the outlet only by default (shell remains stable)", async () => {
+  itLivePromise("navigations swap the outlet only by default (shell remains stable)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -198,7 +199,7 @@ describe("conformance: shell/outlet invariants", () => {
         })
 
         yield* router.navigate("/a")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(shellSwaps).toBe(0)
@@ -210,7 +211,7 @@ describe("conformance: shell/outlet invariants", () => {
     root.remove()
   })
 
-  it("routes can opt into document swaps explicitly", async () => {
+  itLivePromise("routes can opt into document swaps explicitly", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -257,7 +258,7 @@ describe("conformance: shell/outlet invariants", () => {
         })
 
         yield* router.navigate("/doc")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(shellSwaps).toBe(1)

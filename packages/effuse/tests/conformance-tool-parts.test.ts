@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { boundText, renderToString, renderToolPart, html } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 describe("conformance: tool part rendering + BlobRef discipline", () => {
-  it("boundText truncates and returns a BlobRef when payload is large", async () => {
+  itLivePromise("boundText truncates and returns a BlobRef when payload is large", async () => {
     const stored = new Map<string, string>()
     let puts = 0
 

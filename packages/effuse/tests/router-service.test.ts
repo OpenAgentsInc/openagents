@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, SubscriptionRef } from "effect"
 import {
   DomServiceLive,
@@ -10,6 +10,7 @@ import {
   type Route,
   type RouteMatch,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 const matchExact =
   (pathname: string) =>
@@ -37,7 +38,7 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("RouterService (contract)", () => {
-  it("prefetch intent: data-router-prefetch triggers prefetch on hover/focus without swapping", async () => {
+  itLivePromise("prefetch intent: data-router-prefetch triggers prefetch on hover/focus without swapping", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -112,13 +113,13 @@ describe("RouterService (contract)", () => {
         yield* Effect.sleep("10 millis")
         expect(started).toBe(1)
         expect(finished).toBe(1)
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     root.remove()
   })
 
-  it("stop removes navigation listeners (no click interception, no popstate listener)", async () => {
+  itLivePromise("stop removes navigation listeners (no click interception, no popstate listener)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -193,13 +194,13 @@ describe("RouterService (contract)", () => {
         expect(swaps).toBe(0)
         expect(root.querySelector('[data-page="a"]')).toBeNull()
         expect(root.querySelector("[data-effuse-outlet]")?.textContent).toContain("SSR")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     root.remove()
   })
 
-  it("prefetch does not mutate history or swap DOM, and warms the cache for cache-first routes", async () => {
+  itLivePromise("prefetch does not mutate history or swap DOM, and warms the cache for cache-first routes", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -281,13 +282,13 @@ describe("RouterService (contract)", () => {
         expect(root.querySelector('[data-page="prefetch-cached"]')?.getAttribute("data-n")).toBe(
           "1"
         )
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     root.remove()
   })
 
-  it("cache-first: uses cached RouteRun without re-running loader (ttlMs undefined)", async () => {
+  itLivePromise("cache-first: uses cached RouteRun without re-running loader (ttlMs undefined)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -340,13 +341,13 @@ describe("RouterService (contract)", () => {
         expect(root.querySelector('[data-page="cached"]')?.getAttribute("data-n")).toBe(
           "1"
         )
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     root.remove()
   })
 
-  it("cache-first: re-runs loader after ttlMs expires", async () => {
+  itLivePromise("cache-first: re-runs loader after ttlMs expires", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -402,13 +403,13 @@ describe("RouterService (contract)", () => {
         expect(root.querySelector('[data-page="cached-ttl"]')?.getAttribute("data-n")).toBe(
           "2"
         )
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     root.remove()
   })
 
-  it("stale-while-revalidate: renders stale immediately, then refreshes in background", async () => {
+  itLivePromise("stale-while-revalidate: renders stale immediately, then refreshes in background", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -484,13 +485,13 @@ describe("RouterService (contract)", () => {
           "2"
         )
         expect(outletSwaps).toBe(3)
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     root.remove()
   })
 
-  it("stale-while-revalidate: refresh MUST NOT apply after navigating away", async () => {
+  itLivePromise("stale-while-revalidate: refresh MUST NOT apply after navigating away", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -587,13 +588,13 @@ describe("RouterService (contract)", () => {
         expect(root.querySelector('[data-page=\"fast-away\"]')).not.toBeNull()
         expect(root.querySelector('[data-page=\"swr-away\"]')).toBeNull()
         expect(outletSwaps).toBe(3)
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     root.remove()
   })
 
-  it("dedupes concurrent prefetches for the same loader key", async () => {
+  itLivePromise("dedupes concurrent prefetches for the same loader key", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -638,7 +639,7 @@ describe("RouterService (contract)", () => {
         yield* Effect.all([router.prefetch("/slow"), router.prefetch("/slow")], {
           concurrency: "unbounded",
         })
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(started).toBe(1)
@@ -648,7 +649,7 @@ describe("RouterService (contract)", () => {
     root.remove()
   })
 
-  it("switch-latest navigation cancels the previous navigation apply", async () => {
+  itLivePromise("switch-latest navigation cancels the previous navigation apply", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -722,7 +723,7 @@ describe("RouterService (contract)", () => {
         yield* Effect.sleep("100 millis")
 
         yield* Fiber.interrupt(slowFiber)
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(slowStarted).toBe(1)
@@ -734,7 +735,7 @@ describe("RouterService (contract)", () => {
     root.remove()
   })
 
-  it("does not cancel a shared in-flight loader fiber while a prefetch is still awaiting", async () => {
+  itLivePromise("does not cancel a shared in-flight loader fiber while a prefetch is still awaiting", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -799,7 +800,7 @@ describe("RouterService (contract)", () => {
           // Prefetch should still complete (and thus the shared loader must not be canceled).
           yield* Fiber.join(prefetchFiber)
           yield* Fiber.interrupt(navFiber)
-        }).pipe(Effect.provideService(DomServiceTag, dom))
+        }).pipe(withDom(dom))
       )
     } catch (e) {
       // eslint-disable-next-line no-console

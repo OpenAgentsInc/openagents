@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
+import { vi } from "vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -8,9 +9,10 @@ import {
   mountEzRuntimeWith,
   type DomService,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 describe("Effuse Ez runtime", () => {
-  it("runs click actions declared with data-ez", async () => {
+  itLivePromise("runs click actions declared with data-ez", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<button data-ez="inc">Inc</button>`
     document.body.appendChild(root)
@@ -34,7 +36,7 @@ describe("Effuse Ez runtime", () => {
 
     await Effect.runPromise(
       mountEzRuntimeWith(root, registry).pipe(
-        Effect.provideService(DomServiceTag, DomServiceLive),
+        withDom(DomServiceLive),
       ),
     )
 
@@ -48,7 +50,7 @@ describe("Effuse Ez runtime", () => {
     root.remove()
   })
 
-  it("is mount-once per root: mounting twice does not double-execute actions", async () => {
+  itLivePromise("is mount-once per root: mounting twice does not double-execute actions", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<button data-ez="inc">Inc</button>`
     document.body.appendChild(root)
@@ -68,7 +70,7 @@ describe("Effuse Ez runtime", () => {
     await Effect.runPromise(
       mountEzRuntimeWith(root, registry).pipe(
         Effect.zipRight(mountEzRuntimeWith(root, registry)),
-        Effect.provideService(DomServiceTag, DomServiceLive),
+        withDom(DomServiceLive),
       ),
     )
 
@@ -84,7 +86,7 @@ describe("Effuse Ez runtime", () => {
     root.remove()
   })
 
-  it("switch-latest: a second trigger interrupts an in-flight action for the same element", async () => {
+  itLivePromise("switch-latest: a second trigger interrupts an in-flight action for the same element", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<button data-ez="slow">Go</button>`
     document.body.appendChild(root)
@@ -115,7 +117,7 @@ describe("Effuse Ez runtime", () => {
     ])
 
     await Effect.runPromise(
-      mountEzRuntimeWith(root, registry).pipe(Effect.provideService(DomServiceTag, dom)),
+      mountEzRuntimeWith(root, registry).pipe(withDom(dom)),
     )
 
     const btn = root.querySelector("button") as HTMLButtonElement
@@ -132,7 +134,7 @@ describe("Effuse Ez runtime", () => {
     root.remove()
   })
 
-  it("bounds action failures: errors do not swap and disabled state is restored", async () => {
+  itLivePromise("bounds action failures: errors do not swap and disabled state is restored", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
     const root = document.createElement("div")
@@ -157,7 +159,7 @@ describe("Effuse Ez runtime", () => {
     ])
 
     await Effect.runPromise(
-      mountEzRuntimeWith(root, registry).pipe(Effect.provideService(DomServiceTag, dom)),
+      mountEzRuntimeWith(root, registry).pipe(withDom(dom)),
     )
 
     btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
@@ -172,7 +174,7 @@ describe("Effuse Ez runtime", () => {
     errorSpy.mockRestore()
   })
 
-  it("collects submit params via FormData", async () => {
+  itLivePromise("collects submit params via FormData", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <form data-ez="submit">
@@ -201,7 +203,7 @@ describe("Effuse Ez runtime", () => {
 
     await Effect.runPromise(
       mountEzRuntimeWith(root, registry).pipe(
-        Effect.provideService(DomServiceTag, DomServiceLive),
+        withDom(DomServiceLive),
       ),
     )
 
@@ -215,7 +217,7 @@ describe("Effuse Ez runtime", () => {
     root.remove()
   })
 
-  it("collects input params from name/value when trigger is input", async () => {
+  itLivePromise("collects input params from name/value when trigger is input", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<input data-ez="q" data-ez-trigger="input" name="q" value="" />`
     document.body.appendChild(root)
@@ -239,7 +241,7 @@ describe("Effuse Ez runtime", () => {
 
     await Effect.runPromise(
       mountEzRuntimeWith(root, registry).pipe(
-        Effect.provideService(DomServiceTag, DomServiceLive),
+        withDom(DomServiceLive),
       ),
     )
 
@@ -254,7 +256,7 @@ describe("Effuse Ez runtime", () => {
     root.remove()
   })
 
-  it("keeps delegated action handling after outer swaps rerender the action element", async () => {
+  itLivePromise("keeps delegated action handling after outer swaps rerender the action element", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<button data-ez="flip" data-ez-swap="outer">Run</button>`
     document.body.appendChild(root)
@@ -281,7 +283,7 @@ describe("Effuse Ez runtime", () => {
 
     await Effect.runPromise(
       mountEzRuntimeWith(root, registry).pipe(
-        Effect.provideService(DomServiceTag, DomServiceLive),
+        withDom(DomServiceLive),
       ),
     )
 

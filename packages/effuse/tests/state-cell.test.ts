@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect, Stream } from "effect"
 import { makeCell } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 describe("StateCell (contract)", () => {
-  it("dedupes change emissions with default equality", async () => {
+  itLivePromise("dedupes change emissions with default equality", async () => {
     const seen: number[] = []
 
     await Effect.runPromise(
@@ -33,7 +34,7 @@ describe("StateCell (contract)", () => {
     expect(seen).toEqual([1, 2])
   })
 
-  it("computed view emits only when the derived value changes", async () => {
+  itLivePromise("computed view emits only when the derived value changes", async () => {
     const seen: number[] = []
 
     await Effect.runPromise(
@@ -65,7 +66,7 @@ describe("StateCell (contract)", () => {
     expect(seen).toEqual([1])
   })
 
-  it("batch coalesces multiple updates into a single emission", async () => {
+  itLivePromise("batch coalesces multiple updates into a single emission", async () => {
     const seen: number[] = []
 
     await Effect.runPromise(

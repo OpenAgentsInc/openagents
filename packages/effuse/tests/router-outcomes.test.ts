@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -10,6 +10,7 @@ import {
   type Route,
   type RouteMatch,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 const matchExact =
   (pathname: string) =>
@@ -44,7 +45,7 @@ const makeCountingHistory = (initialHref: string) => {
 }
 
 describe("RouterService outcomes (contract)", () => {
-  it("redirect replaces history and commits only the final route", async () => {
+  itLivePromise("redirect replaces history and commits only the final route", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -91,7 +92,7 @@ describe("RouterService outcomes (contract)", () => {
         })
 
         yield* router.navigate("/a")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(counts.pushes()).toBe(1)
@@ -105,7 +106,7 @@ describe("RouterService outcomes (contract)", () => {
     root.remove()
   })
 
-  it("redirect loops fail deterministically after maxRedirects", async () => {
+  itLivePromise("redirect loops fail deterministically after maxRedirects", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -142,7 +143,7 @@ describe("RouterService outcomes (contract)", () => {
         })
 
         yield* router.navigate("/a")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(counts.pushes()).toBe(1)
@@ -155,7 +156,7 @@ describe("RouterService outcomes (contract)", () => {
     root.remove()
   })
 
-  it("unknown routes render not-found and do not throw", async () => {
+  itLivePromise("unknown routes render not-found and do not throw", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -184,7 +185,7 @@ describe("RouterService outcomes (contract)", () => {
         })
 
         yield* router.navigate("/missing")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(counts.pushes()).toBe(1)
@@ -197,7 +198,7 @@ describe("RouterService outcomes (contract)", () => {
     root.remove()
   })
 
-  it("loader Fail renders error UI (view is not executed)", async () => {
+  itLivePromise("loader Fail renders error UI (view is not executed)", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div data-effuse-shell><div data-effuse-outlet>SSR</div></div>`
     document.body.appendChild(root)
@@ -238,7 +239,7 @@ describe("RouterService outcomes (contract)", () => {
         })
 
         yield* router.navigate("/fail")
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(counts.pushes()).toBe(1)

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect, Stream } from "effect"
 import {
   DomServiceLive,
@@ -9,9 +9,10 @@ import {
   mountComponent,
   type Component,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 describe("mountComponent (contract)", () => {
-  it("renders initially and re-renders on events/state changes", async () => {
+  itLivePromise("renders initially and re-renders on events/state changes", async () => {
     const container = document.createElement("div")
     document.body.appendChild(container)
 
@@ -42,7 +43,7 @@ describe("mountComponent (contract)", () => {
 
           expect(container.innerHTML).toContain("count:1")
         }).pipe(
-          Effect.provideService(DomServiceTag, DomServiceLive),
+          withDom(DomServiceLive),
           Effect.provideService(StateServiceTag, StateServiceLive)
         )
       )
@@ -51,7 +52,7 @@ describe("mountComponent (contract)", () => {
     container.remove()
   })
 
-  it("StateCell.batch coalesces multiple updates into a single re-render", async () => {
+  itLivePromise("StateCell.batch coalesces multiple updates into a single re-render", async () => {
     const container = document.createElement("div")
     document.body.appendChild(container)
 
@@ -93,7 +94,7 @@ describe("mountComponent (contract)", () => {
           expect(container.innerHTML).toContain("count:2")
           expect(renders).toBe(2)
         }).pipe(
-          Effect.provideService(DomServiceTag, DomServiceLive),
+          withDom(DomServiceLive),
           Effect.provideService(StateServiceTag, StateServiceLive)
         )
       )
@@ -102,7 +103,7 @@ describe("mountComponent (contract)", () => {
     container.remove()
   })
 
-  it("cleans up subscriptions on scope close", async () => {
+  itLivePromise("cleans up subscriptions on scope close", async () => {
     const container = document.createElement("div")
     document.body.appendChild(container)
 
@@ -134,7 +135,7 @@ describe("mountComponent (contract)", () => {
           expect(acquired).toBe(true)
           expect(released).toBe(false)
         }).pipe(
-          Effect.provideService(DomServiceTag, DomServiceLive),
+          withDom(DomServiceLive),
           Effect.provideService(StateServiceTag, StateServiceLive)
         )
       )

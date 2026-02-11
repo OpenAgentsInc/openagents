@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -10,6 +10,7 @@ import {
   type Route,
   type RouteMatch,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 const matchExact =
   (pathname: string) =>
@@ -37,7 +38,7 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("RouterService head management (contract)", () => {
-  it("clears previous router-managed meta tags on navigation even when the next route has no head", async () => {
+  itLivePromise("clears previous router-managed meta tags on navigation even when the next route has no head", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -108,7 +109,7 @@ describe("RouterService head management (contract)", () => {
         expect(
           document.head.querySelector('meta[name="viewport"][content="width=device-width"]')
         ).not.toBeNull()
-      }).pipe(Effect.provideService(DomServiceTag, DomServiceLive))
+      }).pipe(withDom(DomServiceLive))
     )
 
     ssrMeta.remove()
@@ -116,7 +117,7 @@ describe("RouterService head management (contract)", () => {
     root.remove()
   })
 
-  it("replaces router-managed meta tags (no duplicates) when navigating between routes with head", async () => {
+  itLivePromise("replaces router-managed meta tags (no duplicates) when navigating between routes with head", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -184,7 +185,7 @@ describe("RouterService head management (contract)", () => {
           document.head.querySelector('meta[name="og:title"][content="B"]')
         ).not.toBeNull()
         expect(document.head.querySelectorAll('meta[data-effuse-meta="1"]').length).toBe(2)
-      }).pipe(Effect.provideService(DomServiceTag, DomServiceLive))
+      }).pipe(withDom(DomServiceLive))
     )
 
     document.head.querySelectorAll('meta[data-effuse-meta="1"]').forEach((m) => m.remove())

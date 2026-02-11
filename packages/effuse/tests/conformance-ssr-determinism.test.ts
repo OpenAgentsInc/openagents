@@ -1,6 +1,7 @@
 /* @vitest-environment node */
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   RouteOutcome,
@@ -20,7 +21,7 @@ const matchExact =
   }
 
 describe("conformance: SSR determinism", () => {
-  it("renderToString is stable for a fixed route run (no DOM required)", async () => {
+  itLivePromise("renderToString is stable for a fixed route run (no DOM required)", async () => {
     const route: Route<{ readonly hello: string }> = {
       id: "/ssr",
       match: matchExact("/ssr"),
