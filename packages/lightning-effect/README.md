@@ -31,6 +31,8 @@ Effect-first Lightning + L402 contracts, errors, services, and base layers for O
   - `makeSellerDeterministicLayer(...)`
 - Demo adapter:
   - `makeInvoicePayerDemoLayer(...)`
+- Optional LND-node integration subpath:
+  - `makeInvoicePayerLndEffectLayer(...)` (requires `@openagentsinc/lnd-effect`)
 
 This package is app-agnostic and has no dependency on `apps/*`.
 
@@ -54,6 +56,7 @@ This package is app-agnostic and has no dependency on `apps/*`.
   - `@openagentsinc/lightning-effect/layers`
   - `@openagentsinc/lightning-effect/adapters`
   - `@openagentsinc/lightning-effect/l402`
+  - `@openagentsinc/lightning-effect/lnd-effect`
 
 ## Example: Parse Challenge + Build Authorization Header
 
@@ -163,6 +166,28 @@ const program = Effect.gen(function* () {
   })
 
   return yield* compiler.compilePaywalls([paywall])
+}).pipe(Effect.provide(layer))
+```
+
+## Example: Compose `lightning-effect` with `lnd-effect`
+
+```ts
+import { Effect, Layer } from "effect"
+import { makeLndDeterministicLayer } from "@openagentsinc/lnd-effect/adapters"
+import { InvoicePayerService } from "@openagentsinc/lightning-effect"
+import { makeInvoicePayerLndEffectLayer } from "@openagentsinc/lightning-effect/lnd-effect"
+
+const layer = makeInvoicePayerLndEffectLayer({
+  timeoutSeconds: 10,
+}).pipe(Layer.provide(makeLndDeterministicLayer()))
+
+const program = Effect.gen(function* () {
+  const payer = yield* InvoicePayerService
+  return yield* payer.payInvoice({
+    invoice: "lnbcrt1...",
+    host: "api.example.com",
+    maxAmountMsats: 2_500,
+  })
 }).pipe(Effect.provide(layer))
 ```
 

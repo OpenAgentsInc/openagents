@@ -13,7 +13,8 @@
     "./services": "./src/services/index.ts",
     "./layers": "./src/layers/index.ts",
     "./adapters": "./src/adapters/index.ts",
-    "./l402": "./src/l402/index.ts"
+    "./l402": "./src/l402/index.ts",
+    "./lnd-effect": "./src/lnd-effect/index.ts"
   },
   "scripts": {
     "build": "npm run typecheck",
@@ -24,12 +25,19 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
+    "@openagentsinc/lnd-effect": "^0.0.1",
     "effect": "^3.19.16",
     "typescript": "^5"
+  },
+  "peerDependenciesMeta": {
+    "@openagentsinc/lnd-effect": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@effect/language-service": "^0.73.1",
     "@effect/vitest": "^0.27.0",
+    "@openagentsinc/lnd-effect": "file:../lnd-effect",
     "@vitest/coverage-v8": "^3.2.4",
     "effect": "^3.19.16",
     "typescript": "^5.9.3",
