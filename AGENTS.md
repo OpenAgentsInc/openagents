@@ -360,6 +360,78 @@ Architecture Decisions (ADRs):
 * docs/adr/README.md (ADR process)
 * Key ADRs: ADR-0001 (authority), ADR-0002 (Verified Patch Bundle), ADR-0003 (replay), ADR-0004 (lanes), ADR-0005 (step_utility)
 
+Cloudflare Directory (local + external):
+
+* Local files in this repo:
+* `apps/web/wrangler.jsonc` (primary web Worker config)
+* `apps/web/wrangler.effuse.jsonc` (alternate Worker config)
+* `apps/web/src/effuse-host/worker.ts` (web Worker host entry)
+* `apps/web/docs/CLOUDFLARE-API-ROUTING.md` (route and API behavior notes)
+* `apps/web/scripts/sync-wrangler-secrets.sh` (secrets sync helper)
+* `apps/web/convex.json` (Convex config used by the web app)
+* `apps/api/wrangler.toml` (API Worker config)
+* `apps/api/src/lib.rs` (API Worker routes/handlers)
+* `apps/autopilot-worker/wrangler.jsonc` (autopilot-worker config)
+* `docs/autopilot/PROD_E2E_TESTING.md` (prod smoke + request correlation)
+* `docs/cloudflare/openclaw-on-workers.md` (OpenClaw Worker deployment notes)
+* `docs/liteclaw/cloudflare-tunnel.md` (tunnel setup notes)
+* External docs:
+* AI Gateway:
+* [Replicate](https://developers.cloudflare.com/ai-gateway/usage/providers/replicate/index.md)
+* [Google Vertex AI](https://developers.cloudflare.com/ai-gateway/usage/providers/vertex/index.md)
+* [Workers AI](https://developers.cloudflare.com/ai-gateway/usage/providers/workersai/index.md)
+* [WebSockets API](https://developers.cloudflare.com/ai-gateway/usage/websockets-api/index.md)
+* [Non-realtime WebSockets API](https://developers.cloudflare.com/ai-gateway/usage/websockets-api/non-realtime-api/index.md)
+* [Realtime WebSockets API](https://developers.cloudflare.com/ai-gateway/usage/websockets-api/realtime-api/index.md)
+* AI Search:
+* [REST API](https://developers.cloudflare.com/ai-search/ai-search-api/index.md)
+* [MCP server](https://developers.cloudflare.com/ai-search/mcp-server/index.md)
+* [Overview](https://developers.cloudflare.com/ai-search/index.md): Build scalable, fully-managed RAG applications with Cloudflare AI Search. Create retrieval-augmented generation pipelines to deliver accurate, context-aware AI without managing infrastructure.
+* [How AI Search works](https://developers.cloudflare.com/ai-search/concepts/how-ai-search-works/index.md)
+* [Concepts](https://developers.cloudflare.com/ai-search/concepts/index.md)
+* [What is RAG](https://developers.cloudflare.com/ai-search/concepts/what-is-rag/index.md)
+* [Similarity cache](https://developers.cloudflare.com/ai-search/configuration/cache/index.md)
+* [Chunking](https://developers.cloudflare.com/ai-search/configuration/chunking/index.md)
+* [Configuration](https://developers.cloudflare.com/ai-search/configuration/index.md)
+* [Indexing](https://developers.cloudflare.com/ai-search/configuration/indexing/index.md)
+* [Metadata](https://developers.cloudflare.com/ai-search/configuration/metadata/index.md)
+* [Path filtering](https://developers.cloudflare.com/ai-search/configuration/path-filtering/index.md)
+* [Query rewriting](https://developers.cloudflare.com/ai-search/configuration/query-rewriting/index.md)
+* [Reranking](https://developers.cloudflare.com/ai-search/configuration/reranking/index.md)
+* [Retrieval configuration](https://developers.cloudflare.com/ai-search/configuration/retrieval-configuration/index.md)
+* [Service API token](https://developers.cloudflare.com/ai-search/configuration/service-api-token/index.md)
+* [System prompt](https://developers.cloudflare.com/ai-search/configuration/system-prompt/index.md)
+* [API](https://developers.cloudflare.com/ai-search/get-started/api/index.md): Create AI Search instances programmatically using the REST API.
+* [Dashboard](https://developers.cloudflare.com/ai-search/get-started/dashboard/index.md): Create and configure AI Search using the Cloudflare dashboard.
+* [Get started](https://developers.cloudflare.com/ai-search/get-started/index.md): Create fully-managed, retrieval-augmented generation pipelines with Cloudflare AI Search.
+* [Bring your own generation model](https://developers.cloudflare.com/ai-search/how-to/bring-your-own-generation-model/index.md)
+* [How to](https://developers.cloudflare.com/ai-search/how-to/index.md)
+* [Build a RAG from your website](https://developers.cloudflare.com/ai-search/how-to/brower-rendering-autorag-tutorial/index.md)
+* [Create multitenancy](https://developers.cloudflare.com/ai-search/how-to/multitenancy/index.md)
+* [NLWeb](https://developers.cloudflare.com/ai-search/how-to/nlweb/index.md)
+* [Create a simple search engine](https://developers.cloudflare.com/ai-search/how-to/simple-search-engine/index.md)
+* [Platform](https://developers.cloudflare.com/ai-search/platform/index.md)
+* [Limits & pricing](https://developers.cloudflare.com/ai-search/platform/limits-pricing/index.md)
+* [Release note](https://developers.cloudflare.com/ai-search/platform/release-note/index.md): Review recent changes to Cloudflare AI Search.
+* [Search API](https://developers.cloudflare.com/ai-search/usage/index.md)
+* [REST API](https://developers.cloudflare.com/ai-search/usage/rest-api/index.md)
+* [Workers Binding](https://developers.cloudflare.com/ai-search/usage/workers-binding/index.md)
+* [Data source](https://developers.cloudflare.com/ai-search/configuration/data-source/index.md)
+* [R2](https://developers.cloudflare.com/ai-search/configuration/data-source/r2/index.md)
+* [Website](https://developers.cloudflare.com/ai-search/configuration/data-source/website/index.md)
+* [Models](https://developers.cloudflare.com/ai-search/configuration/models/index.md)
+* [Supported models](https://developers.cloudflare.com/ai-search/configuration/models/supported-models/index.md)
+* Browser Rendering:
+* [Changelog](https://developers.cloudflare.com/browser-rendering/changelog/index.md): Review recent changes to Worker Browser Rendering.
+* [Examples](https://developers.cloudflare.com/browser-rendering/examples/index.md)
+* [FAQ](https://developers.cloudflare.com/browser-rendering/faq/index.md)
+* [Get started](https://developers.cloudflare.com/browser-rendering/get-started/index.md)
+* [Browser Rendering](https://developers.cloudflare.com/browser-rendering/index.md): Control headless browsers with Cloudflare's Workers Browser Rendering API. Automate tasks, take screenshots, convert pages to PDFs, and test web apps.
+* [Limits](https://developers.cloudflare.com/browser-rendering/limits/index.md): Learn about the limits associated with Browser Rendering.
+* [MCP server](https://developers.cloudflare.com/browser-rendering/mcp-server/index.md)
+* [Pricing](https://developers.cloudflare.com/browser-rendering/pricing/index.md)
+* [Puppeteer](https://developers.cloudflare.com/browser-rendering/puppeteer/index.md): Learn how to use Puppeteer with Cloudflare Workers for browser automation. Access Puppeteer API, manage sessions, and optimize browser rendering.
+
 ---
 
 ## Final note
