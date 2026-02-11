@@ -28,6 +28,13 @@
   - Uses a single idempotent overlay teardown path; closing pane or controller cleanup now unsubscribes active home chat subscription and fully disposes overlay resources.
   - Supervises controller-launched Effect fibers with tracked interruption on overlay close/cleanup, and logs async failures with structured context instead of silent catches.
   - Delegates auth start/verify/session probe and DSE recap network calls to typed `HomeApiService` (no raw `fetch` in homepage controller paths).
+  - Refactored homepage controller into focused modules:
+    - orchestration shell: `apps/web/src/effuse-app/controllers/homeController.ts`
+    - pane/overlay + render wiring shell: `apps/web/src/effuse-app/controllers/home/openChatPaneController.ts`
+    - auth helpers: `apps/web/src/effuse-app/controllers/home/authFlow.ts`
+    - chat session/cache helpers: `apps/web/src/effuse-app/controllers/home/chatSession.ts`
+    - overlay storage/rect lifecycle helpers: `apps/web/src/effuse-app/controllers/home/overlayLifecycle.ts`
+    - render copy/icons helpers: `apps/web/src/effuse-app/controllers/home/renderWiring.ts`
   - `apps/web/src/effuse-app/controllers/homeController.ts`
 - Streaming finalization + stale-run sweeper:
   - See `docs/autopilot/THREAD_STUCK_STREAMING_FIX.md`.
