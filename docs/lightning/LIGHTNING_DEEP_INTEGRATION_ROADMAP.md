@@ -2,7 +2,7 @@
 
 Status: Draft recommendations
 Date: 2026-02-11
-Scope: Web (`apps/web`), worker (`apps/autopilot-worker`), mobile (`apps/expo`), planned desktop (Electron), shared packages (`packages/*`)
+Scope: Web (`apps/web`), worker (`apps/autopilot-worker`), mobile (`apps/expo`), desktop (`apps/desktop`), shared packages (`packages/*`)
 
 ## 1. Executive Summary
 
@@ -54,13 +54,12 @@ This blueprint is based on:
 
 ## 3.2 What does not exist yet
 
-- No production Lightning tool contract in `apps/autopilot-worker/src/tools.ts`.
-- No Lightning wallet service in `apps/web/src/effect/`.
-- No Lightning data model in `apps/web/convex/schema.ts`.
-- No Lightning UX in web routes/pages.
+- No seller paywall control plane (`l402Paywalls` / route + pricing lifecycle) in Convex yet.
+- No OpenAgents-hosted Aperture deployment/reconciliation path wired into app runtime yet.
+- No full wallet send/receive product UX in web routes/pages yet (current web state is L402 task orchestration + observability panes).
 - No Lightning UX in `apps/expo` (mobile app is currently mostly auth/demo shell).
-- No current desktop app in this repo (desktop is in-progress per docs, but no active `apps/electron` yet).
-- No L402/payment runtime in `packages/lightning-effect` (not yet created).
+- No sovereign desktop node/remote-signer host yet (current `apps/desktop` is an early executor shell with Effuse panes).
+- No seller-side contracts/services in `packages/lightning-effect` yet (current package focuses on buyer-side L402 flow primitives).
 
 ## 3.3 Key constraints from the current stack
 
@@ -110,7 +109,7 @@ Never couple business logic to one transport.
 
 ## 5.3 Recommended component map
 
-1. `packages/lightning-effect` (new, canonical)
+1. `packages/lightning-effect` (active, canonical)
    - Effect-first shared package intended for OpenAgents and external consumers.
    - Modules:
    - `contracts` (Effect `Schema`: `Rail`, `AssetId`, `PaymentProof`, `L402Challenge`, `L402Credential`, `InvoicePaymentResult`, policy types)
@@ -128,8 +127,8 @@ Never couple business logic to one transport.
    - Wallet views and actions using the same API contracts.
    - Device-safe credential handling and policy controls.
 
-4. `apps/electron` (new, planned)
-   - Native Lightning host:
+4. `apps/desktop` (active, expanding)
+   - Native Lightning host expansion:
    - local `lnget`, optional local `lnd` watch-only, remote signer wiring.
    - secure local keystore and IPC bridge to UI.
 
@@ -199,7 +198,7 @@ Implementation notes from current state:
 - Introduce wallet features after shared API contracts are stable.
 - Use secure device storage for short-lived auth/session, not long-lived private keys in phase 1.
 
-## 6.3 Desktop (Electron, planned)
+## 6.3 Desktop (`apps/desktop`, early implementation)
 
 Recommended role:
 
@@ -637,7 +636,7 @@ Exit criteria:
 
 Deliverables:
 
-- Electron app skeleton with Lightning host module
+- Expand existing `apps/desktop` shell into a sovereign Lightning host module
 - local node status + remote signer support
 - local `lnget` adapter
 - desktop-to-web linking flow
@@ -664,9 +663,9 @@ P0:
 
 1. Add Lightning integration ADR for current TS/Effect stack.
 2. Define shared payment schemas and receipt contract mappings.
-3. Implement Worker-safe L402 parser/cache/pay/retry library in `packages/lightning-effect`.
-4. Implement payment receipt records in Convex schema and APIs.
-5. Add minimal wallet activity UI in web admin/user surface.
+3. Expand `packages/lightning-effect` from buyer-only contracts into seller-side service interfaces.
+4. Implement seller paywall control-plane records in Convex schema and APIs.
+5. Add paywall/settlement UI surfaces in web alongside current L402 wallet/transactions panes.
 
 P1:
 
@@ -701,11 +700,11 @@ Mitigation: default-deny policy, hard caps, and approval thresholds for higher r
 ## 18. Immediate Next Steps (First 7 Days)
 
 1. Create an ADR: "Lightning integration architecture for web/mobile/desktop TS stack."
-2. Create `packages/lightning-effect` with initial schemas/services and test fixtures.
-3. Add `l402` parser and challenge handling tests inside `packages/lightning-effect`.
-4. Add Convex schema draft tables for wallet/payments/policies (feature-gated).
-5. Add `apps/web/src/effect/lightning.ts` service skeleton and endpoint placeholders.
-6. Add one internal worker endpoint for L402 dry-run parsing and policy validation.
+2. Extend `packages/lightning-effect` with seller-side schema/service drafts and test fixtures.
+3. Add Convex schema draft tables for paywalls/routes/pricing/settlements (feature-gated).
+4. Add paywall CRUD + status API placeholders in web worker host.
+5. Add one end-to-end staging runbook for Voltage + Aperture + OpenAgents control-plane integration.
+6. Add desktop-to-web account-linking protocol notes for the existing `apps/desktop` app.
 7. Add docs runbook for local regtest + Docker-based integration testing.
 
 ## 19. Definition of Done for "Deep Integration"

@@ -2,7 +2,7 @@
 
 Status: Draft recommendations
 Date: 2026-02-11
-Scope: OpenAgents active TypeScript/Effect stack (`apps/web`, `apps/autopilot-worker`, `apps/expo`, `packages/*`) + archived Rust wallet model in backroom
+Scope: OpenAgents active TypeScript/Effect stack (`apps/web`, `apps/autopilot-worker`, `apps/expo`, `apps/desktop`, `packages/*`) + archived Rust wallet model in backroom
 
 ## 1. Executive Verdict
 
@@ -27,9 +27,11 @@ If we sequence this correctly, we get faster product velocity and avoid a forced
   - `docs/lightning/LIGHTNING_DEEP_INTEGRATION_ROADMAP.md`
 - Receipt semantics already support Lightning proofs (`lightning_preimage`):
   - `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
-- Active worker/web/mobile code currently has no real Lightning wallet runtime:
-  - `apps/autopilot-worker/src/tools.ts` has no payment tool contracts.
-  - `apps/web/src/` and `apps/expo/` have no active Lightning wallet implementation.
+- Active worker/web/mobile/desktop code has early Lightning foundations:
+  - `apps/autopilot-worker/src/tools.ts` includes `lightning_l402_fetch` for typed buyer-side L402 fetch orchestration.
+  - `apps/web/src/effect/lightning.ts` and `apps/web/convex/lightning/tasks.ts` provide a typed L402 task control plane.
+  - `apps/web` includes L402 wallet/transaction panes in the home chat surface.
+  - `apps/expo` still has no active Lightning wallet implementation.
 
 ### 2.2 Archived Rust-era findings (backroom)
 
@@ -114,7 +116,7 @@ Recommendation:
 - Use nodeless wallet path first (Spark-like adapter) for speed.
 - Defer full node operations to desktop/backend surfaces.
 
-### 5.3 Planned Electron desktop
+### 5.3 `apps/desktop` (early Electron implementation)
 
 Role:
 
@@ -146,7 +148,7 @@ This is the order that minimizes rework and gets to production utility fastest.
 
 Deliverables:
 
-1. Create `packages/lightning-effect` as the canonical shared package with:
+1. Expand `packages/lightning-effect` as the canonical shared package with:
    - Effect `Schema` contracts for payment/L402.
    - Effect services (`InvoicePayer`, `InvoiceCreator`, `L402Client`, `BudgetPolicy`).
    - adapters and live/test Layers for wallet backends.
@@ -274,9 +276,9 @@ Use both when:
 
 ## 10. Concrete Near-Term Plan (next 4-6 weeks)
 
-1. Create `packages/lightning-effect` with shared contracts, services, and tests.
+1. Expand `packages/lightning-effect` with seller-side contracts/services and conformance tests.
 2. Implement first L402 buyer flow in controlled adapter (desktop or hosted service).
-3. Add one `autopilot-worker` payment tool contract with schema validation and receipts.
+3. Add additional `autopilot-worker` payment/paywall tool contracts beyond `lightning_l402_fetch`, with schema validation and receipts.
 4. Stand up one Aperture-gated endpoint in dev/staging.
 5. Validate full proof path in receipts (`lightning_preimage`) end-to-end.
 6. Start Spark/Breez adapter reintroduction only after contract and receipt parity are locked.

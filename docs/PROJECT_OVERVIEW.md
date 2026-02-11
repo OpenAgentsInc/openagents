@@ -13,6 +13,9 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `apps/expo/`
   Mobile app surface.
 
+- `apps/desktop/`
+  Desktop Electron surface for local execution boundaries (including Lightning executor workflows).
+
 ## Shared Packages
 
 - `packages/effuse/`
@@ -29,6 +32,9 @@ This document maps the active codebase after the Rust deprecation cleanup.
 
 - `packages/dse/` and `packages/hud/`
   DSE visualization and HUD components.
+
+- `packages/lightning-effect/`
+  Effect-first Lightning and L402 contracts, services, adapters, and layers shared across app surfaces.
 
 ## Docs and Operational Runbooks
 

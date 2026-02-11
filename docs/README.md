@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
 This directory tracks the active OpenAgents cross-platform stack built on Effuse.
-Current product surfaces are web (`openagents.com`) and mobile (`apps/expo`), with desktop in progress.
+Current product surfaces are web (`openagents.com`), mobile (`apps/expo`), and desktop (`apps/desktop`, early implementation).
 
 ## Start Here
 
@@ -19,6 +19,7 @@ Current product surfaces are web (`openagents.com`) and mobile (`apps/expo`), wi
 - Web trace retrieval and debugging: `autopilot/TRACE_RETRIEVAL.md`
 - Pane system docs: `autopilot/EFFUSE_PANES.md`
 - Mobile app source: `../apps/expo/`
+- Desktop app source: `../apps/desktop/`
 
 ## Local Development
 
