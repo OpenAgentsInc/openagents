@@ -38,6 +38,7 @@
     "test:visual": "bun run --cwd ../../packages/effuse-test src/cli.ts run --project ../../apps/web --tag visual",
     "test:visual:update": "EFFUSE_TEST_UPDATE_SNAPSHOTS=1 bun run --cwd ../../packages/effuse-test src/cli.ts run --project ../../apps/web --tag visual",
     "test:watch": "vitest",
+    "smoke:l402-paywall-api": "node scripts/l402-paywall-api-smoke.mjs",
     "trace:admin": "bun scripts/autopilot-admin-trace.ts"
   },
   "dependencies": {

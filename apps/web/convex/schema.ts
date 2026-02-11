@@ -168,6 +168,143 @@ export default defineSchema({
     .index("by_taskId_createdAtMs", ["taskId", "createdAtMs"])
     .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"]),
 
+  /**
+   * Hosted L402 paywall control-plane tables.
+   */
+  l402Paywalls: defineTable({
+    paywallId: v.string(),
+    ownerId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("paused"), v.literal("archived")),
+    requestId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_paywallId", ["paywallId"])
+    .index("by_ownerId_updatedAtMs", ["ownerId", "updatedAtMs"])
+    .index("by_ownerId_status_updatedAtMs", ["ownerId", "status", "updatedAtMs"]),
+
+  l402PaywallPolicies: defineTable({
+    paywallId: v.string(),
+    ownerId: v.string(),
+    pricingMode: v.literal("fixed"),
+    fixedAmountMsats: v.number(),
+    maxPerRequestMsats: v.optional(v.number()),
+    allowedHosts: v.optional(v.array(v.string())),
+    blockedHosts: v.optional(v.array(v.string())),
+    quotaPerMinute: v.optional(v.number()),
+    quotaPerDay: v.optional(v.number()),
+    killSwitch: v.boolean(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_paywallId", ["paywallId"])
+    .index("by_ownerId_updatedAtMs", ["ownerId", "updatedAtMs"]),
+
+  l402PaywallRoutes: defineTable({
+    routeId: v.string(),
+    paywallId: v.string(),
+    ownerId: v.string(),
+    hostPattern: v.string(),
+    pathPattern: v.string(),
+    upstreamUrl: v.string(),
+    protocol: v.union(v.literal("http"), v.literal("https")),
+    timeoutMs: v.number(),
+    priority: v.number(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_routeId", ["routeId"])
+    .index("by_paywallId_priority", ["paywallId", "priority"])
+    .index("by_ownerId_updatedAtMs", ["ownerId", "updatedAtMs"])
+    .index("by_hostPattern_pathPattern", ["hostPattern", "pathPattern"]),
+
+  l402GatewayDeployments: defineTable({
+    deploymentId: v.string(),
+    paywallId: v.optional(v.string()),
+    ownerId: v.optional(v.string()),
+    configHash: v.string(),
+    imageDigest: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("applied"), v.literal("failed"), v.literal("rolled_back")),
+    diagnostics: v.optional(v.any()),
+    appliedAtMs: v.optional(v.number()),
+    rolledBackFrom: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_deploymentId", ["deploymentId"])
+    .index("by_paywallId_updatedAtMs", ["paywallId", "updatedAtMs"])
+    .index("by_status_updatedAtMs", ["status", "updatedAtMs"]),
+
+  l402GatewayEvents: defineTable({
+    eventId: v.string(),
+    paywallId: v.string(),
+    ownerId: v.string(),
+    eventType: v.string(),
+    level: v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
+    requestId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAtMs: v.number(),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_paywallId_createdAtMs", ["paywallId", "createdAtMs"])
+    .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"])
+    .index("by_requestId", ["requestId"]),
+
+  l402Invoices: defineTable({
+    invoiceId: v.string(),
+    paywallId: v.string(),
+    ownerId: v.string(),
+    amountMsats: v.number(),
+    status: v.union(v.literal("open"), v.literal("settled"), v.literal("canceled"), v.literal("expired")),
+    paymentHash: v.optional(v.string()),
+    paymentRequest: v.optional(v.string()),
+    paymentProofRef: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    settledAtMs: v.optional(v.number()),
+  })
+    .index("by_invoiceId", ["invoiceId"])
+    .index("by_paywallId_createdAtMs", ["paywallId", "createdAtMs"])
+    .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"])
+    .index("by_status_updatedAtMs", ["status", "updatedAtMs"])
+    .index("by_paymentHash", ["paymentHash"]),
+
+  l402Settlements: defineTable({
+    settlementId: v.string(),
+    paywallId: v.string(),
+    ownerId: v.string(),
+    invoiceId: v.optional(v.string()),
+    amountMsats: v.number(),
+    paymentProofRef: v.string(),
+    requestId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAtMs: v.number(),
+  })
+    .index("by_settlementId", ["settlementId"])
+    .index("by_paywallId_createdAtMs", ["paywallId", "createdAtMs"])
+    .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"])
+    .index("by_invoiceId", ["invoiceId"]),
+
+  l402Payouts: defineTable({
+    payoutId: v.string(),
+    ownerId: v.string(),
+    paywallId: v.optional(v.string()),
+    amountMsats: v.number(),
+    destination: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("processing"), v.literal("completed"), v.literal("failed")),
+    txRef: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_payoutId", ["payoutId"])
+    .index("by_ownerId_updatedAtMs", ["ownerId", "updatedAtMs"])
+    .index("by_status_updatedAtMs", ["status", "updatedAtMs"]),
+
   blueprints: defineTable({
     threadId: v.string(),
     blueprint: v.any(),
