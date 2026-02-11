@@ -379,10 +379,10 @@ arguments above.
 
 OpenAgents docs to cite when writing:
 
-- `SYNTHESIS.md` (vision + system shape)
-- `SYNTHESIS_EXECUTION.md` (what is actually wired today)
+- `PROJECT_OVERVIEW.md` (current system shape)
+- `ROADMAP.md` (current priorities)
 - `MANIFESTO.md` (philosophy)
-- `docs/protocol/PROTOCOL_SURFACE.md` (protocol boundaries)
+- `RUST_DOCS_ARCHIVE_2026-02-11.md` (historical Rust-era protocol/archive references)
 
 Bitcoin/EVM-on-Bitcoin:
 

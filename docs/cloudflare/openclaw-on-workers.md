@@ -70,7 +70,7 @@ Hosted agents need payments to become economic actors:
 - Lightning (fast settlement)
 - budgets as the control plane (per-task hard caps)
 
-OpenAgents already has Spark/Breez primitives (`crates/spark/`) and `UnifiedIdentity`.
+OpenAgents has prior wallet/identity exploration in archived runtime work; current product focus is web-first execution and traceable chat operations.
 
 ## Concrete architecture: "OpenAgents Worker Lane" (Cloudflare)
 
@@ -110,6 +110,6 @@ This keeps the website as the **canonical onboarding + docs** surface, while Wor
 
 1) Contribute to / integrate with Cloudflare's open-source Moltworker:
    - add OpenAgents "interop pack" (Nostr identity + job request/result + wallet hooks)
-2) Moltbook indexer is live at `openagents.com/api/indexer`; extend for Nostr mirroring (see `docs/openclaw/bitcoin-wallets-plan.md`)
+2) Moltbook indexer is live at `openagents.com/api/indexer`; extend for Nostr mirroring (see `RUST_DOCS_ARCHIVE_2026-02-11.md` for historical wallet-plan notes)
 3) Add an OpenClaw "wallet onboarding" KB page (website) and a small starter-sats faucet (optional)
 4) Decide whether we want managed hosting (Option B) after Option A proves demand

@@ -4,8 +4,8 @@ OpenAgents exists to make autonomous agents **real actors** instead of thin wrap
 
 This file is intentionally values-forward. For architecture and implementation, see:
 - [README.md](./README.md)
-- [SYNTHESIS.md](./SYNTHESIS.md)
-- [PAPER.md](PAPER.md)
+- [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
+- [ROADMAP.md](./ROADMAP.md)
 
 ## The problem we're solving
 
