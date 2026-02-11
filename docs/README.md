@@ -1,6 +1,7 @@
 # OpenAgents Documentation Index
 
-This directory is now focused on the active web-first OpenAgents stack.
+This directory tracks the active OpenAgents cross-platform stack built on Effuse.
+Current product surfaces are web (`openagents.com`) and mobile (`apps/expo`), with desktop in progress.
 
 ## Start Here
 
@@ -10,23 +11,24 @@ This directory is now focused on the active web-first OpenAgents stack.
 - Current roadmap: `ROADMAP.md`
 - Agent contract and engineering rules: `../AGENTS.md`
 
-## Autopilot (Web)
+## Product Surfaces
 
-- Main runbook index: `autopilot/`
-- Production E2E testing: `autopilot/PROD_E2E_TESTING.md`
-- Stream testing: `autopilot/STREAM_TESTING.md`
-- Trace retrieval and debugging: `autopilot/TRACE_RETRIEVAL.md`
+- Web app runbooks: `autopilot/`
+- Web production E2E testing: `autopilot/PROD_E2E_TESTING.md`
+- Web stream testing: `autopilot/STREAM_TESTING.md`
+- Web trace retrieval and debugging: `autopilot/TRACE_RETRIEVAL.md`
 - Pane system docs: `autopilot/EFFUSE_PANES.md`
+- Mobile app source: `../apps/expo/`
 
 ## Local Development
 
 - Local setup notes: `local/`
 - Storybook and component docs: `STORYBOOK.md`
 
+## Audits
+
+- Architecture and technical audits: `audits/`
+
 ## Historical Archive
 
-- Rust-era and deprecated docs were moved to:
-  - `~/code/backroom/openagents-docs-rust-archive-2026-02-11/docs/`
-  - `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
-  - `~/code/backroom/openagents-docs-social-archive-2026-02-11/docs/`
-- Archive manifest: `RUST_DOCS_ARCHIVE_2026-02-11.md`
+- Deprecated docs were moved to backroom archives.

@@ -1,6 +1,6 @@
 # OpenAgents
 
-**Autopilot (Web MVP)** is the primary product in this repo: a web-first agent workspace built on **Effect** (application runtime) + **Effuse** (UI runtime), with **Convex** realtime state and **WorkOS** AuthKit, deployed on a **single Cloudflare Worker**.
+OpenAgents is building a **cross-platform Effuse app**: web at **openagents.com**, mobile in **`apps/expo/`**, and a desktop app in progress. The stack is centered on **Effect** (application runtime) + **Effuse** (UI runtime), with **Convex** realtime state and **WorkOS** AuthKit.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
@@ -29,17 +29,16 @@ cd apps/web
 npm run deploy
 ```
 
-## Rust Deprecation
+## Mobile
 
-As of 2026-02-11, Rust sources in this repo were deprecated and moved to:
-
-`~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
+The mobile app lives in **`apps/expo/`**.
 
 ## Documentation
 
 Start with:
 
 * **Web app**: [apps/web/](apps/web/)
+* **Mobile app**: [apps/expo/](apps/expo/)
 * **Effuse plan/spec**: [packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md](packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md)
