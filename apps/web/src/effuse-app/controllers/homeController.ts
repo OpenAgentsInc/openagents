@@ -272,6 +272,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       }),
     )
 
+    const releasePaneSystemSync = (): void => {
+      runPaneSystemEffectSync(releasePaneSystem)
+    }
+
     closeOverlay = () => {
       const closedRectRaw = paneSystem.store.closedPositions.get(CHAT_PANE_ID)?.rect ?? paneSystem.store.pane(CHAT_PANE_ID)?.rect
       const closedRect = parseStoredPaneRect(closedRectRaw)
@@ -280,8 +284,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           ? { width: window.innerWidth, height: window.innerHeight }
           : screen
       if (closedRect) writeStoredHomeChatPaneRect(clampPaneRectToScreen(closedRect, currentScreen))
-      if (deps?.runtime) deps.runtime.runSync(releasePaneSystem)
-      else Effect.runSync(releasePaneSystem)
+      releasePaneSystemSync()
       overlay.remove()
       hideStyle.remove()
       shell.removeAttribute("data-oa-home-chat-open")
@@ -378,6 +381,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let hasAddedPaneDebugButton = false
     let showDebugCards = false
     let paneDebugButton: HTMLButtonElement | null = null
+    let previousRenderedMessageCount = 0
+    let forceScrollToBottomOnNextRender = false
 
     const startAuthedChat = (input0: { readonly userId: string; readonly user: Session["user"] | null; readonly token: string | null }) => {
       if (!deps?.atoms || !deps.chat) return
@@ -1102,6 +1107,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
       const messagesContainer = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
       const savedScrollTop = messagesContainer instanceof HTMLElement ? messagesContainer.scrollTop : 0
+      const messageCountBeforeRender =
+        step === "authed"
+          ? homeSnapshot.messages.length
+          : messages.length
 
       Effect.runPromise(
         Effect.gen(function* () {
@@ -1193,10 +1202,30 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               step === "authed"
                 ? homeSnapshot.messages.length > 0
                 : messages.length > 0
-            if (!hasScrolledToBottomOnce && hasMessages) {
+            const messageCountAfterRender =
+              step === "authed"
+                ? homeSnapshot.messages.length
+                : messages.length
+            const hasNewMessages = messageCountAfterRender > previousRenderedMessageCount
+            const shouldFollowLiveOutput =
+              step === "authed" &&
+              (homeSnapshot.status === "submitted" || homeSnapshot.status === "streaming")
+            const shouldScrollToBottom =
+              forceScrollToBottomOnNextRender ||
+              shouldFollowLiveOutput ||
+              hasNewMessages
+            if (shouldScrollToBottom && hasMessages) {
+              messagesEl.scrollTop = messagesEl.scrollHeight - messagesEl.clientHeight
+              hasScrolledToBottomOnce = true
+            } else if (!hasScrolledToBottomOnce && hasMessages) {
               messagesEl.scrollTop = messagesEl.scrollHeight - messagesEl.clientHeight
               hasScrolledToBottomOnce = true
             }
+            previousRenderedMessageCount = messageCountAfterRender
+            forceScrollToBottomOnNextRender = false
+          } else {
+            previousRenderedMessageCount = messageCountBeforeRender
+            forceScrollToBottomOnNextRender = false
           }
 
           const strategySel = paneContentSlot.querySelector("[data-oa-home-dse-strategy]")
@@ -1435,6 +1464,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               if (homeSnapshot.status === "submitted" || homeSnapshot.status === "streaming") return
               if (!raw || !deps?.chat) return
               const text = raw
+              forceScrollToBottomOnNextRender = true
               const ensureThenSend = () => {
                 const tid = homeThreadId
                 if (tid) {
