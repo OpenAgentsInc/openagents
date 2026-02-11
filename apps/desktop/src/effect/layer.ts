@@ -32,18 +32,23 @@ export const makeDesktopLayer = (
   config?: Partial<DesktopConfig>,
   overrides?: DesktopLayerOverrides,
 ): Layer.Layer<Context.Tag.Identifier<typeof DesktopAppService>, never, never> => {
+  const configLayer = DesktopConfigLive(config);
+  const taskProviderLayer = Layer.provideMerge(overrides?.taskProvider ?? TaskProviderLive, configLayer);
+  const authGatewayLayer = Layer.provideMerge(overrides?.authGateway ?? AuthGatewayLive, configLayer);
+  const connectivityLayer = Layer.provideMerge(overrides?.connectivity ?? ConnectivityProbeLive, configLayer);
+
   const base = Layer.mergeAll(
-    DesktopConfigLive(config),
     DesktopStateLive,
     DesktopSessionLive,
-    overrides?.taskProvider ?? TaskProviderLive,
+    configLayer,
+    taskProviderLayer,
     overrides?.lndRuntimeGateway ?? LndRuntimeGatewayLive,
     overrides?.lndWalletGateway ?? LndWalletGatewayLive,
     overrides?.l402Executor ?? L402ExecutorLive,
   );
 
-  const withAuth = Layer.provideMerge(overrides?.authGateway ?? AuthGatewayLive, base);
-  const withConnectivity = Layer.provideMerge(overrides?.connectivity ?? ConnectivityProbeLive, withAuth);
+  const withAuth = Layer.provideMerge(authGatewayLayer, base);
+  const withConnectivity = Layer.provideMerge(connectivityLayer, withAuth);
   const withExecutor = Layer.provideMerge(ExecutorLoopLive, withConnectivity);
   return Layer.provideMerge(DesktopAppLive, withExecutor) as Layer.Layer<
     Context.Tag.Identifier<typeof DesktopAppService>,
