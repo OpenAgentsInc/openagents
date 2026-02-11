@@ -33,6 +33,17 @@ Core modules expose typed errors for async runtime boundaries:
 These boundaries use `Effect.tryPromise` and explicit catch mapping instead of
 untyped `Effect.promise`.
 
+## Tracing Span Names
+
+Public services are instrumented with `Effect.fn` and deterministic
+`effuseTest.<area>.<operation>` span names:
+
+- `effuseTest.runner.run`
+- `effuseTest.browser.withPage`
+- `effuseTest.browser.captureFailureArtifacts`
+- `effuseTest.probe.emit`
+- `effuseTest.probe.flush`
+
 ## Config Service
 
 `effuse-test` now centralizes runtime/env configuration through a typed Effect

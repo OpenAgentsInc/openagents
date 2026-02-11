@@ -142,8 +142,8 @@ const swapImpl = (
   content: TemplateResult,
   mode: DomSwapMode
 ) =>
-  Effect.gen(function* () {
-    try {
+  Effect.try({
+    try: () => {
       const focusSnapshot = captureFocus(target)
       captureScroll(target)
       const html = templateToString(content)
@@ -171,11 +171,8 @@ const swapImpl = (
         const restoreRoot = target.parentElement ?? document
         restoreScroll(mode === "inner" ? target : restoreRoot)
       }
-    } catch (error) {
-      return yield* Effect.fail(
-        new DomError(`Failed to swap: ${String(error)}`, error)
-      )
-    }
+    },
+    catch: (error) => new DomError(`Failed to swap: ${String(error)}`, error)
   })
 
 export const DomServiceLive: DomService = {
@@ -209,7 +206,7 @@ export const DomServiceLive: DomService = {
     Effect.sync(() => {
       // Dev/test-only: if an E2E harness sets a global swap counter, increment it
       // for each router-level swap (render() is intentionally not counted).
-      const g = globalThis as any
+      const g = globalThis as typeof globalThis & { __effuseSwapCount?: number }
       if (typeof g.__effuseSwapCount === "number") {
         g.__effuseSwapCount += 1
       }

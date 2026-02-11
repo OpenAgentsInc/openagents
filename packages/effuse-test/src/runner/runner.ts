@@ -94,8 +94,8 @@ const filterTests = (tests: ReadonlyArray<TestCase<TestEnv>>, options: RunnerOpt
   return out
 }
 
-export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
-  Effect.scoped(
+const runEffect = Effect.fn("effuseTest.runner.run")(function* (options: RunnerOptions) {
+  return yield* Effect.scoped(
     Effect.gen(function* () {
       const config = yield* EffuseTestConfig
       const runId = crypto.randomUUID()
@@ -325,5 +325,9 @@ export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
       cause instanceof RunnerError ? cause : new RunnerError("run", cause),
     ),
   )
+})
+
+export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
+  runEffect(options)
 
 const sanitizePath = (s: string): string => s.replaceAll(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160)

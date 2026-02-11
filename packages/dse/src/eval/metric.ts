@@ -89,60 +89,67 @@ export type Metric<I, O, Y> =
 
 export type MetricEnv = Exclude<PredictEnv, PolicyRegistryService>;
 
+const evaluateMetricEffect = Effect.fn("dse.eval.evaluateMetric")(function* <I, O, Y>(
+  metric: Metric<I, O, Y>,
+  args: { readonly input: I; readonly pred: O; readonly expected: Y }
+) {
+    if (metric.kind === "deterministic") {
+      const score = clamp01(metric.score(args.pred, args.expected));
+      return {
+        metricId: metric.metricId,
+        metricVersion: metric.metricVersion,
+        kind: "deterministic",
+        score,
+        ...(metric.notes ? { notes: metric.notes(args.pred, args.expected) } : {})
+      } satisfies MetricReportV1;
+    }
+
+    // Judge metrics require LM access; we implement them as an Effect that expects
+    // Predict's environment (LM client, blob store, receipts) and provides its own
+    // pinned policy registry.
+    const judgeSig = metric.judge.signature;
+    const judgeArtifact = metric.judge.artifact;
+    const predict = makePredict(judgeSig);
+    const policy = layerPolicyInMemory({
+      activeBySignatureId: { [judgeSig.id]: judgeArtifact.compiled_id },
+      artifacts: [judgeArtifact]
+    });
+
+    const judgeInput = metric.buildJudgeInput(args);
+    return yield* predict(judgeInput).pipe(
+      Effect.provide(policy),
+      Effect.map((out) => {
+        const score = clamp01(metric.scoreFromJudgeOutput(out));
+        return {
+          metricId: metric.metricId,
+          metricVersion: metric.metricVersion,
+          kind: "judge",
+          score,
+          ...(metric.notesFromJudgeOutput
+            ? { notes: metric.notesFromJudgeOutput(out) }
+            : {}),
+          judge: {
+            signatureId: judgeSig.id,
+            compiled_id: judgeArtifact.compiled_id
+          }
+        } satisfies MetricReportV1;
+      }),
+      Effect.catchAll((cause: PredictError) =>
+        Effect.fail(
+          MetricError.make({
+            message: "Judge metric prediction failed",
+            cause
+          })
+        )
+      )
+    );
+  });
+  
 export function evaluateMetric<I, O, Y>(
   metric: Metric<I, O, Y>,
   args: { readonly input: I; readonly pred: O; readonly expected: Y }
 ): Effect.Effect<MetricReportV1, MetricError, MetricEnv> {
-  if (metric.kind === "deterministic") {
-    const score = clamp01(metric.score(args.pred, args.expected));
-    return Effect.succeed({
-      metricId: metric.metricId,
-      metricVersion: metric.metricVersion,
-      kind: "deterministic",
-      score,
-      ...(metric.notes ? { notes: metric.notes(args.pred, args.expected) } : {})
-    });
-  }
-
-  // Judge metrics require LM access; we implement them as an Effect that expects
-  // Predict's environment (LM client, blob store, receipts) and provides its own
-  // pinned policy registry.
-  const judgeSig = metric.judge.signature;
-  const judgeArtifact = metric.judge.artifact;
-  const predict = makePredict(judgeSig);
-  const policy = layerPolicyInMemory({
-    activeBySignatureId: { [judgeSig.id]: judgeArtifact.compiled_id },
-    artifacts: [judgeArtifact]
-  });
-
-  const judgeInput = metric.buildJudgeInput(args);
-  return predict(judgeInput).pipe(
-    Effect.provide(policy),
-    Effect.map((out) => {
-      const score = clamp01(metric.scoreFromJudgeOutput(out));
-      return {
-        metricId: metric.metricId,
-        metricVersion: metric.metricVersion,
-        kind: "judge",
-        score,
-        ...(metric.notesFromJudgeOutput
-          ? { notes: metric.notesFromJudgeOutput(out) }
-          : {}),
-        judge: {
-          signatureId: judgeSig.id,
-          compiled_id: judgeArtifact.compiled_id
-        }
-      } satisfies MetricReportV1;
-    }),
-    Effect.catchAll((cause: PredictError) =>
-      Effect.fail(
-        MetricError.make({
-          message: "Judge metric prediction failed",
-          cause
-        })
-      )
-    )
-  );
+  return evaluateMetricEffect(metric, args);
 }
 
 function clamp01(n: number): number {

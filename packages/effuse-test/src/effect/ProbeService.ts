@@ -27,12 +27,14 @@ const tryProbePromise = <A>(operation: string, f: () => Promise<A>) =>
     catch: (cause) => new ProbeServiceError(operation, cause),
   })
 
+type ProbeServiceApi = {
+  readonly emit: (event: TestEvent) => Effect.Effect<void>
+  readonly flush: Effect.Effect<void>
+}
+
 export class ProbeService extends Context.Tag("@openagentsinc/effuse-test/ProbeService")<
   ProbeService,
-  {
-    readonly emit: (event: TestEvent) => Effect.Effect<void>
-    readonly flush: Effect.Effect<void>
-  }
+  ProbeServiceApi
 >() {}
 
 export type ProbeOptions = {
@@ -87,14 +89,16 @@ export const ProbeServiceLive = (
 
       yield* drain
 
-      const emit = (event: TestEvent) =>
-        Queue.offer(queue, event).pipe(
-          // Dropping queue returns false when full; we drop silently.
-          Effect.asVoid,
-          Effect.catchAll(() => Effect.void),
-        )
+      const emit: ProbeServiceApi["emit"] = Effect.fn("effuseTest.probe.emit")(
+        function* (event: TestEvent) {
+          yield* Queue.offer(queue, event).pipe(
+            // Dropping queue returns false when full; we drop silently.
+            Effect.asVoid,
+          )
+        },
+      )
 
-      const flush = Effect.gen(function* () {
+      const flush: ProbeServiceApi["flush"] = Effect.gen(function* () {
         const deadline = Date.now() + 5_000
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -104,7 +108,7 @@ export const ProbeServiceLive = (
           if (Date.now() > deadline) return
           yield* Effect.sleep("50 millis")
         }
-      })
+      }).pipe(Effect.withSpan("effuseTest.probe.flush"))
 
       return ProbeService.of({ emit, flush })
     }),
