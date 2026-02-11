@@ -4,41 +4,41 @@ This document maps the active codebase after the Rust deprecation cleanup.
 
 ## Product Surface
 
-- `apps/web/`  
+- `apps/web/`
   Main OpenAgents web product. Includes homepage chat panes, auth flows, deployment scripts, and docs specific to web operations.
 
-- `apps/autopilot-worker/`  
+- `apps/autopilot-worker/`
   Worker-focused runtime pieces used by the web product and automation paths.
 
-- `apps/expo/`  
+- `apps/expo/`
   Mobile app surface.
 
 ## Shared Packages
 
-- `packages/effuse/`  
+- `packages/effuse/`
   Effect-oriented runtime and orchestration utilities used across app surfaces.
 
-- `packages/effuse-panes/`  
+- `packages/effuse-panes/`
   Pane/window primitives and controllers.
 
-- `packages/effuse-test/`  
+- `packages/effuse-test/`
   E2E and runtime test tooling.
 
-- `packages/effuse-ui/` and `packages/effuse-flow/`  
+- `packages/effuse-ui/` and `packages/effuse-flow/`
   UI and flow helpers used by product surfaces.
 
-- `packages/dse/` and `packages/hud/`  
+- `packages/dse/` and `packages/hud/`
   DSE visualization and HUD components.
 
 ## Docs and Operational Runbooks
 
-- `docs/autopilot/`  
+- `docs/autopilot/`
   Primary operational docs for the web product (production E2E, stream testing, trace retrieval, debugging).
 
-- `docs/lightning/`  
+- `docs/lightning/`
   Lightning agent tools (L402, lnget, Aperture) integration plan and references.
 
-- `docs/local/` and `docs/STORYBOOK.md`  
+- `docs/local/` and `docs/STORYBOOK.md`
   Local development workflows and component-level testing/docs.
 
 ## Historical Code and Docs
