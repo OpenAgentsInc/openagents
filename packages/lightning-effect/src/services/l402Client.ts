@@ -4,6 +4,9 @@ import type { L402FetchRequest, L402FetchResult } from "../contracts/l402.js"
 import type { LightningEffectError } from "../errors/lightningErrors.js"
 
 export type L402ClientApi = Readonly<{
+  readonly fetchWithL402: (
+    request: L402FetchRequest,
+  ) => Effect.Effect<L402FetchResult, LightningEffectError>
   readonly authorizeRequest: (
     request: L402FetchRequest,
   ) => Effect.Effect<L402FetchResult, LightningEffectError>

@@ -49,6 +49,14 @@ export class AuthorizationSerializeError extends Schema.TaggedError<Authorizatio
   },
 ) {}
 
+export class L402TransportError extends Schema.TaggedError<L402TransportError>()(
+  "L402TransportError",
+  {
+    reason: Schema.String,
+    status: Schema.optional(Schema.Int),
+  },
+) {}
+
 export type LightningEffectError =
   | ChallengeParseError
   | BudgetExceededError
@@ -56,3 +64,4 @@ export type LightningEffectError =
   | PaymentFailedError
   | CredentialMissingError
   | AuthorizationSerializeError
+  | L402TransportError
