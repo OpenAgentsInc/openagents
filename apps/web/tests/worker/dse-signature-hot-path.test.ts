@@ -401,4 +401,68 @@ describe("apps/web worker autopilot: Stage 3 bootstrap advancement in hot path",
     expect(recorded?.capabilityKey).toBe("github_cloud_codex");
     expect(recorded?.source?.signatureId).toBe("@openagents/autopilot/feedback/DetectUpgradeRequest.v1");
   });
+
+  it("falls back to heuristic capability classification when DetectUpgradeRequest decode fails", async () => {
+    state.createRunCalls.length = 0;
+    state.appendPartsCalls.length = 0;
+    state.finalizeRunCalls.length = 0;
+    state.snapshotCalls.length = 0;
+    state.blueprintCalls.length = 0;
+    state.dseGetActiveCalls.length = 0;
+    state.recordPredictReceiptCalls.length = 0;
+    state.recordFeatureRequestCalls.length = 0;
+    state.artifacts.clear();
+    (state as any).applyBootstrapCalls = [];
+    (state as any).bootstrapStatus = "complete";
+    (state as any).bootstrapStage = null;
+
+    const ORIGIN = "http://example.com";
+    const request = new Request(`${ORIGIN}/api/autopilot/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        threadId: "thread-4",
+        anonKey: "anon-key-1",
+        text: "Please notify me when you can connect to my GitHub and deploy automatically.",
+      }),
+    });
+
+    const ctx = createExecutionContext();
+    const envWithAi = Object.assign(Object.create(env as any), {
+      AI: {
+        // DSE predict/repair attempts receive non-JSON here -> decode failure path.
+        run: async () => ({
+          choices: [{ message: { content: "This is definitely an upgrade request." } }],
+          usage: { prompt_tokens: 20, completion_tokens: 30 },
+        }),
+      },
+    }) as any;
+
+    const response = await worker.fetch(request, envWithAi, ctx);
+    if (response.status !== 200) {
+      throw new Error(`Unexpected status ${response.status}: ${await response.text()}`);
+    }
+    const json = (await response.json()) as any;
+    expect(json.ok).toBe(true);
+
+    await waitOnExecutionContext(ctx);
+
+    const appended = state.appendPartsCalls.flatMap((c) => (Array.isArray(c.args.parts) ? c.args.parts : []));
+    const signatureParts = appended
+      .map((p: any) => p?.part)
+      .filter((part: any) => part?.type === "dse.signature" && part?.signatureId === "@openagents/autopilot/feedback/DetectUpgradeRequest.v1");
+
+    expect(signatureParts.length).toBeGreaterThan(0);
+    expect(signatureParts.some((part: any) => part?.state === "ok")).toBe(true);
+    expect(signatureParts.some((part: any) => part?.fallbackUsed === true)).toBe(true);
+    expect(signatureParts.some((part: any) => typeof part?.errorText === "string" && part.errorText.length > 0)).toBe(true);
+    expect(signatureParts.some((part: any) => part?.outputPreview?.isUpgradeRequest === true)).toBe(true);
+
+    expect(state.recordFeatureRequestCalls.length).toBeGreaterThan(0);
+    const recorded = state.recordFeatureRequestCalls.at(-1)?.args as any;
+    expect(recorded?.threadId).toBe("thread-4");
+    expect(recorded?.notifyWhenAvailable).toBe(true);
+    expect(recorded?.capabilityKey).toBe("github_integration_and_auto_deploy");
+    expect(recorded?.source?.signatureId).toBe("@openagents/autopilot/feedback/DetectUpgradeRequest.v1");
+  });
 });

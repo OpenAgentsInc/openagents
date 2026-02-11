@@ -108,3 +108,4 @@ The artifact includes:
 
 - This path exercises the same runtime stream pipeline used by normal chat sends.
 - Convex direct mutations alone are not equivalent; they do not execute Worker inference/DSE stages.
+- Capability-request detection now has a runtime fallback: if DSE JSON decode fails, Autopilot derives a normalized capability key from message heuristics and still attempts `recordFeatureRequest`, while preserving DSE error details in trace parts.

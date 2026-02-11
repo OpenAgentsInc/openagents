@@ -103,6 +103,13 @@ const routerDecodeParams = {
   decode: { mode: "jsonish" as const, maxRepairs: 1 }
 } satisfies Params.DseParamsV1;
 
+/** Slightly stronger repair budget for product-feedback classification. */
+const feedbackDecodeParams = {
+  ...defaultParams,
+  decode: { mode: "jsonish" as const, maxRepairs: 3 },
+  model: { temperature: 0, maxTokens: 256 }
+} satisfies Params.DseParamsV1;
+
 const ThreadChunks = Schema.Array(Blob.BlobRefSchema).annotations({
   description:
     "Conversation history chunks (text blobs). These are stored in BlobStore and referenced by BlobRef handles."
@@ -320,7 +327,7 @@ export const signatures = {
         PromptIR.outputJsonSchema(JSONSchema.make(BlueprintToolSelection))
       ]
     },
-    defaults: { params: routerDecodeParams }
+    defaults: { params: feedbackDecodeParams }
   }),
 
   detect_upgrade_request: Signature.make({
