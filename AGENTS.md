@@ -33,6 +33,7 @@ If you are writing code here, you are usually adding:
 1. Run `effect-solutions list` to see available guides
 2. Run `effect-solutions show <topic>...` for relevant patterns (supports multiple topics)
 3. Search `.reference/effect/` for real implementations (run `effect-solutions setup` first)
+4. For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`), run `npm run effect:patch` after install to enable build-time diagnostics.
 
 Topics: quick-start, project-setup, tsconfig, basics, services-and-layers, data-modeling, error-handling, config, testing, cli.
 
