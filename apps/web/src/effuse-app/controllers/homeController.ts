@@ -14,6 +14,7 @@ import {
 import type { ChatSnapshot } from "../../effect/chat"
 import { ChatSnapshotAtom } from "../../effect/atoms/chat"
 import { SessionAtom, type Session } from "../../effect/atoms/session"
+import { ChatSnapshotCacheLive, ChatSnapshotCacheService } from "../../effect/chatSnapshotCache"
 import { PaneSystemLive, PaneSystemService } from "../../effect/paneSystem"
 import { formatCountdown } from "../../effuse-pages/home"
 import {
@@ -50,6 +51,7 @@ type HomeChatDeps = {
 
 const CHAT_PANE_ID = "home-chat"
 const HOME_CHAT_PANE_RECT_STORAGE_KEY = "oa.home.chat.paneRect.v1"
+const HOME_CHAT_SNAPSHOT_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24
 
 const COPY_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>'
@@ -262,6 +264,36 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       return Effect.runSync(effect.pipe(Effect.provide(PaneSystemLive)))
     }
 
+    const runChatSnapshotCacheEffectSync = <A>(effect: Effect.Effect<A, never, ChatSnapshotCacheService>): A => {
+      if (deps?.runtime) return deps.runtime.runSync(effect)
+      return Effect.runSync(effect.pipe(Effect.provide(ChatSnapshotCacheLive)))
+    }
+
+    const readCachedSnapshotForUser = (userId: string): { readonly threadId: string; readonly snapshot: ChatSnapshot } | null => {
+      if (!userId) return null
+      const cached = runChatSnapshotCacheEffectSync(
+        Effect.gen(function* () {
+          const cache = yield* ChatSnapshotCacheService
+          return yield* cache.readLatestForUser({
+            userId,
+            maxAgeMs: HOME_CHAT_SNAPSHOT_CACHE_MAX_AGE_MS,
+          })
+        }),
+      )
+      if (!cached) return null
+      return { threadId: cached.threadId, snapshot: cached.snapshot }
+    }
+
+    const writeCachedSnapshotForUser = (userId: string, threadId: string, snapshot: ChatSnapshot): void => {
+      if (!userId || !threadId) return
+      runChatSnapshotCacheEffectSync(
+        Effect.gen(function* () {
+          const cache = yield* ChatSnapshotCacheService
+          yield* cache.writeLatestForUser({ userId, threadId, snapshot })
+        }),
+      )
+    }
+
     const { paneSystem, release: releasePaneSystem } = runPaneSystemEffectSync(
       Effect.gen(function* () {
         const paneSystemService = yield* PaneSystemService
@@ -384,6 +416,45 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let previousRenderedMessageCount = 0
     let forceScrollToBottomOnNextRender = false
 
+    const attachHomeThreadSubscription = (
+      input: {
+        readonly threadId: string
+        readonly userId: string
+        readonly hydratedSnapshot?: ChatSnapshot | null
+      },
+    ): void => {
+      if (!deps?.atoms) return
+      const threadId = input.threadId
+      if (!threadId) return
+
+      homeThreadId = threadId
+      deps.atoms.get(ChatSnapshotAtom(threadId))
+      if (unsubHomeChat) unsubHomeChat()
+
+      let skippedHydratedPlaceholder = false
+      const hydratedSnapshot = input.hydratedSnapshot ?? null
+      unsubHomeChat = deps.atoms.subscribe(
+        ChatSnapshotAtom(threadId),
+        (snap) => {
+          const shouldSkipHydratedPlaceholder =
+            !skippedHydratedPlaceholder &&
+            hydratedSnapshot != null &&
+            hydratedSnapshot.messages.length > 0 &&
+            snap.messages.length === 0 &&
+            snap.status === "ready" &&
+            snap.errorText == null
+          if (shouldSkipHydratedPlaceholder) {
+            skippedHydratedPlaceholder = true
+            return
+          }
+          homeSnapshot = snap
+          writeCachedSnapshotForUser(input.userId, threadId, snap)
+          doRender()
+        },
+        { immediate: true },
+      )
+    }
+
     const startAuthedChat = (input0: { readonly userId: string; readonly user: Session["user"] | null; readonly token: string | null }) => {
       if (!deps?.atoms || !deps.chat) return
 
@@ -391,7 +462,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
       // Prime the in-memory auth token cache so Convex can authenticate immediately without waiting
       // for cookie timing (especially important in tests and right after verify/login).
-      if (input0.token && input0.user && input0.user.email) {
+      if (input0.token && input0.user) {
         try {
           const user = AuthSessionUser.make({
             id: input0.user.id,
@@ -411,25 +482,32 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
       if (input0.user?.email) renderIdentityCard(input0.user.email)
 
+      const cached = readCachedSnapshotForUser(input0.userId)
       messages.length = 0
-      messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
       step = "authed"
-      doRender()
+      if (cached) {
+        homeThreadId = cached.threadId
+        homeSnapshot = cached.snapshot
+        forceScrollToBottomOnNextRender = true
+        doRender()
+        attachHomeThreadSubscription({
+          threadId: cached.threadId,
+          userId: input0.userId,
+          hydratedSnapshot: cached.snapshot,
+        })
+      } else {
+        messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
+        doRender()
+      }
 
       deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
         (id) => {
           if (id && id.length > 0) {
-            homeThreadId = id
-            deps.atoms.get(ChatSnapshotAtom(id))
-            if (unsubHomeChat) unsubHomeChat()
-            unsubHomeChat = deps.atoms.subscribe(
-              ChatSnapshotAtom(id),
-              (snap) => {
-                homeSnapshot = snap
-                doRender()
-              },
-              { immediate: true },
-            )
+            attachHomeThreadSubscription({
+              threadId: id,
+              userId: input0.userId,
+              hydratedSnapshot: cached?.threadId === id ? cached.snapshot : null,
+            })
           }
           doRender()
         },
@@ -1476,17 +1554,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
                   (id) => {
                     if (id && id.length > 0) {
-                      homeThreadId = id
-                      deps.atoms.get(ChatSnapshotAtom(id))
-                      if (unsubHomeChat) unsubHomeChat()
-                      unsubHomeChat = deps.atoms.subscribe(
-                        ChatSnapshotAtom(id),
-                        (snap) => {
-                          homeSnapshot = snap
-                          doRender()
-                        },
-                        { immediate: true },
-                      )
+                      const userIdForCache = readSessionFromAtoms().userId ?? ""
+                      attachHomeThreadSubscription({
+                        threadId: id,
+                        userId: userIdForCache,
+                      })
                       if (input) input.value = ""
                       deps.runtime.runPromise(deps.chat.send(id, text)).catch(() => { })
                     }
@@ -1584,7 +1656,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                   }
                 } | null>,
               )
-              .then(async (data) => {
+              .then((data) => {
                 isBusy = false
                 if (!data?.ok) {
                   messages.push({
@@ -1604,65 +1676,16 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 const userId = typeof data.userId === "string" ? data.userId : userPayload?.id ?? null
 
                 if (token && userPayload && userId && deps) {
-                  const user = AuthSessionUser.make({
-                    id: userPayload.id,
-                    email: userPayload.email ?? null,
-                    firstName: userPayload.firstName ?? null,
-                    lastName: userPayload.lastName ?? null,
-                  })
-                  const session = AuthSession.make({ userId, sessionId: null, user })
-                  setClientAuthFromVerify(session, token)
-                  writeSessionToAtoms({
+                  startAuthedChat({
                     userId,
                     user: {
-                      id: userPayload.id,
+                      id: String(userPayload.id),
                       email: userPayload.email ?? null,
                       firstName: userPayload.firstName ?? null,
                       lastName: userPayload.lastName ?? null,
                     },
+                    token,
                   })
-
-                  try {
-                    await deps.refreshConvexAuth?.()
-                  } catch {
-                    // ignore
-                  }
-
-                  if (userPayload.email) renderIdentityCard(userPayload.email)
-                  messages.length = 0
-                  messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
-                  step = "authed"
-
-                  deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
-                    (id) => {
-                      if (id && id.length > 0) {
-                        homeThreadId = id
-                        deps.atoms.get(ChatSnapshotAtom(id))
-                        if (unsubHomeChat) unsubHomeChat()
-                        unsubHomeChat = deps.atoms.subscribe(
-                          ChatSnapshotAtom(id),
-                          (snap) => {
-                            homeSnapshot = snap
-                            doRender()
-                          },
-                          { immediate: true },
-                        )
-                      }
-
-                      messages.length = 0
-                      messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
-                      step = "authed"
-                      doRender()
-                    },
-                    () => {
-                      messages.length = 0
-                      messages.push({ role: "assistant", text: ONBOARDING_FIRST_MESSAGE })
-                      step = "authed"
-                      doRender()
-                    },
-                  )
-
-                  doRender()
                   return
                 }
 

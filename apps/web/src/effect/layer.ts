@@ -4,6 +4,7 @@ import { AutopilotStoreLive } from "./autopilotStore";
 import { ContractsApiLive } from "./contracts";
 import { AuthServiceLive } from './auth';
 import { ChatServiceLive } from './chat';
+import { ChatSnapshotCacheLive, ChatSnapshotCacheService } from './chatSnapshotCache';
 import { ConvexServiceLive } from './convex';
 import { PaneSystemLive, PaneSystemService } from './paneSystem';
 import { RequestContextService, makeDefaultRequestContext } from './requestContext';
@@ -24,6 +25,7 @@ export type AppServices =
   | Context.Tag.Identifier<typeof ContractsApiService>
   | Context.Tag.Identifier<typeof AuthService>
   | Context.Tag.Identifier<typeof ChatService>
+  | Context.Tag.Identifier<typeof ChatSnapshotCacheService>
   | Context.Tag.Identifier<typeof ConvexService>
   | Context.Tag.Identifier<typeof PaneSystemService>
   | Context.Tag.Identifier<typeof RequestContextService>
@@ -35,6 +37,7 @@ export const makeAppLayer = (config: AppConfig) => {
   const base = Layer.mergeAll(
     TelemetryLive,
     PaneSystemLive,
+    ChatSnapshotCacheLive,
     Layer.succeed(AppConfigService, config),
     Layer.succeed(RequestContextService, makeDefaultRequestContext()),
   );

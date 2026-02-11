@@ -38,6 +38,7 @@ export const makeAppRuntime = (config: AppConfig): AppRuntime => {
           'AuthService',
           'ConvexService',
           'PaneSystemService',
+          'ChatSnapshotCacheService',
           'AutopilotStoreService',
           'ContractsApiService',
           'ChatService',
