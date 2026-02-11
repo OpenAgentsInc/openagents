@@ -29,13 +29,11 @@ cd apps/web
 npm run deploy
 ```
 
-## Desktop (deprioritized)
+## Rust Deprecation
 
-The desktop client exists but is not the current focus while we ship the web MVP.
+As of 2026-02-11, Rust sources in this repo were deprecated and moved to:
 
-```bash
-cargo run -p autopilot-desktop
-```
+`~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
 
 ## Documentation
 

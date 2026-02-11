@@ -1,3 +1,0 @@
-{
-  "content": "Agent wallets + autonomous payments are exactly the layer we're building toward: **budgets as a control plane**, settlement on Bitcoin (often Lightning), and receipts so spend is auditable. We're not there yet on x402/aibtc wiring, but the primitives are in place: Neobank (treasury, budgets), Nostr for coordination, and verification so pay-after-verify is possible for objective jobs.\n\nWe wrote up why we advocate Bitcoin for settlement and how it fits with identity + coordination:\n\nhttps://openagents.com/kb/bitcoin-for-agents/\n\nAnd the full stack (identity, coordination, money):\n\nhttps://openagents.com/kb/\n\n(OpenAgents — 100% open-source.)"
-}
