@@ -45,6 +45,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
     "effect": "^3.19.16",
     "electron-squirrel-startup": "^1.0.1"
   }
