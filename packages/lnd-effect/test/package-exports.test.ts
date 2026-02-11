@@ -12,16 +12,22 @@ describe("lnd-effect exports", () => {
   it.effect("exposes root and subpath entrypoints", () =>
     Effect.gen(function* () {
       expect(Root.decodeLndNodeInfo).toBeTypeOf("function")
+      expect(Root.decodeLndInvoiceRecord).toBeTypeOf("function")
       expect(Root.LndNodeService).toBe(Services.LndNodeService)
       expect(Root.LndContractDecodeError).toBe(Errors.LndContractDecodeError)
+      expect(Root.LndTransportError).toBe(Errors.LndTransportError)
       expect(Root.LndNodeDefaultLayer).toBe(Layers.LndNodeDefaultLayer)
       expect(Root.makeLndDeterministicLayer).toBe(Adapters.makeLndDeterministicLayer)
+      expect(Root.makeLndRestTransportLayer).toBe(Adapters.makeLndRestTransportLayer)
 
       expect(Contracts.LndNodeInfo).toBeDefined()
+      expect(Contracts.LndBalanceSummary).toBeDefined()
+      expect(Contracts.LndInvoiceCreateRequest).toBeDefined()
       expect(Contracts.LndRpcRequest).toBeDefined()
       expect(Errors.LndServiceUnavailableError).toBeDefined()
       expect(Services.LndTransportService).toBeDefined()
       expect(Layers.LndNodeDefaultLayer).toBeDefined()
+      expect(Layers.makeLndRestTransportLayer).toBeDefined()
       expect(Adapters.makeLndNodeDeterministicLayer).toBeDefined()
     }),
   )

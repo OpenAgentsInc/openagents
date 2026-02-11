@@ -4,10 +4,16 @@ Effect-first LND contracts and service interfaces for OpenAgents and external co
 
 ## What This Package Provides
 
-- Typed contracts for core LND node/wallet status primitives.
-- Tagged errors for deterministic decode/service boundary handling.
-- Service tags for LND API boundaries.
+- Typed contracts for core LND node/wallet, invoices, payments, and RPC transport primitives.
+- Tagged errors for deterministic decode, transport, auth, and response parsing boundaries.
+- Service tags for LND API boundaries:
+  - `LndNodeService`
+  - `LndWalletService`
+  - `LndInvoiceService`
+  - `LndPaymentService`
+  - `LndTransportService`
 - Deterministic adapters/layers for tests and local scaffolding.
+- REST-first transport layer with typed error mapping.
 
 This package is app-agnostic and has no dependency on `apps/*`.
 
@@ -52,6 +58,28 @@ const program = Effect.gen(function* () {
 }).pipe(Effect.provide(makeLndNodeDeterministicLayer()))
 ```
 
+## Example: REST Transport Layer
+
+```ts
+import { Effect } from "effect"
+import { LndTransportService, makeLndRestTransportLayer } from "@openagentsinc/lnd-effect"
+
+const program = Effect.gen(function* () {
+  const transport = yield* LndTransportService
+  return yield* transport.send({
+    method: "GET",
+    path: "/v1/getinfo",
+  })
+}).pipe(
+  Effect.provide(
+    makeLndRestTransportLayer({
+      endpoint: "https://localhost:8080",
+      macaroonHex: "deadbeef",
+    }),
+  ),
+)
+```
+
 ## Migration Note
 
 - This package introduces LND-specific contracts/services as a separate reusable boundary.
@@ -62,5 +90,6 @@ const program = Effect.gen(function* () {
 
 - `npm run typecheck`
 - `npm test`
+- `npm run test:contracts`
 - `npm run test:watch`
 - `npm run effect:patch`
