@@ -33,6 +33,38 @@ export type CreateRunResult = {
   assistantMessageId: string;
 };
 
+export type EnsureOwnedThreadResult = {
+  ok: boolean;
+  threadId: string;
+};
+
+export type GetThreadTraceBundleResult = {
+  ok: boolean;
+  thread: {
+    threadId: string;
+    ownerId: string | null;
+    createdAtMs: number;
+    updatedAtMs: number;
+  };
+  blueprint: unknown;
+  messages: ReadonlyArray<unknown>;
+  parts: ReadonlyArray<unknown>;
+  runs: ReadonlyArray<unknown>;
+  receipts: ReadonlyArray<unknown>;
+  featureRequests: ReadonlyArray<unknown>;
+  dseBlobs: ReadonlyArray<unknown>;
+  dseVars: ReadonlyArray<unknown>;
+  summary: {
+    messageCount: number;
+    partCount: number;
+    runCount: number;
+    receiptCount: number;
+    featureRequestCount: number;
+    dseBlobCount: number;
+    dseVarCount: number;
+  };
+};
+
 export type IsCancelRequestedResult = {
   ok: boolean;
   cancelRequested?: boolean;

@@ -5,6 +5,7 @@ This document describes what trace data is persisted for a thread, what is **not
 ## TL;DR
 
 - Use `api.autopilot.traces.getThreadTraceBundle` to fetch a thread trace in one call.
+- For headless end-to-end run + trace retrieval with a fixed test user, use `docs/autopilot/AUTOPILOT_ADMIN_TEST_USER_TRIGGER.md`.
 - Convex stores canonical chat state (`messages`, `messageParts`, `runs`) and related artifacts (`receipts`, `feature requests`, `blueprint`).
 - Some runtime failures are still only in Worker telemetry logs (not Convex rows).
 
@@ -96,4 +97,3 @@ Given a `threadId`:
 4. Join `runs` with `messages` (`assistantMessageId` / `runId`) to get terminal status + final text.
 5. If investigating DSE execution internals, set `includeDseState=true`.
 6. If a gap remains (for example missing pre-run failure), pivot to Worker logs by `x-oa-request-id`.
-
