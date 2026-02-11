@@ -27,7 +27,7 @@ Narrative continuation from EP211:
 ## In scope
 
 - Buyer-side L402 flow (402 challenge -> pay -> retry -> response).
-- Minimal seller-side setup to provide paid endpoints.
+- Integration with existing paid seller endpoints (external to OpenAgents).
 - Chat-visible payment state in `openagents.com`.
 - Budget cap + allowlist guardrails.
 - `lightning-effect` package scaffold with real working core.
@@ -98,16 +98,20 @@ Design constraint:
    - `payment.cached`
    - `payment.blocked`
 
-## 5.3 Seller endpoint setup for demo
+## 5.3 Existing Endpoint Selection for Demo
 
-Run a tiny seller service with two paid routes behind Aperture:
+Use at least two existing L402-gated seller endpoints (not owned or hosted by OpenAgents):
 
-1. `GET /premium/signal-feed?asset=BTC`
-   - fixed price (example: 50 sats)
-2. `GET /premium/deep-report?asset=BTC&window=30d`
-   - higher or dynamic price (example: 250 sats)
+1. Endpoint A (target happy path):
+   - priced under demo cap (example cap: 100 sats)
+2. Endpoint B (target deny path):
+   - priced above demo cap (or policy-disallowed domain)
 
-These only need deterministic JSON payloads for the demo.
+Selection requirements:
+
+1. Endpoint URLs and price behavior are known before recording day.
+2. Endpoints are stable enough for rehearsal and capture.
+3. We do not build or host seller infrastructure in EP212 scope.
 
 ## 5.4 Pane System Plan (effuse-panes + apps/web)
 
@@ -151,10 +155,10 @@ Rendering and state constraints:
 
 ## 6. Endpoint Consumption Plan (Demo-Focused)
 
-## Endpoint A: "signal-feed" (happy path)
+## Endpoint A (happy path)
 
 - Cap: 100 sats
-- Price: 50 sats
+- Price: below cap
 - Expected: payment approved + success + summary
 
 ## Endpoint A repeat call (cache path)
@@ -162,10 +166,10 @@ Rendering and state constraints:
 - Same domain + credential scope
 - Expected: cached L402 credential reuse; no new payment
 
-## Endpoint B: "deep-report" (policy deny path)
+## Endpoint B (policy deny path)
 
 - Cap: 100 sats
-- Price: 250 sats
+- Price: above cap or blocked by allowlist policy
 - Expected: blocked before payment with clear explanation
 
 ## 7. Implementation Sequence (Tight)
@@ -199,15 +203,15 @@ Rendering and state constraints:
 3. Add one Autopilot tool contract.
 4. Add minimal UI status rendering in chat.
 
-## Phase 4: Seller routes + aperture (Day 4-5)
+## Phase 4: Existing endpoint integration + validation (Day 4-5)
 
-1. Stand up two paid endpoints.
-2. Put them behind Aperture.
-3. Validate with `lnget` and then with Autopilot flow.
+1. Finalize two existing seller endpoints for demo.
+2. Validate both directly (for example with `lnget`) and through Autopilot flow.
+3. Confirm happy path + deny path behavior is repeatable.
 
 ## Phase 5: Demo polish and rehearsal (Day 5)
 
-1. Confirm deterministic payloads.
+1. Confirm selected external endpoints are stable at recording time.
 2. Confirm one payment and one cached call.
 3. Confirm one policy-denied call.
 4. Capture logs/screens for episode cuts.
@@ -268,11 +272,11 @@ Add minimal UI messaging in `openagents.com` chat for payment intent, paid succe
 
 This issue is complete when the EP212 flow is legible to viewers without opening backend logs and all four status states are visible in chat output.
 
-## Issue 10: Stand up two demo paid endpoints behind Aperture
+## Issue 10: Integrate two existing paid seller endpoints for demo
 
-Create two deterministic seller endpoints (`signal-feed` and `deep-report`) and place them behind Aperture with known pricing suitable for demo behavior. Keep payloads stable and simple to avoid flakiness during recording.
+Select and integrate two existing L402-gated endpoints so EP212 can demonstrate both success and policy-denied behavior without standing up OpenAgents-hosted seller infrastructure. Document endpoint assumptions (price range, reliability, request shape) inside the implementation notes and rehearsal checklist.
 
-This issue is complete when both endpoints can be hit via `lnget` and via Autopilot, with one endpoint under cap (success) and one endpoint over cap (policy deny).
+This issue is complete when both endpoints can be hit via `lnget` and via Autopilot, with one endpoint under cap (success) and one endpoint over cap or policy-blocked (deny).
 
 ## Issue 11: Add observability + rehearsal checklist for recording
 
@@ -307,14 +311,14 @@ Must log and be able to display:
 
 ## 11. Risks and Mitigations
 
-1. Aperture/lnget setup friction
-   - Mitigation: use pinned source build scripts + preflight checklist before recording.
+1. External endpoint reliability/availability
+   - Mitigation: pre-qualify multiple endpoint candidates and keep a backup endpoint list for recording day.
 2. Worker runtime constraints
    - Mitigation: keep heavy payment execution in adapter/executor boundary; Worker orchestrates.
 3. Preimage handling mistakes
    - Mitigation: enforce `preimageHex` in contract and test failure when absent.
-4. Demo flakiness from live market/data APIs
-   - Mitigation: deterministic seller payloads for episode recording.
+4. Demo flakiness from third-party response variability
+   - Mitigation: constrain prompt/output expectations to endpoint metadata and summary quality rather than exact payload text.
 
 ## 12. Recording Script (Short)
 
@@ -332,4 +336,4 @@ After shipping episode demo:
 
 1. Expand `lightning-effect` docs/examples for external users.
 2. Add second adapter path (Spark/Breez-compatible payer) under same interfaces.
-3. Extend from buyer-only demo to seller-side OpenAgents endpoint monetization playbook.
+3. Expand coverage from two endpoints to a broader catalog of existing L402 seller endpoints.
