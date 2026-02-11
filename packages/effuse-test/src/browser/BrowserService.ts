@@ -20,9 +20,11 @@ type ChromeTarget = {
 
 type ActivePage = {
   readonly page: Page
-  readonly screenshot: (filePath: string) => Effect.Effect<void, unknown, ProbeService | TestContext>
-  readonly htmlSnapshot: () => Effect.Effect<string, unknown, ProbeService | TestContext>
-  readonly consoleSnapshot: () => Effect.Effect<unknown, unknown, ProbeService | TestContext>
+  readonly screenshot: (
+    filePath: string,
+  ) => Effect.Effect<void, BrowserServiceError, ProbeService | TestContext>
+  readonly htmlSnapshot: () => Effect.Effect<string, BrowserServiceError, ProbeService | TestContext>
+  readonly consoleSnapshot: () => Effect.Effect<unknown, BrowserServiceError, ProbeService | TestContext>
 }
 
 export class BrowserService extends Context.Tag("@openagentsinc/effuse-test/BrowserService")<
@@ -30,7 +32,7 @@ export class BrowserService extends Context.Tag("@openagentsinc/effuse-test/Brow
   {
     readonly withPage: <A, E, R>(
       f: (page: Page) => Effect.Effect<A, E, R>,
-    ) => Effect.Effect<A, E, Scope.Scope | R>
+    ) => Effect.Effect<A, E | BrowserServiceError, Scope.Scope | R>
     readonly captureFailureArtifacts: (options: {
       readonly screenshotPath: string
       readonly htmlPath: string
@@ -42,13 +44,48 @@ export type BrowserServiceOptions = BrowserLaunchOptions & {
   readonly chromePath?: string
 }
 
+const toError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause))
+
+export class BrowserServiceError extends Error {
+  readonly operation: string
+  override readonly cause: unknown
+
+  constructor(operation: string, cause: unknown) {
+    const err = toError(cause)
+    super(`[BrowserService] ${operation}: ${err.message}`)
+    this.name = "BrowserServiceError"
+    this.operation = operation
+    this.cause = cause
+  }
+}
+
+const tryBrowserPromise = <A>(operation: string, f: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: f,
+    catch: (cause) => new BrowserServiceError(operation, cause),
+  })
+
+type RuntimeEvaluateResult<A> = {
+  readonly result?: { readonly value?: A }
+  readonly exceptionDetails?: {
+    readonly exception?: { readonly description?: string; readonly value?: unknown }
+    readonly text?: string
+  }
+}
+
+type CaptureScreenshotResult = {
+  readonly data: string
+}
+
 export const BrowserServiceNone: Layer.Layer<BrowserService> = Layer.succeed(BrowserService, {
   withPage: () =>
     Effect.fail(
-      new Error(
+      new BrowserServiceError(
+        "withPage(disabled)",
         "BrowserService is disabled (this run selected no browser tests). Add the `browser` tag to a test to enable Chromium.",
       ),
-    ) as any,
+    ),
   captureFailureArtifacts: () => Effect.succeed(false),
 })
 
@@ -190,13 +227,19 @@ const waitForHttpOk = async (url: string, timeoutMs: number): Promise<void> => {
   }
 }
 
-export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<BrowserService> =>
+export const BrowserServiceLive = (
+  options: BrowserServiceOptions,
+): Layer.Layer<BrowserService, BrowserServiceError> =>
   Layer.scoped(
     BrowserService,
     Effect.gen(function* () {
-      const chromePath = yield* Effect.promise(() => findChrome(options.chromePath))
-      const port = yield* Effect.promise(getFreePort)
-      const userDataDir = yield* Effect.promise(() => Fs.mkdtemp(Path.join(Os.tmpdir(), "effuse-test-chrome-")))
+      const chromePath = yield* tryBrowserPromise("find chrome", () =>
+        findChrome(options.chromePath),
+      )
+      const port = yield* tryBrowserPromise("acquire free port", getFreePort)
+      const userDataDir = yield* tryBrowserPromise("create chrome user data dir", () =>
+        Fs.mkdtemp(Path.join(Os.tmpdir(), "effuse-test-chrome-")),
+      )
 
       const args: Array<string> = [
         `--remote-debugging-port=${port}`,
@@ -232,26 +275,32 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
         }),
       )
       yield* Effect.addFinalizer(() =>
-        Effect.promise(() => Fs.rm(userDataDir, { recursive: true, force: true })).pipe(Effect.catchAll(() => Effect.void)),
+        tryBrowserPromise("remove chrome user data dir", () =>
+          Fs.rm(userDataDir, { recursive: true, force: true }),
+        ).pipe(Effect.catchAll(() => Effect.void)),
       )
 
-      yield* Effect.promise(() => waitForHttpOk(`http://127.0.0.1:${port}/json/version`, 30_000))
+      yield* tryBrowserPromise("wait for devtools endpoint", () =>
+        waitForHttpOk(`http://127.0.0.1:${port}/json/version`, 30_000),
+      )
 
       let active: ActivePage | undefined
 
       const openPage = Effect.acquireRelease(
         Effect.gen(function* () {
-          const target = yield* Effect.promise(() =>
+          const target = yield* tryBrowserPromise("create blank chrome target", () =>
             fetchJson<ChromeTarget>(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" }),
           )
-          const session = yield* Effect.promise(() => connectCdp(target.webSocketDebuggerUrl))
+          const session = yield* tryBrowserPromise("connect cdp", () =>
+            connectCdp(target.webSocketDebuggerUrl),
+          )
 
-          yield* Effect.promise(() => session.send("Page.enable"))
-          yield* Effect.promise(() => session.send("Runtime.enable"))
+          yield* tryBrowserPromise("cdp Page.enable", () => session.send("Page.enable"))
+          yield* tryBrowserPromise("cdp Runtime.enable", () => session.send("Runtime.enable"))
 
           // Capture browser console/errors in a way we can snapshot on failure without relying on CDP events.
           // This also captures runtime errors before the app hydrates.
-          yield* Effect.promise(() =>
+          yield* tryBrowserPromise("install console capture init script", () =>
             session.send("Page.addScriptToEvaluateOnNewDocument", {
               source: `(() => {
   const entries = [];
@@ -295,36 +344,54 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
             }),
           )
 
-          const evaluate = <A = unknown>(fnOrExpression: string | (() => unknown)) =>
-            serviceSpan("page.evaluate", Effect.gen(function* () {
-              const expression =
-                typeof fnOrExpression === "string" ? fnOrExpression : `(${fnOrExpression.toString()})()`
-              const res: any = yield* Effect.promise(() =>
-                session.send("Runtime.evaluate", {
-                  expression,
-                  awaitPromise: true,
-                  returnByValue: true,
-                }),
-              )
-              if (res.exceptionDetails) {
-                const details = res.exceptionDetails
-                const description =
-                  details.exception?.description ??
-                  details.exception?.value ??
-                  details.text ??
-                  "Runtime.evaluate exception"
-                throw new Error(description)
-              }
-              return res.result?.value as A
-            }))
+          const evaluate = <A = unknown>(
+            fnOrExpression: string | (() => unknown),
+          ): Effect.Effect<A, BrowserServiceError, ProbeService | TestContext> =>
+            serviceSpan(
+              "page.evaluate",
+              Effect.gen(function* () {
+                const expression =
+                  typeof fnOrExpression === "string"
+                    ? fnOrExpression
+                    : `(${fnOrExpression.toString()})()`
+                const res = (yield* tryBrowserPromise("cdp Runtime.evaluate", () =>
+                  session.send("Runtime.evaluate", {
+                    expression,
+                    awaitPromise: true,
+                    returnByValue: true,
+                  }),
+                )) as RuntimeEvaluateResult<A>
+                if (res.exceptionDetails) {
+                  const details = res.exceptionDetails
+                  const description =
+                    details.exception?.description ??
+                    details.exception?.value ??
+                    details.text ??
+                    "Runtime.evaluate exception"
+                  return yield* Effect.fail(
+                    new BrowserServiceError("cdp Runtime.evaluate exception", description),
+                  )
+                }
+                return res.result?.value as A
+              }),
+            )
 
-          const addInitScript = (source: string) =>
-            serviceSpan("page.addInitScript", Effect.promise(() => session.send("Page.addScriptToEvaluateOnNewDocument", { source })))
+          const addInitScript = (
+            source: string,
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
+            serviceSpan(
+              "page.addInitScript",
+              tryBrowserPromise("cdp add init script", () =>
+                session.send("Page.addScriptToEvaluateOnNewDocument", { source }),
+              ),
+            )
 
-          const setViewport = (viewport: Viewport) =>
+          const setViewport = (
+            viewport: Viewport,
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
             serviceSpan(
               "page.setViewport",
-              Effect.promise(() =>
+              tryBrowserPromise("cdp set viewport", () =>
                 session.send("Emulation.setDeviceMetricsOverride", {
                   width: viewport.width,
                   height: viewport.height,
@@ -334,20 +401,31 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
               ),
             )
 
-          const goto = (url: string) =>
+          const goto = (
+            url: string,
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
             serviceSpan(`page.goto ${url}`, Effect.gen(function* () {
-              yield* Effect.promise(() => session.send("Page.navigate", { url }))
-              yield* Effect.promise(() => session.waitForEvent("Page.loadEventFired", 30_000))
+              yield* tryBrowserPromise("cdp Page.navigate", () =>
+                session.send("Page.navigate", { url }),
+              )
+              yield* tryBrowserPromise("cdp wait loadEventFired", () =>
+                session.waitForEvent("Page.loadEventFired", 30_000),
+              )
             }))
 
-          const click = (selector: string) =>
+          const click = (
+            selector: string,
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
             serviceSpan(`page.click ${selector}`, evaluate<void>(`(() => {
   const el = document.querySelector(${JSON.stringify(selector)});
   if (!el) throw new Error('Selector not found: ' + ${JSON.stringify(selector)});
   el.click();
 })()`))
 
-          const fill = (selector: string, value: string) =>
+          const fill = (
+            selector: string,
+            value: string,
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
             serviceSpan(
               `page.fill ${selector}`,
               evaluate<void>(`(() => {
@@ -360,7 +438,10 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
 })()`),
             )
 
-          const type = (selector: string, text: string) =>
+          const type = (
+            selector: string,
+            text: string,
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
             serviceSpan(
               `page.type ${selector}`,
               evaluate<void>(`(() => {
@@ -372,42 +453,68 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
 })()`),
             )
 
-          const waitForFunction = (fnOrExpression: string | (() => unknown), options?: { timeoutMs?: number; intervalMs?: number }) =>
-            serviceSpan("page.waitForFunction", Effect.gen(function* () {
-              const timeoutMs = options?.timeoutMs ?? 10_000
-              const intervalMs = options?.intervalMs ?? 100
-              const deadline = Date.now() + timeoutMs
-
-              // eslint-disable-next-line no-constant-condition
-              while (true) {
-                const ok = yield* evaluate<boolean>(fnOrExpression as any)
-                if (ok) return
-                if (Date.now() > deadline) {
-                  return yield* Effect.fail(new Error("Timed out in waitForFunction"))
-                }
-                yield* Effect.sleep(`${intervalMs} millis`)
-              }
-            }))
-
-          const htmlSnapshot = () => evaluate<string>("document.documentElement.outerHTML")
-
-          const consoleSnapshot = () =>
-            evaluate<unknown>("globalThis.__effuseTestConsole ?? []")
-
-          const screenshot = (filePath: string) =>
+          const waitForFunction = (
+            fnOrExpression: string | (() => unknown),
+            options?: { timeoutMs?: number; intervalMs?: number },
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
             serviceSpan(
-              "page.screenshot",
+              "page.waitForFunction",
               Effect.gen(function* () {
-                const res: any = yield* Effect.promise(() =>
-                  session.send("Page.captureScreenshot", { format: "png" }),
-                )
-                const bytes = Buffer.from(res.data, "base64")
-                yield* Effect.promise(() => Fs.mkdir(Path.dirname(filePath), { recursive: true }))
-                yield* Effect.promise(() => Fs.writeFile(filePath, bytes))
+                const timeoutMs = options?.timeoutMs ?? 10_000
+                const intervalMs = options?.intervalMs ?? 100
+                const deadline = Date.now() + timeoutMs
+
+                // eslint-disable-next-line no-constant-condition
+                while (true) {
+                  const ok = yield* evaluate<boolean>(fnOrExpression)
+                  if (ok) return
+                  if (Date.now() > deadline) {
+                    return yield* Effect.fail(
+                      new BrowserServiceError(
+                        "waitForFunction timeout",
+                        "Timed out in waitForFunction",
+                      ),
+                    )
+                  }
+                  yield* Effect.sleep(`${intervalMs} millis`)
+                }
               }),
             )
 
-          const close = Effect.promise(() => session.close()).pipe(Effect.catchAll(() => Effect.void))
+          const htmlSnapshot = (): Effect.Effect<
+            string,
+            BrowserServiceError,
+            ProbeService | TestContext
+          > => evaluate<string>("document.documentElement.outerHTML")
+
+          const consoleSnapshot = (): Effect.Effect<
+            unknown,
+            BrowserServiceError,
+            ProbeService | TestContext
+          > => evaluate<unknown>("globalThis.__effuseTestConsole ?? []")
+
+          const screenshot = (
+            filePath: string,
+          ): Effect.Effect<void, BrowserServiceError, ProbeService | TestContext> =>
+            serviceSpan(
+              "page.screenshot",
+              Effect.gen(function* () {
+                const res = (yield* tryBrowserPromise("cdp Page.captureScreenshot", () =>
+                  session.send("Page.captureScreenshot", { format: "png" }),
+                )) as CaptureScreenshotResult
+                const bytes = Buffer.from(res.data, "base64")
+                yield* tryBrowserPromise("fs.mkdir(screenshot dir)", () =>
+                  Fs.mkdir(Path.dirname(filePath), { recursive: true }),
+                )
+                yield* tryBrowserPromise("fs.writeFile(screenshot)", () =>
+                  Fs.writeFile(filePath, bytes),
+                )
+              }),
+            )
+
+          const close = tryBrowserPromise("cdp session.close", () => session.close()).pipe(
+            Effect.catchAll(() => Effect.void),
+          )
 
           const page: Page = {
             addInitScript,
@@ -457,16 +564,28 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
                           Effect.succeed("<!doctype html><h1>htmlSnapshot failed</h1>"),
                         ),
                       )
-                    yield* Effect.promise(() => Fs.mkdir(Path.dirname(htmlPath), { recursive: true }))
-                    yield* Effect.promise(() => Fs.writeFile(htmlPath, html, "utf8")).pipe(
+                    yield* tryBrowserPromise("fs.mkdir(failure html dir)", () =>
+                      Fs.mkdir(Path.dirname(htmlPath), { recursive: true }),
+                    ).pipe(Effect.catchAll(() => Effect.void))
+                    yield* tryBrowserPromise("fs.writeFile(failure html)", () =>
+                      Fs.writeFile(htmlPath, html, "utf8"),
+                    ).pipe(
                       Effect.catchAll(() => Effect.void),
                     )
 
                     const consoleEntries = yield* page
                       .evaluate("globalThis.__effuseTestConsole ?? []")
                       .pipe(Effect.catchAll(() => Effect.succeed([])))
-                    yield* Effect.promise(() => Fs.mkdir(Path.dirname(consolePath), { recursive: true }))
-                    yield* Effect.promise(() => Fs.writeFile(consolePath, JSON.stringify(consoleEntries, null, 2), "utf8")).pipe(
+                    yield* tryBrowserPromise("fs.mkdir(failure console dir)", () =>
+                      Fs.mkdir(Path.dirname(consolePath), { recursive: true }),
+                    ).pipe(Effect.catchAll(() => Effect.void))
+                    yield* tryBrowserPromise("fs.writeFile(failure console)", () =>
+                      Fs.writeFile(
+                        consolePath,
+                        JSON.stringify(consoleEntries, null, 2),
+                        "utf8",
+                      ),
+                    ).pipe(
                       Effect.catchAll(() => Effect.void),
                     )
 
@@ -476,15 +595,25 @@ export const BrowserServiceLive = (options: BrowserServiceOptions): Layer.Layer<
               ),
             (page) => page.close,
           ),
-        ) as Effect.Effect<A, E, Scope.Scope | R>
+        ) as Effect.Effect<A, E | BrowserServiceError, Scope.Scope | R>
 
       const captureFailureArtifacts = (opts: { screenshotPath: string; htmlPath: string }) =>
         Effect.gen(function* () {
           if (!active) return false
           yield* active.screenshot(opts.screenshotPath).pipe(Effect.catchAll(() => Effect.void))
-          const html = yield* active.htmlSnapshot().pipe(Effect.catchAll(() => Effect.succeed("<!doctype html><h1>htmlSnapshot failed</h1>")))
-          yield* Effect.promise(() => Fs.mkdir(Path.dirname(opts.htmlPath), { recursive: true }))
-          yield* Effect.promise(() => Fs.writeFile(opts.htmlPath, html, "utf8")).pipe(Effect.catchAll(() => Effect.void))
+          const html = yield* active
+            .htmlSnapshot()
+            .pipe(
+              Effect.catchAll(() =>
+                Effect.succeed("<!doctype html><h1>htmlSnapshot failed</h1>"),
+              ),
+            )
+          yield* tryBrowserPromise("fs.mkdir(capture html dir)", () =>
+            Fs.mkdir(Path.dirname(opts.htmlPath), { recursive: true }),
+          ).pipe(Effect.catchAll(() => Effect.void))
+          yield* tryBrowserPromise("fs.writeFile(capture html)", () =>
+            Fs.writeFile(opts.htmlPath, html, "utf8"),
+          ).pipe(Effect.catchAll(() => Effect.void))
           return true
         })
 
