@@ -40,9 +40,15 @@ export type HomeController = {
   readonly cleanup: () => void
 }
 
+type SessionState = {
+  readonly read: () => Session
+  readonly write: (session: Session) => void
+}
+
 type HomeChatDeps = {
   readonly runtime: AppRuntime
   readonly atoms: AtomRegistry
+  readonly sessionState: SessionState
   readonly navigate: (href: string) => void
   readonly signOut: () => void | Promise<void>
   readonly chat: ChatClient
@@ -332,18 +338,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       shell.removeAttribute("data-oa-home-chat-open")
     }
 
-    const atomsAccess = deps?.atoms as unknown as
-      | {
-        readonly get: (atom: unknown) => unknown
-        readonly set: (atom: unknown, value: unknown) => void
-      }
-      | undefined
-
     const readSessionFromAtoms = (): Session =>
-      (atomsAccess?.get(SessionAtom) as Session | undefined) ?? { userId: null, user: null }
+      deps?.sessionState.read() ?? { userId: null, user: null }
 
     const writeSessionToAtoms = (session: Session): void => {
-      atomsAccess?.set(SessionAtom, session)
+      deps?.sessionState.write(session)
     }
 
     const sessionFromAtoms: Session =
@@ -1445,8 +1444,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 } catch {
                   meta = { parseError: "invalid JSON" }
                 }
-                const session = readSessionFromAtoms() as { readonly userId?: string | null } | undefined
-                if (session?.userId) meta.userId = session.userId
+                const session = readSessionFromAtoms()
+                if (session.userId) meta.userId = session.userId
                 const paneId = `metadata-${Date.now()}`
                 const screen = { width: paneRoot.clientWidth, height: paneRoot.clientHeight }
                 const rect = calculateNewPanePosition(paneSystem.store.lastPanePosition, screen, 520, 360)
@@ -1804,17 +1803,22 @@ export const mountHomeController = (input: {
   Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => { })
 
   const stopCountdown = startPrelaunchCountdownTicker(input.container)
-  const deps: HomeChatDeps | undefined =
-    input.runtime && input.atoms && input.navigate && input.signOut && input.chat
-      ? {
-        runtime: input.runtime,
-        atoms: input.atoms,
-        navigate: input.navigate,
-        signOut: input.signOut,
-        chat: input.chat,
-        refreshConvexAuth: input.refreshConvexAuth,
-      }
-      : undefined
+  let deps: HomeChatDeps | undefined
+  if (input.runtime && input.atoms && input.navigate && input.signOut && input.chat) {
+    const atoms = input.atoms
+    deps = {
+      runtime: input.runtime,
+      atoms,
+      sessionState: {
+        read: () => atoms.get(SessionAtom),
+        write: (session) => atoms.set(SessionAtom, session),
+      },
+      navigate: input.navigate,
+      signOut: input.signOut,
+      chat: input.chat,
+      refreshConvexAuth: input.refreshConvexAuth,
+    }
+  }
   const stopOpenChatPane = openChatPaneOnHome(input.container, deps)
 
   return {
