@@ -26,6 +26,8 @@ describe("apps/web worker contracts endpoints", () => {
     expect(typeof json[0]?.name).toBe("string");
     expect(typeof json[0]?.description).toBe("string");
     expect(json[0]?.inputSchemaJson).toBeTruthy();
+    const names = json.map((tool: any) => String(tool?.name ?? ""));
+    expect(names).toContain("lightning_l402_fetch");
   });
 
   it("GET /api/contracts/signatures returns signature contracts (no-store)", async () => {
@@ -69,4 +71,3 @@ describe("apps/web worker contracts endpoints", () => {
     expect(response.status).toBe(405);
   });
 });
-

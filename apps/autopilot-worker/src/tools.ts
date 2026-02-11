@@ -16,6 +16,34 @@ const Vibe = Schema.NonEmptyString.annotations({
   description: "One short phrase describing the operating vibe."
 });
 
+const HttpMethod = Schema.Literal("GET", "POST", "PUT", "PATCH", "DELETE");
+
+const L402FetchInput = Schema.Struct({
+  url: Schema.NonEmptyString.annotations({
+    description: "L402-protected endpoint URL."
+  }),
+  method: Schema.optional(HttpMethod),
+  headers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  body: Schema.optional(Schema.String),
+  maxSpendMsats: Schema.Number.pipe(Schema.nonNegative()).annotations({
+    description: "Maximum spend cap for this fetch in millisatoshis."
+  }),
+  challengeHeader: Schema.optional(Schema.String),
+  forceRefresh: Schema.optional(Schema.Boolean),
+  scope: Schema.optional(Schema.String),
+  cacheTtlMs: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+});
+
+const L402FetchOutput = Schema.Struct({
+  taskId: Schema.NullOr(Schema.String),
+  status: Schema.Literal("completed", "cached", "blocked", "failed"),
+  proofReference: Schema.NullOr(Schema.String),
+  denyReason: Schema.NullOr(Schema.String),
+  paymentId: Schema.NullOr(Schema.String),
+  amountMsats: Schema.NullOr(Schema.Number),
+  responseStatusCode: Schema.NullOr(Schema.Number),
+});
+
 export const toolContracts = {
   get_time: Tool.make({
     name: "get_time",
@@ -46,6 +74,16 @@ export const toolContracts = {
       text: Schema.String.annotations({ description: "Text to echo back verbatim." })
     }),
     output: Schema.Struct({ text: Schema.String })
+  }),
+
+  lightning_l402_fetch: Tool.make({
+    name: "lightning_l402_fetch",
+    description:
+      "Queue an L402 paid fetch via the Lightning control-plane and wait for a terminal task status. This tool never executes wallet payment in the web worker directly.",
+    usage:
+      "lightning_l402_fetch({ url, method?, headers?, body?, maxSpendMsats, challengeHeader?, forceRefresh?, scope?, cacheTtlMs? }) -> task terminal status + proof/deny fields",
+    input: L402FetchInput,
+    output: L402FetchOutput,
   }),
 
   bootstrap_set_user_handle: Tool.make({
@@ -207,7 +245,7 @@ export const toolContracts = {
 
 export type AutopilotToolName = keyof typeof toolContracts;
 
-export const BASE_TOOL_NAMES = ["get_time", "echo"] as const satisfies ReadonlyArray<AutopilotToolName>;
+export const BASE_TOOL_NAMES = ["get_time", "echo", "lightning_l402_fetch"] as const satisfies ReadonlyArray<AutopilotToolName>;
 
 export const BLUEPRINT_TOOL_NAMES = [
   "identity_update",
@@ -223,6 +261,7 @@ export const BLUEPRINT_TOOL_NAMES = [
 export const TOOL_ORDER = [
   "get_time",
   "echo",
+  "lightning_l402_fetch",
   "bootstrap_set_user_handle",
   "bootstrap_set_agent_name",
   "bootstrap_set_agent_vibe",

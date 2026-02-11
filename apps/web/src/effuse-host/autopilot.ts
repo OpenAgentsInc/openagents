@@ -10,6 +10,7 @@ import { makeFallbackLanguageModel } from "../../../autopilot-worker/src/effect/
 
 import { BlobStore, Lm, Params, Predict, Receipt, type BlobRef } from "@openagentsinc/dse";
 import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
+import { toolContracts } from "../../../autopilot-worker/src/tools";
 
 import { api } from "../../convex/_generated/api";
 import { E2E_COOKIE_NAME, mintE2eJwt } from "../auth/e2eAuth";
@@ -200,6 +201,128 @@ const parseEnsureOwnedThreadResult = (value: unknown): EnsureOwnedThreadResult |
 
 const clampString = (value: string, max: number): string =>
   value.trim().slice(0, Math.max(0, max));
+
+const LIGHTNING_L402_FETCH_TOOL_NAME = "lightning_l402_fetch" as const;
+const LIGHTNING_TERMINAL_STATUSES = ["completed", "cached", "blocked", "failed"] as const;
+type LightningTerminalStatus = (typeof LIGHTNING_TERMINAL_STATUSES)[number];
+
+type LightningTaskStatus =
+  | "queued"
+  | "approved"
+  | "running"
+  | "paid"
+  | "cached"
+  | "blocked"
+  | "failed"
+  | "completed";
+
+type LightningTaskDoc = {
+  readonly taskId: string;
+  readonly status: LightningTaskStatus;
+  readonly request?: {
+    readonly maxSpendMsats?: number;
+  };
+  readonly lastErrorCode?: string | undefined;
+  readonly lastErrorMessage?: string | undefined;
+};
+
+type LightningTaskEventDoc = {
+  readonly toStatus?: string | undefined;
+  readonly reason?: string | undefined;
+  readonly errorCode?: string | undefined;
+  readonly errorMessage?: string | undefined;
+  readonly metadata?: unknown;
+};
+
+type LightningToolTerminalResult = {
+  readonly taskId: string | null;
+  readonly status: LightningTerminalStatus;
+  readonly proofReference: string | null;
+  readonly denyReason: string | null;
+  readonly paymentId: string | null;
+  readonly amountMsats: number | null;
+  readonly responseStatusCode: number | null;
+};
+
+const decodeLightningL402FetchInput = Schema.decodeUnknown(toolContracts.lightning_l402_fetch.input);
+
+const isLightningTerminalStatus = (value: unknown): value is LightningTerminalStatus =>
+  typeof value === "string" && (LIGHTNING_TERMINAL_STATUSES as ReadonlyArray<string>).includes(value);
+
+const isLightningTaskStatus = (value: unknown): value is LightningTaskStatus =>
+  typeof value === "string" &&
+  ["queued", "approved", "running", "paid", "cached", "blocked", "failed", "completed"].includes(value);
+
+const parseLightningTaskDoc = (value: unknown): LightningTaskDoc | null => {
+  const rec = toRecord(value);
+  const taskId = readNonEmptyString(rec?.taskId);
+  const statusRaw = readString(rec?.status);
+  if (!taskId || !statusRaw || !isLightningTaskStatus(statusRaw)) return null;
+  return {
+    taskId,
+    status: statusRaw,
+    request: toRecord(rec?.request) as any,
+    lastErrorCode: readString(rec?.lastErrorCode) ?? undefined,
+    lastErrorMessage: readString(rec?.lastErrorMessage) ?? undefined,
+  };
+};
+
+const parseLightningTaskEventDoc = (value: unknown): LightningTaskEventDoc | null => {
+  const rec = toRecord(value);
+  if (!rec) return null;
+  return {
+    toStatus: readString(rec.toStatus) ?? undefined,
+    reason: readString(rec.reason) ?? undefined,
+    errorCode: readString(rec.errorCode) ?? undefined,
+    errorMessage: readString(rec.errorMessage) ?? undefined,
+    metadata: rec.metadata,
+  };
+};
+
+const parseLightningToolInvocation = (text: string): { readonly rawParams: unknown; readonly source: "call" | "slash" } | null => {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const callMatch = trimmed.match(/^lightning_l402_fetch\s*\(([\s\S]+)\)\s*$/i);
+  if (callMatch) {
+    const raw = callMatch[1]?.trim() ?? "";
+    if (!raw) return { rawParams: {}, source: "call" };
+    try {
+      return { rawParams: JSON.parse(raw), source: "call" };
+    } catch {
+      return { rawParams: { __invalidJson: raw }, source: "call" };
+    }
+  }
+
+  const slashMatch = trimmed.match(/^\/l402\s+fetch\s+(\S+)(?:\s+max=(\d+))?(?:\s+scope=([^\s]+))?\s*$/i);
+  if (slashMatch) {
+    const url = slashMatch[1];
+    const maxSpendMsats = slashMatch[2] ? Number(slashMatch[2]) : 50_000;
+    const scope = slashMatch[3];
+    return {
+      rawParams: {
+        url,
+        method: "GET",
+        maxSpendMsats,
+        ...(scope ? { scope } : {}),
+      },
+      source: "slash",
+    };
+  }
+
+  return null;
+};
+
+const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult): string => {
+  if (result.status === "completed" || result.status === "cached") {
+    const proof = result.proofReference ? ` Proof: ${result.proofReference}` : "";
+    const code = typeof result.responseStatusCode === "number" ? ` HTTP ${result.responseStatusCode}.` : "";
+    return `L402 fetch ${result.status}.${code}${proof}`.trim();
+  }
+
+  const reason = result.denyReason ?? "unknown";
+  return `L402 fetch ${result.status}. Reason: ${reason}`;
+};
 
 const normalizeCapabilityKey = (value: string): string => {
   const normalized = value
@@ -510,6 +633,191 @@ const isCancelRequested = (input: {
     threadId: input.threadId,
     runId: input.runId,
   });
+
+const runLightningL402FetchTool = (input: {
+  readonly convex: ConvexServiceApi;
+  readonly requestId: string;
+  readonly runId: string;
+  readonly threadId: string;
+  readonly controller: AbortController;
+  readonly rawParams: unknown;
+  readonly source: "call" | "slash";
+  readonly queryTimeoutMs: number;
+  readonly mutationTimeoutMs: number;
+}) =>
+  Effect.gen(function* () {
+    const inputDecodeExit = yield* Effect.exit(decodeLightningL402FetchInput(input.rawParams));
+    if (inputDecodeExit._tag === "Failure") {
+      return {
+        validatedInput: null,
+        terminal: {
+          taskId: null,
+          status: "blocked" as const,
+          proofReference: null,
+          denyReason: "invalid_params",
+          paymentId: null,
+          amountMsats: null,
+          responseStatusCode: null,
+        } satisfies LightningToolTerminalResult,
+      };
+    }
+    const decodedInput = inputDecodeExit.value;
+
+    const createRaw = yield* input.convex
+      .mutation(api.lightning.tasks.createTask, {
+        request: decodedInput as any,
+        idempotencyKey: `autopilot:${input.threadId}:${input.runId}`,
+        source: `autopilot_${input.source}_tool`,
+        requestId: input.requestId,
+        metadata: {
+          toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+          runId: input.runId,
+          threadId: input.threadId,
+        },
+      })
+      .pipe(
+        Effect.timeoutFail({
+          duration: `${input.mutationTimeoutMs} millis`,
+          onTimeout: () => new Error("lightning.createTask_timeout"),
+        }),
+      );
+    const createdTask = parseLightningTaskDoc(toRecord(createRaw)?.task);
+    if (!createdTask) {
+      return {
+        validatedInput: decodedInput,
+        terminal: {
+          taskId: null,
+          status: "failed" as const,
+          proofReference: null,
+          denyReason: "invalid_task_shape",
+          paymentId: null,
+          amountMsats: null,
+          responseStatusCode: null,
+        } satisfies LightningToolTerminalResult,
+      };
+    }
+
+    const waitStartedAtMs = Date.now();
+    const WAIT_TIMEOUT_MS = 4_500;
+    const WAIT_INTERVAL_MS = 180;
+
+    let task = createdTask;
+    while (
+      !input.controller.signal.aborted &&
+      !isLightningTerminalStatus(task.status) &&
+      Date.now() - waitStartedAtMs <= WAIT_TIMEOUT_MS
+    ) {
+      yield* Effect.sleep(`${WAIT_INTERVAL_MS} millis`);
+      const taskRaw = yield* input.convex
+        .query(api.lightning.tasks.getTask, { taskId: task.taskId })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${input.queryTimeoutMs} millis`,
+            onTimeout: () => new Error("lightning.getTask_timeout"),
+          }),
+          Effect.catchAll(() => Effect.succeed({ ok: true, task } as unknown)),
+        );
+      task = parseLightningTaskDoc(toRecord(taskRaw)?.task) ?? task;
+    }
+
+    if (!isLightningTerminalStatus(task.status)) {
+      const transitionRaw = yield* input.convex
+        .mutation(api.lightning.tasks.transitionTask, {
+          taskId: task.taskId,
+          toStatus: "blocked",
+          actor: "system",
+          reason: "executor_timeout",
+          requestId: input.requestId,
+          errorCode: "desktop_executor_timeout",
+          errorMessage: "desktop executor did not reach a terminal status before timeout",
+          metadata: {
+            denyReason: "desktop_executor_timeout",
+            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+            runId: input.runId,
+          },
+        })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${input.mutationTimeoutMs} millis`,
+            onTimeout: () => new Error("lightning.transitionTask_timeout"),
+          }),
+          Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
+        );
+      task = parseLightningTaskDoc(toRecord(transitionRaw)?.task) ?? {
+        ...task,
+        status: "blocked",
+      };
+    }
+
+    const eventsRaw = yield* input.convex
+      .query(api.lightning.tasks.listTaskEvents, { taskId: task.taskId, limit: 100 })
+      .pipe(
+        Effect.timeoutFail({
+          duration: `${input.queryTimeoutMs} millis`,
+          onTimeout: () => new Error("lightning.listTaskEvents_timeout"),
+        }),
+        Effect.catchAll(() => Effect.succeed({ ok: true, events: [] as unknown[] } as unknown)),
+      );
+
+    const events = Array.isArray(toRecord(eventsRaw)?.events)
+      ? (toRecord(eventsRaw)?.events as ReadonlyArray<unknown>)
+      : [];
+    const parsedEvents = events.map(parseLightningTaskEventDoc).filter((row): row is LightningTaskEventDoc => row !== null);
+    const latestEvent = [...parsedEvents].reverse().find((event) =>
+      typeof event.toStatus === "string" ? event.toStatus === task.status : false,
+    ) ?? parsedEvents.at(-1);
+
+    const metadata = toRecord(latestEvent?.metadata);
+    const proofReference =
+      readNonEmptyString(metadata?.proofReference) ??
+      readNonEmptyString(metadata?.l402ProofReference) ??
+      null;
+    const denyReason =
+      readNonEmptyString(metadata?.denyReason) ??
+      readNonEmptyString(latestEvent?.errorMessage) ??
+      readNonEmptyString(latestEvent?.reason) ??
+      readNonEmptyString(task.lastErrorMessage) ??
+      (task.status === "blocked" || task.status === "failed" ? task.status : null);
+    const paymentId = readNonEmptyString(metadata?.paymentId) ?? null;
+    const amountMsatsMeta =
+      typeof metadata?.amountMsats === "number" && Number.isFinite(metadata.amountMsats) ? metadata.amountMsats : null;
+    const amountMsatsRequest =
+      typeof task.request?.maxSpendMsats === "number" && Number.isFinite(task.request.maxSpendMsats)
+        ? task.request.maxSpendMsats
+        : null;
+    const responseStatusCode =
+      typeof metadata?.responseStatusCode === "number" && Number.isFinite(metadata.responseStatusCode)
+        ? metadata.responseStatusCode
+        : null;
+
+    return {
+      validatedInput: decodedInput,
+      terminal: {
+        taskId: task.taskId,
+        status: isLightningTerminalStatus(task.status) ? task.status : "failed",
+        proofReference,
+        denyReason,
+        paymentId,
+        amountMsats: amountMsatsMeta ?? amountMsatsRequest,
+        responseStatusCode,
+      } satisfies LightningToolTerminalResult,
+    };
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.succeed({
+        validatedInput: null,
+        terminal: {
+          taskId: null,
+          status: "failed" as const,
+          proofReference: null,
+          denyReason: errorMessageFromUnknown(error, "lightning_tool_failed"),
+          paymentId: null,
+          amountMsats: null,
+          responseStatusCode: null,
+        } satisfies LightningToolTerminalResult,
+      }),
+    ),
+  );
 
 const runDseCanaryRecap = (input: {
   readonly env: WorkerEnv & { readonly AI: Ai };
@@ -1134,6 +1442,7 @@ const runAutopilotStream = (input: {
       const lastUserMessage = lastUserMessageFromSnapshot(messagesRaw);
       const lastUserMessageId = lastUserMessage.messageId;
       const lastUserText = lastUserMessage.text;
+      const lightningInvocation = parseLightningToolInvocation(lastUserText);
 
       const promptMessages = messagesRaw
         .filter((m) => m && typeof m === "object")
@@ -1143,6 +1452,73 @@ const runAutopilotStream = (input: {
         .filter((m) => m.text.trim().length > 0);
 
       const tail = promptMessages.slice(-MAX_CONTEXT_MESSAGES);
+
+      if (lightningInvocation) {
+        const toolPartId = `dsepart_tool_${input.runId}_${LIGHTNING_L402_FETCH_TOOL_NAME}`;
+        const toolCallId = `toolcall_${input.runId}_${LIGHTNING_L402_FETCH_TOOL_NAME}`;
+
+        bufferedParts.push({
+          seq: seq++,
+          part: {
+            type: "dse.tool",
+            v: 1,
+            id: toolPartId,
+            state: "start",
+            tsMs: Date.now(),
+            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+            toolCallId,
+            input: lightningInvocation.rawParams,
+          },
+        });
+        yield* flush(true);
+
+        const toolExecution = yield* runLightningL402FetchTool({
+          convex,
+          requestId,
+          runId: input.runId,
+          threadId: input.threadId,
+          controller: input.controller,
+          rawParams: lightningInvocation.rawParams,
+          source: lightningInvocation.source,
+          queryTimeoutMs: CONVEX_QUERY_TIMEOUT_MS,
+          mutationTimeoutMs: CONVEX_MUTATION_TIMEOUT_MS,
+        });
+        const terminal = toolExecution.terminal;
+        const toolOk = terminal.status === "completed" || terminal.status === "cached";
+
+        bufferedParts.push({
+          seq: seq++,
+          part: {
+            type: "dse.tool",
+            v: 1,
+            id: toolPartId,
+            state: toolOk ? "ok" : "error",
+            tsMs: Date.now(),
+            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+            toolCallId,
+            input: toolExecution.validatedInput ?? lightningInvocation.rawParams,
+            output: terminal,
+            ...(toolOk ? {} : { errorText: terminal.denyReason ?? terminal.status }),
+          },
+        });
+
+        outputText = terminalTextFromLightningToolResult(terminal);
+        if (outputText.trim().length > 0) {
+          hasEmittedTextPart = true;
+          bufferedParts.push({
+            seq: seq++,
+            part: {
+              type: "text-delta",
+              id: crypto.randomUUID(),
+              delta: outputText,
+              metadata: {},
+            } as AiResponse.StreamPartEncoded,
+          });
+        }
+
+        yield* flush(true);
+        return;
+      }
 
       const workersAiModel = makeWorkersAiLanguageModel({
         binding: input.env.AI,

@@ -79,6 +79,7 @@ const FIRST_OPEN_WELCOME_MESSAGE =
 const AUTOPILOT_TOOLKIT = AiToolkit.make(
   aiToolFromContract(toolContracts.get_time),
   aiToolFromContract(toolContracts.echo),
+  aiToolFromContract(toolContracts.lightning_l402_fetch),
   aiToolFromContract(toolContracts.bootstrap_set_user_handle),
   aiToolFromContract(toolContracts.bootstrap_set_agent_name),
   aiToolFromContract(toolContracts.bootstrap_set_agent_vibe),
@@ -1031,6 +1032,25 @@ export class Chat extends Agent<Env> {
         }),
 
       echo: ({ text }: any) => Effect.succeed({ text: String(text ?? "") }),
+
+      lightning_l402_fetch: (input: any) =>
+        Effect.try({
+          try: () => {
+            const decoded = Schema.decodeUnknownSync(toolContracts.lightning_l402_fetch.input)(input);
+            const capMsats = Math.max(0, Math.floor(Number(decoded.maxSpendMsats ?? 0)));
+            const taskId = `do_${this.name}_${Date.now()}`;
+            return {
+              taskId,
+              status: "blocked" as const,
+              proofReference: null,
+              denyReason: "desktop_executor_not_configured_in_do_runtime",
+              paymentId: null,
+              amountMsats: capMsats,
+              responseStatusCode: null,
+            };
+          },
+          catch: (cause) => cause,
+        }),
 
       bootstrap_set_user_handle: ({ handle }: any) =>
         Effect.try({
