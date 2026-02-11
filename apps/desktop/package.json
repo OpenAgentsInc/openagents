@@ -19,6 +19,7 @@
     "smoke:lnd-binary": "node ./scripts/smoke-lnd-binary.mjs",
     "smoke:lnd-runtime": "node ./scripts/smoke-lnd-runtime.mjs",
     "smoke:lnd-wallet": "node ./scripts/smoke-lnd-wallet.mjs",
+    "smoke:l402-convex-executor": "node ./scripts/smoke-l402-convex-executor.mjs",
     "prepackage": "npm run lnd:prepare",
     "premake": "npm run lnd:prepare"
   },

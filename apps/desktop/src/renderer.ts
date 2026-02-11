@@ -71,6 +71,8 @@ const statusBadge = (ok: boolean): TemplateResult =>
 
 const queueStatusClass = (status: ExecutorTask["status"]): string => {
   if (status === "completed") return "oa-status-completed";
+  if (status === "paid" || status === "cached") return "oa-status-completed";
+  if (status === "blocked") return "oa-status-failed";
   if (status === "failed") return "oa-status-failed";
   return "";
 };
@@ -288,8 +290,8 @@ const walletTemplate = (snapshot: DesktopRuntimeState): TemplateResult => html`
 
 const queueTemplate = (tasks: ReadonlyArray<ExecutorTask>): TemplateResult => html`
   <section class="oa-pane">
-    <h3>Demo Provider Queue</h3>
-    <p class="oa-muted">Use payload containing <code>fail</code> to simulate a failure path.</p>
+    <h3>Convex Task Queue</h3>
+    <p class="oa-muted">Creates real Lightning task records in Convex for your signed-in user.</p>
     <div class="oa-row">
       <input
         id="desktop-task-input"
@@ -297,7 +299,7 @@ const queueTemplate = (tasks: ReadonlyArray<ExecutorTask>): TemplateResult => ht
         class="oa-input"
         data-task-input
         type="text"
-        placeholder="task payload"
+        placeholder="https://api.example.com/premium-data"
         value="${drafts.task}"
       />
       <button class="oa-btn" data-task-enqueue type="button">Enqueue Task</button>
@@ -308,8 +310,10 @@ const queueTemplate = (tasks: ReadonlyArray<ExecutorTask>): TemplateResult => ht
         : tasks.map((task) => html`
             <li class="oa-list-item">
               <div><code>${task.id.slice(0, 8)}</code> · <strong class="${queueStatusClass(task.status)}">${task.status}</strong></div>
-              <div>${task.payload}</div>
-              ${task.status === "failed" && task.failureReason
+              <div class="oa-muted">owner: <code>${task.ownerId}</code></div>
+              <div>${task.request.method ?? "GET"} ${task.request.url}</div>
+              <div class="oa-muted">max spend: ${task.request.maxSpendMsats} msats · attempts: ${task.attemptCount}</div>
+              ${(task.status === "failed" || task.status === "blocked") && task.failureReason
                 ? html`<div class="oa-status-failed">reason: ${task.failureReason}</div>`
                 : null}
             </li>

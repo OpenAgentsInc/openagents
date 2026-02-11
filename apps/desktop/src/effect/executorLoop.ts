@@ -4,6 +4,8 @@ import { DesktopConfigService } from "./config";
 import { ConnectivityProbeService } from "./connectivity";
 import { DesktopStateService } from "./state";
 import { TaskProviderService } from "./taskProvider";
+import { DesktopSessionService } from "./session";
+import { L402ExecutorService } from "./l402Executor";
 
 import type { ExecutorTask } from "./model";
 
@@ -25,6 +27,8 @@ export const ExecutorLoopLive = Layer.effect(
     const connectivity = yield* ConnectivityProbeService;
     const state = yield* DesktopStateService;
     const tasks = yield* TaskProviderService;
+    const sessionStore = yield* DesktopSessionService;
+    const l402Executor = yield* L402ExecutorService;
     const fiberRef = yield* Ref.make<Fiber.RuntimeFiber<unknown, unknown> | null>(null);
 
     const setExecutorStatus = Effect.fn("ExecutorLoop.setExecutorStatus")(function* (input: {
@@ -49,18 +53,49 @@ export const ExecutorLoopLive = Layer.effect(
       }));
     });
 
-    const processTask = Effect.fn("ExecutorLoop.processTask")(function* (task: ExecutorTask) {
-      yield* tasks.markRunning(task.id);
+    const processTask = Effect.fn("ExecutorLoop.processTask")(function* (input: {
+      readonly task: ExecutorTask;
+      readonly userId: string;
+      readonly token: string;
+    }) {
+      const task = input.task;
+      if (task.ownerId !== input.userId) {
+        yield* setExecutorStatus({
+          status: "failed_task",
+          taskId: task.id,
+          error: "owner_mismatch",
+          incrementTick: true,
+        });
+        return;
+      }
+
+      yield* tasks.transitionTask({
+        taskId: task.id,
+        token: input.token,
+        toStatus: "running",
+        reason: "desktop_executor_started",
+      });
       yield* setExecutorStatus({
         status: "running_task",
         taskId: task.id,
         incrementTick: true,
       });
 
-      const shouldFail = task.payload.toLowerCase().includes("fail");
-      if (shouldFail) {
-        const reason = "demo_failure_requested";
-        yield* tasks.markFailed(task.id, reason);
+      const outcome = yield* l402Executor.execute(task);
+
+      if (outcome.status === "blocked") {
+        const reason = outcome.denyReason;
+        yield* tasks.transitionTask({
+          taskId: task.id,
+          token: input.token,
+          toStatus: "blocked",
+          reason: "policy_blocked",
+          errorCode: outcome.errorCode,
+          errorMessage: reason,
+          metadata: {
+            denyReason: reason,
+          },
+        });
         yield* setExecutorStatus({
           status: "failed_task",
           taskId: task.id,
@@ -69,7 +104,57 @@ export const ExecutorLoopLive = Layer.effect(
         return;
       }
 
-      yield* tasks.markCompleted(task.id);
+      if (outcome.status === "failed") {
+        const reason = outcome.denyReason;
+        yield* tasks.transitionTask({
+          taskId: task.id,
+          token: input.token,
+          toStatus: "failed",
+          reason: "payment_failed",
+          errorCode: outcome.errorCode,
+          errorMessage: reason,
+          metadata: {
+            denyReason: reason,
+          },
+        });
+        yield* setExecutorStatus({
+          status: "failed_task",
+          taskId: task.id,
+          error: reason,
+        });
+        return;
+      }
+
+      if (outcome.status !== "paid" && outcome.status !== "cached") {
+        yield* setExecutorStatus({
+          status: "failed_task",
+          taskId: task.id,
+          error: "unexpected_executor_outcome",
+        });
+        return;
+      }
+
+      const metadata = {
+        amountMsats: outcome.amountMsats,
+        paymentId: outcome.paymentId,
+        proofReference: outcome.proofReference,
+        responseStatusCode: outcome.responseStatusCode,
+        cacheStatus: outcome.cacheStatus,
+      };
+      yield* tasks.transitionTask({
+        taskId: task.id,
+        token: input.token,
+        toStatus: outcome.status,
+        reason: outcome.status === "paid" ? "payment_success" : "payment_cache_hit",
+        metadata,
+      });
+      yield* tasks.transitionTask({
+        taskId: task.id,
+        token: input.token,
+        toStatus: "completed",
+        reason: "desktop_executor_completed",
+        metadata,
+      });
       yield* setExecutorStatus({
         status: "completed_task",
         taskId: task.id,
@@ -98,7 +183,20 @@ export const ExecutorLoopLive = Layer.effect(
         return;
       }
 
-      const nextTask = yield* tasks.pollPendingTask(snapshot.auth.userId);
+      const session = yield* sessionStore.get();
+      if (!session.token || session.userId !== snapshot.auth.userId) {
+        yield* setExecutorStatus({
+          status: "waiting_auth",
+          incrementTick: true,
+          error: "session_token_missing",
+        });
+        return;
+      }
+
+      const nextTask = yield* tasks.pollPendingTask({
+        userId: snapshot.auth.userId,
+        token: session.token,
+      });
       if (Option.isNone(nextTask)) {
         yield* setExecutorStatus({
           status: "idle",
@@ -108,7 +206,11 @@ export const ExecutorLoopLive = Layer.effect(
         return;
       }
 
-      yield* processTask(nextTask.value);
+      yield* processTask({
+        task: nextTask.value,
+        userId: snapshot.auth.userId,
+        token: session.token,
+      });
     });
 
     const start = Effect.fn("ExecutorLoop.start")(function* () {
@@ -145,8 +247,19 @@ export const ExecutorLoopLive = Layer.effect(
       });
     });
 
+    const safeTick = () =>
+      tick().pipe(
+        Effect.catchAll((err) =>
+          setExecutorStatus({
+            status: "failed_task",
+            error: String(err),
+            incrementTick: true,
+          }),
+        ),
+      );
+
     return ExecutorLoopService.of({
-      tick: () => tick(),
+      tick: () => safeTick(),
       start: () => start(),
       stop: () => stop(),
     });

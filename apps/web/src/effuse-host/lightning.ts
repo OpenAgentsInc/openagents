@@ -31,6 +31,35 @@ type CreateL402TaskBody = typeof CreateL402TaskBodySchema.Type;
 const decodeCreateBody = (value: unknown): Effect.Effect<CreateL402TaskBody, Error> =>
   Schema.decodeUnknown(CreateL402TaskBodySchema)(value).pipe(Effect.mapError(() => new Error("invalid_input")));
 
+const LightningTaskStatusSchema = Schema.Literal(
+  "queued",
+  "approved",
+  "running",
+  "paid",
+  "cached",
+  "blocked",
+  "failed",
+  "completed",
+);
+type LightningTaskStatus = typeof LightningTaskStatusSchema.Type;
+
+const LightningTaskActorSchema = Schema.Literal("web_worker", "desktop_executor", "system");
+
+const TransitionTaskBodySchema = Schema.Struct({
+  toStatus: LightningTaskStatusSchema,
+  actor: Schema.optional(LightningTaskActorSchema),
+  reason: Schema.optional(Schema.String),
+  errorCode: Schema.optional(Schema.String),
+  errorMessage: Schema.optional(Schema.String),
+  metadata: Schema.optional(Schema.Unknown),
+});
+type TransitionTaskBody = typeof TransitionTaskBodySchema.Type;
+
+const decodeTransitionBody = (value: unknown): Effect.Effect<TransitionTaskBody, Error> =>
+  Schema.decodeUnknown(TransitionTaskBodySchema)(value).pipe(
+    Effect.mapError(() => new Error("invalid_input")),
+  );
+
 const readJsonBody = (request: Request): Effect.Effect<unknown, Error> =>
   Effect.tryPromise({
     try: () => request.json(),
@@ -43,6 +72,20 @@ const statusFromErrorMessage = (message: string): number => {
   if (m.includes("invalid_input")) return 400;
   if (m.includes("forbidden")) return 403;
   return 500;
+};
+
+const parseLimit = (value: string | null): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.max(1, Math.min(200, Math.floor(parsed)));
+};
+
+const parseTaskStatus = (value: string | null): Effect.Effect<LightningTaskStatus | undefined, Error> => {
+  if (!value || value.trim().length === 0) return Effect.succeed(undefined);
+  return Schema.decodeUnknown(LightningTaskStatusSchema)(value.trim()).pipe(
+    Effect.mapError(() => new Error("invalid_input")),
+  );
 };
 
 const runAuthedLightning = async <A>(
@@ -93,15 +136,85 @@ const createTaskProgram = (request: Request) =>
     };
   });
 
+const listTasksProgram = (request: Request) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const url = new URL(request.url);
+    const status = yield* parseTaskStatus(url.searchParams.get("status"));
+    const limit = parseLimit(url.searchParams.get("limit"));
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? null;
+
+    const convex = yield* ConvexService;
+    const listed = yield* convex.query(api.lightning.tasks.listTasks, {
+      ...(status ? { status } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+
+    return {
+      ok: true as const,
+      tasks: listed.tasks,
+      requestId,
+    };
+  });
+
+const transitionTaskProgram = (request: Request, taskId: string) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const body = yield* readJsonBody(request);
+    const decoded = yield* decodeTransitionBody(body);
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? undefined;
+
+    const convex = yield* ConvexService;
+    const transitioned = yield* convex.mutation(api.lightning.tasks.transitionTask, {
+      taskId,
+      toStatus: decoded.toStatus,
+      actor: decoded.actor ?? "desktop_executor",
+      reason: decoded.reason,
+      requestId,
+      errorCode: decoded.errorCode,
+      errorMessage: decoded.errorMessage,
+      metadata: decoded.metadata,
+    });
+
+    return {
+      ok: true as const,
+      changed: transitioned.changed,
+      task: transitioned.task,
+      event: transitioned.event ?? null,
+      requestId: requestId ?? null,
+    };
+  });
+
 export const handleLightningRequest = async (request: Request, env: WorkerEnv): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/lightning/")) return null;
 
   if (url.pathname === "/api/lightning/l402/tasks") {
+    if (request.method === "POST") {
+      return runAuthedLightning(request, env, createTaskProgram(request));
+    }
+    if (request.method === "GET") {
+      return runAuthedLightning(request, env, listTasksProgram(request));
+    }
+    return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+  }
+
+  const transitionMatch = /^\/api\/lightning\/l402\/tasks\/([^/]+)\/transition$/.exec(url.pathname);
+  if (transitionMatch) {
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
     }
-    return runAuthedLightning(request, env, createTaskProgram(request));
+    const taskId = decodeURIComponent(transitionMatch[1] ?? "").trim();
+    if (!taskId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+    return runAuthedLightning(request, env, transitionTaskProgram(request, taskId));
   }
 
   return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
