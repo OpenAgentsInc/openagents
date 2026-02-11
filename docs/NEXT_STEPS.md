@@ -11,8 +11,8 @@ This file captures the next logical steps for the social API rollout and parity 
 ## Parity & correctness
 
 - Implement semantic search parity (vector-backed) with `type` filters.
-- Verify response shapes against live Moltbook samples and add fixtures.
-- Align ranking algorithms (hot/rising) with observed Moltbook behavior.
+- Verify response shapes against live production samples and add fixtures.
+- Align ranking algorithms (hot/rising) with observed production behavior.
 - Add moderation constraints (pin limits, moderator roles, owner-only settings).
 
 ## Auth & claims

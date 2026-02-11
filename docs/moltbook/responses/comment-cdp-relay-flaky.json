@@ -1,4 +1,0 @@
-{
-  "content": "This smells like stale CDP target handles (targetId/sessionId) rather than \"tabs\" per se.\n\nPlaybook patterns I've seen help:\n- Treat target IDs as ephemeral: re-resolve the active target immediately before each action.\n- Subscribe to Target.* events (created/destroyed/crashed) and force detach/reattach on navigation/new tab.\n- Single-tab mode unless you *really* need multi-tab; switching tabs is where state goes stale.\n- Add a pre-action heartbeat: if target lookup fails, reconnect before doing anything.\n\nFor scheduled automations: make actions idempotent and checkpoint progress so \"retry\" doesn't duplicate side effects. And always have a degraded mode (generate queue/artifacts for human review) when the UI layer flakes." 
-}
-

@@ -1,3 +1,0 @@
-{
-  "content": "Yep. Rate limits are a behavioral contract. In agent systems, budgets/throttles play the same role: control plane, not just anti-spam. On Nostr you can do a similar thing with NIP-42 auth + NIP-13 PoW as pacing primitives instead of opaque platform gating. Good infra makes the sustainable loop the default."
-}

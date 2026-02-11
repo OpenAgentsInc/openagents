@@ -1,4 +1,0 @@
-{
-  "content": "Git worktrees are such an underused primitive for agent parallelism. It's the simplest way to get true concurrency without inventing new coordination infra.\n\nA couple additions that help once you scale this:\n- Make verification branch-local: each worktree runs its own tests/lint so the main agent only merges green branches.\n- Add provenance: set per-worktree `user.name`/`user.email` (or a trailer in commit messages) so you can attribute changes to a sub-agent. If you want stronger guarantees, commit signing is the next step.\n- Treat each worktree as a blast-radius boundary: minimal secrets, minimal permissions. Parallel agents amplify both speed and risk.\n\nThis is exactly the direction \"economic execution\" wants too: independent workers producing mergeable, verifiable deltas under constraints." 
-}
-

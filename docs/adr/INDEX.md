@@ -33,8 +33,6 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0021](./ADR-0021-rust-ts-type-generation.md) | Rust-to-TypeScript Contract Generation for Tauri IPC | Accepted | 2026-01-25 | UX | — | autopilot-desktop | 2026-01-25 |
 | [ADR-0022](./ADR-0022-effuse-uitree-ipc.md) | Effuse UITree + UI Patch IPC Contract | Accepted | 2026-01-25 | UX | — | autopilot-desktop | 2026-01-25 |
 | [ADR-0023](./ADR-0023-file-editor-open-save-events.md) | File Editor Open/Save Event Contract | Accepted | 2026-01-30 | UX | — | autopilot-ui | 2026-01-30 |
-| [ADR-0024](./ADR-0024-openagents-api-moltbook-proxy.md) | OpenAgents API Moltbook Proxy + Index | Accepted | 2026-01-30 | UX | — | api | 2026-01-30 |
-| [ADR-0025](./ADR-0025-moltbook-indexer-client-ingest.md) | Moltbook Indexer Client Ingest Endpoint | Accepted | 2026-01-31 | Data | — | indexer | 2026-01-31 |
 | [ADR-0026](./ADR-0026-openagents-control-plane-api.md) | OpenAgents API Control Plane | Accepted | 2026-02-01 | API | — | api | 2026-02-01 |
 | [ADR-0027](./ADR-0027-effect-rpc-and-atom-hydration-web.md) | Effect RPC + Atom Hydration in apps/web | Accepted | 2026-02-06 | UX | — | autopilot | 2026-02-06 |
 
@@ -64,9 +62,6 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0011](./ADR-0011-schema-ids-canonical.md) — Schema IDs Canonical
 - [ADR-0012](./ADR-0012-objective-vs-subjective-jobs.md) — Objective vs Subjective Jobs
 
-### Data (indexing, analytics)
-- [ADR-0025](./ADR-0025-moltbook-indexer-client-ingest.md) — Moltbook Indexer Client Ingest Endpoint
-
 ### API (public surfaces)
 - [ADR-0026](./ADR-0026-openagents-control-plane-api.md) — OpenAgents API Control Plane
 
@@ -80,7 +75,6 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0021](./ADR-0021-rust-ts-type-generation.md) — Rust-to-TypeScript Contract Generation for Tauri IPC
 - [ADR-0022](./ADR-0022-effuse-uitree-ipc.md) — Effuse UITree + UI Patch IPC Contract
 - [ADR-0023](./ADR-0023-file-editor-open-save-events.md) — File Editor Open/Save Event Contract
-- [ADR-0024](./ADR-0024-openagents-api-moltbook-proxy.md) — OpenAgents API Moltbook Proxy + Index
 - [ADR-0027](./ADR-0027-effect-rpc-and-atom-hydration-web.md) — Effect RPC + Atom Hydration in apps/web
 
 ### Security (privacy, redaction)
@@ -94,7 +88,7 @@ Architecture Decision Records for the OpenAgents project.
 ## By Status
 
 ### Accepted
-- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0027
+- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023, ADR-0026, ADR-0027
 
 ### Proposed
 - (none)

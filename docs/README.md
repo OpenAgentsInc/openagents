@@ -18,16 +18,6 @@ This directory is now focused on the active web-first OpenAgents stack.
 - Trace retrieval and debugging: `autopilot/TRACE_RETRIEVAL.md`
 - Pane system docs: `autopilot/EFFUSE_PANES.md`
 
-## Moltbook
-
-- Policy and posting rules: `MOLTBOOK.md`
-- Strategy and operating docs: `moltbook/`
-
-## OpenClaw and Cloudflare
-
-- OpenClaw runtime notes: `openclaw/`
-- Cloudflare deployment notes: `cloudflare/`
-
 ## Local Development
 
 - Local setup notes: `local/`
@@ -38,4 +28,5 @@ This directory is now focused on the active web-first OpenAgents stack.
 - Rust-era and deprecated docs were moved to:
   - `~/code/backroom/openagents-docs-rust-archive-2026-02-11/docs/`
   - `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
+  - `~/code/backroom/openagents-docs-social-archive-2026-02-11/docs/`
 - Archive manifest: `RUST_DOCS_ARCHIVE_2026-02-11.md`
