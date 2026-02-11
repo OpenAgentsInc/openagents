@@ -23,6 +23,7 @@
   - Renders full chat transcript + DSE cards in-pane.
   - Includes stable `data-oa-home-*` selectors for E2E.
   - Primes session + Convex auth in-page after verify (no reload).
+  - Clears browser-cached home chat snapshot on explicit logout (prevents stale transcript rehydrate after sign-out).
   - `apps/web/src/effuse-app/controllers/homeController.ts`
 - Streaming finalization + stale-run sweeper:
   - See `docs/autopilot/THREAD_STUCK_STREAMING_FIX.md`.
