@@ -35,13 +35,18 @@ function safeStableStringify(value: unknown, indent = 2): string {
   }
 }
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined
+
+const asTextState = (value: unknown): "streaming" | "done" | undefined =>
+  value === "streaming" || value === "done" ? value : undefined
+
 function isTextPart(part: unknown): part is { readonly type: "text"; readonly text: string; readonly state?: string } {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "text" &&
-    typeof (part as any).text === "string"
-  )
+  const rec = asRecord(part)
+  return rec?.type === "text" && typeof rec.text === "string"
 }
 
 function isToolPart(
@@ -71,20 +76,21 @@ function isToolPart(
       readonly approval?: { readonly id: string; readonly approved?: boolean; readonly reason?: string }
       readonly rawInput?: unknown
     } {
-  if (!part || typeof part !== "object") return false
-  const type = (part as any).type
+  const rec = asRecord(part)
+  if (!rec) return false
+  const type = rec.type
   if (type === "dynamic-tool") {
     return (
-      typeof (part as any).toolName === "string" &&
-      typeof (part as any).toolCallId === "string" &&
-      typeof (part as any).state === "string"
+      typeof rec.toolName === "string" &&
+      typeof rec.toolCallId === "string" &&
+      typeof rec.state === "string"
     )
   }
   return (
     typeof type === "string" &&
     type.startsWith("tool-") &&
-    typeof (part as any).toolCallId === "string" &&
-    typeof (part as any).state === "string"
+    typeof rec.toolCallId === "string" &&
+    typeof rec.state === "string"
   )
 }
 
@@ -95,70 +101,33 @@ function getToolPartName(part: { type: string; toolName?: string }): string {
 }
 
 function isDseSignaturePart(part: unknown): part is ChatDseSignaturePart {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "dse.signature" &&
-    typeof (part as any).id === "string" &&
-    typeof (part as any).signatureId === "string" &&
-    typeof (part as any).state === "string"
-  )
+  const rec = asRecord(part)
+  return rec?.type === "dse.signature" && typeof rec.id === "string" && typeof rec.signatureId === "string" && typeof rec.state === "string"
 }
 
 function isDseToolPart(part: unknown): part is ChatDseToolPart {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "dse.tool" &&
-    typeof (part as any).id === "string" &&
-    typeof (part as any).toolName === "string" &&
-    typeof (part as any).toolCallId === "string" &&
-    typeof (part as any).state === "string"
-  )
+  const rec = asRecord(part)
+  return rec?.type === "dse.tool" && typeof rec.id === "string" && typeof rec.toolName === "string" && typeof rec.toolCallId === "string" && typeof rec.state === "string"
 }
 
 function isDseCompilePart(part: unknown): part is ChatDseCompilePart {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "dse.compile" &&
-    typeof (part as any).id === "string" &&
-    typeof (part as any).signatureId === "string" &&
-    typeof (part as any).jobHash === "string" &&
-    typeof (part as any).state === "string"
-  )
+  const rec = asRecord(part)
+  return rec?.type === "dse.compile" && typeof rec.id === "string" && typeof rec.signatureId === "string" && typeof rec.jobHash === "string" && typeof rec.state === "string"
 }
 
 function isDsePromotePart(part: unknown): part is ChatDsePromotePart {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "dse.promote" &&
-    typeof (part as any).id === "string" &&
-    typeof (part as any).signatureId === "string" &&
-    typeof (part as any).state === "string"
-  )
+  const rec = asRecord(part)
+  return rec?.type === "dse.promote" && typeof rec.id === "string" && typeof rec.signatureId === "string" && typeof rec.state === "string"
 }
 
 function isDseRollbackPart(part: unknown): part is ChatDseRollbackPart {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "dse.rollback" &&
-    typeof (part as any).id === "string" &&
-    typeof (part as any).signatureId === "string" &&
-    typeof (part as any).state === "string"
-  )
+  const rec = asRecord(part)
+  return rec?.type === "dse.rollback" && typeof rec.id === "string" && typeof rec.signatureId === "string" && typeof rec.state === "string"
 }
 
 function isDseBudgetExceededPart(part: unknown): part is ChatDseBudgetExceededPart {
-  return (
-    Boolean(part) &&
-    typeof part === "object" &&
-    (part as any).type === "dse.budget_exceeded" &&
-    typeof (part as any).id === "string" &&
-    typeof (part as any).state === "string"
-  )
+  const rec = asRecord(part)
+  return rec?.type === "dse.budget_exceeded" && typeof rec.id === "string" && typeof rec.state === "string"
 }
 
 const TOOL_IO_MAX_CHARS = 4000
@@ -219,7 +188,7 @@ const toolModelFromCore = (opts: {
   readonly input?: unknown
   readonly output?: unknown
   readonly errorText?: string
-  readonly extra?: unknown
+  readonly extra?: ReturnType<typeof html> | null
 }): ToolPartModel => {
   const input = opts.input !== undefined ? toBoundedText(opts.input, { maxChars: TOOL_IO_MAX_CHARS, mime: "application/json" }) : undefined
   const output =
@@ -235,7 +204,7 @@ const toolModelFromCore = (opts: {
     toolCallId: opts.toolCallId,
     summary: opts.summary,
     details: {
-      extra: opts.extra ? (opts.extra as any) : undefined,
+      extra: opts.extra ?? undefined,
       input,
       output,
       error,
@@ -256,16 +225,16 @@ export function toAutopilotRenderParts(input: {
       if (prev?.kind === "text" && prev.state === p.state) {
         out[out.length - 1] = { kind: "text", text: prev.text + p.text, state: prev.state }
       } else {
-        out.push({ kind: "text", text: p.text, state: p.state as any })
+        out.push({ kind: "text", text: p.text, state: asTextState(p.state) })
       }
       continue
     }
 
     if (isToolPart(p)) {
-      const toolName = getToolPartName(p as any)
-      const state = String((p as any).state ?? "")
-      const rawInput = (p as any).rawInput
-      const toolInput = (p as any).input ?? rawInput
+      const toolName = getToolPartName(p)
+      const state = String(p.state ?? "")
+      const rawInput = p.rawInput
+      const toolInput = p.input ?? rawInput
 
       const meta = input.toolContractsByName?.[toolName]
       const extra =
@@ -280,12 +249,12 @@ export function toAutopilotRenderParts(input: {
 
       const model = toolModelFromCore({
         toolName,
-        toolCallId: String((p as any).toolCallId),
+        toolCallId: String(p.toolCallId),
         status: toToolStatus(state),
         summary: state,
         input: toolInput,
-        output: (p as any).output,
-        errorText: typeof (p as any).errorText === "string" ? (p as any).errorText : undefined,
+        output: p.output,
+        errorText: typeof p.errorText === "string" ? p.errorText : undefined,
         extra,
       })
 
@@ -313,13 +282,7 @@ export function toAutopilotRenderParts(input: {
     }
 
     if (isDseSignaturePart(p)) {
-      const rlmTraceBlobId =
-        p.rlmTrace &&
-        typeof p.rlmTrace === "object" &&
-        (p.rlmTrace as any).blob &&
-        typeof (p.rlmTrace as any).blob.id === "string"
-          ? String((p.rlmTrace as any).blob.id)
-          : undefined
+      const rlmTraceBlobId = asString(asRecord(asRecord(p.rlmTrace)?.blob)?.id)
 
       const previewText = p.outputPreview !== undefined ? safeStableStringify(p.outputPreview) : null
       const outputPreview = previewText
@@ -387,24 +350,12 @@ export function toAutopilotRenderParts(input: {
         signatureId: p.signatureId,
         compiled_id: p.compiled_id,
         receiptId: p.receiptId,
-        modelId:
-          p.model && typeof p.model === "object" && typeof (p.model as any).modelId === "string"
-            ? String((p.model as any).modelId)
-            : undefined,
-        provider:
-          p.model && typeof p.model === "object" && typeof (p.model as any).provider === "string"
-            ? String((p.model as any).provider)
-            : undefined,
-        modelRoute:
-          p.model && typeof p.model === "object" && typeof (p.model as any).route === "string"
-            ? String((p.model as any).route)
-            : undefined,
-        modelFallbackId:
-          p.model && typeof p.model === "object" && typeof (p.model as any).fallbackModelId === "string"
-            ? String((p.model as any).fallbackModelId)
-            : undefined,
-        strategyId: typeof (p as any).strategyId === "string" ? (p as any).strategyId : undefined,
-        strategyReason: typeof (p as any).strategyReason === "string" ? (p as any).strategyReason : undefined,
+        modelId: asString(asRecord(p.model)?.modelId),
+        provider: asString(asRecord(p.model)?.provider),
+        modelRoute: asString(asRecord(p.model)?.route),
+        modelFallbackId: asString(asRecord(p.model)?.fallbackModelId),
+        strategyId: asString(p.strategyId),
+        strategyReason: asString(p.strategyReason),
         durationMs: p.timing?.durationMs,
         budget: p.budget ? { limits: p.budget.limits, usage: p.budget.usage } : undefined,
         contextPressure,
@@ -477,8 +428,8 @@ export function toAutopilotRenderParts(input: {
       const model: DseBudgetExceededCardModel = {
         id: p.id,
         state: p.state,
-        message: typeof (p as any).message === "string" ? String((p as any).message) : undefined,
-        budget: (p as any).budget && typeof (p as any).budget === "object" ? (p as any).budget : undefined,
+        message: typeof p.message === "string" ? p.message : undefined,
+        budget: p.budget && typeof p.budget === "object" ? p.budget : undefined,
       }
       out.push({ kind: "dse-budget-exceeded", model })
       continue
