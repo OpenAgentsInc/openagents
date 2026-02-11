@@ -17,6 +17,7 @@
     "test": "vitest run",
     "lnd:prepare": "node ./scripts/prepare-lnd-binaries.mjs",
     "smoke:lnd-binary": "node ./scripts/smoke-lnd-binary.mjs",
+    "smoke:lnd-runtime": "node ./scripts/smoke-lnd-runtime.mjs",
     "prepackage": "npm run lnd:prepare",
     "premake": "npm run lnd:prepare"
   },

@@ -5,6 +5,7 @@ import { ConnectivityProbeService } from "./connectivity";
 import { DesktopStateService } from "./state";
 import { ExecutorLoopService } from "./executorLoop";
 import { TaskProviderService } from "./taskProvider";
+import { LndRuntimeGatewayService } from "./lndRuntimeGateway";
 
 import type { DesktopRuntimeState, ExecutorTask } from "./model";
 
@@ -16,6 +17,9 @@ export type DesktopAppApi = Readonly<{
   readonly startExecutor: () => Effect.Effect<void, unknown>;
   readonly stopExecutor: () => Effect.Effect<void, unknown>;
   readonly tickExecutor: () => Effect.Effect<void, unknown>;
+  readonly startLndRuntime: () => Effect.Effect<void, unknown>;
+  readonly stopLndRuntime: () => Effect.Effect<void, unknown>;
+  readonly restartLndRuntime: () => Effect.Effect<void, unknown>;
   readonly enqueueDemoTask: (payload: string) => Effect.Effect<ExecutorTask, unknown>;
   readonly listTasks: () => Effect.Effect<ReadonlyArray<ExecutorTask>, unknown>;
   readonly snapshot: () => Effect.Effect<DesktopRuntimeState, unknown>;
@@ -41,6 +45,7 @@ export const DesktopAppLive = Layer.effect(
     const state = yield* DesktopStateService;
     const executor = yield* ExecutorLoopService;
     const tasks = yield* TaskProviderService;
+    const lndRuntime = yield* LndRuntimeGatewayService;
     const tokenRef = yield* Ref.make<string | null>(null);
 
     const refreshConnectivity = Effect.fn("DesktopApp.refreshConnectivity")(function* () {
@@ -55,8 +60,27 @@ export const DesktopAppLive = Layer.effect(
       }));
     });
 
+    const refreshLndRuntime = Effect.fn("DesktopApp.refreshLndRuntime")(function* () {
+      const status = yield* lndRuntime.snapshot();
+      yield* state.update((current) => ({
+        ...current,
+        lnd: {
+          lifecycle: status.lifecycle,
+          health: status.health,
+          target: status.target,
+          pid: status.pid,
+          restartCount: status.restartCount,
+          crashCount: status.crashCount,
+          nextRestartAtMs: status.nextRestartAtMs,
+          lastHealthCheckAtMs: status.lastHealthCheckAtMs,
+          lastError: status.lastError,
+        },
+      }));
+    });
+
     const bootstrap = Effect.fn("DesktopApp.bootstrap")(function* () {
       yield* refreshConnectivity();
+      yield* refreshLndRuntime();
       const token = yield* Ref.get(tokenRef);
       const session = yield* auth.getSession(token).pipe(
         Effect.catchAll(() =>
@@ -107,6 +131,7 @@ export const DesktopAppLive = Layer.effect(
       });
       yield* Ref.set(tokenRef, verified.token);
       yield* refreshConnectivity();
+      yield* refreshLndRuntime();
       yield* state.update((current) => ({
         ...current,
         auth: {
@@ -155,7 +180,31 @@ export const DesktopAppLive = Layer.effect(
       signOut: () => guarded("signOut", signOut()),
       startExecutor: () => executor.start(),
       stopExecutor: () => executor.stop(),
-      tickExecutor: () => executor.tick(),
+      tickExecutor: () =>
+        executor.tick().pipe(
+          Effect.zipRight(refreshLndRuntime()),
+        ),
+      startLndRuntime: () =>
+        guarded(
+          "startLndRuntime",
+          lndRuntime.start().pipe(
+            Effect.zipRight(refreshLndRuntime()),
+          ),
+        ),
+      stopLndRuntime: () =>
+        guarded(
+          "stopLndRuntime",
+          lndRuntime.stop().pipe(
+            Effect.zipRight(refreshLndRuntime()),
+          ),
+        ),
+      restartLndRuntime: () =>
+        guarded(
+          "restartLndRuntime",
+          lndRuntime.restart().pipe(
+            Effect.zipRight(refreshLndRuntime()),
+          ),
+        ),
       enqueueDemoTask: tasks.enqueueDemoTask,
       listTasks: () => tasks.listTasks(),
       snapshot: () => state.get(),
