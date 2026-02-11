@@ -43,6 +43,12 @@ import {
   decodeLndPaymentSendRequestSync,
   decodeLndPaymentTrackRequest,
   decodeLndPaymentTrackRequestSync,
+  decodeLndWalletInitializeRequest,
+  decodeLndWalletInitializeRequestSync,
+  decodeLndWalletRestoreRequest,
+  decodeLndWalletRestoreRequestSync,
+  decodeLndWalletUnlockRequest,
+  decodeLndWalletUnlockRequestSync,
   decodeLndRpcRequest,
   decodeLndRpcRequestSync,
   decodeLndRpcResponse,
@@ -63,6 +69,12 @@ import {
   encodeLndPaymentSendRequestSync,
   encodeLndPaymentTrackRequest,
   encodeLndPaymentTrackRequestSync,
+  encodeLndWalletInitializeRequest,
+  encodeLndWalletInitializeRequestSync,
+  encodeLndWalletRestoreRequest,
+  encodeLndWalletRestoreRequestSync,
+  encodeLndWalletUnlockRequest,
+  encodeLndWalletUnlockRequestSync,
   encodeLndRpcRequest,
   encodeLndRpcRequestSync,
   encodeLndRpcResponse,
@@ -168,6 +180,20 @@ const paymentList = {
   nextOffset: 2,
 }
 
+const walletInitialize = {
+  passphrase: "correct horse battery staple",
+}
+
+const walletUnlock = {
+  passphrase: "correct horse battery staple",
+}
+
+const walletRestore = {
+  passphrase: "restored passphrase",
+  seedMnemonic: new Array(12).fill("seedword"),
+  recoveryWindowDays: 10,
+}
+
 describe("lnd contracts", () => {
   it.effect("decodes and encodes node contracts", () =>
     Effect.gen(function* () {
@@ -209,6 +235,13 @@ describe("lnd contracts", () => {
       expect((yield* decodeLndPaymentTrackRequest(paymentTrack)).paymentHash).toBe("hash_payment_1")
       expect((yield* decodeLndPaymentRecord(paymentRecord)).status).toBe("succeeded")
       expect((yield* decodeLndPaymentListResult(paymentList)).payments.length).toBe(1)
+      expect((yield* decodeLndWalletInitializeRequest(walletInitialize)).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect((yield* decodeLndWalletUnlockRequest(walletUnlock)).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect((yield* decodeLndWalletRestoreRequest(walletRestore)).seedMnemonic.length).toBe(12)
 
       expect((yield* encodeLndRpcRequest(rpcRequest)).method).toBe("POST")
       expect((yield* encodeLndRpcResponse(rpcResponse)).status).toBe(200)
@@ -220,6 +253,13 @@ describe("lnd contracts", () => {
       expect((yield* encodeLndPaymentTrackRequest(paymentTrack)).paymentHash).toBe("hash_payment_1")
       expect((yield* encodeLndPaymentRecord(paymentRecord)).status).toBe("succeeded")
       expect((yield* encodeLndPaymentListResult(paymentList)).payments.length).toBe(1)
+      expect((yield* encodeLndWalletInitializeRequest(walletInitialize)).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect((yield* encodeLndWalletUnlockRequest(walletUnlock)).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect((yield* encodeLndWalletRestoreRequest(walletRestore)).seedMnemonic.length).toBe(12)
 
       expect(decodeLndRpcRequestSync(rpcRequest).path).toBe("/v1/invoices")
       expect(decodeLndRpcResponseSync(rpcResponse).status).toBe(200)
@@ -231,6 +271,13 @@ describe("lnd contracts", () => {
       expect(decodeLndPaymentTrackRequestSync(paymentTrack).paymentHash).toBe("hash_payment_1")
       expect(decodeLndPaymentRecordSync(paymentRecord).status).toBe("succeeded")
       expect(decodeLndPaymentListResultSync(paymentList).payments.length).toBe(1)
+      expect(decodeLndWalletInitializeRequestSync(walletInitialize).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect(decodeLndWalletUnlockRequestSync(walletUnlock).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect(decodeLndWalletRestoreRequestSync(walletRestore).seedMnemonic.length).toBe(12)
 
       expect(encodeLndRpcRequestSync(rpcRequest).method).toBe("POST")
       expect(encodeLndRpcResponseSync(rpcResponse).status).toBe(200)
@@ -242,6 +289,13 @@ describe("lnd contracts", () => {
       expect(encodeLndPaymentTrackRequestSync(paymentTrack).paymentHash).toBe("hash_payment_1")
       expect(encodeLndPaymentRecordSync(paymentRecord).status).toBe("succeeded")
       expect(encodeLndPaymentListResultSync(paymentList).payments.length).toBe(1)
+      expect(encodeLndWalletInitializeRequestSync(walletInitialize).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect(encodeLndWalletUnlockRequestSync(walletUnlock).passphrase).toBe(
+        "correct horse battery staple",
+      )
+      expect(encodeLndWalletRestoreRequestSync(walletRestore).seedMnemonic.length).toBe(12)
     }),
   )
 
@@ -296,6 +350,18 @@ describe("lnd contracts", () => {
         expect.objectContaining({
           _tag: "LndContractDecodeError",
           contract: "LndRpcRequest",
+        }),
+      )
+
+      expect(() =>
+        decodeLndWalletRestoreRequestSync({
+          ...walletRestore,
+          seedMnemonic: ["too-short"],
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          _tag: "LndContractDecodeError",
+          contract: "LndWalletRestoreRequest",
         }),
       )
     }),

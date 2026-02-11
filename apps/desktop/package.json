@@ -18,6 +18,7 @@
     "lnd:prepare": "node ./scripts/prepare-lnd-binaries.mjs",
     "smoke:lnd-binary": "node ./scripts/smoke-lnd-binary.mjs",
     "smoke:lnd-runtime": "node ./scripts/smoke-lnd-runtime.mjs",
+    "smoke:lnd-wallet": "node ./scripts/smoke-lnd-wallet.mjs",
     "prepackage": "npm run lnd:prepare",
     "premake": "npm run lnd:prepare"
   },
@@ -52,6 +53,7 @@
   "dependencies": {
     "@openagentsinc/effuse": "file:../../packages/effuse",
     "@openagentsinc/effuse-panes": "file:../../packages/effuse-panes",
+    "@openagentsinc/lnd-effect": "file:../../packages/lnd-effect",
     "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
     "effect": "^3.19.16",
     "electron-squirrel-startup": "^1.0.1"

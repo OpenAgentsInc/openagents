@@ -52,6 +52,22 @@ export type DesktopRuntimeState = Readonly<{
     readonly lastHealthCheckAtMs: number | null;
     readonly lastError: string | null;
   };
+  readonly wallet: {
+    readonly walletState: "uninitialized" | "initialized" | "locked" | "unlocked";
+    readonly recoveryState:
+      | "none"
+      | "seed_backup_pending"
+      | "seed_backup_acknowledged"
+      | "restore_ready"
+      | "restored";
+    readonly seedBackupAcknowledged: boolean;
+    readonly passphraseStored: boolean;
+    readonly restorePrepared: boolean;
+    readonly lastErrorCode: string | null;
+    readonly lastErrorMessage: string | null;
+    readonly lastOperation: string | null;
+    readonly updatedAtMs: number | null;
+  };
 }>;
 
 export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
@@ -85,5 +101,16 @@ export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
     nextRestartAtMs: null,
     lastHealthCheckAtMs: null,
     lastError: null,
+  },
+  wallet: {
+    walletState: "uninitialized",
+    recoveryState: "none",
+    seedBackupAcknowledged: false,
+    passphraseStored: false,
+    restorePrepared: false,
+    lastErrorCode: null,
+    lastErrorMessage: null,
+    lastOperation: null,
+    updatedAtMs: null,
   },
 });

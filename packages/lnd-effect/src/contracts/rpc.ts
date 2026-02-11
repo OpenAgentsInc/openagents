@@ -106,6 +106,29 @@ export const LndPaymentListResult = Schema.Struct({
 })
 export type LndPaymentListResult = typeof LndPaymentListResult.Type
 
+const SeedMnemonic = Schema.Array(Schema.NonEmptyString).pipe(
+  Schema.minItems(12),
+  Schema.maxItems(24),
+)
+
+export const LndWalletInitializeRequest = Schema.Struct({
+  passphrase: Schema.NonEmptyString,
+  seedMnemonic: Schema.optional(SeedMnemonic),
+})
+export type LndWalletInitializeRequest = typeof LndWalletInitializeRequest.Type
+
+export const LndWalletUnlockRequest = Schema.Struct({
+  passphrase: Schema.NonEmptyString,
+})
+export type LndWalletUnlockRequest = typeof LndWalletUnlockRequest.Type
+
+export const LndWalletRestoreRequest = Schema.Struct({
+  passphrase: Schema.NonEmptyString,
+  seedMnemonic: SeedMnemonic,
+  recoveryWindowDays: Schema.optional(Schema.Int.pipe(Schema.nonNegative())),
+})
+export type LndWalletRestoreRequest = typeof LndWalletRestoreRequest.Type
+
 export const decodeLndRpcRequest = (input: unknown) => decodeWithTypedError("LndRpcRequest", LndRpcRequest, input)
 export const decodeLndRpcRequestSync = (input: unknown) =>
   decodeWithTypedErrorSync("LndRpcRequest", LndRpcRequest, input)
@@ -174,3 +197,24 @@ export const decodeLndPaymentListResultSync = (input: unknown) =>
   decodeWithTypedErrorSync("LndPaymentListResult", LndPaymentListResult, input)
 export const encodeLndPaymentListResult = Schema.encode(LndPaymentListResult)
 export const encodeLndPaymentListResultSync = Schema.encodeSync(LndPaymentListResult)
+
+export const decodeLndWalletInitializeRequest = (input: unknown) =>
+  decodeWithTypedError("LndWalletInitializeRequest", LndWalletInitializeRequest, input)
+export const decodeLndWalletInitializeRequestSync = (input: unknown) =>
+  decodeWithTypedErrorSync("LndWalletInitializeRequest", LndWalletInitializeRequest, input)
+export const encodeLndWalletInitializeRequest = Schema.encode(LndWalletInitializeRequest)
+export const encodeLndWalletInitializeRequestSync = Schema.encodeSync(LndWalletInitializeRequest)
+
+export const decodeLndWalletUnlockRequest = (input: unknown) =>
+  decodeWithTypedError("LndWalletUnlockRequest", LndWalletUnlockRequest, input)
+export const decodeLndWalletUnlockRequestSync = (input: unknown) =>
+  decodeWithTypedErrorSync("LndWalletUnlockRequest", LndWalletUnlockRequest, input)
+export const encodeLndWalletUnlockRequest = Schema.encode(LndWalletUnlockRequest)
+export const encodeLndWalletUnlockRequestSync = Schema.encodeSync(LndWalletUnlockRequest)
+
+export const decodeLndWalletRestoreRequest = (input: unknown) =>
+  decodeWithTypedError("LndWalletRestoreRequest", LndWalletRestoreRequest, input)
+export const decodeLndWalletRestoreRequestSync = (input: unknown) =>
+  decodeWithTypedErrorSync("LndWalletRestoreRequest", LndWalletRestoreRequest, input)
+export const encodeLndWalletRestoreRequest = Schema.encode(LndWalletRestoreRequest)
+export const encodeLndWalletRestoreRequestSync = Schema.encodeSync(LndWalletRestoreRequest)

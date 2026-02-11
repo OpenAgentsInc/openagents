@@ -17,7 +17,11 @@ import type {
   LndPaymentSendRequest,
   LndPaymentTrackRequest,
   LndRpcRequest,
+  LndWalletInitializeRequest,
+  LndWalletRestoreRequest,
+  LndWalletUnlockRequest,
 } from "../contracts/rpc.js"
+import { LndWalletOperationError } from "../errors/lndErrors.js"
 import { LndInvoiceService } from "../services/lndInvoiceService.js"
 import { LndNodeService } from "../services/lndNodeService.js"
 import { LndPaymentService } from "../services/lndPaymentService.js"
@@ -109,6 +113,7 @@ export const makeLndNodeDeterministicLayer = (input?: {
 export const makeLndDeterministicLayer = (input?: {
   readonly nodeInfo?: LndNodeInfo
   readonly walletState?: LndWalletState
+  readonly walletPassphrase?: string
   readonly balances?: LndBalanceSummary
   readonly channels?: LndChannelSummary
   readonly seedInvoices?: ReadonlyArray<LndInvoiceRecord>
@@ -123,9 +128,79 @@ export const makeLndDeterministicLayer = (input?: {
     Layer.effect(
       LndWalletService,
       Effect.gen(function* () {
-        const walletState = input?.walletState ?? input?.nodeInfo?.walletState ?? "locked"
+        const walletStateRef = yield* Ref.make<LndWalletState>(
+          input?.walletState ?? input?.nodeInfo?.walletState ?? "locked",
+        )
+        const passphraseHashRef = yield* Ref.make<string | null>(
+          input?.walletPassphrase ? deterministicHex(input.walletPassphrase) : null,
+        )
+        const hashPassphrase = (value: string): string => deterministicHex(value)
+
+        const initializeWallet = (request: LndWalletInitializeRequest) =>
+          Effect.gen(function* () {
+            const current = yield* Ref.get(walletStateRef)
+            if (current !== "uninitialized") {
+              return yield* LndWalletOperationError.make({
+                operation: "initializeWallet",
+                reason: `wallet_state_${current}`,
+              })
+            }
+            yield* Ref.set(passphraseHashRef, hashPassphrase(request.passphrase))
+            yield* Ref.set(walletStateRef, "locked")
+            return "locked" as const
+          })
+
+        const unlockWallet = (request: LndWalletUnlockRequest) =>
+          Effect.gen(function* () {
+            const current = yield* Ref.get(walletStateRef)
+            if (current === "uninitialized") {
+              return yield* LndWalletOperationError.make({
+                operation: "unlockWallet",
+                reason: "wallet_uninitialized",
+              })
+            }
+
+            const expectedHash = yield* Ref.get(passphraseHashRef)
+            if (!expectedHash || expectedHash !== hashPassphrase(request.passphrase)) {
+              return yield* LndWalletOperationError.make({
+                operation: "unlockWallet",
+                reason: "invalid_passphrase",
+              })
+            }
+
+            yield* Ref.set(walletStateRef, "unlocked")
+            return "unlocked" as const
+          })
+
+        const restoreWallet = (request: LndWalletRestoreRequest) =>
+          Effect.gen(function* () {
+            if (request.seedMnemonic.length < 12 || request.seedMnemonic.length > 24) {
+              return yield* LndWalletOperationError.make({
+                operation: "restoreWallet",
+                reason: "invalid_seed_length",
+              })
+            }
+            yield* Ref.set(passphraseHashRef, hashPassphrase(request.passphrase))
+            yield* Ref.set(walletStateRef, "locked")
+            return "locked" as const
+          })
+
+        const lockWallet = () =>
+          Effect.gen(function* () {
+            const current = yield* Ref.get(walletStateRef)
+            if (current === "uninitialized") {
+              return "uninitialized" as const
+            }
+            yield* Ref.set(walletStateRef, "locked")
+            return "locked" as const
+          })
+
         return LndWalletService.of({
-          getWalletState: () => Effect.succeed(walletState),
+          getWalletState: () => Ref.get(walletStateRef),
+          initializeWallet,
+          unlockWallet,
+          restoreWallet,
+          lockWallet,
         })
       }),
     ),
