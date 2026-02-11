@@ -178,4 +178,3 @@ This is what we should fold into `docs/autopilot/reference/AUTOPILOT_OPTIMIZATIO
 - `~/code/microcode/microcode/utils/paste.py` (paste placeholder pattern)
 - `~/code/microcode/microcode/utils/mcp.py` (MCP tool mounting + namespacing)
 - `~/code/microcode/microcode/utils/cache.py` (atomic persistence + chmod 600)
-

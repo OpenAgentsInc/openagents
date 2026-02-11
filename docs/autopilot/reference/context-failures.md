@@ -126,4 +126,3 @@ We should prefer deterministic boundaries and explicit strategy switching:
   - uses context ops to fetch evidence surgically
   - enforces strict budgets
 - If inputs are untrusted or ambiguous: escalate verification and provenance requirements before acting.
-
