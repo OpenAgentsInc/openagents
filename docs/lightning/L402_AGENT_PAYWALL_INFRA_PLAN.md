@@ -18,6 +18,27 @@ Core decisions:
 
 This is sequencing and architecture guidance for full implementation, not marketing copy.
 
+## 1.1) Local-Track Handoff Contract (from #1605)
+
+Hosted rollout is explicitly downstream of the local-node execution baseline. Before staging gateway rollout is considered ready, hosted phases must preserve contract compatibility with outputs from the local Neutrino track:
+
+1. Task lifecycle parity:
+   - `queued/approved/running/paid/cached/blocked/failed/completed`
+2. Proof + receipt parity:
+   - `paymentProofRef` (preimage reference) available on successful paid path
+   - deterministic deny reason on blocked path (for example budget/policy)
+3. Correlation parity:
+   - request/task/user identifiers preserved end-to-end
+   - artifact-friendly IDs for non-interactive agent verification
+4. Execution-path labeling:
+   - explicit `executionPath` (`local-node` or `hosted-node`) in telemetry/events
+
+Sequencing implication:
+
+1. `#1597` and `#1598` may proceed in parallel with local track.
+2. `#1599` is gated by local baseline validation (`#1614`) and synchronization phase (`#1615`).
+3. `#1604` must gate on both hosted flow health and local-node regression parity.
+
 ## 2) Repo-Aware Baseline
 
 The plan is grounded in the current codebase, not a greenfield architecture.
@@ -174,6 +195,19 @@ Voltage is the initial Lightning provider for seller infrastructure.
    - fail challenge issuance predictably;
    - surface typed error reason in gateway telemetry and control-plane status;
    - allow emergency pause of all paywalls.
+
+## 5.4) Hosted vs Local Role Split (Operator Clarity)
+
+Hosted infrastructure is the seller/paywall control and gateway path. Local-node mode remains a buyer/executor path for user-owned wallets and local deterministic testing.
+
+1. Hosted path (`hosted-node`):
+   - OpenAgents-managed paywall URLs
+   - Aperture + Voltage challenge/proxy flow
+2. Local path (`local-node`):
+   - desktop LND Neutrino execution via `lnd-effect` + `lightning-effect`
+   - smoke/CI regression path that must continue to pass as hosted stack evolves
+
+These paths are complementary and must stay schema-compatible at the artifact/correlation layer.
 
 ## 6) Aperture on Google Cloud (Detailed)
 
@@ -450,10 +484,13 @@ Data should come from new Worker/Convex read APIs with request correlation IDs.
    - schema/contract tests for new seller types
    - deterministic compile tests for rule ordering
    - challenge/authorization edge cases
-2. `apps/web`
+2. `packages/lnd-effect`
+   - contract and adapter tests for LND RPC integration used by local executor path
+   - typed error mapping and deterministic transport behavior
+3. `apps/web`
    - Convex mutation/query tests for paywall lifecycle
    - API authorization and ownership tests
-3. `apps/autopilot-worker`
+4. `apps/autopilot-worker`
    - tool schema tests
    - deterministic tool output tests
 
@@ -466,18 +503,26 @@ Data should come from new Worker/Convex read APIs with request correlation IDs.
    - paused paywall
    - over-cap policy deny
    - stale/expired invoice
+3. Local-node parity checks:
+   - local desktop executor success path remains green
+   - local budget/policy deny path remains deterministic
+   - artifact schema parity for correlation IDs across `local-node` and `hosted-node`
 
 ### 13.3 E2E smoke tests
 
-1. `apps/web` prod-style smoke using existing E2E harness patterns.
-2. Include request correlation assertions (`x-oa-request-id`, `oa_req=<id>` style linkage where relevant).
-3. Ensure artifacts saved for replay/audit.
+1. `apps/web` hosted prod-style smoke using existing E2E harness patterns.
+2. `apps/desktop` local-node smoke run (non-interactive JSON artifact output).
+3. Include request correlation assertions (`x-oa-request-id`, `oa_req=<id>` style linkage where relevant).
+4. Ensure artifacts saved for replay/audit.
 
 ### 13.4 Mandatory local validation before merge
 
-1. `cd packages/lightning-effect && npm run typecheck && npm test`
-2. `cd apps/autopilot-worker && npm run lint && npm test`
-3. `cd apps/web && npm run lint && npm test`
+1. `cd packages/lnd-effect && npm run typecheck && npm test`
+2. `cd packages/lightning-effect && npm run typecheck && npm test`
+3. `cd apps/desktop && npm run typecheck && npm test`
+4. `cd apps/desktop && npm run test:l402-local-node-smoke -- --json`
+5. `cd apps/autopilot-worker && npm run typecheck && npm test`
+6. `cd apps/web && npm run lint && npm test`
 
 Use app deploy scripts for production deploy operations (avoid raw `npx convex deploy` path).
 
