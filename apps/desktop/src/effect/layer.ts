@@ -8,6 +8,7 @@ import { DesktopAppLive, DesktopAppService } from "./app";
 import { DesktopStateLive } from "./state";
 import { ExecutorLoopLive } from "./executorLoop";
 import { TaskProviderLive } from "./taskProvider";
+import { LndRuntimeGatewayLive } from "./lndRuntimeGateway";
 
 export type DesktopLayerOverrides = Readonly<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,6 +17,8 @@ export type DesktopLayerOverrides = Readonly<{
   readonly connectivity?: Layer.Layer<any, any, any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly taskProvider?: Layer.Layer<any, any, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly lndRuntimeGateway?: Layer.Layer<any, any, any>;
 }>;
 
 export const makeDesktopLayer = (
@@ -26,6 +29,7 @@ export const makeDesktopLayer = (
     DesktopConfigLive(config),
     DesktopStateLive,
     overrides?.taskProvider ?? TaskProviderLive,
+    overrides?.lndRuntimeGateway ?? LndRuntimeGatewayLive,
   );
 
   const withAuth = Layer.provideMerge(overrides?.authGateway ?? AuthGatewayLive, base);

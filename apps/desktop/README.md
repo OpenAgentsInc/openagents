@@ -25,6 +25,7 @@ npm run typecheck
 npm test
 npm run lnd:prepare
 npm run smoke:lnd-binary -- --json
+npm run smoke:lnd-runtime -- --json
 ```
 
 ## Environment
@@ -52,6 +53,7 @@ Optional environment variables:
 - `npm run lnd:prepare` downloads release artifacts from Lightning Network releases, verifies archive + binary checksums, and stages binaries under `build-resources/lnd`.
 - Forge bundles `build-resources/lnd` via `packagerConfig.extraResource`, so packaged apps receive `resources/lnd/<target>/lnd`.
 - Runtime checksum validation uses `resources/lnd/runtime-manifest.json` and fails closed in packaged mode on mismatch.
+- Main process boots an Effect-managed LND lifecycle manager (start/stop/restart + health/backoff state machine) and exposes renderer-safe status via preload bridge.
 
 ### Local Source Override (No hardcoded path)
 

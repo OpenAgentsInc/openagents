@@ -157,11 +157,26 @@ const executorTemplate = (snapshot: DesktopRuntimeState): TemplateResult => html
       <dd>${formatTs(snapshot.executor.lastTransitionAtMs)}</dd>
       <dt>Last error</dt>
       <dd>${snapshot.executor.lastError ?? "none"}</dd>
+      <dt>LND lifecycle</dt>
+      <dd>${snapshot.lnd.lifecycle}</dd>
+      <dt>LND health</dt>
+      <dd>${snapshot.lnd.health}</dd>
+      <dt>LND target / pid</dt>
+      <dd><code>${snapshot.lnd.target ?? "n/a"}</code> / <code>${snapshot.lnd.pid ?? "n/a"}</code></dd>
+      <dt>LND crashes / restarts</dt>
+      <dd>${snapshot.lnd.crashCount} / ${snapshot.lnd.restartCount}</dd>
+      <dt>LND last error</dt>
+      <dd>${snapshot.lnd.lastError ?? "none"}</dd>
     </dl>
     <div class="oa-row">
       <button class="oa-btn" data-loop-start type="button">Start Loop</button>
       <button class="oa-btn muted" data-loop-stop type="button">Stop Loop</button>
       <button class="oa-btn muted" data-loop-tick type="button">Tick Once</button>
+    </div>
+    <div class="oa-row">
+      <button class="oa-btn" data-lnd-start type="button">Start LND</button>
+      <button class="oa-btn muted" data-lnd-stop type="button">Stop LND</button>
+      <button class="oa-btn muted" data-lnd-restart type="button">Restart LND</button>
     </div>
   </section>
 `;
@@ -273,6 +288,9 @@ const bindExecutorActions = (slot: HTMLElement, refresh: () => Promise<void>): v
   const startLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-start]");
   const stopLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-stop]");
   const tickLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-tick]");
+  const startLndButton = slot.querySelector<HTMLButtonElement>("[data-lnd-start]");
+  const stopLndButton = slot.querySelector<HTMLButtonElement>("[data-lnd-stop]");
+  const restartLndButton = slot.querySelector<HTMLButtonElement>("[data-lnd-restart]");
 
   startLoopButton?.addEventListener("click", (event) => {
     event.preventDefault();
@@ -287,6 +305,25 @@ const bindExecutorActions = (slot: HTMLElement, refresh: () => Promise<void>): v
   tickLoopButton?.addEventListener("click", (event) => {
     event.preventDefault();
     runUiAction("tick_loop", () => runApp((app) => app.tickExecutor()).then(() => undefined), refresh);
+  });
+
+  startLndButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    runUiAction("start_lnd", () => runApp((app) => app.startLndRuntime()).then(() => undefined), refresh);
+  });
+
+  stopLndButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    runUiAction("stop_lnd", () => runApp((app) => app.stopLndRuntime()).then(() => undefined), refresh);
+  });
+
+  restartLndButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    runUiAction(
+      "restart_lnd",
+      () => runApp((app) => app.restartLndRuntime()).then(() => undefined),
+      refresh,
+    );
   });
 };
 

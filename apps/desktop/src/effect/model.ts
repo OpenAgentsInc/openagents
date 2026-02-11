@@ -41,6 +41,17 @@ export type DesktopRuntimeState = Readonly<{
     readonly lastTaskId: string | null;
     readonly lastError: string | null;
   };
+  readonly lnd: {
+    readonly lifecycle: "unavailable" | "stopped" | "starting" | "running" | "stopping" | "backoff" | "failed";
+    readonly health: "unknown" | "starting" | "healthy" | "unhealthy";
+    readonly target: string | null;
+    readonly pid: number | null;
+    readonly restartCount: number;
+    readonly crashCount: number;
+    readonly nextRestartAtMs: number | null;
+    readonly lastHealthCheckAtMs: number | null;
+    readonly lastError: string | null;
+  };
 }>;
 
 export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
@@ -62,6 +73,17 @@ export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
     ticks: 0,
     lastTransitionAtMs: null,
     lastTaskId: null,
+    lastError: null,
+  },
+  lnd: {
+    lifecycle: "unavailable",
+    health: "unknown",
+    target: null,
+    pid: null,
+    restartCount: 0,
+    crashCount: 0,
+    nextRestartAtMs: null,
+    lastHealthCheckAtMs: null,
     lastError: null,
   },
 });

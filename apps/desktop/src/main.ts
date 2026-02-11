@@ -1,8 +1,15 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
+import { Effect } from "effect";
 
-import { LndBinaryResolverError, resolveAndVerifyLndBinary } from "./main/lndBinaryResolver";
+import { LND_RUNTIME_CHANNELS } from "./main/lndRuntimeIpc";
+import {
+  LndRuntimeManagerService,
+  projectLndRuntimeSnapshotForRenderer,
+  toRuntimeManagerError,
+} from "./main/lndRuntimeManager";
+import { makeLndRuntimeManagedRuntime } from "./main/lndRuntimeRuntime";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -46,27 +53,95 @@ const createWindow = () => {
   }
 };
 
-const ensureLndBinaryReady = (): boolean => {
+const lndRuntime = makeLndRuntimeManagedRuntime({
+  appPath: app.getAppPath(),
+  resourcesPath: process.resourcesPath,
+  userDataPath: app.getPath("userData"),
+  isPackaged: app.isPackaged,
+  env: process.env,
+});
+
+const runLndRuntime = <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> =>
+  lndRuntime.runPromise(effect as Effect.Effect<A, E, never>);
+
+const registerLndRuntimeIpcHandlers = (): void => {
+  ipcMain.handle(LND_RUNTIME_CHANNELS.snapshot, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndRuntimeManagerService;
+        const snapshot = yield* manager.snapshot();
+        return projectLndRuntimeSnapshotForRenderer(snapshot);
+      }),
+    ),
+  );
+
+  ipcMain.handle(LND_RUNTIME_CHANNELS.start, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndRuntimeManagerService;
+        yield* manager.start();
+      }),
+    ),
+  );
+
+  ipcMain.handle(LND_RUNTIME_CHANNELS.stop, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndRuntimeManagerService;
+        yield* manager.stop();
+      }),
+    ),
+  );
+
+  ipcMain.handle(LND_RUNTIME_CHANNELS.restart, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndRuntimeManagerService;
+        yield* manager.restart();
+      }),
+    ),
+  );
+};
+
+const startLndRuntime = async (): Promise<boolean> => {
   try {
-    const resolved = resolveAndVerifyLndBinary({
-      appPath: app.getAppPath(),
-      resourcesPath: process.resourcesPath,
-      isPackaged: app.isPackaged,
-      env: process.env,
-    });
+    await runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndRuntimeManagerService;
+        yield* manager.start();
+        const snapshot = yield* manager.snapshot();
+        return snapshot;
+      }),
+    );
+    const resolved = await runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndRuntimeManagerService;
+        return yield* manager.snapshot();
+      }),
+    );
     console.info(
-      `[desktop:lnd] binary ready target=${resolved.target} source=${resolved.source} sha256=${resolved.sha256}`,
+      `[desktop:lnd] runtime started lifecycle=${resolved.lifecycle} target=${resolved.target ?? "n/a"} pid=${resolved.pid ?? "n/a"}`,
     );
     return true;
   } catch (error) {
-    if (error instanceof LndBinaryResolverError) {
-      console.error(`[desktop:lnd] binary resolution failed (${error.code}): ${error.message}`);
-    } else {
-      console.error(`[desktop:lnd] binary resolution failed: ${String(error)}`);
-    }
+    const mapped = toRuntimeManagerError(error);
+    console.error(`[desktop:lnd] runtime start failed (${mapped.code}): ${mapped.message}`);
 
     // Production builds fail closed if binary staging or checksum validation fails.
     return !app.isPackaged;
+  }
+};
+
+const stopLndRuntime = async (): Promise<void> => {
+  try {
+    await runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndRuntimeManagerService;
+        yield* manager.stop();
+      }),
+    );
+  } catch (error) {
+    console.error(`[desktop:lnd] runtime stop failed: ${String(error)}`);
   }
 };
 
@@ -74,17 +149,21 @@ const ensureLndBinaryReady = (): boolean => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
-  if (!ensureLndBinaryReady()) {
-    app.quit();
-    return;
-  }
-  createWindow();
+  void (async () => {
+    registerLndRuntimeIpcHandlers();
+    if (!(await startLndRuntime())) {
+      app.quit();
+      return;
+    }
+    createWindow();
+  })();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
+  void stopLndRuntime();
   if (process.platform !== "darwin") {
     app.quit();
   }
@@ -96,6 +175,10 @@ app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+app.on("before-quit", () => {
+  void stopLndRuntime();
 });
 
 // In this file you can include the rest of your app's specific main process
