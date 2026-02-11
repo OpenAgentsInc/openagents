@@ -42,9 +42,17 @@ export class CredentialMissingError extends Schema.TaggedError<CredentialMissing
   },
 ) {}
 
+export class AuthorizationSerializeError extends Schema.TaggedError<AuthorizationSerializeError>()(
+  "AuthorizationSerializeError",
+  {
+    reason: Schema.String,
+  },
+) {}
+
 export type LightningEffectError =
   | ChallengeParseError
   | BudgetExceededError
   | DomainNotAllowedError
   | PaymentFailedError
   | CredentialMissingError
+  | AuthorizationSerializeError
