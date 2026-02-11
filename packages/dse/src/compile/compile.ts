@@ -16,7 +16,7 @@ import type { EvalEnv } from "../eval/evaluate.js";
 import type { Dataset } from "../eval/dataset.js";
 import { filter as filterDataset, datasetHash as datasetHashEffect } from "../eval/dataset.js";
 import type { RewardBundle } from "../eval/reward.js";
-import { evaluate } from "../eval/evaluate.js";
+import { evaluate, type EvalExampleResultV1 } from "../eval/evaluate.js";
 
 import type { CompileJobSpecV1, CompileOptimizerV1, CompileSearchSpaceV1 } from "./job.js";
 import { compileJobHash } from "./job.js";
@@ -59,6 +59,9 @@ export type CompileOptions<I, O, Y> = {
   } | undefined;
 };
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
 function sortUniq(ids: ReadonlyArray<string>): ReadonlyArray<string> {
   const cleaned = ids.map((id) => id.trim()).filter((id) => id.length > 0);
   cleaned.sort();
@@ -66,26 +69,37 @@ function sortUniq(ids: ReadonlyArray<string>): ReadonlyArray<string> {
 }
 
 function mergeParams(base: DseParams, patch: Partial<DseParams>): DseParams {
-  // DseParams is shallow with nested objects. We merge the known nested objects.
-  const next: any = { ...base };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) continue;
-    if (
-      k === "strategy" ||
-      k === "instruction" ||
-      k === "fewShot" ||
-      k === "model" ||
-      k === "modelRoles" ||
-      k === "decode" ||
-      k === "tools" ||
-      k === "rlmLite"
-    ) {
-      next[k] = { ...(base as any)[k], ...(v as any) };
-    } else {
-      next[k] = v;
-    }
-  }
-  return next as DseParams;
+  return {
+    ...base,
+    ...(patch.paramsVersion !== undefined ? { paramsVersion: patch.paramsVersion } : {}),
+    ...(patch.strategy !== undefined
+      ? { strategy: { ...(base.strategy ?? {}), ...patch.strategy } }
+      : {}),
+    ...(patch.instruction !== undefined
+      ? { instruction: { ...(base.instruction ?? {}), ...patch.instruction } }
+      : {}),
+    ...(patch.fewShot !== undefined
+      ? { fewShot: { ...(base.fewShot ?? {}), ...patch.fewShot } }
+      : {}),
+    ...(patch.model !== undefined
+      ? { model: { ...(base.model ?? {}), ...patch.model } }
+      : {}),
+    ...(patch.modelRoles !== undefined
+      ? { modelRoles: { ...(base.modelRoles ?? {}), ...patch.modelRoles } }
+      : {}),
+    ...(patch.decode !== undefined
+      ? { decode: { ...(base.decode ?? {}), ...patch.decode } }
+      : {}),
+    ...(patch.tools !== undefined
+      ? { tools: { ...(base.tools ?? {}), ...patch.tools } }
+      : {}),
+    ...(patch.rlmLite !== undefined
+      ? { rlmLite: { ...(base.rlmLite ?? {}), ...patch.rlmLite } }
+      : {}),
+    ...(patch.budgets !== undefined
+      ? { budgets: { ...(base.budgets ?? {}), ...patch.budgets } }
+      : {})
+  };
 }
 
 function pickBest(candidates: ReadonlyArray<CandidateScoreV1>): CandidateScoreV1 {
@@ -152,7 +166,9 @@ function rlmControllerInstructionGrid(base: DseParams, searchSpace: CompileSearc
   const variants = searchSpace.rlmControllerInstructionVariants;
   if (!variants || variants.length === 0) return [base];
   const sorted = [...variants].sort((a, b) => a.id.localeCompare(b.id));
-  return sorted.map((v) => mergeParams(base, { rlmLite: { controllerInstructions: v.text } } as any));
+  return sorted.map((v) =>
+    mergeParams(base, { rlmLite: { controllerInstructions: v.text } })
+  );
 }
 
 function rlmChunkingPolicyGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): ReadonlyArray<DseParams> {
@@ -168,7 +184,7 @@ function rlmChunkingPolicyGrid(base: DseParams, searchSpace: CompileSearchSpaceV
           ...(typeof v.maxChunks === "number" ? { maxChunks: v.maxChunks } : {})
         }
       }
-    } as any)
+    })
   );
 }
 
@@ -176,7 +192,7 @@ function rlmSubRoleGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): Rea
   const variants = searchSpace.rlmSubRoleVariants;
   if (!variants || variants.length === 0) return [base];
   const sorted = [...variants].sort((a, b) => a.id.localeCompare(b.id));
-  return sorted.map((v) => mergeParams(base, { rlmLite: { subRole: v.subRole } } as any));
+  return sorted.map((v) => mergeParams(base, { rlmLite: { subRole: v.subRole } }));
 }
 
 function budgetProfileGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): ReadonlyArray<DseParams> {
@@ -185,9 +201,24 @@ function budgetProfileGrid(base: DseParams, searchSpace: CompileSearchSpaceV1): 
   const sorted = [...profiles].sort((a, b) => a.id.localeCompare(b.id));
   return sorted.map((p) => {
     const merged = { ...(base.budgets ?? {}), ...(p.budgets ?? {}) };
-    return mergeParams(base, { budgets: merged } as any);
+    return mergeParams(base, { budgets: merged });
   });
 }
+
+type EvaluatedParams = {
+  readonly compiled_id: string;
+  readonly params: DseParams;
+  readonly reward: number;
+  readonly evalSummary: CompiledArtifact.EvalSummaryV1;
+  readonly examples?: ReadonlyArray<EvalExampleResultV1> | undefined;
+};
+
+const maxCandidatesFromOptimizerConfig = (config: unknown): number => {
+  const record = asRecord(config);
+  const raw = record?.maxCandidates;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return 128;
+  return Math.max(1, Math.min(500, Math.floor(raw)));
+};
 
 function knobsGrid(base: DseParams, searchSpace: CompileSearchSpaceV1, options?: { readonly maxCandidates?: number }): ReadonlyArray<DseParams> {
   const maxCandidates = Math.max(1, Math.floor(options?.maxCandidates ?? 128));
@@ -292,7 +323,7 @@ export function compile<I, O, Y>(
             promptIrHash: promptHash,
             paramsHash: compiled_id
           },
-          params: params as any,
+          params,
           eval: { evalVersion: 1, kind: "unscored" },
           optimizer: { id: "compile_candidate" },
           provenance: {}
@@ -312,7 +343,7 @@ export function compile<I, O, Y>(
           reward: evalRes.summary.reward ?? 0,
           evalSummary: evalRes.summary,
           ...(evalRes.examples ? { examples: evalRes.examples } : {})
-        };
+        } satisfies EvaluatedParams;
       });
 
     const runInstructionGrid = () =>
@@ -332,11 +363,9 @@ export function compile<I, O, Y>(
 
     const runKnobsGrid = () =>
       Effect.gen(function* () {
-        const maxCandidates = (() => {
-          const c = (options.optimizer.config as any)?.maxCandidates;
-          if (typeof c !== "number" || !Number.isFinite(c)) return 128;
-          return Math.max(1, Math.min(500, Math.floor(c)));
-        })();
+        const maxCandidates = maxCandidatesFromOptimizerConfig(
+          options.optimizer.config
+        );
 
         const paramSets = knobsGrid(baseParams, options.searchSpace, { maxCandidates });
         const scored = yield* Effect.forEach(
@@ -430,15 +459,20 @@ export function compile<I, O, Y>(
 
       if (optimizerId === "knobs_grid_refine.v1") {
         const details = yield* evaluateParams(best.params, train, { includeExampleDetails: true });
-        const examples = (details as any).examples as ReadonlyArray<any> | undefined;
-        const failures = (examples ?? []).filter((e) => (typeof e?.reward === "number" ? e.reward < 1 : true));
+        const examples = details.examples ?? [];
+        const failures = examples.filter((example) => example.reward < 1);
 
-        const hasBudgetExceeded = failures.some((e) => String(e?.error?.errorName ?? "").includes("BudgetExceeded"));
-        const hasDecodeError = failures.some((e) => String(e?.error?.errorName ?? "").includes("OutputDecode"));
+        const hasBudgetExceeded = failures.some((example) =>
+          (example.error?.errorName ?? "").includes("BudgetExceeded")
+        );
+        const hasDecodeError = failures.some((example) =>
+          (example.error?.errorName ?? "").includes("OutputDecode")
+        );
         const hasEvidenceFail = failures.some((e) =>
-          Array.isArray(e?.signals)
-            ? e.signals.some((s: any) => s?.signalId === "evidence_quote_in_blob.v1" && Number(s?.score ?? 0) <= 0)
-            : false
+          e.signals.some(
+            (signal) =>
+              signal.signalId === "evidence_quote_in_blob.v1" && signal.score <= 0
+          )
         );
 
         const patches: Array<Partial<DseParams>> = [];
@@ -448,7 +482,7 @@ export function compile<I, O, Y>(
             rlmLite: {
               controllerInstructions:
                 "Critical: Output MUST be valid JSON matching the RLM Action schema. No markdown, no commentary, no arrays. If stuck, choose Search/Preview/Chunk, then Final."
-            } as any
+            }
           });
         }
 
@@ -457,12 +491,12 @@ export function compile<I, O, Y>(
             rlmLite: {
               controllerInstructions:
                 "Evidence rule: when producing Final, ensure evidence.quote is an exact substring from the cited blob. If you cannot find a quote, answer must be \"unknown\" and quote must be empty."
-            } as any
+            }
           });
         }
 
         if (hasBudgetExceeded) {
-          const b0: any = best.params.budgets ?? {};
+          const b0 = best.params.budgets ?? {};
           patches.push({
             budgets: {
               ...b0,
@@ -472,14 +506,14 @@ export function compile<I, O, Y>(
               maxSubLmCalls: Math.max(0, Math.floor((b0.maxSubLmCalls ?? 10) + 10)),
               maxOutputChars: Math.max(0, Math.floor((b0.maxOutputChars ?? 120000) * 2))
             }
-          } as any);
+          });
         }
 
         if (patches.length > 0) {
           const refined = yield* Effect.forEach(
             patches,
             (patch) =>
-              evaluateParams(mergeParams(best.params, patch as any), train).pipe(
+              evaluateParams(mergeParams(best.params, patch), train).pipe(
                 Effect.map((r) => ({ compiled_id: r.compiled_id, params: r.params, reward: r.reward } satisfies CandidateScoreV1))
               ),
             { concurrency: 1 }
@@ -513,7 +547,7 @@ export function compile<I, O, Y>(
         promptIrHash: promptHash,
         paramsHash: paramsHashValue
       },
-      params: best.params as any,
+      params: best.params,
       eval: holdoutEval.evalSummary,
       optimizer: {
         id: options.optimizer.id,

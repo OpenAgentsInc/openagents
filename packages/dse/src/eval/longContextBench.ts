@@ -261,8 +261,8 @@ export function rewardForLongContextQa(): Reward.RewardBundle<
         signalId: "evidence_quote_in_blob.v1",
         weight: 0.3,
         extractEvidence: ({ pred }) => ({
-          blobId: String((pred as any)?.evidence?.blobId ?? ""),
-          quote: String((pred as any)?.evidence?.quote ?? ""),
+          blobId: pred.evidence.blobId,
+          quote: pred.evidence.quote,
         }),
       }),
       Reward.signalPredictCostPenalty({ weight: 0.1, targetDurationMs: 800, targetLmCalls: 1, targetToolCalls: 0 }),

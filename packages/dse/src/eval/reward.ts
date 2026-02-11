@@ -5,6 +5,14 @@ import { evaluateMetric, type MetricEnv } from "./metric.js";
 import { BlobStoreService } from "../runtime/blobStore.js";
 import type { PredictReceiptV1 } from "../runtime/receipt.js";
 
+const messageFromUnknown = (value: unknown): string => {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+  }
+  return String(value);
+};
+
 export type RewardSignalReportV1 = {
   readonly signalId: string;
   readonly weight: number;
@@ -216,10 +224,7 @@ export function signalEvidenceQuoteInBlobStore<I, O, Y>(options: {
         const blobs = yield* BlobStoreService;
         const attempt = yield* Effect.either(blobs.getText(blobId));
         if (attempt._tag === "Left") {
-          const msg =
-            attempt.left && typeof attempt.left === "object" && "message" in attempt.left
-              ? String((attempt.left as any).message)
-              : "BlobStore.getText failed";
+          const msg = messageFromUnknown(attempt.left);
           return {
             signalId: options.signalId,
             weight: options.weight,

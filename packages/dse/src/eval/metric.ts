@@ -119,14 +119,14 @@ export function evaluateMetric<I, O, Y>(
   return predict(judgeInput).pipe(
     Effect.provide(policy),
     Effect.map((out) => {
-      const score = clamp01(metric.scoreFromJudgeOutput(out as any));
+      const score = clamp01(metric.scoreFromJudgeOutput(out));
       return {
         metricId: metric.metricId,
         metricVersion: metric.metricVersion,
         kind: "judge",
         score,
         ...(metric.notesFromJudgeOutput
-          ? { notes: metric.notesFromJudgeOutput(out as any) }
+          ? { notes: metric.notesFromJudgeOutput(out) }
           : {}),
         judge: {
           signatureId: judgeSig.id,
