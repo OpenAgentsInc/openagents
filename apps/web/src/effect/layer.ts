@@ -7,6 +7,7 @@ import { ChatServiceLive } from './chat';
 import { ChatSnapshotCacheLive, ChatSnapshotCacheService } from './chatSnapshotCache';
 import { ConvexServiceLive } from './convex';
 import { HomeApiLive } from "./homeApi";
+import { LightningApiLive } from "./lightning";
 import { PaneSystemLive, PaneSystemService } from './paneSystem';
 import { RequestContextService, makeDefaultRequestContext } from './requestContext';
 import { TelemetryLive } from './telemetry';
@@ -19,6 +20,7 @@ import type { AuthService } from './auth';
 import type { ChatService } from './chat';
 import type { ConvexService } from './convex';
 import type { HomeApiService } from "./homeApi";
+import type { LightningApiService } from "./lightning";
 import type { TelemetryService } from './telemetry';
 
 export type AppServices =
@@ -30,6 +32,7 @@ export type AppServices =
   | Context.Tag.Identifier<typeof ChatSnapshotCacheService>
   | Context.Tag.Identifier<typeof ConvexService>
   | Context.Tag.Identifier<typeof HomeApiService>
+  | Context.Tag.Identifier<typeof LightningApiService>
   | Context.Tag.Identifier<typeof PaneSystemService>
   | Context.Tag.Identifier<typeof RequestContextService>
   | Context.Tag.Identifier<typeof TelemetryService>;
@@ -50,5 +53,6 @@ export const makeAppLayer = (config: AppConfig) => {
   const withStore = Layer.provideMerge(AutopilotStoreLive, withConvex);
   const withContracts = Layer.provideMerge(ContractsApiLive, withStore);
   const withHomeApi = Layer.provideMerge(HomeApiLive, withContracts);
-  return Layer.provideMerge(ChatServiceLive, withHomeApi);
+  const withLightningApi = Layer.provideMerge(LightningApiLive, withHomeApi);
+  return Layer.provideMerge(ChatServiceLive, withLightningApi);
 };

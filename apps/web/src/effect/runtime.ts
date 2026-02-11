@@ -38,6 +38,7 @@ export const makeAppRuntime = (config: AppConfig): AppRuntime => {
           'AuthService',
           'ConvexService',
           'HomeApiService',
+          'LightningApiService',
           'PaneSystemService',
           'ChatSnapshotCacheService',
           'AutopilotStoreService',

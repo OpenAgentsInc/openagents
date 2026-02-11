@@ -5,6 +5,7 @@ import { handleCallbackRequest } from "./callback"
 import { handleContractsRequest } from "./contracts"
 import { handleDseCompileRequest } from "./dseCompile"
 import { handleDseAdminRequest } from "./dseAdmin"
+import { handleLightningRequest } from "./lightning"
 import { getPrelaunchRedirectIfRequired } from "./ssr"
 import { handleSsrRequest } from "./ssr"
 import { handleStorybookApiRequest } from "./storybook"
@@ -72,6 +73,11 @@ export default {
       if (response) return withResponseRequestIdHeader(response, requestId)
       const admin = await handleDseAdminRequest(requestWithId, env, ctx)
       if (admin) return withResponseRequestIdHeader(admin, requestId)
+    }
+
+    if (url.pathname.startsWith("/api/lightning/")) {
+      const response = await handleLightningRequest(requestWithId, env)
+      if (response) return withResponseRequestIdHeader(response, requestId)
     }
 
     // WorkOS OAuth callback (legacy path configured as WORKOS_REDIRECT_URI).
