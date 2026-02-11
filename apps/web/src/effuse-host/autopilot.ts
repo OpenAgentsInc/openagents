@@ -8,7 +8,7 @@ import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect
 import { makeOpenRouterLanguageModel } from "../../../autopilot-worker/src/effect/ai/openRouterLanguageModel";
 import { makeFallbackLanguageModel } from "../../../autopilot-worker/src/effect/ai/fallbackLanguageModel";
 
-import { BlobStore, Lm, Params, Predict, Receipt } from "@openagentsinc/dse";
+import { BlobStore, Lm, Params, Predict, Receipt, type BlobRef } from "@openagentsinc/dse";
 import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
 
 import { api } from "../../convex/_generated/api";
@@ -141,6 +141,78 @@ const encodeStreamPart = Schema.encodeSync(AiResponse.StreamPart(emptyToolkit));
 
 const shouldIgnoreWirePart = (part: AiResponse.StreamPartEncoded): boolean =>
   part.type === "reasoning-start" || part.type === "reasoning-delta" || part.type === "reasoning-end";
+
+type DseSignatureModelPart = {
+  readonly modelId?: string;
+  readonly provider?: string;
+  readonly route?: string;
+  readonly fallbackModelId?: string;
+};
+
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+const readNonEmptyString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value : null;
+
+const readString = (value: unknown): string | null =>
+  typeof value === "string" ? value : null;
+
+const dseSignatureModelFromUnknown = (value: unknown): DseSignatureModelPart | undefined => {
+  const model = toRecord(value);
+  if (!model) return undefined;
+  const modelId = readNonEmptyString(model.modelId);
+  const provider = readNonEmptyString(model.provider);
+  const route = readNonEmptyString(model.route);
+  const fallbackModelId = readNonEmptyString(model.fallbackModelId);
+  if (!modelId && !provider && !route && !fallbackModelId) return undefined;
+  return {
+    ...(modelId ? { modelId } : {}),
+    ...(provider ? { provider } : {}),
+    ...(route ? { route } : {}),
+    ...(fallbackModelId ? { fallbackModelId } : {}),
+  };
+};
+
+const errorMessageFromUnknown = (cause: unknown, fallback: string): string => {
+  const message = readString(toRecord(cause)?.message);
+  if (message && message.trim().length > 0) return message;
+  const rendered = String(cause ?? fallback).trim();
+  return rendered.length > 0 ? rendered : fallback;
+};
+
+const summaryFromOutput = (value: unknown): string => {
+  const summary = readString(toRecord(value)?.summary);
+  return summary ? summary.trim() : "";
+};
+
+const blobRefFromUnknown = (value: unknown): BlobRef | null => {
+  const blob = toRecord(value);
+  if (!blob) return null;
+  const id = readNonEmptyString(blob.id);
+  const hash = readNonEmptyString(blob.hash);
+  const size = typeof blob.size === "number" && Number.isFinite(blob.size) ? blob.size : null;
+  if (!id || !hash || size == null) return null;
+  const mime = readNonEmptyString(blob.mime);
+  return { id, hash, size, ...(mime ? { mime } : {}) };
+};
+
+const trimPromptRenderStats = (value: unknown): unknown => {
+  const promptRenderStats = toRecord(value);
+  if (!promptRenderStats) return value;
+  const context = toRecord(promptRenderStats.context);
+  if (!context) return value;
+  const blobs = Array.isArray(context.blobs) ? context.blobs : null;
+  if (!blobs || blobs.length <= 20) return value;
+  return {
+    ...promptRenderStats,
+    context: {
+      ...context,
+      blobsDropped: Number(context.blobsDropped ?? 0) + (blobs.length - 20),
+      blobs: blobs.slice(0, 20),
+    },
+  };
+};
 
 /** Blueprint shape (minimal) for bootstrap-aware prompt. */
 type BlueprintHint = {
@@ -312,7 +384,7 @@ const runDseCanaryRecap = (input: {
         duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
         onTimeout: () => new Error("auth.getSession_timeout"),
       }),
-      Effect.catchAll(() => Effect.succeed({ userId: null } as any)),
+      Effect.catchAll(() => Effect.succeed({ userId: null } as { readonly userId: string | null })),
     );
 
     yield* t.event("run.started", {
@@ -354,9 +426,9 @@ const runDseCanaryRecap = (input: {
           duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
           onTimeout: () => new Error("convex.isCancelRequested_timeout"),
         }),
-        Effect.catchAll(() => Effect.succeed({ ok: true as const, cancelRequested: false } as any)),
+        Effect.catchAll(() => Effect.succeed({ ok: true as const, cancelRequested: false } as IsCancelRequestedResult)),
       );
-      return Boolean((cancel as any)?.cancelRequested);
+      return toRecord(cancel)?.cancelRequested === true;
     });
 
     const program = Effect.gen(function* () {
@@ -380,8 +452,8 @@ const runDseCanaryRecap = (input: {
         ]);
 
         // E2E-only deterministic stub mode (no external model calls).
-        const isE2eUser =
-          typeof (session as any)?.userId === "string" && String((session as any).userId).startsWith("user_e2e_");
+        const sessionUserId = readString(toRecord(session)?.userId);
+        const isE2eUser = Boolean(sessionUserId?.startsWith("user_e2e_"));
         if (input.e2eMode === "stub" && isE2eUser) {
           const startedAtMs = Date.now();
           const receiptId = crypto.randomUUID();
@@ -414,7 +486,7 @@ const runDseCanaryRecap = (input: {
               }),
             );
 
-          const traceBlob = (tracePut as any)?.blob ?? null;
+          const traceBlob = blobRefFromUnknown(toRecord(tracePut)?.blob);
 
           const receipt: Receipt.PredictReceiptV1 = {
             format: "openagents.dse.predict_receipt",
@@ -449,7 +521,7 @@ const runDseCanaryRecap = (input: {
               },
             },
             ...(traceBlob && typeof traceBlob === "object"
-              ? { rlmTrace: { blob: traceBlob as any, eventCount: Array.isArray(traceDoc.events) ? traceDoc.events.length : 0 } }
+              ? { rlmTrace: { blob: traceBlob, eventCount: Array.isArray(traceDoc.events) ? traceDoc.events.length : 0 } }
               : {}),
             result: { _tag: "Ok" },
           };
@@ -516,20 +588,20 @@ const runDseCanaryRecap = (input: {
             }),
           );
         const snapshot = rawSnapshot as GetThreadSnapshotResult;
-        const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray((snapshot as any)?.messages)
-          ? ((snapshot as any).messages as any)
+        const messagesRaw: ReadonlyArray<ThreadSnapshotMessage> = Array.isArray(snapshot.messages)
+          ? snapshot.messages
           : [];
 
         const history = messagesRaw
           .filter((m) => m && typeof m === "object")
-          .filter((m) => String((m as any).role ?? "") === "user" || String((m as any).role ?? "") === "assistant")
+          .filter((m) => String(m.role ?? "") === "user" || String(m.role ?? "") === "assistant")
           .filter(
             (m) =>
-              String((m as any).status ?? "") !== "streaming" ||
-              String((m as any).messageId ?? "") !== input.assistantMessageId,
+              String(m.status ?? "") !== "streaming" ||
+              String(m.messageId ?? "") !== input.assistantMessageId,
           )
-          .filter((m) => String((m as any).messageId ?? "") !== input.userMessageId)
-          .map((m) => ({ role: String((m as any).role ?? "user"), text: String((m as any).text ?? "") }))
+          .filter((m) => String(m.messageId ?? "") !== input.userMessageId)
+          .map((m) => ({ role: String(m.role ?? "user"), text: String(m.text ?? "") }))
           .filter((m) => m.text.trim().length > 0);
 
         const historyText = history.map((m) => `${m.role}: ${m.text}`).join("\n\n");
@@ -610,36 +682,15 @@ const runDseCanaryRecap = (input: {
         );
 
         const receipt = recordedReceipt as DseReceiptShape | null;
-        const promptRenderStats = receipt?.promptRenderStats as any;
-        const trimmedPromptRenderStats =
-          promptRenderStats &&
-            typeof promptRenderStats === "object" &&
-            promptRenderStats.context &&
-            typeof promptRenderStats.context === "object" &&
-            Array.isArray(promptRenderStats.context.blobs) &&
-            promptRenderStats.context.blobs.length > 20
-            ? {
-              ...promptRenderStats,
-              context: {
-                ...promptRenderStats.context,
-                blobsDropped:
-                  Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
-                blobs: promptRenderStats.context.blobs.slice(0, 20),
-              },
-            }
-            : receipt?.promptRenderStats;
+        const trimmedPromptRenderStats = trimPromptRenderStats(receipt?.promptRenderStats);
 
         const state = predictExit._tag === "Success" ? "ok" : "error";
         const errorText =
           predictExit._tag === "Failure"
-            ? (() => {
-              const cause = predictExit.cause as any;
-              if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
-              return String(cause ?? "DSE predict failed");
-            })()
+            ? errorMessageFromUnknown(predictExit.cause, "DSE predict failed")
             : null;
 
-        const summary = predictExit._tag === "Success" ? String((predictExit.value as any)?.summary ?? "").trim() : "";
+        const summary = predictExit._tag === "Success" ? summaryFromOutput(predictExit.value) : "";
         const boundedSummary = summary.length > 2000 ? summary.slice(0, 2000).trim() : summary;
 
         const textParts =
@@ -662,28 +713,7 @@ const runDseCanaryRecap = (input: {
             signatureId,
             compiled_id: receipt?.compiled_id,
             receiptId: receipt?.receiptId,
-            model:
-              receipt?.model &&
-                typeof receipt.model === "object" &&
-                (typeof (receipt.model as any).modelId === "string" ||
-                  typeof (receipt.model as any).provider === "string" ||
-                  typeof (receipt.model as any).route === "string" ||
-                  typeof (receipt.model as any).fallbackModelId === "string")
-                ? {
-                  ...(typeof (receipt.model as any).modelId === "string"
-                    ? { modelId: String((receipt.model as any).modelId) }
-                    : {}),
-                  ...(typeof (receipt.model as any).provider === "string"
-                    ? { provider: String((receipt.model as any).provider) }
-                    : {}),
-                  ...(typeof (receipt.model as any).route === "string"
-                    ? { route: String((receipt.model as any).route) }
-                    : {}),
-                  ...(typeof (receipt.model as any).fallbackModelId === "string"
-                    ? { fallbackModelId: String((receipt.model as any).fallbackModelId) }
-                    : {}),
-                }
-                : undefined,
+            model: dseSignatureModelFromUnknown(receipt?.model),
             timing: receipt?.timing,
             budget: receipt?.budget,
             strategyId: receipt?.strategyId,
@@ -1079,35 +1109,14 @@ const runAutopilotStream = (input: {
 
         const errorText =
           exit._tag === "Failure"
-            ? (() => {
-              const cause = exit.cause as any;
-              if (cause && typeof cause === "object" && "message" in cause) return String(cause.message);
-              return String(cause ?? "DSE predict failed");
-            })()
+            ? errorMessageFromUnknown(exit.cause, "DSE predict failed")
             : null;
 
         const receipt = recordedReceipt as DseReceiptShape | null;
-        const promptRenderStats = receipt?.promptRenderStats as any;
-        const trimmedPromptRenderStats =
-          promptRenderStats &&
-            typeof promptRenderStats === "object" &&
-            promptRenderStats.context &&
-            typeof promptRenderStats.context === "object" &&
-            Array.isArray(promptRenderStats.context.blobs) &&
-            promptRenderStats.context.blobs.length > 20
-            ? {
-              ...promptRenderStats,
-              context: {
-                ...promptRenderStats.context,
-                blobsDropped:
-                  Number(promptRenderStats.context.blobsDropped ?? 0) + (promptRenderStats.context.blobs.length - 20),
-                blobs: promptRenderStats.context.blobs.slice(0, 20),
-              },
-            }
-            : receipt?.promptRenderStats;
+        const trimmedPromptRenderStats = trimPromptRenderStats(receipt?.promptRenderStats);
 
         if (exit._tag === "Success") {
-          const summary = String((exit.value as any)?.summary ?? "").trim();
+          const summary = summaryFromOutput(exit.value);
           if (summary) {
             const MAX_SUMMARY_CHARS = 1500;
             const bounded = summary.length > MAX_SUMMARY_CHARS ? summary.slice(0, MAX_SUMMARY_CHARS).trim() : summary;
@@ -1126,28 +1135,7 @@ const runAutopilotStream = (input: {
             signatureId,
             compiled_id: receipt?.compiled_id,
             receiptId: receipt?.receiptId,
-            model:
-              receipt?.model &&
-                typeof receipt.model === "object" &&
-                (typeof (receipt.model as any).modelId === "string" ||
-                  typeof (receipt.model as any).provider === "string" ||
-                  typeof (receipt.model as any).route === "string" ||
-                  typeof (receipt.model as any).fallbackModelId === "string")
-                ? {
-                  ...(typeof (receipt.model as any).modelId === "string"
-                    ? { modelId: String((receipt.model as any).modelId) }
-                    : {}),
-                  ...(typeof (receipt.model as any).provider === "string"
-                    ? { provider: String((receipt.model as any).provider) }
-                    : {}),
-                  ...(typeof (receipt.model as any).route === "string"
-                    ? { route: String((receipt.model as any).route) }
-                    : {}),
-                  ...(typeof (receipt.model as any).fallbackModelId === "string"
-                    ? { fallbackModelId: String((receipt.model as any).fallbackModelId) }
-                    : {}),
-                }
-                : undefined,
+            model: dseSignatureModelFromUnknown(receipt?.model),
             timing: receipt?.timing,
             budget: receipt?.budget,
             strategyId: receipt?.strategyId,
@@ -1341,10 +1329,11 @@ const runAutopilotStream = (input: {
 
             if (!isNone && boundaries.length === 0) return {};
 
-            yield* convex.mutation(api.autopilot.blueprint.applyBootstrapComplete, {
-              threadId: input.threadId,
-              ...(boundaries.length > 0 ? { boundaries } : {}),
-            } as any);
+            const completePayload: { threadId: string; boundaries?: string[] } =
+              boundaries.length > 0
+                ? { threadId: input.threadId, boundaries }
+                : { threadId: input.threadId };
+            yield* convex.mutation(api.autopilot.blueprint.applyBootstrapComplete, completePayload);
             return {};
           }
           return {};
@@ -1606,7 +1595,7 @@ export const handleAutopilotRequest = async (
 
     const value = exit.value as CreateRunResult;
     const runId = String(value.runId ?? "");
-    const userMessageId = String((value as any).userMessageId ?? "");
+    const userMessageId = String(value.userMessageId ?? "");
     const assistantMessageId = String(value.assistantMessageId ?? "");
 
     const controller = new AbortController();

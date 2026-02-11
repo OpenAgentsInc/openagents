@@ -26,6 +26,7 @@ import {
   renderDsePromoteCard,
   renderDseRollbackCard,
   renderDseSignatureCard,
+  type RenderPart,
 } from "../../effuse-pages/autopilot"
 import { streamdown } from "../../lib/effuseStreamdown"
 
@@ -60,6 +61,9 @@ const CHART_ICON_SVG =
 
 const BUG_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8"/><path d="M9 2v2"/><path d="M15 2v2"/><path d="M8 6h8"/><rect x="7" y="6" width="10" height="12" rx="5"/><path d="M3 13h4"/><path d="M17 13h4"/><path d="M5 8l3 2"/><path d="M19 8l-3 2"/><path d="M5 18l3-2"/><path d="M19 18l-3-2"/></svg>'
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null
 
 function copyTextToClipboard(text: string, _source: "pane" | "message" | "metadata-pane"): void {
   if (!text || typeof text !== "string") return
@@ -199,8 +203,22 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       },
     })
 
+    const atomsAccess = deps?.atoms as unknown as
+      | {
+        readonly get: (atom: unknown) => unknown
+        readonly set: (atom: unknown, value: unknown) => void
+      }
+      | undefined
+
+    const readSessionFromAtoms = (): Session =>
+      (atomsAccess?.get(SessionAtom) as Session | undefined) ?? { userId: null, user: null }
+
+    const writeSessionToAtoms = (session: Session): void => {
+      atomsAccess?.set(SessionAtom, session)
+    }
+
     const sessionFromAtoms: Session =
-      (deps?.atoms?.get(SessionAtom as any) as Session) ?? { userId: null, user: null }
+      readSessionFromAtoms()
     const isAuthedFromAtoms = sessionFromAtoms.user != null
 
     const renderIdentityCard = (userEmail: string) => {
@@ -280,7 +298,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     const startAuthedChat = (input0: { readonly userId: string; readonly user: Session["user"] | null; readonly token: string | null }) => {
       if (!deps?.atoms || !deps.chat) return
 
-      deps.atoms.set(SessionAtom as any, { userId: input0.userId, user: input0.user })
+      writeSessionToAtoms({ userId: input0.userId, user: input0.user })
 
       // Prime the in-memory auth token cache so Convex can authenticate immediately without waiting
       // for cookie timing (especially important in tests and right after verify/login).
@@ -333,11 +351,13 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     const chatInputClass =
       "w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white/90 text-sm font-mono placeholder-white/40 focus:outline-none focus:border-white/20"
 
-    const textFromRenderParts = (parts: ReadonlyArray<{ kind?: string; text?: string }>): string => {
+    const textFromRenderParts = (
+      parts: ReadonlyArray<{ readonly kind?: unknown; readonly text?: unknown }>,
+    ): string => {
       if (!parts?.length) return ""
       return parts
-        .filter((p) => p?.kind === "text" && typeof (p as any).text === "string")
-        .map((p) => String((p as any).text ?? ""))
+        .filter((p): p is { readonly kind: "text"; readonly text: string } => p?.kind === "text" && typeof p.text === "string")
+        .map((p) => p.text)
         .join("")
     }
 
@@ -345,8 +365,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       const blocks: string[] = []
       if (step === "authed" && homeSnapshot.messages.length > 0) {
         for (const m of homeSnapshot.messages) {
-          const role = String((m as any).role ?? "")
-          const partsRaw = Array.isArray((m as any).parts) ? ((m as any).parts as ReadonlyArray<any>) : []
+          const role = m.role
+          const partsRaw = m.parts
           const renderParts = toAutopilotRenderParts({ parts: partsRaw, toolContractsByName: null })
           const text = textFromRenderParts(renderParts)
           blocks.push((role === "user" ? "## User\n\n" : "## Assistant\n\n") + (text || "(no text)"))
@@ -365,9 +385,9 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         return { threadId: homeThreadId, entries }
       }
       for (const msg of homeSnapshot.messages) {
-        const messageId = (msg as any).id ?? null
-        const role = (msg as any).role ?? null
-        const parts = Array.isArray((msg as any).parts) ? (msg as any).parts as ReadonlyArray<any> : []
+        const messageId = msg.id ?? null
+        const role = msg.role ?? null
+        const parts = msg.parts as ReadonlyArray<Record<string, unknown>>
         for (const p of parts) {
           const t = String(p?.type ?? "")
           if (t.startsWith("dse.") || t.startsWith("tool") || t === "dynamic-tool") {
@@ -377,7 +397,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       }
       return { threadId: homeThreadId, entries }
     }
-    const sanitizeForTrace = (p: any): Record<string, unknown> => {
+    const sanitizeForTrace = (p: Record<string, unknown>): Record<string, unknown> => {
       const out: Record<string, unknown> = {}
       if (p?.signatureId != null) out.signatureId = p.signatureId
       if (p?.strategyId != null) out.strategyId = p.strategyId
@@ -404,10 +424,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     }
 
     type MessageModelMeta = {
-      readonly modelId: string | null
-      readonly provider: string | null
-      readonly modelRoute: string | null
-      readonly modelFallbackId: string | null
+      readonly modelId: string
+      readonly provider: string
+      readonly modelRoute: string
+      readonly modelFallbackId: string
+      readonly recordingStatus: "recorded" | "missing_in_finish" | "unavailable"
     }
 
     type MessageSignatureMeta = {
@@ -426,35 +447,89 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       readonly modelFallbackId?: string
     }
 
+    type MessageInferenceMeta = {
+      readonly hasFinish: boolean
+      readonly finishReason: string | null
+      readonly usage: {
+        readonly inputTokens: number | null
+        readonly outputTokens: number | null
+        readonly totalTokens: number | null
+      }
+      readonly textPartChars: number
+      readonly partCount: number
+      readonly dsePartCount: number
+      readonly toolPartCount: number
+      readonly partTypes: ReadonlyArray<string>
+    }
+
     type MessageDebugInfo = {
       readonly sourceKind: "dse" | "llm" | "unknown"
       readonly sourceReason: string
       readonly model: MessageModelMeta
+      readonly inference: MessageInferenceMeta
       readonly signatures: ReadonlyArray<MessageSignatureMeta>
       readonly primarySignature: MessageSignatureMeta | null
     }
 
-    const asRecord = (value: unknown): Record<string, unknown> | null =>
-      value && typeof value === "object" ? (value as Record<string, unknown>) : null
+    type MessagePartLike = {
+      readonly type?: unknown
+      readonly id?: unknown
+      readonly signatureId?: unknown
+      readonly state?: unknown
+      readonly compiled_id?: unknown
+      readonly receiptId?: unknown
+      readonly strategyId?: unknown
+      readonly strategyReason?: unknown
+      readonly timing?: unknown
+      readonly budget?: unknown
+      readonly model?: unknown
+      readonly toolCallId?: unknown
+      readonly errorText?: unknown
+      readonly text?: unknown
+    }
+
+    type MessageFinishLike = {
+      readonly reason?: unknown
+      readonly usage?: unknown
+      readonly modelId?: unknown
+      readonly provider?: unknown
+      readonly modelRoute?: unknown
+      readonly modelFallbackId?: unknown
+    }
+
+    type RawMessageLike = {
+      readonly id?: unknown
+      readonly runId?: unknown
+      readonly role?: unknown
+      readonly finish?: unknown
+      readonly parts?: unknown
+    }
 
     const asStringOrNull = (value: unknown): string | null =>
       typeof value === "string" && value.trim().length > 0 ? value : null
 
-    const signaturesFromParts = (parts: ReadonlyArray<any>): ReadonlyArray<MessageSignatureMeta> =>
+    const asNumberOrNull = (value: unknown): number | null =>
+      typeof value === "number" && Number.isFinite(value) ? value : null
+
+    const messagePartsFromUnknown = (value: unknown): ReadonlyArray<MessagePartLike> =>
+      Array.isArray(value) ? value.filter((p) => p && typeof p === "object") as ReadonlyArray<MessagePartLike> : []
+
+    const signaturesFromParts = (parts: ReadonlyArray<MessagePartLike>): ReadonlyArray<MessageSignatureMeta> =>
       parts
-        .filter((p) => p && typeof p === "object" && p.type === "dse.signature" && typeof p.signatureId === "string")
+        .filter((p) => p.type === "dse.signature" && typeof p.signatureId === "string")
         .map((p) => {
-          const model = asRecord((p as any).model)
+          const model = asRecord(p.model)
+          const timing = asRecord(p.timing)
           return {
-            id: asStringOrNull((p as any).id),
-            state: asStringOrNull((p as any).state),
-            signatureId: String((p as any).signatureId),
-            ...(asStringOrNull((p as any).compiled_id) ? { compiled_id: String((p as any).compiled_id) } : {}),
-            ...(asStringOrNull((p as any).receiptId) ? { receiptId: String((p as any).receiptId) } : {}),
-            ...(asStringOrNull((p as any).strategyId) ? { strategyId: String((p as any).strategyId) } : {}),
-            ...(asStringOrNull((p as any).strategyReason) ? { strategyReason: String((p as any).strategyReason) } : {}),
-            ...(typeof (p as any)?.timing?.durationMs === "number" ? { durationMs: Number((p as any).timing.durationMs) } : {}),
-            ...((p as any).budget && typeof (p as any).budget === "object" ? { budget: (p as any).budget } : {}),
+            id: asStringOrNull(p.id),
+            state: asStringOrNull(p.state),
+            signatureId: String(p.signatureId),
+            ...(asStringOrNull(p.compiled_id) ? { compiled_id: String(p.compiled_id) } : {}),
+            ...(asStringOrNull(p.receiptId) ? { receiptId: String(p.receiptId) } : {}),
+            ...(asStringOrNull(p.strategyId) ? { strategyId: String(p.strategyId) } : {}),
+            ...(asStringOrNull(p.strategyReason) ? { strategyReason: String(p.strategyReason) } : {}),
+            ...(asNumberOrNull(timing?.durationMs) != null ? { durationMs: Number(timing?.durationMs) } : {}),
+            ...(p.budget && typeof p.budget === "object" ? { budget: p.budget } : {}),
             ...(asStringOrNull(model?.modelId) ? { modelId: String(model?.modelId) } : {}),
             ...(asStringOrNull(model?.provider) ? { provider: String(model?.provider) } : {}),
             ...(asStringOrNull(model?.route) ? { modelRoute: String(model?.route) } : {}),
@@ -462,33 +537,69 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           } satisfies MessageSignatureMeta
         })
 
-    const messageDebugInfo = (rawMessage: any): MessageDebugInfo => {
-      const parts = Array.isArray(rawMessage?.parts) ? rawMessage.parts as ReadonlyArray<any> : []
-      const signatures = signaturesFromParts(parts)
-      const finish = asRecord(rawMessage?.finish)
-      const latestSignature = signatures.length > 0 ? signatures[signatures.length - 1] : null
+    const inferenceMetaFromParts = (parts: ReadonlyArray<MessagePartLike>, finish: MessageFinishLike | null): MessageInferenceMeta => {
+      const usage = asRecord(finish?.usage)
+      const inputTokens = asNumberOrNull(usage?.inputTokens)
+      const outputTokens = asNumberOrNull(usage?.outputTokens)
+      const totalTokens = asNumberOrNull(usage?.totalTokens)
+      const partTypes = parts.map((p) => String(p.type ?? "?"))
+      const textPartChars = parts
+        .filter((p) => p.type === "text" && typeof p.text === "string")
+        .reduce((sum, p) => sum + String(p.text ?? "").length, 0)
+      const dsePartCount = parts.filter((p) => String(p.type ?? "").startsWith("dse.")).length
+      const toolPartCount = parts.filter((p) => String(p.type ?? "").startsWith("tool-") || p.type === "dynamic-tool").length
+      return {
+        hasFinish: Boolean(finish && typeof finish === "object"),
+        finishReason: asStringOrNull(finish?.reason),
+        usage: { inputTokens, outputTokens, totalTokens },
+        textPartChars,
+        partCount: parts.length,
+        dsePartCount,
+        toolPartCount,
+        partTypes,
+      }
+    }
 
+    const messageDebugInfo = (rawMessage: RawMessageLike): MessageDebugInfo => {
+      const parts = messagePartsFromUnknown(rawMessage.parts)
+      const signatures = signaturesFromParts(parts)
+      const finish = asRecord(rawMessage.finish) as MessageFinishLike | null
+      const latestSignature = signatures.length > 0 ? signatures[signatures.length - 1] : null
+      const inference = inferenceMetaFromParts(parts, finish)
+
+      const modelId = asStringOrNull(finish?.modelId) ?? latestSignature?.modelId ?? null
+      const provider = asStringOrNull(finish?.provider) ?? latestSignature?.provider ?? null
+      const modelRoute = asStringOrNull(finish?.modelRoute) ?? latestSignature?.modelRoute ?? null
+      const modelFallbackId = asStringOrNull(finish?.modelFallbackId) ?? latestSignature?.modelFallbackId ?? null
+      const hasRecordedModel = Boolean(modelId || provider || modelRoute || modelFallbackId)
+      const recordingStatus: MessageModelMeta["recordingStatus"] =
+        hasRecordedModel ? "recorded" : inference.hasFinish ? "missing_in_finish" : "unavailable"
+      const missingValue = recordingStatus === "missing_in_finish" ? "not_recorded_on_message" : "unavailable"
       const model: MessageModelMeta = {
-        modelId: asStringOrNull(finish?.modelId) ?? latestSignature?.modelId ?? null,
-        provider: asStringOrNull(finish?.provider) ?? latestSignature?.provider ?? null,
-        modelRoute: asStringOrNull(finish?.modelRoute) ?? latestSignature?.modelRoute ?? null,
-        modelFallbackId: asStringOrNull(finish?.modelFallbackId) ?? latestSignature?.modelFallbackId ?? null,
+        modelId: modelId ?? missingValue,
+        provider: provider ?? missingValue,
+        modelRoute: modelRoute ?? missingValue,
+        modelFallbackId: modelFallbackId ?? missingValue,
+        recordingStatus,
       }
 
       const sourceKind: MessageDebugInfo["sourceKind"] =
-        signatures.length > 0 ? "dse" : model.modelId || model.provider ? "llm" : "unknown"
+        signatures.length > 0 ? "dse" : inference.hasFinish ? "llm" : "unknown"
 
       const sourceReason =
         sourceKind === "dse"
           ? "dse.signature part recorded"
           : sourceKind === "llm"
-            ? "LLM finish/model metadata recorded"
-            : "No signature/model metadata recorded"
+            ? hasRecordedModel
+              ? "LLM finish + model metadata recorded"
+              : "LLM finish recorded but model metadata missing on this message"
+            : "No signature or finish metadata recorded"
 
       return {
         sourceKind,
         sourceReason,
         model,
+        inference,
         signatures,
         primarySignature: latestSignature,
       }
@@ -517,78 +628,89 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       >`
     }
 
-    const renderDebugSignatureFallbackCard = (opts: {
+    const renderInferenceDebugCard = (opts: {
       readonly messageId: string
       readonly info: MessageDebugInfo
     }): ReturnType<typeof html> => {
-      const modelLabel = opts.info.model.provider
-        ? opts.info.model.modelId
-          ? `${opts.info.model.provider}:${opts.info.model.modelId}`
-          : opts.info.model.provider
-        : opts.info.model.modelId
+      const tokens = opts.info.inference.usage
+      const tokenSummary = [
+        `input=${tokens.inputTokens ?? "?"}`,
+        `output=${tokens.outputTokens ?? "?"}`,
+        `total=${tokens.totalTokens ?? "?"}`,
+      ].join(" ")
       return html`
         <section
-          data-dse-card="1"
-          data-dse-card-title="DSE Signature"
-          data-dse-card-state="${opts.info.sourceKind === "unknown" ? "missing" : opts.info.sourceKind}"
+          data-oa-debug-card="1"
+          data-oa-debug-card-title="Inference Metadata"
+          data-oa-debug-card-state="${opts.info.sourceKind}"
           class="rounded-lg border border-white/15 bg-white/5 px-3 py-3"
         >
           <header class="flex items-center justify-between gap-3">
-            <div class="text-xs text-white/60 uppercase tracking-wider">DSE Signature</div>
+            <div class="text-xs text-white/60 uppercase tracking-wider">Inference Metadata</div>
             ${debugSourceBadge(opts.info.sourceKind)}
           </header>
           <div class="mt-2 flex flex-col gap-2">
-            ${debugRow("signatureId", "(none)")}
+            ${debugRow("recording", opts.info.model.recordingStatus)}
             ${debugRow("reason", opts.info.sourceReason)}
-            ${debugRow("model", modelLabel ?? null)}
+            ${debugRow("modelId", opts.info.model.modelId)}
+            ${debugRow("provider", opts.info.model.provider)}
             ${debugRow("modelRoute", opts.info.model.modelRoute)}
             ${debugRow("fallbackModelId", opts.info.model.modelFallbackId)}
+            ${debugRow("finishReason", opts.info.inference.finishReason)}
+            ${debugRow("tokens", tokenSummary)}
+            ${debugRow("textChars", opts.info.inference.textPartChars)}
+            ${debugRow("parts", opts.info.inference.partCount)}
+            ${debugRow("dseParts", opts.info.inference.dsePartCount)}
+            ${debugRow("toolParts", opts.info.inference.toolPartCount)}
+            ${debugRow("partTypes", opts.info.inference.partTypes.join(", "))}
             ${debugRow("messageId", opts.messageId)}
           </div>
         </section>
       `
     }
 
-    const messageMetadataJson = (rawMessage: any, threadId: string | null, userId?: string | null): string => {
-      const parts = Array.isArray(rawMessage?.parts) ? rawMessage.parts as ReadonlyArray<any> : []
+    const messageMetadataJson = (rawMessage: RawMessageLike, threadId: string | null, userId?: string | null): string => {
+      const parts = messagePartsFromUnknown(rawMessage.parts)
       const debug = messageDebugInfo(rawMessage)
-      const partsSummary = parts.map((p: any) => {
-        const base = { type: p?.type ?? "?", id: p?.id ?? p?.signatureId }
-        if (p?.type === "dse.signature" || p?.signatureId) {
-          const model = asRecord(p?.model)
+      const partsSummary = parts.map((p) => {
+        const base = { type: p.type ?? "?", id: p.id ?? p.signatureId }
+        if (p.type === "dse.signature" || p.signatureId) {
+          const model = asRecord(p.model)
+          const timing = asRecord(p.timing)
           return {
             ...base,
-            signatureId: p.signatureId,
-            strategyId: p.strategyId,
-            strategyReason: p.strategyReason,
-            compiled_id: p.compiled_id,
-            receiptId: p.receiptId,
-            state: p.state,
-            durationMs: p.timing?.durationMs,
+            signatureId: p.signatureId ?? null,
+            strategyId: p.strategyId ?? null,
+            strategyReason: p.strategyReason ?? null,
+            compiled_id: p.compiled_id ?? null,
+            receiptId: p.receiptId ?? null,
+            state: p.state ?? null,
+            durationMs: asNumberOrNull(timing?.durationMs),
             budget: p.budget,
             ...(asStringOrNull(model?.modelId) ? { modelId: model?.modelId } : {}),
             ...(asStringOrNull(model?.provider) ? { provider: model?.provider } : {}),
             ...(asStringOrNull(model?.route) ? { modelRoute: model?.route } : {}),
             ...(asStringOrNull(model?.fallbackModelId) ? { modelFallbackId: model?.fallbackModelId } : {}),
-            errorText: p.errorText,
+            errorText: p.errorText ?? null,
           }
         }
-        if (p?.type === "dse.compile") return { ...base, state: p.state, errorText: p.errorText }
-        if (p?.type === "dse.tool" || p?.toolCallId) return { ...base, toolCallId: p.toolCallId, state: p.state }
+        if (p.type === "dse.compile") return { ...base, state: p.state ?? null, errorText: p.errorText ?? null }
+        if (p.type === "dse.tool" || p.toolCallId) return { ...base, toolCallId: p.toolCallId ?? null, state: p.state ?? null }
         return base
       })
       const payload: Record<string, unknown> = {
-        messageId: rawMessage?.id ?? null,
+        messageId: rawMessage.id ?? null,
         threadId,
-        runId: rawMessage?.runId ?? null,
-        role: rawMessage?.role ?? null,
+        runId: rawMessage.runId ?? null,
+        role: rawMessage.role ?? null,
         source: { kind: debug.sourceKind, reason: debug.sourceReason },
         model: debug.model,
+        inference: debug.inference,
         signature: debug.primarySignature,
         signatures: debug.signatures,
         parts: partsSummary,
       }
-      if (rawMessage?.finish != null && typeof rawMessage.finish === "object") {
+      if (rawMessage.finish != null && typeof rawMessage.finish === "object") {
         payload.llm = rawMessage.finish
       }
       if (userId != null && userId !== "") payload.userId = userId
@@ -608,6 +730,12 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     }
 
     const doRender = () => {
+      type HomeRenderedMessage = {
+        readonly id: string
+        readonly role: "user" | "assistant"
+        readonly renderParts: ReadonlyArray<RenderPart>
+      }
+
       const lastAssistantIndex =
         step === "authed" && homeSnapshot.messages.length > 0
           ? (() => {
@@ -621,15 +749,13 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       const renderedMessages =
         step === "authed" && homeSnapshot.messages.length > 0
           ? homeSnapshot.messages
-            .filter((m) => m && typeof m === "object")
-            .filter((m) => String((m as any).role ?? "") === "user" || String((m as any).role ?? "") === "assistant")
-            .map((m, i) => {
-              const partsRaw = Array.isArray((m as any).parts) ? ((m as any).parts as ReadonlyArray<any>) : []
+            .map((m, i): HomeRenderedMessage => {
+              const partsRaw = m.parts
               let renderParts = toAutopilotRenderParts({ parts: partsRaw, toolContractsByName: null })
 
               // If the run is streaming but no text has arrived yet, show a stable placeholder to avoid a blank bubble.
               if (
-                String((m as any).role) === "assistant" &&
+                m.role === "assistant" &&
                 i === lastAssistantIndex &&
                 homeSnapshot.status === "streaming" &&
                 renderParts.length === 0
@@ -638,8 +764,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               }
 
               return {
-                id: String((m as any).id ?? ""),
-                role: String((m as any).role ?? "") as "user" | "assistant",
+                id: m.id,
+                role: m.role,
                 renderParts,
               }
             })
@@ -650,7 +776,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           ? (() => {
             for (let i = renderedMessages.length - 1; i >= 0; i--) {
               if (renderedMessages[i]?.role === "assistant") {
-                return textFromRenderParts(renderedMessages[i].renderParts as any)
+                return textFromRenderParts(renderedMessages[i].renderParts)
               }
             }
             return ""
@@ -797,7 +923,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               <div data-oa-home-chat-messages="1" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 p-4">
                 ${renderedMessages.map((m) => {
             if (m.role === "user") {
-              const userText = textFromRenderParts(m.renderParts as any)
+              const userText = textFromRenderParts(m.renderParts)
               return html`<div
                       class="text-sm font-mono text-white/55 text-left max-w-[80%] self-end"
                       data-chat-role="user"
@@ -806,10 +932,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                     </div>`
             }
 
-            const rawMsg = homeSnapshot.messages.find((msg: any) => String(msg?.id) === String(m.id))
+            const rawMsg = homeSnapshot.messages.find((msg) => msg.id === m.id)
             const debugInfo = messageDebugInfo(rawMsg ?? { id: m.id, role: m.role, parts: [] })
-            const hasDseSignaturePart = (m.renderParts as any[]).some((p) => p?.kind === "dse-signature")
-            const partEls = (m.renderParts as any[]).map((p) => {
+            const hasDseSignaturePart = m.renderParts.some((p) => p.kind === "dse-signature")
+            const partEls = m.renderParts.map((p) => {
               if (p.kind === "text") {
                 return streamdown(p.text, {
                   mode: "streaming",
@@ -825,14 +951,14 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               if (p.kind === "dse-budget-exceeded") return showDebugCards ? renderDseBudgetExceededCard(p.model) : html``
               return html``
             })
-            const copyText = textFromRenderParts(m.renderParts as any)
+            const copyText = textFromRenderParts(m.renderParts)
             const metadataJson = messageMetadataJson(
               rawMsg ?? { id: m.id, role: m.role, parts: [], runId: null },
               homeThreadId
             )
             const debugFallbackCard =
               showDebugCards && !hasDseSignaturePart
-                ? renderDebugSignatureFallbackCard({ messageId: m.id, info: debugInfo })
+                ? renderInferenceDebugCard({ messageId: m.id, info: debugInfo })
                 : null
             return html`<div class="group text-sm font-mono text-white/90" data-chat-role="assistant">
                     <div class="flex flex-col gap-2">
@@ -863,7 +989,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               : html`<div class="group text-sm font-mono text-white/90" data-chat-role="assistant">
                         ${streamdown(m.text, { mode: "static" })}
                         ${showDebugCards
-                ? renderDebugSignatureFallbackCard({
+                ? renderInferenceDebugCard({
                   messageId: "inline-static",
                   info: messageDebugInfo({ id: null, role: m.role, parts: [], runId: null }),
                 })
@@ -1008,7 +1134,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 method: "POST",
                 headers: {
                   "content-type": "application/json",
-                  ...(String((globalThis as any).__OA_E2E_MODE ?? "") === "stub"
+                  ...(String((globalThis as { readonly __OA_E2E_MODE?: unknown }).__OA_E2E_MODE ?? "") === "stub"
                     ? { "x-oa-e2e-mode": "stub" }
                     : {}),
                 },
@@ -1106,7 +1232,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 } catch {
                   meta = { parseError: "invalid JSON" }
                 }
-                const session = deps?.atoms?.get(SessionAtom as any) as { userId?: string } | undefined
+                const session = readSessionFromAtoms() as { readonly userId?: string | null } | undefined
                 if (session?.userId) meta.userId = session.userId
                 const paneId = `metadata-${Date.now()}`
                 const screen = { width: paneRoot.clientWidth, height: paneRoot.clientHeight }
@@ -1362,7 +1488,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                   })
                   const session = AuthSession.make({ userId, sessionId: null, user })
                   setClientAuthFromVerify(session, token)
-                  deps.atoms.set(SessionAtom as any, {
+                  writeSessionToAtoms({
                     userId,
                     user: {
                       id: userPayload.id,
@@ -1435,13 +1561,24 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     }
 
     if (isAuthedFromAtoms && deps?.atoms) {
-      const current = deps.atoms.get(SessionAtom as any) as Session
+      const current = readSessionFromAtoms()
       startAuthedChat({ userId: current.userId ?? "", user: current.user ?? null, token: null })
     } else if (!isAuthedFromAtoms && deps?.atoms) {
       // If the user already has a valid session cookie (e.g. E2E bypass login), detect it
       // so the home overlay doesn't force re-entering email.
+      type AuthSessionResponse = {
+        readonly ok?: boolean
+        readonly userId?: string
+        readonly token?: string
+        readonly user?: {
+          readonly id: string
+          readonly email?: string | null
+          readonly firstName?: string | null
+          readonly lastName?: string | null
+        } | null
+      }
       fetch("/api/auth/session", { method: "GET", cache: "no-store", credentials: "include" })
-        .then((r) => r.json().catch(() => null) as Promise<any>)
+        .then((r) => r.json().catch(() => null) as Promise<AuthSessionResponse | null>)
         .then((data) => {
           if (!data || data.ok !== true) return
           const userId = typeof data.userId === "string" ? data.userId : null
