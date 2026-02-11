@@ -294,6 +294,16 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       )
     }
 
+    const clearCachedSnapshotForUser = (userId: string): void => {
+      if (!userId) return
+      runChatSnapshotCacheEffectSync(
+        Effect.gen(function* () {
+          const cache = yield* ChatSnapshotCacheService
+          yield* cache.clearForUser(userId)
+        }),
+      )
+    }
+
     const { paneSystem, release: releasePaneSystem } = runPaneSystemEffectSync(
       Effect.gen(function* () {
         const paneSystemService = yield* PaneSystemService
@@ -373,6 +383,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         const btn = cardEl.querySelector("[data-oa-home-identity-logout]")
         if (btn) {
           btn.addEventListener("click", () => {
+            const sessionUserId = readSessionFromAtoms().userId ?? ""
+            clearCachedSnapshotForUser(sessionUserId)
             void Promise.resolve(deps?.signOut?.()).then(() => closeOverlay())
           })
         }
