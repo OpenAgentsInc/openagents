@@ -30,6 +30,7 @@ export const makeSpendPolicyLayer = (input?: Partial<SpendPolicy>) => {
           return Effect.fail(
             DomainNotAllowedError.make({
               host,
+              reasonCode: "host_blocked",
               reason: "Host is blocked by spend policy",
             }),
           )
@@ -40,6 +41,7 @@ export const makeSpendPolicyLayer = (input?: Partial<SpendPolicy>) => {
           return Effect.fail(
             DomainNotAllowedError.make({
               host,
+              reasonCode: "host_not_allowlisted",
               reason: "Host is not present in allowlist",
             }),
           )
@@ -51,6 +53,8 @@ export const makeSpendPolicyLayer = (input?: Partial<SpendPolicy>) => {
             BudgetExceededError.make({
               maxSpendMsats: effectiveMax,
               quotedAmountMsats: request.quotedAmountMsats,
+              reasonCode: "amount_over_cap",
+              reason: "Quoted invoice amount exceeds configured spend cap",
             }),
           )
         }
