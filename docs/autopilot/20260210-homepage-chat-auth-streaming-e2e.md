@@ -25,6 +25,7 @@
   - Primes session + Convex auth in-page after verify (no reload).
   - Uses typed session adapter contract (`sessionState.read/write`) instead of unsafe atom casting in controller paths.
   - Clears browser-cached home chat snapshot on explicit logout (prevents stale transcript rehydrate after sign-out).
+  - Uses a single idempotent overlay teardown path; closing pane or controller cleanup now unsubscribes active home chat subscription and fully disposes overlay resources.
   - `apps/web/src/effuse-app/controllers/homeController.ts`
 - Streaming finalization + stale-run sweeper:
   - See `docs/autopilot/THREAD_STUCK_STREAMING_FIX.md`.
