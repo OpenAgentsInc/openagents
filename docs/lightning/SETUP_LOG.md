@@ -72,7 +72,7 @@ skills/lnd/scripts/create-wallet.sh --container litd
 skills/lnd/scripts/lncli.sh getinfo
 ```
 
-**Two-machine setup (signer on a separate machine):**  
+**Two-machine setup (signer on a separate machine):**
 On the signer machine: `install.sh`, `start-signer.sh`, `setup-signer.sh`, then copy the credentials bundle to the agent machine. On the agent machine: `import-credentials.sh`, `start-lnd.sh --watchonly`, `create-wallet.sh`.
 
 ### 2.3 Bake a pay-only macaroon (scope spending permissions)
@@ -178,3 +178,85 @@ Aperture sits in front of your backend; it returns 402 with an L402 challenge, t
 - Repo: [github.com/lightninglabs/lightning-agent-tools](https://github.com/lightninglabs/lightning-agent-tools)
 - Article: [The Agents Are Here and They Want to Transact](https://lightning.engineering/posts/2026-02-11-ln-agent-tools/)
 - In this repo: [LIGHTNING_AGENT_TOOLS.md](./LIGHTNING_AGENT_TOOLS.md) (integration plan), [../GLOSSARY.md](../GLOSSARY.md) (L402, lnget, Aperture, etc.)
+
+---
+
+## 5. Retry with Docker Running (2026-02-11)
+
+Docker was started and the setup was retried from `~/code/lightning-agent-tools`.
+
+### 5.1 Install lnd (litd)
+
+- **Command:** `skills/lnd/scripts/install.sh`
+- **Result:** Success. Pulled `lightninglabs/lightning-terminal:v0.16.0-alpha`. Verified with `litd version 0.16.0-alpha`.
+
+### 5.2 Install lightning-security-module (signer)
+
+- **Command:** `skills/lightning-security-module/scripts/install.sh`
+- **Result:** Success. Pulled `lightninglabs/lnd:v0.20.0-beta` for the signer container.
+
+### 5.3 Install lnget
+
+- **Command:** `skills/lnget/scripts/install.sh`
+- **Result:** Failed again. Same error: lnget module requires Go 1.25+ and has `replace` directives in go.mod, so `go install ...@latest` cannot be used from outside the module. Build from a clone of the [lnget repo](https://github.com/lightninglabs/lnget) with Go 1.25+ and `make install` to get the binary.
+
+### 5.4 Start litd + signer (watch-only)
+
+- **Command:** `skills/lnd/scripts/start-lnd.sh --watchonly`
+- **Result:** Success. Created network `templates_litd-watchonly`, volumes for signer and litd data, started containers `litd-signer` and `litd`. Both running in background.
+
+### 5.5 Set up signer wallet and export credentials
+
+- **Command:** `skills/lightning-security-module/scripts/setup-signer.sh --container litd-signer`
+- **Result:** Success. Generated passphrase (saved to `~/.lnget/signer/wallet-password.txt`), created wallet seed (saved to `~/.lnget/signer/seed.txt`), waited for signer RPC (took ~30 retries as signer was still starting). Exported credentials bundle to `~/.lnget/signer/credentials-bundle/` (accounts.json, tls.cert, admin.macaroon) and created portable base64 bundle at `~/.lnget/signer/credentials-bundle.tar.gz.b64`.
+
+### 5.6 Import credentials and create watch-only wallet
+
+- **Command:** `skills/lnd/scripts/import-credentials.sh --bundle ~/.lnget/signer/credentials-bundle`
+- **Result:** Success. Credentials copied into container `litd`.
+
+- **Command:** `skills/lnd/scripts/create-wallet.sh`
+- **Result:** Failed at first with: `line 251: /../../lib/rest.sh: No such file or directory`. The script uses `source "$SCRIPT_DIR/../../lib/rest.sh"` but **`create-wallet.sh` never sets `SCRIPT_DIR`** (bug in upstream). Workaround: run with `SCRIPT_DIR` set:
+  - **Command:** `SCRIPT_DIR="$(cd skills/lnd/scripts && pwd)" skills/lnd/scripts/create-wallet.sh`
+- **Result:** Success. Generated litd passphrase, imported 259 accounts from signer, watch-only wallet created. No seed on this machine.
+
+### 5.7 Verify node
+
+- **Command:** `skills/lnd/scripts/lncli.sh getinfo`
+- **Result:** Success. Node identity, testnet, block_height 686000, synced_to_chain false (Neutrino still syncing). No channels or peers yet.
+
+### 5.8 Bake pay-only macaroon
+
+- **Command:** `skills/macaroon-bakery/scripts/bake.sh --role pay-only` (without `--container`)
+- **Result:** Failed. Script requires `lncli` on host PATH; we only have lncli inside the litd container.
+
+- **Command:** `skills/macaroon-bakery/scripts/bake.sh --role pay-only --container litd --save-to ~/.lnget/pay-only.macaroon`
+- **Result:** Success. Macaroon saved to `~/.lnget/pay-only.macaroon` (mode 0600). Permissions: SendPaymentSync, SendPaymentV2, DecodePayReq, GetInfo, GetVersion. Ready for lnget config (point `ln.lnd.macaroon` at this file).
+
+### 5.9 lnget config and L402
+
+- **Skipped:** lnget is not installed (install failed). Once lnget is built from source, run `lnget config init` and set `~/.lnget/config.yaml` to use `~/.lnget/pay-only.macaroon` and the litd gRPC host (e.g. `localhost:10009` with TLS cert and network testnet). Then `lnget --max-cost N <url>` can pay for L402 APIs.
+
+### 5.10 Aperture (seller side)
+
+- **Command:** `skills/aperture/scripts/install.sh`
+- **Result:** Failed. Same as lnget: Aperture’s go.mod has `replace` directives and requires Go 1.24.9+, so `go install` from outside the module fails. Build from a clone of the [aperture repo](https://github.com/lightninglabs/aperture) with Go 1.25+ to run Aperture.
+
+### 5.11 Summary (retry)
+
+| Step | Status | Notes |
+|------|--------|--------|
+| Clone | Done earlier | `~/code/lightning-agent-tools` |
+| lnd install | OK | Docker image litd v0.16.0-alpha |
+| Signer install | OK | Docker image lnd v0.20.0-beta |
+| Start litd + signer | OK | Containers litd, litd-signer |
+| Setup signer | OK | Wallet + credentials bundle |
+| Import creds | OK | Into litd |
+| Create watch-only wallet | OK | After setting SCRIPT_DIR (upstream bug) |
+| lncli getinfo | OK | Node running, testnet |
+| Bake pay-only macaroon | OK | With `--container litd` |
+| lnget install | Fail | go.mod replace; build from lnget repo |
+| lnget config / L402 pay | Skipped | Requires lnget binary |
+| Aperture install | Fail | go.mod replace; build from aperture repo |
+
+**Takeaways:** (1) Full remote-signer + watch-only + pay-only macaroon path works with Docker. (2) `create-wallet.sh` must be run with `SCRIPT_DIR` set until upstream adds `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`. (3) Macaroon bakery needs `--container litd` when lncli is only in the container. (4) lnget and Aperture must be built from their respective source repos; the skill `go install` path is broken for modules with replace directives.
