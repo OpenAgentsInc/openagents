@@ -62,6 +62,36 @@ const BlueprintToolSelection = Schema.Union(
     "Whether the user requested a Blueprint update. If yes, select exactly one Blueprint tool."
 });
 
+const UpgradeRequestClassification = Schema.Struct({
+  isUpgradeRequest: Schema.Boolean.annotations({
+    description:
+      "True when the user is requesting a capability that is currently unavailable and should be tracked as product feedback."
+  }),
+  capabilityKey: Schema.String.annotations({
+    description:
+      "Lowercase snake_case capability key. Use \"none\" when isUpgradeRequest is false."
+  }),
+  capabilityLabel: Schema.String.annotations({
+    description:
+      "Human-readable short label for the requested capability. Use \"none\" when isUpgradeRequest is false."
+  }),
+  summary: Schema.String.annotations({
+    description:
+      "One-sentence normalized summary of the user request (<= 200 chars). Use \"\" when isUpgradeRequest is false."
+  }),
+  notifyWhenAvailable: Schema.Boolean.annotations({
+    description:
+      "True when the user explicitly asks to be notified/updated when the capability ships."
+  }),
+  confidence: Schema.Number.annotations({
+    description:
+      "Confidence score in [0,1]. Low confidence should prefer isUpgradeRequest=false."
+  })
+}).annotations({
+  description:
+    "Classification result for capability upgrade requests."
+});
+
 const defaultParams = {
   ...Params.emptyParamsV1,
   decode: { mode: "strict_json", maxRepairs: 0 }
@@ -288,6 +318,95 @@ export const signatures = {
           }
         ]),
         PromptIR.outputJsonSchema(JSONSchema.make(BlueprintToolSelection))
+      ]
+    },
+    defaults: { params: routerDecodeParams }
+  }),
+
+  detect_upgrade_request: Signature.make({
+    id: "@openagents/autopilot/feedback/DetectUpgradeRequest.v1",
+    input: Schema.Struct({
+      message: Schema.String.annotations({
+        description: "The user's raw message text."
+      })
+    }).annotations({
+      description:
+        "A single user message to classify for upgrade/capability-request feedback."
+    }),
+    output: UpgradeRequestClassification,
+    prompt: {
+      version: 1,
+      blocks: [
+        PromptIR.system(
+          "You are a strict classifier for Autopilot product feedback."
+        ),
+        PromptIR.instruction(
+          "Task: decide whether the message requests a capability Autopilot does not currently support and should be logged as an upgrade request.\n" +
+            "\n" +
+            "Return JSON only with fields:\n" +
+            "- isUpgradeRequest: boolean\n" +
+            "- capabilityKey: snake_case string (or \"none\")\n" +
+            "- capabilityLabel: short string (or \"none\")\n" +
+            "- summary: one sentence <= 200 chars (or \"\")\n" +
+            "- notifyWhenAvailable: boolean\n" +
+            "- confidence: number in [0,1]\n" +
+            "\n" +
+            "Rules:\n" +
+            "- True for explicit asks like: connect to GitHub repos, run code remotely/cloud, browse external systems live, execute deployments automatically when those capabilities are unavailable.\n" +
+            "- False for normal Q&A, planning, architecture discussion, or requests that can be handled in chat.\n" +
+            "- If ambiguous, prefer false with lower confidence.\n"
+        ),
+        PromptIR.fewShot([
+          {
+            id: "ex1",
+            input: { message: "Connect to my private GitHub repos and learn the whole codebase." },
+            output: {
+              isUpgradeRequest: true,
+              capabilityKey: "github_repo_access",
+              capabilityLabel: "GitHub repository access",
+              summary: "User wants Autopilot to connect to and learn from private GitHub repositories.",
+              notifyWhenAvailable: false,
+              confidence: 0.96
+            }
+          },
+          {
+            id: "ex2",
+            input: { message: "Can you run Codex remotely in the cloud against my repo?" },
+            output: {
+              isUpgradeRequest: true,
+              capabilityKey: "remote_cloud_execution",
+              capabilityLabel: "Remote cloud execution",
+              summary: "User asks for remote cloud code execution against their repository.",
+              notifyWhenAvailable: false,
+              confidence: 0.95
+            }
+          },
+          {
+            id: "ex3",
+            input: { message: "Please notify me when you can connect to GitHub and deploy automatically." },
+            output: {
+              isUpgradeRequest: true,
+              capabilityKey: "github_integration_and_auto_deploy",
+              capabilityLabel: "GitHub integration and auto deploy",
+              summary: "User requests GitHub integration with automatic deploy support and asks for follow-up notification.",
+              notifyWhenAvailable: true,
+              confidence: 0.93
+            }
+          },
+          {
+            id: "ex4",
+            input: { message: "Summarize this conversation in three bullets." },
+            output: {
+              isUpgradeRequest: false,
+              capabilityKey: "none",
+              capabilityLabel: "none",
+              summary: "",
+              notifyWhenAvailable: false,
+              confidence: 0.98
+            }
+          }
+        ]),
+        PromptIR.outputJsonSchema(JSONSchema.make(UpgradeRequestClassification))
       ]
     },
     defaults: { params: routerDecodeParams }
@@ -531,6 +650,14 @@ export const modules: ReadonlyArray<DseModuleContractExportV1> = [
     description:
       "Blueprint update module: route a user message to exactly one Blueprint update tool (identity/user/character/memory/tools/heartbeat/export), or select none.",
     signatureIds: [signatures.blueprint_select_tool.id]
+  },
+  {
+    format: "openagents.dse.module_contract",
+    formatVersion: 1,
+    moduleId: "@openagents/autopilot/FeedbackIntake.v1",
+    description:
+      "Feedback intake module: classify user asks for unavailable capabilities and emit normalized upgrade requests for product tracking.",
+    signatureIds: [signatures.detect_upgrade_request.id]
   }
 ];
 

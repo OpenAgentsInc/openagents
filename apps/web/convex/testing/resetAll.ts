@@ -46,6 +46,7 @@ export const resetAllImpl = (ctx: EffectMutationCtx, args: { readonly secret: st
     deleted.runs = yield* deleteAllFrom(ctx, "runs");
     deleted.messages = yield* deleteAllFrom(ctx, "messages");
     deleted.blueprints = yield* deleteAllFrom(ctx, "blueprints");
+    deleted.autopilotFeatureRequests = yield* deleteAllFrom(ctx, "autopilotFeatureRequests");
     deleted.threads = yield* deleteAllFrom(ctx, "threads");
     deleted.users = yield* deleteAllFrom(ctx, "users");
 

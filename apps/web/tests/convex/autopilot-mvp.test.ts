@@ -5,6 +5,7 @@ import { makeInMemoryDb } from "./inMemoryDb";
 
 import { FIRST_OPEN_WELCOME_MESSAGE } from "../../convex/autopilot/defaults";
 import { getBlueprintImpl, resetBlueprintImpl, setBlueprintImpl } from "../../convex/autopilot/blueprint";
+import { listFeatureRequestsForThreadImpl, recordFeatureRequestImpl } from "../../convex/autopilot/featureRequests";
 import {
   appendPartsImpl,
   createRunImpl,
@@ -189,6 +190,71 @@ describe("convex/autopilot MVP impls", () => {
 
     const after = await run(isCancelRequestedImpl(ctx, { threadId, runId: created.runId }));
     expect(after).toEqual({ ok: true, cancelRequested: true });
+  });
+
+  it("records feature requests idempotently by runId and lists them per thread", async () => {
+    const db = makeInMemoryDb();
+    const ctx = authedCtx(db, "user-1");
+    const ensured = await run(ensureOwnedThreadImpl(ctx));
+    const threadId = ensured.threadId;
+    const created = await run(createRunImpl(ctx, { threadId, text: "connect github and cloud codex" }));
+
+    const first = await run(
+      recordFeatureRequestImpl(ctx, {
+        threadId,
+        runId: created.runId,
+        messageId: created.userMessageId,
+        userText: "Connect to my private GitHub and run Codex remotely in cloud.",
+        capabilityKey: "github_cloud_codex",
+        capabilityLabel: "GitHub + cloud Codex execution",
+        summary: "User asks for GitHub integration and remote cloud Codex execution.",
+        confidence: 0.94,
+        notifyWhenAvailable: false,
+        source: {
+          signatureId: "@openagents/autopilot/feedback/DetectUpgradeRequest.v1",
+          receiptId: "receipt-1",
+          modelId: "moonshotai/kimi-k2.5",
+          provider: "openrouter",
+        },
+      }),
+    );
+    expect(first.ok).toBe(true);
+    expect(first.existed).toBe(false);
+    expect(first.featureRequestId.startsWith("fr_")).toBe(true);
+
+    const second = await run(
+      recordFeatureRequestImpl(ctx, {
+        threadId,
+        runId: created.runId,
+        messageId: created.userMessageId,
+        userText: "Connect to my private GitHub and run Codex remotely in cloud.",
+        capabilityKey: "github_cloud_codex",
+        capabilityLabel: "GitHub + cloud Codex execution",
+        summary: "Same request, idempotent update path.",
+        confidence: 0.9,
+        notifyWhenAvailable: true,
+        source: {
+          signatureId: "@openagents/autopilot/feedback/DetectUpgradeRequest.v1",
+          receiptId: "receipt-2",
+          modelId: "moonshotai/kimi-k2.5",
+          provider: "openrouter",
+        },
+      }),
+    );
+    expect(second.ok).toBe(true);
+    expect(second.existed).toBe(true);
+    expect(second.featureRequestId).toBe(first.featureRequestId);
+
+    const listed = await run(listFeatureRequestsForThreadImpl(ctx, { threadId, limit: 10 }));
+    expect(listed.ok).toBe(true);
+    expect(listed.featureRequests).toHaveLength(1);
+    expect(listed.featureRequests[0]).toMatchObject({
+      featureRequestId: first.featureRequestId,
+      threadId,
+      runId: created.runId,
+      capabilityKey: "github_cloud_codex",
+      notifyWhenAvailable: true,
+    });
   });
 
   it("resetThread deletes messages/parts/runs/receipts and re-seeds welcome + default blueprint", async () => {
