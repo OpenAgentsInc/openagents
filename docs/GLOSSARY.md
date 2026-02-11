@@ -50,7 +50,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 ## Nostr Protocols
 
-> **Note:** Kind numbers are illustrative examples. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are the canonical identifiers for job types. See [PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) for authoritative kind assignments.
+> **Note:** Kind numbers are illustrative examples. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are canonical identifiers for job types. Rust-era protocol mapping docs were archived to backroom during the 2026-02-11 deprecation.
 
 | Term | Definition |
 |------|------------|
@@ -140,8 +140,8 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Verified Patch Bundle** | The canonical output of an agent session: a human-readable patch summary, a machine-verifiable receipt, and a replay log—independent of any specific forge or workflow. Files: `PR_SUMMARY.md`, `RECEIPT.json`, `REPLAY.jsonl`. |
 | **Patch Summary** | Human-readable summary of what changed, verification results, and confidence. File: `PR_SUMMARY.md` (filename kept for tooling stability). |
 | **RECEIPT.json** | Machine-readable receipt with hashes, tool calls, verification, and policy_bundle_id. |
-| **REPLAY.jsonl** | Target canonical event stream format for replay and debugging. Spec in `crates/dsrs/docs/REPLAY.md`. |
-| **ReplayBundle** | Current implementation format in `crates/autopilot-core/src/replay.rs`. Different from REPLAY.jsonl v1. |
+| **REPLAY.jsonl** | Canonical event stream format target for replay/debugging in OpenAgents docs. |
+| **ReplayBundle** | Historical format used by the deprecated Rust runtime (archived to backroom). |
 | **rlog** | Session recording format. Structured logs capturing agent trajectories (messages, tool calls, thinking, errors). Predecessor to REPLAY.jsonl. |
 | **Trajectory** | Full record of decisions, tool calls, intermediate outputs, and verification steps for a session. |
 | **policy_bundle_id** | Identifier for the policy bundle used in a session. Canonical term (not `policy_version`). |
@@ -244,12 +244,8 @@ ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
 
 ## See Also
 
-- [PAPER.md](PAPER.md) — Technical systems paper
-- [SYNTHESIS.md](SYNTHESIS.md) - Vision and strategy document
-- [SYNTHESIS_EXECUTION.md](SYNTHESIS_EXECUTION.md) - Implementation status and practical guide
-- [ROADMAP.md](ROADMAP.md) — Development roadmap with MVP gates
-- [crates/dsrs/docs/ARCHITECTURE.md](crates/dsrs/docs/ARCHITECTURE.md) - DSPy core traits and runtime layers
-- [crates/dsrs/docs/SIGNATURES.md](crates/dsrs/docs/SIGNATURES.md) - Signature specifications
-- [crates/dsrs/docs/REPLAY.md](crates/dsrs/docs/REPLAY.md) - REPLAY.jsonl format specification
-- [crates/dsrs/docs/ARTIFACTS.md](crates/dsrs/docs/ARTIFACTS.md) - MVP artifact schemas
-- [docs/protocol/PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) - Canonical protocol details
+- [README.md](README.md) — active docs index
+- [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) — current repository map
+- [ROADMAP.md](ROADMAP.md) — active roadmap
+- [MOLTBOOK.md](MOLTBOOK.md) — social policy and operations
+- [RUST_DOCS_ARCHIVE_2026-02-11.md](RUST_DOCS_ARCHIVE_2026-02-11.md) — archive locations for deprecated Rust docs

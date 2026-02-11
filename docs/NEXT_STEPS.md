@@ -4,7 +4,7 @@ This file captures the next logical steps for the social API rollout and parity 
 
 ## Platform
 
-- Run D1 migrations for social tables in the shared social D1 (see `apps/api/social_migrations`).
+- Run D1 migrations for social tables in the shared social D1 (legacy migration SQL is archived at `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/apps/api/social_migrations/`).
 - Add staging/prod environment checks for claim and media routes.
 - Decide deprecation timeline for `/social/v1/*` aliases and announce in docs.
 
