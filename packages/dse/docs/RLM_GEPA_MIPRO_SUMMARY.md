@@ -208,16 +208,7 @@ Each entry lists:
   - Matches: `RLM`: [18 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/dspy/report.md#L1), `GEPA`: [19 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/dspy/report.md#L1), `MIPRO`: [18 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/dspy/report.md#L1)
   - Oldest: [e05c58c635](https://github.com/OpenAgentsInc/openagents/commit/e05c58c63562f2675d3951aff5a51a7f4ec2e807) 2026-01-25
   - Latest: [980939b8cb](https://github.com/OpenAgentsInc/openagents/commit/980939b8cb28be6a98d1cb4d0b5370c3acc454ed) 2026-01-25
-- [docs/logs/20260125-2359-audit.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/logs/20260125-2359-audit.md)
-  - Title: Codebase Audit (2026-01-25 23:59)
-  - Matches: `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/logs/20260125-2359-audit.md#L80), `MIPRO`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/logs/20260125-2359-audit.md#L79)
-  - Oldest: [159367223f](https://github.com/OpenAgentsInc/openagents/commit/159367223fe7f7fc9431487fc26fff71f5176545) 2026-01-26
-  - Latest: [f5c8a1e636](https://github.com/OpenAgentsInc/openagents/commit/f5c8a1e63633183e04f17d48f2893ed82e340d26) 2026-01-26
-- [docs/logs/20260126/1705-clippy-analysis.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/logs/20260126/1705-clippy-analysis.md)
-  - Title: Clippy Status (workspace)
-  - Matches: `RLM`: [6 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/logs/20260126/1705-clippy-analysis.md#L27)
-  - Oldest: [d647cbbe94](https://github.com/OpenAgentsInc/openagents/commit/d647cbbe94a008a40348908dabc48f3c7362b306) 2026-01-26
-  - Latest: [526c04a60e](https://github.com/OpenAgentsInc/openagents/commit/526c04a60e6bf3ac6196e82c681f1d2e3a2e3932) 2026-01-29
+- ~~docs/logs/~~ (archived 2026-02-11 to backroom `archive/openagents-docs-logs-2026-02-11/`): 20260125-2359-audit.md (GEPA/MIPRO), 20260126/1705-clippy-analysis.md (RLM)
 - [docs/nostr/NOSTR_AUDIT.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/nostr/NOSTR_AUDIT.md)
   - Title: Nostr Audit (OpenAgents)
   - Matches: `RLM`: [5 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/nostr/NOSTR_AUDIT.md#L44)
