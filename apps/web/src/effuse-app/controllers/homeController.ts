@@ -203,6 +203,7 @@ function startPrelaunchCountdownTicker(container: Element): () => void {
 function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined): () => void {
   const trigger = container.querySelector("[data-oa-open-chat-pane]")
   if (!trigger) return () => { }
+  let activeOverlayTeardown: (() => void) | null = null
 
   const isTextEntryTarget = (target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) return false
@@ -218,6 +219,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
     const shell = container.querySelector("[data-marketing-shell]")
     if (!(shell instanceof HTMLElement)) return
+    activeOverlayTeardown?.()
 
     shell.setAttribute("data-oa-home-chat-open", "1")
 
@@ -251,6 +253,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     const storedRect = readStoredHomeChatPaneRect(screen)
     const rect = storedRect ?? calculateNewPanePosition(undefined, screen, 640, 480)
     let closeOverlay = (): void => { }
+    let overlayDisposed = false
     const paneSystemConfig = {
       enableDotsBackground: false,
       enableCanvasPan: false,
@@ -309,6 +312,12 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         }),
       )
     }
+    let unsubHomeChat: (() => void) | null = null
+    const clearHomeChatSubscription = (): void => {
+      const release = unsubHomeChat
+      unsubHomeChat = null
+      release?.()
+    }
 
     const { paneSystem, release: releasePaneSystem } = runPaneSystemEffectSync(
       Effect.gen(function* () {
@@ -325,6 +334,9 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     }
 
     closeOverlay = () => {
+      if (overlayDisposed) return
+      overlayDisposed = true
+      clearHomeChatSubscription()
       const closedRectRaw = paneSystem.store.closedPositions.get(CHAT_PANE_ID)?.rect ?? paneSystem.store.pane(CHAT_PANE_ID)?.rect
       const closedRect = parseStoredPaneRect(closedRectRaw)
       const currentScreen =
@@ -336,7 +348,9 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       overlay.remove()
       hideStyle.remove()
       shell.removeAttribute("data-oa-home-chat-open")
+      if (activeOverlayTeardown === closeOverlay) activeOverlayTeardown = null
     }
+    activeOverlayTeardown = closeOverlay
 
     const readSessionFromAtoms = (): Session =>
       deps?.sessionState.read() ?? { userId: null, user: null }
@@ -401,7 +415,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     paneSystem.render()
 
     const paneContentSlot = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-content]`)
-    if (!(paneContentSlot instanceof Element)) return
+    if (!(paneContentSlot instanceof Element)) {
+      closeOverlay()
+      return
+    }
 
     type Step = "email" | "code" | "authed"
     /** Shown when authed but thread not loaded yet; must match Convex FIRST_OPEN_WELCOME_MESSAGE so onboarding isn't skipped. */
@@ -414,7 +431,6 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let isBusy = false
     let homeThreadId: string | null = null
     let homeSnapshot: ChatSnapshot = { messages: [], status: "ready", errorText: null }
-    let unsubHomeChat: (() => void) | null = null
     let dseStrategyId: "direct.v1" | "rlm_lite.v1" = "direct.v1"
     let dseBudgetProfile: "small" | "medium" | "long" = "medium"
     let isRunningDseRecap = false
@@ -440,7 +456,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
       homeThreadId = threadId
       deps.atoms.get(ChatSnapshotAtom(threadId))
-      if (unsubHomeChat) unsubHomeChat()
+      clearHomeChatSubscription()
 
       let skippedHydratedPlaceholder = false
       const hydratedSnapshot = input.hydratedSnapshot ?? null
@@ -918,6 +934,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     }
 
     const doRender = () => {
+      if (overlayDisposed) return
       type HomeRenderedMessage = {
         readonly id: string
         readonly role: "user" | "assistant"
@@ -1786,6 +1803,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
   window.addEventListener("keydown", onGlobalEnter, { capture: true })
 
   return () => {
+    activeOverlayTeardown?.()
+    activeOverlayTeardown = null
     trigger.removeEventListener("click", handler, { capture: true })
     window.removeEventListener("keydown", onGlobalEnter, { capture: true })
   }
