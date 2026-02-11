@@ -102,8 +102,24 @@ export type ChatPart =
   | ChatDseBudgetExceededPart
   | { readonly type: string; readonly [k: string]: unknown }
 
+/** LLM finish part from the stream (usage, reason, modelId when available). */
+export type ChatMessageFinish = {
+  readonly reason?: string
+  readonly usage?: {
+    readonly inputTokens?: number
+    readonly outputTokens?: number
+    readonly totalTokens?: number
+    readonly promptTokens?: number
+    readonly completionTokens?: number
+  }
+  readonly modelId?: string
+  readonly provider?: string
+}
+
 export type ChatMessage = {
   readonly id: string
   readonly role: ChatRole
   readonly parts: ReadonlyArray<ChatPart>
+  /** Present for assistant messages when the stream included a finish part (LLM usage/model). */
+  readonly finish?: ChatMessageFinish
 }

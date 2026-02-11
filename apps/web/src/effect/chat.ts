@@ -6,7 +6,7 @@ import { ConvexService } from "./convex";
 import { RequestContextService } from "./requestContext";
 import { TelemetryService } from "./telemetry";
 
-import type { ChatMessage } from "./chatProtocol";
+import type { ChatMessage, ChatMessageFinish } from "./chatProtocol";
 import { applyChatWirePart } from "./chatWire";
 import type { ActiveStream } from "./chatWire";
 
@@ -131,6 +131,30 @@ export const ChatServiceLive = Layer.effect(
             byMessageId.set(messageId, applyChatWirePart(active, part));
           }
 
+          // Last finish part per message (for assistant LLM usage/model in metadata).
+          const finishByMessageId = new Map<string, ChatMessageFinish>();
+          for (const p of partsSorted) {
+            const messageId = String((p as any).messageId ?? "");
+            const part = (p as any).part;
+            if (!messageId || !part || (part as any).type !== "finish") continue;
+            const raw = part as any;
+            const usage = raw?.usage && typeof raw.usage === "object"
+              ? {
+                  ...(typeof raw.usage.inputTokens === "number" ? { inputTokens: raw.usage.inputTokens } : {}),
+                  ...(typeof raw.usage.outputTokens === "number" ? { outputTokens: raw.usage.outputTokens } : {}),
+                  ...(typeof raw.usage.totalTokens === "number" ? { totalTokens: raw.usage.totalTokens } : {}),
+                  ...(typeof raw.usage.promptTokens === "number" ? { promptTokens: raw.usage.promptTokens } : {}),
+                  ...(typeof raw.usage.completionTokens === "number" ? { completionTokens: raw.usage.completionTokens } : {}),
+                }
+              : undefined;
+            finishByMessageId.set(messageId, {
+              ...(typeof raw?.reason === "string" ? { reason: raw.reason } : {}),
+              ...(usage && Object.keys(usage).length > 0 ? { usage } : {}),
+              ...(typeof raw?.modelId === "string" ? { modelId: raw.modelId } : {}),
+              ...(typeof raw?.provider === "string" ? { provider: raw.provider } : {}),
+            });
+          }
+
           const messages: Array<ChatMessage> = [];
           for (const m of messagesRaw) {
             const messageId = String(m?.messageId ?? "");
@@ -146,18 +170,17 @@ export const ChatServiceLive = Layer.effect(
             }
             if (role === "assistant") {
               const active = byMessageId.get(messageId);
+              const finish = finishByMessageId.get(messageId);
+              const baseMsg = { id: messageId, role: "assistant" as const, finish } as const;
               if (active && active.parts.length > 0) {
-                messages.push({ id: messageId, role: "assistant", parts: [...active.parts] });
+                messages.push({ ...baseMsg, parts: [...active.parts] });
               } else if (text.trim()) {
                 messages.push({
-                  id: messageId,
-                  role: "assistant",
+                  ...baseMsg,
                   parts: [{ type: "text", text, state: "done" }],
                 });
               } else {
-                // If we only received non-renderable wire parts (e.g. finish-only), fall back to
-                // message text when present (handled above). Otherwise keep the message empty.
-                messages.push({ id: messageId, role: "assistant", parts: [] });
+                messages.push({ ...baseMsg, parts: [] });
               }
 
               if (status === "streaming" && runId) {

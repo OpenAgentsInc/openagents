@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { DomServiceTag, EffuseLive, html, renderToolPart } from "@openagentsinc/effuse"
+import { DomServiceTag, EffuseLive, html, rawHtml, renderToolPart } from "@openagentsinc/effuse"
 import {
   mountPaneSystemDom,
   calculateNewPanePosition,
@@ -54,6 +54,9 @@ const COPY_ICON_SVG =
 
 const CHECKMARK_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+
+const CHART_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>'
 
 function copyTextToClipboard(text: string, _source: "pane" | "message"): void {
   if (!text || typeof text !== "string") return
@@ -347,6 +350,74 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       return blocks.join("\n\n")
     }
 
+    const getThreadTrace = (): { threadId: string | null; entries: unknown[] } => {
+      const entries: unknown[] = []
+      if (step !== "authed" || !homeSnapshot.messages.length) {
+        return { threadId: homeThreadId, entries }
+      }
+      for (const msg of homeSnapshot.messages) {
+        const messageId = (msg as any).id ?? null
+        const role = (msg as any).role ?? null
+        const parts = Array.isArray((msg as any).parts) ? (msg as any).parts as ReadonlyArray<any> : []
+        for (const p of parts) {
+          const t = String(p?.type ?? "")
+          if (t.startsWith("dse.") || t.startsWith("tool") || t === "dynamic-tool") {
+            entries.push({ messageId, role, type: t, id: p?.id ?? p?.signatureId, state: p?.state, ...sanitizeForTrace(p) })
+          }
+        }
+      }
+      return { threadId: homeThreadId, entries }
+    }
+    const sanitizeForTrace = (p: any): Record<string, unknown> => {
+      const out: Record<string, unknown> = {}
+      if (p?.signatureId != null) out.signatureId = p.signatureId
+      if (p?.strategyId != null) out.strategyId = p.strategyId
+      if (p?.strategyReason != null) out.strategyReason = p.strategyReason
+      if (p?.compiled_id != null) out.compiled_id = p.compiled_id
+      if (p?.receiptId != null) out.receiptId = p.receiptId
+      if (p?.toolCallId != null) out.toolCallId = p.toolCallId
+      if (p?.toolName != null) out.toolName = p.toolName
+      if (p?.timing != null) out.timing = p.timing
+      if (p?.budget != null) out.budget = p.budget
+      if (p?.tsMs != null) out.tsMs = p.tsMs
+      if (p?.jobHash != null) out.jobHash = p.jobHash
+      if (p?.errorText != null) out.errorText = p.errorText
+      if (p?.rlmTrace != null) out.rlmTrace = p.rlmTrace
+      if (p?.contextPressure != null) out.contextPressure = p.contextPressure
+      if (p?.promptRenderStats != null) out.promptRenderStats = p.promptRenderStats
+      if (p?.outputPreview != null) out.outputPreview = p.outputPreview
+      if (p?.from != null) out.from = p.from
+      if (p?.to != null) out.to = p.to
+      if (p?.reason != null) out.reason = p.reason
+      if (p?.best != null) out.best = p.best
+      if (p?.candidates != null) out.candidates = p.candidates
+      return out
+    }
+
+    const messageMetadataJson = (rawMessage: any, threadId: string | null, userId?: string | null): string => {
+      const parts = Array.isArray(rawMessage?.parts) ? rawMessage.parts as ReadonlyArray<any> : []
+      const partsSummary = parts.map((p: any) => {
+        const base = { type: p?.type ?? "?", id: p?.id ?? p?.signatureId }
+        if (p?.type === "dse.signature" || p?.signatureId) {
+          return { ...base, signatureId: p.signatureId, strategyId: p.strategyId, strategyReason: p.strategyReason, compiled_id: p.compiled_id, receiptId: p.receiptId, state: p.state, durationMs: p.timing?.durationMs, budget: p.budget, errorText: p.errorText }
+        }
+        if (p?.type === "dse.compile") return { ...base, state: p.state, errorText: p.errorText }
+        if (p?.type === "dse.tool" || p?.toolCallId) return { ...base, toolCallId: p.toolCallId, state: p.state }
+        return base
+      })
+      const payload: Record<string, unknown> = {
+        messageId: rawMessage?.id ?? null,
+        threadId,
+        role: rawMessage?.role ?? null,
+        parts: partsSummary,
+      }
+      if (rawMessage?.finish != null && typeof rawMessage.finish === "object") {
+        payload.llm = rawMessage.finish
+      }
+      if (userId != null && userId !== "") payload.userId = userId
+      return JSON.stringify(payload, null, 2)
+    }
+
     /** Placeholder for chat input based on last assistant message (onboarding hints). */
     const chatPlaceholderFromLastAssistant = (
       lastAssistantText: string,
@@ -575,11 +646,16 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               return html``
             })
             const copyText = textFromRenderParts(m.renderParts as any)
-            return html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
+            const rawMsg = homeSnapshot.messages.find((msg: any) => String(msg?.id) === String(m.id))
+            const metadataJson = messageMetadataJson(rawMsg ?? { id: m.id, role: m.role, parts: [] }, homeThreadId)
+            return html`<div class="group text-sm font-mono text-white/90" data-chat-role="assistant">
                     <div class="flex flex-col gap-2">${partEls}</div>
                     <span data-oa-copy-source style="display:none">${copyText}</span>
-                    <div class="mt-1.5 w-fit">
+                    <span data-oa-message-metadata style="display:none">${metadataJson}</span>
+                    <div class="mt-0.5 w-fit flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                      <button type="button" data-oa-home-chat-telemetry class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open trace">${rawHtml(CHART_ICON_SVG)}</button>
                       <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Copy</button>
+                      <button type="button" data-oa-home-chat-metadata class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Metadata</button>
                     </div>
                   </div>`
           })}
@@ -595,11 +671,14 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                       >
                         ${m.text}
                       </div>`
-              : html`<div class="text-sm font-mono text-white/90" data-chat-role="assistant">
+              : html`<div class="group text-sm font-mono text-white/90" data-chat-role="assistant">
                         ${streamdown(m.text, { mode: "static" })}
                         <span data-oa-copy-source style="display:none">${m.text}</span>
-                        <div class="mt-1.5 w-fit">
+                        <span data-oa-message-metadata style="display:none">${messageMetadataJson({ id: null, role: m.role, parts: [] }, homeThreadId)}</span>
+                        <div class="mt-0.5 w-fit flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                          <button type="button" data-oa-home-chat-telemetry class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open trace">${rawHtml(CHART_ICON_SVG)}</button>
                           <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Copy</button>
+                          <button type="button" data-oa-home-chat-metadata class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Metadata</button>
                         </div>
                       </div>`,
           )}
@@ -775,6 +854,95 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 setTimeout(() => {
                   btn.textContent = "Copy"
                 }, 1000)
+              },
+              { capture: true }
+            )
+          })
+
+          paneContentSlot.querySelectorAll("[data-oa-home-chat-metadata]").forEach((btn) => {
+            if (!(btn instanceof HTMLElement)) return
+            btn.addEventListener(
+              "pointerdown",
+              (e) => {
+                if (e.button !== 0) return
+                e.preventDefault()
+                e.stopPropagation()
+                e.stopImmediatePropagation()
+                const block = btn.closest("[data-chat-role=\"assistant\"]")
+                const metaEl = block?.querySelector("[data-oa-message-metadata]")
+                let meta: Record<string, unknown> = {}
+                try {
+                  meta = JSON.parse(metaEl?.textContent ?? "{}") as Record<string, unknown>
+                } catch {
+                  meta = { parseError: "invalid JSON" }
+                }
+                const session = deps?.atoms?.get(SessionAtom as any) as { userId?: string } | undefined
+                if (session?.userId) meta.userId = session.userId
+                const paneId = `metadata-${Date.now()}`
+                const screen = { width: paneRoot.clientWidth, height: paneRoot.clientHeight }
+                const rect = calculateNewPanePosition(paneSystem.store.lastPanePosition, screen, 520, 360)
+                paneSystem.store.addPane({
+                  id: paneId,
+                  kind: "metadata",
+                  title: "Message metadata",
+                  rect,
+                  dismissable: true,
+                })
+                paneSystem.store.bringToFront(paneId)
+                paneSystem.render()
+                const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
+                if (slot instanceof HTMLElement) {
+                  const metaJson = JSON.stringify(meta, null, 2)
+                  Effect.runPromise(
+                    Effect.gen(function* () {
+                      const dom = yield* DomServiceTag
+                      yield* dom.render(
+                        slot,
+                        html`<div class="p-4 h-full overflow-auto"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${metaJson}</pre></div>`
+                      )
+                    }).pipe(Effect.provide(EffuseLive))
+                  ).catch(() => {})
+                }
+              },
+              { capture: true }
+            )
+          })
+
+          paneContentSlot.querySelectorAll("[data-oa-home-chat-telemetry]").forEach((btn) => {
+            if (!(btn instanceof HTMLElement)) return
+            btn.addEventListener(
+              "pointerdown",
+              (e) => {
+                if (e.button !== 0) return
+                e.preventDefault()
+                e.stopPropagation()
+                e.stopImmediatePropagation()
+                const trace = getThreadTrace()
+                const paneId = `telemetry-${Date.now()}`
+                const screen = { width: paneRoot.clientWidth, height: paneRoot.clientHeight }
+                const rect = calculateNewPanePosition(paneSystem.store.lastPanePosition, screen, 560, 400)
+                paneSystem.store.addPane({
+                  id: paneId,
+                  kind: "telemetry",
+                  title: "Trace",
+                  rect,
+                  dismissable: true,
+                })
+                paneSystem.store.bringToFront(paneId)
+                paneSystem.render()
+                const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
+                if (slot instanceof HTMLElement) {
+                  const traceJson = JSON.stringify(trace, null, 2)
+                  Effect.runPromise(
+                    Effect.gen(function* () {
+                      const dom = yield* DomServiceTag
+                      yield* dom.render(
+                        slot,
+                        html`<div class="p-4 h-full overflow-auto"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${traceJson}</pre></div>`
+                      )
+                    }).pipe(Effect.provide(EffuseLive))
+                  ).catch(() => {})
+                }
               },
               { capture: true }
             )
