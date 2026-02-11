@@ -44,4 +44,3 @@ cat docs/autopilot/testing/fixtures/<file>.jsonl | jq -r '.part.type'
 - Do not put secrets, real tokens, or real user identifiers in fixtures.
 - Keep payloads bounded. Large blobs should be referenced (e.g. `blobRef`) rather than inlined.
 - Prefer stable timestamps (`tsMs`) and stable ids (`id`, `toolCallId`) so fixtures are deterministic.
-
