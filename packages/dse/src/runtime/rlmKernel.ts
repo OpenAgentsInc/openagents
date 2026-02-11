@@ -30,6 +30,15 @@ export type RlmTrustLabelV1 = "trusted" | "semi_trusted" | "untrusted";
 
 export type RlmContentOriginV1 = "input" | "tool" | "lm" | "derived" | "unknown";
 
+export const RlmTrustLabelV1Schema: Schema.Schema<RlmTrustLabelV1> = Schema.Literal(
+  "trusted",
+  "semi_trusted",
+  "untrusted"
+);
+
+export const RlmContentOriginV1Schema: Schema.Schema<RlmContentOriginV1> =
+  Schema.Literal("input", "tool", "lm", "derived", "unknown");
+
 export type RlmTargetV1 =
   | { readonly _tag: "Var"; readonly name: string }
   | { readonly _tag: "Blob"; readonly blobId: string };
@@ -44,6 +53,16 @@ export type RlmSourceV1 =
   | { readonly _tag: "VarJson"; readonly name: string }
   | { readonly _tag: "VarBlob"; readonly name: string; readonly blobId: string };
 
+export const RlmSourceV1Schema: Schema.Schema<RlmSourceV1> = Schema.Union(
+  Schema.Struct({ _tag: Schema.Literal("Blob"), blobId: Schema.String }),
+  Schema.Struct({ _tag: Schema.Literal("VarJson"), name: Schema.String }),
+  Schema.Struct({
+    _tag: Schema.Literal("VarBlob"),
+    name: Schema.String,
+    blobId: Schema.String
+  })
+);
+
 export type RlmSpanRefV1 = {
   readonly _tag: "SpanRef";
   readonly source: RlmSourceV1;
@@ -53,6 +72,16 @@ export type RlmSpanRefV1 = {
   readonly startLine?: number | undefined;
   readonly endLine?: number | undefined;
 };
+
+export const RlmSpanRefV1Schema: Schema.Schema<RlmSpanRefV1> = Schema.Struct({
+  _tag: Schema.Literal("SpanRef"),
+  source: RlmSourceV1Schema,
+  startChar: Schema.Number,
+  endChar: Schema.Number,
+  totalChars: Schema.Number,
+  startLine: Schema.optional(Schema.Number),
+  endLine: Schema.optional(Schema.Number)
+});
 
 export type RlmModelConfigV1 = {
   readonly modelId?: string | undefined;
@@ -256,6 +285,76 @@ export type RlmObservationV1 =
       readonly intoVar: string;
       readonly kind: "json" | "blob";
     };
+
+export const RlmObservationV1Schema: Schema.Schema<RlmObservationV1> = Schema.Union(
+  Schema.Struct({
+    _tag: Schema.Literal("PreviewResult"),
+    trust: RlmTrustLabelV1Schema,
+    origin: RlmContentOriginV1Schema,
+    target: RlmTargetV1Schema,
+    span: RlmSpanRefV1Schema,
+    offset: Schema.Number,
+    length: Schema.Number,
+    totalChars: Schema.Number,
+    truncated: Schema.Boolean,
+    text: Schema.String
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("SearchResult"),
+    trust: RlmTrustLabelV1Schema,
+    origin: RlmContentOriginV1Schema,
+    target: RlmTargetV1Schema,
+    totalChars: Schema.Number,
+    query: Schema.String,
+    totalMatches: Schema.Number,
+    truncated: Schema.Boolean,
+    matches: Schema.Array(
+      Schema.Struct({
+        index: Schema.Number,
+        snippet: Schema.String,
+        span: RlmSpanRefV1Schema
+      })
+    )
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("LoadResult"),
+    intoVar: Schema.String,
+    blob: BlobRefSchema
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("ChunkResult"),
+    intoVar: Schema.String,
+    chunkCount: Schema.Number,
+    chunkChars: Schema.Number,
+    overlapChars: Schema.Number
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("WriteVarResult"),
+    name: Schema.String,
+    kind: Schema.Literal("json", "blob")
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("SubLmResult"),
+    trust: RlmTrustLabelV1Schema,
+    origin: RlmContentOriginV1Schema,
+    intoVar: Schema.String,
+    blob: BlobRefSchema
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("ExtractOverChunksResult"),
+    intoVar: Schema.String,
+    chunkCount: Schema.Number,
+    outputsVar: Schema.String
+  }),
+  Schema.Struct({
+    _tag: Schema.Literal("ToolCallResult"),
+    trust: RlmTrustLabelV1Schema,
+    origin: RlmContentOriginV1Schema,
+    toolName: Schema.String,
+    intoVar: Schema.String,
+    kind: Schema.Literal("json", "blob")
+  })
+);
 
 export type RlmKernelStep =
   | { readonly _tag: "Continue"; readonly observation: RlmObservationV1 }

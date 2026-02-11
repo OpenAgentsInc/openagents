@@ -3,7 +3,12 @@ import { Effect, Schema } from "effect";
 import { canonicalJson } from "../internal/canonicalJson.js";
 import type { PredictReceiptV1 } from "../runtime/receipt.js";
 
-import { RlmTraceDocV1Schema, type RlmTraceDocV1 } from "./rlmTrace.js";
+import {
+  decodeRlmTraceDocV1CompatibleSync,
+  type RlmTraceDocV1,
+  type RlmTraceFinalEventV1,
+  type RlmTraceInputEventV1
+} from "./rlmTrace.js";
 
 export type DseExampleCandidateV1 = {
   readonly signatureId: string;
@@ -35,23 +40,38 @@ function parseJson(text: string): Effect.Effect<unknown, TraceExportError> {
 
 function findInput(doc: RlmTraceDocV1): unknown | null {
   for (const ev of doc.events) {
-    if (!ev || typeof ev !== "object") continue;
-    const tag = (ev as any)._tag;
-    if (tag === "Input") return (ev as any).input ?? null;
+    if (isInputEvent(ev)) {
+      return ev.input ?? null;
+    }
   }
   return null;
 }
 
+function isInputEvent(
+  event: RlmTraceDocV1["events"][number]
+): event is RlmTraceInputEventV1 {
+  return "_tag" in event && event._tag === "Input";
+}
+
+function isFinalEvent(
+  event: RlmTraceDocV1["events"][number]
+): event is RlmTraceFinalEventV1 {
+  return "_tag" in event && event._tag === "Final";
+}
+
 function findFinalOutput(doc: RlmTraceDocV1): unknown | null {
-  // Events are appended sequentially; take the last Final action we can find.
+  // Events are appended sequentially; take the last terminal output we can find.
   for (let i = doc.events.length - 1; i >= 0; i--) {
     const ev = doc.events[i];
-    if (!ev || typeof ev !== "object") continue;
-    const action = (ev as any).action;
-    if (!action || typeof action !== "object") continue;
-    if (String((action as any)._tag ?? "") !== "Final") continue;
-    if (!("output" in (action as any))) continue;
-    return (action as any).output ?? null;
+    if (!ev) {
+      continue;
+    }
+    if (isFinalEvent(ev)) {
+      return ev.output ?? null;
+    }
+    if ("action" in ev && ev.action._tag === "Final") {
+      return ev.action.output ?? null;
+    }
   }
   return null;
 }
@@ -63,7 +83,7 @@ export function candidateExampleFromRlmTrace(options: {
   return Effect.gen(function* () {
     const json = yield* parseJson(options.traceText);
     const doc = yield* Effect.try({
-      try: () => Schema.decodeUnknownSync(RlmTraceDocV1Schema)(json),
+      try: () => decodeRlmTraceDocV1CompatibleSync(json),
       catch: (cause) =>
         TraceExportError.make({
           message: "Trace blob is not a valid openagents.dse.rlm_trace v1 document",
@@ -122,4 +142,3 @@ export function candidateExampleFromRlmTrace(options: {
     };
   });
 }
-

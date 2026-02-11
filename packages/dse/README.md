@@ -16,6 +16,13 @@ Additional design notes:
 - `packages/dse/docs/RLM_GEPA_MIPRO_DSE_REVIEW_AND_ROADMAP.md`
 - `packages/dse/docs/RLM_GEPA_MIPRO_SUMMARY.md`
 
+## RLM Trace Compatibility
+
+- Canonical trace format: `openagents.dse.rlm_trace` v1 with typed `events`.
+- Compatibility path: legacy v1 traces are normalized by
+  `decodeRlmTraceDocV1CompatibleSync` in `src/traceMining/rlmTrace.ts`.
+- Explicit version guard: unsupported `formatVersion` values fail fast.
+
 ## Development Setup
 
 Install deps, then patch TypeScript for Effect build-time diagnostics:
