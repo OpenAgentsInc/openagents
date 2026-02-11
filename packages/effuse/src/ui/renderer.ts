@@ -1,4 +1,5 @@
 import { html, joinTemplates } from "../template/html.js"
+import { Effect } from "effect"
 import type { TemplateResult } from "../template/types.js"
 import type { AuthState, DataModel, UIElement, UITree } from "./types.js"
 import { resolveDynamicObject } from "./data.js"
@@ -48,7 +49,7 @@ const renderElement = (
 
   const renderer = registry[element.type] ?? options.fallback
   if (!renderer) {
-    console.warn(`[Effuse/UI] No renderer for component type: ${element.type}`)
+    Effect.runSync(Effect.logWarning(`[Effuse/UI] No renderer for component type: ${element.type}`))
     return emptyTemplate
   }
 

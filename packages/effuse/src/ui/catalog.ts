@@ -87,7 +87,7 @@ export const createCatalog = <
 
   const warn = (message: string) => {
     if (validation === "warn") {
-      console.warn(`[Effuse/Catalog] ${message}`)
+      Effect.runSync(Effect.logWarning(`[Effuse/Catalog] ${message}`))
     }
   }
 
