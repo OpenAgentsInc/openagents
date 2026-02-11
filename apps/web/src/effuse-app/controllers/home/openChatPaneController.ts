@@ -111,12 +111,37 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
     paneStyle.setAttribute("data-oa-home-chat-pane-style", "1")
     paneStyle.textContent =
       "[data-oa-home-chat-overlay] [data-oa-pane] { background: rgba(0,0,0,0.5) !important; }\n" +
+      "[data-oa-home-chat-overlay] [data-pane-id^=\"telemetry-\"] { background: #000 !important; opacity: 1 !important; }\n" +
+      "[data-oa-home-chat-overlay] [data-pane-id^=\"telemetry-\"] [data-oa-pane-title], [data-oa-home-chat-overlay] [data-pane-id^=\"telemetry-\"] [data-oa-pane-content] { background: #000 !important; opacity: 1 !important; }\n" +
       "[data-oa-home-chat-overlay], [data-oa-home-chat-overlay] [data-oa-pane-system], [data-oa-home-chat-overlay] [data-oa-pane-layer] { user-select: none; -webkit-user-select: none; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane], [data-oa-home-chat-overlay] [data-oa-pane] * { user-select: text; -webkit-user-select: text; }\n" +
       "[data-oa-home-chat-overlay]:focus, [data-oa-home-chat-overlay] [data-oa-pane-system]:focus { outline: none !important; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane-title] { cursor: grab; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane-title]:active { cursor: grabbing; }\n" +
-      "[data-oa-home-chat-overlay] [data-oa-pane-system][data-oa-pane-dragging=\"1\"] [data-oa-pane-title] { cursor: grabbing; }"
+      "[data-oa-home-chat-overlay] [data-oa-pane-system][data-oa-pane-dragging=\"1\"] [data-oa-pane-title] { cursor: grabbing; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-part] { margin-top: 2px; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; background: rgba(255,255,255,0.03); overflow: hidden; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-summary] { list-style: none; display: grid; grid-template-columns: auto auto auto 1fr; align-items: center; gap: 8px; padding: 8px 10px; font-size: 11px; line-height: 1.25; cursor: pointer; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-summary]::-webkit-details-marker { display: none; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-disclosure] { opacity: 0.7; transition: transform 120ms ease; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-part][open] [data-effuse-tool-disclosure] { transform: rotate(90deg); }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-status-badge=\"tool-result\"] { color: #8ef3ad; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-status-badge=\"tool-error\"] { color: #ff8f8f; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-status-badge=\"tool-call\"] { color: #9cc9ff; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-status-badge=\"tool-denied\"] { color: #ffd08a; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-status-badge=\"tool-approval\"] { color: #d2b7ff; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-name-label=\"1\"] { color: rgba(255,255,255,0.92); }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-call-id-label=\"1\"] { color: rgba(255,255,255,0.58); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-summary-text=\"1\"] { color: rgba(255,255,255,0.72); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-details=\"1\"] { border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.34); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-overview=\"1\"] { font-size: 11px; color: rgba(255,255,255,0.72); }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-empty=\"1\"] { font-size: 11px; color: rgba(255,255,255,0.55); }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-field] { display: flex; flex-direction: column; gap: 4px; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-label=\"1\"] { font-size: 11px; color: rgba(255,255,255,0.72); text-transform: uppercase; letter-spacing: 0.02em; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-input=\"1\"] pre, [data-oa-home-chat-overlay] [data-effuse-tool-output=\"1\"] pre, [data-oa-home-chat-overlay] [data-effuse-tool-error=\"1\"] pre { margin: 0; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.88); white-space: pre-wrap; word-break: break-word; font-size: 11px; line-height: 1.35; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-input=\"1\"] button, [data-oa-home-chat-overlay] [data-effuse-tool-output=\"1\"] button, [data-oa-home-chat-overlay] [data-effuse-tool-error=\"1\"] button { margin-top: 6px; height: 24px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); font-size: 11px; padding: 0 8px; }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-meta=\"1\"] { font-size: 11px; color: rgba(255,255,255,0.65); }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-usage=\"1\"] { color: rgba(255,255,255,0.8); }\n" +
+      "[data-oa-home-chat-overlay] [data-effuse-tool-description=\"1\"] { margin-top: 2px; }"
     overlay.appendChild(paneStyle)
     const paneRoot = document.createElement("div")
     paneRoot.style.cssText = "width:100%;height:100%;"
@@ -319,6 +344,23 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
     let paneDebugButton: HTMLButtonElement | null = null
     let previousRenderedMessageCount = 0
     let forceScrollToBottomOnNextRender = false
+
+    const stylePaneOpaqueBlack = (paneId: string): void => {
+      const paneEl = paneRoot.querySelector(`[data-pane-id="${paneId}"]`)
+      if (!(paneEl instanceof HTMLElement)) return
+      paneEl.style.background = "#000"
+      paneEl.style.opacity = "1"
+      const titleEl = paneEl.querySelector("[data-oa-pane-title]")
+      if (titleEl instanceof HTMLElement) {
+        titleEl.style.background = "#000"
+        titleEl.style.opacity = "1"
+      }
+      const contentEl = paneEl.querySelector("[data-oa-pane-content]")
+      if (contentEl instanceof HTMLElement) {
+        contentEl.style.background = "#000"
+        contentEl.style.opacity = "1"
+      }
+    }
 
     const attachHomeThreadSubscription = (
       input: {
@@ -1367,8 +1409,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                 })
                 paneSystem.store.bringToFront(paneId)
                 paneSystem.render()
-                const metadataPaneEl = paneRoot.querySelector(`[data-pane-id="${paneId}"]`)
-                if (metadataPaneEl instanceof HTMLElement) metadataPaneEl.style.background = "#000"
+                stylePaneOpaqueBlack(paneId)
                 const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
                 const titleActions = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-title-actions]`)
                 const metaJson = JSON.stringify(meta, null, 2)
@@ -1436,6 +1477,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                 })
                 paneSystem.store.bringToFront(paneId)
                 paneSystem.render()
+                stylePaneOpaqueBlack(paneId)
                 const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
                 if (slot instanceof HTMLElement) {
                   const traceJson = JSON.stringify(trace, null, 2)
@@ -1447,7 +1489,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                           const dom = yield* DomServiceTag
                           yield* dom.render(
                             slot,
-                            html`<div class="p-4 h-full overflow-auto"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${traceJson}</pre></div>`
+                            html`<div class="p-4 h-full overflow-auto bg-black"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${traceJson}</pre></div>`
                           )
                         }).pipe(Effect.provide(EffuseLive))
                       ),
