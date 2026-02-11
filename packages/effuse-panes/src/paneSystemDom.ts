@@ -550,8 +550,9 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       }
     }
 
-    // Drag only if clicking within title bar.
+    // Drag only if clicking within title bar (not on title-action buttons like Copy).
     if (cfg.enablePaneDrag && target instanceof Element) {
+      if (target.closest("[data-oa-pane-title-actions]")) return;
       const title = target.closest("[data-oa-pane-title]");
       if (title instanceof Element) {
         paneDrag = { paneId: overPaneId, origin: point, startRect: pane.rect };
