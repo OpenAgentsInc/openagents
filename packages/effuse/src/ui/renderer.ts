@@ -40,7 +40,7 @@ const renderElement = (
 
   const isVisible = evaluateVisibility(element.visible, {
     dataModel: options.dataModel,
-    authState: options.authState,
+    ...(options.authState ? { authState: options.authState } : {}),
   })
 
   if (!isVisible) {
@@ -65,9 +65,9 @@ const renderElement = (
   return renderer({
     element,
     props: resolvedProps,
-    children,
     dataModel: options.dataModel,
-    authState: options.authState,
+    ...(children ? { children } : {}),
+    ...(options.authState ? { authState: options.authState } : {}),
   })
 }
 

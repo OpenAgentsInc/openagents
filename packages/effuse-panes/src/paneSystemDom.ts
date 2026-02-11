@@ -1,4 +1,4 @@
-import { boundsContains, type Bounds, type PaneRect, type Point, type Size } from "./types.js";
+import { boundsContains, type Bounds, type PaneRect, type Point } from "./types.js";
 import { DEFAULT_PANE_CONSTRAINTS, normalizePaneRect, type Pane, PaneStore } from "./paneStore.js";
 import { HotbarModel, type HotbarSlot } from "./hotbar.js";
 import { ResizablePane, ResizeEdge } from "./resizablePane.js";
@@ -444,7 +444,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     layer.replaceChildren(...nextChildren);
 
     // Restore scroll positions (moving nodes can reset scroll in some browsers).
-    nextChildren.forEach((el, i) => {
+    nextChildren.forEach((_, i) => {
       const states = scrollStates[i];
       if (states) {
         states.forEach(({ el: target, top }) => {

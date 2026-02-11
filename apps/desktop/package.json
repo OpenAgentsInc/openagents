@@ -45,6 +45,8 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@openagentsinc/effuse": "file:../../packages/effuse",
+    "@openagentsinc/effuse-panes": "file:../../packages/effuse-panes",
     "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
     "effect": "^3.19.16",
     "electron-squirrel-startup": "^1.0.1"

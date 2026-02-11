@@ -59,9 +59,9 @@ export const resolveAction = (action: Action, dataModel: DataModel): ResolvedAct
   return {
     name: action.name,
     params: resolvedParams,
-    confirm,
-    onSuccess: action.onSuccess,
-    onError: action.onError,
+    ...(confirm ? { confirm } : {}),
+    ...(action.onSuccess ? { onSuccess: action.onSuccess } : {}),
+    ...(action.onError ? { onError: action.onError } : {}),
   }
 }
 
