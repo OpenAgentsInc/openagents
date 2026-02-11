@@ -12,6 +12,7 @@ import { BlobStore, Lm, Params, Predict, Receipt, type BlobRef } from "@openagen
 import { signatures as dseCatalogSignatures } from "../../../autopilot-worker/src/dseCatalog";
 
 import { api } from "../../convex/_generated/api";
+import { E2E_COOKIE_NAME, mintE2eJwt } from "../auth/e2eAuth";
 import { AuthService } from "../effect/auth";
 import { ConvexService, type ConvexServiceApi } from "../effect/convex";
 import { RequestContextService, makeServerRequestContext } from "../effect/requestContext";
@@ -23,7 +24,9 @@ import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import type { WorkerEnv } from "./env";
 import type {
   CreateRunResult,
+  EnsureOwnedThreadResult,
   GetBlueprintResult,
+  GetThreadTraceBundleResult,
   GetThreadSnapshotResult,
   IsCancelRequestedResult,
   ThreadSnapshotMessage,
@@ -35,6 +38,7 @@ const MODEL_ID_CF = "@cf/openai/gpt-oss-120b";
 const PRIMARY_MODEL_OPENROUTER = "moonshotai/kimi-k2.5";
 const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
+export const AUTOPILOT_ADMIN_TEST_SUBJECT = "user_autopilot_admin_test";
 
 const predictRlmSummarizeThread = Predict.make(dseCatalogSignatures.rlm_summarize_thread);
 const predictDetectUpgradeRequest = Predict.make(dseCatalogSignatures.detect_upgrade_request);
@@ -111,9 +115,9 @@ const json = (body: unknown, init?: ResponseInit): Response =>
     },
   });
 
-const readJson = async (request: Request): Promise<any> => {
+const readJson = async <T>(request: Request): Promise<T | null> => {
   try {
-    return await request.json();
+    return (await request.json()) as T;
   } catch {
     return null;
   }
@@ -134,6 +138,16 @@ type DseRecapBody = {
   readonly strategyId?: unknown;
   readonly budgetProfile?: unknown;
   readonly question?: unknown;
+};
+
+type AdminSendBody = {
+  readonly threadId?: unknown;
+  readonly text?: unknown;
+  readonly resetThread?: unknown;
+};
+
+type AdminResetBody = {
+  readonly threadId?: unknown;
 };
 
 type RunHandle = {
@@ -167,6 +181,22 @@ const readNonEmptyString = (value: unknown): string | null =>
 
 const readString = (value: unknown): string | null =>
   typeof value === "string" ? value : null;
+
+const parseCreateRunResult = (value: unknown): CreateRunResult | null => {
+  const rec = toRecord(value);
+  const runId = readNonEmptyString(rec?.runId);
+  const userMessageId = readNonEmptyString(rec?.userMessageId);
+  const assistantMessageId = readNonEmptyString(rec?.assistantMessageId);
+  if (!runId || !userMessageId || !assistantMessageId) return null;
+  return { ok: true, runId, userMessageId, assistantMessageId };
+};
+
+const parseEnsureOwnedThreadResult = (value: unknown): EnsureOwnedThreadResult | null => {
+  const rec = toRecord(value);
+  const threadId = readNonEmptyString(rec?.threadId);
+  if (!threadId) return null;
+  return { ok: true, threadId };
+};
 
 const clampString = (value: string, max: number): string =>
   value.trim().slice(0, Math.max(0, max));
@@ -1718,6 +1748,55 @@ const runAutopilotStream = (input: {
   });
 };
 
+const resolveAutopilotAdminSecret = (env: WorkerEnv): string | null => {
+  const explicit = env.OA_AUTOPILOT_ADMIN_SECRET ?? process.env.OA_AUTOPILOT_ADMIN_SECRET;
+  if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  const fallback = env.OA_DSE_ADMIN_SECRET ?? process.env.OA_DSE_ADMIN_SECRET;
+  return typeof fallback === "string" && fallback.length > 0 ? fallback : null;
+};
+
+const isAutopilotAdminSecretAuthorized = (request: Request, env: WorkerEnv): boolean => {
+  const secret = resolveAutopilotAdminSecret(env);
+  if (!secret) return false;
+  const authz = request.headers.get("authorization") ?? "";
+  return authz.trim() === `Bearer ${secret}`;
+};
+
+const statusFromErrorMessage = (message: string): number => {
+  const m = message.toLowerCase();
+  if (m.includes("unauthorized") || m.includes("forbidden")) return 401;
+  if (m.includes("invalid_input") || m.includes("thread_not_found")) return 400;
+  return 500;
+};
+
+const parseBoundedInt = (raw: string | null, fallback: number, max: number): number => {
+  if (typeof raw !== "string" || raw.trim().length === 0) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(max, Math.floor(n)));
+};
+
+const makeAutopilotAdminRequest = (request: Request, env: WorkerEnv) =>
+  Effect.gen(function* () {
+    const privateJwkJson = env.OA_E2E_JWT_PRIVATE_JWK ?? process.env.OA_E2E_JWT_PRIVATE_JWK;
+    if (!privateJwkJson) return yield* Effect.fail(new Error("missing_OA_E2E_JWT_PRIVATE_JWK"));
+
+    const token = yield* mintE2eJwt({
+      privateJwkJson,
+      user: { id: AUTOPILOT_ADMIN_TEST_SUBJECT },
+      ttlSeconds: 60 * 15,
+    });
+
+    const headers = new Headers(request.headers);
+    const existingCookie = headers.get("cookie");
+    const adminCookie = `${E2E_COOKIE_NAME}=${encodeURIComponent(token)}`;
+    headers.set("cookie", existingCookie && existingCookie.length > 0 ? `${existingCookie}; ${adminCookie}` : adminCookie);
+
+    // Avoid cloning request bodies here; admin endpoints may have already consumed JSON.
+    // For auth/session resolution we only need URL + method + headers.
+    return new Request(request.url, { method: request.method, headers });
+  });
+
 export const handleAutopilotRequest = async (
   request: Request,
   env: WorkerEnv,
@@ -1727,10 +1806,328 @@ export const handleAutopilotRequest = async (
   if (!url.pathname.startsWith("/api/autopilot/")) return null;
   const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? "missing";
 
+  if (url.pathname === "/api/autopilot/admin/send") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+    if (!isAutopilotAdminSecretAuthorized(request, env)) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+    }
+
+    const body = await readJson<AdminSendBody>(request);
+    const providedThreadId = typeof body?.threadId === "string" ? body.threadId.trim() : "";
+    const text = typeof body?.text === "string" ? body.text : "";
+    const resetThread = body?.resetThread === true;
+
+    if (!text.trim()) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    if (!env.AI) {
+      return json({ ok: false, error: "ai_unbound" }, { status: 500, headers: { "cache-control": "no-store" } });
+    }
+
+    const { runtime } = getWorkerRuntime(env);
+    const telemetryBase = runtime.runSync(
+      Effect.gen(function* () {
+        return yield* TelemetryService;
+      }),
+    );
+    const requestTelemetry = telemetryBase.withFields({
+      requestId,
+      method: request.method,
+      pathname: url.pathname,
+    });
+
+    const adminRequestExit = await runtime.runPromiseExit(makeAutopilotAdminRequest(request, env));
+    if (adminRequestExit._tag === "Failure") {
+      const message = String(adminRequestExit.cause);
+      console.error(`[autopilot.admin.send] ${formatRequestIdLogToken(requestId)} admin_request_failed`, message);
+      return json({ ok: false, error: message }, { status: statusFromErrorMessage(message), headers: { "cache-control": "no-store" } });
+    }
+    const adminRequest = adminRequestExit.value;
+
+    const createRunExit = await runtime.runPromiseExit(
+      Effect.gen(function* () {
+        const convex = yield* ConvexService;
+        yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(Effect.catchAll(() => Effect.void));
+
+        const ensuredRaw = yield* convex.mutation(api.autopilot.threads.ensureOwnedThread, {});
+        const ensured = parseEnsureOwnedThreadResult(ensuredRaw);
+        if (!ensured) return yield* Effect.fail(new Error("ensure_owned_thread_invalid_shape"));
+        const threadId = providedThreadId.length > 0 ? providedThreadId : String(ensured.threadId ?? "");
+        if (!threadId) return yield* Effect.fail(new Error("invalid_input"));
+
+        if (resetThread) {
+          yield* convex.mutation(api.autopilot.reset.resetThread, { threadId });
+        }
+
+        const createdRaw = yield* convex.mutation(api.autopilot.messages.createRun, {
+          threadId,
+          text,
+        });
+        const created = parseCreateRunResult(createdRaw);
+        if (!created) return yield* Effect.fail(new Error("create_run_invalid_shape"));
+
+        return { threadId, created };
+      }).pipe(
+        Effect.provideService(RequestContextService, makeServerRequestContext(adminRequest)),
+        Effect.provideService(TelemetryService, requestTelemetry),
+      ),
+    );
+
+    if (createRunExit._tag === "Failure") {
+      console.error(`[autopilot.admin.send] ${formatRequestIdLogToken(requestId)} create_run_failed`, createRunExit.cause);
+      return json({ ok: false, error: "create_run_failed" }, { status: 500, headers: { "cache-control": "no-store" } });
+    }
+
+    const threadId = String(createRunExit.value.threadId ?? "");
+    const runId = String(createRunExit.value.created.runId ?? "");
+    const userMessageId = String(createRunExit.value.created.userMessageId ?? "");
+    const assistantMessageId = String(createRunExit.value.created.assistantMessageId ?? "");
+
+    if (!threadId || !runId || !assistantMessageId) {
+      return json({ ok: false, error: "create_run_invalid_shape" }, { status: 500, headers: { "cache-control": "no-store" } });
+    }
+
+    const controller = new AbortController();
+    activeRuns.set(runId, { controller, startedAtMs: Date.now() });
+
+    const envWithAi = env as WorkerEnv & { readonly AI: Ai };
+    ctx.waitUntil(
+      runAutopilotStream({
+        env: envWithAi,
+        request: adminRequest,
+        threadId,
+        runId,
+        assistantMessageId,
+        controller,
+      }),
+    );
+
+    return json(
+      {
+        ok: true,
+        testUserId: AUTOPILOT_ADMIN_TEST_SUBJECT,
+        threadId,
+        runId,
+        userMessageId,
+        assistantMessageId,
+      },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  if (url.pathname === "/api/autopilot/admin/reset") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+    if (!isAutopilotAdminSecretAuthorized(request, env)) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+    }
+
+    const body = await readJson<AdminResetBody>(request);
+    const providedThreadId = typeof body?.threadId === "string" ? body.threadId.trim() : "";
+
+    const { runtime } = getWorkerRuntime(env);
+    const telemetryBase = runtime.runSync(
+      Effect.gen(function* () {
+        return yield* TelemetryService;
+      }),
+    );
+    const requestTelemetry = telemetryBase.withFields({
+      requestId,
+      method: request.method,
+      pathname: url.pathname,
+    });
+
+    const adminRequestExit = await runtime.runPromiseExit(makeAutopilotAdminRequest(request, env));
+    if (adminRequestExit._tag === "Failure") {
+      const message = String(adminRequestExit.cause);
+      console.error(`[autopilot.admin.reset] ${formatRequestIdLogToken(requestId)} admin_request_failed`, message);
+      return json({ ok: false, error: message }, { status: statusFromErrorMessage(message), headers: { "cache-control": "no-store" } });
+    }
+    const adminRequest = adminRequestExit.value;
+
+    const resetExit = await runtime.runPromiseExit(
+      Effect.gen(function* () {
+        const convex = yield* ConvexService;
+        yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(Effect.catchAll(() => Effect.void));
+
+        const ensuredRaw = yield* convex.mutation(api.autopilot.threads.ensureOwnedThread, {});
+        const ensured = parseEnsureOwnedThreadResult(ensuredRaw);
+        if (!ensured) return yield* Effect.fail(new Error("ensure_owned_thread_invalid_shape"));
+        const threadId = providedThreadId.length > 0 ? providedThreadId : String(ensured.threadId ?? "");
+        if (!threadId) return yield* Effect.fail(new Error("invalid_input"));
+
+        yield* convex.mutation(api.autopilot.reset.resetThread, { threadId });
+        return { threadId };
+      }).pipe(
+        Effect.provideService(RequestContextService, makeServerRequestContext(adminRequest)),
+        Effect.provideService(TelemetryService, requestTelemetry),
+      ),
+    );
+
+    if (resetExit._tag === "Failure") {
+      const message = String(resetExit.cause);
+      console.error(`[autopilot.admin.reset] ${formatRequestIdLogToken(requestId)} reset_failed`, message);
+      return json({ ok: false, error: message }, { status: statusFromErrorMessage(message), headers: { "cache-control": "no-store" } });
+    }
+
+    return json(
+      {
+        ok: true,
+        testUserId: AUTOPILOT_ADMIN_TEST_SUBJECT,
+        threadId: String(resetExit.value.threadId ?? ""),
+      },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  if (url.pathname === "/api/autopilot/admin/snapshot") {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+    if (!isAutopilotAdminSecretAuthorized(request, env)) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+    }
+
+    const threadId = url.searchParams.get("threadId")?.trim() ?? "";
+    if (!threadId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const maxMessages = parseBoundedInt(url.searchParams.get("maxMessages"), 400, 2_000);
+    const maxParts = parseBoundedInt(url.searchParams.get("maxParts"), 8_000, 40_000);
+
+    const { runtime } = getWorkerRuntime(env);
+    const telemetryBase = runtime.runSync(
+      Effect.gen(function* () {
+        return yield* TelemetryService;
+      }),
+    );
+    const requestTelemetry = telemetryBase.withFields({
+      requestId,
+      method: request.method,
+      pathname: url.pathname,
+    });
+
+    const adminRequestExit = await runtime.runPromiseExit(makeAutopilotAdminRequest(request, env));
+    if (adminRequestExit._tag === "Failure") {
+      const message = String(adminRequestExit.cause);
+      console.error(`[autopilot.admin.snapshot] ${formatRequestIdLogToken(requestId)} admin_request_failed`, message);
+      return json({ ok: false, error: message }, { status: statusFromErrorMessage(message), headers: { "cache-control": "no-store" } });
+    }
+    const adminRequest = adminRequestExit.value;
+
+    const snapshotExit = await runtime.runPromiseExit(
+      Effect.gen(function* () {
+        const convex = yield* ConvexService;
+        yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(Effect.catchAll(() => Effect.void));
+        const snapshot = (yield* convex.query(api.autopilot.messages.getThreadSnapshot, {
+          threadId,
+          maxMessages,
+          maxParts,
+        })) as GetThreadSnapshotResult;
+        return snapshot;
+      }).pipe(
+        Effect.provideService(RequestContextService, makeServerRequestContext(adminRequest)),
+        Effect.provideService(TelemetryService, requestTelemetry),
+      ),
+    );
+
+    if (snapshotExit._tag === "Failure") {
+      const message = String(snapshotExit.cause);
+      console.error(`[autopilot.admin.snapshot] ${formatRequestIdLogToken(requestId)} snapshot_failed`, message);
+      return json({ ok: false, error: message }, { status: statusFromErrorMessage(message), headers: { "cache-control": "no-store" } });
+    }
+
+    return json(
+      {
+        ok: true,
+        testUserId: AUTOPILOT_ADMIN_TEST_SUBJECT,
+        snapshot: snapshotExit.value,
+      },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  if (url.pathname === "/api/autopilot/admin/trace") {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+    if (!isAutopilotAdminSecretAuthorized(request, env)) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
+    }
+
+    const threadId = url.searchParams.get("threadId")?.trim() ?? "";
+    if (!threadId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+
+    const maxMessages = parseBoundedInt(url.searchParams.get("maxMessages"), 400, 2_000);
+    const maxParts = parseBoundedInt(url.searchParams.get("maxParts"), 8_000, 40_000);
+    const maxRuns = parseBoundedInt(url.searchParams.get("maxRuns"), 200, 2_000);
+    const maxReceipts = parseBoundedInt(url.searchParams.get("maxReceipts"), 2_000, 20_000);
+    const maxFeatureRequests = parseBoundedInt(url.searchParams.get("maxFeatureRequests"), 500, 5_000);
+    const includeDseState = url.searchParams.get("includeDseState") === "1";
+    const maxDseRowsPerRun = parseBoundedInt(url.searchParams.get("maxDseRowsPerRun"), 200, 2_000);
+
+    const { runtime } = getWorkerRuntime(env);
+    const telemetryBase = runtime.runSync(
+      Effect.gen(function* () {
+        return yield* TelemetryService;
+      }),
+    );
+    const requestTelemetry = telemetryBase.withFields({
+      requestId,
+      method: request.method,
+      pathname: url.pathname,
+    });
+
+    const adminRequestExit = await runtime.runPromiseExit(makeAutopilotAdminRequest(request, env));
+    if (adminRequestExit._tag === "Failure") {
+      const message = String(adminRequestExit.cause);
+      console.error(`[autopilot.admin.trace] ${formatRequestIdLogToken(requestId)} admin_request_failed`, message);
+      return json({ ok: false, error: message }, { status: statusFromErrorMessage(message), headers: { "cache-control": "no-store" } });
+    }
+    const adminRequest = adminRequestExit.value;
+
+    const traceExit = await runtime.runPromiseExit(
+      Effect.gen(function* () {
+        const convex = yield* ConvexService;
+        yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(Effect.catchAll(() => Effect.void));
+
+        const trace = (yield* convex.query(api.autopilot.traces.getThreadTraceBundle, {
+          threadId,
+          maxMessages,
+          maxParts,
+          maxRuns,
+          maxReceipts,
+          maxFeatureRequests,
+          includeDseState,
+          maxDseRowsPerRun,
+        })) as GetThreadTraceBundleResult;
+
+        return trace;
+      }).pipe(
+        Effect.provideService(RequestContextService, makeServerRequestContext(adminRequest)),
+        Effect.provideService(TelemetryService, requestTelemetry),
+      ),
+    );
+
+    if (traceExit._tag === "Failure") {
+      const message = String(traceExit.cause);
+      console.error(`[autopilot.admin.trace] ${formatRequestIdLogToken(requestId)} trace_failed`, message);
+      return json({ ok: false, error: message }, { status: statusFromErrorMessage(message), headers: { "cache-control": "no-store" } });
+    }
+
+    return json(
+      {
+        ok: true,
+        testUserId: AUTOPILOT_ADMIN_TEST_SUBJECT,
+        trace: traceExit.value,
+      },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  }
+
   if (url.pathname === "/api/autopilot/send") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
-    const body = (await readJson(request)) as SendBody | null;
+    const body = await readJson<SendBody>(request);
     const threadId = typeof body?.threadId === "string" ? body.threadId : "";
     const text = typeof body?.text === "string" ? body.text : "";
 
@@ -1774,7 +2171,10 @@ export const handleAutopilotRequest = async (
       return json({ ok: false, error: "create_run_failed" }, { status: 500, headers: { "cache-control": "no-store" } });
     }
 
-    const value = exit.value as CreateRunResult;
+    const value = parseCreateRunResult(exit.value);
+    if (!value) {
+      return json({ ok: false, error: "create_run_invalid_shape" }, { status: 500, headers: { "cache-control": "no-store" } });
+    }
     const runId = String(value.runId ?? "");
     const assistantMessageId = String(value.assistantMessageId ?? "");
 
@@ -1802,7 +2202,7 @@ export const handleAutopilotRequest = async (
   if (url.pathname === "/api/autopilot/dse/recap") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
-    const body = (await readJson(request)) as DseRecapBody | null;
+    const body = await readJson<DseRecapBody>(request);
     const threadId = typeof body?.threadId === "string" ? body.threadId : "";
     const strategyIdRaw = typeof body?.strategyId === "string" ? body.strategyId : "direct.v1";
     const budgetProfileRaw = typeof body?.budgetProfile === "string" ? body.budgetProfile : "medium";
@@ -1857,7 +2257,10 @@ export const handleAutopilotRequest = async (
       return json({ ok: false, error: "create_run_failed" }, { status: 500, headers: { "cache-control": "no-store" } });
     }
 
-    const value = exit.value as CreateRunResult;
+    const value = parseCreateRunResult(exit.value);
+    if (!value) {
+      return json({ ok: false, error: "create_run_invalid_shape" }, { status: 500, headers: { "cache-control": "no-store" } });
+    }
     const runId = String(value.runId ?? "");
     const userMessageId = String(value.userMessageId ?? "");
     const assistantMessageId = String(value.assistantMessageId ?? "");
@@ -1891,7 +2294,7 @@ export const handleAutopilotRequest = async (
   if (url.pathname === "/api/autopilot/cancel") {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
-    const body = (await readJson(request)) as CancelBody | null;
+    const body = await readJson<CancelBody>(request);
     const threadId = typeof body?.threadId === "string" ? body.threadId : "";
     const runId = typeof body?.runId === "string" ? body.runId : "";
     if (!threadId || !runId) {

@@ -44,4 +44,14 @@ export type WorkerEnv = {
    * `Authorization: Bearer <OA_DSE_ADMIN_SECRET>`
    */
   readonly OA_DSE_ADMIN_SECRET?: string
+
+  /**
+   * Autopilot admin trigger secret (headless fixed test-user runs).
+   *
+   * When set, `/api/autopilot/admin/*` endpoints accept:
+   * `Authorization: Bearer <OA_AUTOPILOT_ADMIN_SECRET>`
+   *
+   * Fallback: if unset, Worker falls back to `OA_DSE_ADMIN_SECRET`.
+   */
+  readonly OA_AUTOPILOT_ADMIN_SECRET?: string
 }

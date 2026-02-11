@@ -33,6 +33,8 @@ SECRET_NAMES=(
   OA_E2E_JWT_PRIVATE_JWK
   # Headless DSE ops (overnight runner)
   OA_DSE_ADMIN_SECRET
+  # Headless Autopilot fixed test-user trigger
+  OA_AUTOPILOT_ADMIN_SECRET
   PUBLIC_API_URL
   PRELAUNCH_BYPASS_KEY
 )

@@ -37,7 +37,8 @@
     "test:e2e": "bun run --cwd ../../packages/effuse-test src/cli.ts run --project ../../apps/web",
     "test:visual": "bun run --cwd ../../packages/effuse-test src/cli.ts run --project ../../apps/web --tag visual",
     "test:visual:update": "EFFUSE_TEST_UPDATE_SNAPSHOTS=1 bun run --cwd ../../packages/effuse-test src/cli.ts run --project ../../apps/web --tag visual",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "trace:admin": "bun scripts/autopilot-admin-trace.ts"
   },
   "dependencies": {
     "@effect-atom/atom": "^0.5.0",
