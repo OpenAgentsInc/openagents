@@ -292,6 +292,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
   let canvasPan: CanvasPanState | undefined;
   let backgroundOffset: Point = { x: 0, y: 0 };
   let pendingRaf: number | undefined;
+  const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
 
   // DOM
   root.setAttribute("data-oa-pane-system", "1");
@@ -376,6 +377,21 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
     }
     pendingRaf = undefined;
   }
+
+  const scheduleTimeout = (fn: () => void, delayMs: number): void => {
+    const timeoutId = setTimeout(() => {
+      pendingTimeouts.delete(timeoutId);
+      fn();
+    }, delayMs);
+    pendingTimeouts.add(timeoutId);
+  };
+
+  const clearPendingTimeouts = (): void => {
+    for (const timeoutId of pendingTimeouts) {
+      clearTimeout(timeoutId);
+    }
+    pendingTimeouts.clear();
+  };
 
   function renderNow(): void {
     // If we have a scheduled render and a caller wants sync output, cancel it.
@@ -679,7 +695,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
       renderNow();
       cfg.onHotbarSlotClick?.(slot);
       // Flash clears lazily; schedule a re-render near its expiry.
-      setTimeout(() => renderNow(), 100);
+      scheduleTimeout(() => renderNow(), 100);
       ev.preventDefault();
     }
   };
@@ -709,6 +725,7 @@ export const mountPaneSystemDom = (root: HTMLElement, input?: Partial<PaneSystem
 
   const destroy = (): void => {
     cancelPendingRender();
+    clearPendingTimeouts();
     root.removeEventListener("pointerdown", onPointerDown);
     root.removeEventListener("pointermove", onPointerMove);
     root.removeEventListener("pointerup", onPointerUp);

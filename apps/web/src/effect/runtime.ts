@@ -37,6 +37,7 @@ export const makeAppRuntime = (config: AppConfig): AppRuntime => {
           'TelemetryService',
           'AuthService',
           'ConvexService',
+          'PaneSystemService',
           'AutopilotStoreService',
           'ContractsApiService',
           'ChatService',
