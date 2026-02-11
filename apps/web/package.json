@@ -52,6 +52,7 @@
     "@openagentsinc/effuse-panes": "file:../../packages/effuse-panes",
     "@openagentsinc/effuse-ui": "file:../../packages/effuse-ui",
     "@openagentsinc/hud": "file:../../packages/hud",
+    "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
     "@workos/authkit-session": "^0.3.4",
     "convex": "^1.31.7",
     "effect": "^3.19.16",
