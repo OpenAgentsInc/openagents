@@ -9,12 +9,40 @@ export type ExecutorRunStatus =
   | "completed_task"
   | "failed_task";
 
-export type ExecutorTaskStatus = "queued" | "running" | "completed" | "failed";
+export type ExecutorTaskStatus =
+  | "queued"
+  | "approved"
+  | "running"
+  | "paid"
+  | "cached"
+  | "blocked"
+  | "failed"
+  | "completed";
+
+export type ExecutorTaskRequest = Readonly<{
+  readonly url: string;
+  readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: string;
+  readonly maxSpendMsats: number;
+  readonly challengeHeader?: string;
+  readonly forceRefresh?: boolean;
+  readonly scope?: string;
+  readonly cacheTtlMs?: number;
+}>;
 
 export type ExecutorTask = Readonly<{
   readonly id: string;
-  readonly payload: string;
+  readonly ownerId: string;
   readonly status: ExecutorTaskStatus;
+  readonly request: ExecutorTaskRequest;
+  readonly attemptCount: number;
+  readonly source?: string;
+  readonly idempotencyKey?: string;
+  readonly requestId?: string;
+  readonly metadata?: unknown;
+  readonly lastErrorCode?: string;
+  readonly lastErrorMessage?: string;
   readonly createdAtMs: number;
   readonly updatedAtMs: number;
   readonly failureReason?: string;

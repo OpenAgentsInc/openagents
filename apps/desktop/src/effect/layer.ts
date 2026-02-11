@@ -10,6 +10,8 @@ import { ExecutorLoopLive } from "./executorLoop";
 import { TaskProviderLive } from "./taskProvider";
 import { LndRuntimeGatewayLive } from "./lndRuntimeGateway";
 import { LndWalletGatewayLive } from "./lndWalletGateway";
+import { DesktopSessionLive } from "./session";
+import { L402ExecutorLive } from "./l402Executor";
 
 export type DesktopLayerOverrides = Readonly<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,6 +24,8 @@ export type DesktopLayerOverrides = Readonly<{
   readonly lndRuntimeGateway?: Layer.Layer<any, any, any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly lndWalletGateway?: Layer.Layer<any, any, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly l402Executor?: Layer.Layer<any, any, any>;
 }>;
 
 export const makeDesktopLayer = (
@@ -31,9 +35,11 @@ export const makeDesktopLayer = (
   const base = Layer.mergeAll(
     DesktopConfigLive(config),
     DesktopStateLive,
+    DesktopSessionLive,
     overrides?.taskProvider ?? TaskProviderLive,
     overrides?.lndRuntimeGateway ?? LndRuntimeGatewayLive,
     overrides?.lndWalletGateway ?? LndWalletGatewayLive,
+    overrides?.l402Executor ?? L402ExecutorLive,
   );
 
   const withAuth = Layer.provideMerge(overrides?.authGateway ?? AuthGatewayLive, base);

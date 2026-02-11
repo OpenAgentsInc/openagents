@@ -13,7 +13,24 @@ const state = vi.hoisted(() => ({
   authed: true,
   userId: "user-lightning-1",
   nextTask: 1,
+  tasks: [] as Array<{
+    readonly taskId: string;
+    readonly ownerId: string;
+    readonly status: string;
+    readonly request: Record<string, unknown>;
+    readonly idempotencyKey?: string;
+    readonly source?: string;
+    readonly requestId?: string;
+    readonly metadata?: unknown;
+    readonly attemptCount: number;
+    readonly lastErrorCode?: string;
+    readonly lastErrorMessage?: string;
+    readonly createdAtMs: number;
+    readonly updatedAtMs: number;
+    readonly lastTransitionAtMs: number;
+  }>,
   mutationCalls: [] as Array<{ readonly ref: unknown; readonly args: unknown }>,
+  queryCalls: [] as Array<{ readonly ref: unknown; readonly args: unknown }>,
   actionCalls: 0,
 }));
 
@@ -48,31 +65,79 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
   const mutation = (ref: unknown, args: unknown) =>
     Effect.sync(() => {
       state.mutationCalls.push({ ref, args });
+      if (isRecord(args) && typeof args.taskId === "string" && typeof args.toStatus === "string") {
+        const index = state.tasks.findIndex((task) => task.taskId === args.taskId);
+        if (index === -1) {
+          throw new Error("task_not_found");
+        }
+
+        const prev = state.tasks[index]!;
+        const now = FIXED_NOW + state.mutationCalls.length;
+        const next = {
+          ...prev,
+          status: args.toStatus,
+          updatedAtMs: now,
+          lastTransitionAtMs: now,
+          attemptCount: args.toStatus === "running" ? prev.attemptCount + 1 : prev.attemptCount,
+          lastErrorCode: typeof args.errorCode === "string" ? args.errorCode : undefined,
+          lastErrorMessage: typeof args.errorMessage === "string" ? args.errorMessage : undefined,
+        };
+        state.tasks[index] = next;
+        return {
+          ok: true as const,
+          changed: true,
+          task: next,
+          event: {
+            taskId: next.taskId,
+            ownerId: next.ownerId,
+            fromStatus: prev.status,
+            toStatus: next.status,
+            actor: typeof args.actor === "string" ? args.actor : "desktop_executor",
+            reason: typeof args.reason === "string" ? args.reason : undefined,
+            requestId: typeof args.requestId === "string" ? args.requestId : undefined,
+            errorCode: typeof args.errorCode === "string" ? args.errorCode : undefined,
+            errorMessage: typeof args.errorMessage === "string" ? args.errorMessage : undefined,
+            metadata: args.metadata,
+            createdAtMs: now,
+          },
+        };
+      }
+
       if (isRecord(args) && isRecord(args.request) && typeof args.request.url === "string") {
         const taskId = `task-${state.nextTask++}`;
+        const task = {
+          taskId,
+          ownerId: state.userId,
+          status: "queued",
+          request: args.request,
+          idempotencyKey: typeof args.idempotencyKey === "string" ? args.idempotencyKey : undefined,
+          source: typeof args.source === "string" ? args.source : undefined,
+          requestId: typeof args.requestId === "string" ? args.requestId : undefined,
+          metadata: args.metadata,
+          attemptCount: 0,
+          createdAtMs: FIXED_NOW,
+          updatedAtMs: FIXED_NOW,
+          lastTransitionAtMs: FIXED_NOW,
+        };
+        state.tasks.push(task);
         return {
           ok: true as const,
           existed: false,
-          task: {
-            taskId,
-            ownerId: state.userId,
-            status: "queued",
-            request: args.request,
-            idempotencyKey: typeof args.idempotencyKey === "string" ? args.idempotencyKey : undefined,
-            source: typeof args.source === "string" ? args.source : undefined,
-            requestId: typeof args.requestId === "string" ? args.requestId : undefined,
-            metadata: args.metadata,
-            attemptCount: 0,
-            createdAtMs: FIXED_NOW,
-            updatedAtMs: FIXED_NOW,
-            lastTransitionAtMs: FIXED_NOW,
-          },
+          task,
         };
       }
       throw new Error("Unexpected mutation payload");
     });
 
-  const query = (_ref: unknown, _args: unknown) => Effect.fail(new Error("convex.query not used in this test"));
+  const query = (ref: unknown, args: unknown) =>
+    Effect.sync(() => {
+      state.queryCalls.push({ ref, args });
+      if (!isRecord(args)) return { ok: true as const, tasks: state.tasks };
+      if (typeof args.status === "string") {
+        return { ok: true as const, tasks: state.tasks.filter((task) => task.status === args.status) };
+      }
+      return { ok: true as const, tasks: state.tasks };
+    });
   const action = (_ref: unknown, _args: unknown) =>
     Effect.sync(() => {
       state.actionCalls += 1;
@@ -96,6 +161,8 @@ describe("apps/web worker lightning task endpoint", () => {
   it("requires auth for POST /api/lightning/l402/tasks", async () => {
     state.authed = false;
     state.mutationCalls.length = 0;
+    state.queryCalls.length = 0;
+    state.tasks.length = 0;
 
     const req = new Request("http://example.com/api/lightning/l402/tasks", {
       method: "POST",
@@ -120,13 +187,16 @@ describe("apps/web worker lightning task endpoint", () => {
     expect(body.ok).toBe(false);
     expect(body.error).toContain("unauthorized");
     expect(state.mutationCalls).toHaveLength(0);
+    expect(state.queryCalls).toHaveLength(0);
     expect(state.actionCalls).toBe(0);
   });
 
   it("enqueues a task with deterministic typed payload and request correlation", async () => {
     state.authed = true;
     state.nextTask = 1;
+    state.tasks.length = 0;
     state.mutationCalls.length = 0;
+    state.queryCalls.length = 0;
     state.actionCalls = 0;
 
     const req = new Request("http://example.com/api/lightning/l402/tasks", {
@@ -181,15 +251,87 @@ describe("apps/web worker lightning task endpoint", () => {
     });
 
     expect(state.mutationCalls).toHaveLength(1);
+    expect(state.queryCalls).toHaveLength(0);
     const callArgs = state.mutationCalls[0]!.args as Record<string, unknown>;
     expect(callArgs.requestId).toBe("req-create-1");
     expect(callArgs.source).toBe("web_worker_api");
     expect(state.actionCalls).toBe(0);
   });
 
-  it("rejects invalid payloads and non-POST methods", async () => {
+  it("supports GET listing and transition endpoint", async () => {
     state.authed = true;
+    state.tasks.length = 0;
+    state.nextTask = 1;
     state.mutationCalls.length = 0;
+    state.queryCalls.length = 0;
+
+    const createReq = new Request("http://example.com/api/lightning/l402/tasks", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-oa-request-id": "req-create-list-1",
+      },
+      body: JSON.stringify({
+        request: {
+          url: "https://api.example.com/premium",
+          maxSpendMsats: 1_000,
+        },
+      }),
+    });
+    const createCtx = createExecutionContext();
+    const createRes = await worker.fetch(createReq, makeEnv(), createCtx);
+    await waitOnExecutionContext(createCtx);
+    expect(createRes.status).toBe(200);
+
+    const listReq = new Request("http://example.com/api/lightning/l402/tasks?status=queued&limit=10", {
+      method: "GET",
+      headers: { "x-oa-request-id": "req-list-1" },
+    });
+    const listCtx = createExecutionContext();
+    const listRes = await worker.fetch(listReq, makeEnv(), listCtx);
+    await waitOnExecutionContext(listCtx);
+    expect(listRes.status).toBe(200);
+    const listBody = (await listRes.json()) as {
+      ok: boolean;
+      requestId: string | null;
+      tasks: Array<{ taskId: string; status: string }>;
+    };
+    expect(listBody.ok).toBe(true);
+    expect(listBody.requestId).toBe("req-list-1");
+    expect(listBody.tasks[0]?.status).toBe("queued");
+
+    const transitionReq = new Request("http://example.com/api/lightning/l402/tasks/task-1/transition", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-oa-request-id": "req-transition-1",
+      },
+      body: JSON.stringify({
+        toStatus: "running",
+        actor: "desktop_executor",
+      }),
+    });
+    const transitionCtx = createExecutionContext();
+    const transitionRes = await worker.fetch(transitionReq, makeEnv(), transitionCtx);
+    await waitOnExecutionContext(transitionCtx);
+    expect(transitionRes.status).toBe(200);
+    const transitionBody = (await transitionRes.json()) as {
+      ok: boolean;
+      changed: boolean;
+      requestId: string | null;
+      task: { taskId: string; status: string };
+    };
+    expect(transitionBody.ok).toBe(true);
+    expect(transitionBody.changed).toBe(true);
+    expect(transitionBody.requestId).toBe("req-transition-1");
+    expect(transitionBody.task).toMatchObject({ taskId: "task-1", status: "running" });
+  });
+
+  it("rejects invalid payloads and unsupported methods", async () => {
+    state.authed = true;
+    state.tasks.length = 0;
+    state.mutationCalls.length = 0;
+    state.queryCalls.length = 0;
 
     const invalidReq = new Request("http://example.com/api/lightning/l402/tasks", {
       method: "POST",
@@ -205,14 +347,32 @@ describe("apps/web worker lightning task endpoint", () => {
     await waitOnExecutionContext(invalidCtx);
     expect(invalidRes.status).toBe(400);
 
-    const getReq = new Request("http://example.com/api/lightning/l402/tasks", {
-      method: "GET",
+    const putReq = new Request("http://example.com/api/lightning/l402/tasks", {
+      method: "PUT",
       headers: { "x-oa-request-id": "req-method-1" },
     });
-    const getCtx = createExecutionContext();
-    const getRes = await worker.fetch(getReq, makeEnv(), getCtx);
-    await waitOnExecutionContext(getCtx);
-    expect(getRes.status).toBe(405);
+    const putCtx = createExecutionContext();
+    const putRes = await worker.fetch(putReq, makeEnv(), putCtx);
+    await waitOnExecutionContext(putCtx);
+    expect(putRes.status).toBe(405);
+
+    const invalidTransitionReq = new Request("http://example.com/api/lightning/l402/tasks/task-1/transition", {
+      method: "POST",
+      headers: {
+        "x-oa-request-id": "req-invalid-transition-1",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ toStatus: "not-a-status" }),
+    });
+    const invalidTransitionCtx = createExecutionContext();
+    const invalidTransitionRes = await worker.fetch(
+      invalidTransitionReq,
+      makeEnv(),
+      invalidTransitionCtx,
+    );
+    await waitOnExecutionContext(invalidTransitionCtx);
+    expect(invalidTransitionRes.status).toBe(400);
+
     expect(state.mutationCalls).toHaveLength(0);
   });
 });

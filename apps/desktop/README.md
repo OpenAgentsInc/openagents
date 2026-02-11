@@ -14,7 +14,8 @@ This app is the desktop execution boundary for Lightning flows in EP212.
 - Renderer is fully Effuse-based and mounted in Effuse panes (same pane system family as web).
 - Auth linkage strategy: sign in with the same email used on `openagents.com` to map to the same OpenAgents user id.
 - Connectivity probes for OpenAgents API and Convex.
-- Background executor loop skeleton (`queued -> running -> completed|failed`) via a demo task provider.
+- Background executor loop consumes Convex Lightning tasks and writes deterministic transitions/results.
+- L402 execution path uses `@openagentsinc/lightning-effect` + `@openagentsinc/lnd-effect`.
 
 ## Commands
 
@@ -27,6 +28,7 @@ npm run lnd:prepare
 npm run smoke:lnd-binary -- --json
 npm run smoke:lnd-runtime -- --json
 npm run smoke:lnd-wallet -- --json
+npm run smoke:l402-convex-executor -- --json
 ```
 
 ## Environment

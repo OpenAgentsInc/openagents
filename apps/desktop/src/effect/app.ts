@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Ref } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { AuthGatewayService } from "./authGateway";
 import { ConnectivityProbeService } from "./connectivity";
@@ -7,6 +7,7 @@ import { ExecutorLoopService } from "./executorLoop";
 import { TaskProviderService } from "./taskProvider";
 import { LndRuntimeGatewayService } from "./lndRuntimeGateway";
 import { LndWalletGatewayService } from "./lndWalletGateway";
+import { DesktopSessionService } from "./session";
 
 import type { DesktopRuntimeState, ExecutorTask } from "./model";
 
@@ -61,7 +62,7 @@ export const DesktopAppLive = Layer.effect(
     const tasks = yield* TaskProviderService;
     const lndRuntime = yield* LndRuntimeGatewayService;
     const lndWallet = yield* LndWalletGatewayService;
-    const tokenRef = yield* Ref.make<string | null>(null);
+    const sessionStore = yield* DesktopSessionService;
 
     const refreshConnectivity = Effect.fn("DesktopApp.refreshConnectivity")(function* () {
       const result = yield* connectivity.probe();
@@ -115,19 +116,22 @@ export const DesktopAppLive = Layer.effect(
       yield* refreshConnectivity();
       yield* refreshLndRuntime();
       yield* refreshWallet();
-      const token = yield* Ref.get(tokenRef);
-      const session = yield* auth.getSession(token).pipe(
+      const existingSession = yield* sessionStore.get();
+      const session = yield* auth.getSession(existingSession.token).pipe(
         Effect.catchAll(() =>
           Effect.succeed({
             userId: null,
-            token: token,
+            token: existingSession.token,
             user: null,
           }),
         ),
       );
 
-      const nextToken = session.token ?? token;
-      yield* Ref.set(tokenRef, nextToken);
+      const nextToken = session.token ?? existingSession.token;
+      yield* sessionStore.set({
+        userId: session.userId,
+        token: nextToken,
+      });
       yield* state.update((current) => ({
         ...current,
         auth: {
@@ -163,7 +167,10 @@ export const DesktopAppLive = Layer.effect(
         email: normalizedEmail,
         code: input.code.trim(),
       });
-      yield* Ref.set(tokenRef, verified.token);
+      yield* sessionStore.set({
+        userId: verified.userId,
+        token: verified.token,
+      });
       yield* refreshConnectivity();
       yield* refreshLndRuntime();
       yield* refreshWallet();
@@ -180,7 +187,7 @@ export const DesktopAppLive = Layer.effect(
     });
 
     const signOut = Effect.fn("DesktopApp.signOut")(function* () {
-      yield* Ref.set(tokenRef, null);
+      yield* sessionStore.clear();
       yield* state.update((current) => ({
         ...current,
         auth: {
@@ -289,8 +296,24 @@ export const DesktopAppLive = Layer.effect(
           "restoreWallet",
           lndWallet.restore(input),
         ),
-      enqueueDemoTask: tasks.enqueueDemoTask,
-      listTasks: () => tasks.listTasks(),
+      enqueueDemoTask: (payload) =>
+        Effect.gen(function* () {
+          const session = yield* sessionStore.get();
+          if (!session.token) return yield* Effect.fail(new Error("missing_auth_token"));
+          return yield* tasks.enqueueDemoTask({
+            payload,
+            token: session.token,
+          });
+        }),
+      listTasks: () =>
+        Effect.gen(function* () {
+          const session = yield* sessionStore.get();
+          if (!session.token) return [] as const;
+          return yield* tasks.listTasks({
+            token: session.token,
+            limit: 100,
+          });
+        }),
       snapshot: () => state.get(),
     });
   }),
