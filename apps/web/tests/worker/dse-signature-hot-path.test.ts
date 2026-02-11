@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   blueprintCalls: [] as any[],
   dseGetActiveCalls: [] as any[],
   recordPredictReceiptCalls: [] as any[],
+  recordFeatureRequestCalls: [] as any[],
   cancelRequested: new Set<string>(),
   nextRun: 1,
   lastUserText: "hi",
@@ -100,11 +101,12 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         !("signatureId" in args)
       ) {
         state.blueprintCalls.push({ ref, args });
-        const stage = String((state as any).bootstrapStage ?? "ask_user_handle");
+        const status = String((state as any).bootstrapStatus ?? "pending");
+        const stage = status === "complete" ? null : String((state as any).bootstrapStage ?? "ask_user_handle");
         return {
           ok: true,
           blueprint: {
-            bootstrapState: { status: "pending", stage },
+            bootstrapState: { status, stage },
             docs: {
               user: { addressAs: "Ada" },
               identity: { name: "Autopilot" },
@@ -172,6 +174,18 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         return { ok: true, applied: true, updatedAtMs: 1 }
       }
 
+      if (
+        isRecord(args) &&
+        typeof args.threadId === "string" &&
+        typeof args.runId === "string" &&
+        typeof args.messageId === "string" &&
+        typeof args.capabilityKey === "string" &&
+        isRecord(args.source)
+      ) {
+        state.recordFeatureRequestCalls.push({ ref, args });
+        return { ok: true, featureRequestId: "fr_test_1", existed: false, updatedAtMs: 1 };
+      }
+
       if (isRecord(args) && typeof args.threadId === "string" && typeof args.runId === "string") {
         const runId = String(args.runId ?? "");
         if (runId) state.cancelRequested.add(runId);
@@ -213,9 +227,11 @@ describe("apps/web worker autopilot: Stage 3 bootstrap advancement in hot path",
     state.blueprintCalls.length = 0;
     state.dseGetActiveCalls.length = 0;
     state.recordPredictReceiptCalls.length = 0;
+    state.recordFeatureRequestCalls.length = 0;
     state.canary = null;
     state.artifacts.clear();
     (state as any).applyBootstrapCalls = [];
+    (state as any).bootstrapStatus = "pending";
     (state as any).bootstrapStage = "ask_user_handle";
 
     const ORIGIN = "http://example.com";
@@ -267,8 +283,10 @@ describe("apps/web worker autopilot: Stage 3 bootstrap advancement in hot path",
     state.blueprintCalls.length = 0;
     state.dseGetActiveCalls.length = 0;
     state.recordPredictReceiptCalls.length = 0;
+    state.recordFeatureRequestCalls.length = 0;
     state.artifacts.clear();
     (state as any).applyBootstrapCalls = [];
+    (state as any).bootstrapStatus = "pending";
     (state as any).bootstrapStage = "ask_agent_name";
 
     const ORIGIN = "http://example.com";
@@ -303,5 +321,84 @@ describe("apps/web worker autopilot: Stage 3 bootstrap advancement in hot path",
     const last = applyCalls.at(-1)?.args as any;
     expect(last?.threadId).toBe("thread-2");
     expect(last?.name).toBe("Autopilot");
+  });
+
+  it("runs DetectUpgradeRequest signature after bootstrap completion and records a feature request in Convex", async () => {
+    state.createRunCalls.length = 0;
+    state.appendPartsCalls.length = 0;
+    state.finalizeRunCalls.length = 0;
+    state.snapshotCalls.length = 0;
+    state.blueprintCalls.length = 0;
+    state.dseGetActiveCalls.length = 0;
+    state.recordPredictReceiptCalls.length = 0;
+    state.recordFeatureRequestCalls.length = 0;
+    state.artifacts.clear();
+    (state as any).applyBootstrapCalls = [];
+    (state as any).bootstrapStatus = "complete";
+    (state as any).bootstrapStage = null;
+
+    const ORIGIN = "http://example.com";
+    const request = new Request(`${ORIGIN}/api/autopilot/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        threadId: "thread-3",
+        anonKey: "anon-key-1",
+        text: "Connect to my GitHub and run Codex remotely in the cloud.",
+      }),
+    });
+
+    const ctx = createExecutionContext();
+    const envWithAi = Object.assign(Object.create(env as any), {
+      AI: {
+        run: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  isUpgradeRequest: true,
+                  capabilityKey: "github_cloud_codex",
+                  capabilityLabel: "GitHub + cloud Codex execution",
+                  summary: "User asks for GitHub connection and remote cloud Codex execution.",
+                  notifyWhenAvailable: false,
+                  confidence: 0.97,
+                }),
+              },
+            },
+          ],
+          usage: { prompt_tokens: 20, completion_tokens: 30 },
+        }),
+      },
+    }) as any;
+
+    const response = await worker.fetch(request, envWithAi, ctx);
+    if (response.status !== 200) {
+      throw new Error(`Unexpected status ${response.status}: ${await response.text()}`);
+    }
+    const json = (await response.json()) as any;
+    expect(json.ok).toBe(true);
+
+    await waitOnExecutionContext(ctx);
+
+    const appended = state.appendPartsCalls.flatMap((c) => (Array.isArray(c.args.parts) ? c.args.parts : []));
+    const signatureParts = appended
+      .map((p: any) => p?.part)
+      .filter((part: any) => part?.type === "dse.signature" && part?.signatureId === "@openagents/autopilot/feedback/DetectUpgradeRequest.v1");
+    expect(signatureParts.length).toBeGreaterThan(0);
+    expect(signatureParts.some((part: any) => part?.state === "ok")).toBe(true);
+    expect(signatureParts.some((part: any) => part?.outputPreview?.isUpgradeRequest === true)).toBe(true);
+
+    const toolParts = appended
+      .map((p: any) => p?.part)
+      .filter((part: any) => part?.type === "dse.tool" && part?.toolName === "record_feature_request");
+    expect(toolParts.length).toBeGreaterThan(0);
+    expect(toolParts.some((part: any) => part?.state === "ok")).toBe(true);
+
+    expect(state.recordFeatureRequestCalls.length).toBeGreaterThan(0);
+    const recorded = state.recordFeatureRequestCalls.at(-1)?.args as any;
+    expect(recorded?.threadId).toBe("thread-3");
+    expect(recorded?.runId).toMatch(/^run-/);
+    expect(recorded?.capabilityKey).toBe("github_cloud_codex");
+    expect(recorded?.source?.signatureId).toBe("@openagents/autopilot/feedback/DetectUpgradeRequest.v1");
   });
 });

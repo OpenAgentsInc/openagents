@@ -11,6 +11,7 @@
 import type * as autopilot_access from "../autopilot/access.js";
 import type * as autopilot_blueprint from "../autopilot/blueprint.js";
 import type * as autopilot_defaults from "../autopilot/defaults.js";
+import type * as autopilot_featureRequests from "../autopilot/featureRequests.js";
 import type * as autopilot_messages from "../autopilot/messages.js";
 import type * as autopilot_reset from "../autopilot/reset.js";
 import type * as autopilot_threads from "../autopilot/threads.js";
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   "autopilot/access": typeof autopilot_access;
   "autopilot/blueprint": typeof autopilot_blueprint;
   "autopilot/defaults": typeof autopilot_defaults;
+  "autopilot/featureRequests": typeof autopilot_featureRequests;
   "autopilot/messages": typeof autopilot_messages;
   "autopilot/reset": typeof autopilot_reset;
   "autopilot/threads": typeof autopilot_threads;

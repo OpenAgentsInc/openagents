@@ -37,9 +37,19 @@ const MAX_CONTEXT_MESSAGES = 25;
 const MAX_OUTPUT_TOKENS = 512;
 
 const predictRlmSummarizeThread = Predict.make(dseCatalogSignatures.rlm_summarize_thread);
+const predictDetectUpgradeRequest = Predict.make(dseCatalogSignatures.detect_upgrade_request);
 
 type DseBudgetProfile = "small" | "medium" | "long";
 type DseStrategyId = "direct.v1" | "rlm_lite.v1";
+
+type UpgradeRequestDecision = {
+  readonly isUpgradeRequest: boolean;
+  readonly capabilityKey: string;
+  readonly capabilityLabel: string;
+  readonly summary: string;
+  readonly notifyWhenAvailable: boolean;
+  readonly confidence: number;
+};
 
 const budgetsForProfile = (profile: DseBudgetProfile): Params.DseExecutionBudgetsV1 => {
   switch (profile) {
@@ -157,6 +167,51 @@ const readNonEmptyString = (value: unknown): string | null =>
 
 const readString = (value: unknown): string | null =>
   typeof value === "string" ? value : null;
+
+const clampString = (value: string, max: number): string =>
+  value.trim().slice(0, Math.max(0, max));
+
+const normalizeCapabilityKey = (value: string): string => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized.length > 0 ? normalized.slice(0, 120) : "unknown";
+};
+
+const normalizeUpgradeRequestDecision = (value: unknown): UpgradeRequestDecision => {
+  const rec = toRecord(value);
+  const isUpgradeRequest = rec?.isUpgradeRequest === true;
+  const capabilityKeyRaw = readString(rec?.capabilityKey) ?? (isUpgradeRequest ? "unknown" : "none");
+  const capabilityLabelRaw = readString(rec?.capabilityLabel) ?? (isUpgradeRequest ? capabilityKeyRaw : "none");
+  const summaryRaw = readString(rec?.summary) ?? "";
+  const confidenceRaw = typeof rec?.confidence === "number" && Number.isFinite(rec.confidence) ? rec.confidence : 0;
+
+  return {
+    isUpgradeRequest,
+    capabilityKey: normalizeCapabilityKey(capabilityKeyRaw),
+    capabilityLabel: clampString(capabilityLabelRaw, 160),
+    summary: clampString(summaryRaw, 240),
+    notifyWhenAvailable: rec?.notifyWhenAvailable === true,
+    confidence: Math.max(0, Math.min(1, confidenceRaw)),
+  };
+};
+
+const looksLikeUpgradeRequestCandidate = (text: string): boolean => {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  if (
+    /(github|gitlab|bitbucket|repository|repo|repos|cloud|remote|deploy|codex|api|integration|plugin|webhook|browser access|live access)/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return /\b(can you|could you|i want|i need|please)\b.*\b(connect|integrate|run|execute|deploy|access|learn|sync|upgrade)\b/i.test(
+    t,
+  );
+};
 
 const dseSignatureModelFromUnknown = (value: unknown): DseSignatureModelPart | undefined => {
   const model = toRecord(value);
@@ -289,15 +344,19 @@ const concatTextFromPromptMessages = (
   return out as unknown as AiPrompt.RawInput;
 };
 
-const lastUserTextFromSnapshot = (messages: ReadonlyArray<ThreadSnapshotMessage>): string => {
+const lastUserMessageFromSnapshot = (
+  messages: ReadonlyArray<ThreadSnapshotMessage>,
+): { readonly messageId: string; readonly text: string } => {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (!m || typeof m !== "object") continue;
     if (String(m.role ?? "") !== "user") continue;
-    const text = String(m.text ?? "");
-    if (text.trim()) return text;
+    const messageId = String(m.messageId ?? "").trim();
+    const text = String(m.text ?? "").trim();
+    if (!messageId || !text) continue;
+    return { messageId, text };
   }
-  return "";
+  return { messageId: "", text: "" };
 };
 
 const flushPartsToConvex = (input: {
@@ -960,7 +1019,9 @@ const runAutopilotStream = (input: {
       // Bootstrap is a deterministic state machine for MVP: avoid inference until the Blueprint is complete.
       const bootstrapStatus = String(blueprint?.bootstrapState?.status ?? "pending");
       const bootstrapStage = String(blueprint?.bootstrapState?.stage ?? "");
-      const lastUserText = lastUserTextFromSnapshot(messagesRaw).trim();
+      const lastUserMessage = lastUserMessageFromSnapshot(messagesRaw);
+      const lastUserMessageId = lastUserMessage.messageId;
+      const lastUserText = lastUserMessage.text;
 
       const promptMessages = messagesRaw
         .filter((m) => m && typeof m === "object")
@@ -1162,6 +1223,189 @@ const runAutopilotStream = (input: {
           t.log("warn", "rlm_lite_failed", { message: err instanceof Error ? err.message : String(err) }),
         ),
       );
+
+      // Post-bootstrap capability classifier:
+      // classify each user message for "missing capability / upgrade request" and persist to Convex when true.
+      yield* Effect.gen(function* () {
+        if (input.controller.signal.aborted) return;
+        if (bootstrapStatus !== "complete") return;
+        if (!lastUserText) return;
+        if (!looksLikeUpgradeRequestCandidate(lastUserText)) return;
+
+        const signatureId = dseCatalogSignatures.detect_upgrade_request.id;
+        const partId = `dsepart_sig_${input.runId}_detect_upgrade_request`;
+        const strategyReason = "post_bootstrap_capability_feedback";
+
+        bufferedParts.push({
+          seq: seq++,
+          part: {
+            type: "dse.signature",
+            v: 1,
+            id: partId,
+            state: "start",
+            tsMs: Date.now(),
+            signatureId,
+            strategyReason,
+          },
+        });
+        yield* flush(true);
+
+        type DseReceiptShape = {
+          compiled_id?: string;
+          strategyId?: string;
+          timing?: { durationMs?: number };
+          budget?: unknown;
+          receiptId?: string;
+          contextPressure?: unknown;
+          promptRenderStats?: unknown;
+          rlmTrace?: unknown;
+          model?: {
+            modelId?: string;
+            provider?: string;
+            route?: string;
+            fallbackModelId?: string;
+          };
+        };
+        let recordedReceipt: DseReceiptShape | null = null;
+        const setRecordedReceipt = (receipt: unknown) => {
+          recordedReceipt = receipt as DseReceiptShape;
+        };
+
+        const dseLmClient = makeDseLmClientWithOpenRouterPrimary({
+          env: input.env,
+          defaultModelIdCf: MODEL_ID_CF,
+          primaryModelOpenRouter: PRIMARY_MODEL_OPENROUTER,
+        });
+        const dseEnv = layerDsePredictEnvForAutopilotRun({
+          threadId: input.threadId,
+          runId: input.runId,
+          onReceipt: setRecordedReceipt,
+        });
+
+        const predictExit = yield* Effect.exit(
+          predictDetectUpgradeRequest({ message: lastUserText }).pipe(
+            Effect.timeoutFail({
+              duration: "12 seconds",
+              onTimeout: () => new Error("dse.detect_upgrade_request_timeout"),
+            }),
+            Effect.provideService(Lm.LmClientService, dseLmClient),
+            Effect.provide(dseEnv),
+          ),
+        );
+
+        const state = predictExit._tag === "Success" ? "ok" : "error";
+        const errorText =
+          predictExit._tag === "Failure"
+            ? errorMessageFromUnknown(predictExit.cause, "DSE upgrade request detection failed")
+            : null;
+        const decision =
+          predictExit._tag === "Success" ? normalizeUpgradeRequestDecision(predictExit.value) : null;
+
+        const receipt = recordedReceipt as DseReceiptShape | null;
+        const trimmedPromptRenderStats = trimPromptRenderStats(receipt?.promptRenderStats);
+
+        let recordResult:
+          | {
+              readonly featureRequestId: string;
+              readonly existed: boolean;
+            }
+          | null = null;
+        let recordErrorText: string | null = null;
+
+        if (decision?.isUpgradeRequest && lastUserMessageId) {
+          const recordExit = yield* Effect.exit(
+            convex
+              .mutation(api.autopilot.featureRequests.recordFeatureRequest, {
+                threadId: input.threadId,
+                runId: input.runId,
+                messageId: lastUserMessageId,
+                userText: lastUserText,
+                capabilityKey: decision.capabilityKey,
+                capabilityLabel: decision.capabilityLabel || decision.capabilityKey,
+                summary:
+                  decision.summary ||
+                  clampString(lastUserText, 200),
+                confidence: decision.confidence,
+                notifyWhenAvailable: decision.notifyWhenAvailable,
+                source: {
+                  signatureId,
+                  ...(receipt?.compiled_id ? { compiled_id: receipt.compiled_id } : {}),
+                  ...(receipt?.receiptId ? { receiptId: receipt.receiptId } : {}),
+                  ...(receipt?.model?.modelId ? { modelId: receipt.model.modelId } : {}),
+                  ...(receipt?.model?.provider ? { provider: receipt.model.provider } : {}),
+                  ...(receipt?.model?.route ? { route: receipt.model.route } : {}),
+                  ...(receipt?.model?.fallbackModelId ? { fallbackModelId: receipt.model.fallbackModelId } : {}),
+                },
+              })
+              .pipe(
+                Effect.timeoutFail({
+                  duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+                  onTimeout: () => new Error("convex.recordFeatureRequest_timeout"),
+                }),
+              ),
+          );
+
+          if (recordExit._tag === "Success") {
+            const rec = toRecord(recordExit.value);
+            const featureRequestId = readString(rec?.featureRequestId);
+            const existed = rec?.existed === true;
+            if (featureRequestId) {
+              recordResult = { featureRequestId, existed };
+              const requestSummary = decision.summary || decision.capabilityLabel || decision.capabilityKey;
+              const annotation = `Capability request tracked: ${requestSummary}`;
+              extraSystemContext = extraSystemContext
+                ? `${extraSystemContext}\n\n${annotation}`
+                : annotation;
+            } else {
+              recordErrorText = "feature_request_id_missing";
+            }
+          } else {
+            recordErrorText = errorMessageFromUnknown(recordExit.cause, "Failed to record feature request");
+          }
+
+          const toolPartId = `dsepart_tool_${input.runId}_record_feature_request`;
+          bufferedParts.push({
+            seq: seq++,
+            part: {
+              type: "dse.tool",
+              v: 1,
+              id: toolPartId,
+              state: recordErrorText ? "error" : "ok",
+              tsMs: Date.now(),
+              toolName: "record_feature_request",
+              toolCallId: `toolcall_${input.runId}_record_feature_request`,
+              input: decision,
+              ...(recordResult ? { output: recordResult } : {}),
+              ...(recordErrorText ? { errorText: recordErrorText } : {}),
+            },
+          });
+        }
+
+        bufferedParts.push({
+          seq: seq++,
+          part: {
+            type: "dse.signature",
+            v: 1,
+            id: partId,
+            state,
+            tsMs: Date.now(),
+            signatureId,
+            compiled_id: receipt?.compiled_id,
+            receiptId: receipt?.receiptId,
+            model: dseSignatureModelFromUnknown(receipt?.model),
+            timing: receipt?.timing,
+            budget: receipt?.budget,
+            strategyId: receipt?.strategyId,
+            strategyReason,
+            contextPressure: receipt?.contextPressure,
+            promptRenderStats: trimmedPromptRenderStats,
+            rlmTrace: receipt?.rlmTrace,
+            ...(decision ? { outputPreview: decision } : {}),
+            ...(errorText ? { errorText } : {}),
+          },
+        });
+        yield* flush(true);
+      });
 
       const rawPrompt = concatTextFromPromptMessages(tail, blueprint, {
         ...(extraSystemContext ? { extraSystem: extraSystemContext } : {}),

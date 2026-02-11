@@ -87,6 +87,41 @@ export default defineSchema({
     updatedAtMs: v.number(),
   }).index("by_threadId", ["threadId"]),
 
+  autopilotFeatureRequests: defineTable({
+    featureRequestId: v.string(),
+    threadId: v.string(),
+    runId: v.string(),
+    messageId: v.string(),
+    userText: v.string(),
+    capabilityKey: v.string(),
+    capabilityLabel: v.string(),
+    summary: v.string(),
+    confidence: v.number(),
+    notifyWhenAvailable: v.boolean(),
+    status: v.union(
+      v.literal("open"),
+      v.literal("triaged"),
+      v.literal("planned"),
+      v.literal("done"),
+      v.literal("wontfix"),
+    ),
+    source: v.object({
+      signatureId: v.string(),
+      compiled_id: v.optional(v.string()),
+      receiptId: v.optional(v.string()),
+      modelId: v.optional(v.string()),
+      provider: v.optional(v.string()),
+      route: v.optional(v.string()),
+      fallbackModelId: v.optional(v.string()),
+    }),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_featureRequestId", ["featureRequestId"])
+    .index("by_threadId_createdAtMs", ["threadId", "createdAtMs"])
+    .index("by_runId", ["runId"])
+    .index("by_capabilityKey_createdAtMs", ["capabilityKey", "createdAtMs"]),
+
   receipts: defineTable({
     threadId: v.string(),
     runId: v.string(),
