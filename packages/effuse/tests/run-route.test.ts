@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 import { RouteOutcome, html, runRoute, type Route, type RouteContext, type RouteMatch } from "../src/index.ts"
 
@@ -11,7 +12,7 @@ const matchExact =
   }
 
 describe("runRoute (contract)", () => {
-  it("runs guard before loader and short-circuits on Redirect", async () => {
+  itLivePromise("runs guard before loader and short-circuits on Redirect", async () => {
     let loaderRuns = 0
 
     const route: Route<{}> = {
@@ -32,7 +33,7 @@ describe("runRoute (contract)", () => {
     expect(loaderRuns).toBe(0)
   })
 
-  it("treats Route.guard returning Ok as a Fail (stage=guard)", async () => {
+  itLivePromise("treats Route.guard returning Ok as a Fail (stage=guard)", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
@@ -52,7 +53,7 @@ describe("runRoute (contract)", () => {
     expect(String(run.error)).toContain("Route.guard MUST NOT return Ok")
   })
 
-  it("normalizes loader defects into Fail (stage=loader)", async () => {
+  itLivePromise("normalizes loader defects into Fail (stage=loader)", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
@@ -68,7 +69,7 @@ describe("runRoute (contract)", () => {
     expect(run.stage).toBe("loader")
   })
 
-  it("normalizes head defects into Fail (stage=head)", async () => {
+  itLivePromise("normalizes head defects into Fail (stage=head)", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
@@ -85,7 +86,7 @@ describe("runRoute (contract)", () => {
     expect(run.stage).toBe("head")
   })
 
-  it("normalizes view defects into Fail (stage=view)", async () => {
+  itLivePromise("normalizes view defects into Fail (stage=view)", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
@@ -101,7 +102,7 @@ describe("runRoute (contract)", () => {
     expect(run.stage).toBe("view")
   })
 
-  it("uses hydration/navigation defaults and respects route overrides", async () => {
+  itLivePromise("uses hydration/navigation defaults and respects route overrides", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),

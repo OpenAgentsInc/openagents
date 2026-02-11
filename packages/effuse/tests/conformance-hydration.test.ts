@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -7,9 +7,10 @@ import {
   makeEzRegistry,
   mountEzRuntimeWith,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 describe("conformance: hydration", () => {
-  it("strict boot attaches behavior without calling DomService.swap", async () => {
+  itLivePromise("strict boot attaches behavior without calling DomService.swap", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -37,7 +38,7 @@ describe("conformance: hydration", () => {
 
     await Effect.runPromise(
       mountEzRuntimeWith(root, registry).pipe(
-        Effect.provideService(DomServiceTag, dom)
+        withDom(dom)
       )
     )
 

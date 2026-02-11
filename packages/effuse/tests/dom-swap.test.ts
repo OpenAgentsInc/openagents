@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { DomServiceLive, html } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 describe("DomService.swap (contract)", () => {
-  it("restores focus and input selection on inner swaps", async () => {
+  itLivePromise("restores focus and input selection on inner swaps", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><input id="field" name="field" value="hello world" /></div>`
     document.body.appendChild(root)
@@ -32,7 +33,7 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
-  it("restores focus and textarea selection on inner swaps", async () => {
+  itLivePromise("restores focus and textarea selection on inner swaps", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><textarea id="field" name="field">hello world</textarea></div>`
     document.body.appendChild(root)
@@ -61,7 +62,7 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
-  it("restores focus and input selection on outer swaps", async () => {
+  itLivePromise("restores focus and input selection on outer swaps", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><input id="field" name="field" value="hello world" /></div>`
     document.body.appendChild(root)
@@ -90,7 +91,7 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
-  it("restores scroll positions for nodes with data-scroll-id", async () => {
+  itLivePromise("restores scroll positions for nodes with data-scroll-id", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><div data-scroll-id="swap-scroll-1"></div></div>`
     document.body.appendChild(root)
@@ -119,7 +120,7 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
-  it("restores scroll positions for nodes with data-scroll-id on outer swaps", async () => {
+  itLivePromise("restores scroll positions for nodes with data-scroll-id on outer swaps", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><div data-scroll-id="swap-scroll-outer"></div></div>`
     document.body.appendChild(root)
@@ -149,7 +150,7 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
-  it("supports swap modes: beforeend / afterbegin / delete", async () => {
+  itLivePromise("supports swap modes: beforeend / afterbegin / delete", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><span>a</span></div>`
     document.body.appendChild(root)
@@ -174,7 +175,7 @@ describe("DomService.swap (contract)", () => {
     root.remove()
   })
 
-  it("outer/replace swaps replace the target element", async () => {
+  itLivePromise("outer/replace swaps replace the target element", async () => {
     const root = document.createElement("div")
     root.innerHTML = `<div id="target"><span>a</span></div>`
     document.body.appendChild(root)

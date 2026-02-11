@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import {
   DomServiceLive,
@@ -10,6 +10,7 @@ import {
   type Route,
   type RouteMatch,
 } from "../src/index.ts"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 const matchExact =
   (pathname: string) =>
@@ -37,7 +38,7 @@ const makeMemoryHistory = (initialHref: string): RouterHistory => {
 }
 
 describe("conformance: hydration modes", () => {
-  it("soft hydration: RouterService.start performs one initial navigation apply", async () => {
+  itLivePromise("soft hydration: RouterService.start performs one initial navigation apply", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -89,7 +90,7 @@ describe("conformance: hydration modes", () => {
 
         yield* router.start
         yield* Effect.promise(() => swapped)
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(loaderRuns).toBe(1)
@@ -100,7 +101,7 @@ describe("conformance: hydration modes", () => {
     root.remove()
   })
 
-  it("client-only hydration: RouterService.start performs one initial navigation apply", async () => {
+  itLivePromise("client-only hydration: RouterService.start performs one initial navigation apply", async () => {
     const root = document.createElement("div")
     root.innerHTML = `
       <div data-effuse-shell>
@@ -152,7 +153,7 @@ describe("conformance: hydration modes", () => {
 
         yield* router.start
         yield* Effect.promise(() => swapped)
-      }).pipe(Effect.provideService(DomServiceTag, dom))
+      }).pipe(withDom(dom))
     )
 
     expect(loaderRuns).toBe(1)

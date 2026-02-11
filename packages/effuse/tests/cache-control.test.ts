@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
+import { itLivePromise, withDom } from "./helpers/effectTest.ts"
 
 import { cacheControlForRouteRun, cachePolicyToCacheControlDirectives } from "../src/app/cache-control.js"
 import { RouteOutcome, html, runRoute, type Route, type RouteContext, type RouteMatch } from "../src/index.ts"
@@ -38,7 +39,7 @@ describe("cachePolicyToCacheControlDirectives", () => {
 })
 
 describe("cacheControlForRouteRun", () => {
-  it("never caches non-Ok outcomes", async () => {
+  itLivePromise("never caches non-Ok outcomes", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
@@ -59,7 +60,7 @@ describe("cacheControlForRouteRun", () => {
     expect(cacheControlForRouteRun(run)).toBe("no-store")
   })
 
-  it("defaults to no-store when no cache policy is present", async () => {
+  itLivePromise("defaults to no-store when no cache policy is present", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
@@ -80,7 +81,7 @@ describe("cacheControlForRouteRun", () => {
     expect(cacheControlForRouteRun(run)).toBe("no-store")
   })
 
-  it("uses private caching only when the cache policy maps to durable directives", async () => {
+  itLivePromise("uses private caching only when the cache policy maps to durable directives", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),
@@ -107,7 +108,7 @@ describe("cacheControlForRouteRun", () => {
     expect(cacheControlForRouteRun(run)).toBe("private, max-age=5")
   })
 
-  it("does not cache when cookie mutations are present (implies Set-Cookie)", async () => {
+  itLivePromise("does not cache when cookie mutations are present (implies Set-Cookie)", async () => {
     const route: Route<{}> = {
       id: "/a",
       match: matchExact("/a"),

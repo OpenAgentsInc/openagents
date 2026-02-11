@@ -48,3 +48,10 @@ The package tsconfig includes the `@effect/language-service` plugin for editor d
 Runtime logging in Effect codepaths is routed through `Effect.log*` APIs
 instead of ad-hoc `console.*` calls. This keeps logs composable with Effect
 logger layers and consistent across browser/test runtimes.
+
+## Test Style
+
+Effuse tests use `@effect/vitest` APIs for Effect-native execution:
+
+- Effect-aware tests use `it.live` via `tests/helpers/effectTest.ts` (`itLivePromise`).
+- DOM layer provisioning is standardized with `withDom(...)` from the same helper.

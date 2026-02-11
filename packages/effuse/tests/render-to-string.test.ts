@@ -1,6 +1,6 @@
 /* @vitest-environment node */
 
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { html, joinTemplates, rawHtml, renderToString } from "../src/index.ts"
 
 describe("renderToString", () => {
