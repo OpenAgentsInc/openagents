@@ -51,8 +51,9 @@ const hasBrowserStorage = (): boolean =>
 
 const sanitizePart = (value: unknown): ChatPart | null => {
   if (!isRecord(value)) return null;
-  if (typeof value.type !== "string") return null;
-  return value as unknown as ChatPart;
+  const type = asNonEmptyString(value.type);
+  if (!type) return null;
+  return { ...value, type };
 };
 
 const sanitizeMessageFinish = (value: unknown): ChatMessageFinish | undefined => {
