@@ -2,7 +2,7 @@
 
 Status: Draft recommendations
 Date: 2026-02-11
-Scope: OpenAgents active TypeScript stack (`apps/web`, `apps/autopilot-worker`, `apps/expo`, `packages/*`) + archived Rust wallet model in backroom
+Scope: OpenAgents active TypeScript/Effect stack (`apps/web`, `apps/autopilot-worker`, `apps/expo`, `packages/*`) + archived Rust wallet model in backroom
 
 ## 1. Executive Verdict
 
@@ -13,7 +13,7 @@ Recommended stance:
 1. Use Lightning Labs stack (`lnd` + remote signer + macaroons + `lnget` + Aperture + L402) for agent commerce infrastructure, high-assurance key isolation, and seller/paywalled API flows.
 2. Use Breez/Spark for nodeless end-user wallet UX where running a node is a bad fit (especially browser/mobile clients).
 3. Standardize OpenAgents on one internal payment contract: `pay_invoice -> { payment_id, amount_sats, preimage }` plus typed receipts.
-4. Build the contract in TypeScript first, then add adapters for both stacks.
+4. Build everything in Effect first via `packages/lightning-effect`, then add adapters for both stacks.
 
 If we sequence this correctly, we get faster product velocity and avoid a forced migration.
 
@@ -86,7 +86,7 @@ OpenAgents payment abstraction must return payment proof material:
 - Existing archived pattern was `pay_invoice -> { payment_id, amount_sats }`.
 - Required pattern for L402 and receipt integrity is `pay_invoice -> { payment_id, amount_sats, preimage_hex }` (or reliable lookup that yields preimage).
 
-Without this, neither a Spark-backed nor an LND-backed TypeScript runtime can be first-class for L402 auth.
+Without this, neither a Spark-backed nor an LND-backed Effect runtime can be first-class for L402 auth.
 
 ## 5. Product-Surface Strategy (Web, Mobile, Desktop, Worker)
 
@@ -146,10 +146,13 @@ This is the order that minimizes rework and gets to production utility fastest.
 
 Deliverables:
 
-1. Introduce TypeScript payment contracts in shared package(s):
-   - `InvoicePaymentResult` must include preimage.
-   - L402 challenge/credential types.
-2. Add explicit docs linking payment proofs to ADR-0013 semantics.
+1. Create `packages/lightning-effect` as the canonical shared package with:
+   - Effect `Schema` contracts for payment/L402.
+   - Effect services (`InvoicePayer`, `InvoiceCreator`, `L402Client`, `BudgetPolicy`).
+   - adapters and live/test Layers for wallet backends.
+2. Publishable package layout and API docs so external consumers can adopt `lightning-effect` directly.
+3. Keep API and module conventions aligned with `nostr-effect` where practical (naming, Layer composition, error tagging, test style).
+4. Add explicit docs linking payment proofs to ADR-0013 semantics.
 
 Exit criteria:
 
@@ -195,7 +198,7 @@ Exit criteria:
 
 Deliverables:
 
-1. Reintroduce a Spark/Breez adapter in TypeScript surface (not Rust-only).
+1. Reintroduce a Spark/Breez adapter in `packages/lightning-effect` (not Rust-only).
 2. Ensure adapter returns preimage-compatible payment proofs.
 3. Use this adapter for mobile/browser flows where node operation is not desired.
 
@@ -267,11 +270,11 @@ Use both when:
 | Worker runtime limitations | Tooling unusable in prod | Keep binary execution in desktop/hosted executor, not Worker |
 | `lnget` / Aperture upstream install path fragility (`go install ...@latest`) | Slows CI/dev bring-up | Pin source-build workflow and containerized tool builds in internal setup scripts |
 | Credential sprawl (macaroons, certs, node creds) | Security incident risk | OS keychain/secret manager, scoped macaroons, rotation runbook |
-| Rebuilding too much old Rust logic blindly | Slow delivery | Port behavior, not code; implement in current TypeScript architecture |
+| Rebuilding too much old Rust logic blindly | Slow delivery | Port behavior, not code; implement in current Effect architecture |
 
 ## 10. Concrete Near-Term Plan (next 4-6 weeks)
 
-1. Create shared TypeScript lightning/payment contracts and tests.
+1. Create `packages/lightning-effect` with shared contracts, services, and tests.
 2. Implement first L402 buyer flow in controlled adapter (desktop or hosted service).
 3. Add one `autopilot-worker` payment tool contract with schema validation and receipts.
 4. Stand up one Aperture-gated endpoint in dev/staging.
