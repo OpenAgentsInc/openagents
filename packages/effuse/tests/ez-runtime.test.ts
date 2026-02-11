@@ -6,6 +6,7 @@ import {
   html,
   makeEzRegistry,
   mountEzRuntimeWith,
+  type DomService,
 } from "../src/index.ts"
 
 describe("Effuse Ez runtime", () => {
@@ -92,9 +93,9 @@ describe("Effuse Ez runtime", () => {
     let finished = 0
     let swaps = 0
 
-    const dom = {
+    const dom: DomService = {
       ...DomServiceLive,
-      swap: (target: Element, content: any, mode?: any) => {
+      swap: (target, content, mode) => {
         swaps++
         return DomServiceLive.swap(target, content, mode)
       },
@@ -143,9 +144,9 @@ describe("Effuse Ez runtime", () => {
     expect(btn.getAttribute("aria-disabled")).toBeNull()
 
     let swaps = 0
-    const dom = {
+    const dom: DomService = {
       ...DomServiceLive,
-      swap: (target: Element, content: any, mode?: any) => {
+      swap: (target, content, mode) => {
         swaps++
         return DomServiceLive.swap(target, content, mode)
       },
@@ -249,6 +250,54 @@ describe("Effuse Ez runtime", () => {
 
     await done
     expect(last?.q).toBe("hello")
+
+    root.remove()
+  })
+
+  it("keeps delegated action handling after outer swaps rerender the action element", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<button data-ez="flip" data-ez-swap="outer">Run</button>`
+    document.body.appendChild(root)
+
+    let runs = 0
+    let resolveSecond!: () => void
+    const secondRun = new Promise<void>((resolve) => {
+      resolveSecond = resolve
+    })
+
+    const registry = makeEzRegistry([
+      [
+        "flip",
+        () =>
+          Effect.sync(() => {
+            runs++
+            if (runs === 2) {
+              resolveSecond()
+            }
+            return html`<button data-ez="flip" data-ez-swap="outer">Run ${runs}</button>`
+          }),
+      ],
+    ])
+
+    await Effect.runPromise(
+      mountEzRuntimeWith(root, registry).pipe(
+        Effect.provideService(DomServiceTag, DomServiceLive),
+      ),
+    )
+
+    const first = root.querySelector("button")
+    expect(first).not.toBeNull()
+    first!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+    await Effect.runPromise(Effect.sleep("10 millis"))
+
+    const second = root.querySelector("button")
+    expect(second).not.toBeNull()
+    second!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+    await secondRun
+    expect(runs).toBe(2)
+    expect(root.querySelector("button")?.textContent).toContain("Run 2")
 
     root.remove()
   })
