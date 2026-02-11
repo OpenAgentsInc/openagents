@@ -86,6 +86,34 @@ npm run deploy
 npm run deploy:worker
 ```
 
+## L402 paywall control-plane API
+
+Hosted paywall lifecycle endpoints are exposed from the Worker under `/api/lightning/paywalls`:
+
+- `POST /api/lightning/paywalls` (create)
+- `GET /api/lightning/paywalls` (list, supports `status` and `limit`)
+- `GET /api/lightning/paywalls/:paywallId` (get)
+- `PATCH /api/lightning/paywalls/:paywallId` (update policy/routes/metadata)
+- `POST /api/lightning/paywalls/:paywallId/pause`
+- `POST /api/lightning/paywalls/:paywallId/resume`
+
+Error taxonomy is deterministic for programmatic callers:
+
+- `401` `unauthorized`
+- `400` `invalid_input`
+- `403` `forbidden`
+- `404` `paywall_not_found`
+- `409` `invalid_transition` / `route_conflict`
+- `422` `policy_violation`
+
+Run the non-interactive API smoke check:
+
+```bash
+npm run smoke:l402-paywall-api
+```
+
+The smoke command outputs machine-readable JSON so agents can parse pass/fail.
+
 ## Learn more
 
 To learn more about developing your project with Convex, check out:
