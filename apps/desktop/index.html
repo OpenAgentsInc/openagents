@@ -2,12 +2,83 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Hello World!</title>
-
+    <title>OpenAgents Desktop</title>
   </head>
   <body>
-    <h1>💖 Hello World!</h1>
-    <p>Welcome to your Electron application.</p>
+    <main class="app-shell">
+      <header>
+        <h1>OpenAgents Desktop Lightning Executor</h1>
+        <p class="subtitle">
+          EP212 shell: desktop executes wallet/payment flows. Web app stays orchestration/UI.
+        </p>
+      </header>
+
+      <section>
+        <h2>Identity Link Strategy</h2>
+        <p>
+          Sign in here with the same email used on <code>openagents.com</code> to map this desktop app to the same
+          OpenAgents user id.
+        </p>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h3>Connectivity</h3>
+          <ul>
+            <li>OpenAgents API: <strong data-status-openagents>n/a</strong></li>
+            <li>Convex: <strong data-status-convex>n/a</strong></li>
+            <li>Last checked: <span data-status-checked-at>n/a</span></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>Auth Session</h3>
+          <ul>
+            <li>Status: <strong data-auth-state>n/a</strong></li>
+            <li>User ID: <code data-auth-user-id>n/a</code></li>
+            <li>Email: <span data-auth-email>n/a</span></li>
+            <li>Token: <span data-auth-token>none</span></li>
+            <li>Last error: <span data-auth-error>none</span></li>
+          </ul>
+          <div class="stack">
+            <input data-auth-email-input type="email" placeholder="you@openagents.com" />
+            <button data-auth-request-code type="button">Request Magic Code</button>
+            <input data-auth-code-input type="text" placeholder="6-digit code" />
+            <button data-auth-verify-code type="button">Verify Code</button>
+            <button data-auth-sign-out type="button" class="muted">Sign Out (Desktop)</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h3>Executor Loop</h3>
+          <ul>
+            <li>Loop: <strong data-loop-state>stopped</strong></li>
+            <li>Run status: <strong data-run-state>n/a</strong></li>
+            <li>Ticks: <span data-loop-ticks>0</span></li>
+            <li>Last task: <code data-loop-last-task>n/a</code></li>
+            <li>Last error: <span data-loop-error>none</span></li>
+          </ul>
+          <div class="inline-buttons">
+            <button data-loop-start type="button">Start Loop</button>
+            <button data-loop-stop type="button" class="muted">Stop Loop</button>
+            <button data-loop-tick type="button" class="muted">Tick Once</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Task Queue (Demo Provider)</h3>
+          <div class="inline-buttons">
+            <input data-task-input type="text" placeholder="task payload (include 'fail' to simulate failure)" />
+            <button data-task-enqueue type="button">Enqueue Task</button>
+          </div>
+          <ul data-task-list>
+            <li>No queued tasks.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
     <script type="module" src="/src/renderer.ts"></script>
   </body>
 </html>

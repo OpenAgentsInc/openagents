@@ -6,11 +6,15 @@
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
+    "dev": "electron-forge start",
+    "build": "electron-forge package",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": {
@@ -19,6 +23,7 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@effect/vitest": "^0.27.0",
     "@electron-forge/cli": "^7.11.1",
     "@electron-forge/maker-deb": "^7.11.1",
     "@electron-forge/maker-rpm": "^7.11.1",
@@ -31,13 +36,16 @@
     "@types/electron-squirrel-startup": "^1.0.2",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
+    "@types/node": "^24.10.10",
     "electron": "40.3.0",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
-    "typescript": "~4.5.4",
-    "vite": "^5.4.21"
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
+    "effect": "^3.19.16",
     "electron-squirrel-startup": "^1.0.1"
   }
 }
