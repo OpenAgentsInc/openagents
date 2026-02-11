@@ -15,3 +15,14 @@ Additional design notes:
 - `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 - `packages/dse/docs/RLM_GEPA_MIPRO_DSE_REVIEW_AND_ROADMAP.md`
 - `packages/dse/docs/RLM_GEPA_MIPRO_SUMMARY.md`
+
+## Development Setup
+
+Install deps, then patch TypeScript for Effect build-time diagnostics:
+
+```bash
+npm install
+npm run effect:patch
+```
+
+The package tsconfig includes the `@effect/language-service` plugin for editor diagnostics.

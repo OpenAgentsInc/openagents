@@ -10,16 +10,17 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "effect:patch": "effect-language-service patch"
   },
   "peerDependencies": {
     "effect": "^3.19.16",
     "typescript": "^5"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.73.1",
     "@types/bun": "latest",
     "effect": "^3.19.16",
     "typescript": "^5.9.3"
   }
 }
-

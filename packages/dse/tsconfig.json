@@ -16,6 +16,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "plugins": [{ "name": "@effect/language-service" }],
 
     "noUnusedLocals": false,
     "noUnusedParameters": false,

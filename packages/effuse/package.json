@@ -11,6 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "effect:patch": "effect-language-service patch",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -19,6 +20,7 @@
     "typescript": "^5"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.73.1",
     "@effect/vitest": "^0.27.0",
     "effect": "^3.19.16",
     "happy-dom": "^20.5.0",
