@@ -189,7 +189,7 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
 const { default: worker } = await import("../../src/effuse-host/worker");
 
 describe("apps/web worker autopilot streaming (Convex-first)", () => {
-  it("writes messageParts in a single chunked batch (no per-token writes)", async () => {
+  it("writes messageParts in chunked batches (no per-token writes)", async () => {
     state.mode = "fast";
     state.failSnapshot = false;
     state.createRunCalls.length = 0;
@@ -226,8 +226,9 @@ describe("apps/web worker autopilot streaming (Convex-first)", () => {
 
     const appended = state.appendPartsCalls.flatMap((c) => (Array.isArray(c.args.parts) ? c.args.parts : []));
     const deltaParts = appended.filter((p: any) => p?.part?.type === "text-delta");
-    expect(deltaParts.length).toBe(1);
-    expect(String(deltaParts[0].part.delta).length).toBe(100);
+    expect(deltaParts.length).toBeGreaterThan(0);
+    const deltaChars = deltaParts.reduce((sum: number, p: any) => sum + String(p?.part?.delta ?? "").length, 0);
+    expect(deltaChars).toBe(100);
 
     const finishParts = appended.filter((p: any) => p?.part?.type === "finish");
     expect(finishParts.length).toBeGreaterThan(0);
@@ -235,6 +236,12 @@ describe("apps/web worker autopilot streaming (Convex-first)", () => {
     expect(typeof finishParts[0]?.part?.modelId).toBe("string");
     expect(typeof finishParts[0]?.part?.provider).toBe("string");
     expect(typeof finishParts[0]?.part?.modelRoute).toBe("string");
+    expect(typeof finishParts[0]?.part?.timeToFirstTokenMs).toBe("number");
+    expect(typeof finishParts[0]?.part?.timeToCompleteMs).toBe("number");
+    expect(Number(finishParts[0]?.part?.timeToFirstTokenMs ?? -1)).toBeGreaterThanOrEqual(0);
+    expect(Number(finishParts[0]?.part?.timeToCompleteMs ?? -1)).toBeGreaterThanOrEqual(
+      Number(finishParts[0]?.part?.timeToFirstTokenMs ?? 0),
+    );
 
     // Seq must be monotonic within the batch.
     const seqs = appended.map((p: any) => Number(p.seq));
