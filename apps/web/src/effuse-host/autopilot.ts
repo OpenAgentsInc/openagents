@@ -835,6 +835,9 @@ const runAutopilotStream = (input: {
     let lastFlushAtMs = Date.now();
     let outputText = "";
     let cancelCheckAtMs = 0;
+    let inferenceStartedAtMs: number | null = null;
+    let firstTokenAtMs: number | null = null;
+    let hasEmittedTextPart = false;
 
     const materializeDelta = () => {
       if (bufferedDelta.length === 0) return;
@@ -846,6 +849,7 @@ const runAutopilotStream = (input: {
       };
       bufferedParts.push({ seq: seq++, part });
       bufferedDelta = "";
+      hasEmittedTextPart = true;
     };
 
     const flush = Effect.fn("autopilot.flush")(function* (force: boolean) {
@@ -856,6 +860,7 @@ const runAutopilotStream = (input: {
 
       const shouldFlushNow =
         force ||
+        (!hasEmittedTextPart && bufferedDelta.length > 0) ||
         bufferedDelta.length >= FLUSH_MAX_TEXT_CHARS ||
         bufferedParts.length >= FLUSH_MAX_PARTS ||
         elapsed >= FLUSH_INTERVAL_MS;
@@ -1168,6 +1173,7 @@ const runAutopilotStream = (input: {
         toolChoice: "none",
         disableToolCallResolution: true,
       });
+      inferenceStartedAtMs = Date.now();
 
       const runStream = Stream.runForEach(stream, (part) =>
         Effect.sync(() => {
@@ -1177,6 +1183,7 @@ const runAutopilotStream = (input: {
 
           if (encoded.type === "text-delta") {
             const delta = String(encoded.delta ?? "");
+            if (delta.length > 0 && firstTokenAtMs == null) firstTokenAtMs = Date.now();
             bufferedDelta += delta;
             outputText += delta;
             return;
@@ -1187,6 +1194,15 @@ const runAutopilotStream = (input: {
 
           if (encoded.type === "finish") {
             const finishPart = encoded as unknown as Record<string, unknown>;
+            const finishedAtMs = Date.now();
+            const timeToFirstTokenMs =
+              firstTokenAtMs != null && inferenceStartedAtMs != null
+                ? Math.max(0, firstTokenAtMs - inferenceStartedAtMs)
+                : undefined;
+            const timeToCompleteMs =
+              inferenceStartedAtMs != null
+                ? Math.max(0, finishedAtMs - inferenceStartedAtMs)
+                : undefined;
             const normalizedFinish = {
               ...finishPart,
               ...(typeof finishPart.modelId === "string" && finishPart.modelId.trim().length > 0
@@ -1203,6 +1219,8 @@ const runAutopilotStream = (input: {
                 : finishModelDefaults.modelFallbackId
                   ? { modelFallbackId: finishModelDefaults.modelFallbackId }
                   : {}),
+              ...(typeof timeToFirstTokenMs === "number" ? { timeToFirstTokenMs } : {}),
+              ...(typeof timeToCompleteMs === "number" ? { timeToCompleteMs } : {}),
             };
             bufferedParts.push({ seq: seq++, part: normalizedFinish });
             return;
@@ -1352,6 +1370,8 @@ const runAutopilotStream = (input: {
         // (avoids model outputting "- -" or stopping before "Any boundaries or preferences?").
         if (bootstrapResult.appliedVibe) {
           const injectedText = `Vibe confirmed: ${bootstrapResult.appliedVibe}. Any boundaries or preferences? Reply 'none' or list a few bullets.`;
+          if (inferenceStartedAtMs == null) inferenceStartedAtMs = Date.now();
+          if (firstTokenAtMs == null) firstTokenAtMs = Date.now();
           outputText = injectedText;
           bufferedParts.push({
             seq: seq++,

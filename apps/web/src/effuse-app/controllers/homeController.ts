@@ -450,6 +450,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     type MessageInferenceMeta = {
       readonly hasFinish: boolean
       readonly finishReason: string | null
+      readonly timeToFirstTokenMs: number | null
+      readonly timeToCompleteMs: number | null
       readonly usage: {
         readonly inputTokens: number | null
         readonly outputTokens: number | null
@@ -495,6 +497,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       readonly provider?: unknown
       readonly modelRoute?: unknown
       readonly modelFallbackId?: unknown
+      readonly timeToFirstTokenMs?: unknown
+      readonly timeToCompleteMs?: unknown
     }
 
     type RawMessageLike = {
@@ -542,6 +546,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       const inputTokens = asNumberOrNull(usage?.inputTokens)
       const outputTokens = asNumberOrNull(usage?.outputTokens)
       const totalTokens = asNumberOrNull(usage?.totalTokens)
+      const timeToFirstTokenMs = asNumberOrNull(finish?.timeToFirstTokenMs)
+      const timeToCompleteMs = asNumberOrNull(finish?.timeToCompleteMs)
       const partTypes = parts.map((p) => String(p.type ?? "?"))
       const textPartChars = parts
         .filter((p) => p.type === "text" && typeof p.text === "string")
@@ -551,6 +557,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       return {
         hasFinish: Boolean(finish && typeof finish === "object"),
         finishReason: asStringOrNull(finish?.reason),
+        timeToFirstTokenMs,
+        timeToCompleteMs,
         usage: { inputTokens, outputTokens, totalTokens },
         textPartChars,
         partCount: parts.length,
@@ -657,6 +665,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             ${debugRow("modelRoute", opts.info.model.modelRoute)}
             ${debugRow("fallbackModelId", opts.info.model.modelFallbackId)}
             ${debugRow("finishReason", opts.info.inference.finishReason)}
+            ${debugRow("timeToFirstTokenMs", opts.info.inference.timeToFirstTokenMs)}
+            ${debugRow("timeToCompleteMs", opts.info.inference.timeToCompleteMs)}
             ${debugRow("tokens", tokenSummary)}
             ${debugRow("textChars", opts.info.inference.textPartChars)}
             ${debugRow("parts", opts.info.inference.partCount)}

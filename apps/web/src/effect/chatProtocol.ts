@@ -122,6 +122,8 @@ export type ChatMessageFinish = {
   readonly provider?: string
   readonly modelRoute?: string
   readonly modelFallbackId?: string
+  readonly timeToFirstTokenMs?: number
+  readonly timeToCompleteMs?: number
 }
 
 export type ChatMessage = {

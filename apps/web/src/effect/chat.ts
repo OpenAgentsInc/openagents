@@ -154,6 +154,8 @@ export const ChatServiceLive = Layer.effect(
               ...(typeof raw?.provider === "string" ? { provider: raw.provider } : {}),
               ...(typeof raw?.modelRoute === "string" ? { modelRoute: raw.modelRoute } : {}),
               ...(typeof raw?.modelFallbackId === "string" ? { modelFallbackId: raw.modelFallbackId } : {}),
+              ...(typeof raw?.timeToFirstTokenMs === "number" ? { timeToFirstTokenMs: raw.timeToFirstTokenMs } : {}),
+              ...(typeof raw?.timeToCompleteMs === "number" ? { timeToCompleteMs: raw.timeToCompleteMs } : {}),
             });
           }
 
