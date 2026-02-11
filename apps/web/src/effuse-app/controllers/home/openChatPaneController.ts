@@ -19,6 +19,7 @@ import { PaneSystemLive, PaneSystemService } from "../../../effect/paneSystem"
 import {
   renderDseBudgetExceededCard,
   renderDseCompileCard,
+  renderPaymentStateCard,
   renderDsePromoteCard,
   renderDseRollbackCard,
   renderDseSignatureCard,
@@ -1438,6 +1439,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                 })
               }
               if (p.kind === "tool") return renderToolPart(p.model)
+              if (p.kind === "payment-state") return renderPaymentStateCard(p.model)
               if (p.kind === "dse-signature") return showDebugCards ? renderDseSignatureCard(p.model) : html``
               if (p.kind === "dse-compile") return showDebugCards ? renderDseCompileCard(p.model) : html``
               if (p.kind === "dse-promote") return showDebugCards ? renderDsePromoteCard(p.model) : html``

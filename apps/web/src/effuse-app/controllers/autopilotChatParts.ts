@@ -20,6 +20,8 @@ import type {
   DsePromoteCardModel,
   DseRollbackCardModel,
   DseSignatureCardModel,
+  L402PaymentStateCardModel,
+  PaymentStateKind,
   RenderPart,
 } from "../../effuse-pages/autopilot"
 
@@ -232,6 +234,94 @@ export type L402PaymentMetadata = {
   readonly maxSpendMsats?: number
 }
 
+const paymentStateFromMetadataStatus = (status: L402PaymentMetadata["status"]): Exclude<PaymentStateKind, "payment.intent"> => {
+  if (status === "completed") return "payment.sent"
+  if (status === "cached") return "payment.cached"
+  if (status === "blocked") return "payment.blocked"
+  return "payment.failed"
+}
+
+const paymentStateFromToolStart = (opts: {
+  readonly toolName: string
+  readonly state: string
+}): PaymentStateKind | null => {
+  if (opts.toolName !== LIGHTNING_L402_FETCH_TOOL_NAME) return null
+  if (
+    opts.state === "start" ||
+    opts.state.startsWith("input-") ||
+    opts.state === "approval-requested" ||
+    opts.state === "approval-responded"
+  ) {
+    return "payment.intent"
+  }
+  return null
+}
+
+const paymentStateCardFromTool = (opts: {
+  readonly toolName: string
+  readonly toolCallId: string
+  readonly state: string
+  readonly input?: unknown
+  readonly output?: unknown
+  readonly errorText?: string
+}): L402PaymentStateCardModel | null => {
+  const metadata = toL402PaymentMetadata({
+    toolName: opts.toolName,
+    toolCallId: opts.toolCallId,
+    input: opts.input,
+    output: opts.output,
+    state: opts.state,
+  })
+
+  if (metadata) {
+    return {
+      state: paymentStateFromMetadataStatus(metadata.status),
+      toolCallId: metadata.toolCallId,
+      taskId: metadata.taskId,
+      url: metadata.url,
+      method: metadata.method,
+      maxSpendMsats: metadata.maxSpendMsats,
+      amountMsats: metadata.amountMsats,
+      responseStatusCode: metadata.responseStatusCode,
+      proofReference: metadata.proofReference,
+      denyReason: metadata.denyReason,
+      statusLabel: metadata.status,
+    }
+  }
+
+  const intentState = paymentStateFromToolStart({ toolName: opts.toolName, state: opts.state })
+  if (!intentState) return null
+
+  const input = asRecord(opts.input)
+  const output = asRecord(opts.output)
+
+  return {
+    state: intentState,
+    toolCallId: opts.toolCallId,
+    taskId: asString(output?.taskId),
+    url: asString(input?.url),
+    method: asString(input?.method),
+    maxSpendMsats: asFiniteNumber(input?.maxSpendMsats),
+    statusLabel: opts.state,
+    denyReason: opts.errorText,
+  }
+}
+
+const l402ToolSummary = (state: PaymentStateKind, model: L402PaymentStateCardModel): string => {
+  const status = model.statusLabel ? ` (${model.statusLabel})` : ""
+  if (state === "payment.intent") return `payment.intent${status}`
+  if (state === "payment.sent") {
+    return model.proofReference ? `payment.sent • proof ${model.proofReference}` : `payment.sent${status}`
+  }
+  if (state === "payment.cached") {
+    return model.proofReference ? `payment.cached • proof ${model.proofReference}` : `payment.cached${status}`
+  }
+  if (state === "payment.blocked") {
+    return model.denyReason ? `payment.blocked • ${model.denyReason}` : `payment.blocked${status}`
+  }
+  return model.denyReason ? `payment.failed • ${model.denyReason}` : `payment.failed${status}`
+}
+
 const isL402PaymentStatus = (
   value: unknown,
 ): value is L402PaymentMetadata["status"] =>
@@ -329,6 +419,15 @@ export function toAutopilotRenderParts(input: {
       const state = String(p.state ?? "")
       const rawInput = p.rawInput
       const toolInput = p.input ?? rawInput
+      const paymentModel = paymentStateCardFromTool({
+        toolName,
+        toolCallId: String(p.toolCallId),
+        state,
+        input: toolInput,
+        output: p.output,
+        errorText: typeof p.errorText === "string" ? p.errorText : undefined,
+      })
+      if (paymentModel) out.push({ kind: "payment-state", model: paymentModel })
 
       const meta = input.toolContractsByName?.[toolName]
       const extra =
@@ -345,7 +444,7 @@ export function toAutopilotRenderParts(input: {
         toolName,
         toolCallId: String(p.toolCallId),
         status: toToolStatus(state),
-        summary: state,
+        summary: paymentModel ? l402ToolSummary(paymentModel.state, paymentModel) : state,
         input: toolInput,
         output: p.output,
         errorText: typeof p.errorText === "string" ? p.errorText : undefined,
@@ -359,7 +458,16 @@ export function toAutopilotRenderParts(input: {
     if (isDseToolPart(p)) {
       const state = String(p.state ?? "")
       const duration = typeof p.timing?.durationMs === "number" ? ` (${p.timing.durationMs}ms)` : ""
-      const summary = `${state}${duration}`
+      const paymentModel = paymentStateCardFromTool({
+        toolName: String(p.toolName ?? "tool"),
+        toolCallId: String(p.toolCallId ?? ""),
+        state,
+        input: p.input,
+        output: p.output,
+        errorText: typeof p.errorText === "string" ? p.errorText : undefined,
+      })
+      if (paymentModel) out.push({ kind: "payment-state", model: paymentModel })
+      const summary = paymentModel ? l402ToolSummary(paymentModel.state, paymentModel) : `${state}${duration}`
 
       const model = toolModelFromCore({
         toolName: String(p.toolName ?? "tool"),
