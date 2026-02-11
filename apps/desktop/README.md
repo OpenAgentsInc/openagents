@@ -31,7 +31,11 @@ npm run smoke:lnd-runtime -- --json
 npm run smoke:lnd-wallet -- --json
 npm run smoke:l402-convex-executor -- --json
 npm run smoke:l402-panes -- --json
+npm run test:l402-local-node-smoke -- --json
 ```
+
+`test:l402-local-node-smoke` writes a machine-readable artifact to
+`output/l402-local-node-smoke-artifact.json` (override with `--artifact <path>`).
 
 ## Environment
 

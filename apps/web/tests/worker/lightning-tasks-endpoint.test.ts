@@ -320,11 +320,63 @@ describe("apps/web worker lightning task endpoint", () => {
       changed: boolean;
       requestId: string | null;
       task: { taskId: string; status: string };
+      event?: {
+        requestId?: string;
+        toStatus?: string;
+      };
     };
     expect(transitionBody.ok).toBe(true);
     expect(transitionBody.changed).toBe(true);
     expect(transitionBody.requestId).toBe("req-transition-1");
     expect(transitionBody.task).toMatchObject({ taskId: "task-1", status: "running" });
+    expect(transitionBody.event?.requestId).toBe("req-transition-1");
+    expect(transitionBody.event?.toStatus).toBe("running");
+
+    const paidTransitionReq = new Request("http://example.com/api/lightning/l402/tasks/task-1/transition", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-oa-request-id": "req-transition-2",
+      },
+      body: JSON.stringify({
+        toStatus: "paid",
+        actor: "desktop_executor",
+        metadata: {
+          proofReference: "preimage:abcd1234",
+          paymentId: "hash:demo:1",
+          responseStatusCode: 200,
+        },
+      }),
+    });
+    const paidTransitionCtx = createExecutionContext();
+    const paidTransitionRes = await worker.fetch(paidTransitionReq, makeEnv(), paidTransitionCtx);
+    await waitOnExecutionContext(paidTransitionCtx);
+    expect(paidTransitionRes.status).toBe(200);
+    const paidTransitionBody = (await paidTransitionRes.json()) as {
+      ok: boolean;
+      changed: boolean;
+      requestId: string | null;
+      task: { taskId: string; status: string };
+      event?: {
+        requestId?: string;
+        toStatus?: string;
+        metadata?: {
+          proofReference?: string;
+          paymentId?: string;
+          responseStatusCode?: number;
+        };
+      };
+    };
+    expect(paidTransitionBody.ok).toBe(true);
+    expect(paidTransitionBody.changed).toBe(true);
+    expect(paidTransitionBody.requestId).toBe("req-transition-2");
+    expect(paidTransitionBody.task).toMatchObject({ taskId: "task-1", status: "paid" });
+    expect(paidTransitionBody.event?.requestId).toBe("req-transition-2");
+    expect(paidTransitionBody.event?.metadata).toMatchObject({
+      proofReference: "preimage:abcd1234",
+      paymentId: "hash:demo:1",
+      responseStatusCode: 200,
+    });
   });
 
   it("rejects invalid payloads and unsupported methods", async () => {

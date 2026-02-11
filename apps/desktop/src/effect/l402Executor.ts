@@ -116,25 +116,23 @@ const toFailedResult = (error: unknown): L402ExecutionResult => {
 export const L402ExecutorLive = Layer.effect(
   L402ExecutorService,
   Effect.gen(function* () {
+    const baseDepsLayer = Layer.mergeAll(
+      CredentialCacheInMemoryLayer,
+      makeSpendPolicyLayer({
+        defaultMaxSpendMsats: 5_000_000,
+        allowedHosts: [],
+        blockedHosts: [],
+      }),
+      LiveL402TransportLayer,
+      makeInvoicePayerLndEffectLayer({
+        fallbackAmountMsats: "request_max",
+      }).pipe(Layer.provide(makeLndDeterministicLayer())),
+    );
+    const clientLayer = L402ClientLiveLayer.pipe(Layer.provide(baseDepsLayer));
+
     const l402Client = yield* Effect.gen(function* () {
       return yield* L402ClientService;
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          CredentialCacheInMemoryLayer,
-          makeSpendPolicyLayer({
-            defaultMaxSpendMsats: 5_000_000,
-            allowedHosts: [],
-            blockedHosts: [],
-          }),
-          LiveL402TransportLayer,
-          makeInvoicePayerLndEffectLayer({
-            fallbackAmountMsats: "request_max",
-          }).pipe(Layer.provide(makeLndDeterministicLayer())),
-          L402ClientLiveLayer,
-        ),
-      ),
-    );
+    }).pipe(Effect.provide(clientLayer));
 
     const execute = Effect.fn("L402Executor.execute")(function* (task: ExecutorTask) {
       const exit = yield* Effect.either(l402Client.fetchWithL402(task.request));
