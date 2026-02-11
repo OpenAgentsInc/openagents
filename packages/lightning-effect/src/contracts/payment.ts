@@ -9,6 +9,10 @@ export const InvoicePaymentRequest = Schema.Struct({
   host: Schema.NonEmptyString,
 })
 export type InvoicePaymentRequest = typeof InvoicePaymentRequest.Type
+export const decodeInvoicePaymentRequest = Schema.decodeUnknown(InvoicePaymentRequest)
+export const decodeInvoicePaymentRequestSync = Schema.decodeUnknownSync(InvoicePaymentRequest)
+export const encodeInvoicePaymentRequest = Schema.encode(InvoicePaymentRequest)
+export const encodeInvoicePaymentRequestSync = Schema.encodeSync(InvoicePaymentRequest)
 
 export const InvoicePaymentResult = Schema.Struct({
   paymentId: Schema.NonEmptyString,
@@ -17,3 +21,7 @@ export const InvoicePaymentResult = Schema.Struct({
   paidAtMs: Schema.Int.pipe(Schema.nonNegative()),
 })
 export type InvoicePaymentResult = typeof InvoicePaymentResult.Type
+export const decodeInvoicePaymentResult = Schema.decodeUnknown(InvoicePaymentResult)
+export const decodeInvoicePaymentResultSync = Schema.decodeUnknownSync(InvoicePaymentResult)
+export const encodeInvoicePaymentResult = Schema.encode(InvoicePaymentResult)
+export const encodeInvoicePaymentResultSync = Schema.encodeSync(InvoicePaymentResult)
