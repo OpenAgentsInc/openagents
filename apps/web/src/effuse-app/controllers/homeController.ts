@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Cause, Effect, Exit, Fiber } from "effect"
 import { DomServiceTag, EffuseLive, html, rawHtml, renderToolPart } from "@openagentsinc/effuse"
 import {
   calculateNewPanePosition,
@@ -70,6 +70,24 @@ const CHART_ICON_SVG =
 
 const BUG_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8"/><path d="M9 2v2"/><path d="M15 2v2"/><path d="M8 6h8"/><rect x="7" y="6" width="10" height="12" rx="5"/><path d="M3 13h4"/><path d="M17 13h4"/><path d="M5 8l3 2"/><path d="M19 8l-3 2"/><path d="M5 18l3-2"/><path d="M19 18l-3-2"/></svg>'
+
+const toStructuredError = (error: unknown): unknown => {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    }
+  }
+  return error
+}
+
+const logHomeControllerAsyncError = (context: string, error: unknown): void => {
+  console.error("[homeController] async_failure", {
+    context,
+    error: toStructuredError(error),
+  })
+}
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : null
@@ -254,6 +272,42 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     const rect = storedRect ?? calculateNewPanePosition(undefined, screen, 640, 480)
     let closeOverlay = (): void => { }
     let overlayDisposed = false
+    const trackedFibers = new Set<Fiber.Fiber<unknown, unknown>>()
+    const runTrackedFiber = <A, E>(
+      input: {
+        readonly context: string
+        readonly start: () => Fiber.Fiber<A, E>
+        readonly onSuccess?: (value: A) => void
+        readonly onFailure?: (cause: Cause.Cause<E>) => void
+      },
+    ): void => {
+      if (overlayDisposed) return
+      const fiber = input.start()
+      trackedFibers.add(fiber)
+      void Effect.runPromise(Fiber.await(fiber)).then(
+        (exit) => {
+          trackedFibers.delete(fiber)
+          if (Exit.isSuccess(exit)) {
+            input.onSuccess?.(exit.value)
+            return
+          }
+          if (Cause.isInterruptedOnly(exit.cause)) return
+          input.onFailure?.(exit.cause)
+          logHomeControllerAsyncError(input.context, Cause.pretty(exit.cause))
+        },
+        (error) => {
+          trackedFibers.delete(fiber)
+          logHomeControllerAsyncError(input.context, error)
+        },
+      )
+    }
+    const interruptTrackedFibers = (): void => {
+      if (trackedFibers.size === 0) return
+      for (const fiber of trackedFibers) {
+        Effect.runFork(Fiber.interrupt(fiber))
+      }
+      trackedFibers.clear()
+    }
     const paneSystemConfig = {
       enableDotsBackground: false,
       enableCanvasPan: false,
@@ -336,6 +390,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     closeOverlay = () => {
       if (overlayDisposed) return
       overlayDisposed = true
+      interruptTrackedFibers()
       clearHomeChatSubscription()
       const closedRectRaw = paneSystem.store.closedPositions.get(CHAT_PANE_ID)?.rect ?? paneSystem.store.pane(CHAT_PANE_ID)?.rect
       const closedRect = parseStoredPaneRect(closedRectRaw)
@@ -373,35 +428,40 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         overlay.appendChild(next)
         cardEl = next
       }
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const dom = yield* DomServiceTag
-          yield* dom.render(
-            cardEl as Element,
-            html`
-              <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-black/80 px-3 py-2 text-xs font-mono text-white/90 shadow-lg backdrop-blur-sm">
-                <span class="truncate max-w-[180px]" title="${userEmail}">${userEmail}</span>
-                <button
-                  type="button"
-                  data-oa-home-identity-logout="1"
-                  class="shrink-0 rounded px-1.5 py-0.5 text-white/60 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
-                >
-                  Log out
-                </button>
-              </div>
-            `,
-          )
-        }).pipe(Effect.provide(EffuseLive)),
-      ).then(() => {
-        const btn = cardEl.querySelector("[data-oa-home-identity-logout]")
-        if (btn) {
-          btn.addEventListener("click", () => {
-            const sessionUserId = readSessionFromAtoms().userId ?? ""
-            clearCachedSnapshotForUser(sessionUserId)
-            void Promise.resolve(deps?.signOut?.()).then(() => closeOverlay())
-          })
-        }
-      }, () => { })
+      runTrackedFiber({
+        context: "home.identity_card.render",
+        start: () =>
+          Effect.runFork(
+            Effect.gen(function* () {
+              const dom = yield* DomServiceTag
+              yield* dom.render(
+                cardEl as Element,
+                html`
+                  <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-black/80 px-3 py-2 text-xs font-mono text-white/90 shadow-lg backdrop-blur-sm">
+                    <span class="truncate max-w-[180px]" title="${userEmail}">${userEmail}</span>
+                    <button
+                      type="button"
+                      data-oa-home-identity-logout="1"
+                      class="shrink-0 rounded px-1.5 py-0.5 text-white/60 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                    >
+                      Log out
+                    </button>
+                  </div>
+                `,
+              )
+            }).pipe(Effect.provide(EffuseLive)),
+          ),
+        onSuccess: () => {
+          const btn = cardEl.querySelector("[data-oa-home-identity-logout]")
+          if (btn) {
+            btn.addEventListener("click", () => {
+              const sessionUserId = readSessionFromAtoms().userId ?? ""
+              clearCachedSnapshotForUser(sessionUserId)
+              void Promise.resolve(deps?.signOut?.()).then(() => closeOverlay())
+            })
+          }
+        },
+      })
     }
 
     paneSystem.store.addPane({
@@ -505,7 +565,9 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         }
       }
 
-      void Promise.resolve(deps.refreshConvexAuth?.()).catch(() => { })
+      void Promise.resolve(deps.refreshConvexAuth?.()).catch((error) => {
+        logHomeControllerAsyncError("home.chat.refresh_convex_auth", error)
+      })
 
       if (input0.user?.email) renderIdentityCard(input0.user.email)
 
@@ -527,8 +589,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         doRender()
       }
 
-      deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
-        (id) => {
+      runTrackedFiber({
+        context: "home.chat.get_owned_thread_id.authed_start",
+        start: () => deps.runtime.runFork(deps.chat.getOwnedThreadId()),
+        onSuccess: (id) => {
           if (id && id.length > 0) {
             attachHomeThreadSubscription({
               threadId: id,
@@ -538,8 +602,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           }
           doRender()
         },
-        () => doRender(),
-      )
+        onFailure: () => {
+          doRender()
+        },
+      })
     }
 
     const chatInputClass =
@@ -1218,27 +1284,31 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           ? homeSnapshot.messages.length
           : messages.length
 
-      Effect.runPromise(
-        Effect.gen(function* () {
-          const dom = yield* DomServiceTag
-          yield* dom.render(
-            paneContentSlot,
-            html`
-              <div
-                class="flex flex-col h-full min-h-0 bg-black"
-                data-oa-home-chat-root="1"
-                data-oa-home-chat-status="${homeSnapshot.status}"
-              >
-                ${controlsHtml}
-                ${errorHtml}
-                ${messagesHtml}
-                ${formHtml}
-              </div>
-            `,
-          )
-        }).pipe(Effect.provide(EffuseLive)),
-      ).then(
-        () => {
+      runTrackedFiber({
+        context: "home.chat.render_dom",
+        start: () =>
+          Effect.runFork(
+            Effect.gen(function* () {
+              const dom = yield* DomServiceTag
+              yield* dom.render(
+                paneContentSlot,
+                html`
+                  <div
+                    class="flex flex-col h-full min-h-0 bg-black"
+                    data-oa-home-chat-root="1"
+                    data-oa-home-chat-status="${homeSnapshot.status}"
+                  >
+                    ${controlsHtml}
+                    ${errorHtml}
+                    ${messagesHtml}
+                    ${formHtml}
+                  </div>
+                `,
+              )
+            }).pipe(
+              Effect.provide(EffuseLive),
+              Effect.tap(() =>
+                Effect.sync(() => {
           const syncDebugButtonState = () => {
             if (!(paneDebugButton instanceof HTMLButtonElement)) return
             paneDebugButton.setAttribute("aria-pressed", showDebugCards ? "true" : "false")
@@ -1397,7 +1467,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             stopBtn.addEventListener("click", () => {
               const tid = homeThreadId
               if (!tid || !deps?.chat) return
-              deps.runtime.runPromise(deps.chat.stop(tid)).catch(() => { })
+              runTrackedFiber({
+                context: "home.chat.stop",
+                start: () => deps.runtime.runFork(deps.chat.stop(tid)),
+              })
             })
           }
 
@@ -1503,15 +1576,19 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                   titleActions.appendChild(copyBtn)
                 }
                 if (slot instanceof HTMLElement) {
-                  Effect.runPromise(
-                    Effect.gen(function* () {
-                      const dom = yield* DomServiceTag
-                      yield* dom.render(
-                        slot,
-                        html`<div class="p-4 h-full overflow-auto bg-black"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${metaJson}</pre></div>`
-                      )
-                    }).pipe(Effect.provide(EffuseLive))
-                  ).catch(() => { })
+                  runTrackedFiber({
+                    context: "home.chat.metadata_pane.render",
+                    start: () =>
+                      Effect.runFork(
+                        Effect.gen(function* () {
+                          const dom = yield* DomServiceTag
+                          yield* dom.render(
+                            slot,
+                            html`<div class="p-4 h-full overflow-auto bg-black"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${metaJson}</pre></div>`
+                          )
+                        }).pipe(Effect.provide(EffuseLive))
+                      ),
+                  })
                 }
               },
               { capture: true }
@@ -1543,15 +1620,19 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
                 if (slot instanceof HTMLElement) {
                   const traceJson = JSON.stringify(trace, null, 2)
-                  Effect.runPromise(
-                    Effect.gen(function* () {
-                      const dom = yield* DomServiceTag
-                      yield* dom.render(
-                        slot,
-                        html`<div class="p-4 h-full overflow-auto"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${traceJson}</pre></div>`
-                      )
-                    }).pipe(Effect.provide(EffuseLive))
-                  ).catch(() => { })
+                  runTrackedFiber({
+                    context: "home.chat.telemetry_pane.render",
+                    start: () =>
+                      Effect.runFork(
+                        Effect.gen(function* () {
+                          const dom = yield* DomServiceTag
+                          yield* dom.render(
+                            slot,
+                            html`<div class="p-4 h-full overflow-auto"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${traceJson}</pre></div>`
+                          )
+                        }).pipe(Effect.provide(EffuseLive))
+                      ),
+                  })
                 }
               },
               { capture: true }
@@ -1575,12 +1656,17 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 const tid = homeThreadId
                 if (tid) {
                   if (input) input.value = ""
-                  deps.runtime.runPromise(deps.chat.send(tid, text)).catch(() => { })
+                  runTrackedFiber({
+                    context: "home.chat.send.existing_thread",
+                    start: () => deps.runtime.runFork(deps.chat.send(tid, text)),
+                  })
                   doRender()
                   return
                 }
-                deps.runtime.runPromise(deps.chat.getOwnedThreadId()).then(
-                  (id) => {
+                runTrackedFiber({
+                  context: "home.chat.get_owned_thread_id.before_send",
+                  start: () => deps.runtime.runFork(deps.chat.getOwnedThreadId()),
+                  onSuccess: (id) => {
                     if (id && id.length > 0) {
                       const userIdForCache = readSessionFromAtoms().userId ?? ""
                       attachHomeThreadSubscription({
@@ -1588,12 +1674,17 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                         userId: userIdForCache,
                       })
                       if (input) input.value = ""
-                      deps.runtime.runPromise(deps.chat.send(id, text)).catch(() => { })
+                      runTrackedFiber({
+                        context: "home.chat.send.newly_attached_thread",
+                        start: () => deps.runtime.runFork(deps.chat.send(id, text)),
+                      })
                     }
                     doRender()
                   },
-                  () => doRender(),
-                )
+                  onFailure: () => {
+                    doRender()
+                  },
+                })
               }
               ensureThenSend()
               return
@@ -1730,9 +1821,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           const inputEl0 = paneContentSlot.querySelector("[data-oa-home-chat-input]")
           const inputEl = inputEl0 instanceof HTMLInputElement ? inputEl0 : null
           if (inputEl) requestAnimationFrame(() => inputEl.focus())
-        },
-        () => { },
-      )
+                }),
+              ),
+            ),
+          ),
+      })
     }
 
     if (isAuthedFromAtoms && deps?.atoms) {
@@ -1770,7 +1863,9 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           if (!userId) return
           startAuthedChat({ userId, user, token })
         })
-        .catch(() => { })
+        .catch((error) => {
+          logHomeControllerAsyncError("home.auth.session_probe", error)
+        })
     }
 
     doRender()
@@ -1819,7 +1914,17 @@ export const mountHomeController = (input: {
   readonly chat?: ChatClient
   readonly refreshConvexAuth?: () => void | Promise<void>
 }): HomeController => {
-  Effect.runPromise(hydrateMarketingDotsGridBackground(input.container)).catch(() => { })
+  const hydrateFiber = Effect.runFork(hydrateMarketingDotsGridBackground(input.container))
+  void Effect.runPromise(Fiber.await(hydrateFiber)).then(
+    (exit) => {
+      if (Exit.isFailure(exit) && !Cause.isInterruptedOnly(exit.cause)) {
+        logHomeControllerAsyncError("home.marketing_background.hydrate", Cause.pretty(exit.cause))
+      }
+    },
+    (error) => {
+      logHomeControllerAsyncError("home.marketing_background.hydrate", error)
+    },
+  )
 
   const stopCountdown = startPrelaunchCountdownTicker(input.container)
   let deps: HomeChatDeps | undefined
@@ -1842,6 +1947,7 @@ export const mountHomeController = (input: {
 
   return {
     cleanup: () => {
+      Effect.runFork(Fiber.interrupt(hydrateFiber))
       stopCountdown()
       stopOpenChatPane()
       cleanupMarketingDotsGridBackground(input.container)
