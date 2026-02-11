@@ -34,6 +34,22 @@ export class PaymentFailedError extends Schema.TaggedError<PaymentFailedError>()
   },
 ) {}
 
+export class PaymentTimeoutError extends Schema.TaggedError<PaymentTimeoutError>()(
+  "PaymentTimeoutError",
+  {
+    invoice: Schema.String,
+    timeoutMs: Schema.Int.pipe(Schema.positive()),
+  },
+) {}
+
+export class PaymentMissingPreimageError extends Schema.TaggedError<PaymentMissingPreimageError>()(
+  "PaymentMissingPreimageError",
+  {
+    invoice: Schema.String,
+    paymentId: Schema.optional(Schema.String),
+  },
+) {}
+
 export class CredentialMissingError extends Schema.TaggedError<CredentialMissingError>()(
   "CredentialMissingError",
   {
@@ -62,6 +78,8 @@ export type LightningEffectError =
   | BudgetExceededError
   | DomainNotAllowedError
   | PaymentFailedError
+  | PaymentTimeoutError
+  | PaymentMissingPreimageError
   | CredentialMissingError
   | AuthorizationSerializeError
   | L402TransportError
