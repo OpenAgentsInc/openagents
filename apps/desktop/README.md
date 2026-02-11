@@ -8,7 +8,7 @@ This app is the desktop execution boundary for Lightning flows in EP212.
 - `openagents.com` remains the chat/orchestration UI.
 - Convex is the command/result bus between web and desktop.
 
-## Current Scope (`#1583`)
+## Current Scope
 
 - Electron app shell with Effect service graph.
 - Renderer is fully Effuse-based and mounted in Effuse panes (same pane system family as web).
@@ -37,4 +37,4 @@ Optional environment variables:
 
 - Renderer runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`.
 - Auth token state is memory-only in this phase.
-- No Lightning key material is handled in this issue.
+- No Lightning key material is handled in the current implementation.
