@@ -1,379 +1,373 @@
-# OpenAgents-Hosted L402 Infrastructure for Agent-Owned Paywalls
+# OpenAgents L402 Agent Paywall Infrastructure Plan (Voltage + GCP)
 
-Date: 2026-02-11
-Status: Draft design note
+Date: 2026-02-11  
+Status: Draft implementation plan (expanded)  
+Owner: Lightning / Autopilot product + runtime
 
-## Why this note
+## 1) Purpose and Decision Summary
 
-Goal: describe a realistic path for OpenAgents to run its own L402 infrastructure so agents can create and operate their own paid API paywalls, while preserving current repo constraints (Worker control plane, typed tool contracts, deterministic receipts).
+This plan defines how OpenAgents will run its own multi-tenant L402 paywall infrastructure so agents can create, manage, and monetize paid endpoints through OpenAgents-managed rails.
 
-This note is architecture and sequencing guidance, not an implementation commitment.
+Core decisions:
 
-## Inputs reviewed
+1. **Seller infrastructure is OpenAgents-hosted** (not only third-party seller endpoints).
+2. **Voltage-hosted LND is the initial Lightning backend** for fast production delivery.
+3. **All OpenAgents custom logic remains TypeScript + Effect** in this repo; only upstream Go components (Aperture and optional pricer/controller) run as isolated infra services.
+4. **Any Go-hosted workloads run on Google Cloud**.
+5. **Control plane authority remains in `apps/web` + Convex**, with typed contracts and replayable receipts enforced by existing runtime standards.
 
-- `docs/lightning/LIGHTNING_AGENT_TOOLS.md`
-- `docs/lightning/SETUP_LOG.md`
-- `docs/lightning/LIGHTNING_DEEP_INTEGRATION_ROADMAP.md`
-- `docs/lightning/LIGHTNING_LABS_VS_BREEZ_SPARK_COMPARISON.md`
-- `docs/lightning/212-demo-plan.md`
-- `packages/lightning-effect/README.md`
-- `packages/lightning-effect/src/contracts/*`
-- `packages/lightning-effect/src/services/*`
-- `packages/lightning-effect/src/l402/*`
-- `packages/lightning-effect/src/layers/*`
-- `packages/lightning-effect/src/adapters/*`
-- `packages/lightning-effect/src/errors/*`
-- `packages/lightning-effect/test/*`
-- `docs/GLOSSARY.md`
-- `docs/adr/ADR-0007-tool-execution-contract.md`
-- `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
+This is sequencing and architecture guidance for full implementation, not marketing copy.
 
-## Current baseline (important)
+## 2) Repo-Aware Baseline
 
-What already exists:
+The plan is grounded in the current codebase, not a greenfield architecture.
 
-1. Canonical terminology and receipt proof semantics for Lightning/L402 (`lightning_preimage`).
-2. `packages/lightning-effect` includes buyer-side primitives:
-   - L402 challenge parsing and auth header construction.
-   - spend policy checks (allowlist, blocklist, max spend).
-   - credential cache abstraction.
-   - invoice payer abstraction and demo adapter.
-   - live L402 authorization orchestration layer.
-3. Clear runtime contract rules: tools need schemas, deterministic failures, replay/receipt emission.
+### Existing components we should reuse
 
-What does not exist yet:
+1. `apps/web/convex/lightning/tasks.ts`
+   - Already provides a typed Lightning task queue lifecycle (`queued/approved/running/paid/cached/blocked/failed/completed`) with transition controls and event logs.
+   - This is a strong base for control-plane operations and deterministic task traces.
+2. `apps/web/src/effect/lightning.ts`
+   - Already provides Effect-based Lightning API client wiring from web runtime to Convex functions.
+3. `apps/autopilot-worker/src/tools.ts`
+   - Already includes `lightning_l402_fetch` schema contracts and output semantics for buyer-side L402 fetch orchestration.
+4. `packages/lightning-effect`
+   - Already has buyer-side L402 challenge parsing, auth header building, spend policy checks, credential cache, and invoice payment abstractions.
+   - Already structured as reusable package for external consumers.
+5. `apps/desktop`
+   - Existing executor model for off-web action execution.
+   - Useful for sovereign or user-local buyer flows, but not required to host seller infra.
+6. `apps/web/src/effuse-app/controllers/home/openChatPaneController.ts`
+   - Wallet + transaction L402 panes already exist.
+   - We should extend these for seller/paywall operations rather than inventing a new UI framework.
+7. ADR contract/receipt standards:
+   - `docs/adr/ADR-0007-tool-execution-contract.md`
+   - `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
 
-1. Multi-tenant seller/paywall control plane.
-2. OpenAgents-hosted L402 gateway plane for agent-owned endpoints.
-3. Invoice issuance + reconciliation services wired into OpenAgents data models for seller flows.
-4. Agent tools for creating/managing paywalls.
+### Gaps we must close
 
-## Target outcome
+1. No seller-side paywall resource model in Convex.
+2. No OpenAgents-managed Aperture deployment + config compiler.
+3. No settlement ingestion pipeline mapped to paywall ownership/revenue.
+4. No agent tool contract set for paywall CRUD.
+5. No robust seller observability/ops runbooks integrated with request IDs and replay semantics.
 
-Any agent can register a paywall definition and receive a stable OpenAgents paywalled URL (or route binding), where:
+## 3) Target State
 
-1. Buyers get `402 Payment Required` with a valid L402 challenge.
-2. Buyers can pay and retry using standard L402 semantics.
-3. Access is granted only after valid proof.
-4. Seller and buyer activity is recorded with typed receipts and deterministic traces.
-5. Policy controls (price caps, allowlists, kill switches) are enforced before side effects.
+Any agent can create an OpenAgents paywall and receive a stable endpoint (or route binding) that:
 
-## Proposed architecture
+1. issues standards-compliant `402 Payment Required` + L402 challenge;
+2. accepts valid `Authorization: L402 ...` retries;
+3. gates upstream access by paywall policy;
+4. records payment proof metadata (`lightning_preimage`) and deterministic receipts;
+5. supports pause/resume/kill-switch and spend/abuse controls.
 
-### 1) Control Plane (OpenAgents Worker + Convex + Autopilot)
+## 4) Architecture (Concrete Plan)
 
-Responsibilities:
+### 4.1 Planes and responsibilities
 
-1. Paywall lifecycle APIs (create, update, pause, delete, list).
-2. Policy definitions (pricing, domain/path scope, quotas, spending caps).
-3. Ownership and auth mapping (user/agent -> paywall resources).
-4. Audit events and receipt references.
-
-Suggested API surface:
-
-- `POST /api/lightning/paywalls`
-- `PATCH /api/lightning/paywalls/:id`
-- `POST /api/lightning/paywalls/:id/pause`
-- `POST /api/lightning/paywalls/:id/resume`
-- `GET /api/lightning/paywalls/:id`
-- `GET /api/lightning/paywalls`
-
-Convex entities to add (illustrative):
-
-- `l402Paywalls`
-- `l402PaywallPolicies`
-- `l402PaywallRoutes`
-- `l402GatewayEvents`
-- `l402Settlements`
-- `l402Payouts`
-
-### 2) Gateway Plane (L402 edge, OpenAgents-operated)
+### A) Control plane (`apps/web` + Convex + Worker APIs)
 
 Responsibilities:
 
-1. Intercept protected route traffic.
-2. Emit L402 challenges (`WWW-Authenticate`) when authorization is missing.
-3. Validate `Authorization: L402 ...` on retry.
-4. Proxy authorized requests to upstream targets.
-5. Emit gateway events with request correlation IDs and paywall IDs.
+1. Paywall lifecycle APIs (create, update, pause, resume, archive).
+2. Ownership mapping (`subject -> paywall`).
+3. Pricing + policy authoring (fixed price first, dynamic later).
+4. Route binding policy and conflict checks.
+5. Audit logs and deployment intent state.
 
-Implementation options:
-
-1. Aperture-first: run Aperture ourselves and treat it as the primary gateway.
-2. Hybrid: Aperture for challenge/payment checks, OpenAgents service for tenancy/policy orchestration.
-3. Custom gateway later only if Aperture limits become material.
-
-Recommendation: option 2 is the best launch path.
-
-### 3) Settlement Plane (Lightning execution + key isolation)
+### B) Gateway plane (Aperture, Go, on GCP)
 
 Responsibilities:
 
-1. Invoice creation and monitoring.
-2. Payment settlement confirmation and proof handling.
-3. Macaroon minting/rotation strategy by role.
-4. Revenue attribution per paywall and owner.
+1. Enforce L402 challenge/auth handshake.
+2. Proxy authorized traffic to upstream seller endpoint.
+3. Emit gateway logs/metrics tied to request/paywall IDs.
+4. Provide deterministic config-driven behavior from control plane.
 
-Security baseline:
-
-1. Watch-only execution host + remote signer default for production.
-2. Scoped macaroons:
-   - gateway: invoice-only
-   - buyer agents: pay-only
-   - monitoring: read-only
-3. Explicit rotation and revocation runbooks.
-
-### 4) Product Plane (agent UX and tooling)
+### C) Settlement plane (LND + reconciliation services)
 
 Responsibilities:
 
-1. Agent-facing tools to create and control paywalls.
-2. Chat-visible states for paywall events and settlements.
-3. Admin/operator views for failures, denials, spend spikes, and payout state.
+1. Invoice issuance and state tracking.
+2. Settlement confirmation and reconciliation.
+3. Paywall revenue attribution and payout eligibility.
+4. Credential and macaroon hygiene for least privilege.
+
+### D) Product plane (Autopilot tools + Web panes)
+
+Responsibilities:
+
+1. Agent tool access to paywall CRUD and status.
+2. Operator/user UI for paywall status, payment events, and error state.
+3. Explainability hooks in chat metadata/receipts.
+
+### 4.2 Runtime topology
+
+```text
+[Buyer client/agent]
+      |
+      v
+[OpenAgents Paywall URL]
+      |
+      v
+[GCP HTTPS LB] --> [Aperture (Cloud Run, Go)]
+                         |
+                         +--> [Voltage LND (gRPC 10009)]  (challenge/invoice auth path)
+                         |
+                         +--> [Seller upstream endpoint]
+                         |
+                         +--> [Gateway logs/metrics]
+
+[OpenAgents Control Plane]
+  - apps/web Worker API routes
+  - Convex models/functions
+  - apps/lightning-ops (new, TS+Effect service on Cloud Run)
+      |
+      +--> compile/deploy aperture config
+      +--> ingest settlements
+      +--> write deterministic events + receipts
+```
+
+### 4.3 Go placement policy
+
+All Go services live on Google Cloud:
+
+1. Aperture binary (mandatory, upstream Go component).
+2. Optional dynamic pricing gRPC service if implemented in Go.
+3. Optional minimal control shim if Aperture runtime update APIs require in-process Go integration.
+
+All OpenAgents business logic (policy, models, orchestration, receipts) remains TypeScript + Effect in this repo.
+
+## 5) Voltage-Specific Operating Model
+
+Voltage is the initial Lightning provider for seller infrastructure.
+
+### 5.1 Node setup by environment
+
+1. Provision distinct Voltage nodes per environment:
+   - dev/test
+   - staging
+   - production
+2. Capture node metadata in secure config:
+   - `LND_HOST`
+   - `LND_GRPC_PORT=10009`
+   - `LND_REST_PORT=8080`
+   - node alias / pubkey
+3. Export and store in secret manager:
+   - TLS cert
+   - bootstrap admin macaroon
+
+### 5.2 Macaroon hardening plan
+
+1. Bootstrap with admin macaroon only long enough to bake scoped creds.
+2. Bake invoice-only macaroon for gateway challenge flow.
+3. Bake read-only macaroon for monitoring and settlement readers.
+4. Remove admin macaroon from runtime workloads once scoped credentials are validated.
+5. Rotate scoped macaroons on explicit cadence and on incident.
+
+### 5.3 Connectivity and failure strategy
+
+1. Aperture connects to Voltage via direct lnd mode first.
+2. Monitor gRPC health and auth failures continuously.
+3. On Voltage outage:
+   - fail challenge issuance predictably;
+   - surface typed error reason in gateway telemetry and control-plane status;
+   - allow emergency pause of all paywalls.
+
+## 6) Aperture on Google Cloud (Detailed)
+
+This section assumes Aperture remains the enforcement edge for MVP and early production.
+
+### 6.1 Build and artifact pipeline
+
+1. Pin Aperture git SHA in infra config.
+2. Build immutable image in CI (Cloud Build or GitHub Actions + Artifact Registry).
+3. Attach SBOM and provenance metadata.
+4. Tag images with:
+   - upstream SHA
+   - OpenAgents rollout ID
+   - date stamp
+5. Never deploy floating tags (`latest`) in production.
+
+### 6.2 Deployment target
+
+Recommended baseline: Cloud Run + Cloud SQL (Postgres).
+
+1. Cloud Run service `l402-aperture`:
+   - min instances >= 2 for prod
+   - max instances tuned by expected challenge throughput
+   - private ingress + HTTPS LB fronting
+2. Cloud SQL Postgres:
+   - primary + backup policy
+   - connection via Cloud SQL connector
+3. Secret Manager for:
+   - `invoice.macaroon`
+   - TLS cert
+   - DB credentials
+   - any dynamic pricer auth secrets
+
+### 6.3 Config strategy
 
-## Aperture deployment deep dive (from upstream code)
+Aperture config is declarative and ordered. We should treat it as compiled output.
+
+1. Control plane stores canonical paywall policies in Convex.
+2. `apps/lightning-ops` compiles that state to deterministic `aperture.yaml`.
+3. Compiler emits:
+   - config hash
+   - ordered rule list
+   - validation diagnostics
+4. Rollout updates Cloud Run revision with new config artifact.
+5. Rollback target is previous config hash + image digest.
 
-This section is based on direct review of `/Users/christopherdavid/code/aperture`.
+### 6.4 Security constraints and mitigations
 
-### What Aperture is operationally
+Known caveats in upstream behavior require explicit controls:
 
-1. A single Go binary (`cmd/aperture/main.go`) that runs an HTTP reverse proxy and L402 auth flow.
-2. No first-party Helm chart, Kubernetes manifests, docker-compose, or systemd units in repo.
-3. Config is file-driven (`aperture.yaml`) with CLI override precedence.
+1. Upstream proxy transport TLS verification behavior should be isolated by network policy; prefer private upstream networks/VPC.
+2. Disable unused Aperture features unless explicitly required.
+3. Avoid relying only on Aperture’s in-memory freebie/rate limits for multi-tenant policy; enforce quotas in control plane too.
+4. Keep route matching strict and deterministic; first-match ordering must be compiler-owned and test-covered.
 
-Implication: we will own deployment packaging and day-2 ops.
+### 6.5 Optional dynamic pricing service (Go on GCP)
 
-### Build and packaging realities
+If/when dynamic pricing is needed:
 
-1. Upstream `go.mod` requires modern Go (`go 1.24.9`, toolchain `go1.24.11`).
-2. Upstream Dockerfile builds from `golang:1.24.9-alpine`, clones the Aperture repo, and checks out a branch/tag/commit (`ARG checkout`).
-3. There is a `replace` directive in `go.mod`, so pinned source builds are safer than ad hoc `go install ...@latest` flows.
+1. Implement pricer gRPC service in Go.
+2. Run on Cloud Run (internal only), reachable by Aperture over private network.
+3. Keep pricer stateless; pricing inputs come from control-plane-managed policy documents.
+4. Enforce upper/lower price bounds in both pricer and control-plane validation.
 
-Suggested OpenAgents packaging approach:
+## 7) Data Model and API Expansion in `apps/web`
 
-1. Build from a pinned commit SHA in CI.
-2. Publish our own immutable container image.
-3. Avoid “clone during docker build” in production pipeline; copy vendored source or pinned artifact instead.
+### 7.1 Convex schema additions (proposed)
 
-### Runtime config and required dependencies
+Add tables with explicit ownership and replay anchors:
 
-Minimum required to run:
+1. `l402Paywalls`
+   - `paywallId`, `ownerId`, `status`, `createdAtMs`, `updatedAtMs`
+   - `name`, `description`
+2. `l402PaywallPolicies`
+   - `paywallId`, `pricingMode`, `fixedAmountMsats`
+   - `maxPerRequestMsats`, `allowedHosts`, `blockedHosts`
+   - `quotaPerMinute`, `quotaPerDay`, `killSwitch`
+3. `l402PaywallRoutes`
+   - `paywallId`, `hostPattern`, `pathPattern`
+   - `upstreamUrl`, `protocol`, `timeoutMs`, `priority`
+4. `l402GatewayDeployments`
+   - `deploymentId`, `configHash`, `imageDigest`, `status`
+   - `appliedAtMs`, `rolledBackFrom`, `diagnostics`
+5. `l402GatewayEvents`
+   - request-level gateway event records with `oa_req` and paywall references
+6. `l402Invoices`
+   - invoice metadata + paywall linkage + state (`open/settled/canceled/expired`)
+7. `l402Settlements`
+   - settlement records including payment proof references per ADR-0013
+8. `l402Payouts`
+   - payout instruction and status lifecycle (even if manual in MVP)
 
-1. `listenaddr` must be set.
-2. Auth backend must be valid unless explicitly disabled.
-3. Service list must be configured in ordered match priority (`hostregexp` + optional `pathregexp`).
-4. Database backend must be set deliberately.
+Add indexes by:
 
-Important upstream behaviors:
+1. `paywallId`
+2. `ownerId`
+3. `(status, updatedAtMs)`
+4. `requestId`
+5. `(configHash, appliedAtMs)`
 
-1. `auth` defaults to effectively “on” when not explicitly set.
-2. Service `price: 0` becomes default `1 sat`.
-3. Service matching is first-match wins; config order is a real routing policy.
-4. Dynamic pricing requires an external gRPC pricer service; Aperture only provides the client and protobufs.
-5. Code default backend is `etcd` (sample config comments mention sqlite), so we should always set `dbbackend` explicitly.
+### 7.2 Worker/API surface
 
-### TLS and edge topology options
+Implement in `apps/web/src/effuse-host/worker.ts` + routed handlers:
 
-Aperture supports three practical modes:
+1. `POST /api/lightning/paywalls`
+2. `PATCH /api/lightning/paywalls/:id`
+3. `POST /api/lightning/paywalls/:id/pause`
+4. `POST /api/lightning/paywalls/:id/resume`
+5. `GET /api/lightning/paywalls/:id`
+6. `GET /api/lightning/paywalls`
+7. `GET /api/lightning/paywalls/:id/settlements`
+8. `GET /api/lightning/paywalls/:id/deployments`
 
-1. Native TLS with cert/key files.
-2. Native ACME/autocert (`autocert: true`) with HTTP challenge listener on port 80.
-3. `insecure: true` mode (h2c/no TLS) behind an external TLS terminator.
+Rules:
 
-Note: README text and runtime code differ on ACME support; runtime code includes `autocert` support, and code behavior should be treated as canonical.
+1. subject auth required on all mutation routes.
+2. explicit ownership checks before state transitions.
+3. deterministic error codes for policy denials and invalid transitions.
 
-Recommended for OpenAgents:
+### 7.3 Reuse of existing task/event model
 
-1. Terminate TLS at ingress/LB.
-2. Run Aperture on private network in `insecure: true` mode only if network boundary is trusted.
-3. Keep gRPC/HTTP2 requirements in mind when choosing ingress.
+Extend (do not replace) existing patterns in `apps/web/convex/lightning/tasks.ts`:
 
-### Data backend choices and scale implications
+1. Keep status transition discipline for action workflows.
+2. Emit typed events for paywall lifecycle transitions similar to current L402 fetch transitions.
+3. Use same actor semantics where possible (`web_worker`, `system`, etc.).
 
-Aperture supports `sqlite`, `postgres`, `etcd`, with meaningful differences:
+## 8) New Service: `apps/lightning-ops` (TypeScript + Effect)
 
-1. `sqlite`: simplest, local file, not a good horizontal scale backend.
-2. `postgres`: best candidate for multi-instance production.
-3. `etcd`: supports secret/onion storage path, but LNC mode is explicitly blocked with etcd in code.
+Introduce a dedicated service for long-running operational jobs that are not a fit for request-bound Worker execution.
 
-Recommendation:
+### 8.1 Why this service is needed
 
-1. Dev/staging: sqlite acceptable.
-2. Production multi-tenant: postgres.
-3. Avoid etcd for initial OpenAgents seller rollout unless we need Tor/onion-specific behaviors there.
+1. Aperture config compilation/deployment is asynchronous and should be audited.
+2. LND settlement subscriptions are long-lived streams.
+3. Replayable operational events require stable process-level orchestration.
 
-### LND/LNC connectivity choices
+### 8.2 Responsibilities
 
-Aperture can challenge via:
+1. Poll/control paywall desired state from Convex.
+2. Compile Aperture config deterministically.
+3. Apply and verify gateway deployments.
+4. Subscribe to invoice updates and write settlement records.
+5. Emit structured logs with request/deployment IDs.
 
-1. Direct lnd connection (`lndhost`, `tlspath`, `macdir`).
-2. LNC passphrase/mailbox flow.
+### 8.3 Suggested structure
 
-### Planned provider: Voltage-hosted LND via API
+1. `apps/lightning-ops/src/config/*`
+2. `apps/lightning-ops/src/aperture/*`
+3. `apps/lightning-ops/src/settlement/*`
+4. `apps/lightning-ops/src/telemetry/*`
+5. `apps/lightning-ops/src/main.ts`
 
-OpenAgents should treat Voltage as the default seller-side LND host for initial rollout.
+All modules implemented with Effect services/layers and schema-typed payloads.
 
-Key operational facts to reflect in our deployment:
+## 9) `packages/lightning-effect` Expansion (Seller Side)
 
-1. Voltage exposes full LND API surface (gRPC + REST) per node.
-2. Base URL is node-specific and comes from the Voltage node dashboard.
-3. API ports are:
-   - gRPC: `10009`
-   - REST: `8080`
-4. API auth uses macaroon material from the node dashboard (admin macaroon download path in Voltage UI).
+Keep package reusable for OpenAgents and external consumers.
 
-How this maps to Aperture runtime:
-
-1. Use Aperture direct-lnd mode, set:
-   - `authenticator.lndhost` to Voltage endpoint + gRPC port.
-   - `authenticator.tlspath` to the local TLS cert file for that node.
-   - `authenticator.macdir` to local directory containing macaroon files.
-2. Because Aperture’s lnd client path expects `invoice.macaroon` by default, create a local macaroon layout that satisfies that file expectation.
-3. If Voltage only provides admin macaroon initially, treat that as bootstrap only; move to least-privilege invoice-only macaroon as soon as node policy permits.
-
-Notable details:
-
-1. Direct mode uses `invoice.macaroon` by default.
-2. `strictverify: true` adds invoice-state loading/subscription overhead at startup.
-3. `invoicebatchsize` matters at scale with large invoice history.
-
-Recommendation:
-
-1. Start with direct lnd against Voltage.
-2. Use least-privilege invoice macaroon (or short-lived admin fallback during bootstrap only).
-3. Add LNC mode later only if we need that operational pattern.
-
-### Rate limits, freebies, and multi-instance behavior
-
-Upstream behavior is mostly in-memory:
-
-1. Rate limiting uses per-instance token buckets.
-2. Freebie counters are in-memory per instance.
-3. Unauthenticated client keying is IP-mask based (`/24` IPv4, `/48` IPv6).
-4. Authenticated keying uses L402 token ID.
-
-Operational implication:
-
-1. Horizontal replicas do not share freebie/rate-limit state.
-2. IP-based behavior is less reliable behind proxies/CDNs.
-3. For OpenAgents paywalls, rely primarily on authenticated token-based limits and explicit policy controls.
-
-### Security caveats to account for in design
-
-From current upstream code paths:
-
-1. Backend proxy transport sets `InsecureSkipVerify: true` for upstream TLS connections.
-2. Hashmail stream auth contains a TODO path that currently returns success.
-3. Blocklist is static exact-IP list, not CIDR policy engine.
-4. No built-in admin API for config mutation; dynamic service updates require in-process calls (`UpdateServices`) or process-level config rollout.
-
-OpenAgents mitigation stance:
-
-1. Keep Aperture and upstream services on private network boundaries.
-2. Disable hashmail unless explicitly needed.
-3. Use control-plane policy enforcement before Aperture routing.
-4. Treat Aperture config rollout as code/declarative state with audited change history.
-
-## Suggested hosting models for OpenAgents
-
-### Model 1: Single-node managed VM (fastest)
-
-1. One Aperture instance + sqlite + direct lnd to a single Voltage node.
-2. Best for internal dogfood and early staging.
-3. Lowest complexity, lowest resilience.
-
-### Model 2: Production baseline (recommended initial prod)
-
-1. 2+ Aperture instances behind L7 load balancer.
-2. Shared postgres.
-3. Direct lnd connectivity from each Aperture instance to the same Voltage node API endpoint.
-4. External TLS termination at ingress; internal h2c or private TLS.
-
-### Model 3: Hardened infra variant
-
-1. Same as Model 2.
-2. Keep Voltage for early operations, then graduate to dedicated lnd/watch-only + remote-signer topology when sovereignty requirements exceed hosted-node constraints.
-3. Tighter network segmentation and secret-manager-backed credential rotation.
-
-## What deployment entails for OpenAgents (concrete work)
-
-1. Build pipeline:
-   - pin Aperture commit.
-   - produce signed image artifact.
-2. Config compiler:
-   - derive ordered `services` list from paywall control-plane state.
-   - render deterministic config artifacts.
-3. Rollout mechanism:
-   - restart-based config reload initially, or
-   - in-process controller/fork that calls `UpdateServices`.
-4. Secret and credential handling:
-   - Voltage node base URL and API port mapping (`10009` gRPC, `8080` REST).
-   - lnd cert + macaroon material downloaded from Voltage and stored in expected local filesystem layout for Aperture.
-   - invoice-only macaroon target; admin macaroon only as controlled bootstrap path.
-   - DB credentials.
-   - TLS cert assets (if not edge-terminated).
-5. Observability:
-   - Prometheus scrape endpoint.
-   - request correlation across ingress -> Aperture -> upstream.
-   - alerting on 402 spikes, 5xx rate, challenge issuance failures.
-6. Reliability runbooks:
-   - DB outage behavior.
-   - Voltage API endpoint connectivity loss.
-   - macaroon rotation/expiry and stale credential recovery.
-   - invoice verification lag (strict verify mode).
-   - emergency pause/kill switch for all paywalls.
-7. Security hardening:
-   - private network for Aperture/upstreams.
-   - disable unused features (`hashmail`, Tor) by default.
-   - regular rotation and audit of macaroon/cert material.
-
-## Mapping Aperture service config to agent-created paywalls
-
-For each agent paywall, OpenAgents control plane should emit one service rule with:
-
-1. `name`: stable paywall ID (`paywall_<id>`).
-2. `hostregexp` and `pathregexp`: precise route scope.
-3. `address` + `protocol`: upstream target.
-4. `auth`: `on` by default.
-5. `price` or `dynamicprice`.
-6. `timeout` and optional caveat constraints.
-7. optional `ratelimits` and auth whitelist/skip patterns.
-
-This makes Aperture the enforcement edge while OpenAgents remains the policy authority.
-
-## Proposed `lightning-effect` evolution for seller infrastructure
-
-Current package is already a good base. For agent-owned paywalls, add seller-side contracts/services without breaking buyer-side interfaces.
-
-### Contracts to add
+### 9.1 New contracts
 
 1. `PaywallDefinition`
-2. `PaywallPricingPolicy` (fixed msats first, dynamic pricing later)
-3. `PaywallRouteBinding`
-4. `L402ChallengeIssueRequest` / `L402ChallengeIssueResult`
-5. `L402AuthorizationVerificationResult`
+2. `PaywallPolicy`
+3. `RouteBinding`
+4. `ChallengeIssueRequest/Result`
+5. `AuthorizationVerificationResult`
 6. `SettlementRecord`
 7. `PayoutInstruction`
+8. `GatewayDeploymentSnapshot`
 
-### Services to add
+### 9.2 New services
 
-1. `InvoiceCreatorService`
-2. `ChallengeIssuerService`
-3. `CredentialVerifierService`
-4. `PaywallRegistryService`
-5. `SettlementRecorderService`
-6. `PayoutService` (optional in MVP if payouts are manual)
+1. `PaywallRegistryService`
+2. `GatewayConfigCompilerService`
+3. `InvoiceIssuerService`
+4. `SettlementIngestService`
+5. `SellerPolicyService`
 
-### Layers/adapters to add
+### 9.3 Adapter/layer additions
 
-1. `ApertureGatewayAdapterLayer` (seller path)
-2. `InvoiceCreatorLndLayer`
-3. `SettlementListenerLayer`
-4. deterministic demo/test adapters for all seller-side services
+1. `ApertureConfigCompilerLayer`
+2. `InvoiceIssuerLndLayer`
+3. `SettlementIngestLndLayer`
+4. deterministic in-memory test layers for all seller interfaces
 
-## Agent tool contracts for paywall creation
+### 9.4 Package consumer guarantees
 
-Add schema-first tools in `apps/autopilot-worker/src/tools.ts`:
+1. No dependency on `apps/*`.
+2. Explicit subpath exports for seller contracts/services.
+3. Versioned schema evolution notes in README.
+
+## 10) Autopilot Tool Contract Expansion
+
+Add tools in `apps/autopilot-worker/src/tools.ts`:
 
 1. `lightning_paywall_create`
 2. `lightning_paywall_update`
@@ -381,93 +375,210 @@ Add schema-first tools in `apps/autopilot-worker/src/tools.ts`:
 4. `lightning_paywall_resume`
 5. `lightning_paywall_get`
 6. `lightning_paywall_list`
+7. `lightning_paywall_settlement_list`
 
-Each tool must:
+Execution requirements:
 
-1. Validate against JSON schema before execution.
-2. Emit deterministic tool receipts (`params_hash`, `output_hash`, `latency_ms`, side effects).
-3. Emit explicit deny/failure reasons for policy blocks.
+1. Schema validate input/output.
+2. Deterministic status/error mapping.
+3. Receipt emission with `params_hash`, `output_hash`, `latency_ms`, side-effect markers.
+4. Counterfactual-ready logging where tool decisions replace legacy behavior.
 
-## End-to-end flow (agent creates paywall)
+## 11) Web UX and Pane Integration (`apps/web`)
 
-1. Agent calls `lightning_paywall_create` with route, upstream target, and pricing policy.
-2. Control plane validates owner permissions and policy constraints.
-3. Gateway route binding is created/updated.
-4. Agent receives paywalled URL and policy snapshot.
-5. Buyer calls URL and receives L402 challenge.
-6. Buyer pays and retries with L402 auth header.
-7. Gateway verifies auth and proxies request.
-8. Settlement is recorded with receipt proof references.
-9. Seller agent sees revenue event and activity log entry.
+We already have L402 wallet + transactions panes. Extend them rather than creating a second pane framework.
 
-## Data and receipt mapping
+### 11.1 Existing pane anchors
 
-For each successful paid request:
+File: `apps/web/src/effuse-app/controllers/home/openChatPaneController.ts`
 
-1. Record payment metadata: `rail`, `asset_id`, `amount_msats`.
-2. Record proof as typed payment proof (`lightning_preimage`) per ADR-0013.
-3. Link to request/thread/run IDs for replayability.
+Already includes:
 
-For denied/blocked requests:
+1. wallet summary pane (`L402 Wallet Summary`)
+2. transactions pane (`Recent L402 Attempts`)
+3. payment detail pane
 
-1. Record explicit reason (`over_cap`, `domain_blocked`, `paywall_paused`, `invalid_auth`, `expired_invoice`).
-2. Record whether a payment side effect occurred (`false` for preflight policy denials).
+### 11.2 Seller additions
 
-## Launch sequencing
+Add panes for:
 
-### Phase A: Internal seller MVP (2-3 weeks)
+1. `L402 Paywalls`
+   - paywall name/status/price/route
+   - pause/resume controls
+2. `L402 Settlements`
+   - recent settled invoices
+   - proof reference and amount
+3. `L402 Deployments`
+   - current gateway config hash
+   - last deploy status and rollback action
 
-1. Stand up OpenAgents-operated gateway (Aperture-first).
-2. Add one internal paywalled route.
-3. Confirm full challenge/pay/verify loop and settlement logging.
+Data should come from new Worker/Convex read APIs with request correlation IDs.
 
-Exit: one stable paid endpoint with auditable receipts.
+## 12) End-to-End Flows
 
-### Phase B: Agent self-serve paywalls (2-4 weeks)
+### 12.1 Seller onboarding flow
 
-1. Add paywall CRUD APIs + Convex models.
-2. Add paywall tool contracts in Autopilot worker.
-3. Add policy validation and kill switch controls.
+1. Agent/user calls `lightning_paywall_create`.
+2. Control plane validates ownership and policy bounds.
+3. Convex writes paywall + route + policy (initially paused or active per policy).
+4. `apps/lightning-ops` compiles and deploys new Aperture config.
+5. Deployment event stored with config hash.
+6. UI reflects active paywall endpoint and health status.
 
-Exit: selected agents can create/pause/resume paywalls from tools.
+### 12.2 Buyer request flow
 
-### Phase C: Harden for multi-tenant operations (3-5 weeks)
+1. Buyer requests paywalled endpoint.
+2. Aperture emits `402` challenge with invoice + macaroon.
+3. Buyer pays (via lnget or other L402-capable client) and retries with auth header.
+4. Aperture verifies proof and proxies upstream request.
+5. Gateway + settlement events are written and linked to paywall.
+6. Seller pane shows new settlement/revenue event.
 
-1. Add quotas, abuse controls, and route isolation guarantees.
-2. Add settlement reconciliation jobs and payout workflow.
-3. Add alerting for anomalies and gateway failures.
+### 12.3 Failure flow
 
-Exit: multi-tenant reliability and incident runbooks in place.
+1. Voltage/LND unavailable -> challenge issuance fails.
+2. Gateway returns deterministic failure response.
+3. Control plane marks paywall health degraded.
+4. Alert fires, operator runbook initiated.
+5. Optional global pause toggle disables all paywalls until recovery.
 
-## Operational requirements before broad rollout
+## 13) Verification and Testing Matrix
 
-1. Source-pinned build/deploy path for `lnget`/Aperture/lnd-related tooling (avoid fragile `go install ...@latest` assumptions noted in setup logs).
-2. Structured metrics:
-   - challenge rate
-   - payment success/failure
-   - median paid amount
-   - policy denial rate
-   - per-paywall revenue
-3. Structured logs with request IDs and paywall IDs.
-4. Secret handling:
-   - no raw preimages in plaintext logs
-   - scoped macaroons only
-   - rotation cadence and break-glass procedure
+### 13.1 Unit and contract tests
 
-## Key risks
+1. `packages/lightning-effect`
+   - schema/contract tests for new seller types
+   - deterministic compile tests for rule ordering
+   - challenge/authorization edge cases
+2. `apps/web`
+   - Convex mutation/query tests for paywall lifecycle
+   - API authorization and ownership tests
+3. `apps/autopilot-worker`
+   - tool schema tests
+   - deterministic tool output tests
 
-1. Multi-tenant misconfiguration could leak route access.
-2. Settlement mismatch could break seller trust and accounting.
-3. Overly permissive autonomous configuration could create abusive or unsafe paywalls.
-4. Gateway/runtime split could produce observability gaps without strict request correlation.
+### 13.2 Integration tests
 
-## Mitigations
+1. Staging Aperture + staging Voltage node + staging control plane.
+2. Scenario matrix:
+   - successful paid request
+   - invalid auth retry
+   - paused paywall
+   - over-cap policy deny
+   - stale/expired invoice
 
-1. Default-deny routing and explicit ownership checks for every paywall mutation.
-2. Contract tests and replay fixtures for challenge/pay/verify and denial paths.
-3. Strong policy defaults (caps, allowlists, paused-by-default for new paywalls).
-4. Correlated telemetry across Worker, gateway, and settlement systems.
+### 13.3 E2E smoke tests
 
-## Recommendation
+1. `apps/web` prod-style smoke using existing E2E harness patterns.
+2. Include request correlation assertions (`x-oa-request-id`, `oa_req=<id>` style linkage where relevant).
+3. Ensure artifacts saved for replay/audit.
 
-Launch with an OpenAgents-operated Aperture-first gateway plus a strict control plane in Worker/Convex, then progressively move more seller logic into `packages/lightning-effect` as reusable interfaces. This gets agent-created paywalls live quickly without violating current runtime boundaries, and keeps a clear path to fully sovereign infrastructure later.
+### 13.4 Mandatory local validation before merge
+
+1. `cd packages/lightning-effect && npm run typecheck && npm test`
+2. `cd apps/autopilot-worker && npm run lint && npm test`
+3. `cd apps/web && npm run lint && npm test`
+
+Use app deploy scripts for production deploy operations (avoid raw `npx convex deploy` path).
+
+## 14) Operations, Security, and Runbooks
+
+### 14.1 Secrets and key material
+
+1. Secrets in Secret Manager only.
+2. No raw preimages in logs.
+3. Scoped macaroons per workload.
+4. Rotation runbook with tested rollback.
+
+### 14.2 Observability
+
+Track at minimum:
+
+1. challenge issuance rate
+2. paid conversion rate
+3. failed auth rate
+4. settlement lag
+5. payout queue depth
+6. per-paywall revenue and error rate
+
+### 14.3 Incident classes
+
+1. LND unreachable
+2. Aperture config rollout failure
+3. Settlement mismatch
+4. abusive route/policy misconfiguration
+5. DB or config corruption
+
+Each class needs:
+
+1. detection signal
+2. immediate mitigation steps
+3. rollback path
+4. post-incident audit fields
+
+## 15) Ordered Implementation Steps (Logical Execution Plan)
+
+This is the recommended sequence for full implementation.
+
+1. Confirm ADR updates for hosted paywall topology + authority boundaries.
+2. Add Convex schema and Worker API stubs for paywall resources.
+3. Create `apps/lightning-ops` skeleton (Effect runtime, config, telemetry).
+4. Implement deterministic Aperture config compiler in `packages/lightning-effect`.
+5. Wire `apps/lightning-ops` to read paywall state and produce config artifacts.
+6. Stand up GCP staging infra (Cloud Run + Cloud SQL + Secret Manager + Artifact Registry).
+7. Provision staging Voltage node and scoped macaroons.
+8. Deploy Aperture staging with compiled static config.
+9. Add deploy/reconcile loop from `apps/lightning-ops` to staging Aperture.
+10. Add settlement ingest pipeline from Voltage to Convex.
+11. Expand Autopilot tool contracts for paywall CRUD/status.
+12. Add web seller panes and status views in existing pane system.
+13. Run full staging E2E challenge/pay/settle tests.
+14. Add production runbooks and alerting.
+15. Canary deploy production with a single internal paywall.
+16. Expand to selected user-facing paywalls.
+
+## 16) Milestone Gates and Exit Criteria
+
+### M0: Infrastructure ready
+
+1. GCP baseline services deployed.
+2. Voltage staging node live with scoped macaroons.
+3. Aperture reachable and healthy.
+
+### M1: Single paywall end-to-end
+
+1. Can create one paywall in control plane.
+2. Buyer receives `402`, pays, retries, gets resource.
+3. Settlement and proof reference recorded.
+
+### M2: Agent self-serve beta
+
+1. Paywall CRUD tools available in Autopilot.
+2. Ownership and policy checks enforced.
+3. UI panes expose paywall + settlement state.
+
+### M3: Multi-tenant production readiness
+
+1. deterministic deployment/rollback in place
+2. SLO-backed telemetry and alerts active
+3. incident runbooks tested
+4. payout accounting path validated
+
+## 17) Risks and Mitigations
+
+1. **Rule ordering mistakes in Aperture config**
+   - Mitigation: deterministic compiler + golden tests + config hash rollback.
+2. **Voltage availability or API regressions**
+   - Mitigation: environment isolation, health checks, degraded mode + global pause.
+3. **Policy abuse or unsafe autonomous configuration**
+   - Mitigation: strict defaults, caps, explicit allowlists, owner auth on all mutations.
+4. **Settlement accounting drift**
+   - Mitigation: reconciliation jobs + anomaly alerts + immutable settlement events.
+5. **Operational complexity growth**
+   - Mitigation: separate ops service (`apps/lightning-ops`), explicit runbooks, staged rollout.
+
+## 18) Recommendation
+
+Proceed with an Aperture-first gateway on Google Cloud, backed by Voltage-hosted LND, while keeping all OpenAgents policy/orchestration code in TypeScript + Effect and rooted in existing `apps/web` + Convex models.
+
+This path delivers a practical production rollout for agent-owned paywalls without blocking on full node sovereignty, while preserving a clean migration path to later remote-signer/self-hosted node topologies.
