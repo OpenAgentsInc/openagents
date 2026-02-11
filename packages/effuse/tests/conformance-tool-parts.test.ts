@@ -95,5 +95,17 @@ describe("conformance: tool part rendering + BlobRef discipline", () => {
     expect(out).toContain("Tool failed")
     expect(out).toContain("Permission denied")
   })
-})
 
+  it("renderToolPart disclosure body includes fallback text when payloads are missing", () => {
+    const tool = renderToolPart({
+      status: "tool-result",
+      toolName: "record_feature_request",
+      toolCallId: "call_empty",
+      summary: "ok",
+    })
+
+    const out = renderToString(tool)
+    expect(out).toContain("status=tool-result summary=ok")
+    expect(out).toContain("No tool input/output payload was captured")
+  })
+})

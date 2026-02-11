@@ -66,8 +66,17 @@ const renderDetails = (
   details: ToolPartDetails,
   options: Required<Pick<RenderToolPartOptions, "blobViewAction" | "blobViewLabel">>
 ): TemplateResult => {
+  const hasExtra = details.extra != null
+  const hasInput = details.input != null
+  const hasOutput = details.output != null
+  const hasError = details.error != null
+  const hasAnyField = hasExtra || hasInput || hasOutput || hasError
+
   return html`
     <div data-effuse-tool-details="1">
+      <div data-effuse-tool-overview="1">
+        status=${model.status} summary=${model.summary}
+      </div>
       ${details.extra ?? null}
       ${details.input
         ? html`
@@ -93,6 +102,7 @@ const renderDetails = (
             </div>
           `
         : null}
+      ${hasAnyField ? null : html`<div data-effuse-tool-empty="1">No tool input/output payload was captured for this event.</div>`}
     </div>
   `
 }
@@ -115,9 +125,7 @@ export const renderToolPart = (
     blobViewLabel: options?.blobViewLabel ?? "View full",
   }
 
-  const details = model.details
-    ? renderDetails(model, model.details, opts)
-    : null
+  const details = renderDetails(model, model.details ?? {}, opts)
 
   return html`
     <details
@@ -127,10 +135,11 @@ export const renderToolPart = (
       data-effuse-tool-call-id="${model.toolCallId}"
     >
       <summary data-effuse-tool-summary="1">
-        <span data-effuse-tool-status-badge="1">${model.status}</span>
+        <span data-effuse-tool-disclosure="1">▸</span>
+        <span data-effuse-tool-status-badge="${model.status}">${model.status}</span>
         <span data-effuse-tool-name-label="1">${model.toolName}</span>
         <span data-effuse-tool-call-id-label="1">${model.toolCallId}</span>
-        <span data-effuse-tool-summary-text="1">${model.summary}</span>
+        <span data-effuse-tool-summary-text="1">${model.summary || "Tool event"}</span>
       </summary>
       ${details}
     </details>
