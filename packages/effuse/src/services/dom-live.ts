@@ -172,7 +172,11 @@ const swapImpl = (
         restoreScroll(mode === "inner" ? target : restoreRoot)
       }
     },
-    catch: (error) => new DomError(`Failed to swap: ${String(error)}`, error)
+    catch: (error) =>
+      DomError.make({
+        message: `Failed to swap: ${String(error)}`,
+        cause: error,
+      }),
   })
 
 export const DomServiceLive: DomService = {
@@ -180,9 +184,7 @@ export const DomServiceLive: DomService = {
     Effect.gen(function* () {
       const element = document.querySelector(selector)
       if (!element) {
-        return yield* Effect.fail(
-          new DomError(`Element not found: ${selector}`)
-        )
+        return yield* DomError.make({ message: `Element not found: ${selector}` })
       }
       return element
     }),

@@ -46,6 +46,7 @@ React is still used for: route loaders, auth, Convex, HUD backgrounds (DotsBackg
 | [SPEC.md](./SPEC.md) | Spec and contracts |
 | [DOM.md](./DOM.md) | DOM service |
 | [EZ.md](./EZ.md) | Hypermedia (EZ) actions |
+| [MIGRATION-SERVICES-TAGGED-ERRORS.md](./MIGRATION-SERVICES-TAGGED-ERRORS.md) | Migration notes for class-based service tags and schema-tagged errors |
 | [ORIGIN.md](./ORIGIN.md) | Origin and design |
 | [ROADMAP.md](./ROADMAP.md) | Roadmap |
 | [TESTING.md](./TESTING.md) | Testing |

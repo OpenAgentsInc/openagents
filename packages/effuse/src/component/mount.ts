@@ -4,8 +4,8 @@
 
 import { Effect, Queue, Scope, Stream, pipe } from "effect"
 import type { Component, ComponentContext } from "./types.js"
-import { DomServiceTag, type DomService } from "../services/dom.js"
-import { StateServiceTag, type StateService } from "../services/state.js"
+import { DomServiceTag } from "../services/dom.js"
+import { StateServiceTag } from "../services/state.js"
 
 const formatUnknown = (value: unknown): string =>
   value instanceof Error ? value.message : String(value)
@@ -20,7 +20,7 @@ export interface MountedComponent<E> {
 export const mountComponent = <S, E, R>(
   component: Component<S, E, R>,
   container: Element
-): Effect.Effect<MountedComponent<E>, never, R | DomService | StateService | Scope.Scope> =>
+): Effect.Effect<MountedComponent<E>, never, R | DomServiceTag | StateServiceTag | Scope.Scope> =>
   Effect.gen(function* () {
     const dom = yield* DomServiceTag
     const stateService = yield* StateServiceTag

@@ -12,4 +12,7 @@ export interface StateService {
   readonly cell: <A>(initial: A) => Effect.Effect<StateCell<A>, never, Scope.Scope>
 }
 
-export const StateServiceTag = Context.GenericTag<StateService>("StateService")
+export class StateServiceTag extends Context.Tag("@openagentsinc/effuse/StateService")<
+  StateServiceTag,
+  StateService
+>() {}
