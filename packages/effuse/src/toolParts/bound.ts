@@ -27,9 +27,11 @@ export const boundText = <R, E>(input: {
   }
 
   return Effect.gen(function* () {
-    const blob = yield* input.putText({ text: input.text, mime: input.mime })
+    const blob = yield* input.putText({
+      text: input.text,
+      ...(input.mime ? { mime: input.mime } : {}),
+    })
     const preview = input.text.slice(0, maxChars) + suffix
     return { preview, truncated: true, blob }
   })
 }
-

@@ -5,7 +5,7 @@
 import { Cause, Effect, Fiber, Runtime } from "effect"
 import type { DomService } from "../services/dom.js"
 import { DomServiceTag, type DomSwapMode } from "../services/dom.js"
-import { EzRegistryTag, type EzRegistry } from "./registry.js"
+import { EzRegistryTag } from "./registry.js"
 import type { EzAction } from "./types.js"
 
 type EzTrigger = "click" | "submit" | "change" | "input"

@@ -11,6 +11,7 @@ This app is the desktop execution boundary for Lightning flows in EP212.
 ## Current Scope (`#1583`)
 
 - Electron app shell with Effect service graph.
+- Renderer is fully Effuse-based and mounted in Effuse panes (same pane system family as web).
 - Auth linkage strategy: sign in with the same email used on `openagents.com` to map to the same OpenAgents user id.
 - Connectivity probes for OpenAgents API and Convex.
 - Background executor loop skeleton (`queued -> running -> completed|failed`) via a demo task provider.
