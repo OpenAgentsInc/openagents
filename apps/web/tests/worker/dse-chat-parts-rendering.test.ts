@@ -173,4 +173,139 @@ describe("apps/web autopilot chat: DSE wire parts render (Stage 2.5)", () => {
       },
     ])
   })
+
+  it("renders chat-visible L402 payment lifecycle states with proof and deny reason", () => {
+    const renderParts = toAutopilotRenderParts({
+      parts: [
+        {
+          type: "dse.tool",
+          v: 1,
+          id: "tool-intent",
+          state: "start",
+          toolName: "lightning_l402_fetch",
+          toolCallId: "call-intent",
+          input: {
+            url: "https://api.example.com/intent",
+            method: "GET",
+            maxSpendMsats: 1_000,
+          },
+        },
+        {
+          type: "dse.tool",
+          v: 1,
+          id: "tool-sent",
+          state: "ok",
+          toolName: "lightning_l402_fetch",
+          toolCallId: "call-sent",
+          input: {
+            url: "https://api.example.com/sent",
+            method: "GET",
+            maxSpendMsats: 1_200,
+          },
+          output: {
+            taskId: "task-sent",
+            status: "completed",
+            proofReference: "preimage:sent123",
+            paymentId: "payment-sent",
+            amountMsats: 850,
+            responseStatusCode: 200,
+          },
+        },
+        {
+          type: "dse.tool",
+          v: 1,
+          id: "tool-cached",
+          state: "ok",
+          toolName: "lightning_l402_fetch",
+          toolCallId: "call-cached",
+          input: {
+            url: "https://api.example.com/cached",
+            method: "GET",
+            maxSpendMsats: 1_000,
+          },
+          output: {
+            taskId: "task-cached",
+            status: "cached",
+            proofReference: "preimage:cache123",
+            responseStatusCode: 200,
+          },
+        },
+        {
+          type: "dse.tool",
+          v: 1,
+          id: "tool-blocked",
+          state: "error",
+          toolName: "lightning_l402_fetch",
+          toolCallId: "call-blocked",
+          input: {
+            url: "https://api.example.com/blocked",
+            method: "GET",
+            maxSpendMsats: 10_000,
+          },
+          output: {
+            taskId: "task-blocked",
+            status: "blocked",
+            denyReason: "policy_denied",
+          },
+          errorText: "policy_denied",
+        },
+        {
+          type: "dse.tool",
+          v: 1,
+          id: "tool-failed",
+          state: "error",
+          toolName: "lightning_l402_fetch",
+          toolCallId: "call-failed",
+          input: {
+            url: "https://api.example.com/failed",
+            method: "GET",
+            maxSpendMsats: 2_000,
+          },
+          output: {
+            taskId: "task-failed",
+            status: "failed",
+            denyReason: "desktop_executor_timeout",
+          },
+          errorText: "desktop_executor_timeout",
+        },
+      ],
+    })
+
+    const paymentStates = renderParts
+      .filter((part): part is Extract<(typeof renderParts)[number], { kind: "payment-state" }> => part.kind === "payment-state")
+      .map((part) => part.model.state)
+    expect(paymentStates).toEqual([
+      "payment.intent",
+      "payment.sent",
+      "payment.cached",
+      "payment.blocked",
+      "payment.failed",
+    ])
+
+    const data: AutopilotChatData = {
+      messages: [{ id: "m-payment", role: "assistant", renderParts }],
+      isBusy: false,
+      isAtBottom: true,
+      inputValue: "",
+      errorText: null,
+      auth: {
+        isAuthed: true,
+        authedEmail: "you@example.com",
+        step: "closed",
+        email: "",
+        code: "",
+        isBusy: false,
+        errorText: null,
+      },
+    }
+
+    const html = renderToString(autopilotChatTemplate(data))
+    expect(html).toContain('data-payment-state="payment.intent"')
+    expect(html).toContain('data-payment-state="payment.sent"')
+    expect(html).toContain('data-payment-state="payment.cached"')
+    expect(html).toContain('data-payment-state="payment.blocked"')
+    expect(html).toContain('data-payment-state="payment.failed"')
+    expect(html).toContain("preimage:sent123")
+    expect(html).toContain("policy_denied")
+  })
 })

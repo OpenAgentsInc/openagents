@@ -17,6 +17,32 @@ export type RenderToolPart = {
   readonly model: ToolPartModel;
 };
 
+export type PaymentStateKind =
+  | "payment.intent"
+  | "payment.sent"
+  | "payment.cached"
+  | "payment.blocked"
+  | "payment.failed";
+
+export type L402PaymentStateCardModel = {
+  readonly state: PaymentStateKind;
+  readonly toolCallId: string;
+  readonly taskId?: string | undefined;
+  readonly url?: string | undefined;
+  readonly method?: string | undefined;
+  readonly maxSpendMsats?: number | undefined;
+  readonly amountMsats?: number | undefined;
+  readonly responseStatusCode?: number | undefined;
+  readonly proofReference?: string | undefined;
+  readonly denyReason?: string | undefined;
+  readonly statusLabel?: string | undefined;
+};
+
+export type RenderPaymentStatePart = {
+  readonly kind: "payment-state";
+  readonly model: L402PaymentStateCardModel;
+};
+
 export type DseBudgetModel = {
   readonly limits?: Record<string, number> | undefined;
   readonly usage?: Record<string, number> | undefined;
@@ -108,6 +134,7 @@ export type RenderDseBudgetExceededPart = {
 export type RenderPart =
   | RenderTextPart
   | RenderToolPart
+  | RenderPaymentStatePart
   | RenderDseSignaturePart
   | RenderDseCompilePart
   | RenderDsePromotePart
@@ -195,6 +222,62 @@ const dseCardShell = (opts: { readonly title: string; readonly state: string; re
         ${dseStateBadge(opts.state)}
       </header>
       <div class="mt-2 flex flex-col gap-2">${opts.body}</div>
+    </section>
+  `;
+};
+
+const formatMsats = (value: number | undefined): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "n/a";
+  const sats = value / 1000;
+  return `${sats.toLocaleString(undefined, { maximumFractionDigits: 3 })} sats (${Math.round(value).toLocaleString()} msats)`;
+};
+
+const paymentStateBadge = (state: PaymentStateKind): TemplateResult => {
+  const cls =
+    state === "payment.sent" || state === "payment.cached"
+      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
+      : state === "payment.blocked"
+        ? "border-amber-400/40 bg-amber-500/10 text-amber-300"
+        : state === "payment.failed"
+          ? "border-red-400/40 bg-red-500/10 text-red-300"
+          : "border-blue-400/40 bg-blue-500/10 text-blue-300";
+
+  return html`<span class="inline-flex items-center rounded border px-2 py-0.5 text-[11px] uppercase tracking-wide ${cls}"
+    >${state}</span
+  >`;
+};
+
+const paymentStateOneLiner = (state: PaymentStateKind): string => {
+  if (state === "payment.intent") return "Preparing L402 payment request";
+  if (state === "payment.sent") return "L402 payment sent";
+  if (state === "payment.cached") return "Reused cached L402 credential";
+  if (state === "payment.blocked") return "Payment blocked by policy";
+  return "L402 payment failed";
+};
+
+export const renderPaymentStateCard = (model: L402PaymentStateCardModel): TemplateResult => {
+  return html`
+    <section
+      data-payment-state-card="1"
+      data-payment-state="${model.state}"
+      class="rounded-lg border border-white/15 bg-white/5 px-3 py-3"
+    >
+      <header class="flex items-center justify-between gap-3">
+        <div class="text-xs text-white/80 font-mono">${paymentStateOneLiner(model.state)}</div>
+        ${paymentStateBadge(model.state)}
+      </header>
+      <div class="mt-2 flex flex-col gap-2">
+        ${dseRow("toolCallId", model.toolCallId)}
+        ${dseRow("taskId", model.taskId)}
+        ${dseRow("url", model.url)}
+        ${dseRow("method", model.method)}
+        ${dseRow("maxSpend", formatMsats(model.maxSpendMsats))}
+        ${dseRow("amount", formatMsats(model.amountMsats))}
+        ${dseRow("responseStatus", model.responseStatusCode)}
+        ${dseRow("proofReference", model.proofReference)}
+        ${dseRow("denyReason", model.denyReason)}
+        ${dseRow("status", model.statusLabel)}
+      </div>
     </section>
   `;
 };
@@ -393,6 +476,7 @@ export const autopilotChatTemplate = (data: AutopilotChatData): TemplateResult =
         // Style is inherited from the surrounding typography.
         return renderToolPart(p.model);
       }
+      if (p.kind === "payment-state") return renderPaymentStateCard(p.model);
       if (p.kind === "dse-signature") return renderDseSignatureCard(p.model);
       if (p.kind === "dse-compile") return renderDseCompileCard(p.model);
       if (p.kind === "dse-promote") return renderDsePromoteCard(p.model);
