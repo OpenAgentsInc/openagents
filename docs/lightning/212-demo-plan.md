@@ -109,6 +109,46 @@ Run a tiny seller service with two paid routes behind Aperture:
 
 These only need deterministic JSON payloads for the demo.
 
+## 5.4 Pane System Plan (effuse-panes + apps/web)
+
+Current baseline in `apps/web`:
+
+1. Pane lifecycle is mounted through an Effect service (`apps/web/src/effect/paneSystem.ts`) using scoped acquire/release.
+2. Home overlay pane config currently disables hotbar (`enableHotbar: false`) and uses one primary pane (`home-chat`) plus ad hoc `metadata-*` and `telemetry-*` panes from message actions.
+3. Pane placement uses `calculateNewPanePosition(store.lastPanePosition, ...)`, and the main chat pane persists position to local storage.
+
+EP212 pane additions (demo scope):
+
+1. Add a persistent wallet summary pane:
+   - id: `l402-wallet`
+   - kind: `l402-wallet`
+   - title: `Wallet`
+   - purpose: balance, spend cap, allowlist status, last paid endpoint
+2. Add a persistent transactions pane:
+   - id: `l402-transactions`
+   - kind: `l402-transactions`
+   - title: `Transactions`
+   - purpose: recent L402 attempts with status (`paid`, `cached`, `blocked`, `failed`)
+3. Add on-demand payment detail pane:
+   - id prefix: `l402-payment-`
+   - kind: `l402-payment`
+   - title: `Payment Detail`
+   - purpose: request id, endpoint, quoted cost, paid amount, proof reference, policy decision
+
+Interaction model for EP212:
+
+1. Keep `home-chat` as primary pane and avoid replacing existing metadata/telemetry flows.
+2. Add title action buttons on `home-chat` for opening/toggling `l402-wallet` and `l402-transactions`.
+3. Add a per-message/action button for `Payment Detail` when a message contains L402/payment metadata.
+4. Optional operator mode: enable hotbar by feature flag and map slots (for example `1=Chat`, `2=Wallet`, `3=Transactions`) using `onHotbarSlotClick` + `store.togglePane`.
+
+Rendering and state constraints:
+
+1. Continue host-rendering into `[data-pane-id=\"<id>\"] [data-oa-pane-content]` after `paneSystem.render()`.
+2. Reuse existing `stylePaneOpaqueBlack` behavior for visual consistency in EP212 recordings.
+3. Persist `l402-wallet` and `l402-transactions` rects via `store.closedPositions` reopen semantics; local-storage persistence beyond episode scope is optional.
+4. `onPaneClosed` behavior remains: only closing `home-chat` dismisses the overlay; closing L402 panes should not close chat.
+
 ## 6. Endpoint Consumption Plan (Demo-Focused)
 
 ## Endpoint A: "signal-feed" (happy path)
@@ -216,19 +256,25 @@ Add a new tool contract (for example `lightning_l402_fetch`) in `apps/autopilot-
 
 This issue is complete when Autopilot can execute a paid fetch request end-to-end from chat and emit a user-visible outcome for success or deny conditions.
 
-## Issue 8: Add chat-visible payment states + proof reference
+## Issue 8: Add wallet + transactions panes in home chat overlay
+
+Implement L402-focused panes using the existing `effuse-panes` integration in `openChatPaneController`: a persistent wallet pane (`l402-wallet`), a persistent transactions pane (`l402-transactions`), and on-demand payment detail panes (`l402-payment-*`). Pane creation/open/close should follow existing `store.addPane`/`store.togglePane` + `calculateNewPanePosition` patterns used by metadata/telemetry panes.
+
+This issue should also add trigger controls (chat title actions and/or message-level buttons), while preserving current overlay behavior (closing non-chat panes does not dismiss overlay). It is complete when the three pane types can be opened reliably and render L402-specific data from the same source used by chat.
+
+## Issue 9: Add chat-visible payment states + proof reference
 
 Add minimal UI messaging in `openagents.com` chat for payment intent, paid success, cached reuse, and blocked-by-policy outcomes. Include a proof reference field (preimage hash ref or receipt id) so the user can see that payment evidence exists.
 
 This issue is complete when the EP212 flow is legible to viewers without opening backend logs and all four status states are visible in chat output.
 
-## Issue 9: Stand up two demo paid endpoints behind Aperture
+## Issue 10: Stand up two demo paid endpoints behind Aperture
 
 Create two deterministic seller endpoints (`signal-feed` and `deep-report`) and place them behind Aperture with known pricing suitable for demo behavior. Keep payloads stable and simple to avoid flakiness during recording.
 
 This issue is complete when both endpoints can be hit via `lnget` and via Autopilot, with one endpoint under cap (success) and one endpoint over cap (policy deny).
 
-## Issue 10: Add observability + rehearsal checklist for recording
+## Issue 11: Add observability + rehearsal checklist for recording
 
 Add structured logging fields required for the episode: request id, endpoint, quoted cost, cap, paid amount, proof ref, cache hit/miss, and denial reason. Create a short rehearsal checklist to verify all scenes before recording.
 
@@ -244,6 +290,7 @@ EP212 is "ready" only if all pass:
 4. Over-cap request is blocked before payment.
 5. Receipt/proof reference is emitted (preimage hash ref or payment proof ref).
 6. All core L402 logic is sourced from `packages/lightning-effect` (not ad hoc app code).
+7. Wallet and transactions panes open in the overlay and show data consistent with chat/payment events.
 
 ## 10. Observability for the Episode
 
