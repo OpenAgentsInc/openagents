@@ -9,7 +9,7 @@ This document maps legacy/archived documentation to their canonical replacements
 | Terminology | [GLOSSARY.md](../GLOSSARY.md) |
 | Architecture decisions | [docs/adr/](../adr/) (ADRs for contracts, invariants, interfaces) |
 | Agent architecture | [AGENTS.md](../../AGENTS.md) |
-| Execution flow | [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) |
+| Execution flow | [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) |
 | Protocol/Transport | [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) |
 | Roadmap | [ROADMAP.md](../ROADMAP.md) |
 | DSPy modules | [crates/dsrs/docs/](../crates/dsrs/docs/) |
@@ -30,9 +30,9 @@ See [ADR-0001](./adr/ADR-0001-adoption-of-adrs.md) for the full specification.
 
 | Archived File | Replaced By | Notes |
 |---------------|-------------|-------|
-| `.openagents/TODO.md` | [ROADMAP.md](../ROADMAP.md), [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) | Planning docs archived to `.openagents/archive/2025-12/` |
-| `.openagents/DIRECTIVES.md` | [ROADMAP.md](../ROADMAP.md), [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) | Planning docs archived to `.openagents/archive/2025-12/` |
-| `.openagents/USERSTORIES.md` | [ROADMAP.md](../ROADMAP.md), [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) | Planning docs archived to `.openagents/archive/2025-12/` |
+| `.openagents/TODO.md` | [ROADMAP.md](../ROADMAP.md), [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) | Planning docs archived to `.openagents/archive/2025-12/` |
+| `.openagents/DIRECTIVES.md` | [ROADMAP.md](../ROADMAP.md), [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) | Planning docs archived to `.openagents/archive/2025-12/` |
+| `.openagents/USERSTORIES.md` | [ROADMAP.md](../ROADMAP.md), [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) | Planning docs archived to `.openagents/archive/2025-12/` |
 
 ## Terminology Changes
 

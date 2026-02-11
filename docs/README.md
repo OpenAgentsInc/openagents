@@ -14,8 +14,8 @@ the documentation so the root README can stay focused on the app.
 * Terms / vocabulary: `GLOSSARY.md`
 * Roadmap / priorities: `ROADMAP.md`
 * **Launch and open protocols (sequential + status):** `open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — Phases 1–5 done; **human implementation (Monday version):** `open-protocols/HUMAN_IMPLEMENTATION_PLAN.md` — feed/post UI, get-API-key flow, comment form (in progress).
-* Current system wiring: `../SYNTHESIS_EXECUTION.md`
-* Architecture / strategy: `../SYNTHESIS.md`
+* Current system wiring: `./SYNTHESIS_EXECUTION.md`
+* Architecture / strategy: `./SYNTHESIS.md`
 * Repo layout / crate map: `PROJECT_OVERVIEW.md`
 * Agent contract / contribution norms: `../AGENTS.md`
 * Philosophy: `MANIFESTO.md`

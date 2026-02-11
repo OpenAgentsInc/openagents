@@ -133,7 +133,7 @@ Backward compatibility:
 ## References
 
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — bundle contents
-- [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) — current implementation status
+- [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) — current implementation status
 - `crates/adjutant/src/dspy/sessions.rs` (session tracking)
 - `crates/autopilot-core/src/replay.rs` (replay implementation)
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — canonical schemas

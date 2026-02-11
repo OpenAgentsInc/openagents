@@ -362,4 +362,4 @@ This makes "live fishbowl," "personal HUD," "timelapse," "APM gauge," and "proof
 - [CONTROL-PLANE.md](CONTROL-PLANE.md) — HTTP API, SSE streaming
 - [DESIGN.md](DESIGN.md) — Tick model, trajectory logging
 - [DRIVERS.md](DRIVERS.md) — Event sources (HTTP, WebSocket, Nostr)
-- [../../SYNTHESIS.md](../../SYNTHESIS.md) — Product context (GTM notes archived)
+- [../../docs/SYNTHESIS.md](../../docs/SYNTHESIS.md) — Product context (GTM notes archived)

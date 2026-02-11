@@ -26,7 +26,7 @@ Without counterfactuals, we cannot quantify regressions or train decision polici
 
 - Decision record type: `crates/adjutant/src/dspy/sessions.rs` (or a shared crate if moved)
 - Terminology: [GLOSSARY.md](../GLOSSARY.md) (`policy_bundle_id`, lane classes)
-- Implementation status: [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md)
+- Implementation status: [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md)
 
 ### Gating rules (Normative)
 

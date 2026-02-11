@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../docs/SYNTHESIS_EXECUTION.md)
 - **If this doc conflicts with code, code wins.**
 
 This document describes the DSPy signature execution flow in the Autopilot agent, including the current v1 design and proposed v2 improvements.
@@ -304,6 +304,6 @@ This replaces implicit heuristics with explicit classification.
 ## See Also
 
 - [GLOSSARY.md](../../../docs/GLOSSARY.md) - Canonical terminology
-- [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md) - What's wired today
+- [SYNTHESIS_EXECUTION.md](../../../docs/SYNTHESIS_EXECUTION.md) - What's wired today
 - [dsrs/docs/SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) - Signature inventory
 - [adjutant/docs/DSPY-INTEGRATION.md](../../adjutant/docs/DSPY-INTEGRATION.md) - Self-improvement loop

@@ -143,8 +143,8 @@ For a compact cheat sheet + doc pointers, see:
 
 Core repo docs:
 - What/why: `../README.md`, `MANIFESTO.md`
-- What's wired: `../SYNTHESIS_EXECUTION.md`
-- Architecture + roadmap: `../SYNTHESIS.md`, `ROADMAP.md`
+- What's wired: `./SYNTHESIS_EXECUTION.md`
+- Architecture + roadmap: `./SYNTHESIS.md`, `ROADMAP.md`
 - Vocabulary: `GLOSSARY.md`
 - Protocol surface: `protocol/PROTOCOL_SURFACE.md`
 

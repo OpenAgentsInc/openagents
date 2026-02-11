@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../docs/SYNTHESIS_EXECUTION.md)
 - **If this doc conflicts with code, code wins.**
 
 The execution engine that DOES THE WORK. Named after StarCraft's command & control AI. Adjutant is an internal library—all user-facing CLI commands use `autopilot`.

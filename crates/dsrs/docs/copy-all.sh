@@ -14,8 +14,8 @@ ROOT_DOCS=(
     "$ROOT_DIR/PROJECT_OVERVIEW.md"
     "$ROOT_DIR/README.md"
     "$ROOT_DIR/ROADMAP.md"
-    "$ROOT_DIR/SYNTHESIS.md"
-    "$ROOT_DIR/SYNTHESIS_EXECUTION.md"
+    "$ROOT_DIR/docs/SYNTHESIS.md"
+    "$ROOT_DIR/docs/SYNTHESIS_EXECUTION.md"
 )
 
 # Count files

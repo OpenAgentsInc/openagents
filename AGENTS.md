@@ -332,7 +332,7 @@ See:
 Core:
 
 * ./GLOSSARY.md (canonical vocabulary)
-* ./SYNTHESIS_EXECUTION.md (how the system works today)
+* ./docs/SYNTHESIS_EXECUTION.md (how the system works today)
 * ./docs/ROADMAP.md (what to build next; MVP gates)
 * ./docs/PROJECT_OVERVIEW.md (product + stack overview)
 * ./docs/AGENT_FOUNDATIONS.md (conceptual foundations and checklists)

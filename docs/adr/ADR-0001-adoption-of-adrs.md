@@ -35,7 +35,7 @@ OpenAgents documentation follows a 5-tier authority hierarchy:
 | 1 | **Behavior** | Code wins — if docs say X but code does Y, code is truth |
 | 2 | **Terminology** | [GLOSSARY.md](../GLOSSARY.md) wins — canonical names and definitions |
 | 3 | **Architecture intent** | ADRs win — invariants, interfaces, contracts, tradeoffs |
-| 4 | **Implementation status** | Crate sources + [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) — what's wired |
+| 4 | **Implementation status** | Crate sources + [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) — what's wired |
 | 5 | **Priorities/sequencing** | [ROADMAP.md](../ROADMAP.md) — what's next |
 
 ### When ADRs Are Required
@@ -82,5 +82,5 @@ Implementation-only changes (bug fixes, perf tweaks) do not require ADRs.
 - [docs/adr/README.md](./README.md) — ADR process documentation
 - [docs/adr/TEMPLATE.md](./TEMPLATE.md) — ADR template
 - [GLOSSARY.md](../GLOSSARY.md) — Canonical terminology
-- [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) — Implementation status
+- [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) — Implementation status
 - [ROADMAP.md](../ROADMAP.md) — Priorities
