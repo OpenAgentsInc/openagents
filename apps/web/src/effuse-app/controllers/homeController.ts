@@ -891,14 +891,37 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 paneSystem.store.bringToFront(paneId)
                 paneSystem.render()
                 const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
+                const titleActions = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-title-actions]`)
+                const metaJson = JSON.stringify(meta, null, 2)
+                if (titleActions instanceof HTMLElement) {
+                  const copyBtn = document.createElement("button")
+                  copyBtn.setAttribute("type", "button")
+                  copyBtn.setAttribute("aria-label", "Copy metadata")
+                  copyBtn.innerHTML = COPY_ICON_SVG
+                  copyBtn.addEventListener(
+                    "pointerdown",
+                    (e) => {
+                      if (e.button !== 0) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      e.stopImmediatePropagation()
+                      copyTextToClipboard(metaJson, "metadata-pane")
+                      copyBtn.innerHTML = CHECKMARK_ICON_SVG
+                      setTimeout(() => {
+                        copyBtn.innerHTML = COPY_ICON_SVG
+                      }, 1000)
+                    },
+                    { capture: true }
+                  )
+                  titleActions.appendChild(copyBtn)
+                }
                 if (slot instanceof HTMLElement) {
-                  const metaJson = JSON.stringify(meta, null, 2)
                   Effect.runPromise(
                     Effect.gen(function* () {
                       const dom = yield* DomServiceTag
                       yield* dom.render(
                         slot,
-                        html`<div class="p-4 h-full overflow-auto"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${metaJson}</pre></div>`
+                        html`<div class="p-4 h-full overflow-auto bg-black"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${metaJson}</pre></div>`
                       )
                     }).pipe(Effect.provide(EffuseLive))
                   ).catch(() => {})
