@@ -49,6 +49,7 @@ type HomeChatDeps = {
 }
 
 const CHAT_PANE_ID = "home-chat"
+const HOME_CHAT_PANE_RECT_STORAGE_KEY = "oa.home.chat.paneRect.v1"
 
 const COPY_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>'
@@ -64,6 +65,57 @@ const BUG_ICON_SVG =
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : null
+
+type StoredPaneRect = {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value)
+
+const clampPaneRectToScreen = (rect: StoredPaneRect, screen: { readonly width: number; readonly height: number }): StoredPaneRect => {
+  const width = Math.max(320, Math.min(rect.width, Math.max(320, screen.width)))
+  const height = Math.max(220, Math.min(rect.height, Math.max(220, screen.height)))
+  const maxX = Math.max(0, screen.width - width)
+  const maxY = Math.max(0, screen.height - height)
+  const x = Math.max(0, Math.min(rect.x, maxX))
+  const y = Math.max(0, Math.min(rect.y, maxY))
+  return { x, y, width, height }
+}
+
+const parseStoredPaneRect = (value: unknown): StoredPaneRect | null => {
+  const rec = asRecord(value)
+  if (!rec) return null
+  const { x, y, width, height } = rec
+  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(width) || !isFiniteNumber(height)) return null
+  if (width <= 0 || height <= 0) return null
+  return { x, y, width, height }
+}
+
+const readStoredHomeChatPaneRect = (screen: { readonly width: number; readonly height: number }): StoredPaneRect | null => {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(HOME_CHAT_PANE_RECT_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = parseStoredPaneRect(JSON.parse(raw))
+    if (!parsed) return null
+    return clampPaneRectToScreen(parsed, screen)
+  } catch {
+    return null
+  }
+}
+
+const writeStoredHomeChatPaneRect = (rect: StoredPaneRect): void => {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(HOME_CHAT_PANE_RECT_STORAGE_KEY, JSON.stringify(rect))
+  } catch {
+    // ignore storage failures
+  }
+}
 
 function copyTextToClipboard(text: string, _source: "pane" | "message" | "metadata-pane"): void {
   if (!text || typeof text !== "string") return
@@ -180,9 +232,17 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     shell.appendChild(overlay)
 
     const screen = { width: window.innerWidth, height: window.innerHeight }
-    const rect = calculateNewPanePosition(undefined, screen, 640, 480)
+    const storedRect = readStoredHomeChatPaneRect(screen)
+    const rect = storedRect ?? calculateNewPanePosition(undefined, screen, 640, 480)
 
     const closeOverlay = () => {
+      const closedRectRaw = paneSystem.store.closedPositions.get(CHAT_PANE_ID)?.rect ?? paneSystem.store.pane(CHAT_PANE_ID)?.rect
+      const closedRect = parseStoredPaneRect(closedRectRaw)
+      const currentScreen =
+        typeof window !== "undefined"
+          ? { width: window.innerWidth, height: window.innerHeight }
+          : screen
+      if (closedRect) writeStoredHomeChatPaneRect(clampPaneRectToScreen(closedRect, currentScreen))
       paneSystem.destroy()
       overlay.remove()
       hideStyle.remove()
