@@ -49,6 +49,12 @@ The package is intentionally split into:
 - a small, unit-testable **core** (`PaneStore`, `ResizablePane`, `HotbarModel`)
 - a thin **DOM adapter** (`mountPaneSystemDom`) that wires pointer + keyboard events
 
+In `apps/web`, pane lifecycle is wrapped in an Effect service:
+
+- `apps/web/src/effect/paneSystem.ts`
+- `PaneSystemService.mount(...)` returns `{ paneSystem, release }`
+- `release` is used on overlay close instead of ad-hoc destroy calls
+
 It does **not** render app-specific pane content. The host app must:
 
 - decide what pane ids/kinds exist

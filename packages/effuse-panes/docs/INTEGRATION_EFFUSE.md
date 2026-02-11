@@ -21,7 +21,7 @@ Do the same for the pane system:
 
 1. Render a container element once (e.g. `[data-oa-pane-root]`).
 2. Call `mountPaneSystemDom(root)` once.
-3. Keep a reference to the returned `{ store, render, destroy }`.
+3. Keep a reference to the returned `{ store, render, destroy }` (or an Effect-scoped `release` wrapper).
 4. When you want to change the pane layout, mutate `store` and call `render()`.
 5. Render pane content using Effuse's `DomServiceTag.render` into each pane's content node.
 
@@ -122,5 +122,27 @@ mounted?.destroy();
 mounted = null;
 ```
 
-This removes event listeners and DOM nodes created by the adapter.
+This removes event listeners and DOM nodes created by the adapter and clears adapter-owned pending
+callbacks (RAF/timeout).
 
+## Effect-First Lifecycle Pattern (`apps/web`)
+
+If your host is already Effect-based, wrap mount/cleanup in a service so lifecycle is scoped and
+idempotent.
+
+`apps/web` implementation:
+
+- `apps/web/src/effect/paneSystem.ts`
+
+Pattern:
+
+1. Create a `PaneSystemService` `Context.Tag`.
+2. `mount` uses `Effect.acquireRelease` around `mountPaneSystemDom(...)`.
+3. Return `{ paneSystem, release }` where `release` closes a `Scope`.
+4. On overlay/page close, run `release` instead of calling `destroy` directly.
+
+Benefits:
+
+- no listener/timer leaks on early returns
+- deterministic release path
+- easy testability of mount/unmount behavior in Effect tests

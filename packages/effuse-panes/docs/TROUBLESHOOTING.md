@@ -80,3 +80,22 @@ Fix:
 - render only inside `[data-oa-pane-content]`
 - avoid replacing the pane node from the host side
 
+## Closing/Unmounting Leaves Ghost Listeners
+
+If your host removes the pane root DOM without calling `destroy()`, global pointer/keyboard behavior
+can become inconsistent on the next mount.
+
+Fix:
+
+- always call `destroy()` (or an Effect-scoped `release`) before removing the root container
+- centralize mount/unmount in one controller/service so cleanup cannot be skipped
+
+## Hotbar Flash Callback Fires After Unmount
+
+The adapter schedules a short callback after hotbar key flashes. This callback is cleared by
+`destroy()`.
+
+If you still see post-unmount work:
+
+- verify cleanup runs in all close paths
+- verify cleanup runs only after the final pane close/overlay close decision

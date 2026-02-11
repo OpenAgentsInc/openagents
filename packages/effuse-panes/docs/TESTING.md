@@ -39,6 +39,13 @@ If/when we add DOM tests, options:
 
 Both approaches can be done without changing the core store/resizer tests.
 
+Related host-level coverage exists in `apps/web` for Effect lifecycle wiring:
+
+- `apps/web/tests/worker/pane-system-service.test.ts`
+  - verifies mount path delegates to the DOM adapter
+  - verifies release triggers destroy
+  - verifies release is idempotent
+
 ## Suggested DOM Test Cases (Future)
 
 These mirror the Rust `MinimalRoot` behavior:
@@ -56,4 +63,3 @@ These mirror the Rust `MinimalRoot` behavior:
 - Keyboard:
   - press Escape closes active dismissable pane
   - press Cmd+1 triggers `onHotbarSlotClick(1)`
-

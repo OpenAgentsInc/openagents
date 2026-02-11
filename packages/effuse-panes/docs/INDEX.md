@@ -16,6 +16,11 @@ The package is deliberately split into:
 - A thin **DOM adapter**:
   - `mountPaneSystemDom()` which wires pointer + keyboard events and paints the minimal chrome.
 
+For Effect-based hosts, you should still keep lifecycle scoped (mount/release) even though the
+adapter itself is framework-agnostic. In `apps/web`, this is done via:
+
+- `apps/web/src/effect/paneSystem.ts`
+
 The DOM adapter intentionally does **not** own your pane content. You render content yourself
 (Effuse, React, vanilla DOM), and the pane system handles geometry + chrome + interactions.
 
@@ -43,7 +48,7 @@ The Effuse/DOM port exists to enable:
 3. `API_REFERENCE.md`:
    - A concrete list of exports and how to call them.
 4. `INTEGRATION_EFFUSE.md`:
-   - How to mount once in `apps/web` and render pane contents with Effuse.
+   - How to mount once in `apps/web`, render pane contents with Effuse, and handle scoped cleanup.
 5. `PARITY_CHECKLIST.md`:
    - What matches WGPUI today, and what is still missing for 100% parity.
 6. `THEMING_AND_STYLING.md`:
@@ -80,3 +85,9 @@ sys.render();
 From here, you can render your pane content into:
 
 `[data-pane-id="events"] [data-oa-pane-content]`
+
+On unmount, always call:
+
+```ts
+sys.destroy();
+```

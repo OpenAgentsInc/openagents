@@ -118,9 +118,9 @@ The package owns:
 
 - deterministic state transitions for pane geometry and ordering
 - minimal chrome and pointer/keyboard plumbing
+- cleanup of adapter-owned DOM/event/timer resources via `destroy()`
 
 This makes it easier to:
 
 - unit test core behavior without a browser
 - add multiple renderers later (Effuse adapter, React adapter, canvas renderer)
-
