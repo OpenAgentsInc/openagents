@@ -46,11 +46,23 @@ import {
   readStoredPaneRect,
   writeStoredPaneRect,
 } from "./overlayLifecycle"
-import { BUG_ICON_SVG, CHART_ICON_SVG, CHECKMARK_ICON_SVG, copyTextToClipboard, COPY_ICON_SVG, METADATA_ICON_SVG } from "./renderWiring"
+import {
+  BOLT_ICON_SVG,
+  BUG_ICON_SVG,
+  CHART_ICON_SVG,
+  CHECKMARK_ICON_SVG,
+  copyTextToClipboard,
+  COPY_ICON_SVG,
+  METADATA_ICON_SVG,
+  TRANSACTIONS_ICON_SVG,
+  WALLET_ICON_SVG,
+} from "./renderWiring"
 import type { HomeChatDeps } from "./types"
-import { toAutopilotRenderParts } from "../autopilotChatParts"
+import { extractL402PaymentMetadata, type L402PaymentMetadata, toAutopilotRenderParts } from "../autopilotChatParts"
 
 const CHAT_PANE_ID = "home-chat"
+const L402_WALLET_PANE_ID = "l402-wallet"
+const L402_TRANSACTIONS_PANE_ID = "l402-transactions"
 const HOME_CHAT_PANE_RECT_STORAGE_KEY = "oa.home.chat.paneRect.v1"
 
 const toStructuredError = (error: unknown): unknown => {
@@ -113,6 +125,8 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
       "[data-oa-home-chat-overlay] [data-oa-pane] { background: rgba(0,0,0,0.5) !important; }\n" +
       "[data-oa-home-chat-overlay] [data-pane-id^=\"telemetry-\"] { background: #000 !important; opacity: 1 !important; }\n" +
       "[data-oa-home-chat-overlay] [data-pane-id^=\"telemetry-\"] [data-oa-pane-title], [data-oa-home-chat-overlay] [data-pane-id^=\"telemetry-\"] [data-oa-pane-content] { background: #000 !important; opacity: 1 !important; }\n" +
+      "[data-oa-home-chat-overlay] [data-pane-id^=\"l402-\"] { background: #000 !important; opacity: 1 !important; }\n" +
+      "[data-oa-home-chat-overlay] [data-pane-id^=\"l402-\"] [data-oa-pane-title], [data-oa-home-chat-overlay] [data-pane-id^=\"l402-\"] [data-oa-pane-content] { background: #000 !important; opacity: 1 !important; }\n" +
       "[data-oa-home-chat-overlay], [data-oa-home-chat-overlay] [data-oa-pane-system], [data-oa-home-chat-overlay] [data-oa-pane-layer] { user-select: none; -webkit-user-select: none; }\n" +
       "[data-oa-home-chat-overlay] [data-oa-pane], [data-oa-home-chat-overlay] [data-oa-pane] * { user-select: text; -webkit-user-select: text; }\n" +
       "[data-oa-home-chat-overlay]:focus, [data-oa-home-chat-overlay] [data-oa-pane-system]:focus { outline: none !important; }\n" +
@@ -200,8 +214,11 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
       onPaneClosed: (id: string) => {
         // Only closing the main chat pane should dismiss the whole overlay.
         if (id === CHAT_PANE_ID) closeOverlay()
+        syncPaneActionButtonState()
       },
     } as const
+
+    let syncPaneActionButtonState = (): void => { }
 
     const runPaneSystemEffectSync = <A>(effect: Effect.Effect<A, never, PaneSystemService>): A => {
       if (deps?.runtime) return deps.runtime.runSync(effect)
@@ -340,10 +357,69 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
     let hasScrolledToBottomOnce = false
     let hasAddedPaneCopyButton = false
     let hasAddedPaneDebugButton = false
+    let hasAddedPaneWalletButton = false
+    let hasAddedPaneTransactionsButton = false
     let showDebugCards = false
     let paneDebugButton: HTMLButtonElement | null = null
+    let paneWalletButton: HTMLButtonElement | null = null
+    let paneTransactionsButton: HTMLButtonElement | null = null
     let previousRenderedMessageCount = 0
     let forceScrollToBottomOnNextRender = false
+    type L402PanePayment = L402PaymentMetadata & {
+      readonly messageId: string
+      readonly runId: string | null
+      readonly messageIndex: number
+    }
+    let latestL402Payments: ReadonlyArray<L402PanePayment> = []
+
+    const formatMsats = (value: number | undefined): string => {
+      if (typeof value !== "number" || !Number.isFinite(value)) return "n/a"
+      const sats = value / 1000
+      return `${sats.toLocaleString(undefined, { maximumFractionDigits: 3 })} sats (${Math.round(value).toLocaleString()} msats)`
+    }
+
+    const statusBadgeClass = (status: L402PaymentMetadata["status"]): string => {
+      if (status === "completed" || status === "cached") return "text-emerald-300 border-emerald-400/35 bg-emerald-500/10"
+      if (status === "blocked") return "text-amber-300 border-amber-400/35 bg-amber-500/10"
+      return "text-red-300 border-red-400/35 bg-red-500/10"
+    }
+
+    const parseL402PaymentPayload = (value: unknown): L402PanePayment | null => {
+      const rec = asRecord(value)
+      if (!rec) return null
+      if (
+        rec.toolName !== "lightning_l402_fetch" ||
+        typeof rec.toolCallId !== "string" ||
+        (rec.status !== "completed" &&
+          rec.status !== "cached" &&
+          rec.status !== "blocked" &&
+          rec.status !== "failed") ||
+        typeof rec.messageId !== "string" ||
+        typeof rec.messageIndex !== "number"
+      ) {
+        return null
+      }
+      return {
+        toolName: "lightning_l402_fetch",
+        toolCallId: rec.toolCallId,
+        status: rec.status,
+        taskId: typeof rec.taskId === "string" ? rec.taskId : undefined,
+        paymentId: typeof rec.paymentId === "string" ? rec.paymentId : undefined,
+        amountMsats: typeof rec.amountMsats === "number" && Number.isFinite(rec.amountMsats) ? rec.amountMsats : undefined,
+        responseStatusCode:
+          typeof rec.responseStatusCode === "number" && Number.isFinite(rec.responseStatusCode) ? rec.responseStatusCode : undefined,
+        proofReference: typeof rec.proofReference === "string" ? rec.proofReference : undefined,
+        denyReason: typeof rec.denyReason === "string" ? rec.denyReason : undefined,
+        url: typeof rec.url === "string" ? rec.url : undefined,
+        method: typeof rec.method === "string" ? rec.method : undefined,
+        scope: typeof rec.scope === "string" ? rec.scope : undefined,
+        maxSpendMsats:
+          typeof rec.maxSpendMsats === "number" && Number.isFinite(rec.maxSpendMsats) ? rec.maxSpendMsats : undefined,
+        messageId: rec.messageId,
+        runId: typeof rec.runId === "string" ? rec.runId : null,
+        messageIndex: rec.messageIndex,
+      }
+    }
 
     const stylePaneOpaqueBlack = (paneId: string): void => {
       const paneEl = paneRoot.querySelector(`[data-pane-id="${paneId}"]`)
@@ -359,6 +435,283 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
       if (contentEl instanceof HTMLElement) {
         contentEl.style.background = "#000"
         contentEl.style.opacity = "1"
+      }
+    }
+
+    const collectL402PaymentsFromSnapshot = (): ReadonlyArray<L402PanePayment> => {
+      if (step !== "authed" || homeSnapshot.messages.length === 0) return []
+      const out: Array<L402PanePayment> = []
+      for (let i = 0; i < homeSnapshot.messages.length; i++) {
+        const msg = homeSnapshot.messages[i]
+        const extracted = extractL402PaymentMetadata(msg.parts)
+        for (const payment of extracted) {
+          out.push({
+            ...payment,
+            messageId: msg.id,
+            runId: msg.runId ?? null,
+            messageIndex: i,
+          })
+        }
+      }
+      return out
+    }
+
+    const l402WalletSummary = (
+      payments: ReadonlyArray<L402PanePayment>,
+    ): {
+      readonly totalAttempts: number
+      readonly statusCounts: Record<L402PaymentMetadata["status"], number>
+      readonly totalSpendMsats: number
+      readonly maxSpendMsats: number
+      readonly lastPaid: L402PanePayment | null
+    } => {
+      const counts: Record<L402PaymentMetadata["status"], number> = {
+        completed: 0,
+        cached: 0,
+        blocked: 0,
+        failed: 0,
+      }
+      let totalSpendMsats = 0
+      let maxSpendMsats = 0
+      for (const payment of payments) {
+        counts[payment.status] += 1
+        if ((payment.status === "completed" || payment.status === "cached") && typeof payment.amountMsats === "number") {
+          totalSpendMsats += payment.amountMsats
+        }
+        if (typeof payment.maxSpendMsats === "number") {
+          maxSpendMsats = Math.max(maxSpendMsats, payment.maxSpendMsats)
+        }
+      }
+      const lastPaid =
+        [...payments]
+          .reverse()
+          .find((payment) => payment.status === "completed" || payment.status === "cached") ?? null
+      return {
+        totalAttempts: payments.length,
+        statusCounts: counts,
+        totalSpendMsats,
+        maxSpendMsats,
+        lastPaid,
+      }
+    }
+
+    const renderL402WalletPane = (): void => {
+      if (!paneSystem.store.pane(L402_WALLET_PANE_ID)) return
+      const slot = paneRoot.querySelector(`[data-pane-id="${L402_WALLET_PANE_ID}"] [data-oa-pane-content]`)
+      if (!(slot instanceof HTMLElement)) return
+      const summary = l402WalletSummary(latestL402Payments)
+      runTrackedFiber({
+        context: "home.chat.l402_wallet_pane.render",
+        start: () =>
+          Effect.runFork(
+            Effect.gen(function* () {
+              const dom = yield* DomServiceTag
+              yield* dom.render(
+                slot,
+                html`
+                  <div class="h-full overflow-auto bg-black p-4 text-sm font-mono text-white/85">
+                    <div class="text-[11px] uppercase tracking-wide text-white/55">L402 Wallet Summary</div>
+                    <div class="mt-3 grid grid-cols-[140px_1fr] gap-x-3 gap-y-2 text-xs">
+                      <div class="text-white/55">attempts</div>
+                      <div>${summary.totalAttempts}</div>
+                      <div class="text-white/55">completed</div>
+                      <div>${summary.statusCounts.completed}</div>
+                      <div class="text-white/55">cached</div>
+                      <div>${summary.statusCounts.cached}</div>
+                      <div class="text-white/55">blocked</div>
+                      <div>${summary.statusCounts.blocked}</div>
+                      <div class="text-white/55">failed</div>
+                      <div>${summary.statusCounts.failed}</div>
+                      <div class="text-white/55">spent</div>
+                      <div>${formatMsats(summary.totalSpendMsats)}</div>
+                      <div class="text-white/55">max request cap</div>
+                      <div>${summary.maxSpendMsats > 0 ? formatMsats(summary.maxSpendMsats) : "n/a"}</div>
+                      <div class="text-white/55">allowlist/policy</div>
+                      <div>enforced via desktop executor + macaroon scope</div>
+                    </div>
+                    <div class="mt-4 rounded border border-white/15 bg-white/5 p-3 text-xs">
+                      <div class="text-white/60">last paid endpoint</div>
+                      <div class="mt-1 break-all text-white/90">${summary.lastPaid?.url ?? "none yet"}</div>
+                      ${summary.lastPaid
+                    ? html`<div class="mt-1 text-white/60">proof: ${summary.lastPaid.proofReference ?? "n/a"}</div>`
+                    : null}
+                    </div>
+                  </div>
+                `,
+              )
+            }).pipe(Effect.provide(EffuseLive)),
+          ),
+      })
+    }
+
+    const renderL402TransactionsPane = (): void => {
+      if (!paneSystem.store.pane(L402_TRANSACTIONS_PANE_ID)) return
+      const slot = paneRoot.querySelector(`[data-pane-id="${L402_TRANSACTIONS_PANE_ID}"] [data-oa-pane-content]`)
+      if (!(slot instanceof HTMLElement)) return
+      const rows = [...latestL402Payments].reverse().slice(0, 40)
+      runTrackedFiber({
+        context: "home.chat.l402_transactions_pane.render",
+        start: () =>
+          Effect.runFork(
+            Effect.gen(function* () {
+              const dom = yield* DomServiceTag
+              yield* dom.render(
+                slot,
+                html`
+                  <div class="h-full overflow-auto bg-black p-3 text-xs font-mono text-white/85">
+                    <div class="mb-2 px-1 text-[11px] uppercase tracking-wide text-white/55">Recent L402 Attempts</div>
+                    ${rows.length === 0
+                    ? html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">No L402 payment attempts yet.</div>`
+                    : html`
+                        <div class="flex flex-col gap-2">
+                          ${rows.map((row) => html`
+                              <div class="rounded border border-white/15 bg-white/5 p-2">
+                                <div class="flex items-center justify-between gap-2">
+                                  <span class="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${statusBadgeClass(row.status)}">${row.status}</span>
+                                  <span class="text-[10px] text-white/55">message ${row.messageId}</span>
+                                </div>
+                                <div class="mt-1 break-all text-white/90">${row.url ?? "unknown endpoint"}</div>
+                                <div class="mt-1 text-[11px] text-white/65">
+                                  amount: ${formatMsats(row.amountMsats)} · task: ${row.taskId ?? "n/a"} · proof: ${row.proofReference ?? "n/a"}
+                                </div>
+                                ${row.denyReason ? html`<div class="mt-1 text-[11px] text-amber-200/90">deny: ${row.denyReason}</div>` : null}
+                              </div>
+                            `)}
+                        </div>
+                      `}
+                  </div>
+                `,
+              )
+            }).pipe(Effect.provide(EffuseLive)),
+          ),
+      })
+    }
+
+    const renderL402AuxPanes = (): void => {
+      renderL402WalletPane()
+      renderL402TransactionsPane()
+    }
+
+    const openL402PaymentDetailPane = (payment: L402PanePayment): void => {
+      const paneId = `l402-payment-${Date.now()}`
+      const screen = { width: paneRoot.clientWidth, height: paneRoot.clientHeight }
+      const rect = calculateNewPanePosition(paneSystem.store.lastPanePosition, screen, 560, 380)
+      paneSystem.store.addPane({
+        id: paneId,
+        kind: "l402-payment",
+        title: "Payment Detail",
+        rect,
+        dismissable: true,
+      })
+      paneSystem.store.bringToFront(paneId)
+      paneSystem.render()
+      stylePaneOpaqueBlack(paneId)
+      const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
+      const titleActions = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-title-actions]`)
+      const payloadJson = JSON.stringify(payment, null, 2)
+
+      if (titleActions instanceof HTMLElement) {
+        const copyBtn = document.createElement("button")
+        copyBtn.setAttribute("type", "button")
+        copyBtn.setAttribute("aria-label", "Copy payment detail")
+        copyBtn.innerHTML = COPY_ICON_SVG
+        copyBtn.addEventListener(
+          "pointerdown",
+          (e) => {
+            if (e.button !== 0) return
+            e.preventDefault()
+            e.stopPropagation()
+            e.stopImmediatePropagation()
+            copyTextToClipboard(payloadJson, "metadata-pane")
+            copyBtn.innerHTML = CHECKMARK_ICON_SVG
+            setTimeout(() => {
+              copyBtn.innerHTML = COPY_ICON_SVG
+            }, 1000)
+          },
+          { capture: true },
+        )
+        titleActions.appendChild(copyBtn)
+      }
+
+      if (slot instanceof HTMLElement) {
+        runTrackedFiber({
+          context: "home.chat.l402_payment_pane.render",
+          start: () =>
+            Effect.runFork(
+              Effect.gen(function* () {
+                const dom = yield* DomServiceTag
+                yield* dom.render(
+                  slot,
+                  html`
+                    <div class="h-full overflow-auto bg-black p-4 text-sm font-mono text-white/85">
+                      <div class="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2 text-xs">
+                        <div class="text-white/55">status</div>
+                        <div>${payment.status}</div>
+                        <div class="text-white/55">url</div>
+                        <div class="break-all">${payment.url ?? "n/a"}</div>
+                        <div class="text-white/55">method</div>
+                        <div>${payment.method ?? "GET"}</div>
+                        <div class="text-white/55">scope</div>
+                        <div>${payment.scope ?? "default"}</div>
+                        <div class="text-white/55">taskId</div>
+                        <div>${payment.taskId ?? "n/a"}</div>
+                        <div class="text-white/55">paymentId</div>
+                        <div>${payment.paymentId ?? "n/a"}</div>
+                        <div class="text-white/55">amount</div>
+                        <div>${formatMsats(payment.amountMsats)}</div>
+                        <div class="text-white/55">proof</div>
+                        <div class="break-all">${payment.proofReference ?? "n/a"}</div>
+                        <div class="text-white/55">denyReason</div>
+                        <div>${payment.denyReason ?? "n/a"}</div>
+                        <div class="text-white/55">responseStatus</div>
+                        <div>${payment.responseStatusCode ?? "n/a"}</div>
+                        <div class="text-white/55">messageId</div>
+                        <div>${payment.messageId}</div>
+                        <div class="text-white/55">runId</div>
+                        <div>${payment.runId ?? "n/a"}</div>
+                      </div>
+                    </div>
+                  `,
+                )
+              }).pipe(Effect.provide(EffuseLive)),
+            ),
+        })
+      }
+    }
+
+    const togglePersistentL402Pane = (opts: {
+      readonly paneId: string
+      readonly kind: string
+      readonly title: string
+      readonly width: number
+      readonly height: number
+    }): void => {
+      const screen = { width: paneRoot.clientWidth, height: paneRoot.clientHeight }
+      paneSystem.store.togglePane(opts.paneId, screen, (snapshot) => ({
+        id: opts.paneId,
+        kind: opts.kind,
+        title: opts.title,
+        rect: snapshot?.rect ?? calculateNewPanePosition(paneSystem.store.lastPanePosition, screen, opts.width, opts.height),
+        dismissable: true,
+      }))
+      paneSystem.render()
+      if (paneSystem.store.pane(opts.paneId)) stylePaneOpaqueBlack(opts.paneId)
+      syncPaneActionButtonState()
+      renderL402AuxPanes()
+    }
+
+    syncPaneActionButtonState = () => {
+      const walletOpen = paneSystem.store.pane(L402_WALLET_PANE_ID) != null
+      const transactionsOpen = paneSystem.store.pane(L402_TRANSACTIONS_PANE_ID) != null
+      if (paneWalletButton instanceof HTMLButtonElement) {
+        paneWalletButton.setAttribute("aria-pressed", walletOpen ? "true" : "false")
+        paneWalletButton.style.color = walletOpen ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)"
+        paneWalletButton.style.opacity = walletOpen ? "1" : "0.82"
+      }
+      if (paneTransactionsButton instanceof HTMLButtonElement) {
+        paneTransactionsButton.setAttribute("aria-pressed", transactionsOpen ? "true" : "false")
+        paneTransactionsButton.style.color = transactionsOpen ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)"
+        paneTransactionsButton.style.opacity = transactionsOpen ? "1" : "0.82"
       }
     }
 
@@ -802,6 +1155,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
 
     const messageMetadataJson = (rawMessage: RawMessageLike, threadId: string | null, userId?: string | null): string => {
       const parts = messagePartsFromUnknown(rawMessage.parts)
+      const l402Payments = extractL402PaymentMetadata(parts)
       const debug = messageDebugInfo(rawMessage)
       const partsSummary = parts.map((p) => {
         const base = { type: p.type ?? "?", id: p.id ?? p.signatureId }
@@ -840,6 +1194,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
         signature: debug.primarySignature,
         signatures: debug.signatures,
         parts: partsSummary,
+        l402Payments,
       }
       if (rawMessage.finish != null && typeof rawMessage.finish === "object") {
         payload.llm = rawMessage.finish
@@ -902,6 +1257,13 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
               }
             })
           : null
+
+      latestL402Payments = collectL402PaymentsFromSnapshot()
+      const l402PaymentsByMessageId = new Map<string, ReadonlyArray<L402PanePayment>>()
+      for (const payment of latestL402Payments) {
+        const arr = l402PaymentsByMessageId.get(payment.messageId) ?? []
+        l402PaymentsByMessageId.set(payment.messageId, [...arr, payment])
+      }
 
       const lastAssistantText =
         step === "authed" && renderedMessages
@@ -1084,10 +1446,13 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
               return html``
             })
             const copyText = textFromRenderParts(m.renderParts)
+            const messagePayments = l402PaymentsByMessageId.get(m.id) ?? []
+            const paymentPayload = messagePayments.length > 0 ? messagePayments[messagePayments.length - 1] : null
             const metadataJson = messageMetadataJson(
               rawMsg ?? { id: m.id, role: m.role, parts: [], runId: null },
               homeThreadId
             )
+            const paymentJson = paymentPayload ? JSON.stringify(paymentPayload, null, 2) : ""
             const debugFallbackCard =
               showDebugCards && !hasDseSignaturePart
                 ? renderInferenceDebugCard({ messageId: m.id, info: debugInfo })
@@ -1099,7 +1464,11 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                     </div>
                     <span data-oa-copy-source style="display:none">${copyText}</span>
                     <span data-oa-message-metadata style="display:none">${metadataJson}</span>
+                    <span data-oa-message-payment style="display:none">${paymentJson}</span>
                     <div class="mt-0.5 w-fit flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                      ${paymentPayload
+                ? html`<button type="button" data-oa-home-chat-payment class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open payment detail">${rawHtml(BOLT_ICON_SVG)}</button>`
+                : null}
                       <button type="button" data-oa-home-chat-telemetry class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open trace">${rawHtml(CHART_ICON_SVG)}</button>
                       <button type="button" data-oa-home-chat-copy class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Copy message">${rawHtml(COPY_ICON_SVG)}</button>
                       <button type="button" data-oa-home-chat-metadata class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open metadata">${rawHtml(METADATA_ICON_SVG)}</button>
@@ -1231,6 +1600,72 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
             }
           }
           syncDebugButtonState()
+
+          if (!hasAddedPaneWalletButton) {
+            const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
+            if (titleActions instanceof HTMLElement) {
+              const walletBtn = document.createElement("button")
+              walletBtn.setAttribute("type", "button")
+              walletBtn.setAttribute("aria-label", "Toggle L402 wallet pane")
+              walletBtn.setAttribute("title", "Toggle L402 wallet pane")
+              walletBtn.innerHTML = WALLET_ICON_SVG
+              walletBtn.style.transition = "color 120ms ease, opacity 120ms ease"
+              walletBtn.addEventListener(
+                "pointerdown",
+                (e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.stopImmediatePropagation()
+                  togglePersistentL402Pane({
+                    paneId: L402_WALLET_PANE_ID,
+                    kind: "l402-wallet",
+                    title: "Wallet",
+                    width: 460,
+                    height: 320,
+                  })
+                },
+                { capture: true },
+              )
+              titleActions.appendChild(walletBtn)
+              paneWalletButton = walletBtn
+              hasAddedPaneWalletButton = true
+            }
+          }
+
+          if (!hasAddedPaneTransactionsButton) {
+            const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
+            if (titleActions instanceof HTMLElement) {
+              const transactionsBtn = document.createElement("button")
+              transactionsBtn.setAttribute("type", "button")
+              transactionsBtn.setAttribute("aria-label", "Toggle L402 transactions pane")
+              transactionsBtn.setAttribute("title", "Toggle L402 transactions pane")
+              transactionsBtn.innerHTML = TRANSACTIONS_ICON_SVG
+              transactionsBtn.style.transition = "color 120ms ease, opacity 120ms ease"
+              transactionsBtn.addEventListener(
+                "pointerdown",
+                (e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.stopImmediatePropagation()
+                  togglePersistentL402Pane({
+                    paneId: L402_TRANSACTIONS_PANE_ID,
+                    kind: "l402-transactions",
+                    title: "Transactions",
+                    width: 560,
+                    height: 420,
+                  })
+                },
+                { capture: true },
+              )
+              titleActions.appendChild(transactionsBtn)
+              paneTransactionsButton = transactionsBtn
+              hasAddedPaneTransactionsButton = true
+            }
+          }
+          syncPaneActionButtonState()
+          renderL402AuxPanes()
 
           const messagesEl = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
           if (messagesEl instanceof HTMLElement) {
@@ -1375,6 +1810,31 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                 }, 1000)
               },
               { capture: true }
+            )
+          })
+
+          paneContentSlot.querySelectorAll("[data-oa-home-chat-payment]").forEach((btn) => {
+            if (!(btn instanceof HTMLElement)) return
+            btn.addEventListener(
+              "pointerdown",
+              (e) => {
+                if (e.button !== 0) return
+                e.preventDefault()
+                e.stopPropagation()
+                e.stopImmediatePropagation()
+                const block = btn.closest("[data-chat-role=\"assistant\"]")
+                const paymentEl = block?.querySelector("[data-oa-message-payment]")
+                let payload: unknown = null
+                try {
+                  payload = JSON.parse(paymentEl?.textContent ?? "null")
+                } catch {
+                  payload = null
+                }
+                const payment = parseL402PaymentPayload(payload)
+                if (!payment) return
+                openL402PaymentDetailPane(payment)
+              },
+              { capture: true },
             )
           })
 
