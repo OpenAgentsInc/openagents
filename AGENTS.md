@@ -22,7 +22,7 @@ If you are writing code here, you are usually adding:
 1) If documentation conflicts with code behavior: CODE WINS.
 2) If terminology conflicts across docs: GLOSSARY WINS.
 3) If architecture intent conflicts (invariants, interfaces, contracts): ADRs WIN.
-4) If implementation status conflicts across docs: prefer the crate sources + SYNTHESIS_EXECUTION.
+4) If implementation status conflicts across docs: prefer the active codebase (see docs/PROJECT_OVERVIEW.md) and current docs.
 5) If priority/sequencing conflicts: ROADMAP wins.
 
 <!-- effect-solutions:start -->
@@ -47,7 +47,7 @@ Use this to explore APIs, find usage examples, and understand implementation det
 
 Community presence:
 - Moltbook skill + posting guidance: ./docs/MOLTBOOK.md
-- When drafting Moltbook replies (including Codex sessions), consult `MOLTBOOK.md` first and follow `crates/moltbook/docs/CLAIM_HYGIENE.md`.
+- When drafting Moltbook replies (including Codex sessions), consult `MOLTBOOK.md` first and any claim-hygiene guidance referenced there (archived in backroom if not in repo).
 - Do not post or reply on content that mentions shitcoin tickers (e.g. $MOLTEN). Filter pattern: dollar sign + 3–7 alphanumeric chars; see MOLTBOOK.md “Shitcoin filter” and `apps/web/src/lib/shitcoinFilter.ts`.
 
 ---
@@ -170,40 +170,19 @@ Doc gate for contracts
 
 ## "Where do I change things?" (map)
 
-Use this to avoid scattering logic:
+Use this to avoid scattering logic. **Rust/crates were removed and archived;** active code is TypeScript/Effect. See docs/PROJECT_OVERVIEW.md and docs/RUST_DOCS_ARCHIVE_2026-02-11.md.
 
-### dsrs (compiler layer)
-- Signatures/modules/optimizers/metrics/tracing: crates/dsrs/
-- Docs: crates/dsrs/docs/
+### DSE (compiler layer)
+- Signatures/modules/optimizers/metrics/tracing: `packages/dse/`
 - If you change signature semantics, update docs + ensure parsing/tests still pass.
 
-### Adjutant (execution engine + DSPy decision pipelines)
-- DSPy pipelines + session tracking + auto-optimization: crates/adjutant/
-- Tool registry (local tools): crates/adjutant/src/tools.rs
-
 ### Autopilot (product surfaces)
-- UI/CLI orchestration + user-facing flow: crates/autopilot/
-- Core execution flow + replay impl: crates/autopilot-core/
+- Web product + Worker: `apps/web/`, `apps/autopilot-worker/`
+- Tool contracts and handlers: `apps/autopilot-worker/src/tools.ts`, `server.ts`
+- DSE catalog (signatures/modules): `apps/autopilot-worker/src/dseCatalog.ts`
 
-### RLM / FRLM
-- Local recursion tooling + signatures: crates/rlm/
-- Federated recursion conductor + map-reduce: crates/frlm/
-
-### Protocol / Marketplace plumbing
-- Typed job schemas + hashing: crates/protocol/
-- Node software (provider + host): crates/pylon/
-- Relay (agent coordination): crates/nexus/
-
----
-
-## CLI surfaces (which binary owns what)
-
-| Binary | Purpose | Status |
-|--------|---------|--------|
-| `autopilot` | Product CLI: sessions, run, export, replay, policy, UI | 🟢 Implemented |
-| `pylon` | Network node CLI: jobs, wallet, provider mode, doctor | 🟢 Implemented |
-
-`adjutant` is an internal library/codename for our DSPy decision pipelines—not a user-facing CLI. All CLI commands use `autopilot`.
+### Protocol / market (when re-added or in archive)
+- Typed job schemas, node software, relay: see docs/PROJECT_OVERVIEW.md; protocol docs were archived to backroom.
 
 ---
 
@@ -252,11 +231,7 @@ Use this to avoid scattering logic:
 
 ## Build + test quick commands (use these before claiming done)
 
-Workspace:
-```bash
-cargo build --release
-cargo test
-```
+**Rust/cargo binaries (autopilot, pylon, adjutant, etc.) were removed and archived.** Use the following for the active web/TypeScript stack.
 
 Web (apps/web):
 
@@ -268,35 +243,12 @@ npm run dev
 npm run deploy
 ```
 
-Autopilot:
+Autopilot worker (apps/autopilot-worker):
 
 ```bash
-cargo build -p autopilot
-cargo test  -p autopilot
-cargo run   -p autopilot
-```
-
-Adjutant + dsrs:
-
-```bash
-cargo test -p adjutant
-cargo test -p dsrs
-```
-
-Pylon:
-
-```bash
-cargo build --release -p pylon
-cargo test -p pylon
-./target/release/pylon doctor
-```
-
-Nexus (worker):
-
-```bash
-cd crates/nexus/worker
-bun install
-bun run deploy
+cd apps/autopilot-worker
+npm run lint
+npm test
 ```
 
 Convex (apps/web):
@@ -321,9 +273,9 @@ The canonical output of an autonomous run is the Verified Patch Bundle:
 
 See:
 
-* crates/dsrs/docs/ARTIFACTS.md
-* crates/dsrs/docs/REPLAY.md
-* ./docs/ROADMAP.md (MVP gate: Verified Patch Bundle)
+* docs/adr/ADR-0002-verified-patch-bundle.md
+* docs/ROADMAP.md (MVP gate: Verified Patch Bundle)
+* Artifact/replay schema details may be in archived dsrs docs (docs/RUST_DOCS_ARCHIVE_2026-02-11.md).
 
 ---
 
@@ -331,34 +283,17 @@ See:
 
 Core:
 
-* ./GLOSSARY.md (canonical vocabulary)
-* ./docs/SYNTHESIS_EXECUTION.md (how the system works today)
-* ./docs/ROADMAP.md (what to build next; MVP gates)
-* ./docs/PROJECT_OVERVIEW.md (product + stack overview)
-* ./docs/AGENT_FOUNDATIONS.md (conceptual foundations and checklists)
-
-DSPy/dsrs:
-
-* crates/dsrs/docs/README.md
-* crates/dsrs/docs/ARCHITECTURE.md
-* crates/dsrs/docs/SIGNATURES.md
-* crates/dsrs/docs/TOOLS.md
-* crates/dsrs/docs/METRICS.md
-* crates/dsrs/docs/OPTIMIZERS.md
-* crates/dsrs/docs/EVALUATION.md
-
-Protocol / network:
-
-* docs/protocol/PROTOCOL_SURFACE.md
-* crates/protocol/
-* crates/pylon/
-* crates/nexus/
+* docs/GLOSSARY.md (canonical vocabulary)
+* docs/ROADMAP.md (what to build next; MVP gates)
+* docs/PROJECT_OVERVIEW.md (product + stack overview; active codebase map)
+* docs/RUST_DOCS_ARCHIVE_2026-02-11.md (archived Rust-era and protocol docs)
 
 Architecture Decisions (ADRs):
 
 * docs/adr/INDEX.md (decision index)
 * docs/adr/README.md (ADR process)
 * Key ADRs: ADR-0001 (authority), ADR-0002 (Verified Patch Bundle), ADR-0003 (replay), ADR-0004 (lanes), ADR-0005 (step_utility)
+* Note: many ADRs reference archived crates paths; see docs/adr/README.md.
 
 Repo Directory (high-signal paths):
 
@@ -372,16 +307,9 @@ Apps (product surfaces):
 * `apps/web/wrangler.jsonc` (web Worker config)
 * `apps/web/wrangler.effuse.jsonc` (alternate Worker config)
 * `apps/web/scripts/` (DSE/admin operational scripts)
-* `apps/api/README.md` (OpenAgents API worker overview)
-* `apps/api/src/lib.rs` (API routes + handlers)
-* `apps/api/docs/README.md` (API docs index)
-* `apps/api/scripts/smoke.sh` (API smoke checks)
-* `apps/api/wrangler.toml` (API Worker config)
 * `apps/autopilot-worker/wrangler.jsonc` (autopilot-worker runtime config)
-* `apps/autopilot-worker/src/` (worker runtime logic)
+* `apps/autopilot-worker/src/` (worker runtime logic, tools, DSE catalog)
 * `apps/autopilot-worker/scripts/autopilot-smoke.ts` (worker smoke test)
-* `apps/autopilot-desktop/Cargo.toml` (desktop app crate entry)
-* `apps/autopilot-desktop/src/main.rs` (desktop host runtime)
 * `apps/expo/README.md` (mobile client surface)
 
 Packages (shared TypeScript libraries):
@@ -408,19 +336,18 @@ Autopilot docs (start here for product behavior):
 * `docs/autopilot/AUTOPILOT_ADMIN_TEST_USER_TRIGGER.md` (admin trigger flow)
 * `docs/autopilot/THREAD_STUCK_STREAMING_FIX.md` (known issue + mitigation)
 
-Infra / integration docs:
+Infra / integration (if present; some paths archived):
 
-* `docs/openclaw/autopilot-integration.md` (OpenClaw integration touchpoints)
-* `docs/cloudflare/openclaw-on-workers.md` (Workers deployment notes)
-* `docs/liteclaw/cloudflare-tunnel.md` (tunnel and ingress notes)
-* `docs/protocol/PROTOCOL_SURFACE.md` (protocol contracts and schemas)
+* `docs/cloudflare/` (Workers deployment notes)
+* `docs/liteclaw/` (tunnel and ingress notes)
+* `docs/lightning/LIGHTNING_AGENT_TOOLS.md` (L402/lnget integration plan)
 
 ---
 
 ## Final note
 
-If you are uncertain whether something belongs in the runtime, dsrs, or a product crate:
+If you are uncertain where something belongs:
 
-* Prefer keeping policy in dsrs/adjutant (Signatures/Modules/Pipelines),
-* Keep execution enforcement (schema validation, retries, receipts) in the runtime/tooling layer,
-* Keep UI/UX wiring in product crates.
+* Prefer keeping policy in DSE (Signatures/Modules/Pipelines) and apps/autopilot-worker (dseCatalog, tools).
+* Keep execution enforcement (schema validation, retries, receipts) in the runtime/tooling layer.
+* Keep UI/UX wiring in apps (web, expo).

@@ -17,8 +17,10 @@ ADRs are authoritative for architecture decisions (invariants, interfaces, trade
 | 1 | Behavior | Code wins |
 | 2 | Terminology | GLOSSARY.md wins |
 | 3 | Architecture intent | **ADRs win** |
-| 4 | Implementation status | Crate sources + SYNTHESIS_EXECUTION.md |
+| 4 | Implementation status | Active codebase (see [PROJECT_OVERVIEW.md](../PROJECT_OVERVIEW.md)) |
 | 5 | Priorities/sequencing | ROADMAP.md |
+
+**Stale path note:** Many ADRs reference `crates/*`, `Cargo.toml`, and Rust paths. Rust and those crates were removed and archived (see [RUST_DOCS_ARCHIVE_2026-02-11.md](../RUST_DOCS_ARCHIVE_2026-02-11.md)). Treat those references as historical; the *decisions* in the ADRs still apply. For current implementation, see [PROJECT_OVERVIEW.md](../PROJECT_OVERVIEW.md).
 
 ## Accepted vs Wired
 
@@ -27,9 +29,7 @@ Important distinction:
 - **Accepted** = we commit to this direction/contract. The ADR is the decision.
 - **Wired/Implemented** = code path exists and is used in production.
 
-An ADR being "Accepted" does **not** mean the code is implemented. For implementation status, check:
-- Crate sources (the code itself)
-- [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md)
+An ADR being "Accepted" does **not** mean the code is implemented. For implementation status, check the active codebase (apps/web, apps/autopilot-worker, packages/dse, etc.) and [PROJECT_OVERVIEW.md](../PROJECT_OVERVIEW.md).
 
 ## When to Write an ADR
 
@@ -49,10 +49,9 @@ If it's "just implementation" (bug fix, perf tweak) and doesn't change contracts
 
 ADRs should **decide**, not **reproduce** full schemas.
 
-If a schema is canonical elsewhere:
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
-- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)
+If a schema is canonical elsewhere (or was; some paths are in the [Rust/docs archive](../RUST_DOCS_ARCHIVE_2026-02-11.md)):
+- ARTIFACTS.md / REPLAY.md (dsrs artifact and replay schemas; see ADR-0002, ADR-0003; archived if not in repo)
+- docs/protocol/PROTOCOL_SURFACE.md (protocol contracts; archived to backroom if not in repo)
 
 Then ADRs should:
 1. Link to the canonical spec
@@ -98,7 +97,7 @@ When a PR touches a contract, the author must:
 - [ ] Update existing ADR **or** create new ADR (status: Proposed)
 - [ ] Update [INDEX.md](./INDEX.md) with new/changed ADR
 - [ ] Update [GLOSSARY.md](../GLOSSARY.md) if terminology changes
-- [ ] Update affected canonical specs (ARTIFACTS.md, REPLAY.md, PROTOCOL_SURFACE.md)
+- [ ] Update affected canonical specs (ARTIFACTS/REPLAY/PROTOCOL as applicable; see [RUST_DOCS_ARCHIVE](../RUST_DOCS_ARCHIVE_2026-02-11.md) if those paths are archived)
 - [ ] Mention ADR in PR_SUMMARY.md (if agent-generated)
 
 ## Lint Policy (Future)

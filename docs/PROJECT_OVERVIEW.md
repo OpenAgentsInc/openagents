@@ -35,6 +35,9 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `docs/autopilot/`  
   Primary operational docs for the web product (production E2E, stream testing, trace retrieval, debugging).
 
+- `docs/lightning/`  
+  Lightning agent tools (L402, lnget, Aperture) integration plan and references.
+
 - `docs/local/` and `docs/STORYBOOK.md`  
   Local development workflows and component-level testing/docs.
 
