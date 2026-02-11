@@ -193,7 +193,10 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       enableKeyboardShortcuts: true,
       enableHotbar: false,
       theme: { ...DEFAULT_PANE_SYSTEM_THEME, background: "transparent" },
-      onPaneClosed: closeOverlay,
+      onPaneClosed: (id) => {
+        // Only closing the main chat pane should dismiss the whole overlay.
+        if (id === CHAT_PANE_ID) closeOverlay()
+      },
     })
 
     const sessionFromAtoms: Session =
