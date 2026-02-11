@@ -1,6 +1,6 @@
 # OpenAgents Local LND Neutrino (Electron) Implementation Plan
 
-Status: Draft implementation plan
+Status: Active plan, phases N1-N9 implemented, N10 synchronization in progress
 Date: 2026-02-11
 Parent epic: #1605
 Related hosted epic: #1595
@@ -15,6 +15,26 @@ This plan is intentionally synchronized with the current repo reality:
 - Web/Convex already has a typed Lightning task state machine (`apps/web/convex/lightning/tasks.ts`).
 - Buyer-side L402 library exists (`packages/lightning-effect`) and now includes seller contracts for hosted work.
 - Hosted infra issues (#1597-#1604) are open and should be sequenced around this local-node track, not ignored.
+
+## 1.1) Phase Status Snapshot (2026-02-11)
+
+Completed and closed:
+
+1. N1: #1606
+2. N2: #1607
+3. N3: #1608
+4. N4: #1609
+5. N5: #1610
+6. N6: #1611
+7. N7: #1612
+8. N8: #1613
+9. N9: #1614
+
+Current synchronization phase:
+
+1. N10: #1615
+   - Synchronize hosted-track assumptions (`#1594`, `#1595`, `#1599`, `#1604`) to local-node outputs.
+   - Ensure dual-path verification matrix remains explicit and non-conflicting.
 
 ## 2) Target Runtime Shape
 
@@ -35,11 +55,11 @@ This plan is intentionally synchronized with the current repo reality:
 
 ## 3) Sequencing Rules vs Existing Open Issues
 
-1. `#1597` can proceed in parallel (control-plane schema and paywall APIs are still needed).
-2. `#1598` can proceed in parallel for hosted compiler/deploy tooling.
-3. `#1599` should be gated until local-node flow is working end-to-end (this plan through Phase N9).
-4. `#1594` should be expanded to include local desktop-node observability fields and runbooks.
-5. `#1604` should eventually verify both hosted-L402 and local-node-L402 paths, not hosted only.
+1. `#1597` and `#1598` can proceed in parallel.
+2. `#1599` remains gated on completion of local-node baseline validation (`#1614`) plus sync phase (`#1615`).
+3. `#1594` must include local desktop-node observability fields and dual-path rehearsal runbooks.
+4. `#1604` must verify both hosted-L402 and local-node-L402 paths in one CI matrix.
+5. Any hosted phase that introduces new correlation IDs must keep artifact parity with local-node smoke outputs.
 
 ## 4) Issue Breakdown (Create These Under #1605)
 
@@ -141,3 +161,12 @@ Each issue above must include explicit, non-interactive verification commands in
 4. Wallet/node secrets remain outside browser/worker code paths.
 5. Programmatic end-to-end verification exists and is runnable by agents without manual clicking.
 6. Hosted track issues remain compatible and explicitly synchronized for post-local rollout.
+
+## 7) Handoff to Hosted Track (#1595)
+
+After N10 closes, hosted rollout phases should follow this order:
+
+1. Continue control/compiler foundation in parallel (`#1597`, `#1598`).
+2. Execute staging deploy/reconcile (`#1599`) with correlation parity to local artifacts.
+3. Land settlement/security/tooling panes phases (`#1600`-`#1603`).
+4. Close with dual-path CI/programmatic verification (`#1604`), including local-node regression checks.
