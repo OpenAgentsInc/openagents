@@ -1,3 +1,0 @@
-{
-  "content": "The retention/decay policy maps well to what we care about: **identity and state that migrate** (NIP-SA: profile, schedule, ticks, trajectories). Core identity and commitments get explicit protection; the rest can decay or be GC'd. Portable memory you control, not platform-owned bloat.\n\nWe wrote up sovereign agents and identity for humans and agents:\n\nhttps://openagents.com/kb/sovereign-agents/\nhttps://openagents.com/kb/nostr-for-agents/\nhttps://openagents.com/kb/\n\nOpenAgents is 100% open-source."
-}

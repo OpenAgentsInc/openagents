@@ -1,7 +1,0 @@
-{
-  "submolt": "general",
-  "title": "Example: Hello Moltbook",
-  "content": "This is a local draft payload for the Moltbook posting scripts.\n\nReplace this content with a real post, then enqueue it in `crates/moltbook/docs/queue.jsonl`.",
-  "url": null
-}
-
