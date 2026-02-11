@@ -16,7 +16,7 @@ The key architectural conclusion from the current codebase:
 
 - `apps/web` and `apps/autopilot-worker` run on Cloudflare Workers, which is not the right place to run shell-native binaries like `lnget`, `lnd`, or `aperture`.
 - The right path is a hybrid:
-  - Protocol-native TypeScript L402 client in shared packages for Worker-safe flows.
+  - Protocol-native Effect L402/payment library in `packages/lightning-effect` for Worker-safe flows.
   - Optional native Lightning host on desktop (Electron) for sovereign operation, local node control, and remote-signer setups.
   - A clean service boundary so web/mobile can use hosted or user-managed wallets without hard-coding one custody model.
 
@@ -60,7 +60,7 @@ This blueprint is based on:
 - No Lightning UX in web routes/pages.
 - No Lightning UX in `apps/expo` (mobile app is currently mostly auth/demo shell).
 - No current desktop app in this repo (desktop is in-progress per docs, but no active `apps/electron` yet).
-- No L402 client runtime in shared packages.
+- No L402/payment runtime in `packages/lightning-effect` (not yet created).
 
 ## 3.3 Key constraints from the current stack
 
@@ -86,7 +86,7 @@ This avoids rework and allows enterprise-grade and consumer-grade usage from one
 Control plane:
 
 - Policy, budgets, auth, telemetry, receipts, and routing decisions.
-- Lives in `apps/web` Worker + Convex + shared TypeScript packages.
+- Lives in `apps/web` Worker + Convex + shared Effect packages.
 
 Payment execution plane:
 
@@ -105,42 +105,48 @@ UI plane:
 
 Never couple business logic to one transport.
 
-- L402 logic should be protocol-native in TypeScript packages.
+- L402 logic should be protocol-native in Effect services and schemas.
 - Shell tooling (`lnget`, `lnd`, `aperture`) should be adapters behind interfaces, not the only execution path.
 
 ## 5.3 Recommended component map
 
-1. `packages/lightning-types` (new)
-   - Shared schemas and enums:
-   - `Rail`, `AssetId`, `PaymentProof`
-   - `L402Challenge`, `L402Credential`, `InvoicePaymentResult`
-   - `WalletBudgetPolicy`, `MacaroonScope`, `NodeMode`
+1. `packages/lightning-effect` (new, canonical)
+   - Effect-first shared package intended for OpenAgents and external consumers.
+   - Modules:
+   - `contracts` (Effect `Schema`: `Rail`, `AssetId`, `PaymentProof`, `L402Challenge`, `L402Credential`, `InvoicePaymentResult`, policy types)
+   - `services` (`InvoicePayer`, `InvoiceCreator`, `L402Client`, `BudgetPolicy`, `CredentialStore`, `NodeReadApi`)
+   - `l402` (challenge parse/serialize, retry loop, credential cache policies)
+   - `adapters` (lnd/LNC/desktop bridge/hosted executor; optional shell adapters)
+   - `receipts` helpers mapping to ADR-0013 payment proof semantics
 
-2. `packages/lightning-l402` (new)
-   - Worker-safe L402 client library:
-   - Parse `WWW-Authenticate` challenge.
-   - Domain-scoped credential cache abstraction.
-   - Retry request with `Authorization: L402 ...`.
-   - Budget checks before payment.
-
-3. `packages/lightning-runtime` (new)
-   - Executor interfaces:
-   - `InvoicePayer`, `InvoiceCreator`, `NodeReadApi`, `CredentialStore`
-   - Adapters: hosted API, desktop IPC, optional shell adapter.
-
-4. `apps/web` additions
+2. `apps/web` additions
    - Worker endpoints for Lightning control APIs.
    - Effect services for wallet, L402 fetch, pricing preview, policy.
    - Convex tables for wallets, payments, credentials, limits, audit trails.
 
-5. `apps/expo` additions
+3. `apps/expo` additions
    - Wallet views and actions using the same API contracts.
    - Device-safe credential handling and policy controls.
 
-6. `apps/electron` (new, planned)
+4. `apps/electron` (new, planned)
    - Native Lightning host:
    - local `lnget`, optional local `lnd` watch-only, remote signer wiring.
    - secure local keystore and IPC bridge to UI.
+
+## 5.4 Open-Source Package Strategy (`lightning-effect`)
+
+Goals:
+
+- Keep all Lightning business logic in Effect and reusable outside this monorepo.
+- Let external apps adopt the same contracts and service interfaces without importing OpenAgents app code.
+
+Requirements:
+
+1. Public API surface documented and semver-stable.
+2. Separate core interfaces from OpenAgents-specific adapters.
+3. Publish-ready package metadata and examples (Node, Worker, React Native, Electron).
+4. `Layer`-driven architecture so downstream users can provide their own wallet adapters.
+5. Align architecture and naming conventions with `~/code/nostr-effect` where possible to reduce cognitive overhead across libraries.
 
 ## 6. Product Surface Design
 
@@ -482,9 +488,7 @@ Add:
 
 Add shared packages:
 
-- `packages/lightning-types`
-- `packages/lightning-l402`
-- `packages/lightning-runtime`
+- `packages/lightning-effect`
 
 Optional later:
 
@@ -569,7 +573,7 @@ Set alerts for:
 
 Deliverables:
 
-- finalized shared schemas (`lightning-types`)
+- finalized shared schemas/services (`lightning-effect`)
 - ADR for Lightning integration architecture
 - threat model + custody mode definitions
 
@@ -582,7 +586,7 @@ Exit criteria:
 
 Deliverables:
 
-- L402 client library in TypeScript
+- L402 client library in Effect (`packages/lightning-effect/l402`)
 - worker API endpoint for controlled L402 fetch
 - payment receipts with `lightning_preimage` proof mapping
 - minimal web wallet activity page
@@ -660,7 +664,7 @@ P0:
 
 1. Add Lightning integration ADR for current TS/Effect stack.
 2. Define shared payment schemas and receipt contract mappings.
-3. Implement Worker-safe L402 parser/cache/pay/retry library.
+3. Implement Worker-safe L402 parser/cache/pay/retry library in `packages/lightning-effect`.
 4. Implement payment receipt records in Convex schema and APIs.
 5. Add minimal wallet activity UI in web admin/user surface.
 
@@ -697,8 +701,8 @@ Mitigation: default-deny policy, hard caps, and approval thresholds for higher r
 ## 18. Immediate Next Steps (First 7 Days)
 
 1. Create an ADR: "Lightning integration architecture for web/mobile/desktop TS stack."
-2. Create `packages/lightning-types` with initial schemas and test fixtures.
-3. Create `packages/lightning-l402` parser and challenge handling tests.
+2. Create `packages/lightning-effect` with initial schemas/services and test fixtures.
+3. Add `l402` parser and challenge handling tests inside `packages/lightning-effect`.
 4. Add Convex schema draft tables for wallet/payments/policies (feature-gated).
 5. Add `apps/web/src/effect/lightning.ts` service skeleton and endpoint placeholders.
 6. Add one internal worker endpoint for L402 dry-run parsing and policy validation.
@@ -719,7 +723,7 @@ OpenAgents has "deep Lightning integration" only when all are true:
 
 Pursue a hybrid architecture immediately:
 
-- Shared TypeScript L402/payment contract stack for control-plane portability.
+- Shared Effect L402/payment contract stack via `packages/lightning-effect` for control-plane portability and external reuse.
 - Managed execution for fast web/mobile rollout.
 - Desktop native host for sovereign and advanced operational workflows.
 
