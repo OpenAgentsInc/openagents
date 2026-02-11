@@ -1,14 +1,29 @@
 import { DomServiceTag, EffuseLive, html, type TemplateResult } from "@openagentsinc/effuse";
 import {
   DEFAULT_PANE_SYSTEM_THEME,
-  calculateNewPanePosition,
   mountPaneSystemDom,
-  type PaneRect,
   type PaneSystemDom,
 } from "@openagentsinc/effuse-panes";
 import { Effect } from "effect";
 
 import { DesktopAppService, type DesktopAppApi } from "./effect/app";
+import {
+  classifyFailure,
+  deriveNodePaneModel,
+  deriveTransactionHistoryModel,
+  deriveWalletBalanceModel,
+  latestExecutorFailure,
+  type FailureCategory,
+  type TransactionHistoryModel,
+} from "./effect/paneModels";
+import {
+  DESKTOP_PANE_SPEC_BY_ID,
+  addInitialDesktopPanes,
+  focusOrOpenDesktopPane,
+  isDesktopPaneId,
+  toggleDesktopPane,
+  type DesktopPaneId,
+} from "./effect/paneLayout";
 import { initialDesktopRuntimeState, type DesktopRuntimeState, type ExecutorTask } from "./effect/model";
 import { makeDesktopRuntime } from "./effect/runtime";
 
@@ -16,15 +31,7 @@ import "./index.css";
 
 const runtime = makeDesktopRuntime();
 
-const PANE_SPECS = [
-  { id: "desktop-overview", kind: "overview", title: "OpenAgents Desktop", width: 540, height: 250 },
-  { id: "desktop-auth", kind: "auth", title: "Auth Session", width: 540, height: 360 },
-  { id: "desktop-executor", kind: "executor", title: "Executor Loop", width: 540, height: 260 },
-  { id: "desktop-wallet", kind: "wallet", title: "Wallet Lifecycle", width: 540, height: 420 },
-  { id: "desktop-queue", kind: "queue", title: "Task Queue", width: 540, height: 330 },
-] as const;
-
-type PaneId = (typeof PANE_SPECS)[number]["id"];
+type PaneId = DesktopPaneId;
 
 const drafts: {
   email: string;
@@ -47,6 +54,7 @@ const drafts: {
 let currentSnapshot: DesktopRuntimeState = initialDesktopRuntimeState();
 let currentTasks: ReadonlyArray<ExecutorTask> = [];
 let uiError: string | null = null;
+let loadedSnapshot = false;
 
 const appEffect = <A>(f: (app: DesktopAppApi) => Effect.Effect<A, unknown>) =>
   Effect.gen(function* () {
@@ -70,12 +78,21 @@ const statusBadge = (ok: boolean): TemplateResult =>
   html`<span class="oa-badge ${ok ? "up" : "down"}">${ok ? "reachable" : "unreachable"}</span>`;
 
 const queueStatusClass = (status: ExecutorTask["status"]): string => {
-  if (status === "completed") return "oa-status-completed";
-  if (status === "paid" || status === "cached") return "oa-status-completed";
-  if (status === "blocked") return "oa-status-failed";
-  if (status === "failed") return "oa-status-failed";
+  if (status === "completed" || status === "paid" || status === "cached") return "oa-status-completed";
+  if (status === "blocked" || status === "failed") return "oa-status-failed";
   return "";
 };
+
+const failureCategoryLabel = (category: FailureCategory): string => {
+  if (category === "policy") return "policy";
+  if (category === "node") return "node";
+  if (category === "wallet") return "wallet";
+  if (category === "transport") return "transport";
+  if (category === "endpoint") return "endpoint";
+  return "unknown";
+};
+
+const failureCategoryClass = (category: FailureCategory): string => `oa-failure-${category}`;
 
 const paneSlot = (paneRoot: HTMLElement, paneId: PaneId): HTMLElement | null => {
   const el = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`);
@@ -87,25 +104,86 @@ const paneScreen = (paneRoot: HTMLElement): { width: number; height: number } =>
   height: Math.max(480, paneRoot.clientHeight || window.innerHeight || 768),
 });
 
-const overviewTemplate = (snapshot: DesktopRuntimeState): TemplateResult => html`
-  <section class="oa-pane">
-    <h2>OpenAgents Desktop Lightning Executor</h2>
-    <p class="oa-muted">EP212 shell: desktop executes payment flows while openagents.com stays orchestration + chat.</p>
-    ${uiError
-      ? html`<div class="oa-warning">UI error: ${uiError}</div>`
-      : null}
-    <dl class="oa-grid">
-      <dt>OpenAgents API</dt>
-      <dd>${statusBadge(snapshot.connectivity.openAgentsReachable)}</dd>
-      <dt>Convex</dt>
-      <dd>${statusBadge(snapshot.connectivity.convexReachable)}</dd>
-      <dt>Last check</dt>
-      <dd>${formatTs(snapshot.connectivity.lastCheckedAtMs)}</dd>
-      <dt>Identity link</dt>
-      <dd>Sign in here with the same email used on <code>openagents.com</code>.</dd>
-    </dl>
-  </section>
-`;
+const openPaneIds = (paneSystem: PaneSystemDom): ReadonlySet<PaneId> => {
+  const ids = paneSystem.store.panes().map((pane) => pane.id).filter((id): id is PaneId => id in DESKTOP_PANE_SPEC_BY_ID);
+  return new Set(ids);
+};
+
+const paneControlButton = (label: string, paneId: PaneId, isOpen: boolean, mode: "focus" | "toggle" = "focus"): TemplateResult =>
+  html`<button
+    class="oa-btn oa-pane-btn ${isOpen ? "active" : ""}"
+    data-pane-control
+    data-pane-id="${paneId}"
+    data-pane-mode="${mode}"
+    type="button"
+  >
+    ${label}
+  </button>`;
+
+const overviewTemplate = (input: {
+  readonly snapshot: DesktopRuntimeState;
+  readonly openPanes: ReadonlySet<PaneId>;
+}): TemplateResult => {
+  const node = deriveNodePaneModel({
+    snapshot: input.snapshot,
+    loaded: loadedSnapshot,
+    uiError,
+  });
+  const wallet = deriveWalletBalanceModel({
+    snapshot: input.snapshot,
+    tasks: currentTasks,
+    loaded: loadedSnapshot,
+    uiError,
+  });
+  const history = deriveTransactionHistoryModel({
+    tasks: currentTasks,
+    loaded: loadedSnapshot,
+    uiError,
+  });
+  const lastFailure = latestExecutorFailure(currentTasks);
+
+  return html`
+    <section class="oa-pane">
+      <h2>OpenAgents Desktop Lightning Executor</h2>
+      <p class="oa-muted">Local node + wallet execution for L402 tasks queued from <code>openagents.com</code>.</p>
+      ${uiError
+        ? html`<div class="oa-warning">UI error: ${uiError}</div>`
+        : null}
+
+      <dl class="oa-grid">
+        <dt>OpenAgents API</dt>
+        <dd>${statusBadge(input.snapshot.connectivity.openAgentsReachable)}</dd>
+        <dt>Convex</dt>
+        <dd>${statusBadge(input.snapshot.connectivity.convexReachable)}</dd>
+        <dt>Last check</dt>
+        <dd>${formatTs(input.snapshot.connectivity.lastCheckedAtMs)}</dd>
+        <dt>Node sync</dt>
+        <dd>
+          <span class="oa-chip oa-sync-${node.syncStage}">${node.syncLabel}</span>
+          ${node.diagnostic ? html`<span class="oa-muted"> · ${node.diagnostic}</span>` : null}
+        </dd>
+        <dt>Wallet availability</dt>
+        <dd><span class="oa-chip">${wallet.availability}</span></dd>
+        <dt>History</dt>
+        <dd>${history.payments.length} payments / ${history.invoices.length} invoices</dd>
+        <dt>Last failure</dt>
+        <dd>
+          ${lastFailure
+            ? html`<span class="oa-chip ${failureCategoryClass(lastFailure.category)}">${failureCategoryLabel(lastFailure.category)}</span>
+                <span class="oa-muted">${lastFailure.reason ?? "n/a"}</span>`
+            : "none"}
+        </dd>
+      </dl>
+
+      <div class="oa-row">
+        ${paneControlButton("Node", "desktop-node", input.openPanes.has("desktop-node"))}
+        ${paneControlButton("Wallet", "desktop-wallet", input.openPanes.has("desktop-wallet"))}
+        ${paneControlButton("Executor", "desktop-executor", input.openPanes.has("desktop-executor"))}
+        ${paneControlButton("Transactions", "desktop-transactions", input.openPanes.has("desktop-transactions"), "toggle")}
+      </div>
+    </section>
+  `;
+};
 
 const authTemplate = (snapshot: DesktopRuntimeState): TemplateResult => html`
   <section class="oa-pane">
@@ -157,170 +235,292 @@ const authTemplate = (snapshot: DesktopRuntimeState): TemplateResult => html`
   </section>
 `;
 
-const executorTemplate = (snapshot: DesktopRuntimeState): TemplateResult => html`
-  <section class="oa-pane">
-    <dl class="oa-grid">
-      <dt>Loop</dt>
-      <dd>${snapshot.executor.loop}</dd>
-      <dt>Run status</dt>
-      <dd>${snapshot.executor.status}</dd>
-      <dt>Ticks</dt>
-      <dd>${snapshot.executor.ticks}</dd>
-      <dt>Last task</dt>
-      <dd><code>${snapshot.executor.lastTaskId ?? "n/a"}</code></dd>
-      <dt>Last transition</dt>
-      <dd>${formatTs(snapshot.executor.lastTransitionAtMs)}</dd>
-      <dt>Last error</dt>
-      <dd>${snapshot.executor.lastError ?? "none"}</dd>
-      <dt>LND lifecycle</dt>
-      <dd>${snapshot.lnd.lifecycle}</dd>
-      <dt>LND health</dt>
-      <dd>${snapshot.lnd.health}</dd>
-      <dt>LND target / pid</dt>
-      <dd><code>${snapshot.lnd.target ?? "n/a"}</code> / <code>${snapshot.lnd.pid ?? "n/a"}</code></dd>
-      <dt>LND crashes / restarts</dt>
-      <dd>${snapshot.lnd.crashCount} / ${snapshot.lnd.restartCount}</dd>
-      <dt>LND last error</dt>
-      <dd>${snapshot.lnd.lastError ?? "none"}</dd>
-    </dl>
-    <div class="oa-row">
-      <button class="oa-btn" data-loop-start type="button">Start Loop</button>
-      <button class="oa-btn muted" data-loop-stop type="button">Stop Loop</button>
-      <button class="oa-btn muted" data-loop-tick type="button">Tick Once</button>
-    </div>
-    <div class="oa-row">
-      <button class="oa-btn" data-lnd-start type="button">Start LND</button>
-      <button class="oa-btn muted" data-lnd-stop type="button">Stop LND</button>
-      <button class="oa-btn muted" data-lnd-restart type="button">Restart LND</button>
-    </div>
-  </section>
-`;
+const nodeTemplate = (snapshot: DesktopRuntimeState): TemplateResult => {
+  const model = deriveNodePaneModel({
+    snapshot,
+    loaded: loadedSnapshot,
+    uiError,
+  });
 
-const walletTemplate = (snapshot: DesktopRuntimeState): TemplateResult => html`
-  <section class="oa-pane">
-    <dl class="oa-grid">
-      <dt>Wallet state</dt>
-      <dd>${snapshot.wallet.walletState}</dd>
-      <dt>Recovery state</dt>
-      <dd>${snapshot.wallet.recoveryState}</dd>
-      <dt>Seed backup acknowledged</dt>
-      <dd>${snapshot.wallet.seedBackupAcknowledged ? "yes" : "no"}</dd>
-      <dt>Passphrase stored</dt>
-      <dd>${snapshot.wallet.passphraseStored ? "yes (secure storage)" : "no"}</dd>
-      <dt>Restore prepared</dt>
-      <dd>${snapshot.wallet.restorePrepared ? "yes" : "no"}</dd>
-      <dt>Last wallet operation</dt>
-      <dd>${snapshot.wallet.lastOperation ?? "n/a"}</dd>
-      <dt>Wallet error code</dt>
-      <dd><code>${snapshot.wallet.lastErrorCode ?? "none"}</code></dd>
-      <dt>Wallet error</dt>
-      <dd>${snapshot.wallet.lastErrorMessage ?? "none"}</dd>
-      <dt>Updated</dt>
-      <dd>${formatTs(snapshot.wallet.updatedAtMs)}</dd>
-    </dl>
+  if (model.paneState === "loading") {
+    return html`<section class="oa-pane"><div class="oa-info">Loading node runtime state...</div></section>`;
+  }
 
-    <div class="oa-field">
-      <label for="desktop-wallet-init-passphrase">Init Passphrase</label>
-      <input
-        id="desktop-wallet-init-passphrase"
-        name="desktop-wallet-init-passphrase"
-        class="oa-input"
-        data-wallet-init-passphrase
-        type="password"
-        autocomplete="new-password"
-        placeholder="enter passphrase"
-        value="${drafts.walletInitPassphrase}"
-      />
-    </div>
+  if (model.paneState === "error") {
+    return html`
+      <section class="oa-pane">
+        <div class="oa-warning">${model.syncLabel}${model.diagnostic ? `: ${model.diagnostic}` : ""}</div>
+      </section>
+    `;
+  }
 
-    <div class="oa-row">
-      <button class="oa-btn" data-wallet-init type="button">Initialize Wallet</button>
-      <button class="oa-btn muted" data-wallet-ack type="button">Acknowledge Seed Backup</button>
-    </div>
+  return html`
+    <section class="oa-pane">
+      ${model.paneState === "empty" ? html`<div class="oa-info">Node is offline. Start LND to process L402 tasks.</div>` : null}
+      <dl class="oa-grid">
+        <dt>Lifecycle</dt>
+        <dd>${snapshot.lnd.lifecycle}</dd>
+        <dt>Health</dt>
+        <dd>${snapshot.lnd.health}</dd>
+        <dt>Sync stage</dt>
+        <dd><span class="oa-chip oa-sync-${model.syncStage}">${model.syncLabel}</span></dd>
+        <dt>Target / PID</dt>
+        <dd><code>${snapshot.lnd.target ?? "n/a"}</code> / <code>${snapshot.lnd.pid ?? "n/a"}</code></dd>
+        <dt>Crashes / Restarts</dt>
+        <dd>${snapshot.lnd.crashCount} / ${snapshot.lnd.restartCount}</dd>
+        <dt>Next restart</dt>
+        <dd>${formatTs(snapshot.lnd.nextRestartAtMs)}</dd>
+        <dt>Last health check</dt>
+        <dd>${formatTs(snapshot.lnd.lastHealthCheckAtMs)}</dd>
+        <dt>Last error</dt>
+        <dd>${snapshot.lnd.lastError ?? "none"}</dd>
+      </dl>
+      <div class="oa-row">
+        <button class="oa-btn" data-lnd-start type="button">Start LND</button>
+        <button class="oa-btn muted" data-lnd-stop type="button">Stop LND</button>
+        <button class="oa-btn muted" data-lnd-restart type="button">Restart LND</button>
+      </div>
+    </section>
+  `;
+};
 
-    <div class="oa-field">
-      <label for="desktop-wallet-unlock-passphrase">Unlock Passphrase (optional)</label>
-      <input
-        id="desktop-wallet-unlock-passphrase"
-        name="desktop-wallet-unlock-passphrase"
-        class="oa-input"
-        data-wallet-unlock-passphrase
-        type="password"
-        autocomplete="current-password"
-        placeholder="leave empty to use stored passphrase"
-        value="${drafts.walletUnlockPassphrase}"
-      />
-    </div>
+const executorTemplate = (snapshot: DesktopRuntimeState, tasks: ReadonlyArray<ExecutorTask>): TemplateResult => {
+  const loading = !loadedSnapshot;
+  const lastFailure = latestExecutorFailure(tasks);
+  const pending = tasks.filter((task) => task.status === "queued" || task.status === "approved" || task.status === "running");
 
-    <div class="oa-row">
-      <button class="oa-btn" data-wallet-unlock type="button">Unlock Wallet</button>
-      <button class="oa-btn muted" data-wallet-lock type="button">Lock Wallet</button>
-      <button class="oa-btn muted" data-wallet-prepare-restore type="button">Prepare Restore</button>
-    </div>
+  return html`
+    <section class="oa-pane">
+      <dl class="oa-grid">
+        <dt>Loop</dt>
+        <dd>${snapshot.executor.loop}</dd>
+        <dt>Run status</dt>
+        <dd>${snapshot.executor.status}</dd>
+        <dt>Ticks</dt>
+        <dd>${snapshot.executor.ticks}</dd>
+        <dt>Last task</dt>
+        <dd><code>${snapshot.executor.lastTaskId ?? "n/a"}</code></dd>
+        <dt>Last transition</dt>
+        <dd>${formatTs(snapshot.executor.lastTransitionAtMs)}</dd>
+        <dt>Last error</dt>
+        <dd>${snapshot.executor.lastError ?? "none"}</dd>
+        <dt>Queue depth</dt>
+        <dd>${pending.length}</dd>
+        <dt>Last failure class</dt>
+        <dd>
+          ${lastFailure
+            ? html`<span class="oa-chip ${failureCategoryClass(lastFailure.category)}">${failureCategoryLabel(lastFailure.category)}</span>
+                <span class="oa-muted">${lastFailure.reason ?? "n/a"}</span>`
+            : "none"}
+        </dd>
+      </dl>
 
-    <div class="oa-field">
-      <label for="desktop-wallet-restore-passphrase">Restore Passphrase</label>
-      <input
-        id="desktop-wallet-restore-passphrase"
-        name="desktop-wallet-restore-passphrase"
-        class="oa-input"
-        data-wallet-restore-passphrase
-        type="password"
-        autocomplete="new-password"
-        placeholder="restore passphrase"
-        value="${drafts.walletRestorePassphrase}"
-      />
-    </div>
-    <div class="oa-field">
-      <label for="desktop-wallet-restore-seed">Restore Seed Phrase</label>
-      <textarea
-        id="desktop-wallet-restore-seed"
-        name="desktop-wallet-restore-seed"
-        class="oa-input"
-        data-wallet-restore-seed
-        rows="2"
-        placeholder="space-separated 12-24 word seed phrase"
-      >${drafts.walletRestoreSeed}</textarea>
-    </div>
-    <div class="oa-row">
-      <button class="oa-btn muted" data-wallet-restore type="button">Restore Wallet</button>
-    </div>
-  </section>
-`;
+      <div class="oa-row">
+        <button class="oa-btn" data-loop-start type="button">Start Loop</button>
+        <button class="oa-btn muted" data-loop-stop type="button">Stop Loop</button>
+        <button class="oa-btn muted" data-loop-tick type="button">Tick Once</button>
+      </div>
 
-const queueTemplate = (tasks: ReadonlyArray<ExecutorTask>): TemplateResult => html`
-  <section class="oa-pane">
-    <h3>Convex Task Queue</h3>
-    <p class="oa-muted">Creates real Lightning task records in Convex for your signed-in user.</p>
-    <div class="oa-row">
-      <input
-        id="desktop-task-input"
-        name="desktop-task-input"
-        class="oa-input"
-        data-task-input
-        type="text"
-        placeholder="https://api.example.com/premium-data"
-        value="${drafts.task}"
-      />
-      <button class="oa-btn" data-task-enqueue type="button">Enqueue Task</button>
-    </div>
-    <ul class="oa-list">
-      ${tasks.length === 0
-        ? html`<li class="oa-list-item">No queued tasks.</li>`
-        : tasks.map((task) => html`
-            <li class="oa-list-item">
-              <div><code>${task.id.slice(0, 8)}</code> · <strong class="${queueStatusClass(task.status)}">${task.status}</strong></div>
-              <div class="oa-muted">owner: <code>${task.ownerId}</code></div>
-              <div>${task.request.method ?? "GET"} ${task.request.url}</div>
-              <div class="oa-muted">max spend: ${task.request.maxSpendMsats} msats · attempts: ${task.attemptCount}</div>
-              ${(task.status === "failed" || task.status === "blocked") && task.failureReason
-                ? html`<div class="oa-status-failed">reason: ${task.failureReason}</div>`
-                : null}
-            </li>
-          `)}
-    </ul>
-  </section>
-`;
+      <div class="oa-row">
+        <input
+          id="desktop-task-input"
+          name="desktop-task-input"
+          class="oa-input"
+          data-task-input
+          type="text"
+          placeholder="https://api.example.com/premium-data"
+          value="${drafts.task}"
+        />
+        <button class="oa-btn" data-task-enqueue type="button">Enqueue Task</button>
+      </div>
+
+      ${loading
+        ? html`<div class="oa-info">Loading queue state...</div>`
+        : pending.length === 0
+          ? html`<div class="oa-info">Queue empty.</div>`
+          : html`
+              <ul class="oa-list">
+                ${pending.map((task) => {
+                  const reason = task.failureReason ?? task.lastErrorMessage;
+                  const category = classifyFailure({
+                    code: task.lastErrorCode,
+                    message: task.lastErrorMessage,
+                    reason: task.failureReason,
+                  });
+                  return html`
+                    <li class="oa-list-item">
+                      <div><code>${task.id.slice(0, 8)}</code> · <strong class="${queueStatusClass(task.status)}">${task.status}</strong></div>
+                      <div>${task.request.method ?? "GET"} ${task.request.url}</div>
+                      <div class="oa-muted">max spend: ${task.request.maxSpendMsats} msats · attempts: ${task.attemptCount}</div>
+                      ${reason
+                        ? html`<div class="${failureCategoryClass(category)}">${failureCategoryLabel(category)}: ${reason}</div>`
+                        : null}
+                    </li>
+                  `;
+                })}
+              </ul>
+            `}
+    </section>
+  `;
+};
+
+const walletTemplate = (snapshot: DesktopRuntimeState): TemplateResult => {
+  const balance = deriveWalletBalanceModel({
+    snapshot,
+    tasks: currentTasks,
+    loaded: loadedSnapshot,
+    uiError,
+  });
+
+  return html`
+    <section class="oa-pane">
+      ${balance.paneState === "loading"
+        ? html`<div class="oa-info">Loading wallet state...</div>`
+        : null}
+      ${balance.paneState === "error"
+        ? html`<div class="oa-warning">Wallet view degraded due to desktop refresh errors.</div>`
+        : null}
+
+      <dl class="oa-grid">
+        <dt>Wallet state</dt>
+        <dd>${snapshot.wallet.walletState}</dd>
+        <dt>Recovery state</dt>
+        <dd>${snapshot.wallet.recoveryState}</dd>
+        <dt>Balance visibility</dt>
+        <dd><span class="oa-chip">${balance.availability}</span></dd>
+        <dt>Session spend (msats)</dt>
+        <dd>${balance.estimatedSpendMsats}</dd>
+        <dt>Settled / Failed / Blocked</dt>
+        <dd>${balance.settledCount} / ${balance.failedCount} / ${balance.blockedCount}</dd>
+        <dt>Cache hits</dt>
+        <dd>${balance.cacheHits}</dd>
+        <dt>Seed backup acknowledged</dt>
+        <dd>${snapshot.wallet.seedBackupAcknowledged ? "yes" : "no"}</dd>
+        <dt>Passphrase stored</dt>
+        <dd>${snapshot.wallet.passphraseStored ? "yes (secure storage)" : "no"}</dd>
+        <dt>Restore prepared</dt>
+        <dd>${snapshot.wallet.restorePrepared ? "yes" : "no"}</dd>
+        <dt>Last wallet operation</dt>
+        <dd>${snapshot.wallet.lastOperation ?? "n/a"}</dd>
+        <dt>Wallet error code</dt>
+        <dd><code>${snapshot.wallet.lastErrorCode ?? "none"}</code></dd>
+        <dt>Wallet error</dt>
+        <dd>${snapshot.wallet.lastErrorMessage ?? "none"}</dd>
+        <dt>Updated</dt>
+        <dd>${formatTs(snapshot.wallet.updatedAtMs)}</dd>
+      </dl>
+
+      <div class="oa-field">
+        <label for="desktop-wallet-init-passphrase">Init Passphrase</label>
+        <input
+          id="desktop-wallet-init-passphrase"
+          name="desktop-wallet-init-passphrase"
+          class="oa-input"
+          data-wallet-init-passphrase
+          type="password"
+          autocomplete="new-password"
+          placeholder="enter passphrase"
+          value="${drafts.walletInitPassphrase}"
+        />
+      </div>
+
+      <div class="oa-row">
+        <button class="oa-btn" data-wallet-init type="button">Initialize Wallet</button>
+        <button class="oa-btn muted" data-wallet-ack type="button">Acknowledge Seed Backup</button>
+      </div>
+
+      <div class="oa-field">
+        <label for="desktop-wallet-unlock-passphrase">Unlock Passphrase (optional)</label>
+        <input
+          id="desktop-wallet-unlock-passphrase"
+          name="desktop-wallet-unlock-passphrase"
+          class="oa-input"
+          data-wallet-unlock-passphrase
+          type="password"
+          autocomplete="current-password"
+          placeholder="leave empty to use stored passphrase"
+          value="${drafts.walletUnlockPassphrase}"
+        />
+      </div>
+
+      <div class="oa-row">
+        <button class="oa-btn" data-wallet-unlock type="button">Unlock Wallet</button>
+        <button class="oa-btn muted" data-wallet-lock type="button">Lock Wallet</button>
+        <button class="oa-btn muted" data-wallet-prepare-restore type="button">Prepare Restore</button>
+      </div>
+
+      <div class="oa-field">
+        <label for="desktop-wallet-restore-passphrase">Restore Passphrase</label>
+        <input
+          id="desktop-wallet-restore-passphrase"
+          name="desktop-wallet-restore-passphrase"
+          class="oa-input"
+          data-wallet-restore-passphrase
+          type="password"
+          autocomplete="new-password"
+          placeholder="restore passphrase"
+          value="${drafts.walletRestorePassphrase}"
+        />
+      </div>
+      <div class="oa-field">
+        <label for="desktop-wallet-restore-seed">Restore Seed Phrase</label>
+        <textarea
+          id="desktop-wallet-restore-seed"
+          name="desktop-wallet-restore-seed"
+          class="oa-input"
+          data-wallet-restore-seed
+          rows="2"
+          placeholder="space-separated 12-24 word seed phrase"
+        >${drafts.walletRestoreSeed}</textarea>
+      </div>
+      <div class="oa-row">
+        <button class="oa-btn muted" data-wallet-restore type="button">Restore Wallet</button>
+      </div>
+    </section>
+  `;
+};
+
+const transactionsTemplate = (history: TransactionHistoryModel): TemplateResult => {
+  if (history.paneState === "loading") {
+    return html`<section class="oa-pane"><div class="oa-info">Loading payment and invoice history...</div></section>`;
+  }
+  if (history.paneState === "error") {
+    return html`<section class="oa-pane"><div class="oa-warning">Unable to render payment history from current desktop state.</div></section>`;
+  }
+  if (history.paneState === "empty") {
+    return html`<section class="oa-pane"><div class="oa-info">No payment/invoice history yet. Enqueue an L402 task to populate this pane.</div></section>`;
+  }
+
+  return html`
+    <section class="oa-pane">
+      <h3>Recent Payments</h3>
+      <ul class="oa-list">
+        ${history.payments.slice(0, 12).map((entry) => html`
+          <li class="oa-list-item">
+            <div><code>${entry.id.slice(0, 8)}</code> · <strong class="${queueStatusClass(entry.status)}">${entry.status}</strong></div>
+            <div>${entry.method} ${entry.urlLabel}</div>
+            <div class="oa-muted">updated: ${formatTs(entry.updatedAtMs)} · amount: ${entry.amountMsats ?? "n/a"} msats</div>
+            ${entry.category
+              ? html`<div class="${failureCategoryClass(entry.category)}">${failureCategoryLabel(entry.category)}${entry.reason ? `: ${entry.reason}` : ""}</div>`
+              : null}
+          </li>
+        `)}
+      </ul>
+
+      <h3>Recent Invoices</h3>
+      <ul class="oa-list">
+        ${history.invoices.slice(0, 12).map((entry) => html`
+          <li class="oa-list-item">
+            <div><code>${entry.id.slice(0, 8)}</code> · <strong>${entry.state}</strong></div>
+            <div>${entry.urlLabel}</div>
+            <div class="oa-muted">updated: ${formatTs(entry.updatedAtMs)}</div>
+            ${entry.reason ? html`<div class="oa-status-failed">${entry.reason}</div>` : null}
+          </li>
+        `)}
+      </ul>
+    </section>
+  `;
+};
 
 const runUiAction = (
   label: string,
@@ -332,6 +532,36 @@ const runUiAction = (
     console.error(`[desktop] ${label}_failed`, error);
   }).finally(() => {
     void refresh();
+  });
+};
+
+const parseSeedWords = (raw: string): ReadonlyArray<string> =>
+  raw
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length > 0);
+
+const bindOverviewActions = (
+  slot: HTMLElement,
+  paneSystem: PaneSystemDom,
+  paneRoot: HTMLElement,
+  refresh: () => Promise<void>,
+): void => {
+  slot.querySelectorAll<HTMLButtonElement>("[data-pane-control]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      const paneId = button.dataset.paneId as PaneId | undefined;
+      const mode = button.dataset.paneMode;
+      if (!paneId || !isDesktopPaneId(paneId)) return;
+      const screen = paneScreen(paneRoot);
+      if (mode === "toggle") {
+        toggleDesktopPane(paneSystem.store, screen, paneId);
+      } else {
+        focusOrOpenDesktopPane(paneSystem.store, screen, paneId);
+      }
+      paneSystem.render();
+      void refresh();
+    });
   });
 };
 
@@ -393,28 +623,10 @@ const bindAuthActions = (slot: HTMLElement, refresh: () => Promise<void>): void 
   });
 };
 
-const bindExecutorActions = (slot: HTMLElement, refresh: () => Promise<void>): void => {
-  const startLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-start]");
-  const stopLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-stop]");
-  const tickLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-tick]");
+const bindNodeActions = (slot: HTMLElement, refresh: () => Promise<void>): void => {
   const startLndButton = slot.querySelector<HTMLButtonElement>("[data-lnd-start]");
   const stopLndButton = slot.querySelector<HTMLButtonElement>("[data-lnd-stop]");
   const restartLndButton = slot.querySelector<HTMLButtonElement>("[data-lnd-restart]");
-
-  startLoopButton?.addEventListener("click", (event) => {
-    event.preventDefault();
-    runUiAction("start_loop", () => runApp((app) => app.startExecutor()).then(() => undefined), refresh);
-  });
-
-  stopLoopButton?.addEventListener("click", (event) => {
-    event.preventDefault();
-    runUiAction("stop_loop", () => runApp((app) => app.stopExecutor()).then(() => undefined), refresh);
-  });
-
-  tickLoopButton?.addEventListener("click", (event) => {
-    event.preventDefault();
-    runUiAction("tick_loop", () => runApp((app) => app.tickExecutor()).then(() => undefined), refresh);
-  });
 
   startLndButton?.addEventListener("click", (event) => {
     event.preventDefault();
@@ -436,11 +648,46 @@ const bindExecutorActions = (slot: HTMLElement, refresh: () => Promise<void>): v
   });
 };
 
-const parseSeedWords = (raw: string): ReadonlyArray<string> =>
-  raw
-    .split(/\s+/)
-    .map((word) => word.trim())
-    .filter((word) => word.length > 0);
+const bindExecutorActions = (slot: HTMLElement, refresh: () => Promise<void>): void => {
+  const startLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-start]");
+  const stopLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-stop]");
+  const tickLoopButton = slot.querySelector<HTMLButtonElement>("[data-loop-tick]");
+  const taskInput = slot.querySelector<HTMLInputElement>("[data-task-input]");
+  const enqueueTaskButton = slot.querySelector<HTMLButtonElement>("[data-task-enqueue]");
+
+  taskInput?.addEventListener("input", () => {
+    drafts.task = taskInput.value;
+  });
+
+  startLoopButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    runUiAction("start_loop", () => runApp((app) => app.startExecutor()).then(() => undefined), refresh);
+  });
+
+  stopLoopButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    runUiAction("stop_loop", () => runApp((app) => app.stopExecutor()).then(() => undefined), refresh);
+  });
+
+  tickLoopButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    runUiAction("tick_loop", () => runApp((app) => app.tickExecutor()).then(() => undefined), refresh);
+  });
+
+  enqueueTaskButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    runUiAction(
+      "enqueue_task",
+      async () => {
+        const payload = (taskInput?.value ?? drafts.task).trim();
+        if (!payload) return;
+        drafts.task = "";
+        await runApp((app) => app.enqueueDemoTask(payload));
+      },
+      refresh,
+    );
+  });
+};
 
 const bindWalletActions = (slot: HTMLElement, refresh: () => Promise<void>): void => {
   const initPassphraseInput = slot.querySelector<HTMLInputElement>("[data-wallet-init-passphrase]");
@@ -540,44 +787,8 @@ const bindWalletActions = (slot: HTMLElement, refresh: () => Promise<void>): voi
   });
 };
 
-const bindQueueActions = (slot: HTMLElement, refresh: () => Promise<void>): void => {
-  const taskInput = slot.querySelector<HTMLInputElement>("[data-task-input]");
-  const enqueueTaskButton = slot.querySelector<HTMLButtonElement>("[data-task-enqueue]");
-
-  taskInput?.addEventListener("input", () => {
-    drafts.task = taskInput.value;
-  });
-
-  enqueueTaskButton?.addEventListener("click", (event) => {
-    event.preventDefault();
-    runUiAction(
-      "enqueue_task",
-      async () => {
-        const payload = (taskInput?.value ?? drafts.task).trim();
-        if (!payload) return;
-        drafts.task = "";
-        await runApp((app) => app.enqueueDemoTask(payload));
-      },
-      refresh,
-    );
-  });
-};
-
 const addInitialPanes = (paneSystem: PaneSystemDom, paneRoot: HTMLElement): void => {
-  const screen = paneScreen(paneRoot);
-  let lastRect: PaneRect | undefined;
-
-  for (const pane of PANE_SPECS) {
-    const rect = calculateNewPanePosition(lastRect, screen, pane.width, pane.height);
-    lastRect = rect;
-    paneSystem.store.addPane({
-      id: pane.id,
-      kind: pane.kind,
-      title: pane.title,
-      rect,
-      dismissable: false,
-    });
-  }
+  addInitialDesktopPanes(paneSystem.store, paneScreen(paneRoot));
   paneSystem.render();
 };
 
@@ -611,30 +822,42 @@ const mount = async (): Promise<void> => {
   let refreshQueued = false;
 
   const renderAllPanes = async (): Promise<void> => {
+    const openPanes = openPaneIds(paneSystem);
+    const history = deriveTransactionHistoryModel({
+      tasks: currentTasks,
+      loaded: loadedSnapshot,
+      uiError,
+    });
+
     const overviewSlot = paneSlot(paneRoot, "desktop-overview");
     const authSlot = paneSlot(paneRoot, "desktop-auth");
-    const executorSlot = paneSlot(paneRoot, "desktop-executor");
+    const nodeSlot = paneSlot(paneRoot, "desktop-node");
     const walletSlot = paneSlot(paneRoot, "desktop-wallet");
-    const queueSlot = paneSlot(paneRoot, "desktop-queue");
+    const executorSlot = paneSlot(paneRoot, "desktop-executor");
+    const transactionsSlot = paneSlot(paneRoot, "desktop-transactions");
 
     if (overviewSlot) {
-      await renderWithEffuse(overviewSlot, overviewTemplate(currentSnapshot));
+      await renderWithEffuse(overviewSlot, overviewTemplate({ snapshot: currentSnapshot, openPanes }));
+      bindOverviewActions(overviewSlot, paneSystem, paneRoot, refreshView);
     }
     if (authSlot) {
       await renderWithEffuse(authSlot, authTemplate(currentSnapshot));
       bindAuthActions(authSlot, refreshView);
     }
-    if (executorSlot) {
-      await renderWithEffuse(executorSlot, executorTemplate(currentSnapshot));
-      bindExecutorActions(executorSlot, refreshView);
+    if (nodeSlot) {
+      await renderWithEffuse(nodeSlot, nodeTemplate(currentSnapshot));
+      bindNodeActions(nodeSlot, refreshView);
     }
     if (walletSlot) {
       await renderWithEffuse(walletSlot, walletTemplate(currentSnapshot));
       bindWalletActions(walletSlot, refreshView);
     }
-    if (queueSlot) {
-      await renderWithEffuse(queueSlot, queueTemplate(currentTasks));
-      bindQueueActions(queueSlot, refreshView);
+    if (executorSlot) {
+      await renderWithEffuse(executorSlot, executorTemplate(currentSnapshot, currentTasks));
+      bindExecutorActions(executorSlot, refreshView);
+    }
+    if (transactionsSlot) {
+      await renderWithEffuse(transactionsSlot, transactionsTemplate(history));
     }
   };
 
@@ -655,6 +878,7 @@ const mount = async (): Promise<void> => {
         currentSnapshot = snapshot;
         currentTasks = tasks;
         uiError = null;
+        loadedSnapshot = true;
       } catch (error) {
         uiError = String(error);
         console.error("[desktop] refresh_failed", error);

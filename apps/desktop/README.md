@@ -16,6 +16,7 @@ This app is the desktop execution boundary for Lightning flows in EP212.
 - Connectivity probes for OpenAgents API and Convex.
 - Background executor loop consumes Convex Lightning tasks and writes deterministic transitions/results.
 - L402 execution path uses `@openagentsinc/lightning-effect` + `@openagentsinc/lnd-effect`.
+- Operational panes for node runtime/sync, wallet state + spend/balance availability, executor queue failure taxonomy, and payment/invoice history.
 
 ## Commands
 
@@ -29,6 +30,7 @@ npm run smoke:lnd-binary -- --json
 npm run smoke:lnd-runtime -- --json
 npm run smoke:lnd-wallet -- --json
 npm run smoke:l402-convex-executor -- --json
+npm run smoke:l402-panes -- --json
 ```
 
 ## Environment
