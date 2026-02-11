@@ -1,0 +1,41 @@
+{
+  "version": "v0.20.0-beta",
+  "releaseBaseUrl": "https://github.com/lightningnetwork/lnd/releases/download/v0.20.0-beta",
+  "targets": {
+    "darwin-amd64": {
+      "archiveFileName": "lnd-darwin-amd64-v0.20.0-beta.tar.gz",
+      "archiveSha256": "a62531e14ceb007ef33fd4115a0028e2b9beeb4d9cdbd528b06ee641853413e4",
+      "binaryRelativePath": "lnd-darwin-amd64-v0.20.0-beta/lnd",
+      "binaryFileName": "lnd",
+      "binarySha256": "41444cbc5ed1e0ef5495e047223b34dee99113851b09fa5ed54912e3bb882221"
+    },
+    "darwin-arm64": {
+      "archiveFileName": "lnd-darwin-arm64-v0.20.0-beta.tar.gz",
+      "archiveSha256": "b873ee5122b5c4e0e1dd07f99eb9fdc599152df070ea0f9ca3fc7c847a458d7b",
+      "binaryRelativePath": "lnd-darwin-arm64-v0.20.0-beta/lnd",
+      "binaryFileName": "lnd",
+      "binarySha256": "06315ce10439d300b320c1610b11a75285656f2c5f50f0b96b42b9ebeee4c491"
+    },
+    "linux-amd64": {
+      "archiveFileName": "lnd-linux-amd64-v0.20.0-beta.tar.gz",
+      "archiveSha256": "88c43d138bb2fb38ccc806da3a2d2a6845cd6a0d6a25b8a3f9ba047a73533557",
+      "binaryRelativePath": "lnd-linux-amd64-v0.20.0-beta/lnd",
+      "binaryFileName": "lnd",
+      "binarySha256": "c437f2b53a729e85691e830a88ec8b2f4ebabbb0df2ebda7a67f378a5c7bbc12"
+    },
+    "linux-arm64": {
+      "archiveFileName": "lnd-linux-arm64-v0.20.0-beta.tar.gz",
+      "archiveSha256": "e4fb51cadd5d2a8d7bc6c4f834abf4605c89d361da328a0948e65fb7036d732a",
+      "binaryRelativePath": "lnd-linux-arm64-v0.20.0-beta/lnd",
+      "binaryFileName": "lnd",
+      "binarySha256": "e694d95bf3512574303314cc23f2b59c53678d536da56b375fa307414e96ba70"
+    },
+    "windows-amd64": {
+      "archiveFileName": "lnd-windows-amd64-v0.20.0-beta.zip",
+      "archiveSha256": "d4424b97d356cea76b372768ae9ef97d3601ac896626bd31bb799c728e221677",
+      "binaryRelativePath": "lnd-windows-amd64-v0.20.0-beta/lnd.exe",
+      "binaryFileName": "lnd.exe",
+      "binarySha256": "78d17136476beb80427f75a26c9b27d4dddb5c6d914d4f2c1ad122125cd68a84"
+    }
+  }
+}

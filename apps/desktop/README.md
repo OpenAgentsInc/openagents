@@ -23,6 +23,8 @@ cd apps/desktop
 npm run dev
 npm run typecheck
 npm test
+npm run lnd:prepare
+npm run smoke:lnd-binary -- --json
 ```
 
 ## Environment
@@ -32,9 +34,38 @@ Optional environment variables:
 - `OA_DESKTOP_OPENAGENTS_BASE_URL` (default: `https://openagents.com`)
 - `OA_DESKTOP_CONVEX_URL` (default: `https://aware-caterpillar-962.convex.cloud`)
 - `OA_DESKTOP_EXECUTOR_TICK_MS` (default: `2000`)
+- `OA_DESKTOP_LND_TARGET` (optional override for bundled target, e.g. `darwin-arm64`)
+- `OA_DESKTOP_LND_DEV_BINARY_PATH` (optional local dev override binary path)
+- `OA_DESKTOP_LND_DEV_BINARY_SHA256` (optional checksum gate for local dev override)
+- `OA_LND_TARGETS` (comma-separated target list for `npm run lnd:prepare`)
 
 ## Security Notes
 
 - Renderer runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`.
 - Auth token state is memory-only in this phase.
 - No Lightning key material is handled in the current implementation.
+- LND binary path resolution and checksum checks execute in main process only.
+
+## LND Binary Packaging (Phase N3)
+
+- Pinned artifacts are declared in `lnd/lnd-artifacts.json` (`v0.20.0-beta`).
+- `npm run lnd:prepare` downloads release artifacts from Lightning Network releases, verifies archive + binary checksums, and stages binaries under `build-resources/lnd`.
+- Forge bundles `build-resources/lnd` via `packagerConfig.extraResource`, so packaged apps receive `resources/lnd/<target>/lnd`.
+- Runtime checksum validation uses `resources/lnd/runtime-manifest.json` and fails closed in packaged mode on mismatch.
+
+### Local Source Override (No hardcoded path)
+
+For local development with a binary built from `/Users/christopherdavid/code/lnd/`, use an environment variable override rather than embedding that path in code:
+
+```bash
+OA_DESKTOP_LND_DEV_BINARY_PATH=/Users/christopherdavid/code/lnd/lnd \
+npm run dev
+```
+
+If you want checksum enforcement in dev mode:
+
+```bash
+OA_DESKTOP_LND_DEV_BINARY_PATH=/Users/christopherdavid/code/lnd/lnd \
+OA_DESKTOP_LND_DEV_BINARY_SHA256=<sha256> \
+npm run dev
+```
