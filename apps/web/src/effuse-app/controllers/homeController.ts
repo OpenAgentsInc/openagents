@@ -58,7 +58,10 @@ const CHECKMARK_ICON_SVG =
 const CHART_ICON_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>'
 
-function copyTextToClipboard(text: string, _source: "pane" | "message"): void {
+const BUG_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8"/><path d="M9 2v2"/><path d="M15 2v2"/><path d="M8 6h8"/><rect x="7" y="6" width="10" height="12" rx="5"/><path d="M3 13h4"/><path d="M17 13h4"/><path d="M5 8l3 2"/><path d="M19 8l-3 2"/><path d="M5 18l3-2"/><path d="M19 18l-3-2"/></svg>'
+
+function copyTextToClipboard(text: string, _source: "pane" | "message" | "metadata-pane"): void {
   if (!text || typeof text !== "string") return
   const execCopy = (): boolean => {
     const ta = document.createElement("textarea")
@@ -89,7 +92,7 @@ function copyTextToClipboard(text: string, _source: "pane" | "message"): void {
   }
   if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
     navigator.clipboard.writeText(text).then(
-      () => {},
+      () => { },
       () => {
         execCopy()
       }
@@ -267,6 +270,9 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     let dseErrorText: string | null = null
     let hasScrolledToBottomOnce = false
     let hasAddedPaneCopyButton = false
+    let hasAddedPaneDebugButton = false
+    let showDebugCards = false
+    let paneDebugButton: HTMLButtonElement | null = null
 
     const startAuthedChat = (input0: { readonly userId: string; readonly user: Session["user"] | null; readonly token: string | null }) => {
       if (!deps?.atoms || !deps.chat) return
@@ -394,12 +400,175 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       return out
     }
 
+    type MessageModelMeta = {
+      readonly modelId: string | null
+      readonly provider: string | null
+      readonly modelRoute: string | null
+      readonly modelFallbackId: string | null
+    }
+
+    type MessageSignatureMeta = {
+      readonly id: string | null
+      readonly state: string | null
+      readonly signatureId: string
+      readonly compiled_id?: string
+      readonly receiptId?: string
+      readonly strategyId?: string
+      readonly strategyReason?: string
+      readonly durationMs?: number
+      readonly budget?: unknown
+      readonly modelId?: string
+      readonly provider?: string
+      readonly modelRoute?: string
+      readonly modelFallbackId?: string
+    }
+
+    type MessageDebugInfo = {
+      readonly sourceKind: "dse" | "llm" | "unknown"
+      readonly sourceReason: string
+      readonly model: MessageModelMeta
+      readonly signatures: ReadonlyArray<MessageSignatureMeta>
+      readonly primarySignature: MessageSignatureMeta | null
+    }
+
+    const asRecord = (value: unknown): Record<string, unknown> | null =>
+      value && typeof value === "object" ? (value as Record<string, unknown>) : null
+
+    const asStringOrNull = (value: unknown): string | null =>
+      typeof value === "string" && value.trim().length > 0 ? value : null
+
+    const signaturesFromParts = (parts: ReadonlyArray<any>): ReadonlyArray<MessageSignatureMeta> =>
+      parts
+        .filter((p) => p && typeof p === "object" && p.type === "dse.signature" && typeof p.signatureId === "string")
+        .map((p) => {
+          const model = asRecord((p as any).model)
+          return {
+            id: asStringOrNull((p as any).id),
+            state: asStringOrNull((p as any).state),
+            signatureId: String((p as any).signatureId),
+            ...(asStringOrNull((p as any).compiled_id) ? { compiled_id: String((p as any).compiled_id) } : {}),
+            ...(asStringOrNull((p as any).receiptId) ? { receiptId: String((p as any).receiptId) } : {}),
+            ...(asStringOrNull((p as any).strategyId) ? { strategyId: String((p as any).strategyId) } : {}),
+            ...(asStringOrNull((p as any).strategyReason) ? { strategyReason: String((p as any).strategyReason) } : {}),
+            ...(typeof (p as any)?.timing?.durationMs === "number" ? { durationMs: Number((p as any).timing.durationMs) } : {}),
+            ...((p as any).budget && typeof (p as any).budget === "object" ? { budget: (p as any).budget } : {}),
+            ...(asStringOrNull(model?.modelId) ? { modelId: String(model?.modelId) } : {}),
+            ...(asStringOrNull(model?.provider) ? { provider: String(model?.provider) } : {}),
+            ...(asStringOrNull(model?.route) ? { modelRoute: String(model?.route) } : {}),
+            ...(asStringOrNull(model?.fallbackModelId) ? { modelFallbackId: String(model?.fallbackModelId) } : {}),
+          } satisfies MessageSignatureMeta
+        })
+
+    const messageDebugInfo = (rawMessage: any): MessageDebugInfo => {
+      const parts = Array.isArray(rawMessage?.parts) ? rawMessage.parts as ReadonlyArray<any> : []
+      const signatures = signaturesFromParts(parts)
+      const finish = asRecord(rawMessage?.finish)
+      const latestSignature = signatures.length > 0 ? signatures[signatures.length - 1] : null
+
+      const model: MessageModelMeta = {
+        modelId: asStringOrNull(finish?.modelId) ?? latestSignature?.modelId ?? null,
+        provider: asStringOrNull(finish?.provider) ?? latestSignature?.provider ?? null,
+        modelRoute: asStringOrNull(finish?.modelRoute) ?? latestSignature?.modelRoute ?? null,
+        modelFallbackId: asStringOrNull(finish?.modelFallbackId) ?? latestSignature?.modelFallbackId ?? null,
+      }
+
+      const sourceKind: MessageDebugInfo["sourceKind"] =
+        signatures.length > 0 ? "dse" : model.modelId || model.provider ? "llm" : "unknown"
+
+      const sourceReason =
+        sourceKind === "dse"
+          ? "dse.signature part recorded"
+          : sourceKind === "llm"
+            ? "LLM finish/model metadata recorded"
+            : "No signature/model metadata recorded"
+
+      return {
+        sourceKind,
+        sourceReason,
+        model,
+        signatures,
+        primarySignature: latestSignature,
+      }
+    }
+
+    const debugRow = (label: string, value: string | number | null | undefined): ReturnType<typeof html> => {
+      if (value == null || value === "") return html``
+      return html`
+        <div class="grid grid-cols-[108px_1fr] gap-2 text-xs leading-relaxed">
+          <div class="text-white/60">${label}</div>
+          <div class="text-white/90 font-mono break-words">${value}</div>
+        </div>
+      `
+    }
+
+    const debugSourceBadge = (kind: MessageDebugInfo["sourceKind"]): ReturnType<typeof html> => {
+      const label = kind === "dse" ? "dse" : kind === "llm" ? "llm" : "unknown"
+      const cls =
+        kind === "dse"
+          ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
+          : kind === "llm"
+            ? "border-blue-400/40 bg-blue-500/10 text-blue-300"
+            : "border-white/30 bg-white/10 text-white/80"
+      return html`<span class="inline-flex items-center rounded border px-2 py-0.5 text-[11px] uppercase tracking-wide ${cls}"
+        >${label}</span
+      >`
+    }
+
+    const renderDebugSignatureFallbackCard = (opts: {
+      readonly messageId: string
+      readonly info: MessageDebugInfo
+    }): ReturnType<typeof html> => {
+      const modelLabel = opts.info.model.provider
+        ? opts.info.model.modelId
+          ? `${opts.info.model.provider}:${opts.info.model.modelId}`
+          : opts.info.model.provider
+        : opts.info.model.modelId
+      return html`
+        <section
+          data-dse-card="1"
+          data-dse-card-title="DSE Signature"
+          data-dse-card-state="${opts.info.sourceKind === "unknown" ? "missing" : opts.info.sourceKind}"
+          class="rounded-lg border border-white/15 bg-white/5 px-3 py-3"
+        >
+          <header class="flex items-center justify-between gap-3">
+            <div class="text-xs text-white/60 uppercase tracking-wider">DSE Signature</div>
+            ${debugSourceBadge(opts.info.sourceKind)}
+          </header>
+          <div class="mt-2 flex flex-col gap-2">
+            ${debugRow("signatureId", "(none)")}
+            ${debugRow("reason", opts.info.sourceReason)}
+            ${debugRow("model", modelLabel ?? null)}
+            ${debugRow("modelRoute", opts.info.model.modelRoute)}
+            ${debugRow("fallbackModelId", opts.info.model.modelFallbackId)}
+            ${debugRow("messageId", opts.messageId)}
+          </div>
+        </section>
+      `
+    }
+
     const messageMetadataJson = (rawMessage: any, threadId: string | null, userId?: string | null): string => {
       const parts = Array.isArray(rawMessage?.parts) ? rawMessage.parts as ReadonlyArray<any> : []
+      const debug = messageDebugInfo(rawMessage)
       const partsSummary = parts.map((p: any) => {
         const base = { type: p?.type ?? "?", id: p?.id ?? p?.signatureId }
         if (p?.type === "dse.signature" || p?.signatureId) {
-          return { ...base, signatureId: p.signatureId, strategyId: p.strategyId, strategyReason: p.strategyReason, compiled_id: p.compiled_id, receiptId: p.receiptId, state: p.state, durationMs: p.timing?.durationMs, budget: p.budget, errorText: p.errorText }
+          const model = asRecord(p?.model)
+          return {
+            ...base,
+            signatureId: p.signatureId,
+            strategyId: p.strategyId,
+            strategyReason: p.strategyReason,
+            compiled_id: p.compiled_id,
+            receiptId: p.receiptId,
+            state: p.state,
+            durationMs: p.timing?.durationMs,
+            budget: p.budget,
+            ...(asStringOrNull(model?.modelId) ? { modelId: model?.modelId } : {}),
+            ...(asStringOrNull(model?.provider) ? { provider: model?.provider } : {}),
+            ...(asStringOrNull(model?.route) ? { modelRoute: model?.route } : {}),
+            ...(asStringOrNull(model?.fallbackModelId) ? { modelFallbackId: model?.fallbackModelId } : {}),
+            errorText: p.errorText,
+          }
         }
         if (p?.type === "dse.compile") return { ...base, state: p.state, errorText: p.errorText }
         if (p?.type === "dse.tool" || p?.toolCallId) return { ...base, toolCallId: p.toolCallId, state: p.state }
@@ -408,7 +577,12 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       const payload: Record<string, unknown> = {
         messageId: rawMessage?.id ?? null,
         threadId,
+        runId: rawMessage?.runId ?? null,
         role: rawMessage?.role ?? null,
+        source: { kind: debug.sourceKind, reason: debug.sourceReason },
+        model: debug.model,
+        signature: debug.primarySignature,
+        signatures: debug.signatures,
         parts: partsSummary,
       }
       if (rawMessage?.finish != null && typeof rawMessage.finish === "object") {
@@ -629,6 +803,9 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                     </div>`
             }
 
+            const rawMsg = homeSnapshot.messages.find((msg: any) => String(msg?.id) === String(m.id))
+            const debugInfo = messageDebugInfo(rawMsg ?? { id: m.id, role: m.role, parts: [] })
+            const hasDseSignaturePart = (m.renderParts as any[]).some((p) => p?.kind === "dse-signature")
             const partEls = (m.renderParts as any[]).map((p) => {
               if (p.kind === "text") {
                 return streamdown(p.text, {
@@ -638,18 +815,27 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 })
               }
               if (p.kind === "tool") return renderToolPart(p.model)
-              if (p.kind === "dse-signature") return renderDseSignatureCard(p.model)
-              if (p.kind === "dse-compile") return renderDseCompileCard(p.model)
-              if (p.kind === "dse-promote") return renderDsePromoteCard(p.model)
-              if (p.kind === "dse-rollback") return renderDseRollbackCard(p.model)
-              if (p.kind === "dse-budget-exceeded") return renderDseBudgetExceededCard(p.model)
+              if (p.kind === "dse-signature") return showDebugCards ? renderDseSignatureCard(p.model) : html``
+              if (p.kind === "dse-compile") return showDebugCards ? renderDseCompileCard(p.model) : html``
+              if (p.kind === "dse-promote") return showDebugCards ? renderDsePromoteCard(p.model) : html``
+              if (p.kind === "dse-rollback") return showDebugCards ? renderDseRollbackCard(p.model) : html``
+              if (p.kind === "dse-budget-exceeded") return showDebugCards ? renderDseBudgetExceededCard(p.model) : html``
               return html``
             })
             const copyText = textFromRenderParts(m.renderParts as any)
-            const rawMsg = homeSnapshot.messages.find((msg: any) => String(msg?.id) === String(m.id))
-            const metadataJson = messageMetadataJson(rawMsg ?? { id: m.id, role: m.role, parts: [] }, homeThreadId)
+            const metadataJson = messageMetadataJson(
+              rawMsg ?? { id: m.id, role: m.role, parts: [], runId: null },
+              homeThreadId
+            )
+            const debugFallbackCard =
+              showDebugCards && !hasDseSignaturePart
+                ? renderDebugSignatureFallbackCard({ messageId: m.id, info: debugInfo })
+                : null
             return html`<div class="group text-sm font-mono text-white/90" data-chat-role="assistant">
-                    <div class="flex flex-col gap-2">${partEls}</div>
+                    <div class="flex flex-col gap-2">
+                      ${partEls}
+                      ${debugFallbackCard}
+                    </div>
                     <span data-oa-copy-source style="display:none">${copyText}</span>
                     <span data-oa-message-metadata style="display:none">${metadataJson}</span>
                     <div class="mt-0.5 w-fit flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
@@ -673,8 +859,14 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                       </div>`
               : html`<div class="group text-sm font-mono text-white/90" data-chat-role="assistant">
                         ${streamdown(m.text, { mode: "static" })}
+                        ${showDebugCards
+                ? renderDebugSignatureFallbackCard({
+                  messageId: "inline-static",
+                  info: messageDebugInfo({ id: null, role: m.role, parts: [], runId: null }),
+                })
+                : null}
                         <span data-oa-copy-source style="display:none">${m.text}</span>
-                        <span data-oa-message-metadata style="display:none">${messageMetadataJson({ id: null, role: m.role, parts: [] }, homeThreadId)}</span>
+                        <span data-oa-message-metadata style="display:none">${messageMetadataJson({ id: null, role: m.role, parts: [], runId: null }, homeThreadId)}</span>
                         <div class="mt-0.5 w-fit flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
                           <button type="button" data-oa-home-chat-telemetry class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open trace">${rawHtml(CHART_ICON_SVG)}</button>
                           <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Copy</button>
@@ -709,6 +901,13 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
         }).pipe(Effect.provide(EffuseLive)),
       ).then(
         () => {
+          const syncDebugButtonState = () => {
+            if (!(paneDebugButton instanceof HTMLButtonElement)) return
+            paneDebugButton.setAttribute("aria-pressed", showDebugCards ? "true" : "false")
+            paneDebugButton.style.color = showDebugCards ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.55)"
+            paneDebugButton.style.opacity = showDebugCards ? "1" : "0.8"
+          }
+
           if (!hasAddedPaneCopyButton) {
             const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
             if (titleActions instanceof HTMLElement) {
@@ -735,6 +934,34 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               hasAddedPaneCopyButton = true
             }
           }
+          if (!hasAddedPaneDebugButton) {
+            const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
+            if (titleActions instanceof HTMLElement) {
+              const debugBtn = document.createElement("button")
+              debugBtn.setAttribute("type", "button")
+              debugBtn.setAttribute("aria-label", "Toggle debug cards")
+              debugBtn.setAttribute("title", "Toggle debug cards")
+              debugBtn.innerHTML = BUG_ICON_SVG
+              debugBtn.style.transition = "color 120ms ease, opacity 120ms ease"
+              debugBtn.addEventListener(
+                "pointerdown",
+                (e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.stopImmediatePropagation()
+                  showDebugCards = !showDebugCards
+                  syncDebugButtonState()
+                  doRender()
+                },
+                { capture: true }
+              )
+              titleActions.appendChild(debugBtn)
+              paneDebugButton = debugBtn
+              hasAddedPaneDebugButton = true
+            }
+          }
+          syncDebugButtonState()
 
           const messagesEl = paneContentSlot.querySelector("[data-oa-home-chat-messages]")
           if (messagesEl instanceof HTMLElement) {
@@ -926,7 +1153,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                         html`<div class="p-4 h-full overflow-auto bg-black"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${metaJson}</pre></div>`
                       )
                     }).pipe(Effect.provide(EffuseLive))
-                  ).catch(() => {})
+                  ).catch(() => { })
                 }
               },
               { capture: true }
@@ -966,7 +1193,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                         html`<div class="p-4 h-full overflow-auto"><pre class="text-xs font-mono text-white/80 whitespace-pre-wrap break-all">${traceJson}</pre></div>`
                       )
                     }).pipe(Effect.provide(EffuseLive))
-                  ).catch(() => {})
+                  ).catch(() => { })
                 }
               },
               { capture: true }

@@ -152,6 +152,8 @@ export const ChatServiceLive = Layer.effect(
               ...(usage && Object.keys(usage).length > 0 ? { usage } : {}),
               ...(typeof raw?.modelId === "string" ? { modelId: raw.modelId } : {}),
               ...(typeof raw?.provider === "string" ? { provider: raw.provider } : {}),
+              ...(typeof raw?.modelRoute === "string" ? { modelRoute: raw.modelRoute } : {}),
+              ...(typeof raw?.modelFallbackId === "string" ? { modelFallbackId: raw.modelFallbackId } : {}),
             });
           }
 
@@ -171,7 +173,12 @@ export const ChatServiceLive = Layer.effect(
             if (role === "assistant") {
               const active = byMessageId.get(messageId);
               const finish = finishByMessageId.get(messageId);
-              const baseMsg = { id: messageId, role: "assistant" as const, finish } as const;
+              const baseMsg = {
+                id: messageId,
+                role: "assistant" as const,
+                finish,
+                ...(runId ? { runId } : {}),
+              } as const;
               if (active && active.parts.length > 0) {
                 messages.push({ ...baseMsg, parts: [...active.parts] });
               } else if (text.trim()) {

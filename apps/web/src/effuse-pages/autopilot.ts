@@ -28,6 +28,10 @@ export type DseSignatureCardModel = {
   readonly signatureId: string;
   readonly compiled_id?: string | undefined;
   readonly receiptId?: string | undefined;
+  readonly modelId?: string | undefined;
+  readonly provider?: string | undefined;
+  readonly modelRoute?: string | undefined;
+  readonly modelFallbackId?: string | undefined;
   readonly strategyId?: string | undefined;
   readonly strategyReason?: string | undefined;
   readonly durationMs?: number | undefined;
@@ -242,6 +246,10 @@ export const renderDseSignatureCard = (m: DseSignatureCardModel): TemplateResult
   const body = html`
     ${dseRow("signatureId", m.signatureId)}
     ${dseRow("compiled_id", m.compiled_id)}
+    ${dseRow("modelId", m.modelId)}
+    ${dseRow("provider", m.provider)}
+    ${dseRow("modelRoute", m.modelRoute)}
+    ${dseRow("fallbackModelId", m.modelFallbackId)}
     ${dseRow("durationMs", m.durationMs)}
     ${dseRow("receiptId", m.receiptId)}
     ${m.receiptId

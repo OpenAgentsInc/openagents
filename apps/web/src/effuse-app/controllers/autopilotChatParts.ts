@@ -387,6 +387,22 @@ export function toAutopilotRenderParts(input: {
         signatureId: p.signatureId,
         compiled_id: p.compiled_id,
         receiptId: p.receiptId,
+        modelId:
+          p.model && typeof p.model === "object" && typeof (p.model as any).modelId === "string"
+            ? String((p.model as any).modelId)
+            : undefined,
+        provider:
+          p.model && typeof p.model === "object" && typeof (p.model as any).provider === "string"
+            ? String((p.model as any).provider)
+            : undefined,
+        modelRoute:
+          p.model && typeof p.model === "object" && typeof (p.model as any).route === "string"
+            ? String((p.model as any).route)
+            : undefined,
+        modelFallbackId:
+          p.model && typeof p.model === "object" && typeof (p.model as any).fallbackModelId === "string"
+            ? String((p.model as any).fallbackModelId)
+            : undefined,
         strategyId: typeof (p as any).strategyId === "string" ? (p as any).strategyId : undefined,
         strategyReason: typeof (p as any).strategyReason === "string" ? (p as any).strategyReason : undefined,
         durationMs: p.timing?.durationMs,
