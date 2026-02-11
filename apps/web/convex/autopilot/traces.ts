@@ -17,6 +17,9 @@ const sortedUniqueRunIds = (runs: ReadonlyArray<{ readonly runId: string }>): Re
     a.localeCompare(b),
   );
 
+const tryOrFallback = <A, E, R>(effect: Effect.Effect<A, E, R>, fallback: A): Effect.Effect<A, never, R> =>
+  effect.pipe(Effect.catchAll(() => Effect.succeed(fallback)));
+
 export const getThreadTraceBundleImpl = (
   ctx: EffectQueryCtx,
   args: {
@@ -42,92 +45,122 @@ export const getThreadTraceBundleImpl = (
     const includeDseState = args.includeDseState === true;
     const maxDseRowsPerRun = clampLimit(args.maxDseRowsPerRun, 200, 2_000);
 
-    const messages = yield* tryPromise(() =>
-      ctx.db
-        .query("messages")
-        .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
-        .order("asc")
-        .take(maxMessages),
+    const messages = yield* tryOrFallback(
+      tryPromise(() =>
+        ctx.db
+          .query("messages")
+          .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
+          .order("asc")
+          .take(maxMessages),
+      ),
+      [],
     );
 
-    const parts = yield* tryPromise(() =>
-      ctx.db
-        .query("messageParts")
-        .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
-        .order("asc")
-        .take(maxParts),
+    const parts = yield* tryOrFallback(
+      tryPromise(() =>
+        ctx.db
+          .query("messageParts")
+          .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
+          .order("asc")
+          .take(maxParts),
+      ),
+      [],
     );
 
-    const runs = yield* tryPromise(() =>
-      ctx.db
-        .query("runs")
-        .withIndex("by_threadId_updatedAtMs", (q) => q.eq("threadId", args.threadId))
-        .order("asc")
-        .take(maxRuns),
+    const runs = yield* tryOrFallback(
+      tryPromise(() =>
+        ctx.db
+          .query("runs")
+          .withIndex("by_threadId_updatedAtMs", (q) => q.eq("threadId", args.threadId))
+          .order("asc")
+          .take(maxRuns),
+      ),
+      [],
     );
 
-    const receipts = yield* tryPromise(() =>
-      ctx.db
-        .query("receipts")
-        .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
-        .order("asc")
-        .take(maxReceipts),
+    const receipts = yield* tryOrFallback(
+      tryPromise(() =>
+        ctx.db
+          .query("receipts")
+          .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
+          .order("asc")
+          .take(maxReceipts),
+      ),
+      [],
     );
 
-    const featureRequests = yield* tryPromise(() =>
-      ctx.db
-        .query("autopilotFeatureRequests")
-        .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
-        .order("asc")
-        .take(maxFeatureRequests),
+    const featureRequests = yield* tryOrFallback(
+      tryPromise(() =>
+        ctx.db
+          .query("autopilotFeatureRequests")
+          .withIndex("by_threadId_createdAtMs", (q) => q.eq("threadId", args.threadId))
+          .order("asc")
+          .take(maxFeatureRequests),
+      ),
+      [],
     );
 
-    const blueprint = yield* tryPromise(() =>
-      ctx.db
-        .query("blueprints")
-        .withIndex("by_threadId", (q) => q.eq("threadId", args.threadId))
-        .unique(),
+    const blueprint = yield* tryOrFallback(
+      tryPromise(() =>
+        ctx.db
+          .query("blueprints")
+          .withIndex("by_threadId", (q) => q.eq("threadId", args.threadId))
+          .unique(),
+      ),
+      null,
     );
 
     const runIds = sortedUniqueRunIds(
-      runs.map((run) => ({
-        runId: String((run as { runId?: unknown }).runId ?? "").trim(),
-      })),
+      runs
+        .map((run) => (typeof run.runId === "string" ? { runId: run.runId.trim() } : null))
+        .filter((row): row is { readonly runId: string } => row !== null),
     );
 
     const dseBlobs =
       includeDseState && runIds.length > 0
-        ? yield* Effect.forEach(
-            runIds,
-            (runId) =>
-              tryPromise(() =>
-                ctx.db
-                  .query("dseBlobs")
-                  .withIndex("by_threadId_runId_blobId", (q) => q.eq("threadId", args.threadId).eq("runId", runId))
-                  .order("asc")
-                  .take(maxDseRowsPerRun),
-              ),
-            { discard: false },
-          ).pipe(Effect.map((groups) => groups.flatMap((group) => group)))
+        ? yield* tryOrFallback(
+            Effect.forEach(
+              runIds,
+              (runId) =>
+                tryPromise(() =>
+                  ctx.db
+                    .query("dseBlobs")
+                    .withIndex("by_threadId_runId_blobId", (q) => q.eq("threadId", args.threadId).eq("runId", runId))
+                    .order("asc")
+                    .take(maxDseRowsPerRun),
+                ),
+              { discard: false },
+            ).pipe(Effect.map((groups) => groups.flatMap((group) => group))),
+            [],
+          )
         : [];
 
     const dseVars =
       includeDseState && runIds.length > 0
-        ? yield* Effect.forEach(
-            runIds,
-            (runId) =>
-              tryPromise(() =>
-                ctx.db
-                  .query("dseVarSpace")
-                  .withIndex("by_threadId_runId_updatedAtMs", (q) =>
-                    q.eq("threadId", args.threadId).eq("runId", runId),
-                  )
-                  .order("asc")
-                  .take(maxDseRowsPerRun),
-              ),
-            { discard: false },
-          ).pipe(Effect.map((groups) => groups.flatMap((group) => group)))
+        ? yield* tryOrFallback(
+            Effect.forEach(
+              runIds,
+              (runId) =>
+                tryPromise(() =>
+                  ctx.db
+                    .query("dseVarSpace")
+                    .withIndex("by_threadId_runId_updatedAtMs", (q) =>
+                      q.eq("threadId", args.threadId).eq("runId", runId),
+                    )
+                    .order("asc")
+                    .take(maxDseRowsPerRun),
+                ),
+              { discard: false },
+            ).pipe(Effect.map((groups) => groups.flatMap((group) => group))),
+            [],
+          )
         : [];
+
+    if (messages.length === 0 && parts.length === 0 && runs.length === 0 && receipts.length === 0) {
+      yield* Effect.logWarning(
+        `[autopilot.traces] empty trace bundle for thread=${args.threadId} (may indicate missing index/table access in this deployment)`,
+      );
+    }
 
     return {
       ok: true as const,
