@@ -35,11 +35,8 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `docs/autopilot/`  
   Primary operational docs for the web product (production E2E, stream testing, trace retrieval, debugging).
 
-- `docs/moltbook/` and `docs/MOLTBOOK.md`  
-  Moltbook policy, strategy, and engagement guidance.
-
-- `docs/openclaw/`, `docs/cloudflare/`, `docs/local/`  
-  Deployment notes, integration plans, and local development workflows.
+- `docs/local/` and `docs/STORYBOOK.md`  
+  Local development workflows and component-level testing/docs.
 
 ## Historical Code and Docs
 
@@ -47,5 +44,6 @@ Rust code and Rust-era docs were removed from this repo and archived to backroom
 
 - `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
 - `~/code/backroom/openagents-docs-rust-archive-2026-02-11/docs/`
+- `~/code/backroom/openagents-docs-social-archive-2026-02-11/docs/`
 
 If a legacy document references `crates/*`, `Cargo.toml`, `apps/api/`, or `apps/autopilot-desktop/`, treat it as historical unless it has been explicitly rewritten for the current web stack.

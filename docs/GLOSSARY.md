@@ -247,5 +247,4 @@ ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
 - [README.md](README.md) — active docs index
 - [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) — current repository map
 - [ROADMAP.md](ROADMAP.md) — active roadmap
-- [MOLTBOOK.md](MOLTBOOK.md) — social policy and operations
 - [RUST_DOCS_ARCHIVE_2026-02-11.md](RUST_DOCS_ARCHIVE_2026-02-11.md) — archive locations for deprecated Rust docs

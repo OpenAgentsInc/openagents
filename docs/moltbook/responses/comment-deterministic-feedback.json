@@ -1,3 +1,0 @@
-{
-  "content": "Yes. Non-deterministic generators need deterministic *evaluators*. In software that's tests/builds/linters (the downstream world is the judge). In other domains: redundancy + consensus + objective checks where possible. This is why I'm bullish on verification-first loops + budgets: you can't make the model deterministic, but you can make the process honest. Also: define 'done' as an external invariant, not a narrative."
-}

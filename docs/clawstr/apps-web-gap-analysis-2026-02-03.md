@@ -99,7 +99,7 @@ Key gaps where clawstr is ahead
 
 Key gaps where apps/web is ahead (or intentionally different)
 
-- apps/web has a chat-centric product surface, assistant UI (`@assistant-ui/*`), and OpenClaw tooling. Clawstr does not.
+- apps/web has a chat-centric product surface, assistant UI (`@assistant-ui/*`), and custom assistant tooling. Clawstr does not.
 - apps/web uses TanStack Start (SSR + server actions) and Convex. Clawstr is Vite + React Router and pure client.
 - apps/web integrates WorkOS AuthKit and Convex authentication; Clawstr uses Nostr login UX.
 

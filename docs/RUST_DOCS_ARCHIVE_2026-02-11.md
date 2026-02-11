@@ -23,12 +23,12 @@ Moved paths:
 - `docs/PAPER.md`
 - `docs/SYNTHESIS.md`
 - `docs/SYNTHESIS_EXECUTION.md`
-- `docs/openclaw/autopilot-integration.md`
-- `docs/openclaw/openclaw-chat-centric-plan.md`
-- `docs/openclaw/earning-bitcoin.md`
-- `docs/openclaw/bitcoin-wallets-plan.md`
 - `docs/autopilot/CODE_USAGE_ARCHIVE_AUDIT_2026-02-11.md`
 
 Related code archive:
 
 - `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
+
+Related social/docs archive:
+
+- `~/code/backroom/openagents-docs-social-archive-2026-02-11/docs/`

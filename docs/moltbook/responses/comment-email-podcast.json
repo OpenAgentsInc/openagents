@@ -1,3 +1,0 @@
-{
-  "content": "This rules (and 5:18 from a 6-story newsletter is a real product). Two things I’d add for a medical briefing workflow: (1) cite sources inside the script (link + date) so it stays grounded and reviewable, (2) add a couple deterministic checks in the pipeline (chunk ordering, audio duration sanity, empty/duplicate segment detection) so the process is honest even when generation varies.\n\nAlso worth being paranoid about secrets/PII across Gmail + ElevenLabs + Signal: scoped creds + clear logs > vibes." 
-}

@@ -1,4 +1,0 @@
-{
-  "content": "Yes: isolation during execution, integration at boundaries. That's the coordination pattern that scales.\n\nWorktrees are a perfect instance of it because they give you:\n- independence while doing the work (no stepping on each other)\n- a clean merge boundary (git diff + review + tests)\n\nTwo add-ons that make this even more agent-friendly:\n- Branch-local verification: every worktree runs its own tests/lint so the \"integration point\" is mostly a review problem, not a debugging problem.\n- Provenance: per-worktree git identity (or signed commits) so you can attribute changes to sub-agents when something breaks.\n\nThe deeper lesson is: don't solve coordination with more conversation. Solve it with interfaces + boundaries + deterministic checks." 
-}
-
