@@ -4,6 +4,11 @@ import * as Path from "node:path"
 import { Cause, Effect, Layer, Scope } from "effect"
 
 import { BrowserService, BrowserServiceLive, BrowserServiceNone } from "../browser/BrowserService.ts"
+import {
+  EffuseTestConfig,
+  EffuseTestConfigLive,
+  type EffuseTestConfigOverrides,
+} from "../config/EffuseTestConfig.ts"
 import { ProbeServiceLive, ProbeService } from "../effect/ProbeService.ts"
 import { CurrentSpanId } from "../effect/span.ts"
 import type { SpanId, TestCase, TestStatus } from "../spec.ts"
@@ -43,19 +48,25 @@ export type RunnerOptions = {
   readonly watch: boolean
   readonly grep?: string
   readonly tags?: ReadonlyArray<string>
+  readonly configOverrides?: EffuseTestConfigOverrides
 }
 
 const defaultArtifactsRoot = (runId: string) =>
   Path.resolve(process.cwd(), "../../output/effuse-test", runId)
 
-type TestEnv = ProbeService | BrowserService | TestContext | Scope.Scope
+type TestEnv = ProbeService | BrowserService | TestContext | EffuseTestConfig | Scope.Scope
 
-const selectSuite = (projectDir: string): ReadonlyArray<TestCase<TestEnv>> => {
-  // v1: only apps/web is supported.
-  const normalized = projectDir.replaceAll("\\", "/")
-  if (normalized.endsWith("/apps/web")) return appsWebSuite()
-  throw new Error(`Unsupported projectDir for v1 runner: ${projectDir}`)
-}
+const selectSuite = (
+  projectDir: string,
+): Effect.Effect<ReadonlyArray<TestCase<TestEnv>>, RunnerError, EffuseTestConfig> =>
+  Effect.gen(function* () {
+    // v1: only apps/web is supported.
+    const normalized = projectDir.replaceAll("\\", "/")
+    if (normalized.endsWith("/apps/web")) return yield* appsWebSuite()
+    return yield* Effect.fail(
+      new RunnerError("select suite", `Unsupported projectDir for v1 runner: ${projectDir}`),
+    )
+  })
 
 const filterTests = (tests: ReadonlyArray<TestCase<TestEnv>>, options: RunnerOptions): ReadonlyArray<TestCase<TestEnv>> => {
   let out = tests
@@ -86,6 +97,7 @@ const filterTests = (tests: ReadonlyArray<TestCase<TestEnv>>, options: RunnerOpt
 export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
   Effect.scoped(
     Effect.gen(function* () {
+      const config = yield* EffuseTestConfig
       const runId = crypto.randomUUID()
       const runStart = Date.now()
       const artifactsRoot = defaultArtifactsRoot(runId)
@@ -93,7 +105,10 @@ export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
         Fs.mkdir(artifactsRoot, { recursive: true }),
       )
 
-      const tests = filterTests(selectSuite(options.projectDir), options)
+      const tests = filterTests(
+        yield* selectSuite(options.projectDir),
+        options,
+      )
       if (tests.length === 0) {
         yield* Effect.logWarning("No tests selected")
         return
@@ -122,8 +137,17 @@ export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
 
       const server = baseUrl
         ? ({ baseUrl } satisfies { readonly baseUrl: string })
-        : yield* startWranglerDev({ projectDir: options.projectDir, port: options.serverPort })
-      const browserLayer = needsBrowser ? BrowserServiceLive({ headless: options.headless }) : BrowserServiceNone
+        : yield* startWranglerDev({
+            projectDir: options.projectDir,
+            port: options.serverPort,
+            env: config.childProcessEnv,
+          })
+      const browserLayer = needsBrowser
+        ? BrowserServiceLive({
+            headless: options.headless,
+            chromePath: config.chromePath,
+          })
+        : BrowserServiceNone
 
       const mainLayer = Layer.mergeAll(probeLayer, browserLayer)
 
@@ -296,6 +320,7 @@ export const run = (options: RunnerOptions): Effect.Effect<void, RunnerError> =>
       yield* main
     }),
   ).pipe(
+    Effect.provide(EffuseTestConfigLive(options.configOverrides)),
     Effect.mapError((cause) =>
       cause instanceof RunnerError ? cause : new RunnerError("run", cause),
     ),

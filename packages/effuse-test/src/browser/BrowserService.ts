@@ -162,8 +162,6 @@ const getFreePort = (): Promise<number> =>
 
 const findChrome = async (explicit?: string): Promise<string> => {
   if (explicit) return explicit
-  const envPath = process.env.EFFUSE_TEST_CHROME_PATH
-  if (envPath) return envPath
 
   if (process.platform === "darwin") {
     const candidates = [

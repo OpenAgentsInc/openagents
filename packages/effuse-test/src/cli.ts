@@ -47,30 +47,112 @@ const tag = Options.text("tag").pipe(
   Options.withDescription("Comma-separated tags to filter (OR semantics)"),
 )
 
+const chromePath = Options.text("chrome-path").pipe(
+  Options.optional,
+  Options.withDescription("Override Chromium executable path (equivalent to EFFUSE_TEST_CHROME_PATH)"),
+)
+
+const updateSnapshots = Options.text("update-snapshots").pipe(
+  Options.optional,
+  Options.withDescription("Override snapshot update mode: true|false (or 1|0, yes|no)"),
+)
+
+const e2eBypassSecret = Options.text("e2e-bypass-secret").pipe(
+  Options.optional,
+  Options.withDescription("Override E2E bypass secret (equivalent to EFFUSE_TEST_E2E_BYPASS_SECRET)"),
+)
+
+const magicEmail = Options.text("magic-email").pipe(
+  Options.optional,
+  Options.withDescription("Override magic-login email (must be set with --magic-code)"),
+)
+
+const magicCode = Options.text("magic-code").pipe(
+  Options.optional,
+  Options.withDescription("Override magic-login code (must be set with --magic-email)"),
+)
+
+const parseBooleanFlag = (
+  flag: string,
+  raw: string | undefined,
+): Effect.Effect<boolean | undefined, Error> =>
+  Effect.gen(function* () {
+    if (raw === undefined) return undefined
+    const value = raw.trim().toLowerCase()
+    if (value === "1" || value === "true" || value === "yes") return true
+    if (value === "0" || value === "false" || value === "no") return false
+    return yield* Effect.fail(
+      new Error(`Invalid --${flag} value "${raw}". Expected one of: 1,true,yes,0,false,no`),
+    )
+  })
+
 const runCommand = Command.make(
   "run",
-  { project, serverPort, baseUrl, viewerPort, watch, headed, headless, grep, tag },
-  ({ project, serverPort, baseUrl, viewerPort, watch, headed, headless, grep, tag }) => {
+  {
+    project,
+    serverPort,
+    baseUrl,
+    viewerPort,
+    watch,
+    headed,
+    headless,
+    grep,
+    tag,
+    chromePath,
+    updateSnapshots,
+    e2eBypassSecret,
+    magicEmail,
+    magicCode,
+  },
+  ({
+    project,
+    serverPort,
+    baseUrl,
+    viewerPort,
+    watch,
+    headed,
+    headless,
+    grep,
+    tag,
+    chromePath,
+    updateSnapshots,
+    e2eBypassSecret,
+    magicEmail,
+    magicCode,
+  }) => {
     if (headed && headless) {
       return Effect.fail(new Error("Cannot set both --headed and --headless"))
     }
 
-    const resolvedProject = Path.resolve(process.cwd(), project)
-    const shouldWatch = watch
-    const finalHeadless = shouldWatch ? false : headed ? false : headless ? true : true
-    const resolvedBaseUrl = Option.getOrUndefined(baseUrl)
-    const tagsRaw = Option.getOrUndefined(tag)
-    const tags = tagsRaw ? tagsRaw.split(",").map((s) => s.trim()).filter(Boolean) : undefined
+    return Effect.gen(function* () {
+      const resolvedProject = Path.resolve(process.cwd(), project)
+      const shouldWatch = watch
+      const finalHeadless = shouldWatch ? false : headed ? false : headless ? true : true
+      const resolvedBaseUrl = Option.getOrUndefined(baseUrl)
+      const tagsRaw = Option.getOrUndefined(tag)
+      const tags = tagsRaw ? tagsRaw.split(",").map((s) => s.trim()).filter(Boolean) : undefined
+      const resolvedUpdateSnapshots = yield* parseBooleanFlag(
+        "update-snapshots",
+        Option.getOrUndefined(updateSnapshots),
+      )
 
-    return run({
-      projectDir: resolvedProject,
-      serverPort,
-      baseUrl: resolvedBaseUrl,
-      viewerPort,
-      headless: finalHeadless,
-      watch: shouldWatch,
-      grep: Option.getOrUndefined(grep),
-      tags,
+      return yield* run({
+        projectDir: resolvedProject,
+        serverPort,
+        baseUrl: resolvedBaseUrl,
+        viewerPort,
+        headless: finalHeadless,
+        watch: shouldWatch,
+        grep: Option.getOrUndefined(grep),
+        tags,
+        configOverrides: {
+          chromePath: Option.getOrUndefined(chromePath),
+          updateSnapshots: resolvedUpdateSnapshots,
+          e2eBypassSecret: Option.getOrUndefined(e2eBypassSecret),
+          magicEmail: Option.getOrUndefined(magicEmail),
+          magicCode: Option.getOrUndefined(magicCode),
+        },
+      })
     })
   },
 ).pipe(Command.withDescription("Run Effuse browser / integration tests"))
