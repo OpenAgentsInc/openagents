@@ -695,7 +695,7 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             paneContentSlot,
             html`
               <div
-                class="flex flex-col h-full min-h-0"
+                class="flex flex-col h-full min-h-0 bg-black"
                 data-oa-home-chat-root="1"
                 data-oa-home-chat-status="${homeSnapshot.status}"
               >
@@ -890,6 +890,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 })
                 paneSystem.store.bringToFront(paneId)
                 paneSystem.render()
+                const metadataPaneEl = paneRoot.querySelector(`[data-pane-id="${paneId}"]`)
+                if (metadataPaneEl instanceof HTMLElement) metadataPaneEl.style.background = "#000"
                 const slot = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-content]`)
                 const titleActions = paneRoot.querySelector(`[data-pane-id="${paneId}"] [data-oa-pane-title-actions]`)
                 const metaJson = JSON.stringify(meta, null, 2)
