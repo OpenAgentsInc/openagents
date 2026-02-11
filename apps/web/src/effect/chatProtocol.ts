@@ -38,6 +38,12 @@ export type ChatDseSignaturePart = ChatDseBasePart & {
   readonly signatureId: string
   readonly compiled_id?: string
   readonly receiptId?: string
+  readonly model?: {
+    readonly modelId?: string
+    readonly provider?: string
+    readonly route?: string
+    readonly fallbackModelId?: string
+  }
   readonly strategyId?: string
   readonly strategyReason?: string
   readonly timing?: { readonly durationMs?: number }
@@ -114,12 +120,15 @@ export type ChatMessageFinish = {
   }
   readonly modelId?: string
   readonly provider?: string
+  readonly modelRoute?: string
+  readonly modelFallbackId?: string
 }
 
 export type ChatMessage = {
   readonly id: string
   readonly role: ChatRole
   readonly parts: ReadonlyArray<ChatPart>
+  readonly runId?: string
   /** Present for assistant messages when the stream included a finish part (LLM usage/model). */
   readonly finish?: ChatMessageFinish
 }

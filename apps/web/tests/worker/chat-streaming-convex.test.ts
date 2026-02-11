@@ -232,6 +232,9 @@ describe("apps/web worker autopilot streaming (Convex-first)", () => {
     const finishParts = appended.filter((p: any) => p?.part?.type === "finish");
     expect(finishParts.length).toBeGreaterThan(0);
     expect(finishParts[0]?.part?.usage?.totalTokens).toBeGreaterThan(0);
+    expect(typeof finishParts[0]?.part?.modelId).toBe("string");
+    expect(typeof finishParts[0]?.part?.provider).toBe("string");
+    expect(typeof finishParts[0]?.part?.modelRoute).toBe("string");
 
     // Seq must be monotonic within the batch.
     const seqs = appended.map((p: any) => Number(p.seq));

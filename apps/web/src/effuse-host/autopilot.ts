@@ -549,6 +549,12 @@ const runDseCanaryRecap = (input: {
           contextPressure?: unknown;
           promptRenderStats?: unknown;
           rlmTrace?: unknown;
+          model?: {
+            modelId?: string;
+            provider?: string;
+            route?: string;
+            fallbackModelId?: string;
+          };
         };
         let recordedReceipt: DseReceiptShape | null = null;
         const onReceipt = (r: unknown) => {
@@ -656,6 +662,28 @@ const runDseCanaryRecap = (input: {
             signatureId,
             compiled_id: receipt?.compiled_id,
             receiptId: receipt?.receiptId,
+            model:
+              receipt?.model &&
+                typeof receipt.model === "object" &&
+                (typeof (receipt.model as any).modelId === "string" ||
+                  typeof (receipt.model as any).provider === "string" ||
+                  typeof (receipt.model as any).route === "string" ||
+                  typeof (receipt.model as any).fallbackModelId === "string")
+                ? {
+                  ...(typeof (receipt.model as any).modelId === "string"
+                    ? { modelId: String((receipt.model as any).modelId) }
+                    : {}),
+                  ...(typeof (receipt.model as any).provider === "string"
+                    ? { provider: String((receipt.model as any).provider) }
+                    : {}),
+                  ...(typeof (receipt.model as any).route === "string"
+                    ? { route: String((receipt.model as any).route) }
+                    : {}),
+                  ...(typeof (receipt.model as any).fallbackModelId === "string"
+                    ? { fallbackModelId: String((receipt.model as any).fallbackModelId) }
+                    : {}),
+                }
+                : undefined,
             timing: receipt?.timing,
             budget: receipt?.budget,
             strategyId: receipt?.strategyId,
@@ -930,6 +958,23 @@ const runAutopilotStream = (input: {
           })
           : workersAiModel
       );
+      const finishModelDefaults: {
+        readonly modelId: string;
+        readonly provider: string;
+        readonly modelRoute: string;
+        readonly modelFallbackId?: string;
+      } = openRouterApiKey
+        ? {
+          modelId: PRIMARY_MODEL_OPENROUTER,
+          provider: "openrouter",
+          modelRoute: "openrouter_primary_cf_fallback",
+          modelFallbackId: MODEL_ID_CF,
+        }
+        : {
+          modelId: MODEL_ID_CF,
+          provider: "cloudflare-workers-ai",
+          modelRoute: "cloudflare-workers-ai",
+        };
 
       // Phase D: optional RLM-lite pre-summary for long-context runs.
       yield* Effect.gen(function* () {
@@ -980,6 +1025,12 @@ const runAutopilotStream = (input: {
           contextPressure?: unknown;
           promptRenderStats?: unknown;
           rlmTrace?: unknown;
+          model?: {
+            modelId?: string;
+            provider?: string;
+            route?: string;
+            fallbackModelId?: string;
+          };
         };
         let recordedReceipt: DseReceiptShape | null = null;
         const setRecordedReceipt = (r: unknown) => {
@@ -1075,6 +1126,28 @@ const runAutopilotStream = (input: {
             signatureId,
             compiled_id: receipt?.compiled_id,
             receiptId: receipt?.receiptId,
+            model:
+              receipt?.model &&
+                typeof receipt.model === "object" &&
+                (typeof (receipt.model as any).modelId === "string" ||
+                  typeof (receipt.model as any).provider === "string" ||
+                  typeof (receipt.model as any).route === "string" ||
+                  typeof (receipt.model as any).fallbackModelId === "string")
+                ? {
+                  ...(typeof (receipt.model as any).modelId === "string"
+                    ? { modelId: String((receipt.model as any).modelId) }
+                    : {}),
+                  ...(typeof (receipt.model as any).provider === "string"
+                    ? { provider: String((receipt.model as any).provider) }
+                    : {}),
+                  ...(typeof (receipt.model as any).route === "string"
+                    ? { route: String((receipt.model as any).route) }
+                    : {}),
+                  ...(typeof (receipt.model as any).fallbackModelId === "string"
+                    ? { fallbackModelId: String((receipt.model as any).fallbackModelId) }
+                    : {}),
+                }
+                : undefined,
             timing: receipt?.timing,
             budget: receipt?.budget,
             strategyId: receipt?.strategyId,
@@ -1123,6 +1196,29 @@ const runAutopilotStream = (input: {
 
           // For non-delta parts, materialize any pending delta first to preserve ordering.
           materializeDelta();
+
+          if (encoded.type === "finish") {
+            const finishPart = encoded as unknown as Record<string, unknown>;
+            const normalizedFinish = {
+              ...finishPart,
+              ...(typeof finishPart.modelId === "string" && finishPart.modelId.trim().length > 0
+                ? {}
+                : { modelId: finishModelDefaults.modelId }),
+              ...(typeof finishPart.provider === "string" && finishPart.provider.trim().length > 0
+                ? {}
+                : { provider: finishModelDefaults.provider }),
+              ...(typeof finishPart.modelRoute === "string" && finishPart.modelRoute.trim().length > 0
+                ? {}
+                : { modelRoute: finishModelDefaults.modelRoute }),
+              ...(typeof finishPart.modelFallbackId === "string" && finishPart.modelFallbackId.trim().length > 0
+                ? {}
+                : finishModelDefaults.modelFallbackId
+                  ? { modelFallbackId: finishModelDefaults.modelFallbackId }
+                  : {}),
+            };
+            bufferedParts.push({ seq: seq++, part: normalizedFinish });
+            return;
+          }
 
           // Encoded parts are small; we buffer them and flush on the same cadence as text.
           bufferedParts.push({ seq: seq++, part: encoded });
