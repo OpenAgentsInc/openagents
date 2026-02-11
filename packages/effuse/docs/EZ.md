@@ -77,6 +77,16 @@ EZ applies **switch-latest per element** concurrency:
 - `data-ez-disable` temporarily disables the triggering element and restores it
   after completion or interruption.
 
+## Runtime Boundary Policy
+
+EZ runtime internals follow Effect runtime-boundary rules:
+
+- Library code must not call `Effect.runFork` / `Effect.runPromise` directly.
+- `mountEzRuntime` acquires the caller runtime with `Effect.runtime(...)` and
+  forks internal fibers via `Runtime.runFork(runtime)`.
+- Applications keep execution ownership at the edge (entrypoint / host layer),
+  so test/runtime configuration remains injectable.
+
 ## Best Practices
 
 - Prefer targeting leaf nodes to avoid wiping large subtrees.

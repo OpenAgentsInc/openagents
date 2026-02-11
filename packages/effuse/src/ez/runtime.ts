@@ -2,10 +2,10 @@
  * Hypermedia action runtime.
  */
 
-import { Cause, Effect, Fiber } from "effect"
+import { Cause, Effect, Fiber, Runtime } from "effect"
 import type { DomService } from "../services/dom.js"
 import { DomServiceTag, type DomSwapMode } from "../services/dom.js"
-import { EzRegistryTag } from "./registry.js"
+import { EzRegistryTag, type EzRegistry } from "./registry.js"
 import type { EzAction } from "./types.js"
 
 type EzTrigger = "click" | "submit" | "change" | "input"
@@ -217,6 +217,8 @@ export const mountEzRuntime = (root: Element) =>
     const dom = yield* DomServiceTag
     const registry = yield* EzRegistryTag
     const inflight = new WeakMap<Element, Fiber.RuntimeFiber<unknown, unknown>>()
+    const runtime = yield* Effect.runtime<DomService | EzRegistry>()
+    const runFork = Runtime.runFork(runtime)
 
     const handleEvent = (event: Event, actionEl: Element) => {
       if (!maybeConfirm(actionEl)) {
@@ -234,10 +236,10 @@ export const mountEzRuntime = (root: Element) =>
 
       const previous = inflight.get(actionEl)
       if (previous) {
-        Effect.runFork(Fiber.interrupt(previous))
+        runFork(Fiber.interrupt(previous))
       }
 
-      const fiber = Effect.runFork(runAction(dom, registry, root, actionEl, event))
+      const fiber = runFork(runAction(dom, registry, root, actionEl, event))
       inflight.set(actionEl, fiber)
     }
 
