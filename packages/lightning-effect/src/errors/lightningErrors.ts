@@ -77,6 +77,23 @@ export class L402TransportError extends Schema.TaggedError<L402TransportError>()
   },
 ) {}
 
+export class SellerContractDecodeError extends Schema.TaggedError<SellerContractDecodeError>()(
+  "SellerContractDecodeError",
+  {
+    contract: Schema.NonEmptyString,
+    reason: Schema.String,
+  },
+) {}
+
+export class SellerPolicyViolationError extends Schema.TaggedError<SellerPolicyViolationError>()(
+  "SellerPolicyViolationError",
+  {
+    paywallId: Schema.NonEmptyString,
+    code: Schema.NonEmptyString,
+    reason: Schema.NonEmptyString,
+  },
+) {}
+
 export type LightningEffectError =
   | ChallengeParseError
   | BudgetExceededError
@@ -87,3 +104,5 @@ export type LightningEffectError =
   | CredentialMissingError
   | AuthorizationSerializeError
   | L402TransportError
+  | SellerContractDecodeError
+  | SellerPolicyViolationError

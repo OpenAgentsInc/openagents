@@ -5,12 +5,30 @@ Effect-first Lightning + L402 contracts, errors, services, and base layers for O
 ## What This Package Provides
 
 - Typed contracts for invoices, L402 challenges, credentials, and spend policy.
+- Typed seller/paywall contracts for hosted L402 infrastructure:
+  - `PaywallDefinition`, `PaywallPolicy`, `PaywallRouteBinding`
+  - `L402ChallengeIssueRequest` / `L402ChallengeIssueResult`
+  - `L402AuthorizationVerificationResult`
+  - `SettlementRecord`, `PayoutInstruction`, `GatewayDeploymentSnapshot`
 - Tagged errors for policy, challenge parsing, payment, and credential state.
 - Service tags for invoice payment, credential cache, spend policy, and L402 authorization.
+- Service tags for seller-side orchestration:
+  - `PaywallRegistryService`
+  - `GatewayConfigCompilerService`
+  - `InvoiceIssuerService`
+  - `SettlementIngestService`
+  - `SellerPolicyService`
 - Reusable layers:
   - `CredentialCacheInMemoryLayer`
   - `makeSpendPolicyLayer(...)`
   - `L402ClientLiveLayer`
+- Deterministic seller test layers/adapters:
+  - `makePaywallRegistryInMemoryLayer(...)`
+  - `makeGatewayConfigCompilerDeterministicLayer(...)`
+  - `makeInvoiceIssuerDeterministicLayer(...)`
+  - `makeSettlementIngestInMemoryLayer(...)`
+  - `makeSellerPolicyDeterministicLayer(...)`
+  - `makeSellerDeterministicLayer(...)`
 - Demo adapter:
   - `makeInvoicePayerDemoLayer(...)`
 
@@ -104,9 +122,60 @@ const program = Effect.gen(function* () {
 }).pipe(Effect.provide(live))
 ```
 
+## Example: Seller-Side Deterministic Layer
+
+```ts
+import { Effect } from "effect"
+import {
+  GatewayConfigCompilerService,
+  PaywallRegistryService,
+  makeSellerDeterministicLayer,
+} from "@openagentsinc/lightning-effect"
+
+const layer = makeSellerDeterministicLayer()
+
+const program = Effect.gen(function* () {
+  const registry = yield* PaywallRegistryService
+  const compiler = yield* GatewayConfigCompilerService
+
+  const paywall = yield* registry.upsert({
+    paywallId: "paywall_ep212",
+    ownerId: "user_123",
+    name: "Premium Feed",
+    status: "active",
+    createdAtMs: 1_700_000_000_000,
+    updatedAtMs: 1_700_000_000_000,
+    route: {
+      paywallId: "paywall_ep212",
+      hostPattern: "api.example.com",
+      pathPattern: "^/premium",
+      upstreamUrl: "https://upstream.example.com/premium",
+      priority: 10,
+    },
+    policy: {
+      paywallId: "paywall_ep212",
+      pricingMode: "fixed_msats",
+      fixedAmountMsats: 2_500,
+      allowedBuyerHosts: [],
+      blockedBuyerHosts: [],
+      killSwitch: false,
+    },
+  })
+
+  return yield* compiler.compilePaywalls([paywall])
+}).pipe(Effect.provide(layer))
+```
+
+## Migration Note
+
+- Buyer-side APIs remain backward compatible.
+- New seller-side contracts/services are additive and available through the same root and subpath exports.
+- `@openagentsinc/lightning-effect` remains app-agnostic (no `apps/*` imports).
+
 ## Scripts
 
 - `npm run typecheck`
 - `npm test`
+- `npm run test:contracts`
 - `npm run test:watch`
 - `npm run effect:patch`
