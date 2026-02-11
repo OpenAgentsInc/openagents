@@ -1,7 +1,23 @@
-import { Clock, Effect, Layer } from "effect"
+import { Clock, Effect, Layer, Ref } from "effect"
 
-import type { LndNodeInfo, LndWalletState } from "../contracts/lnd.js"
-import type { LndInvoice, LndPayment, LndRpcRequest } from "../contracts/rpc.js"
+import type {
+  LndBalanceSummary,
+  LndChannelSummary,
+  LndNodeInfo,
+  LndNodeSnapshot,
+  LndWalletState,
+} from "../contracts/lnd.js"
+import type {
+  LndInvoiceCreateRequest,
+  LndInvoiceListResult,
+  LndInvoiceLookupRequest,
+  LndInvoiceRecord,
+  LndPaymentListResult,
+  LndPaymentRecord,
+  LndPaymentSendRequest,
+  LndPaymentTrackRequest,
+  LndRpcRequest,
+} from "../contracts/rpc.js"
 import { LndInvoiceService } from "../services/lndInvoiceService.js"
 import { LndNodeService } from "../services/lndNodeService.js"
 import { LndPaymentService } from "../services/lndPaymentService.js"
@@ -18,6 +34,23 @@ const defaultNodeInfo: LndNodeInfo = {
     blockHeight: 0,
     blockHash: "0f9188f13cb7b2c9e5e30a77f7f8b6f1d5f1a6d8b9e4d4e3f7a2f3c4b5d6e7f8",
   },
+  updatedAtMs: 1_700_000_000_000,
+}
+
+const defaultBalances: LndBalanceSummary = {
+  confirmedSat: 0,
+  unconfirmedSat: 0,
+  channelLocalSat: 0,
+  channelRemoteSat: 0,
+  pendingOpenSat: 0,
+  updatedAtMs: 1_700_000_000_000,
+}
+
+const defaultChannels: LndChannelSummary = {
+  openChannels: 0,
+  activeChannels: 0,
+  inactiveChannels: 0,
+  pendingChannels: 0,
   updatedAtMs: 1_700_000_000_000,
 }
 
@@ -40,13 +73,35 @@ const deterministicInvoice = (amountSat: number): string =>
 
 const deterministicPaymentHash = (seed: string): string => deterministicHex(seed)
 
-export const makeLndNodeDeterministicLayer = (input?: { readonly nodeInfo?: LndNodeInfo }) => {
+const paginate = <A>(items: ReadonlyArray<A>, input?: { readonly limit?: number; readonly offset?: number }) => {
+  const offset = Math.max(0, Math.floor(input?.offset ?? 0))
+  const limit = Math.max(1, Math.min(250, Math.floor(input?.limit ?? 100)))
+  const sliced = items.slice(offset, offset + limit)
+  const nextOffset = offset + sliced.length < items.length ? offset + sliced.length : undefined
+  return { sliced, nextOffset }
+}
+
+export const makeLndNodeDeterministicLayer = (input?: {
+  readonly nodeInfo?: LndNodeInfo
+  readonly balances?: LndBalanceSummary
+  readonly channels?: LndChannelSummary
+}) => {
   const nodeInfo = input?.nodeInfo ?? defaultNodeInfo
+  const balances = input?.balances ?? defaultBalances
+  const channels = input?.channels ?? defaultChannels
 
   return Layer.succeed(
     LndNodeService,
     LndNodeService.of({
       getNodeInfo: () => Effect.succeed(nodeInfo),
+      getBalanceSummary: () => Effect.succeed(balances),
+      getChannelSummary: () => Effect.succeed(channels),
+      getNodeSnapshot: () =>
+        Effect.succeed<LndNodeSnapshot>({
+          info: nodeInfo,
+          balances,
+          channels,
+        }),
     }),
   )
 }
@@ -54,16 +109,24 @@ export const makeLndNodeDeterministicLayer = (input?: { readonly nodeInfo?: LndN
 export const makeLndDeterministicLayer = (input?: {
   readonly nodeInfo?: LndNodeInfo
   readonly walletState?: LndWalletState
-}) => {
-  const nodeInfo = input?.nodeInfo ?? defaultNodeInfo
-  const walletState = input?.walletState ?? nodeInfo.walletState
-
-  return Layer.mergeAll(
-    makeLndNodeDeterministicLayer({ nodeInfo }),
-    Layer.succeed(
+  readonly balances?: LndBalanceSummary
+  readonly channels?: LndChannelSummary
+  readonly seedInvoices?: ReadonlyArray<LndInvoiceRecord>
+  readonly seedPayments?: ReadonlyArray<LndPaymentRecord>
+}) =>
+  Layer.mergeAll(
+    makeLndNodeDeterministicLayer({
+      ...(input?.nodeInfo !== undefined ? { nodeInfo: input.nodeInfo } : {}),
+      ...(input?.balances !== undefined ? { balances: input.balances } : {}),
+      ...(input?.channels !== undefined ? { channels: input.channels } : {}),
+    }),
+    Layer.effect(
       LndWalletService,
-      LndWalletService.of({
-        getWalletState: () => Effect.succeed(walletState),
+      Effect.gen(function* () {
+        const walletState = input?.walletState ?? input?.nodeInfo?.walletState ?? "locked"
+        return LndWalletService.of({
+          getWalletState: () => Effect.succeed(walletState),
+        })
       }),
     ),
     Layer.succeed(
@@ -80,37 +143,107 @@ export const makeLndDeterministicLayer = (input?: {
           }),
       }),
     ),
-    Layer.succeed(
+    Layer.effect(
       LndInvoiceService,
-      LndInvoiceService.of({
-        createInvoice: (params: { readonly amountSat: number }) =>
+      Effect.gen(function* () {
+        const invoiceRef = yield* Ref.make<ReadonlyArray<LndInvoiceRecord>>(input?.seedInvoices ?? [])
+
+        const createInvoice = (params: LndInvoiceCreateRequest) =>
           Effect.gen(function* () {
-            const createdAtMs = yield* Clock.currentTimeMillis
-            const invoice: LndInvoice = {
-              invoice: deterministicInvoice(params.amountSat),
+            const now = yield* Clock.currentTimeMillis
+            const invoice: LndInvoiceRecord = {
+              paymentRequest: deterministicInvoice(params.amountSat),
+              rHash: deterministicHex(`invoice:${params.amountSat}:${params.memo ?? ""}`),
               amountSat: Math.max(0, Math.floor(params.amountSat)),
-              createdAtMs,
+              settled: false,
+              createdAtMs: now,
             }
+            yield* Ref.update(invoiceRef, (rows) => [...rows, invoice])
             return invoice
-          }),
+          })
+
+        const getInvoice = (lookup: LndInvoiceLookupRequest) =>
+          Ref.get(invoiceRef).pipe(
+            Effect.map((rows) =>
+              rows.find((row) => row.paymentRequest === lookup.paymentRequest) ?? null,
+            ),
+          )
+
+        const listInvoices = (opts?: { readonly limit?: number; readonly offset?: number }) =>
+          Ref.get(invoiceRef).pipe(
+            Effect.map((rows) => {
+              const { sliced, nextOffset } = paginate(rows, opts)
+              const result: LndInvoiceListResult = {
+                invoices: sliced,
+                ...(nextOffset !== undefined ? { nextOffset } : {}),
+              }
+              return result
+            }),
+          )
+
+        return LndInvoiceService.of({
+          createInvoice,
+          getInvoice,
+          listInvoices,
+        })
       }),
     ),
-    Layer.succeed(
+    Layer.effect(
       LndPaymentService,
-      LndPaymentService.of({
-        trackPayment: (paymentHash: string) =>
+      Effect.gen(function* () {
+        const paymentRef = yield* Ref.make<ReadonlyArray<LndPaymentRecord>>(input?.seedPayments ?? [])
+
+        const sendPayment = (request: LndPaymentSendRequest) =>
           Effect.gen(function* () {
-            const updatedAtMs = yield* Clock.currentTimeMillis
-            const payment: LndPayment = {
-              paymentHash: deterministicPaymentHash(paymentHash),
+            const now = yield* Clock.currentTimeMillis
+            const paymentHash = deterministicPaymentHash(request.paymentRequest)
+            const payment: LndPaymentRecord = {
+              paymentHash,
+              paymentPreimageHex: deterministicHex(`${request.paymentRequest}:preimage`),
               amountSat: 0,
+              feeSat: Math.max(0, Math.floor(request.feeLimitSat ?? 0)),
               status: "succeeded",
-              preimageHex: deterministicHex(`${paymentHash}:preimage`),
-              updatedAtMs,
+              createdAtMs: now,
+              updatedAtMs: now,
             }
+            yield* Ref.update(paymentRef, (rows) => [...rows, payment])
             return payment
-          }),
+          })
+
+        const trackPayment = (request: LndPaymentTrackRequest) =>
+          Ref.get(paymentRef).pipe(
+            Effect.map((rows) => {
+              const existing = rows.find((row) => row.paymentHash === request.paymentHash)
+              if (existing) return existing
+              const now = Date.now()
+              return {
+                paymentHash: request.paymentHash,
+                amountSat: 0,
+                feeSat: 0,
+                status: "in_flight",
+                createdAtMs: now,
+                updatedAtMs: now,
+              } satisfies LndPaymentRecord
+            }),
+          )
+
+        const listPayments = (opts?: { readonly limit?: number; readonly offset?: number }) =>
+          Ref.get(paymentRef).pipe(
+            Effect.map((rows) => {
+              const { sliced, nextOffset } = paginate(rows, opts)
+              const result: LndPaymentListResult = {
+                payments: sliced,
+                ...(nextOffset !== undefined ? { nextOffset } : {}),
+              }
+              return result
+            }),
+          )
+
+        return LndPaymentService.of({
+          sendPayment,
+          trackPayment,
+          listPayments,
+        })
       }),
     ),
   )
-}

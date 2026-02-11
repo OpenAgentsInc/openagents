@@ -2,15 +2,14 @@ import { Effect } from "effect"
 import { describe, expect, it } from "@effect/vitest"
 
 import { makeLndDeterministicLayer } from "../src/adapters/lndNodeDeterministic.js"
-import { decodeLndNodeInfo } from "../src/contracts/lnd.js"
 import { LndInvoiceService } from "../src/services/lndInvoiceService.js"
 import { LndNodeService } from "../src/services/lndNodeService.js"
 import { LndPaymentService } from "../src/services/lndPaymentService.js"
 import { LndTransportService } from "../src/services/lndTransportService.js"
 import { LndWalletService } from "../src/services/lndWalletService.js"
 
-describe("lnd-effect service boundaries", () => {
-  it.effect("provides deterministic node/wallet/invoice/payment services", () =>
+describe("lnd-effect service conformance", () => {
+  it.effect("simulates node/wallet/invoice/payment lifecycles deterministically", () =>
     Effect.gen(function* () {
       const node = yield* LndNodeService
       const wallet = yield* LndWalletService
@@ -18,23 +17,53 @@ describe("lnd-effect service boundaries", () => {
       const payments = yield* LndPaymentService
       const transport = yield* LndTransportService
 
-      const nodeInfo = yield* node.getNodeInfo()
-      expect(nodeInfo.network).toBe("regtest")
-      expect(nodeInfo.walletState).toBe("locked")
+      const info = yield* node.getNodeInfo()
+      expect(info.network).toBe("regtest")
+      expect(info.walletState).toBe("locked")
 
-      const decodedNode = yield* decodeLndNodeInfo(nodeInfo)
-      expect(decodedNode.alias).toBe("openagents-local")
+      const balances = yield* node.getBalanceSummary()
+      expect(balances.confirmedSat).toBe(0)
+
+      const channels = yield* node.getChannelSummary()
+      expect(channels.openChannels).toBe(0)
+
+      const snapshot = yield* node.getNodeSnapshot()
+      expect(snapshot.info.alias).toBe("openagents-local")
 
       const walletState = yield* wallet.getWalletState()
       expect(walletState).toBe("locked")
 
-      const invoice = yield* invoices.createInvoice({ amountSat: 42 })
-      expect(invoice.invoice.startsWith("lnbcrt42")).toBe(true)
-      expect(invoice.amountSat).toBe(42)
+      const created = yield* invoices.createInvoice({
+        amountSat: 42,
+        memo: "demo",
+      })
+      expect(created.paymentRequest.startsWith("lnbcrt42")).toBe(true)
+      expect(created.settled).toBe(false)
 
-      const payment = yield* payments.trackPayment("payment_hash_demo")
-      expect(payment.status).toBe("succeeded")
-      expect(payment.preimageHex?.length).toBe(64)
+      const fetched = yield* invoices.getInvoice({ paymentRequest: created.paymentRequest })
+      expect(fetched?.rHash).toBe(created.rHash)
+
+      const missing = yield* invoices.getInvoice({ paymentRequest: "ln_missing" })
+      expect(missing).toBeNull()
+
+      const listed = yield* invoices.listInvoices({ limit: 5, offset: 0 })
+      expect(listed.invoices.length).toBe(1)
+      expect(listed.invoices[0]?.paymentRequest).toBe(created.paymentRequest)
+
+      const sent = yield* payments.sendPayment({ paymentRequest: created.paymentRequest })
+      expect(sent.status).toBe("succeeded")
+      expect(sent.paymentPreimageHex?.length).toBe(64)
+
+      const tracked = yield* payments.trackPayment({ paymentHash: sent.paymentHash })
+      expect(tracked.paymentHash).toBe(sent.paymentHash)
+      expect(tracked.status).toBe("succeeded")
+
+      const inFlight = yield* payments.trackPayment({ paymentHash: "hash_not_found" })
+      expect(inFlight.status).toBe("in_flight")
+
+      const paymentList = yield* payments.listPayments({ limit: 10 })
+      expect(paymentList.payments.length).toBe(1)
+      expect(paymentList.payments[0]?.paymentHash).toBe(sent.paymentHash)
 
       const response = yield* transport.send({
         method: "GET",
@@ -44,21 +73,29 @@ describe("lnd-effect service boundaries", () => {
       expect(response.body).toMatchObject({
         ok: true,
         path: "/v1/getinfo",
-        method: "GET",
       })
     }).pipe(Effect.provide(makeLndDeterministicLayer())),
   )
 
-  it.effect("allows overriding deterministic defaults for tests", () =>
+  it.effect("supports deterministic seeds and overrides for CI-friendly tests", () =>
     Effect.gen(function* () {
       const node = yield* LndNodeService
       const wallet = yield* LndWalletService
+      const invoices = yield* LndInvoiceService
+      const payments = yield* LndPaymentService
 
-      const nodeInfo = yield* node.getNodeInfo()
-      const walletState = yield* wallet.getWalletState()
+      const info = yield* node.getNodeInfo()
+      expect(info.alias).toBe("custom-local")
 
-      expect(nodeInfo.alias).toBe("custom-local")
-      expect(walletState).toBe("unlocked")
+      const state = yield* wallet.getWalletState()
+      expect(state).toBe("unlocked")
+
+      const invoiceRows = yield* invoices.listInvoices()
+      expect(invoiceRows.invoices.length).toBe(1)
+
+      const paymentRows = yield* payments.listPayments()
+      expect(paymentRows.payments.length).toBe(1)
+      expect(paymentRows.payments[0]?.status).toBe("failed")
     }).pipe(
       Effect.provide(
         makeLndDeterministicLayer({
@@ -75,6 +112,27 @@ describe("lnd-effect service boundaries", () => {
             },
             updatedAtMs: 1_700_000_000_123,
           },
+          seedInvoices: [
+            {
+              paymentRequest: "ln_seeded_1",
+              rHash: "hash_seeded_1",
+              amountSat: 33,
+              settled: true,
+              createdAtMs: 1_700_000_000_000,
+              settledAtMs: 1_700_000_000_010,
+            },
+          ],
+          seedPayments: [
+            {
+              paymentHash: "payment_seeded_1",
+              amountSat: 50,
+              feeSat: 1,
+              status: "failed",
+              failureReason: "seeded_failure",
+              createdAtMs: 1_700_000_000_000,
+              updatedAtMs: 1_700_000_000_020,
+            },
+          ],
         }),
       ),
     ),

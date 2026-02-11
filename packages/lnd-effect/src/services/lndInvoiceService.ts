@@ -1,10 +1,24 @@
 import { Context, Effect } from "effect"
 
-import type { LndInvoice } from "../contracts/rpc.js"
+import type {
+  LndInvoiceCreateRequest,
+  LndInvoiceListResult,
+  LndInvoiceLookupRequest,
+  LndInvoiceRecord,
+} from "../contracts/rpc.js"
 import type { LndServiceUnavailableError } from "../errors/lndErrors.js"
 
 export type LndInvoiceApi = Readonly<{
-  readonly createInvoice: (input: { readonly amountSat: number }) => Effect.Effect<LndInvoice, LndServiceUnavailableError>
+  readonly createInvoice: (
+    input: LndInvoiceCreateRequest,
+  ) => Effect.Effect<LndInvoiceRecord, LndServiceUnavailableError>
+  readonly getInvoice: (
+    input: LndInvoiceLookupRequest,
+  ) => Effect.Effect<LndInvoiceRecord | null, LndServiceUnavailableError>
+  readonly listInvoices: (input?: {
+    readonly limit?: number
+    readonly offset?: number
+  }) => Effect.Effect<LndInvoiceListResult, LndServiceUnavailableError>
 }>
 
 export class LndInvoiceService extends Context.Tag("@openagents/lnd-effect/LndInvoiceService")<

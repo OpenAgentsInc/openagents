@@ -16,4 +16,37 @@ export class LndServiceUnavailableError extends Schema.TaggedError<LndServiceUna
   },
 ) {}
 
-export type LndEffectError = LndContractDecodeError | LndServiceUnavailableError
+export class LndTransportError extends Schema.TaggedError<LndTransportError>()(
+  "LndTransportError",
+  {
+    operation: Schema.NonEmptyString,
+    reason: Schema.String,
+    status: Schema.optional(Schema.Int),
+  },
+) {}
+
+export class LndAuthenticationError extends Schema.TaggedError<LndAuthenticationError>()(
+  "LndAuthenticationError",
+  {
+    operation: Schema.NonEmptyString,
+    reason: Schema.String,
+    status: Schema.Int,
+  },
+) {}
+
+export class LndResponseDecodeError extends Schema.TaggedError<LndResponseDecodeError>()(
+  "LndResponseDecodeError",
+  {
+    operation: Schema.NonEmptyString,
+    reason: Schema.String,
+    status: Schema.optional(Schema.Int),
+    body: Schema.optional(Schema.String),
+  },
+) {}
+
+export type LndEffectError =
+  | LndContractDecodeError
+  | LndServiceUnavailableError
+  | LndTransportError
+  | LndAuthenticationError
+  | LndResponseDecodeError
