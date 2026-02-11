@@ -20,18 +20,18 @@ The goal is not “Effect wrappers around an LLM client”. The goal is to make 
 - production-safe (runtime loads artifacts; compilation is explicit and auditable)
 
 For a plain-language "how to use what is implemented today" guide (operator workflow + Autopilot UX + RLM-lite),
-see: `docs/autopilot/DSE_PLAYBOOK.md`.
+see: `docs/autopilot/runbooks/DSE_PLAYBOOK.md`.
 
 Notable Phase D UX that exists today:
 
 - `/autopilot` includes a **DSE Debug** panel that can run a canary recap signature under `direct.v1` or `rlm_lite.v1`,
-  and surfaces receipt/trace links (documented in `docs/autopilot/DSE_PLAYBOOK.md` §5.1).
+  and surfaces receipt/trace links (documented in `docs/autopilot/runbooks/DSE_PLAYBOOK.md` §5.1).
 
 ---
 
 ## 0) Context and Motivation
 
-Autopilot is moving toward Effect as the default application architecture (see `packages/effuse/docs/effect-migration-web.md`, `docs/autopilot/effect-telemetry-service.md`).
+Autopilot is moving toward Effect as the default application architecture (see `packages/effuse/docs/effect-migration-web.md`, `docs/autopilot/reference/effect-telemetry-service.md`).
 
 Effect solves wiring, reliability, observability, and testability. It does **not** automatically solve the “DSPy problem”:
 
@@ -222,7 +222,7 @@ At minimum the runtime environment SHOULD include:
 - `PolicyRegistry` (resolve active artifact for a signature)
 - `PromptRenderer` (Prompt IR -> provider messages)
 - `OutputDecoder` (provider response -> `O`, with repair pipeline)
-- `Telemetry` (logs/spans/events; see `docs/autopilot/effect-telemetry-service.md`)
+- `Telemetry` (logs/spans/events; see `docs/autopilot/reference/effect-telemetry-service.md`)
 - `ReceiptRecorder` (canonical hashes, tool calls, timings)
 - `WorkersEnv` (Cloudflare bindings/env access, request-scoped when needed)
 - `WorkersExecutionContext` (Cloudflare `waitUntil`, `passThroughOnException`, etc.)
@@ -255,7 +255,7 @@ At minimum, DSE needs:
 
 Strategy selection MUST be pinned inside the compiled artifact (or derived deterministically from it) so runs are replayable and auditable. This is the contract that makes "RLM as an inference-time strategy" possible without changing signatures.
 
-See `docs/autopilot/rlm-synergies.md` and `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`.
+See `docs/autopilot/synergies/rlm-synergies.md` and `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`.
 
 ### 4.4 Adapter boundary rule (match OpenAgents invariant)
 

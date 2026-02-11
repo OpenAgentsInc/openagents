@@ -3,7 +3,7 @@
 - **Sources analyzed:**
   - “The Potential of RLMs: Handling Your Long Context Today & Designing Your Agent Tomorrow” (dbreunig.com, 2026-02-09) — excerpt provided in chat
   - “SPy is the easiest way to use RLMs” (Isaac Miller, 2026-02-03) — excerpt provided in chat
-- **Related docs:** `docs/autopilot/dse.md`, `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`, `docs/autopilot/context-failures.md`, `docs/autopilot/rlm-trace-mining.md`, `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`, `crates/rlm/docs/METHODS.md`
+- **Related docs:** `docs/autopilot/dse/dse.md`, `docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md`, `docs/autopilot/synergies/monty-synergies.md`, `docs/autopilot/synergies/microcode-synergies.md`, `docs/autopilot/reference/context-failures.md`, `docs/autopilot/dse/rlm-trace-mining.md`, `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`, `crates/rlm/docs/METHODS.md`
 
 This doc translates the RLM pattern described in the article into **DSE + Autopilot** terms and proposes an Effect-first integration plan.
 
@@ -21,7 +21,7 @@ For agent systems, context rot is particularly dangerous because it is:
 - **Cumulative**: long sessions and large repos/logs gradually push us past soft limits.
 - **Hard to debug**: the failure often looks like "the agent got worse" rather than a clear exception.
 
-RLM is an inference-time strategy to mitigate this by keeping **token space** small and treating long context as **external state** accessed via operations. (It does not solve other context failures like poisoning/confusion; see `docs/autopilot/context-failures.md`.)
+RLM is an inference-time strategy to mitigate this by keeping **token space** small and treating long context as **external state** accessed via operations. (It does not solve other context failures like poisoning/confusion; see `docs/autopilot/reference/context-failures.md`.)
 
 ### 1.1 Two buckets of context
 
@@ -95,7 +95,7 @@ In OpenAgents terms, the target workflow is:
    - compiler knobs (instruction blocks, chunking policy, role selection, budgets)
 4. Compile/evaluate/promote the distilled behavior via DSE so the "production path" is low-latency and reliable.
 
-See `docs/autopilot/rlm-trace-mining.md` for the concrete trace-mining loop and what to log.
+See `docs/autopilot/dse/rlm-trace-mining.md` for the concrete trace-mining loop and what to log.
 
 ---
 
@@ -243,5 +243,5 @@ This yields a concrete Autopilot capability:
 - **Non-determinism**: the kernel must be deterministic; randomness must be seeded and logged.
 - **Privacy/retention**: blob storage + varspace must obey privacy modes and redaction/truncation policies.
 - **Model strength gating**: weaker controller models can get confused, lose progress, and burn iteration budget. Gate RLM behind routing that considers model capability and "stuck/thrash" signals.
-- **Does not fix poisoning/confusion**: RLM mitigates context rot by managing token space. It does not make untrusted/incorrect context safe. See `docs/autopilot/context-failures.md`.
+- **Does not fix poisoning/confusion**: RLM mitigates context rot by managing token space. It does not make untrusted/incorrect context safe. See `docs/autopilot/reference/context-failures.md`.
 - **Debugging**: prefer structured traces (“what actions ran”) over raw “internal monologue.”

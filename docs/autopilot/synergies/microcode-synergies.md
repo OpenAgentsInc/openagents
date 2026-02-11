@@ -160,7 +160,7 @@ Key is to store the debug evidence as structured trace events that can be redact
 
 ## 5) Concrete updates to our DSE/Autopilot plan
 
-This is what we should fold into `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`:
+This is what we should fold into `docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md`:
 
 - Add a named pattern: **Artifact pinning posture** (Microcode-like): runtime always resolves/pins an artifact id (`compiled_id`) and logs it.
 - Expand budgets to include **max output chars** (in addition to time/tool/LLM calls).

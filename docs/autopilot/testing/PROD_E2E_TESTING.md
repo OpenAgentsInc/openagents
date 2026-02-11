@@ -39,7 +39,7 @@ On the homepage, **“Start for free”** opens a **floating chat pane on the sa
   - `packages/effuse-test/src/suites/apps-web.ts`
 - Overnight runner (headless, Convex-first logs):
   - `apps/web/scripts/dse-overnight.ts`
-  - Runbook: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+  - Runbook: `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 - Worker auth endpoints:
   - `apps/web/src/effuse-host/auth.ts`
   - `apps/web/src/auth/e2eAuth.ts`

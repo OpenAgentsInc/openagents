@@ -17,8 +17,8 @@ It is intentionally concrete: code pointers, required data models, and a step-by
 This document is a record of the original staged plan and what was implemented.
 For “how do I run this headlessly tonight?” use:
 
-- Canonical runbook + one-command runner: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
-- How to use the endpoints (operator playbook): `docs/autopilot/DSE_PLAYBOOK.md`
+- Canonical runbook + one-command runner: `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+- How to use the endpoints (operator playbook): `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
 
 Quick start (headless):
 
@@ -49,7 +49,7 @@ For the MVP execution plane:
 
 References:
 
-- Decision: `docs/autopilot/anon-chat-execution-plane.md`
+- Decision: `docs/autopilot/reference/anon-chat-execution-plane.md`
 - DO shims (deprecated 410): `apps/web/src/effuse-host/worker.ts`
 
 `apps/autopilot-worker/` (DO-SQLite) is a reference integration, not the MVP hot path.
@@ -421,7 +421,7 @@ Implementation log:
   - `cd packages/dse && bun test && bun run typecheck`
 
 - 2026-02-10: The fully programmatic overnight loop (ops auth + run recording + headless runner + dataset import + compile/canary/promote + read-only pages) is implemented.
-  - Runbook: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+  - Runbook: `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 - 2026-02-10: Updated this doc’s header and “Where to start” section to reflect the implemented runbook + headless runner.
 
 ### Stage 2.5: Add DSE chat parts + UI components (done)
@@ -441,10 +441,10 @@ Testable outcomes:
 
 - storybook story showing each new DSE card type: `apps/web/src/storybook/stories/autopilot.ts`
 - the story should be driven by a golden wire transcript fixture (so the UI and tests consume the exact same `messageParts` shapes):
-  - `docs/autopilot/fixtures/dse-kitchen-sink.stream.v1.jsonl`
+  - `docs/autopilot/testing/fixtures/dse-kitchen-sink.stream.v1.jsonl`
 - worker test that appends a `dse.signature.ok` part and asserts it renders into a non-empty assistant message model (snapshot/e2e style)
   - use a realistic tool-loop transcript fixture as the target (e.g. “review my recent gmail things”):
-    - `docs/autopilot/fixtures/autopilot-gmail-review.stream.v1.jsonl`
+    - `docs/autopilot/testing/fixtures/autopilot-gmail-review.stream.v1.jsonl`
 
 Implementation log:
 
@@ -458,7 +458,7 @@ Implementation log:
   - `apps/web/src/effuse-app/controllers/autopilotController.ts`
 - 2026-02-08: Added importable TS mirrors of the golden JSONL fixtures (required for Worker/Storybook bundling):
   - `apps/web/src/fixtures/wireTranscripts.ts`
-  - source refs: `docs/autopilot/fixtures/*.stream.v1.jsonl`
+  - source refs: `docs/autopilot/testing/fixtures/*.stream.v1.jsonl`
 - 2026-02-08: Added a Storybook story that renders the DSE kitchen sink transcript and shows the raw JSON:
   - `apps/web/src/storybook/stories/autopilot.ts`
 - 2026-02-08: Added worker tests proving the fixtures render through the real chat template:
@@ -532,7 +532,7 @@ The Feb 9, 2026 RLM writeup makes a key point we should operationalize: **RLM tr
 
 Concrete deliverables:
 
-- A documented workflow for trace review and distillation: `docs/autopilot/rlm-trace-mining.md`
+- A documented workflow for trace review and distillation: `docs/autopilot/dse/rlm-trace-mining.md`
 - Trace fields we must be able to mine (minimum):
   - scope keys: `threadId`, `runId`, `signatureId`, `compiled_id`
   - strategy id: direct vs RLM (and RLM variant)
@@ -555,7 +555,7 @@ Implementation log:
   - receipts listing endpoint: `GET /api/dse/receipts/list?...`
   - trace export endpoint: `POST /api/dse/trace/export`
   - miner CLI: `apps/web/scripts/dse-trace-mine.ts`
-  - docs: `docs/autopilot/rlm-trace-mining.md`, `docs/autopilot/DSE_PLAYBOOK.md`
+  - docs: `docs/autopilot/dse/rlm-trace-mining.md`, `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
 
 ### Stage 5: Compile job runner (manual promotion) (done)
 
@@ -637,7 +637,7 @@ Headless ops note:
 
 - All admin endpoints support a headless ops mode:
   - `Authorization: Bearer <OA_DSE_ADMIN_SECRET>`
-  - see: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+  - see: `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
 ## Suggested “First Signature” For Self-Improve
 
@@ -650,10 +650,10 @@ Headless ops note:
 
 ## Related Docs
 
-- DSE spec (contract + compile posture): `docs/autopilot/dse.md`
-- Autopilot optimization phases: `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`
-- Convex-first execution plane: `docs/autopilot/anon-chat-execution-plane.md`
-- Stream testing posture + wire transcript fixtures: `docs/autopilot/STREAM_TESTING.md`
-- Overnight self-improvement runbook (headless): `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+- DSE spec (contract + compile posture): `docs/autopilot/dse/dse.md`
+- Autopilot optimization phases: `docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md`
+- Convex-first execution plane: `docs/autopilot/reference/anon-chat-execution-plane.md`
+- Stream testing posture + wire transcript fixtures: `docs/autopilot/testing/STREAM_TESTING.md`
+- Overnight self-improvement runbook (headless): `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 - RLM/GEPA/MIPRO plan (Effect-only, Convex-first aligned): `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 - DSE vs Rust reference optimizers review: `packages/dse/docs/RLM_GEPA_MIPRO_DSE_REVIEW_AND_ROADMAP.md`

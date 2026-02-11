@@ -26,7 +26,7 @@ This doc explores **Horizons** (`~/code/Horizons`, [Synth Laboratories](https://
 ### 1.3 Standalone crates (no Horizons dependency)
 
 - **rlm:** Reward verification (reward-signal evaluation). `RewardSignal`s with weights; `VerificationCase` → `RewardOutcome` in [0,1]; `EvalReport` (Markdown/JSON). LLM-backed signals supported.
-  - Note: this is **not** "Recursive Language Models (RLM)" long-context execution. See `docs/autopilot/rlm-synergies.md` and the glossary entry for `RLM` to avoid acronym collisions.
+  - Note: this is **not** "Recursive Language Models (RLM)" long-context execution. See `docs/autopilot/synergies/rlm-synergies.md` and the glossary entry for `RLM` to avoid acronym collisions.
 - **mipro_v2:** Batch prompt/policy optimization. Dataset → train/holdout split; `VariantSampler` generates candidates; `Evaluator` (LLM + metric) on holdout; best candidate, early stopping, iteration.
 - **voyager:** Long-term agent memory. Scope `{ org_id, agent_id }`; append-only `MemoryItem`; optional `index_text` for embeddings; retrieval (vector + recency bias); optional batch summarization. Backend-agnostic (in-memory, pgvector, etc.).
 
@@ -111,7 +111,7 @@ We have **AgentApiService** (Effect) for `/agents/*` and tool contracts. Our “
 
 Horizons supports **python_function** nodes: inline `fn_str`. Backend is either `python3` subprocess or **Monty** (feature + env). So they already integrated Monty as an optional execution backend for graph nodes.
 
-We’re considering Monty for “agent writes code” (see `docs/autopilot/monty-synergies.md`). Horizons shows a **concrete integration**: “node type = python, backend = subprocess or Monty.” We could offer a similar choice: when we run a “code” step, use subprocess or Monty depending on config.
+We’re considering Monty for “agent writes code” (see `docs/autopilot/synergies/monty-synergies.md`). Horizons shows a **concrete integration**: “node type = python, backend = subprocess or Monty.” We could offer a similar choice: when we run a “code” step, use subprocess or Monty depending on config.
 
 **Learning:** Python-in-graph (or “code” node) as a first-class node type, with backend selectable (subprocess vs. Monty), is a clean pattern. We can mirror it in our design.
 
@@ -166,6 +166,6 @@ Horizons keys everything by `org_id` and `project_id` (headers, DB, memory scope
 
 - **Horizons:** `~/code/Horizons`, [github.com/synth-laboratories/Horizons](https://github.com/synth-laboratories/Horizons) — README, AGENTS.md, horizons_core, horizons_graph, horizons_server, horizons_ts, rlm, mipro_v2, voyager.
 - **Our spec:** `docs/autopilot/spec.md` (no containers, one Autopilot per user, tiny tool surface).
-- **Our DSE:** `docs/autopilot/dse.md` (signatures, modules, tool contracts, compile, artifacts).
+- **Our DSE:** `docs/autopilot/dse/dse.md` (signatures, modules, tool contracts, compile, artifacts).
 - **Our Effect:** `packages/effuse/docs/effect-migration-web.md`, `packages/effuse/docs/effuse-conversion-apps-web.md`.
-- **Monty synergies:** `docs/autopilot/monty-synergies.md` (Horizons uses Monty optionally for graph Python nodes).
+- **Monty synergies:** `docs/autopilot/synergies/monty-synergies.md` (Horizons uses Monty optionally for graph Python nodes).

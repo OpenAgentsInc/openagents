@@ -23,20 +23,20 @@ Notes:
 - `seq` MUST be an integer and MUST be monotonic (Convex floors `seq` and de-dupes by `(runId, seq)`).
 - `part` is a union:
   - `@effect/ai` stream parts (`text-*`, `finish`, `tool-call`, `tool-result`, etc.)
-  - custom DSE action parts (`type: "dse.*"`) as specified in `docs/autopilot/SELF_IMPROVE_PLAN.md` (“DSE chat-part schema”)
+  - custom DSE action parts (`type: "dse.*"`) as specified in `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` (“DSE chat-part schema”)
 
 ## Viewing Raw Data
 
 Pretty print:
 
 ```bash
-cat docs/autopilot/fixtures/<file>.jsonl | jq .
+cat docs/autopilot/testing/fixtures/<file>.jsonl | jq .
 ```
 
 Just the `part.type` stream:
 
 ```bash
-cat docs/autopilot/fixtures/<file>.jsonl | jq -r '.part.type'
+cat docs/autopilot/testing/fixtures/<file>.jsonl | jq -r '.part.type'
 ```
 
 ## Hygiene

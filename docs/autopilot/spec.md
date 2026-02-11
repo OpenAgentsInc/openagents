@@ -92,7 +92,7 @@ Post-MVP (optional):
 - Autopilot controller: `apps/web/src/effuse-app/controllers/autopilotController.ts`
 - Autopilot page templates: `apps/web/src/effuse-pages/autopilot.ts`
 - Master plan (Effuse stack): `packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md`
-- Execution plane decision (Convex-first MVP): `docs/autopilot/anon-chat-execution-plane.md`
+- Execution plane decision (Convex-first MVP): `docs/autopilot/reference/anon-chat-execution-plane.md`
 
 ---
 
@@ -100,6 +100,6 @@ Post-MVP (optional):
 
 - Effuse architecture and migration plan: `packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md`
 - Autopilot bootstrap state plan: `docs/autopilot/bootstrap-plan.md`
-- Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
-- Context failures taxonomy (rot/poisoning/confusion): `docs/autopilot/context-failures.md`
-- RLM integration plan + trace mining workflow: `docs/autopilot/rlm-synergies.md`, `docs/autopilot/rlm-trace-mining.md`
+- Effect-centric telemetry/logging service spec: `docs/autopilot/reference/effect-telemetry-service.md`
+- Context failures taxonomy (rot/poisoning/confusion): `docs/autopilot/reference/context-failures.md`
+- RLM integration plan + trace mining workflow: `docs/autopilot/synergies/rlm-synergies.md`, `docs/autopilot/dse/rlm-trace-mining.md`

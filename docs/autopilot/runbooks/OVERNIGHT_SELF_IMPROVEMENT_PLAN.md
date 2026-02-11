@@ -4,12 +4,12 @@
 - **Last updated:** 2026-02-10
 - **Priority:** programmatic loop first; UI is read-only later
 - **Primary refs (do not duplicate):**
-  - Operator workflow + current endpoints: `docs/autopilot/DSE_PLAYBOOK.md`
-  - System plan + Convex-first constraints: `docs/autopilot/SELF_IMPROVE_PLAN.md`
-  - RLM program + phases: `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
-  - Prod E2E harness: `docs/autopilot/PROD_E2E_TESTING.md`
-  - UI determinism posture: `docs/autopilot/STREAM_TESTING.md`
-  - Deep spec/intent: `docs/autopilot/dse.md`
+  - Operator workflow + current endpoints: `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
+  - System plan + Convex-first constraints: `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md`
+  - RLM program + phases: `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
+  - Prod E2E harness: `docs/autopilot/testing/PROD_E2E_TESTING.md`
+  - UI determinism posture: `docs/autopilot/testing/STREAM_TESTING.md`
+  - Deep spec/intent: `docs/autopilot/dse/dse.md`
 - **If this doc conflicts with code behavior:** code wins
 
 This is the single overnight plan to make Autopilot *actually* self-improve in a loop in production:
@@ -232,7 +232,7 @@ Objective: agents can seed/update a real dataset in Convex without manual UI.
 Deliverables:
 
 - A canonical dataset file committed to the repo (stable ids):
-  - Suggested: `docs/autopilot/fixtures/dse-selecttool.dataset.v1.jsonl`
+  - Suggested: `docs/autopilot/testing/fixtures/dse-selecttool.dataset.v1.jsonl`
   - Each row includes: `exampleId`, `inputJson`, `expectedJson`, `split`, `tags`
 - A programmatic import path:
   - Option A (preferred): a Worker endpoint `POST /api/dse/examples/import` (admin-secret gated) that upserts into `dseExamples`.
@@ -487,7 +487,7 @@ Current endpoints and storage:
 
 - 2026-02-10T08:39:56Z Phase 3: dataset fixture + admin-secret import endpoint.
 - Added canonical dataset fixture:
-  - `docs/autopilot/fixtures/dse-selecttool.dataset.v1.jsonl` (30+ examples, 10+ holdout)
+  - `docs/autopilot/testing/fixtures/dse-selecttool.dataset.v1.jsonl` (30+ examples, 10+ holdout)
 - Added admin-secret gated import endpoint:
   - `POST /api/dse/examples/import` (upserts `dseExamples` via `putExample`, optional `opsRunId` emits ops-run events)
 - Tests:
@@ -558,7 +558,7 @@ Current endpoints and storage:
 
 - 2026-02-10T12:51:12Z Docs: added a concrete “secret bootstrap/rotation” section for ops-admin + prod E2E (`OA_DSE_ADMIN_SECRET`, `OA_E2E_JWT_PRIVATE_JWK`, `OA_E2E_BYPASS_SECRET`) and clarified that `npm run wrangler:secrets` skips missing keys.
 - Updated:
-  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+  - `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
 - 2026-02-10T12:56:01Z Docs/Ops: updated env example files so the overnight loop required secrets are discoverable and can be copied into non-committed `.env.production` / `.env.local`.
 - Updated:
@@ -569,7 +569,7 @@ Current endpoints and storage:
 - Updated:
   - `apps/web/.gitignore` (ignore `.env.dse.local`)
   - `apps/web/.env.dse.local.example`
-  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+  - `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
 - 2026-02-10T13:05:15Z Ops: updated repo root `.gitignore` to allow committing `.env*.example` files (while still ignoring real `.env*` secrets), so `.env.dse.local.example` is trackable.
 - Updated:
@@ -590,14 +590,14 @@ Current endpoints and storage:
 - Updated:
   - `apps/web/scripts/dse-overnight-lib.ts`
   - `apps/web/tests/scripts/dse-overnight.test.ts`
-  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md` (local ops-admin notes + recommended `wrangler dev --env-file ...` pattern)
+  - `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md` (local ops-admin notes + recommended `wrangler dev --env-file ...` pattern)
 - Tests / verification:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
 - 2026-02-10T12:26:37Z Docs: clarified local prerequisites for running the overnight loop against `http://localhost:3000` (start `npm run dev`, secret alignment notes).
 - Updated:
-  - `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+  - `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
 - 2026-02-10T12:24:42Z Ops: propagate `x-oa-request-id` into overnight runner HTTP errors (so failures are correlatable from the CLI summary + ops run events).
 - Updated:
@@ -635,25 +635,25 @@ Current endpoints and storage:
 
 - 2026-02-10T11:53:16Z Docs: updated operator-facing guidance to match the new collapsed `dse.signature` UI on `/autopilot`.
 - Updated:
-  - `docs/autopilot/DSE_PLAYBOOK.md`
-  - `docs/autopilot/SELF_IMPROVE_RUNBOOK.md`
-  - `docs/autopilot/rlm-trace-mining.md`
+  - `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
+  - `docs/autopilot/runbooks/SELF_IMPROVE_RUNBOOK.md`
+  - `docs/autopilot/dse/rlm-trace-mining.md`
 
 - 2026-02-10T11:56:25Z Docs: updated stream testing doc status + commands to match current implementation.
 - Updated:
-  - `docs/autopilot/STREAM_TESTING.md`
+  - `docs/autopilot/testing/STREAM_TESTING.md`
 
 - 2026-02-10T11:58:43Z Doc maintenance: updated Phase 6 + code surface section to match shipped read-only pages and the current Worker API surface.
 
-- 2026-02-10T12:01:48Z Docs: updated `docs/autopilot/DSE_PLAYBOOK.md` to include the canonical headless overnight runner and link back to this runbook.
+- 2026-02-10T12:01:48Z Docs: updated `docs/autopilot/runbooks/DSE_PLAYBOOK.md` to include the canonical headless overnight runner and link back to this runbook.
 
 - 2026-02-10T12:04:12Z Ops: updated the Worker secret sync script to include DSE/RLM overnight secrets.
 - Updated:
   - `apps/web/scripts/sync-wrangler-secrets.sh`
 
-- 2026-02-10T12:06:43Z Docs: updated `docs/autopilot/SELF_IMPROVE_PLAN.md` to reflect that the staged plan is now implemented and the canonical execution runbook is this doc.
+- 2026-02-10T12:06:43Z Docs: updated `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` to reflect that the staged plan is now implemented and the canonical execution runbook is this doc.
 
-- 2026-02-10T12:10:22Z Docs: updated `docs/autopilot/PROD_E2E_TESTING.md` to reference the overnight runner + `npm run wrangler:secrets` for syncing required prod E2E secrets.
+- 2026-02-10T12:10:22Z Docs: updated `docs/autopilot/testing/PROD_E2E_TESTING.md` to reference the overnight runner + `npm run wrangler:secrets` for syncing required prod E2E secrets.
 
 - 2026-02-10T12:13:09Z Ops: made the overnight runner CLI resilient to being invoked from any working directory (auto-`chdir` to repo root).
 - Updated:

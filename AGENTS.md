@@ -76,7 +76,7 @@ Everything is logged and replayable
 When debugging anything in `apps/web` (local or prod), **correlate by request id first**.
 
 Full writeup (including production E2E auth bypass + how to run/debug prod smoke tests):
-- `docs/autopilot/PROD_E2E_TESTING.md`
+- `docs/autopilot/testing/PROD_E2E_TESTING.md`
 
 ### Cloudflare Worker request correlation
 
@@ -118,7 +118,7 @@ When to do this:
 We have an Effect-native E2E runner (`packages/effuse-test`) that can run against a **production URL** and log in
 deterministically via an E2E-only auth bypass route (gated by a Cloudflare Worker secret).
 
-Read: `docs/autopilot/PROD_E2E_TESTING.md`
+Read: `docs/autopilot/testing/PROD_E2E_TESTING.md`
 
 Quick smoke:
 
@@ -223,11 +223,11 @@ Use this to avoid scattering logic. **Rust/crates were removed and archived;** a
   - `apps/web` uses `@cloudflare/vitest-pool-workers` for Cloudflare Worker tests.
 - **E2E browser + visual regression:** `packages/effuse-test` (Effect-native runner, invoked via `bun`)
   - Web scripts: `cd apps/web && npm run test:e2e`, `npm run test:visual`
-  - Docs: `docs/STORYBOOK.md`, `docs/autopilot/PROD_E2E_TESTING.md`
+  - Docs: `docs/STORYBOOK.md`, `docs/autopilot/testing/PROD_E2E_TESTING.md`
 - **Stream contract fixtures:** JSONL “wire transcripts” that drive UI determinism + regression tests
-  - Docs: `docs/autopilot/STREAM_TESTING.md`
+  - Docs: `docs/autopilot/testing/STREAM_TESTING.md`
 - **How we self-improve DSE/RLM:** runbook
-  - `docs/autopilot/SELF_IMPROVE_RUNBOOK.md`
+  - `docs/autopilot/runbooks/SELF_IMPROVE_RUNBOOK.md`
 
 ## Build + test quick commands (use these before claiming done)
 
@@ -328,13 +328,13 @@ Packages (shared TypeScript libraries):
 Autopilot docs (start here for product behavior):
 
 * `docs/autopilot/spec.md` (autopilot behavior spec)
-* `docs/autopilot/PROD_E2E_TESTING.md` (prod E2E + request correlation)
-* `docs/autopilot/STREAM_TESTING.md` (stream fixture and contract testing)
-* `docs/autopilot/SELF_IMPROVE_RUNBOOK.md` (self-improvement workflow)
-* `docs/autopilot/DSE_PLAYBOOK.md` (DSE operation and tuning)
-* `docs/autopilot/TRACE_RETRIEVAL.md` (trace retrieval/debug workflow)
-* `docs/autopilot/AUTOPILOT_ADMIN_TEST_USER_TRIGGER.md` (admin trigger flow)
-* `docs/autopilot/THREAD_STUCK_STREAMING_FIX.md` (known issue + mitigation)
+* `docs/autopilot/testing/PROD_E2E_TESTING.md` (prod E2E + request correlation)
+* `docs/autopilot/testing/STREAM_TESTING.md` (stream fixture and contract testing)
+* `docs/autopilot/runbooks/SELF_IMPROVE_RUNBOOK.md` (self-improvement workflow)
+* `docs/autopilot/runbooks/DSE_PLAYBOOK.md` (DSE operation and tuning)
+* `docs/autopilot/testing/TRACE_RETRIEVAL.md` (trace retrieval/debug workflow)
+* `docs/autopilot/admin/AUTOPILOT_ADMIN_TEST_USER_TRIGGER.md` (admin trigger flow)
+* `docs/autopilot/reference/THREAD_STUCK_STREAMING_FIX.md` (known issue + mitigation)
 
 Infra / integration (if present; some paths archived):
 

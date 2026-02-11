@@ -15,12 +15,12 @@ This document is the single end-to-end roadmap for implementing:
 
 It intentionally consolidates the intent already spread across:
 
-- `docs/autopilot/context-failures.md`
-- `docs/autopilot/rlm-synergies.md`
-- `docs/autopilot/rlm-trace-mining.md`
-- `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md` (Phase 2.5)
-- `docs/autopilot/SELF_IMPROVE_PLAN.md` (Stage 4.5)
-- `docs/autopilot/dse.md`
+- `docs/autopilot/reference/context-failures.md`
+- `docs/autopilot/synergies/rlm-synergies.md`
+- `docs/autopilot/dse/rlm-trace-mining.md`
+- `docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md` (Phase 2.5)
+- `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` (Stage 4.5)
+- `docs/autopilot/dse/dse.md`
 - `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 - `crates/rlm/docs/METHODS.md` (symbolic recursion)
 
@@ -28,7 +28,7 @@ It intentionally consolidates the intent already spread across:
 
 ## 0) Constraints (non-negotiable for MVP)
 
-From `docs/autopilot/spec.md` / `docs/autopilot/anon-chat-execution-plane.md`:
+From `docs/autopilot/spec.md` / `docs/autopilot/reference/anon-chat-execution-plane.md`:
 
 - **Convex-first** canonical state for MVP (threads/messages/messageParts + DSE registries).
 - **Cloudflare Worker** hosts execution; **no containers**; small built-in tool surface.
@@ -46,7 +46,7 @@ We explicitly handle three failures:
 - **Context poisoning** (untrusted/incorrect inputs): provenance/trust + verification, not “more tokens”.
 - **Context confusion** (scope collisions): hard scoping + handles, not “better prompts”.
 
-Canonical definitions: `docs/GLOSSARY.md` and `docs/autopilot/context-failures.md`.
+Canonical definitions: `docs/GLOSSARY.md` and `docs/autopilot/reference/context-failures.md`.
 
 ### 1.2 RLM as an inference strategy
 
@@ -56,7 +56,7 @@ RLM is not a prompt template. It is a strategy for `Predict(signature)`:
 - long context lives in variable/programmatic space (VarSpace + BlobRefs),
 - execution proceeds via explicit ops + strict budgets.
 
-Design reference: `docs/autopilot/rlm-synergies.md`, `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`.
+Design reference: `docs/autopilot/synergies/rlm-synergies.md`, `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`.
 
 ### 1.3 Trace mining -> distilled agents
 
@@ -67,7 +67,7 @@ RLM runs are exploratory. The goal is to:
 3. distill those tactics into typed signatures/modules/graphs,
 4. compile and promote them via DSE so the default path is fast and reliable.
 
-Process reference: `docs/autopilot/rlm-trace-mining.md`.
+Process reference: `docs/autopilot/dse/rlm-trace-mining.md`.
 
 ---
 
@@ -112,7 +112,7 @@ Deliverables:
 - Extend runtime budgets to include RLM counters:
   - iterations, sub-LM calls, tool calls (and per-tool timeouts).
 - Pin strategy selection via DSE params/artifacts:
-  - spec guidance is in `docs/autopilot/dse.md` (`params.strategy`).
+  - spec guidance is in `docs/autopilot/dse/dse.md` (`params.strategy`).
 
 Exit criteria:
 
@@ -158,7 +158,7 @@ Deliverables:
 - Persist RLM state appropriately:
   - VarSpace + blobs in Convex (MVP).
 - UI: RLM activity must be visible:
-  - show strategy id, budgets, iterations, and evidence handles in chat cards (aligned with `docs/autopilot/SELF_IMPROVE_PLAN.md` surfaces).
+  - show strategy id, budgets, iterations, and evidence handles in chat cards (aligned with `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` surfaces).
 
 Exit criteria:
 
@@ -192,11 +192,11 @@ Objective: convert slow exploratory RLM traces into fast, compiled behavior.
 Deliverables:
 
 - A trace export pipeline that can produce candidate labeled examples for `dseExamples`.
-- A repeatable trace-review workflow (documented in `docs/autopilot/rlm-trace-mining.md`).
+- A repeatable trace-review workflow (documented in `docs/autopilot/dse/rlm-trace-mining.md`).
 - At least one distilled “tactic” implemented as:
   - signature(s) + module/graph,
   - evaluated on holdout,
-  - and promotable/rollbackable via the existing DSE loop (`docs/autopilot/SELF_IMPROVE_PLAN.md`).
+  - and promotable/rollbackable via the existing DSE loop (`docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md`).
 
 Exit criteria:
 
@@ -233,7 +233,7 @@ Deliverables:
   - keep untrusted content in variable space; only surface bounded excerpts with provenance.
 - Verification posture for objective claims (tests/builds/grep over “LLM says so”).
 
-Reference: `docs/autopilot/context-failures.md`.
+Reference: `docs/autopilot/reference/context-failures.md`.
 
 Exit criteria:
 
@@ -254,7 +254,7 @@ Docs are not done until the harness is green for the touched surfaces.
 
 Production smoke guidance:
 
-- `docs/autopilot/PROD_E2E_TESTING.md`
+- `docs/autopilot/testing/PROD_E2E_TESTING.md`
 
 ---
 
@@ -426,7 +426,7 @@ It is ordered by phase (A..H) so it can be read as a build log.
   - holdout-enabled dummy dataset splits (train vs holdout): `packages/dse/src/eval/longContextBench.ts`
   - test comparing direct vs distilled vs RLM on holdout: `packages/dse/test/distilledLongContextQa.test.ts`
 - Documented the trace-review and export workflow:
-  - `docs/autopilot/rlm-trace-mining.md`
+  - `docs/autopilot/dse/rlm-trace-mining.md`
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
   - `cd apps/web && npx convex codegen`
