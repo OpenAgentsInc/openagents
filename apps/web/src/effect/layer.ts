@@ -5,6 +5,7 @@ import { ContractsApiLive } from "./contracts";
 import { AuthServiceLive } from './auth';
 import { ChatServiceLive } from './chat';
 import { ConvexServiceLive } from './convex';
+import { PaneSystemLive, PaneSystemService } from './paneSystem';
 import { RequestContextService, makeDefaultRequestContext } from './requestContext';
 import { TelemetryLive } from './telemetry';
 
@@ -24,6 +25,7 @@ export type AppServices =
   | Context.Tag.Identifier<typeof AuthService>
   | Context.Tag.Identifier<typeof ChatService>
   | Context.Tag.Identifier<typeof ConvexService>
+  | Context.Tag.Identifier<typeof PaneSystemService>
   | Context.Tag.Identifier<typeof RequestContextService>
   | Context.Tag.Identifier<typeof TelemetryService>;
 
@@ -32,6 +34,7 @@ export const makeAppLayer = (config: AppConfig) => {
   // `provideMerge` flows left-to-right: base -> Auth -> Convex -> Autopilot store + contracts + chat.
   const base = Layer.mergeAll(
     TelemetryLive,
+    PaneSystemLive,
     Layer.succeed(AppConfigService, config),
     Layer.succeed(RequestContextService, makeDefaultRequestContext()),
   );

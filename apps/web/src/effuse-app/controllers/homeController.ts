@@ -1,7 +1,6 @@
 import { Effect } from "effect"
 import { DomServiceTag, EffuseLive, html, rawHtml, renderToolPart } from "@openagentsinc/effuse"
 import {
-  mountPaneSystemDom,
   calculateNewPanePosition,
   DEFAULT_PANE_SYSTEM_THEME,
 } from "@openagentsinc/effuse-panes"
@@ -15,6 +14,7 @@ import {
 import type { ChatSnapshot } from "../../effect/chat"
 import { ChatSnapshotAtom } from "../../effect/atoms/chat"
 import { SessionAtom, type Session } from "../../effect/atoms/session"
+import { PaneSystemLive, PaneSystemService } from "../../effect/paneSystem"
 import { formatCountdown } from "../../effuse-pages/home"
 import {
   cleanupMarketingDotsGridBackground,
@@ -242,22 +242,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     const screen = { width: window.innerWidth, height: window.innerHeight }
     const storedRect = readStoredHomeChatPaneRect(screen)
     const rect = storedRect ?? calculateNewPanePosition(undefined, screen, 640, 480)
-
-    const closeOverlay = () => {
-      const closedRectRaw = paneSystem.store.closedPositions.get(CHAT_PANE_ID)?.rect ?? paneSystem.store.pane(CHAT_PANE_ID)?.rect
-      const closedRect = parseStoredPaneRect(closedRectRaw)
-      const currentScreen =
-        typeof window !== "undefined"
-          ? { width: window.innerWidth, height: window.innerHeight }
-          : screen
-      if (closedRect) writeStoredHomeChatPaneRect(clampPaneRectToScreen(closedRect, currentScreen))
-      paneSystem.destroy()
-      overlay.remove()
-      hideStyle.remove()
-      shell.removeAttribute("data-oa-home-chat-open")
-    }
-
-    const paneSystem = mountPaneSystemDom(paneRoot, {
+    let closeOverlay = (): void => { }
+    const paneSystemConfig = {
       enableDotsBackground: false,
       enableCanvasPan: false,
       enablePaneDrag: true,
@@ -265,11 +251,41 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
       enableKeyboardShortcuts: true,
       enableHotbar: false,
       theme: { ...DEFAULT_PANE_SYSTEM_THEME, background: "transparent" },
-      onPaneClosed: (id) => {
+      onPaneClosed: (id: string) => {
         // Only closing the main chat pane should dismiss the whole overlay.
         if (id === CHAT_PANE_ID) closeOverlay()
       },
-    })
+    } as const
+
+    const runPaneSystemEffectSync = <A>(effect: Effect.Effect<A, never, PaneSystemService>): A => {
+      if (deps?.runtime) return deps.runtime.runSync(effect)
+      return Effect.runSync(effect.pipe(Effect.provide(PaneSystemLive)))
+    }
+
+    const { paneSystem, release: releasePaneSystem } = runPaneSystemEffectSync(
+      Effect.gen(function* () {
+        const paneSystemService = yield* PaneSystemService
+        return yield* paneSystemService.mount({
+          root: paneRoot,
+          config: paneSystemConfig,
+        })
+      }),
+    )
+
+    closeOverlay = () => {
+      const closedRectRaw = paneSystem.store.closedPositions.get(CHAT_PANE_ID)?.rect ?? paneSystem.store.pane(CHAT_PANE_ID)?.rect
+      const closedRect = parseStoredPaneRect(closedRectRaw)
+      const currentScreen =
+        typeof window !== "undefined"
+          ? { width: window.innerWidth, height: window.innerHeight }
+          : screen
+      if (closedRect) writeStoredHomeChatPaneRect(clampPaneRectToScreen(closedRect, currentScreen))
+      if (deps?.runtime) deps.runtime.runSync(releasePaneSystem)
+      else Effect.runSync(releasePaneSystem)
+      overlay.remove()
+      hideStyle.remove()
+      shell.removeAttribute("data-oa-home-chat-open")
+    }
 
     const atomsAccess = deps?.atoms as unknown as
       | {
