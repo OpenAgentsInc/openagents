@@ -29,7 +29,7 @@ Important distinction:
 
 An ADR being "Accepted" does **not** mean the code is implemented. For implementation status, check:
 - Crate sources (the code itself)
-- [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md)
+- [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md)
 
 ## When to Write an ADR
 

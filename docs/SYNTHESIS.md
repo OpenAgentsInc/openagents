@@ -28,9 +28,9 @@
 - 🔵 **Specified**: Protocol/types defined, not yet wired
 - ⚪ **Planned**: Roadmap item, design incomplete
 
-> For values, motivation, and political framing, see [MANIFESTO.md](./docs/MANIFESTO.md). This document focuses on architecture and strategy.
+> For values, motivation, and political framing, see [MANIFESTO.md](./MANIFESTO.md). This document focuses on architecture and strategy.
 
-> **Implementation Status:** This document mixes shipped components with planned ones. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./docs/GLOSSARY.md). For protocol details, see [docs/protocol/PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md).
+> **Implementation Status:** This document mixes shipped components with planned ones. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md). For protocol details, see [docs/protocol/PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md).
 
 ---
 
@@ -94,7 +94,7 @@
 | **NIP-57** | Zaps—Lightning payments attached to Nostr events |
 | **DVM** | Data Vending Machine—a compute provider responding to NIP-90 job requests |
 | **L402** | HTTP 402 + Lightning—pay-per-call API protocol (alternative to zaps for HTTP contexts) |
-| **rlog** | Session recording format—structured logs capturing agent trajectories. Current impl: `ReplayBundle`; target: `REPLAY.jsonl v1`. See [GLOSSARY.md](./docs/GLOSSARY.md) |
+| **rlog** | Session recording format—structured logs capturing agent trajectories. Current impl: `ReplayBundle`; target: `REPLAY.jsonl v1`. See [GLOSSARY.md](./GLOSSARY.md) |
 | **APM** | Actions Per Minute—velocity metric (messages + tool calls) / duration; higher = faster autonomous operation |
 | **ACP** | Agent Client Protocol—JSON-RPC standard for editor ↔ agent communication |
 | **Neobank** | Programmable treasury layer for agents—not a bank but a payments router with budget enforcement, multi-rail support, and audit trails. It answers: *who paid, why, under which policy, using which rail, and with what cryptographic proof* |
@@ -333,7 +333,7 @@ Treasury Agents become a new profitable agent class. They hold capital, quote tw
 
 With cryptographic identity, decentralized communication, and economic capability established, directive d-006 defines NIP-SA, the Sovereign Agent Protocol specifying how these capabilities combine into coherent agent behavior. NIP-SA defines ten event kinds describing the full lifecycle of an autonomous agent.
 
-> **Protocol Status:** NIP-SA is proposed but not yet implemented. The kind numbers below are **examples for illustration**—final numbers will be assigned when the NIP is formalized. For canonical protocol details and current implementation status, see [docs/protocol/PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md).
+> **Protocol Status:** NIP-SA is proposed but not yet implemented. The kind numbers below are **examples for illustration**—final numbers will be assigned when the NIP is formalized. For canonical protocol details and current implementation status, see [docs/protocol/PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md).
 
 *Note on kind numbers:* NIP-SA proposes using the 39200+ range to avoid collisions with existing NIPs. In particular, NIP-87 uses kind 38000 for mint recommendation events—we deliberately avoid this range to ensure protocol compatibility. **These numbers are subject to change.**
 
@@ -379,7 +379,7 @@ The Bazaar promises: open entry (anyone can supply work), price discovery (marke
 
 The mechanics of compute acquisition illustrate how the entire stack works. When an agent needs inference, it publishes a NIP-90 job request (kind 5050) to Nostr relays. Providers subscribe, see requests, bid, execute, and publish results (kind 6050). Before submitting, the agent's CostTracker checks budget against quoted price—if the quote exceeds daily or session budget, the request blocks. If approved, the agent pays via its threshold-protected Spark wallet, the provider executes, and the cost records against a running tally across all backends: cloud APIs, local inference, and decentralized DVMs.
 
-> **Job Type Status:** The job schemas below use NIP-90 as a base. Specific job type identifiers (e.g., `oa.sandbox_run.v1`) are defined in [docs/protocol/PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md). Kind numbers for specialized job types are examples subject to change.
+> **Job Type Status:** The job schemas below use NIP-90 as a base. Specific job type identifiers (e.g., `oa.sandbox_run.v1`) are defined in [docs/protocol/PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md). Kind numbers for specialized job types are examples subject to change.
 
 The v1 compute marketplace focuses on two verifiable job types. **SandboxRun** (`oa.sandbox_run.v1`) executes commands against a repo snapshot in an isolated sandbox—`cargo test`, `cargo clippy`, builds, benchmarks, static analysis. Verification is straightforward: exit code plus logs plus artifact hashes. If the output hash matches expectations, payment releases; if not, no payment and provider reputation takes a hit. **RepoIndex** (`oa.repo_index.v1`) produces indexing artifacts—embeddings for code search, symbol maps, file digests. Verification uses schema validation (correct dimensions, chunk counts) and spot-check redundancy (re-run a sample on a trusted provider; mismatches trigger penalties). These verifiable workloads enable **pay-after-verify settlement**: providers include their Lightning invoice in the job result, and Autopilot pays only after verification passes. This creates trust without requiring trust—providers cannot get paid for garbage.
 
@@ -629,7 +629,7 @@ When agents can continuously buy cheap verification and throughput compute, the 
 
 But raw speed is not the point. The point is leverage. Today you supervise one AI assistant. With autopilot, you supervise a fleet. Point them at your issue backlog and go to sleep. Wake up to landed patches. Each autopilot instance has its own identity, its own wallet, its own context. They can hire each other when they encounter problems outside their expertise. They can buy skills from the marketplace when they need capabilities they lack. They can bid on compute when they need more power for expensive operations. The constraint shifts from "how fast can I type" to "how much capital can I allocate."
 
-Directive d-004 establishes a self-improvement flywheel for this system. Every autopilot run generates trajectory data: sequences of messages, tool calls, decisions, and outcomes. This data is captured as structured session logs (current implementation: `ReplayBundle` in `crates/autopilot-core/src/replay.rs`; target format: `REPLAY.jsonl v1` per spec in `crates/dsrs/docs/REPLAY.md`). The recorder crate parses and validates these files, extracting statistics on token usage, cost, tool patterns, and error rates. See [GLOSSARY.md](./docs/GLOSSARY.md) for terminology on `rlog`, `trajectory`, and replay formats.
+Directive d-004 establishes a self-improvement flywheel for this system. Every autopilot run generates trajectory data: sequences of messages, tool calls, decisions, and outcomes. This data is captured as structured session logs (current implementation: `ReplayBundle` in `crates/autopilot-core/src/replay.rs`; target format: `REPLAY.jsonl v1` per spec in `crates/dsrs/docs/REPLAY.md`). The recorder crate parses and validates these files, extracting statistics on token usage, cost, tool patterns, and error rates. See [GLOSSARY.md](./GLOSSARY.md) for terminology on `rlog`, `trajectory`, and replay formats.
 
 **Canary Deployments for Agent Quality.** The daemon's known-good binary pattern handles compile-time regressions—broken code cannot block restarts. But semantic regressions are subtler: an agent that compiles but makes worse decisions. The solution is canary deployments:
 

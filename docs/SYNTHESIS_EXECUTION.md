@@ -9,7 +9,7 @@ A decentralized AI compute marketplace where agents run inference, earn Bitcoin,
 
 **Product framing:** OpenAgents sells **predictable autonomy** (Autonomy‑as‑a‑Service) — a contracted outcome over time with explicit scope, horizon, constraints, verification, and escalation behavior. Signatures/modules make this sellable by turning decisions into measurable, auditable work units with receipts and utility labels.
 
-For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concept, see [OANIX.md](./docs/OANIX.md).
+For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concept, see [OANIX.md](./OANIX.md).
 
 ### Implementation Status
 
@@ -239,7 +239,7 @@ The key protocol is NIP-90 (Data Vending Machines), which defines how job reques
 - NIP-42: Authentication (required)
 - NIP-01: Basic protocol
 
-**Job flow** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md) for canonical assignments):
+**Job flow** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md) for canonical assignments):
 ```
 Buyer → kind:5050 (job) → Nexus → Provider
 Provider → kind:7000 (invoice) → Nexus → Buyer
@@ -502,7 +502,7 @@ Tracks usage per model for billing and context optimization.
 6. Loop until success or max iterations
 ```
 
-**Autopilot needs swarm inference** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/protocol/PROTOCOL_SURFACE.md)):
+**Autopilot needs swarm inference** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./protocol/PROTOCOL_SURFACE.md)):
 ```
 1. Runtime /compute/new → NIP-90 kind:5050
 2. Nexus broadcasts to providers
@@ -641,7 +641,7 @@ Issues are NOT done unless:
 | `RECEIPT.json` | JSON | Cryptographic audit trail |
 | `REPLAY.jsonl` | JSONL | Event stream for replay/debugging |
 
-**Canonical artifact directory** (per [ADR-0008](./docs/adr/ADR-0008-session-storage-layout.md)):
+**Canonical artifact directory** (per [ADR-0008](./adr/ADR-0008-session-storage-layout.md)):
 ```
 ${OPENAGENTS_HOME}/sessions/{session_id}/
 ├── PR_SUMMARY.md

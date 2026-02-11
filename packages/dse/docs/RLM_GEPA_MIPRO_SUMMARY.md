@@ -21,15 +21,15 @@ Notes:
 
 ### RLM / FRLM
 
-- **RLM (Recursive Language Model)** is described as an **iterative prompt-execute loop**: the model can emit commands (like `RUN ...`) that are executed locally, with results fed back into the loop until it emits `FINAL ...`. See `SYNTHESIS_EXECUTION.md` for the canonical high-level description and CLI examples (`pylon rlm ...`). ([RLM/FRLM section](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md#L435))
-- **FRLM (Federated RLM)** extends RLM by **fanning out sub-queries across backends/lane types** (local, cloud APIs, and swarm/NIP-90 jobs). See `SYNTHESIS_EXECUTION.md` for the canonical description. ([FRLM paragraph](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md#L441))
+- **RLM (Recursive Language Model)** is described as an **iterative prompt-execute loop**: the model can emit commands (like `RUN ...`) that are executed locally, with results fed back into the loop until it emits `FINAL ...`. See `SYNTHESIS_EXECUTION.md` for the canonical high-level description and CLI examples (`pylon rlm ...`). ([RLM/FRLM section](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L435))
+- **FRLM (Federated RLM)** extends RLM by **fanning out sub-queries across backends/lane types** (local, cloud APIs, and swarm/NIP-90 jobs). See `SYNTHESIS_EXECUTION.md` for the canonical description. ([FRLM paragraph](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L441))
 - In the OpenAgents stack, **Adjutant uses DSPy decision pipelines** (complexity/delegation/RLM trigger) to decide when to route into RLM-style execution for deep/large-context tasks, and records those decisions for later evaluation/optimization. See `crates/adjutant/docs/README.md` for where this is documented. ([RLM Integration](https://github.com/OpenAgentsInc/openagents/blob/main/crates/adjutant/docs/README.md#L408))
 - Separately from “execution mode,” some Autopilot planning docs use **“RLM-style”** to mean an **evaluation/reward abstraction** (multiple weighted signals aggregated into a scalar reward) used by an optimization loop. That “RLM-as-evaluator” usage shows up in `docs/autopilot/*synergies*.md` and `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`.
 
 ### MIPRO / MIPROv2
 
 - **MIPROv2** is the default “baseline” optimizer in multiple docs: compile/optimize signatures/modules by generating candidate instructions (and demos) and selecting what scores best on a metric. ([MIPROv2 section](https://github.com/OpenAgentsInc/openagents/blob/main/crates/dsrs/docs/OPTIMIZERS.md#L50))
-- In the self-improving loop narrative, **MIPROv2 is auto-triggered** when rolling accuracy drops and enough labeled examples exist (Adjutant performance tracking + background optimization). See `SYNTHESIS_EXECUTION.md` and `crates/adjutant/docs/README.md`. ([auto-triggers MIPROv2](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md#L423), [Self-Improving Autopilot](https://github.com/OpenAgentsInc/openagents/blob/main/crates/adjutant/docs/README.md#L502))
+- In the self-improving loop narrative, **MIPROv2 is auto-triggered** when rolling accuracy drops and enough labeled examples exist (Adjutant performance tracking + background optimization). See `SYNTHESIS_EXECUTION.md` and `crates/adjutant/docs/README.md`. ([auto-triggers MIPROv2](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L423), [Self-Improving Autopilot](https://github.com/OpenAgentsInc/openagents/blob/main/crates/adjutant/docs/README.md#L502))
 
 ### GEPA
 
@@ -43,7 +43,7 @@ Notes:
 
 ## Fast Entry Points (Recommended Reading Order)
 
-- [SYNTHESIS_EXECUTION.md](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md)
+- [SYNTHESIS_EXECUTION.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md)
   - Title: OpenAgents: System Guide
   - Latest: [220768e7fa](https://github.com/OpenAgentsInc/openagents/commit/220768e7fa0b987e4c98b5f8f1e64c767c6b6e55) 2026-02-04
 - [docs/GLOSSARY.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/GLOSSARY.md)
@@ -80,14 +80,14 @@ Each entry lists:
   - Matches: `RLM`: [4 lines](https://github.com/OpenAgentsInc/openagents/blob/main/AGENTS.md#L9)
   - Oldest: [e460aca030](https://github.com/OpenAgentsInc/openagents/commit/e460aca030ad77edb920dbc5552122b0c105aa9f) 2025-09-23
   - Latest: [b7308e7a6b](https://github.com/OpenAgentsInc/openagents/commit/b7308e7a6b936a8407faf7e26b4f6dcdd6003813) 2026-02-08
-- [SYNTHESIS.md](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS.md)
+- [SYNTHESIS.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS.md)
   - Title: OpenAgents: The Agentic OS
-  - Matches: `RLM`: [3 lines](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS.md#L526), `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS.md#L496), `MIPRO`: [2 lines](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS.md#L496)
+  - Matches: `RLM`: [3 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS.md#L526), `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS.md#L496), `MIPRO`: [2 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS.md#L496)
   - Oldest: [8c69db92df](https://github.com/OpenAgentsInc/openagents/commit/8c69db92df7f16ed4e331925e13361a9626eb482) 2025-12-24
   - Latest: [685e31e758](https://github.com/OpenAgentsInc/openagents/commit/685e31e758a2e1625b8ef02e8cc702fbfeff4841) 2026-02-04
-- [SYNTHESIS_EXECUTION.md](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md)
+- [SYNTHESIS_EXECUTION.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md)
   - Title: OpenAgents: System Guide
-  - Matches: `RLM`: [19 lines](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md#L51), `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md#L397), `MIPRO`: [2 lines](https://github.com/OpenAgentsInc/openagents/blob/main/SYNTHESIS_EXECUTION.md#L397)
+  - Matches: `RLM`: [19 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L51), `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L397), `MIPRO`: [2 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L397)
   - Oldest: [3f733583db](https://github.com/OpenAgentsInc/openagents/commit/3f733583db41a7684f5dd64f7c03a46105f83a13) 2026-01-08
   - Latest: [220768e7fa](https://github.com/OpenAgentsInc/openagents/commit/220768e7fa0b987e4c98b5f8f1e64c767c6b6e55) 2026-02-04
 
