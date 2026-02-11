@@ -24,6 +24,7 @@ import type {
 } from "../../effuse-pages/autopilot"
 
 type UiPart = ChatMessage["parts"][number]
+const LIGHTNING_L402_FETCH_TOOL_NAME = "lightning_l402_fetch"
 
 function safeStableStringify(value: unknown, indent = 2): string {
   if (value == null) return String(value)
@@ -40,6 +41,9 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined
+
+const asFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined
 
 const asTextState = (value: unknown): "streaming" | "done" | undefined =>
   value === "streaming" || value === "done" ? value : undefined
@@ -210,6 +214,96 @@ const toolModelFromCore = (opts: {
       error,
     },
   }
+}
+
+export type L402PaymentMetadata = {
+  readonly toolName: typeof LIGHTNING_L402_FETCH_TOOL_NAME
+  readonly toolCallId: string
+  readonly status: "completed" | "cached" | "blocked" | "failed"
+  readonly taskId?: string
+  readonly paymentId?: string
+  readonly amountMsats?: number
+  readonly responseStatusCode?: number
+  readonly proofReference?: string
+  readonly denyReason?: string
+  readonly url?: string
+  readonly method?: string
+  readonly scope?: string
+  readonly maxSpendMsats?: number
+}
+
+const isL402PaymentStatus = (
+  value: unknown,
+): value is L402PaymentMetadata["status"] =>
+  value === "completed" || value === "cached" || value === "blocked" || value === "failed"
+
+const toL402PaymentMetadata = (opts: {
+  readonly toolName: string
+  readonly toolCallId: string
+  readonly input?: unknown
+  readonly output?: unknown
+  readonly state?: string
+}): L402PaymentMetadata | null => {
+  if (opts.toolName !== LIGHTNING_L402_FETCH_TOOL_NAME) return null
+  const input = asRecord(opts.input)
+  const output = asRecord(opts.output)
+
+  const outputStatus = output?.status
+  const status = isL402PaymentStatus(outputStatus)
+    ? outputStatus
+    : opts.state === "output-error"
+      ? "failed"
+      : null
+  if (!status) return null
+
+  return {
+    toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+    toolCallId: opts.toolCallId,
+    status,
+    taskId: asString(output?.taskId),
+    paymentId: asString(output?.paymentId),
+    amountMsats: asFiniteNumber(output?.amountMsats) ?? asFiniteNumber(input?.maxSpendMsats),
+    responseStatusCode: asFiniteNumber(output?.responseStatusCode),
+    proofReference: asString(output?.proofReference),
+    denyReason: asString(output?.denyReason),
+    url: asString(input?.url),
+    method: asString(input?.method),
+    scope: asString(input?.scope),
+    maxSpendMsats: asFiniteNumber(input?.maxSpendMsats),
+  }
+}
+
+export const extractL402PaymentMetadata = (
+  parts: ReadonlyArray<unknown>,
+): ReadonlyArray<L402PaymentMetadata> => {
+  const out: Array<L402PaymentMetadata> = []
+
+  for (const p of parts) {
+    if (isDseToolPart(p)) {
+      const metadata = toL402PaymentMetadata({
+        toolName: String(p.toolName),
+        toolCallId: String(p.toolCallId),
+        input: p.input,
+        output: p.output,
+        state: String(p.state ?? ""),
+      })
+      if (metadata) out.push(metadata)
+      continue
+    }
+
+    if (isToolPart(p)) {
+      const metadata = toL402PaymentMetadata({
+        toolName: getToolPartName(p),
+        toolCallId: String(p.toolCallId),
+        input: p.input ?? p.rawInput,
+        output: p.output,
+        state: String(p.state ?? ""),
+      })
+      if (metadata) out.push(metadata)
+    }
+  }
+
+  return out
 }
 
 export function toAutopilotRenderParts(input: {
