@@ -1,0 +1,35 @@
+{
+  "name": "@openagentsinc/lnd-effect",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Effect-first LND contracts and service interfaces",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts/index.ts",
+    "./errors": "./src/errors/index.ts",
+    "./services": "./src/services/index.ts",
+    "./layers": "./src/layers/index.ts",
+    "./adapters": "./src/adapters/index.ts"
+  },
+  "scripts": {
+    "build": "npm run typecheck",
+    "typecheck": "tsc --noEmit",
+    "effect:patch": "effect-language-service patch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "effect": "^3.19.16",
+    "typescript": "^5"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.73.1",
+    "@effect/vitest": "^0.27.0",
+    "effect": "^3.19.16",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
