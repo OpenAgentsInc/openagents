@@ -29,6 +29,13 @@ import { resetThreadImpl } from "../../convex/autopilot/reset";
 import { getArtifactImpl, listArtifactsImpl, putArtifactImpl } from "../../convex/dse/artifacts";
 import { clearActiveImpl, getActiveImpl, rollbackActiveImpl, setActiveImpl } from "../../convex/dse/active";
 import { recordPredictReceiptImpl } from "../../convex/dse/receipts";
+import {
+  createTaskImpl as createLightningTaskImpl,
+  getTaskImpl as getLightningTaskImpl,
+  listTaskEventsImpl as listLightningTaskEventsImpl,
+  listTasksImpl as listLightningTasksImpl,
+  transitionTaskImpl as transitionLightningTaskImpl,
+} from "../../convex/lightning/tasks";
 
 type UserIdentity = { readonly subject: string };
 
@@ -55,6 +62,9 @@ const queryHandlers: Record<string, QueryHandler> = {
   "dse/artifacts:getArtifact": getArtifactImpl as any,
   "dse/artifacts:listArtifacts": listArtifactsImpl as any,
   "dse/active:getActive": getActiveImpl as any,
+  "lightning/tasks:getTask": getLightningTaskImpl as any,
+  "lightning/tasks:listTasks": listLightningTasksImpl as any,
+  "lightning/tasks:listTaskEvents": listLightningTaskEventsImpl as any,
 };
 
 const mutationHandlers: Record<string, MutationHandler> = {
@@ -74,6 +84,8 @@ const mutationHandlers: Record<string, MutationHandler> = {
   "dse/active:clearActive": clearActiveImpl as any,
   "dse/active:rollbackActive": rollbackActiveImpl as any,
   "dse/receipts:recordPredictReceipt": recordPredictReceiptImpl as any,
+  "lightning/tasks:createTask": createLightningTaskImpl as any,
+  "lightning/tasks:transitionTask": transitionLightningTaskImpl as any,
 };
 
 const notImplemented = (kind: string, name: string): ConvexServiceError =>

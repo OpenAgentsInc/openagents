@@ -118,6 +118,8 @@ export const makeInMemoryDb = (options?: { readonly seedTables?: Record<string, 
     dseCanaryHistory: [],
     dseOpsRuns: [],
     dseOpsRunEvents: [],
+    lightningTasks: [],
+    lightningTaskEvents: [],
     ...(options?.seedTables ?? {}),
   };
 

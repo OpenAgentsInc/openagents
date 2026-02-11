@@ -81,6 +81,93 @@ export default defineSchema({
     .index("by_status_updatedAtMs", ["status", "updatedAtMs"])
     .index("by_threadId_updatedAtMs", ["threadId", "updatedAtMs"]),
 
+  /**
+   * Lightning L402 task queue (control-plane only; execution happens in desktop).
+   *
+   * Scoped by ownerId so each user can only create/read/update their own tasks.
+   */
+  lightningTasks: defineTable({
+    taskId: v.string(),
+    ownerId: v.string(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("approved"),
+      v.literal("running"),
+      v.literal("paid"),
+      v.literal("cached"),
+      v.literal("blocked"),
+      v.literal("failed"),
+      v.literal("completed"),
+    ),
+    request: v.object({
+      url: v.string(),
+      method: v.optional(
+        v.union(v.literal("GET"), v.literal("POST"), v.literal("PUT"), v.literal("PATCH"), v.literal("DELETE")),
+      ),
+      headers: v.optional(v.record(v.string(), v.string())),
+      body: v.optional(v.string()),
+      maxSpendMsats: v.number(),
+      challengeHeader: v.optional(v.string()),
+      forceRefresh: v.optional(v.boolean()),
+      scope: v.optional(v.string()),
+      cacheTtlMs: v.optional(v.number()),
+    }),
+    idempotencyKey: v.optional(v.string()),
+    source: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    attemptCount: v.number(),
+    lastErrorCode: v.optional(v.string()),
+    lastErrorMessage: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+    lastTransitionAtMs: v.number(),
+  })
+    .index("by_taskId", ["taskId"])
+    .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"])
+    .index("by_ownerId_updatedAtMs", ["ownerId", "updatedAtMs"])
+    .index("by_ownerId_status_updatedAtMs", ["ownerId", "status", "updatedAtMs"])
+    .index("by_ownerId_idempotencyKey", ["ownerId", "idempotencyKey"]),
+
+  /**
+   * Immutable task transition audit log.
+   */
+  lightningTaskEvents: defineTable({
+    taskId: v.string(),
+    ownerId: v.string(),
+    fromStatus: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("approved"),
+        v.literal("running"),
+        v.literal("paid"),
+        v.literal("cached"),
+        v.literal("blocked"),
+        v.literal("failed"),
+        v.literal("completed"),
+      ),
+    ),
+    toStatus: v.union(
+      v.literal("queued"),
+      v.literal("approved"),
+      v.literal("running"),
+      v.literal("paid"),
+      v.literal("cached"),
+      v.literal("blocked"),
+      v.literal("failed"),
+      v.literal("completed"),
+    ),
+    actor: v.union(v.literal("web_worker"), v.literal("desktop_executor"), v.literal("system")),
+    reason: v.optional(v.string()),
+    requestId: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    createdAtMs: v.number(),
+  })
+    .index("by_taskId_createdAtMs", ["taskId", "createdAtMs"])
+    .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"]),
+
   blueprints: defineTable({
     threadId: v.string(),
     blueprint: v.any(),

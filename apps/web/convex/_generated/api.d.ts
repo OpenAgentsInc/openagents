@@ -35,6 +35,7 @@ import type * as effect_scheduler from "../effect/scheduler.js";
 import type * as effect_storage from "../effect/storage.js";
 import type * as effect_tryPromise from "../effect/tryPromise.js";
 import type * as effect_validators from "../effect/validators.js";
+import type * as lightning_tasks from "../lightning/tasks.js";
 import type * as testing_resetAll from "../testing/resetAll.js";
 
 import type {
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   "effect/storage": typeof effect_storage;
   "effect/tryPromise": typeof effect_tryPromise;
   "effect/validators": typeof effect_validators;
+  "lightning/tasks": typeof lightning_tasks;
   "testing/resetAll": typeof testing_resetAll;
 }>;
 
