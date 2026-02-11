@@ -15,6 +15,7 @@ import type { ChatSnapshot } from "../../effect/chat"
 import { ChatSnapshotAtom } from "../../effect/atoms/chat"
 import { SessionAtom, type Session } from "../../effect/atoms/session"
 import { ChatSnapshotCacheLive, ChatSnapshotCacheService } from "../../effect/chatSnapshotCache"
+import { HomeApiService } from "../../effect/homeApi"
 import { PaneSystemLive, PaneSystemService } from "../../effect/paneSystem"
 import { formatCountdown } from "../../effuse-pages/home"
 import {
@@ -91,6 +92,13 @@ const logHomeControllerAsyncError = (context: string, error: unknown): void => {
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : null
+
+const homeApiRejectedReason = (error: unknown): string | null => {
+  const rec = asRecord(error)
+  if (!rec) return null
+  if (rec._tag !== "HomeApiRejectedError") return null
+  return typeof rec.reason === "string" ? rec.reason : null
+}
 
 type StoredPaneRect = {
   readonly x: number
@@ -1424,41 +1432,41 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
           if (recapBtn instanceof HTMLButtonElement) {
             recapBtn.addEventListener("click", () => {
               const tid = homeThreadId
-              if (!tid) return
+              if (!tid || !deps) return
               if (isRunningDseRecap) return
               isRunningDseRecap = true
               dseErrorText = null
               doRender()
-              fetch("/api/autopilot/dse/recap", {
-                method: "POST",
-                headers: {
-                  "content-type": "application/json",
-                  ...(String((globalThis as { readonly __OA_E2E_MODE?: unknown }).__OA_E2E_MODE ?? "") === "stub"
-                    ? { "x-oa-e2e-mode": "stub" }
-                    : {}),
-                },
-                credentials: "include",
-                cache: "no-store",
-                body: JSON.stringify({
-                  threadId: tid,
-                  strategyId: dseStrategyId,
-                  budgetProfile: dseBudgetProfile,
-                  question: "Recap this thread.",
-                }),
-              })
-                .then((r) => r.json().catch(() => null) as Promise<{ ok?: boolean; error?: string } | null>)
-                .then((data) => {
+              const e2eMode = String((globalThis as { readonly __OA_E2E_MODE?: unknown }).__OA_E2E_MODE ?? "") === "stub"
+                ? "stub"
+                : "off"
+              runTrackedFiber({
+                context: "home.dse.recap",
+                start: () =>
+                  deps.runtime.runFork(
+                    Effect.gen(function* () {
+                      const homeApi = yield* HomeApiService
+                      return yield* homeApi.runDseRecap({
+                        threadId: tid,
+                        strategyId: dseStrategyId,
+                        budgetProfile: dseBudgetProfile,
+                        question: "Recap this thread.",
+                        e2eMode,
+                      })
+                    }).pipe(
+                      Effect.map(() => ({ ok: true as const })),
+                      Effect.catchAll((error) => Effect.succeed({ ok: false as const, error })),
+                    ),
+                  ),
+                onSuccess: (result) => {
                   isRunningDseRecap = false
-                  if (!data?.ok) {
-                    dseErrorText = data?.error ? `DSE recap failed: ${data.error}` : "DSE recap failed."
+                  if (!result.ok) {
+                    const reason = homeApiRejectedReason(result.error)
+                    dseErrorText = reason ? `DSE recap failed: ${reason}` : "DSE recap failed."
                   }
                   doRender()
-                })
-                .catch(() => {
-                  isRunningDseRecap = false
-                  dseErrorText = "DSE recap failed."
-                  doRender()
-                })
+                },
+              })
             })
           }
 
@@ -1707,16 +1715,27 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               isBusy = true
               messages.push({ role: "assistant", text: "Sending code…" })
               doRender()
-              fetch("/api/auth/start", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ email: nextEmail }),
-              })
-                .then((r) => r.json().catch(() => null) as Promise<{ ok?: boolean; error?: string } | null>)
-                .then((data) => {
+              if (!deps) {
+                isBusy = false
+                messages.push({ role: "assistant", text: "Failed to send code. Try again." })
+                doRender()
+                return
+              }
+              runTrackedFiber({
+                context: "home.auth.start_magic_code",
+                start: () =>
+                  deps.runtime.runFork(
+                    Effect.gen(function* () {
+                      const homeApi = yield* HomeApiService
+                      yield* homeApi.startMagicCode({ email: nextEmail })
+                      return { ok: true as const }
+                    }).pipe(
+                      Effect.catchAll((error) => Effect.succeed({ ok: false as const, error })),
+                    ),
+                  ),
+                onSuccess: (result) => {
                   isBusy = false
-                  if (data?.ok) {
+                  if (result.ok) {
                     email = nextEmail
                     step = "code"
                     messages.push({
@@ -1724,18 +1743,15 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                       text: `Check ${email}. Enter six digit verification code:`,
                     })
                   } else {
+                    const reason = homeApiRejectedReason(result.error)
                     messages.push({
                       role: "assistant",
-                      text: data?.error === "invalid_email" ? "Please enter a valid email address." : "Failed to send code. Try again.",
+                      text: reason === "invalid_email" ? "Please enter a valid email address." : "Failed to send code. Try again.",
                     })
                   }
                   doRender()
-                })
-                .catch(() => {
-                  isBusy = false
-                  messages.push({ role: "assistant", text: "Failed to send code. Try again." })
-                  doRender()
-                })
+                },
+              })
               return
             }
 
@@ -1755,33 +1771,32 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
             isBusy = true
             messages.push({ role: "assistant", text: "Verifying…" })
             doRender()
-            fetch("/api/auth/verify", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ email, code }),
-            })
-              .then((r) =>
-                r.json().catch(() => null) as Promise<{
-                  ok?: boolean
-                  error?: string
-                  userId?: string
-                  token?: string
-                  user?: {
-                    id: string
-                    email?: string | null
-                    firstName?: string | null
-                    lastName?: string | null
-                  }
-                } | null>,
-              )
-              .then((data) => {
+            if (!deps) {
+              isBusy = false
+              messages.push({ role: "assistant", text: "Verification failed. Try again." })
+              doRender()
+              return
+            }
+            runTrackedFiber({
+              context: "home.auth.verify_magic_code",
+              start: () =>
+                deps.runtime.runFork(
+                  Effect.gen(function* () {
+                    const homeApi = yield* HomeApiService
+                    const verified = yield* homeApi.verifyMagicCode({ email, code })
+                    return { ok: true as const, verified }
+                  }).pipe(
+                    Effect.catchAll((error) => Effect.succeed({ ok: false as const, error })),
+                  ),
+                ),
+              onSuccess: (result) => {
                 isBusy = false
-                if (!data?.ok) {
+                if (!result.ok) {
+                  const reason = homeApiRejectedReason(result.error)
                   messages.push({
                     role: "assistant",
                     text:
-                      data?.error === "invalid_code"
+                      reason === "invalid_code"
                         ? "Invalid code. Please try again."
                         : "Verification failed. Try again.",
                   })
@@ -1790,11 +1805,11 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 }
 
                 clearAuthClientCache()
-                const token = typeof data.token === "string" ? data.token : null
-                const userPayload = data.user && typeof data.user.id === "string" ? data.user : null
-                const userId = typeof data.userId === "string" ? data.userId : userPayload?.id ?? null
+                const token = result.verified.token
+                const userPayload = result.verified.user
+                const userId = result.verified.userId ?? userPayload?.id ?? null
 
-                if (token && userPayload && userId && deps) {
+                if (token && userPayload && userId) {
                   startAuthedChat({
                     userId,
                     user: {
@@ -1811,12 +1826,8 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
                 messages.push({ role: "assistant", text: "Signed in, but couldn't initialize chat. Please try again." })
                 step = "authed"
                 doRender()
-              })
-              .catch(() => {
-                isBusy = false
-                messages.push({ role: "assistant", text: "Verification failed. Try again." })
-                doRender()
-              })
+              },
+            })
           })
           const inputEl0 = paneContentSlot.querySelector("[data-oa-home-chat-input]")
           const inputEl = inputEl0 instanceof HTMLInputElement ? inputEl0 : null
@@ -1834,38 +1845,31 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
     } else if (!isAuthedFromAtoms && deps?.atoms) {
       // If the user already has a valid session cookie (e.g. E2E bypass login), detect it
       // so the home overlay doesn't force re-entering email.
-      type AuthSessionResponse = {
-        readonly ok?: boolean
-        readonly userId?: string
-        readonly token?: string
-        readonly user?: {
-          readonly id: string
-          readonly email?: string | null
-          readonly firstName?: string | null
-          readonly lastName?: string | null
-        } | null
-      }
-      fetch("/api/auth/session", { method: "GET", cache: "no-store", credentials: "include" })
-        .then((r) => r.json().catch(() => null) as Promise<AuthSessionResponse | null>)
-        .then((data) => {
-          if (!data || data.ok !== true) return
-          const userId = typeof data.userId === "string" ? data.userId : null
-          const token = typeof data.token === "string" && data.token.length > 0 ? data.token : null
-          const user =
-            data.user && typeof data.user.id === "string"
-              ? {
-                id: String(data.user.id),
-                email: data.user.email ?? null,
-                firstName: data.user.firstName ?? null,
-                lastName: data.user.lastName ?? null,
-              }
-              : null
-          if (!userId) return
-          startAuthedChat({ userId, user, token })
-        })
-        .catch((error) => {
-          logHomeControllerAsyncError("home.auth.session_probe", error)
-        })
+      runTrackedFiber({
+        context: "home.auth.session_probe",
+        start: () =>
+          deps.runtime.runFork(
+            Effect.gen(function* () {
+              const homeApi = yield* HomeApiService
+              const session = yield* homeApi.getAuthSession()
+              return { ok: true as const, session }
+            }).pipe(
+              Effect.catchAll((error) => Effect.succeed({ ok: false as const, error })),
+            ),
+          ),
+        onSuccess: (result) => {
+          if (!result.ok) {
+            logHomeControllerAsyncError("home.auth.session_probe", result.error)
+            return
+          }
+          if (!result.session) return
+          startAuthedChat({
+            userId: result.session.userId,
+            user: result.session.user,
+            token: result.session.token,
+          })
+        },
+      })
     }
 
     doRender()
