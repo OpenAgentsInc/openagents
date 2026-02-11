@@ -10,9 +10,9 @@ Goal: treat RLM runs as an *exploration pass* for long-context problems, then di
 
 Related docs:
 
-- Context rot and other failures: `docs/autopilot/context-failures.md`
-- RLM integration plan: `docs/autopilot/rlm-synergies.md`
-- DSE spec: `docs/autopilot/dse.md`
+- Context rot and other failures: `docs/autopilot/reference/context-failures.md`
+- RLM integration plan: `docs/autopilot/synergies/rlm-synergies.md`
+- DSE spec: `docs/autopilot/dse/dse.md`
 - Effect-only RLM/DSE design: `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 
 ---
@@ -183,12 +183,12 @@ After exporting enough examples:
 1. compile: `POST /api/dse/compile` (writes artifact + compile report)
 2. promote: `POST /api/dse/promote` (holdout delta gate; writes active pointer; canary cleared)
 
-Reference: `docs/autopilot/SELF_IMPROVE_PLAN.md` (Stage 5/6 endpoints).
+Reference: `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` (Stage 5/6 endpoints).
 
 ---
 
 ## 4) Guardrails
 
 - **Keep traces replayable**: bounded, structured events; stable ids; hash full payloads even if previews are truncated.
-- **Do not treat RLM as a universal fix**: poisoning/confusion still require provenance and verification (`docs/autopilot/context-failures.md`).
+- **Do not treat RLM as a universal fix**: poisoning/confusion still require provenance and verification (`docs/autopilot/reference/context-failures.md`).
 - **Prefer symbolic recursion for large N**: do not require the controller LM to emit O(N) subcalls.

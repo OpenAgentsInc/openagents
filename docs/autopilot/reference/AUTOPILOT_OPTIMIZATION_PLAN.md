@@ -2,7 +2,7 @@
 
 - **Status:** Proposed (implementation roadmap)
 - **Last updated:** 2026-02-07
-- **Primary input docs:** `docs/autopilot/dse.md`, `docs/autopilot/horizons-synergies.md`, `docs/autopilot/monty-synergies.md`, `docs/autopilot/microcode-synergies.md`, `docs/autopilot/rlm-synergies.md`
+- **Primary input docs:** `docs/autopilot/dse/dse.md`, `docs/autopilot/synergies/horizons-synergies.md`, `docs/autopilot/synergies/monty-synergies.md`, `docs/autopilot/synergies/microcode-synergies.md`, `docs/autopilot/synergies/rlm-synergies.md`
 
 This plan proposes a unified roadmap to implement **DSE** (“DSPy, but Effect TS”) and selectively adopt the best patterns from **Horizons** (graph execution, evaluation/optimization shape, budgets, memory, evented traces) and **Monty** (secure “code mode” with externals + snapshot/resume).
 
@@ -228,7 +228,7 @@ The bias is **Effect-first**: we prefer implementing the concepts as Effect serv
 
 **Objective:** mitigate context rot for huge inputs by adding an RLM execution strategy that works with existing signature contracts.
 
-Context rot is a **quality** failure past soft limits (not just "context window exceeded"). See `docs/autopilot/context-failures.md` for the taxonomy (rot vs poisoning vs confusion) and the telemetry we need to detect it.
+Context rot is a **quality** failure past soft limits (not just "context window exceeded"). See `docs/autopilot/reference/context-failures.md` for the taxonomy (rot vs poisoning vs confusion) and the telemetry we need to detect it.
 
 - **RLM strategy (Effect-first)**
   - Add `RlmPredict(signature)` as a swappable inference-time strategy.
@@ -245,7 +245,7 @@ Context rot is a **quality** failure past soft limits (not just "context window 
 
 - **Receipts and replay**
   - Emit structured per-iteration trace events: actions executed, blobs accessed (by ref/hash), sub-LM calls, and derived-variable writes.
-  - Treat traces as an input to distillation: mine repeating tactics and convert them into typed signatures/modules/graphs (see `docs/autopilot/rlm-trace-mining.md`).
+  - Treat traces as an input to distillation: mine repeating tactics and convert them into typed signatures/modules/graphs (see `docs/autopilot/dse/rlm-trace-mining.md`).
 
 **Exit criteria**
 - At least one long-context Autopilot workload (logs/codebase subset/evidence sourcing) runs reliably under strict budgets with auditable receipts.

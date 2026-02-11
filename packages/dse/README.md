@@ -8,7 +8,7 @@
 - **Eval** provides datasets, metrics (incl. judge-backed metrics), and reward signal aggregation.
 - **Compile** runs a small, explicit optimizer loop to emit immutable compiled artifacts.
 
-This package is intentionally small and contract-driven. The corresponding spec lives at `docs/autopilot/dse.md`.
+This package is intentionally small and contract-driven. The corresponding spec lives at `docs/autopilot/dse/dse.md`.
 
 Additional design notes:
 

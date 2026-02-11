@@ -43,7 +43,7 @@ Transcript rules:
 - `seq` MUST be monotonic integers (Convex floors and de-dupes by `(runId, seq)`).
 - `part` is a union:
   - `@effect/ai` stream parts (`text-start`, `text-delta`, `text-end`, `finish`, and eventually `tool-call`/`tool-result`)
-  - DSE action parts (`type: "dse.*"`) as specified in `docs/autopilot/SELF_IMPROVE_PLAN.md` (“DSE chat-part schema”)
+  - DSE action parts (`type: "dse.*"`) as specified in `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` (“DSE chat-part schema”)
 
 Goal: a transcript file should be usable by both:
 
@@ -54,25 +54,25 @@ Goal: a transcript file should be usable by both:
 
 Fixtures live under:
 
-- `docs/autopilot/fixtures/` (JSONL)
+- `docs/autopilot/testing/fixtures/` (JSONL)
 
 The two canonical fixtures for this contract are:
 
 - “Review my recent gmail things” (tool loop + formatting):
-  - `docs/autopilot/fixtures/autopilot-gmail-review.stream.v1.jsonl`
+  - `docs/autopilot/testing/fixtures/autopilot-gmail-review.stream.v1.jsonl`
 - “Kitchen sink” (every DSE card type we must render):
-  - `docs/autopilot/fixtures/dse-kitchen-sink.stream.v1.jsonl`
+  - `docs/autopilot/testing/fixtures/dse-kitchen-sink.stream.v1.jsonl`
 
 View raw parts:
 
 ```bash
-cat docs/autopilot/fixtures/autopilot-gmail-review.stream.v1.jsonl | jq .
+cat docs/autopilot/testing/fixtures/autopilot-gmail-review.stream.v1.jsonl | jq .
 ```
 
 Just the stream of part types:
 
 ```bash
-cat docs/autopilot/fixtures/autopilot-gmail-review.stream.v1.jsonl | jq -r '.part.type'
+cat docs/autopilot/testing/fixtures/autopilot-gmail-review.stream.v1.jsonl | jq -r '.part.type'
 ```
 
 ## How We Should Test This (Aligned With Existing Testing Docs)

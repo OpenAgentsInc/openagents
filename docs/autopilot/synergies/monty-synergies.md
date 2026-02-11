@@ -133,5 +133,5 @@ Our tool implementations could be **Effect services** (or use them). When Monty 
 
 - **Monty:** `~/code/monty`, [github.com/pydantic/monty](https://github.com/pydantic/monty) — README, CLAUDE.md, plan.md, examples (expense_analysis, sql_playground), crates (monty, monty-js, monty-python).
 - **Our spec:** `docs/autopilot/spec.md` (no containers, one Autopilot per user, tiny tool surface).
-- **Our DSE:** `docs/autopilot/dse.md` (signatures, modules, tool contracts, compile, artifacts).
+- **Our DSE:** `docs/autopilot/dse/dse.md` (signatures, modules, tool contracts, compile, artifacts).
 - **Our Effect:** `packages/effuse/docs/effect-migration-web.md`, `packages/effuse/docs/effuse-conversion-apps-web.md`.

@@ -5,7 +5,7 @@ This document describes what trace data is persisted for a thread, what is **not
 ## TL;DR
 
 - Use `api.autopilot.traces.getThreadTraceBundle` to fetch a thread trace in one call.
-- For headless end-to-end run + trace retrieval with a fixed test user, use `docs/autopilot/AUTOPILOT_ADMIN_TEST_USER_TRIGGER.md`.
+- For headless end-to-end run + trace retrieval with a fixed test user, use `docs/autopilot/admin/AUTOPILOT_ADMIN_TEST_USER_TRIGGER.md`.
 - Convex stores canonical chat state (`messages`, `messageParts`, `runs`) and related artifacts (`receipts`, `feature requests`, `blueprint`).
 - Some runtime failures are still only in Worker telemetry logs (not Convex rows).
 
@@ -33,7 +33,7 @@ These are currently telemetry/log-only unless they also produce a persisted `mes
 - Raw provider request/response payloads (OpenRouter / Workers AI HTTP details) are not stored in Convex.
 - Reasoning wire parts are intentionally filtered (`reasoning-*` parts are ignored in stream persistence).
 
-For production correlation of these gaps, use request-id based Worker/Convex logs (see `docs/autopilot/PROD_E2E_TESTING.md`).
+For production correlation of these gaps, use request-id based Worker/Convex logs (see `docs/autopilot/testing/PROD_E2E_TESTING.md`).
 
 ## One-Call Thread Trace API
 

@@ -10,8 +10,8 @@ This doc defines the context failure modes we care about and how they map to Ope
 
 Related docs:
 
-- RLM integration plan: `docs/autopilot/rlm-synergies.md`
-- DSE spec: `docs/autopilot/dse.md`
+- RLM integration plan: `docs/autopilot/synergies/rlm-synergies.md`
+- DSE spec: `docs/autopilot/dse/dse.md`
 - Effect-only RLM/DSE design: `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 - Foundations and routing triggers: `docs/AGENT_FOUNDATIONS.md`
 

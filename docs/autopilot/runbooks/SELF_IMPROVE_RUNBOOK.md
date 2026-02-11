@@ -2,9 +2,9 @@
 
 - **Status:** Draft (operational runbook; intended to be executed by Codex/operators)
 - **Last updated:** 2026-02-10
-- **Plan/spec refs:** `docs/autopilot/SELF_IMPROVE_PLAN.md`, `docs/autopilot/dse.md`
-- **How-to:** `docs/autopilot/DSE_PLAYBOOK.md`
-- **End-to-end roadmap:** `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
+- **Plan/spec refs:** `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md`, `docs/autopilot/dse/dse.md`
+- **How-to:** `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
+- **End-to-end roadmap:** `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
 - **If this doc conflicts with code behavior:** code wins
 
 This doc is the concrete process I will follow (and keep tightening) when improving DSE + RLM-lite in Autopilot.
@@ -32,13 +32,13 @@ This repo has multiple complementary test layers. The self-improve loop uses all
   - `cd apps/web && npm run lint`
 - **E2E browser tests (Effect-native runner):**
   - `cd apps/web && npm run test:e2e`
-  - Against prod requires E2E bypass secret, see: `docs/autopilot/PROD_E2E_TESTING.md`
+  - Against prod requires E2E bypass secret, see: `docs/autopilot/testing/PROD_E2E_TESTING.md`
 - **Visual regression (storybook canvas screenshots):**
   - `cd apps/web && npm run test:visual`
   - Storybook docs: `docs/STORYBOOK.md`
 - **Wire transcript fixtures (deterministic chat rendering):**
-  - Contract: `docs/autopilot/STREAM_TESTING.md`
-  - Fixtures: `docs/autopilot/fixtures/*.stream.v1.jsonl`
+  - Contract: `docs/autopilot/testing/STREAM_TESTING.md`
+  - Fixtures: `docs/autopilot/testing/fixtures/*.stream.v1.jsonl`
 
 Rule: I don’t claim a behavior improvement unless the relevant layer is covered (at minimum: unit/worker + UI visibility).
 
@@ -51,7 +51,7 @@ This is the operational loop DSE is designed for:
      - `signatureId`, `strategyId`, `compiled_id`
      - budgets (limits + usage)
      - receipts + (if RLM) `rlmTrace`
-   - In UI, this is the `dse.signature` card (see `docs/autopilot/DSE_PLAYBOOK.md`).
+   - In UI, this is the `dse.signature` card (see `docs/autopilot/runbooks/DSE_PLAYBOOK.md`).
      - On `/autopilot`, signature cards are collapsed by default; click to expand to copy `receiptId` / open trace links.
 
 2. **Export / Label**
@@ -60,7 +60,7 @@ This is the operational loop DSE is designed for:
    - Keep a real holdout split. Don’t tune on holdout.
    - Headless scale-up:
      - `apps/web/scripts/dse-trace-mine.ts` mines many receipts and exports/tag examples into Convex.
-     - Reference: `docs/autopilot/rlm-trace-mining.md`.
+     - Reference: `docs/autopilot/dse/rlm-trace-mining.md`.
 
 3. **Evaluate**
    - Compare current default (`direct.v1`) against `rlm_lite.v1` (or a candidate artifact) on the same dataset slice.
@@ -86,7 +86,7 @@ This is the operational loop DSE is designed for:
    - Add/adjust tests and fixtures so the improvement cannot silently regress.
 
 For the fully programmatic overnight loop (compile -> canary -> promote/rollback) with all logs stored in Convex,
-use `apps/web/scripts/dse-overnight.ts` and follow `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`.
+use `apps/web/scripts/dse-overnight.ts` and follow `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`.
 
 ## 3) How I’ll Apply This To RLM-lite Specifically
 
@@ -123,7 +123,7 @@ This is the checklist I will follow when asked to improve Autopilot behavior via
 3. **Create or expand a dataset**
    - Add a small, high-signal dataset slice:
      - trace exports into `dseExamples` (preferred),
-     - or deterministic fixtures under `docs/autopilot/fixtures/` (for UI contracts).
+     - or deterministic fixtures under `docs/autopilot/testing/fixtures/` (for UI contracts).
 
 4. **Change code**
    - Implement the improvement with strict budgets and bounded outputs.
@@ -137,11 +137,11 @@ This is the checklist I will follow when asked to improve Autopilot behavior via
 6. **Run verification**
    - `cd packages/dse && bun test && bun run typecheck`
    - `cd apps/web && npm test && npm run lint`
-   - Optionally: `cd apps/web && npm run test:e2e` (local) or prod E2E per `docs/autopilot/PROD_E2E_TESTING.md`
+   - Optionally: `cd apps/web && npm run test:e2e` (local) or prod E2E per `docs/autopilot/testing/PROD_E2E_TESTING.md`
 
 7. **Ship safely**
    - If the change affects runtime behavior, prefer canary + rollback-ready promotion.
-   - Write down the “how to debug” path in `docs/autopilot/DSE_PLAYBOOK.md` when new fields/controls are added.
+   - Write down the “how to debug” path in `docs/autopilot/runbooks/DSE_PLAYBOOK.md` when new fields/controls are added.
 
 ## 5) Common Failure Modes (And How This Runbook Prevents Them)
 
@@ -153,4 +153,4 @@ This is the checklist I will follow when asked to improve Autopilot behavior via
   - Fix: trace with spans/BlobRefs, UI trace link, and bounded previews.
 - Prompt injection / poisoning:
   - Fix: provenance-first observations and never trusting untrusted text without verification.
-  - Reference: `docs/autopilot/context-failures.md`
+  - Reference: `docs/autopilot/reference/context-failures.md`

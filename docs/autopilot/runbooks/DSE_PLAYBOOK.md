@@ -2,8 +2,8 @@
 
 - **Status:** Draft (operational guide; matches current implementation)
 - **Last updated:** 2026-02-10
-- **Spec / intent:** `docs/autopilot/dse.md`
-- **End-to-end roadmap:** `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
+- **Spec / intent:** `docs/autopilot/dse/dse.md`
+- **End-to-end roadmap:** `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
 - **If this doc conflicts with code behavior:** code wins
 
 ## What this is
@@ -253,7 +253,7 @@ What it does:
 - tags exported rows with `trace_mined` (always) plus any user tags
 - writes structured linkage into `dseExamples.meta` (`kind=openagents.trace_export.v1`, includes `receiptId`, `threadId/runId`, `rlmTrace.blobId`, `strategyId`, `compiled_id`)
 
-Reference: `docs/autopilot/rlm-trace-mining.md`.
+Reference: `docs/autopilot/dse/rlm-trace-mining.md`.
 
 ### 6.2 Compile an artifact for a signature
 
@@ -293,7 +293,7 @@ Notable implemented compile search spaces:
 
 Reference for the underlying design and optimizer behavior:
 
-- `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
+- `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
 - `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 
 ### 6.3 Promote a compiled artifact
@@ -354,7 +354,7 @@ If you want the full “import dataset -> compile -> canary -> traffic -> monito
 use the canonical overnight runner:
 
 - entrypoint: `apps/web/scripts/dse-overnight.ts`
-- runbook + required Worker secrets: `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+- runbook + required Worker secrets: `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 
 Examples:
 
@@ -394,9 +394,9 @@ Use distilled strategies when:
 
 ## 8) Where To Look Next
 
-- Unified long-context roadmap: `docs/autopilot/RLM_UNIFIED_ROADMAP.md`
-- Context failure definitions: `docs/autopilot/context-failures.md`
-- Trace mining workflow: `docs/autopilot/rlm-trace-mining.md`
-- Overnight self-improvement runbook (headless): `docs/autopilot/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
-- DSE spec (deep details): `docs/autopilot/dse.md`
-- RLM design notes + constraints: `docs/autopilot/rlm-synergies.md`
+- Unified long-context roadmap: `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
+- Context failure definitions: `docs/autopilot/reference/context-failures.md`
+- Trace mining workflow: `docs/autopilot/dse/rlm-trace-mining.md`
+- Overnight self-improvement runbook (headless): `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
+- DSE spec (deep details): `docs/autopilot/dse/dse.md`
+- RLM design notes + constraints: `docs/autopilot/synergies/rlm-synergies.md`

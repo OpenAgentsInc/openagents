@@ -24,7 +24,7 @@ Notes:
 - **RLM (Recursive Language Model)** is described as an **iterative prompt-execute loop**: the model can emit commands (like `RUN ...`) that are executed locally, with results fed back into the loop until it emits `FINAL ...`. See `SYNTHESIS_EXECUTION.md` for the canonical high-level description and CLI examples (`pylon rlm ...`). ([RLM/FRLM section](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L435))
 - **FRLM (Federated RLM)** extends RLM by **fanning out sub-queries across backends/lane types** (local, cloud APIs, and swarm/NIP-90 jobs). See `SYNTHESIS_EXECUTION.md` for the canonical description. ([FRLM paragraph](https://github.com/OpenAgentsInc/openagents/blob/main/docs/SYNTHESIS_EXECUTION.md#L441))
 - In the OpenAgents stack, **Adjutant uses DSPy decision pipelines** (complexity/delegation/RLM trigger) to decide when to route into RLM-style execution for deep/large-context tasks, and records those decisions for later evaluation/optimization. See `crates/adjutant/docs/README.md` for where this is documented. ([RLM Integration](https://github.com/OpenAgentsInc/openagents/blob/main/crates/adjutant/docs/README.md#L408))
-- Separately from “execution mode,” some Autopilot planning docs use **“RLM-style”** to mean an **evaluation/reward abstraction** (multiple weighted signals aggregated into a scalar reward) used by an optimization loop. That “RLM-as-evaluator” usage shows up in `docs/autopilot/*synergies*.md` and `docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md`.
+- Separately from “execution mode,” some Autopilot planning docs use **“RLM-style”** to mean an **evaluation/reward abstraction** (multiple weighted signals aggregated into a scalar reward) used by an optimization loop. That “RLM-as-evaluator” usage shows up in `docs/autopilot/*synergies*.md` and `docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md`.
 
 ### MIPRO / MIPROv2
 
@@ -158,19 +158,19 @@ Each entry lists:
   - Matches: `RLM`: [2 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/archive/autopilot-migration-plan.md#L176)
   - Oldest: [2c25d558af](https://github.com/OpenAgentsInc/openagents/commit/2c25d558afa7de1dda0690c4dc6effdff092c12c) 2026-02-04
   - Latest: [2c25d558af](https://github.com/OpenAgentsInc/openagents/commit/2c25d558afa7de1dda0690c4dc6effdff092c12c) 2026-02-04
-- [docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md)
+- [docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md)
   - Title: Autopilot Optimization Plan (DSE-first, Horizons/Monty-inspired)
-  - Matches: `RLM`: [13 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md#L5), `MIPRO`: [4 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/AUTOPILOT_OPTIMIZATION_PLAN.md#L43)
+  - Matches: `RLM`: [13 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md#L5), `MIPRO`: [4 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md#L43)
   - Oldest: [412fe7793f](https://github.com/OpenAgentsInc/openagents/commit/412fe7793ff79d717a5c9c5eb986af7ff0accfa3) 2026-02-06
   - Latest: [f962acff8c](https://github.com/OpenAgentsInc/openagents/commit/f962acff8c6895d66a988a9b47068b14e6acd706) 2026-02-06
-- [docs/autopilot/MVP_USER_STORIES.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/MVP_USER_STORIES.md)
+- [docs/autopilot/reference/MVP_USER_STORIES.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/MVP_USER_STORIES.md)
   - Title: Autopilot MVP User Stories
-  - Matches: `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/MVP_USER_STORIES.md#L180)
+  - Matches: `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/MVP_USER_STORIES.md#L180)
   - Oldest: [a8ddecf4bd](https://github.com/OpenAgentsInc/openagents/commit/a8ddecf4bd2812588eea8e8991571b22ed52c9fa) 2026-02-07
   - Latest: [a8ddecf4bd](https://github.com/OpenAgentsInc/openagents/commit/a8ddecf4bd2812588eea8e8991571b22ed52c9fa) 2026-02-07
-- [docs/autopilot/anon-chat-execution-plane.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/anon-chat-execution-plane.md)
+- [docs/autopilot/reference/anon-chat-execution-plane.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/anon-chat-execution-plane.md)
   - Title: Autopilot Chat Execution Plane (Convex-First MVP)
-  - Matches: `GEPA`: [4 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/anon-chat-execution-plane.md#L50)
+  - Matches: `GEPA`: [4 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/anon-chat-execution-plane.md#L50)
   - Oldest: [0af4699162](https://github.com/OpenAgentsInc/openagents/commit/0af4699162a1e972f5f5f7cea65a996aaeb292d6) 2026-02-07
   - Latest: [e91451e0ea](https://github.com/OpenAgentsInc/openagents/commit/e91451e0eac4413dfef896ba2a5d92a758d6f8ed) 2026-02-07
 - [docs/autopilot/bootstrap-plan.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/bootstrap-plan.md)
@@ -178,19 +178,19 @@ Each entry lists:
   - Matches: `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/bootstrap-plan.md#L419)
   - Oldest: [e27f9e20b6](https://github.com/OpenAgentsInc/openagents/commit/e27f9e20b65f0a9eeba24fe556a8741b851a0887) 2026-02-05
   - Latest: [9a49407bd4](https://github.com/OpenAgentsInc/openagents/commit/9a49407bd4b4f5b981a31346247cecf5034fa9d8) 2026-02-07
-- [docs/autopilot/horizons-synergies.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/horizons-synergies.md)
+- [docs/autopilot/synergies/horizons-synergies.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/horizons-synergies.md)
   - Title: Horizons and OpenAgents Autopilot / Effect / DSE: Synergies and Learnings
-  - Matches: `RLM`: [14 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/horizons-synergies.md#L5), `MIPRO`: [10 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/horizons-synergies.md#L5)
+  - Matches: `RLM`: [14 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/horizons-synergies.md#L5), `MIPRO`: [10 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/horizons-synergies.md#L5)
   - Oldest: [076731089a](https://github.com/OpenAgentsInc/openagents/commit/076731089adb69cc46da91f1369aa03cd8af087b) 2026-02-06
   - Latest: [f9612ff718](https://github.com/OpenAgentsInc/openagents/commit/f9612ff718d0ff3efa8861d623eaf7f348ad01d8) 2026-02-06
-- [docs/autopilot/microcode-synergies.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/microcode-synergies.md)
+- [docs/autopilot/synergies/microcode-synergies.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/microcode-synergies.md)
   - Title: Microcode and OpenAgents Autopilot / Effect / DSE: Synergies and Learnings
-  - Matches: `RLM`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/microcode-synergies.md#L156)
+  - Matches: `RLM`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/microcode-synergies.md#L156)
   - Oldest: [2e2ae422a7](https://github.com/OpenAgentsInc/openagents/commit/2e2ae422a766d83a40823426dc004443bf86462f) 2026-02-06
   - Latest: [2e2ae422a7](https://github.com/OpenAgentsInc/openagents/commit/2e2ae422a766d83a40823426dc004443bf86462f) 2026-02-06
-- [docs/autopilot/rlm-synergies.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/rlm-synergies.md)
+- [docs/autopilot/synergies/rlm-synergies.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/rlm-synergies.md)
   - Title: RLMs (“Recursive Language Models”) and OpenAgents Autopilot / Effect / DSE: Synergies and Integration Plan
-  - Matches: `RLM`: [29 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/rlm-synergies.md#L1), `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/rlm-synergies.md#L129), `MIPRO`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/rlm-synergies.md#L129)
+  - Matches: `RLM`: [29 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/rlm-synergies.md#L1), `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/rlm-synergies.md#L129), `MIPRO`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/synergies/rlm-synergies.md#L129)
   - Oldest: [f962acff8c](https://github.com/OpenAgentsInc/openagents/commit/f962acff8c6895d66a988a9b47068b14e6acd706) 2026-02-06
   - Latest: [f962acff8c](https://github.com/OpenAgentsInc/openagents/commit/f962acff8c6895d66a988a9b47068b14e6acd706) 2026-02-06
 - [docs/autopilot/spec.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/spec.md)
