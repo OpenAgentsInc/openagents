@@ -51,6 +51,8 @@ The Effuse/DOM port exists to enable:
    - How to mount once in `apps/web`, render pane contents with Effuse, and handle scoped cleanup.
 5. `PARITY_CHECKLIST.md`:
    - What matches WGPUI today, and what is still missing for 100% parity.
+5a. `PANE_DRAGGING.md`:
+   - Drag/resize design, work log, and next steps (WGPUI + effuse-panes).
 6. `THEMING_AND_STYLING.md`:
    - How the DOM adapter injects CSS and how to override theme tokens.
 7. `MOBILE.md`:

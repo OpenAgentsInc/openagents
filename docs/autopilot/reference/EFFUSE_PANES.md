@@ -40,7 +40,7 @@ The behavior is derived from:
 Additional historical context:
 
 - `docs/autopilot-old/HUD.md` (HUD + pane system overview)
-- `docs/panes/PANE_DRAGGING.md` (drag/resize design + work log for Rust)
+- `packages/effuse-panes/docs/PANE_DRAGGING.md` (drag/resize design + work log)
 
 ## What The Web Port Does (And Does Not Do)
 
