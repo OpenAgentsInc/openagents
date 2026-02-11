@@ -119,6 +119,7 @@ describe("Autopilot worker", () => {
     const names = json.map((t) => t?.name).filter(Boolean);
     expect(names).toContain("get_time");
     expect(names).toContain("bootstrap_set_user_handle");
+    expect(names).toContain("lightning_l402_fetch");
 
     const getTime = json.find((t) => t?.name === "get_time");
     expect(getTime?.inputSchemaJson).toBeTruthy();
