@@ -110,10 +110,9 @@ function isEvalExampleResult(value: unknown): value is EvalExampleResultV1 {
   );
 }
 
-export function evaluate<I, O, Y>(
+const evaluateEffect = Effect.fn("dse.eval.evaluate")(function* <I, O, Y>(
   options: EvaluateOptions<I, O, Y>
-): Effect.Effect<EvalResultV1, EvalError, EvalEnv> {
-  return Effect.gen(function* () {
+) {
     const cache = yield* EvalCacheService;
 
     const dataset0 = options.filter
@@ -274,7 +273,12 @@ export function evaluate<I, O, Y>(
       summary,
       ...(options.includeExampleDetails ? { examples: results } : {})
     };
-  }).pipe(
+  });
+
+export function evaluate<I, O, Y>(
+  options: EvaluateOptions<I, O, Y>
+): Effect.Effect<EvalResultV1, EvalError, EvalEnv> {
+  return evaluateEffect(options).pipe(
     Effect.catchAll((cause) =>
       Effect.fail(
         EvalError.make({

@@ -277,10 +277,9 @@ function greedyFewShotForward(
   return { initial, candidateIds, kMax };
 }
 
-export function compile<I, O, Y>(
+const compileEffect = Effect.fn("dse.compile.compile")(function* <I, O, Y>(
   options: CompileOptions<I, O, Y>
-): Effect.Effect<CompileResultV1, CompileError, EvalEnv> {
-  return Effect.gen(function* () {
+) {
     const baseParams = options.baseParams ?? options.signature.defaults.params ?? emptyParamsV1;
 
     const { train, holdout } = defaultTrainHoldoutSplits(options.dataset);
@@ -593,7 +592,12 @@ export function compile<I, O, Y>(
         holdoutReward: holdoutEval.reward
       }
     };
-  }).pipe(
+  });
+
+export function compile<I, O, Y>(
+  options: CompileOptions<I, O, Y>
+): Effect.Effect<CompileResultV1, CompileError, EvalEnv> {
+  return compileEffect(options).pipe(
     Effect.catchAll((cause) =>
       Effect.fail(
         CompileError.make({

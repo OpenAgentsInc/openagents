@@ -37,7 +37,7 @@ export const mountComponent = <S, E, R>(
     // Create emit function
     const emit = (event: E) =>
       Queue.offer(eventQueue, event).pipe(
-        Effect.catchAll(() => Effect.void) // Silently ignore queue full/shutdown
+        Effect.asVoid // unbounded queue never fails; offer may return false when shutdown
       )
 
     // Build context

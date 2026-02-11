@@ -49,6 +49,17 @@ Runtime logging in Effect codepaths is routed through `Effect.log*` APIs
 instead of ad-hoc `console.*` calls. This keeps logs composable with Effect
 logger layers and consistent across browser/test runtimes.
 
+## Tracing Span Names
+
+Public router operations are instrumented with `Effect.fn` using deterministic
+`effuse.router.<operation>` span names:
+
+- `effuse.router.makeRouter`
+- `effuse.router.start`
+- `effuse.router.stop`
+- `effuse.router.navigate`
+- `effuse.router.prefetch`
+
 ## Test Style
 
 Effuse tests use `@effect/vitest` APIs for Effect-native execution:

@@ -116,15 +116,18 @@ const defaultNotFound = ({ url }: { readonly url: URL }) =>
     html`<div data-effuse-error="not-found"><h1>Not found</h1><p>${url.pathname}</p></div>`
   )
 
+const asUnknownRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null
+
 const formatErrorText = (error: unknown): string => {
-  if (error && typeof error === "object") {
-    const any = error as any
+  const record = asUnknownRecord(error)
+  if (record) {
     // RouterError is not an `Error` in v1, so String(error) is useless.
-    if (any._tag === "RouterError" && typeof any.message === "string") {
-      return any.message
+    if (record._tag === "RouterError" && typeof record.message === "string") {
+      return record.message
     }
-    if (typeof any.message === "string") {
-      return any.message
+    if (typeof record.message === "string") {
+      return record.message
     }
     try {
       return JSON.stringify(error)
@@ -221,8 +224,9 @@ const isCacheExpired = (policy: CachePolicy, ageMs: number): boolean => {
   }
 }
 
-export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterService<R>> =>
-  Effect.gen(function* () {
+const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
+  config: RouterConfig<R>
+) {
     const outletSelector = config.outletSelector ?? "[data-effuse-outlet]"
     const maxRedirects = config.maxRedirects ?? 10
 
@@ -675,8 +679,8 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         yield* Fiber.join(fiber)
       })
 
-    const navigate = (href: string, options?: NavigateOptions) =>
-      Effect.gen(function* () {
+    const navigate: RouterService<R>["navigate"] = Effect.fn("effuse.router.navigate")(
+      function* (href: string, options?: NavigateOptions) {
         const base = config.history.current()
         const url = parseHref(href, base)
         if (!url) {
@@ -690,10 +694,11 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         }
 
         yield* startNavigation(url, options?.replace ? "replace" : "push")
-      })
+      },
+    )
 
-    const prefetch = (href: string) =>
-      Effect.gen(function* () {
+    const prefetch: RouterService<R>["prefetch"] = Effect.fn("effuse.router.prefetch")(
+      function* (href: string) {
         const base = config.history.current()
         const url = parseHref(href, base)
         if (!url) {
@@ -712,7 +717,8 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         yield* SubscriptionRef.update(state, (s): RouterState =>
           s.status === "prefetching" ? { ...s, status: "idle" as const } : s
         )
-      })
+      },
+    )
 
     const start: RouterService<R>["start"] = Effect.gen(function* () {
       const already = yield* Ref.get(started)
@@ -849,7 +855,7 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
           )
         )
       }
-    })
+    }).pipe(Effect.withSpan("effuse.router.start"))
 
     const stop: RouterService<R>["stop"] = Effect.gen(function* () {
       const cleanup = yield* Ref.getAndSet(cleanupRef, null)
@@ -882,9 +888,12 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         key: null,
         run: null,
       })
-    })
+    }).pipe(Effect.withSpan("effuse.router.stop"))
 
     const service = { state, start, stop, navigate, prefetch } satisfies RouterService<R>
     // Non-normative: allow tests/dev tooling to introspect inflight/cache state.
     return Object.assign(service, { __debug: debug })
   })
+
+export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterService<R>> =>
+  makeRouterEffect(config)

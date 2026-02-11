@@ -495,419 +495,401 @@ function resolveTargetTextWithSource(
   });
 }
 
-export function executeRlmAction(options: {
+type ExecuteRlmActionOptions = {
   readonly action: RlmActionV1;
   readonly params: DseParams;
   readonly budget: BudgetHandle;
-}): Effect.Effect<
+};
+
+const executeRlmActionEffect: (
+  options: ExecuteRlmActionOptions
+) => Effect.Effect<
   RlmKernelStep,
   RlmKernelError | LmClientError | BudgetExceededError,
   BlobStoreService | VarSpaceService | LmClientService
-> {
-  return Effect.gen(function* () {
-    const vars = yield* VarSpaceService;
-    const blobs = yield* BlobStoreService;
-    const lm = yield* LmClientService;
+> = Effect.fn("dse.runtime.executeRlmAction")(function* (
+  options: ExecuteRlmActionOptions
+) {
+  const vars = yield* VarSpaceService;
+  const blobs = yield* BlobStoreService;
+  const lm = yield* LmClientService;
 
-    yield* options.budget.checkTime();
+  yield* options.budget.checkTime();
 
-    const action = options.action;
-    const params = options.params;
+  const action = options.action;
+  const params = options.params;
 
-    switch (action._tag) {
-      case "Preview": {
-        const resolved = yield* resolveTargetTextWithSource(action.target);
-        const text = resolved.text;
-        const offset = normalizeBoundedInt(action.offset, { min: 0, max: Math.max(0, text.length) });
-        const length = normalizeBoundedInt(action.length, { min: 1, max: 10_000 });
-        const end = Math.min(text.length, offset + length);
-        const slice = text.slice(offset, end);
-        const truncated = end < text.length;
+  switch (action._tag) {
+    case "Preview": {
+      const resolved = yield* resolveTargetTextWithSource(action.target);
+      const text = resolved.text;
+      const offset = normalizeBoundedInt(action.offset, { min: 0, max: Math.max(0, text.length) });
+      const length = normalizeBoundedInt(action.length, { min: 1, max: 10_000 });
+      const end = Math.min(text.length, offset + length);
+      const slice = text.slice(offset, end);
+      const truncated = end < text.length;
 
-        const span: RlmSpanRefV1 = {
-          _tag: "SpanRef",
-          source: resolved.source,
-          startChar: offset,
-          endChar: end,
+      const span: RlmSpanRefV1 = {
+        _tag: "SpanRef",
+        source: resolved.source,
+        startChar: offset,
+        endChar: end,
+        totalChars: text.length,
+        ...(lineRangeFromCharSpan(text, offset, end) ?? {})
+      };
+
+      return {
+        _tag: "Continue",
+        observation: {
+          _tag: "PreviewResult",
+          trust: "untrusted",
+          origin: "unknown",
+          target: action.target,
+          span,
+          offset,
+          length,
           totalChars: text.length,
-          ...(lineRangeFromCharSpan(text, offset, end) ?? {})
-        };
+          truncated,
+          text: slice
+        }
+      };
+    }
+    case "Search": {
+      const resolved = yield* resolveTargetTextWithSource(action.target);
+      const text = resolved.text;
+      const query = action.query;
+      const maxMatches = normalizeBoundedInt(action.maxMatches, { min: 1, max: 200 });
+      const contextChars = normalizeBoundedInt(action.contextChars, { min: 0, max: 500 });
 
-        return {
-          _tag: "Continue",
-          observation: {
-            _tag: "PreviewResult",
-            trust: "untrusted",
-            origin: "unknown",
-            target: action.target,
-            span,
-            offset,
-            length,
-            totalChars: text.length,
-            truncated,
-            text: slice
-          }
-        };
-      }
-      case "Search": {
-        const resolved = yield* resolveTargetTextWithSource(action.target);
-        const text = resolved.text;
-        const query = action.query;
-        const maxMatches = normalizeBoundedInt(action.maxMatches, { min: 1, max: 200 });
-        const contextChars = normalizeBoundedInt(action.contextChars, { min: 0, max: 500 });
+      let i = 0;
+      let totalMatches = 0;
+      const matches: Array<{ readonly index: number; readonly snippet: string; readonly span: RlmSpanRefV1 }> = [];
+      while (true) {
+        const idx = text.indexOf(query, i);
+        if (idx === -1) break;
+        totalMatches++;
 
-        let i = 0;
-        let totalMatches = 0;
-        const matches: Array<{ readonly index: number; readonly snippet: string; readonly span: RlmSpanRefV1 }> = [];
-        while (true) {
-          const idx = text.indexOf(query, i);
-          if (idx === -1) break;
-          totalMatches++;
-
-          if (matches.length < maxMatches) {
-            const start = Math.max(0, idx - contextChars);
-            const end = Math.min(text.length, idx + query.length + contextChars);
-            const snippet = text.slice(start, end);
-            matches.push({
-              index: idx,
-              snippet,
-              span: {
-                _tag: "SpanRef",
-                source: resolved.source,
-                startChar: start,
-                endChar: end,
-                totalChars: text.length,
-                ...(lineRangeFromCharSpan(text, start, end) ?? {})
-              }
-            });
-          }
-
-          i = idx + Math.max(1, query.length);
+        if (matches.length < maxMatches) {
+          const start = Math.max(0, idx - contextChars);
+          const end = Math.min(text.length, idx + query.length + contextChars);
+          const snippet = text.slice(start, end);
+          matches.push({
+            index: idx,
+            snippet,
+            span: {
+              _tag: "SpanRef",
+              source: resolved.source,
+              startChar: start,
+              endChar: end,
+              totalChars: text.length,
+              ...(lineRangeFromCharSpan(text, start, end) ?? {})
+            }
+          });
         }
 
-        return {
-          _tag: "Continue",
-          observation: {
-            _tag: "SearchResult",
-            trust: "untrusted",
-            origin: "unknown",
-            target: action.target,
-            totalChars: text.length,
-            query,
-            totalMatches,
-            truncated: totalMatches > matches.length,
-            matches
-          }
-        };
+        i = idx + Math.max(1, query.length);
       }
-      case "Load": {
-        const text = yield* blobs.getText(action.blobId).pipe(
+
+      return {
+        _tag: "Continue",
+        observation: {
+          _tag: "SearchResult",
+          trust: "untrusted",
+          origin: "unknown",
+          target: action.target,
+          totalChars: text.length,
+          query,
+          totalMatches,
+          truncated: totalMatches > matches.length,
+          matches
+        }
+      };
+    }
+    case "Load": {
+      const text = yield* blobs.getText(action.blobId).pipe(
+        Effect.catchAll((cause: BlobStoreError) =>
+          Effect.fail(RlmKernelError.make({ message: "BlobStore.getText failed", cause }))
+        )
+      );
+      if (text == null) {
+        return yield* Effect.fail(
+          RlmKernelError.make({ message: `Missing blob (blobId=${action.blobId})` })
+        );
+      }
+
+      const ref: BlobRef = {
+        id: action.blobId,
+        hash: action.blobId,
+        size: byteLengthUtf8(text)
+      };
+
+      yield* vars.putBlob(action.intoVar, ref).pipe(
+        Effect.catchAll((cause: VarSpaceError) =>
+          Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
+        )
+      );
+
+      return {
+        _tag: "Continue",
+        observation: { _tag: "LoadResult", intoVar: action.intoVar, blob: ref }
+      };
+    }
+    case "Chunk": {
+      const resolved = yield* resolveTargetTextWithSource(action.target);
+      const text = resolved.text;
+      const chunkChars = normalizeBoundedInt(action.chunkChars, { min: 1, max: 20_000 });
+      const overlapChars = normalizeBoundedInt(action.overlapChars, { min: 0, max: Math.max(0, chunkChars - 1) });
+      const maxChunks = normalizeBoundedInt(action.maxChunks, { min: 1, max: 200 });
+
+      const chunks: Array<BlobRef> = [];
+      let start = 0;
+      while (start < text.length && chunks.length < maxChunks) {
+        const end = Math.min(text.length, start + chunkChars);
+        const chunkText = text.slice(start, end);
+        const ref = yield* blobs.putText({ text: chunkText, mime: "text/plain" }).pipe(
           Effect.catchAll((cause: BlobStoreError) =>
-            Effect.fail(RlmKernelError.make({ message: "BlobStore.getText failed", cause }))
+            Effect.fail(RlmKernelError.make({ message: "BlobStore.putText failed", cause }))
           )
         );
-        if (text == null) {
-          return yield* Effect.fail(
-            RlmKernelError.make({ message: `Missing blob (blobId=${action.blobId})` })
-          );
-        }
+        chunks.push(ref);
 
-        const ref: BlobRef = {
-          id: action.blobId,
-          hash: action.blobId,
-          size: byteLengthUtf8(text)
-        };
-
-        yield* vars.putBlob(action.intoVar, ref).pipe(
-          Effect.catchAll((cause: VarSpaceError) =>
-            Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
-          )
-        );
-
-        return {
-          _tag: "Continue",
-          observation: { _tag: "LoadResult", intoVar: action.intoVar, blob: ref }
-        };
+        if (end >= text.length) break;
+        const nextStart = end - overlapChars;
+        // Ensure progress even if overlap is large.
+        start = nextStart <= start ? end : nextStart;
       }
-      case "Chunk": {
-        const resolved = yield* resolveTargetTextWithSource(action.target);
-        const text = resolved.text;
-        const chunkChars = normalizeBoundedInt(action.chunkChars, { min: 1, max: 20_000 });
-        const overlapChars = normalizeBoundedInt(action.overlapChars, { min: 0, max: Math.max(0, chunkChars - 1) });
-        const maxChunks = normalizeBoundedInt(action.maxChunks, { min: 1, max: 200 });
 
-        const chunks: Array<BlobRef> = [];
-        let start = 0;
-        while (start < text.length && chunks.length < maxChunks) {
-          const end = Math.min(text.length, start + chunkChars);
-          const chunkText = text.slice(start, end);
-          const ref = yield* blobs.putText({ text: chunkText, mime: "text/plain" }).pipe(
-            Effect.catchAll((cause: BlobStoreError) =>
-              Effect.fail(RlmKernelError.make({ message: "BlobStore.putText failed", cause }))
-            )
-          );
-          chunks.push(ref);
+      yield* vars.putJson(action.intoVar, chunks).pipe(
+        Effect.catchAll((cause: VarSpaceError) =>
+          Effect.fail(RlmKernelError.make({ message: "VarSpace.putJson failed", cause }))
+        )
+      );
 
-          if (end >= text.length) break;
-          const nextStart = end - overlapChars;
-          // Ensure progress even if overlap is large.
-          start = nextStart <= start ? end : nextStart;
+      return {
+        _tag: "Continue",
+        observation: {
+          _tag: "ChunkResult",
+          intoVar: action.intoVar,
+          chunkCount: chunks.length,
+          chunkChars,
+          overlapChars
         }
-
-        yield* vars.putJson(action.intoVar, chunks).pipe(
+      };
+    }
+    case "WriteVar": {
+      if (action.value._tag === "Json") {
+        yield* vars.putJson(action.name, action.value.value).pipe(
           Effect.catchAll((cause: VarSpaceError) =>
             Effect.fail(RlmKernelError.make({ message: "VarSpace.putJson failed", cause }))
           )
         );
-
         return {
           _tag: "Continue",
-          observation: {
-            _tag: "ChunkResult",
-            intoVar: action.intoVar,
-            chunkCount: chunks.length,
-            chunkChars,
-            overlapChars
-          }
+          observation: { _tag: "WriteVarResult", name: action.name, kind: "json" }
         };
       }
-      case "WriteVar": {
-        if (action.value._tag === "Json") {
-          yield* vars.putJson(action.name, action.value.value).pipe(
-            Effect.catchAll((cause: VarSpaceError) =>
-              Effect.fail(RlmKernelError.make({ message: "VarSpace.putJson failed", cause }))
-            )
-          );
-          return {
-            _tag: "Continue",
-            observation: { _tag: "WriteVarResult", name: action.name, kind: "json" }
-          };
-        }
 
-        yield* vars.putBlob(action.name, action.value.blob).pipe(
-          Effect.catchAll((cause: VarSpaceError) =>
-            Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
+      yield* vars.putBlob(action.name, action.value.blob).pipe(
+        Effect.catchAll((cause: VarSpaceError) =>
+          Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
+        )
+      );
+      return {
+        _tag: "Continue",
+        observation: { _tag: "WriteVarResult", name: action.name, kind: "blob" }
+      };
+    }
+    case "SubLm": {
+      // Sub-LM calls are budgeted (both as LM calls and as sub-LM calls).
+      yield* options.budget.onLmCall();
+      yield* options.budget.onSubLmCall();
+
+      const subRole = params.rlmLite?.subRole ?? "sub";
+      const roleCfg = resolveModelConfig(params, subRole === "main" ? "main" : "sub");
+
+      const response = yield* lm.complete({
+        messages: action.messages,
+        modelId: action.model?.modelId ?? roleCfg.modelId,
+        temperature: action.model?.temperature ?? roleCfg.temperature,
+        topP: action.model?.topP ?? roleCfg.topP,
+        maxTokens: action.model?.maxTokens ?? Math.min(1024, roleCfg.maxTokens ?? 1024)
+      });
+
+      yield* options.budget.onOutputChars(response.text.length);
+
+      const blob = yield* blobs.putText({ text: response.text, mime: "text/plain" }).pipe(
+        Effect.catchAll((cause: BlobStoreError) =>
+          Effect.fail(RlmKernelError.make({ message: "BlobStore.putText failed", cause }))
+        )
+      );
+
+      yield* vars.putBlob(action.intoVar, blob).pipe(
+        Effect.catchAll((cause: VarSpaceError) =>
+          Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
+        )
+      );
+
+      return {
+        _tag: "Continue",
+        observation: { _tag: "SubLmResult", trust: "untrusted", origin: "lm", intoVar: action.intoVar, blob }
+      };
+    }
+    case "ExtractOverChunks": {
+      const maxChunks = normalizeBoundedInt(action.maxChunks, { min: 1, max: 200 });
+
+      const vv = yield* vars.get(action.chunksVar).pipe(
+        Effect.catchAll((cause: VarSpaceError) =>
+          Effect.fail(RlmKernelError.make({ message: "VarSpace.get failed", cause }))
+        )
+      );
+      if (vv == null || vv._tag !== "Json") {
+        return yield* Effect.fail(
+          RlmKernelError.make({
+            message: `extract_over_chunks requires a Json var containing a BlobRef[] (name=${action.chunksVar})`
+          })
+        );
+      }
+      if (!isBlobRefArray(vv.value)) {
+        return yield* Effect.fail(
+          RlmKernelError.make({
+            message: `extract_over_chunks expected BlobRef[] (name=${action.chunksVar})`
+          })
+        );
+      }
+
+      const chunks0 = vv.value.slice(0, maxChunks);
+
+      // Validate schema strictly so downstream code doesn't crash.
+      const chunks = yield* Effect.try({
+        try: () => Schema.decodeUnknownSync(Schema.Array(BlobRefSchema))(chunks0),
+        catch: (cause) =>
+          RlmKernelError.make({
+            message: `extract_over_chunks chunk list failed schema decode (name=${action.chunksVar})`,
+            cause
+          })
+      });
+
+      const outputs: Array<BlobRef> = [];
+      for (const [idx, chunk] of chunks.entries()) {
+        const chunkText = yield* blobs.getText(chunk.id).pipe(
+          Effect.catchAll((cause: BlobStoreError) =>
+            Effect.fail(RlmKernelError.make({ message: "BlobStore.getText failed", cause }))
           )
         );
-        return {
-          _tag: "Continue",
-          observation: { _tag: "WriteVarResult", name: action.name, kind: "blob" }
-        };
-      }
-      case "SubLm": {
-        // Sub-LM calls are budgeted (both as LM calls and as sub-LM calls).
+        if (chunkText == null) {
+          return yield* Effect.fail(
+            RlmKernelError.make({
+              message: `Missing chunk blob (index=${idx} blobId=${chunk.id})`
+            })
+          );
+        }
+
         yield* options.budget.onLmCall();
         yield* options.budget.onSubLmCall();
 
         const subRole = params.rlmLite?.subRole ?? "sub";
         const roleCfg = resolveModelConfig(params, subRole === "main" ? "main" : "sub");
+        const extractorSystem = params.rlmLite?.extractionSystem ?? "You are a focused extraction helper.";
 
         const response = yield* lm.complete({
-          messages: action.messages,
+          messages: [
+            { role: "system", content: extractorSystem },
+            {
+              role: "user",
+              content: action.instruction + "\n\nChunk:\n" + chunkText
+            }
+          ],
           modelId: action.model?.modelId ?? roleCfg.modelId,
           temperature: action.model?.temperature ?? roleCfg.temperature,
           topP: action.model?.topP ?? roleCfg.topP,
           maxTokens: action.model?.maxTokens ?? Math.min(1024, roleCfg.maxTokens ?? 1024)
         });
-
         yield* options.budget.onOutputChars(response.text.length);
 
-        const blob = yield* blobs.putText({ text: response.text, mime: "text/plain" }).pipe(
+        const outBlob = yield* blobs.putText({ text: response.text, mime: "text/plain" }).pipe(
           Effect.catchAll((cause: BlobStoreError) =>
             Effect.fail(RlmKernelError.make({ message: "BlobStore.putText failed", cause }))
           )
         );
-
-        yield* vars.putBlob(action.intoVar, blob).pipe(
-          Effect.catchAll((cause: VarSpaceError) =>
-            Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
-          )
-        );
-
-        return {
-          _tag: "Continue",
-          observation: { _tag: "SubLmResult", trust: "untrusted", origin: "lm", intoVar: action.intoVar, blob }
-        };
+        outputs.push(outBlob);
       }
-      case "ExtractOverChunks": {
-        const maxChunks = normalizeBoundedInt(action.maxChunks, { min: 1, max: 200 });
 
-        const vv = yield* vars.get(action.chunksVar).pipe(
-          Effect.catchAll((cause: VarSpaceError) =>
-            Effect.fail(RlmKernelError.make({ message: "VarSpace.get failed", cause }))
+      yield* vars.putJson(action.intoVar, outputs).pipe(
+        Effect.catchAll((cause: VarSpaceError) =>
+          Effect.fail(RlmKernelError.make({ message: "VarSpace.putJson failed", cause }))
+        )
+      );
+
+      return {
+        _tag: "Continue",
+        observation: {
+          _tag: "ExtractOverChunksResult",
+          intoVar: action.intoVar,
+          chunkCount: chunks.length,
+          outputsVar: action.intoVar
+        }
+      };
+    }
+    case "ToolCall": {
+      if (!policyAllowsTool(params, action.toolName)) {
+        return yield* Effect.fail(
+          RlmKernelError.make({
+            message: `Tool not allowed by policy (toolName=${action.toolName})`
+          })
+        );
+      }
+
+      yield* options.budget.onToolCall();
+
+      // Enforce params.tools.maxToolCalls (separate from budgets.maxToolCalls).
+      const maxToolCalls = params.tools?.maxToolCalls;
+      if (typeof maxToolCalls === "number" && Number.isFinite(maxToolCalls)) {
+        const snap = yield* options.budget.snapshot();
+        const used = snap.usage.toolCalls ?? 0;
+        if (used > Math.max(0, Math.floor(maxToolCalls))) {
+          return yield* Effect.fail(
+            RlmKernelError.make({
+              message: `Tool call limit exceeded by policy: maxToolCalls=${maxToolCalls} observed=${used}`
+            })
+          );
+        }
+      }
+
+      const toolExecOpt = yield* Effect.serviceOption(ToolExecutorService);
+      if (Option.isNone(toolExecOpt)) {
+        return yield* Effect.fail(
+          RlmKernelError.make({
+            message: `Tool executor not configured (toolName=${action.toolName})`
+          })
+        );
+      }
+
+      const timeoutMs = toolTimeoutMs(params, action.toolName, action.timeoutMs);
+      const out = yield* toolExecOpt.value
+        .call({ toolName: action.toolName, input: action.input, timeoutMs })
+        .pipe(
+          Effect.catchAll((cause: ToolCallError) =>
+            Effect.fail(
+              RlmKernelError.make({
+                message: `Tool call failed (toolName=${action.toolName})`,
+                cause
+              })
+            )
           )
         );
-        if (vv == null || vv._tag !== "Json") {
-          return yield* Effect.fail(
-            RlmKernelError.make({
-              message: `extract_over_chunks requires a Json var containing a BlobRef[] (name=${action.chunksVar})`
-            })
-          );
-        }
-        if (!isBlobRefArray(vv.value)) {
-          return yield* Effect.fail(
-            RlmKernelError.make({
-              message: `extract_over_chunks expected BlobRef[] (name=${action.chunksVar})`
-            })
-          );
-        }
 
-        const chunks0 = vv.value.slice(0, maxChunks);
+      // Store tool output in VarSpace; spill to blob if too large.
+      const rendered = yield* Effect.try({
+        try: () => canonicalJson(out),
+        catch: (cause) =>
+          RlmKernelError.make({ message: "Failed to canonicalize tool output", cause })
+      });
 
-        // Validate schema strictly so downstream code doesn't crash.
-        const chunks = yield* Effect.try({
-          try: () => Schema.decodeUnknownSync(Schema.Array(BlobRefSchema))(chunks0),
-          catch: (cause) =>
-            RlmKernelError.make({
-              message: `extract_over_chunks chunk list failed schema decode (name=${action.chunksVar})`,
-              cause
-            })
-        });
-
-        const outputs: Array<BlobRef> = [];
-        for (const [idx, chunk] of chunks.entries()) {
-          const chunkText = yield* blobs.getText(chunk.id).pipe(
-            Effect.catchAll((cause: BlobStoreError) =>
-              Effect.fail(RlmKernelError.make({ message: "BlobStore.getText failed", cause }))
-            )
-          );
-          if (chunkText == null) {
-            return yield* Effect.fail(
-              RlmKernelError.make({
-                message: `Missing chunk blob (index=${idx} blobId=${chunk.id})`
-              })
-            );
-          }
-
-          yield* options.budget.onLmCall();
-          yield* options.budget.onSubLmCall();
-
-          const subRole = params.rlmLite?.subRole ?? "sub";
-          const roleCfg = resolveModelConfig(params, subRole === "main" ? "main" : "sub");
-          const extractorSystem = params.rlmLite?.extractionSystem ?? "You are a focused extraction helper.";
-
-          const response = yield* lm.complete({
-            messages: [
-              { role: "system", content: extractorSystem },
-              {
-                role: "user",
-                content: action.instruction + "\n\nChunk:\n" + chunkText
-              }
-            ],
-            modelId: action.model?.modelId ?? roleCfg.modelId,
-            temperature: action.model?.temperature ?? roleCfg.temperature,
-            topP: action.model?.topP ?? roleCfg.topP,
-            maxTokens: action.model?.maxTokens ?? Math.min(1024, roleCfg.maxTokens ?? 1024)
-          });
-          yield* options.budget.onOutputChars(response.text.length);
-
-          const outBlob = yield* blobs.putText({ text: response.text, mime: "text/plain" }).pipe(
-            Effect.catchAll((cause: BlobStoreError) =>
-              Effect.fail(RlmKernelError.make({ message: "BlobStore.putText failed", cause }))
-            )
-          );
-          outputs.push(outBlob);
-        }
-
-        yield* vars.putJson(action.intoVar, outputs).pipe(
+      const maxInlineChars = 20_000;
+      if (rendered.length <= maxInlineChars) {
+        yield* vars.putJson(action.intoVar, out).pipe(
           Effect.catchAll((cause: VarSpaceError) =>
             Effect.fail(RlmKernelError.make({ message: "VarSpace.putJson failed", cause }))
-          )
-        );
-
-        return {
-          _tag: "Continue",
-          observation: {
-            _tag: "ExtractOverChunksResult",
-            intoVar: action.intoVar,
-            chunkCount: chunks.length,
-            outputsVar: action.intoVar
-          }
-        };
-      }
-      case "ToolCall": {
-        if (!policyAllowsTool(params, action.toolName)) {
-          return yield* Effect.fail(
-            RlmKernelError.make({
-              message: `Tool not allowed by policy (toolName=${action.toolName})`
-            })
-          );
-        }
-
-        yield* options.budget.onToolCall();
-
-        // Enforce params.tools.maxToolCalls (separate from budgets.maxToolCalls).
-        const maxToolCalls = params.tools?.maxToolCalls;
-        if (typeof maxToolCalls === "number" && Number.isFinite(maxToolCalls)) {
-          const snap = yield* options.budget.snapshot();
-          const used = snap.usage.toolCalls ?? 0;
-          if (used > Math.max(0, Math.floor(maxToolCalls))) {
-            return yield* Effect.fail(
-              RlmKernelError.make({
-                message: `Tool call limit exceeded by policy: maxToolCalls=${maxToolCalls} observed=${used}`
-              })
-            );
-          }
-        }
-
-        const toolExecOpt = yield* Effect.serviceOption(ToolExecutorService);
-        if (Option.isNone(toolExecOpt)) {
-          return yield* Effect.fail(
-            RlmKernelError.make({
-              message: `Tool executor not configured (toolName=${action.toolName})`
-            })
-          );
-        }
-
-        const timeoutMs = toolTimeoutMs(params, action.toolName, action.timeoutMs);
-        const out = yield* toolExecOpt.value
-          .call({ toolName: action.toolName, input: action.input, timeoutMs })
-          .pipe(
-            Effect.catchAll((cause: ToolCallError) =>
-              Effect.fail(
-                RlmKernelError.make({
-                  message: `Tool call failed (toolName=${action.toolName})`,
-                  cause
-                })
-              )
-            )
-          );
-
-        // Store tool output in VarSpace; spill to blob if too large.
-        const rendered = yield* Effect.try({
-          try: () => canonicalJson(out),
-          catch: (cause) =>
-            RlmKernelError.make({ message: "Failed to canonicalize tool output", cause })
-        });
-
-        const maxInlineChars = 20_000;
-        if (rendered.length <= maxInlineChars) {
-          yield* vars.putJson(action.intoVar, out).pipe(
-            Effect.catchAll((cause: VarSpaceError) =>
-              Effect.fail(RlmKernelError.make({ message: "VarSpace.putJson failed", cause }))
-            )
-          );
-          return {
-            _tag: "Continue",
-            observation: {
-              _tag: "ToolCallResult",
-              trust: "untrusted",
-              origin: "tool",
-              toolName: action.toolName,
-              intoVar: action.intoVar,
-              kind: "json"
-            }
-          };
-        }
-
-        const blob = yield* blobs.putText({ text: rendered, mime: "application/json" }).pipe(
-          Effect.catchAll((cause: BlobStoreError) =>
-            Effect.fail(RlmKernelError.make({ message: "BlobStore.putText failed", cause }))
-          )
-        );
-        yield* vars.putBlob(action.intoVar, blob).pipe(
-          Effect.catchAll((cause: VarSpaceError) =>
-            Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
           )
         );
         return {
@@ -918,12 +900,42 @@ export function executeRlmAction(options: {
             origin: "tool",
             toolName: action.toolName,
             intoVar: action.intoVar,
-            kind: "blob"
+            kind: "json"
           }
         };
       }
-      case "Final":
-        return { _tag: "Final", output: action.output };
+
+      const blob = yield* blobs.putText({ text: rendered, mime: "application/json" }).pipe(
+        Effect.catchAll((cause: BlobStoreError) =>
+          Effect.fail(RlmKernelError.make({ message: "BlobStore.putText failed", cause }))
+        )
+      );
+      yield* vars.putBlob(action.intoVar, blob).pipe(
+        Effect.catchAll((cause: VarSpaceError) =>
+          Effect.fail(RlmKernelError.make({ message: "VarSpace.putBlob failed", cause }))
+        )
+      );
+      return {
+        _tag: "Continue",
+        observation: {
+          _tag: "ToolCallResult",
+          trust: "untrusted",
+          origin: "tool",
+          toolName: action.toolName,
+          intoVar: action.intoVar,
+          kind: "blob"
+        }
+      };
     }
-  });
+    case "Final":
+      return { _tag: "Final", output: action.output };
+  }
+});
+
+export function executeRlmAction(options: ExecuteRlmActionOptions): Effect.Effect<
+  RlmKernelStep,
+  RlmKernelError | LmClientError | BudgetExceededError,
+  BlobStoreService | VarSpaceService | LmClientService
+> {
+  return executeRlmActionEffect(options);
 }

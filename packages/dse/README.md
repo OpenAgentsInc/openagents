@@ -23,6 +23,19 @@ Additional design notes:
   `decodeRlmTraceDocV1CompatibleSync` in `src/traceMining/rlmTrace.ts`.
 - Explicit version guard: unsupported `formatVersion` values fail fast.
 
+## Tracing Span Names
+
+Public runtime/eval operations are instrumented with `Effect.fn` and use stable
+`dse.<area>.<operation>` names:
+
+- `dse.compile.compile`
+- `dse.eval.evaluate`
+- `dse.eval.evaluateMetric`
+- `dse.runtime.executeRlmAction`
+
+`predict` keeps a signature-qualified span name (`dse.Predict(<signatureId>)`)
+so traces remain attributable to a concrete signature call site.
+
 ## Development Setup
 
 Install deps, then patch TypeScript for Effect build-time diagnostics:

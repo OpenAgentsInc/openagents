@@ -27,17 +27,19 @@ type ActivePage = {
   readonly consoleSnapshot: () => Effect.Effect<unknown, BrowserServiceError, ProbeService | TestContext>
 }
 
+type BrowserServiceApi = {
+  readonly withPage: <A, E, R>(
+    f: (page: Page) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | BrowserServiceError, Scope.Scope | R>
+  readonly captureFailureArtifacts: (options: {
+    readonly screenshotPath: string
+    readonly htmlPath: string
+  }) => Effect.Effect<boolean, never, ProbeService | TestContext>
+}
+
 export class BrowserService extends Context.Tag("@openagentsinc/effuse-test/BrowserService")<
   BrowserService,
-  {
-    readonly withPage: <A, E, R>(
-      f: (page: Page) => Effect.Effect<A, E, R>,
-    ) => Effect.Effect<A, E | BrowserServiceError, Scope.Scope | R>
-    readonly captureFailureArtifacts: (options: {
-      readonly screenshotPath: string
-      readonly htmlPath: string
-    }) => Effect.Effect<boolean, never, ProbeService | TestContext>
-  }
+  BrowserServiceApi
 >() {}
 
 export type BrowserServiceOptions = BrowserLaunchOptions & {
@@ -538,8 +540,10 @@ export const BrowserServiceLive = (
           }),
       )
 
-      const withPage = <A, E, R>(f: (page: Page) => Effect.Effect<A, E, R>) =>
-        Effect.scoped(
+      const withPageEffect = Effect.fn("effuseTest.browser.withPage")(function* <A, E, R>(
+        f: (page: Page) => Effect.Effect<A, E, R>,
+      ) {
+        return yield* Effect.scoped(
           Effect.acquireUseRelease(
             openPage,
             (page) =>
@@ -593,27 +597,36 @@ export const BrowserServiceLive = (
               ),
             (page) => page.close,
           ),
-        ) as Effect.Effect<A, E | BrowserServiceError, Scope.Scope | R>
+        )
+      })
 
-      const captureFailureArtifacts = (opts: { screenshotPath: string; htmlPath: string }) =>
-        Effect.gen(function* () {
-          if (!active) return false
-          yield* active.screenshot(opts.screenshotPath).pipe(Effect.catchAll(() => Effect.void))
-          const html = yield* active
-            .htmlSnapshot()
-            .pipe(
-              Effect.catchAll(() =>
-                Effect.succeed("<!doctype html><h1>htmlSnapshot failed</h1>"),
-              ),
-            )
-          yield* tryBrowserPromise("fs.mkdir(capture html dir)", () =>
-            Fs.mkdir(Path.dirname(opts.htmlPath), { recursive: true }),
-          ).pipe(Effect.catchAll(() => Effect.void))
-          yield* tryBrowserPromise("fs.writeFile(capture html)", () =>
-            Fs.writeFile(opts.htmlPath, html, "utf8"),
-          ).pipe(Effect.catchAll(() => Effect.void))
-          return true
-        })
+      const withPage: BrowserServiceApi["withPage"] = <A, E, R>(
+        f: (page: Page) => Effect.Effect<A, E, R>,
+      ) => withPageEffect(f) as Effect.Effect<A, E | BrowserServiceError, Scope.Scope | R>
+
+      const captureFailureArtifactsEffect = Effect.fn(
+        "effuseTest.browser.captureFailureArtifacts",
+      )(function* (opts: { screenshotPath: string; htmlPath: string }) {
+        if (!active) return false
+        yield* active.screenshot(opts.screenshotPath).pipe(Effect.catchAll(() => Effect.void))
+        const html = yield* active
+          .htmlSnapshot()
+          .pipe(
+            Effect.catchAll(() =>
+              Effect.succeed("<!doctype html><h1>htmlSnapshot failed</h1>"),
+            ),
+          )
+        yield* tryBrowserPromise("fs.mkdir(capture html dir)", () =>
+          Fs.mkdir(Path.dirname(opts.htmlPath), { recursive: true }),
+        ).pipe(Effect.catchAll(() => Effect.void))
+        yield* tryBrowserPromise("fs.writeFile(capture html)", () =>
+          Fs.writeFile(opts.htmlPath, html, "utf8"),
+        ).pipe(Effect.catchAll(() => Effect.void))
+        return true
+      })
+
+      const captureFailureArtifacts: BrowserServiceApi["captureFailureArtifacts"] = (opts) =>
+        captureFailureArtifactsEffect(opts)
 
       return BrowserService.of({ withPage, captureFailureArtifacts })
     }),
