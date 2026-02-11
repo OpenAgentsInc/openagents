@@ -1,6 +1,6 @@
 # OpenAgents Local LND Neutrino (Electron) Implementation Plan
 
-Status: Active plan, phases N1-N9 implemented, N10 synchronization in progress
+Status: Completed, phases N1-N10 implemented and closed
 Date: 2026-02-11
 Parent epic: #1605
 Related hosted epic: #1595
@@ -30,11 +30,11 @@ Completed and closed:
 8. N8: #1613
 9. N9: #1614
 
-Current synchronization phase:
+Completed synchronization phase:
 
 1. N10: #1615
-   - Synchronize hosted-track assumptions (`#1594`, `#1595`, `#1599`, `#1604`) to local-node outputs.
-   - Ensure dual-path verification matrix remains explicit and non-conflicting.
+   - Synchronized hosted-track assumptions (`#1594`, `#1595`, `#1599`, `#1604`) to local-node outputs.
+   - Locked dual-path verification matrix (`local-node` + `hosted-node`) for downstream hosted rollout.
 
 ## 2) Target Runtime Shape
 
