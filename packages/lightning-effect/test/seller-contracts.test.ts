@@ -284,21 +284,17 @@ describe("seller contracts", () => {
         }
       }
 
-      let thrown: unknown
-      try {
+      expect(() =>
         SellerContracts.decodePaywallDefinitionSync({
           ...paywall,
           paywallId: "",
-        })
-      } catch (error) {
-        thrown = error
-      }
-
-      expect(thrown).toBeDefined()
-      expect(thrown).toMatchObject({
-        _tag: "SellerContractDecodeError",
-        contract: "PaywallDefinition",
-      })
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          _tag: "SellerContractDecodeError",
+          contract: "PaywallDefinition",
+        }),
+      )
     }),
   )
 })
