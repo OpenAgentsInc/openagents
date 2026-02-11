@@ -228,6 +228,88 @@ const normalizeUpgradeRequestDecision = (value: unknown): UpgradeRequestDecision
   };
 };
 
+const fallbackCapabilityFromMessage = (message: string): {
+  readonly capabilityKey: string;
+  readonly capabilityLabel: string;
+  readonly summary: string;
+  readonly confidence: number;
+} => {
+  const t = message.trim().toLowerCase();
+  const hasGithub = /github|gitlab|bitbucket|repository|repo\b/.test(t);
+  const hasCloudRun =
+    /(remote|cloud|hosted)/.test(t) && /(run code|execute code|codex|agent run|sandbox|compute)/.test(t);
+  const hasDeploy = /deploy|deployment|ci\/cd|pipeline/.test(t);
+  const hasLiveExternal = /(browse|web|internet|external api|live access|real[- ]?time access)/.test(t);
+
+  if (hasGithub && hasDeploy) {
+    return {
+      capabilityKey: "github_integration_and_auto_deploy",
+      capabilityLabel: "GitHub integration and auto deploy",
+      summary: "User requests GitHub integration with automated deployment support.",
+      confidence: 0.72,
+    };
+  }
+
+  if (hasGithub) {
+    return {
+      capabilityKey: "github_repo_access",
+      capabilityLabel: "GitHub repository access",
+      summary: "User asks for direct access to repository hosting platforms.",
+      confidence: 0.7,
+    };
+  }
+
+  if (hasCloudRun) {
+    return {
+      capabilityKey: "remote_cloud_execution",
+      capabilityLabel: "Remote cloud execution",
+      summary: "User asks for remote cloud execution against their codebase.",
+      confidence: 0.68,
+    };
+  }
+
+  if (hasLiveExternal) {
+    return {
+      capabilityKey: "live_external_system_access",
+      capabilityLabel: "Live external system access",
+      summary: "User asks for live browsing or external system access not currently available.",
+      confidence: 0.64,
+    };
+  }
+
+  if (hasDeploy) {
+    return {
+      capabilityKey: "automated_deployment_execution",
+      capabilityLabel: "Automated deployment execution",
+      summary: "User requests deployment automation capabilities.",
+      confidence: 0.63,
+    };
+  }
+
+  return {
+    capabilityKey: "unknown_external_capability",
+    capabilityLabel: "External capability request",
+    summary: `User requested an unavailable capability: ${clampString(message, 140)}`,
+    confidence: 0.58,
+  };
+};
+
+const fallbackUpgradeRequestDecisionFromMessage = (message: string): UpgradeRequestDecision => {
+  const cap = fallbackCapabilityFromMessage(message);
+  const notifyWhenAvailable = /\b(notify|notification|email me|let me know|ping me|when available|when you can|update me)\b/i.test(
+    message,
+  );
+
+  return {
+    isUpgradeRequest: true,
+    capabilityKey: normalizeCapabilityKey(cap.capabilityKey),
+    capabilityLabel: clampString(cap.capabilityLabel, 160),
+    summary: clampString(cap.summary, 240),
+    notifyWhenAvailable,
+    confidence: Math.max(0, Math.min(1, cap.confidence)),
+  };
+};
+
 const looksLikeUpgradeRequestCandidate = (text: string): boolean => {
   const t = text.trim().toLowerCase();
   if (!t) return false;
@@ -1323,13 +1405,19 @@ const runAutopilotStream = (input: {
           ),
         );
 
-        const state = predictExit._tag === "Success" ? "ok" : "error";
+        let usedFallbackDecision = false;
         const errorText =
           predictExit._tag === "Failure"
             ? errorMessageFromUnknown(predictExit.cause, "DSE upgrade request detection failed")
             : null;
-        const decision =
+        let decision =
           predictExit._tag === "Success" ? normalizeUpgradeRequestDecision(predictExit.value) : null;
+
+        if (!decision && predictExit._tag === "Failure" && looksLikeUpgradeRequestCandidate(lastUserText)) {
+          decision = fallbackUpgradeRequestDecisionFromMessage(lastUserText);
+          usedFallbackDecision = true;
+        }
+        const state: "ok" | "error" = predictExit._tag === "Success" || usedFallbackDecision ? "ok" : "error";
 
         const receipt = recordedReceipt as DseReceiptShape | null;
         const trimmedPromptRenderStats = trimPromptRenderStats(receipt?.promptRenderStats);
@@ -1430,6 +1518,7 @@ const runAutopilotStream = (input: {
             contextPressure: receipt?.contextPressure,
             promptRenderStats: trimmedPromptRenderStats,
             rlmTrace: receipt?.rlmTrace,
+            fallbackUsed: usedFallbackDecision,
             ...(decision ? { outputPreview: decision } : {}),
             ...(errorText ? { errorText } : {}),
           },
