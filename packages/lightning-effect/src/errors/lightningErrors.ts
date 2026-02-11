@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 
 import { Msats } from "../contracts/payment.js"
+import { SpendPolicyDenialCode } from "../contracts/policy.js"
 
 export class ChallengeParseError extends Schema.TaggedError<ChallengeParseError>()(
   "ChallengeParseError",
@@ -15,6 +16,8 @@ export class BudgetExceededError extends Schema.TaggedError<BudgetExceededError>
   {
     maxSpendMsats: Msats,
     quotedAmountMsats: Msats,
+    reasonCode: SpendPolicyDenialCode,
+    reason: Schema.NonEmptyString,
   },
 ) {}
 
@@ -22,6 +25,7 @@ export class DomainNotAllowedError extends Schema.TaggedError<DomainNotAllowedEr
   "DomainNotAllowedError",
   {
     host: Schema.NonEmptyString,
+    reasonCode: SpendPolicyDenialCode,
     reason: Schema.String,
   },
 ) {}
