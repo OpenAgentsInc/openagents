@@ -1,6 +1,8 @@
 # Pane Dragging + Resizing Plan
 
-This is the follow-on plan to add dragging/resizing to the HUD pane system. The current implementation is intentionally static; the structure already mirrors Commander’s store + pane renderer.
+This is the follow-on plan to add dragging/resizing to the HUD pane system. The current implementation is intentionally static; the structure already mirrors Commander's store + pane renderer.
+
+**Note:** This doc describes the design and work log for both the Rust/WGPUI implementation and the `@openagentsinc/effuse-panes` DOM port. See `PARITY_CHECKLIST.md` for current parity status.
 
 ## Goals
 - Drag panes by title bar.
