@@ -49,29 +49,50 @@ type HomeChatDeps = {
 
 const CHAT_PANE_ID = "home-chat"
 
-function copyTextToClipboard(text: string): void {
-  if (!text) return
-  const doCopy = (): boolean => {
+const COPY_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>'
+
+const CHECKMARK_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+
+function copyTextToClipboard(text: string, _source: "pane" | "message"): void {
+  if (!text || typeof text !== "string") return
+  const execCopy = (): boolean => {
+    const ta = document.createElement("textarea")
+    ta.value = text
+    ta.style.position = "fixed"
+    ta.style.left = "0"
+    ta.style.top = "0"
+    ta.style.width = "2px"
+    ta.style.height = "2px"
+    ta.style.padding = "0"
+    ta.style.border = "none"
+    ta.style.outline = "none"
+    ta.style.boxShadow = "none"
+    ta.style.background = "transparent"
+    ta.style.opacity = "0.01"
+    ta.style.zIndex = "-1"
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.setSelectionRange(0, text.length)
+    let ok = false
     try {
-      const ta = document.createElement("textarea")
-      ta.value = text
-      ta.style.position = "fixed"
-      ta.style.left = "-9999px"
-      ta.style.top = "0"
-      document.body.appendChild(ta)
-      ta.focus()
-      ta.select()
-      const ok = document.execCommand("copy")
-      document.body.removeChild(ta)
-      return ok
+      ok = document.execCommand("copy")
     } catch {
-      return false
+      // ignore
     }
+    document.body.removeChild(ta)
+    return ok
   }
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(() => {}, () => { doCopy() })
+  if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    navigator.clipboard.writeText(text).then(
+      () => {},
+      () => {
+        execCopy()
+      }
+    )
   } else {
-    doCopy()
+    execCopy()
   }
 }
 
@@ -615,13 +636,22 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
               const copyBtn = document.createElement("button")
               copyBtn.setAttribute("type", "button")
               copyBtn.setAttribute("aria-label", "Copy entire chat as markdown")
-              copyBtn.innerHTML =
-                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>'
-              copyBtn.addEventListener("click", (e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                copyTextToClipboard(getChatMarkdown())
-              })
+              copyBtn.innerHTML = COPY_ICON_SVG
+              copyBtn.addEventListener(
+                "pointerdown",
+                (e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.stopImmediatePropagation()
+                  copyTextToClipboard(getChatMarkdown(), "pane")
+                  copyBtn.innerHTML = CHECKMARK_ICON_SVG
+                  setTimeout(() => {
+                    copyBtn.innerHTML = COPY_ICON_SVG
+                  }, 1000)
+                },
+                { capture: true }
+              )
               titleActions.appendChild(copyBtn)
               hasAddedPaneCopyButton = true
             }
@@ -730,13 +760,24 @@ function openChatPaneOnHome(container: Element, deps: HomeChatDeps | undefined):
 
           paneContentSlot.querySelectorAll("[data-oa-home-chat-copy]").forEach((btn) => {
             if (!(btn instanceof HTMLElement)) return
-            btn.addEventListener("click", (e) => {
-              e.preventDefault()
-              const block = btn.closest("[data-chat-role=\"assistant\"]")
-              const source = block?.querySelector("[data-oa-copy-source]")
-              const text = source?.textContent ?? ""
-              copyTextToClipboard(text)
-            })
+            btn.addEventListener(
+              "pointerdown",
+              (e) => {
+                if (e.button !== 0) return
+                e.preventDefault()
+                e.stopPropagation()
+                e.stopImmediatePropagation()
+                const block = btn.closest("[data-chat-role=\"assistant\"]")
+                const sourceEl = block?.querySelector("[data-oa-copy-source]")
+                const text = sourceEl?.textContent ?? ""
+                copyTextToClipboard(text, "message")
+                btn.textContent = "Copied"
+                setTimeout(() => {
+                  btn.textContent = "Copy"
+                }, 1000)
+              },
+              { capture: true }
+            )
           })
 
           const form = paneContentSlot.querySelector("[data-oa-home-chat-form]")
