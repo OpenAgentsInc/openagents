@@ -2,12 +2,17 @@ import * as ChildProcess from "node:child_process"
 
 import { Effect, Scope } from "effect"
 
-const spawnLogged = (cwd: string, cmd: string, args: ReadonlyArray<string>) =>
+const spawnLogged = (
+  cwd: string,
+  cmd: string,
+  args: ReadonlyArray<string>,
+  env: NodeJS.ProcessEnv,
+) =>
   Effect.async<ChildProcess.ChildProcess, Error>((resume) => {
     const child = ChildProcess.spawn(cmd, [...args], {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env,
       detached: true,
     })
 
@@ -45,6 +50,7 @@ type TestServerInternal = TestServer & { readonly _child: ChildProcess.ChildProc
 export const startWranglerDev = (options: {
   readonly projectDir: string
   readonly port: number
+  readonly env: NodeJS.ProcessEnv
 }): Effect.Effect<TestServer, Error, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.gen(function* () {
@@ -52,7 +58,12 @@ export const startWranglerDev = (options: {
 
       // Build assets first so the Worker can serve /effuse-client.* from ASSETS.
       yield* Effect.logInfo(`Building effuse client in ${options.projectDir}`)
-      yield* spawnLogged(options.projectDir, "npm", ["run", "build:effuse-client"]).pipe(
+      yield* spawnLogged(
+        options.projectDir,
+        "npm",
+        ["run", "build:effuse-client"],
+        options.env,
+      ).pipe(
         Effect.flatMap((child) =>
           Effect.async<void, Error>((resume) => {
             child.stdout?.on("data", (d) => process.stdout.write(d))
@@ -66,15 +77,20 @@ export const startWranglerDev = (options: {
       )
 
       yield* Effect.logInfo(`Starting wrangler dev on ${baseUrl}`)
-      const child = yield* spawnLogged(options.projectDir, "npx", [
-        "wrangler",
-        "dev",
-        "--port",
-        String(options.port),
-        "--local",
-        "--ip",
-        "127.0.0.1",
-      ])
+      const child = yield* spawnLogged(
+        options.projectDir,
+        "npx",
+        [
+          "wrangler",
+          "dev",
+          "--port",
+          String(options.port),
+          "--local",
+          "--ip",
+          "127.0.0.1",
+        ],
+        options.env,
+      )
 
       child.stdout?.on("data", (d) => process.stdout.write(d))
       child.stderr?.on("data", (d) => process.stderr.write(d))

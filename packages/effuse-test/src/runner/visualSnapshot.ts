@@ -5,6 +5,8 @@ import pixelmatch from "pixelmatch"
 import { PNG } from "pngjs"
 import { Effect } from "effect"
 
+import { EffuseTestConfig } from "../config/EffuseTestConfig.ts"
+
 const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause))
 
@@ -34,11 +36,6 @@ const baselineRoot = (): string =>
   // Runner currently supports only apps/web, and `effuse-test` is executed from `packages/effuse-test`.
   Path.resolve(process.cwd(), "../../apps/web/tests/visual/storybook")
 
-const shouldUpdateSnapshots = (): boolean => {
-  const raw = process.env.EFFUSE_TEST_UPDATE_SNAPSHOTS
-  return raw === "1" || raw === "true" || raw === "yes"
-}
-
 const readPng = (bytes: Buffer): PNG => PNG.sync.read(bytes)
 
 const writePng = (png: PNG): Buffer => PNG.sync.write(png)
@@ -53,8 +50,11 @@ export const assertPngSnapshot = (input: {
   readonly actualPngPath: string
   readonly diffPngPath: string
   readonly baselinePngPath: string
-}): Effect.Effect<void, VisualSnapshotError> =>
+}): Effect.Effect<void, VisualSnapshotError, EffuseTestConfig> =>
   Effect.gen(function* () {
+    const config = yield* EffuseTestConfig
+    const updateSnapshots = config.updateSnapshots
+
     const actualBytes = yield* trySnapshotPromise("fs.readFile(actual png)", () =>
       Fs.readFile(input.actualPngPath),
     )
@@ -67,7 +67,7 @@ export const assertPngSnapshot = (input: {
     )
 
     if (!baselineExists) {
-      if (!shouldUpdateSnapshots()) {
+      if (!updateSnapshots) {
         return yield* Effect.fail(
           new VisualSnapshotError(
             "baseline missing",
@@ -84,7 +84,7 @@ export const assertPngSnapshot = (input: {
       return
     }
 
-    if (shouldUpdateSnapshots()) {
+    if (updateSnapshots) {
       yield* trySnapshotPromise("fs.writeFile(update baseline)", async () => {
         await Fs.mkdir(Path.dirname(input.baselinePngPath), { recursive: true })
         await Fs.writeFile(input.baselinePngPath, actualBytes)

@@ -3,16 +3,28 @@ import * as Path from "node:path"
 import * as Fs from "node:fs/promises"
 
 import { BrowserService } from "../browser/BrowserService.ts"
+import { EffuseTestConfig } from "../config/EffuseTestConfig.ts"
 import type { ProbeService } from "../effect/ProbeService.ts"
 import type { TestCase } from "../spec.ts"
 import { TestContext } from "../runner/TestContext.ts"
 import { assertEqual, assertTrue, step } from "../runner/Test.ts"
 import { assertPngSnapshot, snapshotPathForStory } from "../runner/visualSnapshot.ts"
 
-type AppsWebEnv = BrowserService | ProbeService | TestContext | Scope.Scope
+type AppsWebEnv =
+  | BrowserService
+  | ProbeService
+  | TestContext
+  | EffuseTestConfig
+  | Scope.Scope
 
-export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
-  const tests: Array<TestCase<AppsWebEnv>> = [
+export const appsWebSuite = (): Effect.Effect<
+  ReadonlyArray<TestCase<AppsWebEnv>>,
+  never,
+  EffuseTestConfig
+> =>
+  Effect.gen(function* () {
+    const config = yield* EffuseTestConfig
+    const tests: Array<TestCase<AppsWebEnv>> = [
     {
       id: "apps-web.http.ssr-home",
       tags: ["e2e", "http", "apps/web"],
@@ -366,7 +378,7 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
     },
   ]
 
-  const e2eSecret = process.env.EFFUSE_TEST_E2E_BYPASS_SECRET
+  const e2eSecret = config.e2eBypassSecret
   if (e2eSecret && e2eSecret.length > 0) {
     tests.push({
       id: "apps-web.prod.autopilot.e2e-login",
@@ -974,8 +986,8 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
     })
   }
 
-  const magicEmail = process.env.EFFUSE_TEST_MAGIC_EMAIL
-  const magicCode = process.env.EFFUSE_TEST_MAGIC_CODE
+  const magicEmail = config.magicEmail
+  const magicCode = config.magicCode
   if (magicEmail && magicCode) {
     tests.push({
       id: "apps-web.prod.autopilot.login-via-chat",
@@ -1038,5 +1050,5 @@ export const appsWebSuite = (): ReadonlyArray<TestCase<AppsWebEnv>> => {
     })
   }
 
-  return tests
-}
+    return tests
+  })
