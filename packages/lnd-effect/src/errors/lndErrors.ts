@@ -44,9 +44,18 @@ export class LndResponseDecodeError extends Schema.TaggedError<LndResponseDecode
   },
 ) {}
 
+export class LndWalletOperationError extends Schema.TaggedError<LndWalletOperationError>()(
+  "LndWalletOperationError",
+  {
+    operation: Schema.NonEmptyString,
+    reason: Schema.String,
+  },
+) {}
+
 export type LndEffectError =
   | LndContractDecodeError
   | LndServiceUnavailableError
   | LndTransportError
   | LndAuthenticationError
   | LndResponseDecodeError
+  | LndWalletOperationError

@@ -6,6 +6,7 @@ import { DesktopStateService } from "./state";
 import { ExecutorLoopService } from "./executorLoop";
 import { TaskProviderService } from "./taskProvider";
 import { LndRuntimeGatewayService } from "./lndRuntimeGateway";
+import { LndWalletGatewayService } from "./lndWalletGateway";
 
 import type { DesktopRuntimeState, ExecutorTask } from "./model";
 
@@ -20,6 +21,19 @@ export type DesktopAppApi = Readonly<{
   readonly startLndRuntime: () => Effect.Effect<void, unknown>;
   readonly stopLndRuntime: () => Effect.Effect<void, unknown>;
   readonly restartLndRuntime: () => Effect.Effect<void, unknown>;
+  readonly initializeWallet: (input: {
+    readonly passphrase: string;
+    readonly seedMnemonic?: ReadonlyArray<string>;
+  }) => Effect.Effect<void, unknown>;
+  readonly unlockWallet: (input?: { readonly passphrase?: string }) => Effect.Effect<void, unknown>;
+  readonly lockWallet: () => Effect.Effect<void, unknown>;
+  readonly acknowledgeSeedBackup: () => Effect.Effect<void, unknown>;
+  readonly prepareWalletRestore: () => Effect.Effect<void, unknown>;
+  readonly restoreWallet: (input: {
+    readonly passphrase: string;
+    readonly seedMnemonic: ReadonlyArray<string>;
+    readonly recoveryWindowDays?: number;
+  }) => Effect.Effect<void, unknown>;
   readonly enqueueDemoTask: (payload: string) => Effect.Effect<ExecutorTask, unknown>;
   readonly listTasks: () => Effect.Effect<ReadonlyArray<ExecutorTask>, unknown>;
   readonly snapshot: () => Effect.Effect<DesktopRuntimeState, unknown>;
@@ -46,6 +60,7 @@ export const DesktopAppLive = Layer.effect(
     const executor = yield* ExecutorLoopService;
     const tasks = yield* TaskProviderService;
     const lndRuntime = yield* LndRuntimeGatewayService;
+    const lndWallet = yield* LndWalletGatewayService;
     const tokenRef = yield* Ref.make<string | null>(null);
 
     const refreshConnectivity = Effect.fn("DesktopApp.refreshConnectivity")(function* () {
@@ -78,9 +93,28 @@ export const DesktopAppLive = Layer.effect(
       }));
     });
 
+    const refreshWallet = Effect.fn("DesktopApp.refreshWallet")(function* () {
+      const status = yield* lndWallet.snapshot();
+      yield* state.update((current) => ({
+        ...current,
+        wallet: {
+          walletState: status.walletState,
+          recoveryState: status.recoveryState,
+          seedBackupAcknowledged: status.seedBackupAcknowledged,
+          passphraseStored: status.passphraseStored,
+          restorePrepared: status.restorePrepared,
+          lastErrorCode: status.lastErrorCode,
+          lastErrorMessage: status.lastErrorMessage,
+          lastOperation: status.lastOperation,
+          updatedAtMs: status.updatedAtMs,
+        },
+      }));
+    });
+
     const bootstrap = Effect.fn("DesktopApp.bootstrap")(function* () {
       yield* refreshConnectivity();
       yield* refreshLndRuntime();
+      yield* refreshWallet();
       const token = yield* Ref.get(tokenRef);
       const session = yield* auth.getSession(token).pipe(
         Effect.catchAll(() =>
@@ -132,6 +166,7 @@ export const DesktopAppLive = Layer.effect(
       yield* Ref.set(tokenRef, verified.token);
       yield* refreshConnectivity();
       yield* refreshLndRuntime();
+      yield* refreshWallet();
       yield* state.update((current) => ({
         ...current,
         auth: {
@@ -173,6 +208,25 @@ export const DesktopAppLive = Layer.effect(
         ),
       );
 
+    const walletAction = (label: string, effect: Effect.Effect<void, unknown>) =>
+      effect.pipe(
+        Effect.catchAll((error) =>
+          refreshWallet().pipe(
+            Effect.zipRight(
+              state.update((current) => ({
+                ...current,
+                auth: {
+                  ...current.auth,
+                  lastError: `${label}: ${asMessage(error)}`,
+                },
+              })),
+            ),
+            Effect.zipRight(Effect.fail(error)),
+          ),
+        ),
+        Effect.zipRight(refreshWallet()),
+      );
+
     return DesktopAppService.of({
       bootstrap: () => guarded("bootstrap", bootstrap()),
       requestMagicCode: (email) => guarded("requestMagicCode", requestMagicCode(email)),
@@ -204,6 +258,36 @@ export const DesktopAppLive = Layer.effect(
           lndRuntime.restart().pipe(
             Effect.zipRight(refreshLndRuntime()),
           ),
+        ),
+      initializeWallet: (input) =>
+        walletAction(
+          "initializeWallet",
+          lndWallet.initialize(input),
+        ),
+      unlockWallet: (input) =>
+        walletAction(
+          "unlockWallet",
+          lndWallet.unlock(input),
+        ),
+      lockWallet: () =>
+        walletAction(
+          "lockWallet",
+          lndWallet.lock(),
+        ),
+      acknowledgeSeedBackup: () =>
+        walletAction(
+          "acknowledgeSeedBackup",
+          lndWallet.acknowledgeSeedBackup(),
+        ),
+      prepareWalletRestore: () =>
+        walletAction(
+          "prepareWalletRestore",
+          lndWallet.prepareRestore(),
+        ),
+      restoreWallet: (input) =>
+        walletAction(
+          "restoreWallet",
+          lndWallet.restore(input),
         ),
       enqueueDemoTask: tasks.enqueueDemoTask,
       listTasks: () => tasks.listTasks(),

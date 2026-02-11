@@ -33,6 +33,9 @@ describe("lnd-effect service conformance", () => {
       const walletState = yield* wallet.getWalletState()
       expect(walletState).toBe("locked")
 
+      const reLocked = yield* wallet.lockWallet()
+      expect(reLocked).toBe("locked")
+
       const created = yield* invoices.createInvoice({
         amountSat: 42,
         memo: "demo",
@@ -133,6 +136,40 @@ describe("lnd-effect service conformance", () => {
               updatedAtMs: 1_700_000_000_020,
             },
           ],
+        }),
+      ),
+    ),
+  )
+
+  it.effect("supports deterministic wallet lifecycle operations", () =>
+    Effect.gen(function* () {
+      const wallet = yield* LndWalletService
+
+      const initial = yield* wallet.getWalletState()
+      expect(initial).toBe("uninitialized")
+
+      const initialized = yield* wallet.initializeWallet({
+        passphrase: "correct horse battery staple",
+      })
+      expect(initialized).toBe("locked")
+
+      const unlocked = yield* wallet.unlockWallet({
+        passphrase: "correct horse battery staple",
+      })
+      expect(unlocked).toBe("unlocked")
+
+      const relocked = yield* wallet.lockWallet()
+      expect(relocked).toBe("locked")
+
+      const restored = yield* wallet.restoreWallet({
+        passphrase: "restored wallet passphrase",
+        seedMnemonic: new Array(12).fill("seedword"),
+      })
+      expect(restored).toBe("locked")
+    }).pipe(
+      Effect.provide(
+        makeLndDeterministicLayer({
+          walletState: "uninitialized",
         }),
       ),
     ),

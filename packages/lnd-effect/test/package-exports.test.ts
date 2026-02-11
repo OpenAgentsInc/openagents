@@ -16,6 +16,7 @@ describe("lnd-effect exports", () => {
       expect(Root.LndNodeService).toBe(Services.LndNodeService)
       expect(Root.LndContractDecodeError).toBe(Errors.LndContractDecodeError)
       expect(Root.LndTransportError).toBe(Errors.LndTransportError)
+      expect(Root.LndWalletOperationError).toBe(Errors.LndWalletOperationError)
       expect(Root.LndNodeDefaultLayer).toBe(Layers.LndNodeDefaultLayer)
       expect(Root.makeLndDeterministicLayer).toBe(Adapters.makeLndDeterministicLayer)
       expect(Root.makeLndRestTransportLayer).toBe(Adapters.makeLndRestTransportLayer)

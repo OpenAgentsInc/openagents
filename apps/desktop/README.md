@@ -26,6 +26,7 @@ npm test
 npm run lnd:prepare
 npm run smoke:lnd-binary -- --json
 npm run smoke:lnd-runtime -- --json
+npm run smoke:lnd-wallet -- --json
 ```
 
 ## Environment
@@ -54,6 +55,7 @@ Optional environment variables:
 - Forge bundles `build-resources/lnd` via `packagerConfig.extraResource`, so packaged apps receive `resources/lnd/<target>/lnd`.
 - Runtime checksum validation uses `resources/lnd/runtime-manifest.json` and fails closed in packaged mode on mismatch.
 - Main process boots an Effect-managed LND lifecycle manager (start/stop/restart + health/backoff state machine) and exposes renderer-safe status via preload bridge.
+- Main process also runs wallet lifecycle management (init/unlock/restore/backup-ack) with renderer-safe projection and no secret-bearing fields.
 
 ### Local Source Override (No hardcoded path)
 

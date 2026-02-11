@@ -4,12 +4,17 @@ import started from "electron-squirrel-startup";
 import { Effect } from "effect";
 
 import { LND_RUNTIME_CHANNELS } from "./main/lndRuntimeIpc";
+import { LND_WALLET_CHANNELS } from "./main/lndWalletIpc";
 import {
   LndRuntimeManagerService,
   projectLndRuntimeSnapshotForRenderer,
   toRuntimeManagerError,
 } from "./main/lndRuntimeManager";
 import { makeLndRuntimeManagedRuntime } from "./main/lndRuntimeRuntime";
+import {
+  LndWalletManagerService,
+  projectLndWalletSnapshotForRenderer,
+} from "./main/lndWalletManager";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -103,6 +108,85 @@ const registerLndRuntimeIpcHandlers = (): void => {
   );
 };
 
+const registerLndWalletIpcHandlers = (): void => {
+  ipcMain.handle(LND_WALLET_CHANNELS.snapshot, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndWalletManagerService;
+        const snapshot = yield* manager.snapshot();
+        return projectLndWalletSnapshotForRenderer(snapshot);
+      }),
+    ),
+  );
+
+  ipcMain.handle(
+    LND_WALLET_CHANNELS.initialize,
+    async (_event, input: { readonly passphrase: string; readonly seedMnemonic?: ReadonlyArray<string> }) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const manager = yield* LndWalletManagerService;
+          yield* manager.initializeWallet(input);
+        }),
+      ),
+  );
+
+  ipcMain.handle(
+    LND_WALLET_CHANNELS.unlock,
+    async (_event, input?: { readonly passphrase?: string }) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const manager = yield* LndWalletManagerService;
+          yield* manager.unlockWallet(input);
+        }),
+      ),
+  );
+
+  ipcMain.handle(LND_WALLET_CHANNELS.lock, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndWalletManagerService;
+        yield* manager.lockWallet();
+      }),
+    ),
+  );
+
+  ipcMain.handle(LND_WALLET_CHANNELS.acknowledgeSeedBackup, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndWalletManagerService;
+        yield* manager.acknowledgeSeedBackup();
+      }),
+    ),
+  );
+
+  ipcMain.handle(LND_WALLET_CHANNELS.prepareRestore, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndWalletManagerService;
+        yield* manager.prepareRestore();
+      }),
+    ),
+  );
+
+  ipcMain.handle(
+    LND_WALLET_CHANNELS.restore,
+    async (
+      _event,
+      input: {
+        readonly passphrase: string;
+        readonly seedMnemonic: ReadonlyArray<string>;
+        readonly recoveryWindowDays?: number;
+      },
+    ) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const manager = yield* LndWalletManagerService;
+          yield* manager.restoreWallet(input);
+        }),
+      ),
+  );
+};
+
 const startLndRuntime = async (): Promise<boolean> => {
   try {
     await runLndRuntime(
@@ -145,16 +229,31 @@ const stopLndRuntime = async (): Promise<void> => {
   }
 };
 
+const bootstrapLndWallet = async (): Promise<void> => {
+  try {
+    await runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* LndWalletManagerService;
+        yield* manager.bootstrap();
+      }),
+    );
+  } catch (error) {
+    console.error(`[desktop:lnd-wallet] bootstrap failed: ${String(error)}`);
+  }
+};
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
   void (async () => {
     registerLndRuntimeIpcHandlers();
+    registerLndWalletIpcHandlers();
     if (!(await startLndRuntime())) {
       app.quit();
       return;
     }
+    await bootstrapLndWallet();
     createWindow();
   })();
 });
