@@ -26,6 +26,7 @@
   - Uses typed session adapter contract (`sessionState.read/write`) instead of unsafe atom casting in controller paths.
   - Clears browser-cached home chat snapshot on explicit logout (prevents stale transcript rehydrate after sign-out).
   - Uses a single idempotent overlay teardown path; closing pane or controller cleanup now unsubscribes active home chat subscription and fully disposes overlay resources.
+  - Supervises controller-launched Effect fibers with tracked interruption on overlay close/cleanup, and logs async failures with structured context instead of silent catches.
   - `apps/web/src/effuse-app/controllers/homeController.ts`
 - Streaming finalization + stale-run sweeper:
   - See `docs/autopilot/THREAD_STUCK_STREAMING_FIX.md`.
