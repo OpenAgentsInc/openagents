@@ -46,7 +46,7 @@ import {
   readStoredPaneRect,
   writeStoredPaneRect,
 } from "./overlayLifecycle"
-import { BUG_ICON_SVG, CHART_ICON_SVG, CHECKMARK_ICON_SVG, copyTextToClipboard, COPY_ICON_SVG } from "./renderWiring"
+import { BUG_ICON_SVG, CHART_ICON_SVG, CHECKMARK_ICON_SVG, copyTextToClipboard, COPY_ICON_SVG, METADATA_ICON_SVG } from "./renderWiring"
 import type { HomeChatDeps } from "./types"
 import { toAutopilotRenderParts } from "../autopilotChatParts"
 
@@ -1101,8 +1101,8 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                     <span data-oa-message-metadata style="display:none">${metadataJson}</span>
                     <div class="mt-0.5 w-fit flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
                       <button type="button" data-oa-home-chat-telemetry class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open trace">${rawHtml(CHART_ICON_SVG)}</button>
-                      <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Copy</button>
-                      <button type="button" data-oa-home-chat-metadata class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Metadata</button>
+                      <button type="button" data-oa-home-chat-copy class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Copy message">${rawHtml(COPY_ICON_SVG)}</button>
+                      <button type="button" data-oa-home-chat-metadata class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open metadata">${rawHtml(METADATA_ICON_SVG)}</button>
                     </div>
                   </div>`
           })}
@@ -1130,8 +1130,8 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                         <span data-oa-message-metadata style="display:none">${messageMetadataJson({ id: null, role: m.role, parts: [], runId: null }, homeThreadId)}</span>
                         <div class="mt-0.5 w-fit flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
                           <button type="button" data-oa-home-chat-telemetry class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open trace">${rawHtml(CHART_ICON_SVG)}</button>
-                          <button type="button" data-oa-home-chat-copy class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Copy</button>
-                          <button type="button" data-oa-home-chat-metadata class="text-[11px] font-mono text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer p-0 focus:outline-none focus-visible:underline">Metadata</button>
+                          <button type="button" data-oa-home-chat-copy class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Copy message">${rawHtml(COPY_ICON_SVG)}</button>
+                          <button type="button" data-oa-home-chat-metadata class="inline-flex items-center justify-center p-0.5 text-white/50 hover:text-white/70 bg-transparent border-0 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded" aria-label="Open metadata">${rawHtml(METADATA_ICON_SVG)}</button>
                         </div>
                       </div>`,
           )}
@@ -1357,7 +1357,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
           }
 
           paneContentSlot.querySelectorAll("[data-oa-home-chat-copy]").forEach((btn) => {
-            if (!(btn instanceof HTMLElement)) return
+            if (!(btn instanceof HTMLButtonElement)) return
             btn.addEventListener(
               "pointerdown",
               (e) => {
@@ -1369,9 +1369,9 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                 const sourceEl = block?.querySelector("[data-oa-copy-source]")
                 const text = sourceEl?.textContent ?? ""
                 copyTextToClipboard(text, "message")
-                btn.textContent = "Copied"
+                btn.innerHTML = CHECKMARK_ICON_SVG
                 setTimeout(() => {
-                  btn.textContent = "Copy"
+                  btn.innerHTML = COPY_ICON_SVG
                 }, 1000)
               },
               { capture: true }
