@@ -9,24 +9,20 @@
  * - Shell/outlet swap invariant (default swaps outlet only)
  */
 
-import { Clock, Deferred, Effect, Fiber, Ref, Runtime, SubscriptionRef } from "effect"
+import { Clock, Deferred, Effect, Fiber, Ref, Runtime, Schema, SubscriptionRef } from "effect"
 import type { CachePolicy, Route, RouteContext, RouteMatch } from "../app/route.js"
 import { runRoute } from "../app/run.js"
 import type { RouteRun } from "../app/run.js"
-import type { DomService } from "../services/dom.js"
 import { DomServiceTag } from "../services/dom.js"
 import { html } from "../template/html.js"
 import type { TemplateResult } from "../template/types.js"
 import type { History } from "./history.js"
 import { makeLoaderKey, type LoaderKey } from "./key.js"
 
-export class RouterError {
-  readonly _tag = "RouterError"
-  constructor(
-    readonly message: string,
-    readonly cause?: unknown
-  ) {}
-}
+export class RouterError extends Schema.TaggedError<RouterError>()("RouterError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect),
+}) {}
 
 export type RouterStatus = "idle" | "navigating" | "prefetching"
 
@@ -66,7 +62,7 @@ export type RouterService<R> = {
    * Routes may opt into `hydration="soft"` / `"client-only"`, in which case
    * `start` will perform a single initial navigation apply for the current URL.
    */
-  readonly start: Effect.Effect<void, RouterError, DomService | R>
+  readonly start: Effect.Effect<void, RouterError, DomServiceTag | R>
 
   /**
    * Stop browser listeners and invalidate any in-flight navigation applies.
@@ -84,13 +80,13 @@ export type RouterService<R> = {
   readonly navigate: (
     href: string,
     options?: NavigateOptions
-  ) => Effect.Effect<void, RouterError, DomService | R>
+  ) => Effect.Effect<void, RouterError, DomServiceTag | R>
 
   /**
    * Prefetch route data (same loader pipeline + keying + cache rules),
    * without mutating history or DOM.
    */
-  readonly prefetch: (href: string) => Effect.Effect<void, RouterError, DomService | R>
+  readonly prefetch: (href: string) => Effect.Effect<void, RouterError, DomServiceTag | R>
 }
 
 type AnyRoute<R> = Route<any, R>
@@ -122,7 +118,7 @@ const asUnknownRecord = (value: unknown): Record<string, unknown> | null =>
 const formatErrorText = (error: unknown): string => {
   const record = asUnknownRecord(error)
   if (record) {
-    // RouterError is not an `Error` in v1, so String(error) is useless.
+    // Prefer structured error messages when available.
     if (record._tag === "RouterError" && typeof record.message === "string") {
       return record.message
     }
@@ -268,14 +264,21 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
             : (config.shell.querySelector(outletSelector) ?? null)
 
         if (!target) {
-          return yield* Effect.fail(
-            new RouterError(`Outlet element not found: ${outletSelector}`)
-          )
+          return yield* RouterError.make({
+            message: `Outlet element not found: ${outletSelector}`,
+          })
         }
 
         yield* dom
           .swap(target, template, "inner")
-          .pipe(Effect.mapError((e) => new RouterError(e.message, e)))
+          .pipe(
+            Effect.mapError((e) =>
+              RouterError.make({
+                message: e.message,
+                cause: e,
+              })
+            )
+          )
       })
 
     const putCacheIfEnabled = (key: LoaderKey, run: AnyRun) =>
@@ -493,7 +496,7 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
       key: LoaderKey | null,
       run: AnyRun,
       redirectsLeft: number
-    ): Effect.Effect<void, RouterError, DomService | R> =>
+    ): Effect.Effect<void, RouterError, DomServiceTag | R> =>
       Effect.gen(function* () {
         // Drop stale navigations (belt-and-suspenders with Fiber.interrupt).
         const currentToken = yield* Ref.get(navToken)
@@ -545,7 +548,7 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
               const render = config.renderError ?? defaultError
               const t = yield* render({
                 url,
-                error: new RouterError("Too many redirects"),
+                error: RouterError.make({ message: "Too many redirects" }),
               })
               yield* swap(run, t)
               const nextState: RouterState = {
@@ -559,7 +562,7 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
                   hydration: run.hydration,
                   navigationSwap: run.navigationSwap,
                   status: 500,
-                  error: new RouterError("Too many redirects"),
+                  error: RouterError.make({ message: "Too many redirects" }),
                   stage: "loader",
                 } satisfies AnyRun,
               }
@@ -569,9 +572,9 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
 
             const next = parseHref(run.href, url)
             if (!next) {
-              return yield* Effect.fail(
-                new RouterError(`Invalid redirect href: ${run.href}`)
-              )
+              return yield* RouterError.make({
+                message: `Invalid redirect href: ${run.href}`,
+              })
             }
 
             // Redirect is always history.replace (avoid stacking entries).
@@ -606,7 +609,7 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
       Effect.gen(function* () {
         if (!key) return
 
-        const runtime = yield* Effect.runtime<DomService | R>()
+        const runtime = yield* Effect.runtime<DomServiceTag | R>()
         const runFork = Runtime.runFork(runtime)
 
         // Background refresh: apply only if still on the same key.
@@ -684,13 +687,13 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
         const base = config.history.current()
         const url = parseHref(href, base)
         if (!url) {
-          return yield* Effect.fail(new RouterError(`Invalid href: ${href}`))
+          return yield* RouterError.make({ message: `Invalid href: ${href}` })
         }
 
         if (url.origin !== base.origin) {
-          return yield* Effect.fail(
-            new RouterError(`Refusing cross-origin navigation: ${url.href}`)
-          )
+          return yield* RouterError.make({
+            message: `Refusing cross-origin navigation: ${url.href}`,
+          })
         }
 
         yield* startNavigation(url, options?.replace ? "replace" : "push")
@@ -725,7 +728,7 @@ const makeRouterEffect = Effect.fn("effuse.router.makeRouter")(function* <R>(
       if (already) return
       yield* Ref.set(started, true)
 
-      const runtime = yield* Effect.runtime<DomService | R>()
+      const runtime = yield* Effect.runtime<DomServiceTag | R>()
       const runFork = Runtime.runFork(runtime)
 
       const prefetchFromAnchor = (anchor: HTMLAnchorElement) => {

@@ -2,7 +2,7 @@
  * DomService - Type-safe DOM operations
  */
 
-import { Context, Effect } from "effect"
+import { Context, Effect, Schema } from "effect"
 import type { TemplateResult } from "../template/types.js"
 
 export type DomSwapMode =
@@ -13,13 +13,10 @@ export type DomSwapMode =
   | "delete"
   | "replace"
 
-export class DomError {
-  readonly _tag = "DomError"
-  constructor(
-    readonly message: string,
-    readonly cause?: unknown
-  ) {}
-}
+export class DomError extends Schema.TaggedError<DomError>()("DomError", {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect),
+}) {}
 
 export interface DomService {
   /**
@@ -65,4 +62,7 @@ export interface DomService {
   ) => Effect.Effect<void, DomError>
 }
 
-export const DomServiceTag = Context.GenericTag<DomService>("DomService")
+export class DomServiceTag extends Context.Tag("@openagentsinc/effuse/DomService")<
+  DomServiceTag,
+  DomService
+>() {}

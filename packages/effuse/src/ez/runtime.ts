@@ -224,7 +224,7 @@ export const mountEzRuntime = (root: Element) =>
     const dom = yield* DomServiceTag
     const registry = yield* EzRegistryTag
     const inflight = new WeakMap<Element, Fiber.RuntimeFiber<unknown, unknown>>()
-    const runtime = yield* Effect.runtime<DomService | EzRegistry>()
+    const runtime = yield* Effect.runtime<DomServiceTag | EzRegistryTag>()
     const runFork = Runtime.runFork(runtime)
 
     const handleEvent = (event: Event, actionEl: Element) => {
