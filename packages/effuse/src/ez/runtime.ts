@@ -21,6 +21,13 @@ const SUPPORTED_TRIGGERS: readonly EzTrigger[] = [
   "input",
 ]
 
+const formatUnknown = (value: unknown): string =>
+  value instanceof Error ? value.message : String(value)
+
+const logWarningSync = (message: string): void => {
+  Effect.runSync(Effect.logWarning(message))
+}
+
 const isTrigger = (value: string): value is EzTrigger =>
   SUPPORTED_TRIGGERS.includes(value as EzTrigger)
 
@@ -117,7 +124,7 @@ const collectParams = (actionEl: Element, event: Event): Record<string, string> 
         params[key] = typeof value === "string" ? value : JSON.stringify(value)
       }
     } catch (error) {
-      console.warn("[Effuse/Ez] Failed to parse data-ez-vals:", error)
+      logWarningSync(`[Effuse/Ez] Failed to parse data-ez-vals: ${formatUnknown(error)}`)
     }
   }
 
@@ -172,7 +179,7 @@ const runAction = (
 
   const action = registry.get(actionName)
   if (!action) {
-    console.warn(`[Effuse/Ez] No action registered for "${actionName}"`)
+    logWarningSync(`[Effuse/Ez] No action registered for "${actionName}"`)
     return Effect.void
   }
 
@@ -201,7 +208,7 @@ const runAction = (
     Effect.catchAllCause((cause) =>
       Cause.isInterruptedOnly(cause)
         ? Effect.void
-        : Effect.sync(() => console.error("[Effuse/Ez] Action failed:", cause))
+        : Effect.logError(`[Effuse/Ez] Action failed: ${Cause.pretty(cause)}`)
     ),
     Effect.ensuring(restoreDisabled)
   )

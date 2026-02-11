@@ -7,6 +7,9 @@ import type { Component, ComponentContext } from "./types.js"
 import { DomServiceTag, type DomService } from "../services/dom.js"
 import { StateServiceTag, type StateService } from "../services/state.js"
 
+const formatUnknown = (value: unknown): string =>
+  value instanceof Error ? value.message : String(value)
+
 export interface MountedComponent<E> {
   readonly emit: (event: E) => Effect.Effect<void, never>
 }
@@ -48,10 +51,11 @@ export const mountComponent = <S, E, R>(
     // Initial render
     const initialContent = yield* component.render(ctx)
     yield* dom.render(container, initialContent).pipe(
-      Effect.catchAll((error) => {
-        console.error(`[Effuse] Initial render error for "${component.id}":`, error)
-        return Effect.void
-      })
+      Effect.catchAll((error) =>
+        Effect.logError(
+          `[Effuse] Initial render error for "${component.id}": ${formatUnknown(error)}`
+        )
+      )
     )
 
     // Set up events after initial render
@@ -66,10 +70,11 @@ export const mountComponent = <S, E, R>(
         Effect.gen(function* () {
           const content = yield* component.render(ctx)
           yield* dom.render(container, content).pipe(
-            Effect.catchAll((error) => {
-              console.error(`[Effuse] Re-render error for "${component.id}":`, error)
-              return Effect.void
-            })
+            Effect.catchAll((error) =>
+              Effect.logError(
+                `[Effuse] Re-render error for "${component.id}": ${formatUnknown(error)}`
+              )
+            )
           )
         })
       ),

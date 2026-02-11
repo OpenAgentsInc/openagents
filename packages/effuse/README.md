@@ -42,3 +42,9 @@ npm run effect:patch
 ```
 
 The package tsconfig includes the `@effect/language-service` plugin for editor diagnostics.
+
+## Logging
+
+Runtime logging in Effect codepaths is routed through `Effect.log*` APIs
+instead of ad-hoc `console.*` calls. This keeps logs composable with Effect
+logger layers and consistent across browser/test runtimes.

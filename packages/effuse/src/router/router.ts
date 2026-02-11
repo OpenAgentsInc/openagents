@@ -618,7 +618,9 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
             ),
             Effect.catchAll((e) =>
               // Best-effort; SWR refresh failures should not crash.
-              Effect.sync(() => console.warn("[Effuse/Router] refresh failed", e))
+              Effect.logWarning(
+                `[Effuse/Router] refresh failed: ${formatErrorText(e)}`
+              )
             )
           )
         )
@@ -738,8 +740,8 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         runFork(
           prefetch(`${url.pathname}${url.search}${url.hash}`).pipe(
             Effect.catchAll((err) =>
-              Effect.sync(() =>
-                console.error("[Effuse/Router] prefetch failed", err)
+              Effect.logError(
+                `[Effuse/Router] prefetch failed: ${formatErrorText(err)}`
               )
             )
           )
@@ -775,7 +777,9 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         runFork(
           navigate(`${url.pathname}${url.search}${url.hash}`).pipe(
             Effect.catchAll((err) =>
-              Effect.sync(() => console.error("[Effuse/Router] navigate failed", err))
+              Effect.logError(
+                `[Effuse/Router] navigate failed: ${formatErrorText(err)}`
+              )
             )
           )
         )
@@ -817,7 +821,9 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         runFork(
           startNavigation(url, "none").pipe(
             Effect.catchAll((err) =>
-              Effect.sync(() => console.error("[Effuse/Router] popstate failed", err))
+              Effect.logError(
+                `[Effuse/Router] popstate failed: ${formatErrorText(err)}`
+              )
             )
           )
         )
@@ -834,8 +840,10 @@ export const makeRouter = <R>(config: RouterConfig<R>): Effect.Effect<RouterServ
         runFork(
           startNavigation(current, "none").pipe(
             Effect.catchAll((err) =>
-              Effect.sync(() =>
-                console.error("[Effuse/Router] initial hydration failed", err)
+              Effect.logError(
+                `[Effuse/Router] initial hydration failed: ${formatErrorText(
+                  err
+                )}`
               )
             )
           )
