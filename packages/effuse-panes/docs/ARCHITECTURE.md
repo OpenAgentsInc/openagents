@@ -91,8 +91,15 @@ It:
   - pointer down/move/up for drag/resize/pan
   - keydown for Escape + Cmd/Ctrl+0..9
   - click for hotbar slots
+- schedules render work:
+  - pointer-move rendering is batched through `requestAnimationFrame`
+  - hotbar flash clear render uses a short timeout
 - holds the transient pointer states:
   - `paneDrag`, `paneResize`, `canvasPan`
+- cleans up all adapter-owned resources in `destroy()`:
+  - DOM listeners
+  - injected adapter nodes (`style`, pane layer, hotbar)
+  - pending animation frames and pending timeout callbacks
 
 It intentionally does **not** render any pane contents.
 
@@ -121,4 +128,3 @@ Even if the DOM adapter visuals differ, the *behavioral contract* should match:
 - drag/resize math and constraints
 
 See `PARITY_CHECKLIST.md` for details.
-

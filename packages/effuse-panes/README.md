@@ -12,6 +12,12 @@ This package is intentionally DOM-first:
 - No Tailwind dependency.
 - Works with Effuse by mounting once and letting Effuse render pane content.
 
+Lifecycle is explicit:
+
+- Mount with `mountPaneSystemDom(root, config)`.
+- Mutate `store` and call `render()` as needed.
+- Always call `destroy()` on unmount/overlay close.
+
 ## Docs
 
 Start here:
@@ -85,6 +91,23 @@ Notes:
 - Keyboard:
   - `Esc` closes the active (dismissable) pane.
   - `Cmd/Ctrl + 0-9` triggers hotbar slots (and flashes the slot briefly).
+
+## Effect Host Lifecycle (Recommended In `apps/web`)
+
+When integrating into Effect-based controllers/services, prefer scoped mount/release instead of
+holding a raw `destroy` callback everywhere.
+
+`apps/web` now uses an Effect service at:
+
+- `apps/web/src/effect/paneSystem.ts`
+
+The service mounts `mountPaneSystemDom` under `Effect.acquireRelease` and returns:
+
+- `paneSystem`
+- `release` (idempotent Effect to close the scope)
+
+This keeps mount/unmount behavior deterministic and avoids leaked listeners/timers if a host path
+exits early.
 
 ## Running Tests
 

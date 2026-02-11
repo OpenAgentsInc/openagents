@@ -223,6 +223,7 @@ export type PaneSystemConfig = {
 
   hotbarItems: ReadonlyArray<HotbarSlot>;
   onHotbarSlotClick?: (slot: number) => void;
+  onPaneClosed?: (id: string) => void;
 };
 
 export const DEFAULT_PANE_SYSTEM_CONFIG: PaneSystemConfig;
@@ -250,3 +251,5 @@ Notes:
 - `mountPaneSystemDom()` injects a `<style>` element into `root`.
 - The returned `render()` method is explicit; calling it is your responsibility after store changes.
 - `destroy()` removes event listeners and DOM nodes created by the adapter.
+- `destroy()` also clears any adapter-owned pending animation frame / timeout callbacks.
+- If you use `onPaneClosed`, it is invoked after the pane has been removed from `store`.
