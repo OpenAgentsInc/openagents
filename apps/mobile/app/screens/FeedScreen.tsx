@@ -1,13 +1,16 @@
-import { useConvexAuth, useMutation, useQuery } from "convex/react"
 import { FC, useEffect, useRef, useState } from "react"
-import { FlatList, View } from "react-native"
-import { api } from "../../../web/convex/_generated/api"
-import Config from "@/config"
+import { FlatList, StyleSheet, View } from "react-native"
+import { useConvexAuth, useMutation, useQuery } from "convex/react"
+
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
+import Config from "@/config"
 import { useAuth } from "@/context/AuthContext"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
+import { colors } from "@/theme/colors"
 import { $styles } from "@/theme/styles"
+
+import { api } from "../../../web/convex/_generated/api"
 
 /**
  * Feed tab: user's thread messages from Convex (same as /autopilot on web).
@@ -30,10 +33,15 @@ export const FeedScreen: FC<DemoTabScreenProps<"Feed">> = function FeedScreen() 
   }
 
   const convexUrl = Config.convexUrl ?? "(none)"
-  const envLabel = convexUrl.includes("quaint-leopard") ? "dev" : convexUrl.includes("aware-caterpillar") ? "prod" : "unknown"
+  const envLabel = convexUrl.includes("quaint-leopard")
+    ? "dev"
+    : convexUrl.includes("aware-caterpillar")
+      ? "prod"
+      : "unknown"
 
   // Convex has finished auth and rejected our token (we have token but Convex says not authenticated)
-  const tokenRejectedByConvex = !!authToken && !convexAuthLoading && !convexAuthenticated && !threadId && !ensureError
+  const tokenRejectedByConvex =
+    !!authToken && !convexAuthLoading && !convexAuthenticated && !threadId && !ensureError
 
   console.log("[FeedScreen] render", {
     convexUrl,
@@ -127,7 +135,7 @@ export const FeedScreen: FC<DemoTabScreenProps<"Feed">> = function FeedScreen() 
 
   return (
     <Screen preset="fixed" contentContainerStyle={$styles.container} safeAreaEdges={["top"]}>
-      <View style={{ padding: 8 }}>
+      <View style={styles.feedHeader}>
         <Text size="xs" text={`Convex: ${envLabel} | ${convexUrl}`} />
         <Text size="xs" text={`Thread: ${threadId} | messages: ${messages.length}`} />
       </View>
@@ -138,7 +146,7 @@ export const FeedScreen: FC<DemoTabScreenProps<"Feed">> = function FeedScreen() 
           data={messages}
           keyExtractor={(item: any) => item?.messageId ?? String(item)}
           renderItem={({ item }: { item: any }) => (
-            <View style={{ padding: 8, borderBottomWidth: 1, borderColor: "#eee" }}>
+            <View style={styles.feedRow}>
               <Text size="xs" text={`${item?.role ?? "?"}: ${(item?.text ?? "").slice(0, 80)}`} />
             </View>
           )}
@@ -147,3 +155,14 @@ export const FeedScreen: FC<DemoTabScreenProps<"Feed">> = function FeedScreen() 
     </Screen>
   )
 }
+
+const styles = StyleSheet.create({
+  feedHeader: {
+    padding: 8,
+  },
+  feedRow: {
+    borderBottomWidth: 1,
+    borderColor: colors.separator,
+    padding: 8,
+  },
+})

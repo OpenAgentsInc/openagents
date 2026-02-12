@@ -29,10 +29,7 @@ export async function authStart(email: string): Promise<AuthStartResult> {
   return { ok: true }
 }
 
-export async function authVerify(
-  email: string,
-  code: string,
-): Promise<AuthVerifyResult> {
+export async function authVerify(email: string, code: string): Promise<AuthVerifyResult> {
   const res = await fetch(`${base()}/api/auth/verify`, {
     method: "POST",
     headers: {
@@ -64,9 +61,16 @@ export async function ssoGetAuthorizeUrl(redirectUri: string): Promise<SsoAuthor
   const url = new URL(`${base()}/api/auth/sso/authorize-url`)
   url.searchParams.set("redirect_uri", redirectUri)
   const res = await fetch(url.toString(), { method: "GET" })
-  const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; url?: string } | null
+  const data = (await res.json().catch(() => null)) as {
+    ok?: boolean
+    error?: string
+    url?: string
+  } | null
   if (!res.ok || !data?.ok || typeof data?.url !== "string") {
-    return { ok: false, error: typeof data?.error === "string" ? data.error : "authorize_url_failed" }
+    return {
+      ok: false,
+      error: typeof data?.error === "string" ? data.error : "authorize_url_failed",
+    }
   }
   return { ok: true, url: data.url }
 }

@@ -34,7 +34,10 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
   const [error, setError] = useState<string | null>(null)
   const [codeMasked, setCodeMasked] = useState(false)
   const { setSession } = useAuth()
-  const { themed, theme: { colors } } = useAppTheme()
+  const {
+    themed,
+    theme: { colors },
+  } = useAppTheme()
 
   const emailError = step === "email" ? emailValidationError(email) : ""
   const displayError = error ?? (step === "email" ? emailError : "")
@@ -53,7 +56,11 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
       setStep("code")
       setTimeout(() => codeInputRef.current?.focus(), 300)
     } else {
-      setError(result.error === "invalid_email" ? "Please enter a valid email." : "Failed to send code. Try again.")
+      setError(
+        result.error === "invalid_email"
+          ? "Please enter a valid email."
+          : "Failed to send code. Try again.",
+      )
     }
   }
 
@@ -74,7 +81,11 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
         user: { id: result.userId, email, firstName: null, lastName: null },
       })
     } else {
-      setError(result.error === "invalid_code" ? "Invalid code. Please try again." : "Verification failed. Try again.")
+      setError(
+        result.error === "invalid_code"
+          ? "Invalid code. Please try again."
+          : "Verification failed. Try again.",
+      )
     }
   }
 
@@ -125,7 +136,10 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
         <>
           <TextField
             value={email}
-            onChangeText={(t) => { setEmail(t); setError(null) }}
+            onChangeText={(t) => {
+              setEmail(t)
+              setError(null)
+            }}
             containerStyle={themed($textField)}
             autoCapitalize="none"
             autoComplete="email"
@@ -154,7 +168,10 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
           <TextField
             ref={codeInputRef}
             value={code}
-            onChangeText={(t) => { setCode(t); setError(null) }}
+            onChangeText={(t) => {
+              setCode(t)
+              setError(null)
+            }}
             containerStyle={themed($textField)}
             autoCapitalize="none"
             autoComplete="one-time-code"
@@ -224,4 +241,3 @@ const $tapButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 const $secondaryButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginTop: spacing.sm,
 })
-

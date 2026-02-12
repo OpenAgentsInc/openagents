@@ -1,14 +1,14 @@
-import { makeLndDeterministicLayer } from "@openagentsinc/lnd-effect/adapters";
-import { makeInvoicePayerLndEffectLayer } from "@openagentsinc/lightning-effect/lnd-effect";
 import {
   CredentialCacheInMemoryLayer,
   L402ClientLiveLayer,
   L402ClientService,
   L402TransportError,
   L402TransportService,
+  makeInvoicePayerLndEffectLayer,
   makeSpendPolicyLayer,
   type L402FetchResult,
 } from "@openagentsinc/lightning-effect";
+import { makeLndDeterministicLayer } from "@openagentsinc/lnd-effect";
 import { Context, Effect, Layer } from "effect";
 
 import type { ExecutorTask } from "./model";

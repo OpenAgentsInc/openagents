@@ -30,7 +30,11 @@ export const ProfileScreen: FC<DemoTabScreenProps<"Profile">> = function Profile
             <Text text={displayName} preset="bold" style={themed($value)} />
           </>
         ) : null}
-        <Text tx="profileScreen:emailLabel" size="xs" style={themed(displayName ? $label : $labelFirst)} />
+        <Text
+          tx="profileScreen:emailLabel"
+          size="xs"
+          style={themed(displayName ? $label : $labelFirst)}
+        />
         <Text text={email ?? "—"} preset="bold" style={themed($value)} />
         {authUserId ? (
           <>
@@ -40,12 +44,7 @@ export const ProfileScreen: FC<DemoTabScreenProps<"Profile">> = function Profile
         ) : null}
       </View>
 
-      <Button
-        tx="common:logOut"
-        preset="default"
-        style={themed($logoutButton)}
-        onPress={logout}
-      />
+      <Button tx="common:logOut" preset="default" style={themed($logoutButton)} onPress={logout} />
     </Screen>
   )
 }
