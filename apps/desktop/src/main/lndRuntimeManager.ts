@@ -100,13 +100,22 @@ export type LndRuntimeManagerConfig = Readonly<{
   readonly logHistoryLimit: number;
 }>;
 
+const normalizeEnvValue = (value: string | undefined): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 export const defaultLndRuntimeManagerConfig = (input: {
   readonly appPath: string;
   readonly resourcesPath: string;
   readonly userDataPath: string;
   readonly isPackaged: boolean;
   readonly env: NodeJS.ProcessEnv;
-}): LndRuntimeManagerConfig => ({
+}): LndRuntimeManagerConfig => {
+  const p2pListen = normalizeEnvValue(input.env.OA_DESKTOP_LND_P2P_LISTEN) ?? "127.0.0.1:19735";
+
+  return {
   appPath: input.appPath,
   resourcesPath: input.resourcesPath,
   userDataPath: input.userDataPath,
@@ -116,7 +125,7 @@ export const defaultLndRuntimeManagerConfig = (input: {
   alias: "openagents-desktop",
   rpcListen: "127.0.0.1:10009",
   restListen: "127.0.0.1:8080",
-  p2pListen: "0.0.0.0:9735",
+  p2pListen,
   debugLevel: "info",
   neutrinoPeers: [],
   maxCrashRestarts: 3,
@@ -124,7 +133,8 @@ export const defaultLndRuntimeManagerConfig = (input: {
   restartBackoffMaxMs: 10_000,
   healthProbeIntervalMs: 2_000,
   logHistoryLimit: 200,
-});
+  };
+};
 
 export class LndRuntimeManagerConfigService extends Context.Tag(
   "@openagents/desktop/LndRuntimeManagerConfigService",
