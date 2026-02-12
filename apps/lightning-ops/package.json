@@ -7,7 +7,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke:compile": "tsx src/main.ts smoke:compile"
+    "smoke:compile": "tsx src/main.ts smoke:compile",
+    "reconcile:convex": "tsx src/main.ts reconcile:convex --json",
+    "smoke:staging": "tsx src/main.ts smoke:staging"
   },
   "dependencies": {
     "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",

@@ -135,6 +135,27 @@ export const DeploymentIntentWriteResponse = Schema.Struct({
 });
 export type DeploymentIntentWriteResponse = typeof DeploymentIntentWriteResponse.Type;
 
+export const GatewayEventLevel = Schema.Literal("info", "warn", "error");
+export type GatewayEventLevel = typeof GatewayEventLevel.Type;
+
+export const GatewayEventRecord = Schema.Struct({
+  eventId: Schema.NonEmptyString,
+  paywallId: Schema.NonEmptyString,
+  ownerId: Schema.NonEmptyString,
+  eventType: Schema.NonEmptyString,
+  level: GatewayEventLevel,
+  requestId: Schema.optional(Schema.String),
+  metadata: Schema.optional(Schema.Unknown),
+  createdAtMs: TimestampMs,
+});
+export type GatewayEventRecord = typeof GatewayEventRecord.Type;
+
+export const GatewayEventWriteResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  event: GatewayEventRecord,
+});
+export type GatewayEventWriteResponse = typeof GatewayEventWriteResponse.Type;
+
 export const CompiledRunSummary = Schema.Struct({
   configHash: Schema.NonEmptyString,
   ruleCount: NonNegativeInt,
@@ -145,6 +166,40 @@ export const CompiledRunSummary = Schema.Struct({
 });
 export type CompiledRunSummary = typeof CompiledRunSummary.Type;
 
+export const ReconcileFailureCode = Schema.Literal(
+  "compile_validation_failed",
+  "active_lookup_failed",
+  "deploy_apply_failed",
+  "health_check_failed",
+  "challenge_check_failed",
+  "proxy_check_failed",
+  "rollback_failed",
+);
+export type ReconcileFailureCode = typeof ReconcileFailureCode.Type;
+
+export const ReconcileTerminalStatus = Schema.Literal("applied", "failed", "rolled_back");
+export type ReconcileTerminalStatus = typeof ReconcileTerminalStatus.Type;
+
+export const ReconcileRunSummary = Schema.Struct({
+  requestId: Schema.NonEmptyString,
+  executionPath: Schema.Literal("hosted-node"),
+  configHash: Schema.NonEmptyString,
+  ruleCount: NonNegativeInt,
+  valid: Schema.Boolean,
+  diagnostics: Schema.Array(CompileDiagnostic),
+  deploymentStatus: ReconcileTerminalStatus,
+  deploymentId: Schema.NonEmptyString,
+  failureCode: Schema.optional(ReconcileFailureCode),
+  imageDigest: Schema.optional(Schema.NonEmptyString),
+  rolledBackFrom: Schema.optional(Schema.NonEmptyString),
+  healthOk: Schema.Boolean,
+  challengeOk: Schema.Boolean,
+  proxyOk: Schema.Boolean,
+});
+export type ReconcileRunSummary = typeof ReconcileRunSummary.Type;
+
 export const decodeControlPlaneSnapshotResponse = Schema.decodeUnknown(ControlPlaneSnapshotResponse);
 export const decodeDeploymentIntentWriteResponse = Schema.decodeUnknown(DeploymentIntentWriteResponse);
+export const decodeGatewayEventWriteResponse = Schema.decodeUnknown(GatewayEventWriteResponse);
 export const decodeCompiledRunSummary = Schema.decodeUnknown(CompiledRunSummary);
+export const decodeReconcileRunSummary = Schema.decodeUnknown(ReconcileRunSummary);

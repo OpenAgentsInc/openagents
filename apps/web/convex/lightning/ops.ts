@@ -73,6 +73,17 @@ const deploymentValidator = v.object({
   updatedAtMs: v.number(),
 });
 
+const gatewayEventValidator = v.object({
+  eventId: v.string(),
+  paywallId: v.string(),
+  ownerId: v.string(),
+  eventType: v.string(),
+  level: v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
+  requestId: v.optional(v.string()),
+  metadata: v.optional(v.any()),
+  createdAtMs: v.number(),
+});
+
 const assertOpsSecret = (secret: string): Effect.Effect<void, Error> =>
   Effect.sync(() => {
     const expected = process.env.OA_LIGHTNING_OPS_SECRET;
@@ -247,6 +258,18 @@ type DeploymentDoc = {
   readonly updatedAtMs: number;
 };
 
+type GatewayEventDoc = {
+  readonly _id: any;
+  readonly eventId: string;
+  readonly paywallId: string;
+  readonly ownerId: string;
+  readonly eventType: string;
+  readonly level: "info" | "warn" | "error";
+  readonly requestId?: string;
+  readonly metadata?: unknown;
+  readonly createdAtMs: number;
+};
+
 export const recordGatewayCompileIntentImpl = (
   ctx: EffectMutationCtx,
   args: {
@@ -378,4 +401,96 @@ export const recordGatewayCompileIntent = effectMutation({
     deployment: deploymentValidator,
   }),
   handler: recordGatewayCompileIntentImpl,
+});
+
+export const recordGatewayDeploymentEventImpl = (
+  ctx: EffectMutationCtx,
+  args: {
+    readonly secret: string;
+    readonly paywallId: string;
+    readonly ownerId: string;
+    readonly eventType: string;
+    readonly level: "info" | "warn" | "error";
+    readonly requestId?: string;
+    readonly deploymentId?: string;
+    readonly configHash?: string;
+    readonly executionPath?: "hosted-node" | "local-node";
+    readonly metadata?: unknown;
+  },
+) =>
+  Effect.gen(function* () {
+    yield* assertOpsSecret(args.secret);
+
+    const paywallId = normalizeOptionalString(args.paywallId, 128);
+    const ownerId = normalizeOptionalString(args.ownerId, 128);
+    const eventType = normalizeOptionalString(args.eventType, 160);
+    if (!paywallId || !ownerId || !eventType) return yield* Effect.fail(new Error("invalid_input"));
+
+    const requestId = normalizeOptionalString(args.requestId, 160);
+    const deploymentId = normalizeOptionalString(args.deploymentId, 128);
+    const configHash = normalizeOptionalString(args.configHash, 256);
+    const executionPath = args.executionPath ?? "hosted-node";
+    const now = nowMs();
+    const eventId = `evt_${newId()}`;
+
+    yield* tryPromise(() =>
+      ctx.db.insert("l402GatewayEvents", {
+        eventId,
+        paywallId,
+        ownerId,
+        eventType,
+        level: args.level,
+        requestId,
+        metadata: {
+          executionPath,
+          deploymentId,
+          configHash,
+          details: args.metadata,
+        },
+        createdAtMs: now,
+      }),
+    );
+
+    const row = (yield* tryPromise(() =>
+      ctx.db
+        .query("l402GatewayEvents")
+        .withIndex("by_eventId", (q) => q.eq("eventId", eventId))
+        .unique(),
+    )) as GatewayEventDoc | null;
+
+    if (!row) return yield* Effect.fail(new Error("event_not_found"));
+
+    return {
+      ok: true as const,
+      event: {
+        eventId: row.eventId,
+        paywallId: row.paywallId,
+        ownerId: row.ownerId,
+        eventType: row.eventType,
+        level: row.level,
+        requestId: row.requestId,
+        metadata: row.metadata,
+        createdAtMs: row.createdAtMs,
+      },
+    };
+  });
+
+export const recordGatewayDeploymentEvent = effectMutation({
+  args: {
+    secret: v.string(),
+    paywallId: v.string(),
+    ownerId: v.string(),
+    eventType: v.string(),
+    level: v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
+    requestId: v.optional(v.string()),
+    deploymentId: v.optional(v.string()),
+    configHash: v.optional(v.string()),
+    executionPath: v.optional(v.union(v.literal("hosted-node"), v.literal("local-node"))),
+    metadata: v.optional(v.any()),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    event: gatewayEventValidator,
+  }),
+  handler: recordGatewayDeploymentEventImpl,
 });
