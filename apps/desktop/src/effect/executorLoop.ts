@@ -94,6 +94,9 @@ export const ExecutorLoopLive = Layer.effect(
           errorMessage: reason,
           metadata: {
             denyReason: reason,
+            paymentBackend: outcome.paymentBackend,
+            paid: false,
+            cacheHit: false,
           },
         });
         yield* setExecutorStatus({
@@ -115,6 +118,9 @@ export const ExecutorLoopLive = Layer.effect(
           errorMessage: reason,
           metadata: {
             denyReason: reason,
+            paymentBackend: outcome.paymentBackend,
+            paid: false,
+            cacheHit: false,
           },
         });
         yield* setExecutorStatus({
@@ -139,6 +145,12 @@ export const ExecutorLoopLive = Layer.effect(
         paymentId: outcome.paymentId,
         proofReference: outcome.proofReference,
         responseStatusCode: outcome.responseStatusCode,
+        responseContentType: outcome.responseContentType,
+        responseBytes: outcome.responseBytes,
+        responseBodyTextPreview: outcome.responseBodyTextPreview,
+        responseBodySha256: outcome.responseBodySha256,
+        cacheHit: outcome.cacheHit,
+        paid: outcome.paid,
         cacheStatus: outcome.cacheStatus,
         paymentBackend: outcome.paymentBackend,
       };

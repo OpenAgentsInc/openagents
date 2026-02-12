@@ -66,6 +66,14 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
           paymentId: "pay-1",
           responseStatusCode: 200,
           amountMsats: Number(task?.request?.maxSpendMsats ?? 0),
+          responseContentType: "application/json",
+          responseBytes: 11,
+          responseBodyTextPreview: '{"ok":true}',
+          responseBodySha256: "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+          cacheHit: false,
+          paid: true,
+          cacheStatus: "miss",
+          paymentBackend: "spark",
         },
       };
     }
@@ -316,6 +324,16 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
     expect(finalToolPart?.output?.status).toBe("completed");
     expect(finalToolPart?.output?.proofReference).toBe("preimage:abc123");
     expect(finalToolPart?.output?.paymentId).toBe("pay-1");
+    expect(finalToolPart?.output?.responseContentType).toBe("application/json");
+    expect(finalToolPart?.output?.responseBytes).toBe(11);
+    expect(finalToolPart?.output?.responseBodyTextPreview).toBe('{"ok":true}');
+    expect(finalToolPart?.output?.responseBodySha256).toBe(
+      "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+    );
+    expect(finalToolPart?.output?.cacheHit).toBe(false);
+    expect(finalToolPart?.output?.paid).toBe(true);
+    expect(finalToolPart?.output?.cacheStatus).toBe("miss");
+    expect(finalToolPart?.output?.paymentBackend).toBe("spark");
   });
 
   it("rejects invalid tool params via schema validation", async () => {

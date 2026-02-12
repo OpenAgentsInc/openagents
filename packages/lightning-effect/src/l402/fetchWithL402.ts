@@ -97,20 +97,24 @@ const buildResult = (input: {
   readonly amountMsats: number
   readonly paymentId: string | null
   readonly proofRef: string
-}): L402FetchResult => ({
-  url: input.request.url,
-  host: input.host,
-  scope: input.scope,
-  statusCode: input.response.status,
-  authorizationHeader: input.authorizationHeader,
-  cacheStatus: input.cacheStatus,
-  fromCache: input.fromCache,
-  paid: input.paid,
-  amountMsats: input.amountMsats,
-  paymentId: input.paymentId,
-  proofReference: input.proofRef,
-  ...(input.response.body !== undefined ? { responseBody: input.response.body } : {}),
-})
+}): L402FetchResult => {
+  const contentType = getHeaderCaseInsensitive(input.response.headers, "content-type")?.trim() ?? null
+  return {
+    url: input.request.url,
+    host: input.host,
+    scope: input.scope,
+    statusCode: input.response.status,
+    authorizationHeader: input.authorizationHeader,
+    cacheStatus: input.cacheStatus,
+    fromCache: input.fromCache,
+    paid: input.paid,
+    amountMsats: input.amountMsats,
+    paymentId: input.paymentId,
+    proofReference: input.proofRef,
+    ...(input.response.body !== undefined ? { responseBody: input.response.body } : {}),
+    ...(contentType ? { responseContentType: contentType } : {}),
+  }
+}
 
 export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
   request: L402FetchRequest,

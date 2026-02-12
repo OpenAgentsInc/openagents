@@ -70,6 +70,7 @@ export const L402FetchResult = Schema.Struct({
   paymentId: Schema.NullOr(Schema.NonEmptyString),
   proofReference: Schema.NonEmptyString,
   responseBody: Schema.optional(Schema.String),
+  responseContentType: Schema.optional(Schema.String),
 })
 export type L402FetchResult = typeof L402FetchResult.Type
 export const decodeL402FetchResult = Schema.decodeUnknown(L402FetchResult)
