@@ -3,6 +3,8 @@ import { Context, Effect } from "effect";
 import type {
   ControlPlanePaywall,
   CompileDiagnostic,
+  GatewayEventLevel,
+  GatewayEventRecord,
   DeploymentIntentRecord,
   DeploymentIntentStatus,
 } from "../contracts.js";
@@ -26,6 +28,16 @@ export type ControlPlaneApi = Readonly<{
   recordDeploymentIntent: (
     input: RecordDeploymentIntentInput,
   ) => Effect.Effect<DeploymentIntentRecord, unknown>;
+  recordGatewayEvent: (input: {
+    readonly paywallId: string;
+    readonly ownerId: string;
+    readonly eventType: string;
+    readonly level: GatewayEventLevel;
+    readonly requestId?: string;
+    readonly deploymentId?: string;
+    readonly configHash?: string;
+    readonly metadata?: unknown;
+  }) => Effect.Effect<GatewayEventRecord, unknown>;
 }>;
 
 export class ControlPlaneService extends Context.Tag("@openagents/lightning-ops/ControlPlaneService")<

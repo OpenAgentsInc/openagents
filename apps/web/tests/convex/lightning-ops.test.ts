@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   listPaywallControlPlaneStateImpl,
   recordGatewayCompileIntentImpl,
+  recordGatewayDeploymentEventImpl,
 } from "../../convex/lightning/ops";
 import { makeInMemoryDb } from "./inMemoryDb";
 
@@ -147,6 +148,49 @@ describe("convex/lightning ops control-plane", () => {
         status: "failed",
       });
       expect(db.__tables.l402GatewayDeployments).toHaveLength(1);
+    } finally {
+      process.env.OA_LIGHTNING_OPS_SECRET = prevSecret;
+    }
+  });
+
+  it("records gateway deployment events with correlation metadata", async () => {
+    const db = makeInMemoryDb();
+    const ctx = makeCtx(db);
+    const prevSecret = process.env.OA_LIGHTNING_OPS_SECRET;
+    process.env.OA_LIGHTNING_OPS_SECRET = "ops-secret";
+
+    try {
+      const result = await run(
+        recordGatewayDeploymentEventImpl(ctx, {
+          secret: "ops-secret",
+          paywallId: "pw_1",
+          ownerId: "owner_1",
+          eventType: "gateway_reconcile_health_ok",
+          level: "info",
+          requestId: "req_health_1",
+          deploymentId: "dep_health_1",
+          configHash: "cfg_health_1",
+          executionPath: "hosted-node",
+          metadata: {
+            statusCode: 200,
+          },
+        }),
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.event).toMatchObject({
+        paywallId: "pw_1",
+        ownerId: "owner_1",
+        eventType: "gateway_reconcile_health_ok",
+        level: "info",
+        requestId: "req_health_1",
+      });
+
+      const events = db.__tables.l402GatewayEvents;
+      expect(events).toHaveLength(1);
+      expect(events[0]?.metadata?.executionPath).toBe("hosted-node");
+      expect(events[0]?.metadata?.deploymentId).toBe("dep_health_1");
+      expect(events[0]?.metadata?.configHash).toBe("cfg_health_1");
     } finally {
       process.env.OA_LIGHTNING_OPS_SECRET = prevSecret;
     }

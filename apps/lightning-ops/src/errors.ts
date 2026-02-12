@@ -29,3 +29,8 @@ export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError"
   field: Schema.String,
   message: Schema.String,
 }) {}
+
+export class GatewayRuntimeError extends Schema.TaggedError<GatewayRuntimeError>()("GatewayRuntimeError", {
+  stage: Schema.Literal("active_lookup", "apply", "health", "challenge", "proxy", "rollback"),
+  reason: Schema.String,
+}) {}

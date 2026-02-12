@@ -11,4 +11,11 @@ export * from "./controlPlane/convexTransport.js";
 export * from "./controlPlane/convex.js";
 
 export * from "./programs/compileAndPersist.js";
+export * from "./programs/reconcileAndDeploy.js";
+export * from "./programs/smokeStaging.js";
+
+export * from "./gateway/service.js";
+export * from "./gateway/inMemory.js";
+export * from "./gateway/http.js";
+
 export * from "./runtime/config.js";
