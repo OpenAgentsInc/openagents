@@ -18,6 +18,9 @@ const Vibe = Schema.NonEmptyString.annotations({
 
 const HttpMethod = Schema.Literal("GET", "POST", "PUT", "PATCH", "DELETE");
 
+const L402CacheStatus = Schema.Literal("miss", "hit", "stale", "invalid");
+const L402PaymentBackend = Schema.Literal("spark", "lnd_deterministic");
+
 const L402FetchInput = Schema.Struct({
   url: Schema.NonEmptyString.annotations({
     description: "L402-protected endpoint URL."
@@ -42,6 +45,14 @@ const L402FetchOutput = Schema.Struct({
   paymentId: Schema.NullOr(Schema.String),
   amountMsats: Schema.NullOr(Schema.Number),
   responseStatusCode: Schema.NullOr(Schema.Number),
+  responseContentType: Schema.NullOr(Schema.String),
+  responseBytes: Schema.NullOr(Schema.Number),
+  responseBodyTextPreview: Schema.NullOr(Schema.String),
+  responseBodySha256: Schema.NullOr(Schema.String),
+  cacheHit: Schema.Boolean,
+  paid: Schema.Boolean,
+  cacheStatus: Schema.NullOr(L402CacheStatus),
+  paymentBackend: Schema.NullOr(L402PaymentBackend),
 });
 
 const PaywallStatus = Schema.Literal("active", "paused", "archived");

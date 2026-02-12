@@ -206,6 +206,9 @@ const LIGHTNING_L402_FETCH_TOOL_NAME = "lightning_l402_fetch" as const;
 const LIGHTNING_TERMINAL_STATUSES = ["completed", "cached", "blocked", "failed"] as const;
 type LightningTerminalStatus = (typeof LIGHTNING_TERMINAL_STATUSES)[number];
 
+type L402CacheStatus = "miss" | "hit" | "stale" | "invalid";
+type L402PaymentBackend = "spark" | "lnd_deterministic";
+
 type LightningTaskStatus =
   | "queued"
   | "approved"
@@ -242,6 +245,14 @@ type LightningToolTerminalResult = {
   readonly paymentId: string | null;
   readonly amountMsats: number | null;
   readonly responseStatusCode: number | null;
+  readonly responseContentType: string | null;
+  readonly responseBytes: number | null;
+  readonly responseBodyTextPreview: string | null;
+  readonly responseBodySha256: string | null;
+  readonly cacheHit: boolean;
+  readonly paid: boolean;
+  readonly cacheStatus: L402CacheStatus | null;
+  readonly paymentBackend: L402PaymentBackend | null;
 };
 
 const decodeLightningL402FetchInput = Schema.decodeUnknown(toolContracts.lightning_l402_fetch.input);
@@ -252,6 +263,12 @@ const isLightningTerminalStatus = (value: unknown): value is LightningTerminalSt
 const isLightningTaskStatus = (value: unknown): value is LightningTaskStatus =>
   typeof value === "string" &&
   ["queued", "approved", "running", "paid", "cached", "blocked", "failed", "completed"].includes(value);
+
+const isL402CacheStatus = (value: unknown): value is L402CacheStatus =>
+  typeof value === "string" && (["miss", "hit", "stale", "invalid"] as ReadonlyArray<string>).includes(value);
+
+const isL402PaymentBackend = (value: unknown): value is L402PaymentBackend =>
+  typeof value === "string" && (["spark", "lnd_deterministic"] as ReadonlyArray<string>).includes(value);
 
 const parseLightningTaskDoc = (value: unknown): LightningTaskDoc | null => {
   const rec = toRecord(value);
@@ -658,6 +675,14 @@ const runLightningL402FetchTool = (input: {
           paymentId: null,
           amountMsats: null,
           responseStatusCode: null,
+          responseContentType: null,
+          responseBytes: null,
+          responseBodyTextPreview: null,
+          responseBodySha256: null,
+          cacheHit: false,
+          paid: false,
+          cacheStatus: null,
+          paymentBackend: null,
         } satisfies LightningToolTerminalResult,
       };
     }
@@ -693,6 +718,14 @@ const runLightningL402FetchTool = (input: {
           paymentId: null,
           amountMsats: null,
           responseStatusCode: null,
+          responseContentType: null,
+          responseBytes: null,
+          responseBodyTextPreview: null,
+          responseBodySha256: null,
+          cacheHit: false,
+          paid: false,
+          cacheStatus: null,
+          paymentBackend: null,
         } satisfies LightningToolTerminalResult,
       };
     }
@@ -790,6 +823,16 @@ const runLightningL402FetchTool = (input: {
         ? metadata.responseStatusCode
         : null;
 
+    const responseContentType = readString(metadata?.responseContentType)?.trim() || null;
+    const responseBytes =
+      typeof metadata?.responseBytes === "number" && Number.isFinite(metadata.responseBytes) ? metadata.responseBytes : null;
+    const responseBodyTextPreview = readString(metadata?.responseBodyTextPreview) ?? null;
+    const responseBodySha256 = readString(metadata?.responseBodySha256) ?? null;
+    const cacheHit = metadata?.cacheHit === true;
+    const paid = metadata?.paid === true;
+    const cacheStatus = isL402CacheStatus(metadata?.cacheStatus) ? metadata.cacheStatus : null;
+    const paymentBackend = isL402PaymentBackend(metadata?.paymentBackend) ? metadata.paymentBackend : null;
+
     return {
       validatedInput: decodedInput,
       terminal: {
@@ -800,6 +843,14 @@ const runLightningL402FetchTool = (input: {
         paymentId,
         amountMsats: amountMsatsMeta ?? amountMsatsRequest,
         responseStatusCode,
+        responseContentType,
+        responseBytes,
+        responseBodyTextPreview,
+        responseBodySha256,
+        cacheHit,
+        paid,
+        cacheStatus,
+        paymentBackend,
       } satisfies LightningToolTerminalResult,
     };
   }).pipe(
@@ -814,6 +865,14 @@ const runLightningL402FetchTool = (input: {
           paymentId: null,
           amountMsats: null,
           responseStatusCode: null,
+          responseContentType: null,
+          responseBytes: null,
+          responseBodyTextPreview: null,
+          responseBodySha256: null,
+          cacheHit: false,
+          paid: false,
+          cacheStatus: null,
+          paymentBackend: null,
         } satisfies LightningToolTerminalResult,
       }),
     ),

@@ -13,9 +13,18 @@ import {
 } from "@openagentsinc/lightning-effect";
 import { makeLndDeterministicLayer } from "@openagentsinc/lnd-effect";
 import { Context, Effect, Layer } from "effect";
+import crypto from "node:crypto";
 
 import type { ExecutorTask } from "./model";
 import { SparkWalletGatewayService } from "./sparkWalletGateway";
+
+const MAX_RESPONSE_PREVIEW_BYTES = 8_192;
+
+const truncateUtf8 = (value: string, maxBytes: number): string => {
+  const buf = Buffer.from(value, "utf8");
+  if (buf.length <= maxBytes) return value;
+  return buf.subarray(0, Math.max(0, maxBytes)).toString("utf8");
+};
 
 export type L402ExecutionResult = Readonly<
   | {
@@ -24,6 +33,12 @@ export type L402ExecutionResult = Readonly<
       readonly paymentId: string | null;
       readonly proofReference: string;
       readonly responseStatusCode: number;
+      readonly responseContentType: string | null;
+      readonly responseBytes: number | null;
+      readonly responseBodyTextPreview: string | null;
+      readonly responseBodySha256: string | null;
+      readonly cacheHit: boolean;
+      readonly paid: boolean;
       readonly cacheStatus: L402FetchResult["cacheStatus"];
       readonly paymentBackend: "spark" | "lnd_deterministic";
     }
@@ -198,6 +213,17 @@ export const L402ExecutorLive = Layer.effect(
       }
 
       const fetchResult = exit.right;
+      const responseBody = typeof fetchResult.responseBody === "string" ? fetchResult.responseBody : null;
+      const responseBytes = responseBody ? Buffer.byteLength(responseBody, "utf8") : null;
+      const responseBodySha256 = responseBody
+        ? crypto.createHash("sha256").update(responseBody, "utf8").digest("hex")
+        : null;
+      const responseBodyTextPreview = responseBody ? truncateUtf8(responseBody, MAX_RESPONSE_PREVIEW_BYTES) : null;
+      const responseContentType =
+        typeof fetchResult.responseContentType === "string" && fetchResult.responseContentType.trim().length > 0
+          ? fetchResult.responseContentType.trim()
+          : null;
+      const cacheHit = fetchResult.fromCache === true || fetchResult.cacheStatus === "hit";
       const outcome: L402ExecutionResult = fetchResult.paid
         ? {
             status: "paid",
@@ -205,6 +231,12 @@ export const L402ExecutorLive = Layer.effect(
             paymentId: fetchResult.paymentId,
             proofReference: fetchResult.proofReference,
             responseStatusCode: fetchResult.statusCode,
+            responseContentType,
+            responseBytes,
+            responseBodyTextPreview,
+            responseBodySha256,
+            cacheHit,
+            paid: true,
             cacheStatus: fetchResult.cacheStatus,
             paymentBackend,
           }
@@ -214,6 +246,12 @@ export const L402ExecutorLive = Layer.effect(
             paymentId: fetchResult.paymentId,
             proofReference: fetchResult.proofReference,
             responseStatusCode: fetchResult.statusCode,
+            responseContentType,
+            responseBytes,
+            responseBodyTextPreview,
+            responseBodySha256,
+            cacheHit,
+            paid: false,
             cacheStatus: fetchResult.cacheStatus,
             paymentBackend,
           };
