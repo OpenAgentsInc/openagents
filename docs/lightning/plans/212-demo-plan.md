@@ -317,6 +317,11 @@ Expected:
 2. Add a smoke script that runs the EP212 sequence programmatically.
 3. Rehearse on production with real sats4ai + `l402.openagents.com` routes.
 
+Primary command for this phase:
+
+- `cd apps/lightning-ops && npm run smoke:ep212-full-flow -- --json --mode mock`
+- Live dry run: `cd apps/lightning-ops && npm run smoke:ep212-full-flow -- --json --mode live`
+
 ## 8. GitHub Issue Breakdown (EP212 Scope)
 
 ## Epic: EP212 L402 Buying Demo (Agent-Owned Spark Wallet)

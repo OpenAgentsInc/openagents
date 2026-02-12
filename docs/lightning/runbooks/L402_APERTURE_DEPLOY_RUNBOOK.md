@@ -198,6 +198,29 @@ Expected summary fields:
 - `routeB.blocked = true` with `routeB.denyReasonCode = amount_over_cap`
 - `routeB.payerCallsBefore === routeB.payerCallsAfter` (no payment attempted on over-cap block)
 
+### 5.5 EP212 buyer full-flow smoke
+
+Use the EP212 buyer harness to validate sats4ai compatibility + cache behavior + OpenAgents route success + over-cap policy block in one command.
+
+```bash
+cd apps/lightning-ops
+npm run smoke:ep212-full-flow -- --json --mode mock
+```
+
+For production dry runs:
+
+```bash
+cd apps/lightning-ops
+OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL="https://<wallet-executor-host>" \
+OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN="<optional-bearer>" \
+OA_LIGHTNING_OPS_EP212_SATS4AI_URL="https://sats4ai.com/api/l402/text-generation" \
+OA_LIGHTNING_OPS_EP212_ROUTE_A_URL="https://l402.openagents.com/ep212/premium-signal" \
+OA_LIGHTNING_OPS_EP212_ROUTE_B_URL="https://l402.openagents.com/ep212/expensive-signal" \
+npm run smoke:ep212-full-flow -- --json --mode live
+```
+
+Detailed checklist: `docs/lightning/runbooks/EP212_L402_BUYER_REHEARSAL_RUNBOOK.md`.
+
 ---
 
 ## 6. How to Edit in the Future

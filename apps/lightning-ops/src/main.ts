@@ -12,6 +12,11 @@ import { runSettlementSmoke, type SettlementSmokeMode } from "./programs/smokeSe
 import { runStagingSmoke, type StagingSmokeMode } from "./programs/smokeStaging.js";
 import { runEp212RoutesSmoke, type Ep212RoutesSmokeMode, type Ep212RoutesSmokeSummary } from "./programs/smokeEp212Routes.js";
 import {
+  runEp212FullFlowSmoke,
+  type Ep212FullFlowMode,
+  type Ep212FullFlowSummary,
+} from "./programs/smokeEp212FullFlow.js";
+import {
   runFullFlowSmoke,
   type FullFlowSmokeMode,
   type FullFlowSmokeSummary,
@@ -26,6 +31,7 @@ const usage = `Usage:
   tsx src/main.ts smoke:settlement [--json] [--mode mock|convex]
   tsx src/main.ts smoke:staging [--json] [--mode mock|convex]
   tsx src/main.ts smoke:ep212-routes [--json] [--mode mock|live]
+  tsx src/main.ts smoke:ep212-full-flow [--json] [--mode mock|live] [--artifact-dir <path>]
   tsx src/main.ts smoke:observability [--json] [--mode mock|convex]
   tsx src/main.ts smoke:full-flow [--json] [--mode mock|convex] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
 `;
@@ -202,6 +208,7 @@ const toObservabilitySmokeJson = (summary: {
 
 const toFullFlowSmokeJson = (summary: FullFlowSmokeSummary) => JSON.stringify(summary);
 const toEp212RoutesSmokeJson = (summary: Ep212RoutesSmokeSummary) => JSON.stringify(summary);
+const toEp212FullFlowSmokeJson = (summary: Ep212FullFlowSummary) => JSON.stringify(summary);
 
 const printCompileSummary = (
   summary: {
@@ -454,6 +461,42 @@ const printEp212RoutesSummary = (summary: Ep212RoutesSmokeSummary, jsonOutput: b
         ].join("\n"),
       );
 
+const printEp212FullFlowSummary = (
+  summary: Ep212FullFlowSummary,
+  jsonOutput: boolean,
+) =>
+  jsonOutput
+    ? Console.log(toEp212FullFlowSmokeJson(summary))
+    : Console.log(
+        [
+          `ok=${summary.ok}`,
+          `mode=${summary.mode}`,
+          `requestId=${summary.requestId}`,
+          `walletBackend=${summary.walletBackend}`,
+          `sats4ai.url=${summary.sats4ai.endpointUrl}`,
+          `sats4ai.challengeStatusCode=${summary.sats4ai.challengeStatusCode}`,
+          `sats4ai.firstStatusCode=${summary.sats4ai.firstStatusCode}`,
+          `sats4ai.firstPaid=${summary.sats4ai.firstPaid}`,
+          `sats4ai.secondStatusCode=${summary.sats4ai.secondStatusCode}`,
+          `sats4ai.secondPaid=${summary.sats4ai.secondPaid}`,
+          `sats4ai.cacheHit=${summary.sats4ai.cacheHit}`,
+          `sats4ai.payerCallsAfterFirst=${summary.sats4ai.payerCallsAfterFirst}`,
+          `sats4ai.payerCallsAfterSecond=${summary.sats4ai.payerCallsAfterSecond}`,
+          `openAgents.url=${summary.openAgentsRoute.endpointUrl}`,
+          `openAgents.challengeStatusCode=${summary.openAgentsRoute.challengeStatusCode}`,
+          `openAgents.paidStatusCode=${summary.openAgentsRoute.paidStatusCode}`,
+          `openAgents.paidAmountMsats=${summary.openAgentsRoute.paidAmountMsats}`,
+          `overCap.url=${summary.overCap.endpointUrl}`,
+          `overCap.challengeStatusCode=${summary.overCap.challengeStatusCode}`,
+          `overCap.blocked=${summary.overCap.blocked}`,
+          `overCap.denyReasonCode=${summary.overCap.denyReasonCode}`,
+          `overCap.payerCallsBefore=${summary.overCap.payerCallsBefore}`,
+          `overCap.payerCallsAfter=${summary.overCap.payerCallsAfter}`,
+          `artifacts.events=${summary.artifacts.eventsPath}`,
+          `artifacts.summary=${summary.artifacts.summaryPath}`,
+        ].join("\n"),
+      );
+
 const runSmokeCompile = (jsonOutput: boolean) => {
   const harness = makeInMemoryControlPlaneHarness({ paywalls: smokePaywalls });
   return compileAndPersistOnce({ requestId: "smoke:compile" }).pipe(
@@ -516,6 +559,16 @@ const runSmokeEp212Routes = (jsonOutput: boolean, mode: Ep212RoutesSmokeMode) =>
   runEp212RoutesSmoke({ mode }).pipe(
     Effect.flatMap((summary) => printEp212RoutesSummary(summary, jsonOutput)),
   );
+
+const runSmokeEp212FullFlow = (input: {
+  readonly jsonOutput: boolean;
+  readonly mode: Ep212FullFlowMode;
+  readonly artifactDir?: string;
+}) =>
+  runEp212FullFlowSmoke({
+    mode: input.mode,
+    ...(input.artifactDir ? { artifactDir: input.artifactDir } : {}),
+  }).pipe(Effect.flatMap((summary) => printEp212FullFlowSummary(summary, input.jsonOutput)));
 
 const runSmokeFullFlow = (input: {
   readonly jsonOutput: boolean;
@@ -584,6 +637,15 @@ const main = Effect.gen(function* () {
 
   if (command === "smoke:ep212-routes") {
     return yield* runSmokeEp212Routes(jsonOutput, parseMode(argv, ["mock", "live"], "mock"));
+  }
+
+  if (command === "smoke:ep212-full-flow") {
+    const artifactDir = parseTextOption(argv, "--artifact-dir");
+    return yield* runSmokeEp212FullFlow({
+      jsonOutput,
+      mode: parseMode(argv, ["mock", "live"], "mock"),
+      ...(artifactDir ? { artifactDir } : {}),
+    });
   }
 
   if (command === "smoke:full-flow") {

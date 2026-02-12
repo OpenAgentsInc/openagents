@@ -21,6 +21,7 @@ npm run smoke:full-flow -- --json
 npm run reconcile:convex
 npm run smoke:staging -- --json
 npm run smoke:ep212-routes -- --json --mode mock
+npm run smoke:ep212-full-flow -- --json --mode mock
 ```
 
 `smoke:compile -- --json` prints machine-readable JSON with:
@@ -40,6 +41,18 @@ npm run smoke:ep212-routes -- --json --mode mock
 
 - route A (`/ep212/premium-signal`): challenge shape + paid success (`status 200`)
 - route B (`/ep212/expensive-signal`): challenge shape + over-cap policy block (no payment call)
+
+`smoke:ep212-full-flow -- --json --mode mock` runs a deterministic buyer-flow harness with local fixtures:
+
+- sats4ai-compatible paid request (`Authorization: L402 <macaroon>:<preimage>`)
+- sats4ai cache hit (no second payment)
+- OpenAgents route paid success
+- over-cap policy block before payment
+
+It always writes machine-readable artifacts:
+
+- `events.jsonl` (ordered stage events)
+- `summary.json` (result with payer-call and cache assertions)
 
 `smoke:settlement -- --json` emits deterministic settlement ingest output with:
 
@@ -93,6 +106,16 @@ Environment variables for `smoke:ep212-routes -- --mode live`:
 - `OA_LIGHTNING_OPS_EP212_ROUTE_A_URL` (optional, default `https://l402.openagents.com/ep212/premium-signal`)
 - `OA_LIGHTNING_OPS_EP212_ROUTE_B_URL` (optional, default `https://l402.openagents.com/ep212/expensive-signal`)
 - `OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS` (optional, default `100000`)
+
+Additional environment variables for `smoke:ep212-full-flow -- --mode live`:
+
+- `OA_LIGHTNING_OPS_EP212_SATS4AI_URL` (optional, default `https://sats4ai.com/api/l402/text-generation`)
+- `OA_LIGHTNING_OPS_EP212_ROUTE_A_URL` (optional, default `https://l402.openagents.com/ep212/premium-signal`)
+- `OA_LIGHTNING_OPS_EP212_ROUTE_B_URL` (optional, default `https://l402.openagents.com/ep212/expensive-signal`)
+- `OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS` (optional, default `100000`)
+- `OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL` (required for `--mode live`)
+- `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN` (optional)
+- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `12000`)
 
 Example: copy `env.staging.example` to `.env.staging`, set the two required vars, then `source .env.staging && ./scripts/staging-reconcile.sh`.
 
