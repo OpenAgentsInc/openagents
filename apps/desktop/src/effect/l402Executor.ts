@@ -43,7 +43,17 @@ export type L402ExecutionResult = Readonly<
       readonly paymentBackend: "spark" | "lnd_deterministic";
     }
   | {
-      readonly status: "blocked" | "failed";
+      readonly status: "blocked";
+      readonly errorCode: string;
+      readonly denyReason: string;
+      readonly denyReasonCode: string | null;
+      readonly host: string | null;
+      readonly maxSpendMsats: number | null;
+      readonly quotedAmountMsats: number | null;
+      readonly paymentBackend: "spark" | "lnd_deterministic";
+    }
+  | {
+      readonly status: "failed";
       readonly errorCode: string;
       readonly denyReason: string;
       readonly paymentBackend: "spark" | "lnd_deterministic";
@@ -106,15 +116,13 @@ const LiveL402TransportLayer = Layer.succeed(
   }),
 );
 
-const toDeniedResult = (
-  error: { readonly _tag: string; readonly reason?: unknown },
-  paymentBackend: "spark" | "lnd_deterministic",
-): L402ExecutionResult => ({
-  status: "blocked",
-  errorCode: error._tag,
-  denyReason: typeof error.reason === "string" && error.reason.trim().length > 0 ? error.reason.trim() : error._tag,
-  paymentBackend,
-});
+const hostFromUrl = (url: string): string | null => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+};
 
 const toFailedResult = (
   error: unknown,
@@ -202,13 +210,47 @@ export const L402ExecutorLive = Layer.effect(
 
       const exit = yield* Effect.either(client.fetchWithL402(task.request));
       if (exit._tag === "Left") {
-        const err = exit.left as { readonly _tag?: unknown; readonly reason?: unknown };
-        if (err._tag === "BudgetExceededError" || err._tag === "DomainNotAllowedError") {
-          return toDeniedResult({
-            _tag: String(err._tag),
-            reason: err.reason,
-          }, paymentBackend);
+        const err = exit.left as unknown as Record<string, unknown> | null;
+        const tag = typeof err?._tag === "string" ? err._tag : null;
+        const reason = typeof err?.reason === "string" && err.reason.trim().length > 0 ? err.reason.trim() : tag ?? "unknown_error";
+
+        if (tag === "BudgetExceededError") {
+          const maxSpendMsats = typeof err?.maxSpendMsats === "number" && Number.isFinite(err.maxSpendMsats)
+            ? Math.max(0, Math.floor(err.maxSpendMsats))
+            : Math.max(0, Math.floor(task.request.maxSpendMsats));
+          const quotedAmountMsats = typeof err?.quotedAmountMsats === "number" && Number.isFinite(err.quotedAmountMsats)
+            ? Math.max(0, Math.floor(err.quotedAmountMsats))
+            : null;
+          const denyReasonCode = typeof err?.reasonCode === "string" ? err.reasonCode : null;
+          return {
+            status: "blocked",
+            errorCode: tag,
+            denyReason: reason,
+            denyReasonCode,
+            host: hostFromUrl(task.request.url),
+            maxSpendMsats,
+            quotedAmountMsats,
+            paymentBackend,
+          } satisfies L402ExecutionResult;
         }
+
+        if (tag === "DomainNotAllowedError") {
+          const denyReasonCode = typeof err?.reasonCode === "string" ? err.reasonCode : null;
+          const host = typeof err?.host === "string" && err.host.trim().length > 0
+            ? err.host.trim()
+            : hostFromUrl(task.request.url);
+          return {
+            status: "blocked",
+            errorCode: tag,
+            denyReason: reason,
+            denyReasonCode,
+            host,
+            maxSpendMsats: Math.max(0, Math.floor(task.request.maxSpendMsats)),
+            quotedAmountMsats: null,
+            paymentBackend,
+          } satisfies L402ExecutionResult;
+        }
+
         return toFailedResult(exit.left, paymentBackend);
       }
 

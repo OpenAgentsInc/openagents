@@ -147,6 +147,10 @@ const l402ExecutorTestLayer = Layer.succeed(
             status: "blocked",
             errorCode: "DomainNotAllowedError",
             denyReason: "host_blocked",
+            denyReasonCode: "host_blocked",
+            host: "api.example.com",
+            maxSpendMsats: task.request.maxSpendMsats,
+            quotedAmountMsats: null,
             paymentBackend: "spark",
           } as const;
         }

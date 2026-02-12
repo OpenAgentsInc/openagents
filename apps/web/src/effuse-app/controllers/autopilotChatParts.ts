@@ -229,6 +229,9 @@ export type L402PaymentMetadata = {
   readonly responseStatusCode?: number
   readonly proofReference?: string
   readonly denyReason?: string
+  readonly denyReasonCode?: string
+  readonly host?: string
+  readonly quotedAmountMsats?: number
   readonly url?: string
   readonly method?: string
   readonly scope?: string
@@ -258,6 +261,33 @@ const paymentStateFromToolStart = (opts: {
   return null
 }
 
+const formatSatsFromMsats = (msats: number): string => {
+  const sats = Math.round((msats / 1000) * 1000) / 1000
+  const text = Number.isInteger(sats)
+    ? String(sats)
+    : sats.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")
+  return `${text} sats`
+}
+
+const formatPolicyDeniedReason = (metadata: L402PaymentMetadata): string | undefined => {
+  if (metadata.status !== "blocked") return undefined
+
+  switch (metadata.denyReasonCode) {
+    case "amount_over_cap": {
+      if (metadata.quotedAmountMsats === undefined || metadata.maxSpendMsats === undefined) return undefined
+      return `Blocked: quoted ${formatSatsFromMsats(metadata.quotedAmountMsats)} > cap ${formatSatsFromMsats(metadata.maxSpendMsats)}`
+    }
+    case "host_not_allowlisted": {
+      return metadata.host ? `Blocked: host not allowlisted (${metadata.host})` : "Blocked: host not allowlisted"
+    }
+    case "host_blocked": {
+      return metadata.host ? `Blocked: host blocked (${metadata.host})` : "Blocked: host blocked"
+    }
+    default:
+      return undefined
+  }
+}
+
 const paymentStateCardFromTool = (opts: {
   readonly toolName: string
   readonly toolCallId: string
@@ -275,6 +305,7 @@ const paymentStateCardFromTool = (opts: {
   })
 
   if (metadata) {
+    const deniedReason = formatPolicyDeniedReason(metadata) ?? metadata.denyReason
     return {
       state: paymentStateFromMetadataStatus(metadata.status),
       toolCallId: metadata.toolCallId,
@@ -285,7 +316,7 @@ const paymentStateCardFromTool = (opts: {
       amountMsats: metadata.amountMsats,
       responseStatusCode: metadata.responseStatusCode,
       proofReference: metadata.proofReference,
-      denyReason: metadata.denyReason,
+      denyReason: deniedReason,
       statusLabel: metadata.status,
     }
   }
@@ -357,10 +388,13 @@ const toL402PaymentMetadata = (opts: {
     responseStatusCode: asFiniteNumber(output?.responseStatusCode),
     proofReference: asString(output?.proofReference),
     denyReason: asString(output?.denyReason),
+    denyReasonCode: asString(output?.denyReasonCode),
+    host: asString(output?.host),
+    quotedAmountMsats: asFiniteNumber(output?.quotedAmountMsats),
     url: asString(input?.url),
     method: asString(input?.method),
     scope: asString(input?.scope),
-    maxSpendMsats: asFiniteNumber(input?.maxSpendMsats),
+    maxSpendMsats: asFiniteNumber(output?.maxSpendMsats) ?? asFiniteNumber(input?.maxSpendMsats),
   }
 }
 

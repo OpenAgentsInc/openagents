@@ -94,6 +94,10 @@ export const ExecutorLoopLive = Layer.effect(
           errorMessage: reason,
           metadata: {
             denyReason: reason,
+            denyReasonCode: outcome.denyReasonCode,
+            host: outcome.host,
+            maxSpendMsats: outcome.maxSpendMsats,
+            quotedAmountMsats: outcome.quotedAmountMsats,
             paymentBackend: outcome.paymentBackend,
             paid: false,
             cacheHit: false,
