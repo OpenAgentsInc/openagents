@@ -78,9 +78,9 @@ From `L402_AGENT_PAYWALL_INFRA_PLAN.md` and `STAGING_GATEWAY_RECONCILE_RUNBOOK.m
      - `OA_LIGHTNING_OPS_CHALLENGE_URL`
      - `OA_LIGHTNING_OPS_PROXY_URL`
    - Run:
-     - `./scripts/staging-reconcile.sh`  
-     or  
-     - `npm run smoke:staging -- --json --mode convex`  
+     - `./scripts/staging-reconcile.sh`
+     or
+     - `npm run smoke:staging -- --json --mode convex`
    - Reconcile verifies 402 issuance and authenticated proxy; it does not configure Voltage. Voltage is configured only in the Aperture deployment (authenticator + secrets).
 
 4. **Settlement ingestion**
