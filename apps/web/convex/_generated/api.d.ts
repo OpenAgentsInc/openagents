@@ -37,6 +37,7 @@ import type * as effect_tryPromise from "../effect/tryPromise.js";
 import type * as effect_validators from "../effect/validators.js";
 import type * as lightning_ops from "../lightning/ops.js";
 import type * as lightning_paywalls from "../lightning/paywalls.js";
+import type * as lightning_settlements from "../lightning/settlements.js";
 import type * as lightning_tasks from "../lightning/tasks.js";
 import type * as testing_resetAll from "../testing/resetAll.js";
 
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   "effect/validators": typeof effect_validators;
   "lightning/ops": typeof lightning_ops;
   "lightning/paywalls": typeof lightning_paywalls;
+  "lightning/settlements": typeof lightning_settlements;
   "lightning/tasks": typeof lightning_tasks;
   "testing/resetAll": typeof testing_resetAll;
 }>;

@@ -6,6 +6,7 @@ import { ConvexControlPlaneLive } from "./controlPlane/convex.js";
 import { ConvexTransportLive } from "./controlPlane/convexTransport.js";
 import { smokePaywalls } from "./fixtures/smokePaywalls.js";
 import { compileAndPersistOnce } from "./programs/compileAndPersist.js";
+import { runSettlementSmoke, type SettlementSmokeMode } from "./programs/smokeSettlement.js";
 import { runStagingSmoke, type StagingSmokeMode } from "./programs/smokeStaging.js";
 import { OpsRuntimeConfigLive } from "./runtime/config.js";
 
@@ -13,6 +14,7 @@ const usage = `Usage:
   tsx src/main.ts smoke:compile [--json]
   tsx src/main.ts compile:convex [--json]
   tsx src/main.ts reconcile:convex [--json]
+  tsx src/main.ts smoke:settlement [--json] [--mode mock|convex]
   tsx src/main.ts smoke:staging [--json] [--mode mock|convex]
 `;
 
@@ -62,6 +64,36 @@ const toReconcileSummaryJson = (summary: {
     healthOk: summary.healthOk,
     diagnosticsCount: summary.diagnostics.length,
     diagnostics: summary.diagnostics,
+  });
+
+const toSettlementSmokeJson = (summary: {
+  readonly processed: number;
+  readonly invoiceTransitions: ReadonlyArray<{
+    readonly invoiceId: string;
+    readonly status: string;
+    readonly updatedAtMs: number;
+  }>;
+  readonly settlements: ReadonlyArray<{
+    readonly settlementId: string;
+    readonly paymentProofRef: string;
+    readonly existed: boolean;
+  }>;
+  readonly correlationRefs: ReadonlyArray<{
+    readonly settlementId: string;
+    readonly paymentProofRef: string;
+    readonly requestId?: string;
+    readonly taskId?: string;
+    readonly routeId?: string;
+  }>;
+}) =>
+  JSON.stringify({
+    ok: true,
+    processed: summary.processed,
+    invoiceTransitions: summary.invoiceTransitions,
+    settlements: summary.settlements,
+    settlementIds: summary.settlements.map((row) => row.settlementId),
+    paymentProofRefs: summary.settlements.map((row) => row.paymentProofRef),
+    correlationRefs: summary.correlationRefs,
   });
 
 const printCompileSummary = (
@@ -120,6 +152,41 @@ const printReconcileSummary = (
         ].join("\n"),
       );
 
+const printSettlementSummary = (
+  summary: {
+    readonly processed: number;
+    readonly invoiceTransitions: ReadonlyArray<{
+      readonly invoiceId: string;
+      readonly status: string;
+      readonly updatedAtMs: number;
+    }>;
+    readonly settlements: ReadonlyArray<{
+      readonly settlementId: string;
+      readonly paymentProofRef: string;
+      readonly existed: boolean;
+    }>;
+    readonly correlationRefs: ReadonlyArray<{
+      readonly settlementId: string;
+      readonly paymentProofRef: string;
+      readonly requestId?: string;
+      readonly taskId?: string;
+      readonly routeId?: string;
+    }>;
+  },
+  jsonOutput: boolean,
+) =>
+  jsonOutput
+    ? Console.log(toSettlementSmokeJson(summary))
+    : Console.log(
+        [
+          `processed=${summary.processed}`,
+          `invoices=${summary.invoiceTransitions.length}`,
+          `settlements=${summary.settlements.length}`,
+          `settlementIds=${summary.settlements.map((row) => row.settlementId).join(",")}`,
+          `paymentProofRefs=${summary.settlements.map((row) => row.paymentProofRef).join(",")}`,
+        ].join("\n"),
+      );
+
 const runSmokeCompile = (jsonOutput: boolean) => {
   const harness = makeInMemoryControlPlaneHarness({ paywalls: smokePaywalls });
   return compileAndPersistOnce({ requestId: "smoke:compile" }).pipe(
@@ -148,24 +215,27 @@ const runConvexReconcile = (jsonOutput: boolean) => {
   );
 };
 
-const parseMode = (argv: ReadonlyArray<string>): StagingSmokeMode => {
+const parseMode = <A extends string>(argv: ReadonlyArray<string>, values: ReadonlyArray<A>, fallback: A): A => {
   const modeFlag = argv.find((value) => value.startsWith("--mode="));
   if (modeFlag) {
     const value = modeFlag.slice("--mode=".length);
-    return value === "convex" ? "convex" : "mock";
+    return values.includes(value as A) ? (value as A) : fallback;
   }
 
   const modeIndex = argv.findIndex((value) => value === "--mode");
   if (modeIndex >= 0) {
     const next = argv[modeIndex + 1];
-    return next === "convex" ? "convex" : "mock";
+    return values.includes(next as A) ? (next as A) : fallback;
   }
 
-  return "mock";
+  return fallback;
 };
 
 const runSmokeStaging = (jsonOutput: boolean, mode: StagingSmokeMode) =>
   runStagingSmoke({ mode }).pipe(Effect.flatMap((summary) => printReconcileSummary(summary, jsonOutput)));
+
+const runSmokeSettlement = (jsonOutput: boolean, mode: SettlementSmokeMode) =>
+  runSettlementSmoke({ mode }).pipe(Effect.flatMap((summary) => printSettlementSummary(summary, jsonOutput)));
 
 const main = Effect.gen(function* () {
   const argv = process.argv.slice(2);
@@ -184,8 +254,12 @@ const main = Effect.gen(function* () {
     return yield* runConvexReconcile(jsonOutput);
   }
 
+  if (command === "smoke:settlement") {
+    return yield* runSmokeSettlement(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+  }
+
   if (command === "smoke:staging") {
-    return yield* runSmokeStaging(jsonOutput, parseMode(argv));
+    return yield* runSmokeStaging(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
   }
 
   return yield* Console.error(usage).pipe(Effect.zipRight(Effect.fail(new Error("invalid_command"))));

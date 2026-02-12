@@ -1,11 +1,15 @@
 import { Effect, Layer } from "effect";
 
 import {
+  decodeInvoiceLifecycleWriteResponse,
+  decodeSettlementWriteResponse,
   decodeControlPlaneSnapshotResponse,
   decodeDeploymentIntentWriteResponse,
   decodeGatewayEventWriteResponse,
   type CompileDiagnostic,
+  type ControlPlaneInvoiceRecord,
   type ControlPlanePaywall,
+  type ControlPlaneSettlementRecord,
   type DeploymentIntentRecord,
   type GatewayEventRecord,
 } from "../contracts.js";
@@ -20,6 +24,8 @@ type ControlPlaneApi = Parameters<typeof ControlPlaneService.of>[0];
 export const CONVEX_LIST_PAYWALLS_FN = "lightning/ops:listPaywallControlPlaneState";
 export const CONVEX_RECORD_DEPLOYMENT_FN = "lightning/ops:recordGatewayCompileIntent";
 export const CONVEX_RECORD_GATEWAY_EVENT_FN = "lightning/ops:recordGatewayDeploymentEvent";
+export const CONVEX_RECORD_INVOICE_LIFECYCLE_FN = "lightning/settlements:ingestInvoiceLifecycle";
+export const CONVEX_RECORD_SETTLEMENT_FN = "lightning/settlements:ingestSettlement";
 
 const decodeSnapshot = (raw: unknown): Effect.Effect<ReadonlyArray<ControlPlanePaywall>, ControlPlaneDecodeError> =>
   decodeControlPlaneSnapshotResponse(raw).pipe(
@@ -54,6 +60,43 @@ const decodeGatewayEventWrite = (raw: unknown): Effect.Effect<GatewayEventRecord
     ),
   );
 
+const decodeInvoiceLifecycleWrite = (
+  raw: unknown,
+): Effect.Effect<ControlPlaneInvoiceRecord, ControlPlaneDecodeError> =>
+  decodeInvoiceLifecycleWriteResponse(raw).pipe(
+    Effect.map((decoded) => decoded.invoice),
+    Effect.mapError((error) =>
+      ControlPlaneDecodeError.make({
+        operation: "decodeInvoiceLifecycleWriteResponse",
+        reason: String(error),
+      }),
+    ),
+  );
+
+const decodeSettlementWrite = (
+  raw: unknown,
+): Effect.Effect<{
+  existed: boolean;
+  settlement: ControlPlaneSettlementRecord;
+  invoice?: ControlPlaneInvoiceRecord;
+}, ControlPlaneDecodeError> =>
+  decodeSettlementWriteResponse(raw).pipe(
+    Effect.map((decoded) => {
+      const result = {
+        existed: decoded.existed,
+        settlement: decoded.settlement,
+        ...(decoded.invoice ? { invoice: decoded.invoice } : {}),
+      };
+      return result;
+    }),
+    Effect.mapError((error) =>
+      ControlPlaneDecodeError.make({
+        operation: "decodeSettlementWriteResponse",
+        reason: String(error),
+      }),
+    ),
+  );
+
 const toDiagnosticJson = (diagnostics: ReadonlyArray<CompileDiagnostic>) =>
   diagnostics.map((diag) => ({
     code: diag.code,
@@ -78,6 +121,66 @@ const makeRecordArgs = (secret: string, input: RecordDeploymentIntentInput): Rec
   imageDigest: input.imageDigest,
   rolledBackFrom: input.rolledBackFrom,
   appliedAtMs: input.appliedAtMs,
+});
+
+const makeInvoiceLifecycleArgs = (
+  secret: string,
+  input: {
+    invoiceId: string;
+    paywallId: string;
+    ownerId: string;
+    amountMsats: number;
+    status: "open" | "settled" | "canceled" | "expired";
+    paymentHash?: string;
+    paymentRequest?: string;
+    paymentProofRef?: string;
+    requestId?: string;
+    settledAtMs?: number;
+  },
+): Record<string, unknown> => ({
+  secret,
+  invoiceId: input.invoiceId,
+  paywallId: input.paywallId,
+  ownerId: input.ownerId,
+  amountMsats: input.amountMsats,
+  status: input.status,
+  paymentHash: input.paymentHash,
+  paymentRequest: input.paymentRequest,
+  paymentProofRef: input.paymentProofRef,
+  requestId: input.requestId,
+  settledAtMs: input.settledAtMs,
+});
+
+const makeSettlementArgs = (
+  secret: string,
+  input: {
+    settlementId: string;
+    paywallId: string;
+    ownerId: string;
+    invoiceId?: string;
+    amountMsats: number;
+    paymentHash?: string;
+    paymentProofType: "lightning_preimage";
+    paymentProofValue: string;
+    requestId?: string;
+    taskId?: string;
+    routeId?: string;
+    metadata?: unknown;
+  },
+): Record<string, unknown> => ({
+  secret,
+  settlementId: input.settlementId,
+  paywallId: input.paywallId,
+  ownerId: input.ownerId,
+  invoiceId: input.invoiceId,
+  amountMsats: input.amountMsats,
+  paymentHash: input.paymentHash,
+  paymentProofType: input.paymentProofType,
+  paymentProofValue: input.paymentProofValue,
+  requestId: input.requestId,
+  taskId: input.taskId,
+  routeId: input.routeId,
+  metadata: input.metadata,
 });
 
 export const ConvexControlPlaneLive = Layer.effect(
@@ -115,10 +218,22 @@ export const ConvexControlPlaneLive = Layer.effect(
         })
         .pipe(Effect.flatMap(decodeGatewayEventWrite));
 
+    const recordInvoiceLifecycle: ControlPlaneApi["recordInvoiceLifecycle"] = (input) =>
+      transport
+        .mutation(CONVEX_RECORD_INVOICE_LIFECYCLE_FN, makeInvoiceLifecycleArgs(config.opsSecret, input))
+        .pipe(Effect.flatMap(decodeInvoiceLifecycleWrite));
+
+    const recordSettlement: ControlPlaneApi["recordSettlement"] = (input) =>
+      transport
+        .mutation(CONVEX_RECORD_SETTLEMENT_FN, makeSettlementArgs(config.opsSecret, input))
+        .pipe(Effect.flatMap(decodeSettlementWrite));
+
     return ControlPlaneService.of({
       listPaywallsForCompile,
       recordDeploymentIntent,
       recordGatewayEvent,
+      recordInvoiceLifecycle,
+      recordSettlement,
     });
   }),
 );

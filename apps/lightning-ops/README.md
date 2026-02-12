@@ -15,6 +15,7 @@ Effect-native operational service for hosted L402 gateway workflows.
 npm run typecheck
 npm test
 npm run smoke:compile -- --json
+npm run smoke:settlement -- --json
 npm run reconcile:convex
 npm run smoke:staging -- --json
 ```
@@ -31,6 +32,12 @@ npm run smoke:staging -- --json
 - `proxyOk`
 - `configHash`
 - `deploymentStatus`
+
+`smoke:settlement -- --json` emits deterministic settlement ingest output with:
+
+- `settlementIds`
+- `paymentProofRefs`
+- `correlationRefs` (request/task/route correlation tuples)
 
 Environment variables for Convex-backed operation:
 

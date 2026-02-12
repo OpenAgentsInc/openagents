@@ -3,10 +3,14 @@ import { Context, Effect } from "effect";
 import type {
   ControlPlanePaywall,
   CompileDiagnostic,
+  ControlPlaneInvoiceRecord,
+  ControlPlaneSettlementRecord,
   GatewayEventLevel,
   GatewayEventRecord,
   DeploymentIntentRecord,
   DeploymentIntentStatus,
+  InvoiceLifecycleStatus,
+  PaymentProofType,
 } from "../contracts.js";
 
 export type RecordDeploymentIntentInput = Readonly<{
@@ -21,6 +25,40 @@ export type RecordDeploymentIntentInput = Readonly<{
   imageDigest?: string;
   rolledBackFrom?: string;
   appliedAtMs?: number;
+}>;
+
+export type RecordInvoiceLifecycleInput = Readonly<{
+  invoiceId: string;
+  paywallId: string;
+  ownerId: string;
+  amountMsats: number;
+  status: InvoiceLifecycleStatus;
+  paymentHash?: string;
+  paymentRequest?: string;
+  paymentProofRef?: string;
+  requestId?: string;
+  settledAtMs?: number;
+}>;
+
+export type RecordSettlementInput = Readonly<{
+  settlementId: string;
+  paywallId: string;
+  ownerId: string;
+  invoiceId?: string;
+  amountMsats: number;
+  paymentHash?: string;
+  paymentProofType: PaymentProofType;
+  paymentProofValue: string;
+  requestId?: string;
+  taskId?: string;
+  routeId?: string;
+  metadata?: unknown;
+}>;
+
+export type RecordSettlementResult = Readonly<{
+  existed: boolean;
+  settlement: ControlPlaneSettlementRecord;
+  invoice?: ControlPlaneInvoiceRecord;
 }>;
 
 export type ControlPlaneApi = Readonly<{
@@ -38,6 +76,10 @@ export type ControlPlaneApi = Readonly<{
     readonly configHash?: string;
     readonly metadata?: unknown;
   }) => Effect.Effect<GatewayEventRecord, unknown>;
+  recordInvoiceLifecycle: (
+    input: RecordInvoiceLifecycleInput,
+  ) => Effect.Effect<ControlPlaneInvoiceRecord, unknown>;
+  recordSettlement: (input: RecordSettlementInput) => Effect.Effect<RecordSettlementResult, unknown>;
 }>;
 
 export class ControlPlaneService extends Context.Tag("@openagents/lightning-ops/ControlPlaneService")<
