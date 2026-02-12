@@ -151,6 +151,83 @@ describe("desktop l402 executor spark flow", () => {
     )
   })
 
+  it.effect("blocks pre-payment when quoted invoice amount exceeds cap (no payer call)", () => {
+    const payCalls = { current: 0 }
+
+    const sparkGatewayLayer = Layer.succeed(
+      SparkWalletGatewayService,
+      SparkWalletGatewayService.of({
+        snapshot: () =>
+          Effect.succeed({
+            lifecycle: "connected",
+            network: "regtest",
+            apiKeyConfigured: true,
+            mnemonicStored: true,
+            identityPubkey: "spark-pub",
+            balanceSats: 5000,
+            tokenBalanceCount: 0,
+            lastSyncedAtMs: Date.now(),
+            lastPaymentId: null,
+            lastPaymentAtMs: null,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          }),
+        bootstrap: () => Effect.void,
+        refresh: () =>
+          Effect.succeed({
+            lifecycle: "connected",
+            network: "regtest",
+            apiKeyConfigured: true,
+            mnemonicStored: true,
+            identityPubkey: "spark-pub",
+            balanceSats: 5000,
+            tokenBalanceCount: 0,
+            lastSyncedAtMs: Date.now(),
+            lastPaymentId: null,
+            lastPaymentAtMs: null,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          }),
+        payInvoice: (_request) =>
+          Effect.sync(() => {
+            payCalls.current += 1
+            return {
+              paymentId: `spark-pay-${payCalls.current}`,
+              amountMsats: 0,
+              preimageHex: "ab".repeat(32),
+              paidAtMs: Date.now(),
+            }
+          }),
+      }),
+    )
+
+    const layer = Layer.provideMerge(L402ExecutorLive, sparkGatewayLayer)
+    const baseTask = makeTask("https://seller.example.com/premium-overcap")
+    const task: ExecutorTask = {
+      ...baseTask,
+      request: {
+        ...baseTask.request,
+        maxSpendMsats: 1_000,
+      },
+    }
+
+    return withFetchHarness(
+      Effect.gen(function* () {
+        const executor = yield* L402ExecutorService
+        const res = yield* executor.execute(task)
+        expect(res.status).toBe("blocked")
+        if (res.status === "blocked") {
+          expect(res.errorCode).toBe("BudgetExceededError")
+          expect(res.denyReasonCode).toBe("amount_over_cap")
+          expect(res.host).toBe("seller.example.com")
+          expect(res.maxSpendMsats).toBe(1_000)
+          expect(res.quotedAmountMsats).toBe(2_500)
+        }
+        expect(payCalls.current).toBe(0)
+      }).pipe(Effect.provide(layer)),
+    )
+  })
+
   it.effect("stores bounded payload preview + sha256 for large bodies", () => {
     const bigBody = "x".repeat(9_000)
     const expectedPreview = bigBody.slice(0, 8_192)
@@ -226,4 +303,3 @@ describe("desktop l402 executor spark flow", () => {
     )
   })
 })
-

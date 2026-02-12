@@ -244,6 +244,10 @@ type LightningToolTerminalResult = {
   readonly status: LightningL402FetchToolStatus;
   readonly proofReference: string | null;
   readonly denyReason: string | null;
+  readonly denyReasonCode: string | null;
+  readonly host: string | null;
+  readonly maxSpendMsats: number | null;
+  readonly quotedAmountMsats: number | null;
   readonly paymentId: string | null;
   readonly amountMsats: number | null;
   readonly responseStatusCode: number | null;
@@ -361,7 +365,7 @@ const parseLightningToolInvocation = (text: string): LightningManualInvocation |
 };
 
 const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult): string => {
- if (result.status === "queued") {
+  if (result.status === "queued") {
     const tid = result.taskId ? ` Task: ${result.taskId}.` : "";
     const approveHint = result.taskId
       ? `lightning_l402_approve({"taskId":"${result.taskId}"})`
@@ -373,6 +377,32 @@ const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult
     const proof = result.proofReference ? ` Proof: ${result.proofReference}` : "";
     const code = typeof result.responseStatusCode === "number" ? ` HTTP ${result.responseStatusCode}.` : "";
     return `L402 fetch ${result.status}.${code}${proof}`.trim();
+  }
+
+  const fmtSats = (msats: number): string => {
+    const sats = Math.round((msats / 1000) * 1000) / 1000;
+    const text = Number.isInteger(sats)
+      ? String(sats)
+      : String(sats).includes(".")
+        ? String(sats)
+        : sats.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+    return `${text} sats`;
+  };
+
+  if (result.status === "blocked") {
+    if (
+      result.denyReasonCode === "amount_over_cap" &&
+      typeof result.quotedAmountMsats === "number" &&
+      typeof result.maxSpendMsats === "number"
+    ) {
+      return `Blocked: quoted ${fmtSats(result.quotedAmountMsats)} > cap ${fmtSats(result.maxSpendMsats)}`;
+    }
+    if (result.denyReasonCode === "host_not_allowlisted") {
+      return result.host ? `Blocked: host not allowlisted (${result.host})` : "Blocked: host not allowlisted";
+    }
+    if (result.denyReasonCode === "host_blocked") {
+      return result.host ? `Blocked: host blocked (${result.host})` : "Blocked: host blocked";
+    }
   }
 
   const reason = result.denyReason ?? "unknown";
@@ -710,6 +740,10 @@ const runLightningL402FetchTool = (input: {
           status: "blocked" as const,
           proofReference: null,
           denyReason: "invalid_params",
+          denyReasonCode: null,
+          host: null,
+          maxSpendMsats: null,
+          quotedAmountMsats: null,
           paymentId: null,
           amountMsats: null,
           responseStatusCode: null,
@@ -766,6 +800,10 @@ const runLightningL402FetchTool = (input: {
           status: "failed" as const,
           proofReference: null,
           denyReason: "invalid_task_shape",
+          denyReasonCode: null,
+          host: null,
+          maxSpendMsats: null,
+          quotedAmountMsats: null,
           paymentId: null,
           amountMsats: null,
           responseStatusCode: null,
@@ -791,6 +829,19 @@ const runLightningL402FetchTool = (input: {
           status: "queued" as const,
           proofReference: null,
           denyReason: null,
+          denyReasonCode: null,
+          host: (() => {
+            try {
+              return new URL(String(decodedInput.url)).host;
+            } catch {
+              return null;
+            }
+          })(),
+          maxSpendMsats:
+            typeof decodedInput.maxSpendMsats === "number" && Number.isFinite(decodedInput.maxSpendMsats)
+              ? decodedInput.maxSpendMsats
+              : null,
+          quotedAmountMsats: null,
           paymentId: null,
           amountMsats: null,
           responseStatusCode: null,
@@ -914,12 +965,20 @@ const runLightningL402FetchTool = (input: {
       readNonEmptyString(latestEvent?.reason) ??
       readNonEmptyString(task.lastErrorMessage) ??
       (task.status === "blocked" || task.status === "failed" ? task.status : null);
+    const denyReasonCode = readString(metadata?.denyReasonCode) ?? null;
+    const host = readString(metadata?.host)?.trim() || null;
     const paymentId = readNonEmptyString(metadata?.paymentId) ?? null;
     const amountMsatsMeta =
       typeof metadata?.amountMsats === "number" && Number.isFinite(metadata.amountMsats) ? metadata.amountMsats : null;
     const amountMsatsRequest =
       typeof task.request?.maxSpendMsats === "number" && Number.isFinite(task.request.maxSpendMsats)
         ? task.request.maxSpendMsats
+        : null;
+    const maxSpendMsatsMeta =
+      typeof metadata?.maxSpendMsats === "number" && Number.isFinite(metadata.maxSpendMsats) ? metadata.maxSpendMsats : null;
+    const quotedAmountMsatsMeta =
+      typeof metadata?.quotedAmountMsats === "number" && Number.isFinite(metadata.quotedAmountMsats)
+        ? metadata.quotedAmountMsats
         : null;
     const responseStatusCode =
       typeof metadata?.responseStatusCode === "number" && Number.isFinite(metadata.responseStatusCode)
@@ -943,6 +1002,10 @@ const runLightningL402FetchTool = (input: {
         status: isLightningTerminalStatus(task.status) ? task.status : "failed",
         proofReference,
         denyReason,
+        denyReasonCode,
+        host,
+        maxSpendMsats: maxSpendMsatsMeta ?? amountMsatsRequest,
+        quotedAmountMsats: quotedAmountMsatsMeta,
         paymentId,
         amountMsats: amountMsatsMeta ?? amountMsatsRequest,
         responseStatusCode,
@@ -966,6 +1029,10 @@ const runLightningL402FetchTool = (input: {
           status: "failed" as const,
           proofReference: null,
           denyReason: errorMessageFromUnknown(error, "lightning_tool_failed"),
+          denyReasonCode: null,
+          host: null,
+          maxSpendMsats: null,
+          quotedAmountMsats: null,
           paymentId: null,
           amountMsats: null,
           responseStatusCode: null,

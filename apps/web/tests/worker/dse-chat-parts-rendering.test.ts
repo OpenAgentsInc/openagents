@@ -151,6 +151,9 @@ describe("apps/web autopilot chat: DSE wire parts render (Stage 2.5)", () => {
         responseStatusCode: 200,
         proofReference: "preimage:abc123",
         denyReason: undefined,
+        denyReasonCode: undefined,
+        host: undefined,
+        quotedAmountMsats: undefined,
         url: "https://api.example.com/paid",
         method: "GET",
         scope: "episode-212",
@@ -166,6 +169,9 @@ describe("apps/web autopilot chat: DSE wire parts render (Stage 2.5)", () => {
         responseStatusCode: undefined,
         proofReference: undefined,
         denyReason: "policy_denied",
+        denyReasonCode: undefined,
+        host: undefined,
+        quotedAmountMsats: undefined,
         url: "https://api.example.com/blocked",
         method: undefined,
         scope: undefined,
@@ -307,5 +313,57 @@ describe("apps/web autopilot chat: DSE wire parts render (Stage 2.5)", () => {
     expect(html).toContain('data-payment-state="payment.failed"')
     expect(html).toContain("preimage:sent123")
     expect(html).toContain("policy_denied")
+  })
+
+  it("formats amount_over_cap L402 policy denials into a stable blocked sentence", () => {
+    const renderParts = toAutopilotRenderParts({
+      parts: [
+        {
+          type: "dse.tool",
+          v: 1,
+          id: "tool-overcap",
+          state: "error",
+          toolName: "lightning_l402_fetch",
+          toolCallId: "call-overcap",
+          input: {
+            url: "https://api.example.com/premium",
+            method: "GET",
+            maxSpendMsats: 100_000,
+          },
+          output: {
+            taskId: "task-overcap",
+            status: "blocked",
+            denyReason: "Quoted invoice amount exceeds configured spend cap",
+            denyReasonCode: "amount_over_cap",
+            host: "api.example.com",
+            maxSpendMsats: 100_000,
+            quotedAmountMsats: 250_000,
+          },
+          errorText: "policy_denied",
+        },
+      ],
+    })
+
+    const html = renderToString(
+      autopilotChatTemplate({
+        messages: [{ id: "m-overcap", role: "assistant", renderParts }],
+        isBusy: false,
+        isAtBottom: true,
+        inputValue: "",
+        errorText: null,
+        auth: {
+          isAuthed: true,
+          authedEmail: "you@example.com",
+          step: "closed",
+          email: "",
+          code: "",
+          isBusy: false,
+          errorText: null,
+        },
+      }),
+    )
+
+    expect(html).toContain('data-payment-state="payment.blocked"')
+    expect(html).toContain("Blocked: quoted 250 sats &gt; cap 100 sats")
   })
 })
