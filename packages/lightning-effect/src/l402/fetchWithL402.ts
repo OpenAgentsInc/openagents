@@ -1,6 +1,7 @@
 import { Clock, Effect } from "effect"
 
 import type {
+  L402AuthorizationHeaderStrategy,
   L402CacheStatus,
   L402Credential,
   L402FetchRequest,
@@ -9,7 +10,10 @@ import type {
   L402TransportResponse,
 } from "../contracts/l402.js"
 import { CredentialMissingError } from "../errors/lightningErrors.js"
-import { buildAuthorizationHeader } from "./buildAuthorizationHeader.js"
+import {
+  buildAuthorizationHeader,
+  defaultAuthorizationHeaderStrategy,
+} from "./buildAuthorizationHeader.js"
 import { parseChallengeHeader } from "./parseChallenge.js"
 import type { CredentialCacheApi, CredentialCacheLookup } from "../services/credentialCache.js"
 import type { InvoicePayerApi } from "../services/invoicePayer.js"
@@ -38,6 +42,26 @@ const hostFromUrl = Effect.fn("l402.hostFromUrl")(function* (url: string) {
       }),
   })
 })
+
+const resolveAuthorizationHeaderStrategy = (
+  request: L402FetchRequest,
+  host: string,
+): L402AuthorizationHeaderStrategy => {
+  if (request.authorizationHeaderStrategy) return request.authorizationHeaderStrategy
+
+  const byHost = request.authorizationHeaderStrategyByHost
+  if (!byHost) return defaultAuthorizationHeaderStrategy
+
+  const exact = byHost[host]
+  if (exact) return exact
+
+  const loweredHost = host.toLowerCase()
+  const fromCaseInsensitiveMatch = Object.entries(byHost).find(
+    ([key]) => key.toLowerCase() === loweredHost,
+  )?.[1]
+
+  return fromCaseInsensitiveMatch ?? defaultAuthorizationHeaderStrategy
+}
 
 const getHeaderCaseInsensitive = (headers: Record<string, string>, name: string): string | null => {
   const target = name.trim().toLowerCase()
@@ -73,9 +97,6 @@ const proofReference = (preimageHex: string): string =>
 const amountFromLookup = (lookup: CredentialCacheLookup): number =>
   lookup._tag === "hit" || lookup._tag === "stale" ? lookup.credential.amountMsats : 0
 
-const authorizationFromLookup = (lookup: CredentialCacheLookup): string | null =>
-  lookup._tag === "hit" ? buildAuthorizationHeader(lookup.credential) : null
-
 const resolveChallengeResponse = Effect.fn("l402.resolveChallengeResponse")(function* (
   response: L402TransportResponse,
   unauthenticatedRequest: L402TransportRequest,
@@ -91,6 +112,7 @@ const buildResult = (input: {
   readonly scope: string
   readonly response: L402TransportResponse
   readonly authorizationHeader: string | null
+  readonly authorizationHeaderStrategy: L402AuthorizationHeaderStrategy
   readonly cacheStatus: L402CacheStatus
   readonly fromCache: boolean
   readonly paid: boolean
@@ -105,6 +127,7 @@ const buildResult = (input: {
     scope: input.scope,
     statusCode: input.response.status,
     authorizationHeader: input.authorizationHeader,
+    authorizationHeaderStrategy: input.authorizationHeaderStrategy,
     cacheStatus: input.cacheStatus,
     fromCache: input.fromCache,
     paid: input.paid,
@@ -122,6 +145,7 @@ export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
 ) {
   const scope = request.scope ?? defaultScope
   const host = yield* hostFromUrl(request.url)
+  const authorizationHeaderStrategy = resolveAuthorizationHeaderStrategy(request, host)
   const nowMs = yield* Clock.currentTimeMillis
 
   const lookup = request.forceRefresh
@@ -136,7 +160,10 @@ export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
   }
 
   const unauthenticatedRequest = withAuthorizationHeader(request, null)
-  const cachedAuthorization = authorizationFromLookup(lookup)
+  const cachedAuthorization =
+    lookup._tag === "hit"
+      ? buildAuthorizationHeader(lookup.credential, authorizationHeaderStrategy)
+      : null
   const initialRequest = withAuthorizationHeader(request, cachedAuthorization)
   const initialResponse = yield* deps.transport.send(initialRequest)
 
@@ -150,6 +177,7 @@ export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
       scope,
       response: initialResponse,
       authorizationHeader: cachedAuthorization,
+      authorizationHeaderStrategy,
       cacheStatus: "hit",
       fromCache: true,
       paid: false,
@@ -171,6 +199,7 @@ export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
       scope,
       response: initialResponse,
       authorizationHeader: cachedAuthorization,
+      authorizationHeaderStrategy,
       cacheStatus,
       fromCache: false,
       paid: false,
@@ -195,6 +224,7 @@ export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
       scope,
       response: maybeChallengeResponse,
       authorizationHeader: cachedAuthorization,
+      authorizationHeaderStrategy,
       cacheStatus: cacheWasInvalid ? "invalid" : cacheStatus,
       fromCache: false,
       paid: false,
@@ -240,7 +270,7 @@ export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
     ...(request.cacheTtlMs !== undefined ? { ttlMs: request.cacheTtlMs } : {}),
   })
 
-  const authorizationHeader = buildAuthorizationHeader(credential)
+  const authorizationHeader = buildAuthorizationHeader(credential, authorizationHeaderStrategy)
   const retryResponse = yield* deps.transport.send(
     withAuthorizationHeader(request, authorizationHeader),
   )
@@ -259,6 +289,7 @@ export const fetchWithL402 = Effect.fn("l402.fetchWithL402")(function* (
     scope,
     response: retryResponse,
     authorizationHeader,
+    authorizationHeaderStrategy,
     cacheStatus: cacheWasInvalid ? "invalid" : cacheStatus,
     fromCache: false,
     paid: true,

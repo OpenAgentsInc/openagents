@@ -11,6 +11,12 @@ export const HeaderRecord = Schema.Record({
 })
 export type HeaderRecord = typeof HeaderRecord.Type
 
+export const L402AuthorizationHeaderStrategy = Schema.Literal(
+  "macaroon_preimage_params",
+  "macaroon_preimage_colon",
+)
+export type L402AuthorizationHeaderStrategy = typeof L402AuthorizationHeaderStrategy.Type
+
 export const L402Challenge = Schema.Struct({
   invoice: Schema.NonEmptyString,
   macaroon: Schema.NonEmptyString,
@@ -47,6 +53,13 @@ export const L402FetchRequest = Schema.Struct({
   forceRefresh: Schema.optional(Schema.Boolean),
   scope: Schema.optional(Schema.NonEmptyString),
   cacheTtlMs: Schema.optional(Schema.Int.pipe(Schema.nonNegative())),
+  authorizationHeaderStrategy: Schema.optional(L402AuthorizationHeaderStrategy),
+  authorizationHeaderStrategyByHost: Schema.optional(
+    Schema.Record({
+      key: Schema.String,
+      value: L402AuthorizationHeaderStrategy,
+    }),
+  ),
 })
 export type L402FetchRequest = typeof L402FetchRequest.Type
 export const decodeL402FetchRequest = Schema.decodeUnknown(L402FetchRequest)
@@ -63,6 +76,7 @@ export const L402FetchResult = Schema.Struct({
   scope: Schema.NonEmptyString,
   statusCode: Schema.Int,
   authorizationHeader: Schema.NullOr(Schema.NonEmptyString),
+  authorizationHeaderStrategy: L402AuthorizationHeaderStrategy,
   cacheStatus: L402CacheStatus,
   fromCache: Schema.Boolean,
   paid: Schema.Boolean,
