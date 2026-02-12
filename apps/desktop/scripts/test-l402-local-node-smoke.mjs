@@ -41,6 +41,12 @@ const artifact = fs.existsSync(artifactPath)
   ? JSON.parse(fs.readFileSync(artifactPath, "utf8"))
   : null;
 
+const observabilityRecords = Array.isArray(artifact?.flows)
+  ? artifact.flows.flatMap((flow) =>
+      Array.isArray(flow?.observabilityRecords) ? flow.observabilityRecords : [],
+    )
+  : [];
+
 const summary = {
   ok: result.status === 0,
   status: result.status,
@@ -48,6 +54,7 @@ const summary = {
   testFile: "tests/l402LocalNodeFlow.integration.test.ts",
   artifactPath,
   flowCount: Array.isArray(artifact?.flows) ? artifact.flows.length : 0,
+  observabilityRecordCount: observabilityRecords.length,
   flowCorrelations: Array.isArray(artifact?.flows)
     ? artifact.flows.map((flow) => ({
         flow: flow.flow,
@@ -56,6 +63,21 @@ const summary = {
         transitionRequestIds: flow.transitionRequestIds,
         proofReference: flow.proofReference ?? null,
         blockedErrorCode: flow.blockedErrorCode ?? null,
+        observabilityRecords: Array.isArray(flow.observabilityRecords)
+          ? flow.observabilityRecords.map((record) => ({
+              requestId: record.requestId ?? null,
+              taskId: record.taskId ?? null,
+              paywallId: record.paywallId ?? null,
+              paymentProofRef: record.paymentProofRef ?? null,
+              executionPath: record.executionPath ?? null,
+              desktopSessionId: record.desktopSessionId ?? null,
+              desktopRuntimeStatus: record.desktopRuntimeStatus ?? null,
+              walletState: record.walletState ?? null,
+              nodeSyncStatus: record.nodeSyncStatus ?? null,
+              plane: record.plane ?? null,
+              executor: record.executor ?? null,
+            }))
+          : [],
       }))
     : [],
 };

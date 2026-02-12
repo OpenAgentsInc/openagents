@@ -16,6 +16,7 @@ export * from "./programs/reconcileAndDeploy.js";
 export * from "./programs/securityControls.js";
 export * from "./programs/smokeSettlement.js";
 export * from "./programs/smokeStaging.js";
+export * from "./programs/smokeObservability.js";
 
 export * from "./gateway/service.js";
 export * from "./gateway/inMemory.js";

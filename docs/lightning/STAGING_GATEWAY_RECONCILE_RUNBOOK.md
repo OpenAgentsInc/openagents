@@ -71,3 +71,9 @@ Rollback is attempted automatically when a previous deployment snapshot is avail
 2. Keep Voltage credentials in Secret Manager and inject via Cloud Run runtime env.
 3. Run reconcile only from CI/agent runtime with non-interactive env injection.
 4. Verify `402` issuance from `OA_LIGHTNING_OPS_CHALLENGE_URL` and authenticated proxy success at `OA_LIGHTNING_OPS_PROXY_URL` as part of every staging run.
+
+## 6. Observability correlation
+
+Use the cross-path field contract and triage checklist in:
+
+- `docs/lightning/L402_OBSERVABILITY_REHEARSAL_RUNBOOK.md`

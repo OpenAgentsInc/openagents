@@ -55,6 +55,7 @@ export type SettlementIngestSummary = Readonly<{
     paywallId: string;
     ownerId: string;
     invoiceId?: string;
+    amountMsats: number;
     requestId?: string;
     paymentProofRef: string;
     existed: boolean;
@@ -129,6 +130,7 @@ type IngestedResult =
         paywallId: string;
         ownerId: string;
         invoiceId?: string;
+        amountMsats: number;
         requestId?: string;
         paymentProofRef: string;
       };
@@ -170,6 +172,7 @@ export const ingestSettlementEvents = (events: ReadonlyArray<SettlementIngestEve
               paywallId: settlement.settlement.paywallId,
               ownerId: settlement.settlement.ownerId,
               ...(settlement.settlement.invoiceId ? { invoiceId: settlement.settlement.invoiceId } : {}),
+              amountMsats: settlement.settlement.amountMsats,
               ...(settlement.settlement.requestId ? { requestId: settlement.settlement.requestId } : {}),
               paymentProofRef: settlement.settlement.paymentProofRef,
             },
@@ -196,6 +199,7 @@ export const ingestSettlementEvents = (events: ReadonlyArray<SettlementIngestEve
         paywallId: result.settlement.paywallId,
         ownerId: result.settlement.ownerId,
         ...(result.settlement.invoiceId ? { invoiceId: result.settlement.invoiceId } : {}),
+        amountMsats: result.settlement.amountMsats,
         ...(result.settlement.requestId ? { requestId: result.settlement.requestId } : {}),
         paymentProofRef: result.settlement.paymentProofRef,
         existed: result.existed,

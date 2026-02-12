@@ -6,6 +6,7 @@ import { ConvexControlPlaneLive } from "./controlPlane/convex.js";
 import { ConvexTransportLive } from "./controlPlane/convexTransport.js";
 import { smokePaywalls } from "./fixtures/smokePaywalls.js";
 import { compileAndPersistOnce } from "./programs/compileAndPersist.js";
+import { runObservabilitySmoke, type ObservabilitySmokeMode } from "./programs/smokeObservability.js";
 import { runSecuritySmoke, type SecuritySmokeMode } from "./programs/securityControls.js";
 import { runSettlementSmoke, type SettlementSmokeMode } from "./programs/smokeSettlement.js";
 import { runStagingSmoke, type StagingSmokeMode } from "./programs/smokeStaging.js";
@@ -18,6 +19,7 @@ const usage = `Usage:
   tsx src/main.ts smoke:security [--json] [--mode mock|convex]
   tsx src/main.ts smoke:settlement [--json] [--mode mock|convex]
   tsx src/main.ts smoke:staging [--json] [--mode mock|convex]
+  tsx src/main.ts smoke:observability [--json] [--mode mock|convex]
 `;
 
 const toCompileSummaryJson = (summary: {
@@ -77,6 +79,7 @@ const toSettlementSmokeJson = (summary: {
   }>;
   readonly settlements: ReadonlyArray<{
     readonly settlementId: string;
+    readonly amountMsats: number;
     readonly paymentProofRef: string;
     readonly existed: boolean;
   }>;
@@ -145,6 +148,50 @@ const toSecuritySmokeJson = (summary: {
     statusSnapshot: summary.statusSnapshot,
   });
 
+const toObservabilitySmokeJson = (summary: {
+  readonly requestId: string;
+  readonly executionPath: string;
+  readonly records: ReadonlyArray<{
+    readonly requestId: string | null;
+    readonly userId: string | null;
+    readonly paywallId: string | null;
+    readonly taskId: string | null;
+    readonly endpoint: string | null;
+    readonly quotedCostMsats: number | null;
+    readonly capAppliedMsats: number | null;
+    readonly paidAmountMsats: number | null;
+    readonly paymentProofRef: string | null;
+    readonly cacheHit: boolean | null;
+    readonly denyReason: string | null;
+    readonly executor: string;
+    readonly plane: string;
+    readonly executionPath: string;
+    readonly desktopSessionId: string | null;
+    readonly desktopRuntimeStatus: string | null;
+    readonly walletState: string | null;
+    readonly nodeSyncStatus: string | null;
+    readonly observedAtMs: number;
+  }>;
+  readonly requiredFieldKeys: ReadonlyArray<string>;
+  readonly missingFieldKeys: ReadonlyArray<string>;
+  readonly correlation: {
+    readonly requestIds: ReadonlyArray<string>;
+    readonly paywallIds: ReadonlyArray<string>;
+    readonly taskIds: ReadonlyArray<string>;
+    readonly paymentProofRefs: ReadonlyArray<string>;
+  };
+}) =>
+  JSON.stringify({
+    ok: true,
+    requestId: summary.requestId,
+    executionPath: summary.executionPath,
+    recordCount: summary.records.length,
+    requiredFieldKeys: summary.requiredFieldKeys,
+    missingFieldKeys: summary.missingFieldKeys,
+    correlation: summary.correlation,
+    records: summary.records,
+  });
+
 const printCompileSummary = (
   summary: {
     readonly configHash: string;
@@ -211,6 +258,7 @@ const printSettlementSummary = (
     }>;
     readonly settlements: ReadonlyArray<{
       readonly settlementId: string;
+      readonly amountMsats: number;
       readonly paymentProofRef: string;
       readonly existed: boolean;
     }>;
@@ -232,6 +280,7 @@ const printSettlementSummary = (
           `invoices=${summary.invoiceTransitions.length}`,
           `settlements=${summary.settlements.length}`,
           `settlementIds=${summary.settlements.map((row) => row.settlementId).join(",")}`,
+          `settlementAmountsMsats=${summary.settlements.map((row) => String(row.amountMsats)).join(",")}`,
           `paymentProofRefs=${summary.settlements.map((row) => row.paymentProofRef).join(",")}`,
         ].join("\n"),
       );
@@ -290,6 +339,57 @@ const printSecuritySummary = (
         ].join("\n"),
       );
 
+const printObservabilitySummary = (
+  summary: {
+    readonly requestId: string;
+    readonly executionPath: string;
+    readonly records: ReadonlyArray<{
+      readonly requestId: string | null;
+      readonly userId: string | null;
+      readonly paywallId: string | null;
+      readonly taskId: string | null;
+      readonly endpoint: string | null;
+      readonly quotedCostMsats: number | null;
+      readonly capAppliedMsats: number | null;
+      readonly paidAmountMsats: number | null;
+      readonly paymentProofRef: string | null;
+      readonly cacheHit: boolean | null;
+      readonly denyReason: string | null;
+      readonly executor: string;
+      readonly plane: string;
+      readonly executionPath: string;
+      readonly desktopSessionId: string | null;
+      readonly desktopRuntimeStatus: string | null;
+      readonly walletState: string | null;
+      readonly nodeSyncStatus: string | null;
+      readonly observedAtMs: number;
+    }>;
+    readonly requiredFieldKeys: ReadonlyArray<string>;
+    readonly missingFieldKeys: ReadonlyArray<string>;
+    readonly correlation: {
+      readonly requestIds: ReadonlyArray<string>;
+      readonly paywallIds: ReadonlyArray<string>;
+      readonly taskIds: ReadonlyArray<string>;
+      readonly paymentProofRefs: ReadonlyArray<string>;
+    };
+  },
+  jsonOutput: boolean,
+) =>
+  jsonOutput
+    ? Console.log(toObservabilitySmokeJson(summary))
+    : Console.log(
+        [
+          `requestId=${summary.requestId}`,
+          `executionPath=${summary.executionPath}`,
+          `records=${summary.records.length}`,
+          `missingFieldKeys=${summary.missingFieldKeys.join(",") || "none"}`,
+          `correlation.requestIds=${summary.correlation.requestIds.join(",")}`,
+          `correlation.paywallIds=${summary.correlation.paywallIds.join(",")}`,
+          `correlation.taskIds=${summary.correlation.taskIds.join(",")}`,
+          `correlation.paymentProofRefs=${summary.correlation.paymentProofRefs.join(",")}`,
+        ].join("\n"),
+      );
+
 const runSmokeCompile = (jsonOutput: boolean) => {
   const harness = makeInMemoryControlPlaneHarness({ paywalls: smokePaywalls });
   return compileAndPersistOnce({ requestId: "smoke:compile" }).pipe(
@@ -343,6 +443,11 @@ const runSmokeSettlement = (jsonOutput: boolean, mode: SettlementSmokeMode) =>
 const runSmokeSecurity = (jsonOutput: boolean, mode: SecuritySmokeMode) =>
   runSecuritySmoke({ mode }).pipe(Effect.flatMap((summary) => printSecuritySummary(summary, jsonOutput)));
 
+const runSmokeObservability = (jsonOutput: boolean, mode: ObservabilitySmokeMode) =>
+  runObservabilitySmoke({ mode }).pipe(
+    Effect.flatMap((summary) => printObservabilitySummary(summary, jsonOutput)),
+  );
+
 const main = Effect.gen(function* () {
   const argv = process.argv.slice(2);
   const command = argv[0] ?? "";
@@ -370,6 +475,10 @@ const main = Effect.gen(function* () {
 
   if (command === "smoke:staging") {
     return yield* runSmokeStaging(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+  }
+
+  if (command === "smoke:observability") {
+    return yield* runSmokeObservability(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
   }
 
   return yield* Console.error(usage).pipe(Effect.zipRight(Effect.fail(new Error("invalid_command"))));

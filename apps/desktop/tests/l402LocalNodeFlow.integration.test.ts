@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  decodeL402ObservabilityRecordSync,
+  L402ObservabilityFieldKeys,
+  type L402ObservabilityRecord,
+} from "@openagentsinc/lightning-effect";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import { afterAll } from "vitest";
@@ -9,7 +14,12 @@ import { AuthGatewayService } from "../src/effect/authGateway";
 import { ConnectivityProbeService } from "../src/effect/connectivity";
 import { DesktopAppService } from "../src/effect/app";
 import { makeDesktopLayer } from "../src/effect/layer";
-import type { ExecutorTask, ExecutorTaskRequest, ExecutorTaskStatus } from "../src/effect/model";
+import type {
+  DesktopRuntimeState,
+  ExecutorTask,
+  ExecutorTaskRequest,
+  ExecutorTaskStatus,
+} from "../src/effect/model";
 
 type TaskEvent = Readonly<{
   readonly taskId: string;
@@ -50,6 +60,7 @@ type FlowArtifact = Readonly<{
   readonly blockedErrorCode?: string;
   readonly blockedReason?: string;
   readonly sellerCalls: ReadonlyArray<SellerCall>;
+  readonly observabilityRecords: ReadonlyArray<L402ObservabilityRecord>;
 }>;
 
 const now = () => Date.now();
@@ -71,6 +82,9 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 const taskStatuses: ReadonlyArray<ExecutorTaskStatus> = [
   "queued",
@@ -103,6 +117,66 @@ const ensureStatus = (value: unknown): ExecutorTaskStatus => {
   }
   return value as ExecutorTaskStatus;
 };
+
+const toWalletState = (
+  snapshot: DesktopRuntimeState,
+): L402ObservabilityRecord["walletState"] => {
+  if (snapshot.wallet.recoveryState === "restore_ready" || snapshot.wallet.recoveryState === "restored") {
+    return "recovering";
+  }
+  if (snapshot.wallet.walletState === "locked") return "locked";
+  if (snapshot.wallet.walletState === "unlocked") return "unlocked";
+  return "initializing";
+};
+
+const toNodeSyncStatus = (
+  snapshot: DesktopRuntimeState,
+): L402ObservabilityRecord["nodeSyncStatus"] => {
+  if (snapshot.lnd.lifecycle !== "running") return "degraded";
+  if (snapshot.lnd.health === "unhealthy") return "degraded";
+  if (snapshot.lnd.sync.lastError) return "degraded";
+  if (snapshot.lnd.sync.syncedToChain && snapshot.lnd.sync.walletSynced) return "synced";
+  return "syncing";
+};
+
+const makeLocalObservabilityRecord = (input: {
+  readonly requestId: string | null;
+  readonly userId: string | null;
+  readonly taskId: string | null;
+  readonly endpoint: string | null;
+  readonly quotedCostMsats: number | null;
+  readonly capAppliedMsats: number | null;
+  readonly paidAmountMsats: number | null;
+  readonly paymentProofRef: string | null;
+  readonly cacheHit: boolean | null;
+  readonly denyReason: string | null;
+  readonly executor: L402ObservabilityRecord["executor"];
+  readonly plane: L402ObservabilityRecord["plane"];
+  readonly desktopSessionId: string | null;
+  readonly snapshot: DesktopRuntimeState;
+}): L402ObservabilityRecord =>
+  decodeL402ObservabilityRecordSync({
+    requestId: input.requestId,
+    userId: input.userId,
+    paywallId: null,
+    taskId: input.taskId,
+    endpoint: input.endpoint,
+    quotedCostMsats: input.quotedCostMsats,
+    capAppliedMsats: input.capAppliedMsats,
+    paidAmountMsats: input.paidAmountMsats,
+    paymentProofRef: input.paymentProofRef,
+    cacheHit: input.cacheHit,
+    denyReason: input.denyReason,
+    executor: input.executor,
+    plane: input.plane,
+    executionPath: "local-node",
+    desktopSessionId: input.desktopSessionId,
+    desktopRuntimeStatus:
+      input.snapshot.lnd.lifecycle === "unavailable" ? "unavailable" : input.snapshot.lnd.lifecycle,
+    walletState: toWalletState(input.snapshot),
+    nodeSyncStatus: toNodeSyncStatus(input.snapshot),
+    observedAtMs: now(),
+  });
 
 class LocalNodeFlowHarness {
   readonly openAgentsBaseUrl = "https://openagents.local";
@@ -589,6 +663,47 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
           expect(requestId).toMatch(/^desktop-/);
         }
 
+        const runtimeSnapshot = yield* app.snapshot();
+        const paidAmountMsats = asNumber(paidMetadata?.amountMsats) ?? null;
+        const cacheHit = asString(paidMetadata?.cacheStatus) === "hit" ? true : false;
+        const successObservability = makeLocalObservabilityRecord({
+          requestId: paidEvent?.requestId ?? null,
+          userId: completedTask?.ownerId ?? null,
+          taskId: queuedTask.id,
+          endpoint: queuedTask.request.url,
+          quotedCostMsats: paidAmountMsats,
+          capAppliedMsats: queuedTask.request.maxSpendMsats,
+          paidAmountMsats,
+          paymentProofRef: proofReference ?? null,
+          cacheHit,
+          denyReason: null,
+          executor: "desktop",
+          plane: "settlement",
+          desktopSessionId: createCall?.requestId ?? null,
+          snapshot: runtimeSnapshot,
+        });
+        const successUiProjection = makeLocalObservabilityRecord({
+          requestId: transitionRequestIds[transitionRequestIds.length - 1] ?? null,
+          userId: completedTask?.ownerId ?? null,
+          taskId: queuedTask.id,
+          endpoint: "openagents.com/home#l402-transactions",
+          quotedCostMsats: paidAmountMsats,
+          capAppliedMsats: queuedTask.request.maxSpendMsats,
+          paidAmountMsats,
+          paymentProofRef: proofReference ?? null,
+          cacheHit,
+          denyReason: null,
+          executor: "desktop",
+          plane: "ui",
+          desktopSessionId: createCall?.requestId ?? null,
+          snapshot: runtimeSnapshot,
+        });
+
+        for (const record of [successObservability, successUiProjection]) {
+          const missingKeys = L402ObservabilityFieldKeys.filter((key) => !(key in record));
+          expect(missingKeys).toEqual([]);
+        }
+
         artifacts.push({
           flow: "success",
           taskId: queuedTask.id,
@@ -598,6 +713,7 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
           ...(proofReference ? { proofReference } : {}),
           paymentId,
           sellerCalls: harness.sellerCalls,
+          observabilityRecords: [successObservability, successUiProjection],
         });
       }).pipe(Effect.provide(layer)),
     );
@@ -653,6 +769,45 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
           .map((event) => event.requestId ?? null)
           .filter((requestId): requestId is string => typeof requestId === "string" && requestId.length > 0);
 
+        const runtimeSnapshot = yield* app.snapshot();
+        const blockedObservability = makeLocalObservabilityRecord({
+          requestId: blockedEvent?.requestId ?? null,
+          userId: blockedTask?.ownerId ?? null,
+          taskId: queuedTask.id,
+          endpoint: queuedTask.request.url,
+          quotedCostMsats: null,
+          capAppliedMsats: queuedTask.request.maxSpendMsats,
+          paidAmountMsats: null,
+          paymentProofRef: null,
+          cacheHit: false,
+          denyReason: blockedEvent?.errorMessage ?? null,
+          executor: "desktop",
+          plane: "settlement",
+          desktopSessionId: createCall?.requestId ?? null,
+          snapshot: runtimeSnapshot,
+        });
+        const blockedUiProjection = makeLocalObservabilityRecord({
+          requestId: transitionRequestIds[transitionRequestIds.length - 1] ?? null,
+          userId: blockedTask?.ownerId ?? null,
+          taskId: queuedTask.id,
+          endpoint: "openagents.com/home#l402-transactions",
+          quotedCostMsats: null,
+          capAppliedMsats: queuedTask.request.maxSpendMsats,
+          paidAmountMsats: null,
+          paymentProofRef: null,
+          cacheHit: false,
+          denyReason: blockedEvent?.errorMessage ?? null,
+          executor: "desktop",
+          plane: "ui",
+          desktopSessionId: createCall?.requestId ?? null,
+          snapshot: runtimeSnapshot,
+        });
+
+        for (const record of [blockedObservability, blockedUiProjection]) {
+          const missingKeys = L402ObservabilityFieldKeys.filter((key) => !(key in record));
+          expect(missingKeys).toEqual([]);
+        }
+
         artifacts.push({
           flow: "blocked",
           taskId: queuedTask.id,
@@ -662,6 +817,7 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
           ...(blockedEvent?.errorCode ? { blockedErrorCode: blockedEvent.errorCode } : {}),
           ...(blockedEvent?.errorMessage ? { blockedReason: blockedEvent.errorMessage } : {}),
           sellerCalls: harness.sellerCalls,
+          observabilityRecords: [blockedObservability, blockedUiProjection],
         });
       }).pipe(Effect.provide(layer)),
     );
