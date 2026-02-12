@@ -155,9 +155,9 @@ export VOLTAGE_API_KEY="vt_..."   # From Voltage dashboard → API → Keys (or 
 # Optional: VOLTAGE_NODE_ID=93614aec-7944-4a86-9fe2-f115ae26d40bN (otherwise script picks first node or openagents match)
 
 ./docs/lightning/scripts/voltage-api-fetch.sh
-# Or write cert + node.json to a directory:
-./docs/lightning/scripts/voltage-api-fetch.sh ./output/voltage
-# Then use ./output/voltage/tls.cert for Aperture tlspath.
+# Or write cert + node.json to a gitignored directory:
+./docs/lightning/scripts/voltage-api-fetch.sh output/voltage-node
+# Writes output/voltage-node/tls.cert and output/voltage-node/node.json (output/ and output/voltage-node/ are in .gitignore). Use tls.cert for Aperture tlspath.
 ```
 
 ---
