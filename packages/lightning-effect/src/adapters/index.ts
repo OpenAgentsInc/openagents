@@ -1,3 +1,5 @@
 export * from "./invoicePayerDemo.js"
 export * from "./invoicePayerLnd.js"
+export * from "../lnd-effect/invoicePayerLndEffect.js"
+export * from "./invoicePayerSpark.js"
 export * from "./sellerDeterministic.js"

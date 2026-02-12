@@ -147,6 +147,7 @@ const l402ExecutorTestLayer = Layer.succeed(
             status: "blocked",
             errorCode: "DomainNotAllowedError",
             denyReason: "host_blocked",
+            paymentBackend: "spark",
           } as const;
         }
         if (task.request.url.includes("fail")) {
@@ -154,6 +155,7 @@ const l402ExecutorTestLayer = Layer.succeed(
             status: "failed",
             errorCode: "PaymentFailedError",
             denyReason: "invoice_expired",
+            paymentBackend: "spark",
           } as const;
         }
         if (task.request.url.includes("cached")) {
@@ -164,6 +166,7 @@ const l402ExecutorTestLayer = Layer.succeed(
             proofReference: "preimage:cached",
             responseStatusCode: 200,
             cacheStatus: "hit",
+            paymentBackend: "spark",
           } as const;
         }
         return {
@@ -173,6 +176,7 @@ const l402ExecutorTestLayer = Layer.succeed(
           proofReference: "preimage:paid",
           responseStatusCode: 200,
           cacheStatus: "miss",
+          paymentBackend: "spark",
         } as const;
       }),
   }),

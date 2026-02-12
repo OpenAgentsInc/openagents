@@ -171,6 +171,15 @@ const overviewTemplate = (input: {
           <span class="oa-chip oa-sync-${node.syncStage}">${node.syncLabel}</span>
           ${node.diagnostic ? html`<span class="oa-muted"> · ${node.diagnostic}</span>` : null}
         </dd>
+        <dt>Spark wallet</dt>
+        <dd>
+          <span class="oa-chip">${input.snapshot.spark.lifecycle}</span>
+          ${input.snapshot.spark.lastErrorMessage
+            ? html`<span class="oa-muted"> · ${input.snapshot.spark.lastErrorMessage}</span>`
+            : null}
+        </dd>
+        <dt>Spark balance (sats)</dt>
+        <dd>${input.snapshot.spark.balanceSats ?? "n/a"}</dd>
         <dt>Wallet availability</dt>
         <dd><span class="oa-chip">${wallet.availability}</span></dd>
         <dt>History</dt>
@@ -417,6 +426,28 @@ const walletTemplate = (snapshot: DesktopRuntimeState): TemplateResult => {
         : null}
 
       <dl class="oa-grid">
+        <dt>Spark lifecycle</dt>
+        <dd><span class="oa-chip">${snapshot.spark.lifecycle}</span></dd>
+        <dt>Spark network</dt>
+        <dd>${snapshot.spark.network}</dd>
+        <dt>Spark API key</dt>
+        <dd>${snapshot.spark.apiKeyConfigured ? "configured" : "missing"}</dd>
+        <dt>Spark mnemonic</dt>
+        <dd>${snapshot.spark.mnemonicStored ? "stored (secure storage)" : "missing"}</dd>
+        <dt>Spark identity pubkey</dt>
+        <dd><code>${snapshot.spark.identityPubkey ?? "n/a"}</code></dd>
+        <dt>Spark balance (sats)</dt>
+        <dd>${snapshot.spark.balanceSats ?? "n/a"}</dd>
+        <dt>Spark token balances</dt>
+        <dd>${snapshot.spark.tokenBalanceCount}</dd>
+        <dt>Spark last synced</dt>
+        <dd>${formatTs(snapshot.spark.lastSyncedAtMs)}</dd>
+        <dt>Spark last payment</dt>
+        <dd><code>${snapshot.spark.lastPaymentId ?? "n/a"}</code> @ ${formatTs(snapshot.spark.lastPaymentAtMs)}</dd>
+        <dt>Spark error code</dt>
+        <dd><code>${snapshot.spark.lastErrorCode ?? "none"}</code></dd>
+        <dt>Spark error</dt>
+        <dd>${snapshot.spark.lastErrorMessage ?? "none"}</dd>
         <dt>Wallet state</dt>
         <dd>${snapshot.wallet.walletState}</dd>
         <dt>Recovery state</dt>

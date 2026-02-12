@@ -44,9 +44,9 @@
     "@electron-forge/plugin-vite": "^7.11.1",
     "@electron/fuses": "^1.8.0",
     "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/node": "^24.10.10",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
-    "@types/node": "^24.10.10",
     "electron": "40.3.0",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
@@ -55,11 +55,13 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@breeztech/breez-sdk-spark": "^0.8.0-dev1",
     "@openagentsinc/effuse": "file:../../packages/effuse",
     "@openagentsinc/effuse-panes": "file:../../packages/effuse-panes",
-    "@openagentsinc/lnd-effect": "file:../../packages/lnd-effect",
     "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
+    "@openagentsinc/lnd-effect": "file:../../packages/lnd-effect",
     "effect": "^3.19.16",
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-squirrel-startup": "^1.0.1",
+    "nostr-effect": "^0.0.12"
   }
 }

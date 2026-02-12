@@ -140,6 +140,7 @@ export const ExecutorLoopLive = Layer.effect(
         proofReference: outcome.proofReference,
         responseStatusCode: outcome.responseStatusCode,
         cacheStatus: outcome.cacheStatus,
+        paymentBackend: outcome.paymentBackend,
       };
       yield* tasks.transitionTask({
         taskId: task.id,

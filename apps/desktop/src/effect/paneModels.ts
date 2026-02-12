@@ -291,6 +291,19 @@ export const deriveWalletBalanceModel = (input: {
   const blockedCount = input.tasks.filter((task) => task.status === "blocked").length;
   const cacheHits = input.tasks.filter((task) => task.status === "cached").length;
   const estimatedSpendMsats = settledTasks.reduce((sum, task) => sum + (amountFromTask(task) ?? 0), 0);
+  const sparkConnected = input.snapshot.spark.lifecycle === "connected";
+
+  if (sparkConnected) {
+    return {
+      paneState: "ready",
+      availability: "ready",
+      estimatedSpendMsats,
+      settledCount: settledTasks.length,
+      failedCount,
+      blockedCount,
+      cacheHits,
+    };
+  }
 
   const walletState = input.snapshot.wallet.walletState;
   if (walletState === "uninitialized") {

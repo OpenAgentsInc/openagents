@@ -10,6 +10,7 @@ import { ExecutorLoopLive } from "./executorLoop";
 import { TaskProviderLive } from "./taskProvider";
 import { LndRuntimeGatewayLive } from "./lndRuntimeGateway";
 import { LndWalletGatewayLive } from "./lndWalletGateway";
+import { SparkWalletGatewayLive } from "./sparkWalletGateway";
 import { DesktopSessionLive } from "./session";
 import { L402ExecutorLive } from "./l402Executor";
 
@@ -25,6 +26,8 @@ export type DesktopLayerOverrides = Readonly<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly lndWalletGateway?: Layer.Layer<any, any, any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly sparkWalletGateway?: Layer.Layer<any, any, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly l402Executor?: Layer.Layer<any, any, any>;
 }>;
 
@@ -36,15 +39,22 @@ export const makeDesktopLayer = (
   const taskProviderLayer = Layer.provideMerge(overrides?.taskProvider ?? TaskProviderLive, configLayer);
   const authGatewayLayer = Layer.provideMerge(overrides?.authGateway ?? AuthGatewayLive, configLayer);
   const connectivityLayer = Layer.provideMerge(overrides?.connectivity ?? ConnectivityProbeLive, configLayer);
+  const lndRuntimeGatewayLayer = overrides?.lndRuntimeGateway ?? LndRuntimeGatewayLive;
+  const lndWalletGatewayLayer = overrides?.lndWalletGateway ?? LndWalletGatewayLive;
+  const sparkWalletGatewayLayer = overrides?.sparkWalletGateway ?? SparkWalletGatewayLive;
+  const l402ExecutorLayer = overrides?.l402Executor
+    ? overrides.l402Executor
+    : Layer.provideMerge(L402ExecutorLive, sparkWalletGatewayLayer);
 
   const base = Layer.mergeAll(
     DesktopStateLive,
     DesktopSessionLive,
     configLayer,
     taskProviderLayer,
-    overrides?.lndRuntimeGateway ?? LndRuntimeGatewayLive,
-    overrides?.lndWalletGateway ?? LndWalletGatewayLive,
-    overrides?.l402Executor ?? L402ExecutorLive,
+    lndRuntimeGatewayLayer,
+    lndWalletGatewayLayer,
+    sparkWalletGatewayLayer,
+    l402ExecutorLayer,
   );
 
   const withAuth = Layer.provideMerge(authGatewayLayer, base);

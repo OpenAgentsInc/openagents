@@ -7,6 +7,7 @@ import { ExecutorLoopService } from "./executorLoop";
 import { TaskProviderService } from "./taskProvider";
 import { LndRuntimeGatewayService } from "./lndRuntimeGateway";
 import { LndWalletGatewayService } from "./lndWalletGateway";
+import { SparkWalletGatewayService } from "./sparkWalletGateway";
 import { DesktopSessionService } from "./session";
 
 import type { DesktopRuntimeState, ExecutorTask } from "./model";
@@ -62,6 +63,7 @@ export const DesktopAppLive = Layer.effect(
     const tasks = yield* TaskProviderService;
     const lndRuntime = yield* LndRuntimeGatewayService;
     const lndWallet = yield* LndWalletGatewayService;
+    const sparkWallet = yield* SparkWalletGatewayService;
     const sessionStore = yield* DesktopSessionService;
 
     const refreshConnectivity = Effect.fn("DesktopApp.refreshConnectivity")(function* () {
@@ -123,10 +125,33 @@ export const DesktopAppLive = Layer.effect(
       }));
     });
 
+    const refreshSparkWallet = Effect.fn("DesktopApp.refreshSparkWallet")(function* () {
+      const status = yield* sparkWallet.refresh();
+      yield* state.update((current) => ({
+        ...current,
+        spark: {
+          lifecycle: status.lifecycle,
+          network: status.network,
+          apiKeyConfigured: status.apiKeyConfigured,
+          mnemonicStored: status.mnemonicStored,
+          identityPubkey: status.identityPubkey,
+          balanceSats: status.balanceSats,
+          tokenBalanceCount: status.tokenBalanceCount,
+          lastSyncedAtMs: status.lastSyncedAtMs,
+          lastPaymentId: status.lastPaymentId,
+          lastPaymentAtMs: status.lastPaymentAtMs,
+          lastErrorCode: status.lastErrorCode,
+          lastErrorMessage: status.lastErrorMessage,
+        },
+      }));
+    });
+
     const bootstrap = Effect.fn("DesktopApp.bootstrap")(function* () {
       yield* refreshConnectivity();
       yield* refreshLndRuntime();
       yield* refreshWallet();
+      yield* sparkWallet.bootstrap();
+      yield* refreshSparkWallet();
       const existingSession = yield* sessionStore.get();
       const session = yield* auth.getSession(existingSession.token).pipe(
         Effect.catchAll(() =>
@@ -185,6 +210,8 @@ export const DesktopAppLive = Layer.effect(
       yield* refreshConnectivity();
       yield* refreshLndRuntime();
       yield* refreshWallet();
+      yield* sparkWallet.bootstrap();
+      yield* refreshSparkWallet();
       yield* state.update((current) => ({
         ...current,
         auth: {
@@ -255,6 +282,7 @@ export const DesktopAppLive = Layer.effect(
       tickExecutor: () =>
         executor.tick().pipe(
           Effect.zipRight(refreshLndRuntime()),
+          Effect.zipRight(refreshSparkWallet()),
         ),
       startLndRuntime: () =>
         guarded(
