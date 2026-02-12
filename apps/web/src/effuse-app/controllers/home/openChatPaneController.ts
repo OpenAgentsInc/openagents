@@ -447,8 +447,21 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
         amountMsats: typeof rec.amountMsats === "number" && Number.isFinite(rec.amountMsats) ? rec.amountMsats : undefined,
         responseStatusCode:
           typeof rec.responseStatusCode === "number" && Number.isFinite(rec.responseStatusCode) ? rec.responseStatusCode : undefined,
+        responseContentType: typeof rec.responseContentType === "string" ? rec.responseContentType : undefined,
+        responseBytes: typeof rec.responseBytes === "number" && Number.isFinite(rec.responseBytes) ? rec.responseBytes : undefined,
+        responseBodyTextPreview: typeof rec.responseBodyTextPreview === "string" ? rec.responseBodyTextPreview : undefined,
+        responseBodySha256: typeof rec.responseBodySha256 === "string" ? rec.responseBodySha256 : undefined,
+        cacheHit: typeof rec.cacheHit === "boolean" ? rec.cacheHit : undefined,
+        paid: typeof rec.paid === "boolean" ? rec.paid : undefined,
+        cacheStatus: typeof rec.cacheStatus === "string" ? rec.cacheStatus : undefined,
+        paymentBackend: typeof rec.paymentBackend === "string" ? rec.paymentBackend : undefined,
+        approvalRequired: typeof rec.approvalRequired === "boolean" ? rec.approvalRequired : undefined,
         proofReference: typeof rec.proofReference === "string" ? rec.proofReference : undefined,
         denyReason: typeof rec.denyReason === "string" ? rec.denyReason : undefined,
+        denyReasonCode: typeof rec.denyReasonCode === "string" ? rec.denyReasonCode : undefined,
+        host: typeof rec.host === "string" ? rec.host : undefined,
+        quotedAmountMsats:
+          typeof rec.quotedAmountMsats === "number" && Number.isFinite(rec.quotedAmountMsats) ? rec.quotedAmountMsats : undefined,
         url: typeof rec.url === "string" ? rec.url : undefined,
         method: typeof rec.method === "string" ? rec.method : undefined,
         scope: typeof rec.scope === "string" ? rec.scope : undefined,
@@ -565,6 +578,20 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                       <div>${formatMsats(summary.totalSpendMsats)}</div>
                       <div class="text-white/55">max request cap</div>
                       <div>${summary.maxSpendMsats > 0 ? formatMsats(summary.maxSpendMsats) : "n/a"}</div>
+                      <div class="text-white/55">last result</div>
+                      <div>${summary.lastPaid?.status ?? "n/a"}</div>
+                      <div class="text-white/55">last amount</div>
+                      <div>${formatMsats(summary.lastPaid?.amountMsats)}</div>
+                      <div class="text-white/55">last cache</div>
+                      <div>${summary.lastPaid
+                    ? summary.lastPaid.cacheHit === true
+                      ? "hit"
+                      : summary.lastPaid.cacheHit === false
+                        ? "miss"
+                        : "n/a"
+                    : "n/a"}${summary.lastPaid?.cacheStatus ? ` (${summary.lastPaid.cacheStatus})` : ""}</div>
+                      <div class="text-white/55">backend</div>
+                      <div>${summary.lastPaid?.paymentBackend ?? "n/a"}</div>
                       <div class="text-white/55">allowlist/policy</div>
                       <div>enforced via desktop executor + macaroon scope</div>
                     </div>
@@ -587,7 +614,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
       if (!paneSystem.store.pane(L402_TRANSACTIONS_PANE_ID)) return
       const slot = paneRoot.querySelector(`[data-pane-id="${L402_TRANSACTIONS_PANE_ID}"] [data-oa-pane-content]`)
       if (!(slot instanceof HTMLElement)) return
-      const rows = [...latestL402Payments].reverse().slice(0, 40)
+      const rows = [...latestL402Payments].reverse().slice(0, 10)
       runTrackedFiber({
         context: "home.chat.l402_transactions_pane.render",
         start: () =>
@@ -607,11 +634,19 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                               <div class="rounded border border-white/15 bg-white/5 p-2">
                                 <div class="flex items-center justify-between gap-2">
                                   <span class="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${statusBadgeClass(row.status)}">${row.status}</span>
-                                  <span class="text-[10px] text-white/55">message ${row.messageId}</span>
+                                  <span class="text-[10px] text-white/55">${row.host ?? (() => {
+                                    try { return row.url ? new URL(row.url).host : "unknown-host" } catch { return "unknown-host" }
+                                  })()}</span>
                                 </div>
                                 <div class="mt-1 break-all text-white/90">${row.url ?? "unknown endpoint"}</div>
                                 <div class="mt-1 text-[11px] text-white/65">
-                                  amount: ${formatMsats(row.amountMsats)} · task: ${row.taskId ?? "n/a"} · proof: ${row.proofReference ?? "n/a"}
+                                  amount: ${formatMsats(row.amountMsats)} · cap: ${formatMsats(row.maxSpendMsats)} · task: ${row.taskId ?? "n/a"} · proof: ${row.proofReference ?? "n/a"}
+                                </div>
+                                <div class="mt-1 text-[11px] text-white/60">
+                                  toolCall: ${row.toolCallId} · cache: ${row.cacheHit === true ? "hit" : row.cacheHit === false ? "miss" : "n/a"}${row.cacheStatus ? ` (${row.cacheStatus})` : ""} · backend: ${row.paymentBackend ?? "n/a"}
+                                </div>
+                                <div class="mt-1 text-[11px] text-white/60">
+                                  resp: ${row.responseStatusCode ?? "n/a"} · bytes: ${typeof row.responseBytes === "number" ? row.responseBytes.toLocaleString() : "n/a"} · sha: ${row.responseBodySha256 ? row.responseBodySha256.slice(0, 16) : "n/a"}
                                 </div>
                                 ${row.denyReason ? html`<div class="mt-1 text-[11px] text-amber-200/90">deny: ${row.denyReason}</div>` : null}
                               </div>
@@ -906,12 +941,26 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                       <div class="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2 text-xs">
                         <div class="text-white/55">status</div>
                         <div>${payment.status}</div>
+                        <div class="text-white/55">host</div>
+                        <div>${payment.host ?? (() => {
+                          try { return payment.url ? new URL(payment.url).host : "n/a" } catch { return "n/a" }
+                        })()}</div>
                         <div class="text-white/55">url</div>
                         <div class="break-all">${payment.url ?? "n/a"}</div>
                         <div class="text-white/55">method</div>
                         <div>${payment.method ?? "GET"}</div>
                         <div class="text-white/55">scope</div>
                         <div>${payment.scope ?? "default"}</div>
+                        <div class="text-white/55">cap</div>
+                        <div>${formatMsats(payment.maxSpendMsats)}</div>
+                        <div class="text-white/55">quoted</div>
+                        <div>${formatMsats(payment.quotedAmountMsats)}</div>
+                        <div class="text-white/55">cacheHit</div>
+                        <div>${payment.cacheHit === true ? "true" : payment.cacheHit === false ? "false" : "n/a"}${payment.cacheStatus ? ` (${payment.cacheStatus})` : ""}</div>
+                        <div class="text-white/55">paid</div>
+                        <div>${payment.paid === true ? "true" : payment.paid === false ? "false" : "n/a"}</div>
+                        <div class="text-white/55">backend</div>
+                        <div>${payment.paymentBackend ?? "n/a"}</div>
                         <div class="text-white/55">taskId</div>
                         <div>${payment.taskId ?? "n/a"}</div>
                         <div class="text-white/55">paymentId</div>
@@ -922,13 +971,30 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                         <div class="break-all">${payment.proofReference ?? "n/a"}</div>
                         <div class="text-white/55">denyReason</div>
                         <div>${payment.denyReason ?? "n/a"}</div>
+                        <div class="text-white/55">denyCode</div>
+                        <div>${payment.denyReasonCode ?? "n/a"}</div>
                         <div class="text-white/55">responseStatus</div>
                         <div>${payment.responseStatusCode ?? "n/a"}</div>
+                        <div class="text-white/55">contentType</div>
+                        <div>${payment.responseContentType ?? "n/a"}</div>
+                        <div class="text-white/55">responseBytes</div>
+                        <div>${typeof payment.responseBytes === "number" ? payment.responseBytes.toLocaleString() : "n/a"}</div>
+                        <div class="text-white/55">responseSha</div>
+                        <div class="break-all">${payment.responseBodySha256 ?? "n/a"}</div>
                         <div class="text-white/55">messageId</div>
                         <div>${payment.messageId}</div>
                         <div class="text-white/55">runId</div>
                         <div>${payment.runId ?? "n/a"}</div>
+                        <div class="text-white/55">toolCallId</div>
+                        <div class="break-all">${payment.toolCallId}</div>
                       </div>
+
+                      <div class="mt-4 text-[11px] uppercase tracking-wide text-white/55">response preview</div>
+                      ${payment.responseBodyTextPreview
+                        ? html`
+                            <pre class="mt-2 whitespace-pre-wrap break-words rounded border border-white/15 bg-white/5 p-3 text-xs text-white/85">${payment.responseBodyTextPreview}</pre>
+                          `
+                        : html`<div class="mt-2 rounded border border-white/15 bg-white/5 p-3 text-xs text-white/60">No preview stored.</div>`}
                     </div>
                   `,
                 )
