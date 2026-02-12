@@ -22,7 +22,7 @@ describe("lnd runtime integration with fake transport", () => {
       expect(harness.spawnCalls.length).toBe(1);
       const firstSpawn = harness.spawnCalls[0];
       expect(firstSpawn?.args[0]?.startsWith("--configfile=")).toBe(true);
-      expect(firstSpawn?.args).toContain("--bitcoin.node=neutrino");
+      expect(firstSpawn?.args.length).toBe(1);
       expect(firstSpawn?.cwd.endsWith("/lnd/testnet")).toBe(true);
 
       const configPath = firstSpawn?.args[0]?.replace("--configfile=", "");

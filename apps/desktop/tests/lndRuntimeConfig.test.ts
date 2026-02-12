@@ -45,15 +45,9 @@ describe("lnd runtime config", () => {
 
     const args = buildLndLaunchArgs({
       configPath: paths.configPath,
-      network: "testnet",
     });
 
-    expect(args).toEqual([
-      `--configfile=${paths.configPath}`,
-      "--bitcoin.active=1",
-      "--bitcoin.node=neutrino",
-      "--bitcoin.testnet=1",
-    ]);
+    expect(args).toEqual([`--configfile=${paths.configPath}`]);
   });
 
   it("materializes config into app-scoped runtime directories", () => {
