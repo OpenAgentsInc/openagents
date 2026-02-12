@@ -59,6 +59,17 @@ export type AiToolReceiptV1 = {
   readonly toolName: string
   readonly toolCallId: string
   readonly paramsHash: string
+  readonly outputHash: string
+  readonly latencyMs: number
+
+  readonly sideEffects: ReadonlyArray<{
+    readonly kind: string
+    readonly target?: string
+    readonly method?: string
+    readonly status_code?: number | null
+    readonly changed?: boolean | null
+    readonly detail?: string | null
+  }>
 
   readonly inputBlobs: ReadonlyArray<BlobRef>
   readonly outputBlobs: ReadonlyArray<BlobRef>
