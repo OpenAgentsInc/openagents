@@ -23,6 +23,11 @@ import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import { isEp212EndpointPreset, resolveEp212PresetUrl, sanitizeLightningHeadersForTask } from "./ep212Endpoints";
+import {
+  executeLightningFetchWithWalletExecutor,
+  preflightHostPolicy,
+  walletExecutorAvailability,
+} from "./lightningL402Executor";
 import { DEFAULT_EXECUTOR_PRESENCE_MAX_AGE_MS, isExecutorPresenceFresh } from "./lightningPresence";
 import type { WorkerEnv } from "./env";
 import type {
@@ -227,7 +232,15 @@ type LightningTaskDoc = {
   readonly taskId: string;
   readonly status: LightningTaskStatus;
   readonly request?: {
+    readonly url?: string;
+    readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    readonly headers?: Readonly<Record<string, string>>;
+    readonly body?: string;
     readonly maxSpendMsats?: number;
+    readonly challengeHeader?: string;
+    readonly forceRefresh?: boolean;
+    readonly scope?: string;
+    readonly cacheTtlMs?: number;
   };
   readonly lastErrorCode?: string | undefined;
   readonly lastErrorMessage?: string | undefined;
@@ -288,7 +301,7 @@ const parseLightningTaskDoc = (value: unknown): LightningTaskDoc | null => {
   return {
     taskId,
     status: statusRaw,
-    request: toRecord(rec?.request) as any,
+    request: toRecord(rec?.request) as LightningTaskDoc["request"],
     lastErrorCode: readString(rec?.lastErrorCode) ?? undefined,
     lastErrorMessage: readString(rec?.lastErrorMessage) ?? undefined,
   };
@@ -305,6 +318,286 @@ const parseLightningTaskEventDoc = (value: unknown): LightningTaskEventDoc | nul
     metadata: rec.metadata,
   };
 };
+
+const walletExecutorEnabled = (env: WorkerEnv): boolean => walletExecutorAvailability(env).configured;
+
+const hostFromUrl = (url: string): string | null => {
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
+const transitionLightningTaskWithTimeout = (input: {
+  readonly convex: ConvexServiceApi;
+  readonly taskId: string;
+  readonly toStatus: LightningTaskStatus;
+  readonly actor: "web_worker" | "system";
+  readonly reason: string;
+  readonly requestId: string;
+  readonly metadata: Record<string, unknown>;
+  readonly mutationTimeoutMs: number;
+  readonly errorCode?: string;
+  readonly errorMessage?: string;
+}) =>
+  input.convex
+    .mutation(api.lightning.tasks.transitionTask, {
+      taskId: input.taskId,
+      toStatus: input.toStatus,
+      actor: input.actor,
+      reason: input.reason,
+      requestId: input.requestId,
+      ...(typeof input.errorCode === "string" ? { errorCode: input.errorCode } : {}),
+      ...(typeof input.errorMessage === "string" ? { errorMessage: input.errorMessage } : {}),
+      metadata: input.metadata,
+    })
+    .pipe(
+      Effect.timeoutFail({
+        duration: `${input.mutationTimeoutMs} millis`,
+        onTimeout: () => new Error("lightning.transitionTask_timeout"),
+      }),
+      Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
+    );
+
+const executeLightningTaskViaWalletExecutor = (input: {
+  readonly env: WorkerEnv;
+  readonly convex: ConvexServiceApi;
+  readonly requestId: string;
+  readonly runId: string;
+  readonly threadId: string;
+  readonly mutationTimeoutMs: number;
+  readonly task: LightningTaskDoc;
+  readonly approvalReason: "auto_approved" | "user_approved";
+}): Effect.Effect<LightningTaskDoc, never, RequestContextService> =>
+  Effect.gen(function* () {
+    let task = input.task;
+
+    if (task.status === "queued") {
+      const approveRaw = yield* transitionLightningTaskWithTimeout({
+        convex: input.convex,
+        taskId: task.taskId,
+        toStatus: "approved",
+        actor: "web_worker",
+        reason: input.approvalReason,
+        requestId: input.requestId,
+        metadata: {
+          toolName:
+            input.approvalReason === "user_approved" ? LIGHTNING_L402_APPROVE_TOOL_NAME : LIGHTNING_L402_FETCH_TOOL_NAME,
+          runId: input.runId,
+          threadId: input.threadId,
+        },
+        mutationTimeoutMs: input.mutationTimeoutMs,
+      });
+      task = parseLightningTaskDoc(toRecord(approveRaw)?.task) ?? task;
+    }
+
+    if (isLightningTerminalStatus(task.status)) {
+      return task;
+    }
+
+    if (task.status !== "approved") {
+      const failedRaw = yield* transitionLightningTaskWithTimeout({
+        convex: input.convex,
+        taskId: task.taskId,
+        toStatus: "failed",
+        actor: "system",
+        reason: "invalid_task_state_for_wallet_execution",
+        requestId: input.requestId,
+        errorCode: "invalid_task_state_for_wallet_execution",
+        errorMessage: `task status ${task.status} is not executable`,
+        metadata: {
+          denyReason: "invalid_task_state_for_wallet_execution",
+          denyReasonCode: "invalid_task_state_for_wallet_execution",
+          toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+          runId: input.runId,
+          threadId: input.threadId,
+        },
+        mutationTimeoutMs: input.mutationTimeoutMs,
+      });
+      return parseLightningTaskDoc(toRecord(failedRaw)?.task) ?? {
+        ...task,
+        status: "failed",
+      };
+    }
+
+    const runningRaw = yield* transitionLightningTaskWithTimeout({
+      convex: input.convex,
+      taskId: task.taskId,
+      toStatus: "running",
+      actor: "web_worker",
+      reason: "wallet_executor_start",
+      requestId: input.requestId,
+      metadata: {
+        toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+        runId: input.runId,
+        threadId: input.threadId,
+      },
+      mutationTimeoutMs: input.mutationTimeoutMs,
+    });
+    task = parseLightningTaskDoc(toRecord(runningRaw)?.task) ?? task;
+
+    const request = task.request;
+    const requestUrl = readString(request?.url)?.trim() ?? "";
+    const host = requestUrl ? hostFromUrl(requestUrl) : null;
+    if (!requestUrl) {
+      const failedRaw = yield* transitionLightningTaskWithTimeout({
+        convex: input.convex,
+        taskId: task.taskId,
+        toStatus: "failed",
+        actor: "system",
+        reason: "invalid_task_request_url",
+        requestId: input.requestId,
+        errorCode: "invalid_task_request_url",
+        errorMessage: "task request url is missing or invalid",
+        metadata: {
+          denyReason: "invalid_task_request_url",
+          denyReasonCode: "invalid_task_request_url",
+          ...(host ? { host } : {}),
+          toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+          runId: input.runId,
+          threadId: input.threadId,
+        },
+        mutationTimeoutMs: input.mutationTimeoutMs,
+      });
+      return parseLightningTaskDoc(toRecord(failedRaw)?.task) ?? {
+        ...task,
+        status: "failed",
+      };
+    }
+
+    const maxSpendMsats =
+      typeof request?.maxSpendMsats === "number" && Number.isFinite(request.maxSpendMsats)
+        ? Math.max(0, Math.floor(request.maxSpendMsats))
+        : 0;
+    const method = readString(request?.method);
+    const normalizedMethod =
+      method === "GET" || method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE"
+        ? method
+        : undefined;
+
+    const execution = yield* executeLightningFetchWithWalletExecutor({
+      env: input.env,
+      requestId: input.requestId,
+      ownerScopeKey: input.threadId,
+      request: {
+        url: requestUrl,
+        ...(normalizedMethod ? { method: normalizedMethod } : {}),
+        ...(request?.headers ? { headers: request.headers as Record<string, string> } : {}),
+        ...(typeof request?.body === "string" ? { body: request.body } : {}),
+        maxSpendMsats,
+        ...(typeof request?.challengeHeader === "string" ? { challengeHeader: request.challengeHeader } : {}),
+        ...(typeof request?.forceRefresh === "boolean" ? { forceRefresh: request.forceRefresh } : {}),
+        ...(typeof request?.scope === "string" ? { scope: request.scope } : {}),
+        ...(typeof request?.cacheTtlMs === "number" ? { cacheTtlMs: request.cacheTtlMs } : {}),
+      },
+    });
+
+    if (execution.status === "completed" || execution.status === "cached") {
+      const completedRaw = yield* transitionLightningTaskWithTimeout({
+        convex: input.convex,
+        taskId: task.taskId,
+        toStatus: execution.status,
+        actor: "web_worker",
+        reason: execution.status === "completed" ? "wallet_executor_paid" : "wallet_executor_cached",
+        requestId: input.requestId,
+        metadata: {
+          toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+          runId: input.runId,
+          threadId: input.threadId,
+          host: execution.host,
+          maxSpendMsats,
+          quotedAmountMsats: execution.quotedAmountMsats,
+          paymentId: execution.paymentId,
+          amountMsats: execution.amountMsats,
+          proofReference: execution.proofReference,
+          responseStatusCode: execution.responseStatusCode,
+          responseContentType: execution.responseContentType,
+          responseBytes: execution.responseBytes,
+          responseBodyTextPreview: execution.responseBodyTextPreview,
+          responseBodySha256: execution.responseBodySha256,
+          cacheHit: execution.cacheHit,
+          paid: execution.paid,
+          cacheStatus: execution.cacheStatus,
+          paymentBackend: execution.paymentBackend,
+        },
+        mutationTimeoutMs: input.mutationTimeoutMs,
+      });
+
+      const completedTask = parseLightningTaskDoc(toRecord(completedRaw)?.task) ?? task;
+      const completedStatus: LightningTaskStatus = execution.status === "completed" ? "completed" : "cached";
+      return completedTask.status === "completed" || completedTask.status === "cached"
+        ? completedTask
+        : {
+            ...completedTask,
+            status: completedStatus,
+          };
+    }
+
+    if (execution.status === "blocked") {
+      const blockedRaw = yield* transitionLightningTaskWithTimeout({
+        convex: input.convex,
+        taskId: task.taskId,
+        toStatus: "blocked",
+        actor: "web_worker",
+        reason: execution.denyReasonCode ?? "wallet_executor_policy_denied",
+        requestId: input.requestId,
+        errorCode: execution.denyReasonCode ?? "policy_denied",
+        errorMessage: execution.denyReason,
+        metadata: {
+          toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+          runId: input.runId,
+          threadId: input.threadId,
+          denyReason: execution.denyReason,
+          denyReasonCode: execution.denyReasonCode,
+          host: execution.host,
+          maxSpendMsats: execution.maxSpendMsats,
+          quotedAmountMsats: execution.quotedAmountMsats,
+          paymentBackend: execution.paymentBackend,
+        },
+        mutationTimeoutMs: input.mutationTimeoutMs,
+      });
+      return parseLightningTaskDoc(toRecord(blockedRaw)?.task) ?? {
+        ...task,
+        status: "blocked",
+      };
+    }
+
+    const failedExecution = execution.status === "failed"
+      ? execution
+      : {
+          status: "failed" as const,
+          host: execution.host,
+          errorCode: "wallet_executor_failed",
+          denyReason: "wallet_executor_failed",
+          paymentBackend: execution.paymentBackend,
+        };
+
+    const failedRaw = yield* transitionLightningTaskWithTimeout({
+      convex: input.convex,
+      taskId: task.taskId,
+      toStatus: "failed",
+      actor: "web_worker",
+      reason: failedExecution.errorCode,
+      requestId: input.requestId,
+      errorCode: failedExecution.errorCode,
+      errorMessage: failedExecution.denyReason,
+      metadata: {
+        toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+        runId: input.runId,
+        threadId: input.threadId,
+        denyReason: failedExecution.denyReason,
+        denyReasonCode: failedExecution.errorCode,
+        host: failedExecution.host,
+        paymentBackend: failedExecution.paymentBackend,
+      },
+      mutationTimeoutMs: input.mutationTimeoutMs,
+    });
+    return parseLightningTaskDoc(toRecord(failedRaw)?.task) ?? {
+      ...task,
+      status: "failed",
+    };
+  });
 
 type LightningManualInvocation =
   | { readonly toolName: typeof LIGHTNING_L402_FETCH_TOOL_NAME; readonly rawParams: unknown; readonly source: "call" | "slash" }
@@ -885,6 +1178,74 @@ const runLightningL402FetchTool = (input: {
       };
     }
 
+    const taskHost = hostFromUrl(requestUrl);
+
+    if (taskHost) {
+      const policyDecision = preflightHostPolicy({
+        env: input.env,
+        host: taskHost,
+      });
+      if (!policyDecision.allowed) {
+        const blockedRaw = yield* transitionLightningTaskWithTimeout({
+          convex: input.convex,
+          taskId: createdTask.taskId,
+          toStatus: "blocked",
+          actor: "system",
+          reason: policyDecision.denyReasonCode,
+          requestId: input.requestId,
+          errorCode: policyDecision.denyReasonCode,
+          errorMessage: policyDecision.denyReason,
+          metadata: {
+            denyReason: policyDecision.denyReason,
+            denyReasonCode: policyDecision.denyReasonCode,
+            host: policyDecision.host,
+            maxSpendMsats:
+              typeof decodedInput.maxSpendMsats === "number" && Number.isFinite(decodedInput.maxSpendMsats)
+                ? decodedInput.maxSpendMsats
+                : null,
+            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+            runId: input.runId,
+            threadId: input.threadId,
+          },
+          mutationTimeoutMs: input.mutationTimeoutMs,
+        });
+
+        const blockedTask = parseLightningTaskDoc(toRecord(blockedRaw)?.task) ?? {
+          ...createdTask,
+          status: "blocked",
+        };
+
+        return {
+          validatedInput: decodedInput,
+          terminal: {
+            taskId: blockedTask.taskId,
+            status: "blocked",
+            proofReference: null,
+            denyReason: policyDecision.denyReason,
+            denyReasonCode: policyDecision.denyReasonCode,
+            host: policyDecision.host,
+            maxSpendMsats:
+              typeof decodedInput.maxSpendMsats === "number" && Number.isFinite(decodedInput.maxSpendMsats)
+                ? decodedInput.maxSpendMsats
+                : null,
+            quotedAmountMsats: null,
+            paymentId: null,
+            amountMsats: null,
+            responseStatusCode: null,
+            responseContentType: null,
+            responseBytes: null,
+            responseBodyTextPreview: null,
+            responseBodySha256: null,
+            cacheHit: false,
+            paid: false,
+            cacheStatus: null,
+            paymentBackend: null,
+            approvalRequired: false,
+          } satisfies LightningToolTerminalResult,
+        };
+      }
+    }
+
     // EP212 requirement: explicit approval before any payment executes.
     if (requireApproval && !isLightningTerminalStatus(createdTask.status)) {
       return {
@@ -895,13 +1256,7 @@ const runLightningL402FetchTool = (input: {
           proofReference: null,
           denyReason: null,
           denyReasonCode: null,
-          host: (() => {
-            try {
-              return new URL(String(requestUrl)).host;
-            } catch {
-              return null;
-            }
-          })(),
+          host: taskHost,
           maxSpendMsats:
             typeof decodedInput.maxSpendMsats === "number" && Number.isFinite(decodedInput.maxSpendMsats)
               ? decodedInput.maxSpendMsats
@@ -926,42 +1281,47 @@ const runLightningL402FetchTool = (input: {
     const waitStartedAtMs = Date.now();
     const WAIT_TIMEOUT_MS = 4_500;
     const WAIT_INTERVAL_MS = 180;
+    const useWalletExecutor = walletExecutorEnabled(input.env);
 
     let task = createdTask;
 
-    // If approval is explicitly disabled for this tool call, auto-approve the queued task.
+    // If approval is explicitly disabled for this tool call, auto-approve and execute.
     if (!requireApproval && task.status === "queued") {
-      const presenceRaw = yield* input.convex
-        .query(api.lightning.presence.getLatestExecutorPresence, {})
-        .pipe(
-          Effect.timeoutFail({
-            duration: `${input.queryTimeoutMs} millis`,
-            onTimeout: () => new Error("lightning.getLatestExecutorPresence_timeout"),
-          }),
-          Effect.catchAll(() => Effect.succeed({ ok: true, presence: null } as unknown)),
-        );
-      const presence = toRecord(toRecord(presenceRaw)?.presence);
-      const lastSeenAtMs =
-        typeof presence?.lastSeenAtMs === "number" && Number.isFinite(presence.lastSeenAtMs)
-          ? Math.max(0, Math.floor(presence.lastSeenAtMs))
-          : null;
-      const executorOnline = isExecutorPresenceFresh({
-        lastSeenAtMs,
-        nowMs: Date.now(),
-        maxAgeMs: DEFAULT_EXECUTOR_PRESENCE_MAX_AGE_MS,
-      });
+      if (useWalletExecutor) {
+        task = yield* executeLightningTaskViaWalletExecutor({
+          env: input.env,
+          convex: input.convex,
+          requestId: input.requestId,
+          runId: input.runId,
+          threadId: input.threadId,
+          mutationTimeoutMs: input.mutationTimeoutMs,
+          task,
+          approvalReason: "auto_approved",
+        });
+      } else {
+        const presenceRaw = yield* input.convex
+          .query(api.lightning.presence.getLatestExecutorPresence, {})
+          .pipe(
+            Effect.timeoutFail({
+              duration: `${input.queryTimeoutMs} millis`,
+              onTimeout: () => new Error("lightning.getLatestExecutorPresence_timeout"),
+            }),
+            Effect.catchAll(() => Effect.succeed({ ok: true, presence: null } as unknown)),
+          );
+        const presence = toRecord(toRecord(presenceRaw)?.presence);
+        const lastSeenAtMs =
+          typeof presence?.lastSeenAtMs === "number" && Number.isFinite(presence.lastSeenAtMs)
+            ? Math.max(0, Math.floor(presence.lastSeenAtMs))
+            : null;
+        const executorOnline = isExecutorPresenceFresh({
+          lastSeenAtMs,
+          nowMs: Date.now(),
+          maxAgeMs: DEFAULT_EXECUTOR_PRESENCE_MAX_AGE_MS,
+        });
 
-      if (!executorOnline) {
-        const host = (() => {
-          try {
-            return new URL(String(requestUrl)).host;
-          } catch {
-            return null;
-          }
-        })();
-
-        const transitionRaw = yield* input.convex
-          .mutation(api.lightning.tasks.transitionTask, {
+        if (!executorOnline) {
+          const transitionRaw = yield* transitionLightningTaskWithTimeout({
+            convex: input.convex,
             taskId: task.taskId,
             toStatus: "blocked",
             actor: "system",
@@ -972,68 +1332,59 @@ const runLightningL402FetchTool = (input: {
             metadata: {
               denyReason: "desktop_executor_offline",
               denyReasonCode: "desktop_executor_offline",
-              ...(host ? { host } : {}),
+              ...(taskHost ? { host: taskHost } : {}),
               toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
               runId: input.runId,
+              threadId: input.threadId,
             },
-          })
-          .pipe(
-            Effect.timeoutFail({
-              duration: `${input.mutationTimeoutMs} millis`,
-              onTimeout: () => new Error("lightning.transitionTask_timeout"),
-            }),
-            Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
-          );
-        task = parseLightningTaskDoc(toRecord(transitionRaw)?.task) ?? {
-          ...task,
-          status: "blocked",
-        };
-      } else {
-      const approveRaw = yield* input.convex
-        .mutation(api.lightning.tasks.transitionTask, {
-          taskId: task.taskId,
-          toStatus: "approved",
-          actor: "web_worker",
-          reason: "auto_approved",
-          requestId: input.requestId,
-          metadata: {
-            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
-            runId: input.runId,
-            threadId: input.threadId,
-          },
-        })
-        .pipe(
-          Effect.timeoutFail({
-            duration: `${input.mutationTimeoutMs} millis`,
-            onTimeout: () => new Error("lightning.transitionTask_timeout"),
-          }),
-          Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
-        );
-      task = parseLightningTaskDoc(toRecord(approveRaw)?.task) ?? task;
+            mutationTimeoutMs: input.mutationTimeoutMs,
+          });
+          task = parseLightningTaskDoc(toRecord(transitionRaw)?.task) ?? {
+            ...task,
+            status: "blocked",
+          };
+        } else {
+          const approveRaw = yield* transitionLightningTaskWithTimeout({
+            convex: input.convex,
+            taskId: task.taskId,
+            toStatus: "approved",
+            actor: "web_worker",
+            reason: "auto_approved",
+            requestId: input.requestId,
+            metadata: {
+              toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+              runId: input.runId,
+              threadId: input.threadId,
+            },
+            mutationTimeoutMs: input.mutationTimeoutMs,
+          });
+          task = parseLightningTaskDoc(toRecord(approveRaw)?.task) ?? task;
+        }
       }
     }
 
-    while (
-      !input.controller.signal.aborted &&
-      !isLightningTerminalStatus(task.status) &&
-      Date.now() - waitStartedAtMs <= WAIT_TIMEOUT_MS
-    ) {
-      yield* Effect.sleep(`${WAIT_INTERVAL_MS} millis`);
-      const taskRaw = yield* input.convex
-        .query(api.lightning.tasks.getTask, { taskId: task.taskId })
-        .pipe(
-          Effect.timeoutFail({
-            duration: `${input.queryTimeoutMs} millis`,
-            onTimeout: () => new Error("lightning.getTask_timeout"),
-          }),
-          Effect.catchAll(() => Effect.succeed({ ok: true, task } as unknown)),
-        );
-      task = parseLightningTaskDoc(toRecord(taskRaw)?.task) ?? task;
-    }
+    if (!useWalletExecutor) {
+      while (
+        !input.controller.signal.aborted &&
+        !isLightningTerminalStatus(task.status) &&
+        Date.now() - waitStartedAtMs <= WAIT_TIMEOUT_MS
+      ) {
+        yield* Effect.sleep(`${WAIT_INTERVAL_MS} millis`);
+        const taskRaw = yield* input.convex
+          .query(api.lightning.tasks.getTask, { taskId: task.taskId })
+          .pipe(
+            Effect.timeoutFail({
+              duration: `${input.queryTimeoutMs} millis`,
+              onTimeout: () => new Error("lightning.getTask_timeout"),
+            }),
+            Effect.catchAll(() => Effect.succeed({ ok: true, task } as unknown)),
+          );
+        task = parseLightningTaskDoc(toRecord(taskRaw)?.task) ?? task;
+      }
 
-    if (!isLightningTerminalStatus(task.status)) {
-      const transitionRaw = yield* input.convex
-        .mutation(api.lightning.tasks.transitionTask, {
+      if (!isLightningTerminalStatus(task.status)) {
+        const transitionRaw = yield* transitionLightningTaskWithTimeout({
+          convex: input.convex,
           taskId: task.taskId,
           toStatus: "blocked",
           actor: "system",
@@ -1045,19 +1396,15 @@ const runLightningL402FetchTool = (input: {
             denyReason: "desktop_executor_timeout",
             toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
             runId: input.runId,
+            threadId: input.threadId,
           },
-        })
-        .pipe(
-          Effect.timeoutFail({
-            duration: `${input.mutationTimeoutMs} millis`,
-            onTimeout: () => new Error("lightning.transitionTask_timeout"),
-          }),
-          Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
-        );
-      task = parseLightningTaskDoc(toRecord(transitionRaw)?.task) ?? {
-        ...task,
-        status: "blocked",
-      };
+          mutationTimeoutMs: input.mutationTimeoutMs,
+        });
+        task = parseLightningTaskDoc(toRecord(transitionRaw)?.task) ?? {
+          ...task,
+          status: "blocked",
+        };
+      }
     }
 
     const eventsRaw = yield* input.convex
@@ -1183,6 +1530,7 @@ type LightningToolApproveResult = {
 };
 
 const runLightningL402ApproveTool = (input: {
+  readonly env: WorkerEnv;
   readonly convex: ConvexServiceApi;
   readonly requestId: string;
   readonly runId: string;
@@ -1246,6 +1594,42 @@ const runLightningL402ApproveTool = (input: {
       };
     }
 
+    if (isLightningTerminalStatus(task.status)) {
+      return {
+        validatedInput: decodedInput,
+        output: {
+          taskId: task.taskId,
+          ok: true,
+          changed: false,
+          taskStatus: task.status,
+          denyReason: null,
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
+    if (walletExecutorEnabled(input.env) && (task.status === "queued" || task.status === "approved")) {
+      const executedTask = yield* executeLightningTaskViaWalletExecutor({
+        env: input.env,
+        convex: input.convex,
+        requestId: input.requestId,
+        runId: input.runId,
+        threadId: input.threadId,
+        mutationTimeoutMs: input.mutationTimeoutMs,
+        task,
+        approvalReason: "user_approved",
+      });
+      return {
+        validatedInput: decodedInput,
+        output: {
+          taskId: executedTask.taskId,
+          ok: true,
+          changed: true,
+          taskStatus: executedTask.status,
+          denyReason: null,
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
     if (task.status !== "queued") {
       return {
         validatedInput: decodedInput,
@@ -1292,27 +1676,21 @@ const runLightningL402ApproveTool = (input: {
       };
     }
 
-    const approveRaw = yield* input.convex
-      .mutation(api.lightning.tasks.transitionTask, {
-        taskId: task.taskId,
-        toStatus: "approved",
-        actor: "web_worker",
-        reason: "user_approved",
-        requestId: input.requestId,
-        metadata: {
-          toolName: LIGHTNING_L402_APPROVE_TOOL_NAME,
-          runId: input.runId,
-          threadId: input.threadId,
-          source: input.source,
-        },
-      })
-      .pipe(
-        Effect.timeoutFail({
-          duration: `${input.mutationTimeoutMs} millis`,
-          onTimeout: () => new Error("lightning.transitionTask_timeout"),
-        }),
-      );
-
+    const approveRaw = yield* transitionLightningTaskWithTimeout({
+      convex: input.convex,
+      taskId: task.taskId,
+      toStatus: "approved",
+      actor: "web_worker",
+      reason: "user_approved",
+      requestId: input.requestId,
+      metadata: {
+        toolName: LIGHTNING_L402_APPROVE_TOOL_NAME,
+        runId: input.runId,
+        threadId: input.threadId,
+        source: input.source,
+      },
+      mutationTimeoutMs: input.mutationTimeoutMs,
+    });
     const transitionedTask = parseLightningTaskDoc(toRecord(approveRaw)?.task);
     if (!transitionedTask) {
       return {
@@ -2046,6 +2424,7 @@ const runAutopilotStream = (input: {
           outputText = terminalTextFromLightningToolResult(terminal);
         } else {
           const toolExecution = yield* runLightningL402ApproveTool({
+            env: input.env,
             convex,
             requestId,
             runId: input.runId,
