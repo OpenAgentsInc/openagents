@@ -74,6 +74,15 @@ const renderWithEffuse = (container: Element, content: TemplateResult): Promise<
 
 const formatTs = (ts: number | null): string => (ts ? new Date(ts).toLocaleTimeString() : "n/a");
 
+const formatBool = (value: boolean | null): string => {
+  if (value === true) return "yes";
+  if (value === false) return "no";
+  return "unknown";
+};
+
+const formatHeaderTs = (value: number | null): string =>
+  typeof value === "number" && Number.isFinite(value) ? new Date(value * 1000).toLocaleString() : "n/a";
+
 const statusBadge = (ok: boolean): TemplateResult =>
   html`<span class="oa-badge ${ok ? "up" : "down"}">${ok ? "reachable" : "unreachable"}</span>`;
 
@@ -274,6 +283,32 @@ const nodeTemplate = (snapshot: DesktopRuntimeState): TemplateResult => {
         <dd>${formatTs(snapshot.lnd.lastHealthCheckAtMs)}</dd>
         <dt>Last error</dt>
         <dd>${snapshot.lnd.lastError ?? "none"}</dd>
+        <dt>Chain synced</dt>
+        <dd>${formatBool(snapshot.lnd.sync.syncedToChain)}</dd>
+        <dt>Wallet synced</dt>
+        <dd>${formatBool(snapshot.lnd.sync.walletSynced)}</dd>
+        <dt>Graph synced</dt>
+        <dd>${formatBool(snapshot.lnd.sync.syncedToGraph)}</dd>
+        <dt>Block height</dt>
+        <dd><code>${snapshot.lnd.sync.blockHeight ?? "n/a"}</code></dd>
+        <dt>Peers</dt>
+        <dd><code>${snapshot.lnd.sync.numPeers ?? "n/a"}</code></dd>
+        <dt>Best header</dt>
+        <dd>${formatHeaderTs(snapshot.lnd.sync.bestHeaderTimestamp)}</dd>
+        <dt>Sync updated</dt>
+        <dd>${formatTs(snapshot.lnd.sync.lastUpdatedAtMs)}</dd>
+        <dt>Sync error</dt>
+        <dd>${snapshot.lnd.sync.lastError ?? "none"}</dd>
+        <dt>Ready gate</dt>
+        <dd>
+          ${snapshot.lnd.lifecycle === "running" &&
+          snapshot.lnd.health === "healthy" &&
+          snapshot.wallet.walletState === "unlocked" &&
+          snapshot.lnd.sync.syncedToChain === true &&
+          snapshot.lnd.sync.walletSynced === true
+            ? "ready"
+            : "not_ready"}
+        </dd>
       </dl>
       <div class="oa-row">
         <button class="oa-btn" data-lnd-start type="button">Start LND</button>

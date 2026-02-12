@@ -90,6 +90,17 @@ export const DesktopAppLive = Layer.effect(
           nextRestartAtMs: status.nextRestartAtMs,
           lastHealthCheckAtMs: status.lastHealthCheckAtMs,
           lastError: status.lastError,
+          sync: {
+            source: status.sync.source,
+            blockHeight: status.sync.blockHeight,
+            numPeers: status.sync.numPeers,
+            bestHeaderTimestamp: status.sync.bestHeaderTimestamp,
+            syncedToChain: status.sync.syncedToChain,
+            syncedToGraph: status.sync.syncedToGraph,
+            walletSynced: status.sync.walletSynced,
+            lastUpdatedAtMs: status.sync.lastUpdatedAtMs,
+            lastError: status.sync.lastError,
+          },
         },
       }));
     });

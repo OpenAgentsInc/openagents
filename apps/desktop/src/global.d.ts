@@ -13,6 +13,17 @@ type LndRuntimeSnapshot = Readonly<{
   readonly nextRestartAtMs: number | null;
   readonly lastHealthCheckAtMs: number | null;
   readonly lastError: string | null;
+  readonly sync: {
+    readonly source: "none" | "rest_getinfo";
+    readonly blockHeight: number | null;
+    readonly numPeers: number | null;
+    readonly bestHeaderTimestamp: number | null;
+    readonly syncedToChain: boolean | null;
+    readonly syncedToGraph: boolean | null;
+    readonly walletSynced: boolean | null;
+    readonly lastUpdatedAtMs: number | null;
+    readonly lastError: string | null;
+  };
 }>;
 
 type LndWalletState = "uninitialized" | "initialized" | "locked" | "unlocked";

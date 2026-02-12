@@ -1,5 +1,6 @@
 import { Clock, Context, Effect, Fiber, Layer, Ref, Schedule } from "effect";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 
 import type { LndBinaryTarget } from "./lndBinaryResolver";
@@ -28,6 +29,18 @@ export type LndRuntimeLogEvent = Readonly<{
   readonly message: string;
 }>;
 
+export type LndRuntimeSyncSnapshot = Readonly<{
+  readonly source: "none" | "rest_getinfo";
+  readonly blockHeight: number | null;
+  readonly numPeers: number | null;
+  readonly bestHeaderTimestamp: number | null;
+  readonly syncedToChain: boolean | null;
+  readonly syncedToGraph: boolean | null;
+  readonly walletSynced: boolean | null;
+  readonly lastUpdatedAtMs: number | null;
+  readonly lastError: string | null;
+}>;
+
 export type LndRuntimeStatus = Readonly<{
   readonly lifecycle: LndRuntimeLifecycle;
   readonly health: LndRuntimeHealth;
@@ -47,6 +60,7 @@ export type LndRuntimeStatus = Readonly<{
   readonly configPath: string | null;
   readonly runtimeDir: string | null;
   readonly binaryPath: string | null;
+  readonly sync: LndRuntimeSyncSnapshot;
 }>;
 
 export type LndRuntimeManagerErrorCode =
@@ -138,7 +152,133 @@ const runtimeStatusInitial = (): LndRuntimeStatus => ({
   configPath: null,
   runtimeDir: null,
   binaryPath: null,
+  sync: {
+    source: "none",
+    blockHeight: null,
+    numPeers: null,
+    bestHeaderTimestamp: null,
+    syncedToChain: null,
+    syncedToGraph: null,
+    walletSynced: null,
+    lastUpdatedAtMs: null,
+    lastError: null,
+  },
 });
+
+const parseRestAddress = (
+  value: string,
+): Readonly<{
+  readonly hostname: string;
+  readonly port: number;
+}> => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("restlisten_empty");
+  }
+
+  if (trimmed.startsWith("[")) {
+    const close = trimmed.indexOf("]");
+    if (close === -1) throw new Error("restlisten_invalid_ipv6");
+    const hostname = trimmed.slice(1, close).trim();
+    const portValue = trimmed.slice(close + 1).trim();
+    if (!hostname) throw new Error("restlisten_invalid_ipv6_host");
+    if (!portValue.startsWith(":")) throw new Error("restlisten_invalid_ipv6_port");
+    const port = Number(portValue.slice(1));
+    if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+      throw new Error("restlisten_invalid_port");
+    }
+    return {
+      hostname,
+      port,
+    };
+  }
+
+  const separator = trimmed.lastIndexOf(":");
+  if (separator <= 0) throw new Error("restlisten_invalid_host_port");
+  const hostname = trimmed.slice(0, separator).trim();
+  const port = Number(trimmed.slice(separator + 1));
+  if (!hostname) throw new Error("restlisten_invalid_host");
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error("restlisten_invalid_port");
+  }
+  return {
+    hostname,
+    port,
+  };
+};
+
+const readMacaroonHex = (macaroonPath: string): string => fs.readFileSync(macaroonPath).toString("hex");
+
+const asNumberFromUnknown = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+const asBooleanFromUnknown = (value: unknown): boolean | null => {
+  if (typeof value === "boolean") return value;
+  return null;
+};
+
+const requestLndGetInfo = (input: {
+  readonly hostname: string;
+  readonly port: number;
+  readonly tlsCertPath: string;
+  readonly macaroonHex: string;
+  readonly timeoutMs: number;
+}): Promise<unknown> =>
+  new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        protocol: "https:",
+        hostname: input.hostname,
+        port: input.port,
+        method: "GET",
+        path: "/v1/getinfo",
+        headers: {
+          accept: "application/json",
+          "Grpc-Metadata-macaroon": input.macaroonHex,
+        },
+        ca: fs.readFileSync(input.tlsCertPath),
+        rejectUnauthorized: true,
+      },
+      (res) => {
+        const chunks: Array<Buffer> = [];
+        res.on("data", (chunk) => {
+          if (Buffer.isBuffer(chunk)) {
+            chunks.push(chunk);
+            return;
+          }
+          chunks.push(Buffer.from(String(chunk)));
+        });
+        res.on("error", reject);
+        res.on("end", () => {
+          const bodyText = Buffer.concat(chunks).toString("utf8");
+          let parsed: unknown = {};
+          try {
+            parsed = bodyText.trim().length === 0 ? {} : JSON.parse(bodyText);
+          } catch {
+            reject(new Error("lnd_rest_getinfo_invalid_json"));
+            return;
+          }
+          if ((res.statusCode ?? 500) >= 400) {
+            reject(new Error(`lnd_rest_getinfo_status_${res.statusCode ?? "unknown"}`));
+            return;
+          }
+          resolve(parsed);
+        });
+      },
+    );
+
+    req.setTimeout(input.timeoutMs, () => {
+      req.destroy(new Error("lnd_rest_getinfo_timeout"));
+    });
+    req.on("error", reject);
+    req.end();
+  });
 
 const sanitizeLogLine = (line: string): string => {
   const lowered = line.toLowerCase();
@@ -183,6 +323,7 @@ export const LndRuntimeManagerLive = Layer.effect(
     const statusRef = yield* Ref.make(runtimeStatusInitial());
     const logsRef = yield* Ref.make<ReadonlyArray<LndRuntimeLogEvent>>([]);
     const processRef = yield* Ref.make<LndProcessHandle | null>(null);
+    const runtimePathsRef = yield* Ref.make<LndRuntimePaths | null>(null);
     const stopRequestedRef = yield* Ref.make(false);
     const healthFiberRef = yield* Ref.make<Fiber.RuntimeFiber<unknown, unknown> | null>(null);
     const restartFiberRef = yield* Ref.make<Fiber.RuntimeFiber<unknown, unknown> | null>(null);
@@ -275,6 +416,69 @@ export const LndRuntimeManagerLive = Layer.effect(
       });
     });
 
+    const readSyncSnapshot = Effect.fn("LndRuntimeManager.readSyncSnapshot")(function* (
+      paths: LndRuntimePaths,
+      previous: LndRuntimeSyncSnapshot,
+    ) {
+      const now = yield* Clock.currentTimeMillis;
+
+      const walletDir = path.join(paths.runtimeDir, "data", "chain", "bitcoin", config.network);
+      const macaroonPath = path.join(walletDir, "admin.macaroon");
+      if (!fs.existsSync(macaroonPath)) {
+        return {
+          ...previous,
+          source: "none" as const,
+          lastUpdatedAtMs: now,
+          lastError: "admin_macaroon_unavailable",
+        } satisfies LndRuntimeSyncSnapshot;
+      }
+
+      const listen = parseRestAddress(config.restListen);
+      const macaroonHex = readMacaroonHex(macaroonPath);
+      const raw = yield* Effect.tryPromise({
+        try: () =>
+          requestLndGetInfo({
+            hostname: listen.hostname,
+            port: listen.port,
+            tlsCertPath: paths.tlsCertPath,
+            macaroonHex,
+            timeoutMs: Math.max(1_000, config.healthProbeIntervalMs),
+          }),
+        catch: (error) => new Error(String(error)),
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.succeed({
+            _tag: "sync_error",
+            message: String(error.message),
+          } as const),
+        ),
+      );
+
+      if (typeof raw === "object" && raw !== null && "_tag" in raw) {
+        const message =
+          "message" in raw && typeof raw.message === "string" ? raw.message : "sync_probe_failed";
+        return {
+          ...previous,
+          source: "none" as const,
+          lastUpdatedAtMs: now,
+          lastError: message,
+        } satisfies LndRuntimeSyncSnapshot;
+      }
+
+      const payload = raw as Record<string, unknown>;
+      return {
+        source: "rest_getinfo",
+        blockHeight: asNumberFromUnknown(payload.block_height),
+        numPeers: asNumberFromUnknown(payload.num_peers),
+        bestHeaderTimestamp: asNumberFromUnknown(payload.best_header_timestamp),
+        syncedToChain: asBooleanFromUnknown(payload.synced_to_chain),
+        syncedToGraph: asBooleanFromUnknown(payload.synced_to_graph),
+        walletSynced: asBooleanFromUnknown(payload.wallet_synced),
+        lastUpdatedAtMs: now,
+        lastError: null,
+      } satisfies LndRuntimeSyncSnapshot;
+    });
+
     const updateHealth: () => Effect.Effect<void, never> = Effect.fn(
       "LndRuntimeManager.updateHealth",
     )(function* () {
@@ -300,14 +504,32 @@ export const LndRuntimeManagerLive = Layer.effect(
       }
 
       const alive = yield* handle.isAlive().pipe(Effect.orElseSucceed(() => false));
+      const paths = yield* Ref.get(runtimePathsRef);
+      const currentSync = current.sync;
+      const nextSync =
+        alive && paths
+          ? yield* readSyncSnapshot(paths, currentSync).pipe(
+              Effect.catchAll((error) =>
+                Effect.succeed({
+                  ...currentSync,
+                  source: "none" as const,
+                  lastUpdatedAtMs: Date.now(),
+                  lastError: String(error),
+                } satisfies LndRuntimeSyncSnapshot),
+              ),
+            )
+          : currentSync;
+
       yield* setStatus((value, now) => ({
         ...value,
         health: alive ? "healthy" : "unhealthy",
         lastHealthCheckAtMs: now,
+        sync: nextSync,
         ...(alive ? {} : { lastError: value.lastError ?? "process_not_alive" }),
       }));
     });
 
+    // eslint-disable-next-line prefer-const -- initialized after helper closures that reference it.
     let start: () => Effect.Effect<void, LndRuntimeManagerError>;
 
     const onUnexpectedExit: (exit: LndProcessExit) => Effect.Effect<void, never> = Effect.fn(
@@ -319,6 +541,7 @@ export const LndRuntimeManagerLive = Layer.effect(
         `LND process exited unexpectedly code=${exit.code ?? "null"} signal=${exit.signal ?? "null"}`,
       );
       yield* Ref.set(processRef, null);
+      yield* Ref.set(runtimePathsRef, null);
       yield* interruptFiber(healthFiberRef);
 
       const snapshot = yield* Ref.get(statusRef);
@@ -384,6 +607,7 @@ export const LndRuntimeManagerLive = Layer.effect(
 
       if (stopRequested) {
         yield* Ref.set(processRef, null);
+        yield* Ref.set(runtimePathsRef, null);
         yield* interruptFiber(healthFiberRef);
         yield* interruptFiber(restartFiberRef);
         yield* setStatus((current, now) => ({
@@ -397,6 +621,17 @@ export const LndRuntimeManagerLive = Layer.effect(
           lastError: null,
           pid: null,
           consecutiveCrashes: 0,
+          sync: {
+            source: "none",
+            blockHeight: null,
+            numPeers: null,
+            bestHeaderTimestamp: null,
+            syncedToChain: null,
+            syncedToGraph: null,
+            walletSynced: null,
+            lastUpdatedAtMs: now,
+            lastError: null,
+          },
         }));
         yield* appendLog("info", "stopped", "LND process stopped");
         return;
@@ -447,6 +682,7 @@ export const LndRuntimeManagerLive = Layer.effect(
 
       const resolvedBinary = yield* resolveBinary();
       const runtimeConfig = yield* materializeConfig();
+      yield* Ref.set(runtimePathsRef, runtimeConfig.paths);
 
       yield* appendLog(
         "info",
@@ -527,6 +763,7 @@ export const LndRuntimeManagerLive = Layer.effect(
 
       const handle = yield* Ref.get(processRef);
       if (!handle) {
+        yield* Ref.set(runtimePathsRef, null);
         yield* setStatus((value, now) => ({
           ...value,
           lifecycle: "stopped",
@@ -535,6 +772,17 @@ export const LndRuntimeManagerLive = Layer.effect(
           nextRestartAtMs: null,
           consecutiveCrashes: 0,
           lastStoppedAtMs: now,
+          sync: {
+            source: "none",
+            blockHeight: null,
+            numPeers: null,
+            bestHeaderTimestamp: null,
+            syncedToChain: null,
+            syncedToGraph: null,
+            walletSynced: null,
+            lastUpdatedAtMs: now,
+            lastError: null,
+          },
         }));
         return;
       }
@@ -596,6 +844,7 @@ export type LndRuntimeSnapshotForRenderer = Readonly<{
   readonly nextRestartAtMs: number | null;
   readonly lastHealthCheckAtMs: number | null;
   readonly lastError: string | null;
+  readonly sync: LndRuntimeSyncSnapshot;
 }>;
 
 export const projectLndRuntimeSnapshotForRenderer = (
@@ -610,6 +859,7 @@ export const projectLndRuntimeSnapshotForRenderer = (
   nextRestartAtMs: snapshot.nextRestartAtMs,
   lastHealthCheckAtMs: snapshot.lastHealthCheckAtMs,
   lastError: snapshot.lastError,
+  sync: snapshot.sync,
 });
 
 export const toRuntimeManagerError = (error: unknown): LndRuntimeManagerError => {

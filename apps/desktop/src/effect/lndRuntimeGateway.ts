@@ -21,6 +21,17 @@ export type DesktopLndRuntimeStatus = Readonly<{
   readonly nextRestartAtMs: number | null;
   readonly lastHealthCheckAtMs: number | null;
   readonly lastError: string | null;
+  readonly sync: {
+    readonly source: "none" | "rest_getinfo";
+    readonly blockHeight: number | null;
+    readonly numPeers: number | null;
+    readonly bestHeaderTimestamp: number | null;
+    readonly syncedToChain: boolean | null;
+    readonly syncedToGraph: boolean | null;
+    readonly walletSynced: boolean | null;
+    readonly lastUpdatedAtMs: number | null;
+    readonly lastError: string | null;
+  };
 }>;
 
 const unavailableStatus = (): DesktopLndRuntimeStatus => ({
@@ -33,6 +44,17 @@ const unavailableStatus = (): DesktopLndRuntimeStatus => ({
   nextRestartAtMs: null,
   lastHealthCheckAtMs: null,
   lastError: null,
+  sync: {
+    source: "none",
+    blockHeight: null,
+    numPeers: null,
+    bestHeaderTimestamp: null,
+    syncedToChain: null,
+    syncedToGraph: null,
+    walletSynced: null,
+    lastUpdatedAtMs: null,
+    lastError: null,
+  },
 });
 
 const getRuntimeBridge = () => {
@@ -52,6 +74,8 @@ const normalizeSnapshot = (input: unknown): DesktopLndRuntimeStatus => {
     typeof record.health === "string"
       ? (record.health as DesktopLndRuntimeHealth)
       : unavailableStatus().health;
+  const syncRecord =
+    record.sync && typeof record.sync === "object" ? (record.sync as Record<string, unknown>) : null;
 
   return {
     lifecycle,
@@ -64,6 +88,25 @@ const normalizeSnapshot = (input: unknown): DesktopLndRuntimeStatus => {
     lastHealthCheckAtMs:
       typeof record.lastHealthCheckAtMs === "number" ? record.lastHealthCheckAtMs : null,
     lastError: typeof record.lastError === "string" ? record.lastError : null,
+    sync: {
+      source:
+        syncRecord?.source === "rest_getinfo" || syncRecord?.source === "none"
+          ? syncRecord.source
+          : "none",
+      blockHeight: typeof syncRecord?.blockHeight === "number" ? syncRecord.blockHeight : null,
+      numPeers: typeof syncRecord?.numPeers === "number" ? syncRecord.numPeers : null,
+      bestHeaderTimestamp:
+        typeof syncRecord?.bestHeaderTimestamp === "number" ? syncRecord.bestHeaderTimestamp : null,
+      syncedToChain:
+        typeof syncRecord?.syncedToChain === "boolean" ? syncRecord.syncedToChain : null,
+      syncedToGraph:
+        typeof syncRecord?.syncedToGraph === "boolean" ? syncRecord.syncedToGraph : null,
+      walletSynced:
+        typeof syncRecord?.walletSynced === "boolean" ? syncRecord.walletSynced : null,
+      lastUpdatedAtMs:
+        typeof syncRecord?.lastUpdatedAtMs === "number" ? syncRecord.lastUpdatedAtMs : null,
+      lastError: typeof syncRecord?.lastError === "string" ? syncRecord.lastError : null,
+    },
   };
 };
 
