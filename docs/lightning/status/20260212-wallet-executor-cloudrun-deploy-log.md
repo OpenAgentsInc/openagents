@@ -172,3 +172,51 @@ Additional observed blocker for paid live flow:
    - `npm run smoke:ep212-routes -- --json --mode live`
    - `npm run smoke:ep212-full-flow -- --json --mode live`
 4. Capture final successful artifacts in this status folder once route + funding are complete.
+
+## 7. Follow-up Fix: Aperture 400 (`Client sent an HTTP request to an HTTPS server`) Resolved
+
+Date: 2026-02-12
+
+### 7.1 Root cause verified
+
+Live secret `l402-aperture-config` still had an older config shape:
+
+1. `insecure: false` (Cloud Run container expected TLS on `:8080`)
+2. stale catch-all staging route (`^/.*$`), missing explicit EP212 route entries
+
+This matched Cloud Run logs showing repeated TLS handshake errors and live 400 responses from `l402.openagents.com`.
+
+### 7.2 Applied fix
+
+1. Updated template in repo:
+   - `docs/lightning/scripts/aperture-voltage-config-postgres.yaml`
+   - changed `insecure: false` -> `insecure: true`
+2. Built a new runtime config with DB password injected from `l402-aperture-db-password`.
+3. Added a new secret version:
+   - `l402-aperture-config` version **11**
+4. Redeployed Cloud Run service `l402-aperture`.
+
+New ready revision:
+
+- `l402-aperture-00015-zqr`
+
+### 7.3 Post-fix live verification
+
+All route checks now return L402 challenges (`HTTP 402`) instead of 400:
+
+1. `https://l402.openagents.com/staging` -> `402`, `WWW-Authenticate: L402 ...`
+2. `https://l402.openagents.com/ep212/premium-signal` -> `402`, `WWW-Authenticate: L402 ...`
+3. `https://l402.openagents.com/ep212/expensive-signal` -> `402`, `WWW-Authenticate: L402 ...`
+
+### 7.4 Funding invoice generated for deployed Spark wallet
+
+Generated a fresh **1000 sats** BOLT11 invoice using the deployed wallet seed + API key:
+
+- wallet identity pubkey: `036edfeb710d594039f20949548b44d8c710cb65a0c449ad3a04d05a717e490d16`
+- balance at generation time: `0 sats`
+- invoice (1000 sats):
+
+```text
+lnbc10u1p5cuwyhpp507l3v3ragzk0hs73ck7sp0g277wu4t0xdqm568plyw3zvr9vfnmqsp56a0gzu0fwcnn489ar8d2948dqajrz84feqjy3g3pa920gus9qdkqxqrrssnp4qvyndeaqzman7h898jxm98dzkm0mlrsx36s93smrur7h0azyyuxc5rzjqwghf7zxvfkxq5a6sr65g0gdkv768p83mhsnt0msszapamzx2qvuxqqqqrt49lmtcqqqqqqqqqqq86qq9qrzjq25carzepgd4vqsyn44jrk85ezrpju92xyrk9apw4cdjh6yrwt5jgqqqqrt49lmtcqqqqqqqqqqq86qq9qcqzpgdpcfacx2mjpvajkuarnypmkzmrvv46zqen4dejxjmn8yqcnqvpsypekzarn9qyyssqmflfwlcps7w2jd09nvjm4ju6h4a4kzlnndqk5hn7wwdq8jzznp5569kpa6flwa9v9d6e7vcvcankddl97rmg4056q8zfa0m7e4u9kcsq7ggq2w
+```
+
