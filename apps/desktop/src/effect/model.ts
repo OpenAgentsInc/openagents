@@ -107,6 +107,20 @@ export type DesktopRuntimeState = Readonly<{
     readonly lastOperation: string | null;
     readonly updatedAtMs: number | null;
   };
+  readonly spark: {
+    readonly lifecycle: "disconnected" | "connecting" | "connected" | "error";
+    readonly network: "mainnet" | "regtest";
+    readonly apiKeyConfigured: boolean;
+    readonly mnemonicStored: boolean;
+    readonly identityPubkey: string | null;
+    readonly balanceSats: number | null;
+    readonly tokenBalanceCount: number;
+    readonly lastSyncedAtMs: number | null;
+    readonly lastPaymentId: string | null;
+    readonly lastPaymentAtMs: number | null;
+    readonly lastErrorCode: string | null;
+    readonly lastErrorMessage: string | null;
+  };
 }>;
 
 export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
@@ -162,5 +176,19 @@ export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
     lastErrorMessage: null,
     lastOperation: null,
     updatedAtMs: null,
+  },
+  spark: {
+    lifecycle: "disconnected",
+    network: "regtest",
+    apiKeyConfigured: false,
+    mnemonicStored: false,
+    identityPubkey: null,
+    balanceSats: null,
+    tokenBalanceCount: 0,
+    lastSyncedAtMs: null,
+    lastPaymentId: null,
+    lastPaymentAtMs: null,
+    lastErrorCode: null,
+    lastErrorMessage: null,
   },
 });

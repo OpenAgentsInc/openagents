@@ -46,6 +46,31 @@ type LndWalletSnapshot = Readonly<{
   readonly updatedAtMs: number;
 }>;
 
+type SparkWalletLifecycle = "disconnected" | "connecting" | "connected" | "error";
+type SparkWalletNetwork = "mainnet" | "regtest";
+
+type SparkWalletSnapshot = Readonly<{
+  readonly lifecycle: SparkWalletLifecycle;
+  readonly network: SparkWalletNetwork;
+  readonly apiKeyConfigured: boolean;
+  readonly mnemonicStored: boolean;
+  readonly identityPubkey: string | null;
+  readonly balanceSats: number | null;
+  readonly tokenBalanceCount: number;
+  readonly lastSyncedAtMs: number | null;
+  readonly lastPaymentId: string | null;
+  readonly lastPaymentAtMs: number | null;
+  readonly lastErrorCode: string | null;
+  readonly lastErrorMessage: string | null;
+}>;
+
+type SparkInvoicePaymentResult = Readonly<{
+  readonly paymentId: string;
+  readonly amountMsats: number;
+  readonly preimageHex: string;
+  readonly paidAtMs: number;
+}>;
+
 declare global {
   interface Window {
     openAgentsDesktop?: {
@@ -77,6 +102,17 @@ declare global {
           readonly seedMnemonic: ReadonlyArray<string>;
           readonly recoveryWindowDays?: number;
         }) => Promise<void>;
+      };
+      readonly sparkWallet?: {
+        readonly snapshot: () => Promise<SparkWalletSnapshot>;
+        readonly bootstrap: () => Promise<void>;
+        readonly refresh: () => Promise<SparkWalletSnapshot>;
+        readonly payInvoice: (input: {
+          readonly invoice: string;
+          readonly host: string;
+          readonly maxAmountMsats: number;
+        }) => Promise<SparkInvoicePaymentResult>;
+        readonly disconnect: () => Promise<void>;
       };
     };
   }

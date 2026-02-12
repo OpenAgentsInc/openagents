@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 import { LND_RUNTIME_CHANNELS } from "./main/lndRuntimeIpc";
 import { LND_WALLET_CHANNELS } from "./main/lndWalletIpc";
+import { SPARK_WALLET_CHANNELS } from "./main/sparkWalletIpc";
 
 const config = {
   openAgentsBaseUrl: process.env.OA_DESKTOP_OPENAGENTS_BASE_URL,
@@ -33,5 +34,16 @@ contextBridge.exposeInMainWorld("openAgentsDesktop", {
       readonly seedMnemonic: ReadonlyArray<string>;
       readonly recoveryWindowDays?: number;
     }) => ipcRenderer.invoke(LND_WALLET_CHANNELS.restore, input),
+  },
+  sparkWallet: {
+    snapshot: () => ipcRenderer.invoke(SPARK_WALLET_CHANNELS.snapshot),
+    bootstrap: () => ipcRenderer.invoke(SPARK_WALLET_CHANNELS.bootstrap),
+    refresh: () => ipcRenderer.invoke(SPARK_WALLET_CHANNELS.refresh),
+    payInvoice: (input: {
+      readonly invoice: string;
+      readonly host: string;
+      readonly maxAmountMsats: number;
+    }) => ipcRenderer.invoke(SPARK_WALLET_CHANNELS.payInvoice, input),
+    disconnect: () => ipcRenderer.invoke(SPARK_WALLET_CHANNELS.disconnect),
   },
 });

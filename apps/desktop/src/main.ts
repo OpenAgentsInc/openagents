@@ -2,9 +2,11 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { Effect } from "effect";
+import type { InvoicePaymentRequest } from "@openagentsinc/lightning-effect/contracts";
 
 import { LND_RUNTIME_CHANNELS } from "./main/lndRuntimeIpc";
 import { LND_WALLET_CHANNELS } from "./main/lndWalletIpc";
+import { SPARK_WALLET_CHANNELS } from "./main/sparkWalletIpc";
 import {
   LndRuntimeManagerService,
   projectLndRuntimeSnapshotForRenderer,
@@ -15,6 +17,11 @@ import {
   LndWalletManagerService,
   projectLndWalletSnapshotForRenderer,
 } from "./main/lndWalletManager";
+import {
+  SparkWalletManagerService,
+  projectSparkWalletSnapshotForRenderer,
+  toSparkWalletManagerError,
+} from "./main/sparkWalletManager";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -187,6 +194,57 @@ const registerLndWalletIpcHandlers = (): void => {
   );
 };
 
+const registerSparkWalletIpcHandlers = (): void => {
+  ipcMain.handle(SPARK_WALLET_CHANNELS.snapshot, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* SparkWalletManagerService;
+        const snapshot = yield* manager.snapshot();
+        return projectSparkWalletSnapshotForRenderer(snapshot);
+      }),
+    ),
+  );
+
+  ipcMain.handle(SPARK_WALLET_CHANNELS.bootstrap, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* SparkWalletManagerService;
+        yield* manager.bootstrap();
+      }),
+    ),
+  );
+
+  ipcMain.handle(SPARK_WALLET_CHANNELS.refresh, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* SparkWalletManagerService;
+        const snapshot = yield* manager.refresh();
+        return projectSparkWalletSnapshotForRenderer(snapshot);
+      }),
+    ),
+  );
+
+  ipcMain.handle(
+    SPARK_WALLET_CHANNELS.payInvoice,
+    async (_event, input: InvoicePaymentRequest) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const manager = yield* SparkWalletManagerService;
+          return yield* manager.payInvoice(input);
+        }),
+      ),
+  );
+
+  ipcMain.handle(SPARK_WALLET_CHANNELS.disconnect, async () =>
+    runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* SparkWalletManagerService;
+        yield* manager.disconnect();
+      }),
+    ),
+  );
+};
+
 const startLndRuntime = async (): Promise<boolean> => {
   try {
     await runLndRuntime(
@@ -242,6 +300,45 @@ const bootstrapLndWallet = async (): Promise<void> => {
   }
 };
 
+const bootstrapSparkWallet = async (): Promise<void> => {
+  try {
+    await runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* SparkWalletManagerService;
+        yield* manager.bootstrap();
+        const snapshot = yield* manager.snapshot();
+        return snapshot;
+      }),
+    );
+
+    const status = await runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* SparkWalletManagerService;
+        return yield* manager.snapshot();
+      }),
+    );
+    console.info(
+      `[desktop:spark] wallet lifecycle=${status.lifecycle} network=${status.network} balanceSats=${status.balanceSats ?? "n/a"}`,
+    );
+  } catch (error) {
+    const mapped = toSparkWalletManagerError(error);
+    console.error(`[desktop:spark] bootstrap failed (${mapped.code}): ${mapped.message}`);
+  }
+};
+
+const disconnectSparkWallet = async (): Promise<void> => {
+  try {
+    await runLndRuntime(
+      Effect.gen(function* () {
+        const manager = yield* SparkWalletManagerService;
+        yield* manager.disconnect();
+      }),
+    );
+  } catch (error) {
+    console.error(`[desktop:spark] disconnect failed: ${String(error)}`);
+  }
+};
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -249,11 +346,13 @@ app.on("ready", () => {
   void (async () => {
     registerLndRuntimeIpcHandlers();
     registerLndWalletIpcHandlers();
+    registerSparkWalletIpcHandlers();
     if (!(await startLndRuntime())) {
       app.quit();
       return;
     }
     await bootstrapLndWallet();
+    await bootstrapSparkWallet();
     createWindow();
   })();
 });
@@ -262,6 +361,7 @@ app.on("ready", () => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
+  void disconnectSparkWallet();
   void stopLndRuntime();
   if (process.platform !== "darwin") {
     app.quit();
@@ -277,6 +377,7 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
+  void disconnectSparkWallet();
   void stopLndRuntime();
 });
 

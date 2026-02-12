@@ -4,14 +4,18 @@ import {
   L402ClientService,
   L402TransportError,
   L402TransportService,
+  makeInvoicePayerSparkLayer,
+  InvoicePayerService,
   makeInvoicePayerLndEffectLayer,
   makeSpendPolicyLayer,
+  SparkPaymentService,
   type L402FetchResult,
 } from "@openagentsinc/lightning-effect";
 import { makeLndDeterministicLayer } from "@openagentsinc/lnd-effect";
 import { Context, Effect, Layer } from "effect";
 
 import type { ExecutorTask } from "./model";
+import { SparkWalletGatewayService } from "./sparkWalletGateway";
 
 export type L402ExecutionResult = Readonly<
   | {
@@ -21,11 +25,13 @@ export type L402ExecutionResult = Readonly<
       readonly proofReference: string;
       readonly responseStatusCode: number;
       readonly cacheStatus: L402FetchResult["cacheStatus"];
+      readonly paymentBackend: "spark" | "lnd_deterministic";
     }
   | {
       readonly status: "blocked" | "failed";
       readonly errorCode: string;
       readonly denyReason: string;
+      readonly paymentBackend: "spark" | "lnd_deterministic";
     }
 >;
 
@@ -85,13 +91,20 @@ const LiveL402TransportLayer = Layer.succeed(
   }),
 );
 
-const toDeniedResult = (error: { readonly _tag: string; readonly reason?: unknown }): L402ExecutionResult => ({
+const toDeniedResult = (
+  error: { readonly _tag: string; readonly reason?: unknown },
+  paymentBackend: "spark" | "lnd_deterministic",
+): L402ExecutionResult => ({
   status: "blocked",
   errorCode: error._tag,
   denyReason: typeof error.reason === "string" && error.reason.trim().length > 0 ? error.reason.trim() : error._tag,
+  paymentBackend,
 });
 
-const toFailedResult = (error: unknown): L402ExecutionResult => {
+const toFailedResult = (
+  error: unknown,
+  paymentBackend: "spark" | "lnd_deterministic",
+): L402ExecutionResult => {
   if (error && typeof error === "object" && "_tag" in error && typeof (error as { _tag: unknown })._tag === "string") {
     const tagged = error as { readonly _tag: string; readonly reason?: unknown; readonly message?: unknown };
     const denyReason =
@@ -104,19 +117,26 @@ const toFailedResult = (error: unknown): L402ExecutionResult => {
       status: "failed",
       errorCode: tagged._tag,
       denyReason,
+      paymentBackend,
     };
   }
   return {
     status: "failed",
     errorCode: "unknown_error",
     denyReason: String(error),
+    paymentBackend,
   };
 };
 
 export const L402ExecutorLive = Layer.effect(
   L402ExecutorService,
   Effect.gen(function* () {
-    const baseDepsLayer = Layer.mergeAll(
+    const sparkWallet = yield* SparkWalletGatewayService;
+
+    const makeBaseDepsLayer = (
+      invoicePayerLayer: Layer.Layer<InvoicePayerService, never, never>,
+    ) =>
+      Layer.mergeAll(
       CredentialCacheInMemoryLayer,
       makeSpendPolicyLayer({
         defaultMaxSpendMsats: 5_000_000,
@@ -124,27 +144,57 @@ export const L402ExecutorLive = Layer.effect(
         blockedHosts: [],
       }),
       LiveL402TransportLayer,
-      makeInvoicePayerLndEffectLayer({
-        fallbackAmountMsats: "request_max",
-      }).pipe(Layer.provide(makeLndDeterministicLayer())),
+      invoicePayerLayer,
     );
-    const clientLayer = L402ClientLiveLayer.pipe(Layer.provide(baseDepsLayer));
 
-    const l402Client = yield* Effect.gen(function* () {
+    const lndClientLayer = L402ClientLiveLayer.pipe(
+      Layer.provide(
+        makeBaseDepsLayer(
+          makeInvoicePayerLndEffectLayer({
+            fallbackAmountMsats: "request_max",
+          }).pipe(Layer.provide(makeLndDeterministicLayer())),
+        ),
+      ),
+    );
+
+    const sparkPaymentLayer = Layer.succeed(
+      SparkPaymentService,
+      SparkPaymentService.of({
+        payBolt11: (request) => sparkWallet.payInvoice(request),
+      }),
+    );
+    const sparkClientLayer = L402ClientLiveLayer.pipe(
+      Layer.provide(
+        makeBaseDepsLayer(
+          makeInvoicePayerSparkLayer().pipe(
+            Layer.provide(sparkPaymentLayer),
+          ),
+        ),
+      ),
+    );
+
+    const lndClient = yield* Effect.gen(function* () {
       return yield* L402ClientService;
-    }).pipe(Effect.provide(clientLayer));
+    }).pipe(Effect.provide(lndClientLayer));
+    const sparkClient = yield* Effect.gen(function* () {
+      return yield* L402ClientService;
+    }).pipe(Effect.provide(sparkClientLayer));
 
     const execute = Effect.fn("L402Executor.execute")(function* (task: ExecutorTask) {
-      const exit = yield* Effect.either(l402Client.fetchWithL402(task.request));
+      const sparkStatus = yield* sparkWallet.snapshot();
+      const paymentBackend = sparkStatus.lifecycle === "connected" ? "spark" : "lnd_deterministic";
+      const client = paymentBackend === "spark" ? sparkClient : lndClient;
+
+      const exit = yield* Effect.either(client.fetchWithL402(task.request));
       if (exit._tag === "Left") {
         const err = exit.left as { readonly _tag?: unknown; readonly reason?: unknown };
         if (err._tag === "BudgetExceededError" || err._tag === "DomainNotAllowedError") {
           return toDeniedResult({
             _tag: String(err._tag),
             reason: err.reason,
-          });
+          }, paymentBackend);
         }
-        return toFailedResult(exit.left);
+        return toFailedResult(exit.left, paymentBackend);
       }
 
       const fetchResult = exit.right;
@@ -156,6 +206,7 @@ export const L402ExecutorLive = Layer.effect(
             proofReference: fetchResult.proofReference,
             responseStatusCode: fetchResult.statusCode,
             cacheStatus: fetchResult.cacheStatus,
+            paymentBackend,
           }
         : {
             status: "cached",
@@ -164,6 +215,7 @@ export const L402ExecutorLive = Layer.effect(
             proofReference: fetchResult.proofReference,
             responseStatusCode: fetchResult.statusCode,
             cacheStatus: fetchResult.cacheStatus,
+            paymentBackend,
           };
       return outcome;
     });

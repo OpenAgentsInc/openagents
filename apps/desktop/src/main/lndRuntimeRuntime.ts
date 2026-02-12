@@ -26,6 +26,12 @@ import {
   LndWalletManagerLive,
   type LndWalletManagerConfig,
 } from "./lndWalletManager";
+import {
+  defaultSparkWalletManagerConfig,
+  SparkWalletManagerConfigLive,
+  SparkWalletManagerLive,
+  type SparkWalletManagerConfig,
+} from "./sparkWalletManager";
 
 export type LndRuntimeManagedRuntime = ManagedRuntime.ManagedRuntime<unknown, never>;
 
@@ -34,6 +40,7 @@ export type LndMainProcessConfig = Readonly<{
   readonly secureStorage: DesktopSecureStorageConfig;
   readonly walletLocal: LndWalletLocalConfig;
   readonly walletManager: LndWalletManagerConfig;
+  readonly sparkWallet: SparkWalletManagerConfig;
 }>;
 
 export const defaultLndMainProcessConfig = (input: {
@@ -52,6 +59,10 @@ export const defaultLndMainProcessConfig = (input: {
     userDataPath: input.userDataPath,
   }),
   walletManager: defaultLndWalletManagerConfig(),
+  sparkWallet: defaultSparkWalletManagerConfig({
+    userDataPath: input.userDataPath,
+    env: input.env,
+  }),
 });
 
 export const makeLndRuntimeLayer = (config: LndMainProcessConfig) => {
@@ -78,7 +89,15 @@ export const makeLndRuntimeLayer = (config: LndMainProcessConfig) => {
   );
   const walletManagerLayer = Layer.provideMerge(LndWalletManagerLive, walletManagerDepsLayer);
 
-  return Layer.mergeAll(runtimeManagerLayer, walletManagerLayer);
+  const sparkWalletLayer = Layer.provideMerge(
+    SparkWalletManagerLive,
+    Layer.mergeAll(
+      secureStorageLayer,
+      SparkWalletManagerConfigLive(config.sparkWallet),
+    ),
+  );
+
+  return Layer.mergeAll(runtimeManagerLayer, walletManagerLayer, sparkWalletLayer);
 };
 
 export const makeLndRuntimeManagedRuntime = (input: {
