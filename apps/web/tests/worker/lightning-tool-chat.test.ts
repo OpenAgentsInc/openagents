@@ -284,6 +284,91 @@ const resetState = () => {
   state.lightningEvents.clear();
 };
 
+const finalLightningToolPart = () => {
+  const parts = state.appendPartsCalls.flatMap((call: any) => (Array.isArray(call.parts) ? call.parts : []));
+  return [...parts]
+    .map((row: any) => row?.part)
+    .reverse()
+    .find((part: any) => part?.type === "dse.tool" && part?.state !== "start");
+};
+
+const useWalletExecutorFetchMock = (input: {
+  readonly endpointUrl: string;
+  readonly quotedAmountMsats: number;
+  readonly responseBody: string;
+  readonly walletMode: "ok" | "fail";
+}) => {
+  let payCalls = 0;
+  let endpointCalls = 0;
+
+  const mockFetch = vi.fn(async (resource: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof resource === "string" ? resource : resource instanceof URL ? resource.toString() : resource.url;
+    if (url === "https://wallet-executor.example/pay-bolt11") {
+      payCalls += 1;
+      if (input.walletMode === "fail") {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: {
+              code: "wallet_backend_unavailable",
+              message: "wallet backend unavailable",
+            },
+          }),
+          { status: 502, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            payment: {
+              paymentId: `pay-${payCalls}`,
+              amountMsats: input.quotedAmountMsats,
+              preimageHex: "ab".repeat(32),
+              paidAtMs: Date.now(),
+            },
+            quotedAmountMsats: input.quotedAmountMsats,
+            windowSpendMsatsAfterPayment: input.quotedAmountMsats,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    if (url === input.endpointUrl) {
+      endpointCalls += 1;
+      const headers = new Headers(init?.headers as HeadersInit | undefined);
+      const authorization = headers.get("Authorization");
+      if (!authorization) {
+        return new Response("", {
+          status: 402,
+          headers: {
+            "www-authenticate": `L402 invoice="lnbcrt1invoice_worker_${input.quotedAmountMsats}", macaroon="mac_worker", amount_msats=${input.quotedAmountMsats}`,
+          },
+        });
+      }
+      return new Response(input.responseBody, {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    }
+
+    return new Response("not_found", { status: 404 });
+  });
+
+  vi.stubGlobal("fetch", mockFetch as typeof globalThis.fetch);
+  return {
+    getPayCalls: () => payCalls,
+    getEndpointCalls: () => endpointCalls,
+    mockFetch,
+    restore: () => {
+      vi.unstubAllGlobals();
+    },
+  };
+};
+
 describe("apps/web worker lightning_l402_fetch chat runtime", () => {
   it("invokes lightning_l402_fetch and returns queued approval intent by default", async () => {
     resetState();
@@ -458,5 +543,177 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
       .find((part: any) => part?.type === "dse.tool" && part?.state !== "start");
     expect(finalToolPart?.output?.status).toBe("blocked");
     expect(finalToolPart?.output?.denyReason).toBe("invalid_params");
+  });
+});
+
+describe("apps/web worker lightning_l402_fetch with server wallet executor", () => {
+  it("executes paid request with wallet executor and returns receipt metadata", async () => {
+    resetState();
+    const fetchMock = useWalletExecutorFetchMock({
+      endpointUrl: "https://api.example.com/l402-success",
+      quotedAmountMsats: 1_500,
+      responseBody: '{"premium":"ok"}',
+      walletMode: "ok",
+    });
+
+    try {
+      const request = new Request("http://example.com/api/autopilot/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadId: "thread-lightning-wallet-success",
+          text: 'lightning_l402_fetch({"url":"https://api.example.com/l402-success","maxSpendMsats":2000,"requireApproval":false})',
+        }),
+      });
+
+      const ctx = createExecutionContext();
+      const envWithAi = Object.assign(Object.create(env as any), {
+        AI: {},
+        OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL: "https://wallet-executor.example",
+      }) as any;
+      const response = await worker.fetch(request, envWithAi, ctx);
+      expect(response.status).toBe(200);
+      await waitOnExecutionContext(ctx);
+
+      expect(fetchMock.getPayCalls()).toBe(1);
+      const finalToolPart = finalLightningToolPart();
+      expect(finalToolPart?.output?.status).toBe("completed");
+      expect(finalToolPart?.output?.paymentBackend).toBe("spark");
+      expect(finalToolPart?.output?.paid).toBe(true);
+      expect(finalToolPart?.output?.cacheStatus).toBe("miss");
+      expect(finalToolPart?.output?.responseBodyTextPreview).toBe('{"premium":"ok"}');
+      expect(typeof finalToolPart?.output?.responseBodySha256).toBe("string");
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  it("reuses cached credential on repeat request without a second payment", async () => {
+    resetState();
+    const fetchMock = useWalletExecutorFetchMock({
+      endpointUrl: "https://api.example.com/l402-cache",
+      quotedAmountMsats: 1_200,
+      responseBody: '{"cached":true}',
+      walletMode: "ok",
+    });
+
+    try {
+      const envWithAi = Object.assign(Object.create(env as any), {
+        AI: {},
+        OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL: "https://wallet-executor.example",
+      }) as any;
+
+      const first = new Request("http://example.com/api/autopilot/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadId: "thread-lightning-wallet-cache",
+          text: 'lightning_l402_fetch({"url":"https://api.example.com/l402-cache","maxSpendMsats":2000,"requireApproval":false})',
+        }),
+      });
+      const firstCtx = createExecutionContext();
+      const firstRes = await worker.fetch(first, envWithAi, firstCtx);
+      expect(firstRes.status).toBe(200);
+      await waitOnExecutionContext(firstCtx);
+      expect(fetchMock.getPayCalls()).toBe(1);
+
+      const second = new Request("http://example.com/api/autopilot/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadId: "thread-lightning-wallet-cache",
+          text: 'lightning_l402_fetch({"url":"https://api.example.com/l402-cache","maxSpendMsats":2000,"requireApproval":false})',
+        }),
+      });
+      const secondCtx = createExecutionContext();
+      const secondRes = await worker.fetch(second, envWithAi, secondCtx);
+      expect(secondRes.status).toBe(200);
+      await waitOnExecutionContext(secondCtx);
+
+      expect(fetchMock.getPayCalls()).toBe(1);
+      const finalToolPart = finalLightningToolPart();
+      expect(finalToolPart?.output?.status).toBe("cached");
+      expect(finalToolPart?.output?.cacheHit).toBe(true);
+      expect(finalToolPart?.output?.paid).toBe(false);
+      expect(finalToolPart?.output?.cacheStatus).toBe("hit");
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  it("blocks over-cap invoice before payment using deterministic deny reason", async () => {
+    resetState();
+    const fetchMock = useWalletExecutorFetchMock({
+      endpointUrl: "https://api.example.com/l402-overcap",
+      quotedAmountMsats: 9_999,
+      responseBody: '{"shouldNot":"happen"}',
+      walletMode: "ok",
+    });
+
+    try {
+      const request = new Request("http://example.com/api/autopilot/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadId: "thread-lightning-wallet-overcap",
+          text: 'lightning_l402_fetch({"url":"https://api.example.com/l402-overcap","maxSpendMsats":1000,"requireApproval":false})',
+        }),
+      });
+
+      const ctx = createExecutionContext();
+      const envWithAi = Object.assign(Object.create(env as any), {
+        AI: {},
+        OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL: "https://wallet-executor.example",
+      }) as any;
+      const response = await worker.fetch(request, envWithAi, ctx);
+      expect(response.status).toBe(200);
+      await waitOnExecutionContext(ctx);
+
+      expect(fetchMock.getPayCalls()).toBe(0);
+      const finalToolPart = finalLightningToolPart();
+      expect(finalToolPart?.output?.status).toBe("blocked");
+      expect(finalToolPart?.output?.denyReasonCode).toBe("amount_over_cap");
+      expect(finalToolPart?.output?.quotedAmountMsats).toBe(9_999);
+      expect(finalToolPart?.output?.maxSpendMsats).toBe(1_000);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  it("surfaces wallet executor failures as deterministic failed status", async () => {
+    resetState();
+    const fetchMock = useWalletExecutorFetchMock({
+      endpointUrl: "https://api.example.com/l402-wallet-fail",
+      quotedAmountMsats: 1_500,
+      responseBody: '{"unused":true}',
+      walletMode: "fail",
+    });
+
+    try {
+      const request = new Request("http://example.com/api/autopilot/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadId: "thread-lightning-wallet-failure",
+          text: 'lightning_l402_fetch({"url":"https://api.example.com/l402-wallet-fail","maxSpendMsats":2000,"requireApproval":false})',
+        }),
+      });
+
+      const ctx = createExecutionContext();
+      const envWithAi = Object.assign(Object.create(env as any), {
+        AI: {},
+        OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL: "https://wallet-executor.example",
+      }) as any;
+      const response = await worker.fetch(request, envWithAi, ctx);
+      expect(response.status).toBe(200);
+      await waitOnExecutionContext(ctx);
+
+      expect(fetchMock.getPayCalls()).toBe(1);
+      const finalToolPart = finalLightningToolPart();
+      expect(finalToolPart?.output?.status).toBe("failed");
+      expect(finalToolPart?.output?.denyReason).toContain("wallet_backend_unavailable");
+    } finally {
+      fetchMock.restore();
+    }
   });
 });

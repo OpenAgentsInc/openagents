@@ -61,4 +61,18 @@ export type WorkerEnv = {
    */
   readonly OA_EP212_ENDPOINT_A_URL?: string
   readonly OA_EP212_ENDPOINT_B_URL?: string
+
+  /**
+   * Server-side Spark wallet executor used for L402 buyer flows.
+   */
+  readonly OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL?: string
+  readonly OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN?: string
+  readonly OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS?: string
+
+  /**
+   * Optional host policy guardrails for L402 buyer requests.
+   * Comma-separated hostnames.
+   */
+  readonly OA_LIGHTNING_L402_ALLOWED_HOSTS?: string
+  readonly OA_LIGHTNING_L402_BLOCKED_HOSTS?: string
 }
