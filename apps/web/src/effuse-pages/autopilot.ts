@@ -31,10 +31,20 @@ export type L402PaymentStateCardModel = {
   readonly url?: string | undefined;
   readonly method?: string | undefined;
   readonly maxSpendMsats?: number | undefined;
+  readonly quotedAmountMsats?: number | undefined;
   readonly amountMsats?: number | undefined;
   readonly responseStatusCode?: number | undefined;
+  readonly responseContentType?: string | undefined;
+  readonly responseBytes?: number | undefined;
+  readonly responseBodySha256?: string | undefined;
+  readonly cacheHit?: boolean | undefined;
+  readonly paid?: boolean | undefined;
+  readonly cacheStatus?: string | undefined;
+  readonly paymentBackend?: string | undefined;
   readonly proofReference?: string | undefined;
   readonly denyReason?: string | undefined;
+  readonly denyReasonCode?: string | undefined;
+  readonly host?: string | undefined;
   readonly statusLabel?: string | undefined;
 };
 
@@ -232,6 +242,9 @@ const formatMsats = (value: number | undefined): string => {
   return `${sats.toLocaleString(undefined, { maximumFractionDigits: 3 })} sats (${Math.round(value).toLocaleString()} msats)`;
 };
 
+const maybeFormatMsats = (value: number | undefined): string | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? formatMsats(value) : undefined;
+
 const paymentStateBadge = (state: PaymentStateKind): TemplateResult => {
   const cls =
     state === "payment.sent" || state === "payment.cached"
@@ -272,10 +285,20 @@ export const renderPaymentStateCard = (model: L402PaymentStateCardModel): Templa
         ${dseRow("url", model.url)}
         ${dseRow("method", model.method)}
         ${dseRow("maxSpend", formatMsats(model.maxSpendMsats))}
+        ${dseRow("quoted", maybeFormatMsats(model.quotedAmountMsats))}
         ${dseRow("amount", formatMsats(model.amountMsats))}
         ${dseRow("responseStatus", model.responseStatusCode)}
+        ${dseRow("contentType", model.responseContentType)}
+        ${dseRow("responseBytes", model.responseBytes)}
+        ${dseRow("responseSha", model.responseBodySha256)}
+        ${dseRow("cacheHit", model.cacheHit === undefined ? undefined : String(model.cacheHit))}
+        ${dseRow("paid", model.paid === undefined ? undefined : String(model.paid))}
+        ${dseRow("cacheStatus", model.cacheStatus)}
+        ${dseRow("paymentBackend", model.paymentBackend)}
         ${dseRow("proofReference", model.proofReference)}
         ${dseRow("denyReason", model.denyReason)}
+        ${dseRow("denyCode", model.denyReasonCode)}
+        ${dseRow("host", model.host)}
         ${dseRow("status", model.statusLabel)}
       </div>
       ${model.state === "payment.intent" && typeof model.taskId === "string" && model.taskId.length > 0

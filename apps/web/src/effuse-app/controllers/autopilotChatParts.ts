@@ -47,6 +47,9 @@ const asString = (value: unknown): string | undefined =>
 const asFiniteNumber = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined
 
+const asBoolean = (value: unknown): boolean | undefined =>
+  typeof value === "boolean" ? value : undefined
+
 const asTextState = (value: unknown): "streaming" | "done" | undefined =>
   value === "streaming" || value === "done" ? value : undefined
 
@@ -227,6 +230,15 @@ export type L402PaymentMetadata = {
   readonly paymentId?: string
   readonly amountMsats?: number
   readonly responseStatusCode?: number
+  readonly responseContentType?: string
+  readonly responseBytes?: number
+  readonly responseBodyTextPreview?: string
+  readonly responseBodySha256?: string
+  readonly cacheHit?: boolean
+  readonly paid?: boolean
+  readonly cacheStatus?: string
+  readonly paymentBackend?: string
+  readonly approvalRequired?: boolean
   readonly proofReference?: string
   readonly denyReason?: string
   readonly denyReasonCode?: string
@@ -313,10 +325,20 @@ const paymentStateCardFromTool = (opts: {
       url: metadata.url,
       method: metadata.method,
       maxSpendMsats: metadata.maxSpendMsats,
+      quotedAmountMsats: metadata.quotedAmountMsats,
       amountMsats: metadata.amountMsats,
       responseStatusCode: metadata.responseStatusCode,
+      responseContentType: metadata.responseContentType,
+      responseBytes: metadata.responseBytes,
+      responseBodySha256: metadata.responseBodySha256,
+      cacheHit: metadata.cacheHit,
+      paid: metadata.paid,
+      cacheStatus: metadata.cacheStatus,
+      paymentBackend: metadata.paymentBackend,
       proofReference: metadata.proofReference,
       denyReason: deniedReason,
+      denyReasonCode: metadata.denyReasonCode,
+      host: metadata.host,
       statusLabel: metadata.status,
     }
   }
@@ -386,6 +408,15 @@ const toL402PaymentMetadata = (opts: {
     paymentId: asString(output?.paymentId),
     amountMsats: asFiniteNumber(output?.amountMsats) ?? asFiniteNumber(input?.maxSpendMsats),
     responseStatusCode: asFiniteNumber(output?.responseStatusCode),
+    responseContentType: asString(output?.responseContentType),
+    responseBytes: asFiniteNumber(output?.responseBytes),
+    responseBodyTextPreview: asString(output?.responseBodyTextPreview),
+    responseBodySha256: asString(output?.responseBodySha256),
+    cacheHit: asBoolean(output?.cacheHit),
+    paid: asBoolean(output?.paid),
+    cacheStatus: asString(output?.cacheStatus),
+    paymentBackend: asString(output?.paymentBackend),
+    approvalRequired: asBoolean(output?.approvalRequired),
     proofReference: asString(output?.proofReference),
     denyReason: asString(output?.denyReason),
     denyReasonCode: asString(output?.denyReasonCode),
