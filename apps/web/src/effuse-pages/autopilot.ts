@@ -278,6 +278,20 @@ export const renderPaymentStateCard = (model: L402PaymentStateCardModel): Templa
         ${dseRow("denyReason", model.denyReason)}
         ${dseRow("status", model.statusLabel)}
       </div>
+      ${model.state === "payment.intent" && typeof model.taskId === "string" && model.taskId.length > 0
+        ? html`
+            <div class="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                data-oa-l402-approve="1"
+                data-task-id="${model.taskId}"
+                class="h-8 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-mono text-white/85 hover:bg-white/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+              >
+                Approve payment
+              </button>
+            </div>
+          `
+        : null}
     </section>
   `;
 };

@@ -14,6 +14,7 @@ import { AuthGatewayService } from "../src/effect/authGateway";
 import { ConnectivityProbeService } from "../src/effect/connectivity";
 import { DesktopAppService } from "../src/effect/app";
 import { makeDesktopLayer } from "../src/effect/layer";
+import { TaskProviderService } from "../src/effect/taskProvider";
 import type {
   DesktopRuntimeState,
   ExecutorTask,
@@ -614,7 +615,7 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
         authGateway: authGatewayTestLayer,
         connectivity: connectivityTestLayer,
       },
-    );
+    ) as unknown as Layer.Layer<DesktopAppService | TaskProviderService, never, never>;
 
     return withFetchHarness(
       harness,
@@ -626,14 +627,32 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
         const queuedTask = yield* app.enqueueDemoTask(`${harness.sellerBaseUrl}/premium-success`);
         expect(queuedTask.status).toBe("queued");
 
+        // Executor must not run queued tasks (approval gating).
         yield* app.tickExecutor();
 
         const tasks = yield* app.listTasks();
-        const completedTask = tasks.find((task) => task.id === queuedTask.id);
+        const stillQueuedTask = tasks.find((task) => task.id === queuedTask.id);
+        expect(stillQueuedTask?.status).toBe("queued");
+        expect(harness.eventsForTask(queuedTask.id)).toHaveLength(0);
+        expect(harness.sellerCalls).toHaveLength(0);
+
+        // Approve then execute.
+        const taskProvider = yield* TaskProviderService;
+        yield* taskProvider.transitionTask({
+          taskId: queuedTask.id,
+          token: harness.expectedToken,
+          toStatus: "approved",
+          reason: "test_approval",
+        });
+
+        yield* app.tickExecutor();
+
+        const tasksAfter = yield* app.listTasks();
+        const completedTask = tasksAfter.find((task) => task.id === queuedTask.id);
         expect(completedTask?.status).toBe("completed");
 
         const events = harness.eventsForTask(queuedTask.id);
-        expect(events.map((event) => event.toStatus)).toEqual(["running", "paid", "completed"]);
+        expect(events.map((event) => event.toStatus)).toEqual(["approved", "running", "paid", "completed"]);
 
         const createCall = harness.apiCalls.find(
           (call) => call.path === "/api/lightning/l402/tasks" && call.method === "POST",
@@ -658,7 +677,7 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
         const proofReference = asString(paidMetadata?.proofReference);
         const paymentId = asString(paidMetadata?.paymentId) ?? null;
 
-        expect(transitionRequestIds.length).toBe(3);
+        expect(transitionRequestIds.length).toBe(4);
         for (const requestId of transitionRequestIds) {
           expect(requestId).toMatch(/^desktop-/);
         }
@@ -731,7 +750,7 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
         authGateway: authGatewayTestLayer,
         connectivity: connectivityTestLayer,
       },
-    );
+    ) as unknown as Layer.Layer<DesktopAppService | TaskProviderService, never, never>;
 
     return withFetchHarness(
       harness,
@@ -743,15 +762,33 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
         const queuedTask = yield* app.enqueueDemoTask(`${harness.sellerBaseUrl}/premium-overbudget`);
         expect(queuedTask.status).toBe("queued");
 
+        // Executor must not run queued tasks (approval gating).
         yield* app.tickExecutor();
 
         const tasks = yield* app.listTasks();
-        const blockedTask = tasks.find((task) => task.id === queuedTask.id);
+        const stillQueuedTask = tasks.find((task) => task.id === queuedTask.id);
+        expect(stillQueuedTask?.status).toBe("queued");
+        expect(harness.eventsForTask(queuedTask.id)).toHaveLength(0);
+        expect(harness.sellerCalls).toHaveLength(0);
+
+        // Approve then execute (expected to block before payment).
+        const taskProvider = yield* TaskProviderService;
+        yield* taskProvider.transitionTask({
+          taskId: queuedTask.id,
+          token: harness.expectedToken,
+          toStatus: "approved",
+          reason: "test_approval",
+        });
+
+        yield* app.tickExecutor();
+
+        const tasksAfter = yield* app.listTasks();
+        const blockedTask = tasksAfter.find((task) => task.id === queuedTask.id);
         expect(blockedTask?.status).toBe("blocked");
         expect(blockedTask?.failureReason).toContain("Quoted invoice amount exceeds configured spend cap");
 
         const events = harness.eventsForTask(queuedTask.id);
-        expect(events.map((event) => event.toStatus)).toEqual(["running", "blocked"]);
+        expect(events.map((event) => event.toStatus)).toEqual(["approved", "running", "blocked"]);
 
         const blockedEvent = events.find((event) => event.toStatus === "blocked");
         expect(blockedEvent?.requestId).toMatch(/^desktop-/);

@@ -84,6 +84,7 @@ const AUTOPILOT_TOOLKIT = AiToolkit.make(
   aiToolFromContract(toolContracts.get_time),
   aiToolFromContract(toolContracts.echo),
   aiToolFromContract(toolContracts.lightning_l402_fetch),
+  aiToolFromContract(toolContracts.lightning_l402_approve),
   aiToolFromContract(toolContracts.lightning_paywall_create),
   aiToolFromContract(toolContracts.lightning_paywall_update),
   aiToolFromContract(toolContracts.lightning_paywall_pause),
@@ -1109,6 +1110,22 @@ export class Chat extends Agent<Env> {
               paid: false,
               cacheStatus: null,
               paymentBackend: null,
+              approvalRequired: false,
+            };
+          },
+          catch: (cause) => cause,
+        }),
+
+      lightning_l402_approve: (input: any) =>
+        Effect.try({
+          try: () => {
+            const decoded = Schema.decodeUnknownSync(toolContracts.lightning_l402_approve.input)(input);
+            return {
+              taskId: decoded.taskId,
+              ok: false,
+              changed: false,
+              taskStatus: null,
+              denyReason: "desktop_executor_not_configured_in_do_runtime",
             };
           },
           catch: (cause) => cause,

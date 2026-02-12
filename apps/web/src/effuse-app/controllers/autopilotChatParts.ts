@@ -158,6 +158,7 @@ const toToolStatus = (state: string): ToolPartStatus => {
 const toToolStatusFromDseState = (state: string): ToolPartStatus => {
   if (state === "ok") return "tool-result"
   if (state === "error") return "tool-error"
+  if (state === "approval-requested" || state === "approval-responded") return "tool-approval"
   return "tool-call"
 }
 

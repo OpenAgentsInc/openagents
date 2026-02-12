@@ -144,7 +144,8 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         state.lightningGetTaskCalls.push(args);
         const task = state.lightningTasks.get(args.taskId);
         if (!task) return { ok: true, task: null };
-        if (task.status === "queued") {
+        // Simulate the desktop executor completing work after explicit approval.
+        if (task.status === "approved") {
           task.status = state.terminalMode;
           task.updatedAtMs = Date.now();
           state.lightningTasks.set(args.taskId, task);
@@ -206,6 +207,14 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         state.lightningTransitionTaskCalls.push(args);
         const task = state.lightningTasks.get(args.taskId);
         if (!task) return { ok: false };
+        if (task.status === args.toStatus) {
+          return {
+            ok: true,
+            changed: false,
+            task,
+            event: null,
+          };
+        }
         task.status = args.toStatus;
         task.lastErrorCode = args.errorCode ?? undefined;
         task.lastErrorMessage = args.errorMessage ?? undefined;
@@ -259,7 +268,7 @@ const resetState = () => {
 };
 
 describe("apps/web worker lightning_l402_fetch chat runtime", () => {
-  it("invokes lightning_l402_fetch and completes with blocked terminal state", async () => {
+  it("invokes lightning_l402_fetch and returns queued approval intent by default", async () => {
     resetState();
     state.terminalMode = "blocked";
 
@@ -280,6 +289,48 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
 
     expect(state.modelStreamCalls).toBe(0);
     expect(state.lightningCreateTaskCalls).toHaveLength(1);
+    expect(state.lightningTransitionTaskCalls).toHaveLength(0);
+    expect(state.lightningGetTaskCalls).toHaveLength(0);
+    expect(state.lightningListTaskEventsCalls).toHaveLength(0);
+
+    const parts = state.appendPartsCalls.flatMap((call: any) => (Array.isArray(call.parts) ? call.parts : []));
+    const finalToolPart = [...parts]
+      .map((row: any) => row?.part)
+      .reverse()
+      .find((part: any) => part?.type === "dse.tool" && part?.state !== "start");
+    expect(finalToolPart?.toolName).toBe("lightning_l402_fetch");
+    expect(finalToolPart?.state).toBe("approval-requested");
+    expect(finalToolPart?.output?.status).toBe("queued");
+    expect(finalToolPart?.output?.approvalRequired).toBe(true);
+    expect(String(finalToolPart?.output?.taskId ?? "")).toMatch(/^task-/);
+
+    const finalized = state.finalizeRunCalls.at(-1);
+    expect(finalized?.status).toBe("final");
+    expect(String(finalized?.text ?? "")).toContain("Approval required");
+  });
+
+  it("invokes lightning_l402_fetch and completes with blocked terminal state when approval is disabled", async () => {
+    resetState();
+    state.terminalMode = "blocked";
+
+    const request = new Request("http://example.com/api/autopilot/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        threadId: "thread-lightning-2",
+        text: 'lightning_l402_fetch({"url":"https://api.example.com/premium","maxSpendMsats":1200,"requireApproval":false})',
+      }),
+    });
+
+    const ctx = createExecutionContext();
+    const envWithAi = Object.assign(Object.create(env as any), { AI: {} }) as any;
+    const response = await worker.fetch(request, envWithAi, ctx);
+    expect(response.status).toBe(200);
+    await waitOnExecutionContext(ctx);
+
+    expect(state.modelStreamCalls).toBe(0);
+    expect(state.lightningCreateTaskCalls).toHaveLength(1);
+    expect(state.lightningTransitionTaskCalls).toHaveLength(1);
     expect(state.lightningGetTaskCalls.length).toBeGreaterThan(0);
     expect(state.lightningListTaskEventsCalls).toHaveLength(1);
 
@@ -291,6 +342,7 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
     expect(finalToolPart?.toolName).toBe("lightning_l402_fetch");
     expect(finalToolPart?.output?.status).toBe("blocked");
     expect(finalToolPart?.output?.denyReason).toBe("policy_denied");
+    expect(finalToolPart?.output?.approvalRequired).toBe(false);
 
     const finalized = state.finalizeRunCalls.at(-1);
     expect(finalized?.status).toBe("final");
@@ -306,7 +358,7 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         threadId: "thread-lightning-2",
-        text: 'lightning_l402_fetch({"url":"https://api.example.com/paid","maxSpendMsats":900})',
+        text: 'lightning_l402_fetch({"url":"https://api.example.com/paid","maxSpendMsats":900,"requireApproval":false})',
       }),
     });
 
@@ -334,6 +386,7 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
     expect(finalToolPart?.output?.paid).toBe(true);
     expect(finalToolPart?.output?.cacheStatus).toBe("miss");
     expect(finalToolPart?.output?.paymentBackend).toBe("spark");
+    expect(finalToolPart?.output?.approvalRequired).toBe(false);
   });
 
   it("rejects invalid tool params via schema validation", async () => {
