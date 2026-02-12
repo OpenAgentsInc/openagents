@@ -1,4 +1,4 @@
-# EP212 Demo Plan: Lightning Labs-Centric L402 Buying (Aperture + Voltage) on openagents.com
+# EP212 Demo Plan: L402 Buying on openagents.com (Agent-Owned Spark Wallet + sats4ai + OpenAgents Aperture/Voltage)
 
 Status: Draft
 Date: 2026-02-12
@@ -6,39 +6,50 @@ Owner: OpenAgents
 
 ## 1. Demo Goal
 
-Show, inside `openagents.com`, that Autopilot can consume paid endpoints using Lightning Labs L402 flows with clear budget guardrails and receipts.
+Show, inside `openagents.com`, that Autopilot can consume paid endpoints using Lightning Labs L402 flows with clear budget guardrails and receipts, using a real Lightning wallet owned by the agent.
 
 Narrative continuation from EP211:
 
 - EP211: "ask for capabilities, they get added quickly"
 - EP212: "we added paid API consumption over Lightning"
 
+EP212 framing:
+
+- L402 is "pay-per-use over HTTP": macaroons (token) + Lightning invoice (payment) + preimage (proof) = access.
+- We will demonstrate:
+  - Paying a third-party L402 API (`sats4ai.com`) from the agent wallet.
+  - Paying an OpenAgents-hosted L402 endpoint (Aperture + Voltage) from the same wallet.
+
 ## 2. Hard Requirements for EP212
 
 1. Effect-first architecture only.
 2. New reusable package: `packages/lightning-effect` (usable by other projects).
 3. Demo runs through `openagents.com` chat UX (not a standalone CLI-only demo).
-4. Payment execution and wallet access run from a desktop companion app (Electron), not browser/Worker.
-5. Web app and desktop app are correlated by the same authenticated OpenAgents user via Convex.
-6. Consume at least two paid endpoints.
-7. Show one successful payment and one policy guardrail event.
-8. Show receipts/proof reference in product UI/logs.
+4. **No desktop dependency for EP212**: payment execution runs in OpenAgents infra, not on the viewer’s machine.
+5. Autopilot uses an **agent-owned Spark wallet** (Breez Spark) with keys stored in an OpenAgents secret manager.
+6. Show **live wallet balance** on screen during the chat (Spark wallet status).
+7. Consume at least two L402 endpoints:
+   - Third-party: `sats4ai.com` (text generation).
+   - OpenAgents: `l402.openagents.com` (Aperture + Voltage) route.
+8. Show one successful payment and one policy guardrail event.
+9. Show receipts/proof reference in product UI/logs (payment id, amount, cache hit, response hash).
 
 ## 3. Scope for This Episode (and only this episode)
 
 ## In scope
 
 - Buyer-side L402 flow (402 challenge -> pay -> retry -> response).
-- Use the **OpenAgents-hosted L402 gateway** (Lightning Labs **Aperture**) connected to our **Voltage** node, so the demo has deterministic seller behavior.
-- One small upstream “premium feed” backend behind the gateway (can be a tiny service; it does not need any Lightning code).
-- Electron desktop companion app setup for wallet/payment execution.
+- Third-party paid endpoint integration: `https://sats4ai.com/api/l402/text-generation`.
+- OpenAgents-hosted L402 endpoint: **Aperture** on Cloud Run connected to **Voltage** LND + Cloud SQL Postgres.
+- Agent-owned Spark wallet execution in OpenAgents infra (server-side) for payments.
 - Chat-visible payment state in `openagents.com`.
 - Budget cap + allowlist guardrails.
-- `lightning-effect` package scaffold with real working core.
+- `lightning-effect` package core (L402 parsing, policy, retry, caching).
+- Minimal web panes for wallet + transactions + payment detail (episode legibility).
 
 ## Out of scope
 
-- Full wallet dashboard.
+- A full self-custodial user wallet experience in the browser.
 - Full seller marketplace.
 - Mobile/desktop full parity.
 - Production-grade multi-tenant billing/reconciliation.
@@ -47,12 +58,13 @@ Narrative continuation from EP211:
 
 User in Autopilot chat on `openagents.com`:
 
-1. "Fetch premium signal feed for BTC and summarize it. Max 100 sats."
-2. Autopilot shows spend intent and asks for approval.
+1. "Use L402 to call a paid API. Max 100 sats. Explain what’s happening."
+2. Autopilot shows spend intent and asks for approval (cap + domain).
 3. User approves.
-4. Autopilot pays L402 endpoint and returns premium data summary.
-5. User asks same query again; Autopilot reuses cached L402 credential (no second payment).
-6. User asks expensive endpoint with low cap; Autopilot blocks with policy message.
+4. Autopilot calls `sats4ai` text-generation behind L402, returns result, and shows payment receipt details.
+5. User repeats the same request; Autopilot reuses cached credential (no second payment).
+6. Autopilot calls an OpenAgents-hosted L402 endpoint (Aperture + Voltage) and returns premium payload summary.
+7. User requests an over-cap route; Autopilot blocks **before payment** with a clear policy reason.
 
 ## 5. Architecture (Effect-First)
 
@@ -92,64 +104,73 @@ Design constraint:
 1. `openagents.com` browser app (`apps/web`)
    - Captures user intent in chat.
    - Shows payment states and proof references.
-   - Renders wallet/transactions/payment panes from task status.
+   - Shows wallet/transactions/payment panes for the agent wallet.
 2. OpenAgents Worker path (`apps/web` Worker surface)
    - Validates tool request schemas.
    - Applies preflight policy checks.
-   - Writes an execution task to Convex for the same authenticated user.
+   - Orchestrates the L402 fetch tool call.
 3. Convex (`apps/web/convex`)
-   - Acts as command/result bus.
-   - Stores task lifecycle (`queued`, `approved`, `running`, `paid`, `cached`, `blocked`, `failed`, `completed`).
-   - Stores proof references and denial reasons for replay in web UI/panes.
-4. Desktop companion app (new Electron app)
-   - Runs `lightning-effect` live layers plus payment adapter.
-   - Owns wallet/payment execution and L402 challenge handling.
-   - Polls/subscribes for assigned user tasks, executes them, writes result back to Convex.
-5. **OpenAgents L402 gateway** (seller/paywall)
+   - Stores durable receipts/logs for UI replay (payment attempts, cache hit/miss, policy decisions).
+   - Stores agent wallet “status snapshot” rows used by panes (balance, last payment, last error).
+4. **Agent wallet executor (Spark)** (new service; server-side)
+   - Runs Breez Spark SDK (Node runtime) and implements:
+     - `payBolt11` (returns preimage)
+     - `walletStatus` (balance, payments)
+   - Exposes a narrow RPC API (HTTP) to the Worker/autopilot tool layer.
+   - Loads seed material from secret manager; never ships keys to the browser.
+5. Third-party L402 seller: `sats4ai.com`
+   - Paid endpoint: `https://sats4ai.com/api/l402/text-generation`
+6. **OpenAgents L402 gateway** (seller/paywall)
    - **Aperture** deployed on **GCP Cloud Run**, connected to **Voltage LND** (gRPC) and **Cloud SQL Postgres**.
    - Emits `402 Payment Required` challenges (invoice + macaroon) and proxies authenticated requests to upstream.
-6. Upstream demo backend (behind the paywall)
+7. Upstream demo backend (behind the paywall)
    - Any normal HTTP service (Cloud Run is fine). Not L402-aware; Aperture handles L402 for it.
 
 Security boundary for EP212:
 
 1. No wallet keys, macaroon secrets, or preimages are persisted in browser code.
-2. Worker and Convex carry references/metadata; sensitive wallet execution remains in desktop app.
-3. Remote signer split is a post-EP212 hardening step; EP212 demo can run single desktop app mode.
+2. Wallet seed material is stored only in server-side secret manager and used only by the wallet executor service.
+3. The Worker/autopilot tool layer never receives the seed phrase; it receives payment results (preimage) only as needed for L402 authorization.
 
 ## 5.3 openagents.com + Autopilot integration points
 
-1. `apps/web/src/effect/lightning.ts`
-   - Client-side Effect service for task creation/status subscription.
-2. Worker endpoint:
-   - `POST /api/lightning/l402/tasks`
-   - Creates task records only (does not execute wallet payment).
-3. Autopilot path:
-   - Add one tool contract (`lightning_l402_fetch`) that schedules a task and awaits status updates.
-4. UI surface:
+1. Autopilot tool:
+   - `lightning_l402_fetch` executes a paid HTTP request using the agent Spark wallet.
+   - It must support a hard spend cap (`maxSpendSats`) + allowlist.
+2. Wallet executor RPC:
+   - `POST /api/lightning/spark/pay-bolt11`
+   - `GET /api/lightning/spark/status`
+   - Optional combined: `POST /api/lightning/l402/fetch` (executes the full 402->pay->retry).
+3. UI surface:
    - Chat part/status lines for:
    - `payment.intent`
    - `payment.sent`
    - `payment.cached`
    - `payment.blocked`
    - `payment.failed`
+4. Panes:
+   - Wallet (Spark balance + last payments)
+   - Transactions (L402 attempts across sats4ai + OA gateway)
+   - Payment detail (invoice, preimage hash ref, response hash, cache hit)
 
-## 5.4 Existing Endpoint Selection for Demo
+## 5.4 Endpoint Selection for Demo
 
-Use at least two L402-gated endpoints hosted on our gateway:
+Use two L402 endpoints with different trust domains:
 
-1. Endpoint A (target happy path):
-   - priced under demo cap (example cap: 100 sats)
-2. Endpoint B (target deny path):
-   - priced above demo cap (so we can demonstrate “blocked before paying” after seeing the quoted invoice amount)
+1. Endpoint A (third-party, “explain L402” segment):
+   - `POST https://sats4ai.com/api/l402/text-generation`
+   - Demonstrate the two-step L402 shape (402 challenge → pay invoice → retry with preimage)
+2. Endpoint B (OpenAgents gateway, deterministic):
+   - `https://l402.openagents.com/...` (Aperture)
+   - One route under cap (success) and one route over cap (blocked pre-payment after quoting invoice)
 
 Selection requirements:
 
-1. Domain + route path are stable and controlled by OpenAgents.
-2. Price behavior is deterministic.
+1. sats4ai request/response is stable enough to rehearse and record.
+2. OpenAgents gateway domain + routes are stable and controlled by OpenAgents.
 3. Host matching works in browser without custom headers:
-   - Prefer a real domain like `l402.openagents.com` mapped to the Cloud Run service.
-   - Ensure Aperture `services.host` matches the domain we use in the demo.
+   - Prefer `l402.openagents.com` mapped to Cloud Run.
+   - Ensure Aperture `services.host` matches the domain used in the demo.
 
 References:
 
@@ -198,169 +219,165 @@ Rendering and state constraints:
 
 ## 6. Endpoint Consumption Plan (Demo-Focused)
 
-## Endpoint A (happy path)
+## Endpoint A: sats4ai text generation (paid, third-party)
 
-- Cap: 100 sats
-- Price: below cap
-- Expected: payment approved + success + summary
+We will mirror the “Understanding L402” story in the episode:
 
-## Endpoint A repeat call (cache path)
+1. Initial request returns `402 Payment Required` with:
+   - `www-authenticate: L402 macaroon="...", invoice="..."`
+2. The wallet pays the invoice and returns a preimage.
+3. The same request is repeated with:
+   - `Authorization: L402 <macaroon>:<preimage>` (sats4ai docs format)
+
+Implementation note:
+
+- `packages/lightning-effect` currently serializes:
+  - `Authorization: L402 macaroon="...", preimage="..."`
+- For EP212 we must support sats4ai’s accepted format, either by:
+  - host-specific header serialization, or
+  - trying both formats on retry when the first fails (bounded, deterministic).
+
+Expected:
+
+- User approves spend cap.
+- Payment succeeds and the response is returned in chat.
+- Receipt metadata is shown (amount, payment id, response hash).
+
+## Endpoint A repeat call: sats4ai cache hit
 
 - Same domain + credential scope
 - Expected: cached L402 credential reuse; no new payment
 
-## Endpoint B (policy deny path)
+## Endpoint B: OpenAgents Aperture + Voltage (paid, deterministic)
 
-- Cap: 100 sats
-- Price: above cap or blocked by allowlist policy
-- Expected: blocked before payment with clear explanation
+We will have two routes behind `l402.openagents.com`:
+
+1. Endpoint B1 (success): priced under cap.
+2. Endpoint B2 (block): priced above cap so we can show a clean deny path after seeing the quoted invoice amount.
+
+Expected:
+
+- One paid request succeeds and returns a small “premium payload” (JSON) that Autopilot summarizes.
+- One request is blocked before payment with: `quoted > cap`.
 
 ## 7. Implementation Sequence (Tight)
 
-## Phase 0: Bootstrap Electron desktop companion app (Day 1)
+## Phase 0: Confirm seller infra baseline (Day 0)
 
-1. Create new app shell (for example `apps/desktop`) with Electron + Effect runtime.
-2. Add OpenAgents auth flow and Convex connection for the signed-in user.
-3. Implement background task loop skeleton (`queued` -> `running` -> `completed|failed`).
+1. Aperture Cloud Run service is healthy (see `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md`).
+2. Domain is mapped:
+   - Prefer `l402.openagents.com` (Cloud Run custom domain mapping).
+3. Voltage credentials are mounted and Postgres is healthy.
 
-## Phase 1: Scaffold `lightning-effect` (Day 1-2)
+## Phase 1: Spark wallet executor service (Day 1)
 
-1. Run Effect guidance preflight:
-   - `effect-solutions list`
-   - `effect-solutions show quick-start basics services-and-layers error-handling testing`
-2. Create package skeleton with `package.json`, `tsconfig`, exports.
-3. Add Effect contracts/errors/services.
-4. Add test harness with `vitest`.
+1. Create a new server-side service that can run Breez Spark SDK (Node runtime), written in Effect.
+2. Store the agent seed phrase in secret manager (one wallet for EP212; extend to more agents later).
+3. Expose minimal RPC endpoints:
+   - `GET /status` (balance + last payments)
+   - `POST /pay-bolt11` (returns preimage)
+   - Optional combined: `POST /l402/fetch` (runs 402->pay->retry in one place)
+4. Add rate limits and caps in-service (defense in depth).
 
-## Phase 2: L402 core + tests (Day 2-3)
+## Phase 2: L402 header compatibility for sats4ai (Day 1-2)
 
-1. Implement `WWW-Authenticate` parser.
-2. Implement auth header builder (`Authorization: L402 ...`).
-3. Implement fetch retry flow.
-4. Add unit tests for parse/retry/error cases.
+1. Support `Authorization: L402 <macaroon>:<preimage>` for `sats4ai.com`.
+2. Keep spec form working: `Authorization: L402 macaroon="...", preimage="..."`
+3. Add deterministic unit tests.
 
-## Phase 3: Payment adapter and policy (Day 3-4)
+## Phase 3: Autopilot tool + receipts (Day 2-3)
 
-1. Implement `InvoicePayer` adapter (real + demo fallback).
-2. Implement spend policy checks (cap + allowlist).
-3. Add integration tests with mocked 402 challenge flow.
+1. Tool `lightning_l402_fetch`:
+   - enforce `maxSpendSats`
+   - enforce allowlist
+   - require user approval before paying
+2. Execute paid fetch using the server-side Spark wallet executor.
+3. Persist receipts + wallet snapshot rows into Convex for UI.
 
-## Phase 4: Web/Worker/Convex task wiring (Day 4-5)
+## Phase 4: Web UI panes + Storybook (Day 3-4)
 
-1. Add web Effect service wrapper for task creation/subscription.
-2. Add worker endpoint for task creation (`/api/lightning/l402/tasks`).
-3. Add Convex schema/functions for task lifecycle state transitions.
-4. Add one Autopilot tool contract that awaits task completion.
+1. Wallet pane shows Spark balance + last payment summary.
+2. Transactions pane shows last N L402 attempts (domain, sats, status, cache hit).
+3. Payment detail pane shows invoice + quoted cost + cap + response hash/preview.
+4. Add Storybook stories for all key states (offline, paying, paid, cached, blocked, failed).
 
-## Phase 5: UI panes + chat status integration (Day 5-6)
+## Phase 5: OpenAgents Aperture demo routes (Day 4-5)
 
-1. Add wallet/transactions/payment detail panes.
-2. Feed pane/chat states from Convex task updates.
-3. Confirm pane interactions in home overlay.
+1. Stand up a tiny upstream “premium payload” service (Cloud Run ok).
+2. Configure Aperture routes on `l402.openagents.com`:
+   - B1 under cap: returns premium JSON
+   - B2 over cap: same upstream, higher price
+3. Validate end-to-end (challenge → pay → proxy).
 
-## Phase 6: Existing endpoint integration + validation (Day 6)
+## Phase 6: Rehearsal + deterministic test harness (Day 5-6)
 
-1. Finalize two gateway routes for demo (Endpoint A under cap; Endpoint B over cap).
-2. Deploy/validate Aperture config:
-   - Ensure the paywalled routes exist and `services.host` matches the demo domain.
-   - Ensure Voltage credentials and Postgres are healthy (see runbook).
-3. Validate through:
-   - Desktop path (direct request using `lightning-effect`).
-   - Full Autopilot flow (tool → Convex task → desktop executor → paid fetch).
-4. Confirm happy path + deny path behavior is repeatable.
-
-## Phase 7: Demo polish and rehearsal (Day 6-7)
-
-1. Confirm desktop companion is online and bound to the same user account as web.
-2. Confirm gateway domain + routes are stable at recording time.
-3. Confirm one payment and one cached call.
-4. Confirm one policy-denied call.
-5. Capture logs/screens for episode cuts.
+1. Add a local L402 test server that can emulate sats4ai’s header expectations.
+2. Add a smoke script that runs the EP212 sequence programmatically.
+3. Rehearse on production with real sats4ai + `l402.openagents.com` routes.
 
 ## 8. GitHub Issue Breakdown (EP212 Scope)
 
-## Issue 1: Create Electron desktop companion app shell (`apps/desktop`)
+## Epic: EP212 L402 Buying Demo (Agent-Owned Spark Wallet)
 
-Create a new Electron app with an Effect runtime boundary that can authenticate as an OpenAgents user and connect to Convex. The app should include a background task executor loop for Lightning jobs and a minimal status UI that shows connectivity and current task state.
+This epic tracks everything needed to do the demo entirely inside `openagents.com` without a desktop payer, using:
 
-This issue is complete when the desktop app can sign in, subscribe/poll for task records for that same user, and write state updates back to Convex without any Lightning-specific logic yet.
+- third-party L402: `sats4ai.com`
+- OpenAgents seller gateway: Aperture + Voltage (`l402.openagents.com`)
 
-## Issue 2: Create `packages/lightning-effect` package scaffold (Effect-first)
+### Issue A: Add server-side Spark wallet executor (agent-owned)
 
-Set up a new publishable package at `packages/lightning-effect` with baseline build/test plumbing, exports, and package metadata. This should include a clean public API surface and internal module layout so we do not leak OpenAgents app-specific code into the library.
+Create a new Effect service (Cloud Run or equivalent Node runtime) that runs Breez Spark SDK and holds the agent wallet seed in secret manager. It must expose a minimal API for balance + paying BOLT11 invoices, and it must implement hard spend caps and allowlists defensively.
 
-The implementation should mirror `nostr-effect` conventions where possible: Effect-first entrypoints, tagged errors, Layer-driven composition, and test structure. This issue is complete when other packages/apps (including the desktop app) can import the new package without circular dependencies or runtime assumptions.
+This issue is complete when `apps/web` (Worker) can query wallet status and pay a BOLT11 invoice via the executor without any browser-exposed secrets.
 
-## Issue 3: Implement L402 contracts and parser in `lightning-effect`
+### Issue B: `lightning-effect` sats4ai header compatibility
 
-Add Effect `Schema` contracts for core L402 and payment entities (`L402Challenge`, `L402Credential`, `InvoicePaymentRequest`, `InvoicePaymentResult`, and fetch request/response shapes). Then implement the `WWW-Authenticate` parser and `Authorization: L402 ...` serializer.
+Update `packages/lightning-effect` to support sats4ai’s authorization header format (`Authorization: L402 <macaroon>:<preimage>`) while keeping the spec key/value format working. Add deterministic tests, and make the behavior host-configurable (do not guess globally).
 
-This issue should produce deterministic tests for success and failure cases (malformed challenge, missing invoice, missing macaroon). It is complete when the parser and serializer are unit-tested and safe to use from web/worker code paths.
+### Issue C: Autopilot tool `lightning_l402_fetch` uses the Spark wallet executor
 
-## Issue 4: Add L402 fetch-retry client + credential cache service
+Wire the tool path so paid fetch runs entirely server-side using the agent wallet executor:
 
-Implement an Effect `L402Client` service that performs the full flow: initial request, challenge parse, invoice payment call, retry with auth header, and credential caching for repeated requests. Caching must be scope-aware (at least domain-level) and explicit about hit/miss behavior.
+- approval gating
+- allowlist + cap enforcement
+- response body capture (bounded) + receipts persisted to Convex for panes
 
-This issue is complete when integration tests demonstrate (a) first call pays and succeeds, (b) second call reuses cache, and (c) cache miss/invalid scenarios recover correctly.
-
-## Issue 5: Implement `InvoicePayer` adapters (real + demo)
-
-Add an `InvoicePayer` service interface and provide at least two adapters: one real adapter for Lightning Labs-oriented execution path and one deterministic demo adapter for local tests/rehearsal. The contract must require `preimageHex` on success so receipts and L402 auth remain valid.
-
-This issue is complete when adapter behavior is validated through contract tests, including error-path tests (payment failure, timeout, missing preimage).
-
-## Issue 6: Add spend policy guardrails (cap + allowlist) in Effect services
-
-Implement `SpendPolicyService` so requests can be blocked before payment if they exceed max cost or violate allowlist rules. Policy decisions should be explicit and return typed denial reasons for UI and logs.
-
-This issue is complete when policy checks are enforced in the L402 flow and tested for both allow and deny paths, including the “expensive endpoint blocked before payment” EP212 scenario.
-
-## Issue 7: Wire Worker + Convex task orchestration for desktop execution
-
-Add `POST /api/lightning/l402/tasks` in the web Worker path and back it with task orchestration logic that writes to Convex for the active user. Keep execution boundaries clear: orchestration in Worker, payment execution in desktop companion.
-
-This issue is complete when web requests create typed execution tasks and the desktop companion can pick them up and return typed results, including payment metadata and policy-deny responses.
-
-## Issue 8: Add Autopilot tool contract and wiring for paid fetch
-
-Add a new tool contract (for example `lightning_l402_fetch`) in `apps/autopilot-worker` with schema validation and deterministic outputs. Route tool execution through task creation + task status wait so chat workflows invoke paid endpoint consumption through the desktop executor.
-
-This issue is complete when Autopilot can execute a paid fetch request end-to-end from chat and emit a user-visible outcome for success or deny conditions.
-
-## Issue 9: Add wallet + transactions panes in home chat overlay
+### Issue D: Wallet + transactions panes (plus Storybook stories)
 
 Implement L402-focused panes using the existing `effuse-panes` integration in `openChatPaneController`: a persistent wallet pane (`l402-wallet`), a persistent transactions pane (`l402-transactions`), and on-demand payment detail panes (`l402-payment-*`). Pane creation/open/close should follow existing `store.addPane`/`store.togglePane` + `calculateNewPanePosition` patterns used by metadata/telemetry panes.
 
 This issue should also add trigger controls (chat title actions and/or message-level buttons), while preserving current overlay behavior (closing non-chat panes does not dismiss overlay). It is complete when the three pane types can be opened reliably and render L402-specific data from the same source used by chat.
 
-## Issue 10: Add chat-visible payment states + proof reference
+### Issue E: OpenAgents Aperture demo routes + upstream premium backend
 
-Add minimal UI messaging in `openagents.com` chat for payment intent, paid success, cached reuse, and blocked-by-policy outcomes. Include a proof reference field (preimage hash ref or receipt id) so the user can see that payment evidence exists.
+Deploy a small upstream premium backend and configure Aperture routes on `l402.openagents.com` for:
 
-This issue is complete when the EP212 flow is legible to viewers without opening backend logs and all four status states are visible in chat output.
+- under-cap success
+- over-cap block
 
-## Issue 11: Integrate two existing paid seller endpoints for demo
+Validate end-to-end against Voltage (invoice issuance + settlement).
 
-Configure two OpenAgents-hosted L402 gateway routes (Aperture + Voltage) so EP212 can demonstrate both success and policy-denied behavior deterministically. Document endpoint assumptions (price range, reliability, request shape) inside the implementation notes and rehearsal checklist.
+### Issue F: Deterministic test harness + smoke script for the full EP212 flow
 
-This issue is complete when both endpoints can be hit via the desktop app and via Autopilot, with one endpoint under cap (success) and one endpoint over cap (deny before payment).
+Create a deterministic programmatic harness that exercises:
 
-## Issue 12: Add observability + rehearsal checklist for recording
+- sats4ai-like L402 (local test server with same header behavior)
+- OpenAgents gateway route (staging/prod smoke)
 
-Add structured logging fields required for the episode: request id, user id, endpoint, quoted cost, cap, paid amount, proof ref, cache hit/miss, denial reason, and execution location (`desktop`). Create a short rehearsal checklist to verify all scenes before recording.
+and gates CI on “no regressions” for L402 buying.
 
-This issue is complete when a dry run produces predictable logs and the exact EP212 recording script can be executed start-to-finish without manual patching.
+Add a rehearsal checklist for recording day.
 
 ## 9. Demo Acceptance Criteria
 
 EP212 is "ready" only if all pass:
 
 1. User can trigger paid fetch from `openagents.com` chat.
-2. Desktop companion is authenticated as the same user and online.
-3. One request performs real L402 payment and returns premium payload.
-4. Second equivalent request reuses cached credential (or explicitly no new pay event).
-5. Over-cap request is blocked before payment.
-6. Receipt/proof reference is emitted (preimage hash ref or payment proof ref).
+2. Agent Spark wallet is funded and its balance is visible in panes.
+3. sats4ai request performs real L402 payment and returns the text-generation payload.
+4. Repeating sats4ai call shows cache hit and no second payment.
+5. OpenAgents `l402.openagents.com` paid route succeeds and returns premium JSON.
+6. OpenAgents over-cap route is blocked before payment.
 7. All core L402 logic is sourced from `packages/lightning-effect` (not ad hoc app code).
 8. Wallet and transactions panes open in the overlay and show data consistent with chat/payment events.
 
@@ -370,19 +387,20 @@ Must log and be able to display:
 
 1. request id
 2. user id
-3. endpoint
-4. quoted cost
-5. cap applied
-6. paid amount
-7. payment proof ref
-8. cache hit/miss
-9. deny reason (if blocked)
-10. executor (`desktop`)
+3. agent wallet id
+4. endpoint
+5. quoted cost
+6. cap applied
+7. paid amount
+8. payment proof ref
+9. cache hit/miss
+10. deny reason (if blocked)
+11. executor (`spark-service`)
 
 ## 11. Risks and Mitigations
 
-1. Desktop companion offline or not authenticated
-   - Mitigation: explicit connection health in web UI + preflight check before task submission.
+1. Spark wallet executor offline
+   - Mitigation: health check + show “wallet offline” in panes; block paid tool calls when offline.
 2. Gateway routing / config mismatch (Host not matching; route missing; pricing not deterministic)
    - Mitigation: map `l402.openagents.com`, pin the demo routes, and rehearse using the same URL the chat uses.
 3. Worker/Convex orchestration drift
@@ -394,14 +412,15 @@ Must log and be able to display:
 
 ## 12. Recording Script (Short)
 
-1. Start desktop companion app and confirm user session connected.
-2. Open `openagents.com`, enter Autopilot chat with same user account.
-3. Ask for premium signal feed with 100-sat cap.
+1. Confirm the agent Spark wallet is funded and the wallet executor is healthy.
+2. Open `openagents.com`, enter Autopilot chat.
+3. Ask for sats4ai text-generation with a 100-sat cap; narrate L402 (402 challenge → invoice → preimage).
 4. Approve spend intent.
-5. Show returned premium result + payment status.
-6. Repeat request and show cached credential behavior.
-7. Ask for deep report with same cap and show policy block.
-8. Close with: "This capability came from user requests in EP211; now live in Autopilot."
+5. Show returned sats4ai result + payment receipt.
+6. Repeat sats4ai request and show cached credential behavior.
+7. Call the OpenAgents L402 endpoint on `l402.openagents.com` and show the premium JSON summary.
+8. Call the over-cap OpenAgents route and show policy block.
+9. Close with: "This capability came from user requests in EP211; now live in Autopilot."
 
 ## 13. Post-EP212 Follow-Up
 
