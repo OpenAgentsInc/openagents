@@ -88,6 +88,8 @@ apps/web/.auth/
 
 results
 output/
+# Voltage node TLS cert + node.json (from docs/lightning/scripts/voltage-api-fetch.sh)
+output/voltage-node/
 
 docs/local/
 

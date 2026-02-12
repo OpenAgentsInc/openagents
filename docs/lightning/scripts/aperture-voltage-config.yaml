@@ -1,0 +1,21 @@
+# Minimal Aperture config for Voltage LND (L402 gateway).
+# Secrets are mounted at /secrets/ in Cloud Run (tls.cert, invoice.macaroon).
+listenaddr: "0.0.0.0:8080"
+basedir: "/tmp"
+debuglevel: "info"
+insecure: false
+
+authenticator:
+  network: "mainnet"
+  disable: false
+  lndhost: "openagents.m.voltageapp.io:10009"
+  tlspath: "/secrets/tls.cert"
+  macdir: "/secrets"
+
+dbbackend: "sqlite"
+sqlite:
+  dbfile: "/tmp/aperture.db"
+  skipmigrations: false
+
+# Routes from lightning-ops compiler can be merged in; empty for bootstrap.
+services: []
