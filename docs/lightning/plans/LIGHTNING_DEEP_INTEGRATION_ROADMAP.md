@@ -31,8 +31,8 @@ If this is executed well, OpenAgents can support:
 
 This blueprint is based on:
 
-- `docs/lightning/LIGHTNING_AGENT_TOOLS.md`
-- `docs/lightning/SETUP_LOG.md`
+- `docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md`
+- `docs/lightning/status/SETUP_LOG.md`
 - `apps/web/` architecture (Worker host + Convex + Effect services)
 - `apps/autopilot-worker/` architecture (tool contracts, DSE signatures, AI receipts)
 - `apps/expo/` architecture (React Native app with auth + Convex client)
@@ -46,8 +46,8 @@ This blueprint is based on:
 ## 3.1 What exists today
 
 - Lightning terminology and L402 concepts are documented in `docs/GLOSSARY.md`.
-- Initial Lightning integration planning exists in `docs/lightning/LIGHTNING_AGENT_TOOLS.md`.
-- Practical setup/ops findings exist in `docs/lightning/SETUP_LOG.md`.
+- Initial Lightning integration planning exists in `docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md`.
+- Practical setup/ops findings exist in `docs/lightning/status/SETUP_LOG.md`.
 - Receipt semantics already support `payment_proof.type = "lightning_preimage"` (ADR-0013).
 - Web and worker code already have durable receipt infrastructure (Convex `receipts` table + worker AI receipts).
 - Tool contracts are centralized and schema-driven (`apps/autopilot-worker/src/tools.ts`).

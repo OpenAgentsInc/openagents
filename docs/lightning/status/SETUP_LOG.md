@@ -1,6 +1,6 @@
 # Lightning Agent Tools — Setup Log
 
-Log of following the [Lightning Labs instructions](https://lightning.engineering/posts/2026-02-11-ln-agent-tools/) to clone the repo, install lnd and lnget skills, set up a Lightning node with remote signer, bake a pay-only macaroon, configure lnget, and (optionally) install Aperture for selling. The clone lives in `~/code/lightning-agent-tools` (outside this repo). This doc lives in the OpenAgents repo under `docs/lightning/` for reference.
+Log of following the [Lightning Labs instructions](https://lightning.engineering/posts/2026-02-11-ln-agent-tools/) to clone the repo, install lnd and lnget skills, set up a Lightning node with remote signer, bake a pay-only macaroon, configure lnget, and (optionally) install Aperture for selling. The clone lives in `~/code/lightning-agent-tools` (outside this repo). This doc lives in the OpenAgents repo under `docs/lightning/status/` for reference.
 
 **Date:** 2026-02-11
 

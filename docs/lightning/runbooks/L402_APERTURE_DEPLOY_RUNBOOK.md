@@ -4,6 +4,15 @@
 
 ---
 
+## Current state (as of 2026-02-12)
+
+- **Canonical URL:** `https://l402.openagents.com` — custom domain mapped to Cloud Run (`l402-aperture`, us-central1). DNS: CNAME `l402` → `ghs.googlehosted.com`.
+- **Staging route:** Aperture config includes a **staging** service (host `l402.openagents.com`, path `^/.*$`). Requests to `https://l402.openagents.com/staging` (or any path on that host) return 402 and support the full L402 flow.
+- **Script defaults:** `apps/lightning-ops/scripts/staging-reconcile.sh` sets `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, and `OA_LIGHTNING_OPS_PROXY_URL` to the canonical URL and `/staging` when unset. You only need to set `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET` to run staging reconcile.
+- **Config deployed:** Secret `l402-aperture-config` version 10 (with staging route) is live; Cloud Run revision uses it. To change routes or config, see §6.
+
+---
+
 ## 1. What This System Is
 
 - **L402** is the protocol for “pay with Lightning” over HTTP: the server returns `402 Payment Required` with an invoice and macaroon; the client pays the invoice, gets a preimage, and retries with `Authorization: L402 macaroon=… preimage=…` to access the resource.
@@ -38,7 +47,7 @@
   - **Config** from Secret Manager (`l402-aperture-config`) mounted at `/voltage-cfg/config.yaml`.
   - **Voltage TLS cert** and **invoice macaroon** from Secret Manager mounted at `/voltage-tls/tls.cert` and `/voltage-mac/invoice.macaroon`.
 - **Aperture** connects to Voltage over the public internet (gRPC + TLS) and to Cloud SQL Postgres (currently via instance **public IP**; see §6 for production hardening).
-- **Routes** (host/path → upstream, price) are defined in the same config; today there is a bootstrap placeholder service; real routes come from `apps/lightning-ops` compile and can be merged in.
+- **Routes** (host/path → upstream, price) are defined in the same config. The deployed config has **bootstrap** (host `l402-bootstrap.openagents.local`) and **staging** (host `l402.openagents.com`); more routes can be merged from `apps/lightning-ops` compile.
 
 ---
 
@@ -56,7 +65,8 @@
 | **Artifact Registry** | Repo `l402` in `us-central1` | Holds the Aperture image `aperture:latest` (built from Lightning Labs source, Go 1.24). |
 | **Cloud Run** | Service `l402-aperture`, region `us-central1` | Runs Aperture; receives traffic and mounts the secrets above. |
 
-**Live URL:** `https://l402-aperture-157437760789.us-central1.run.app`
+**Canonical URL:** `https://l402.openagents.com` (custom domain; use this for env and docs.)  
+**Alternate URL:** `https://l402-aperture-157437760789.us-central1.run.app`
 
 ### 3.2 Repo artifacts (all public-safe)
 
@@ -67,15 +77,15 @@
 | `docs/lightning/scripts/voltage-api-fetch.sh` | Fetches node list, node details, and TLS cert from Voltage API; writes to `output/voltage-node/` (gitignored). Requires `VOLTAGE_API_KEY` (env or repo root `.env.local`). |
 | `docs/lightning/deploy/Dockerfile.aperture` | Multi-stage build: Aperture from Lightning Labs source (Go 1.24), minimal runtime image. |
 | `docs/lightning/deploy/cloudbuild-aperture.yaml` | Cloud Build config to build and push the Aperture image to Artifact Registry (optional; can build locally with Docker). |
-| `docs/lightning/VOLTAGE_TO_L402_CONNECT.md` | How Voltage fits into L402, what you need from Voltage, and how to connect it to Aperture. |
-| `docs/lightning/STAGING_GATEWAY_RECONCILE_RUNBOOK.md` | Staging reconcile and env vars for lightning-ops. |
+| `docs/lightning/reference/VOLTAGE_TO_L402_CONNECT.md` | How Voltage fits into L402, what you need from Voltage, and how to connect it to Aperture. |
+| `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md` | Staging reconcile and env vars for lightning-ops. |
 | `apps/lightning-ops/` | Compiler that produces route config from Convex paywall state; output can be merged into Aperture config. |
 
 **Gitignore:** `output/`, `output/voltage-node/`, and repo root `.env.local` are ignored so that TLS certs, macaroons, and API keys are never committed.
 
-### 3.3 Custom domain (optional)
+### 3.3 Custom domain (in use)
 
-**Recommended subdomain:** `l402.openagents.com` — short, protocol-clear, and appropriate for the L402 paywall gateway.
+**Subdomain in use:** `l402.openagents.com` — mapped via Cloud Run domain mapping; CNAME `l402` → `ghs.googlehosted.com`. Use this as the canonical gateway URL everywhere.
 
 To point it at this Cloud Run service:
 
@@ -141,9 +151,12 @@ All sensitive values live **only** in GCP Secret Manager (and, for local use, in
 
 ### 5.1 Public URL and health
 
-- **Service URL:** `https://l402-aperture-157437760789.us-central1.run.app`
+- **Canonical:** `https://l402.openagents.com` — use for `OA_LIGHTNING_OPS_CHALLENGE_URL` / `OA_LIGHTNING_OPS_PROXY_URL` and product config.
+- **Fallback:** `https://l402-aperture-157437760789.us-central1.run.app`
 - A request to `/` without L402 auth typically returns **400** or similar (no matching service or auth required); that indicates Aperture is up.
-- To actually get a 402 and then access a paywalled route, you must request a **host/path that matches a configured service** in Aperture. The current config has only a bootstrap service (host `l402-bootstrap.openagents.local`); add or merge routes from `apps/lightning-ops` for real paywalled paths.
+- To actually get a 402 and then access a paywalled route, you must request a **host/path that matches a configured service** in Aperture. The deployed config includes:
+  - **bootstrap** (host `l402-bootstrap.openagents.local`)
+  - **staging** (host `l402.openagents.com`, path `^/.*$`) — used for `OA_LIGHTNING_OPS_*` defaults; request `https://l402.openagents.com/staging` (or any path on that host) to get 402.
 
 ### 5.2 L402 flow (conceptual)
 
@@ -157,8 +170,8 @@ All sensitive values live **only** in GCP Secret Manager (and, for local use, in
 
 To verify 402 issuance and proxy against this gateway:
 
-- Set env vars (see `docs/lightning/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`):
-  `OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL` (and optionally `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`) to the Cloud Run URL and the paywalled path you configured.
+- Set env vars (see `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`):
+  `OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL` (and optionally `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`) to the canonical gateway URL (`https://l402.openagents.com`) and the paywalled path you configured.
 - Run: `./scripts/staging-reconcile.sh` (or the smoke command from `apps/lightning-ops`).
 
 ---
@@ -261,8 +274,16 @@ gcloud logging read 'resource.labels.revision_name="l402-aperture-REVISION_NAME"
 
 ## 10. Related Docs
 
-- **Voltage → L402:** `docs/lightning/VOLTAGE_TO_L402_CONNECT.md`
+- **Voltage → L402:** `docs/lightning/reference/VOLTAGE_TO_L402_CONNECT.md`
 - **Deploy (image + config):** `docs/lightning/deploy/README.md`
-- **Staging reconcile:** `docs/lightning/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`
-- **L402 plan:** `docs/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md`
+- **Staging reconcile:** `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`
+- **L402 plan:** `docs/lightning/plans/L402_AGENT_PAYWALL_INFRA_PLAN.md`
 - **lightning-ops compiler:** `apps/lightning-ops/README.md`
+
+---
+
+## 11. What you need to do (operator)
+
+**Single reference for all operator steps:** `docs/lightning/status/20260212-0753-status.md` **§12) Operator checklist: what you need to do now.**
+
+Summary: run staging reconcile with only `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET`; gateway URLs default to `https://l402.openagents.com` and `/staging`. For CI, product/EP212 wiring, and changing Aperture routes, see the status doc §12.

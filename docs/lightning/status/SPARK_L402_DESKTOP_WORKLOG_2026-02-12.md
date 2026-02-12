@@ -15,8 +15,8 @@ Implement a Spark-backed L402 payment path in the Electron desktop app using:
 
 This work is aligned with the repo strategy from:
 
-1. `docs/lightning/LIGHTNING_LABS_VS_BREEZ_SPARK_COMPARISON.md`
-2. `docs/lightning/LND_NEUTRINO_ELECTRON_IMPLEMENTATION_PLAN.md`
+1. `docs/lightning/reference/LIGHTNING_LABS_VS_BREEZ_SPARK_COMPARISON.md`
+2. `docs/lightning/plans/LND_NEUTRINO_ELECTRON_IMPLEMENTATION_PLAN.md`
 
 The resulting model is dual-path:
 
