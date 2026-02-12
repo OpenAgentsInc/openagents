@@ -3,7 +3,7 @@
 listenaddr: "0.0.0.0:8080"
 basedir: "/tmp"
 debuglevel: "info"
-insecure: false
+insecure: true
 
 authenticator:
   network: "mainnet"
