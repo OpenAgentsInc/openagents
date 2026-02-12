@@ -2405,6 +2405,56 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
             )
           })
 
+          paneContentSlot.querySelectorAll("[data-oa-l402-approve]").forEach((btn) => {
+            if (!(btn instanceof HTMLButtonElement)) return
+            btn.addEventListener(
+              "pointerdown",
+              (e) => {
+                if (e.button !== 0) return
+                e.preventDefault()
+                e.stopPropagation()
+                e.stopImmediatePropagation()
+                const taskId = String(btn.getAttribute("data-task-id") ?? "").trim()
+                if (!taskId) return
+                const text = `lightning_l402_approve(${JSON.stringify({ taskId })})`
+                const tid = homeThreadId
+                if (!deps?.chat) return
+                forceScrollToBottomOnNextRender = true
+                if (tid) {
+                  runTrackedFiber({
+                    context: "home.chat.l402_approve.existing_thread",
+                    start: () => deps.runtime.runFork(deps.chat.send(tid, text)),
+                  })
+                  doRender()
+                  return
+                }
+
+                runTrackedFiber({
+                  context: "home.chat.get_owned_thread_id.before_l402_approve",
+                  start: () => deps.runtime.runFork(deps.chat.getOwnedThreadId()),
+                  onSuccess: (id) => {
+                    if (id && id.length > 0) {
+                      const userIdForCache = readSessionFromAtoms().userId ?? ""
+                      attachHomeThreadSubscription({
+                        threadId: id,
+                        userId: userIdForCache,
+                      })
+                      runTrackedFiber({
+                        context: "home.chat.l402_approve.newly_attached_thread",
+                        start: () => deps.runtime.runFork(deps.chat.send(id, text)),
+                      })
+                    }
+                    doRender()
+                  },
+                  onFailure: () => {
+                    doRender()
+                  },
+                })
+              },
+              { capture: true },
+            )
+          })
+
           paneContentSlot.querySelectorAll("[data-oa-home-chat-metadata]").forEach((btn) => {
             if (!(btn instanceof HTMLElement)) return
             btn.addEventListener(

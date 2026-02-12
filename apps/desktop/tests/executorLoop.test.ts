@@ -106,7 +106,7 @@ const makeTaskProviderTestLayer = () =>
             void token;
             const rows = yield* Ref.get(ref);
             const pending = rows
-              .filter((row) => row.status === "queued" || row.status === "approved")
+              .filter((row) => row.status === "approved")
               .sort((a, b) => a.createdAtMs - b.createdAtMs);
             for (const row of pending) {
               if (row.ownerId === userId || row.request.url.includes("foreign")) return Option.some(row);
@@ -207,7 +207,7 @@ const makeTestLayer = () =>
       taskProvider: makeTaskProviderTestLayer(),
       l402Executor: l402ExecutorTestLayer,
     },
-  );
+  ) as unknown as Layer.Layer<DesktopAppService | TaskProviderService, never, never>;
 
 describe("desktop executor loop", () => {
   it.effect("stays in waiting_auth when user is not signed in", () =>
@@ -229,6 +229,26 @@ describe("desktop executor loop", () => {
       yield* app.requestMagicCode("chris@openagents.com");
       yield* app.verifyMagicCode({ email: "chris@openagents.com", code: "123456" });
       yield* app.enqueueDemoTask("https://api.example.com/paid");
+
+      // Approval gating: queued tasks must not execute.
+      yield* app.tickExecutor();
+
+      const tasksBefore = yield* app.listTasks();
+      const snapshotBefore = yield* app.snapshot();
+
+      expect(tasksBefore[0]?.status).toBe("queued");
+      expect(snapshotBefore.auth.userId).toBe("user_desktop_test");
+      expect(snapshotBefore.executor.status).toBe("idle");
+
+      // Approve then execute.
+      const tasksApi = yield* TaskProviderService;
+      yield* tasksApi.transitionTask({
+        taskId: tasksBefore[0]!.id,
+        token: "token_test",
+        toStatus: "approved",
+        reason: "test_approval",
+      });
+
       yield* app.tickExecutor();
 
       const tasks = yield* app.listTasks();
@@ -246,6 +266,19 @@ describe("desktop executor loop", () => {
       yield* app.bootstrap();
       yield* app.verifyMagicCode({ email: "chris@openagents.com", code: "123456" });
       yield* app.enqueueDemoTask("https://api.example.com/fail");
+
+      // Approval gating: queued tasks must not execute.
+      yield* app.tickExecutor();
+
+      const tasksApi = yield* TaskProviderService;
+      const tasksBefore = yield* app.listTasks();
+      yield* tasksApi.transitionTask({
+        taskId: tasksBefore[0]!.id,
+        token: "token_test",
+        toStatus: "approved",
+        reason: "test_approval",
+      });
+
       yield* app.tickExecutor();
 
       const tasks = yield* app.listTasks();
@@ -263,6 +296,19 @@ describe("desktop executor loop", () => {
       yield* app.bootstrap();
       yield* app.verifyMagicCode({ email: "chris@openagents.com", code: "123456" });
       yield* app.enqueueDemoTask("https://api.example.com/blocked");
+
+      // Approval gating: queued tasks must not execute.
+      yield* app.tickExecutor();
+
+      const tasksApi = yield* TaskProviderService;
+      const tasksBefore = yield* app.listTasks();
+      yield* tasksApi.transitionTask({
+        taskId: tasksBefore[0]!.id,
+        token: "token_test",
+        toStatus: "approved",
+        reason: "test_approval",
+      });
+
       yield* app.tickExecutor();
 
       const tasks = yield* app.listTasks();
@@ -280,11 +326,21 @@ describe("desktop executor loop", () => {
       yield* app.bootstrap();
       yield* app.verifyMagicCode({ email: "chris@openagents.com", code: "123456" });
       yield* app.enqueueDemoTask("https://api.example.com/foreign");
+
+      const tasksApi = yield* TaskProviderService;
+      const tasksBefore = yield* app.listTasks();
+      yield* tasksApi.transitionTask({
+        taskId: tasksBefore[0]!.id,
+        token: "token_test",
+        toStatus: "approved",
+        reason: "test_approval",
+      });
+
       yield* app.tickExecutor();
 
       const tasks = yield* app.listTasks();
       const snapshot = yield* app.snapshot();
-      expect(tasks[0]?.status).toBe("queued");
+      expect(tasks[0]?.status).toBe("approved");
       expect(snapshot.executor.status).toBe("failed_task");
       expect(snapshot.executor.lastError).toBe("owner_mismatch");
     }).pipe(Effect.provide(makeTestLayer())),

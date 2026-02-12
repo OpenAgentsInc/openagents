@@ -203,8 +203,10 @@ const clampString = (value: string, max: number): string =>
   value.trim().slice(0, Math.max(0, max));
 
 const LIGHTNING_L402_FETCH_TOOL_NAME = "lightning_l402_fetch" as const;
+const LIGHTNING_L402_APPROVE_TOOL_NAME = "lightning_l402_approve" as const;
 const LIGHTNING_TERMINAL_STATUSES = ["completed", "cached", "blocked", "failed"] as const;
 type LightningTerminalStatus = (typeof LIGHTNING_TERMINAL_STATUSES)[number];
+type LightningL402FetchToolStatus = "queued" | LightningTerminalStatus;
 
 type L402CacheStatus = "miss" | "hit" | "stale" | "invalid";
 type L402PaymentBackend = "spark" | "lnd_deterministic";
@@ -239,7 +241,7 @@ type LightningTaskEventDoc = {
 
 type LightningToolTerminalResult = {
   readonly taskId: string | null;
-  readonly status: LightningTerminalStatus;
+  readonly status: LightningL402FetchToolStatus;
   readonly proofReference: string | null;
   readonly denyReason: string | null;
   readonly paymentId: string | null;
@@ -253,9 +255,11 @@ type LightningToolTerminalResult = {
   readonly paid: boolean;
   readonly cacheStatus: L402CacheStatus | null;
   readonly paymentBackend: L402PaymentBackend | null;
+  readonly approvalRequired: boolean;
 };
 
 const decodeLightningL402FetchInput = Schema.decodeUnknown(toolContracts.lightning_l402_fetch.input);
+const decodeLightningL402ApproveInput = Schema.decodeUnknown(toolContracts.lightning_l402_approve.input);
 
 const isLightningTerminalStatus = (value: unknown): value is LightningTerminalStatus =>
   typeof value === "string" && (LIGHTNING_TERMINAL_STATUSES as ReadonlyArray<string>).includes(value);
@@ -296,18 +300,33 @@ const parseLightningTaskEventDoc = (value: unknown): LightningTaskEventDoc | nul
   };
 };
 
-const parseLightningToolInvocation = (text: string): { readonly rawParams: unknown; readonly source: "call" | "slash" } | null => {
+type LightningManualInvocation =
+  | { readonly toolName: typeof LIGHTNING_L402_FETCH_TOOL_NAME; readonly rawParams: unknown; readonly source: "call" | "slash" }
+  | { readonly toolName: typeof LIGHTNING_L402_APPROVE_TOOL_NAME; readonly rawParams: unknown; readonly source: "call" | "slash" };
+
+const parseLightningToolInvocation = (text: string): LightningManualInvocation | null => {
   const trimmed = text.trim();
   if (!trimmed) return null;
 
   const callMatch = trimmed.match(/^lightning_l402_fetch\s*\(([\s\S]+)\)\s*$/i);
   if (callMatch) {
     const raw = callMatch[1]?.trim() ?? "";
-    if (!raw) return { rawParams: {}, source: "call" };
+    if (!raw) return { toolName: LIGHTNING_L402_FETCH_TOOL_NAME, rawParams: {}, source: "call" };
     try {
-      return { rawParams: JSON.parse(raw), source: "call" };
+      return { toolName: LIGHTNING_L402_FETCH_TOOL_NAME, rawParams: JSON.parse(raw), source: "call" };
     } catch {
-      return { rawParams: { __invalidJson: raw }, source: "call" };
+      return { toolName: LIGHTNING_L402_FETCH_TOOL_NAME, rawParams: { __invalidJson: raw }, source: "call" };
+    }
+  }
+
+  const approveCallMatch = trimmed.match(/^lightning_l402_approve\s*\(([\s\S]+)\)\s*$/i);
+  if (approveCallMatch) {
+    const raw = approveCallMatch[1]?.trim() ?? "";
+    if (!raw) return { toolName: LIGHTNING_L402_APPROVE_TOOL_NAME, rawParams: {}, source: "call" };
+    try {
+      return { toolName: LIGHTNING_L402_APPROVE_TOOL_NAME, rawParams: JSON.parse(raw), source: "call" };
+    } catch {
+      return { toolName: LIGHTNING_L402_APPROVE_TOOL_NAME, rawParams: { __invalidJson: raw }, source: "call" };
     }
   }
 
@@ -317,6 +336,7 @@ const parseLightningToolInvocation = (text: string): { readonly rawParams: unkno
     const maxSpendMsats = slashMatch[2] ? Number(slashMatch[2]) : 50_000;
     const scope = slashMatch[3];
     return {
+      toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
       rawParams: {
         url,
         method: "GET",
@@ -327,10 +347,28 @@ const parseLightningToolInvocation = (text: string): { readonly rawParams: unkno
     };
   }
 
+  const approveSlashMatch = trimmed.match(/^\/l402\s+approve\s+(\S+)\s*$/i);
+  if (approveSlashMatch) {
+    const taskId = approveSlashMatch[1];
+    return {
+      toolName: LIGHTNING_L402_APPROVE_TOOL_NAME,
+      rawParams: { taskId },
+      source: "slash",
+    };
+  }
+
   return null;
 };
 
 const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult): string => {
+ if (result.status === "queued") {
+    const tid = result.taskId ? ` Task: ${result.taskId}.` : "";
+    const approveHint = result.taskId
+      ? `lightning_l402_approve({"taskId":"${result.taskId}"})`
+      : `lightning_l402_approve({"taskId":"..."})`;
+    return `L402 fetch queued.${tid} Approval required: approve with ${approveHint}.`;
+  }
+
   if (result.status === "completed" || result.status === "cached") {
     const proof = result.proofReference ? ` Proof: ${result.proofReference}` : "";
     const code = typeof result.responseStatusCode === "number" ? ` HTTP ${result.responseStatusCode}.` : "";
@@ -683,14 +721,27 @@ const runLightningL402FetchTool = (input: {
           paid: false,
           cacheStatus: null,
           paymentBackend: null,
+          approvalRequired: false,
         } satisfies LightningToolTerminalResult,
       };
     }
     const decodedInput = inputDecodeExit.value;
+    const requireApproval = decodedInput.requireApproval !== false;
+    const requestForTask: Record<string, unknown> = {
+      url: decodedInput.url,
+      ...(typeof decodedInput.method === "string" ? { method: decodedInput.method } : {}),
+      ...(decodedInput.headers ? { headers: decodedInput.headers } : {}),
+      ...(typeof decodedInput.body === "string" ? { body: decodedInput.body } : {}),
+      maxSpendMsats: decodedInput.maxSpendMsats,
+      ...(typeof decodedInput.challengeHeader === "string" ? { challengeHeader: decodedInput.challengeHeader } : {}),
+      ...(typeof decodedInput.forceRefresh === "boolean" ? { forceRefresh: decodedInput.forceRefresh } : {}),
+      ...(typeof decodedInput.scope === "string" ? { scope: decodedInput.scope } : {}),
+      ...(typeof decodedInput.cacheTtlMs === "number" ? { cacheTtlMs: decodedInput.cacheTtlMs } : {}),
+    };
 
     const createRaw = yield* input.convex
       .mutation(api.lightning.tasks.createTask, {
-        request: decodedInput as any,
+        request: requestForTask as any,
         idempotencyKey: `autopilot:${input.threadId}:${input.runId}`,
         source: `autopilot_${input.source}_tool`,
         requestId: input.requestId,
@@ -726,6 +777,32 @@ const runLightningL402FetchTool = (input: {
           paid: false,
           cacheStatus: null,
           paymentBackend: null,
+          approvalRequired: false,
+        } satisfies LightningToolTerminalResult,
+      };
+    }
+
+    // EP212 requirement: explicit approval before any payment executes.
+    if (requireApproval && !isLightningTerminalStatus(createdTask.status)) {
+      return {
+        validatedInput: decodedInput,
+        terminal: {
+          taskId: createdTask.taskId,
+          status: "queued" as const,
+          proofReference: null,
+          denyReason: null,
+          paymentId: null,
+          amountMsats: null,
+          responseStatusCode: null,
+          responseContentType: null,
+          responseBytes: null,
+          responseBodyTextPreview: null,
+          responseBodySha256: null,
+          cacheHit: false,
+          paid: false,
+          cacheStatus: null,
+          paymentBackend: null,
+          approvalRequired: true,
         } satisfies LightningToolTerminalResult,
       };
     }
@@ -735,6 +812,32 @@ const runLightningL402FetchTool = (input: {
     const WAIT_INTERVAL_MS = 180;
 
     let task = createdTask;
+
+    // If approval is explicitly disabled for this tool call, auto-approve the queued task.
+    if (!requireApproval && task.status === "queued") {
+      const approveRaw = yield* input.convex
+        .mutation(api.lightning.tasks.transitionTask, {
+          taskId: task.taskId,
+          toStatus: "approved",
+          actor: "web_worker",
+          reason: "auto_approved",
+          requestId: input.requestId,
+          metadata: {
+            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+            runId: input.runId,
+            threadId: input.threadId,
+          },
+        })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${input.mutationTimeoutMs} millis`,
+            onTimeout: () => new Error("lightning.transitionTask_timeout"),
+          }),
+          Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
+        );
+      task = parseLightningTaskDoc(toRecord(approveRaw)?.task) ?? task;
+    }
+
     while (
       !input.controller.signal.aborted &&
       !isLightningTerminalStatus(task.status) &&
@@ -851,6 +954,7 @@ const runLightningL402FetchTool = (input: {
         paid,
         cacheStatus,
         paymentBackend,
+        approvalRequired: false,
       } satisfies LightningToolTerminalResult,
     };
   }).pipe(
@@ -873,7 +977,153 @@ const runLightningL402FetchTool = (input: {
           paid: false,
           cacheStatus: null,
           paymentBackend: null,
+          approvalRequired: false,
         } satisfies LightningToolTerminalResult,
+      }),
+    ),
+  );
+
+type LightningToolApproveResult = {
+  readonly taskId: string | null;
+  readonly ok: boolean;
+  readonly changed: boolean;
+  readonly taskStatus: LightningTaskStatus | null;
+  readonly denyReason: string | null;
+};
+
+const runLightningL402ApproveTool = (input: {
+  readonly convex: ConvexServiceApi;
+  readonly requestId: string;
+  readonly runId: string;
+  readonly threadId: string;
+  readonly controller: AbortController;
+  readonly rawParams: unknown;
+  readonly source: "call" | "slash";
+  readonly queryTimeoutMs: number;
+  readonly mutationTimeoutMs: number;
+}) =>
+  Effect.gen(function* () {
+    const inputDecodeExit = yield* Effect.exit(decodeLightningL402ApproveInput(input.rawParams));
+    if (inputDecodeExit._tag === "Failure") {
+      return {
+        validatedInput: null,
+        output: {
+          taskId: null,
+          ok: false,
+          changed: false,
+          taskStatus: null,
+          denyReason: "invalid_params",
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
+    const decodedInput = inputDecodeExit.value as { readonly taskId: string };
+    const taskId = String(decodedInput.taskId ?? "").trim();
+    if (!taskId) {
+      return {
+        validatedInput: decodedInput,
+        output: {
+          taskId: null,
+          ok: false,
+          changed: false,
+          taskStatus: null,
+          denyReason: "invalid_task_id",
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
+    const taskRaw = yield* input.convex
+      .query(api.lightning.tasks.getTask, { taskId })
+      .pipe(
+        Effect.timeoutFail({
+          duration: `${input.queryTimeoutMs} millis`,
+          onTimeout: () => new Error("lightning.getTask_timeout"),
+        }),
+        Effect.catchAll(() => Effect.succeed({ ok: true, task: null } as unknown)),
+      );
+    const task = parseLightningTaskDoc(toRecord(taskRaw)?.task);
+    if (!task) {
+      return {
+        validatedInput: decodedInput,
+        output: {
+          taskId,
+          ok: false,
+          changed: false,
+          taskStatus: null,
+          denyReason: "task_not_found",
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
+    if (task.status !== "queued") {
+      return {
+        validatedInput: decodedInput,
+        output: {
+          taskId: task.taskId,
+          ok: true,
+          changed: false,
+          taskStatus: task.status,
+          denyReason: null,
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
+    const approveRaw = yield* input.convex
+      .mutation(api.lightning.tasks.transitionTask, {
+        taskId: task.taskId,
+        toStatus: "approved",
+        actor: "web_worker",
+        reason: "user_approved",
+        requestId: input.requestId,
+        metadata: {
+          toolName: LIGHTNING_L402_APPROVE_TOOL_NAME,
+          runId: input.runId,
+          threadId: input.threadId,
+          source: input.source,
+        },
+      })
+      .pipe(
+        Effect.timeoutFail({
+          duration: `${input.mutationTimeoutMs} millis`,
+          onTimeout: () => new Error("lightning.transitionTask_timeout"),
+        }),
+      );
+
+    const transitionedTask = parseLightningTaskDoc(toRecord(approveRaw)?.task);
+    if (!transitionedTask) {
+      return {
+        validatedInput: decodedInput,
+        output: {
+          taskId: task.taskId,
+          ok: false,
+          changed: false,
+          taskStatus: task.status,
+          denyReason: "invalid_task_shape",
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
+    return {
+      validatedInput: decodedInput,
+      output: {
+        taskId: transitionedTask.taskId,
+        ok: true,
+        changed: toRecord(approveRaw)?.changed === true,
+        taskStatus: transitionedTask.status,
+        denyReason: null,
+      } satisfies LightningToolApproveResult,
+    };
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.succeed({
+        validatedInput: null,
+        output: {
+          taskId: null,
+          ok: false,
+          changed: false,
+          taskStatus: null,
+          denyReason: errorMessageFromUnknown(error, "lightning_tool_failed"),
+        } satisfies LightningToolApproveResult,
       }),
     ),
   );
@@ -1513,8 +1763,9 @@ const runAutopilotStream = (input: {
       const tail = promptMessages.slice(-MAX_CONTEXT_MESSAGES);
 
       if (lightningInvocation) {
-        const toolPartId = `dsepart_tool_${input.runId}_${LIGHTNING_L402_FETCH_TOOL_NAME}`;
-        const toolCallId = `toolcall_${input.runId}_${LIGHTNING_L402_FETCH_TOOL_NAME}`;
+        const toolName = lightningInvocation.toolName;
+        const toolPartId = `dsepart_tool_${input.runId}_${toolName}`;
+        const toolCallId = `toolcall_${input.runId}_${toolName}`;
 
         bufferedParts.push({
           seq: seq++,
@@ -1524,44 +1775,90 @@ const runAutopilotStream = (input: {
             id: toolPartId,
             state: "start",
             tsMs: Date.now(),
-            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+            toolName,
             toolCallId,
             input: lightningInvocation.rawParams,
           },
         });
         yield* flush(true);
 
-        const toolExecution = yield* runLightningL402FetchTool({
-          convex,
-          requestId,
-          runId: input.runId,
-          threadId: input.threadId,
-          controller: input.controller,
-          rawParams: lightningInvocation.rawParams,
-          source: lightningInvocation.source,
-          queryTimeoutMs: CONVEX_QUERY_TIMEOUT_MS,
-          mutationTimeoutMs: CONVEX_MUTATION_TIMEOUT_MS,
-        });
-        const terminal = toolExecution.terminal;
-        const toolOk = terminal.status === "completed" || terminal.status === "cached";
+        if (toolName === LIGHTNING_L402_FETCH_TOOL_NAME) {
+          const toolExecution = yield* runLightningL402FetchTool({
+            convex,
+            requestId,
+            runId: input.runId,
+            threadId: input.threadId,
+            controller: input.controller,
+            rawParams: lightningInvocation.rawParams,
+            source: lightningInvocation.source,
+            queryTimeoutMs: CONVEX_QUERY_TIMEOUT_MS,
+            mutationTimeoutMs: CONVEX_MUTATION_TIMEOUT_MS,
+          });
+          const terminal = toolExecution.terminal;
+          const toolState =
+            terminal.status === "queued"
+              ? "approval-requested"
+              : terminal.status === "completed" || terminal.status === "cached"
+                ? "ok"
+                : "error";
 
-        bufferedParts.push({
-          seq: seq++,
-          part: {
-            type: "dse.tool",
-            v: 1,
-            id: toolPartId,
-            state: toolOk ? "ok" : "error",
-            tsMs: Date.now(),
-            toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
-            toolCallId,
-            input: toolExecution.validatedInput ?? lightningInvocation.rawParams,
-            output: terminal,
-            ...(toolOk ? {} : { errorText: terminal.denyReason ?? terminal.status }),
-          },
-        });
+          bufferedParts.push({
+            seq: seq++,
+            part: {
+              type: "dse.tool",
+              v: 1,
+              id: toolPartId,
+              state: toolState,
+              tsMs: Date.now(),
+              toolName,
+              toolCallId,
+              input: toolExecution.validatedInput ?? lightningInvocation.rawParams,
+              output: terminal,
+              ...(toolState === "error" ? { errorText: terminal.denyReason ?? terminal.status } : {}),
+            },
+          });
 
-        outputText = terminalTextFromLightningToolResult(terminal);
+          outputText = terminalTextFromLightningToolResult(terminal);
+        } else {
+          const toolExecution = yield* runLightningL402ApproveTool({
+            convex,
+            requestId,
+            runId: input.runId,
+            threadId: input.threadId,
+            controller: input.controller,
+            rawParams: lightningInvocation.rawParams,
+            source: lightningInvocation.source,
+            queryTimeoutMs: CONVEX_QUERY_TIMEOUT_MS,
+            mutationTimeoutMs: CONVEX_MUTATION_TIMEOUT_MS,
+          });
+          const output = toolExecution.output;
+          const toolState = output.ok ? "ok" : "error";
+
+          bufferedParts.push({
+            seq: seq++,
+            part: {
+              type: "dse.tool",
+              v: 1,
+              id: toolPartId,
+              state: toolState,
+              tsMs: Date.now(),
+              toolName,
+              toolCallId,
+              input: toolExecution.validatedInput ?? lightningInvocation.rawParams,
+              output,
+              ...(toolState === "error" ? { errorText: output.denyReason ?? "approve_failed" } : {}),
+            },
+          });
+
+          if (output.ok) {
+            const status = output.taskStatus ?? "unknown";
+            outputText = `L402 task ${output.taskId ?? "unknown"} approved (${status}).`;
+          } else {
+            const reason = output.denyReason ?? "unknown";
+            outputText = `L402 approval failed. Reason: ${reason}`;
+          }
+        }
+
         if (outputText.trim().length > 0) {
           hasEmittedTextPart = true;
           bufferedParts.push({

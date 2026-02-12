@@ -20,6 +20,16 @@ const HttpMethod = Schema.Literal("GET", "POST", "PUT", "PATCH", "DELETE");
 
 const L402CacheStatus = Schema.Literal("miss", "hit", "stale", "invalid");
 const L402PaymentBackend = Schema.Literal("spark", "lnd_deterministic");
+const LightningTaskStatus = Schema.Literal(
+  "queued",
+  "approved",
+  "running",
+  "paid",
+  "cached",
+  "blocked",
+  "failed",
+  "completed",
+);
 
 const L402FetchInput = Schema.Struct({
   url: Schema.NonEmptyString.annotations({
@@ -35,11 +45,14 @@ const L402FetchInput = Schema.Struct({
   forceRefresh: Schema.optional(Schema.Boolean),
   scope: Schema.optional(Schema.String),
   cacheTtlMs: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  requireApproval: Schema.optional(Schema.Boolean).annotations({
+    description: "If true (default), the task is queued and requires explicit approval before any payment executes."
+  }),
 });
 
 const L402FetchOutput = Schema.Struct({
   taskId: Schema.NullOr(Schema.String),
-  status: Schema.Literal("completed", "cached", "blocked", "failed"),
+  status: Schema.Literal("queued", "completed", "cached", "blocked", "failed"),
   proofReference: Schema.NullOr(Schema.String),
   denyReason: Schema.NullOr(Schema.String),
   paymentId: Schema.NullOr(Schema.String),
@@ -53,6 +66,21 @@ const L402FetchOutput = Schema.Struct({
   paid: Schema.Boolean,
   cacheStatus: Schema.NullOr(L402CacheStatus),
   paymentBackend: Schema.NullOr(L402PaymentBackend),
+  approvalRequired: Schema.Boolean,
+});
+
+const L402ApproveInput = Schema.Struct({
+  taskId: Schema.NonEmptyString.annotations({
+    description: "Task id to approve for execution."
+  })
+});
+
+const L402ApproveOutput = Schema.Struct({
+  taskId: Schema.NullOr(Schema.String),
+  ok: Schema.Boolean,
+  changed: Schema.Boolean,
+  taskStatus: Schema.NullOr(LightningTaskStatus),
+  denyReason: Schema.NullOr(Schema.String),
 });
 
 const PaywallStatus = Schema.Literal("active", "paused", "archived");
@@ -216,9 +244,18 @@ export const toolContracts = {
     description:
       "Queue an L402 paid fetch via the Lightning control-plane and wait for a terminal task status. This tool never executes wallet payment in the web worker directly.",
     usage:
-      "lightning_l402_fetch({ url, method?, headers?, body?, maxSpendMsats, challengeHeader?, forceRefresh?, scope?, cacheTtlMs? }) -> task terminal status + proof/deny fields",
+      "lightning_l402_fetch({ url, method?, headers?, body?, maxSpendMsats, challengeHeader?, forceRefresh?, scope?, cacheTtlMs?, requireApproval? }) -> task status + proof/deny fields (or queued + approvalRequired)",
     input: L402FetchInput,
     output: L402FetchOutput,
+  }),
+
+  lightning_l402_approve: Tool.make({
+    name: "lightning_l402_approve",
+    description:
+      "Approve a queued L402 fetch task for execution by the desktop executor. This tool never executes wallet payment in the web worker directly.",
+    usage: "lightning_l402_approve({ taskId }) -> { ok, changed, taskStatus }",
+    input: L402ApproveInput,
+    output: L402ApproveOutput,
   }),
 
   lightning_paywall_create: Tool.make({
@@ -464,6 +501,7 @@ export const BASE_TOOL_NAMES = [
   "get_time",
   "echo",
   "lightning_l402_fetch",
+  "lightning_l402_approve",
   ...PAYWALL_TOOL_NAMES,
 ] as const satisfies ReadonlyArray<AutopilotToolName>;
 
@@ -482,6 +520,7 @@ export const TOOL_ORDER = [
   "get_time",
   "echo",
   "lightning_l402_fetch",
+  "lightning_l402_approve",
   "lightning_paywall_create",
   "lightning_paywall_update",
   "lightning_paywall_pause",

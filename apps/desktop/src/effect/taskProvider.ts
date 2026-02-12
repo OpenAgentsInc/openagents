@@ -311,12 +311,7 @@ export const TaskProviderLive = Layer.effect(
         status: "approved",
         limit: 25,
       });
-      const queued = yield* listTasks({
-        token: input.token,
-        status: "queued",
-        limit: 25,
-      });
-      const candidates = [...approved, ...queued]
+      const candidates = approved
         .filter((task) => task.ownerId === input.userId)
         .sort((a, b) => a.createdAtMs - b.createdAtMs);
 
