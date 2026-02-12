@@ -22,14 +22,14 @@ import { useEffect, useState } from "react"
 import { useFonts } from "expo-font"
 import * as Linking from "expo-linking"
 import * as SplashScreen from "expo-splash-screen"
+import { ConvexProviderWithAuth } from "convex/react"
+import { ConvexReactClient } from "convex/react"
 import { KeyboardProvider } from "react-native-keyboard-controller"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
-import { ConvexProviderWithAuth } from "convex/react"
-import { ConvexReactClient } from "convex/react"
 import Config from "./config"
-import { useConvexAuthFromContext } from "./convex/useConvexAuthFromContext"
 import { AuthProvider } from "./context/AuthContext"
+import { useConvexAuthFromContext } from "./convex/useConvexAuthFromContext"
 import { initI18n } from "./i18n"
 import { AppNavigator } from "./navigators/AppNavigator"
 import { useNavigationPersistence } from "./navigators/navigationUtilities"
@@ -112,11 +112,13 @@ export function App() {
     fontLoadError: !!fontLoadError,
     bootTimeout,
     ready,
-    blocking: !ready ? [
-      !isNavigationStateRestored && "nav",
-      !isI18nInitialized && "i18n",
-      !areFontsLoaded && !fontLoadError && "fonts",
-    ].filter(Boolean) : null,
+    blocking: !ready
+      ? [
+          !isNavigationStateRestored && "nav",
+          !isI18nInitialized && "i18n",
+          !areFontsLoaded && !fontLoadError && "fonts",
+        ].filter(Boolean)
+      : null,
   })
 
   useEffect(() => {

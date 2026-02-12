@@ -1,8 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 
-import { parseChallengeHeader } from "@openagentsinc/lightning-effect/l402";
-import { L402ClientService } from "@openagentsinc/lightning-effect/services";
+import { L402ClientService, parseChallengeHeader } from "@openagentsinc/lightning-effect";
 
 describe("lightning-effect import smoke", () => {
   it.effect("resolves package exports in desktop app", () =>

@@ -17,7 +17,12 @@ export type AuthContextType = {
   setAuthToken: (token?: string) => void
   setAuthEmail: (email: string) => void
   /** Set session after WorkOS magic or SSO login (token optional for magic). */
-  setSession: (opts: { userId: string; email?: string; token?: string; user?: AuthUser | null }) => void
+  setSession: (opts: {
+    userId: string
+    email?: string
+    token?: string
+    user?: AuthUser | null
+  }) => void
   logout: () => void
   validationError: string
 }
