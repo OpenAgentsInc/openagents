@@ -1,12 +1,13 @@
 import { autopilotStories } from "./stories/autopilot"
 import { dseVizStories } from "./stories/dseViz"
 import { homeStories } from "./stories/home"
+import { lightningStories } from "./stories/lightning"
 
 import type { Story, StoryMeta } from "./types"
 
 const byTitle = (a: Story, b: Story) => a.title.localeCompare(b.title)
 
-export const allStories: ReadonlyArray<Story> = [...autopilotStories, ...dseVizStories, ...homeStories].sort(byTitle)
+export const allStories: ReadonlyArray<Story> = [...autopilotStories, ...dseVizStories, ...homeStories, ...lightningStories].sort(byTitle)
 
 export const listStoryMeta = (): ReadonlyArray<StoryMeta> =>
   allStories.map((s) => ({ id: s.id, title: s.title, kind: s.kind }))
