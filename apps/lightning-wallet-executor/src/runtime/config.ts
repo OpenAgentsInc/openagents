@@ -7,6 +7,7 @@ export type WalletExecutorConfig = Readonly<{
   host: string
   port: number
   walletId: string
+  authToken: string | null
   mode: ExecutorMode
   network: SparkNetwork
   sparkApiKey: string | null
@@ -82,6 +83,7 @@ export const loadWalletExecutorConfig = (
       env.OA_LIGHTNING_WALLET_ID,
       "openagents-ep212",
     )
+    const authToken = env.OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN?.trim() || null
 
     const mode = parseMode(env.OA_LIGHTNING_WALLET_EXECUTOR_MODE)
     const network = parseSparkNetwork(env.OA_LIGHTNING_SPARK_NETWORK)
@@ -140,6 +142,7 @@ export const loadWalletExecutorConfig = (
       host,
       port,
       walletId,
+      authToken,
       mode,
       network,
       sparkApiKey,
@@ -166,6 +169,7 @@ export const defaultWalletExecutorConfig = (): WalletExecutorConfig => ({
   host: "127.0.0.1",
   port: 8788,
   walletId: "openagents-ep212",
+  authToken: null,
   mode: "mock",
   network: "regtest",
   sparkApiKey: null,
@@ -178,4 +182,3 @@ export const defaultWalletExecutorConfig = (): WalletExecutorConfig => ({
   paymentTimeoutSecs: 45,
   allowedHosts: new Set(["sats4ai.com", "l402.openagents.com"]),
 })
-

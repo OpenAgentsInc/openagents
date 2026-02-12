@@ -136,4 +136,40 @@ describe("wallet executor http server", () => {
       expect(payload.error.code).toBe("invalid_request")
     }),
   )
+
+  it.scoped("enforces bearer auth when configured", () =>
+    Effect.gen(function* () {
+      const config = makeTestConfig({
+        port: 8804,
+        authToken: "test-token",
+      })
+      const layer = makeWalletTestLayer({ config })
+      const server = yield* makeWalletExecutorHttpServer.pipe(Effect.provide(layer))
+      yield* Effect.addFinalizer(() => server.close.pipe(Effect.orDie))
+
+      const unauthorizedResponse = yield* Effect.tryPromise({
+        try: async () => await fetch(`${server.address}/status`),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(unauthorizedResponse.status).toBe(401)
+
+      const unauthorizedPayload = (yield* Effect.tryPromise({
+        try: async () => await unauthorizedResponse.json(),
+        catch: (error) => new Error(String(error)),
+      })) as { ok: boolean; error: { code: string } }
+      expect(unauthorizedPayload.ok).toBe(false)
+      expect(unauthorizedPayload.error.code).toBe("unauthorized")
+
+      const authorizedResponse = yield* Effect.tryPromise({
+        try: async () =>
+          await fetch(`${server.address}/status`, {
+            headers: {
+              authorization: "Bearer test-token",
+            },
+          }),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(authorizedResponse.status).toBe(200)
+    }),
+  )
 })
