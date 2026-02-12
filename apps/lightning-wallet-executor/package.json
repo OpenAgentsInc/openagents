@@ -1,0 +1,30 @@
+{
+  "name": "lightning-wallet-executor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts serve",
+    "start": "tsx src/main.ts serve",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "tsx src/main.ts smoke",
+    "effect:patch": "effect-language-service patch"
+  },
+  "dependencies": {
+    "@breeztech/breez-sdk-spark": "^0.8.0-dev1",
+    "@google-cloud/secret-manager": "^6.1.1",
+    "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
+    "effect": "^3.19.16",
+    "nostr-effect": "^0.0.12"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.73.1",
+    "@effect/vitest": "^0.27.0",
+    "@types/node": "^24.10.10",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
