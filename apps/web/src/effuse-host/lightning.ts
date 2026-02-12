@@ -31,6 +31,16 @@ type CreateL402TaskBody = typeof CreateL402TaskBodySchema.Type;
 const decodeCreateBody = (value: unknown): Effect.Effect<CreateL402TaskBody, Error> =>
   Schema.decodeUnknown(CreateL402TaskBodySchema)(value).pipe(Effect.mapError(() => new Error("invalid_input")));
 
+const ExecutorPresenceBodySchema = Schema.Struct({
+  deviceId: Schema.NonEmptyString,
+  version: Schema.optional(Schema.String),
+  capabilities: Schema.optional(Schema.Array(Schema.String)),
+});
+type ExecutorPresenceBody = typeof ExecutorPresenceBodySchema.Type;
+
+const decodeExecutorPresenceBody = (value: unknown): Effect.Effect<ExecutorPresenceBody, Error> =>
+  Schema.decodeUnknown(ExecutorPresenceBodySchema)(value).pipe(Effect.mapError(() => new Error("invalid_input")));
+
 const LightningTaskStatusSchema = Schema.Literal(
   "queued",
   "approved",
@@ -236,6 +246,45 @@ const runAuthedLightning = async <A>(
 
   return json(exit.value, { status: 200, headers: { "cache-control": "no-store" } });
 };
+
+const upsertExecutorPresenceProgram = (request: Request) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const body = yield* readJsonBody(request);
+    const decoded = yield* decodeExecutorPresenceBody(body);
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? undefined;
+
+    const convex = yield* ConvexService;
+    const result = yield* convex.mutation(api.lightning.presence.upsertExecutorPresence, {
+      deviceId: decoded.deviceId,
+      version: decoded.version,
+      capabilities: decoded.capabilities ? [...decoded.capabilities] : undefined,
+    });
+
+    return {
+      ok: true as const,
+      presence: result.presence,
+      requestId: requestId ?? null,
+    };
+  });
+
+const getLatestExecutorPresenceProgram = (_request: Request) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const convex = yield* ConvexService;
+    const result = yield* convex.query(api.lightning.presence.getLatestExecutorPresence, {});
+
+    return {
+      ok: true as const,
+      presence: result.presence,
+    };
+  });
 
 const createTaskProgram = (request: Request) =>
   Effect.gen(function* () {
@@ -598,6 +647,16 @@ const resumePaywallProgram = (request: Request, paywallId: string) =>
 export const handleLightningRequest = async (request: Request, env: WorkerEnv): Promise<Response | null> => {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/lightning/")) return null;
+
+  if (url.pathname === "/api/lightning/executor/presence") {
+    if (request.method === "POST") {
+      return runAuthedLightning(request, env, upsertExecutorPresenceProgram(request));
+    }
+    if (request.method === "GET") {
+      return runAuthedLightning(request, env, getLatestExecutorPresenceProgram(request));
+    }
+    return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+  }
 
   if (url.pathname === "/api/lightning/l402/tasks") {
     if (request.method === "POST") {

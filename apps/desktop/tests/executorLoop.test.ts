@@ -80,6 +80,7 @@ const makeTaskProviderTestLayer = () =>
         });
 
       return TaskProviderService.of({
+        heartbeatExecutorPresence: () => Effect.void,
         enqueueDemoTask: ({ payload, token }) =>
           Effect.gen(function* () {
             void token;

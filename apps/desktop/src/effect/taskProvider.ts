@@ -37,6 +37,12 @@ export type TaskProviderError =
   | TaskProviderAuthError;
 
 export type TaskProviderApi = Readonly<{
+  readonly heartbeatExecutorPresence: (input: {
+    readonly token: string;
+    readonly deviceId: string;
+    readonly version?: string;
+    readonly capabilities?: ReadonlyArray<string>;
+  }) => Effect.Effect<void, TaskProviderError>;
   readonly enqueueDemoTask: (input: {
     readonly payload: string;
     readonly token: string;
@@ -263,6 +269,38 @@ export const TaskProviderLive = Layer.effect(
   Effect.gen(function* () {
     const cfg = yield* DesktopConfigService;
 
+    const heartbeatExecutorPresence = Effect.fn("TaskProvider.heartbeatExecutorPresence")(function* (input: {
+      readonly token: string;
+      readonly deviceId: string;
+      readonly version?: string;
+      readonly capabilities?: ReadonlyArray<string>;
+    }) {
+      if (!input.token || input.token.trim().length === 0) {
+        return yield* TaskProviderAuthError.make({
+          operation: "heartbeatExecutorPresence",
+          reason: "missing_token",
+        });
+      }
+
+      const body: Record<string, unknown> = {
+        deviceId: String(input.deviceId ?? "").trim(),
+      };
+      if (typeof input.version === "string" && input.version.trim().length > 0) {
+        body.version = input.version.trim();
+      }
+      if (Array.isArray(input.capabilities)) {
+        body.capabilities = input.capabilities;
+      }
+
+      yield* requestJson({
+        operation: "heartbeatExecutorPresence",
+        method: "POST",
+        url: `${cfg.openAgentsBaseUrl}/api/lightning/executor/presence`,
+        token: input.token,
+        body,
+      });
+    });
+
     const listTasks = Effect.fn("TaskProvider.listTasks")(function* (input: {
       readonly token: string;
       readonly status?: ExecutorTaskStatus;
@@ -315,7 +353,8 @@ export const TaskProviderLive = Layer.effect(
         .filter((task) => task.ownerId === input.userId)
         .sort((a, b) => a.createdAtMs - b.createdAtMs);
 
-      return candidates.length > 0 ? Option.some(candidates[0]!) : Option.none<ExecutorTask>();
+      const first = candidates[0];
+      return first ? Option.some(first) : Option.none<ExecutorTask>();
     });
 
     const transitionTask = Effect.fn("TaskProvider.transitionTask")(function* (input: {
@@ -394,6 +433,7 @@ export const TaskProviderLive = Layer.effect(
     });
 
     return TaskProviderService.of({
+      heartbeatExecutorPresence,
       enqueueDemoTask,
       pollPendingTask,
       transitionTask,

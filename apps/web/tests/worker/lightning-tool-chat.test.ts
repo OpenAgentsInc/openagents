@@ -140,6 +140,23 @@ vi.mock("../../src/effect/convex", async (importOriginal) => {
         return { ok: true, cancelRequested: false };
       }
 
+      // lightning.presence.getLatestExecutorPresence ({})
+      if (isRecord(args) && Object.keys(args).length === 0) {
+        const now = Date.now();
+        return {
+          ok: true,
+          presence: {
+            ownerId: "user-1",
+            deviceId: "desktop-1",
+            lastSeenAtMs: now,
+            version: "desktop-test",
+            capabilities: ["l402_executor"],
+            createdAtMs: now,
+            updatedAtMs: now,
+          },
+        };
+      }
+
       if (isRecord(args) && typeof args.taskId === "string" && !("limit" in args)) {
         state.lightningGetTaskCalls.push(args);
         const task = state.lightningTasks.get(args.taskId);
