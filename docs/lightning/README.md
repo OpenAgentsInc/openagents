@@ -4,7 +4,7 @@ Docs are organized into subfolders:
 
 | Folder | Contents |
 |--------|----------|
-| **runbooks/** | Operational runbooks: Aperture deploy, staging reconcile, observability rehearsal. |
+| **runbooks/** | Operational runbooks: Aperture deploy, staging reconcile, observability rehearsal, EP212 buyer rehearsal. |
 | **plans/** | Plans and roadmaps: EP212 demo plan, L402 paywall infra plan, LND/Neutrino/Electron, deep integration roadmap. |
 | **reference/** | Reference and guides: Voltage → L402 connect, Breez/Spark comparison, Lightning agent tools. |
 | **status/** | Status snapshots and worklogs: 20260212 status (includes §12 operator checklist), setup log, Spark L402 desktop worklog. |
