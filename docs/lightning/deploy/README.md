@@ -1,6 +1,6 @@
 # Aperture deploy (L402 gateway on GCP)
 
-**Full runbook (architecture, secrets, how to use, how to edit, troubleshooting):**  
+**Full runbook (architecture, secrets, how to use, how to edit, troubleshooting):**
 `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md`
 
 This directory contains only the **image build** and optional Cloud Build config. Config content, Secret Manager, and Cloud Run deploy are described in the runbook and in `docs/lightning/VOLTAGE_TO_L402_CONNECT.md` (§7.1).
