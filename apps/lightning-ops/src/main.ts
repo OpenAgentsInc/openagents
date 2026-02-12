@@ -10,6 +10,11 @@ import { runObservabilitySmoke, type ObservabilitySmokeMode } from "./programs/s
 import { runSecuritySmoke, type SecuritySmokeMode } from "./programs/securityControls.js";
 import { runSettlementSmoke, type SettlementSmokeMode } from "./programs/smokeSettlement.js";
 import { runStagingSmoke, type StagingSmokeMode } from "./programs/smokeStaging.js";
+import {
+  runFullFlowSmoke,
+  type FullFlowSmokeMode,
+  type FullFlowSmokeSummary,
+} from "./programs/fullFlow.js";
 import { OpsRuntimeConfigLive } from "./runtime/config.js";
 
 const usage = `Usage:
@@ -20,6 +25,7 @@ const usage = `Usage:
   tsx src/main.ts smoke:settlement [--json] [--mode mock|convex]
   tsx src/main.ts smoke:staging [--json] [--mode mock|convex]
   tsx src/main.ts smoke:observability [--json] [--mode mock|convex]
+  tsx src/main.ts smoke:full-flow [--json] [--mode mock|convex] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
 `;
 
 const toCompileSummaryJson = (summary: {
@@ -191,6 +197,8 @@ const toObservabilitySmokeJson = (summary: {
     correlation: summary.correlation,
     records: summary.records,
   });
+
+const toFullFlowSmokeJson = (summary: FullFlowSmokeSummary) => JSON.stringify(summary);
 
 const printCompileSummary = (
   summary: {
@@ -390,6 +398,30 @@ const printObservabilitySummary = (
         ].join("\n"),
       );
 
+const printFullFlowSummary = (summary: FullFlowSmokeSummary, jsonOutput: boolean) =>
+  jsonOutput
+    ? Console.log(toFullFlowSmokeJson(summary))
+    : Console.log(
+        [
+          `ok=${summary.ok}`,
+          `mode=${summary.mode}`,
+          `requestId=${summary.requestId}`,
+          `executionPath=${summary.executionPath}`,
+          `paywallId=${summary.paywallCreation.paywallId}`,
+          `deploymentId=${summary.gatewayReconcile.deploymentId}`,
+          `configHash=${summary.gatewayReconcile.configHash}`,
+          `challengeOk=${summary.gatewayReconcile.challengeOk}`,
+          `proxyOk=${summary.gatewayReconcile.proxyOk}`,
+          `healthOk=${summary.gatewayReconcile.healthOk}`,
+          `settlementId=${summary.paidRequest.settlementId}`,
+          `paymentProofRef=${summary.paidRequest.paymentProofRef}`,
+          `denyReasonCode=${summary.policyDeniedRequest.denyReasonCode}`,
+          `coverage=${summary.coverage.passedChecks}/${summary.coverage.totalChecks}`,
+          `artifacts.events=${summary.artifacts.eventsPath}`,
+          `artifacts.summary=${summary.artifacts.summaryPath}`,
+        ].join("\n"),
+      );
+
 const runSmokeCompile = (jsonOutput: boolean) => {
   const harness = makeInMemoryControlPlaneHarness({ paywalls: smokePaywalls });
   return compileAndPersistOnce({ requestId: "smoke:compile" }).pipe(
@@ -448,6 +480,38 @@ const runSmokeObservability = (jsonOutput: boolean, mode: ObservabilitySmokeMode
     Effect.flatMap((summary) => printObservabilitySummary(summary, jsonOutput)),
   );
 
+const runSmokeFullFlow = (input: {
+  readonly jsonOutput: boolean;
+  readonly mode: FullFlowSmokeMode;
+  readonly artifactDir?: string;
+  readonly localArtifactPath?: string;
+  readonly strictLocalParity: boolean;
+}) =>
+  runFullFlowSmoke({
+    mode: input.mode,
+    ...(input.artifactDir ? { artifactDir: input.artifactDir } : {}),
+    ...(input.localArtifactPath ? { localArtifactPath: input.localArtifactPath } : {}),
+    strictLocalParity: input.strictLocalParity,
+  }).pipe(Effect.flatMap((summary) => printFullFlowSummary(summary, input.jsonOutput)));
+
+const parseTextOption = (
+  argv: ReadonlyArray<string>,
+  name: string,
+): string | undefined => {
+  const inlineFlag = argv.find((value) => value.startsWith(`${name}=`));
+  if (inlineFlag) {
+    const value = inlineFlag.slice(`${name}=`.length).trim();
+    return value.length > 0 ? value : undefined;
+  }
+
+  const index = argv.findIndex((value) => value === name);
+  if (index < 0) return undefined;
+  const next = argv[index + 1];
+  if (typeof next !== "string") return undefined;
+  const trimmed = next.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 const main = Effect.gen(function* () {
   const argv = process.argv.slice(2);
   const command = argv[0] ?? "";
@@ -479,6 +543,18 @@ const main = Effect.gen(function* () {
 
   if (command === "smoke:observability") {
     return yield* runSmokeObservability(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+  }
+
+  if (command === "smoke:full-flow") {
+    const artifactDir = parseTextOption(argv, "--artifact-dir");
+    const localArtifactPath = parseTextOption(argv, "--local-artifact");
+    return yield* runSmokeFullFlow({
+      jsonOutput,
+      mode: parseMode(argv, ["mock", "convex"], "mock"),
+      ...(artifactDir ? { artifactDir } : {}),
+      ...(localArtifactPath ? { localArtifactPath } : {}),
+      strictLocalParity: !argv.includes("--allow-missing-local-artifact"),
+    });
   }
 
   return yield* Console.error(usage).pipe(Effect.zipRight(Effect.fail(new Error("invalid_command"))));

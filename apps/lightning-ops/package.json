@@ -11,6 +11,7 @@
     "smoke:security": "tsx src/main.ts smoke:security",
     "smoke:settlement": "tsx src/main.ts smoke:settlement",
     "smoke:observability": "tsx src/main.ts smoke:observability",
+    "smoke:full-flow": "tsx src/main.ts smoke:full-flow",
     "reconcile:convex": "tsx src/main.ts reconcile:convex --json",
     "smoke:staging": "tsx src/main.ts smoke:staging"
   },

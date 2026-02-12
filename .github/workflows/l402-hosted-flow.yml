@@ -1,0 +1,122 @@
+name: L402 Hosted Flow Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  local_node_regression:
+    name: Local-node regression parity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install packages/lnd-effect deps
+        working-directory: packages/lnd-effect
+        run: npm ci
+
+      - name: Verify packages/lnd-effect
+        working-directory: packages/lnd-effect
+        run: npm run typecheck && npm test
+
+      - name: Install packages/lightning-effect deps
+        working-directory: packages/lightning-effect
+        run: npm ci
+
+      - name: Verify packages/lightning-effect
+        working-directory: packages/lightning-effect
+        run: npm run typecheck && npm test
+
+      - name: Install apps/desktop deps
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Verify apps/desktop
+        working-directory: apps/desktop
+        run: npm run typecheck && npm test
+
+      - name: Run local-node smoke artifact
+        working-directory: apps/desktop
+        run: npm run test:l402-local-node-smoke -- --json
+
+      - name: Upload local-node artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: l402-local-node-artifact
+          path: output/l402-local-node-smoke-artifact.json
+          if-no-files-found: error
+
+  hosted_flow:
+    name: Hosted flow + toolchain gate
+    runs-on: ubuntu-latest
+    needs:
+      - local_node_regression
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Download local-node artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: l402-local-node-artifact
+          path: output
+
+      - name: Install apps/lightning-ops deps
+        working-directory: apps/lightning-ops
+        run: npm ci
+
+      - name: Verify apps/lightning-ops
+        working-directory: apps/lightning-ops
+        run: npm run typecheck && npm test
+
+      - name: Run hosted full-flow smoke
+        working-directory: apps/lightning-ops
+        run: npm run smoke:full-flow -- --json
+
+      - name: Install apps/autopilot-worker deps
+        working-directory: apps/autopilot-worker
+        run: npm ci
+
+      - name: Run paywall tools smoke
+        working-directory: apps/autopilot-worker
+        run: npm run smoke:paywall-tools -- --json
+
+      - name: Install packages/effuse-test deps
+        working-directory: packages/effuse-test
+        run: bun install --frozen-lockfile
+
+      - name: Install apps/web deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Run hosted L402 E2E spec
+        working-directory: apps/web
+        run: npm run test:e2e -- --tag l402-hosted --grep "apps-web\\.hosted-l402\\.full-flow"
+
+      - name: Upload hosted flow artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l402-hosted-flow-artifacts
+          path: |
+            output/lightning-ops
+            output/effuse-test
+          if-no-files-found: warn

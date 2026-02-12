@@ -1,6 +1,7 @@
 import { Effect, Scope } from "effect"
 import * as Path from "node:path"
 import * as Fs from "node:fs/promises"
+import { spawn } from "node:child_process"
 
 import { BrowserService } from "../browser/BrowserService.ts"
 import { EffuseTestConfig } from "../config/EffuseTestConfig.ts"
@@ -24,6 +25,38 @@ export const appsWebSuite = (): Effect.Effect<
 > =>
   Effect.gen(function* () {
     const config = yield* EffuseTestConfig
+    const runLightningOpsSmoke = (args: ReadonlyArray<string>) =>
+      Effect.tryPromise({
+        try: () =>
+          new Promise<{ readonly status: number; readonly stdout: string; readonly stderr: string }>((resolve, reject) => {
+            const cwd = Path.resolve(process.cwd(), "../../apps/lightning-ops")
+            const cmd = process.platform === "win32" ? "npm.cmd" : "npm"
+            const child = spawn(cmd, ["run", "smoke:full-flow", "--", ...args], {
+              cwd,
+              env: process.env,
+              stdio: ["ignore", "pipe", "pipe"],
+            })
+
+            let stdout = ""
+            let stderr = ""
+
+            child.stdout.on("data", (chunk) => {
+              stdout += String(chunk)
+            })
+            child.stderr.on("data", (chunk) => {
+              stderr += String(chunk)
+            })
+            child.on("error", (error) => reject(error))
+            child.on("close", (status) => {
+              resolve({
+                status: typeof status === "number" ? status : 1,
+                stdout,
+                stderr,
+              })
+            })
+          }),
+        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+      })
     const tests: Array<TestCase<AppsWebEnv>> = [
     {
       id: "apps-web.http.ssr-home",
@@ -292,6 +325,99 @@ export const appsWebSuite = (): Effect.Effect<
         yield* assertEndpoint("/api/lightning/settlements?limit=1")
         yield* assertEndpoint("/api/lightning/deployments?limit=1")
         yield* assertEndpoint("/api/lightning/deployments/events?limit=1")
+      }),
+    },
+    {
+      id: "apps-web.hosted-l402.full-flow",
+      tags: ["e2e", "http", "apps/web", "l402", "l402-hosted"],
+      timeoutMs: 180_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+
+        const paywallRes = yield* step(
+          "GET /api/lightning/paywalls?limit=1",
+          Effect.tryPromise({
+            try: () => fetch(`${ctx.baseUrl}/api/lightning/paywalls?limit=1`, { redirect: "manual" }),
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        yield* step(
+          "assert endpoint request correlation exists",
+          Effect.gen(function* () {
+            yield* assertTrue(
+              paywallRes.status === 200 || paywallRes.status === 401,
+              `Expected /api/lightning/paywalls?limit=1 to return 200 or 401, got ${paywallRes.status}`,
+            )
+            const reqId = paywallRes.headers.get("x-oa-request-id") ?? ""
+            yield* assertTrue(reqId.length > 0, "Expected x-oa-request-id on paywalls endpoint")
+          }),
+        )
+
+        const smokeResult = yield* step(
+          "run lightning-ops smoke:full-flow --json",
+          runLightningOpsSmoke(["--json", "--mode", "mock", "--allow-missing-local-artifact"]),
+        )
+
+        yield* step(
+          "assert smoke command status is zero",
+          assertEqual(smokeResult.status, 0, `Expected smoke:full-flow to succeed, stderr=${smokeResult.stderr}`),
+        )
+
+        const summary = yield* step(
+          "parse smoke summary json",
+          Effect.try({
+            try: () => {
+              const lines = smokeResult.stdout
+                .split("\n")
+                .map((line) => line.trim())
+                .filter((line) => line.length > 0)
+              const last = lines.at(-1)
+              if (!last) throw new Error("missing_smoke_summary_line")
+              return JSON.parse(last) as {
+                readonly ok: boolean
+                readonly paidRequest: { readonly status: string }
+                readonly policyDeniedRequest: { readonly status: string; readonly denyReasonCode: string }
+                readonly gatewayReconcile: { readonly challengeOk: boolean; readonly proxyOk: boolean; readonly healthOk: boolean }
+                readonly artifacts: { readonly summaryPath: string; readonly eventsPath: string }
+                readonly parity: { readonly hostedMissingKeys: ReadonlyArray<string> }
+              }
+            },
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
+
+        yield* step(
+          "assert hosted full-flow success + deny scenarios",
+          Effect.gen(function* () {
+            yield* assertTrue(summary.ok === true, "Expected hosted smoke summary ok=true")
+            yield* assertEqual(summary.paidRequest.status, "paid", "Expected paid request scenario to pass")
+            yield* assertEqual(summary.policyDeniedRequest.status, "denied", "Expected policy deny scenario to pass")
+            yield* assertTrue(
+              summary.policyDeniedRequest.denyReasonCode.length > 0,
+              "Expected policy deny reason code to be present",
+            )
+            yield* assertTrue(summary.gatewayReconcile.challengeOk, "Expected challenge probe to be successful")
+            yield* assertTrue(summary.gatewayReconcile.proxyOk, "Expected proxy probe to be successful")
+            yield* assertTrue(summary.gatewayReconcile.healthOk, "Expected gateway health probe to be successful")
+            yield* assertEqual(
+              summary.parity.hostedMissingKeys.length,
+              0,
+              "Expected hosted parity required keys to be present",
+            )
+          }),
+        )
+
+        yield* step(
+          "assert smoke artifacts exist",
+          Effect.tryPromise({
+            try: async () => {
+              await Fs.access(summary.artifacts.eventsPath)
+              await Fs.access(summary.artifacts.summaryPath)
+            },
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }),
+        )
       }),
     },
     {

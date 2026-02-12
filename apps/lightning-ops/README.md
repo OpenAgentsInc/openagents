@@ -17,6 +17,7 @@ npm test
 npm run smoke:compile -- --json
 npm run smoke:security -- --json
 npm run smoke:settlement -- --json
+npm run smoke:full-flow -- --json
 npm run reconcile:convex
 npm run smoke:staging -- --json
 ```
@@ -45,6 +46,23 @@ npm run smoke:staging -- --json
 - fail-closed credential validation
 - global pause/owner kill-switch denial behavior
 - rotation/revocation/activation lifecycle + recovery state
+
+`smoke:full-flow -- --json` executes the hosted-path end-to-end harness and writes:
+
+- `events.jsonl` (ordered stage events)
+- `summary.json` (machine-readable pass/fail + coverage summary)
+- parity checks against local-node smoke artifact correlation keys
+
+Default artifact paths:
+
+- hosted output: `output/lightning-ops/full-flow/<requestId>/`
+- local-node parity source: `output/l402-local-node-smoke-artifact.json`
+
+Override flags:
+
+- `--artifact-dir <path>`
+- `--local-artifact <path>`
+- `--allow-missing-local-artifact` (disables strict local parity requirement)
 
 Environment variables for Convex-backed operation:
 
