@@ -1,0 +1,32 @@
+# Aperture config with Cloud SQL Postgres (for Cloud Run).
+# Password is injected when creating the secret.
+listenaddr: "0.0.0.0:8080"
+basedir: "/tmp"
+debuglevel: "info"
+insecure: false
+
+authenticator:
+  network: "mainnet"
+  disable: false
+  lndhost: "openagents.m.voltageapp.io:10009"
+  tlspath: "/voltage-tls/tls.cert"
+  macdir: "/voltage-mac"
+
+dbbackend: "postgres"
+postgres:
+  host: "/cloudsql/openagentsgemini:us-central1:l402-aperture-db"
+  port: 5432
+  user: "aperture"
+  password: "REPLACE_PASSWORD"
+  dbname: "aperture"
+  maxconnections: 25
+  requiressl: false
+  skipmigrations: false
+
+services:
+  - name: bootstrap
+    hostregexp: "^l402-bootstrap\\.openagents\\.local$"
+    pathregexp: "^/.*$"
+    address: 127.0.0.1:9
+    protocol: http
+    price: 0
