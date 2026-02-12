@@ -271,7 +271,8 @@ export default defineSchema({
     .index("by_paywallId_createdAtMs", ["paywallId", "createdAtMs"])
     .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"])
     .index("by_status_updatedAtMs", ["status", "updatedAtMs"])
-    .index("by_paymentHash", ["paymentHash"]),
+    .index("by_paymentHash", ["paymentHash"])
+    .index("by_requestId", ["requestId"]),
 
   l402Settlements: defineTable({
     settlementId: v.string(),
@@ -287,7 +288,8 @@ export default defineSchema({
     .index("by_settlementId", ["settlementId"])
     .index("by_paywallId_createdAtMs", ["paywallId", "createdAtMs"])
     .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"])
-    .index("by_invoiceId", ["invoiceId"]),
+    .index("by_invoiceId", ["invoiceId"])
+    .index("by_requestId", ["requestId"]),
 
   l402Payouts: defineTable({
     payoutId: v.string(),

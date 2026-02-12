@@ -171,6 +171,13 @@ const parseLimit = (value: string | null): number | undefined => {
   return Math.max(1, Math.min(200, Math.floor(parsed)));
 };
 
+const parseBeforeCreatedAtMs = (value: string | null): number | undefined => {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.floor(parsed);
+};
+
 const parseTaskStatus = (value: string | null): Effect.Effect<LightningTaskStatus | undefined, Error> => {
   if (!value || value.trim().length === 0) return Effect.succeed(undefined);
   return Schema.decodeUnknown(LightningTaskStatusSchema)(value.trim()).pipe(
@@ -340,6 +347,57 @@ const listPaywallsProgram = (request: Request) =>
     };
   });
 
+const listOwnerSettlementsProgram = (request: Request) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const url = new URL(request.url);
+    const limit = parseLimit(url.searchParams.get("limit"));
+    const beforeCreatedAtMs = parseBeforeCreatedAtMs(url.searchParams.get("beforeCreatedAtMs"));
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? null;
+
+    const convex = yield* ConvexService;
+    const listed = yield* convex.query(api.lightning.settlements.listOwnerSettlements, {
+      ...(limit !== undefined ? { limit } : {}),
+      ...(beforeCreatedAtMs !== undefined ? { beforeCreatedAtMs } : {}),
+    });
+
+    return {
+      ok: true as const,
+      settlements: listed.settlements,
+      nextCursor: listed.nextCursor,
+      requestId,
+    };
+  });
+
+const listPaywallSettlementsProgram = (request: Request, paywallId: string) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const url = new URL(request.url);
+    const limit = parseLimit(url.searchParams.get("limit"));
+    const beforeCreatedAtMs = parseBeforeCreatedAtMs(url.searchParams.get("beforeCreatedAtMs"));
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? null;
+
+    const convex = yield* ConvexService;
+    const listed = yield* convex.query(api.lightning.settlements.listPaywallSettlements, {
+      paywallId,
+      ...(limit !== undefined ? { limit } : {}),
+      ...(beforeCreatedAtMs !== undefined ? { beforeCreatedAtMs } : {}),
+    });
+
+    return {
+      ok: true as const,
+      settlements: listed.settlements,
+      nextCursor: listed.nextCursor,
+      requestId,
+    };
+  });
+
 const getPaywallProgram = (request: Request, paywallId: string) =>
   Effect.gen(function* () {
     const auth = yield* AuthService;
@@ -474,6 +532,13 @@ export const handleLightningRequest = async (request: Request, env: WorkerEnv): 
     return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
   }
 
+  if (url.pathname === "/api/lightning/settlements") {
+    if (request.method === "GET") {
+      return runAuthedLightning(request, env, listOwnerSettlementsProgram(request));
+    }
+    return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+  }
+
   const paywallMatch = /^\/api\/lightning\/paywalls\/([^/]+)$/.exec(url.pathname);
   if (paywallMatch) {
     const paywallId = decodeURIComponent(paywallMatch[1] ?? "").trim();
@@ -487,6 +552,18 @@ export const handleLightningRequest = async (request: Request, env: WorkerEnv): 
       return runAuthedLightning(request, env, updatePaywallProgram(request, paywallId));
     }
     return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+  }
+
+  const paywallSettlementsMatch = /^\/api\/lightning\/paywalls\/([^/]+)\/settlements$/.exec(url.pathname);
+  if (paywallSettlementsMatch) {
+    if (request.method !== "GET") {
+      return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+    }
+    const paywallId = decodeURIComponent(paywallSettlementsMatch[1] ?? "").trim();
+    if (!paywallId) {
+      return json({ ok: false, error: "invalid_input" }, { status: 400, headers: { "cache-control": "no-store" } });
+    }
+    return runAuthedLightning(request, env, listPaywallSettlementsProgram(request, paywallId));
   }
 
   const paywallPauseMatch = /^\/api\/lightning\/paywalls\/([^/]+)\/pause$/.exec(url.pathname);

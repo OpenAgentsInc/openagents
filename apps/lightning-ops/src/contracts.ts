@@ -156,6 +156,56 @@ export const GatewayEventWriteResponse = Schema.Struct({
 });
 export type GatewayEventWriteResponse = typeof GatewayEventWriteResponse.Type;
 
+export const InvoiceLifecycleStatus = Schema.Literal("open", "settled", "canceled", "expired");
+export type InvoiceLifecycleStatus = typeof InvoiceLifecycleStatus.Type;
+
+export const PaymentProofType = Schema.Literal("lightning_preimage");
+export type PaymentProofType = typeof PaymentProofType.Type;
+
+export const ControlPlaneInvoiceRecord = Schema.Struct({
+  invoiceId: Schema.NonEmptyString,
+  paywallId: Schema.NonEmptyString,
+  ownerId: Schema.NonEmptyString,
+  amountMsats: PositiveMsats,
+  status: InvoiceLifecycleStatus,
+  paymentHash: Schema.optional(Schema.String),
+  paymentRequest: Schema.optional(Schema.String),
+  paymentProofRef: Schema.optional(Schema.String),
+  requestId: Schema.optional(Schema.String),
+  createdAtMs: TimestampMs,
+  updatedAtMs: TimestampMs,
+  settledAtMs: Schema.optional(TimestampMs),
+});
+export type ControlPlaneInvoiceRecord = typeof ControlPlaneInvoiceRecord.Type;
+
+export const ControlPlaneSettlementRecord = Schema.Struct({
+  settlementId: Schema.NonEmptyString,
+  paywallId: Schema.NonEmptyString,
+  ownerId: Schema.NonEmptyString,
+  invoiceId: Schema.optional(Schema.String),
+  amountMsats: PositiveMsats,
+  paymentProofRef: Schema.NonEmptyString,
+  requestId: Schema.optional(Schema.String),
+  metadata: Schema.optional(Schema.Unknown),
+  createdAtMs: TimestampMs,
+});
+export type ControlPlaneSettlementRecord = typeof ControlPlaneSettlementRecord.Type;
+
+export const InvoiceLifecycleWriteResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  changed: Schema.Boolean,
+  invoice: ControlPlaneInvoiceRecord,
+});
+export type InvoiceLifecycleWriteResponse = typeof InvoiceLifecycleWriteResponse.Type;
+
+export const SettlementWriteResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  existed: Schema.Boolean,
+  settlement: ControlPlaneSettlementRecord,
+  invoice: Schema.optional(ControlPlaneInvoiceRecord),
+});
+export type SettlementWriteResponse = typeof SettlementWriteResponse.Type;
+
 export const CompiledRunSummary = Schema.Struct({
   configHash: Schema.NonEmptyString,
   ruleCount: NonNegativeInt,
@@ -201,5 +251,7 @@ export type ReconcileRunSummary = typeof ReconcileRunSummary.Type;
 export const decodeControlPlaneSnapshotResponse = Schema.decodeUnknown(ControlPlaneSnapshotResponse);
 export const decodeDeploymentIntentWriteResponse = Schema.decodeUnknown(DeploymentIntentWriteResponse);
 export const decodeGatewayEventWriteResponse = Schema.decodeUnknown(GatewayEventWriteResponse);
+export const decodeInvoiceLifecycleWriteResponse = Schema.decodeUnknown(InvoiceLifecycleWriteResponse);
+export const decodeSettlementWriteResponse = Schema.decodeUnknown(SettlementWriteResponse);
 export const decodeCompiledRunSummary = Schema.decodeUnknown(CompiledRunSummary);
 export const decodeReconcileRunSummary = Schema.decodeUnknown(ReconcileRunSummary);
