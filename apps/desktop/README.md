@@ -47,6 +47,7 @@ Optional environment variables:
 - `OA_DESKTOP_LND_TARGET` (optional override for bundled target, e.g. `darwin-arm64`)
 - `OA_DESKTOP_LND_DEV_BINARY_PATH` (optional local dev override binary path)
 - `OA_DESKTOP_LND_DEV_BINARY_SHA256` (optional checksum gate for local dev override)
+- `OA_DESKTOP_LND_P2P_LISTEN` (optional `listen` override; default `127.0.0.1:19735` to avoid common `9735` conflicts)
 - `OA_LND_TARGETS` (comma-separated target list for `npm run lnd:prepare`)
 
 ## Security Notes
