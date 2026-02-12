@@ -51,6 +51,8 @@ Hosted dry run:
 
 - `apps/lightning-ops/src/programs/smokeObservability.ts`
 - CLI: `cd apps/lightning-ops && npm run smoke:observability -- --json`
+- Full-flow CLI (issue `#1604`): `cd apps/lightning-ops && npm run smoke:full-flow -- --json`
+- Full-flow artifacts: `output/lightning-ops/full-flow/<requestId>/events.jsonl` and `summary.json`
 
 Local dry run:
 
@@ -74,20 +76,31 @@ Local dry run:
 
 ## Rehearsal Checklist
 
-### 1) Hosted Success
+### 1) Hosted Success (Full-flow)
 
 Run:
 
 ```bash
 cd apps/lightning-ops
-npm run smoke:observability -- --json > ../../output/l402-observability-hosted.json
+npm run smoke:full-flow -- --json > ../../output/l402-hosted-full-flow-summary.json
 ```
 
 Verify:
 
-- `missingFieldKeys` is `[]`
-- at least one record for each plane (`control`, `gateway`, `settlement`, `ui`)
-- `correlation.requestIds` and `correlation.paymentProofRefs` are non-empty
+- summary `ok=true`
+- gateway probes succeeded (`challengeOk`, `proxyOk`, `healthOk`)
+- success and deny scenarios are both present:
+  - `paidRequest.status=paid`
+  - `policyDeniedRequest.status=denied`
+- hosted observability includes no missing required keys
+- hosted artifact parity keys include:
+  - `executionPath`
+  - `requestId`
+  - `taskId`
+  - `paymentProofRef`
+- artifacts were written:
+  - `events.jsonl`
+  - `summary.json`
 
 ### 2) Local-Node Success
 
@@ -107,6 +120,18 @@ Verify:
   - `desktopRuntimeStatus`
   - `walletState`
   - `nodeSyncStatus`
+
+Then run hosted full-flow again to enforce parity with the local artifact:
+
+```bash
+cd apps/lightning-ops
+npm run smoke:full-flow -- --json
+```
+
+Pass condition:
+
+- `parity.localArtifactPresent=true`
+- `parity.localMissingKeys=[]`
 
 ### 3) Cache Reuse
 
@@ -166,9 +191,11 @@ Pass condition:
 Run these before sign-off:
 
 ```bash
+cd packages/lnd-effect && npm run typecheck && npm test
 cd packages/lightning-effect && npm test
-cd apps/lightning-ops && npm run typecheck && npm test && npm run smoke:observability -- --json
-cd apps/web && npm test
+cd apps/lightning-ops && npm run typecheck && npm test && npm run smoke:full-flow -- --json
+cd apps/autopilot-worker && npm run smoke:paywall-tools -- --json
+cd apps/web && npm run test:e2e -- --tag l402-hosted --grep "apps-web\\.hosted-l402\\.full-flow"
 cd apps/desktop && npm run typecheck && npm test && npm run test:l402-local-node-smoke -- --json
 ```
 
