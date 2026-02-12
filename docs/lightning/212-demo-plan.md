@@ -1,7 +1,7 @@
-# EP212 Demo Plan: Lightning Labs-Centric L402 Buying on openagents.com
+# EP212 Demo Plan: Lightning Labs-Centric L402 Buying (Aperture + Voltage) on openagents.com
 
 Status: Draft
-Date: 2026-02-11
+Date: 2026-02-12
 Owner: OpenAgents
 
 ## 1. Demo Goal
@@ -29,7 +29,8 @@ Narrative continuation from EP211:
 ## In scope
 
 - Buyer-side L402 flow (402 challenge -> pay -> retry -> response).
-- Integration with existing paid seller endpoints (external to OpenAgents).
+- Use the **OpenAgents-hosted L402 gateway** (Lightning Labs **Aperture**) connected to our **Voltage** node, so the demo has deterministic seller behavior.
+- One small upstream “premium feed” backend behind the gateway (can be a tiny service; it does not need any Lightning code).
 - Electron desktop companion app setup for wallet/payment execution.
 - Chat-visible payment state in `openagents.com`.
 - Budget cap + allowlist guardrails.
@@ -104,8 +105,11 @@ Design constraint:
    - Runs `lightning-effect` live layers plus payment adapter.
    - Owns wallet/payment execution and L402 challenge handling.
    - Polls/subscribes for assigned user tasks, executes them, writes result back to Convex.
-5. External seller endpoints
-   - Existing L402-gated APIs only (no OpenAgents-hosted seller infra in EP212).
+5. **OpenAgents L402 gateway** (seller/paywall)
+   - **Aperture** deployed on **GCP Cloud Run**, connected to **Voltage LND** (gRPC) and **Cloud SQL Postgres**.
+   - Emits `402 Payment Required` challenges (invoice + macaroon) and proxies authenticated requests to upstream.
+6. Upstream demo backend (behind the paywall)
+   - Any normal HTTP service (Cloud Run is fine). Not L402-aware; Aperture handles L402 for it.
 
 Security boundary for EP212:
 
@@ -132,18 +136,25 @@ Security boundary for EP212:
 
 ## 5.4 Existing Endpoint Selection for Demo
 
-Use at least two existing L402-gated seller endpoints (not owned or hosted by OpenAgents):
+Use at least two L402-gated endpoints hosted on our gateway:
 
 1. Endpoint A (target happy path):
    - priced under demo cap (example cap: 100 sats)
 2. Endpoint B (target deny path):
-   - priced above demo cap (or policy-disallowed domain)
+   - priced above demo cap (so we can demonstrate “blocked before paying” after seeing the quoted invoice amount)
 
 Selection requirements:
 
-1. Endpoint URLs and price behavior are known before recording day.
-2. Endpoints are stable enough for rehearsal and capture.
-3. We do not build or host seller infrastructure in EP212 scope.
+1. Domain + route path are stable and controlled by OpenAgents.
+2. Price behavior is deterministic.
+3. Host matching works in browser without custom headers:
+   - Prefer a real domain like `l402.openagents.com` mapped to the Cloud Run service.
+   - Ensure Aperture `services.host` matches the domain we use in the demo.
+
+References:
+
+- Deploy/runbook: `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md`
+- Voltage wiring: `docs/lightning/VOLTAGE_TO_L402_CONNECT.md`
 
 ## 5.5 Pane System Plan (effuse-panes + apps/web)
 
@@ -249,14 +260,19 @@ Rendering and state constraints:
 
 ## Phase 6: Existing endpoint integration + validation (Day 6)
 
-1. Finalize two existing seller endpoints for demo.
-2. Validate both directly (for example with `lnget` from desktop) and through Autopilot flow.
-3. Confirm happy path + deny path behavior is repeatable.
+1. Finalize two gateway routes for demo (Endpoint A under cap; Endpoint B over cap).
+2. Deploy/validate Aperture config:
+   - Ensure the paywalled routes exist and `services.host` matches the demo domain.
+   - Ensure Voltage credentials and Postgres are healthy (see runbook).
+3. Validate through:
+   - Desktop path (direct request using `lightning-effect`).
+   - Full Autopilot flow (tool → Convex task → desktop executor → paid fetch).
+4. Confirm happy path + deny path behavior is repeatable.
 
 ## Phase 7: Demo polish and rehearsal (Day 6-7)
 
 1. Confirm desktop companion is online and bound to the same user account as web.
-2. Confirm selected external endpoints are stable at recording time.
+2. Confirm gateway domain + routes are stable at recording time.
 3. Confirm one payment and one cached call.
 4. Confirm one policy-denied call.
 5. Capture logs/screens for episode cuts.
@@ -325,9 +341,9 @@ This issue is complete when the EP212 flow is legible to viewers without opening
 
 ## Issue 11: Integrate two existing paid seller endpoints for demo
 
-Select and integrate two existing L402-gated endpoints so EP212 can demonstrate both success and policy-denied behavior without standing up OpenAgents-hosted seller infrastructure. Document endpoint assumptions (price range, reliability, request shape) inside the implementation notes and rehearsal checklist.
+Configure two OpenAgents-hosted L402 gateway routes (Aperture + Voltage) so EP212 can demonstrate both success and policy-denied behavior deterministically. Document endpoint assumptions (price range, reliability, request shape) inside the implementation notes and rehearsal checklist.
 
-This issue is complete when both endpoints can be hit via `lnget` in the desktop app environment and via Autopilot, with one endpoint under cap (success) and one endpoint over cap or policy-blocked (deny).
+This issue is complete when both endpoints can be hit via the desktop app and via Autopilot, with one endpoint under cap (success) and one endpoint over cap (deny before payment).
 
 ## Issue 12: Add observability + rehearsal checklist for recording
 
@@ -367,14 +383,14 @@ Must log and be able to display:
 
 1. Desktop companion offline or not authenticated
    - Mitigation: explicit connection health in web UI + preflight check before task submission.
-2. External endpoint reliability/availability
-   - Mitigation: pre-qualify multiple endpoint candidates and keep a backup endpoint list for recording day.
+2. Gateway routing / config mismatch (Host not matching; route missing; pricing not deterministic)
+   - Mitigation: map `l402.openagents.com`, pin the demo routes, and rehearse using the same URL the chat uses.
 3. Worker/Convex orchestration drift
    - Mitigation: typed task state machine + replayable status transitions in tests.
 4. Preimage handling mistakes
    - Mitigation: enforce `preimageHex` in contract and test failure when absent.
-5. Demo flakiness from third-party response variability
-   - Mitigation: constrain prompt/output expectations to endpoint metadata and summary quality rather than exact payload text.
+5. Voltage connectivity or Postgres issues (Aperture can’t issue challenges)
+   - Mitigation: run the smoke/reconcile flows from the runbook before recording; keep logs visible during rehearsal.
 
 ## 12. Recording Script (Short)
 
@@ -393,4 +409,4 @@ After shipping episode demo:
 
 1. Expand `lightning-effect` docs/examples for external users.
 2. Add second adapter path (Spark/Breez-compatible payer) under same interfaces.
-3. Expand coverage from two endpoints to a broader catalog of existing L402 seller endpoints.
+3. Expand coverage from the EP212 demo routes to additional OpenAgents-hosted paywalled routes and/or third-party L402 sellers.

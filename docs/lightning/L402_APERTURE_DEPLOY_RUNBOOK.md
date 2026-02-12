@@ -73,6 +73,49 @@
 
 **Gitignore:** `output/`, `output/voltage-node/`, and repo root `.env.local` are ignored so that TLS certs, macaroons, and API keys are never committed.
 
+### 3.3 Custom domain (optional)
+
+**Recommended subdomain:** `l402.openagents.com` — short, protocol-clear, and appropriate for the L402 paywall gateway.
+
+To point it at this Cloud Run service:
+
+1. **In Google Cloud**  
+   - Open [Cloud Run](https://console.cloud.google.com/run) → select service **l402-aperture** (region `us-central1`) → **Manage custom domains**.  
+   - Click **Add mapping** and enter **`l402.openagents.com`**.  
+   - Complete any **verification** step (TXT or CNAME for domain ownership if required).  
+   - Note the **mapping** records Google shows (e.g. CNAME target or A/AAAA values).
+
+2. **In DNS (where `openagents.com` is hosted)**  
+   - Add the records Google specifies for `l402.openagents.com` (verification + mapping).  
+   - If using Cloudflare: add the CNAME (or A/AAAA); you can proxy (orange cloud) or DNS-only (grey).  
+   - Wait for DNS propagation; Cloud Run will then provision TLS for the domain.
+
+3. **After it’s live**  
+   - Use `https://l402.openagents.com` for `OA_LIGHTNING_OPS_CHALLENGE_URL` / `OA_LIGHTNING_OPS_PROXY_URL` and any docs (see `STAGING_GATEWAY_RECONCILE_RUNBOOK.md`).
+
+**Via gcloud CLI (fully managed Cloud Run):** Use the **beta** command group; the non-beta `gcloud run domain-mappings` is for Cloud Run for Anthos only. Ensure `gcloud components install beta` if needed.
+
+```bash
+# Set project and region
+gcloud config set project openagentsgemini
+
+# Create the domain mapping (region = us-central1 for l402-aperture)
+gcloud beta run domain-mappings create \
+  --service=l402-aperture \
+  --domain=l402.openagents.com \
+  --region=us-central1
+
+# List mappings (optional)
+gcloud beta run domain-mappings list --region=us-central1
+
+# Get DNS records to add at your registrar (CNAME or A/AAAA)
+gcloud beta run domain-mappings describe \
+  --domain=l402.openagents.com \
+  --region=us-central1
+```
+
+Then add the records shown in the describe output to your DNS for `openagents.com`. If Google requires domain verification first, you may need to verify ownership (e.g. via [Search Console](https://search.google.com/search-console) or the Cloud Console domain verification flow) before the mapping becomes active; the describe output will show status and any required records.
+
 ---
 
 ## 4. Where Secrets Live (No Values in Repo)
