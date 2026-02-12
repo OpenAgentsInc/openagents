@@ -44,6 +44,130 @@ const L402FetchOutput = Schema.Struct({
   responseStatusCode: Schema.NullOr(Schema.Number),
 });
 
+const PaywallStatus = Schema.Literal("active", "paused", "archived");
+
+const PaywallPolicyInput = Schema.Struct({
+  pricingMode: Schema.Literal("fixed"),
+  fixedAmountMsats: Schema.Number.pipe(Schema.nonNegative()),
+  maxPerRequestMsats: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  allowedHosts: Schema.optional(Schema.Array(Schema.String)),
+  blockedHosts: Schema.optional(Schema.Array(Schema.String)),
+  quotaPerMinute: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  quotaPerDay: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  killSwitch: Schema.optional(Schema.Boolean),
+});
+
+const PaywallRouteInput = Schema.Struct({
+  hostPattern: Schema.String,
+  pathPattern: Schema.String,
+  upstreamUrl: Schema.String,
+  protocol: Schema.optional(Schema.Literal("http", "https")),
+  timeoutMs: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  priority: Schema.optional(Schema.Number),
+});
+
+const PaywallSummary = Schema.Struct({
+  paywallId: Schema.String,
+  ownerId: Schema.NullOr(Schema.String),
+  name: Schema.NullOr(Schema.String),
+  status: Schema.NullOr(PaywallStatus),
+  fixedAmountMsats: Schema.NullOr(Schema.Number),
+  routeCount: Schema.Number.pipe(Schema.nonNegative()),
+});
+
+const SettlementSummary = Schema.Struct({
+  settlementId: Schema.String,
+  paywallId: Schema.NullOr(Schema.String),
+  amountMsats: Schema.NullOr(Schema.Number),
+  paymentProofRef: Schema.NullOr(Schema.String),
+  createdAtMs: Schema.NullOr(Schema.Number),
+});
+
+const PaywallToolDenyCode = Schema.Literal(
+  "not_configured",
+  "not_authorized",
+  "forbidden",
+  "not_found",
+  "invalid_input",
+  "invalid_route",
+  "paused",
+  "over_cap",
+  "policy_violation",
+  "rate_limited",
+  "unknown_denial",
+);
+
+const PaywallToolSideEffect = Schema.Struct({
+  kind: Schema.Literal("http_request"),
+  target: Schema.String,
+  method: Schema.String,
+  status_code: Schema.NullOr(Schema.Number),
+  changed: Schema.NullOr(Schema.Boolean),
+  detail: Schema.NullOr(Schema.String),
+});
+
+const PaywallToolReceipt = Schema.Struct({
+  params_hash: Schema.String,
+  output_hash: Schema.String,
+  latency_ms: Schema.Number.pipe(Schema.nonNegative()),
+  side_effects: Schema.Array(PaywallToolSideEffect),
+});
+
+const PaywallToolStatus = Schema.Literal("ok", "denied", "error");
+
+const PaywallToolOutput = Schema.Struct({
+  status: PaywallToolStatus,
+  denyCode: Schema.NullOr(PaywallToolDenyCode),
+  denyReason: Schema.NullOr(Schema.String),
+  errorCode: Schema.NullOr(Schema.String),
+  errorMessage: Schema.NullOr(Schema.String),
+  httpStatus: Schema.NullOr(Schema.Number),
+  requestId: Schema.NullOr(Schema.String),
+  paywall: Schema.NullOr(PaywallSummary),
+  paywalls: Schema.Array(PaywallSummary),
+  settlements: Schema.Array(SettlementSummary),
+  nextCursor: Schema.NullOr(Schema.Number),
+  receipt: PaywallToolReceipt,
+});
+
+const PaywallCreateInput = Schema.Struct({
+  name: Schema.NonEmptyString,
+  description: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Literal("active", "paused")),
+  policy: PaywallPolicyInput,
+  routes: Schema.Array(PaywallRouteInput),
+  metadata: Schema.optional(Schema.Unknown),
+});
+
+const PaywallUpdateInput = Schema.Struct({
+  paywallId: Schema.NonEmptyString,
+  name: Schema.optional(Schema.NonEmptyString),
+  description: Schema.optional(Schema.String),
+  policy: Schema.optional(PaywallPolicyInput),
+  routes: Schema.optional(Schema.Array(PaywallRouteInput)),
+  metadata: Schema.optional(Schema.Unknown),
+});
+
+const PaywallLifecycleInput = Schema.Struct({
+  paywallId: Schema.NonEmptyString,
+  reason: Schema.optional(Schema.String),
+});
+
+const PaywallGetInput = Schema.Struct({
+  paywallId: Schema.NonEmptyString,
+});
+
+const PaywallListInput = Schema.Struct({
+  status: Schema.optional(PaywallStatus),
+  limit: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+});
+
+const PaywallSettlementListInput = Schema.Struct({
+  paywallId: Schema.optional(Schema.NonEmptyString),
+  limit: Schema.optional(Schema.Number.pipe(Schema.nonNegative())),
+  beforeCreatedAtMs: Schema.optional(Schema.Number),
+});
+
 export const toolContracts = {
   get_time: Tool.make({
     name: "get_time",
@@ -84,6 +208,76 @@ export const toolContracts = {
       "lightning_l402_fetch({ url, method?, headers?, body?, maxSpendMsats, challengeHeader?, forceRefresh?, scope?, cacheTtlMs? }) -> task terminal status + proof/deny fields",
     input: L402FetchInput,
     output: L402FetchOutput,
+  }),
+
+  lightning_paywall_create: Tool.make({
+    name: "lightning_paywall_create",
+    description:
+      "Create a hosted L402 paywall through the Lightning control-plane.",
+    usage:
+      "lightning_paywall_create({ name, description?, status?, policy, routes, metadata? }) -> paywall lifecycle status + deterministic receipt fields",
+    input: PaywallCreateInput,
+    output: PaywallToolOutput,
+  }),
+
+  lightning_paywall_update: Tool.make({
+    name: "lightning_paywall_update",
+    description:
+      "Update an existing hosted L402 paywall through the Lightning control-plane.",
+    usage:
+      "lightning_paywall_update({ paywallId, name?, description?, policy?, routes?, metadata? }) -> paywall lifecycle status + deterministic receipt fields",
+    input: PaywallUpdateInput,
+    output: PaywallToolOutput,
+  }),
+
+  lightning_paywall_pause: Tool.make({
+    name: "lightning_paywall_pause",
+    description:
+      "Pause an existing hosted L402 paywall.",
+    usage:
+      "lightning_paywall_pause({ paywallId, reason? }) -> paywall lifecycle status + deterministic receipt fields",
+    input: PaywallLifecycleInput,
+    output: PaywallToolOutput,
+  }),
+
+  lightning_paywall_resume: Tool.make({
+    name: "lightning_paywall_resume",
+    description:
+      "Resume a paused hosted L402 paywall.",
+    usage:
+      "lightning_paywall_resume({ paywallId, reason? }) -> paywall lifecycle status + deterministic receipt fields",
+    input: PaywallLifecycleInput,
+    output: PaywallToolOutput,
+  }),
+
+  lightning_paywall_get: Tool.make({
+    name: "lightning_paywall_get",
+    description:
+      "Get a hosted L402 paywall by id.",
+    usage:
+      "lightning_paywall_get({ paywallId }) -> paywall lifecycle status + deterministic receipt fields",
+    input: PaywallGetInput,
+    output: PaywallToolOutput,
+  }),
+
+  lightning_paywall_list: Tool.make({
+    name: "lightning_paywall_list",
+    description:
+      "List hosted L402 paywalls for the current owner scope.",
+    usage:
+      "lightning_paywall_list({ status?, limit? }) -> paywall list status + deterministic receipt fields",
+    input: PaywallListInput,
+    output: PaywallToolOutput,
+  }),
+
+  lightning_paywall_settlement_list: Tool.make({
+    name: "lightning_paywall_settlement_list",
+    description:
+      "List owner settlements or settlements for a specific hosted paywall.",
+    usage:
+      "lightning_paywall_settlement_list({ paywallId?, limit?, beforeCreatedAtMs? }) -> settlement list status + deterministic receipt fields",
+    input: PaywallSettlementListInput,
+    output: PaywallToolOutput,
   }),
 
   bootstrap_set_user_handle: Tool.make({
@@ -245,7 +439,22 @@ export const toolContracts = {
 
 export type AutopilotToolName = keyof typeof toolContracts;
 
-export const BASE_TOOL_NAMES = ["get_time", "echo", "lightning_l402_fetch"] as const satisfies ReadonlyArray<AutopilotToolName>;
+export const PAYWALL_TOOL_NAMES = [
+  "lightning_paywall_create",
+  "lightning_paywall_update",
+  "lightning_paywall_pause",
+  "lightning_paywall_resume",
+  "lightning_paywall_get",
+  "lightning_paywall_list",
+  "lightning_paywall_settlement_list",
+] as const satisfies ReadonlyArray<AutopilotToolName>;
+
+export const BASE_TOOL_NAMES = [
+  "get_time",
+  "echo",
+  "lightning_l402_fetch",
+  ...PAYWALL_TOOL_NAMES,
+] as const satisfies ReadonlyArray<AutopilotToolName>;
 
 export const BLUEPRINT_TOOL_NAMES = [
   "identity_update",
@@ -262,6 +471,13 @@ export const TOOL_ORDER = [
   "get_time",
   "echo",
   "lightning_l402_fetch",
+  "lightning_paywall_create",
+  "lightning_paywall_update",
+  "lightning_paywall_pause",
+  "lightning_paywall_resume",
+  "lightning_paywall_get",
+  "lightning_paywall_list",
+  "lightning_paywall_settlement_list",
   "bootstrap_set_user_handle",
   "bootstrap_set_agent_name",
   "bootstrap_set_agent_vibe",

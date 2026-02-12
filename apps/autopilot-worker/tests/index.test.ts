@@ -120,6 +120,9 @@ describe("Autopilot worker", () => {
     expect(names).toContain("get_time");
     expect(names).toContain("bootstrap_set_user_handle");
     expect(names).toContain("lightning_l402_fetch");
+    expect(names).toContain("lightning_paywall_create");
+    expect(names).toContain("lightning_paywall_update");
+    expect(names).toContain("lightning_paywall_settlement_list");
 
     const getTime = json.find((t) => t?.name === "get_time");
     expect(getTime?.inputSchemaJson).toBeTruthy();
@@ -636,6 +639,12 @@ describe("Autopilot worker", () => {
       expect(bootstrap?.outputBlobs?.length).toBeGreaterThan(0);
       expect(bootstrap?.inputBlobs?.[0]?.mime).toBe("application/json");
       expect(bootstrap?.inputBlobs?.[0]?.size).toBeTypeOf("number");
+      expect(typeof bootstrap?.paramsHash).toBe("string");
+      expect(typeof bootstrap?.outputHash).toBe("string");
+      expect(bootstrap?.paramsHash?.startsWith("sha256:")).toBe(true);
+      expect(bootstrap?.outputHash?.startsWith("sha256:")).toBe(true);
+      expect(typeof bootstrap?.latencyMs).toBe("number");
+      expect(Array.isArray(bootstrap?.sideEffects)).toBe(true);
     }
     } finally {
       if (typeof originalRun === "function") {

@@ -7,9 +7,11 @@
     "postinstall": "patch-package",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "lint": "npm run typecheck",
     "test": "vitest",
     "types": "wrangler types --include-runtime false",
     "smoke": "tsx scripts/autopilot-smoke.ts",
+    "smoke:paywall-tools": "tsx scripts/paywall-tools-smoke.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -65,6 +65,10 @@ import {
 import { encodeWirePart } from "./effect/ai/streaming";
 import { aiToolFromContract } from "./effect/ai/toolkit";
 import { sha256IdFromString } from "./hash";
+import {
+  executeLightningPaywallTool,
+  lightningPaywallToolInvalidInput,
+} from "./lightningPaywallControlPlane";
 
 const MODEL_ID = "@cf/openai/gpt-oss-120b";
 const MAX_CONTEXT_MESSAGES = 25;
@@ -80,6 +84,13 @@ const AUTOPILOT_TOOLKIT = AiToolkit.make(
   aiToolFromContract(toolContracts.get_time),
   aiToolFromContract(toolContracts.echo),
   aiToolFromContract(toolContracts.lightning_l402_fetch),
+  aiToolFromContract(toolContracts.lightning_paywall_create),
+  aiToolFromContract(toolContracts.lightning_paywall_update),
+  aiToolFromContract(toolContracts.lightning_paywall_pause),
+  aiToolFromContract(toolContracts.lightning_paywall_resume),
+  aiToolFromContract(toolContracts.lightning_paywall_get),
+  aiToolFromContract(toolContracts.lightning_paywall_list),
+  aiToolFromContract(toolContracts.lightning_paywall_settlement_list),
   aiToolFromContract(toolContracts.bootstrap_set_user_handle),
   aiToolFromContract(toolContracts.bootstrap_set_agent_name),
   aiToolFromContract(toolContracts.bootstrap_set_agent_vibe),
@@ -997,6 +1008,49 @@ export class Chat extends Agent<Env> {
   }
 
   private toolHandlers() {
+    const runPaywallTool = (
+      toolName:
+        | "lightning_paywall_create"
+        | "lightning_paywall_update"
+        | "lightning_paywall_pause"
+        | "lightning_paywall_resume"
+        | "lightning_paywall_get"
+        | "lightning_paywall_list"
+        | "lightning_paywall_settlement_list",
+      inputSchema: Schema.Schema<any, any, never>,
+      rawInput: unknown,
+    ) => {
+      const decodeExit = Effect.runSyncExit(
+        Effect.try({
+          try: () =>
+            Schema.decodeUnknownSync(inputSchema)(rawInput) as Record<string, unknown>,
+          catch: (cause) => cause,
+        }),
+      );
+
+      if (decodeExit._tag === "Failure") {
+        return Effect.tryPromise({
+          try: () =>
+            lightningPaywallToolInvalidInput({
+              toolName,
+              rawInput,
+              reason: "invalid_input",
+            }),
+          catch: (cause) => cause,
+        });
+      }
+
+      return Effect.tryPromise({
+        try: () =>
+          executeLightningPaywallTool({
+            toolName,
+            input: decodeExit.value,
+            env: this.env as unknown,
+          }),
+        catch: (cause) => cause,
+      });
+    };
+
     return AUTOPILOT_TOOLKIT.of({
       get_time: ({ timeZone }: any) =>
         Effect.try({
@@ -1051,6 +1105,55 @@ export class Chat extends Agent<Env> {
           },
           catch: (cause) => cause,
         }),
+
+      lightning_paywall_create: (input: any) =>
+        runPaywallTool(
+          "lightning_paywall_create",
+          toolContracts.lightning_paywall_create.input,
+          input,
+        ),
+
+      lightning_paywall_update: (input: any) =>
+        runPaywallTool(
+          "lightning_paywall_update",
+          toolContracts.lightning_paywall_update.input,
+          input,
+        ),
+
+      lightning_paywall_pause: (input: any) =>
+        runPaywallTool(
+          "lightning_paywall_pause",
+          toolContracts.lightning_paywall_pause.input,
+          input,
+        ),
+
+      lightning_paywall_resume: (input: any) =>
+        runPaywallTool(
+          "lightning_paywall_resume",
+          toolContracts.lightning_paywall_resume.input,
+          input,
+        ),
+
+      lightning_paywall_get: (input: any) =>
+        runPaywallTool(
+          "lightning_paywall_get",
+          toolContracts.lightning_paywall_get.input,
+          input,
+        ),
+
+      lightning_paywall_list: (input: any) =>
+        runPaywallTool(
+          "lightning_paywall_list",
+          toolContracts.lightning_paywall_list.input,
+          input,
+        ),
+
+      lightning_paywall_settlement_list: (input: any) =>
+        runPaywallTool(
+          "lightning_paywall_settlement_list",
+          toolContracts.lightning_paywall_settlement_list.input,
+          input,
+        ),
 
       bootstrap_set_user_handle: ({ handle }: any) =>
         Effect.try({
@@ -1711,6 +1814,53 @@ export class Chat extends Agent<Env> {
       const paramsHash = await sha256IdFromString(JSON.stringify(input.params))
       const inputJson = JSON.stringify({ params: input.params })
       const outputJson = JSON.stringify({ output: input.output })
+      const outputHash = await sha256IdFromString(outputJson)
+      const latencyMs = Math.max(0, input.endedAtMs - input.startedAtMs)
+      const outputRecord =
+        input.output !== null &&
+        typeof input.output === "object" &&
+        !Array.isArray(input.output)
+          ? (input.output as Record<string, unknown>)
+          : null
+      const toolReceiptRecord =
+        outputRecord?.receipt !== null &&
+        typeof outputRecord?.receipt === "object" &&
+        !Array.isArray(outputRecord?.receipt)
+          ? (outputRecord.receipt as Record<string, unknown>)
+          : null
+      const sideEffectsRaw = Array.isArray(toolReceiptRecord?.side_effects)
+        ? (toolReceiptRecord?.side_effects as ReadonlyArray<unknown>)
+        : []
+      const sideEffects = sideEffectsRaw
+        .map((value) => {
+          if (value === null || typeof value !== "object" || Array.isArray(value)) return null
+          const rec = value as Record<string, unknown>
+          const kind = typeof rec.kind === "string" ? rec.kind : "unknown"
+          const target = typeof rec.target === "string" ? rec.target : undefined
+          const method = typeof rec.method === "string" ? rec.method : undefined
+          const status_code =
+            typeof rec.status_code === "number" && Number.isFinite(rec.status_code)
+              ? rec.status_code
+              : rec.status_code === null
+                ? null
+                : undefined
+          const changed =
+            typeof rec.changed === "boolean"
+              ? rec.changed
+              : rec.changed === null
+                ? null
+                : undefined
+          const detail = typeof rec.detail === "string" ? rec.detail : rec.detail === null ? null : undefined
+          return {
+            kind,
+            ...(target !== undefined ? { target } : {}),
+            ...(method !== undefined ? { method } : {}),
+            ...(status_code !== undefined ? { status_code } : {}),
+            ...(changed !== undefined ? { changed } : {}),
+            ...(detail !== undefined ? { detail } : {}),
+          }
+        })
+        .filter((row): row is NonNullable<typeof row> => row !== null)
 
       const { inputBlob, outputBlob } = await Effect.runPromise(
         Effect.gen(function* () {
@@ -1733,6 +1883,7 @@ export class Chat extends Agent<Env> {
         toolName: input.toolName,
         toolCallId: input.toolCallId,
         paramsHash,
+        outputHash,
         inputBlobId: inputBlob.id,
         outputBlobId: outputBlob.id,
         step: input.step,
@@ -1747,12 +1898,15 @@ export class Chat extends Agent<Env> {
         toolName: input.toolName,
         toolCallId: input.toolCallId,
         paramsHash,
+        outputHash,
+        latencyMs,
+        sideEffects,
         inputBlobs: [inputBlob],
         outputBlobs: [outputBlob],
         timing: {
           startedAtMs: input.startedAtMs,
           endedAtMs: input.endedAtMs,
-          durationMs: Math.max(0, input.endedAtMs - input.startedAtMs),
+          durationMs: latencyMs,
         },
         correlation: {
           agentName: this.name,
