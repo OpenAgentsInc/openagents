@@ -5,6 +5,28 @@ import { WalletExecutorService } from "../src/wallet/executor.js"
 import { makeWalletTestLayer } from "./fixtures.js"
 
 describe("spark integration (mocked gateway)", () => {
+  it.effect("refreshes wallet status balance from spark on each status call", () =>
+    Effect.gen(function* () {
+      const wallet = yield* WalletExecutorService
+
+      const first = yield* wallet.status()
+      const second = yield* wallet.status()
+
+      expect(first.lifecycle).toBe("connected")
+      expect(first.balanceSats).toBe(100)
+      expect(second.balanceSats).toBe(250)
+      expect(second.ready).toBe(true)
+    }).pipe(
+      Effect.provide(
+        makeWalletTestLayer({
+          mock: {
+            statusBalanceSequenceSats: [100, 250],
+          },
+        }),
+      ),
+    ),
+  )
+
   it.effect("returns deterministic payment fields on success", () =>
     Effect.gen(function* () {
       const wallet = yield* WalletExecutorService
@@ -87,4 +109,3 @@ describe("spark integration (mocked gateway)", () => {
     ),
   )
 })
-

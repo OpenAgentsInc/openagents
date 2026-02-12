@@ -96,8 +96,24 @@ export const WalletExecutorLive = Layer.effect(
         yield* Ref.update(statusRef, (current) => update(current, nowMs))
       })
 
+    const refreshStatusFromSparkBestEffort = (): Effect.Effect<void> =>
+      refreshFromSpark().pipe(
+        Effect.catchTag("SparkGatewayError", (error) =>
+          setStatus((current, nowMs) => ({
+            ...current,
+            lifecycle: current.lifecycle === "connected" ? "connected" : "error",
+            lastErrorCode: error.code,
+            lastErrorMessage: error.message,
+            updatedAtMs: nowMs,
+          })),
+        ),
+      )
+
     const status = (): Effect.Effect<WalletStatus> =>
       Effect.gen(function* () {
+        // Keep balance/status live for UI by refreshing from Spark on each status read.
+        yield* refreshStatusFromSparkBestEffort()
+
         const current = yield* Ref.get(statusRef)
         return {
           walletId: config.walletId,
@@ -366,4 +382,3 @@ export const WalletExecutorLive = Layer.effect(
     })
   }),
 )
-
