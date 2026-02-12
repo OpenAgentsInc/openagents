@@ -1,16 +1,27 @@
 import { Effect } from "effect"
 
-import type { L402Credential } from "../contracts/l402.js"
+import type { L402AuthorizationHeaderStrategy, L402Credential } from "../contracts/l402.js"
 import { decodeL402Credential } from "../contracts/l402.js"
 import { AuthorizationSerializeError } from "../errors/lightningErrors.js"
 
 const quoteHeaderValue = (value: string): string => value.replaceAll("\\", "\\\\").replaceAll("\"", '\\"')
 
-export const buildAuthorizationHeader = (credential: L402Credential): string =>
-  `L402 macaroon="${quoteHeaderValue(credential.macaroon)}", preimage="${quoteHeaderValue(credential.preimageHex)}"`
+export const defaultAuthorizationHeaderStrategy: L402AuthorizationHeaderStrategy =
+  "macaroon_preimage_params"
+
+export const buildAuthorizationHeader = (
+  credential: L402Credential,
+  strategy: L402AuthorizationHeaderStrategy = defaultAuthorizationHeaderStrategy,
+): string => {
+  if (strategy === "macaroon_preimage_colon") {
+    return `L402 ${credential.macaroon}:${credential.preimageHex}`
+  }
+  return `L402 macaroon="${quoteHeaderValue(credential.macaroon)}", preimage="${quoteHeaderValue(credential.preimageHex)}"`
+}
 
 export const serializeAuthorizationHeader = Effect.fn("l402.serializeAuthorizationHeader")(function* (
   input: unknown,
+  strategy: L402AuthorizationHeaderStrategy = defaultAuthorizationHeaderStrategy,
 ) {
   const credential = yield* decodeL402Credential(input).pipe(
     Effect.mapError(() =>
@@ -20,5 +31,5 @@ export const serializeAuthorizationHeader = Effect.fn("l402.serializeAuthorizati
     ),
   )
 
-  return buildAuthorizationHeader(credential)
+  return buildAuthorizationHeader(credential, strategy)
 })

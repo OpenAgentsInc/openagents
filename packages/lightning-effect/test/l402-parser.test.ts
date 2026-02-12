@@ -81,6 +81,30 @@ describe("l402 parser and serializer", () => {
       expect(serialized).toBe(
         `L402 macaroon="AgEDbWFjYXJvb24=", preimage="${"ab".repeat(32)}"`,
       )
+
+      const directColon = buildAuthorizationHeader(
+        {
+          host: "sats4ai.com",
+          macaroon: "mac_sats4ai",
+          preimageHex: "cd".repeat(32),
+          amountMsats: 2500,
+          issuedAtMs: 1_700_000_000_000,
+        },
+        "macaroon_preimage_colon",
+      )
+      expect(directColon).toBe(`L402 mac_sats4ai:${"cd".repeat(32)}`)
+
+      const serializedColon = yield* serializeAuthorizationHeader(
+        {
+          host: "sats4ai.com",
+          macaroon: "mac_sats4ai",
+          preimageHex: "cd".repeat(32),
+          amountMsats: 2500,
+          issuedAtMs: 1_700_000_000_000,
+        },
+        "macaroon_preimage_colon",
+      )
+      expect(serializedColon).toBe(`L402 mac_sats4ai:${"cd".repeat(32)}`)
     }),
   )
 
