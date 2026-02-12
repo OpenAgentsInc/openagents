@@ -1,8 +1,8 @@
 # OpenAgents L402 Agent Paywall Infrastructure Plan (Voltage + GCP)
 
-Date: 2026-02-11  
-Status: Implemented baseline complete (Phase 1-5 delivered as of 2026-02-12)  
-Owner: Lightning / Autopilot product + runtime
+- Date: 2026-02-11
+- Status: Implemented baseline complete (Phase 1-5 delivered as of 2026-02-12)
+- Owner: Lightning / Autopilot product + runtime
 
 ## 1) Purpose and Decision Summary
 

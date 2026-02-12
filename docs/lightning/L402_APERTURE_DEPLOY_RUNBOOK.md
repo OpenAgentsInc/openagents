@@ -114,7 +114,7 @@ All sensitive values live **only** in GCP Secret Manager (and, for local use, in
 
 To verify 402 issuance and proxy against this gateway:
 
-- Set env vars (see `docs/lightning/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`):  
+- Set env vars (see `docs/lightning/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`):
   `OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL` (and optionally `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`) to the Cloud Run URL and the paywalled path you configured.
 - Run: `./scripts/staging-reconcile.sh` (or the smoke command from `apps/lightning-ops`).
 
@@ -125,17 +125,17 @@ To verify 402 issuance and proxy against this gateway:
 ### 6.1 Changing Aperture config (authenticator, services, postgres host)
 
 1. **Edit the template** in the repo:
-   - **Postgres (production):** `docs/lightning/scripts/aperture-voltage-config-postgres.yaml`  
+   - **Postgres (production):** `docs/lightning/scripts/aperture-voltage-config-postgres.yaml`
      Do **not** commit a real password; keep `password: "REPLACE_PASSWORD"` in the template.
 2. **Build the config that will go to Secret Manager:**
-   - Get the DB password:  
+   - Get the DB password:
      `APERTURE_DB_PASS=$(gcloud secrets versions access latest --secret=l402-aperture-db-password --project=openagentsgemini)`
-   - Produce a single YAML file with the password injected (exactly one `password:` key under `postgres`). Example (lines 1–20 of template, then your password line, then lines 22–end of template):  
+   - Produce a single YAML file with the password injected (exactly one `password:` key under `postgres`). Example (lines 1–20 of template, then your password line, then lines 22–end of template):
      `{ sed -n '1,20p' docs/lightning/scripts/aperture-voltage-config-postgres.yaml; printf '  password: "%s"\n' "$APERTURE_DB_PASS"; sed -n '22,$p' docs/lightning/scripts/aperture-voltage-config-postgres.yaml } > /tmp/config.yaml`
-   - Add a new secret version:  
+   - Add a new secret version:
      `gcloud secrets versions add l402-aperture-config --data-file=/tmp/config.yaml --project=openagentsgemini`
    - Delete the temp file: `rm /tmp/config.yaml`
-3. **Redeploy Cloud Run** so the new revision picks up the latest config (Cloud Run uses `:latest` for the secret):  
+3. **Redeploy Cloud Run** so the new revision picks up the latest config (Cloud Run uses `:latest` for the secret):
    `gcloud run deploy l402-aperture ...` (see §7 for full command).
 
 ### 6.2 Adding or changing routes (services)
@@ -150,9 +150,9 @@ To verify 402 issuance and proxy against this gateway:
 
 ### 6.4 Rebuilding the Aperture image
 
-- **Local:** From repo root,  
+- **Local:** From repo root,
   `cd docs/lightning/deploy && docker buildx build --platform linux/amd64 -f Dockerfile.aperture -t us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest --push .`
-- **Cloud Build (if permitted):**  
+- **Cloud Build (if permitted):**
   `gcloud builds submit --config docs/lightning/deploy/cloudbuild-aperture.yaml --substitutions=_TAG=$(git rev-parse --short HEAD) docs/lightning/deploy`
 - Then redeploy Cloud Run with the same image tag (or `:latest`).
 
