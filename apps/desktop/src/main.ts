@@ -7,6 +7,7 @@ import type { InvoicePaymentRequest } from "@openagentsinc/lightning-effect/cont
 import { LND_RUNTIME_CHANNELS } from "./main/lndRuntimeIpc";
 import { LND_WALLET_CHANNELS } from "./main/lndWalletIpc";
 import { SPARK_WALLET_CHANNELS } from "./main/sparkWalletIpc";
+import { L402_CREDENTIAL_CACHE_CHANNELS } from "./main/l402CredentialCacheIpc";
 import {
   LndRuntimeManagerService,
   projectLndRuntimeSnapshotForRenderer,
@@ -22,6 +23,7 @@ import {
   projectSparkWalletSnapshotForRenderer,
   toSparkWalletManagerError,
 } from "./main/sparkWalletManager";
+import { makeL402CredentialCacheStore } from "./main/l402CredentialCacheStore";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -245,6 +247,62 @@ const registerSparkWalletIpcHandlers = (): void => {
   );
 };
 
+const registerL402CredentialCacheIpcHandlers = (): void => {
+  ipcMain.handle(
+    L402_CREDENTIAL_CACHE_CHANNELS.getByHost,
+    async (_event, input: { readonly host: string; readonly scope: string; readonly nowMs: number }) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const store = yield* makeL402CredentialCacheStore;
+          return yield* store.getByHost(input.host, input.scope, input.nowMs);
+        }),
+      ),
+  );
+
+  ipcMain.handle(
+    L402_CREDENTIAL_CACHE_CHANNELS.putByHost,
+    async (
+      _event,
+      input: {
+        readonly host: string;
+        readonly scope: string;
+        // Deliberately unknown: validated at runtime.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        readonly credential: any;
+        readonly options?: { readonly ttlMs?: number };
+      },
+    ) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const store = yield* makeL402CredentialCacheStore;
+          yield* store.putByHost(input.host, input.scope, input.credential, input.options);
+        }),
+      ),
+  );
+
+  ipcMain.handle(
+    L402_CREDENTIAL_CACHE_CHANNELS.markInvalid,
+    async (_event, input: { readonly host: string; readonly scope: string }) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const store = yield* makeL402CredentialCacheStore;
+          yield* store.markInvalid(input.host, input.scope);
+        }),
+      ),
+  );
+
+  ipcMain.handle(
+    L402_CREDENTIAL_CACHE_CHANNELS.clearHost,
+    async (_event, input: { readonly host: string; readonly scope: string }) =>
+      runLndRuntime(
+        Effect.gen(function* () {
+          const store = yield* makeL402CredentialCacheStore;
+          yield* store.clearHost(input.host, input.scope);
+        }),
+      ),
+  );
+};
+
 const startLndRuntime = async (): Promise<boolean> => {
   try {
     await runLndRuntime(
@@ -347,6 +405,7 @@ app.on("ready", () => {
     registerLndRuntimeIpcHandlers();
     registerLndWalletIpcHandlers();
     registerSparkWalletIpcHandlers();
+    registerL402CredentialCacheIpcHandlers();
     if (!(await startLndRuntime())) {
       app.quit();
       return;

@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { LND_RUNTIME_CHANNELS } from "./main/lndRuntimeIpc";
 import { LND_WALLET_CHANNELS } from "./main/lndWalletIpc";
 import { SPARK_WALLET_CHANNELS } from "./main/sparkWalletIpc";
+import { L402_CREDENTIAL_CACHE_CHANNELS } from "./main/l402CredentialCacheIpc";
 
 const config = {
   openAgentsBaseUrl: process.env.OA_DESKTOP_OPENAGENTS_BASE_URL,
@@ -45,5 +46,20 @@ contextBridge.exposeInMainWorld("openAgentsDesktop", {
       readonly maxAmountMsats: number;
     }) => ipcRenderer.invoke(SPARK_WALLET_CHANNELS.payInvoice, input),
     disconnect: () => ipcRenderer.invoke(SPARK_WALLET_CHANNELS.disconnect),
+  },
+  l402CredentialCache: {
+    getByHost: (input: { readonly host: string; readonly scope: string; readonly nowMs: number }) =>
+      ipcRenderer.invoke(L402_CREDENTIAL_CACHE_CHANNELS.getByHost, input),
+    putByHost: (input: {
+      readonly host: string;
+      readonly scope: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      readonly credential: any;
+      readonly options?: { readonly ttlMs?: number };
+    }) => ipcRenderer.invoke(L402_CREDENTIAL_CACHE_CHANNELS.putByHost, input),
+    markInvalid: (input: { readonly host: string; readonly scope: string }) =>
+      ipcRenderer.invoke(L402_CREDENTIAL_CACHE_CHANNELS.markInvalid, input),
+    clearHost: (input: { readonly host: string; readonly scope: string }) =>
+      ipcRenderer.invoke(L402_CREDENTIAL_CACHE_CHANNELS.clearHost, input),
   },
 });
