@@ -176,7 +176,7 @@ const createLiveSparkGatewayLayer = Layer.effect(
       Effect.gen(function* () {
         const sdk = yield* requireClient()
         const info = yield* Effect.tryPromise({
-          try: async () => await sdk.getInfo({ ensureSynced: false }),
+          try: async () => await sdk.getInfo({ ensureSynced: true }),
           catch: (error) =>
             SparkGatewayError.make({
               code: "connect_failed",
@@ -272,6 +272,7 @@ export type MockSparkGatewayConfig = Readonly<{
   failSend?: boolean
   pendingOnSend?: boolean
   missingPreimage?: boolean
+  statusBalanceSequenceSats?: ReadonlyArray<number>
 }>
 
 export const makeSparkGatewayMockLayer = (input?: MockSparkGatewayConfig) =>
@@ -285,6 +286,8 @@ export const makeSparkGatewayMockLayer = (input?: MockSparkGatewayConfig) =>
       })
 
       const quotedAmountMsats = Math.max(1_000, input?.quotedAmountMsats ?? 50_000)
+      const statusBalanceSequence = input?.statusBalanceSequenceSats ?? []
+      const getInfoCallRef = yield* Ref.make(0)
 
       return SparkGatewayService.of({
         connect: () => Effect.void,
@@ -292,9 +295,17 @@ export const makeSparkGatewayMockLayer = (input?: MockSparkGatewayConfig) =>
         getInfo: () =>
           Effect.gen(function* () {
             const state = yield* Ref.get(stateRef)
+            const getInfoCall = yield* Ref.getAndUpdate(getInfoCallRef, (count) => count + 1)
+            const sequenceBalance =
+              statusBalanceSequence.length === 0
+                ? null
+                : statusBalanceSequence[Math.min(getInfoCall, statusBalanceSequence.length - 1)] ?? null
             return {
               identityPubkey: state.identityPubkey,
-              balanceSats: state.balanceSats,
+              balanceSats:
+                sequenceBalance === null
+                  ? state.balanceSats
+                  : Math.max(0, Math.floor(sequenceBalance)),
               tokenBalanceCount: 0,
             } satisfies SparkWalletInfo
           }),
