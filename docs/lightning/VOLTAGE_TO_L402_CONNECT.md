@@ -224,9 +224,13 @@ gcloud run deploy l402-aperture \
   --min-instances=0 --max-instances=2
 ```
 
-**If the container fails to start:** Aperture may block on connecting to LND (Voltage) at startup. Check logs for the failing revision:
+**Fixes applied:** (1) Use `--command=/aperture` (full path; the binary is at `/aperture`). (2) Pass config via `--args=--configfile=/voltage-cfg/config.yaml` (Aperture reads the config file only when this flag is set). (3) Config must include at least one `services` entry (bootstrap placeholder) and correct `authenticator` paths.
 
-- Cloud Run console → Logs, or  
+**Current blocker:** SQLite fails to open the database file on Cloud Run with “unable to open database file: out of memory (14)” (SQLite error 14 = CANTOPEN). Both `/tmp` and `/var/tmp` fail. Cloud Run’s filesystem may be read-only or otherwise prevent SQLite from creating the file. **Options:** (a) Use **Cloud SQL Postgres** and switch Aperture config to `dbbackend: postgres` (see plan §6.2), or (b) run Aperture on **GCE/GKE** with a writable volume, or (c) mount a writable volume (e.g. NFS/Filestore) if supported for your Cloud Run execution environment.
+
+**If the container fails to start:** Check logs for the failing revision:
+
+- Cloud Run console → Logs, or
 - `gcloud run services logs read l402-aperture --region=us-central1 --limit=50`
 
 Common causes: LND unreachable from Cloud Run (firewall/network), wrong TLS/macaroon path, or Aperture exiting on auth failure. Run the same image locally with the same config and secret paths to reproduce:
