@@ -1,0 +1,25 @@
+{
+  "name": "lightning-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke:compile": "tsx src/main.ts smoke:compile"
+  },
+  "dependencies": {
+    "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
+    "convex": "^1.31.7",
+    "effect": "^3.19.16"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.73.1",
+    "@effect/vitest": "^0.27.0",
+    "@types/node": "^24.10.10",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
