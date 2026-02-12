@@ -254,8 +254,8 @@ Expected:
 
 We will have two routes behind `l402.openagents.com`:
 
-1. Endpoint B1 (success): priced under cap.
-2. Endpoint B2 (block): priced above cap so we can show a clean deny path after seeing the quoted invoice amount.
+1. Endpoint B1 (success): `GET https://l402.openagents.com/ep212/premium-signal` (`price: 70`).
+2. Endpoint B2 (block): `GET https://l402.openagents.com/ep212/expensive-signal` (`price: 250`) so we can show a clean deny path after seeing the quoted invoice amount.
 
 Expected:
 

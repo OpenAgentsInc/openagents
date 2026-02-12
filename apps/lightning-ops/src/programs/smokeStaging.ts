@@ -14,8 +14,14 @@ import { OpsRuntimeConfigLive } from "../runtime/config.js";
 
 export type StagingSmokeMode = "mock" | "convex";
 
+const STAGING_GATEWAY_DEFAULTS: Record<string, string> = {
+  OA_LIGHTNING_OPS_GATEWAY_BASE_URL: "https://l402.openagents.com",
+  OA_LIGHTNING_OPS_CHALLENGE_URL: "https://l402.openagents.com/staging",
+  OA_LIGHTNING_OPS_PROXY_URL: "https://l402.openagents.com/staging",
+};
+
 const env = (key: string): Effect.Effect<string, ConfigError> =>
-  Effect.sync(() => process.env[key]?.trim() ?? "").pipe(
+  Effect.sync(() => process.env[key]?.trim() ?? STAGING_GATEWAY_DEFAULTS[key] ?? "").pipe(
     Effect.flatMap((value) =>
       value
         ? Effect.succeed(value)

@@ -12,6 +12,7 @@
     "smoke:settlement": "tsx src/main.ts smoke:settlement",
     "smoke:observability": "tsx src/main.ts smoke:observability",
     "smoke:full-flow": "tsx src/main.ts smoke:full-flow",
+    "smoke:ep212-routes": "tsx src/main.ts smoke:ep212-routes",
     "reconcile:convex": "tsx src/main.ts reconcile:convex --json",
     "smoke:staging": "tsx src/main.ts smoke:staging"
   },

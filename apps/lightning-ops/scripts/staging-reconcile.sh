@@ -3,6 +3,11 @@ set -euo pipefail
 
 # Non-interactive staging reconcile helper for Phase 2B.
 # Requires env vars documented in apps/lightning-ops/README.md.
+# Gateway URLs default to canonical l402.openagents.com staging route.
+
+export OA_LIGHTNING_OPS_GATEWAY_BASE_URL="${OA_LIGHTNING_OPS_GATEWAY_BASE_URL:-https://l402.openagents.com}"
+export OA_LIGHTNING_OPS_CHALLENGE_URL="${OA_LIGHTNING_OPS_CHALLENGE_URL:-https://l402.openagents.com/staging}"
+export OA_LIGHTNING_OPS_PROXY_URL="${OA_LIGHTNING_OPS_PROXY_URL:-https://l402.openagents.com/staging}"
 
 if [[ -z "${OA_LIGHTNING_OPS_CONVEX_URL:-}" ]]; then
   echo "OA_LIGHTNING_OPS_CONVEX_URL is required" >&2

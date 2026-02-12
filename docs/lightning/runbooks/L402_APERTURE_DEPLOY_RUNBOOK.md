@@ -7,7 +7,10 @@
 ## Current state (as of 2026-02-12)
 
 - **Canonical URL:** `https://l402.openagents.com` — custom domain mapped to Cloud Run (`l402-aperture`, us-central1). DNS: CNAME `l402` → `ghs.googlehosted.com`.
-- **Staging route:** Aperture config includes a **staging** service (host `l402.openagents.com`, path `^/.*$`). Requests to `https://l402.openagents.com/staging` (or any path on that host) return 402 and support the full L402 flow.
+- **Staging route:** Aperture config includes a **staging** service (host `l402.openagents.com`, path `^/staging(?:/.*)?$`). Requests to `https://l402.openagents.com/staging` return 402 and support the full L402 flow.
+- **EP212 demo routes:** Aperture config includes:
+  - `https://l402.openagents.com/ep212/premium-signal` (`price: 70`, under-cap success route)
+  - `https://l402.openagents.com/ep212/expensive-signal` (`price: 250`, over-cap quote route)
 - **Script defaults:** `apps/lightning-ops/scripts/staging-reconcile.sh` sets `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, and `OA_LIGHTNING_OPS_PROXY_URL` to the canonical URL and `/staging` when unset. You only need to set `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET` to run staging reconcile.
 - **Config deployed:** Secret `l402-aperture-config` version 10 (with staging route) is live; Cloud Run revision uses it. To change routes or config, see §6.
 
@@ -65,7 +68,7 @@
 | **Artifact Registry** | Repo `l402` in `us-central1` | Holds the Aperture image `aperture:latest` (built from Lightning Labs source, Go 1.24). |
 | **Cloud Run** | Service `l402-aperture`, region `us-central1` | Runs Aperture; receives traffic and mounts the secrets above. |
 
-**Canonical URL:** `https://l402.openagents.com` (custom domain; use this for env and docs.)  
+**Canonical URL:** `https://l402.openagents.com` (custom domain; use this for env and docs.)
 **Alternate URL:** `https://l402-aperture-157437760789.us-central1.run.app`
 
 ### 3.2 Repo artifacts (all public-safe)
@@ -89,18 +92,18 @@
 
 To point it at this Cloud Run service:
 
-1. **In Google Cloud**  
-   - Open [Cloud Run](https://console.cloud.google.com/run) → select service **l402-aperture** (region `us-central1`) → **Manage custom domains**.  
-   - Click **Add mapping** and enter **`l402.openagents.com`**.  
-   - Complete any **verification** step (TXT or CNAME for domain ownership if required).  
+1. **In Google Cloud**
+   - Open [Cloud Run](https://console.cloud.google.com/run) → select service **l402-aperture** (region `us-central1`) → **Manage custom domains**.
+   - Click **Add mapping** and enter **`l402.openagents.com`**.
+   - Complete any **verification** step (TXT or CNAME for domain ownership if required).
    - Note the **mapping** records Google shows (e.g. CNAME target or A/AAAA values).
 
-2. **In DNS (where `openagents.com` is hosted)**  
-   - Add the records Google specifies for `l402.openagents.com` (verification + mapping).  
-   - If using Cloudflare: add the CNAME (or A/AAAA); you can proxy (orange cloud) or DNS-only (grey).  
+2. **In DNS (where `openagents.com` is hosted)**
+   - Add the records Google specifies for `l402.openagents.com` (verification + mapping).
+   - If using Cloudflare: add the CNAME (or A/AAAA); you can proxy (orange cloud) or DNS-only (grey).
    - Wait for DNS propagation; Cloud Run will then provision TLS for the domain.
 
-3. **After it’s live**  
+3. **After it’s live**
    - Use `https://l402.openagents.com` for `OA_LIGHTNING_OPS_CHALLENGE_URL` / `OA_LIGHTNING_OPS_PROXY_URL` and any docs (see `STAGING_GATEWAY_RECONCILE_RUNBOOK.md`).
 
 **Via gcloud CLI (fully managed Cloud Run):** Use the **beta** command group; the non-beta `gcloud run domain-mappings` is for Cloud Run for Anthos only. Ensure `gcloud components install beta` if needed.
@@ -156,7 +159,9 @@ All sensitive values live **only** in GCP Secret Manager (and, for local use, in
 - A request to `/` without L402 auth typically returns **400** or similar (no matching service or auth required); that indicates Aperture is up.
 - To actually get a 402 and then access a paywalled route, you must request a **host/path that matches a configured service** in Aperture. The deployed config includes:
   - **bootstrap** (host `l402-bootstrap.openagents.local`)
-  - **staging** (host `l402.openagents.com`, path `^/.*$`) — used for `OA_LIGHTNING_OPS_*` defaults; request `https://l402.openagents.com/staging` (or any path on that host) to get 402.
+  - **staging** (host `l402.openagents.com`, path `^/staging(?:/.*)?$`) — used for `OA_LIGHTNING_OPS_*` defaults; request `https://l402.openagents.com/staging` to get 402.
+  - **ep212-demo-under-cap** (host `l402.openagents.com`, path `^/ep212/premium-signal$`, `price: 70`)
+  - **ep212-demo-over-cap** (host `l402.openagents.com`, path `^/ep212/expensive-signal$`, `price: 250`)
 
 ### 5.2 L402 flow (conceptual)
 
@@ -173,6 +178,25 @@ To verify 402 issuance and proxy against this gateway:
 - Set env vars (see `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`):
   `OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL` (and optionally `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`) to the canonical gateway URL (`https://l402.openagents.com`) and the paywalled path you configured.
 - Run: `./scripts/staging-reconcile.sh` (or the smoke command from `apps/lightning-ops`).
+
+### 5.4 EP212 route verification smoke
+
+Use the dedicated `lightning-ops` command for the two episode routes:
+
+```bash
+cd apps/lightning-ops
+OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL="https://<wallet-executor-host>" \
+OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN="<optional-bearer>" \
+npm run smoke:ep212-routes -- --json --mode live
+```
+
+Expected summary fields:
+
+- `routeA.challengeStatusCode = 402` and `routeA.paidStatusCode = 200`
+- `routeA.paidAmountMsats > 0`
+- `routeB.challengeStatusCode = 402`
+- `routeB.blocked = true` with `routeB.denyReasonCode = amount_over_cap`
+- `routeB.payerCallsBefore === routeB.payerCallsAfter` (no payment attempted on over-cap block)
 
 ---
 

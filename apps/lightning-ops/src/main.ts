@@ -10,6 +10,7 @@ import { runObservabilitySmoke, type ObservabilitySmokeMode } from "./programs/s
 import { runSecuritySmoke, type SecuritySmokeMode } from "./programs/securityControls.js";
 import { runSettlementSmoke, type SettlementSmokeMode } from "./programs/smokeSettlement.js";
 import { runStagingSmoke, type StagingSmokeMode } from "./programs/smokeStaging.js";
+import { runEp212RoutesSmoke, type Ep212RoutesSmokeMode, type Ep212RoutesSmokeSummary } from "./programs/smokeEp212Routes.js";
 import {
   runFullFlowSmoke,
   type FullFlowSmokeMode,
@@ -24,6 +25,7 @@ const usage = `Usage:
   tsx src/main.ts smoke:security [--json] [--mode mock|convex]
   tsx src/main.ts smoke:settlement [--json] [--mode mock|convex]
   tsx src/main.ts smoke:staging [--json] [--mode mock|convex]
+  tsx src/main.ts smoke:ep212-routes [--json] [--mode mock|live]
   tsx src/main.ts smoke:observability [--json] [--mode mock|convex]
   tsx src/main.ts smoke:full-flow [--json] [--mode mock|convex] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
 `;
@@ -199,6 +201,7 @@ const toObservabilitySmokeJson = (summary: {
   });
 
 const toFullFlowSmokeJson = (summary: FullFlowSmokeSummary) => JSON.stringify(summary);
+const toEp212RoutesSmokeJson = (summary: Ep212RoutesSmokeSummary) => JSON.stringify(summary);
 
 const printCompileSummary = (
   summary: {
@@ -422,6 +425,35 @@ const printFullFlowSummary = (summary: FullFlowSmokeSummary, jsonOutput: boolean
         ].join("\n"),
       );
 
+const printEp212RoutesSummary = (summary: Ep212RoutesSmokeSummary, jsonOutput: boolean) =>
+  jsonOutput
+    ? Console.log(toEp212RoutesSmokeJson(summary))
+    : Console.log(
+        [
+          `ok=${summary.ok}`,
+          `mode=${summary.mode}`,
+          `requestId=${summary.requestId}`,
+          `walletBackend=${summary.walletBackend}`,
+          `routeA.url=${summary.routeA.url}`,
+          `routeA.challengeStatusCode=${summary.routeA.challengeStatusCode}`,
+          `routeA.quotedAmountMsats=${summary.routeA.quotedAmountMsats ?? "n/a"}`,
+          `routeA.paidStatusCode=${summary.routeA.paidStatusCode}`,
+          `routeA.paidAmountMsats=${summary.routeA.paidAmountMsats}`,
+          `routeA.paymentId=${summary.routeA.paymentId ?? "n/a"}`,
+          `routeA.proofReference=${summary.routeA.proofReference}`,
+          `routeA.responseBytes=${summary.routeA.responseBytes}`,
+          `routeA.responseSha256=${summary.routeA.responseSha256}`,
+          `routeB.url=${summary.routeB.url}`,
+          `routeB.challengeStatusCode=${summary.routeB.challengeStatusCode}`,
+          `routeB.quotedAmountMsats=${summary.routeB.quotedAmountMsats ?? "n/a"}`,
+          `routeB.maxSpendMsats=${summary.routeB.maxSpendMsats}`,
+          `routeB.blocked=${summary.routeB.blocked}`,
+          `routeB.denyReasonCode=${summary.routeB.denyReasonCode}`,
+          `routeB.payerCallsBefore=${summary.routeB.payerCallsBefore}`,
+          `routeB.payerCallsAfter=${summary.routeB.payerCallsAfter}`,
+        ].join("\n"),
+      );
+
 const runSmokeCompile = (jsonOutput: boolean) => {
   const harness = makeInMemoryControlPlaneHarness({ paywalls: smokePaywalls });
   return compileAndPersistOnce({ requestId: "smoke:compile" }).pipe(
@@ -478,6 +510,11 @@ const runSmokeSecurity = (jsonOutput: boolean, mode: SecuritySmokeMode) =>
 const runSmokeObservability = (jsonOutput: boolean, mode: ObservabilitySmokeMode) =>
   runObservabilitySmoke({ mode }).pipe(
     Effect.flatMap((summary) => printObservabilitySummary(summary, jsonOutput)),
+  );
+
+const runSmokeEp212Routes = (jsonOutput: boolean, mode: Ep212RoutesSmokeMode) =>
+  runEp212RoutesSmoke({ mode }).pipe(
+    Effect.flatMap((summary) => printEp212RoutesSummary(summary, jsonOutput)),
   );
 
 const runSmokeFullFlow = (input: {
@@ -543,6 +580,10 @@ const main = Effect.gen(function* () {
 
   if (command === "smoke:observability") {
     return yield* runSmokeObservability(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+  }
+
+  if (command === "smoke:ep212-routes") {
+    return yield* runSmokeEp212Routes(jsonOutput, parseMode(argv, ["mock", "live"], "mock"));
   }
 
   if (command === "smoke:full-flow") {
