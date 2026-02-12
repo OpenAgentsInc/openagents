@@ -3,7 +3,12 @@
 **Full runbook (architecture, secrets, how to use, how to edit, troubleshooting):**
 `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md`
 
-This directory contains only the **image build** and optional Cloud Build config. Config content, Secret Manager, and Cloud Run deploy are described in the runbook and in `docs/lightning/reference/VOLTAGE_TO_L402_CONNECT.md` (§7.1).
+This directory contains only the **image build** and optional Cloud Build config:
+
+- Aperture gateway image (`Dockerfile.aperture`, `cloudbuild-aperture.yaml`)
+- Wallet executor image (`Dockerfile.wallet-executor`, `cloudbuild-wallet-executor.yaml`)
+
+Config content, Secret Manager, and Cloud Run deploy are described in runbooks.
 
 **Canonical gateway URL:** `https://l402.openagents.com` (custom domain → Cloud Run). Staging route: `https://l402.openagents.com/staging`. Use these for `OA_LIGHTNING_OPS_*` env vars; they are the defaults in `apps/lightning-ops`. **Operator checklist:** `docs/lightning/status/20260212-0753-status.md` §12.
 
@@ -38,3 +43,5 @@ gcloud builds submit --config docs/lightning/deploy/cloudbuild-aperture.yaml \
 
 - **Dockerfile.aperture** – Multi-stage build from Lightning Labs Aperture source (Go 1.24); no Docker Hub dependency.
 - **cloudbuild-aperture.yaml** – Cloud Build config to build and push to Artifact Registry repo `l402`.
+- **Dockerfile.wallet-executor** – Node-based build for `apps/lightning-wallet-executor` (Spark wallet execution service).
+- **cloudbuild-wallet-executor.yaml** – Cloud Build config to build and push wallet executor image to Artifact Registry repo `l402`.

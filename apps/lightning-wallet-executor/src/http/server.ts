@@ -74,6 +74,17 @@ const requestIdFrom = (request: IncomingMessage): string => {
   return crypto.randomUUID()
 }
 
+const bearerTokenFromRequest = (request: IncomingMessage): string | null => {
+  const raw = request.headers.authorization
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim()
+  if (trimmed.length === 0) return null
+  const match = /^bearer\s+(.+)$/i.exec(trimmed)
+  if (!match) return null
+  const token = match[1]?.trim() ?? ""
+  return token.length > 0 ? token : null
+}
+
 const routeRequest = (
   request: IncomingMessage,
   response: ServerResponse,
@@ -88,6 +99,15 @@ const routeRequest = (
     if (method === "GET" && path === "/healthz") {
       json(200, { ok: true, requestId }, response, requestId)
       return
+    }
+
+    if (config.authToken) {
+      const bearerToken = bearerTokenFromRequest(request)
+      if (!bearerToken || bearerToken !== config.authToken) {
+        response.setHeader("www-authenticate", 'Bearer realm="wallet-executor"')
+        json(401, { ok: false, error: toErrorResponse(requestId, "unauthorized", "missing or invalid bearer token") }, response, requestId)
+        return
+      }
     }
 
     if (method === "GET" && path === "/status") {

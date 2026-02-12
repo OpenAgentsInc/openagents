@@ -1,0 +1,27 @@
+# Build wallet executor image and push to Artifact Registry.
+# Run from repo root:
+#   gcloud builds submit --config docs/lightning/deploy/cloudbuild-wallet-executor.yaml \
+#     --substitutions _TAG="$(git rev-parse --short HEAD)" .
+substitutions:
+  _TAG: ${SHORT_SHA}
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-f"
+      - "docs/lightning/deploy/Dockerfile.wallet-executor"
+      - "-t"
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/l402/wallet-executor:${_TAG}"
+      - "-t"
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/l402/wallet-executor:latest"
+      - "."
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "us-central1-docker.pkg.dev/${PROJECT_ID}/l402/wallet-executor:${_TAG}"]
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "us-central1-docker.pkg.dev/${PROJECT_ID}/l402/wallet-executor:latest"]
+images:
+  - "us-central1-docker.pkg.dev/${PROJECT_ID}/l402/wallet-executor:${_TAG}"
+  - "us-central1-docker.pkg.dev/${PROJECT_ID}/l402/wallet-executor:latest"
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
