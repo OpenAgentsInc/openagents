@@ -6,6 +6,7 @@ import { effectMutation, effectQuery } from "../effect/functions";
 import { tryPromise } from "../effect/tryPromise";
 
 import { getSubject } from "../autopilot/access";
+import { evaluateOwnerSecurityGate } from "./security";
 
 const nowMs = () => Date.now();
 const newId = () => crypto.randomUUID();
@@ -299,6 +300,54 @@ export const createTaskImpl = (
       if (existing) {
         return { ok: true, existed: true, task: toTask(existing) };
       }
+    }
+
+    const securityGate = yield* evaluateOwnerSecurityGate(ctx, ownerId);
+    if (!securityGate.allowed) {
+      const taskId = newId();
+      const securityMetadata = {
+        securityGate: {
+          denyReasonCode: securityGate.denyReasonCode,
+          denyReason: securityGate.denyReason,
+        },
+        ...(args.metadata !== undefined ? { sourceMetadata: args.metadata } : {}),
+      };
+
+      yield* tryPromise(() =>
+        ctx.db.insert("lightningTasks", {
+          taskId,
+          ownerId,
+          status: "blocked",
+          request,
+          idempotencyKey,
+          source,
+          requestId,
+          metadata: securityMetadata,
+          attemptCount: 0,
+          lastErrorCode: securityGate.denyReasonCode,
+          lastErrorMessage: securityGate.denyReason,
+          createdAtMs: now,
+          updatedAtMs: now,
+          lastTransitionAtMs: now,
+        }),
+      );
+
+      const task = yield* assertTaskAccess(ctx, { taskId, ownerId });
+
+      yield* insertTaskEvent(ctx, {
+        taskId,
+        ownerId,
+        toStatus: "blocked",
+        actor: "system",
+        reason: securityGate.denyReasonCode,
+        requestId,
+        errorCode: securityGate.denyReasonCode,
+        errorMessage: securityGate.denyReason,
+        metadata: securityMetadata,
+        createdAtMs: now,
+      });
+
+      return { ok: true, existed: false, task: toTask(task) };
     }
 
     const taskId = newId();

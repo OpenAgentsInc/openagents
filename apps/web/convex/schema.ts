@@ -291,6 +291,43 @@ export default defineSchema({
     .index("by_invoiceId", ["invoiceId"])
     .index("by_requestId", ["requestId"]),
 
+  l402SecurityGlobal: defineTable({
+    stateId: v.string(),
+    globalPause: v.boolean(),
+    denyReasonCode: v.optional(v.literal("global_pause_active")),
+    denyReason: v.optional(v.string()),
+    updatedBy: v.optional(v.string()),
+    updatedAtMs: v.number(),
+  }).index("by_stateId", ["stateId"]),
+
+  l402OwnerSecurityControls: defineTable({
+    ownerId: v.string(),
+    killSwitch: v.boolean(),
+    denyReasonCode: v.optional(v.literal("owner_kill_switch_active")),
+    denyReason: v.optional(v.string()),
+    updatedBy: v.optional(v.string()),
+    updatedAtMs: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_killSwitch_updatedAtMs", ["killSwitch", "updatedAtMs"]),
+
+  l402CredentialRoles: defineTable({
+    role: v.union(
+      v.literal("gateway_invoice"),
+      v.literal("settlement_read"),
+      v.literal("operator_admin"),
+    ),
+    status: v.union(v.literal("active"), v.literal("rotating"), v.literal("revoked")),
+    version: v.number(),
+    fingerprint: v.optional(v.string()),
+    note: v.optional(v.string()),
+    updatedAtMs: v.number(),
+    lastRotatedAtMs: v.optional(v.number()),
+    revokedAtMs: v.optional(v.number()),
+  })
+    .index("by_role", ["role"])
+    .index("by_status_updatedAtMs", ["status", "updatedAtMs"]),
+
   l402Payouts: defineTable({
     payoutId: v.string(),
     ownerId: v.string(),

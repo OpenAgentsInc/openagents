@@ -15,6 +15,7 @@ Effect-native operational service for hosted L402 gateway workflows.
 npm run typecheck
 npm test
 npm run smoke:compile -- --json
+npm run smoke:security -- --json
 npm run smoke:settlement -- --json
 npm run reconcile:convex
 npm run smoke:staging -- --json
@@ -38,6 +39,12 @@ npm run smoke:staging -- --json
 - `settlementIds`
 - `paymentProofRefs`
 - `correlationRefs` (request/task/route correlation tuples)
+
+`smoke:security -- --json` verifies security controls with machine-readable output:
+
+- fail-closed credential validation
+- global pause/owner kill-switch denial behavior
+- rotation/revocation/activation lifecycle + recovery state
 
 Environment variables for Convex-backed operation:
 

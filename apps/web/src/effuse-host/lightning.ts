@@ -347,6 +347,23 @@ const listPaywallsProgram = (request: Request) =>
     };
   });
 
+const getSecurityStateProgram = (request: Request) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? null;
+    const convex = yield* ConvexService;
+    const state = yield* convex.query(api.lightning.security.getOwnerSecurityState, {});
+
+    return {
+      ok: true as const,
+      security: state,
+      requestId,
+    };
+  });
+
 const listOwnerSettlementsProgram = (request: Request) =>
   Effect.gen(function* () {
     const auth = yield* AuthService;
@@ -535,6 +552,13 @@ export const handleLightningRequest = async (request: Request, env: WorkerEnv): 
   if (url.pathname === "/api/lightning/settlements") {
     if (request.method === "GET") {
       return runAuthedLightning(request, env, listOwnerSettlementsProgram(request));
+    }
+    return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+  }
+
+  if (url.pathname === "/api/lightning/security/state") {
+    if (request.method === "GET") {
+      return runAuthedLightning(request, env, getSecurityStateProgram(request));
     }
     return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
   }
