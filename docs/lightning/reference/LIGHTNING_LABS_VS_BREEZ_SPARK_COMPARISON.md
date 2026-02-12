@@ -22,9 +22,9 @@ If we sequence this correctly, we get faster product velocity and avoid a forced
 ### 2.1 Active repo findings
 
 - Lightning planning docs exist and are solid:
-  - `docs/lightning/LIGHTNING_AGENT_TOOLS.md`
-  - `docs/lightning/SETUP_LOG.md`
-  - `docs/lightning/LIGHTNING_DEEP_INTEGRATION_ROADMAP.md`
+  - `docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md`
+  - `docs/lightning/status/SETUP_LOG.md`
+  - `docs/lightning/plans/LIGHTNING_DEEP_INTEGRATION_ROADMAP.md`
 - Receipt semantics already support Lightning proofs (`lightning_preimage`):
   - `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
 - Active worker/web/mobile/desktop code has early Lightning foundations:
@@ -299,9 +299,9 @@ That gives us speed now, sovereignty later, and no forced rewrite when the deskt
 
 Active repo:
 
-- `docs/lightning/LIGHTNING_AGENT_TOOLS.md`
-- `docs/lightning/SETUP_LOG.md`
-- `docs/lightning/LIGHTNING_DEEP_INTEGRATION_ROADMAP.md`
+- `docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md`
+- `docs/lightning/status/SETUP_LOG.md`
+- `docs/lightning/plans/LIGHTNING_DEEP_INTEGRATION_ROADMAP.md`
 - `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
 - `apps/autopilot-worker/src/tools.ts`
 - `docs/PROJECT_OVERVIEW.md`

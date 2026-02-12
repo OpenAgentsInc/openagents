@@ -2,11 +2,11 @@
 
 You have a Voltage node set up; this doc summarizes how it plugs into the OpenAgents L402 (seller/paywall) stack and where to configure it.
 
-**Single runbook for deploy, secrets, and operations:** `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md` (architecture, what was built, how to use, how to edit, where secrets live, troubleshooting). This doc focuses on Voltage-specific setup; the runbook is the master reference for the live gateway.
+**Single runbook for deploy, secrets, and operations:** `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md` (architecture, what was built, how to use, how to edit, where secrets live, troubleshooting). This doc focuses on Voltage-specific setup; the runbook is the master reference for the live gateway.
 
 ## 1. Where Voltage Fits in the Architecture
 
-From `docs/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` and `docs/lightning/20260212-0753-status.md`:
+From `docs/lightning/plans/L402_AGENT_PAYWALL_INFRA_PLAN.md` and `docs/lightning/status/20260212-0753-status.md`:
 
 - **Voltage = LND backend for the L402 gateway.** It is used for the **seller** path: issuing 402 challenges (invoices) and validating payments. It is **not** used for the desktop/buyer path (that uses Spark or local LND).
 - **Aperture** (Lightning Labs’ Go proxy) is the component that talks to LND. It:
@@ -75,10 +75,7 @@ From `L402_AGENT_PAYWALL_INFRA_PLAN.md` and `STAGING_GATEWAY_RECONCILE_RUNBOOK.m
 
 3. **lightning-ops**
    - Set Convex + ops secret env vars (see `apps/lightning-ops/README.md`).
-   - For staging reconcile, set:
-     - `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`
-     - `OA_LIGHTNING_OPS_CHALLENGE_URL`
-     - `OA_LIGHTNING_OPS_PROXY_URL`
+   - For staging reconcile, **gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (set by `staging-reconcile.sh` and by the smoke program when unset). You only need `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET`.
    - Run:
      - `./scripts/staging-reconcile.sh`
      or
@@ -97,7 +94,7 @@ From `L402_AGENT_PAYWALL_INFRA_PLAN.md` and `STAGING_GATEWAY_RECONCILE_RUNBOOK.m
 - [ ] Base Aperture config (or deploy template) includes `authenticator` with `lndhost`, `tlspath`, `macdir` pointing at Voltage and the mounted secrets.
 - [ ] `apps/lightning-ops` compiles routes from Convex paywall state; deploy merges or injects that into Aperture’s config.
 - [ ] Aperture deployed (e.g. Cloud Run) with secrets mounted and config that has both Voltage auth and OpenAgents routes.
-- [ ] Staging reconcile and smoke tests (`OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL`) pass.
+- [ ] Staging reconcile and smoke tests pass (gateway URLs default to `https://l402.openagents.com/staging`; set only `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET`).
 
 ---
 
@@ -192,7 +189,7 @@ Project **openagentsgemini** has been set up with:
 
 - **Secret Manager:** `l402-voltage-tls-cert`, `l402-voltage-invoice-macaroon`, `l402-aperture-config`, `l402-aperture-db-password`.
 - **Artifact Registry:** repo `l402` in `us-central1`; Aperture image built from source (Go 1.24) and pushed as `us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest`.
-- **Cloud Run:** service `l402-aperture` (region `us-central1`); **live** at https://l402-aperture-157437760789.us-central1.run.app (Postgres backend). Previously failed with “container failed to start and listen on PORT” (see troubleshooting below).
+- **Cloud Run:** service `l402-aperture` (region `us-central1`); **canonical URL** https://l402.openagents.com (alternate: https://l402-aperture-157437760789.us-central1.run.app). Postgres backend. Previously failed with “container failed to start and listen on PORT” (see troubleshooting below).
 
 **Build Aperture image (linux/amd64 for Cloud Run):**
 
@@ -247,9 +244,9 @@ docker run --rm -v /path/to/voltage-tls:/voltage-tls -v /path/to/voltage-mac:/vo
 
 ## 8. References in This Repo
 
-- **Deploy runbook (master reference):** `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md` – how the system works, what was built, where secrets live, how to use and edit, troubleshooting. No sensitive values; safe for the public repo.
-- **High-level plan (Voltage + GCP):** `docs/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` (§4–5, §6.2, §15).
-- **Staging reconcile:** `docs/lightning/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`; `apps/lightning-ops/scripts/staging-reconcile.sh`.
-- **What’s implemented:** `docs/lightning/20260212-0753-status.md`.
+- **Deploy runbook (master reference):** `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md` – how the system works, what was built, where secrets live, how to use and edit, troubleshooting. No sensitive values; safe for the public repo.
+- **High-level plan (Voltage + GCP):** `docs/lightning/plans/L402_AGENT_PAYWALL_INFRA_PLAN.md` (§4–5, §6.2, §15).
+- **Staging reconcile:** `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`; `apps/lightning-ops/scripts/staging-reconcile.sh`. **Single operator checklist (reconcile, CI, routes):** `docs/lightning/status/20260212-0753-status.md` §12.
+- **What’s implemented:** `docs/lightning/status/20260212-0753-status.md`.
 - **Compiler (routes only):** `apps/lightning-ops/src/compiler/apertureCompiler.ts` – emits `version: 1`, `routes:` with match/upstream/auth/pricing; no authenticator block.
 - **Upstream Aperture sample config:** https://github.com/lightninglabs/aperture/blob/master/sample-conf.yaml (for full `authenticator` and options).

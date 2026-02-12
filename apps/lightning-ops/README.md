@@ -69,13 +69,18 @@ Environment variables for Convex-backed operation:
 - `OA_LIGHTNING_OPS_CONVEX_URL`
 - `OA_LIGHTNING_OPS_SECRET`
 
-Environment variables for hosted staging smoke (`--mode convex`):
+Environment variables for hosted staging smoke (`--mode convex`). **Gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (in `staging-reconcile.sh` and in the smoke program). You only need to set:
 
-- `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`
-- `OA_LIGHTNING_OPS_CHALLENGE_URL`
-- `OA_LIGHTNING_OPS_PROXY_URL`
-- `OA_LIGHTNING_OPS_GATEWAY_OPS_TOKEN` (optional)
-- `OA_LIGHTNING_OPS_GATEWAY_HEALTH_PATH` (optional)
-- `OA_LIGHTNING_OPS_PROXY_AUTHORIZATION_HEADER` (optional)
+- `OA_LIGHTNING_OPS_CONVEX_URL` (required for `--mode convex`)
+- `OA_LIGHTNING_OPS_SECRET` (required for `--mode convex`)
+
+Optional overrides:
+
+- `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL`
+- `OA_LIGHTNING_OPS_GATEWAY_OPS_TOKEN`, `OA_LIGHTNING_OPS_GATEWAY_HEALTH_PATH`, `OA_LIGHTNING_OPS_PROXY_AUTHORIZATION_HEADER`
+
+Example: copy `env.staging.example` to `.env.staging`, set the two required vars, then `source .env.staging && ./scripts/staging-reconcile.sh`.
+
+**Full operator checklist (reconcile, CI, product, changing Aperture routes):** `docs/lightning/status/20260212-0753-status.md` §12.
 
 Default `smoke:staging` mode is deterministic in-memory (`--mode mock`) so CI can run non-interactively.

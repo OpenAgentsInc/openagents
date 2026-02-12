@@ -33,7 +33,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Quote** | Prepared payment intent with reserved funds, expiry timestamp, and idempotency key. States: CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED. |
 | **Cashu Proof** | A blind-signed token ("coin") redeemable at a Cashu mint. Avoid generic "proof" which collides with other meanings. |
 | **Reconciliation** | Background process resolving pending quotes, expiring reservations, and repairing state after crashes. |
-| **L402** | Protocol for Lightning machine-payment authentication. Uses HTTP 402, a Lightning invoice, and a macaroon; agent pays invoice, gets preimage, presents preimage + macaroon for access. No signup or API key. See [docs/lightning/LIGHTNING_AGENT_TOOLS.md](lightning/LIGHTNING_AGENT_TOOLS.md). |
+| **L402** | Protocol for Lightning machine-payment authentication. Uses HTTP 402, a Lightning invoice, and a macaroon; agent pays invoice, gets preimage, presents preimage + macaroon for access. No signup or API key. See [docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md](lightning/reference/LIGHTNING_AGENT_TOOLS.md). |
 | **lnget** | L402-aware CLI HTTP client (Lightning Labs). On 402, pays invoice via configured Lightning backend, caches auth, retries. Enables agents that can run shell to consume L402-gated APIs. |
 | **Macaroon** | In Lightning/L402 context: a scoped bearer credential (e.g. pay-only, invoice-only, read-only). Used with lnd and lnget for least-privilege agent spending. |
 | **Aperture** | Lightning Labs L402 reverse proxy. Backends sit behind it; Aperture handles 402 negotiation and pricing so APIs can be pay-per-use without implementing Lightning. |

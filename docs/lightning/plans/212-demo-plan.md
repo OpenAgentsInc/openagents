@@ -4,6 +4,8 @@ Status: Draft
 Date: 2026-02-12
 Owner: OpenAgents
 
+**L402 gateway:** `https://l402.openagents.com` is live (Cloud Run + Voltage + Postgres). Staging route `/staging` returns 402. **Operator checklist (reconcile, CI, product, routes):** `docs/lightning/status/20260212-0753-status.md` §12.
+
 ## 1. Demo Goal
 
 Show, inside `openagents.com`, that Autopilot can consume paid endpoints using Lightning Labs L402 flows with clear budget guardrails and receipts, using a real Lightning wallet owned by the agent.
@@ -174,8 +176,8 @@ Selection requirements:
 
 References:
 
-- Deploy/runbook: `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md`
-- Voltage wiring: `docs/lightning/VOLTAGE_TO_L402_CONNECT.md`
+- Deploy/runbook: `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md`
+- Voltage wiring: `docs/lightning/reference/VOLTAGE_TO_L402_CONNECT.md`
 
 ## 5.5 Pane System Plan (effuse-panes + apps/web)
 
@@ -264,7 +266,7 @@ Expected:
 
 ## Phase 0: Confirm seller infra baseline (Day 0)
 
-1. Aperture Cloud Run service is healthy (see `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md`).
+1. Aperture Cloud Run service is healthy (see `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md`).
 2. Domain is mapped:
    - Prefer `l402.openagents.com` (Cloud Run custom domain mapping).
 3. Voltage credentials are mounted and Postgres is healthy.

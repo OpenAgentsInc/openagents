@@ -340,7 +340,7 @@ Infra / integration (if present; some paths archived):
 
 * `docs/cloudflare/` (Workers deployment notes)
 * `docs/liteclaw/` (tunnel and ingress notes)
-* `docs/lightning/LIGHTNING_AGENT_TOOLS.md` (L402/lnget integration plan)
+* `docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md` (L402/lnget integration plan)
 
 ---
 

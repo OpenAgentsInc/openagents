@@ -9,24 +9,30 @@ This runbook describes the non-interactive deploy/reconcile loop for hosted L402
 
 ## 1. Required environment
 
-Set these variables before running reconcile from `apps/lightning-ops`:
+Set these variables before running reconcile from `apps/lightning-ops`. **Gateway URLs default** to the canonical staging route; you only need to set Convex URL and secret for Convex-backed runs:
 
 ```bash
 export OA_LIGHTNING_OPS_CONVEX_URL="https://<deployment>.convex.cloud"
 export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
-export OA_LIGHTNING_OPS_GATEWAY_BASE_URL="https://<gateway-control-shim>"
-export OA_LIGHTNING_OPS_CHALLENGE_URL="https://<aperture-domain>/<paywalled-route>"
-export OA_LIGHTNING_OPS_PROXY_URL="https://<aperture-domain>/<paywalled-route>"
+# Optional (defaults set by staging-reconcile.sh):
+# OA_LIGHTNING_OPS_GATEWAY_BASE_URL="https://l402.openagents.com"
+# OA_LIGHTNING_OPS_CHALLENGE_URL="https://l402.openagents.com/staging"
+# OA_LIGHTNING_OPS_PROXY_URL="https://l402.openagents.com/staging"
 # Optional:
-export OA_LIGHTNING_OPS_GATEWAY_OPS_TOKEN="<bearer-token>"
-export OA_LIGHTNING_OPS_GATEWAY_HEALTH_PATH="/healthz"
-export OA_LIGHTNING_OPS_PROXY_AUTHORIZATION_HEADER="L402 <prepaid-proof>"
+# export OA_LIGHTNING_OPS_GATEWAY_OPS_TOKEN="<bearer-token>"
+# export OA_LIGHTNING_OPS_GATEWAY_HEALTH_PATH="/healthz"
+# export OA_LIGHTNING_OPS_PROXY_AUTHORIZATION_HEADER="L402 <prepaid-proof>"
 ```
+
+**Gateway in use:** `https://l402.openagents.com` (staging path: `/staging`). **Full operator checklist (reconcile, CI, product, changing routes):** `docs/lightning/status/20260212-0753-status.md` §12. Env example: `apps/lightning-ops/env.staging.example`.
 
 ## 2. Reconcile and verify (non-interactive)
 
 ```bash
 cd apps/lightning-ops
+# Set only CONVEX_URL and SECRET; gateway URLs are defaulted
+export OA_LIGHTNING_OPS_CONVEX_URL="https://<deployment>.convex.cloud"
+export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
 ./scripts/staging-reconcile.sh
 ```
 
@@ -76,4 +82,4 @@ Rollback is attempted automatically when a previous deployment snapshot is avail
 
 Use the cross-path field contract and triage checklist in:
 
-- `docs/lightning/L402_OBSERVABILITY_REHEARSAL_RUNBOOK.md`
+- `docs/lightning/runbooks/L402_OBSERVABILITY_REHEARSAL_RUNBOOK.md`

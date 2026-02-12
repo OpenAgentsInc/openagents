@@ -62,7 +62,7 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 ### Documentation and Glossary
 
 - **GLOSSARY.md** should define: **L402**, **lnget**, **Macaroon** (in our context: scoped Lightning credentials), **Aperture**, and optionally **Lightning Node Connect (LNC)** so all docs use consistent terms.
-- This doc and the integration plan live under `docs/lightning/` and are the single place for “how we integrate Lightning agent tools.”
+- This doc and the integration plan live under `docs/lightning/reference/` and are the single place for “how we integrate Lightning agent tools.”
 
 ---
 
