@@ -1,14 +1,21 @@
 import { Effect, Layer } from "effect";
 
 import {
+  decodeControlPlaneSecurityStateResponse,
   decodeInvoiceLifecycleWriteResponse,
+  decodeSecurityCredentialRoleWriteResponse,
+  decodeSecurityGlobalWriteResponse,
+  decodeSecurityOwnerControlWriteResponse,
   decodeSettlementWriteResponse,
   decodeControlPlaneSnapshotResponse,
   decodeDeploymentIntentWriteResponse,
   decodeGatewayEventWriteResponse,
   type CompileDiagnostic,
+  type ControlPlaneCredentialRoleState,
   type ControlPlaneInvoiceRecord,
+  type ControlPlaneOwnerSecurityControl,
   type ControlPlanePaywall,
+  type ControlPlaneSecurityGlobal,
   type ControlPlaneSettlementRecord,
   type DeploymentIntentRecord,
   type GatewayEventRecord,
@@ -26,6 +33,12 @@ export const CONVEX_RECORD_DEPLOYMENT_FN = "lightning/ops:recordGatewayCompileIn
 export const CONVEX_RECORD_GATEWAY_EVENT_FN = "lightning/ops:recordGatewayDeploymentEvent";
 export const CONVEX_RECORD_INVOICE_LIFECYCLE_FN = "lightning/settlements:ingestInvoiceLifecycle";
 export const CONVEX_RECORD_SETTLEMENT_FN = "lightning/settlements:ingestSettlement";
+export const CONVEX_GET_SECURITY_STATE_FN = "lightning/security:getControlPlaneSecurityState";
+export const CONVEX_SET_GLOBAL_PAUSE_FN = "lightning/security:setGlobalPause";
+export const CONVEX_SET_OWNER_KILL_SWITCH_FN = "lightning/security:setOwnerKillSwitch";
+export const CONVEX_ROTATE_CREDENTIAL_ROLE_FN = "lightning/security:rotateCredentialRole";
+export const CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN = "lightning/security:activateCredentialRole";
+export const CONVEX_REVOKE_CREDENTIAL_ROLE_FN = "lightning/security:revokeCredentialRole";
 
 const decodeSnapshot = (raw: unknown): Effect.Effect<ReadonlyArray<ControlPlanePaywall>, ControlPlaneDecodeError> =>
   decodeControlPlaneSnapshotResponse(raw).pipe(
@@ -92,6 +105,66 @@ const decodeSettlementWrite = (
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({
         operation: "decodeSettlementWriteResponse",
+        reason: String(error),
+      }),
+    ),
+  );
+
+const decodeControlPlaneSecurityState = (
+  raw: unknown,
+): Effect.Effect<{
+  global: ControlPlaneSecurityGlobal;
+  ownerControls: ReadonlyArray<ControlPlaneOwnerSecurityControl>;
+  credentialRoles: ReadonlyArray<ControlPlaneCredentialRoleState>;
+}, ControlPlaneDecodeError> =>
+  decodeControlPlaneSecurityStateResponse(raw).pipe(
+    Effect.map((decoded) => ({
+      global: decoded.global,
+      ownerControls: decoded.ownerControls,
+      credentialRoles: decoded.credentialRoles,
+    })),
+    Effect.mapError((error) =>
+      ControlPlaneDecodeError.make({
+        operation: "decodeControlPlaneSecurityStateResponse",
+        reason: String(error),
+      }),
+    ),
+  );
+
+const decodeSecurityGlobalWrite = (
+  raw: unknown,
+): Effect.Effect<ControlPlaneSecurityGlobal, ControlPlaneDecodeError> =>
+  decodeSecurityGlobalWriteResponse(raw).pipe(
+    Effect.map((decoded) => decoded.global),
+    Effect.mapError((error) =>
+      ControlPlaneDecodeError.make({
+        operation: "decodeSecurityGlobalWriteResponse",
+        reason: String(error),
+      }),
+    ),
+  );
+
+const decodeOwnerControlWrite = (
+  raw: unknown,
+): Effect.Effect<ControlPlaneOwnerSecurityControl, ControlPlaneDecodeError> =>
+  decodeSecurityOwnerControlWriteResponse(raw).pipe(
+    Effect.map((decoded) => decoded.ownerControl),
+    Effect.mapError((error) =>
+      ControlPlaneDecodeError.make({
+        operation: "decodeSecurityOwnerControlWriteResponse",
+        reason: String(error),
+      }),
+    ),
+  );
+
+const decodeCredentialRoleWrite = (
+  raw: unknown,
+): Effect.Effect<ControlPlaneCredentialRoleState, ControlPlaneDecodeError> =>
+  decodeSecurityCredentialRoleWriteResponse(raw).pipe(
+    Effect.map((decoded) => decoded.role),
+    Effect.mapError((error) =>
+      ControlPlaneDecodeError.make({
+        operation: "decodeSecurityCredentialRoleWriteResponse",
         reason: String(error),
       }),
     ),
@@ -183,6 +256,62 @@ const makeSettlementArgs = (
   metadata: input.metadata,
 });
 
+const makeGlobalPauseArgs = (
+  secret: string,
+  input: {
+    active: boolean;
+    reason?: string;
+    updatedBy?: string;
+  },
+): Record<string, unknown> => ({
+  secret,
+  active: input.active,
+  reason: input.reason,
+  updatedBy: input.updatedBy,
+});
+
+const makeOwnerKillSwitchArgs = (
+  secret: string,
+  input: {
+    ownerId: string;
+    active: boolean;
+    reason?: string;
+    updatedBy?: string;
+  },
+): Record<string, unknown> => ({
+  secret,
+  ownerId: input.ownerId,
+  active: input.active,
+  reason: input.reason,
+  updatedBy: input.updatedBy,
+});
+
+const makeCredentialRoleArgs = (
+  secret: string,
+  input: {
+    role: "gateway_invoice" | "settlement_read" | "operator_admin";
+    fingerprint?: string;
+    note?: string;
+  },
+): Record<string, unknown> => ({
+  secret,
+  role: input.role,
+  fingerprint: input.fingerprint,
+  note: input.note,
+});
+
+const makeRevokeCredentialRoleArgs = (
+  secret: string,
+  input: {
+    role: "gateway_invoice" | "settlement_read" | "operator_admin";
+    note?: string;
+  },
+): Record<string, unknown> => ({
+  secret,
+  role: input.role,
+  note: input.note,
+});
+
 export const ConvexControlPlaneLive = Layer.effect(
   ControlPlaneService,
   Effect.gen(function* () {
@@ -196,6 +325,13 @@ export const ConvexControlPlaneLive = Layer.effect(
           statuses: ["active", "paused"],
         })
         .pipe(Effect.flatMap(decodeSnapshot));
+
+    const getSecurityState: ControlPlaneApi["getSecurityState"] = () =>
+      transport
+        .query(CONVEX_GET_SECURITY_STATE_FN, {
+          secret: config.opsSecret,
+        })
+        .pipe(Effect.flatMap(decodeControlPlaneSecurityState));
 
     const recordDeploymentIntent = (input: RecordDeploymentIntentInput) =>
       transport
@@ -228,12 +364,43 @@ export const ConvexControlPlaneLive = Layer.effect(
         .mutation(CONVEX_RECORD_SETTLEMENT_FN, makeSettlementArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeSettlementWrite));
 
+    const setGlobalPause: ControlPlaneApi["setGlobalPause"] = (input) =>
+      transport
+        .mutation(CONVEX_SET_GLOBAL_PAUSE_FN, makeGlobalPauseArgs(config.opsSecret, input))
+        .pipe(Effect.flatMap(decodeSecurityGlobalWrite));
+
+    const setOwnerKillSwitch: ControlPlaneApi["setOwnerKillSwitch"] = (input) =>
+      transport
+        .mutation(CONVEX_SET_OWNER_KILL_SWITCH_FN, makeOwnerKillSwitchArgs(config.opsSecret, input))
+        .pipe(Effect.flatMap(decodeOwnerControlWrite));
+
+    const rotateCredentialRole: ControlPlaneApi["rotateCredentialRole"] = (input) =>
+      transport
+        .mutation(CONVEX_ROTATE_CREDENTIAL_ROLE_FN, makeCredentialRoleArgs(config.opsSecret, input))
+        .pipe(Effect.flatMap(decodeCredentialRoleWrite));
+
+    const activateCredentialRole: ControlPlaneApi["activateCredentialRole"] = (input) =>
+      transport
+        .mutation(CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN, makeCredentialRoleArgs(config.opsSecret, input))
+        .pipe(Effect.flatMap(decodeCredentialRoleWrite));
+
+    const revokeCredentialRole: ControlPlaneApi["revokeCredentialRole"] = (input) =>
+      transport
+        .mutation(CONVEX_REVOKE_CREDENTIAL_ROLE_FN, makeRevokeCredentialRoleArgs(config.opsSecret, input))
+        .pipe(Effect.flatMap(decodeCredentialRoleWrite));
+
     return ControlPlaneService.of({
       listPaywallsForCompile,
+      getSecurityState,
       recordDeploymentIntent,
       recordGatewayEvent,
       recordInvoiceLifecycle,
       recordSettlement,
+      setGlobalPause,
+      setOwnerKillSwitch,
+      rotateCredentialRole,
+      activateCredentialRole,
+      revokeCredentialRole,
     });
   }),
 );

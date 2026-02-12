@@ -206,6 +206,80 @@ export const SettlementWriteResponse = Schema.Struct({
 });
 export type SettlementWriteResponse = typeof SettlementWriteResponse.Type;
 
+export const SecurityDenyReasonCode = Schema.Literal("global_pause_active", "owner_kill_switch_active");
+export type SecurityDenyReasonCode = typeof SecurityDenyReasonCode.Type;
+
+export const CredentialRole = Schema.Literal("gateway_invoice", "settlement_read", "operator_admin");
+export type CredentialRole = typeof CredentialRole.Type;
+
+export const CredentialRoleStatus = Schema.Literal("active", "rotating", "revoked");
+export type CredentialRoleStatus = typeof CredentialRoleStatus.Type;
+
+export const ControlPlaneSecurityGlobal = Schema.Struct({
+  stateId: Schema.NonEmptyString,
+  globalPause: Schema.Boolean,
+  denyReasonCode: Schema.optional(Schema.Literal("global_pause_active")),
+  denyReason: Schema.optional(Schema.String),
+  updatedBy: Schema.optional(Schema.String),
+  updatedAtMs: TimestampMs,
+});
+export type ControlPlaneSecurityGlobal = typeof ControlPlaneSecurityGlobal.Type;
+
+export const ControlPlaneOwnerSecurityControl = Schema.Struct({
+  ownerId: Schema.NonEmptyString,
+  killSwitch: Schema.Boolean,
+  denyReasonCode: Schema.optional(Schema.Literal("owner_kill_switch_active")),
+  denyReason: Schema.optional(Schema.String),
+  updatedBy: Schema.optional(Schema.String),
+  updatedAtMs: TimestampMs,
+});
+export type ControlPlaneOwnerSecurityControl = typeof ControlPlaneOwnerSecurityControl.Type;
+
+export const ControlPlaneCredentialRoleState = Schema.Struct({
+  role: CredentialRole,
+  status: CredentialRoleStatus,
+  version: NonNegativeInt,
+  fingerprint: Schema.optional(Schema.String),
+  note: Schema.optional(Schema.String),
+  updatedAtMs: TimestampMs,
+  lastRotatedAtMs: Schema.optional(TimestampMs),
+  revokedAtMs: Schema.optional(TimestampMs),
+});
+export type ControlPlaneCredentialRoleState = typeof ControlPlaneCredentialRoleState.Type;
+
+export const ControlPlaneSecurityGate = Schema.Struct({
+  allowed: Schema.Boolean,
+  denyReasonCode: Schema.optional(SecurityDenyReasonCode),
+  denyReason: Schema.optional(Schema.String),
+});
+export type ControlPlaneSecurityGate = typeof ControlPlaneSecurityGate.Type;
+
+export const ControlPlaneSecurityStateResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  global: ControlPlaneSecurityGlobal,
+  ownerControls: Schema.Array(ControlPlaneOwnerSecurityControl),
+  credentialRoles: Schema.Array(ControlPlaneCredentialRoleState),
+});
+export type ControlPlaneSecurityStateResponse = typeof ControlPlaneSecurityStateResponse.Type;
+
+export const SecurityGlobalWriteResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  global: ControlPlaneSecurityGlobal,
+});
+export type SecurityGlobalWriteResponse = typeof SecurityGlobalWriteResponse.Type;
+
+export const SecurityOwnerControlWriteResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  ownerControl: ControlPlaneOwnerSecurityControl,
+});
+export type SecurityOwnerControlWriteResponse = typeof SecurityOwnerControlWriteResponse.Type;
+
+export const SecurityCredentialRoleWriteResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  role: ControlPlaneCredentialRoleState,
+});
+export type SecurityCredentialRoleWriteResponse = typeof SecurityCredentialRoleWriteResponse.Type;
+
 export const CompiledRunSummary = Schema.Struct({
   configHash: Schema.NonEmptyString,
   ruleCount: NonNegativeInt,
@@ -253,5 +327,9 @@ export const decodeDeploymentIntentWriteResponse = Schema.decodeUnknown(Deployme
 export const decodeGatewayEventWriteResponse = Schema.decodeUnknown(GatewayEventWriteResponse);
 export const decodeInvoiceLifecycleWriteResponse = Schema.decodeUnknown(InvoiceLifecycleWriteResponse);
 export const decodeSettlementWriteResponse = Schema.decodeUnknown(SettlementWriteResponse);
+export const decodeControlPlaneSecurityStateResponse = Schema.decodeUnknown(ControlPlaneSecurityStateResponse);
+export const decodeSecurityGlobalWriteResponse = Schema.decodeUnknown(SecurityGlobalWriteResponse);
+export const decodeSecurityOwnerControlWriteResponse = Schema.decodeUnknown(SecurityOwnerControlWriteResponse);
+export const decodeSecurityCredentialRoleWriteResponse = Schema.decodeUnknown(SecurityCredentialRoleWriteResponse);
 export const decodeCompiledRunSummary = Schema.decodeUnknown(CompiledRunSummary);
 export const decodeReconcileRunSummary = Schema.decodeUnknown(ReconcileRunSummary);

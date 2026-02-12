@@ -8,6 +8,7 @@ import {
   listTasksImpl,
   transitionTaskImpl,
 } from "../../convex/lightning/tasks";
+import { setGlobalPauseImpl, setOwnerKillSwitchImpl } from "../../convex/lightning/security";
 import { makeInMemoryDb } from "./inMemoryDb";
 
 const run = <A>(effect: Effect.Effect<A>) => Effect.runPromise(effect);
@@ -156,5 +157,91 @@ describe("convex/lightning task orchestration", () => {
     const events = await run(listTaskEventsImpl(ctx, { taskId, limit: 20 }));
     expect(events.events.map((event) => event.toStatus)).toEqual(["queued", "running", "failed", "queued"]);
     expect(events.events[2]?.errorCode).toBe("payment_failed");
+  });
+
+  it("blocks new paid requests when global pause or owner kill switch is active", async () => {
+    const db = makeInMemoryDb();
+    const ctx = authedCtx(db, "owner-1");
+    const opsCtx = {
+      db,
+      auth: {
+        getUserIdentity: () => Effect.succeed(Option.none()),
+      },
+    };
+    const previousSecret = process.env.OA_LIGHTNING_OPS_SECRET;
+    process.env.OA_LIGHTNING_OPS_SECRET = "ops-secret";
+
+    try {
+      await run(
+        setGlobalPauseImpl(opsCtx as any, {
+          secret: "ops-secret",
+          active: true,
+          reason: "global pause test",
+        }),
+      );
+
+      const blockedByGlobal = await run(
+        createTaskImpl(ctx, {
+          request: {
+            url: "https://api.example.com/global-block",
+            method: "GET",
+            maxSpendMsats: 1_500,
+          },
+        }),
+      );
+
+      expect(blockedByGlobal.task.status).toBe("blocked");
+      expect(blockedByGlobal.task.lastErrorCode).toBe("global_pause_active");
+      expect(blockedByGlobal.task.lastErrorMessage).toContain("global");
+
+      await run(
+        setGlobalPauseImpl(opsCtx as any, {
+          secret: "ops-secret",
+          active: false,
+        }),
+      );
+      await run(
+        setOwnerKillSwitchImpl(opsCtx as any, {
+          secret: "ops-secret",
+          ownerId: "owner-1",
+          active: true,
+          reason: "owner pause test",
+        }),
+      );
+
+      const blockedByOwner = await run(
+        createTaskImpl(ctx, {
+          request: {
+            url: "https://api.example.com/owner-block",
+            method: "GET",
+            maxSpendMsats: 1_500,
+          },
+        }),
+      );
+
+      expect(blockedByOwner.task.status).toBe("blocked");
+      expect(blockedByOwner.task.lastErrorCode).toBe("owner_kill_switch_active");
+
+      await run(
+        setOwnerKillSwitchImpl(opsCtx as any, {
+          secret: "ops-secret",
+          ownerId: "owner-1",
+          active: false,
+        }),
+      );
+
+      const recovered = await run(
+        createTaskImpl(ctx, {
+          request: {
+            url: "https://api.example.com/recovered",
+            method: "GET",
+            maxSpendMsats: 1_500,
+          },
+        }),
+      );
+      expect(recovered.task.status).toBe("queued");
+    } finally {
+      process.env.OA_LIGHTNING_OPS_SECRET = previousSecret;
+    }
   });
 });

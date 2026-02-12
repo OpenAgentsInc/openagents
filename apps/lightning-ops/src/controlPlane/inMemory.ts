@@ -2,8 +2,11 @@ import { Effect, Layer } from "effect";
 
 import type {
   CompileDiagnostic,
+  ControlPlaneCredentialRoleState,
   ControlPlaneInvoiceRecord,
+  ControlPlaneOwnerSecurityControl,
   ControlPlanePaywall,
+  ControlPlaneSecurityGlobal,
   ControlPlaneSettlementRecord,
   DeploymentIntentRecord,
   GatewayEventRecord,
@@ -12,11 +15,15 @@ import type {
 import { formatPaymentProofReference, normalizePreimageHex } from "../settlements/proof.js";
 
 import {
+  type CredentialRoleOperationInput,
   ControlPlaneService,
+  type ControlPlaneSecurityState,
   type RecordDeploymentIntentInput,
   type RecordInvoiceLifecycleInput,
   type RecordSettlementInput,
   type RecordSettlementResult,
+  type SetGlobalPauseInput,
+  type SetOwnerKillSwitchInput,
 } from "./service.js";
 
 type ControlPlaneApi = Parameters<typeof ControlPlaneService.of>[0];
@@ -27,9 +34,17 @@ export type InMemoryControlPlaneState = {
   events: Array<GatewayEventRecord>;
   invoices: Array<ControlPlaneInvoiceRecord>;
   settlements: Array<ControlPlaneSettlementRecord>;
+  globalSecurity: ControlPlaneSecurityGlobal;
+  ownerSecurityControls: Array<ControlPlaneOwnerSecurityControl>;
+  credentialRoles: Array<ControlPlaneCredentialRoleState>;
   writeCalls: Array<RecordDeploymentIntentInput>;
   invoiceWriteCalls: Array<RecordInvoiceLifecycleInput>;
   settlementWriteCalls: Array<RecordSettlementInput>;
+  globalPauseWriteCalls: Array<SetGlobalPauseInput>;
+  ownerKillSwitchWriteCalls: Array<SetOwnerKillSwitchInput>;
+  credentialRotateCalls: Array<CredentialRoleOperationInput>;
+  credentialActivateCalls: Array<CredentialRoleOperationInput>;
+  credentialRevokeCalls: Array<Omit<CredentialRoleOperationInput, "fingerprint">>;
 };
 
 const invoiceRank: Record<InvoiceLifecycleStatus, number> = {
@@ -71,6 +86,20 @@ const cloneSettlement = (settlement: ControlPlaneSettlementRecord): ControlPlane
   metadata: settlement.metadata,
 });
 
+const cloneGlobalSecurity = (global: ControlPlaneSecurityGlobal): ControlPlaneSecurityGlobal => ({
+  ...global,
+});
+
+const cloneOwnerSecurityControl = (
+  control: ControlPlaneOwnerSecurityControl,
+): ControlPlaneOwnerSecurityControl => ({
+  ...control,
+});
+
+const cloneCredentialRole = (role: ControlPlaneCredentialRoleState): ControlPlaneCredentialRoleState => ({
+  ...role,
+});
+
 const cloneRecordInvoiceInput = (input: RecordInvoiceLifecycleInput): RecordInvoiceLifecycleInput => ({
   ...input,
 });
@@ -82,16 +111,33 @@ const cloneRecordSettlementInput = (input: RecordSettlementInput): RecordSettlem
 
 export const makeInMemoryControlPlaneHarness = (input?: {
   readonly paywalls?: ReadonlyArray<ControlPlanePaywall>;
+  readonly globalSecurity?: ControlPlaneSecurityGlobal;
+  readonly ownerSecurityControls?: ReadonlyArray<ControlPlaneOwnerSecurityControl>;
+  readonly credentialRoles?: ReadonlyArray<ControlPlaneCredentialRoleState>;
 }) => {
+  const defaultGlobalSecurity: ControlPlaneSecurityGlobal = {
+    stateId: "global",
+    globalPause: false,
+    updatedAtMs: 0,
+  };
+
   const state: InMemoryControlPlaneState = {
     paywalls: [...(input?.paywalls ?? [])].map(clonePaywall),
     deployments: [],
     events: [],
     invoices: [],
     settlements: [],
+    globalSecurity: cloneGlobalSecurity(input?.globalSecurity ?? defaultGlobalSecurity),
+    ownerSecurityControls: [...(input?.ownerSecurityControls ?? [])].map(cloneOwnerSecurityControl),
+    credentialRoles: [...(input?.credentialRoles ?? [])].map(cloneCredentialRole),
     writeCalls: [],
     invoiceWriteCalls: [],
     settlementWriteCalls: [],
+    globalPauseWriteCalls: [],
+    ownerKillSwitchWriteCalls: [],
+    credentialRotateCalls: [],
+    credentialActivateCalls: [],
+    credentialRevokeCalls: [],
   };
   let nextDeployment = 1;
   let nextEvent = 1;
@@ -269,14 +315,145 @@ export const makeInMemoryControlPlaneHarness = (input?: {
       return result;
     });
 
+  const getSecurityState: ControlPlaneApi["getSecurityState"] = () =>
+    Effect.sync((): ControlPlaneSecurityState => ({
+      global: cloneGlobalSecurity(state.globalSecurity),
+      ownerControls: state.ownerSecurityControls.map(cloneOwnerSecurityControl),
+      credentialRoles: state.credentialRoles.map(cloneCredentialRole),
+    }));
+
+  const setGlobalPause: ControlPlaneApi["setGlobalPause"] = (args) =>
+    Effect.sync(() => {
+      state.globalPauseWriteCalls.push({ ...args });
+      const now = Date.now();
+      const next: ControlPlaneSecurityGlobal = {
+        stateId: state.globalSecurity.stateId,
+        globalPause: args.active,
+        ...(args.active
+          ? {
+              denyReasonCode: "global_pause_active" as const,
+              denyReason: args.reason ?? "Global paywall pause is active",
+            }
+          : {}),
+        ...(args.updatedBy ? { updatedBy: args.updatedBy } : {}),
+        updatedAtMs: now,
+      };
+      state.globalSecurity = next;
+      return cloneGlobalSecurity(next);
+    });
+
+  const setOwnerKillSwitch: ControlPlaneApi["setOwnerKillSwitch"] = (args) =>
+    Effect.sync(() => {
+      state.ownerKillSwitchWriteCalls.push({ ...args });
+      const now = Date.now();
+      const existingIndex = state.ownerSecurityControls.findIndex((row) => row.ownerId === args.ownerId);
+      const next: ControlPlaneOwnerSecurityControl = {
+        ownerId: args.ownerId,
+        killSwitch: args.active,
+        ...(args.active
+          ? {
+              denyReasonCode: "owner_kill_switch_active" as const,
+              denyReason: args.reason ?? "Owner kill switch is active",
+            }
+          : {}),
+        ...(args.updatedBy ? { updatedBy: args.updatedBy } : {}),
+        updatedAtMs: now,
+      };
+      if (existingIndex >= 0) {
+        state.ownerSecurityControls[existingIndex] = next;
+      } else {
+        state.ownerSecurityControls.push(next);
+      }
+      return cloneOwnerSecurityControl(next);
+    });
+
+  const upsertCredentialRole = (inputRole: {
+    role: "gateway_invoice" | "settlement_read" | "operator_admin";
+    status: "active" | "rotating" | "revoked";
+    fingerprint?: string;
+    note?: string;
+    versionResolver: (existing: ControlPlaneCredentialRoleState | null) => number;
+    rotatedAtMs?: number;
+    revokedAtMs?: number;
+  }): ControlPlaneCredentialRoleState => {
+    const now = Date.now();
+    const existingIndex = state.credentialRoles.findIndex((row) => row.role === inputRole.role);
+    const existing = existingIndex >= 0 ? state.credentialRoles[existingIndex]! : null;
+    const next: ControlPlaneCredentialRoleState = {
+      role: inputRole.role,
+      status: inputRole.status,
+      version: inputRole.versionResolver(existing),
+      ...(inputRole.fingerprint ? { fingerprint: inputRole.fingerprint } : {}),
+      ...(inputRole.note ? { note: inputRole.note } : {}),
+      updatedAtMs: now,
+      ...(inputRole.rotatedAtMs !== undefined ? { lastRotatedAtMs: inputRole.rotatedAtMs } : {}),
+      ...(inputRole.revokedAtMs !== undefined ? { revokedAtMs: inputRole.revokedAtMs } : {}),
+    };
+
+    if (existingIndex >= 0) {
+      state.credentialRoles[existingIndex] = next;
+    } else {
+      state.credentialRoles.push(next);
+    }
+    return cloneCredentialRole(next);
+  };
+
+  const rotateCredentialRole: ControlPlaneApi["rotateCredentialRole"] = (args) =>
+    Effect.sync(() => {
+      state.credentialRotateCalls.push({ ...args });
+      return upsertCredentialRole({
+        role: args.role,
+        status: "rotating",
+        ...(args.fingerprint ? { fingerprint: args.fingerprint } : {}),
+        ...(args.note ? { note: args.note } : {}),
+        versionResolver: (existing) => Math.max(1, (existing?.version ?? 0) + 1),
+        rotatedAtMs: Date.now(),
+      });
+    });
+
+  const activateCredentialRole: ControlPlaneApi["activateCredentialRole"] = (args) =>
+    Effect.sync(() => {
+      state.credentialActivateCalls.push({ ...args });
+      return upsertCredentialRole({
+        role: args.role,
+        status: "active",
+        ...(args.fingerprint ? { fingerprint: args.fingerprint } : {}),
+        ...(args.note ? { note: args.note } : {}),
+        versionResolver: (existing) => {
+          if (!existing) return 1;
+          if (existing.status === "rotating") return existing.version;
+          return Math.max(1, existing.version + 1);
+        },
+        rotatedAtMs: Date.now(),
+      });
+    });
+
+  const revokeCredentialRole: ControlPlaneApi["revokeCredentialRole"] = (args) =>
+    Effect.sync(() => {
+      state.credentialRevokeCalls.push({ ...args });
+      return upsertCredentialRole({
+        role: args.role,
+        status: "revoked",
+        ...(args.note ? { note: args.note } : {}),
+        versionResolver: (existing) => Math.max(1, existing?.version ?? 1),
+        revokedAtMs: Date.now(),
+      });
+    });
+
   const layer = Layer.succeed(
     ControlPlaneService,
     ControlPlaneService.of({
       listPaywallsForCompile,
+      getSecurityState,
       recordDeploymentIntent,
       recordGatewayEvent,
       recordInvoiceLifecycle,
       recordSettlement,
+      setGlobalPause,
+      setOwnerKillSwitch,
+      rotateCredentialRole,
+      activateCredentialRole,
+      revokeCredentialRole,
     }),
   );
 

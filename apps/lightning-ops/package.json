@@ -8,6 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke:compile": "tsx src/main.ts smoke:compile",
+    "smoke:security": "tsx src/main.ts smoke:security",
     "smoke:settlement": "tsx src/main.ts smoke:settlement",
     "reconcile:convex": "tsx src/main.ts reconcile:convex --json",
     "smoke:staging": "tsx src/main.ts smoke:staging"
