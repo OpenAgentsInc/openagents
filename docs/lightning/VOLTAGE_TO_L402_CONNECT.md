@@ -132,6 +132,36 @@ Once you have TLS + macaroon from the Voltage UI/API, you have everything needed
 
 ---
 
+## 6.1 Pulling info programmatically (Voltage API)
+
+Voltage exposes a REST API at **https://api.voltage.cloud**. With it you can fetch node details and the **TLS certificate** (so you don’t have to copy-paste from the dashboard).
+
+**Security: never commit or log your Voltage API key.** Use env vars or a secret manager (e.g. `VOLTAGE_API_KEY`) and keep the key out of the repo and CI logs. If a key was ever pasted in chat or committed, rotate it in the Voltage dashboard (API → Keys) immediately.
+
+- **Auth:** All requests require header `X-VOLTAGE-AUTH: <your_api_key>`.
+- **Base URL:** `https://api.voltage.cloud`.
+- **Organization ID:** Node endpoints use a path parameter `organization_id`; the API accepts a placeholder when the API key is valid, so you do not need to look it up.
+- **Endpoints useful for L402:**
+  - `GET /organizations/:organization_id/nodes` – list nodes (get `node_id`, `api_endpoint`, `network`, `lnd_version`, etc.).
+  - `GET /organizations/:organization_id/nodes/:node_id` – full node details and `settings` (grpc, rest, etc.).
+  - `GET /organizations/:organization_id/nodes/:node_id/cert` – returns JSON with **`tls_cert`** (base64-encoded PEM). Decode and write to a file for Aperture’s `tlspath`.
+
+**What “Get a Node” returns:** In addition to `api_endpoint`, `network`, `lnd_version`, and `settings` (grpc, rest, etc.), the response can include **`macaroons`** – an array of `{ name, content, status }` where `content` is encrypted. So you can see which macaroons exist (e.g. admin, invoice, btcpayserver); to use one with Aperture you still need the decrypted macaroon from the dashboard or by baking a scoped macaroon via LND.
+
+**Script in this repo:** `docs/lightning/scripts/voltage-api-fetch.sh` uses the API to list nodes, fetch one node’s details, and optionally fetch and decode the TLS cert into a file. It reads credentials from the environment only:
+
+```bash
+export VOLTAGE_API_KEY="vt_..."   # From Voltage dashboard → API → Keys (or set in repo root .env.local; never commit)
+# Optional: VOLTAGE_NODE_ID=93614aec-7944-4a86-9fe2-f115ae26d40bN (otherwise script picks first node or openagents match)
+
+./docs/lightning/scripts/voltage-api-fetch.sh
+# Or write cert + node.json to a directory:
+./docs/lightning/scripts/voltage-api-fetch.sh ./output/voltage
+# Then use ./output/voltage/tls.cert for Aperture tlspath.
+```
+
+---
+
 ## 7. How to Run Aperture
 
 Recommended (matches repo plan): run Aperture as a **single service on GCP Cloud Run**, talking to Voltage (on AWS) over the public internet. Voltage’s API endpoint is TLS-protected; no need for Aperture and Voltage to be in the same cloud.
