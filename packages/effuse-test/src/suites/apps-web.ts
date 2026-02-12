@@ -238,6 +238,63 @@ export const appsWebSuite = (): Effect.Effect<
       }),
     },
     {
+      id: "apps-web.http.l402.paywalls-settlements-deployments",
+      tags: ["e2e", "http", "apps/web", "l402"],
+      timeoutMs: 90_000,
+      steps: Effect.gen(function* () {
+        const ctx = yield* TestContext
+
+        const assertEndpoint = (path: string) =>
+          Effect.gen(function* () {
+            const res = yield* step(
+              `GET ${path}`,
+              Effect.tryPromise({
+                try: () => fetch(`${ctx.baseUrl}${path}`, { redirect: "manual" }),
+                catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+              }),
+            )
+
+            yield* step(
+              `assert ${path} status and request correlation`,
+              Effect.gen(function* () {
+                yield* assertTrue(
+                  res.status === 200 || res.status === 401,
+                  `Expected ${path} to return 200 or 401, got ${res.status}`,
+                )
+                const reqId = res.headers.get("x-oa-request-id") ?? ""
+                yield* assertTrue(reqId.length > 0, `Expected x-oa-request-id on ${path}`)
+              }),
+            )
+
+            const body = yield* step(
+              `read json ${path}`,
+              Effect.tryPromise({
+                try: async () => (await res.json()) as Record<string, unknown>,
+                catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+              }),
+            )
+
+            yield* step(
+              `assert ${path} deterministic shape`,
+              Effect.gen(function* () {
+                yield* assertTrue(typeof body.ok === "boolean", `Expected ${path} response to include boolean ok field`)
+                if (res.status === 401) {
+                  yield* assertTrue(
+                    typeof body.error === "string" && body.error.length > 0,
+                    `Expected ${path} unauthorized response to include error`,
+                  )
+                }
+              }),
+            )
+          })
+
+        yield* assertEndpoint("/api/lightning/paywalls?limit=1")
+        yield* assertEndpoint("/api/lightning/settlements?limit=1")
+        yield* assertEndpoint("/api/lightning/deployments?limit=1")
+        yield* assertEndpoint("/api/lightning/deployments/events?limit=1")
+      }),
+    },
+    {
       id: "apps-web.hydration.strict-no-swap",
       tags: ["e2e", "browser", "apps/web"],
       timeoutMs: 120_000,

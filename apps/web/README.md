@@ -97,6 +97,13 @@ Hosted paywall lifecycle endpoints are exposed from the Worker under `/api/light
 - `POST /api/lightning/paywalls/:paywallId/pause`
 - `POST /api/lightning/paywalls/:paywallId/resume`
 
+Settlement and deployment read APIs:
+
+- `GET /api/lightning/settlements` (owner settlements, supports `limit` and `beforeCreatedAtMs`)
+- `GET /api/lightning/paywalls/:paywallId/settlements` (paywall-scoped settlements)
+- `GET /api/lightning/deployments` (owner deployments, supports `paywallId`, `status`, `limit`, `beforeUpdatedAtMs`)
+- `GET /api/lightning/deployments/events` (deployment history/events, supports `paywallId`, `level`, `limit`, `beforeCreatedAtMs`)
+
 Error taxonomy is deterministic for programmatic callers:
 
 - `401` `unauthorized`

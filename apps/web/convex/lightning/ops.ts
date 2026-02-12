@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Effect } from "effect";
 
 import type { EffectMutationCtx, EffectQueryCtx } from "../effect/ctx";
+import { getSubject } from "../autopilot/access";
 import { effectMutation, effectQuery } from "../effect/functions";
 import { tryPromise } from "../effect/tryPromise";
 
@@ -90,6 +91,11 @@ const assertOpsSecret = (secret: string): Effect.Effect<void, Error> =>
     if (!expected) throw new Error("ops_disabled");
     if (secret !== expected) throw new Error("forbidden");
   });
+
+const requireSubject = (ctx: EffectQueryCtx | EffectMutationCtx): Effect.Effect<string, Error> =>
+  getSubject(ctx).pipe(
+    Effect.flatMap((subject) => (subject ? Effect.succeed(subject) : Effect.fail(new Error("unauthorized")))),
+  );
 
 type PaywallDoc = {
   readonly _id: any;
@@ -243,6 +249,16 @@ const normalizeOptionalString = (value: unknown, maxLen: number): string | undef
   return trimmed.slice(0, maxLen);
 };
 
+const parseLimit = (value: number | undefined, max = 200, fallback = 50): number => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(max, Math.floor(value)));
+};
+
+const parseCursor = (value: unknown): number | undefined => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.floor(value);
+};
+
 type DeploymentDoc = {
   readonly _id: any;
   readonly deploymentId: string;
@@ -269,6 +285,129 @@ type GatewayEventDoc = {
   readonly metadata?: unknown;
   readonly createdAtMs: number;
 };
+
+const toDeployment = (row: DeploymentDoc) => ({
+  deploymentId: row.deploymentId,
+  paywallId: row.paywallId,
+  ownerId: row.ownerId,
+  configHash: row.configHash,
+  imageDigest: row.imageDigest,
+  status: row.status,
+  diagnostics: row.diagnostics,
+  appliedAtMs: row.appliedAtMs,
+  rolledBackFrom: row.rolledBackFrom,
+  createdAtMs: row.createdAtMs,
+  updatedAtMs: row.updatedAtMs,
+});
+
+const toGatewayEvent = (row: GatewayEventDoc) => ({
+  eventId: row.eventId,
+  paywallId: row.paywallId,
+  ownerId: row.ownerId,
+  eventType: row.eventType,
+  level: row.level,
+  requestId: row.requestId,
+  metadata: row.metadata,
+  createdAtMs: row.createdAtMs,
+});
+
+export const listOwnerGatewayDeploymentsImpl = (
+  ctx: EffectQueryCtx,
+  args: {
+    readonly paywallId?: string;
+    readonly status?: "pending" | "applied" | "failed" | "rolled_back";
+    readonly limit?: number;
+    readonly beforeUpdatedAtMs?: number;
+  },
+) =>
+  Effect.gen(function* () {
+    const ownerId = yield* requireSubject(ctx);
+    const paywallId = normalizeOptionalString(args.paywallId, 128);
+    const limit = parseLimit(args.limit);
+    const beforeUpdatedAtMs = parseCursor(args.beforeUpdatedAtMs);
+
+    const rows = (yield* tryPromise(() => ctx.db.query("l402GatewayDeployments").collect())) as ReadonlyArray<DeploymentDoc>;
+    const filtered = rows
+      .filter((row) => row.ownerId === ownerId)
+      .filter((row) => (paywallId ? row.paywallId === paywallId : true))
+      .filter((row) => (args.status ? row.status === args.status : true))
+      .filter((row) => (beforeUpdatedAtMs !== undefined ? row.updatedAtMs < beforeUpdatedAtMs : true))
+      .sort((a, b) => {
+        if (a.updatedAtMs !== b.updatedAtMs) return b.updatedAtMs - a.updatedAtMs;
+        return a.deploymentId.localeCompare(b.deploymentId);
+      })
+      .slice(0, limit);
+
+    return {
+      ok: true as const,
+      deployments: filtered.map(toDeployment),
+      nextCursor: filtered.length === limit ? filtered[filtered.length - 1]?.updatedAtMs ?? null : null,
+    };
+  });
+
+export const listOwnerGatewayDeployments = effectQuery({
+  args: {
+    paywallId: v.optional(v.string()),
+    status: v.optional(deploymentStatusValidator),
+    limit: v.optional(v.number()),
+    beforeUpdatedAtMs: v.optional(v.number()),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    deployments: v.array(deploymentValidator),
+    nextCursor: v.union(v.null(), v.number()),
+  }),
+  handler: listOwnerGatewayDeploymentsImpl,
+});
+
+export const listOwnerGatewayEventsImpl = (
+  ctx: EffectQueryCtx,
+  args: {
+    readonly paywallId?: string;
+    readonly level?: "info" | "warn" | "error";
+    readonly limit?: number;
+    readonly beforeCreatedAtMs?: number;
+  },
+) =>
+  Effect.gen(function* () {
+    const ownerId = yield* requireSubject(ctx);
+    const paywallId = normalizeOptionalString(args.paywallId, 128);
+    const limit = parseLimit(args.limit);
+    const beforeCreatedAtMs = parseCursor(args.beforeCreatedAtMs);
+
+    const rows = (yield* tryPromise(() => ctx.db.query("l402GatewayEvents").collect())) as ReadonlyArray<GatewayEventDoc>;
+    const filtered = rows
+      .filter((row) => row.ownerId === ownerId)
+      .filter((row) => (paywallId ? row.paywallId === paywallId : true))
+      .filter((row) => (args.level ? row.level === args.level : true))
+      .filter((row) => (beforeCreatedAtMs !== undefined ? row.createdAtMs < beforeCreatedAtMs : true))
+      .sort((a, b) => {
+        if (a.createdAtMs !== b.createdAtMs) return b.createdAtMs - a.createdAtMs;
+        return a.eventId.localeCompare(b.eventId);
+      })
+      .slice(0, limit);
+
+    return {
+      ok: true as const,
+      events: filtered.map(toGatewayEvent),
+      nextCursor: filtered.length === limit ? filtered[filtered.length - 1]?.createdAtMs ?? null : null,
+    };
+  });
+
+export const listOwnerGatewayEvents = effectQuery({
+  args: {
+    paywallId: v.optional(v.string()),
+    level: v.optional(v.union(v.literal("info"), v.literal("warn"), v.literal("error"))),
+    limit: v.optional(v.number()),
+    beforeCreatedAtMs: v.optional(v.number()),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    events: v.array(gatewayEventValidator),
+    nextCursor: v.union(v.null(), v.number()),
+  }),
+  handler: listOwnerGatewayEventsImpl,
+});
 
 export const recordGatewayCompileIntentImpl = (
   ctx: EffectMutationCtx,
