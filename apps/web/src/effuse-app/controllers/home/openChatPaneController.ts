@@ -15,6 +15,13 @@ import type { ChatSnapshot } from "../../../effect/chat"
 import { ChatSnapshotAtom } from "../../../effect/atoms/chat"
 import type { Session } from "../../../effect/atoms/session"
 import { HomeApiService } from "../../../effect/homeApi"
+import {
+  LightningApiService,
+  type LightningGatewayDeployment,
+  type LightningGatewayEvent,
+  type LightningPaywall,
+  type LightningSettlement,
+} from "../../../effect/lightning"
 import { PaneSystemLive, PaneSystemService } from "../../../effect/paneSystem"
 import {
   renderDseBudgetExceededCard,
@@ -42,6 +49,16 @@ import {
   writeCachedSnapshotForUser,
 } from "./chatSession"
 import {
+  hasAnyHostedOpsPaneOpen,
+  l402PaneRenderBranch,
+  makeInitialL402PaneState,
+  paneButtonVisualState,
+  rejectL402PaneState,
+  resolveL402PaneState,
+  startL402PaneLoading,
+  type L402PaneState,
+} from "./l402OpsPaneState"
+import {
   clampPaneRectToScreen,
   parseStoredPaneRect,
   readStoredPaneRect,
@@ -64,6 +81,9 @@ import { extractL402PaymentMetadata, type L402PaymentMetadata, toAutopilotRender
 const CHAT_PANE_ID = "home-chat"
 const L402_WALLET_PANE_ID = "l402-wallet"
 const L402_TRANSACTIONS_PANE_ID = "l402-transactions"
+const L402_PAYWALLS_PANE_ID = "l402-paywalls"
+const L402_SETTLEMENTS_PANE_ID = "l402-settlements"
+const L402_DEPLOYMENTS_PANE_ID = "l402-deployments"
 const HOME_CHAT_PANE_RECT_STORAGE_KEY = "oa.home.chat.paneRect.v1"
 
 const toStructuredError = (error: unknown): unknown => {
@@ -166,6 +186,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
     const screen = { width: window.innerWidth, height: window.innerHeight }
     const storedRect = readStoredPaneRect(HOME_CHAT_PANE_RECT_STORAGE_KEY, screen)
     const rect = storedRect ?? calculateNewPanePosition(undefined, screen, 640, 480)
+    let hostedPanePollTimer: ReturnType<typeof setInterval> | null = null
     let closeOverlay = (): void => { }
     let overlayDisposed = false
     const trackedFibers = new Set<Fiber.Fiber<unknown, unknown>>()
@@ -251,6 +272,10 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
       if (overlayDisposed) return
       overlayDisposed = true
       interruptTrackedFibers()
+      if (hostedPanePollTimer) {
+        clearInterval(hostedPanePollTimer)
+        hostedPanePollTimer = null
+      }
       clearHomeChatSubscription()
       const closedRectRaw = paneSystem.store.closedPositions.get(CHAT_PANE_ID)?.rect ?? paneSystem.store.pane(CHAT_PANE_ID)?.rect
       const closedRect = parseStoredPaneRect(closedRectRaw)
@@ -360,10 +385,23 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
     let hasAddedPaneDebugButton = false
     let hasAddedPaneWalletButton = false
     let hasAddedPaneTransactionsButton = false
+    let hasAddedPanePaywallsButton = false
+    let hasAddedPaneSettlementsButton = false
+    let hasAddedPaneDeploymentsButton = false
     let showDebugCards = false
     let paneDebugButton: HTMLButtonElement | null = null
     let paneWalletButton: HTMLButtonElement | null = null
     let paneTransactionsButton: HTMLButtonElement | null = null
+    let panePaywallsButton: HTMLButtonElement | null = null
+    let paneSettlementsButton: HTMLButtonElement | null = null
+    let paneDeploymentsButton: HTMLButtonElement | null = null
+    let paywallsPaneState: L402PaneState<LightningPaywall> = makeInitialL402PaneState()
+    let settlementsPaneState: L402PaneState<LightningSettlement> = makeInitialL402PaneState()
+    let deploymentsPaneState: L402PaneState<LightningGatewayDeployment> = makeInitialL402PaneState()
+    let deploymentEventsPaneState: L402PaneState<LightningGatewayEvent> = makeInitialL402PaneState()
+    let paywallsRefreshInFlight = false
+    let settlementsRefreshInFlight = false
+    let deploymentsRefreshInFlight = false
     let previousRenderedMessageCount = 0
     let forceScrollToBottomOnNextRender = false
     type L402PanePayment = L402PaymentMetadata & {
@@ -588,9 +626,229 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
       })
     }
 
+    const formatL402Error = (cause: Cause.Cause<unknown>): string => {
+      const rendered = Cause.pretty(cause)
+      const pieces = rendered
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+      if (pieces.length === 0) return "request_failed"
+      return pieces[pieces.length - 1] ?? pieces[0] ?? "request_failed"
+    }
+
+    const renderL402PaywallsPane = (): void => {
+      if (!paneSystem.store.pane(L402_PAYWALLS_PANE_ID)) return
+      const slot = paneRoot.querySelector(`[data-pane-id="${L402_PAYWALLS_PANE_ID}"] [data-oa-pane-content]`)
+      if (!(slot instanceof HTMLElement)) return
+      const branch = l402PaneRenderBranch(paywallsPaneState)
+      runTrackedFiber({
+        context: "home.chat.l402_paywalls_pane.render",
+        start: () =>
+          Effect.runFork(
+            Effect.gen(function* () {
+              const dom = yield* DomServiceTag
+              const header = html`<div class="mb-3 text-[11px] uppercase tracking-wide text-white/55">Hosted Paywalls</div>`
+              const meta = html`
+                <div class="mb-2 text-[11px] text-white/55">
+                  request: ${paywallsPaneState.requestId ?? "n/a"} · rows: ${paywallsPaneState.rows.length}
+                </div>
+              `
+              const loading = html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">Loading paywalls…</div>`
+              const error = html`<div class="rounded border border-red-400/40 bg-red-500/10 p-3 text-red-100">${paywallsPaneState.errorText ?? "request_failed"}</div>`
+              const empty = html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">No paywalls yet.</div>`
+              const errorBanner =
+                paywallsPaneState.loadState === "error"
+                  ? html`<div class="mb-2 rounded border border-red-400/40 bg-red-500/10 p-2 text-red-100">${paywallsPaneState.errorText ?? "request_failed"}</div>`
+                  : null
+              const data = html`
+                <div class="flex flex-col gap-2">
+                  ${paywallsPaneState.rows.map((paywall) => html`
+                      <div class="rounded border border-white/15 bg-white/5 p-3 text-xs">
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="text-white/90">${paywall.name}</div>
+                          <span class="inline-flex rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${paywall.status === "active"
+                            ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-200"
+                            : paywall.status === "paused"
+                              ? "border-amber-400/35 bg-amber-500/10 text-amber-200"
+                              : "border-red-400/35 bg-red-500/10 text-red-200"}">${paywall.status}</span>
+                        </div>
+                        <div class="mt-1 break-all text-white/70">${paywall.paywallId}</div>
+                        <div class="mt-1 text-white/65">price: ${formatMsats(paywall.policy.fixedAmountMsats)} · routes: ${paywall.routes.length}</div>
+                        <div class="mt-1 text-white/55">request: ${paywall.requestId ?? "n/a"}</div>
+                      </div>
+                    `)}
+                </div>
+              `
+
+              yield* dom.render(
+                slot,
+                html`
+                  <div class="h-full overflow-auto bg-black p-3 text-xs font-mono text-white/85">
+                    ${header}
+                    ${meta}
+                    ${errorBanner}
+                    ${branch === "loading" ? loading : branch === "error" ? error : branch === "empty" ? empty : data}
+                  </div>
+                `,
+              )
+            }).pipe(Effect.provide(EffuseLive)),
+          ),
+      })
+    }
+
+    const renderL402SettlementsPane = (): void => {
+      if (!paneSystem.store.pane(L402_SETTLEMENTS_PANE_ID)) return
+      const slot = paneRoot.querySelector(`[data-pane-id="${L402_SETTLEMENTS_PANE_ID}"] [data-oa-pane-content]`)
+      if (!(slot instanceof HTMLElement)) return
+      const branch = l402PaneRenderBranch(settlementsPaneState)
+      runTrackedFiber({
+        context: "home.chat.l402_settlements_pane.render",
+        start: () =>
+          Effect.runFork(
+            Effect.gen(function* () {
+              const dom = yield* DomServiceTag
+              const header = html`<div class="mb-3 text-[11px] uppercase tracking-wide text-white/55">Hosted Settlements</div>`
+              const meta = html`
+                <div class="mb-2 text-[11px] text-white/55">
+                  request: ${settlementsPaneState.requestId ?? "n/a"} · cursor: ${settlementsPaneState.nextCursor ?? "end"}
+                </div>
+              `
+              const loading = html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">Loading settlements…</div>`
+              const error = html`<div class="rounded border border-red-400/40 bg-red-500/10 p-3 text-red-100">${settlementsPaneState.errorText ?? "request_failed"}</div>`
+              const empty = html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">No settlements yet.</div>`
+              const errorBanner =
+                settlementsPaneState.loadState === "error"
+                  ? html`<div class="mb-2 rounded border border-red-400/40 bg-red-500/10 p-2 text-red-100">${settlementsPaneState.errorText ?? "request_failed"}</div>`
+                  : null
+              const data = html`
+                <div class="flex flex-col gap-2">
+                  ${settlementsPaneState.rows.map((settlement) => html`
+                      <div class="rounded border border-white/15 bg-white/5 p-3 text-xs">
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="break-all text-white/90">${settlement.settlementId}</div>
+                          <div class="text-white/75">${formatMsats(settlement.amountMsats)}</div>
+                        </div>
+                        <div class="mt-1 break-all text-white/65">paywall: ${settlement.paywallId}</div>
+                        <div class="mt-1 break-all text-white/65">proof: ${settlement.paymentProofRef}</div>
+                        <div class="mt-1 text-white/55">request: ${settlement.requestId ?? "n/a"}</div>
+                      </div>
+                    `)}
+                </div>
+              `
+
+              yield* dom.render(
+                slot,
+                html`
+                  <div class="h-full overflow-auto bg-black p-3 text-xs font-mono text-white/85">
+                    ${header}
+                    ${meta}
+                    ${errorBanner}
+                    ${branch === "loading" ? loading : branch === "error" ? error : branch === "empty" ? empty : data}
+                  </div>
+                `,
+              )
+            }).pipe(Effect.provide(EffuseLive)),
+          ),
+      })
+    }
+
+    const renderL402DeploymentsPane = (): void => {
+      if (!paneSystem.store.pane(L402_DEPLOYMENTS_PANE_ID)) return
+      const slot = paneRoot.querySelector(`[data-pane-id="${L402_DEPLOYMENTS_PANE_ID}"] [data-oa-pane-content]`)
+      if (!(slot instanceof HTMLElement)) return
+      const deploymentBranch = l402PaneRenderBranch(deploymentsPaneState)
+      const eventsBranch = l402PaneRenderBranch(deploymentEventsPaneState)
+      const latestDeployment = deploymentsPaneState.rows[0] ?? null
+
+      runTrackedFiber({
+        context: "home.chat.l402_deployments_pane.render",
+        start: () =>
+          Effect.runFork(
+            Effect.gen(function* () {
+              const dom = yield* DomServiceTag
+              const deploymentsContent =
+                deploymentBranch === "loading"
+                  ? html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">Loading deployments…</div>`
+                  : deploymentBranch === "error"
+                    ? html`<div class="rounded border border-red-400/40 bg-red-500/10 p-3 text-red-100">${deploymentsPaneState.errorText ?? "request_failed"}</div>`
+                    : deploymentBranch === "empty"
+                      ? html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">No deployments yet.</div>`
+                      : html`
+                          <div class="flex flex-col gap-2">
+                            ${deploymentsPaneState.rows.map((deployment) => html`
+                                <div class="rounded border border-white/15 bg-white/5 p-3 text-xs">
+                                  <div class="flex items-center justify-between gap-2">
+                                    <div class="break-all text-white/90">${deployment.deploymentId}</div>
+                                    <span class="inline-flex rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${deployment.status === "applied"
+                                      ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-200"
+                                      : deployment.status === "pending"
+                                        ? "border-amber-400/35 bg-amber-500/10 text-amber-200"
+                                        : "border-red-400/35 bg-red-500/10 text-red-200"}">${deployment.status}</span>
+                                  </div>
+                                  <div class="mt-1 break-all text-white/65">config: ${deployment.configHash}</div>
+                                  <div class="mt-1 break-all text-white/55">paywall: ${deployment.paywallId ?? "n/a"}</div>
+                                </div>
+                              `)}
+                          </div>
+                        `
+
+              const eventsContent =
+                eventsBranch === "loading"
+                  ? html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">Loading deployment events…</div>`
+                  : eventsBranch === "error"
+                    ? html`<div class="rounded border border-red-400/40 bg-red-500/10 p-3 text-red-100">${deploymentEventsPaneState.errorText ?? "request_failed"}</div>`
+                    : eventsBranch === "empty"
+                      ? html`<div class="rounded border border-white/15 bg-white/5 p-3 text-white/60">No deployment events yet.</div>`
+                      : html`
+                          <div class="flex flex-col gap-2">
+                            ${deploymentEventsPaneState.rows.slice(0, 20).map((event) => html`
+                                <div class="rounded border border-white/15 bg-white/5 p-2 text-xs">
+                                  <div class="flex items-center justify-between gap-2">
+                                    <div class="text-white/90">${event.eventType}</div>
+                                    <div class="text-white/70">${event.level}</div>
+                                  </div>
+                                  <div class="mt-1 break-all text-white/60">request: ${event.requestId ?? "n/a"}</div>
+                                </div>
+                              `)}
+                          </div>
+                        `
+
+              yield* dom.render(
+                slot,
+                html`
+                  <div class="h-full overflow-auto bg-black p-3 text-xs font-mono text-white/85">
+                    <div class="mb-2 text-[11px] uppercase tracking-wide text-white/55">Gateway Deployments</div>
+                    <div class="mb-2 text-[11px] text-white/55">
+                      deployments request: ${deploymentsPaneState.requestId ?? "n/a"} · events request: ${deploymentEventsPaneState.requestId ?? "n/a"}
+                    </div>
+                    ${deploymentsPaneState.loadState === "error"
+                      ? html`<div class="mb-2 rounded border border-red-400/40 bg-red-500/10 p-2 text-red-100">${deploymentsPaneState.errorText ?? "request_failed"}</div>`
+                      : null}
+                    ${deploymentEventsPaneState.loadState === "error"
+                      ? html`<div class="mb-2 rounded border border-red-400/40 bg-red-500/10 p-2 text-red-100">${deploymentEventsPaneState.errorText ?? "request_failed"}</div>`
+                      : null}
+                    <div class="mb-3 rounded border border-white/15 bg-white/5 p-3 text-xs">
+                      <div class="text-white/60">latest deployment</div>
+                      <div class="mt-1 break-all text-white/90">${latestDeployment?.deploymentId ?? "none"}</div>
+                      <div class="mt-1 text-white/65">status: ${latestDeployment?.status ?? "n/a"} · config: ${latestDeployment?.configHash ?? "n/a"}</div>
+                    </div>
+                    ${deploymentsContent}
+                    <div class="mt-4 mb-2 text-[11px] uppercase tracking-wide text-white/55">Deployment History</div>
+                    ${eventsContent}
+                  </div>
+                `,
+              )
+            }).pipe(Effect.provide(EffuseLive)),
+          ),
+      })
+    }
+
     const renderL402AuxPanes = (): void => {
       renderL402WalletPane()
       renderL402TransactionsPane()
+      renderL402PaywallsPane()
+      renderL402SettlementsPane()
+      renderL402DeploymentsPane()
     }
 
     const openL402PaymentDetailPane = (payment: L402PanePayment): void => {
@@ -697,22 +955,233 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
       }))
       paneSystem.render()
       if (paneSystem.store.pane(opts.paneId)) stylePaneOpaqueBlack(opts.paneId)
+      if (opts.paneId === L402_PAYWALLS_PANE_ID || opts.paneId === L402_SETTLEMENTS_PANE_ID || opts.paneId === L402_DEPLOYMENTS_PANE_ID) {
+        const hostedOpen = hasAnyHostedOpsPaneOpen({
+          paywallsOpen: paneSystem.store.pane(L402_PAYWALLS_PANE_ID) != null,
+          settlementsOpen: paneSystem.store.pane(L402_SETTLEMENTS_PANE_ID) != null,
+          deploymentsOpen: paneSystem.store.pane(L402_DEPLOYMENTS_PANE_ID) != null,
+        })
+        if (hostedOpen) {
+          if (!hostedPanePollTimer) {
+            hostedPanePollTimer = setInterval(() => {
+              if (paneSystem.store.pane(L402_PAYWALLS_PANE_ID)) refreshHostedPaywalls()
+              if (paneSystem.store.pane(L402_SETTLEMENTS_PANE_ID)) refreshHostedSettlements()
+              if (paneSystem.store.pane(L402_DEPLOYMENTS_PANE_ID)) refreshHostedDeployments()
+            }, 10_000)
+          }
+          if (paneSystem.store.pane(L402_PAYWALLS_PANE_ID)) refreshHostedPaywalls()
+          if (paneSystem.store.pane(L402_SETTLEMENTS_PANE_ID)) refreshHostedSettlements()
+          if (paneSystem.store.pane(L402_DEPLOYMENTS_PANE_ID)) refreshHostedDeployments()
+        } else if (hostedPanePollTimer) {
+          clearInterval(hostedPanePollTimer)
+          hostedPanePollTimer = null
+        }
+      }
       syncPaneActionButtonState()
       renderL402AuxPanes()
+    }
+
+    const refreshHostedPaywalls = (): void => {
+      if (!deps) {
+        paywallsPaneState = rejectL402PaneState({
+          previous: paywallsPaneState,
+          errorText: "runtime_unavailable",
+          updatedAtMs: Date.now(),
+        })
+        renderL402PaywallsPane()
+        return
+      }
+      if (paywallsRefreshInFlight) return
+      paywallsRefreshInFlight = true
+      paywallsPaneState = startL402PaneLoading(paywallsPaneState)
+      renderL402PaywallsPane()
+      runTrackedFiber({
+        context: "home.chat.l402_paywalls_pane.refresh",
+        start: () =>
+          deps.runtime.runFork(
+            Effect.gen(function* () {
+              const lightning = yield* LightningApiService
+              return yield* lightning.listPaywalls({ limit: 50 })
+            }),
+          ),
+        onSuccess: (value) => {
+          paywallsRefreshInFlight = false
+          paywallsPaneState = resolveL402PaneState({
+            rows: value.paywalls,
+            requestId: value.requestId,
+            updatedAtMs: Date.now(),
+          })
+          renderL402PaywallsPane()
+        },
+        onFailure: (cause) => {
+          paywallsRefreshInFlight = false
+          paywallsPaneState = rejectL402PaneState({
+            previous: paywallsPaneState,
+            errorText: formatL402Error(cause),
+            updatedAtMs: Date.now(),
+          })
+          renderL402PaywallsPane()
+        },
+      })
+    }
+
+    const refreshHostedSettlements = (): void => {
+      if (!deps) {
+        settlementsPaneState = rejectL402PaneState({
+          previous: settlementsPaneState,
+          errorText: "runtime_unavailable",
+          updatedAtMs: Date.now(),
+        })
+        renderL402SettlementsPane()
+        return
+      }
+      if (settlementsRefreshInFlight) return
+      settlementsRefreshInFlight = true
+      settlementsPaneState = startL402PaneLoading(settlementsPaneState)
+      renderL402SettlementsPane()
+      runTrackedFiber({
+        context: "home.chat.l402_settlements_pane.refresh",
+        start: () =>
+          deps.runtime.runFork(
+            Effect.gen(function* () {
+              const lightning = yield* LightningApiService
+              return yield* lightning.listOwnerSettlements({ limit: 50 })
+            }),
+          ),
+        onSuccess: (value) => {
+          settlementsRefreshInFlight = false
+          settlementsPaneState = resolveL402PaneState({
+            rows: value.settlements,
+            requestId: value.requestId,
+            nextCursor: value.nextCursor,
+            updatedAtMs: Date.now(),
+          })
+          renderL402SettlementsPane()
+        },
+        onFailure: (cause) => {
+          settlementsRefreshInFlight = false
+          settlementsPaneState = rejectL402PaneState({
+            previous: settlementsPaneState,
+            errorText: formatL402Error(cause),
+            updatedAtMs: Date.now(),
+          })
+          renderL402SettlementsPane()
+        },
+      })
+    }
+
+    const refreshHostedDeployments = (): void => {
+      if (!deps) {
+        deploymentsPaneState = rejectL402PaneState({
+          previous: deploymentsPaneState,
+          errorText: "runtime_unavailable",
+          updatedAtMs: Date.now(),
+        })
+        deploymentEventsPaneState = rejectL402PaneState({
+          previous: deploymentEventsPaneState,
+          errorText: "runtime_unavailable",
+          updatedAtMs: Date.now(),
+        })
+        renderL402DeploymentsPane()
+        return
+      }
+      if (deploymentsRefreshInFlight) return
+      deploymentsRefreshInFlight = true
+      deploymentsPaneState = startL402PaneLoading(deploymentsPaneState)
+      deploymentEventsPaneState = startL402PaneLoading(deploymentEventsPaneState)
+      renderL402DeploymentsPane()
+      runTrackedFiber({
+        context: "home.chat.l402_deployments_pane.refresh",
+        start: () =>
+          deps.runtime.runFork(
+            Effect.gen(function* () {
+              const lightning = yield* LightningApiService
+              const [deployments, events] = yield* Effect.all([
+                lightning.listDeployments({ limit: 50 }),
+                lightning.listDeploymentEvents({ limit: 50 }),
+              ])
+              return { deployments, events }
+            }),
+          ),
+        onSuccess: ({ deployments, events }) => {
+          deploymentsRefreshInFlight = false
+          deploymentsPaneState = resolveL402PaneState({
+            rows: deployments.deployments,
+            requestId: deployments.requestId,
+            nextCursor: deployments.nextCursor,
+            updatedAtMs: Date.now(),
+          })
+          deploymentEventsPaneState = resolveL402PaneState({
+            rows: events.events,
+            requestId: events.requestId,
+            nextCursor: events.nextCursor,
+            updatedAtMs: Date.now(),
+          })
+          renderL402DeploymentsPane()
+        },
+        onFailure: (cause) => {
+          deploymentsRefreshInFlight = false
+          const errorText = formatL402Error(cause)
+          deploymentsPaneState = rejectL402PaneState({
+            previous: deploymentsPaneState,
+            errorText,
+            updatedAtMs: Date.now(),
+          })
+          deploymentEventsPaneState = rejectL402PaneState({
+            previous: deploymentEventsPaneState,
+            errorText,
+            updatedAtMs: Date.now(),
+          })
+          renderL402DeploymentsPane()
+        },
+      })
     }
 
     syncPaneActionButtonState = () => {
       const walletOpen = paneSystem.store.pane(L402_WALLET_PANE_ID) != null
       const transactionsOpen = paneSystem.store.pane(L402_TRANSACTIONS_PANE_ID) != null
+      const paywallsOpen = paneSystem.store.pane(L402_PAYWALLS_PANE_ID) != null
+      const settlementsOpen = paneSystem.store.pane(L402_SETTLEMENTS_PANE_ID) != null
+      const deploymentsOpen = paneSystem.store.pane(L402_DEPLOYMENTS_PANE_ID) != null
       if (paneWalletButton instanceof HTMLButtonElement) {
-        paneWalletButton.setAttribute("aria-pressed", walletOpen ? "true" : "false")
-        paneWalletButton.style.color = walletOpen ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)"
-        paneWalletButton.style.opacity = walletOpen ? "1" : "0.82"
+        const style = paneButtonVisualState(walletOpen)
+        paneWalletButton.setAttribute("aria-pressed", style.ariaPressed)
+        paneWalletButton.style.color = style.color
+        paneWalletButton.style.opacity = style.opacity
       }
       if (paneTransactionsButton instanceof HTMLButtonElement) {
-        paneTransactionsButton.setAttribute("aria-pressed", transactionsOpen ? "true" : "false")
-        paneTransactionsButton.style.color = transactionsOpen ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)"
-        paneTransactionsButton.style.opacity = transactionsOpen ? "1" : "0.82"
+        const style = paneButtonVisualState(transactionsOpen)
+        paneTransactionsButton.setAttribute("aria-pressed", style.ariaPressed)
+        paneTransactionsButton.style.color = style.color
+        paneTransactionsButton.style.opacity = style.opacity
+      }
+      if (panePaywallsButton instanceof HTMLButtonElement) {
+        const style = paneButtonVisualState(paywallsOpen)
+        panePaywallsButton.setAttribute("aria-pressed", style.ariaPressed)
+        panePaywallsButton.style.color = style.color
+        panePaywallsButton.style.opacity = style.opacity
+      }
+      if (paneSettlementsButton instanceof HTMLButtonElement) {
+        const style = paneButtonVisualState(settlementsOpen)
+        paneSettlementsButton.setAttribute("aria-pressed", style.ariaPressed)
+        paneSettlementsButton.style.color = style.color
+        paneSettlementsButton.style.opacity = style.opacity
+      }
+      if (paneDeploymentsButton instanceof HTMLButtonElement) {
+        const style = paneButtonVisualState(deploymentsOpen)
+        paneDeploymentsButton.setAttribute("aria-pressed", style.ariaPressed)
+        paneDeploymentsButton.style.color = style.color
+        paneDeploymentsButton.style.opacity = style.opacity
+      }
+
+      const hostedOpen = hasAnyHostedOpsPaneOpen({
+        paywallsOpen,
+        settlementsOpen,
+        deploymentsOpen,
+      })
+      if (!hostedOpen && hostedPanePollTimer) {
+        clearInterval(hostedPanePollTimer)
+        hostedPanePollTimer = null
       }
     }
 
@@ -1664,6 +2133,102 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
               titleActions.appendChild(transactionsBtn)
               paneTransactionsButton = transactionsBtn
               hasAddedPaneTransactionsButton = true
+            }
+          }
+
+          if (!hasAddedPanePaywallsButton) {
+            const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
+            if (titleActions instanceof HTMLElement) {
+              const paywallsBtn = document.createElement("button")
+              paywallsBtn.setAttribute("type", "button")
+              paywallsBtn.setAttribute("aria-label", "Toggle L402 paywalls pane")
+              paywallsBtn.setAttribute("title", "Toggle L402 paywalls pane")
+              paywallsBtn.innerHTML = BOLT_ICON_SVG
+              paywallsBtn.style.transition = "color 120ms ease, opacity 120ms ease"
+              paywallsBtn.addEventListener(
+                "pointerdown",
+                (e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.stopImmediatePropagation()
+                  togglePersistentL402Pane({
+                    paneId: L402_PAYWALLS_PANE_ID,
+                    kind: "l402-paywalls",
+                    title: "L402 Paywalls",
+                    width: 620,
+                    height: 440,
+                  })
+                },
+                { capture: true },
+              )
+              titleActions.appendChild(paywallsBtn)
+              panePaywallsButton = paywallsBtn
+              hasAddedPanePaywallsButton = true
+            }
+          }
+
+          if (!hasAddedPaneSettlementsButton) {
+            const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
+            if (titleActions instanceof HTMLElement) {
+              const settlementsBtn = document.createElement("button")
+              settlementsBtn.setAttribute("type", "button")
+              settlementsBtn.setAttribute("aria-label", "Toggle L402 settlements pane")
+              settlementsBtn.setAttribute("title", "Toggle L402 settlements pane")
+              settlementsBtn.innerHTML = TRANSACTIONS_ICON_SVG
+              settlementsBtn.style.transition = "color 120ms ease, opacity 120ms ease"
+              settlementsBtn.addEventListener(
+                "pointerdown",
+                (e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.stopImmediatePropagation()
+                  togglePersistentL402Pane({
+                    paneId: L402_SETTLEMENTS_PANE_ID,
+                    kind: "l402-settlements",
+                    title: "L402 Settlements",
+                    width: 620,
+                    height: 440,
+                  })
+                },
+                { capture: true },
+              )
+              titleActions.appendChild(settlementsBtn)
+              paneSettlementsButton = settlementsBtn
+              hasAddedPaneSettlementsButton = true
+            }
+          }
+
+          if (!hasAddedPaneDeploymentsButton) {
+            const titleActions = paneRoot.querySelector(`[data-pane-id="${CHAT_PANE_ID}"] [data-oa-pane-title-actions]`)
+            if (titleActions instanceof HTMLElement) {
+              const deploymentsBtn = document.createElement("button")
+              deploymentsBtn.setAttribute("type", "button")
+              deploymentsBtn.setAttribute("aria-label", "Toggle L402 deployments pane")
+              deploymentsBtn.setAttribute("title", "Toggle L402 deployments pane")
+              deploymentsBtn.innerHTML = CHART_ICON_SVG
+              deploymentsBtn.style.transition = "color 120ms ease, opacity 120ms ease"
+              deploymentsBtn.addEventListener(
+                "pointerdown",
+                (e) => {
+                  if (e.button !== 0) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.stopImmediatePropagation()
+                  togglePersistentL402Pane({
+                    paneId: L402_DEPLOYMENTS_PANE_ID,
+                    kind: "l402-deployments",
+                    title: "L402 Deployments",
+                    width: 680,
+                    height: 480,
+                  })
+                },
+                { capture: true },
+              )
+              titleActions.appendChild(deploymentsBtn)
+              paneDeploymentsButton = deploymentsBtn
+              hasAddedPaneDeploymentsButton = true
             }
           }
           syncPaneActionButtonState()

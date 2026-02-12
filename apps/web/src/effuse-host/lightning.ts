@@ -62,6 +62,10 @@ const decodeTransitionBody = (value: unknown): Effect.Effect<TransitionTaskBody,
 
 const PaywallStatusSchema = Schema.Literal("active", "paused", "archived");
 type PaywallStatus = typeof PaywallStatusSchema.Type;
+const DeploymentStatusSchema = Schema.Literal("pending", "applied", "failed", "rolled_back");
+type DeploymentStatus = typeof DeploymentStatusSchema.Type;
+const GatewayEventLevelSchema = Schema.Literal("info", "warn", "error");
+type GatewayEventLevel = typeof GatewayEventLevelSchema.Type;
 
 const PaywallPolicySchema = Schema.Struct({
   pricingMode: Schema.Literal("fixed"),
@@ -190,6 +194,26 @@ const parsePaywallStatus = (value: string | null): Effect.Effect<PaywallStatus |
   return Schema.decodeUnknown(PaywallStatusSchema)(value.trim()).pipe(
     Effect.mapError(() => new Error("invalid_input")),
   );
+};
+
+const parseDeploymentStatus = (value: string | null): Effect.Effect<DeploymentStatus | undefined, Error> => {
+  if (!value || value.trim().length === 0) return Effect.succeed(undefined);
+  return Schema.decodeUnknown(DeploymentStatusSchema)(value.trim()).pipe(
+    Effect.mapError(() => new Error("invalid_input")),
+  );
+};
+
+const parseGatewayEventLevel = (value: string | null): Effect.Effect<GatewayEventLevel | undefined, Error> => {
+  if (!value || value.trim().length === 0) return Effect.succeed(undefined);
+  return Schema.decodeUnknown(GatewayEventLevelSchema)(value.trim()).pipe(
+    Effect.mapError(() => new Error("invalid_input")),
+  );
+};
+
+const parsePaywallIdParam = (value: string | null): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 };
 
 const runAuthedLightning = async <A>(
@@ -415,6 +439,64 @@ const listPaywallSettlementsProgram = (request: Request, paywallId: string) =>
     };
   });
 
+const listDeploymentsProgram = (request: Request) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const url = new URL(request.url);
+    const status = yield* parseDeploymentStatus(url.searchParams.get("status"));
+    const limit = parseLimit(url.searchParams.get("limit"));
+    const beforeUpdatedAtMs = parseBeforeCreatedAtMs(url.searchParams.get("beforeUpdatedAtMs"));
+    const paywallId = parsePaywallIdParam(url.searchParams.get("paywallId"));
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? null;
+
+    const convex = yield* ConvexService;
+    const listed = yield* convex.query(api.lightning.ops.listOwnerGatewayDeployments, {
+      ...(status ? { status } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      ...(beforeUpdatedAtMs !== undefined ? { beforeUpdatedAtMs } : {}),
+      ...(paywallId ? { paywallId } : {}),
+    });
+
+    return {
+      ok: true as const,
+      deployments: listed.deployments,
+      nextCursor: listed.nextCursor,
+      requestId,
+    };
+  });
+
+const listDeploymentEventsProgram = (request: Request) =>
+  Effect.gen(function* () {
+    const auth = yield* AuthService;
+    const session = yield* auth.getSession();
+    if (!session.userId) return yield* Effect.fail(new Error("unauthorized"));
+
+    const url = new URL(request.url);
+    const level = yield* parseGatewayEventLevel(url.searchParams.get("level"));
+    const limit = parseLimit(url.searchParams.get("limit"));
+    const beforeCreatedAtMs = parseBeforeCreatedAtMs(url.searchParams.get("beforeCreatedAtMs"));
+    const paywallId = parsePaywallIdParam(url.searchParams.get("paywallId"));
+    const requestId = request.headers.get(OA_REQUEST_ID_HEADER) ?? null;
+
+    const convex = yield* ConvexService;
+    const listed = yield* convex.query(api.lightning.ops.listOwnerGatewayEvents, {
+      ...(level ? { level } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      ...(beforeCreatedAtMs !== undefined ? { beforeCreatedAtMs } : {}),
+      ...(paywallId ? { paywallId } : {}),
+    });
+
+    return {
+      ok: true as const,
+      events: listed.events,
+      nextCursor: listed.nextCursor,
+      requestId,
+    };
+  });
+
 const getPaywallProgram = (request: Request, paywallId: string) =>
   Effect.gen(function* () {
     const auth = yield* AuthService;
@@ -552,6 +634,20 @@ export const handleLightningRequest = async (request: Request, env: WorkerEnv): 
   if (url.pathname === "/api/lightning/settlements") {
     if (request.method === "GET") {
       return runAuthedLightning(request, env, listOwnerSettlementsProgram(request));
+    }
+    return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+  }
+
+  if (url.pathname === "/api/lightning/deployments") {
+    if (request.method === "GET") {
+      return runAuthedLightning(request, env, listDeploymentsProgram(request));
+    }
+    return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
+  }
+
+  if (url.pathname === "/api/lightning/deployments/events") {
+    if (request.method === "GET") {
+      return runAuthedLightning(request, env, listDeploymentEventsProgram(request));
     }
     return new Response("Method not allowed", { status: 405, headers: { "cache-control": "no-store" } });
   }

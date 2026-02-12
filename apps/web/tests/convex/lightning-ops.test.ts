@@ -2,6 +2,8 @@ import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  listOwnerGatewayDeploymentsImpl,
+  listOwnerGatewayEventsImpl,
   listPaywallControlPlaneStateImpl,
   recordGatewayCompileIntentImpl,
   recordGatewayDeploymentEventImpl,
@@ -10,10 +12,11 @@ import { makeInMemoryDb } from "./inMemoryDb";
 
 const run = <A>(effect: Effect.Effect<A>) => Effect.runPromise(effect);
 
-const makeCtx = (db: any) => ({
+const makeCtx = (db: any, subject?: string) => ({
   db,
   auth: {
-    getUserIdentity: () => Effect.succeed(Option.none()),
+    getUserIdentity: () =>
+      Effect.succeed(subject ? Option.some({ subject }) : Option.none()),
   },
 });
 
@@ -194,5 +197,111 @@ describe("convex/lightning ops control-plane", () => {
     } finally {
       process.env.OA_LIGHTNING_OPS_SECRET = prevSecret;
     }
+  });
+
+  it("lists owner deployments and events with deterministic ordering and pagination", async () => {
+    const db = makeInMemoryDb();
+    const ctx = makeCtx(db, "owner_1");
+
+    await db.insert("l402GatewayDeployments", {
+      deploymentId: "dep_2",
+      paywallId: "pw_1",
+      ownerId: "owner_1",
+      configHash: "cfg_2",
+      status: "failed",
+      createdAtMs: 10,
+      updatedAtMs: 30,
+    });
+    await db.insert("l402GatewayDeployments", {
+      deploymentId: "dep_1",
+      paywallId: "pw_1",
+      ownerId: "owner_1",
+      configHash: "cfg_1",
+      status: "applied",
+      createdAtMs: 5,
+      updatedAtMs: 40,
+    });
+    await db.insert("l402GatewayDeployments", {
+      deploymentId: "dep_other",
+      paywallId: "pw_other",
+      ownerId: "owner_2",
+      configHash: "cfg_other",
+      status: "applied",
+      createdAtMs: 3,
+      updatedAtMs: 50,
+    });
+
+    await db.insert("l402GatewayEvents", {
+      eventId: "evt_2",
+      paywallId: "pw_1",
+      ownerId: "owner_1",
+      eventType: "gateway_reconcile_failed",
+      level: "error",
+      requestId: "req_2",
+      createdAtMs: 120,
+    });
+    await db.insert("l402GatewayEvents", {
+      eventId: "evt_1",
+      paywallId: "pw_1",
+      ownerId: "owner_1",
+      eventType: "gateway_reconcile_ok",
+      level: "info",
+      requestId: "req_1",
+      createdAtMs: 140,
+    });
+    await db.insert("l402GatewayEvents", {
+      eventId: "evt_other",
+      paywallId: "pw_other",
+      ownerId: "owner_2",
+      eventType: "gateway_reconcile_ok",
+      level: "info",
+      requestId: "req_other",
+      createdAtMs: 150,
+    });
+
+    const deployments = await run(
+      listOwnerGatewayDeploymentsImpl(ctx, {
+        paywallId: "pw_1",
+        limit: 1,
+      }),
+    );
+
+    expect(deployments.ok).toBe(true);
+    expect(deployments.deployments).toHaveLength(1);
+    expect(deployments.deployments[0]?.deploymentId).toBe("dep_1");
+    expect(deployments.nextCursor).toBe(40);
+
+    const deploymentsPageTwo = await run(
+      listOwnerGatewayDeploymentsImpl(ctx, {
+        paywallId: "pw_1",
+        beforeUpdatedAtMs: deployments.nextCursor ?? undefined,
+        limit: 10,
+      }),
+    );
+    expect(deploymentsPageTwo.deployments).toHaveLength(1);
+    expect(deploymentsPageTwo.deployments[0]?.deploymentId).toBe("dep_2");
+
+    const events = await run(
+      listOwnerGatewayEventsImpl(ctx, {
+        paywallId: "pw_1",
+        limit: 1,
+      }),
+    );
+
+    expect(events.ok).toBe(true);
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0]?.eventId).toBe("evt_1");
+    expect(events.nextCursor).toBe(140);
+
+    const eventsPageTwo = await run(
+      listOwnerGatewayEventsImpl(ctx, {
+        paywallId: "pw_1",
+        beforeCreatedAtMs: events.nextCursor ?? undefined,
+        limit: 10,
+      }),
+    );
+
+    expect(eventsPageTwo.events).toHaveLength(1);
+    expect(eventsPageTwo.events[0]?.eventId).toBe("evt_2");
   });
 });

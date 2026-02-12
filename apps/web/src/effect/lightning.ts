@@ -42,6 +42,101 @@ export const LightningTask = Schema.Struct({
 });
 export type LightningTask = typeof LightningTask.Type;
 
+export const LightningPaywallStatus = Schema.Literal("active", "paused", "archived");
+export type LightningPaywallStatus = typeof LightningPaywallStatus.Type;
+
+export const LightningPaywallPolicy = Schema.Struct({
+  paywallId: Schema.String,
+  ownerId: Schema.String,
+  pricingMode: Schema.Literal("fixed"),
+  fixedAmountMsats: Schema.Number,
+  maxPerRequestMsats: Schema.optional(Schema.Number),
+  allowedHosts: Schema.optional(Schema.Array(Schema.String)),
+  blockedHosts: Schema.optional(Schema.Array(Schema.String)),
+  quotaPerMinute: Schema.optional(Schema.Number),
+  quotaPerDay: Schema.optional(Schema.Number),
+  killSwitch: Schema.Boolean,
+  createdAtMs: Schema.Number,
+  updatedAtMs: Schema.Number,
+});
+export type LightningPaywallPolicy = typeof LightningPaywallPolicy.Type;
+
+export const LightningPaywallRoute = Schema.Struct({
+  routeId: Schema.String,
+  paywallId: Schema.String,
+  ownerId: Schema.String,
+  hostPattern: Schema.String,
+  pathPattern: Schema.String,
+  upstreamUrl: Schema.String,
+  protocol: Schema.Literal("http", "https"),
+  timeoutMs: Schema.Number,
+  priority: Schema.Number,
+  createdAtMs: Schema.Number,
+  updatedAtMs: Schema.Number,
+});
+export type LightningPaywallRoute = typeof LightningPaywallRoute.Type;
+
+export const LightningPaywall = Schema.Struct({
+  paywallId: Schema.String,
+  ownerId: Schema.String,
+  name: Schema.String,
+  description: Schema.optional(Schema.String),
+  status: LightningPaywallStatus,
+  requestId: Schema.optional(Schema.String),
+  metadata: Schema.optional(Schema.Unknown),
+  createdAtMs: Schema.Number,
+  updatedAtMs: Schema.Number,
+  policy: LightningPaywallPolicy,
+  routes: Schema.Array(LightningPaywallRoute),
+});
+export type LightningPaywall = typeof LightningPaywall.Type;
+
+export const LightningSettlement = Schema.Struct({
+  settlementId: Schema.String,
+  paywallId: Schema.String,
+  ownerId: Schema.String,
+  invoiceId: Schema.optional(Schema.String),
+  amountMsats: Schema.Number,
+  paymentProofRef: Schema.String,
+  requestId: Schema.optional(Schema.String),
+  metadata: Schema.optional(Schema.Unknown),
+  createdAtMs: Schema.Number,
+});
+export type LightningSettlement = typeof LightningSettlement.Type;
+
+export const LightningDeploymentStatus = Schema.Literal("pending", "applied", "failed", "rolled_back");
+export type LightningDeploymentStatus = typeof LightningDeploymentStatus.Type;
+
+export const LightningGatewayDeployment = Schema.Struct({
+  deploymentId: Schema.String,
+  paywallId: Schema.optional(Schema.String),
+  ownerId: Schema.optional(Schema.String),
+  configHash: Schema.String,
+  imageDigest: Schema.optional(Schema.String),
+  status: LightningDeploymentStatus,
+  diagnostics: Schema.optional(Schema.Unknown),
+  appliedAtMs: Schema.optional(Schema.Number),
+  rolledBackFrom: Schema.optional(Schema.String),
+  createdAtMs: Schema.Number,
+  updatedAtMs: Schema.Number,
+});
+export type LightningGatewayDeployment = typeof LightningGatewayDeployment.Type;
+
+export const LightningGatewayEventLevel = Schema.Literal("info", "warn", "error");
+export type LightningGatewayEventLevel = typeof LightningGatewayEventLevel.Type;
+
+export const LightningGatewayEvent = Schema.Struct({
+  eventId: Schema.String,
+  paywallId: Schema.String,
+  ownerId: Schema.String,
+  eventType: Schema.String,
+  level: LightningGatewayEventLevel,
+  requestId: Schema.optional(Schema.String),
+  metadata: Schema.optional(Schema.Unknown),
+  createdAtMs: Schema.Number,
+});
+export type LightningGatewayEvent = typeof LightningGatewayEvent.Type;
+
 const CreateTaskResponseSchema = Schema.Struct({
   ok: Schema.Literal(true),
   task: LightningTask,
@@ -62,9 +157,52 @@ const ConvexListTasksResultSchema = Schema.Struct({
 });
 type ConvexListTasksResult = typeof ConvexListTasksResultSchema.Type;
 
+const ListPaywallsResponseSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  paywalls: Schema.Array(LightningPaywall),
+  requestId: Schema.NullOr(Schema.String),
+});
+type ListPaywallsResponse = typeof ListPaywallsResponseSchema.Type;
+
+const GetPaywallResponseSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  paywall: LightningPaywall,
+  requestId: Schema.NullOr(Schema.String),
+});
+type GetPaywallResponse = typeof GetPaywallResponseSchema.Type;
+
+const ListSettlementsResponseSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  settlements: Schema.Array(LightningSettlement),
+  nextCursor: Schema.NullOr(Schema.Number),
+  requestId: Schema.NullOr(Schema.String),
+});
+type ListSettlementsResponse = typeof ListSettlementsResponseSchema.Type;
+
+const ListDeploymentsResponseSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  deployments: Schema.Array(LightningGatewayDeployment),
+  nextCursor: Schema.NullOr(Schema.Number),
+  requestId: Schema.NullOr(Schema.String),
+});
+type ListDeploymentsResponse = typeof ListDeploymentsResponseSchema.Type;
+
+const ListDeploymentEventsResponseSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  events: Schema.Array(LightningGatewayEvent),
+  nextCursor: Schema.NullOr(Schema.Number),
+  requestId: Schema.NullOr(Schema.String),
+});
+type ListDeploymentEventsResponse = typeof ListDeploymentEventsResponseSchema.Type;
+
 const decodeCreateTaskResponse = Schema.decodeUnknown(CreateTaskResponseSchema);
 const decodeConvexGetTaskResult = Schema.decodeUnknown(ConvexGetTaskResultSchema);
 const decodeConvexListTasksResult = Schema.decodeUnknown(ConvexListTasksResultSchema);
+const decodeListPaywallsResponse = Schema.decodeUnknown(ListPaywallsResponseSchema);
+const decodeGetPaywallResponse = Schema.decodeUnknown(GetPaywallResponseSchema);
+const decodeListSettlementsResponse = Schema.decodeUnknown(ListSettlementsResponseSchema);
+const decodeListDeploymentsResponse = Schema.decodeUnknown(ListDeploymentsResponseSchema);
+const decodeListDeploymentEventsResponse = Schema.decodeUnknown(ListDeploymentEventsResponseSchema);
 
 export type CreateLightningTaskInput = {
   readonly request: typeof L402FetchRequest.Type;
@@ -79,6 +217,29 @@ export type CreateLightningTaskResult = {
   readonly requestId: string | null;
 };
 
+export type ListLightningPaywallsResult = {
+  readonly paywalls: ReadonlyArray<LightningPaywall>;
+  readonly requestId: string | null;
+};
+
+export type ListLightningSettlementsResult = {
+  readonly settlements: ReadonlyArray<LightningSettlement>;
+  readonly nextCursor: number | null;
+  readonly requestId: string | null;
+};
+
+export type ListLightningDeploymentsResult = {
+  readonly deployments: ReadonlyArray<LightningGatewayDeployment>;
+  readonly nextCursor: number | null;
+  readonly requestId: string | null;
+};
+
+export type ListLightningDeploymentEventsResult = {
+  readonly events: ReadonlyArray<LightningGatewayEvent>;
+  readonly nextCursor: number | null;
+  readonly requestId: string | null;
+};
+
 export type LightningApi = {
   readonly createTask: (
     input: CreateLightningTaskInput,
@@ -88,6 +249,34 @@ export type LightningApi = {
     readonly status?: LightningTaskStatus;
     readonly limit?: number;
   }) => Effect.Effect<ReadonlyArray<LightningTask>, LightningApiError, RequestContextService>;
+  readonly listPaywalls: (input?: {
+    readonly status?: LightningPaywallStatus;
+    readonly limit?: number;
+  }) => Effect.Effect<ListLightningPaywallsResult, LightningApiError, RequestContextService>;
+  readonly getPaywall: (paywallId: string) => Effect.Effect<LightningPaywall, LightningApiError, RequestContextService>;
+  readonly listOwnerSettlements: (input?: {
+    readonly limit?: number;
+    readonly beforeCreatedAtMs?: number;
+  }) => Effect.Effect<ListLightningSettlementsResult, LightningApiError, RequestContextService>;
+  readonly listPaywallSettlements: (
+    paywallId: string,
+    input?: {
+      readonly limit?: number;
+      readonly beforeCreatedAtMs?: number;
+    },
+  ) => Effect.Effect<ListLightningSettlementsResult, LightningApiError, RequestContextService>;
+  readonly listDeployments: (input?: {
+    readonly paywallId?: string;
+    readonly status?: LightningDeploymentStatus;
+    readonly limit?: number;
+    readonly beforeUpdatedAtMs?: number;
+  }) => Effect.Effect<ListLightningDeploymentsResult, LightningApiError, RequestContextService>;
+  readonly listDeploymentEvents: (input?: {
+    readonly paywallId?: string;
+    readonly level?: LightningGatewayEventLevel;
+    readonly limit?: number;
+    readonly beforeCreatedAtMs?: number;
+  }) => Effect.Effect<ListLightningDeploymentEventsResult, LightningApiError, RequestContextService>;
   readonly subscribeTask: (
     taskId: string,
   ) => Effect.Effect<Stream.Stream<LightningTask, LightningApiError>, never, RequestContextService>;
@@ -111,6 +300,37 @@ const decodeWithSchema = <A>(
       }),
     ),
   );
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+const maybeErrorMessage = (value: unknown): string | null => {
+  const record = asRecord(value);
+  if (!record) return null;
+  return typeof record.error === "string" && record.error.length > 0 ? record.error : null;
+};
+
+const failHttp = (operation: string, status: number, json: unknown): Effect.Effect<never, LightningApiError> =>
+  Effect.fail(
+    LightningApiError.make({
+      operation: `${operation}.http`,
+      status,
+      error: new Error(maybeErrorMessage(json) ?? `HTTP ${status}`),
+    }),
+  );
+
+const withSearchParams = (
+  basePath: string,
+  params: ReadonlyArray<readonly [string, string | number | undefined]>,
+): string => {
+  const search = new URLSearchParams();
+  for (const [key, value] of params) {
+    if (value === undefined) continue;
+    search.set(key, String(value));
+  }
+  const encoded = search.toString();
+  return encoded.length > 0 ? `${basePath}?${encoded}` : basePath;
+};
 
 const fetchJson = Effect.fn("LightningApi.fetchJson")(function* (input: {
   readonly operation: string;
@@ -146,7 +366,12 @@ const fetchJson = Effect.fn("LightningApi.fetchJson")(function* (input: {
     catch: (error) => LightningApiError.make({ operation: `${input.operation}.json`, error }),
   });
 
-  return { ok: response.ok, status: response.status, json };
+  return {
+    ok: response.ok,
+    status: response.status,
+    json,
+    responseRequestId: response.headers.get("x-oa-request-id"),
+  };
 });
 
 const createTask = Effect.fn("LightningApi.createTask")(function* (input: CreateLightningTaskInput) {
@@ -158,21 +383,183 @@ const createTask = Effect.fn("LightningApi.createTask")(function* (input: Create
   });
 
   if (!response.ok) {
-    return yield* Effect.fail(
-      LightningApiError.make({
-        operation: "createTask.http",
-        status: response.status,
-        error: new Error(`HTTP ${response.status}`),
-      }),
-    );
+    return yield* failHttp("createTask", response.status, response.json);
   }
 
   const decoded = yield* decodeWithSchema<CreateTaskResponse>("createTask", decodeCreateTaskResponse, response.json);
   return {
     task: decoded.task,
     existed: decoded.existed,
-    requestId: decoded.requestId,
+    requestId: decoded.requestId ?? response.responseRequestId,
   } satisfies CreateLightningTaskResult;
+});
+
+const listPaywalls = Effect.fn("LightningApi.listPaywalls")(function* (input?: {
+  readonly status?: LightningPaywallStatus;
+  readonly limit?: number;
+}) {
+  const response = yield* fetchJson({
+    operation: "listPaywalls",
+    url: withSearchParams("/api/lightning/paywalls", [
+      ["status", input?.status],
+      ["limit", input?.limit],
+    ]),
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return yield* failHttp("listPaywalls", response.status, response.json);
+  }
+
+  const decoded = yield* decodeWithSchema<ListPaywallsResponse>("listPaywalls", decodeListPaywallsResponse, response.json);
+  return {
+    paywalls: decoded.paywalls,
+    requestId: decoded.requestId ?? response.responseRequestId,
+  } satisfies ListLightningPaywallsResult;
+});
+
+const getPaywall = Effect.fn("LightningApi.getPaywall")(function* (paywallId: string) {
+  const encoded = encodeURIComponent(paywallId.trim());
+  const response = yield* fetchJson({
+    operation: "getPaywall",
+    url: `/api/lightning/paywalls/${encoded}`,
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return yield* failHttp("getPaywall", response.status, response.json);
+  }
+
+  const decoded = yield* decodeWithSchema<GetPaywallResponse>("getPaywall", decodeGetPaywallResponse, response.json);
+  return decoded.paywall;
+});
+
+const listOwnerSettlements = Effect.fn("LightningApi.listOwnerSettlements")(function* (input?: {
+  readonly limit?: number;
+  readonly beforeCreatedAtMs?: number;
+}) {
+  const response = yield* fetchJson({
+    operation: "listOwnerSettlements",
+    url: withSearchParams("/api/lightning/settlements", [
+      ["limit", input?.limit],
+      ["beforeCreatedAtMs", input?.beforeCreatedAtMs],
+    ]),
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return yield* failHttp("listOwnerSettlements", response.status, response.json);
+  }
+
+  const decoded = yield* decodeWithSchema<ListSettlementsResponse>(
+    "listOwnerSettlements",
+    decodeListSettlementsResponse,
+    response.json,
+  );
+  return {
+    settlements: decoded.settlements,
+    nextCursor: decoded.nextCursor,
+    requestId: decoded.requestId ?? response.responseRequestId,
+  } satisfies ListLightningSettlementsResult;
+});
+
+const listPaywallSettlements = Effect.fn("LightningApi.listPaywallSettlements")(function* (
+  paywallId: string,
+  input?: {
+    readonly limit?: number;
+    readonly beforeCreatedAtMs?: number;
+  },
+) {
+  const encoded = encodeURIComponent(paywallId.trim());
+  const response = yield* fetchJson({
+    operation: "listPaywallSettlements",
+    url: withSearchParams(`/api/lightning/paywalls/${encoded}/settlements`, [
+      ["limit", input?.limit],
+      ["beforeCreatedAtMs", input?.beforeCreatedAtMs],
+    ]),
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return yield* failHttp("listPaywallSettlements", response.status, response.json);
+  }
+
+  const decoded = yield* decodeWithSchema<ListSettlementsResponse>(
+    "listPaywallSettlements",
+    decodeListSettlementsResponse,
+    response.json,
+  );
+  return {
+    settlements: decoded.settlements,
+    nextCursor: decoded.nextCursor,
+    requestId: decoded.requestId ?? response.responseRequestId,
+  } satisfies ListLightningSettlementsResult;
+});
+
+const listDeployments = Effect.fn("LightningApi.listDeployments")(function* (input?: {
+  readonly paywallId?: string;
+  readonly status?: LightningDeploymentStatus;
+  readonly limit?: number;
+  readonly beforeUpdatedAtMs?: number;
+}) {
+  const response = yield* fetchJson({
+    operation: "listDeployments",
+    url: withSearchParams("/api/lightning/deployments", [
+      ["paywallId", input?.paywallId],
+      ["status", input?.status],
+      ["limit", input?.limit],
+      ["beforeUpdatedAtMs", input?.beforeUpdatedAtMs],
+    ]),
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return yield* failHttp("listDeployments", response.status, response.json);
+  }
+
+  const decoded = yield* decodeWithSchema<ListDeploymentsResponse>(
+    "listDeployments",
+    decodeListDeploymentsResponse,
+    response.json,
+  );
+  return {
+    deployments: decoded.deployments,
+    nextCursor: decoded.nextCursor,
+    requestId: decoded.requestId ?? response.responseRequestId,
+  } satisfies ListLightningDeploymentsResult;
+});
+
+const listDeploymentEvents = Effect.fn("LightningApi.listDeploymentEvents")(function* (input?: {
+  readonly paywallId?: string;
+  readonly level?: LightningGatewayEventLevel;
+  readonly limit?: number;
+  readonly beforeCreatedAtMs?: number;
+}) {
+  const response = yield* fetchJson({
+    operation: "listDeploymentEvents",
+    url: withSearchParams("/api/lightning/deployments/events", [
+      ["paywallId", input?.paywallId],
+      ["level", input?.level],
+      ["limit", input?.limit],
+      ["beforeCreatedAtMs", input?.beforeCreatedAtMs],
+    ]),
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return yield* failHttp("listDeploymentEvents", response.status, response.json);
+  }
+
+  const decoded = yield* decodeWithSchema<ListDeploymentEventsResponse>(
+    "listDeploymentEvents",
+    decodeListDeploymentEventsResponse,
+    response.json,
+  );
+  return {
+    events: decoded.events,
+    nextCursor: decoded.nextCursor,
+    requestId: decoded.requestId ?? response.responseRequestId,
+  } satisfies ListLightningDeploymentEventsResult;
 });
 
 export const LightningApiLive = Layer.effect(
@@ -228,6 +615,12 @@ export const LightningApiLive = Layer.effect(
       createTask,
       getTask,
       listTasks,
+      listPaywalls,
+      getPaywall,
+      listOwnerSettlements,
+      listPaywallSettlements,
+      listDeployments,
+      listDeploymentEvents,
       subscribeTask,
     });
   }),
