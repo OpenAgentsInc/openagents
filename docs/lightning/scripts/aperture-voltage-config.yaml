@@ -17,5 +17,12 @@ sqlite:
   dbfile: "/tmp/aperture.db"
   skipmigrations: false
 
-# Routes from lightning-ops compiler can be merged in; empty for bootstrap.
-services: []
+# Bootstrap: one placeholder service so Aperture starts (no traffic matches until routes added).
+# Replace/merge with compiled routes from apps/lightning-ops.
+services:
+  - name: bootstrap
+    hostregexp: "^l402-bootstrap\\.openagents\\.local$"
+    pathregexp: "^/.*$"
+    address: 127.0.0.1:9
+    protocol: http
+    price: 0

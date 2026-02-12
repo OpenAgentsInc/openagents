@@ -184,6 +184,61 @@ Alternative: run Aperture on **AWS** (e.g. ECS/Fargate or a single EC2) in the s
 
 ---
 
+## 7.1 Cloud Run deploy (openagentsgemini) – concrete steps
+
+Project **openagentsgemini** has been set up with:
+
+- **Secret Manager:** `l402-voltage-tls-cert`, `l402-voltage-invoice-macaroon`, `l402-aperture-config`.
+- **Artifact Registry:** repo `l402` in `us-central1`; Aperture image built from source (Go 1.24) and pushed as `us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest`.
+- **Cloud Run:** service `l402-aperture` (region `us-central1`); deploy has so far failed with “container failed to start and listen on PORT” (see troubleshooting below).
+
+**Build Aperture image (linux/amd64 for Cloud Run):**
+
+```bash
+# From repo root; requires Docker and gcloud auth for Artifact Registry.
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+cd docs/lightning/deploy
+docker buildx build --platform linux/amd64 -f Dockerfile.aperture \
+  -t us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest --push .
+```
+
+**Update Aperture config secret:**
+
+Edit `docs/lightning/scripts/aperture-voltage-config.yaml` (paths must match Cloud Run secret mounts below), then:
+
+```bash
+gcloud secrets versions add l402-aperture-config --data-file=docs/lightning/scripts/aperture-voltage-config.yaml
+```
+
+**Deploy Cloud Run:**
+
+```bash
+gcloud run deploy l402-aperture \
+  --image=us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest \
+  --region=us-central1 \
+  --set-secrets=/voltage-tls/tls.cert=l402-voltage-tls-cert:latest,/voltage-mac/invoice.macaroon=l402-voltage-invoice-macaroon:latest,/voltage-cfg/config.yaml=l402-aperture-config:latest \
+  --command=/aperture \
+  --args=--configfile=/voltage-cfg/config.yaml \
+  --allow-unauthenticated \
+  --memory=512Mi --cpu=1 --port=8080 \
+  --min-instances=0 --max-instances=2
+```
+
+**If the container fails to start:** Aperture may block on connecting to LND (Voltage) at startup. Check logs for the failing revision:
+
+- Cloud Run console → Logs, or  
+- `gcloud run services logs read l402-aperture --region=us-central1 --limit=50`
+
+Common causes: LND unreachable from Cloud Run (firewall/network), wrong TLS/macaroon path, or Aperture exiting on auth failure. Run the same image locally with the same config and secret paths to reproduce:
+
+```bash
+docker run --rm -v /path/to/voltage-tls:/voltage-tls -v /path/to/voltage-mac:/voltage-mac -v /path/to/config.yaml:/voltage-cfg/config.yaml -p 8080:8080 us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest /voltage-cfg/config.yaml
+```
+
+**Deploy artifacts in repo:** `docs/lightning/deploy/` (Dockerfile, Cloud Build config), `docs/lightning/scripts/aperture-voltage-config.yaml` (base config with Voltage authenticator and bootstrap service).
+
+---
+
 ## 8. References in This Repo
 
 - **High-level plan (Voltage + GCP):** `docs/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` (§4–5, §6.2, §15).
