@@ -6,6 +6,7 @@ import { DesktopStateService } from "./state";
 import { TaskProviderService } from "./taskProvider";
 import { DesktopSessionService } from "./session";
 import { L402ExecutorService } from "./l402Executor";
+import { getOrCreateDesktopDeviceId } from "./deviceId";
 
 import type { ExecutorTask } from "./model";
 
@@ -30,6 +31,7 @@ export const ExecutorLoopLive = Layer.effect(
     const sessionStore = yield* DesktopSessionService;
     const l402Executor = yield* L402ExecutorService;
     const fiberRef = yield* Ref.make<Fiber.RuntimeFiber<unknown, unknown> | null>(null);
+    const deviceId = yield* Effect.sync(() => getOrCreateDesktopDeviceId());
 
     const setExecutorStatus = Effect.fn("ExecutorLoop.setExecutorStatus")(function* (input: {
       readonly status: "waiting_auth" | "idle" | "running_task" | "completed_task" | "failed_task";
@@ -209,6 +211,14 @@ export const ExecutorLoopLive = Layer.effect(
         });
         return;
       }
+
+      yield* tasks
+        .heartbeatExecutorPresence({
+          token: session.token,
+          deviceId,
+          capabilities: ["l402_executor", "spark_payer"],
+        })
+        .pipe(Effect.catchAll(() => Effect.void));
 
       const nextTask = yield* tasks.pollPendingTask({
         userId: snapshot.auth.userId,

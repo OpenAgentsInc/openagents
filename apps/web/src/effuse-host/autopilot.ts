@@ -23,6 +23,7 @@ import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
 import { isEp212EndpointPreset, resolveEp212PresetUrl, sanitizeLightningHeadersForTask } from "./ep212Endpoints";
+import { DEFAULT_EXECUTOR_PRESENCE_MAX_AGE_MS, isExecutorPresenceFresh } from "./lightningPresence";
 import type { WorkerEnv } from "./env";
 import type {
   CreateRunResult,
@@ -930,6 +931,64 @@ const runLightningL402FetchTool = (input: {
 
     // If approval is explicitly disabled for this tool call, auto-approve the queued task.
     if (!requireApproval && task.status === "queued") {
+      const presenceRaw = yield* input.convex
+        .query(api.lightning.presence.getLatestExecutorPresence, {})
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${input.queryTimeoutMs} millis`,
+            onTimeout: () => new Error("lightning.getLatestExecutorPresence_timeout"),
+          }),
+          Effect.catchAll(() => Effect.succeed({ ok: true, presence: null } as unknown)),
+        );
+      const presence = toRecord(toRecord(presenceRaw)?.presence);
+      const lastSeenAtMs =
+        typeof presence?.lastSeenAtMs === "number" && Number.isFinite(presence.lastSeenAtMs)
+          ? Math.max(0, Math.floor(presence.lastSeenAtMs))
+          : null;
+      const executorOnline = isExecutorPresenceFresh({
+        lastSeenAtMs,
+        nowMs: Date.now(),
+        maxAgeMs: DEFAULT_EXECUTOR_PRESENCE_MAX_AGE_MS,
+      });
+
+      if (!executorOnline) {
+        const host = (() => {
+          try {
+            return new URL(String(requestUrl)).host;
+          } catch {
+            return null;
+          }
+        })();
+
+        const transitionRaw = yield* input.convex
+          .mutation(api.lightning.tasks.transitionTask, {
+            taskId: task.taskId,
+            toStatus: "blocked",
+            actor: "system",
+            reason: "desktop_executor_offline",
+            requestId: input.requestId,
+            errorCode: "desktop_executor_offline",
+            errorMessage: "desktop executor heartbeat not seen recently",
+            metadata: {
+              denyReason: "desktop_executor_offline",
+              denyReasonCode: "desktop_executor_offline",
+              ...(host ? { host } : {}),
+              toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+              runId: input.runId,
+            },
+          })
+          .pipe(
+            Effect.timeoutFail({
+              duration: `${input.mutationTimeoutMs} millis`,
+              onTimeout: () => new Error("lightning.transitionTask_timeout"),
+            }),
+            Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
+          );
+        task = parseLightningTaskDoc(toRecord(transitionRaw)?.task) ?? {
+          ...task,
+          status: "blocked",
+        };
+      } else {
       const approveRaw = yield* input.convex
         .mutation(api.lightning.tasks.transitionTask, {
           taskId: task.taskId,
@@ -951,6 +1010,7 @@ const runLightningL402FetchTool = (input: {
           Effect.catchAll(() => Effect.succeed({ ok: false } as unknown)),
         );
       task = parseLightningTaskDoc(toRecord(approveRaw)?.task) ?? task;
+      }
     }
 
     while (
@@ -1195,6 +1255,39 @@ const runLightningL402ApproveTool = (input: {
           changed: false,
           taskStatus: task.status,
           denyReason: null,
+        } satisfies LightningToolApproveResult,
+      };
+    }
+
+    const presenceRaw = yield* input.convex
+      .query(api.lightning.presence.getLatestExecutorPresence, {})
+      .pipe(
+        Effect.timeoutFail({
+          duration: `${input.queryTimeoutMs} millis`,
+          onTimeout: () => new Error("lightning.getLatestExecutorPresence_timeout"),
+        }),
+        Effect.catchAll(() => Effect.succeed({ ok: true, presence: null } as unknown)),
+      );
+    const presence = toRecord(toRecord(presenceRaw)?.presence);
+    const lastSeenAtMs =
+      typeof presence?.lastSeenAtMs === "number" && Number.isFinite(presence.lastSeenAtMs)
+        ? Math.max(0, Math.floor(presence.lastSeenAtMs))
+        : null;
+    const executorOnline = isExecutorPresenceFresh({
+      lastSeenAtMs,
+      nowMs: Date.now(),
+      maxAgeMs: DEFAULT_EXECUTOR_PRESENCE_MAX_AGE_MS,
+    });
+
+    if (!executorOnline) {
+      return {
+        validatedInput: decodedInput,
+        output: {
+          taskId: task.taskId,
+          ok: false,
+          changed: false,
+          taskStatus: task.status,
+          denyReason: "desktop_executor_offline",
         } satisfies LightningToolApproveResult,
       };
     }

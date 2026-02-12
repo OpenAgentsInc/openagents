@@ -169,6 +169,24 @@ export default defineSchema({
     .index("by_ownerId_createdAtMs", ["ownerId", "createdAtMs"]),
 
   /**
+   * Desktop executor presence heartbeat.
+   *
+   * Used to prevent demo stalls by checking whether the desktop executor is online
+   * before allowing task approvals to proceed.
+   */
+  lightningExecutorPresence: defineTable({
+    ownerId: v.string(),
+    deviceId: v.string(),
+    lastSeenAtMs: v.number(),
+    version: v.optional(v.string()),
+    capabilities: v.optional(v.array(v.string())),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_ownerId_deviceId", ["ownerId", "deviceId"])
+    .index("by_ownerId_updatedAtMs", ["ownerId", "updatedAtMs"]),
+
+  /**
    * Hosted L402 paywall control-plane tables.
    */
   l402Paywalls: defineTable({
