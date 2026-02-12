@@ -99,13 +99,11 @@ export const buildLndConfText = (input: LndRuntimeConfigInput, paths: LndRuntime
 
 export const buildLndLaunchArgs = (input: {
   readonly configPath: string;
-  readonly network: LndNeutrinoNetwork;
 }): ReadonlyArray<string> =>
   [
+    // Network + neutrino mode are configured in lnd.conf.
+    // Keep CLI args minimal to avoid boolean flag parser differences across lnd versions.
     `--configfile=${input.configPath}`,
-    "--bitcoin.active=1",
-    "--bitcoin.node=neutrino",
-    `--bitcoin.${input.network}=1`,
   ] as const;
 
 const ensureRuntimeDirectories = (paths: LndRuntimePaths): void => {
@@ -128,7 +126,6 @@ export const materializeLndRuntimeConfig = (input: LndRuntimeConfigInput): LndRu
 
   const launchArgs = buildLndLaunchArgs({
     configPath: paths.configPath,
-    network: input.network,
   });
 
   return {

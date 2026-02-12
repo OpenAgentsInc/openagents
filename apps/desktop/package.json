@@ -18,6 +18,7 @@
     "lnd:prepare": "node ./scripts/prepare-lnd-binaries.mjs",
     "smoke:lnd-binary": "node ./scripts/smoke-lnd-binary.mjs",
     "smoke:lnd-runtime": "node ./scripts/smoke-lnd-runtime.mjs",
+    "smoke:lnd-runtime-real": "node ./scripts/smoke-lnd-runtime-real.mjs",
     "smoke:lnd-wallet": "node ./scripts/smoke-lnd-wallet.mjs",
     "smoke:l402-convex-executor": "node ./scripts/smoke-l402-convex-executor.mjs",
     "smoke:l402-panes": "node ./scripts/smoke-l402-panes.mjs",
