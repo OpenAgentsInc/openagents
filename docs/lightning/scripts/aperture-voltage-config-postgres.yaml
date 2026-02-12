@@ -14,13 +14,14 @@ authenticator:
 
 dbbackend: "postgres"
 postgres:
-  host: "/cloudsql/openagentsgemini:us-central1:l402-aperture-db"
+  # Use public IP (authorized 0.0.0.0/0 for testing). Prefer Unix socket /cloudsql/... with URL-encoded host for production.
+  host: "34.46.174.166"
   port: 5432
   user: "aperture"
   password: "REPLACE_PASSWORD"
   dbname: "aperture"
   maxconnections: 25
-  requiressl: false
+  requiressl: true
   skipmigrations: false
 
 services:

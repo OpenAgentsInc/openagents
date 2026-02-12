@@ -67,6 +67,8 @@ Artifact and parity expectations now enforced:
 2. local-node parity source: `output/l402-local-node-smoke-artifact.json`
 3. required parity keys: `executionPath`, `requestId`, `taskId`, `paymentProofRef`
 
+**Operational runbook (deploy, secrets, how to use and edit):** `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md`. Single reference for the live Aperture gateway on GCP; no sensitive values in the repo.
+
 ## 2) Repo-Aware Baseline
 
 The plan is grounded in the current codebase, not a greenfield architecture.

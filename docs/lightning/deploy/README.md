@@ -1,6 +1,9 @@
 # Aperture deploy (L402 gateway on GCP)
 
-Build and push the Aperture image for Cloud Run. See **§7.1** in `docs/lightning/VOLTAGE_TO_L402_CONNECT.md` for full deploy steps and troubleshooting.
+**Full runbook (architecture, secrets, how to use, how to edit, troubleshooting):**  
+`docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md`
+
+This directory contains only the **image build** and optional Cloud Build config. Config content, Secret Manager, and Cloud Run deploy are described in the runbook and in `docs/lightning/VOLTAGE_TO_L402_CONNECT.md` (§7.1).
 
 ## Build image (linux/amd64)
 
@@ -24,15 +27,12 @@ gcloud builds submit --config docs/lightning/deploy/cloudbuild-aperture.yaml \
   docs/lightning/deploy
 ```
 
-## Config
+## Config (summary)
 
-Base Aperture config with Voltage authenticator: `docs/lightning/scripts/aperture-voltage-config.yaml`. Update that file and add a new secret version before redeploying:
+- **Production** uses **Postgres**; the config template is `docs/lightning/scripts/aperture-voltage-config-postgres.yaml` with `password: "REPLACE_PASSWORD"`. You must inject the real DB password when creating a new Secret Manager version (see runbook §5 and §6.1). Do not commit the password.
+- **SQLite** base config (for local/testing only): `docs/lightning/scripts/aperture-voltage-config.yaml`. Cloud Run does not use SQLite (filesystem not writable).
 
-```bash
-gcloud secrets versions add l402-aperture-config --data-file=docs/lightning/scripts/aperture-voltage-config.yaml
-```
+## Files in this directory
 
-## Files
-
-- **Dockerfile.aperture** – Multi-stage build from Lightning Labs aperture (Go 1.24); no Docker Hub dependency.
+- **Dockerfile.aperture** – Multi-stage build from Lightning Labs Aperture source (Go 1.24); no Docker Hub dependency.
 - **cloudbuild-aperture.yaml** – Cloud Build config to build and push to Artifact Registry repo `l402`.
