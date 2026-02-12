@@ -1,7 +1,7 @@
 # OpenAgents L402 Agent Paywall Infrastructure Plan (Voltage + GCP)
 
 Date: 2026-02-11  
-Status: Draft implementation plan (expanded)  
+Status: Implemented baseline complete (Phase 1-5 delivered as of 2026-02-12)  
 Owner: Lightning / Autopilot product + runtime
 
 ## 1) Purpose and Decision Summary
@@ -38,6 +38,34 @@ Sequencing implication:
 1. `#1597` and `#1598` may proceed in parallel with local track.
 2. `#1599` is gated by local baseline validation (`#1614`) and synchronization phase (`#1615`).
 3. `#1604` must gate on both hosted flow health and local-node regression parity.
+
+## 1.2) Epic #1595 Completion Snapshot (2026-02-12)
+
+Hosted-L402 implementation phases tracked under this epic are complete:
+
+1. `#1596` closed: hosted paywall contracts/services (`packages/lightning-effect`)
+2. `#1597` closed: control-plane schema + lifecycle APIs (`apps/web` + Convex)
+3. `#1598` closed: deterministic Aperture config compiler (`apps/lightning-ops`)
+4. `#1599` closed: staging deploy/reconcile workflow (Aperture + Voltage)
+5. `#1600` closed: settlement ingestion + proof correlation
+6. `#1601` closed: credential security/rotation/emergency controls
+7. `#1602` closed: Autopilot paywall tool contracts + receipt-safe execution
+8. `#1603` closed: hosted operations panes/admin views
+9. `#1604` closed: dual-path full-flow tests + CI gating
+
+Operational gate now in-repo:
+
+1. CI workflow: `.github/workflows/l402-hosted-flow.yml`
+2. Hosted full-flow smoke command: `cd apps/lightning-ops && npm run smoke:full-flow -- --json`
+3. Hosted E2E spec/tag:
+   - id: `apps-web.hosted-l402.full-flow`
+   - tag: `l402-hosted`
+
+Artifact and parity expectations now enforced:
+
+1. hosted flow artifacts: `events.jsonl` and `summary.json`
+2. local-node parity source: `output/l402-local-node-smoke-artifact.json`
+3. required parity keys: `executionPath`, `requestId`, `taskId`, `paymentProofRef`
 
 ## 2) Repo-Aware Baseline
 
