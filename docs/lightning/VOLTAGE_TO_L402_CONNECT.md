@@ -113,6 +113,8 @@ You have:
 | REST port | 8080 | Optional (e.g. settlement reader); Aperture uses gRPC. |
 | **GRPC port** | **10009** | **Yes – Aperture talks to LND over gRPC.** |
 | LND version | 0.20.0-beta | Compatible with current Aperture. |
+| Voltage version | v0.7.13 | Reference. |
+| Cloud | AWS | Node location; Aperture can run on GCP. |
 
 So for Aperture you set:
 
