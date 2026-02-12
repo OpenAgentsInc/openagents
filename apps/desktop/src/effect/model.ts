@@ -79,6 +79,17 @@ export type DesktopRuntimeState = Readonly<{
     readonly nextRestartAtMs: number | null;
     readonly lastHealthCheckAtMs: number | null;
     readonly lastError: string | null;
+    readonly sync: {
+      readonly source: "none" | "rest_getinfo";
+      readonly blockHeight: number | null;
+      readonly numPeers: number | null;
+      readonly bestHeaderTimestamp: number | null;
+      readonly syncedToChain: boolean | null;
+      readonly syncedToGraph: boolean | null;
+      readonly walletSynced: boolean | null;
+      readonly lastUpdatedAtMs: number | null;
+      readonly lastError: string | null;
+    };
   };
   readonly wallet: {
     readonly walletState: "uninitialized" | "initialized" | "locked" | "unlocked";
@@ -129,6 +140,17 @@ export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
     nextRestartAtMs: null,
     lastHealthCheckAtMs: null,
     lastError: null,
+    sync: {
+      source: "none",
+      blockHeight: null,
+      numPeers: null,
+      bestHeaderTimestamp: null,
+      syncedToChain: null,
+      syncedToGraph: null,
+      walletSynced: null,
+      lastUpdatedAtMs: null,
+      lastError: null,
+    },
   },
   wallet: {
     walletState: "uninitialized",

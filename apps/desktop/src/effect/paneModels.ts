@@ -217,7 +217,29 @@ export const deriveNodePaneModel = (input: {
     };
   }
 
-  if (runtime.health === "healthy" && input.snapshot.wallet.walletState === "unlocked") {
+  const chainSynced = runtime.sync.syncedToChain;
+  const walletSynced = runtime.sync.walletSynced;
+  const walletUnlocked = input.snapshot.wallet.walletState === "unlocked";
+
+  if (runtime.health === "healthy" && chainSynced === false) {
+    return {
+      paneState: "ready",
+      syncStage: "syncing",
+      syncLabel: "Syncing chain data",
+      diagnostic: runtime.sync.lastError ?? runtime.lastError,
+    };
+  }
+
+  if (runtime.health === "healthy" && chainSynced === true && walletSynced === false) {
+    return {
+      paneState: "ready",
+      syncStage: "syncing",
+      syncLabel: "Chain synced, wallet catch-up in progress",
+      diagnostic: runtime.sync.lastError ?? runtime.lastError,
+    };
+  }
+
+  if (runtime.health === "healthy" && chainSynced === true && walletSynced === true && walletUnlocked) {
     return {
       paneState: "ready",
       syncStage: "ready",
@@ -229,8 +251,8 @@ export const deriveNodePaneModel = (input: {
   return {
     paneState: "ready",
     syncStage: "syncing",
-    syncLabel: "Running, waiting for wallet readiness",
-    diagnostic: runtime.lastError,
+    syncLabel: walletUnlocked ? "Running, fetching sync status" : "Running, waiting for wallet unlock",
+    diagnostic: runtime.sync.lastError ?? runtime.lastError,
   };
 };
 
@@ -296,7 +318,9 @@ export const deriveWalletBalanceModel = (input: {
   }
 
   const nodeHealthy = input.snapshot.lnd.lifecycle === "running" && input.snapshot.lnd.health === "healthy";
-  if (!nodeHealthy) {
+  const syncReady =
+    input.snapshot.lnd.sync.syncedToChain === true && input.snapshot.lnd.sync.walletSynced === true;
+  if (!nodeHealthy || !syncReady) {
     return {
       paneState: "ready",
       availability: "degraded",

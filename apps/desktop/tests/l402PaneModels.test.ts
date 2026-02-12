@@ -53,6 +53,12 @@ describe("l402 pane models", () => {
         ...initialDesktopRuntimeState().lnd,
         lifecycle: "running" as const,
         health: "healthy" as const,
+        sync: {
+          ...initialDesktopRuntimeState().lnd.sync,
+          syncedToChain: true,
+          walletSynced: true,
+          syncedToGraph: true,
+        },
       },
       wallet: {
         ...initialDesktopRuntimeState().wallet,
@@ -66,6 +72,25 @@ describe("l402 pane models", () => {
     });
     expect(ready.paneState).toBe("ready");
     expect(ready.syncStage).toBe("ready");
+
+    const syncingSnapshot = {
+      ...readySnapshot,
+      lnd: {
+        ...readySnapshot.lnd,
+        sync: {
+          ...readySnapshot.lnd.sync,
+          syncedToChain: false as const,
+          walletSynced: false as const,
+        },
+      },
+    };
+    const syncing = deriveNodePaneModel({
+      snapshot: syncingSnapshot,
+      loaded: true,
+      uiError: null,
+    });
+    expect(syncing.syncStage).toBe("syncing");
+    expect(syncing.syncLabel).toBe("Syncing chain data");
   });
 
   it("derives wallet balance summary from executed tasks", () => {
@@ -75,6 +100,12 @@ describe("l402 pane models", () => {
         ...initialDesktopRuntimeState().lnd,
         lifecycle: "running" as const,
         health: "healthy" as const,
+        sync: {
+          ...initialDesktopRuntimeState().lnd.sync,
+          syncedToChain: true,
+          walletSynced: true,
+          syncedToGraph: true,
+        },
       },
       wallet: {
         ...initialDesktopRuntimeState().wallet,
