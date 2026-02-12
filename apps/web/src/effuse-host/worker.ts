@@ -5,6 +5,7 @@ import { handleCallbackRequest } from "./callback"
 import { handleContractsRequest } from "./contracts"
 import { handleDseCompileRequest } from "./dseCompile"
 import { handleDseAdminRequest } from "./dseAdmin"
+import { handleEp212DemoRoutes } from "./ep212DemoRoutes"
 import { handleLightningRequest } from "./lightning"
 import { getPrelaunchRedirectIfRequired } from "./ssr"
 import { handleSsrRequest } from "./ssr"
@@ -56,6 +57,9 @@ export default {
     const requestId = getOrCreateRequestId(request)
     const requestWithId = withRequestIdHeader(request, requestId)
     const url = new URL(requestWithId.url)
+
+    const ep212DemoRoute = await handleEp212DemoRoutes(requestWithId, env)
+    if (ep212DemoRoute) return withResponseRequestIdHeader(ep212DemoRoute, requestId)
 
     // Autopilot execution plane (Convex-first MVP).
     if (url.pathname.startsWith("/api/autopilot/")) {

@@ -31,3 +31,24 @@ services:
     address: 127.0.0.1:9
     protocol: http
     price: 0
+  # EP212 demo route A: under-cap paid success path.
+  - name: ep212-demo-under-cap
+    hostregexp: "^l402\\.openagents\\.com$"
+    pathregexp: "^/ep212/premium-signal$"
+    address: openagents.com:443
+    protocol: https
+    price: 70
+  # EP212 demo route B: over-cap quote path used for policy block rehearsals.
+  - name: ep212-demo-over-cap
+    hostregexp: "^l402\\.openagents\\.com$"
+    pathregexp: "^/ep212/expensive-signal$"
+    address: openagents.com:443
+    protocol: https
+    price: 250
+  # Staging reconcile path.
+  - name: staging
+    hostregexp: "^l402\\.openagents\\.com$"
+    pathregexp: "^/staging(?:/.*)?$"
+    address: 127.0.0.1:9
+    protocol: http
+    price: 0

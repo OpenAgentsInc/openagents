@@ -20,6 +20,7 @@ npm run smoke:settlement -- --json
 npm run smoke:full-flow -- --json
 npm run reconcile:convex
 npm run smoke:staging -- --json
+npm run smoke:ep212-routes -- --json --mode mock
 ```
 
 `smoke:compile -- --json` prints machine-readable JSON with:
@@ -34,6 +35,11 @@ npm run smoke:staging -- --json
 - `proxyOk`
 - `configHash`
 - `deploymentStatus`
+
+`smoke:ep212-routes -- --json --mode live` verifies the two episode routes on `l402.openagents.com`:
+
+- route A (`/ep212/premium-signal`): challenge shape + paid success (`status 200`)
+- route B (`/ep212/expensive-signal`): challenge shape + over-cap policy block (no payment call)
 
 `smoke:settlement -- --json` emits deterministic settlement ingest output with:
 
@@ -78,6 +84,15 @@ Optional overrides:
 
 - `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL`
 - `OA_LIGHTNING_OPS_GATEWAY_OPS_TOKEN`, `OA_LIGHTNING_OPS_GATEWAY_HEALTH_PATH`, `OA_LIGHTNING_OPS_PROXY_AUTHORIZATION_HEADER`
+
+Environment variables for `smoke:ep212-routes -- --mode live`:
+
+- `OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL` (required)
+- `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN` (optional)
+- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `12000`)
+- `OA_LIGHTNING_OPS_EP212_ROUTE_A_URL` (optional, default `https://l402.openagents.com/ep212/premium-signal`)
+- `OA_LIGHTNING_OPS_EP212_ROUTE_B_URL` (optional, default `https://l402.openagents.com/ep212/expensive-signal`)
+- `OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS` (optional, default `100000`)
 
 Example: copy `env.staging.example` to `.env.staging`, set the two required vars, then `source .env.staging && ./scripts/staging-reconcile.sh`.
 
