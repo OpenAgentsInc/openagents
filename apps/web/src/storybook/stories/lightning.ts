@@ -38,6 +38,11 @@ type L402PanePayment = {
   readonly responseBodyTextPreview?: string
 }
 
+const formatSats = (value: number | undefined): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "n/a"
+  return `${value.toLocaleString()} sats`
+}
+
 const formatMsats = (value: number | undefined): string => {
   if (typeof value !== "number" || !Number.isFinite(value)) return "n/a"
   const sats = value / 1000
@@ -89,12 +94,24 @@ const l402WalletSummary = (
   }
 }
 
-const l402WalletPaneTemplate = (payments: ReadonlyArray<L402PanePayment>): TemplateResult => {
+const l402WalletPaneTemplate = (
+  payments: ReadonlyArray<L402PanePayment>,
+  opts?: {
+    readonly walletOnline?: boolean
+    readonly balanceSats?: number
+    readonly statusNote?: string
+  },
+): TemplateResult => {
   const summary = l402WalletSummary(payments)
+  const walletOnline = opts?.walletOnline ?? true
   return html`
     <div class="h-full overflow-auto bg-black p-4 text-sm font-mono text-white/85">
       <div class="text-[11px] uppercase tracking-wide text-white/55">L402 Wallet Summary</div>
       <div class="mt-3 grid grid-cols-[140px_1fr] gap-x-3 gap-y-2 text-xs">
+        <div class="text-white/55">wallet status</div>
+        <div>${walletOnline ? "online" : "offline"}${opts?.statusNote ? ` (${opts.statusNote})` : ""}</div>
+        <div class="text-white/55">balance</div>
+        <div>${formatSats(opts?.balanceSats)}</div>
         <div class="text-white/55">attempts</div>
         <div>${summary.totalAttempts}</div>
         <div class="text-white/55">completed</div>
@@ -275,6 +292,12 @@ const paymentCardModelIntent: L402PaymentStateCardModel = {
   statusLabel: "queued",
 }
 
+const paymentCardModelPaying: L402PaymentStateCardModel = {
+  ...paymentCardModelIntent,
+  taskId: undefined,
+  statusLabel: "paying",
+}
+
 const paymentCardModelPaid: L402PaymentStateCardModel = {
   state: "payment.sent",
   toolCallId: "toolcall_l402_1",
@@ -445,6 +468,12 @@ export const lightningStories: ReadonlyArray<Story> = [
     render: () => storyShell(renderPaymentStateCard(paymentCardModelIntent)),
   },
   {
+    id: "lightning-l402-payment-card-paying",
+    title: "Lightning/L402 payment card (paying)",
+    kind: "molecule",
+    render: () => storyShell(renderPaymentStateCard(paymentCardModelPaying)),
+  },
+  {
     id: "lightning-l402-payment-card-paid",
     title: "Lightning/L402 payment card (paid)",
     kind: "molecule",
@@ -603,12 +632,28 @@ export const lightningStories: ReadonlyArray<Story> = [
     },
   },
   {
+    id: "lightning-l402-wallet-pane-offline",
+    title: "Lightning/L402 wallet pane (offline)",
+    kind: "organism",
+    render: () =>
+      storyShell(
+        html`<div class="h-[360px] rounded border border-white/15 overflow-hidden">${l402WalletPaneTemplate(samplePanePayments, {
+          walletOnline: false,
+          balanceSats: undefined,
+          statusNote: "desktop executor heartbeat stale",
+        })}</div>`,
+      ),
+  },
+  {
     id: "lightning-l402-wallet-pane-empty",
     title: "Lightning/L402 wallet pane (no attempts)",
     kind: "organism",
     render: () =>
       storyShell(
-        html`<div class="h-[360px] rounded border border-white/15 overflow-hidden">${l402WalletPaneTemplate([])}</div>`,
+        html`<div class="h-[360px] rounded border border-white/15 overflow-hidden">${l402WalletPaneTemplate([], {
+          walletOnline: true,
+          balanceSats: 1_250,
+        })}</div>`,
       ),
   },
   {
@@ -617,7 +662,10 @@ export const lightningStories: ReadonlyArray<Story> = [
     kind: "organism",
     render: () =>
       storyShell(
-        html`<div class="h-[360px] rounded border border-white/15 overflow-hidden">${l402WalletPaneTemplate(samplePanePayments)}</div>`,
+        html`<div class="h-[360px] rounded border border-white/15 overflow-hidden">${l402WalletPaneTemplate(samplePanePayments, {
+          walletOnline: true,
+          balanceSats: 9_420,
+        })}</div>`,
       ),
   },
   {
@@ -648,4 +696,3 @@ export const lightningStories: ReadonlyArray<Story> = [
       ),
   },
 ] as const
-
