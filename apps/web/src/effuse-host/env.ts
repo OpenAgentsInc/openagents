@@ -54,4 +54,11 @@ export type WorkerEnv = {
    * Fallback: if unset, Worker falls back to `OA_DSE_ADMIN_SECRET`.
    */
   readonly OA_AUTOPILOT_ADMIN_SECRET?: string
+
+  /**
+   * EP212 demo: external Lightning Labs L402 endpoints.
+   * These are resolved server-side so prompts do not need to embed URLs.
+   */
+  readonly OA_EP212_ENDPOINT_A_URL?: string
+  readonly OA_EP212_ENDPOINT_B_URL?: string
 }

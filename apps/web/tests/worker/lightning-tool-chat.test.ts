@@ -309,6 +309,32 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
     expect(String(finalized?.text ?? "")).toContain("Approval required");
   });
 
+  it("supports endpointPreset A (resolved by env) so prompts don't embed URLs", async () => {
+    resetState();
+    state.terminalMode = "blocked";
+
+    const request = new Request("http://example.com/api/autopilot/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        threadId: "thread-lightning-preset-a",
+        text: 'lightning_l402_fetch({"endpointPreset":"A","maxSpendMsats":1200})',
+      }),
+    });
+
+    const ctx = createExecutionContext();
+    const envWithAi = Object.assign(Object.create(env as any), {
+      AI: {},
+      OA_EP212_ENDPOINT_A_URL: "https://api.example.com/preset-a",
+    }) as any;
+    const response = await worker.fetch(request, envWithAi, ctx);
+    expect(response.status).toBe(200);
+    await waitOnExecutionContext(ctx);
+
+    expect(state.lightningCreateTaskCalls).toHaveLength(1);
+    expect(state.lightningCreateTaskCalls[0]?.request?.url).toBe("https://api.example.com/preset-a");
+  });
+
   it("invokes lightning_l402_fetch and completes with blocked terminal state when approval is disabled", async () => {
     resetState();
     state.terminalMode = "blocked";

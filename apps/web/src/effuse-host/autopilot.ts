@@ -22,6 +22,7 @@ import { TelemetryService } from "../effect/telemetry";
 import { layerDsePredictEnvForAutopilotRun, makeDseLmClientWithOpenRouterPrimary } from "./dse";
 import { getWorkerRuntime } from "./runtime";
 import { OA_REQUEST_ID_HEADER, formatRequestIdLogToken } from "./requestId";
+import { isEp212EndpointPreset, resolveEp212PresetUrl, sanitizeLightningHeadersForTask } from "./ep212Endpoints";
 import type { WorkerEnv } from "./env";
 import type {
   CreateRunResult,
@@ -720,6 +721,7 @@ const isCancelRequested = (input: {
   });
 
 const runLightningL402FetchTool = (input: {
+  readonly env: WorkerEnv;
   readonly convex: ConvexServiceApi;
   readonly requestId: string;
   readonly runId: string;
@@ -761,11 +763,73 @@ const runLightningL402FetchTool = (input: {
     }
     const decodedInput = inputDecodeExit.value;
     const requireApproval = decodedInput.requireApproval !== false;
+
+    const resolvedUrl = (() => {
+      if (isEp212EndpointPreset(decodedInput.endpointPreset)) {
+        const resolved = resolveEp212PresetUrl(decodedInput.endpointPreset, input.env);
+        if (!resolved.ok) {
+          return { ok: false as const, errorCode: resolved.errorCode, message: resolved.message };
+        }
+        return { ok: true as const, url: resolved.url, mode: "preset" as const };
+      }
+
+      const rawUrl = typeof decodedInput.url === "string" ? decodedInput.url.trim() : "";
+      if (!rawUrl) {
+        return { ok: false as const, errorCode: "invalid_input" as const, message: "Missing url or endpointPreset" };
+      }
+      try {
+        const parsed = new URL(rawUrl);
+        if (parsed.username || parsed.password) {
+          return { ok: false as const, errorCode: "invalid_input" as const, message: "URL must not include userinfo" };
+        }
+        return { ok: true as const, url: parsed.toString(), mode: "direct" as const };
+      } catch {
+        return { ok: false as const, errorCode: "invalid_input" as const, message: "Invalid url" };
+      }
+    })();
+
+    if (!resolvedUrl.ok) {
+      return {
+        validatedInput: decodedInput,
+        terminal: {
+          taskId: null,
+          status: "blocked" as const,
+          proofReference: null,
+          denyReason: resolvedUrl.message,
+          denyReasonCode: resolvedUrl.errorCode,
+          host: null,
+          maxSpendMsats:
+            typeof decodedInput.maxSpendMsats === "number" && Number.isFinite(decodedInput.maxSpendMsats)
+              ? decodedInput.maxSpendMsats
+              : null,
+          quotedAmountMsats: null,
+          paymentId: null,
+          amountMsats: null,
+          responseStatusCode: null,
+          responseContentType: null,
+          responseBytes: null,
+          responseBodyTextPreview: null,
+          responseBodySha256: null,
+          cacheHit: false,
+          paid: false,
+          cacheStatus: null,
+          paymentBackend: null,
+          approvalRequired: false,
+        } satisfies LightningToolTerminalResult,
+      };
+    }
+
+    const requestUrl = resolvedUrl.url;
+    const requestHeaders =
+      resolvedUrl.mode === "preset" ? undefined : sanitizeLightningHeadersForTask(decodedInput.headers);
+    const requestMethod = resolvedUrl.mode === "preset" ? "GET" : decodedInput.method;
+    const requestBody = resolvedUrl.mode === "preset" ? undefined : decodedInput.body;
+
     const requestForTask: Record<string, unknown> = {
-      url: decodedInput.url,
-      ...(typeof decodedInput.method === "string" ? { method: decodedInput.method } : {}),
-      ...(decodedInput.headers ? { headers: decodedInput.headers } : {}),
-      ...(typeof decodedInput.body === "string" ? { body: decodedInput.body } : {}),
+      url: requestUrl,
+      ...(typeof requestMethod === "string" ? { method: requestMethod } : {}),
+      ...(requestHeaders ? { headers: requestHeaders } : {}),
+      ...(typeof requestBody === "string" ? { body: requestBody } : {}),
       maxSpendMsats: decodedInput.maxSpendMsats,
       ...(typeof decodedInput.challengeHeader === "string" ? { challengeHeader: decodedInput.challengeHeader } : {}),
       ...(typeof decodedInput.forceRefresh === "boolean" ? { forceRefresh: decodedInput.forceRefresh } : {}),
@@ -832,7 +896,7 @@ const runLightningL402FetchTool = (input: {
           denyReasonCode: null,
           host: (() => {
             try {
-              return new URL(String(decodedInput.url)).host;
+              return new URL(String(requestUrl)).host;
             } catch {
               return null;
             }
@@ -1851,6 +1915,7 @@ const runAutopilotStream = (input: {
 
         if (toolName === LIGHTNING_L402_FETCH_TOOL_NAME) {
           const toolExecution = yield* runLightningL402FetchTool({
+            env: input.env,
             convex,
             requestId,
             runId: input.runId,
