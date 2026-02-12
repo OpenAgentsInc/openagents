@@ -2,6 +2,8 @@
 
 You have a Voltage node set up; this doc summarizes how it plugs into the OpenAgents L402 (seller/paywall) stack and where to configure it.
 
+**Single runbook for deploy, secrets, and operations:** `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md` (architecture, what was built, how to use, how to edit, where secrets live, troubleshooting). This doc focuses on Voltage-specific setup; the runbook is the master reference for the live gateway.
+
 ## 1. Where Voltage Fits in the Architecture
 
 From `docs/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` and `docs/lightning/20260212-0753-status.md`:
@@ -188,9 +190,9 @@ Alternative: run Aperture on **AWS** (e.g. ECS/Fargate or a single EC2) in the s
 
 Project **openagentsgemini** has been set up with:
 
-- **Secret Manager:** `l402-voltage-tls-cert`, `l402-voltage-invoice-macaroon`, `l402-aperture-config`.
+- **Secret Manager:** `l402-voltage-tls-cert`, `l402-voltage-invoice-macaroon`, `l402-aperture-config`, `l402-aperture-db-password`.
 - **Artifact Registry:** repo `l402` in `us-central1`; Aperture image built from source (Go 1.24) and pushed as `us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest`.
-- **Cloud Run:** service `l402-aperture` (region `us-central1`); deploy has so far failed with “container failed to start and listen on PORT” (see troubleshooting below).
+- **Cloud Run:** service `l402-aperture` (region `us-central1`); **live** at https://l402-aperture-157437760789.us-central1.run.app (Postgres backend). Previously failed with “container failed to start and listen on PORT” (see troubleshooting below).
 
 **Build Aperture image (linux/amd64 for Cloud Run):**
 
@@ -226,7 +228,7 @@ gcloud run deploy l402-aperture \
 
 **Fixes applied:** (1) Use `--command=/aperture` (full path; the binary is at `/aperture`). (2) Pass config via `--args=--configfile=/voltage-cfg/config.yaml` (Aperture reads the config file only when this flag is set). (3) Config must include at least one `services` entry (bootstrap placeholder) and correct `authenticator` paths.
 
-**Current blocker:** SQLite fails to open the database file on Cloud Run with “unable to open database file: out of memory (14)” (SQLite error 14 = CANTOPEN). Both `/tmp` and `/var/tmp` fail. Cloud Run’s filesystem may be read-only or otherwise prevent SQLite from creating the file. **Options:** (a) Use **Cloud SQL Postgres** and switch Aperture config to `dbbackend: postgres` (see plan §6.2), or (b) run Aperture on **GCE/GKE** with a writable volume, or (c) mount a writable volume (e.g. NFS/Filestore) if supported for your Cloud Run execution environment.
+**Resolved (Postgres):** SQLite had failed to open the database file on Cloud Run with “unable to open database file: out of memory (14)” (SQLite error 14 = CANTOPEN). Both `/tmp` and `/var/tmp` fail. Cloud Run’s filesystem may be read-only or otherwise prevent SQLite from creating the file. We use **Cloud SQL Postgres** (instance `l402-aperture-db`, user `aperture`, secret `l402-aperture-db-password`); config in `docs/lightning/scripts/aperture-voltage-config-postgres.yaml` with public IP and `requiressl: true`. Authorized network `0.0.0.0/0` is set for testing; prefer VPC/Private IP or Unix socket for production.
 
 **If the container fails to start:** Check logs for the failing revision:
 
@@ -245,6 +247,7 @@ docker run --rm -v /path/to/voltage-tls:/voltage-tls -v /path/to/voltage-mac:/vo
 
 ## 8. References in This Repo
 
+- **Deploy runbook (master reference):** `docs/lightning/L402_APERTURE_DEPLOY_RUNBOOK.md` – how the system works, what was built, where secrets live, how to use and edit, troubleshooting. No sensitive values; safe for the public repo.
 - **High-level plan (Voltage + GCP):** `docs/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` (§4–5, §6.2, §15).
 - **Staging reconcile:** `docs/lightning/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`; `apps/lightning-ops/scripts/staging-reconcile.sh`.
 - **What’s implemented:** `docs/lightning/20260212-0753-status.md`.
