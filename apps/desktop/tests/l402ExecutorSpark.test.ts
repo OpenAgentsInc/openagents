@@ -302,4 +302,138 @@ describe("desktop l402 executor spark flow", () => {
       { successBody: bigBody },
     )
   })
+
+  it.effect("uses persistent credential cache bridge when available (survives executor re-init)", () => {
+    const payCalls = { current: 0 }
+    const putCalls = { current: 0 }
+
+    const cache = new Map<string, { readonly credential: unknown; readonly expiresAtMs: number }>()
+    const toKey = (host: string, scope: string) => `${host.trim().toLowerCase()}::${scope.trim().toLowerCase()}`
+    const bridge = {
+      getByHost: async (input: { readonly host: string; readonly scope: string; readonly nowMs: number }) => {
+        const entry = cache.get(toKey(input.host, input.scope))
+        if (!entry) return { _tag: "miss" as const }
+        if (input.nowMs >= entry.expiresAtMs) return { _tag: "stale" as const, credential: entry.credential }
+        return { _tag: "hit" as const, credential: entry.credential }
+      },
+      putByHost: async (input: {
+        readonly host: string
+        readonly scope: string
+        readonly credential: unknown
+        readonly options?: { readonly ttlMs?: number }
+      }) => {
+        putCalls.current += 1
+        const ttlMs = Math.max(0, Math.floor(input.options?.ttlMs ?? 10 * 60 * 1000))
+        const issuedAtMs =
+          typeof (input.credential as { readonly issuedAtMs?: unknown } | null)?.issuedAtMs === "number"
+            ? Math.max(0, Math.floor((input.credential as { readonly issuedAtMs: number }).issuedAtMs))
+            : Date.now()
+        cache.set(toKey(input.host, input.scope), {
+          credential: input.credential,
+          expiresAtMs: issuedAtMs + ttlMs,
+        })
+      },
+      markInvalid: async (input: { readonly host: string; readonly scope: string }) => {
+        cache.delete(toKey(input.host, input.scope))
+      },
+      clearHost: async (input: { readonly host: string; readonly scope: string }) => {
+        cache.delete(toKey(input.host, input.scope))
+      },
+    }
+
+    const sparkGatewayLayer = Layer.succeed(
+      SparkWalletGatewayService,
+      SparkWalletGatewayService.of({
+        snapshot: () =>
+          Effect.succeed({
+            lifecycle: "connected",
+            network: "regtest",
+            apiKeyConfigured: true,
+            mnemonicStored: true,
+            identityPubkey: "spark-pub",
+            balanceSats: 5000,
+            tokenBalanceCount: 0,
+            lastSyncedAtMs: Date.now(),
+            lastPaymentId: null,
+            lastPaymentAtMs: null,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          }),
+        bootstrap: () => Effect.void,
+        refresh: () =>
+          Effect.succeed({
+            lifecycle: "connected",
+            network: "regtest",
+            apiKeyConfigured: true,
+            mnemonicStored: true,
+            identityPubkey: "spark-pub",
+            balanceSats: 5000,
+            tokenBalanceCount: 0,
+            lastSyncedAtMs: Date.now(),
+            lastPaymentId: null,
+            lastPaymentAtMs: null,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          }),
+        payInvoice: (request) =>
+          Effect.sync(() => {
+            payCalls.current += 1
+            return {
+              paymentId: `spark-pay-${payCalls.current}`,
+              amountMsats: Math.min(request.maxAmountMsats, 2500),
+              preimageHex: "ab".repeat(32),
+              paidAtMs: Date.now(),
+            }
+          }),
+      }),
+    )
+
+    const task = makeTask("https://seller.example.com/premium-persisted")
+
+    const withWindowHarness = <A, E, R>(program: Effect.Effect<A, E, R>) =>
+      Effect.acquireUseRelease(
+        Effect.sync(() => {
+          const g = globalThis as unknown as { window?: unknown }
+          const current = g.window
+          g.window = {
+            openAgentsDesktop: {
+              l402CredentialCache: bridge,
+            },
+          }
+          return current
+        }),
+        () => program,
+        (priorWindow) =>
+          Effect.sync(() => {
+            const g = globalThis as unknown as { window?: unknown }
+            if (priorWindow === undefined) {
+              delete g.window
+            } else {
+              g.window = priorWindow
+            }
+          }),
+      )
+
+    return withWindowHarness(
+      withFetchHarness(
+        Effect.gen(function* () {
+          const runOnce = () =>
+            Effect.gen(function* () {
+              const executor = yield* L402ExecutorService
+              return yield* executor.execute(task)
+            }).pipe(Effect.provide(Layer.provideMerge(L402ExecutorLive, sparkGatewayLayer)))
+
+          const first = yield* runOnce()
+          expect(first.status).toBe("paid")
+          expect(payCalls.current).toBe(1)
+          expect(putCalls.current).toBe(1)
+
+          const second = yield* runOnce()
+          expect(second.status).toBe("cached")
+          expect(payCalls.current).toBe(1)
+          expect(putCalls.current).toBe(1)
+        }),
+      ),
+    )
+  })
 })

@@ -71,6 +71,20 @@ type SparkInvoicePaymentResult = Readonly<{
   readonly paidAtMs: number;
 }>;
 
+type L402Credential = Readonly<{
+  readonly host: string;
+  readonly scope?: string | undefined;
+  readonly macaroon: string;
+  readonly preimageHex: string;
+  readonly amountMsats: number;
+  readonly issuedAtMs: number;
+}>;
+
+type L402CredentialCacheLookup =
+  | Readonly<{ readonly _tag: "miss" }>
+  | Readonly<{ readonly _tag: "hit"; readonly credential: L402Credential }>
+  | Readonly<{ readonly _tag: "stale"; readonly credential: L402Credential }>;
+
 declare global {
   interface Window {
     openAgentsDesktop?: {
@@ -113,6 +127,21 @@ declare global {
           readonly maxAmountMsats: number;
         }) => Promise<SparkInvoicePaymentResult>;
         readonly disconnect: () => Promise<void>;
+      };
+      readonly l402CredentialCache?: {
+        readonly getByHost: (input: {
+          readonly host: string;
+          readonly scope: string;
+          readonly nowMs: number;
+        }) => Promise<L402CredentialCacheLookup>;
+        readonly putByHost: (input: {
+          readonly host: string;
+          readonly scope: string;
+          readonly credential: L402Credential;
+          readonly options?: { readonly ttlMs?: number };
+        }) => Promise<void>;
+        readonly markInvalid: (input: { readonly host: string; readonly scope: string }) => Promise<void>;
+        readonly clearHost: (input: { readonly host: string; readonly scope: string }) => Promise<void>;
       };
     };
   }

@@ -16,6 +16,7 @@ import { Context, Effect, Layer } from "effect";
 import crypto from "node:crypto";
 
 import type { ExecutorTask } from "./model";
+import { CredentialCacheDesktopPersistentLayer } from "./l402CredentialCachePersistent";
 import { SparkWalletGatewayService } from "./sparkWalletGateway";
 
 const MAX_RESPONSE_PREVIEW_BYTES = 8_192;
@@ -156,19 +157,24 @@ export const L402ExecutorLive = Layer.effect(
   Effect.gen(function* () {
     const sparkWallet = yield* SparkWalletGatewayService;
 
+    const credentialCacheLayer =
+      typeof window !== "undefined" && window.openAgentsDesktop?.l402CredentialCache
+        ? CredentialCacheDesktopPersistentLayer
+        : CredentialCacheInMemoryLayer;
+
     const makeBaseDepsLayer = (
       invoicePayerLayer: Layer.Layer<InvoicePayerService, never, never>,
     ) =>
       Layer.mergeAll(
-      CredentialCacheInMemoryLayer,
-      makeSpendPolicyLayer({
-        defaultMaxSpendMsats: 5_000_000,
-        allowedHosts: [],
-        blockedHosts: [],
-      }),
-      LiveL402TransportLayer,
-      invoicePayerLayer,
-    );
+        credentialCacheLayer,
+        makeSpendPolicyLayer({
+          defaultMaxSpendMsats: 5_000_000,
+          allowedHosts: [],
+          blockedHosts: [],
+        }),
+        LiveL402TransportLayer,
+        invoicePayerLayer,
+      );
 
     const lndClientLayer = L402ClientLiveLayer.pipe(
       Layer.provide(
