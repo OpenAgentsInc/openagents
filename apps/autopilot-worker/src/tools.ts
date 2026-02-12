@@ -20,6 +20,9 @@ const HttpMethod = Schema.Literal("GET", "POST", "PUT", "PATCH", "DELETE");
 
 const L402CacheStatus = Schema.Literal("miss", "hit", "stale", "invalid");
 const L402PaymentBackend = Schema.Literal("spark", "lnd_deterministic");
+const L402EndpointPreset = Schema.Literal("A", "B").annotations({
+  description: "EP212 demo preset endpoints (resolved by openagents.com worker env).",
+});
 const LightningTaskStatus = Schema.Literal(
   "queued",
   "approved",
@@ -32,8 +35,11 @@ const LightningTaskStatus = Schema.Literal(
 );
 
 const L402FetchInput = Schema.Struct({
-  url: Schema.NonEmptyString.annotations({
-    description: "L402-protected endpoint URL."
+  endpointPreset: Schema.optional(L402EndpointPreset).annotations({
+    description: "Optional EP212 endpoint preset key (A/B). When provided, openagents.com resolves the URL via env.",
+  }),
+  url: Schema.optional(Schema.NonEmptyString).annotations({
+    description: "L402-protected endpoint URL. Optional when endpointPreset is provided."
   }),
   method: Schema.optional(HttpMethod),
   headers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
@@ -248,7 +254,7 @@ export const toolContracts = {
     description:
       "Queue an L402 paid fetch via the Lightning control-plane and wait for a terminal task status. This tool never executes wallet payment in the web worker directly.",
     usage:
-      "lightning_l402_fetch({ url, method?, headers?, body?, maxSpendMsats, challengeHeader?, forceRefresh?, scope?, cacheTtlMs?, requireApproval? }) -> task status + proof/deny fields (or queued + approvalRequired)",
+      "lightning_l402_fetch({ endpointPreset?, url?, method?, headers?, body?, maxSpendMsats, challengeHeader?, forceRefresh?, scope?, cacheTtlMs?, requireApproval? }) -> task status + proof/deny fields (or queued + approvalRequired)",
     input: L402FetchInput,
     output: L402FetchOutput,
   }),
