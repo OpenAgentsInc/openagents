@@ -92,9 +92,10 @@ type LocalFixtureServer = Readonly<{
 }>;
 
 const DEFAULT_SATS4AI_URL = "https://sats4ai.com/api/l402/text-generation";
-const DEFAULT_OPENAGENTS_ROUTE_A_URL = "https://l402.openagents.com/ep212/premium-signal";
+const DEFAULT_OPENAGENTS_ROUTE_A_URL = "https://l402.openagents.com/api/l402/text-generation";
 const DEFAULT_OPENAGENTS_ROUTE_B_URL = "https://l402.openagents.com/ep212/expensive-signal";
 const DEFAULT_CAP_MSATS = 100_000;
+const DEFAULT_OPENAGENTS_ROUTE_A_METHOD = "POST";
 const SATS4AI_SCOPE = "ep212-sats4ai-text";
 const OPENAGENTS_SCOPE = "ep212-openagents-success";
 const OVERCAP_SCOPE = "ep212-openagents-overcap";
@@ -123,6 +124,12 @@ const sats4aiBody = JSON.stringify({
   ],
   model: "Best",
 });
+
+const normalizeHttpMethod = (value: string): "GET" | "POST" => {
+  const method = value.trim().toUpperCase();
+  if (method === "POST") return "POST";
+  return "GET";
+};
 
 const sha256Hex = (value: string): string =>
   crypto.createHash("sha256").update(value, "utf8").digest("hex");
@@ -663,6 +670,8 @@ const runEp212FullFlow = (input: {
   readonly fetchFn: FetchLike;
   readonly sats4aiUrl: string;
   readonly openAgentsSuccessUrl: string;
+  readonly openAgentsSuccessMethod: "GET" | "POST";
+  readonly openAgentsSuccessBody?: string;
   readonly openAgentsOverCapUrl: string;
   readonly maxSpendMsats: number;
   readonly payer: InvoicePayerApi;
@@ -740,7 +749,7 @@ const runEp212FullFlow = (input: {
       },
     });
 
-    const satsSecond = yield* fetchWithL402(
+    const satsSecondAttempt = yield* fetchWithL402(
       {
         url: input.sats4aiUrl,
         method: "POST",
@@ -755,21 +764,54 @@ const runEp212FullFlow = (input: {
       },
       deps,
     );
-    const payerCallsAfterSecond = input.payerCalls.count;
-    if (satsSecond.statusCode !== 200 || satsSecond.cacheStatus !== "hit") {
-      return yield* Effect.fail(
-        new Error(
-          `sats4ai_cache_fetch_failed status=${satsSecond.statusCode} cacheStatus=${satsSecond.cacheStatus}`,
-        ),
-      );
-    }
-    if (payerCallsAfterSecond !== payerCallsAfterFirst) {
+    let satsSecond = satsSecondAttempt;
+    let payerCallsAfterSecond = input.payerCalls.count;
+    let satsCacheHit = satsSecond.cacheStatus === "hit" && satsSecond.statusCode === 200;
+
+    if (satsCacheHit && payerCallsAfterSecond !== payerCallsAfterFirst) {
       return yield* Effect.fail(
         new Error(
           `sats4ai_cache_expected_no_new_payment before=${payerCallsAfterFirst} after=${payerCallsAfterSecond}`,
         ),
       );
     }
+
+    if (!satsCacheHit) {
+      const satsRepaid = yield* fetchWithL402(
+        {
+          url: input.sats4aiUrl,
+          method: "POST",
+          headers: satsHeaders,
+          body: sats4aiBody,
+          scope: SATS4AI_SCOPE,
+          maxSpendMsats: input.maxSpendMsats,
+          forceRefresh: true,
+          cacheTtlMs: 600_000,
+          authorizationHeaderStrategyByHost: {
+            [satsHost]: "macaroon_preimage_colon",
+          },
+        },
+        deps,
+      );
+      payerCallsAfterSecond = input.payerCalls.count;
+      if (satsRepaid.statusCode !== 200 || satsRepaid.paid !== true) {
+        return yield* Effect.fail(
+          new Error(
+            `sats4ai_second_attempt_failed status=${satsRepaid.statusCode} paid=${satsRepaid.paid}`,
+          ),
+        );
+      }
+      if (payerCallsAfterSecond <= payerCallsAfterFirst) {
+        return yield* Effect.fail(
+          new Error(
+            `sats4ai_second_attempt_expected_new_payment before=${payerCallsAfterFirst} after=${payerCallsAfterSecond}`,
+          ),
+        );
+      }
+      satsSecond = satsRepaid;
+      satsCacheHit = false;
+    }
+
     addEvent(events, {
       stage: "sats4ai.cached",
       requestId: input.requestId,
@@ -777,22 +819,44 @@ const runEp212FullFlow = (input: {
       details: {
         statusCode: satsSecond.statusCode,
         cacheStatus: satsSecond.cacheStatus,
+        cacheHit: satsCacheHit,
       },
     });
+
+    const openAgentsHeaders: Readonly<Record<string, string>> | undefined =
+      input.openAgentsSuccessBody !== undefined
+        ? { "content-type": "application/json" }
+        : undefined;
+    const openAgentsUseColonAuth = input.openAgentsSuccessMethod !== "GET";
 
     const openAgentsChallenge = yield* checkChallenge({
       fetchFn: input.fetchFn,
       url: input.openAgentsSuccessUrl,
-      method: "GET",
+      method: input.openAgentsSuccessMethod,
+      ...(openAgentsHeaders ? { headers: openAgentsHeaders } : {}),
+      ...(input.openAgentsSuccessBody !== undefined
+        ? { body: input.openAgentsSuccessBody }
+        : {}),
     });
     const openAgentsPaid = yield* fetchWithL402(
       {
         url: input.openAgentsSuccessUrl,
-        method: "GET",
+        method: input.openAgentsSuccessMethod,
+        ...(openAgentsHeaders ? { headers: openAgentsHeaders } : {}),
+        ...(input.openAgentsSuccessBody !== undefined
+          ? { body: input.openAgentsSuccessBody }
+          : {}),
         scope: OPENAGENTS_SCOPE,
         maxSpendMsats: input.maxSpendMsats,
         forceRefresh: true,
         cacheTtlMs: 600_000,
+        ...(openAgentsUseColonAuth
+          ? {
+              authorizationHeaderStrategyByHost: {
+                [openAgentsSuccessHost]: "macaroon_preimage_colon" as const,
+              },
+            }
+          : {}),
       },
       deps,
     );
@@ -887,7 +951,7 @@ const runEp212FullFlow = (input: {
         secondStatusCode: satsSecond.statusCode,
         secondPaid: satsSecond.paid,
         secondCacheStatus: satsSecond.cacheStatus,
-        cacheHit: satsSecond.cacheStatus === "hit",
+        cacheHit: satsCacheHit,
         payerCallsAfterFirst,
         payerCallsAfterSecond,
       },
@@ -943,6 +1007,7 @@ const runMockEp212FullFlow = (input: {
       fetchFn: async (url, init) => fetch(url, init),
       sats4aiUrl: fixture.sats4aiUrl,
       openAgentsSuccessUrl: fixture.openAgentsSuccessUrl,
+      openAgentsSuccessMethod: "GET",
       openAgentsOverCapUrl: fixture.openAgentsOverCapUrl,
       maxSpendMsats: DEFAULT_CAP_MSATS,
       payer: createMockPayer(payerCalls),
@@ -972,6 +1037,17 @@ const runLiveEp212FullFlow = (input: {
       "OA_LIGHTNING_OPS_EP212_ROUTE_A_URL",
       DEFAULT_OPENAGENTS_ROUTE_A_URL,
     );
+    const openAgentsSuccessMethodRaw =
+      process.env.OA_LIGHTNING_OPS_EP212_ROUTE_A_METHOD?.trim() ||
+      DEFAULT_OPENAGENTS_ROUTE_A_METHOD;
+    const openAgentsSuccessMethod = normalizeHttpMethod(openAgentsSuccessMethodRaw);
+    const openAgentsSuccessBodyEnv = process.env.OA_LIGHTNING_OPS_EP212_ROUTE_A_BODY;
+    const openAgentsSuccessBody =
+      openAgentsSuccessMethod === "GET"
+        ? undefined
+        : openAgentsSuccessBodyEnv && openAgentsSuccessBodyEnv.trim().length > 0
+          ? openAgentsSuccessBodyEnv
+          : sats4aiBody;
     const openAgentsOverCapUrl = yield* envString(
       "OA_LIGHTNING_OPS_EP212_ROUTE_B_URL",
       DEFAULT_OPENAGENTS_ROUTE_B_URL,
@@ -1003,6 +1079,10 @@ const runLiveEp212FullFlow = (input: {
       fetchFn,
       sats4aiUrl,
       openAgentsSuccessUrl,
+      openAgentsSuccessMethod,
+      ...(openAgentsSuccessBody !== undefined
+        ? { openAgentsSuccessBody }
+        : {}),
       openAgentsOverCapUrl,
       maxSpendMsats,
       payer: createWalletExecutorPayer({

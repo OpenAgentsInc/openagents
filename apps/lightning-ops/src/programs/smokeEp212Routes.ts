@@ -56,6 +56,15 @@ const MOCK_ROUTE_A_AMOUNT_MSATS = 70_000
 const MOCK_ROUTE_B_AMOUNT_MSATS = 250_000
 const ROUTE_A_SCOPE = "ep212-route-a"
 const ROUTE_B_SCOPE = "ep212-route-b"
+const DEFAULT_ROUTE_A_METHOD = "GET"
+const DEFAULT_ROUTE_A_BODY = JSON.stringify({
+  input: [
+    { role: "User", content: "Tell me a story of a bird" },
+    { role: "Assistant", content: "Once upon a time, there was a little bird who loved to sing..." },
+    { role: "User", content: "What happened next?" },
+  ],
+  model: "Best",
+})
 
 const sha256Hex = (value: string): string => crypto.createHash("sha256").update(value, "utf8").digest("hex")
 
@@ -84,6 +93,12 @@ const envInt = (key: string, fallback: number): Effect.Effect<number, ConfigErro
       })
     }),
   )
+
+const normalizeHttpMethod = (value: string): "GET" | "POST" => {
+  const method = value.trim().toUpperCase()
+  if (method === "POST") return "POST"
+  return "GET"
+}
 
 const authorizationFromHeaders = (headers: Headers | Record<string, string> | undefined): string | null => {
   if (!headers) return null
@@ -123,9 +138,22 @@ const parseChallengeFromResponse = (response: Response) =>
     }
   })
 
-const checkChallenge = (fetchFn: FetchLike, url: string) =>
+const checkChallenge = (input: {
+  readonly fetchFn: FetchLike
+  readonly url: string
+  readonly method?: string
+  readonly body?: string
+  readonly headers?: Readonly<Record<string, string>>
+}) =>
   Effect.tryPromise({
-    try: () => fetchFn(url, { method: "GET" }),
+    try: () => {
+      const init: RequestInit = {
+        method: input.method ?? "GET",
+      }
+      if (input.headers) init.headers = input.headers
+      if (input.body !== undefined) init.body = input.body
+      return input.fetchFn(input.url, init)
+    },
     catch: (error) => new Error(String(error)),
   }).pipe(Effect.flatMap(parseChallengeFromResponse))
 
@@ -415,6 +443,8 @@ const runEp212Smoke = (input: {
   readonly fetchFn: FetchLike
   readonly routeAUrl: string
   readonly routeBUrl: string
+  readonly routeAMethod: "GET" | "POST"
+  readonly routeABody?: string
   readonly maxSpendMsats: number
   readonly payer: InvoicePayerApi
   readonly payerCalls: { count: number }
@@ -423,6 +453,8 @@ const runEp212Smoke = (input: {
   Effect.gen(function* () {
     const routeAHost = new URL(input.routeAUrl).host.toLowerCase()
     const routeBHost = new URL(input.routeBUrl).host.toLowerCase()
+    const routeAHeaders: Readonly<Record<string, string>> | undefined =
+      input.routeABody !== undefined ? { "content-type": "application/json" } : undefined
     const deps = createL402Deps({
       fetchFn: input.fetchFn,
       payer: input.payer,
@@ -430,15 +462,30 @@ const runEp212Smoke = (input: {
       allowedHosts: [routeAHost, routeBHost],
     })
 
-    const routeAChallenge = yield* checkChallenge(input.fetchFn, input.routeAUrl)
+    const routeAChallenge = yield* checkChallenge({
+      fetchFn: input.fetchFn,
+      url: input.routeAUrl,
+      method: input.routeAMethod,
+      ...(routeAHeaders ? { headers: routeAHeaders } : {}),
+      ...(input.routeABody !== undefined ? { body: input.routeABody } : {}),
+    })
     const routeAResult = yield* fetchWithL402(
       {
         url: input.routeAUrl,
-        method: "GET",
+        method: input.routeAMethod,
+        ...(routeAHeaders ? { headers: routeAHeaders } : {}),
+        ...(input.routeABody !== undefined ? { body: input.routeABody } : {}),
         scope: ROUTE_A_SCOPE,
         maxSpendMsats: input.maxSpendMsats,
         forceRefresh: true,
         cacheTtlMs: 120_000,
+        ...(input.routeAMethod !== "GET"
+          ? {
+              authorizationHeaderStrategyByHost: {
+                [routeAHost]: "macaroon_preimage_colon" as const,
+              },
+            }
+          : {}),
       },
       deps,
     )
@@ -453,7 +500,11 @@ const runEp212Smoke = (input: {
     const routeAResponseBytes = Buffer.byteLength(routeABody, "utf8")
     const routeAResponseSha256 = sha256Hex(routeABody)
 
-    const routeBChallenge = yield* checkChallenge(input.fetchFn, input.routeBUrl)
+    const routeBChallenge = yield* checkChallenge({
+      fetchFn: input.fetchFn,
+      url: input.routeBUrl,
+      method: "GET",
+    })
     if (typeof routeBChallenge.amountMsats !== "number") {
       return yield* Effect.fail(new Error("route B challenge missing amount_msats"))
     }
@@ -536,6 +587,7 @@ const runMockEp212RoutesSmoke = (requestId: string) => {
     fetchFn: createMockFetch(),
     routeAUrl: MOCK_ROUTE_A_URL,
     routeBUrl: MOCK_ROUTE_B_URL,
+    routeAMethod: "GET",
     maxSpendMsats: MOCK_CAP_MSATS,
     payer: createMockPayer(calls),
     payerCalls: calls,
@@ -547,6 +599,15 @@ const runLiveEp212RoutesSmoke = (requestId: string) =>
   Effect.gen(function* () {
     const routeAUrl = yield* envString("OA_LIGHTNING_OPS_EP212_ROUTE_A_URL", MOCK_ROUTE_A_URL)
     const routeBUrl = yield* envString("OA_LIGHTNING_OPS_EP212_ROUTE_B_URL", MOCK_ROUTE_B_URL)
+    const routeAMethodRaw = process.env.OA_LIGHTNING_OPS_EP212_ROUTE_A_METHOD?.trim() || DEFAULT_ROUTE_A_METHOD
+    const routeAMethod = normalizeHttpMethod(routeAMethodRaw)
+    const routeABodyEnv = process.env.OA_LIGHTNING_OPS_EP212_ROUTE_A_BODY
+    const routeABody =
+      routeAMethod === "GET"
+        ? undefined
+        : routeABodyEnv && routeABodyEnv.trim().length > 0
+          ? routeABodyEnv
+          : DEFAULT_ROUTE_A_BODY
     const maxSpendMsats = yield* envInt("OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS", MOCK_CAP_MSATS)
     const walletExecutorBaseUrl = yield* envString("OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL")
     const walletExecutorAuthTokenRaw = process.env.OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN?.trim()
@@ -563,6 +624,8 @@ const runLiveEp212RoutesSmoke = (requestId: string) =>
       fetchFn,
       routeAUrl,
       routeBUrl,
+      routeAMethod,
+      ...(routeABody !== undefined ? { routeABody } : {}),
       maxSpendMsats,
       payer: createWalletExecutorPayer({
         fetchFn,
