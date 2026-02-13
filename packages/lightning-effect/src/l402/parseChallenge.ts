@@ -3,11 +3,65 @@ import { Effect } from "effect"
 import { decodeL402Challenge } from "../contracts/l402.js"
 import { ChallengeParseError } from "../errors/lightningErrors.js"
 
-const challengePrefix = /^L402(?:\s+|$)/i
+const challengePrefix = /^(?:L402|LSAT)(?:\s+|$)/i
 const integerPattern = /^(0|[1-9][0-9]*)$/
 
 const toParseError = (header: string, reason: string): ChallengeParseError =>
   ChallengeParseError.make({ header, reason })
+
+type ChallengeSegment = Readonly<{
+  scheme: "L402" | "LSAT"
+  delimiterIndex: number
+  start: number
+}>
+
+const extractSupportedChallengeSegment = (
+  header: string,
+): Effect.Effect<string, ChallengeParseError> =>
+  Effect.gen(function* () {
+    const trimmed = header.trim()
+    if (trimmed.length === 0) {
+      return yield* toParseError(header, "Expected an L402 challenge header")
+    }
+
+    const matcher = /(^|,\s*)(L402|LSAT)\s+/gi
+    const segments: Array<ChallengeSegment> = []
+    let match: RegExpExecArray | null = matcher.exec(trimmed)
+    while (match) {
+      const delimiter = match[1] ?? ""
+      const schemeRaw = (match[2] ?? "").toUpperCase()
+      const scheme = schemeRaw === "L402" ? "L402" : "LSAT"
+      segments.push({
+        scheme,
+        delimiterIndex: match.index,
+        start: match.index + delimiter.length,
+      })
+      match = matcher.exec(trimmed)
+    }
+
+    if (segments.length === 0) {
+      return yield* toParseError(header, "Expected an L402 challenge header")
+    }
+
+    const preferred =
+      segments.find((segment) => segment.scheme === "L402") ??
+      segments[0]
+    if (!preferred) {
+      return yield* toParseError(header, "Expected an L402 challenge header")
+    }
+
+    const preferredIndex = segments.findIndex(
+      (segment) => segment.start === preferred.start,
+    )
+    const nextSegment = segments[preferredIndex + 1]
+    const end = nextSegment ? nextSegment.delimiterIndex : trimmed.length
+    const challengeSegment = trimmed.slice(preferred.start, end).trim()
+    if (challengeSegment.length === 0 || !challengePrefix.test(challengeSegment)) {
+      return yield* toParseError(header, "Expected an L402 challenge header")
+    }
+
+    return challengeSegment
+  })
 
 const splitAttributeEntries = (header: string, rawAttributes: string): Effect.Effect<Array<string>, ChallengeParseError> =>
   Effect.gen(function* () {
@@ -148,12 +202,9 @@ const parseAmountMsats = (header: string, attrs: Record<string, string>): Effect
   })
 
 export const parseChallengeHeader = Effect.fn("l402.parseChallengeHeader")(function* (header: string) {
-  const trimmed = header.trim()
-  if (!trimmed || !challengePrefix.test(trimmed)) {
-    return yield* toParseError(header, "Expected an L402 challenge header")
-  }
+  const challengeHeader = yield* extractSupportedChallengeSegment(header)
 
-  const attributesPart = trimmed.replace(challengePrefix, "").trim()
+  const attributesPart = challengeHeader.replace(challengePrefix, "").trim()
   const entries = yield* splitAttributeEntries(header, attributesPart)
   const attrs = yield* parseAttributeEntries(header, entries)
 

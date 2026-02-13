@@ -23,6 +23,30 @@ describe("l402 parser and serializer", () => {
     }),
   )
 
+  it.effect("parses LSAT challenge scheme as L402-compatible", () =>
+    Effect.gen(function* () {
+      const challenge = yield* parseChallengeHeader(
+        'LSAT invoice="lnbcrt1invoice", macaroon="AgEDbWFjYXJvb24=", amount_msats=2500',
+      )
+
+      expect(challenge.invoice).toBe("lnbcrt1invoice")
+      expect(challenge.macaroon).toBe("AgEDbWFjYXJvb24=")
+      expect(challenge.amountMsats).toBe(2500)
+    }),
+  )
+
+  it.effect("parses combined auth header and prefers explicit L402 challenge", () =>
+    Effect.gen(function* () {
+      const challenge = yield* parseChallengeHeader(
+        'LSAT macaroon="legacy", invoice="lnlegacy", L402 macaroon="mac_new", invoice="ln_new", amount_msats=700',
+      )
+
+      expect(challenge.invoice).toBe("ln_new")
+      expect(challenge.macaroon).toBe("mac_new")
+      expect(challenge.amountMsats).toBe(700)
+    }),
+  )
+
   it.effect("rejects malformed headers deterministically", () =>
     Effect.gen(function* () {
       const malformed = yield* Effect.either(
