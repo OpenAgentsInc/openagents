@@ -1,6 +1,6 @@
 # EP212 Demo Plan: L402 Buying on openagents.com (Agent Wallet + sats4ai + OpenAgents Aperture)
 
-Status: In progress (GCP LND liquidity bootstrapped; product wiring still in progress)
+Status: In progress (EP212 buyer UX implemented; GCP LND liquidity bootstrapped; seller gateway migration still in progress)
 Date: 2026-02-12
 Last updated: 2026-02-14
 Owner: OpenAgents
@@ -11,6 +11,7 @@ Current GCP node foundation + liquidity bootstrap:
 
 - Plan/runbook: `docs/lightning/plans/GCP_BITCOIND_LND_2VM_PLAN.md`
 - Liquidity + E2E L402 payment log: `docs/lightning/status/20260214-ep212-liquidity-bootstrap-log.md`
+- Wallet executor deploy log (Spark buyer wallet): `docs/lightning/status/20260212-wallet-executor-cloudrun-deploy-log.md`
 
 ## 0. Current Reality Check (2026-02-14)
 
@@ -24,11 +25,37 @@ What is true *right now* (verified):
    - Initial `402` challenge contained an invoice + macaroon.
    - We paid the invoice via `lncli payinvoice`.
    - We retried with `Authorization: L402 <macaroon>:<preimage>` and got `200 OK`.
+4. EP212 buyer-side product plumbing exists (implemented in prior issues):
+   - Server-side Spark wallet executor is deployed (Cloud Run) and can pay BOLT11 invoices and return preimages.
+   - `openagents.com` Worker has a Lightning L402 executor that uses that wallet executor for payment.
+   - Autopilot tool `lightning_l402_fetch` has approval gating + receipts, and UI panes/Storybook states exist.
 
 What is *not yet* true (still work to do for the episode UX):
 
-1. The above is not yet wired into `openagents.com` chat as an Autopilot capability with approvals + receipts shown in panes.
-2. Our `l402.openagents.com` gateway needs to be migrated to use the new GCP LND backend (and have stable EP212 demo routes).
+1. The above is not yet re-validated end-to-end in **production UI** using the self-hosted GCP LND-backed gateway (tool -> approval -> payment -> panes).
+2. Our `l402.openagents.com` gateway still needs to be migrated to use the new GCP `oa-lnd` backend (no Voltage).
+
+## 0.2 What’s Already Implemented (Closed Issues)
+
+These were completed on 2026-02-12 and are available to reuse; they should not be rebuilt:
+
+- #1626: server-side Spark wallet executor (agent-owned)
+- #1627: `lightning-effect` compatibility for sats4ai L402 auth header
+- #1628: Autopilot `lightning_l402_fetch` via wallet executor with approval + receipts
+- #1629: openagents.com wallet/transactions panes + L402 Storybook states
+- #1630: Aperture EP212 demo routes on `l402.openagents.com` (Voltage-backed at the time)
+- #1631: deterministic EP212 full-flow L402 harness + CI gate (`apps/lightning-ops`)
+
+## 0.3 Remaining Blockers For Recording EP212
+
+1. Migrate `l402.openagents.com` Aperture from Voltage LND to GCP `oa-lnd` (tracked in #1632).
+2. Confirm seller-side liquidity is sufficient to receive EP212 payments (inbound >= price).
+3. Ensure buyer wallet (`l402-wallet-executor`, Spark) is funded enough for:
+   - sats4ai L402 purchase
+   - OpenAgents Aperture L402 purchase
+4. Run the live smoke harness against production and fix any failures (tracked in #1633):
+   - `cd apps/lightning-ops && npm run smoke:ep212-full-flow -- --json --mode live`
+5. Do a full rehearsal in the `openagents.com` UI and verify panes show the receipts.
 
 ## 1. Demo Goal
 
@@ -53,8 +80,8 @@ EP212 framing:
 3. Demo runs through `openagents.com` chat UX (not a standalone CLI-only demo).
 4. **No desktop dependency for EP212**: payment execution runs in OpenAgents infra, not on the viewer’s machine.
 5. Autopilot uses an **agent-owned wallet** with secrets stored in an OpenAgents secret manager.
-   - Current baseline for EP212: **GCP `oa-lnd` wallet** (seed + macaroons in Secret Manager; execution via a narrow wallet-executor API).
-   - Spark/Breez can remain an alternate backend, but is no longer required for the episode.
+   - Buyer wallet baseline for EP212: **Spark** (via `apps/lightning-wallet-executor` on Cloud Run; mnemonic in Secret Manager; returns preimages for L402).
+   - Seller wallet baseline for EP212: **GCP `oa-lnd`** (Aperture uses it to issue/verify invoices; requires inbound liquidity).
 6. Show **live wallet balance** on screen during the chat (wallet status).
 7. Consume at least two L402 endpoints:
    - Third-party: `sats4ai.com` (text generation).
@@ -141,11 +168,11 @@ Design constraint:
    - Stores durable receipts/logs for UI replay (payment attempts, cache hit/miss, policy decisions).
    - Stores agent wallet “status snapshot” rows used by panes (balance, last payment, last error).
 4. **Agent wallet executor** (new service; server-side)
-   - **Revised:** for EP212, the simplest executor is an **LND wallet executor** (Cloud Run) that:
-     - talks to `oa-lnd` over gRPC via Serverless VPC Access,
-     - pays BOLT11 invoices and returns the preimage,
-     - provides wallet/channel status for UI panes.
-   - Spark remains a future/alternate executor backend.
+   - Current baseline: **Spark wallet executor** (Cloud Run) that:
+     - pays BOLT11 invoices and returns preimages,
+     - provides wallet status for UI panes,
+     - enforces basic allowlist + caps (defense in depth).
+   - LND wallet executor remains a future/alternate executor backend (and would require a separate LND wallet from the seller node).
 5. Third-party L402 seller: `sats4ai.com`
    - Paid endpoint: `https://sats4ai.com/api/l402/text-generation`
 6. **OpenAgents L402 gateway** (seller/paywall)
@@ -302,50 +329,31 @@ Expected:
 
 ## Phase 1: Wallet executor service (Day 1)
 
-1. Create (or finalize) a server-side wallet executor written in Effect.
-2. For EP212, use **LND as the wallet backend** (already live on GCP).
-3. Store macaroon material + TLS cert in secret manager (one wallet for EP212; extend to more agents later).
-3. Expose minimal RPC endpoints:
-   - `GET /status` (balance + last payments)
-   - `POST /pay-bolt11` (returns preimage)
-   - Optional combined: `POST /l402/fetch` (runs 402->pay->retry in one place)
-4. Add rate limits and caps in-service (defense in depth).
+Done (Spark wallet executor): see #1626 and `docs/lightning/runbooks/L402_WALLET_EXECUTOR_DEPLOY_RUNBOOK.md`.
 
 ## Phase 2: L402 header compatibility for sats4ai (Day 1-2)
 
-1. Support `Authorization: L402 <macaroon>:<preimage>` for `sats4ai.com`.
-2. Keep spec form working: `Authorization: L402 macaroon="...", preimage="..."`
-3. Add deterministic unit tests.
+Done: see #1627.
 
 ## Phase 3: Autopilot tool + receipts (Day 2-3)
 
-1. Tool `lightning_l402_fetch`:
-   - enforce `maxSpendSats`
-   - enforce allowlist
-   - require user approval before paying
-2. Execute paid fetch using the server-side wallet executor (LND backend).
-3. Persist receipts + wallet snapshot rows into Convex for UI.
+Done: see #1628.
 
 ## Phase 4: Web UI panes + Storybook (Day 3-4)
 
-1. Wallet pane shows wallet balance + last payment summary.
-2. Transactions pane shows last N L402 attempts (domain, sats, status, cache hit).
-3. Payment detail pane shows invoice + quoted cost + cap + response hash/preview.
-4. Add Storybook stories for all key states (offline, paying, paid, cached, blocked, failed).
+Done: see #1629.
 
 ## Phase 5: OpenAgents Aperture demo routes (Day 4-5)
 
-1. Stand up a tiny upstream “premium payload” service (Cloud Run ok).
-2. Configure Aperture routes on `l402.openagents.com`:
-   - B1 under cap: returns premium JSON
-   - B2 over cap: same upstream, higher price
-3. Validate end-to-end (challenge → pay → proxy).
+Partially done (Voltage-backed at the time): see #1630.
+
+Remaining: migrate Aperture to use **GCP `oa-lnd`** and re-validate the same routes.
 
 ## Phase 6: Rehearsal + deterministic test harness (Day 5-6)
 
-1. Add a local L402 test server that can emulate sats4ai’s header expectations.
-2. Add a smoke script that runs the EP212 sequence programmatically.
-3. Rehearse on production with real sats4ai + `l402.openagents.com` routes.
+Done (harness): see #1631.
+
+Remaining: re-run **live mode** against the migrated gateway + funded buyer wallet and capture artifacts for recording day.
 
 Primary command for this phase:
 
@@ -354,56 +362,30 @@ Primary command for this phase:
 
 ## 8. GitHub Issue Breakdown (EP212 Scope)
 
-## Epic: EP212 L402 Buying Demo (Agent-Owned Wallet; LND backend)
+## Epic: EP212 L402 Buying Demo (Spark buyer wallet + GCP LND seller gateway)
 
 This epic tracks everything needed to do the demo entirely inside `openagents.com` without a desktop payer, using:
 
 - third-party L402: `sats4ai.com`
 - OpenAgents seller gateway: Aperture + GCP LND (`l402.openagents.com`)
 
-### Issue A: Add server-side wallet executor (agent-owned; LND backend)
+### Done (Previous Phases)
 
-Create a new Effect service (Cloud Run or equivalent Node runtime) that talks to `oa-lnd` (gRPC, macaroons, TLS) and exposes a minimal API for balance + paying BOLT11 invoices. It must implement hard spend caps and allowlists defensively.
+The EP212 buyer-side implementation is already complete (Spark buyer wallet + tools + panes + harness):
 
-This issue is complete when `apps/web` (Worker) can query wallet status and pay a BOLT11 invoice via the executor without any browser-exposed secrets.
+- #1626, #1627, #1628, #1629, #1631
 
-### Issue B: `lightning-effect` sats4ai header compatibility
+### Remaining (New Work)
 
-Update `packages/lightning-effect` to support sats4ai’s authorization header format (`Authorization: L402 <macaroon>:<preimage>`) while keeping the spec key/value format working. Add deterministic tests, and make the behavior host-configurable (do not guess globally).
+We still need to make the seller/paywall side match the new self-hosted GCP LND foundation:
 
-### Issue C: Autopilot tool `lightning_l402_fetch` uses the wallet executor
+1. Migrate Aperture (seller gateway) from Voltage LND -> GCP `oa-lnd` (no Voltage). Tracked in #1632.
+2. Re-run and pass live smoke + production UI rehearsal for both:
+   - third-party sats4ai paid call
+   - OpenAgents `l402.openagents.com` paid route + over-cap deny
+   Tracked in #1633.
 
-Wire the tool path so paid fetch runs entirely server-side using the agent wallet executor:
-
-- approval gating
-- allowlist + cap enforcement
-- response body capture (bounded) + receipts persisted to Convex for panes
-
-### Issue D: Wallet + transactions panes (plus Storybook stories)
-
-Implement L402-focused panes using the existing `effuse-panes` integration in `openChatPaneController`: a persistent wallet pane (`l402-wallet`), a persistent transactions pane (`l402-transactions`), and on-demand payment detail panes (`l402-payment-*`). Pane creation/open/close should follow existing `store.addPane`/`store.togglePane` + `calculateNewPanePosition` patterns used by metadata/telemetry panes.
-
-This issue should also add trigger controls (chat title actions and/or message-level buttons), while preserving current overlay behavior (closing non-chat panes does not dismiss overlay). It is complete when the three pane types can be opened reliably and render L402-specific data from the same source used by chat.
-
-### Issue E: OpenAgents Aperture demo routes + upstream premium backend (GCP LND backend)
-
-Deploy a small upstream premium backend and configure Aperture routes on `l402.openagents.com` for:
-
-- under-cap success
-- over-cap block
-
-Validate end-to-end against **GCP LND** (invoice issuance + settlement).
-
-### Issue F: Deterministic test harness + smoke script for the full EP212 flow
-
-Create a deterministic programmatic harness that exercises:
-
-- sats4ai-like L402 (local test server with same header behavior)
-- OpenAgents gateway route (staging/prod smoke)
-
-and gates CI on “no regressions” for L402 buying.
-
-Add a rehearsal checklist for recording day.
+When both are complete, close out this “Remaining” section and mark the plan as recording-ready.
 
 ## 9. Demo Acceptance Criteria
 
