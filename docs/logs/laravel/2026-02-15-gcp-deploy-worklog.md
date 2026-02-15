@@ -577,3 +577,76 @@ curl -i https://openagents-web-157437760789.us-central1.run.app/
 ```
 
 Both returned HTTP 200.
+
+## 2026-02-15: Phase 3 (Tool framework + basic tools)
+
+### Goal
+
+Introduce a stable tool surface and begin capturing tool receipts in `run_events`.
+
+### Code changes
+
+Server-side tools:
+
+- `apps/openagents.com/app/AI/Tools/GetTimeTool.php`
+  - Name: `get_time`
+  - Returns ISO-8601 UTC timestamp
+- `apps/openagents.com/app/AI/Tools/EchoTool.php`
+  - Name: `echo`
+  - Echoes input text
+- `apps/openagents.com/app/AI/Tools/ToolRegistry.php`
+  - Single place to enumerate tools exposed to the agent
+
+Agent wiring:
+
+- `apps/openagents.com/app/AI/Agents/AutopilotAgent.php` now implements `HasTools` and returns the registry.
+
+Receipt logging:
+
+- `apps/openagents.com/app/AI/RunOrchestrator.php` now records tool call receipts into `run_events`:
+  - `tool_call_started` includes `tool_call_id`, `tool_name`, `params_hash`
+  - `tool_call_succeeded|tool_call_failed` includes `output_hash`, `latency_ms`, and error (if any)
+- Hashes are deterministic:
+  - `params_hash = sha256(canonical_json(arguments))`
+  - `output_hash = sha256(canonical_json(result))`
+
+UI:
+
+- `apps/openagents.com/resources/js/pages/chat.tsx` now renders tool parts in the transcript.
+  - Compact tool line is always visible.
+  - Full input/output JSON is behind a `<details>` collapsible.
+
+Tests:
+
+- `apps/openagents.com/tests/Feature/ToolEventsTest.php` constructs a synthetic `StreamableAgentResponse` with tool events and asserts:
+  - Vercel tool stream markers are emitted
+  - `run_events` receipts include the correct deterministic hashes
+
+### Local verification
+
+```bash
+cd apps/openagents.com
+composer test
+npm run lint
+npm run types
+npm run build
+```
+
+### Commit
+
+- `01282842a` apps(openagents.com): add tool framework + basic tools
+
+### Cloud Build
+
+Example build ID:
+
+- `7002063f-2559-4536-a04a-dca8462dd312`
+
+Image tag:
+
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:01282842a`
+
+### Cloud Run deploy
+
+- Revision: `openagents-web-00004-hhm`
+- URL: `https://openagents-web-157437760789.us-central1.run.app`
