@@ -275,12 +275,43 @@ export const ChatServiceLive = Layer.effect(
                 ...(finish ? { finish } : {}),
                 ...(m.runId ? { runId: m.runId } : {}),
               } as const;
-              if (active && active.parts.length > 0) {
-                messages.push({ ...baseMsg, parts: [...active.parts] });
-              } else if (m.text.trim()) {
+              const activeParts = active?.parts ?? [];
+              const messageText = m.text;
+              const hasMessageText = messageText.trim().length > 0;
+              const activeText = activeParts
+                .filter((p) => p?.type === "text" && typeof (p as any).text === "string")
+                .map((p) => String((p as any).text ?? ""))
+                .join("");
+              const hasActiveText = activeText.trim().length > 0;
+
+              if (activeParts.length > 0) {
+                // The Worker streams parts into `messageParts`, and also finalizes `messages.text` as a durable fallback.
+                // If we received non-text parts (or an empty text-start) but did not receive a user-visible text delta,
+                // prefer the finalized `messages.text` so the UI never renders an empty assistant bubble.
+                if (hasMessageText && m.status !== "streaming") {
+                  // If the streamed text doesn't match the finalized message text, replace it.
+                  // This also covers the case where appendParts failed after we already computed the final text.
+                  if (activeText.trim() !== messageText.trim()) {
+                    const withoutText = activeParts.filter((p) => p?.type !== "text");
+                    messages.push({
+                      ...baseMsg,
+                      parts: [...withoutText, { type: "text", text: messageText, state: "done" }],
+                    });
+                  } else {
+                    messages.push({ ...baseMsg, parts: [...activeParts] });
+                  }
+                } else if (hasMessageText && !hasActiveText) {
+                  messages.push({
+                    ...baseMsg,
+                    parts: [...activeParts, { type: "text", text: messageText, state: "done" }],
+                  });
+                } else {
+                  messages.push({ ...baseMsg, parts: [...activeParts] });
+                }
+              } else if (hasMessageText) {
                 messages.push({
                   ...baseMsg,
-                  parts: [{ type: "text", text: m.text, state: "done" }],
+                  parts: [{ type: "text", text: messageText, state: "done" }],
                 });
               } else {
                 messages.push({ ...baseMsg, parts: [] });
