@@ -2,7 +2,7 @@ import * as AiLanguageModel from "@effect/ai/LanguageModel";
 import * as AiPrompt from "@effect/ai/Prompt";
 import * as AiResponse from "@effect/ai/Response";
 import * as AiToolkit from "@effect/ai/Toolkit";
-import { Cause, Effect, Layer, Schema, Stream } from "effect";
+import { Cause, Effect, Layer, Schema, Schedule, Stream } from "effect";
 
 import { makeWorkersAiLanguageModel } from "../../../autopilot-worker/src/effect/ai/languageModel";
 import { makeOpenRouterLanguageModel } from "../../../autopilot-worker/src/effect/ai/openRouterLanguageModel";
@@ -171,8 +171,6 @@ const activeRuns = new Map<string, RunHandle>();
 const emptyToolkit = AiToolkit.make();
 const encodeStreamPart = Schema.encodeSync(AiResponse.StreamPart(emptyToolkit));
 
-const shouldIgnoreWirePart = (part: AiResponse.StreamPartEncoded): boolean =>
-  part.type === "reasoning-start" || part.type === "reasoning-delta" || part.type === "reasoning-end";
 
 type DseSignatureModelPart = {
   readonly modelId?: string;
@@ -796,8 +794,26 @@ const inferLightningL402FetchInvocationFromNaturalLanguage = (text: string): Lig
 
   // Sats4AI: POST their L402 text-generation endpoint, with a minimal chat body.
   if (mentionsSats4ai) {
-    const prompt = firstQuotedSnippet(trimmed);
+    const DEFAULT_PROMPT = "Tell me one short fact about Bitcoin.";
+
+    // Prefer quoted prompts. If absent, accept a best-effort freeform "with ..." prompt, and finally
+    // fall back to a deterministic default for demo reliability ("any question of your choice").
+    let prompt = firstQuotedSnippet(trimmed);
+
+    if (!prompt) {
+      const m = trimmed.match(/\bwith\s+(.+?)(?:\.|\bmax\b|\bask\b|$)/i);
+      const candidate = m?.[1]?.trim();
+      if (candidate) prompt = candidate;
+    }
+
+    if (!prompt) {
+      if (/\bany question\b/i.test(trimmed) || /\byour choice\b/i.test(trimmed)) {
+        prompt = DEFAULT_PROMPT;
+      }
+    }
+
     if (!prompt) return null;
+
     return {
       toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
       source: "call",
@@ -805,7 +821,7 @@ const inferLightningL402FetchInvocationFromNaturalLanguage = (text: string): Lig
         url: "https://sats4ai.com/api/l402/text-generation",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: [{ role: "User", content: prompt }], model: "Best" }),
+        body: JSON.stringify({ input: [{ role: "User", content: clampString(prompt, 400) }], model: "Best" }),
         maxSpendMsats,
         scope: "ep212.sats4ai",
         requireApproval: true,
@@ -843,34 +859,38 @@ const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult
     return `L402 fetch queued.${tid} Approval required: click Approve payment (or run ${approveHint}).`;
   }
 
+  const clampPreview = (value: string, max: number): string => {
+    const t = value.trim();
+    if (t.length <= max) return t;
+    const slice = t.slice(0, Math.max(0, max));
+    const cut = slice.lastIndexOf(" ");
+    const bounded = cut >= Math.floor(max * 0.6) ? slice.slice(0, cut) : slice;
+    return `${bounded.trim()}...`;
+  };
+
   const previewForUser = (raw: string, host: string | null): string => {
     const trimmed = raw.trim();
     if (!trimmed) return "";
 
     // Some L402 endpoints return LLM-style wrappers. Prefer to show the *answer payload*,
-    // not the prompt scaffold, in the user-visible "Preview:" line.
+    // not the prompt scaffold, in the user-visible text.
     let candidate = trimmed;
 
-    const lower = candidate.toLowerCase();
-    const idxAnswerInst = lower.indexOf("answer:[/inst]");
-    if (idxAnswerInst >= 0) {
-      candidate = candidate.slice(idxAnswerInst + "answer:[/inst]".length);
+    const mAnswerInst = candidate.match(/answer:\s*\[\/inst\]\s*([\s\S]*)/i);
+    if (mAnswerInst?.[1]) {
+      candidate = mAnswerInst[1];
+    } else if (/\[\/inst\]/i.test(candidate)) {
+      const parts = candidate.split(/\[\/inst\]/i);
+      candidate = parts[parts.length - 1] ?? candidate;
     } else {
-      const idxInstClose = candidate.indexOf("[/INST]");
-      if (idxInstClose >= 0 && idxInstClose < 1200) {
-        candidate = candidate.slice(idxInstClose + "[/INST]".length);
-      } else {
-        const idxAnswer = lower.indexOf("answer:");
-        if (idxAnswer >= 0 && idxAnswer < 400) {
-          candidate = candidate.slice(idxAnswer + "answer:".length);
-        }
-      }
+      const mAnswer = candidate.match(/answer:\s*([\s\S]*)/i);
+      if (mAnswer?.[1]) candidate = mAnswer[1];
     }
 
     // If still empty (or we stripped too much), fall back to raw.
     candidate = candidate.trim() || trimmed;
 
-    // Drop code fences for the one-line summary (they often dominate previews).
+    // Drop code fences (they often dominate previews).
     const fenceIdx = candidate.indexOf("```");
     if (fenceIdx >= 0) candidate = candidate.slice(0, fenceIdx);
 
@@ -878,7 +898,7 @@ const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult
     candidate = candidate.replace(/\s+/g, " ").trim();
 
     // If the endpoint produced something that still looks like a prompt scaffold, prefer the raw one-liner.
-    if (host === "sats4ai.com" && /^\[inst\]/i.test(candidate)) {
+    if ((host === "sats4ai.com" || host == null) && /^\[inst\]/i.test(candidate)) {
       return trimmed.replace(/\s+/g, " ").trim();
     }
 
@@ -886,12 +906,16 @@ const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult
   };
 
   if (result.status === "completed" || result.status === "cached") {
+    const preview = result.responseBodyTextPreview
+      ? previewForUser(result.responseBodyTextPreview, result.host)
+      : "";
+
+    // For demo UX, prefer to show the paid endpoint payload as the assistant message.
+    if (preview) return clampPreview(preview, 900);
+
     const proof = result.proofReference ? ` Proof: ${result.proofReference}` : "";
     const code = typeof result.responseStatusCode === "number" ? ` HTTP ${result.responseStatusCode}.` : "";
-    const preview = result.responseBodyTextPreview
-      ? ` Preview: ${clampString(previewForUser(result.responseBodyTextPreview, result.host), 280)}`
-      : "";
-    return `L402 fetch ${result.status}.${code}${proof}${preview}`.trim();
+    return `L402 fetch ${result.status}.${code}${proof}`.trim();
   }
 
   const fmtSats = (msats: number): string => {
@@ -1998,6 +2022,10 @@ const runDseCanaryRecap = (input: {
     const convex = yield* ConvexService;
     const t = telemetry.withNamespace("autopilot.dse_canary_recap");
 
+    const convexMutationRetry = Schedule.exponential("150 millis").pipe(
+      Schedule.compose(Schedule.recurs(2)),
+    );
+
     // Ensure auth is loaded (so ConvexService server client can setAuth token). Owner-only; no anon.
     const session = yield* Effect.flatMap(AuthService, (auth) => auth.getSession()).pipe(
       Effect.timeoutFail({
@@ -2036,6 +2064,7 @@ const runDseCanaryRecap = (input: {
           duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
           onTimeout: () => new Error("convex.append_timeout"),
         }),
+        Effect.retry(convexMutationRetry),
       );
     });
 
@@ -2384,14 +2413,18 @@ const runDseCanaryRecap = (input: {
       messageId: input.assistantMessageId,
       status,
       text: outputText,
-    })
-      .pipe(
-        Effect.timeoutFail({
-          duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
-          onTimeout: () => new Error("convex.finalize_timeout"),
-        }),
-      )
-      .pipe(Effect.catchAll(() => Effect.void));
+    }).pipe(
+      Effect.timeoutFail({
+        duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+        onTimeout: () => new Error("convex.finalize_timeout"),
+      }),
+      Effect.retry(convexMutationRetry),
+      Effect.catchAll((err) =>
+        t.log("error", "convex.finalize_failed", { message: err instanceof Error ? err.message : String(err) }).pipe(
+          Effect.catchAll(() => Effect.void),
+        ),
+      ),
+    );
 
     yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status }).pipe(
       Effect.catchAll(() => Effect.void),
@@ -2447,6 +2480,10 @@ const runAutopilotStream = (input: {
     const FLUSH_INTERVAL_MS = 350;
     const FLUSH_MAX_TEXT_CHARS = 1200;
     const FLUSH_MAX_PARTS = 32;
+
+    const convexMutationRetry = Schedule.exponential("150 millis").pipe(
+      Schedule.compose(Schedule.recurs(2)),
+    );
 
     let status: "final" | "error" | "canceled" = "final";
     let seq = 0;
@@ -2524,17 +2561,15 @@ const runAutopilotStream = (input: {
         runId: input.runId,
         messageId: input.assistantMessageId,
         parts: batch,
-      })
-        .pipe(
-          Effect.timeoutFail({
-            duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
-            onTimeout: () => new Error("convex.append_timeout"),
-          }),
-        )
-        .pipe(
-          Effect.catchAll((err) =>
-            t.log("error", "convex.append_failed", { message: err instanceof Error ? err.message : String(err) }),
-          ),
+      }).pipe(
+        Effect.timeoutFail({
+          duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+          onTimeout: () => new Error("convex.append_timeout"),
+        }),
+        Effect.retry(convexMutationRetry),
+        Effect.catchAll((err) =>
+          t.log("error", "convex.append_failed", { message: err instanceof Error ? err.message : String(err) }),
+        ),
       );
     });
 
@@ -2542,6 +2577,13 @@ const runAutopilotStream = (input: {
 
     const streamProgram = Effect.gen(function* () {
       yield* t.event("run.started", { threadId: input.threadId, runId: input.runId }).pipe(Effect.catchAll(() => Effect.void));
+
+      // Ensure the run has a visible wire part early (prevents silent stalls when the model emits only reasoning).
+      bufferedParts.push({
+        seq: seq++,
+        part: { type: "text-start", id: crypto.randomUUID(), metadata: {} } as AiResponse.StreamPartEncoded,
+      });
+      yield* flush(true);
 
       // Load prompt context from Convex (messages only; omit parts). Owner-only.
       const rawSnapshot = yield* convex
@@ -3102,68 +3144,100 @@ const runAutopilotStream = (input: {
       });
       const prompt = AiPrompt.make(rawPrompt);
 
-      const stream = AiLanguageModel.streamText({
-        prompt,
-        toolChoice: "none",
-        disableToolCallResolution: true,
-      });
-      inferenceStartedAtMs = Date.now();
+      const finishModelDefaultsWorkersAi = {
+        modelId: MODEL_ID_CF,
+        provider: "cloudflare-workers-ai",
+        modelRoute: "cloudflare-workers-ai",
+      } as const;
 
-      const runStream = Stream.runForEach(stream, (part) =>
-        Effect.sync(() => {
-          if (input.controller.signal.aborted) return;
-          const encoded = encodeStreamPart(part) as AiResponse.StreamPartEncoded;
-          if (shouldIgnoreWirePart(encoded)) return;
+      const workersAiLayer = Layer.effect(AiLanguageModel.LanguageModel, workersAiModel);
 
-          if (encoded.type === "text-delta") {
-            const delta = String(encoded.delta ?? "");
-            if (delta.length > 0 && firstTokenAtMs == null) firstTokenAtMs = Date.now();
-            bufferedDelta += delta;
-            outputText += delta;
-            return;
-          }
+      const runTextStream = (opts: {
+        readonly prompt: typeof prompt;
+        readonly modelLayer: Layer.Layer<AiLanguageModel.LanguageModel, unknown, never>;
+        readonly finishDefaults: {
+          readonly modelId: string;
+          readonly provider: string;
+          readonly modelRoute: string;
+          readonly modelFallbackId?: string;
+        };
+      }) =>
+        Effect.gen(function* () {
+          let sawReasoning = false;
+          let sawTextDelta = false;
 
-          // For non-delta parts, materialize any pending delta first to preserve ordering.
-          materializeDelta();
+          const stream = AiLanguageModel.streamText({
+            prompt: opts.prompt,
+            toolChoice: "none",
+            disableToolCallResolution: true,
+          });
+          inferenceStartedAtMs = Date.now();
 
-          if (encoded.type === "finish") {
-            const finishPart = encoded as unknown as Record<string, unknown>;
-            const finishedAtMs = Date.now();
-            const timeToFirstTokenMs =
-              firstTokenAtMs != null && inferenceStartedAtMs != null
-                ? Math.max(0, firstTokenAtMs - inferenceStartedAtMs)
-                : undefined;
-            const timeToCompleteMs =
-              inferenceStartedAtMs != null
-                ? Math.max(0, finishedAtMs - inferenceStartedAtMs)
-                : undefined;
-            const normalizedFinish = {
-              ...finishPart,
-              ...(typeof finishPart.modelId === "string" && finishPart.modelId.trim().length > 0
-                ? {}
-                : { modelId: finishModelDefaults.modelId }),
-              ...(typeof finishPart.provider === "string" && finishPart.provider.trim().length > 0
-                ? {}
-                : { provider: finishModelDefaults.provider }),
-              ...(typeof finishPart.modelRoute === "string" && finishPart.modelRoute.trim().length > 0
-                ? {}
-                : { modelRoute: finishModelDefaults.modelRoute }),
-              ...(typeof finishPart.modelFallbackId === "string" && finishPart.modelFallbackId.trim().length > 0
-                ? {}
-                : finishModelDefaults.modelFallbackId
-                  ? { modelFallbackId: finishModelDefaults.modelFallbackId }
-                  : {}),
-              ...(typeof timeToFirstTokenMs === "number" ? { timeToFirstTokenMs } : {}),
-              ...(typeof timeToCompleteMs === "number" ? { timeToCompleteMs } : {}),
-            };
-            bufferedParts.push({ seq: seq++, part: normalizedFinish });
-            return;
-          }
+          yield* Stream.runForEach(stream, (part) =>
+            Effect.sync(() => {
+              if (input.controller.signal.aborted) return;
+              const encoded = encodeStreamPart(part) as AiResponse.StreamPartEncoded;
 
-          // Encoded parts are small; we buffer them and flush on the same cadence as text.
-          bufferedParts.push({ seq: seq++, part: encoded });
-        }).pipe(Effect.zipRight(flush(false))),
-      ).pipe(Effect.provide(modelLayer));
+              if (encoded.type === "reasoning-start" || encoded.type === "reasoning-delta" || encoded.type === "reasoning-end") {
+                sawReasoning = true;
+                return;
+              }
+
+              if (encoded.type === "text-delta") {
+                const delta = String((encoded as any).delta ?? "");
+                if (delta.length > 0 && firstTokenAtMs == null) firstTokenAtMs = Date.now();
+                if (delta.length > 0) sawTextDelta = true;
+                bufferedDelta += delta;
+                outputText += delta;
+                return;
+              }
+
+              // For non-delta parts, materialize any pending delta first to preserve ordering.
+              materializeDelta();
+
+              if (encoded.type === "finish") {
+                const finishPart = encoded as unknown as Record<string, unknown>;
+                const finishedAtMs = Date.now();
+                const timeToFirstTokenMs =
+                  firstTokenAtMs != null && inferenceStartedAtMs != null
+                    ? Math.max(0, firstTokenAtMs - inferenceStartedAtMs)
+                    : undefined;
+                const timeToCompleteMs =
+                  inferenceStartedAtMs != null
+                    ? Math.max(0, finishedAtMs - inferenceStartedAtMs)
+                    : undefined;
+                const normalizedFinish = {
+                  ...finishPart,
+                  ...(typeof finishPart.modelId === "string" && finishPart.modelId.trim().length > 0
+                    ? {}
+                    : { modelId: opts.finishDefaults.modelId }),
+                  ...(typeof finishPart.provider === "string" && finishPart.provider.trim().length > 0
+                    ? {}
+                    : { provider: opts.finishDefaults.provider }),
+                  ...(typeof finishPart.modelRoute === "string" && finishPart.modelRoute.trim().length > 0
+                    ? {}
+                    : { modelRoute: opts.finishDefaults.modelRoute }),
+                  ...(typeof finishPart.modelFallbackId === "string" && finishPart.modelFallbackId.trim().length > 0
+                    ? {}
+                    : opts.finishDefaults.modelFallbackId
+                      ? { modelFallbackId: opts.finishDefaults.modelFallbackId }
+                      : {}),
+                  ...(typeof timeToFirstTokenMs === "number" ? { timeToFirstTokenMs } : {}),
+                  ...(typeof timeToCompleteMs === "number" ? { timeToCompleteMs } : {}),
+                };
+                bufferedParts.push({ seq: seq++, part: normalizedFinish });
+                return;
+              }
+
+              // Encoded parts are small; we buffer them and flush on the same cadence as text.
+              bufferedParts.push({ seq: seq++, part: encoded });
+            }).pipe(Effect.zipRight(flush(false))),
+          ).pipe(Effect.provide(opts.modelLayer));
+
+          return { sawReasoning, sawTextDelta };
+        });
+
+      const runStream = runTextStream({ prompt, modelLayer, finishDefaults: finishModelDefaults });
 
       // Best-effort bootstrap persistence: we still run inference so the assistant can answer questions,
       // but we opportunistically persist onboarding answers when they look like answers (not questions).
@@ -3318,7 +3392,54 @@ const runAutopilotStream = (input: {
           });
           yield* flush(true);
         } else {
-          yield* runStream.pipe(
+          const primary = yield* runStream.pipe(
+            Effect.timeoutFail({
+              duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
+              onTimeout: () => new Error("model.stream_timeout"),
+            }),
+          );
+          yield* flush(true);
+
+          // If the primary model produced only reasoning (no user-visible text), retry once with Workers AI.
+          if (openRouterApiKey && outputText.trim().length === 0 && primary.sawReasoning) {
+            const fallbackPrompt = AiPrompt.make(
+              `${rawPrompt}
+
+Return only the final answer as plain text. Do not include hidden reasoning or tool scaffolding.`,
+            );
+            yield* runTextStream({
+              prompt: fallbackPrompt,
+              modelLayer: workersAiLayer,
+              finishDefaults: finishModelDefaultsWorkersAi,
+            }).pipe(
+              Effect.timeoutFail({
+                duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
+                onTimeout: () => new Error("model.stream_timeout"),
+              }),
+            );
+            yield* flush(true);
+          }
+        }
+      } else {
+        const primary = yield* runStream.pipe(
+          Effect.timeoutFail({
+            duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
+            onTimeout: () => new Error("model.stream_timeout"),
+          }),
+        );
+        yield* flush(true);
+
+        if (openRouterApiKey && outputText.trim().length === 0 && primary.sawReasoning) {
+          const fallbackPrompt = AiPrompt.make(
+            `${rawPrompt}
+
+Return only the final answer as plain text. Do not include hidden reasoning or tool scaffolding.`,
+          );
+          yield* runTextStream({
+            prompt: fallbackPrompt,
+            modelLayer: workersAiLayer,
+            finishDefaults: finishModelDefaultsWorkersAi,
+          }).pipe(
             Effect.timeoutFail({
               duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
               onTimeout: () => new Error("model.stream_timeout"),
@@ -3326,14 +3447,6 @@ const runAutopilotStream = (input: {
           );
           yield* flush(true);
         }
-      } else {
-        yield* runStream.pipe(
-          Effect.timeoutFail({
-            duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
-            onTimeout: () => new Error("model.stream_timeout"),
-          }),
-        );
-        yield* flush(true);
       }
     });
 
@@ -3382,14 +3495,18 @@ const runAutopilotStream = (input: {
       messageId: input.assistantMessageId,
       status,
       text: outputText,
-    })
-      .pipe(
-        Effect.timeoutFail({
-          duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
-          onTimeout: () => new Error("convex.finalize_timeout"),
-        }),
-      )
-      .pipe(Effect.catchAll(() => Effect.void));
+    }).pipe(
+      Effect.timeoutFail({
+        duration: `${CONVEX_MUTATION_TIMEOUT_MS} millis`,
+        onTimeout: () => new Error("convex.finalize_timeout"),
+      }),
+      Effect.retry(convexMutationRetry),
+      Effect.catchAll((err) =>
+        t.log("error", "convex.finalize_failed", { message: err instanceof Error ? err.message : String(err) }).pipe(
+          Effect.catchAll(() => Effect.void),
+        ),
+      ),
+    );
 
     yield* t.event("run.finished", { threadId: input.threadId, runId: input.runId, status }).pipe(
       Effect.catchAll(() => Effect.void),

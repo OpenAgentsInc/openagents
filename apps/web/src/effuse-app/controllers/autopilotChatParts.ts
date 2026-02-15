@@ -488,6 +488,7 @@ export function toAutopilotRenderParts(input: {
 
     if (isToolPart(p)) {
       const toolName = getToolPartName(p)
+      const isLightningL402Tool = toolName === LIGHTNING_L402_FETCH_TOOL_NAME || toolName === LIGHTNING_L402_APPROVE_TOOL_NAME
       const state = String(p.state ?? "")
       const rawInput = p.rawInput
       const toolInput = p.input ?? rawInput
@@ -500,6 +501,10 @@ export function toAutopilotRenderParts(input: {
         errorText: typeof p.errorText === "string" ? p.errorText : undefined,
       })
       if (paymentModel) out.push({ kind: "payment-state", model: paymentModel })
+
+      // For L402 flows, the payment-state card is the primary UX. Hide the raw tool card by default
+      // (the tool output often contains noisy JSON and the payment card already summarizes status/proof).
+      if (paymentModel && isLightningL402Tool) continue
 
       const meta = input.toolContractsByName?.[toolName]
       const extra =
@@ -530,8 +535,10 @@ export function toAutopilotRenderParts(input: {
     if (isDseToolPart(p)) {
       const state = String(p.state ?? "")
       const duration = typeof p.timing?.durationMs === "number" ? ` (${p.timing.durationMs}ms)` : ""
+      const toolName = String(p.toolName ?? "tool")
+      const isLightningL402Tool = toolName === LIGHTNING_L402_FETCH_TOOL_NAME || toolName === LIGHTNING_L402_APPROVE_TOOL_NAME
       const paymentModel = paymentStateCardFromTool({
-        toolName: String(p.toolName ?? "tool"),
+        toolName,
         toolCallId: String(p.toolCallId ?? ""),
         state,
         input: p.input,
@@ -541,8 +548,10 @@ export function toAutopilotRenderParts(input: {
       if (paymentModel) out.push({ kind: "payment-state", model: paymentModel })
       const summary = paymentModel ? l402ToolSummary(paymentModel.state, paymentModel) : `${state}${duration}`
 
+      if (paymentModel && isLightningL402Tool) continue
+
       const model = toolModelFromCore({
-        toolName: String(p.toolName ?? "tool"),
+        toolName,
         toolCallId: String(p.toolCallId ?? ""),
         status: toToolStatusFromDseState(state),
         summary,
