@@ -1371,6 +1371,15 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
         .join("")
     }
 
+    const safeStreamdown = (markdown: string, options?: Parameters<typeof streamdown>[1]) => {
+      try {
+        return streamdown(markdown, options)
+      } catch (error) {
+        console.error("[homeController] streamdown_failed", { error: toStructuredError(error) })
+        return html`<pre class="whitespace-pre-wrap">${markdown}</pre>`
+      }
+    }
+
     const getChatMarkdown = (): string => {
       const blocks: string[] = []
       if (step === "authed" && homeSnapshot.messages.length > 0) {
@@ -1967,7 +1976,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
             const hasDseSignaturePart = m.renderParts.some((p) => p.kind === "dse-signature")
             const partEls = m.renderParts.map((p) => {
               if (p.kind === "text") {
-                return streamdown(p.text, {
+                return safeStreamdown(p.text, {
                   mode: "streaming",
                   isAnimating: p.state === "streaming",
                   caret: "block",
@@ -2025,7 +2034,7 @@ export function openChatPaneOnHome(container: Element, deps: HomeChatDeps | unde
                         ${m.text}
                       </div>`
               : html`<div class="group text-sm font-mono text-white/90" data-chat-role="assistant">
-                        ${streamdown(m.text, { mode: "static" })}
+                        ${safeStreamdown(m.text, { mode: "static" })}
                         ${showDebugCards
                 ? renderInferenceDebugCard({
                   messageId: "inline-static",
