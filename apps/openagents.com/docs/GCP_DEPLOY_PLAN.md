@@ -208,13 +208,13 @@ Plus Reverb secrets when Reverb is enabled.
 
 ### 8.1 Cloud Build
 
-Use a Cloud Build config like `apps/openagents.com/deploy/cloudbuild.yaml` and build from repo root:
+Use a Cloud Build config like `apps/openagents.com/deploy/cloudbuild.yaml` and submit the Laravel app folder as the build context (do not submit the repo root; it uploads the whole monorepo):
 
 ```bash
 gcloud builds submit \
   --config apps/openagents.com/deploy/cloudbuild.yaml \
   --substitutions _TAG="$(git rev-parse --short HEAD)" \
-  .
+  apps/openagents.com
 ```
 
 ### 8.2 Deploy Web Service
@@ -223,6 +223,7 @@ gcloud builds submit \
 export PROJECT=openagentsgemini
 export REGION=us-central1
 export IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest
+export CLOUDSQL=openagentsgemini:us-central1:l402-aperture-db
 
 gcloud run deploy openagents-web \
   --project "$PROJECT" \
@@ -234,9 +235,9 @@ gcloud run deploy openagents-web \
   --cpu 1 \
   --min-instances 0 \
   --max-instances 4 \
-  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
-  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest" \
-  --add-cloudsql-instances "openagentsgemini:us-central1:<INSTANCE>"
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr,DB_CONNECTION=pgsql,DB_HOST=/cloudsql/$CLOUDSQL,DB_DATABASE=openagents_web,DB_USERNAME=openagents_web" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest,WORKOS_REDIRECT_URL=openagents-web-workos-redirect-url:latest" \
+  --add-cloudsql-instances "$CLOUDSQL"
 ```
 
 If using Direct VPC egress:
@@ -271,9 +272,9 @@ gcloud run jobs create openagents-migrate \
   --project openagentsgemini \
   --region us-central1 \
   --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
-  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr,DB_CONNECTION=pgsql,DB_HOST=/cloudsql/openagentsgemini:us-central1:l402-aperture-db,DB_DATABASE=openagents_web,DB_USERNAME=openagents_web" \
   --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest" \
-  --add-cloudsql-instances "openagentsgemini:us-central1:<INSTANCE>" \
+  --set-cloudsql-instances "openagentsgemini:us-central1:l402-aperture-db" \
   --command php \
   --args artisan,migrate,--force
 
@@ -287,8 +288,9 @@ gcloud run jobs create openagents-scheduler \
   --project openagentsgemini \
   --region us-central1 \
   --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
-  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
-  --set-secrets "APP_KEY=openagents-web-app-key:latest" \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr,DB_CONNECTION=pgsql,DB_HOST=/cloudsql/openagentsgemini:us-central1:l402-aperture-db,DB_DATABASE=openagents_web,DB_USERNAME=openagents_web" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest" \
+  --set-cloudsql-instances "openagentsgemini:us-central1:l402-aperture-db" \
   --command php \
   --args artisan,schedule:run
 ```
@@ -300,8 +302,9 @@ gcloud run jobs create openagents-queue \
   --project openagentsgemini \
   --region us-central1 \
   --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
-  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
-  --set-secrets "APP_KEY=openagents-web-app-key:latest" \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr,DB_CONNECTION=pgsql,DB_HOST=/cloudsql/openagentsgemini:us-central1:l402-aperture-db,DB_DATABASE=openagents_web,DB_USERNAME=openagents_web" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest" \
+  --set-cloudsql-instances "openagentsgemini:us-central1:l402-aperture-db" \
   --command php \
   --args artisan,queue:work,--sleep=1,--tries=3,--max-time=840,--stop-when-empty
 ```
