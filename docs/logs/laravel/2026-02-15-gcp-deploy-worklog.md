@@ -213,3 +213,99 @@ Fix:
 
 - `docker build` now completes successfully locally for `apps/openagents.com/`.
 - Next step is to re-run Cloud Build with the updated Dockerfile, then deploy `openagents-web` on Cloud Run.
+
+## 2026-02-15: Cloud Build + Cloud Run Deploy Completed (Phase 0)
+
+### Cloud Build (Artifact Registry)
+
+Built and pushed the Laravel image to Artifact Registry (repo `openagents-web`, region `us-central1`):
+
+```bash
+gcloud builds submit \
+  --config apps/openagents.com/deploy/cloudbuild.yaml \
+  --substitutions _TAG="$(git rev-parse --short HEAD)" \
+  apps/openagents.com
+```
+
+Tags currently present for the image:
+
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:393fec274`
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest`
+
+(These resolve to the same digest at time of writing.)
+
+### Cloud Run Service: `openagents-web`
+
+Deployed Cloud Run service:
+
+- Project: `openagentsgemini`
+- Region: `us-central1`
+- Service: `openagents-web`
+- Image: `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest`
+- Cloud SQL: `openagentsgemini:us-central1:l402-aperture-db`
+- Postgres DB/user: `openagents_web` / `openagents_web`
+
+Service URL:
+
+- `https://openagents-web-ezxz4mgdsq-uc.a.run.app`
+
+Health check:
+
+```bash
+curl -i https://openagents-web-ezxz4mgdsq-uc.a.run.app/up
+```
+
+### Cloud Run Job: `openagents-migrate`
+
+The first deploy returned HTTP 500 on `/` because the Laravel starter kit uses DB-backed sessions and the `sessions` table did not exist yet.
+
+Created and executed a Cloud Run Job to run migrations (no shell access needed):
+
+```bash
+gcloud run jobs create openagents-migrate \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr,DB_CONNECTION=pgsql,DB_HOST=/cloudsql/openagentsgemini:us-central1:l402-aperture-db,DB_DATABASE=openagents_web,DB_USERNAME=openagents_web" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest" \
+  --set-cloudsql-instances "openagentsgemini:us-central1:l402-aperture-db" \
+  --command php \
+  --args artisan,migrate,--force
+
+gcloud run jobs execute openagents-migrate \
+  --project openagentsgemini \
+  --region us-central1 \
+  --wait
+```
+
+Execution (example): `openagents-migrate-94477`
+
+Note: GA `gcloud` does not currently ship `gcloud run jobs executions logs read`. For execution logs:
+
+```bash
+gcloud beta run jobs executions logs read openagents-migrate-94477 \
+  --project openagentsgemini \
+  --region us-central1
+```
+
+### Post-migration Verification
+
+After migrations:
+
+```bash
+curl -i https://openagents-web-ezxz4mgdsq-uc.a.run.app/
+```
+
+Now returns HTTP 200 (welcome page).
+
+### Local Verification (Laravel app)
+
+```bash
+cd apps/openagents.com
+composer test
+npm run lint
+npm run types
+npm run build
+```
+
+All passing at time of writing.
