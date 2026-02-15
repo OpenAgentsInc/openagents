@@ -36,6 +36,7 @@ test('chat API streams Vercel protocol and persists final messages', function ()
     expect($content)->toContain('data: {"type":"finish"');
     expect($content)->toContain("data: [DONE]\n\n");
 
+    // Conversation persistence from laravel/ai still works (Phase 1).
     $rows = DB::table('agent_conversation_messages')
         ->where('conversation_id', $conversationId)
         ->orderBy('created_at')
@@ -45,4 +46,23 @@ test('chat API streams Vercel protocol and persists final messages', function ()
     expect($rows[0]->role)->toBe('user');
     expect($rows[1]->role)->toBe('assistant');
     expect($rows[1]->content)->toContain('Hello from fake agent');
+
+    // Phase 2: canonical threads/runs/messages/run_events.
+    expect(DB::table('threads')->where('id', $conversationId)->where('user_id', $user->id)->count())->toBe(1);
+
+    $run = DB::table('runs')->where('thread_id', $conversationId)->where('user_id', $user->id)->first();
+    expect($run)->not->toBeNull();
+    expect($run->status)->toBe('completed');
+
+    $msgs = DB::table('messages')->where('thread_id', $conversationId)->where('user_id', $user->id)->orderBy('created_at')->get(['role', 'content']);
+    expect($msgs)->toHaveCount(2);
+    expect($msgs[0]->role)->toBe('user');
+    expect($msgs[1]->role)->toBe('assistant');
+    expect($msgs[1]->content)->toContain('Hello from fake agent');
+
+    $events = DB::table('run_events')->where('run_id', $run->id)->where('user_id', $user->id)->orderBy('id')->pluck('type')->all();
+    expect($events)->toContain('run_started');
+    expect($events)->toContain('model_stream_started');
+    expect($events)->toContain('model_finished');
+    expect($events)->toContain('run_completed');
 });
