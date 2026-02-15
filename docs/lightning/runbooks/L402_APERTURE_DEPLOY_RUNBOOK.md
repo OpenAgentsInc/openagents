@@ -4,15 +4,24 @@
 
 ---
 
-## Current state (as of 2026-02-12)
+## Current state (as of 2026-02-14)
 
 - **Canonical URL:** `https://l402.openagents.com` — custom domain mapped to Cloud Run (`l402-aperture`, us-central1). DNS: CNAME `l402` → `ghs.googlehosted.com`.
 - **Staging route:** Aperture config includes a **staging** service (host `l402.openagents.com`, path `^/staging(?:/.*)?$`). Requests to `https://l402.openagents.com/staging` return 402 and support the full L402 flow.
 - **EP212 demo routes:** Aperture config includes:
-  - `https://l402.openagents.com/ep212/premium-signal` (`price: 70`, under-cap success route)
+- `https://l402.openagents.com/ep212/premium-signal` (`price: 10`, under-cap success route)
   - `https://l402.openagents.com/ep212/expensive-signal` (`price: 250`, over-cap quote route)
 - **Script defaults:** `apps/lightning-ops/scripts/staging-reconcile.sh` sets `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, and `OA_LIGHTNING_OPS_PROXY_URL` to the canonical URL and `/staging` when unset. You only need to set `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET` to run staging reconcile.
-- **Config deployed:** Secret `l402-aperture-config` version 10 (with staging route) is live; Cloud Run revision uses it. To change routes or config, see §6.
+- **Config deployed:** Secret `l402-aperture-config` (latest) is live; Cloud Run revision uses it. To change routes or config, see §6.
+
+### Backend note (important)
+
+This runbook originally documented a **Voltage-backed** LND connection. We are migrating to a **self-hosted GCP Bitcoin Core + LND** foundation and treating Voltage references as deprecated.
+
+Target backend for the gateway:
+
+- Seller LND backend: `oa-lnd` (GCP VM on VPC `oa-lightning`, gRPC `10.42.0.3:10009`)
+- Cloud Run must use the Serverless VPC Access connector `oa-serverless-us-central1` to reach the VM (private ranges egress).
 
 ---
 
@@ -21,7 +30,7 @@
 - **L402** is the protocol for “pay with Lightning” over HTTP: the server returns `402 Payment Required` with an invoice and macaroon; the client pays the invoice, gets a preimage, and retries with `Authorization: L402 macaroon=… preimage=…` to access the resource.
 - **Aperture** (Lightning Labs) is the L402 reverse proxy: it sits in front of your backend, talks to an LND node to create invoices and verify payments, and proxies authenticated requests to upstream services.
 - **This deploy** runs Aperture on **Google Cloud Run**, backed by:
-  - **Voltage** (hosted LND) for the LND connection (invoices, auth).
+  - **Self-hosted GCP LND** (`oa-lnd`) for the LND connection (invoice issuance + verification).
   - **Cloud SQL Postgres** for Aperture’s token/state (SQLite does not work on Cloud Run’s filesystem).
 - **OpenAgents** uses this as the seller/paywall side; the compiler in `apps/lightning-ops` produces route config that can be merged into Aperture’s config.
 
@@ -37,9 +46,9 @@
               +-------------+-------------+
               |                           |
               v                           v
-    [Voltage LND (gRPC)]          [Cloud SQL Postgres]
-    openagents.m.voltageapp.io    l402-aperture-db
-    :10009                        (tokens, migrations)
+     [GCP VM: oa-lnd (gRPC)]      [Cloud SQL Postgres]
+     10.42.0.3:10009              l402-aperture-db
+     (invoice macaroon)           (tokens, migrations)
               |                           ^
               | TLS + macaroon            | DSN in config
               | (from Secret Manager)     |
@@ -47,9 +56,9 @@
 ```
 
 - **Cloud Run** runs the Aperture binary with:
-  - **Config** from Secret Manager (`l402-aperture-config`) mounted at `/voltage-cfg/config.yaml`.
-  - **Voltage TLS cert** and **invoice macaroon** from Secret Manager mounted at `/voltage-tls/tls.cert` and `/voltage-mac/invoice.macaroon`.
-- **Aperture** connects to Voltage over the public internet (gRPC + TLS) and to Cloud SQL Postgres (currently via instance **public IP**; see §6 for production hardening).
+  - **Config** from Secret Manager (`l402-aperture-config`) mounted at `/aperture-cfg/config.yaml`.
+  - **LND TLS cert** and **invoice macaroon** from Secret Manager mounted at `/lnd-tls/tls.cert` and `/lnd-mac/invoice.macaroon`.
+- **Aperture** connects to `oa-lnd` over the VPC (gRPC + TLS via Serverless VPC Access) and to Cloud SQL Postgres (currently via instance **public IP**; see §6 for production hardening).
 - **Routes** (host/path → upstream, price) are defined in the same config. The deployed config has **bootstrap** (host `l402-bootstrap.openagents.local`) and **staging** (host `l402.openagents.com`); more routes can be merged from `apps/lightning-ops` compile.
 
 ---
@@ -60,8 +69,8 @@
 
 | Resource type | Name / location | Purpose |
 |---------------|-----------------|---------|
-| **Secret Manager** | `l402-voltage-tls-cert` | Voltage node TLS cert (PEM); mounted as file in Cloud Run. |
-| **Secret Manager** | `l402-voltage-invoice-macaroon` | Invoice macaroon from Voltage; mounted as file. |
+| **Secret Manager** | `l402-gcp-lnd-tls-cert` | `oa-lnd` TLS cert (PEM); mounted as file in Cloud Run. |
+| **Secret Manager** | `l402-gcp-lnd-invoice-macaroon` | Invoice macaroon from `oa-lnd`; mounted as file. |
 | **Secret Manager** | `l402-aperture-config` | Full Aperture YAML (authenticator, postgres, services). **Contains no secrets in the repo**; the *deployed* version has the DB password injected when adding a new secret version (see §5). |
 | **Secret Manager** | `l402-aperture-db-password` | Cloud SQL Postgres password for user `aperture`. Used only when building a new config secret version. |
 | **Cloud SQL** | Instance `l402-aperture-db` (Postgres 15, us-central1) | Aperture’s database (tokens, migrations). Database name `aperture`, user `aperture`. |
@@ -75,9 +84,10 @@
 
 | Path | Purpose |
 |------|---------|
-| `docs/lightning/scripts/aperture-voltage-config.yaml` | **SQLite** base config (authenticator + bootstrap service). Used for local/testing; Cloud Run uses Postgres. |
-| `docs/lightning/scripts/aperture-voltage-config-postgres.yaml` | **Postgres** config *template*: authenticator, postgres block (host, port, user, `password: REPLACE_PASSWORD`, dbname, etc.), bootstrap service. **You must inject the real DB password when creating a new Secret Manager version** (see §5). |
-| `docs/lightning/scripts/voltage-api-fetch.sh` | Fetches node list, node details, and TLS cert from Voltage API; writes to `output/voltage-node/` (gitignored). Requires `VOLTAGE_API_KEY` (env or repo root `.env.local`). |
+| `docs/lightning/scripts/aperture-voltage-config.yaml` | **SQLite** base config (legacy/local only). Cloud Run uses Postgres. |
+| `docs/lightning/scripts/aperture-voltage-config-postgres.yaml` | **Legacy** Postgres config template targeting Voltage LND (kept for reference). |
+| `docs/lightning/scripts/aperture-gcp-config-postgres.yaml` | **Active** Postgres config template targeting **GCP `oa-lnd`**. **Inject the real DB password when creating a new Secret Manager version** (see §6.1). |
+| `docs/lightning/scripts/voltage-api-fetch.sh` | Legacy helper for Voltage API (no longer required for GCP self-hosted LND). |
 | `docs/lightning/deploy/Dockerfile.aperture` | Multi-stage build: Aperture from Lightning Labs source (Go 1.24), minimal runtime image. |
 | `docs/lightning/deploy/cloudbuild-aperture.yaml` | Cloud Build config to build and push the Aperture image to Artifact Registry (optional; can build locally with Docker). |
 | `docs/lightning/reference/VOLTAGE_TO_L402_CONNECT.md` | How Voltage fits into L402, what you need from Voltage, and how to connect it to Aperture. |
@@ -137,16 +147,16 @@ All sensitive values live **only** in GCP Secret Manager (and, for local use, in
 
 | Secret name | What it holds | Who uses it |
 |-------------|----------------|-------------|
-| `l402-voltage-tls-cert` | Voltage node TLS certificate (PEM file contents). | Cloud Run mounts as `/voltage-tls/tls.cert`; Aperture config references this path. |
-| `l402-voltage-invoice-macaroon` | Invoice macaroon file contents from Voltage. | Cloud Run mounts as `/voltage-mac/invoice.macaroon`; Aperture `macdir` points to `/voltage-mac`. |
-| `l402-aperture-config` | Full Aperture YAML used at runtime. **The version deployed** includes the Postgres password (injected when adding a new version; see §5). The *template* in the repo uses `REPLACE_PASSWORD`. | Cloud Run mounts as `/voltage-cfg/config.yaml`; Aperture is started with `--configfile=/voltage-cfg/config.yaml`. |
+| `l402-gcp-lnd-tls-cert` | `oa-lnd` TLS certificate (PEM file contents). | Cloud Run mounts as `/lnd-tls/tls.cert`; Aperture config references this path. |
+| `l402-gcp-lnd-invoice-macaroon` | Invoice macaroon file contents from `oa-lnd`. | Cloud Run mounts as `/lnd-mac/invoice.macaroon`; Aperture `macdir` points to `/lnd-mac`. |
+| `l402-aperture-config` | Full Aperture YAML used at runtime. **The version deployed** includes the Postgres password (injected when adding a new version; see §6). The *template* in the repo uses `REPLACE_PASSWORD`. | Cloud Run mounts as `/aperture-cfg/config.yaml`; Aperture is started with `--configfile=/aperture-cfg/config.yaml`. |
 | `l402-aperture-db-password` | Cloud SQL Postgres password for user `aperture`. | Used only when creating a new version of `l402-aperture-config` (script substitutes it into the YAML). Never mounted into the container directly. |
 
 **Rotation:**
 
-- **Voltage TLS / macaroon:** Replace the secret version in Secret Manager (e.g. `gcloud secrets versions add l402-voltage-tls-cert --data-file=./new-tls.cert`), then deploy a new Cloud Run revision (or rely on `:latest` and redeploy).
+- **LND TLS / macaroon:** Replace the secret version in Secret Manager (e.g. `gcloud secrets versions add l402-gcp-lnd-tls-cert --data-file=./new-tls.cert`), then deploy a new Cloud Run revision.
 - **DB password:** Change the password in Cloud SQL for user `aperture`, then create a new secret version of `l402-aperture-db-password` with that value, then build a new `l402-aperture-config` version with the new password and redeploy.
-- **Voltage API key:** Used only by `voltage-api-fetch.sh` (and optionally in `.env.local`). Rotate in the Voltage dashboard; never commit.
+- **Voltage API key:** Deprecated (only used by legacy `voltage-api-fetch.sh`). Do not add new dependencies on this.
 
 ---
 
@@ -160,7 +170,7 @@ All sensitive values live **only** in GCP Secret Manager (and, for local use, in
 - To actually get a 402 and then access a paywalled route, you must request a **host/path that matches a configured service** in Aperture. The deployed config includes:
   - **bootstrap** (host `l402-bootstrap.openagents.local`)
   - **staging** (host `l402.openagents.com`, path `^/staging(?:/.*)?$`) — used for `OA_LIGHTNING_OPS_*` defaults; request `https://l402.openagents.com/staging` to get 402.
-  - **ep212-demo-under-cap** (host `l402.openagents.com`, path `^/ep212/premium-signal$`, `price: 70`)
+  - **ep212-demo-under-cap** (host `l402.openagents.com`, path `^/ep212/premium-signal$`, `price: 10`)
   - **ep212-demo-over-cap** (host `l402.openagents.com`, path `^/ep212/expensive-signal$`, `price: 250`)
 
 ### 5.2 L402 flow (conceptual)
@@ -228,13 +238,25 @@ Detailed checklist: `docs/lightning/runbooks/EP212_L402_BUYER_REHEARSAL_RUNBOOK.
 ### 6.1 Changing Aperture config (authenticator, services, postgres host)
 
 1. **Edit the template** in the repo:
-   - **Postgres (production):** `docs/lightning/scripts/aperture-voltage-config-postgres.yaml`
+   - **Postgres (production):** `docs/lightning/scripts/aperture-gcp-config-postgres.yaml`
      Do **not** commit a real password; keep `password: "REPLACE_PASSWORD"` in the template.
 2. **Build the config that will go to Secret Manager:**
    - Get the DB password:
      `APERTURE_DB_PASS=$(gcloud secrets versions access latest --secret=l402-aperture-db-password --project=openagentsgemini)`
-   - Produce a single YAML file with the password injected (exactly one `password:` key under `postgres`). Example (lines 1–20 of template, then your password line, then lines 22–end of template):
-     `{ sed -n '1,20p' docs/lightning/scripts/aperture-voltage-config-postgres.yaml; printf '  password: "%s"\n' "$APERTURE_DB_PASS"; sed -n '22,$p' docs/lightning/scripts/aperture-voltage-config-postgres.yaml } > /tmp/config.yaml`
+   - Produce a single YAML file with the password injected (exactly one `password:` key under `postgres`):
+
+     ```bash
+     python3 - <<'PY' > /tmp/config.yaml
+     import os, sys
+     tpl_path = "docs/lightning/scripts/aperture-gcp-config-postgres.yaml"
+     pw = os.environ.get("APERTURE_DB_PASS", "").strip()
+     if not pw:
+       raise SystemExit("missing APERTURE_DB_PASS")
+     tpl = open(tpl_path, "r", encoding="utf-8").read()
+     # Replace only the placeholder value; do not commit the rendered file.
+     sys.stdout.write(tpl.replace("REPLACE_PASSWORD", pw))
+     PY
+     ```
    - Add a new secret version:
      `gcloud secrets versions add l402-aperture-config --data-file=/tmp/config.yaml --project=openagentsgemini`
    - Delete the temp file: `rm /tmp/config.yaml`
@@ -243,12 +265,12 @@ Detailed checklist: `docs/lightning/runbooks/EP212_L402_BUYER_REHEARSAL_RUNBOOK.
 
 ### 6.2 Adding or changing routes (services)
 
-- **Option A:** Edit the same Postgres config template (`aperture-voltage-config-postgres.yaml`), add or change entries under `services:`, then follow §6.1 to add a new config secret version and redeploy.
+- **Option A:** Edit the same Postgres config template (`aperture-gcp-config-postgres.yaml`), add or change entries under `services:`, then follow §6.1 to add a new config secret version and redeploy.
 - **Option B:** Use the output of `apps/lightning-ops` compiler (routes only) and merge it into the config (e.g. in a CI or deploy script) so the deployed config = base (authenticator + postgres) + compiled routes.
 
-### 6.3 Changing Voltage credentials (TLS or macaroon)
+### 6.3 Changing LND credentials (TLS or macaroon)
 
-- Replace the secret contents in Secret Manager (new version for `l402-voltage-tls-cert` or `l402-voltage-invoice-macaroon`).
+- Replace the secret contents in Secret Manager (new version for `l402-gcp-lnd-tls-cert` or `l402-gcp-lnd-invoice-macaroon`).
 - Redeploy Cloud Run (or trigger a new revision) so the new secret version is used.
 
 ### 6.4 Rebuilding the Aperture image
@@ -276,9 +298,11 @@ Detailed checklist: `docs/lightning/runbooks/EP212_L402_BUYER_REHEARSAL_RUNBOOK.
 gcloud run deploy l402-aperture \
   --image=us-central1-docker.pkg.dev/openagentsgemini/l402/aperture:latest \
   --region=us-central1 \
-  --set-secrets=/voltage-tls/tls.cert=l402-voltage-tls-cert:latest,/voltage-mac/invoice.macaroon=l402-voltage-invoice-macaroon:latest,/voltage-cfg/config.yaml=l402-aperture-config:latest \
+  --vpc-connector=oa-serverless-us-central1 \
+  --vpc-egress=private-ranges-only \
+  --set-secrets=/lnd-tls/tls.cert=l402-gcp-lnd-tls-cert:latest,/lnd-mac/invoice.macaroon=l402-gcp-lnd-invoice-macaroon:latest,/aperture-cfg/config.yaml=l402-aperture-config:latest \
   --command=/aperture \
-  --args=--configfile=/voltage-cfg/config.yaml \
+  --args=--configfile=/aperture-cfg/config.yaml \
   --allow-unauthenticated \
   --memory=1Gi --cpu=1 --port=8080 \
   --min-instances=0 --max-instances=2
@@ -304,7 +328,7 @@ gcloud logging read 'resource.labels.revision_name="l402-aperture-REVISION_NAME"
 | Symptom | What to check |
 |--------|----------------|
 | Container fails to start (no listen on 8080) | Logs: config parse error (e.g. duplicate `password` key), Postgres connection failure (wrong host/port/password or SSL), or LND connection failure. Use the logging command above with the failing revision name. |
-| “invalid authenticator configuration” | Config file was not loaded or `lndhost`/`tlspath`/`macdir` are missing. Ensure deploy uses `--args=--configfile=/voltage-cfg/config.yaml` and the mounted config contains the full `authenticator` block. |
+| “invalid authenticator configuration” | Config file was not loaded or `lndhost`/`tlspath`/`macdir` are missing. Ensure deploy uses `--args=--configfile=/aperture-cfg/config.yaml` and the mounted config contains the full `authenticator` block. |
 | “unable to open database file” (SQLite) | We use Postgres in production; if you switched to SQLite for local test, use a writable path. On Cloud Run, SQLite cannot open DB files (CANTOPEN). |
 | Postgres “dial unix /tmp/...” | Aperture builds a URL DSN; the Cloud SQL socket path contains colons and breaks the URL. Use the instance public IP in config (and authorized network) until the DSN is fixed for socket. |
 | 402 / proxy not working for a path | Ensure that path matches a `services` entry (hostregexp, pathregexp) in the deployed config and that the route has the correct upstream and price. |

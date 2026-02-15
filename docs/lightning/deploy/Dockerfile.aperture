@@ -5,8 +5,10 @@ FROM golang:1.24-bookworm AS builder
 ARG APERTURE_REF
 WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY aperture-private-invoices.patch /tmp/aperture-private-invoices.patch
 RUN git clone --depth 1 --branch "${APERTURE_REF}" https://github.com/lightninglabs/aperture.git . || \
     (git clone https://github.com/lightninglabs/aperture.git . && git checkout "${APERTURE_REF}")
+RUN git apply /tmp/aperture-private-invoices.patch
 RUN go build -o /aperture ./cmd/aperture
 
 FROM debian:bookworm-slim

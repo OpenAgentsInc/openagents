@@ -1,0 +1,69 @@
+# Aperture config with Cloud SQL Postgres (for Cloud Run) backed by **self-hosted GCP LND**.
+# Password is injected when creating the Secret Manager runtime config version.
+#
+# This file intentionally contains **no secrets**.
+# For the Voltage-backed legacy template, see: `docs/lightning/scripts/aperture-voltage-config-postgres.yaml`.
+listenaddr: "0.0.0.0:8080"
+basedir: "/tmp"
+debuglevel: "info"
+insecure: true
+
+authenticator:
+  network: "mainnet"
+  disable: false
+  # GCP VPC internal IP for the `oa-lnd` VM (port 10009). Cloud Run must use a VPC connector.
+  lndhost: "10.42.0.3:10009"
+  # These are Cloud Run secret mounts (see runbook).
+  tlspath: "/lnd-tls/tls.cert"
+  macdir: "/lnd-mac"
+
+dbbackend: "postgres"
+postgres:
+  # Existing Cloud SQL Postgres instance used by Aperture (tokens, migrations).
+  # Note: this uses the instance public IP (SSL required). For production hardening,
+  # prefer a Cloud SQL connector / private IP + VPC egress.
+  host: "34.46.174.166"
+  port: 5432
+  user: "aperture"
+  password: "REPLACE_PASSWORD"
+  dbname: "aperture"
+  maxconnections: 25
+  requiressl: true
+  skipmigrations: false
+
+services:
+  - name: bootstrap
+    hostregexp: "^l402-bootstrap\\.openagents\\.local$"
+    pathregexp: "^/.*$"
+    address: 127.0.0.1:9
+    protocol: http
+    price: 0
+  # EP212 demo route A: under-cap paid success path.
+  - name: ep212-demo-under-cap
+    hostregexp: "^l402\\.openagents\\.com$"
+    pathregexp: "^/ep212/premium-signal$"
+    address: openagents.com:443
+    protocol: https
+    price: 10
+  # EP212 demo route A proxy: OpenAgents host path that proxies to sats4ai text-generation.
+  # Keep price=0 to avoid depending on seller-side liquidity for this segment (buyer pays sats4ai directly).
+  - name: ep212-demo-sats4ai-proxy
+    hostregexp: "^l402\\.openagents\\.com$"
+    pathregexp: "^/api/l402/text-generation$"
+    address: sats4ai.com:443
+    protocol: https
+    price: 0
+  # EP212 demo route B: over-cap quote path used for policy block rehearsals.
+  - name: ep212-demo-over-cap
+    hostregexp: "^l402\\.openagents\\.com$"
+    pathregexp: "^/ep212/expensive-signal$"
+    address: openagents.com:443
+    protocol: https
+    price: 250
+  # Staging reconcile path (challenge URL default). Keep in place for smoke scripts.
+  - name: staging
+    hostregexp: "^l402\\.openagents\\.com$"
+    pathregexp: "^/staging(?:/.*)?$"
+    address: 127.0.0.1:9
+    protocol: http
+    price: 0

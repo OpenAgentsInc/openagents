@@ -47,6 +47,17 @@ describe("l402 parser and serializer", () => {
     }),
   )
 
+  it.effect("infers amount_msats from BOLT11 invoice when missing", () =>
+    Effect.gen(function* () {
+      const challenge = yield* parseChallengeHeader(
+        'L402 invoice="lnbc2500n1exampleinvoice", macaroon="AgEDbWFjYXJvb24="',
+      )
+
+      // 2500n = 250 sat = 250,000 msats.
+      expect(challenge.amountMsats).toBe(250_000)
+    }),
+  )
+
   it.effect("rejects malformed headers deterministically", () =>
     Effect.gen(function* () {
       const malformed = yield* Effect.either(
