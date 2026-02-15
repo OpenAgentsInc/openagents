@@ -92,10 +92,10 @@ type LocalFixtureServer = Readonly<{
 }>;
 
 const DEFAULT_SATS4AI_URL = "https://sats4ai.com/api/l402/text-generation";
-const DEFAULT_OPENAGENTS_ROUTE_A_URL = "https://l402.openagents.com/api/l402/text-generation";
+const DEFAULT_OPENAGENTS_ROUTE_A_URL = "https://l402.openagents.com/ep212/premium-signal";
 const DEFAULT_OPENAGENTS_ROUTE_B_URL = "https://l402.openagents.com/ep212/expensive-signal";
 const DEFAULT_CAP_MSATS = 100_000;
-const DEFAULT_OPENAGENTS_ROUTE_A_METHOD = "POST";
+const DEFAULT_OPENAGENTS_ROUTE_A_METHOD = "GET";
 const SATS4AI_SCOPE = "ep212-sats4ai-text";
 const OPENAGENTS_SCOPE = "ep212-openagents-success";
 const OVERCAP_SCOPE = "ep212-openagents-overcap";
@@ -513,7 +513,7 @@ const startLocalFixtureServer = (): Promise<LocalFixtureServer> =>
         preimageHex: deterministicPreimage(OA_UNDER_INVOICE),
         amountMsats: OPENAGENTS_AMOUNT_MSATS,
         issuedAtMs: 0,
-      });
+      }, "macaroon_preimage_colon");
 
       if (path === "/sats4ai/text-generation") {
         if (method !== "POST") {
@@ -827,7 +827,6 @@ const runEp212FullFlow = (input: {
       input.openAgentsSuccessBody !== undefined
         ? { "content-type": "application/json" }
         : undefined;
-    const openAgentsUseColonAuth = input.openAgentsSuccessMethod !== "GET";
 
     const openAgentsChallenge = yield* checkChallenge({
       fetchFn: input.fetchFn,
@@ -850,13 +849,9 @@ const runEp212FullFlow = (input: {
         maxSpendMsats: input.maxSpendMsats,
         forceRefresh: true,
         cacheTtlMs: 600_000,
-        ...(openAgentsUseColonAuth
-          ? {
-              authorizationHeaderStrategyByHost: {
-                [openAgentsSuccessHost]: "macaroon_preimage_colon" as const,
-              },
-            }
-          : {}),
+        authorizationHeaderStrategyByHost: {
+          [openAgentsSuccessHost]: "macaroon_preimage_colon" as const,
+        },
       },
       deps,
     );

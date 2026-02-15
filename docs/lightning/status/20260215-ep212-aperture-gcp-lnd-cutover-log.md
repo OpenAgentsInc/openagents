@@ -104,8 +104,8 @@ Expected in decoded invoice JSON:
 ```bash
 cd apps/lightning-ops
 
-export OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL=\"$(gcloud run services describe l402-wallet-executor --region us-central1 --format='value(status.url)')\"
-export OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN=\"$(gcloud secrets versions access latest --secret=l402-wallet-executor-auth-token --project openagents-prod)\"
+export OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL=\"$(gcloud run services describe l402-wallet-executor --region us-central1 --project openagentsgemini --format='value(status.url)')\"
+export OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN=\"$(gcloud secrets versions access latest --secret=l402-wallet-executor-auth-token --project openagentsgemini)\"
 
 npm run smoke:ep212-routes -- --json --mode live
 ```
@@ -120,4 +120,3 @@ Expected:
 - Next operational risks for the episode are liquidity and wallet funding (separate from this cutover log).
 - For redeploy or config changes, follow:
   - `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md`
-
