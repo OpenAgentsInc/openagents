@@ -27,6 +27,7 @@ import type {
 
 type UiPart = ChatMessage["parts"][number]
 const LIGHTNING_L402_FETCH_TOOL_NAME = "lightning_l402_fetch"
+const LIGHTNING_L402_APPROVE_TOOL_NAME = "lightning_l402_approve"
 
 function safeStableStringify(value: unknown, indent = 2): string {
   if (value == null) return String(value)
@@ -388,11 +389,16 @@ const toL402PaymentMetadata = (opts: {
   readonly output?: unknown
   readonly state?: string
 }): L402PaymentMetadata | null => {
-  if (opts.toolName !== LIGHTNING_L402_FETCH_TOOL_NAME) return null
+  if (opts.toolName !== LIGHTNING_L402_FETCH_TOOL_NAME && opts.toolName !== LIGHTNING_L402_APPROVE_TOOL_NAME) return null
   const input = asRecord(opts.input)
   const output = asRecord(opts.output)
 
-  const outputStatus = output?.status
+  const terminal =
+    opts.toolName === LIGHTNING_L402_APPROVE_TOOL_NAME
+      ? asRecord(output?.terminal)
+      : output
+
+  const outputStatus = terminal?.status
   const status = isL402PaymentStatus(outputStatus)
     ? outputStatus
     : opts.state === "output-error"
@@ -404,28 +410,28 @@ const toL402PaymentMetadata = (opts: {
     toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
     toolCallId: opts.toolCallId,
     status,
-    taskId: asString(output?.taskId),
-    paymentId: asString(output?.paymentId),
-    amountMsats: asFiniteNumber(output?.amountMsats) ?? asFiniteNumber(input?.maxSpendMsats),
-    responseStatusCode: asFiniteNumber(output?.responseStatusCode),
-    responseContentType: asString(output?.responseContentType),
-    responseBytes: asFiniteNumber(output?.responseBytes),
-    responseBodyTextPreview: asString(output?.responseBodyTextPreview),
-    responseBodySha256: asString(output?.responseBodySha256),
-    cacheHit: asBoolean(output?.cacheHit),
-    paid: asBoolean(output?.paid),
-    cacheStatus: asString(output?.cacheStatus),
-    paymentBackend: asString(output?.paymentBackend),
-    approvalRequired: asBoolean(output?.approvalRequired),
-    proofReference: asString(output?.proofReference),
-    denyReason: asString(output?.denyReason),
-    denyReasonCode: asString(output?.denyReasonCode),
-    host: asString(output?.host),
-    quotedAmountMsats: asFiniteNumber(output?.quotedAmountMsats),
-    url: asString(input?.url),
-    method: asString(input?.method),
-    scope: asString(input?.scope),
-    maxSpendMsats: asFiniteNumber(output?.maxSpendMsats) ?? asFiniteNumber(input?.maxSpendMsats),
+    taskId: asString(terminal?.taskId) ?? asString(output?.taskId),
+    paymentId: asString(terminal?.paymentId),
+    amountMsats: asFiniteNumber(terminal?.amountMsats) ?? asFiniteNumber(output?.maxSpendMsats) ?? asFiniteNumber(input?.maxSpendMsats),
+    responseStatusCode: asFiniteNumber(terminal?.responseStatusCode),
+    responseContentType: asString(terminal?.responseContentType),
+    responseBytes: asFiniteNumber(terminal?.responseBytes),
+    responseBodyTextPreview: asString(terminal?.responseBodyTextPreview),
+    responseBodySha256: asString(terminal?.responseBodySha256),
+    cacheHit: asBoolean(terminal?.cacheHit),
+    paid: asBoolean(terminal?.paid),
+    cacheStatus: asString(terminal?.cacheStatus),
+    paymentBackend: asString(terminal?.paymentBackend),
+    approvalRequired: asBoolean(terminal?.approvalRequired),
+    proofReference: asString(terminal?.proofReference),
+    denyReason: asString(terminal?.denyReason),
+    denyReasonCode: asString(terminal?.denyReasonCode),
+    host: asString(terminal?.host),
+    quotedAmountMsats: asFiniteNumber(terminal?.quotedAmountMsats),
+    url: asString(output?.url) ?? asString(input?.url),
+    method: asString(output?.method) ?? asString(input?.method),
+    scope: asString(output?.scope) ?? asString(input?.scope),
+    maxSpendMsats: asFiniteNumber(output?.maxSpendMsats) ?? asFiniteNumber(terminal?.maxSpendMsats) ?? asFiniteNumber(input?.maxSpendMsats),
   }
 }
 

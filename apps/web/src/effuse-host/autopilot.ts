@@ -319,6 +319,76 @@ const parseLightningTaskEventDoc = (value: unknown): LightningTaskEventDoc | nul
   };
 };
 
+const terminalResultFromTask = (task: LightningTaskDoc, events: ReadonlyArray<LightningTaskEventDoc>): LightningToolTerminalResult => {
+  const latestEvent = [...events].reverse().find((event) =>
+    typeof event.toStatus === "string" ? event.toStatus === task.status : false,
+  ) ?? events.at(-1);
+
+  const metadata = toRecord(latestEvent?.metadata);
+  const proofReference =
+    readNonEmptyString(metadata?.proofReference) ??
+    readNonEmptyString(metadata?.l402ProofReference) ??
+    null;
+  const denyReason =
+    readNonEmptyString(metadata?.denyReason) ??
+    readNonEmptyString(latestEvent?.errorMessage) ??
+    readNonEmptyString(latestEvent?.reason) ??
+    readNonEmptyString(task.lastErrorMessage) ??
+    (task.status === "blocked" || task.status === "failed" ? task.status : null);
+  const denyReasonCode = readString(metadata?.denyReasonCode) ?? null;
+  const host = readString(metadata?.host)?.trim() || null;
+  const paymentId = readNonEmptyString(metadata?.paymentId) ?? null;
+  const amountMsatsMeta =
+    typeof metadata?.amountMsats === "number" && Number.isFinite(metadata.amountMsats) ? metadata.amountMsats : null;
+  const amountMsatsRequest =
+    typeof task.request?.maxSpendMsats === "number" && Number.isFinite(task.request.maxSpendMsats)
+      ? task.request.maxSpendMsats
+      : null;
+  const maxSpendMsatsMeta =
+    typeof metadata?.maxSpendMsats === "number" && Number.isFinite(metadata.maxSpendMsats) ? metadata.maxSpendMsats : null;
+  const quotedAmountMsatsMeta =
+    typeof metadata?.quotedAmountMsats === "number" && Number.isFinite(metadata.quotedAmountMsats)
+      ? metadata.quotedAmountMsats
+      : null;
+  const responseStatusCode =
+    typeof metadata?.responseStatusCode === "number" && Number.isFinite(metadata.responseStatusCode)
+      ? metadata.responseStatusCode
+      : null;
+
+  const responseContentType = readString(metadata?.responseContentType)?.trim() || null;
+  const responseBytes =
+    typeof metadata?.responseBytes === "number" && Number.isFinite(metadata.responseBytes) ? metadata.responseBytes : null;
+  const responseBodyTextPreview = readString(metadata?.responseBodyTextPreview) ?? null;
+  const responseBodySha256 = readString(metadata?.responseBodySha256) ?? null;
+  const cacheHit = metadata?.cacheHit === true;
+  const paid = metadata?.paid === true;
+  const cacheStatus = isL402CacheStatus(metadata?.cacheStatus) ? metadata.cacheStatus : null;
+  const paymentBackend = isL402PaymentBackend(metadata?.paymentBackend) ? metadata.paymentBackend : null;
+
+  return {
+    taskId: task.taskId,
+    status: isLightningTerminalStatus(task.status) ? task.status : "failed",
+    proofReference,
+    denyReason,
+    denyReasonCode,
+    host,
+    maxSpendMsats: maxSpendMsatsMeta ?? amountMsatsRequest,
+    quotedAmountMsats: quotedAmountMsatsMeta,
+    paymentId,
+    amountMsats: amountMsatsMeta ?? amountMsatsRequest,
+    responseStatusCode,
+    responseContentType,
+    responseBytes,
+    responseBodyTextPreview,
+    responseBodySha256,
+    cacheHit,
+    paid,
+    cacheStatus,
+    paymentBackend,
+    approvalRequired: false,
+  } satisfies LightningToolTerminalResult;
+};
+
 const walletExecutorEnabled = (env: WorkerEnv): boolean => walletExecutorAvailability(env).configured;
 
 const hostFromUrl = (url: string): string | null => {
@@ -659,19 +729,127 @@ const parseLightningToolInvocation = (text: string): LightningManualInvocation |
   return null;
 };
 
+const parseMaxSpendMsatsFromText = (text: string): number => {
+  const t = text.trim();
+  if (!t) return 100_000;
+
+  const direct = t.match(
+    /\bmax(?:imum)?(?:\s+(?:spend|cost|cap))?\s*(?:=|:)?\s*(\d+(?:\.\d+)?)\s*(msats?|millisats?|millisatoshis?)\b/i,
+  );
+  if (direct) {
+    const value = Number(direct[1]);
+    if (Number.isFinite(value)) return Math.max(0, Math.floor(value));
+  }
+
+  const sats = t.match(
+    /\bmax(?:imum)?(?:\s+(?:spend|cost|cap))?\s*(?:=|:)?\s*(\d+(?:\.\d+)?)\s*(sats?|satoshis?)\b/i,
+  );
+  if (sats) {
+    const value = Number(sats[1]);
+    if (Number.isFinite(value)) return Math.max(0, Math.floor(value * 1000));
+  }
+
+  const capSatsLoose = t.match(/\b(?:cap|budget)\s*(?:=|:)?\s*(\d+(?:\.\d+)?)\s*(sats?|satoshis?)\b/i);
+  if (capSatsLoose) {
+    const value = Number(capSatsLoose[1]);
+    if (Number.isFinite(value)) return Math.max(0, Math.floor(value * 1000));
+  }
+
+  return 100_000;
+};
+
+const firstQuotedSnippet = (text: string): string | null => {
+  const single = text.match(/'([^']{1,800})'/);
+  if (single?.[1]) return single[1].trim();
+  const dbl = text.match(/"([^"]{1,800})"/);
+  if (dbl?.[1]) return dbl[1].trim();
+  const fancy = text.match(/[“”]([^“”]{1,800})[“”]/);
+  if (fancy?.[1]) return fancy[1].trim();
+  return null;
+};
+
+const inferLightningL402FetchInvocationFromNaturalLanguage = (text: string): LightningManualInvocation | null => {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  // Do not compete with explicit tool invocation syntax.
+  if (/^\s*(?:\/l402\b|lightning_l402_(?:fetch|approve)\s*\()/i.test(trimmed)) return null;
+
+  const lower = trimmed.toLowerCase();
+  const mentionsSats4ai = lower.includes("sats4ai");
+  const mentionsL402 = /\bl402\b/i.test(lower);
+  const mentionsPremiumSignal = /\bpremium\b/.test(lower) && /\bsignal\b/.test(lower);
+  const mentionsExpensive = /\bexpensive\b/.test(lower) && /\bsignal\b/.test(lower);
+  const mentionsOpenAgentsGateway =
+    lower.includes("l402.openagents.com") || (lower.includes("openagents") && mentionsL402);
+  const mentionsPaymentIntent = /\b(sats?|msats?|pay|payment|cost|budget|max|cap)\b/i.test(lower);
+
+  // Be conservative: only route when the intent is clearly L402-paid work.
+  const shouldRoute =
+    mentionsL402 ||
+    mentionsSats4ai ||
+    mentionsOpenAgentsGateway ||
+    ((mentionsPremiumSignal || mentionsExpensive) && mentionsPaymentIntent);
+  if (!shouldRoute) return null;
+
+  const maxSpendMsats = parseMaxSpendMsatsFromText(trimmed);
+
+  // Sats4AI: POST their L402 text-generation endpoint, with a minimal chat body.
+  if (mentionsSats4ai) {
+    const prompt = firstQuotedSnippet(trimmed);
+    if (!prompt) return null;
+    return {
+      toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+      source: "call",
+      rawParams: {
+        url: "https://sats4ai.com/api/l402/text-generation",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: [{ role: "User", content: prompt }], model: "Best" }),
+        maxSpendMsats,
+        scope: "ep212.sats4ai",
+        requireApproval: true,
+      },
+    };
+  }
+
+  // OpenAgents EP212: treat “premium signal” (and variants) as the under-cap route; “expensive signal” as over-cap.
+  if (mentionsPremiumSignal || mentionsExpensive || mentionsOpenAgentsGateway) {
+    const url = mentionsExpensive
+      ? "https://l402.openagents.com/ep212/expensive-signal"
+      : "https://l402.openagents.com/ep212/premium-signal";
+    return {
+      toolName: LIGHTNING_L402_FETCH_TOOL_NAME,
+      source: "call",
+      rawParams: {
+        url,
+        method: "GET",
+        maxSpendMsats,
+        scope: "ep212.openagents",
+        requireApproval: true,
+      },
+    };
+  }
+
+  return null;
+};
+
 const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult): string => {
   if (result.status === "queued") {
     const tid = result.taskId ? ` Task: ${result.taskId}.` : "";
     const approveHint = result.taskId
       ? `lightning_l402_approve({"taskId":"${result.taskId}"})`
       : `lightning_l402_approve({"taskId":"..."})`;
-    return `L402 fetch queued.${tid} Approval required: approve with ${approveHint}.`;
+    return `L402 fetch queued.${tid} Approval required: click Approve payment (or run ${approveHint}).`;
   }
 
   if (result.status === "completed" || result.status === "cached") {
     const proof = result.proofReference ? ` Proof: ${result.proofReference}` : "";
     const code = typeof result.responseStatusCode === "number" ? ` HTTP ${result.responseStatusCode}.` : "";
-    return `L402 fetch ${result.status}.${code}${proof}`.trim();
+    const preview = result.responseBodyTextPreview
+      ? ` Preview: ${clampString(result.responseBodyTextPreview, 280)}`
+      : "";
+    return `L402 fetch ${result.status}.${code}${proof}${preview}`.trim();
   }
 
   const fmtSats = (msats: number): string => {
@@ -1421,75 +1599,11 @@ const runLightningL402FetchTool = (input: {
       ? (toRecord(eventsRaw)?.events as ReadonlyArray<unknown>)
       : [];
     const parsedEvents = events.map(parseLightningTaskEventDoc).filter((row): row is LightningTaskEventDoc => row !== null);
-    const latestEvent = [...parsedEvents].reverse().find((event) =>
-      typeof event.toStatus === "string" ? event.toStatus === task.status : false,
-    ) ?? parsedEvents.at(-1);
-
-    const metadata = toRecord(latestEvent?.metadata);
-    const proofReference =
-      readNonEmptyString(metadata?.proofReference) ??
-      readNonEmptyString(metadata?.l402ProofReference) ??
-      null;
-    const denyReason =
-      readNonEmptyString(metadata?.denyReason) ??
-      readNonEmptyString(latestEvent?.errorMessage) ??
-      readNonEmptyString(latestEvent?.reason) ??
-      readNonEmptyString(task.lastErrorMessage) ??
-      (task.status === "blocked" || task.status === "failed" ? task.status : null);
-    const denyReasonCode = readString(metadata?.denyReasonCode) ?? null;
-    const host = readString(metadata?.host)?.trim() || null;
-    const paymentId = readNonEmptyString(metadata?.paymentId) ?? null;
-    const amountMsatsMeta =
-      typeof metadata?.amountMsats === "number" && Number.isFinite(metadata.amountMsats) ? metadata.amountMsats : null;
-    const amountMsatsRequest =
-      typeof task.request?.maxSpendMsats === "number" && Number.isFinite(task.request.maxSpendMsats)
-        ? task.request.maxSpendMsats
-        : null;
-    const maxSpendMsatsMeta =
-      typeof metadata?.maxSpendMsats === "number" && Number.isFinite(metadata.maxSpendMsats) ? metadata.maxSpendMsats : null;
-    const quotedAmountMsatsMeta =
-      typeof metadata?.quotedAmountMsats === "number" && Number.isFinite(metadata.quotedAmountMsats)
-        ? metadata.quotedAmountMsats
-        : null;
-    const responseStatusCode =
-      typeof metadata?.responseStatusCode === "number" && Number.isFinite(metadata.responseStatusCode)
-        ? metadata.responseStatusCode
-        : null;
-
-    const responseContentType = readString(metadata?.responseContentType)?.trim() || null;
-    const responseBytes =
-      typeof metadata?.responseBytes === "number" && Number.isFinite(metadata.responseBytes) ? metadata.responseBytes : null;
-    const responseBodyTextPreview = readString(metadata?.responseBodyTextPreview) ?? null;
-    const responseBodySha256 = readString(metadata?.responseBodySha256) ?? null;
-    const cacheHit = metadata?.cacheHit === true;
-    const paid = metadata?.paid === true;
-    const cacheStatus = isL402CacheStatus(metadata?.cacheStatus) ? metadata.cacheStatus : null;
-    const paymentBackend = isL402PaymentBackend(metadata?.paymentBackend) ? metadata.paymentBackend : null;
+    const terminal = terminalResultFromTask(task, parsedEvents);
 
     return {
       validatedInput: decodedInput,
-      terminal: {
-        taskId: task.taskId,
-        status: isLightningTerminalStatus(task.status) ? task.status : "failed",
-        proofReference,
-        denyReason,
-        denyReasonCode,
-        host,
-        maxSpendMsats: maxSpendMsatsMeta ?? amountMsatsRequest,
-        quotedAmountMsats: quotedAmountMsatsMeta,
-        paymentId,
-        amountMsats: amountMsatsMeta ?? amountMsatsRequest,
-        responseStatusCode,
-        responseContentType,
-        responseBytes,
-        responseBodyTextPreview,
-        responseBodySha256,
-        cacheHit,
-        paid,
-        cacheStatus,
-        paymentBackend,
-        approvalRequired: false,
-      } satisfies LightningToolTerminalResult,
+      terminal,
     };
   }).pipe(
     Effect.catchAll((error) =>
@@ -1527,6 +1641,11 @@ type LightningToolApproveResult = {
   readonly changed: boolean;
   readonly taskStatus: LightningTaskStatus | null;
   readonly denyReason: string | null;
+  readonly url?: string | null;
+  readonly method?: string | null;
+  readonly scope?: string | null;
+  readonly maxSpendMsats?: number | null;
+  readonly terminal?: LightningToolTerminalResult;
 };
 
 const runLightningL402ApproveTool = (input: {
@@ -1594,7 +1713,34 @@ const runLightningL402ApproveTool = (input: {
       };
     }
 
+    const requestUrl = readString(task.request?.url)?.trim() || null;
+    const requestMethodRaw = readString(task.request?.method);
+    const requestMethod =
+      requestMethodRaw === "GET" || requestMethodRaw === "POST" || requestMethodRaw === "PUT" || requestMethodRaw === "PATCH" || requestMethodRaw === "DELETE"
+        ? requestMethodRaw
+        : null;
+    const requestScope = readString(task.request?.scope)?.trim() || null;
+    const requestMaxSpendMsats =
+      typeof task.request?.maxSpendMsats === "number" && Number.isFinite(task.request.maxSpendMsats)
+        ? Math.max(0, Math.floor(task.request.maxSpendMsats))
+        : null;
+
     if (isLightningTerminalStatus(task.status)) {
+      const eventsRaw = yield* input.convex
+        .query(api.lightning.tasks.listTaskEvents, { taskId: task.taskId, limit: 100 })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${input.queryTimeoutMs} millis`,
+            onTimeout: () => new Error("lightning.listTaskEvents_timeout"),
+          }),
+          Effect.catchAll(() => Effect.succeed({ ok: true, events: [] as unknown[] } as unknown)),
+        );
+      const events = Array.isArray(toRecord(eventsRaw)?.events)
+        ? (toRecord(eventsRaw)?.events as ReadonlyArray<unknown>)
+        : [];
+      const parsedEvents = events.map(parseLightningTaskEventDoc).filter((row): row is LightningTaskEventDoc => row !== null);
+      const terminal = terminalResultFromTask(task, parsedEvents);
+
       return {
         validatedInput: decodedInput,
         output: {
@@ -1603,6 +1749,11 @@ const runLightningL402ApproveTool = (input: {
           changed: false,
           taskStatus: task.status,
           denyReason: null,
+          url: requestUrl,
+          method: requestMethod,
+          scope: requestScope,
+          maxSpendMsats: requestMaxSpendMsats,
+          terminal,
         } satisfies LightningToolApproveResult,
       };
     }
@@ -1618,6 +1769,22 @@ const runLightningL402ApproveTool = (input: {
         task,
         approvalReason: "user_approved",
       });
+
+      const eventsRaw = yield* input.convex
+        .query(api.lightning.tasks.listTaskEvents, { taskId: executedTask.taskId, limit: 100 })
+        .pipe(
+          Effect.timeoutFail({
+            duration: `${input.queryTimeoutMs} millis`,
+            onTimeout: () => new Error("lightning.listTaskEvents_timeout"),
+          }),
+          Effect.catchAll(() => Effect.succeed({ ok: true, events: [] as unknown[] } as unknown)),
+        );
+      const events = Array.isArray(toRecord(eventsRaw)?.events)
+        ? (toRecord(eventsRaw)?.events as ReadonlyArray<unknown>)
+        : [];
+      const parsedEvents = events.map(parseLightningTaskEventDoc).filter((row): row is LightningTaskEventDoc => row !== null);
+      const terminal = terminalResultFromTask(executedTask, parsedEvents);
+
       return {
         validatedInput: decodedInput,
         output: {
@@ -1626,6 +1793,11 @@ const runLightningL402ApproveTool = (input: {
           changed: true,
           taskStatus: executedTask.status,
           denyReason: null,
+          url: requestUrl,
+          method: requestMethod,
+          scope: requestScope,
+          maxSpendMsats: requestMaxSpendMsats,
+          terminal,
         } satisfies LightningToolApproveResult,
       };
     }
@@ -1639,6 +1811,10 @@ const runLightningL402ApproveTool = (input: {
           changed: false,
           taskStatus: task.status,
           denyReason: null,
+          url: requestUrl,
+          method: requestMethod,
+          scope: requestScope,
+          maxSpendMsats: requestMaxSpendMsats,
         } satisfies LightningToolApproveResult,
       };
     }
@@ -1672,6 +1848,10 @@ const runLightningL402ApproveTool = (input: {
           changed: false,
           taskStatus: task.status,
           denyReason: "desktop_executor_offline",
+          url: requestUrl,
+          method: requestMethod,
+          scope: requestScope,
+          maxSpendMsats: requestMaxSpendMsats,
         } satisfies LightningToolApproveResult,
       };
     }
@@ -1701,6 +1881,10 @@ const runLightningL402ApproveTool = (input: {
           changed: false,
           taskStatus: task.status,
           denyReason: "invalid_task_shape",
+          url: requestUrl,
+          method: requestMethod,
+          scope: requestScope,
+          maxSpendMsats: requestMaxSpendMsats,
         } satisfies LightningToolApproveResult,
       };
     }
@@ -1713,6 +1897,10 @@ const runLightningL402ApproveTool = (input: {
         changed: toRecord(approveRaw)?.changed === true,
         taskStatus: transitionedTask.status,
         denyReason: null,
+        url: requestUrl,
+        method: requestMethod,
+        scope: requestScope,
+        maxSpendMsats: requestMaxSpendMsats,
       } satisfies LightningToolApproveResult,
     };
   }).pipe(
@@ -2353,7 +2541,8 @@ const runAutopilotStream = (input: {
       const lastUserMessage = lastUserMessageFromSnapshot(messagesRaw);
       const lastUserMessageId = lastUserMessage.messageId;
       const lastUserText = lastUserMessage.text;
-      const lightningInvocation = parseLightningToolInvocation(lastUserText);
+      const lightningInvocation =
+        parseLightningToolInvocation(lastUserText) ?? inferLightningL402FetchInvocationFromNaturalLanguage(lastUserText);
 
       const promptMessages = messagesRaw
         .filter((m) => m && typeof m === "object")
@@ -2455,8 +2644,12 @@ const runAutopilotStream = (input: {
           });
 
           if (output.ok) {
-            const status = output.taskStatus ?? "unknown";
-            outputText = `L402 task ${output.taskId ?? "unknown"} approved (${status}).`;
+            if (output.terminal) {
+              outputText = terminalTextFromLightningToolResult(output.terminal);
+            } else {
+              const status = output.taskStatus ?? "unknown";
+              outputText = `L402 task ${output.taskId ?? "unknown"} approved (${status}).`;
+            }
           } else {
             const reason = output.denyReason ?? "unknown";
             outputText = `L402 approval failed. Reason: ${reason}`;

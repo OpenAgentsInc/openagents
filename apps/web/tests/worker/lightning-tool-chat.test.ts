@@ -411,6 +411,43 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
     expect(String(finalized?.text ?? "")).toContain("Approval required");
   });
 
+  it("routes natural language sats4ai L402 request to lightning_l402_fetch (no model stream)", async () => {
+    resetState();
+    state.terminalMode = "blocked";
+
+    const request = new Request("http://example.com/api/autopilot/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        threadId: "thread-lightning-natural-sats4ai",
+        text: "Call the sats4ai L402 text generation endpoint with 'Tell me one short fact about Bitcoin'. Max spend 100 sats. Ask me to approve before paying.",
+      }),
+    });
+
+    const ctx = createExecutionContext();
+    const envWithAi = Object.assign(Object.create(env as any), { AI: {} }) as any;
+    const response = await worker.fetch(request, envWithAi, ctx);
+    expect(response.status).toBe(200);
+    await waitOnExecutionContext(ctx);
+
+    expect(state.modelStreamCalls).toBe(0);
+    expect(state.lightningCreateTaskCalls).toHaveLength(1);
+
+    const created = state.lightningCreateTaskCalls[0];
+    expect(created?.request?.url).toBe("https://sats4ai.com/api/l402/text-generation");
+    expect(created?.request?.method).toBe("POST");
+    expect(created?.request?.maxSpendMsats).toBe(100_000);
+    expect(created?.request?.headers?.["Content-Type"]).toBe("application/json");
+    expect(typeof created?.request?.body).toBe("string");
+    expect(String(created?.request?.body ?? "")).toContain("Tell me one short fact about Bitcoin");
+
+    const finalToolPart = finalLightningToolPart();
+    expect(finalToolPart?.toolName).toBe("lightning_l402_fetch");
+    expect(finalToolPart?.state).toBe("approval-requested");
+    expect(finalToolPart?.output?.status).toBe("queued");
+    expect(finalToolPart?.output?.approvalRequired).toBe(true);
+  });
+
   it("supports endpointPreset A (resolved by env) so prompts don't embed URLs", async () => {
     resetState();
     state.terminalMode = "blocked";
@@ -547,6 +584,70 @@ describe("apps/web worker lightning_l402_fetch chat runtime", () => {
 });
 
 describe("apps/web worker lightning_l402_fetch with server wallet executor", () => {
+  it("executes queued request after explicit approval and returns terminal receipt in approve output", async () => {
+    resetState();
+    const fetchMock = useWalletExecutorFetchMock({
+      endpointUrl: "https://api.example.com/l402-approve",
+      quotedAmountMsats: 1_500,
+      responseBody: '{"approved":"ok"}',
+      walletMode: "ok",
+    });
+
+    try {
+      const envWithAi = Object.assign(Object.create(env as any), {
+        AI: {},
+        OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL: "https://wallet-executor.example",
+      }) as any;
+
+      const first = new Request("http://example.com/api/autopilot/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadId: "thread-lightning-wallet-approve",
+          text: 'lightning_l402_fetch({"url":"https://api.example.com/l402-approve","maxSpendMsats":2000})',
+        }),
+      });
+      const firstCtx = createExecutionContext();
+      const firstRes = await worker.fetch(first, envWithAi, firstCtx);
+      expect(firstRes.status).toBe(200);
+      await waitOnExecutionContext(firstCtx);
+
+      expect(fetchMock.getPayCalls()).toBe(0);
+      const queuedPart = finalLightningToolPart();
+      expect(queuedPart?.toolName).toBe("lightning_l402_fetch");
+      expect(queuedPart?.output?.status).toBe("queued");
+      const taskId = String(queuedPart?.output?.taskId ?? "");
+      expect(taskId).toMatch(/^task-/);
+
+      const second = new Request("http://example.com/api/autopilot/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          threadId: "thread-lightning-wallet-approve",
+          text: `lightning_l402_approve(${JSON.stringify({ taskId })})`,
+        }),
+      });
+      const secondCtx = createExecutionContext();
+      const secondRes = await worker.fetch(second, envWithAi, secondCtx);
+      expect(secondRes.status).toBe(200);
+      await waitOnExecutionContext(secondCtx);
+
+      expect(fetchMock.getPayCalls()).toBe(1);
+      const approvePart = finalLightningToolPart();
+      expect(approvePart?.toolName).toBe("lightning_l402_approve");
+      expect(approvePart?.state).toBe("ok");
+      expect(approvePart?.output?.ok).toBe(true);
+      expect(approvePart?.output?.taskId).toBe(taskId);
+      expect(approvePart?.output?.terminal?.status).toBe("completed");
+      expect(approvePart?.output?.terminal?.paymentBackend).toBe("spark");
+      expect(approvePart?.output?.terminal?.paid).toBe(true);
+      expect(approvePart?.output?.terminal?.responseBodyTextPreview).toBe('{"approved":"ok"}');
+      expect(typeof approvePart?.output?.terminal?.responseBodySha256).toBe("string");
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
   it("executes paid request with wallet executor and returns receipt metadata", async () => {
     resetState();
     const fetchMock = useWalletExecutorFetchMock({
