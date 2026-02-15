@@ -10,7 +10,7 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `apps/autopilot-worker/`
   Worker-focused runtime pieces used by the web product and automation paths.
 
-- `apps/expo/`
+- `apps/mobile/`
   Mobile app surface.
 
 - `apps/desktop/`
@@ -44,8 +44,8 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `docs/lightning/`
   Lightning agent tools (L402, lnget, Aperture) integration plan and references.
 
-- `docs/local/` and `docs/STORYBOOK.md`
-  Local development workflows and component-level testing/docs.
+- `apps/*/README.md` and `docs/STORYBOOK.md`
+  Local development entry points and component-level testing/docs.
 
 ## Historical Code and Docs
 

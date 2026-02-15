@@ -14,10 +14,10 @@ This document describes how the **Expo (React Native) app** authenticates with t
 |------|------|
 | Worker verify (return token for Expo) | `apps/web/src/effuse-host/auth.ts` — `handleVerify` |
 | Magic verify result (include accessToken) | `apps/web/src/auth/workosAuth.ts` — `verifyMagicAuthCode` |
-| Expo login UI | `apps/expo/app/screens/LoginScreen.tsx` |
-| Expo auth context | `apps/expo/app/context/AuthContext.tsx` |
-| Expo Convex auth hook | `apps/expo/app/convex/useConvexAuth.ts` |
-| Expo auth API client | `apps/expo/app/services/authApi.ts` |
+| Expo login UI | `apps/mobile/app/screens/LoginScreen.tsx` |
+| Expo auth context | `apps/mobile/app/context/AuthContext.tsx` |
+| Expo Convex auth hook | `apps/mobile/app/convex/useConvexAuth.ts` |
+| Expo auth API client | `apps/mobile/app/services/authApi.ts` |
 
 ## Worker Behavior
 

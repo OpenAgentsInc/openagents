@@ -6,7 +6,7 @@ Ok to proceed? (y) y
 
 
 ✅ What bundle identifier? · com.openagents.autopilot
-✅ Where do you want to start your project? · /Users/christopherdavid/code/openagents/apps/expo
+✅ Where do you want to start your project? · /Users/christopherdavid/code/openagents/apps/mobile
 ✅ How do you want to manage Native code? · cng
 ✅ Do you want to initialize a git repository? (Y/n) · No
 ✅ Which package manager do you want to use? (Note: we recommend pnpm) · bun
@@ -45,7 +45,7 @@ Ok to proceed? (y) y
     █ Powered by  ∞ Infinite Red  (https://infinite.red)
     █ Package Manager: bun
     █ Bundle identifier: com.openagents.autopilot
-    █ Path: /Users/christopherdavid/code/openagents/apps/expo
+    █ Path: /Users/christopherdavid/code/openagents/apps/mobile
     ────────────────────────────────────────────────────
 
     🖨  3D-printing a new React Native app
@@ -66,7 +66,7 @@ Ok to proceed? (y) y
         --git=false \
         --install-deps \
         --packager=bun \
-        --target-path=/Users/christopherdavid/code/openagents/apps/expo \
+        --target-path=/Users/christopherdavid/code/openagents/apps/mobile \
         --remove-demo=false \
         --workflow=cng \
         --no-timeout=false
@@ -86,7 +86,7 @@ Ok to proceed? (y) y
     ────────────────────────────────────────────────────
 
     Now get cooking! 🍽
-      cd /Users/christopherdavid/code/openagents/apps/expo
+      cd /Users/christopherdavid/code/openagents/apps/mobile
       bun run ios
     Or Android via
       bun run android

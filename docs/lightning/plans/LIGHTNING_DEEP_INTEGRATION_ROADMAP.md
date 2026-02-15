@@ -2,7 +2,7 @@
 
 Status: Draft recommendations
 Date: 2026-02-11
-Scope: Web (`apps/web`), worker (`apps/autopilot-worker`), mobile (`apps/expo`), desktop (`apps/desktop`), shared packages (`packages/*`)
+Scope: Web (`apps/web`), worker (`apps/autopilot-worker`), mobile (`apps/mobile`), desktop (`apps/desktop`), shared packages (`packages/*`)
 
 ## 1. Executive Summary
 
@@ -35,7 +35,7 @@ This blueprint is based on:
 - `docs/lightning/status/SETUP_LOG.md`
 - `apps/web/` architecture (Worker host + Convex + Effect services)
 - `apps/autopilot-worker/` architecture (tool contracts, DSE signatures, AI receipts)
-- `apps/expo/` architecture (React Native app with auth + Convex client)
+- `apps/mobile/` architecture (React Native app with auth + Convex client)
 - `packages/dse`, `packages/effuse`, `packages/effuse-test`, and related shared package boundaries
 - `docs/GLOSSARY.md`, `docs/PROJECT_OVERVIEW.md`, `docs/ROADMAP.md`
 - `docs/adr/ADR-0007-tool-execution-contract.md`
@@ -57,7 +57,7 @@ This blueprint is based on:
 - No seller paywall control plane (`l402Paywalls` / route + pricing lifecycle) in Convex yet.
 - No OpenAgents-hosted Aperture deployment/reconciliation path wired into app runtime yet.
 - No full wallet send/receive product UX in web routes/pages yet (current web state is L402 task orchestration + observability panes).
-- No Lightning UX in `apps/expo` (mobile app is currently mostly auth/demo shell).
+- No Lightning UX in `apps/mobile` (mobile app is currently mostly auth/demo shell).
 - No sovereign desktop node/remote-signer host yet (current `apps/desktop` is an early executor shell with Effuse panes).
 - No seller-side contracts/services in `packages/lightning-effect` yet (current package focuses on buyer-side L402 flow primitives).
 
@@ -123,7 +123,7 @@ Never couple business logic to one transport.
    - Effect services for wallet, L402 fetch, pricing preview, policy.
    - Convex tables for wallets, payments, credentials, limits, audit trails.
 
-3. `apps/expo` additions
+3. `apps/mobile` additions
    - Wallet views and actions using the same API contracts.
    - Device-safe credential handling and policy controls.
 
@@ -176,7 +176,7 @@ Recommended implementation boundaries:
 - Add corresponding Effuse pages in `apps/web/src/effuse-pages/`.
 - Keep secrets server-side only (`apps/web/src/effuse-host/env.ts`).
 
-## 6.2 Mobile (`apps/expo`)
+## 6.2 Mobile (`apps/mobile`)
 
 Recommended role:
 
@@ -475,7 +475,7 @@ Add:
 - new Effuse pages for wallet and payment policy.
 - telemetry hooks and trace correlation for payment events.
 
-## 12.3 `apps/expo`
+## 12.3 `apps/mobile`
 
 Add:
 

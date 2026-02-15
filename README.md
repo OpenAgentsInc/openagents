@@ -1,6 +1,6 @@
 # OpenAgents
 
-OpenAgents is building a **cross-platform Effuse app**: web at **openagents.com**, mobile in **`apps/expo/`**, and a desktop app in progress. The stack is centered on **Effect** (application runtime) + **Effuse** (UI runtime), with **Convex** realtime state and **WorkOS** AuthKit.
+OpenAgents is building a **cross-platform Effuse app**: web at **openagents.com**, mobile in **`apps/mobile/`**, and a desktop app in progress. The stack is centered on **Effect** (application runtime) + **Effuse** (UI runtime), with **Convex** realtime state and **WorkOS** AuthKit.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
@@ -31,14 +31,14 @@ npm run deploy
 
 ## Mobile
 
-The mobile app lives in **`apps/expo/`**.
+The mobile app lives in **`apps/mobile/`**.
 
 ## Documentation
 
 Start with:
 
 * **Web app**: [apps/web/](apps/web/)
-* **Mobile app**: [apps/expo/](apps/expo/)
+* **Mobile app**: [apps/mobile/](apps/mobile/)
 * **Effuse plan/spec**: [packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md](packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md)

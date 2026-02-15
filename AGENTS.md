@@ -310,7 +310,7 @@ Apps (product surfaces):
 * `apps/autopilot-worker/wrangler.jsonc` (autopilot-worker runtime config)
 * `apps/autopilot-worker/src/` (worker runtime logic, tools, DSE catalog)
 * `apps/autopilot-worker/scripts/autopilot-smoke.ts` (worker smoke test)
-* `apps/expo/README.md` (mobile client surface)
+* `apps/mobile/README.md` (mobile client surface)
 
 Packages (shared TypeScript libraries):
 
