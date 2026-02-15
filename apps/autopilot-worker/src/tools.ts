@@ -91,6 +91,12 @@ const L402ApproveOutput = Schema.Struct({
   changed: Schema.Boolean,
   taskStatus: Schema.NullOr(LightningTaskStatus),
   denyReason: Schema.NullOr(Schema.String),
+  // Convenience fields so UIs can render a receipt without re-querying Convex.
+  url: Schema.optional(Schema.NullOr(Schema.String)),
+  method: Schema.optional(Schema.NullOr(HttpMethod)),
+  scope: Schema.optional(Schema.NullOr(Schema.String)),
+  maxSpendMsats: Schema.optional(Schema.NullOr(Schema.Number)),
+  terminal: Schema.optional(L402FetchOutput),
 });
 
 const PaywallStatus = Schema.Literal("active", "paused", "archived");
