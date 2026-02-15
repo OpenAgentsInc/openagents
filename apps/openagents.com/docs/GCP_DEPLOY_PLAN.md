@@ -1,7 +1,9 @@
 # OpenAgents Laravel App – GCP (Cloud Run) Deploy Plan
 
 Date: 2026-02-15
-Scope: Deploy `apps/openagents.com` (Laravel 12 + Inertia + React) to Google Cloud in the same style as our existing Cloud Run services (Aperture, wallet executor). PHP and runtime are configured production-style (PHP-FPM + Nginx), analogous to what Laravel Forge does on VPS.
+Scope: Deploy `apps/openagents.com` (Laravel 12 + Inertia + React) to Google Cloud.
+
+This plan intentionally mirrors "Forge-style" separation (web, workers, scheduler, websockets) but maps it onto **Cloud Run services + Cloud Run jobs**.
 
 **Reference runbooks (same project/region/patterns):**
 - `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md`
@@ -13,180 +15,219 @@ Scope: Deploy `apps/openagents.com` (Laravel 12 + Inertia + React) to Google Clo
 ## 1. Goal
 
 - Run the Laravel web app on **Google Cloud Run** (project `openagentsgemini`, region `us-central1`).
-- Use **PHP-FPM + Nginx** in a single container so PHP is configured the same way as on Forge/VPS (no `php artisan serve` in production).
-- Use **Cloud SQL (Postgres)** for Laravel’s database; **Secret Manager** for `APP_KEY`, DB password, WorkOS, etc.
-- Optional: **Redis** (Memorystore) for queues/cache; **queue workers** and **scheduler** as separate steps (Cloud Run Jobs or Cloud Scheduler).
-- Support **SSE** for chat streaming (Nginx and Cloud Run must not buffer; see §4).
+- Use a production runtime: **Nginx + PHP-FPM** (no `php artisan serve` in prod).
+- Use **Cloud SQL (Postgres)** for durable state.
+- Use **Redis (Memorystore)** for cache/queues/sessions and (later) Reverb multi-instance coordination.
+- Support:
+  - **SSE** (chat streaming)
+  - **WebSockets** (Reverb)
+- Keep builds simple: **one image** with different Cloud Run entrypoints.
 
 ---
 
-## 2. Alignment With Existing GCP Deploys
+## 2. Cloud Run Topology (Forge → Cloud Run)
 
-We already deploy to GCP as follows:
+Forge separation works because each component has different performance and lifecycle needs. Cloud Run should mirror that.
 
-| Item | Existing (Aperture / wallet executor) | Laravel app (this plan) |
-|------|----------------------------------------|--------------------------|
-| **Project** | `openagentsgemini` | Same |
-| **Region** | `us-central1` | Same |
-| **Artifact Registry** | `us-central1-docker.pkg.dev/openagentsgemini/l402/...` | New repo e.g. `openagents-web` → `.../openagents-web/laravel:latest` |
-| **Build** | `gcloud builds submit --config path/to/cloudbuild.yaml` from repo root | Same pattern; config and Dockerfile live under `apps/openagents.com/` |
-| **Secrets** | Secret Manager; `--set-secrets` for env or file mounts | Same; `APP_KEY`, `DB_PASSWORD`, WorkOS, etc. |
-| **Cloud Run** | `gcloud run deploy SERVICE --image=... --region=us-central1` | Same; service name e.g. `laravel-web` or `openagents-web` |
-| **Custom domain** | `gcloud beta run domain-mappings create` (e.g. `l402.openagents.com`) | Same; e.g. `app.openagents.com` or target domain |
-| **Cloud SQL** | Aperture uses `l402-aperture-db` (Postgres) | New instance or new DB for Laravel (e.g. `laravel-web-db`) |
+### 2.1 Services / Jobs
 
-No new project or region; we add a new Artifact Registry repo, a new Cloud Run service, and (recommended) a dedicated Cloud SQL instance or database for Laravel.
+| Component | Cloud Run target | Purpose | Notes |
+|---|---|---|---|
+| Web | **Service** `openagents-web` | Inertia UI + REST APIs + SSE streaming | Nginx + PHP-FPM. No long-running worker loops. |
+| WebSockets | **Service** `openagents-reverb` | `php artisan reverb:start` | Give it its own timeout, scaling, and domain. |
+| DB migrations | **Job** `openagents-migrate` | `php artisan migrate --force` | Run once per deploy. |
+| Queue draining | **Job** `openagents-queue` | `php artisan queue:work ...` | Use `--stop-when-empty` and max-time so job exits. |
+| Scheduler | **Job** `openagents-scheduler` | `php artisan schedule:run` | Trigger every minute via Cloud Scheduler. |
+
+### 2.2 Domain Strategy
+
+Recommended:
+
+- `app.openagents.com` → `openagents-web`
+- `ws.openagents.com` → `openagents-reverb`
+
+Avoid proxying WS through the web Nginx unless forced. Separate domains reduce buffering/upgrade-header footguns.
 
 ---
 
-## 3. Runtime Stack (PHP / Nginx – “Forge-style”)
+## 3. Redis on GCP (Memorystore) + Cloud Run Networking
 
-Laravel Forge typically uses on a VPS:
+Redis is used for:
 
-- **PHP 8.2+** (FPM)
-- **Nginx** (reverse proxy + static files)
-- **Postgres** or MySQL
-- **Redis** (queues, cache, sessions)
-- **Queue workers** (long-running processes)
-- **Scheduler** (cron → `php artisan schedule:run`)
+- `CACHE_STORE=redis` (recommended)
+- `QUEUE_CONNECTION=redis` (recommended)
+- `SESSION_DRIVER=redis` (recommended)
+- Reverb coordination when we run more than 1 Reverb instance
 
-On Cloud Run we approximate this with a **single container** that runs **Nginx + PHP-FPM**:
+### 3.1 Preferred: Direct VPC Egress
 
-- **One process group:** Nginx listens on `PORT` (8080); Nginx forwards `*.php` to PHP-FPM over a socket or TCP.
-- **Static assets:** Built at image build time (`npm run build` → `public/build/`); Nginx serves `public/` directly.
-- **No long-running queue in the same container:** Queue workers and scheduler are handled separately (see §7).
+Cloud Run now supports **Direct VPC egress**.
 
-### 3.1 PHP Version and Extensions
+Mechanically this means:
 
-- **PHP:** 8.2+ (match `composer.json`: `"php": "^8.2"`).
-- **Extensions:** Include at least `pdo_pgsql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `fileinfo`, `zip`, `pcntl` (for queue), `gd` or `imagick` if needed. Use `php:8.2-fpm-bookworm` or similar as base and install extensions via `docker-php-ext-install` / PECL as needed.
+1. Create (or reuse) a VPC and a /26+ subnet in `us-central1`.
+2. Create Memorystore Redis in the same VPC/subnet.
+3. Deploy Cloud Run services with:
+   - `--network=<VPC_NAME>`
+   - `--subnet=<SUBNET_NAME>`
 
-### 3.2 Nginx Configuration
+Then set env vars:
 
-- Listen on `PORT` (Cloud Run sets `PORT=8080`); pass PHP requests to PHP-FPM (e.g. `fastcgi_pass 127.0.0.1:9000` or unix socket).
-- **SSE / streaming:** For routes that stream (e.g. `/api/chat/stream`), disable buffering so responses are flushed immediately:
-  - `proxy_buffering off;`
+- `REDIS_HOST=<redis-private-ip>`
+- `REDIS_PORT=6379`
+- `CACHE_STORE=redis`
+- `QUEUE_CONNECTION=redis`
+- `SESSION_DRIVER=redis` (optional)
+
+### 3.2 Acceptable: Serverless VPC Connector (If Already Standard)
+
+If we already standardized on a Serverless VPC connector for other services, we can keep using:
+
+- `--vpc-connector=<connector>`
+- `--vpc-egress=private-ranges-only`
+
+Direct VPC egress is the better default when setting up fresh.
+
+---
+
+## 4. Reverb on Cloud Run
+
+Reverb is a long-running WebSocket server.
+
+Cloud Run gotchas:
+
+- **Timeout:** WebSocket connections are still subject to Cloud Run request timeouts (max 60 minutes). Deploy Reverb with `--timeout=3600` and ensure clients reconnect.
+- **Scaling:** If Cloud Run scales instances, clients will disconnect/reconnect. Design for reconnect.
+- **Multi-instance:** For >1 Reverb instance, use Redis for coordination.
+
+### 4.1 Reverb Config (Env/Secrets)
+
+Secrets to create in Secret Manager:
+
+- `openagents-reverb-app-id`
+- `openagents-reverb-key`
+- `openagents-reverb-secret`
+
+Web service env (broadcasting client config):
+
+- `BROADCAST_CONNECTION=reverb`
+- `REVERB_APP_ID=...`
+- `REVERB_APP_KEY=...`
+- `REVERB_APP_SECRET=...`
+- `REVERB_HOST=ws.openagents.com`
+- `REVERB_PORT=443`
+- `REVERB_SCHEME=https`
+
+Reverb service env:
+
+- same `REVERB_*`
+- plus Redis env if scaling:
+  - `REDIS_HOST`, `REDIS_PORT`, etc.
+
+Note: `apps/openagents.com/` does not yet have Reverb wired/config published. This plan assumes we will add `laravel/reverb` and publish/configure it before turning on the Reverb service.
+
+---
+
+## 5. Container Strategy: One Image, Multiple Entrypoints
+
+Build **one** container image and deploy it with different commands:
+
+- Web service: runs **Nginx + PHP-FPM**
+- Reverb service: runs `php artisan reverb:start --host=0.0.0.0 --port=8080`
+- Queue job: runs `php artisan queue:work ...`
+- Scheduler job: runs `php artisan schedule:run`
+- Migrate job: runs `php artisan migrate --force`
+
+Cloud Run supports overriding `--command` and `--args` per service/job.
+
+---
+
+## 6. Runtime Stack (Nginx + PHP-FPM)
+
+### 6.1 PHP Version + Extensions
+
+- PHP: 8.2+ (match `composer.json`)
+- Common extensions: `pdo_pgsql`, `pdo_sqlite`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `fileinfo`, `zip`, `pcntl`
+
+### 6.2 Nginx Config Requirements
+
+- Listen on `PORT` (Cloud Run sets `PORT=8080`).
+- Root: `public/`.
+- PHP: FastCGI to PHP-FPM.
+- **SSE streaming:** disable buffering for streaming routes:
   - `fastcgi_buffering off;`
-  - `fastcgi_read_timeout` large enough for long-lived streams.
-- Root document: Laravel’s `public/` (so `index.php` and `public/build/` are correct).
-
-### 3.3 Laravel App in Container
-
-- **Build stage:** From repo root (or app dir), run `composer install --no-dev --optimize-autoloader`, then `npm ci && npm run build`, then copy app into a minimal runtime image.
-- **Runtime:** No `.env` file with secrets; inject via **env vars** (from Cloud Run env and Secret Manager `--set-secrets`). Laravel reads `APP_KEY`, `DB_*`, `REDIS_*`, `WORKOS_*`, etc. from the environment.
-- **Storage/cache:** Cloud Run filesystem is ephemeral. Use `storage/logs` and `storage/framework/cache` only for best-effort; prefer **Redis** for cache/sessions and **Cloud SQL** for durable state. If no Redis initially, file-based cache/session are acceptable for MVP with the caveat that they don’t persist across instances.
+  - `proxy_buffering off;`
+  - large `fastcgi_read_timeout`
 
 ---
 
-## 4. SSE and Streaming
+## 7. GCP Resources
 
-The Laravel rebuild plan uses **SSE** for chat streaming. To avoid buffering:
+### 7.1 APIs
 
-1. **Nginx:** For the SSE route (e.g. `/api/chat/stream`), set `proxy_buffering off;` and `fastcgi_buffering off;`, and a high `fastcgi_read_timeout`.
-2. **Cloud Run:** By default Cloud Run can buffer; ensure the response is actually streamed (chunked). Laravel’s streaming response should send chunks as they’re generated.
-3. **Load balancer:** If we put a load balancer in front later, it must support streaming (no buffering of response body).
+Enable if missing:
 
-Document the exact SSE path(s) in Nginx so future changes don’t re-enable buffering.
+- Cloud Run
+- Cloud Build
+- Artifact Registry
+- Secret Manager
+- Cloud SQL Admin
+- Memorystore (Redis) (when ready)
 
----
+### 7.2 Artifact Registry
 
-## 5. GCP Resources to Create (Checklist)
+Create a Docker repo:
 
-### 5.1 APIs and Artifact Registry
+- `openagents-web` (region `us-central1`)
 
-- Enable (if not already): **Cloud Build**, **Artifact Registry**, **Cloud Run**, **Secret Manager**, **Cloud SQL Admin**.
-- Create Artifact Registry repo, e.g.:
-  - `openagents-web` in region `us-central1`.
-  - Image: `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest`.
+Example image tags:
 
-### 5.2 Cloud SQL (Postgres)
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:<git-sha>`
+- `...:latest`
 
-- **Option A:** New instance `laravel-web-db` (Postgres 15, us-central1). Dedicated DB and user for Laravel (e.g. database `laravel`, user `laravel`).
-- **Option B:** New database and user on an existing instance (if acceptable for isolation/cost).
-- Store DB password in Secret Manager (e.g. `laravel-web-db-password`).
-- For production hardening: use **Private IP + VPC** or **Cloud SQL Auth Proxy**; Cloud Run can use **VPC connector** (we already have `oa-serverless-us-central1` for Aperture) to reach private IP, or use the instance’s public IP with authorized networks (simpler for first deploy).
+### 7.3 Cloud SQL (Postgres)
 
-### 5.3 Secrets (Secret Manager)
+Option A (recommended for isolation): new instance `openagents-web-db`.
 
-Create and populate (no values in repo):
+Option B (fastest): add a database + user on existing instance (`l402-aperture-db`).
 
-| Secret name | Purpose |
-|-------------|---------|
-| `laravel-web-app-key` | Laravel `APP_KEY` (e.g. `base64:...`) |
-| `laravel-web-db-password` | Cloud SQL Postgres password for Laravel user |
-| `laravel-web-workos-client-id` | WorkOS client ID |
-| `laravel-web-workos-api-key` | WorkOS API key (server-side) |
+### 7.4 Secrets (Secret Manager)
 
-Add more as needed (e.g. Redis auth, third-party API keys).
+Create/populate:
 
-### 5.4 Optional: Redis (Memorystore)
+- `openagents-web-app-key` (Laravel `APP_KEY`)
+- `openagents-web-db-password` (DB user password)
+- `openagents-web-workos-client-id`
+- `openagents-web-workos-api-key`
 
-- For queues, cache, and sessions: create a **Memorystore for Redis** instance in `us-central1` and connect Cloud Run via VPC connector. If skipped for MVP, use `file` or `database` driver for cache/session with the caveat that they are not shared across instances.
+Plus Reverb secrets when Reverb is enabled.
 
 ---
 
-## 6. Build and Deploy Steps
+## 8. Build and Deploy (Commands)
 
-### 6.1 Dockerfile Location and Shape
+### 8.1 Cloud Build
 
-- **Location:** e.g. `apps/openagents.com/Dockerfile` (or `apps/openagents.com/deploy/Dockerfile`).
-- **Build context:** Repo root so we can copy `apps/openagents.com/` and run composer/npm from app dir. If the app has no monorepo dependencies outside `apps/openagents.com/`, context can be `apps/openagents.com/` and paths in Dockerfile adjusted.
-- **Multi-stage:**
-  1. **Stage 1 (builder):** PHP 8.2 + Composer + Node; copy app, `composer install --no-dev`, `npm ci && npm run build`; output: `vendor/`, `public/build/`, app code.
-  2. **Stage 2 (runtime):** Slim image with PHP 8.2-FPM + Nginx; copy `vendor/`, `public/`, app code; set correct permissions for `storage` and `bootstrap/cache`; Nginx listens on `PORT`; start script runs both Nginx and PHP-FPM (e.g. a small shell script that starts php-fpm in background then `exec nginx -g 'daemon off;'`).
+Use a Cloud Build config like `apps/openagents.com/deploy/cloudbuild.yaml` and build from repo root:
 
-### 6.2 Cloud Build Config
-
-- **Location:** e.g. `apps/openagents.com/deploy/cloudbuild.yaml` (or at repo root pointing at app dir).
-- **Steps:** Build Docker image with tag `us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:${_TAG}` and `:latest`; push both. Use `_TAG=$(git rev-parse --short HEAD)` when invoking from repo root.
-- **Build context:** Repo root if Dockerfile copies from monorepo; otherwise context = `apps/openagents.com/`.
-
-Example (adjust paths to actual layout):
-
-```yaml
-# apps/openagents.com/deploy/cloudbuild.yaml
-# Run from repo root:
-#   gcloud builds submit --config apps/openagents.com/deploy/cloudbuild.yaml \
-#     --substitutions _TAG="$(git rev-parse --short HEAD)" .
-substitutions:
-  _TAG: ${SHORT_SHA}
-steps:
-  - name: "gcr.io/cloud-builders/docker"
-    args:
-      - "build"
-      - "-f"
-      - "apps/openagents.com/Dockerfile"
-      - "-t"
-      - "us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:${_TAG}"
-      - "-t"
-      - "us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:latest"
-      - "."
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:${_TAG}"]
-  - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:latest"]
-images:
-  - "us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:${_TAG}"
-  - "us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:latest"
-options:
-  logging: CLOUD_LOGGING_ONLY
-  substitutionOption: ALLOW_LOOSE
+```bash
+gcloud builds submit \
+  --config apps/openagents.com/deploy/cloudbuild.yaml \
+  --substitutions _TAG="$(git rev-parse --short HEAD)" \
+  .
 ```
 
-### 6.3 Deploy Cloud Run (Copy-Paste Reference)
-
-Replace placeholders with actual values. Use **Cloud SQL connection** if using private IP or socket (e.g. `--add-cloudsql-instances=openagentsgemini:us-central1:laravel-web-db`); then in Laravel, set `DB_HOST` to `/cloudsql/openagentsgemini:us-central1:laravel-web-db` for socket, or to the instance IP for TCP.
+### 8.2 Deploy Web Service
 
 ```bash
 export PROJECT=openagentsgemini
 export REGION=us-central1
 export IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest
 
-gcloud run deploy laravel-web \
+gcloud run deploy openagents-web \
   --project "$PROJECT" \
   --region "$REGION" \
   --image "$IMAGE" \
-  --platform managed \
   --allow-unauthenticated \
   --port 8080 \
   --memory 1Gi \
@@ -194,84 +235,142 @@ gcloud run deploy laravel-web \
   --min-instances 0 \
   --max-instances 4 \
   --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
-  --set-secrets "APP_KEY=laravel-web-app-key:latest,DB_PASSWORD=laravel-web-db-password:latest,WORKOS_CLIENT_ID=laravel-web-workos-client-id:latest,WORKOS_API_KEY=laravel-web-workos-api-key:latest" \
-  --add-cloudsql-instances "openagentsgemini:us-central1:laravel-web-db"
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest" \
+  --add-cloudsql-instances "openagentsgemini:us-central1:<INSTANCE>"
 ```
 
-If using **VPC connector** (e.g. to reach Redis or private Cloud SQL IP):
+If using Direct VPC egress:
+
+- add: `--network=<VPC_NAME> --subnet=<SUBNET_NAME>`
+
+### 8.3 Deploy Reverb Service
 
 ```bash
-  --vpc-connector=oa-serverless-us-central1 \
-  --vpc-egress=private-ranges-only
+gcloud run deploy openagents-reverb \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
+  --allow-unauthenticated \
+  --port 8080 \
+  --timeout 3600 \
+  --min-instances 1 \
+  --max-instances 10 \
+  --concurrency 200 \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,REVERB_APP_ID=openagents-reverb-app-id:latest,REVERB_APP_KEY=openagents-reverb-key:latest,REVERB_APP_SECRET=openagents-reverb-secret:latest" \
+  --command php \
+  --args artisan,reverb:start,--host=0.0.0.0,--port=8080
 ```
 
-Set other env vars as needed: `DB_CONNECTION=pgsql`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `REDIS_HOST`, etc. For Cloud SQL socket, `DB_HOST` is the socket path above; for public IP, set `DB_HOST` to the instance IP and ensure the instance has an authorized network for Cloud Run’s egress IPs or use Private IP.
+### 8.4 Cloud Run Jobs
 
-### 6.4 First-Time Migrations
+Migrations (run once per deploy):
 
-Cloud Run containers are stateless. Run migrations **outside** the request path:
+```bash
+gcloud run jobs create openagents-migrate \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest" \
+  --add-cloudsql-instances "openagentsgemini:us-central1:<INSTANCE>" \
+  --command php \
+  --args artisan,migrate,--force
 
-- **Option A:** One-off Cloud Run Job that runs `php artisan migrate --force` using the same image and env/secrets.
-- **Option B:** CI step or manual: connect to Cloud SQL (e.g. Cloud SQL Proxy or authorized network) and run migrations from a dev machine or a small script in Cloud Build (second step that runs a migration container with same env).
-- **Option C:** A dedicated “migrate” Cloud Run Job that is triggered on deploy (e.g. from Cloud Build); the job runs once and exits.
+gcloud run jobs execute openagents-migrate --project openagentsgemini --region us-central1
+```
 
-Do **not** run migrations in the web container’s startup script at scale (race conditions); run them once per deploy via Job or CI.
+Scheduler (trigger every minute via Cloud Scheduler):
 
-### 6.5 Custom Domain
+```bash
+gcloud run jobs create openagents-scheduler \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest" \
+  --command php \
+  --args artisan,schedule:run
+```
 
-- Map a domain (e.g. `app.openagents.com` or `openagents.com`) to the Cloud Run service:
-  - `gcloud beta run domain-mappings create --service=laravel-web --domain=app.openagents.com --region=us-central1`
-- Add the CNAME (or A/AAAA) records shown by `gcloud beta run domain-mappings describe ...` to your DNS.
-- Ensure domain verification is done in Google Cloud if required.
+Queue draining job (recommended pattern):
 
----
-
-## 7. Queue Workers and Scheduler (Post-MVP)
-
-- **Queues:** Laravel queue workers are long-running. On Cloud Run we don’t run them inside the web container. Options:
-  - **Cloud Run Jobs:** Run a container that executes `php artisan queue:work` (or a single job) and exits; trigger the Job on a schedule or from Pub/Sub for “run worker for N seconds.”
-  - **Separate Cloud Run service:** A second service that runs `queue:work` with `--max-jobs=1` or similar and scales to zero when idle (more complex).
-  - **GCE VM:** One small VM that runs `queue:work` and `schedule:run` (most Forge-like).
-- **Scheduler:** Laravel’s `schedule:run` must be invoked every minute. Options:
-  - **Cloud Scheduler:** HTTP target to a protected Laravel route (e.g. `POST /internal/schedule-run` with a secret token) that runs `Artisan::call('schedule:run')`.
-  - **Cloud Run Job:** Scheduled Job that runs `php artisan schedule:run` every minute (possible but more moving parts).
-
-Document the chosen approach in a short “Queue and scheduler” section in this doc or a follow-up runbook once implemented.
-
----
-
-## 8. Verification
-
-- **Health:** Expose a route (e.g. `/up` or `/health`) that returns 200 and optionally checks DB connectivity. Use it for Cloud Run startup probe if needed.
-- **Smoke:** After deploy, open the Cloud Run URL (or custom domain) and confirm the app loads (e.g. login or welcome page).
-- **SSE:** If chat streaming is implemented, verify the SSE endpoint streams chunks without buffering (e.g. with `curl -N` or browser devtools).
-- **Logs:** `gcloud run services logs read laravel-web --region=us-central1 --limit=50`.
-
----
-
-## 9. Security and Repo
-
-- **No secrets in repo:** Only secret **names** and **procedures** (e.g. “create `laravel-web-app-key` in Secret Manager and add a version with the Laravel key”). Never commit `APP_KEY`, DB passwords, or WorkOS keys.
-- **Gitignore:** Keep `.env` and any local override files ignored; use `.env.example` as a template with placeholder names only.
-- **Rotation:** Document how to rotate `APP_KEY`, DB password, and WorkOS credentials (new secret version, then redeploy or restart revision).
+```bash
+gcloud run jobs create openagents-queue \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest" \
+  --command php \
+  --args artisan,queue:work,--sleep=1,--tries=3,--max-time=840,--stop-when-empty
+```
 
 ---
 
-## 10. Summary Checklist (Ordered)
+## 9. Multi-Tenant: User Sites on Subdomains (Separate Installs)
 
-1. **GCP:** Create Artifact Registry repo `openagents-web`; create Cloud SQL instance (or DB+user); create Secret Manager secrets and add initial versions.
-2. **Repo:** Add `apps/openagents.com/Dockerfile` (PHP-FPM + Nginx, multi-stage, listen on `PORT`); add Nginx config with SSE-friendly settings for stream routes; add `apps/openagents.com/deploy/cloudbuild.yaml`.
-3. **Build:** Run Cloud Build from repo root; confirm image is in Artifact Registry.
-4. **Deploy:** Run `gcloud run deploy laravel-web ...` with env and secrets; if using Cloud SQL, add `--add-cloudsql-instances` or VPC and set `DB_*` accordingly.
-5. **Migrations:** Run `php artisan migrate --force` once (Job or CI) before or right after first deploy.
-6. **Domain:** Map custom domain to `laravel-web`; update DNS; verify TLS.
-7. **Verify:** Hit health URL and main app; test SSE if applicable; check logs.
-8. **Later:** Add queue worker and scheduler strategy (Cloud Run Jobs, Cloud Scheduler, or VM) and document in this doc or a runbook.
+We will eventually want **user sites** deployable at `<tenant>.openagents.com`, each with its own "Laravel install".
+
+There are two credible approaches:
+
+### 9.1 Separate Cloud Run Service Per Tenant (Matches "Own Install")
+
+- A "control plane" provisions a new Cloud Run service per tenant using the same base image.
+- Each tenant gets:
+  - its own `APP_KEY` secret
+  - its own Cloud SQL database (or its own Cloud SQL instance for high-value tenants)
+  - its own domain mapping (`<tenant>.openagents.com` → that tenant’s service)
+  - optional: its own Redis namespace/prefix (or dedicated Redis for large tenants)
+
+Pros:
+
+- Hard isolation between tenants (blast radius).
+- Per-tenant scaling/quotas.
+- Matches the mental model of "their own install".
+
+Cons:
+
+- Many Cloud Run services/domain mappings.
+- Requires automation (Terraform or an internal provisioner).
+
+### 9.2 Single App Multi-Tenancy (Not "Separate Install")
+
+- One service handles all tenants and routes by Host header.
+- Tenant isolation is implemented in-app (DB schemas/prefixes) with a tenancy framework.
+
+This is operationally simpler but does **not** match "own install".
+
+**Recommendation:** start with 9.1 for the user-site product vision.
+
+Minimum automation plan for 9.1:
+
+1. Provision database + user.
+2. Create secrets.
+3. Deploy Cloud Run service from base image with per-tenant env/secrets.
+4. Create domain mapping.
+5. Run migrations for that tenant.
+
+We should decide early whether this is done via:
+
+- Terraform (preferred for drift control), or
+- a provisioner service (calls GCP APIs).
 
 ---
 
-## 11. Related Docs
+## 10. Verification
 
-- **Laravel rebuild plan:** `docs/plans/active/laravel-rebuild.md` (architecture, streaming, tools).
-- **Existing GCP runbooks:** `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md`, `docs/lightning/runbooks/L402_WALLET_EXECUTOR_DEPLOY_RUNBOOK.md`.
-- **Deploy index:** `docs/lightning/deploy/README.md` (build/push pattern for our Cloud Run services).
+- Health endpoint (e.g. `/up` or `/health`).
+- Basic HTTP smoke: the welcome page loads.
+- Streaming smoke (when chat exists): `curl -N` shows incremental SSE frames.
+- Logs:
+  - `gcloud run services logs read openagents-web --region us-central1 --limit 100`
+
+---
+
+## 11. Security Notes
+
+- Never commit secret values.
+- Only commit secret **names** and setup procedures.
+- Prefer Secret Manager `--set-secrets` rather than env values in deploy scripts.
+

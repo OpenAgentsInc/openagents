@@ -1,0 +1,22 @@
+# Never send local deps/artifacts to Docker build context
+node_modules/
+vendor/
+
+# Local env
+.env
+.env.*
+
+# Local storage
+storage/logs/
+storage/framework/cache/
+storage/framework/sessions/
+storage/framework/views/
+storage/pail/
+
+# Build outputs (built in Docker)
+public/build/
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/

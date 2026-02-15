@@ -78,4 +78,3 @@ See:
 - `docs/adr/ADR-0002-verified-patch-bundle.md`
 - `docs/execution/ARTIFACTS.md`
 - `docs/execution/REPLAY.md`
-
