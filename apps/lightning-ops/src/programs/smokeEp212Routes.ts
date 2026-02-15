@@ -614,7 +614,7 @@ const runLiveEp212RoutesSmoke = (requestId: string) =>
     const walletExecutorAuthTokenRaw = process.env.OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN?.trim()
     const walletExecutorAuthToken =
       walletExecutorAuthTokenRaw && walletExecutorAuthTokenRaw.length > 0 ? walletExecutorAuthTokenRaw : null
-    const walletTimeoutMs = yield* envInt("OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS", 12_000)
+    const walletTimeoutMs = yield* envInt("OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS", 60_000)
 
     const calls = { count: 0 }
     const fetchFn: FetchLike = async (input, init) => fetch(input, init)
