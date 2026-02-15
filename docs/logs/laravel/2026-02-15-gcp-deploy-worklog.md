@@ -151,3 +151,65 @@ Remaining work:
    - Jobs: `openagents-migrate`, `openagents-queue`, `openagents-scheduler` (as needed)
 4. Run migrations via Cloud Run job.
 5. Validate a staging URL serves the Laravel app.
+
+## 2026-02-15: Docker Build Unblocked (Wayfinder + Bootstrap Cache)
+
+### Symptom: Vite build fails via Wayfinder plugin
+
+During Docker build, `npm run build` failed with:
+
+- `[@laravel/vite-plugin-wayfinder] Error generating types: Command failed: php artisan wayfinder:generate --with-form`
+
+The plugin calls `this.error(...)` with a stringified `Error`, which hides artisan stderr.
+
+### Root cause #1: Invalid Blade compiled view cache path
+
+Running `php artisan wayfinder:generate --with-form -vvv` inside the Docker build stage revealed:
+
+- `InvalidArgumentException: Please provide a valid cache path.`
+
+This originates from the Blade compiler requiring a valid `config('view.compiled')`, which defaults to a realpath under:
+
+- `storage/framework/views`
+
+In the image build, those directories did not exist.
+
+Complication:
+
+- We initially used `mkdir -p storage/framework/{cache,sessions,views}` in Docker `RUN` layers.
+- Docker uses `/bin/sh` by default (dash on Debian) which **does not support brace expansion**, so the directories were not created as intended.
+
+Fix:
+
+- Create directories explicitly in the build stage before Vite runs:
+
+```dockerfile
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache
+```
+
+### Root cause #2: Stale bootstrap cache referencing dev-only provider
+
+After Wayfinder was unblocked, the runtime stage failed during:
+
+- `php artisan package:discover`
+
+with:
+
+- `Class "Laravel\Boost\BoostServiceProvider" not found`
+
+Root cause:
+
+- `bootstrap/cache/packages.php` (copied from the build context) contained a provider for `laravel/boost`.
+- `laravel/boost` is a dev dependency and is not present in the `--no-dev` vendor install used for the runtime image.
+- Laravel tries to load cached providers during bootstrap, so the command fails before discovery can regenerate the cache.
+
+Fix:
+
+- Delete `bootstrap/cache/packages.php` and `bootstrap/cache/services.php` before running any artisan commands in both:
+  - the build stage (before Vite/Wayfinder)
+  - the runtime stage (before `package:discover`)
+
+### Result
+
+- `docker build` now completes successfully locally for `apps/openagents.com/`.
+- Next step is to re-run Cloud Build with the updated Dockerfile, then deploy `openagents-web` on Cloud Run.
