@@ -1,0 +1,36 @@
+diff --git a/aperture.go b/aperture.go
+index f87c398..50f5a7c 100644
+--- a/aperture.go
++++ b/aperture.go
+@@ -311,8 +311,9 @@ func (a *Aperture) Start(errChan chan error, shutdown <-chan struct{}) error {
+ 		authCfg := a.cfg.Authenticator
+ 		genInvoiceReq := func(price int64) (*lnrpc.Invoice, error) {
+ 			return &lnrpc.Invoice{
+-				Memo:  "L402",
+-				Value: price,
++				Memo:    "L402",
++				Value:   price,
++				Private: true,
+ 			}, nil
+ 		}
+ 
+diff --git a/l402/header.go b/l402/header.go
+index bca5419..e44a1e4 100644
+--- a/l402/header.go
++++ b/l402/header.go
+@@ -142,14 +142,8 @@ func SetHeader(header *http.Header, mac *macaroon.Macaroon,
+ 	macStr := base64.StdEncoding.EncodeToString(macBytes)
+ 	preimageStr := preimage.String()
+ 
+-	// Send "Authorization: LSAT..." header before sending
+-	// "Authorization: L402" header to be compatible with old aperture.
+-	// TODO: remove this after aperture is upgraded everywhere.
+-	legacyValue := fmt.Sprintf(authFormatLegacy, macStr, preimageStr)
+-	header.Set(HeaderAuthorization, legacyValue)
+-
+ 	value := fmt.Sprintf(authFormat, macStr, preimageStr)
+-	header.Add(HeaderAuthorization, value)
++	header.Set(HeaderAuthorization, value)
+ 
+ 	return nil
+ }

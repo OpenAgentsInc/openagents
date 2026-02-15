@@ -201,6 +201,52 @@ const parseAmountMsats = (header: string, attrs: Record<string, string>): Effect
     return parsed
   })
 
+const inferAmountMsatsFromBolt11 = (invoice: string): number | undefined => {
+  // We only need the HRP amount portion; we don't decode the full invoice.
+  // BOLT11 format: ln<network><amount><multiplier?>1<data+checksum>
+  // Amount is in BTC units; multiplier scales by 10^-3 (m), 10^-6 (u), 10^-9 (n), 10^-12 (p).
+  const trimmed = invoice.trim().toLowerCase()
+  const sepIndex = trimmed.indexOf("1")
+  if (sepIndex <= 0) return undefined
+
+  const hrp = trimmed.slice(0, sepIndex)
+  const match = /^ln(?:bc|tb|bcrt)([0-9]+)([munp]?)$/.exec(hrp)
+  if (!match) return undefined
+
+  const digits = match[1] ?? ""
+  const unit = match[2] ?? ""
+  if (!digits) return undefined
+
+  let divisor = 1n
+  switch (unit) {
+    case "":
+      divisor = 1n
+      break
+    case "m":
+      divisor = 1_000n
+      break
+    case "u":
+      divisor = 1_000_000n
+      break
+    case "n":
+      divisor = 1_000_000_000n
+      break
+    case "p":
+      divisor = 1_000_000_000_000n
+      break
+    default:
+      return undefined
+  }
+
+  const msatsPerBtc = 100_000_000_000n
+  const numerator = BigInt(digits) * msatsPerBtc
+  if (numerator % divisor !== 0n) return undefined
+
+  const msats = numerator / divisor
+  if (msats > BigInt(Number.MAX_SAFE_INTEGER)) return undefined
+  return Number(msats)
+}
+
 export const parseChallengeHeader = Effect.fn("l402.parseChallengeHeader")(function* (header: string) {
   const challengeHeader = yield* extractSupportedChallengeSegment(header)
 
@@ -215,11 +261,12 @@ export const parseChallengeHeader = Effect.fn("l402.parseChallengeHeader")(funct
   }
 
   const amountMsats = yield* parseAmountMsats(header, attrs)
+  const amountMsatsResolved = amountMsats ?? inferAmountMsatsFromBolt11(invoice)
 
   return yield* decodeL402Challenge({
     invoice,
     macaroon,
-    ...(amountMsats !== undefined ? { amountMsats } : {}),
+    ...(amountMsatsResolved !== undefined ? { amountMsats: amountMsatsResolved } : {}),
     ...(attrs.issuer ? { issuer: attrs.issuer } : {}),
   }).pipe(
     Effect.mapError(() =>

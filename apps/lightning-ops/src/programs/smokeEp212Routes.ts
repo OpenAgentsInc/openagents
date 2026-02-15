@@ -254,14 +254,19 @@ const createL402Deps = (input: {
 
 const createMockFetch = (): FetchLike => {
   const routeAHost = new URL(MOCK_ROUTE_A_URL).host
-  const routeAAuth = buildAuthorizationHeader({
-    host: routeAHost,
-    scope: ROUTE_A_SCOPE,
-    macaroon: "mac_ep212_a",
-    preimageHex: deterministicPreimage("lnmock_ep212_route_a"),
-    amountMsats: MOCK_ROUTE_A_AMOUNT_MSATS,
-    issuedAtMs: 0,
-  })
+  // The real EP212 Aperture gateway expects the colon auth form:
+  // `Authorization: L402 <macaroon>:<preimage>`
+  const routeAAuth = buildAuthorizationHeader(
+    {
+      host: routeAHost,
+      scope: ROUTE_A_SCOPE,
+      macaroon: "mac_ep212_a",
+      preimageHex: deterministicPreimage("lnmock_ep212_route_a"),
+      amountMsats: MOCK_ROUTE_A_AMOUNT_MSATS,
+      issuedAtMs: 0,
+    },
+    "macaroon_preimage_colon",
+  )
 
   return async (input, init) => {
     const url = new URL(input)
@@ -276,7 +281,7 @@ const createMockFetch = (): FetchLike => {
           headers: {
             "content-type": "application/json; charset=utf-8",
             "www-authenticate":
-              'L402 invoice="lnmock_ep212_route_a", macaroon="mac_ep212_a", amount_msats=70000',
+              `L402 invoice="lnmock_ep212_route_a", macaroon="mac_ep212_a", amount_msats=${MOCK_ROUTE_A_AMOUNT_MSATS}`,
           },
         })
       }
@@ -479,13 +484,9 @@ const runEp212Smoke = (input: {
         maxSpendMsats: input.maxSpendMsats,
         forceRefresh: true,
         cacheTtlMs: 120_000,
-        ...(input.routeAMethod !== "GET"
-          ? {
-              authorizationHeaderStrategyByHost: {
-                [routeAHost]: "macaroon_preimage_colon" as const,
-              },
-            }
-          : {}),
+        authorizationHeaderStrategyByHost: {
+          [routeAHost]: "macaroon_preimage_colon" as const,
+        },
       },
       deps,
     )
