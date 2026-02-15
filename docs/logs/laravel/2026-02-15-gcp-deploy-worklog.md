@@ -470,3 +470,110 @@ curl -i https://openagents-web-157437760789.us-central1.run.app/
 ```
 
 Both returned HTTP 200.
+
+## 2026-02-15: Phase 2 (Runs + append-only run_events receipts)
+
+### Goal
+
+Restore debuggability and replayability by introducing durable:
+
+- `threads`
+- `runs`
+- `messages`
+- append-only `run_events`
+
+These tables are intended to become the canonical source of truth (even if we continue to use `laravel/ai`’s `agent_conversations` as a temporary compatibility layer).
+
+### Code changes
+
+Added new migrations:
+
+- `apps/openagents.com/database/migrations/2026_02_15_000001_create_threads_table.php`
+- `apps/openagents.com/database/migrations/2026_02_15_000002_create_runs_table.php`
+- `apps/openagents.com/database/migrations/2026_02_15_000003_create_messages_table.php`
+- `apps/openagents.com/database/migrations/2026_02_15_000004_create_run_events_table.php`
+
+Added a run orchestrator:
+
+- `apps/openagents.com/app/AI/RunOrchestrator.php`
+
+Key behavior:
+
+- Each `/api/chat` request creates a `runs` row (`status=running`) and appends ordered `run_events`.
+- The orchestrator streams the model output using the Vercel protocol, but **continues consuming the model stream even if the client disconnects**, ensuring the run is finalized in the database.
+- Final assistant content is written into `messages` and run status is updated to `completed` (or `failed`).
+- A compact run id is returned in a response header: `x-oa-run-id`.
+
+Controller integration:
+
+- `apps/openagents.com/app/Http/Controllers/ChatApiController.php` now delegates to `RunOrchestrator`.
+
+UI updates:
+
+- `apps/openagents.com/app/Http/Controllers/ChatPageController.php` now loads initial messages from canonical `messages`.
+- It also loads the most recent run + event timeline for display.
+- It backfills from `agent_conversation_messages` into `messages` if canonical messages are empty (supports Phase 1 conversations).
+- `apps/openagents.com/resources/js/pages/chat.tsx` includes a collapsible “Run details” panel.
+
+Tests:
+
+- `apps/openagents.com/tests/Feature/ChatStreamingTest.php` now asserts:
+  - Vercel protocol stream is valid
+  - `threads`, `runs`, `messages`, `run_events` are populated and consistent
+
+### Local verification
+
+```bash
+cd apps/openagents.com
+composer test
+npm run lint
+npm run types
+npm run build
+```
+
+### Commit
+
+- `092117721` apps(openagents.com): add runs + run_events receipts
+
+### Cloud Build
+
+```bash
+SHA=$(git rev-parse --short HEAD)
+
+gcloud builds submit \
+  --project openagentsgemini \
+  --config apps/openagents.com/deploy/cloudbuild.yaml \
+  --substitutions _TAG="$SHA" \
+  apps/openagents.com
+```
+
+Example build ID:
+
+- `bce4dd8c-8dda-4078-9531-8f04e75c18be`
+
+Image tags:
+
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:092117721`
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest`
+
+### Cloud Run deploy
+
+Deployed `openagents-web` to the new image tag (kept all previous env + secrets, including OpenRouter key):
+
+- URL: `https://openagents-web-157437760789.us-central1.run.app`
+- Revision: `openagents-web-00003-ldw`
+
+### Migrations
+
+Executed `openagents-migrate` again to create the new Phase 2 tables:
+
+- Execution: `openagents-migrate-spkkb`
+
+### Post-deploy verification
+
+```bash
+curl -i https://openagents-web-157437760789.us-central1.run.app/up
+curl -i https://openagents-web-157437760789.us-central1.run.app/
+```
+
+Both returned HTTP 200.
