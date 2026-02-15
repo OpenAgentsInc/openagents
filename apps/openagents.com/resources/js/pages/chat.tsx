@@ -8,10 +8,30 @@ import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 
+type RunSummary = {
+    id: string;
+    status: string;
+    modelProvider?: string | null;
+    model?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    createdAt?: string | null;
+};
+
+type RunEvent = {
+    id: number;
+    type: string;
+    payload: unknown;
+    createdAt: string;
+};
+
 type Props = {
     conversationId: string;
     conversationTitle: string;
     initialMessages: Array<{ id: string; role: string; content: string }>;
+    runs: RunSummary[];
+    selectedRunId: string | null;
+    runEvents: RunEvent[];
 };
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -32,7 +52,25 @@ function messageToText(message: UIMessage): string {
         .trim();
 }
 
-export default function Chat({ conversationId, conversationTitle, initialMessages }: Props) {
+function prettyPayload(payload: unknown): string {
+    if (payload == null) return '';
+    if (typeof payload === 'string') {
+        // Postgres JSON columns may come through as strings depending on driver settings.
+        try {
+            const parsed = JSON.parse(payload);
+            return JSON.stringify(parsed, null, 2);
+        } catch {
+            return payload;
+        }
+    }
+    try {
+        return JSON.stringify(payload, null, 2);
+    } catch {
+        return String(payload);
+    }
+}
+
+export default function Chat({ conversationId, conversationTitle, initialMessages, runs, selectedRunId, runEvents }: Props) {
     const api = useMemo(() => `/api/chat?conversationId=${encodeURIComponent(conversationId)}`, [conversationId]);
 
     const normalizedInitial: UIMessage[] = useMemo(() => {
@@ -56,6 +94,8 @@ export default function Chat({ conversationId, conversationTitle, initialMessage
 
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
+    const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) ?? null, [runs, selectedRunId]);
+
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages.length, isLoading]);
@@ -70,7 +110,20 @@ export default function Chat({ conversationId, conversationTitle, initialMessage
                         <div className="text-sm text-muted-foreground">Conversation</div>
                         <div className="font-medium">{conversationTitle || conversationId}</div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{isLoading ? 'Streaming…' : 'Ready'}</div>
+
+                    <div className="flex items-center gap-3">
+                        {selectedRun ? (
+                            <div className="text-xs text-muted-foreground">
+                                Latest run: <span className="font-mono">{selectedRun.status}</span>
+                            </div>
+                        ) : null}
+
+                        <div className="text-xs text-muted-foreground">{isLoading ? 'Streaming…' : 'Ready'}</div>
+
+                        <Button type="button" variant="secondary" size="sm" onClick={() => window.location.reload()}>
+                            Refresh
+                        </Button>
+                    </div>
                 </div>
 
                 {error ? (
@@ -88,9 +141,7 @@ export default function Chat({ conversationId, conversationTitle, initialMessage
                 ) : null}
 
                 <div className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-lg border border-sidebar-border/70 p-3">
-                    {messages.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">Send a message to start.</div>
-                    ) : null}
+                    {messages.length === 0 ? <div className="text-sm text-muted-foreground">Send a message to start.</div> : null}
 
                     {messages.map((m) => (
                         <div key={m.id} className="flex flex-col gap-1">
@@ -101,6 +152,51 @@ export default function Chat({ conversationId, conversationTitle, initialMessage
 
                     <div ref={bottomRef} />
                 </div>
+
+                <details className="rounded-lg border border-sidebar-border/70 p-3">
+                    <summary className="cursor-pointer select-none text-sm font-medium">Run details</summary>
+
+                    <div className="mt-3 flex flex-col gap-3">
+                        {selectedRun ? (
+                            <div className="rounded-md bg-muted/30 p-2 text-xs">
+                                <div>
+                                    <span className="text-muted-foreground">Run</span> <span className="font-mono">{selectedRun.id}</span>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground">Status</span> <span className="font-mono">{selectedRun.status}</span>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground">Model</span>{' '}
+                                    <span className="font-mono">
+                                        {selectedRun.modelProvider ?? 'unknown'}/{selectedRun.model ?? 'unknown'}
+                                    </span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-sm text-muted-foreground">No runs yet.</div>
+                        )}
+
+                        {runEvents.length > 0 ? (
+                            <div className="flex flex-col gap-2">
+                                {runEvents.map((e) => (
+                                    <div key={e.id} className="rounded-md border border-sidebar-border/70 p-2">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <div className="font-mono">{e.type}</div>
+                                            <div className="text-muted-foreground">{String(e.createdAt)}</div>
+                                        </div>
+                                        {e.payload ? (
+                                            <pre className="mt-2 overflow-x-auto rounded bg-muted/30 p-2 text-[11px] leading-snug">
+                                                {prettyPayload(e.payload)}
+                                            </pre>
+                                        ) : null}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : selectedRun ? (
+                            <div className="text-sm text-muted-foreground">No events recorded for this run yet.</div>
+                        ) : null}
+                    </div>
+                </details>
 
                 <form
                     onSubmit={(e) => {

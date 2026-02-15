@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\AI\Agents\AutopilotAgent;
+use App\AI\RunOrchestrator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -55,8 +55,8 @@ class ChatApiController extends Controller
             ]);
         }
 
-        $agent = AutopilotAgent::make()->continue($conversationId, $user);
+        $orchestrator = resolve(RunOrchestrator::class);
 
-        return $agent->stream($prompt)->usingVercelDataProtocol();
+        return $orchestrator->streamAutopilotRun($user, $conversationId, $prompt);
     }
 }
