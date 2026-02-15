@@ -3400,8 +3400,8 @@ const runAutopilotStream = (input: {
           );
           yield* flush(true);
 
-          // If the primary model produced only reasoning (no user-visible text), retry once with Workers AI.
-          if (openRouterApiKey && outputText.trim().length === 0 && primary.sawReasoning) {
+          // If the primary model produced no user-visible text (no text deltas), retry once with Workers AI.
+          if (openRouterApiKey && outputText.trim().length === 0 && !primary.sawTextDelta) {
             const fallbackPrompt = AiPrompt.make(
               `${rawPrompt}
 
@@ -3429,7 +3429,7 @@ Return only the final answer as plain text. Do not include hidden reasoning or t
         );
         yield* flush(true);
 
-        if (openRouterApiKey && outputText.trim().length === 0 && primary.sawReasoning) {
+        if (openRouterApiKey && outputText.trim().length === 0 && !primary.sawTextDelta) {
           const fallbackPrompt = AiPrompt.make(
             `${rawPrompt}
 
