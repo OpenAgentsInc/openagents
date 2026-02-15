@@ -309,3 +309,70 @@ npm run build
 ```
 
 All passing at time of writing.
+
+## 2026-02-15: Phase 1 (Streaming Chat MVP)
+
+### Backend (Laravel)
+
+Changes in `apps/openagents.com/`:
+
+- Installed `laravel/ai` and published config:
+  - `apps/openagents.com/config/ai.php`
+  - Default provider is now controlled by `AI_DEFAULT` (defaults to `openrouter`).
+- Added AI env placeholders:
+  - `apps/openagents.com/.env.example` now includes `AI_DEFAULT` and `OPENROUTER_API_KEY`.
+- Added AI conversation persistence tables (copied vendor migration into app so it is tracked):
+  - `apps/openagents.com/database/migrations/2026_01_11_000001_create_agent_conversations_table.php`
+
+Minimal agent + endpoints:
+
+- Minimal agent:
+  - `apps/openagents.com/app/AI/Agents/AutopilotAgent.php`
+  - Uses `RemembersConversations` so prior messages are included in context and stored via the built-in `ConversationStore` middleware.
+- Chat page route + API route:
+  - `apps/openagents.com/routes/web.php`
+  - `GET /chat/{conversationId?}` renders the chat UI and loads persisted messages.
+  - `POST /api/chat?conversationId=...` streams SSE using Vercel AI SDK data stream protocol.
+- CSRF:
+  - `apps/openagents.com/bootstrap/app.php` exempts `api/chat` from CSRF validation so the Vercel client transport can POST without Laravel’s CSRF header requirements.
+
+Controllers:
+
+- `apps/openagents.com/app/Http/Controllers/ChatPageController.php`
+  - If no `conversationId` is present, creates a conversation row and redirects to `/chat/{id}`.
+  - Loads prior messages from DB and passes them to the Inertia page.
+- `apps/openagents.com/app/Http/Controllers/ChatApiController.php`
+  - Validates `conversationId` belongs to the current user.
+  - Uses the last user message from the Vercel UI message array as the next prompt.
+  - Streams via `AutopilotAgent::stream(...)->usingVercelDataProtocol()`.
+
+### Frontend (Inertia + React)
+
+- Added Chat page:
+  - `apps/openagents.com/resources/js/pages/chat.tsx`
+  - Uses `useChat` from `@ai-sdk/react` + `DefaultChatTransport` from `ai`.
+  - Manages input locally and calls `sendMessage({ text })`.
+  - Renders messages by combining `parts` (text/reasoning) to plain text.
+- Added nav entry:
+  - `apps/openagents.com/resources/js/components/app-sidebar.tsx` now links to `/chat`.
+
+### Tests
+
+- Added a feature test proving stream protocol and persistence work (no external API key needed):
+  - `apps/openagents.com/tests/Feature/ChatStreamingTest.php`
+  - Uses `Laravel\Ai\Ai::fakeAgent(...)` and asserts the SSE includes:
+    - `data: {"type":"start"...}`
+    - `data: {"type":"text-delta"...}`
+    - `data: {"type":"finish"...}`
+    - `data: [DONE]`
+  - Asserts 2 rows are written to `agent_conversation_messages`.
+
+### Verification
+
+```bash
+cd apps/openagents.com
+composer test
+npm run lint
+npm run types
+npm run build
+```
