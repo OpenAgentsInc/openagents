@@ -1,0 +1,35 @@
+# Build and push the Laravel web image.
+# Run from repo root:
+#   gcloud builds submit --config apps/openagents.com/deploy/cloudbuild.yaml \
+#     --substitutions _TAG="$(git rev-parse --short HEAD)" .
+substitutions:
+  _TAG: ${SHORT_SHA}
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    dir: apps/openagents.com
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:${_TAG}
+      - -t
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:${_TAG}
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:latest
+
+images:
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:${_TAG}
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-web/laravel:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
