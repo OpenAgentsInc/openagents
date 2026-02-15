@@ -48,7 +48,8 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 
 ## Where To Change Things
 
-- Web product surface: `apps/web/`
+- **Core web app (incoming):** `apps/openagents.com/` — Laravel 12 + Inertia + React (TypeScript), target replacement for the current web stack. See `docs/plans/active/laravel-rebuild.md`.
+- **Web product surface (current/legacy until cutover):** `apps/web/` — Effuse/Cloudflare/Convex stack.
 - Autopilot worker surface: `apps/autopilot-worker/`
 - Mobile surface: `apps/mobile/`
 - Desktop surface: `apps/desktop/`
@@ -57,7 +58,8 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 
 ## Verification Entry Points
 
-- Web: `apps/web/README.md`
+- **Laravel web (incoming core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
+- Web (current): `apps/web/README.md`
 - Autopilot worker: `apps/autopilot-worker/README.md`
 - Mobile: `apps/mobile/README.md`
 - Desktop: `apps/desktop/README.md`
