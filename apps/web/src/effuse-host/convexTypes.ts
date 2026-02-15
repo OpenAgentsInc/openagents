@@ -13,6 +13,21 @@ export type ThreadSnapshotMessage = {
   updatedAtMs: number;
 };
 
+export type ThreadSnapshotPartRow = {
+  messageId: string;
+  runId: string;
+  seq: number;
+  part: unknown;
+  createdAtMs: number;
+};
+
+export type GetRunPartsHeadResult = {
+  ok: boolean;
+  threadId: string;
+  parts: ReadonlyArray<ThreadSnapshotPartRow>;
+};
+
+
 export type GetThreadSnapshotResult = {
   ok: boolean;
   threadId: string;

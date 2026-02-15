@@ -1,13 +1,32 @@
 # Autopilot Context + Tool Replay Audit (2026-02-15)
 
-This audit documents, precisely and with code references, what context we pass into the model for `openagents.com` Autopilot chat, and how tool calls/results are stored and (not) replayed into subsequent model calls.
+This audit documents, precisely and with code references, what context we pass into the model for `openagents.com` Autopilot chat, how tool calls/results are stored, and how tool calls/results are replayed into subsequent model calls.
+
+It also compares our flow to the Vercel AI SDK (`/Users/christopherdavid/code/ai`) `useChat` architecture, since that is the “normal chat app” baseline.
 
 ## Executive Summary
 
-- The **model prompt context is built from `messages.text` only** (Convex `messages` table). We intentionally **do not load `messageParts`** (tool calls/results, streaming deltas, DSE parts) into the model prompt.
-- Tool calls/results are recorded as **`messageParts` rows** and rendered in the UI, but **they are not replayed back into the model** in a structured way.
-- The only way a tool outcome affects subsequent model behavior is if the Worker **writes a human-readable summary into the assistant’s durable `messages.text`** when finalizing the run.
-- This differs from “typical tool-calling chat apps”, where the model sees prior tool calls and tool outputs as first-class context messages.
+- Autopilot chat state is stored durably in Convex as:
+  - `messages` (durable user/assistant rows) and
+  - `messageParts` (append-only streaming parts, tool parts, DSE parts).
+  - See: `apps/web/convex/autopilot/messages.ts`.
+
+- The model prompt is still built from `messages.text` history (plus a system prompt and bootstrap additions):
+  - `apps/web/src/effuse-host/autopilot.ts:1170-1210` (`concatTextFromPromptMessages`)
+  - `apps/web/src/effuse-host/autopilot.ts` (prompt assembly in `runAutopilotStream`)
+
+- **Tool calls/results are now replayed into model context** via a bounded, redacted “tool replay” block:
+  - Worker queries `getRunPartsHead` for recent runIds in-context.
+  - Worker extracts + redacts recent `dse.tool` parts, then injects them into the system prompt as `extraSystem`.
+  - Code:
+    - Convex query: `apps/web/convex/autopilot/messages.ts` (`getRunPartsHead`)
+    - Worker injection: `apps/web/src/effuse-host/autopilot.ts` (tool replay block in `runAutopilotStream`)
+    - Redaction + rendering: `apps/web/src/effuse-host/toolReplay.ts`
+
+- This is a pragmatic approximation of the Vercel AI SDK approach (where tool call/results are first-class message parts passed each turn), while keeping:
+  - context bounded,
+  - secrets scrubbed,
+  - and Convex as the source of truth.
 
 ## Scope
 
@@ -25,7 +44,7 @@ All of this lives under `apps/web/convex/autopilot/messages.ts`:
 - `runs` (durable): one row per assistant generation.
   - Contains: `runId`, `assistantMessageId`, `status`, `cancelRequested`.
 - `messageParts` (durable append-only): streaming parts, tool parts, DSE parts.
-  - Contains: `runId`, `messageId`, `seq`, and opaque `part` objects.
+  - Contains: `threadId`, `runId`, `messageId`, `seq`, `part`.
 
 Code reference:
 - Snapshot schema + queries: `apps/web/convex/autopilot/messages.ts:17-96`
@@ -40,19 +59,17 @@ A tool execution is not stored as a separate “tool message”. Instead, it is 
 Example part shapes (not exhaustive):
 
 - `AiResponse.StreamPartEncoded` (streaming UI): `text-start`, `text-delta`, `text-end`, `error`, `finish`.
-- DSE instrumentation parts (UI + receipts): `dse.tool`, `dse.signature`, `dse.compile`, etc.
+- DSE instrumentation parts: `dse.tool`, `dse.signature`, `dse.compile`, etc.
 
-These parts are visible in the UI and/or in admin traces, but are not fed back to the model prompt today.
-
-## End-to-End Flow
+## End-to-End Flow (Current)
 
 ### 1) Client sends a message
 
 Client-side `ChatService.send` performs an HTTP POST to `/api/autopilot/send` with the text and thread id:
 
-- `apps/web/src/effect/chat.ts:488-512`
+- `apps/web/src/effect/chat.ts:488-545`
 
-Key point: this is not a direct model call from the browser. The Worker runs the model and streams state through Convex.
+Key point: the browser does **not** call the model directly. The Worker runs the model and streams state through Convex.
 
 ### 2) Worker creates the run + placeholder assistant message
 
@@ -75,178 +92,137 @@ The Worker uses `ctx.waitUntil(runAutopilotStream(...))`:
 
 - `apps/web/src/effuse-host/autopilot.ts:4026-4036`
 
-The important implication: **streaming is best-effort** (Cloudflare isolates can be evicted). This is why we have a stale-run finalizer on the Convex side.
+Implication: streaming is best-effort (Cloudflare isolates can be evicted). Convex has a stale-run guard that can finalize stuck runs.
 
-### 4) Worker loads prompt context (messages only)
+### 4) Worker loads prompt context
 
-Inside `runAutopilotStream`, the Worker queries Convex for the thread snapshot with `maxParts: 0`:
+Inside `runAutopilotStream`, the Worker loads **messages only** using `getThreadSnapshot(maxParts: 0)`:
 
-- `apps/web/src/effuse-host/autopilot.ts:2621-2634`
+- `apps/web/src/effuse-host/autopilot.ts` (snapshot load in `runAutopilotStream`)
 
-This is the core decision:
+This yields `messagesRaw` with `(role, text, runId, status)`.
 
-- We load **only `messages` rows**.
-- We load **zero `messageParts`**.
+### 5) Tool replay injection (new behavior)
 
-This means **tool calls/results from prior turns are not present** when building the prompt.
+To behave more like a normal tool-calling chat app, we replay recent tool calls/results into model context.
 
-### 5) Worker builds the model prompt from text-only history
+Mechanics:
 
-The Worker maps Convex message rows to `(role, text)` and builds a prompt:
+1. Worker extracts the in-context runIds from the last `MAX_CONTEXT_MESSAGES` assistant messages.
+2. Worker queries Convex `getRunPartsHead` (by runId, ordered by seq) to fetch only the **head** of each run’s parts.
+   - Why head: tool parts are emitted early in the run, and we do not want to pull the full token stream history.
+3. Worker filters to `dse.tool` parts, redacts sensitive keys (invoice/macaroon/preimage/auth/cookies/seeds/etc.), clamps previews, and renders a bounded summary string.
+4. Worker injects that summary into the system prompt via `extraSystem` so the model sees tool outcomes.
 
-- Messages extracted: `apps/web/src/effuse-host/autopilot.ts:2664-2671`
-- System prompt + bootstrap system additions: `apps/web/src/effuse-host/autopilot.ts:1170-1210`
+Code:
+- Convex query: `apps/web/convex/autopilot/messages.ts` (`getRunPartsHead`)
+- Worker injection: `apps/web/src/effuse-host/autopilot.ts` (tool replay block)
+- Renderer/redactor: `apps/web/src/effuse-host/toolReplay.ts` (`renderToolReplaySystemContext`)
+
+Security posture:
+- We **do not** feed raw tool outputs into the model.
+- We feed only a **redacted and bounded** summary.
+
+### 6) Worker builds the model prompt
+
+The Worker maps message rows to `(role, text)` and builds the prompt:
+
+- System prompt + bootstrap additions: `apps/web/src/effuse-host/autopilot.ts:1170-1210`
 
 `concatTextFromPromptMessages(...)` creates an `AiPrompt.RawInput` with:
 
-- One `system` message: hardcoded “You are Autopilot …” + bootstrap additions
-- Then each prior message as `user`/`assistant`, with `content: [{ type: "text", text: ... }]`
+- One `system` message: hardcoded “You are Autopilot …” + bootstrap additions + optional `extraSystem` (including tool replay).
+- Then each prior message as `user`/`assistant`, with `content: [{ type: "text", text: ... }]`.
 
-Critically:
+### 7) Worker writes streaming parts to Convex
 
-- No `messageParts` are ever considered.
-- No tool-call JSON, no tool-result payloads, no structured receipts.
+During model streaming (and also during deterministic tool routing), the Worker appends `messageParts` via:
 
-### 6) Worker writes streaming parts to Convex
+- `apps/web/src/effuse-host/autopilot.ts` → `appendParts` mutation
 
-During model streaming (and also for tool routing), the Worker appends `messageParts` batches via:
-
-- `apps/web/src/effuse-host/autopilot.ts:2591-2606` → `appendParts` mutation
-
-Those rows are rendered by the UI (see next section).
-
-### 7) Worker finalizes the run (durable `messages.text`)
+### 8) Worker finalizes the run (durable `messages.text`)
 
 At end-of-run, the Worker finalizes the run and writes `messages.text`:
 
-- Worker: `apps/web/src/effuse-host/autopilot.ts` (finalize happens near the end of `runAutopilotStream`, after streaming)
+- Worker: `apps/web/src/effuse-host/autopilot.ts` (finalize in `runAutopilotStream`)
 - Convex: `apps/web/convex/autopilot/messages.ts:299-371`
 
-This `messages.text` is the **only** part of the assistant run that is guaranteed to be used later as model context.
+Even with tool replay, `messages.text` remains the canonical durable transcript.
 
-### 8) UI subscribes to both messages and messageParts
+### 9) UI subscribes to both messages and messageParts
 
-The UI is not “streamed from the model”; it is “streamed from Convex”.
+The UI is not streamed directly from the model; it is rebuilt deterministically from Convex.
 
-- `ChatService.open` subscribes to `getThreadSnapshot`:
-  - `apps/web/src/effect/chat.ts:253` (subscribeQuery)
-- It rebuilds a deterministic message structure:
-  - parses `messages` + `parts`
-  - applies `applyChatWirePart(...)` to reconstruct a per-message active stream
+- Snapshot subscription: `apps/web/src/effect/chat.ts:253` (subscribeQuery)
+- Deterministic rebuild: `apps/web/src/effect/chat.ts` (apply wire parts to reconstruct message state)
 
-Key detail:
+## Comparison: Vercel AI SDK (`/Users/christopherdavid/code/ai`) “Normal Chat App” Behavior
 
-- We recently added a guard so the UI won’t show an empty assistant bubble when we have a finalized `messages.text`:
-  - `apps/web/src/effect/chat.ts:290-337`
+This section documents what the Vercel AI SDK does so we can explicitly compare.
 
-## Tool Calls and Results: Storage vs Prompt Replay
+### Client (`useChat`) maintains + sends full message history
 
-### How tool executions are represented
+Files:
 
-When the Worker runs a tool (example: L402), it emits a `dse.tool` part into `messageParts`.
+- Hook: `/Users/christopherdavid/code/ai/packages/react/src/use-chat.ts`
+- Core chat state: `/Users/christopherdavid/code/ai/packages/ai/src/ui/chat.ts`
+- HTTP transport: `/Users/christopherdavid/code/ai/packages/ai/src/ui/http-chat-transport.ts`
+- UI message schema: `/Users/christopherdavid/code/ai/packages/ai/src/ui/ui-messages.ts`
 
-Reference (tool routing path in `runAutopilotStream`):
+Key behavior:
 
-- Tool start part: `apps/web/src/effuse-host/autopilot.ts:2673-2691`
+- Client maintains `messages: UIMessage[]` where each message has `parts`.
+- Tool calls/results and approvals are first-class parts inside the message.
+- Each request POSTs something like:
+  - `{ id, messages, ... }`
+- Server replies as a JSON event stream of `UIMessageChunk`s.
 
-Then, depending on success/failure/approval-needed, it emits another `dse.tool` part with `state=ok|error|approval-requested` plus output payload.
+### What “tool replay” means in AI SDK
 
-### How tool executions become visible to the user
+In AI SDK:
 
-The UI converts tool parts into “cards” via:
+- The server receives the full message list including:
+  - prior tool calls
+  - prior tool outputs
+  - approvals
 
-- `apps/web/src/effuse-app/controllers/autopilotChatParts.ts`
+So the model can reliably answer:
 
-For Lightning L402, we intentionally hide the raw tool payload card by default and render a `payment-state` card:
+- “what just happened?”
+- “did we already pay?”
+- “what was the tool output?”
 
-- `apps/web/src/effuse-app/controllers/autopilotChatParts.ts:503-543`
+without relying on the assistant having re-stated the tool result in plain text.
 
-The payment-state card is rendered by:
+### How OpenAgents differs (and what we mirrored)
 
-- `apps/web/src/effuse-pages/autopilot.ts` → `renderPaymentStateCard`
+- We do not use Vercel AI SDK transport today in `apps/web`; we use `@effect/ai` for inference and Convex for state.
+- Our client POST body is `{ threadId, text }`:
+  - `apps/web/src/effect/chat.ts:502-511`
+- Historically, our Worker prompt context was built from `messages.text` only.
 
-### What the model sees on the next turn
+What we mirrored:
 
-The model sees **none** of the above tool parts.
+- We now replay tool calls/results into model context each turn.
+- Instead of sending full `UIMessage[]` from the browser, we:
+  - treat Convex as the canonical history store
+  - query a bounded subset of run head parts
+  - inject a redacted summary into the system prompt
 
-On the next request, we build prompt context from:
+This gives the model the “memory” it needs, without pulling full token delta history or risking secret exfiltration.
 
-- Convex `messages` (role + text)
-- plus the hardcoded system prompt
+## Practical Consequences / Why This Matters
 
-Because we query `getThreadSnapshot` with `maxParts: 0`:
+1. The model can now reliably answer questions about prior tool outcomes even when:
+   - tool output wasn’t written verbatim into assistant durable text
+   - the UI showed a tool card but the assistant text stayed terse
 
-- `apps/web/src/effuse-host/autopilot.ts:2621-2628`
+2. Multi-step flows (approval → pay → fetch → summarize) become less brittle because the model has the prior tool states.
 
-So unless the tool outcome is reflected into the assistant’s durable `messages.text`, the model has no memory of:
+3. We can iteratively make tool replay richer (more tool-specific summaries) without changing the storage model.
 
-- tool names
-- tool inputs/outputs
-- tool receipts
-- task IDs
-- approvals
-- payment proofs
+## Follow-Ups / Next Improvements
 
-### How tool outcomes currently influence future turns
-
-Only via the **assistant text** we choose to write.
-
-For Lightning L402 specifically:
-
-- The tool execution sets `outputText` to a human-readable string derived from the terminal state.
-- That `outputText` is emitted as a `text-delta` part (for UI) and written as `messages.text` (durable).
-
-So “tool replay” today is effectively:
-
-- **Tool result summary as plain English text**
-
-not:
-
-- structured tool messages in the prompt.
-
-## How This Differs From Typical Tool-Calling Chat Apps
-
-Typical tool-calling chat architectures do something like:
-
-- include prior assistant tool calls (`{"tool_calls": ...}`) in context
-- include tool outputs as `role=tool` messages
-- let the model reason over tool outputs and decide next actions
-
-Our current architecture:
-
-- mostly does not use model-native tool calling
-- uses deterministic routing for certain commands (e.g. L402 flows)
-- stores tool data in `messageParts` for UI/receipts
-- but **does not replay tool data into the model prompt**
-
-That is the concrete, code-backed answer to “are we passing tool calls/results back to the AI?”
-
-## Practical Consequences (Why This Matters)
-
-1. If the assistant’s durable `messages.text` is too terse (or empty due to a streaming failure), the model cannot reliably answer:
-   - “what just happened?”
-   - “what’s the task id?”
-   - “did we already pay?”
-
-2. Any “multi-step” flows that depend on hidden tool state will be brittle unless we explicitly re-surface that state in plain text.
-
-3. It becomes easy for the model to appear “amnesiac” relative to the UI (the UI shows tool cards; the model does not see them).
-
-## Recommendations (Minimal + Safe)
-
-If we want the model to behave more like tool-calling chat apps *without* blowing up context size or leaking secrets, the safest path is to inject a **bounded, deterministic tool recap** into the system prompt.
-
-Suggested approach:
-
-- Query `getThreadSnapshot` with a small `maxParts` (e.g. last 200 parts) *only on the Worker side*.
-- Extract just the last N tool events (especially terminal statuses and pending approvals).
-- Serialize a recap as a short, stable string and append to `extraSystem` passed into `concatTextFromPromptMessages`.
-
-This would keep:
-
-- runtime deterministic
-- context bounded
-- secrets out (we choose what to include)
-
-while enabling the model to reason over prior tool outcomes.
-
+- Convert tool replay from a system-block string into a more structured “tool message” representation (closer to AI SDK), while keeping redaction.
+- Add per-tool summary renderers for additional tools beyond Lightning (today, Lightning is the main specialized renderer).
+- If we adopt the Vercel AI SDK client transport later, we can still keep Convex as canonical store; but it would be a larger architecture shift.
