@@ -417,32 +417,44 @@ export const executeLightningFetchWithWalletExecutor = (input: {
       blockedHosts,
     });
 
+    const transportTimeoutMs = Math.max(5_000, Math.min(30_000, availability.timeoutMs));
+
     const transportLayer = Layer.succeed(
       L402TransportService,
       L402TransportService.of({
         send: (request) =>
           Effect.tryPromise({
             try: async () => {
-              const response = await fetch(request.url, {
-                method: request.method ?? "GET",
-                headers: request.headers,
-                ...(request.body !== undefined ? { body: request.body } : {}),
-                cache: "no-store",
-              });
-              const body = await response.text();
-              const headers: Record<string, string> = {};
-              response.headers.forEach((value, key) => {
-                headers[key] = value;
-              });
-              return {
-                status: response.status,
-                headers,
-                ...(body.length > 0 ? { body } : {}),
-              };
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), transportTimeoutMs);
+              try {
+                const response = await fetch(request.url, {
+                  method: request.method ?? "GET",
+                  headers: request.headers,
+                  ...(request.body !== undefined ? { body: request.body } : {}),
+                  cache: "no-store",
+                  signal: controller.signal,
+                });
+                const body = await response.text();
+                const headers: Record<string, string> = {};
+                response.headers.forEach((value, key) => {
+                  headers[key] = value;
+                });
+                return {
+                  status: response.status,
+                  headers,
+                  ...(body.length > 0 ? { body } : {}),
+                };
+              } finally {
+                clearTimeout(timeout);
+              }
             },
             catch: (error) =>
               L402TransportError.make({
-                reason: String(error),
+                reason:
+                  error instanceof Error && error.name === "AbortError"
+                    ? `transport_timeout ${transportTimeoutMs}ms url=${request.url}`
+                    : String(error),
               }),
           }),
       }),
