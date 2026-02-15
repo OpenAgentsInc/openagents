@@ -95,6 +95,79 @@ export const getThreadSnapshot = effectQuery({
   handler: getThreadSnapshotImpl,
 });
 
+
+export const getRunPartsHeadImpl = (
+  ctx: EffectQueryCtx,
+  args: {
+    readonly threadId: string;
+    readonly anonKey?: string | undefined;
+    readonly runIds: ReadonlyArray<string>;
+    readonly maxPartsPerRun?: number | undefined;
+  },
+) =>
+  Effect.gen(function* () {
+    yield* assertThreadAccess(ctx, args);
+
+    const maxPartsPerRun =
+      typeof args.maxPartsPerRun === "number" && Number.isFinite(args.maxPartsPerRun)
+        ? Math.max(0, Math.min(500, Math.floor(args.maxPartsPerRun)))
+        : 80;
+
+    const runIdsRaw = Array.isArray(args.runIds) ? args.runIds : [];
+    const runIds = [...new Set(runIdsRaw.map((r) => String(r ?? "").trim()).filter((r) => r.length > 0))].slice(
+      0,
+      40,
+    );
+
+    const parts =
+      maxPartsPerRun == 0 || runIds.length === 0
+        ? []
+        : yield* Effect.forEach(
+            runIds,
+            (runId) =>
+              tryPromise(() =>
+                ctx.db
+                  .query("messageParts")
+                  .withIndex("by_runId_seq", (q) => q.eq("runId", runId))
+                  .order("asc")
+                  .take(maxPartsPerRun),
+              ).pipe(
+                // Defensive: constrain to the requested thread; runId is globally unique but this avoids any
+                // accidental cross-thread bleed if indexes change or data is corrupted.
+                Effect.map((rows) => rows.filter((row: any) => (row as any)?.threadId === args.threadId)),
+                Effect.catchAll(() => Effect.succeed([] as any[])),
+              ),
+            { concurrency: 6, discard: false },
+          ).pipe(Effect.map((batches) => batches.flat()));
+
+    return {
+      ok: true,
+      threadId: args.threadId,
+      parts: parts.map((p: any) => ({
+        messageId: p.messageId,
+        runId: p.runId,
+        seq: p.seq,
+        part: p.part,
+        createdAtMs: p.createdAtMs,
+      })),
+    };
+  });
+
+export const getRunPartsHead = effectQuery({
+  args: {
+    threadId: v.string(),
+    anonKey: v.optional(v.string()),
+    runIds: v.array(v.string()),
+    maxPartsPerRun: v.optional(v.number()),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    threadId: v.string(),
+    parts: v.array(v.any()),
+  }),
+  handler: getRunPartsHeadImpl,
+});
+
 export const createRunImpl = (
   ctx: EffectMutationCtx,
   args: { readonly threadId: string; readonly anonKey?: string | undefined; readonly text: string },

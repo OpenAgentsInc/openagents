@@ -29,12 +29,14 @@ import {
   walletExecutorAvailability,
 } from "./lightningL402Executor";
 import { DEFAULT_EXECUTOR_PRESENCE_MAX_AGE_MS, isExecutorPresenceFresh } from "./lightningPresence";
+import { renderToolReplaySystemContext } from "./toolReplay";
 import type { WorkerEnv } from "./env";
 import type {
   CreateRunResult,
   EnsureOwnedThreadResult,
   GetBlueprintResult,
   GetThreadTraceBundleResult,
+  GetRunPartsHeadResult,
   GetThreadSnapshotResult,
   IsCancelRequestedResult,
   ThreadSnapshotMessage,
@@ -2618,7 +2620,7 @@ const runAutopilotStream = (input: {
       });
       yield* flush(true);
 
-      // Load prompt context from Convex (messages only; omit parts). Owner-only.
+      // Load prompt context from Convex (messages only). Owner-only.
       const rawSnapshot = yield* convex
         .query(api.autopilot.messages.getThreadSnapshot, {
           threadId: input.threadId,
@@ -2665,10 +2667,19 @@ const runAutopilotStream = (input: {
         .filter((m) => m && typeof m === "object")
         .filter((m) => String(m.role ?? "") === "user" || String(m.role ?? "") === "assistant")
         .filter((m) => String(m.status ?? "") !== "streaming" || String(m.messageId ?? "") !== input.assistantMessageId)
-        .map((m) => ({ role: String(m.role ?? "user"), text: String(m.text ?? "") }))
+        .map((m) => ({
+          messageId: String(m.messageId ?? ""),
+          role: String(m.role ?? "user"),
+          text: String(m.text ?? ""),
+          runId: typeof (m as any).runId === "string" && String((m as any).runId).trim().length > 0 ? String((m as any).runId) : null,
+        }))
         .filter((m) => m.text.trim().length > 0);
 
       const tail = promptMessages.slice(-MAX_CONTEXT_MESSAGES);
+      const contextRunIds = tail
+        .filter((m) => m.role === "assistant")
+        .map((m) => m.runId)
+        .filter((r): r is string => typeof r === "string" && r.length > 0);
 
       if (lightningInvocation) {
         const toolName = lightningInvocation.toolName;
@@ -2788,6 +2799,35 @@ const runAutopilotStream = (input: {
 
         yield* flush(true);
         return;
+      }
+
+      // Tool replay: include recent tool calls/results in model context.
+      // This mirrors typical tool-calling chat apps (e.g. Vercel AI SDK `useChat`) where the model
+      // sees prior tool outputs as first-class context, rather than only whatever we chose to write
+      // into durable assistant text.
+      if (contextRunIds.length > 0) {
+        const partsExit = yield* Effect.exit(
+          convex
+            .query(api.autopilot.messages.getRunPartsHead, {
+              threadId: input.threadId,
+              runIds: contextRunIds.slice(-12),
+              maxPartsPerRun: 120,
+            })
+            .pipe(
+              Effect.timeoutFail({
+                duration: `${CONVEX_QUERY_TIMEOUT_MS} millis`,
+                onTimeout: () => new Error("convex.getRunPartsHead_timeout"),
+              }),
+            ),
+        );
+
+        if (partsExit._tag === "Success") {
+          const rows = (partsExit.value as GetRunPartsHeadResult).parts;
+          const toolReplay = renderToolReplaySystemContext(rows, { maxEvents: 12, maxOutputChars: 6_000 });
+          if (toolReplay.trim().length > 0) {
+            extraSystemContext = extraSystemContext ? `${extraSystemContext}\n\n${toolReplay}` : toolReplay;
+          }
+        }
       }
 
       const workersAiModel = makeWorkersAiLanguageModel({
