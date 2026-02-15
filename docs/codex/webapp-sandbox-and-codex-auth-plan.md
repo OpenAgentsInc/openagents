@@ -4,15 +4,14 @@ This document outlines how to integrate **Cloudflare Sandbox SDK** and **Codex (
 
 **Audience:** Engineers wiring the webapp to a sandbox-backed agent and/or Codex OAuth.
 
-**Related:** `docs/liteclaw/README.md`, `docs/liteclaw/spec.md` (Autopilot spec), `apps/cloudflare-agent-sdk-demo/`, [Sandbox SDK docs](https://developers.cloudflare.com/sandbox/).
+**Related:** `docs/autopilot/spec.md`, `apps/autopilot-worker/`, [Sandbox SDK docs](https://developers.cloudflare.com/sandbox/).
 
 ---
 
 ## Current state
 
 - **Webapp (`apps/web/`):** TanStack Start + Convex + WorkOS Auth. Chat UI uses `@assistant-ui/react`, `@cloudflare/ai-chat`, and `agents` (Agents SDK client). Threads are Convex-backed; the runtime connects via **WebSocket** to the Autopilot worker (`WS /agents/chat/{id}`).
-- **Autopilot worker (`apps/liteclaw-worker/`):** Cloudflare Workers + Durable Objects + Agents SDK. Handles chat, transcript, tool policy, extensions. **No sandbox today** (no containers, no `@cloudflare/sandbox`).
-- **Cloudflare agent demo (`apps/cloudflare-agent-sdk-demo/`):** Effect-based request handling, MCP, tools; useful reference for worker structure. No sandbox.
+- **Autopilot worker (`apps/autopilot-worker/`):** Cloudflare Workers + typed tool/runtime surfaces used by the web product. Sandbox integration is not currently wired here.
 - **Codex:** OpenCode’s built-in Codex plugin does OAuth (browser PKCE + localhost callback, or device code). See [opencode-codex-auth.md](./opencode-codex-auth.md) for flows and web viability.
 
 ---
@@ -232,5 +231,5 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 
 - [opencode-codex-auth.md](./opencode-codex-auth.md) – OpenCode Codex flows and web viability.
 - [Sandbox SDK](https://developers.cloudflare.com/sandbox/) – Getting started, API, concepts, tutorials.
-- [Liteclaw docs](../liteclaw/README.md) and [Autopilot spec](../liteclaw/spec.md) – Current worker and webapp flow.
-- [cloudflare-agent-sdk-demo](../cloudflare/) – Effect + Agents SDK structure (no sandbox).
+- Autopilot spec: `docs/autopilot/spec.md`
+- Worker surface: `apps/autopilot-worker/`

@@ -77,7 +77,7 @@ The Worker secrets needed for `openagents.com` to pay via the wallet executor ar
 - `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN`
 - `OA_LIGHTNING_L402_ALLOWED_HOSTS`
 
-Next step for a human operator: run the scripted chat flow from `docs/lightning/plans/212-demo-plan.md` on `openagents.com` and confirm:
+Next step for a human operator: run the scripted chat flow from `docs/plans/active/lightning/212-demo-plan.md` on `openagents.com` and confirm:
 
 1. approval prompt appears before paying
 2. after approval, payment succeeds and premium payload is summarized

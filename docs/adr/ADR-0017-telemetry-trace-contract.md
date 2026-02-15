@@ -36,8 +36,8 @@ We need canonical rules for what is traced where, and what must be redacted befo
 ### Canonical owner
 
 - Callback trait: `crates/dsrs/src/callbacks.rs`
-- Callback docs: [crates/dsrs/docs/CALLBACKS.md](../../crates/dsrs/docs/CALLBACKS.md)
-- Replay format: [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
+- Callback docs: [docs/dse/CALLBACKS.md](../dse/CALLBACKS.md)
+- Replay format: [docs/execution/REPLAY.md](../execution/REPLAY.md)
 
 ### Trace layers (Normative)
 
@@ -187,8 +187,8 @@ Backward compatibility:
 
 ## References
 
-- [crates/dsrs/docs/CALLBACKS.md](../../crates/dsrs/docs/CALLBACKS.md) — callback trait docs
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — replay event format
+- [docs/dse/CALLBACKS.md](../dse/CALLBACKS.md) — callback trait docs
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — replay event format
 - [ADR-0003](./ADR-0003-replay-formats.md) — replay format migration
 - [ADR-0016](./ADR-0016-privacy-defaults-swarm-dispatch.md) — privacy policy for Layer C
 - `crates/dsrs/src/callbacks.rs` — callback implementation

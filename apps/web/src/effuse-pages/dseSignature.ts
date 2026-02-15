@@ -2,91 +2,19 @@ import { html } from "@openagentsinc/effuse";
 
 import type { TemplateResult } from "@openagentsinc/effuse";
 
-export type DseActivePointer = {
-  readonly compiled_id: string | null;
-  readonly updatedAtMs: number | null;
-};
+import type { DseSignaturePageData } from "../lib/pageData/dse";
 
-export type DseActiveHistoryItem = {
-  readonly action: "set" | "clear" | "rollback";
-  readonly fromCompiledId: string | null;
-  readonly toCompiledId: string | null;
-  readonly reason: string | null;
-  readonly actorUserId: string | null;
-  readonly createdAtMs: number;
-};
-
-export type DseCanaryConfig = {
-  readonly enabled: boolean;
-  readonly control_compiled_id: string;
-  readonly canary_compiled_id: string;
-  readonly rolloutPct: number;
-  readonly okCount: number;
-  readonly errorCount: number;
-  readonly minSamples: number;
-  readonly maxErrorRate: number;
-  readonly updatedAtMs: number;
-};
-
-export type DseCanaryHistoryItem = {
-  readonly action: "start" | "stop" | "auto_stop" | "update";
-  readonly control_compiled_id: string | null;
-  readonly canary_compiled_id: string | null;
-  readonly rolloutPct: number | null;
-  readonly okCount: number | null;
-  readonly errorCount: number | null;
-  readonly reason: string | null;
-  readonly actorUserId: string | null;
-  readonly createdAtMs: number;
-};
-
-export type DseCompileReportListItem = {
-  readonly jobHash: string;
-  readonly datasetHash: string;
-  readonly compiled_id: string;
-  readonly createdAtMs: number;
-};
-
-export type DseEvalReportListItem = {
-  readonly evalHash: string;
-  readonly compiled_id: string;
-  readonly datasetHash: string;
-  readonly rewardId: string;
-  readonly split: string | null;
-  readonly n: number | null;
-  readonly createdAtMs: number;
-};
-
-export type DseExampleListItem = {
-  readonly exampleId: string;
-  readonly split: "train" | "dev" | "holdout" | "test" | null;
-  readonly tags: ReadonlyArray<string> | null;
-  readonly inputJson: string;
-  readonly expectedJson: string;
-};
-
-export type DseReceiptListItem = {
-  readonly receiptId: string;
-  readonly compiled_id: string;
-  readonly createdAtMs: number;
-  readonly strategyId: string | null;
-  readonly resultTag: "Ok" | "Error" | null;
-  readonly rlmTraceBlobId: string | null;
-  readonly rlmTraceEventCount: number | null;
-};
-
-export type DseSignaturePageData = {
-  readonly signatureId: string;
-  readonly errorText: string | null;
-  readonly active: DseActivePointer | null;
-  readonly activeHistory: ReadonlyArray<DseActiveHistoryItem> | null;
-  readonly canary: DseCanaryConfig | null;
-  readonly canaryHistory: ReadonlyArray<DseCanaryHistoryItem> | null;
-  readonly compileReports: ReadonlyArray<DseCompileReportListItem> | null;
-  readonly evalReports: ReadonlyArray<DseEvalReportListItem> | null;
-  readonly examples: ReadonlyArray<DseExampleListItem> | null;
-  readonly receipts: ReadonlyArray<DseReceiptListItem> | null;
-};
+export type {
+  DseActiveHistoryItem,
+  DseActivePointer,
+  DseCanaryConfig,
+  DseCanaryHistoryItem,
+  DseCompileReportListItem,
+  DseEvalReportListItem,
+  DseExampleListItem,
+  DseReceiptListItem,
+  DseSignaturePageData,
+} from "../lib/pageData/dse";
 
 const formatMs = (ms: number | null): string => {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "-";

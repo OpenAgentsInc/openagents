@@ -25,7 +25,7 @@ We need canonical receipt semantics to make spending auditable and machine-verif
 
 - Canonical terminology: [GLOSSARY.md](../GLOSSARY.md) (`Rail`, `AssetId`, `Cashu Proof`, `Reconciliation`)
 - Canonical protocol-level receipt fields: [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)
-- Session receipt schema (Verified Patch Bundle): [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
+- Session receipt schema (Verified Patch Bundle): [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md)
 
 ### Normative rules
 
@@ -113,4 +113,4 @@ Backward compatibility:
 
 - [GLOSSARY.md](../GLOSSARY.md) — Rail / AssetId / Cashu Proof
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — receipt field set
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — session receipt schema
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — session receipt schema

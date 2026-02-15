@@ -20,18 +20,18 @@ As AI agents become more capable, there is a need for agents that can:
 Traditional agent architectures treat agents as tools that humans wield. Sovereign agents are entities that humans delegate to. The human's role shifts from "giving instructions" to "setting goals and constraints."
 
 This NIP builds on several existing NIPs:
-- [NIP-01](01.md): Basic protocol (agent identity as npub)
-- [NIP-28](28.md): Public chat (trajectory channels)
-- [NIP-44](44.md): Versioned encryption (skill protection)
-- [NIP-57](57.md): Lightning zaps (agent payments)
-- [NIP-59](59.md): Gift wrap (private skill delivery)
-- [NIP-78](78.md): Application-specific data (agent state storage)
-- [NIP-90](90.md): Data vending machines (compute/inference)
-- [NIP-EE](EE.md): MLS encryption (private trajectory groups)
+- [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md): Basic protocol (agent identity as npub)
+- [NIP-28](https://github.com/nostr-protocol/nips/blob/master/28.md): Public chat (trajectory channels)
+- [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md): Versioned encryption (skill protection)
+- [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md): Lightning zaps (agent payments)
+- [NIP-59](https://github.com/nostr-protocol/nips/blob/master/59.md): Gift wrap (private skill delivery)
+- [NIP-78](https://github.com/nostr-protocol/nips/blob/master/78.md): Application-specific data (agent state storage)
+- [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md): Data vending machines (compute/inference)
+- NIP-EE: MLS encryption (private trajectory groups) (draft / external)
 
 Additionally, this NIP recommends integration with:
 - [FROSTR](https://github.com/FROSTR-ORG): Threshold signatures for key protection
-- [NIP-46](46.md): Remote signing (bunker integration)
+- [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md): Remote signing (bunker integration)
 
 ## Actors
 
@@ -351,8 +351,8 @@ An agent trajectory is a sequence of events that records an agent's execution. T
 4. **Debugging** - Replay and analyze agent behavior
 
 Trajectories are designed for streaming: each event is self-contained and publishable as it occurs. They can be posted to:
-- **Public channels** ([NIP-28](28.md)) for transparent, open runs
-- **Private groups** ([NIP-EE](EE.md)) for confidential multi-party runs
+- **Public channels** ([NIP-28](https://github.com/nostr-protocol/nips/blob/master/28.md)) for transparent, open runs
+- **Private groups** (NIP-EE) for confidential multi-party runs
 - **Direct delivery** for single-party runs
 
 ### Trajectory Session Event (`kind:39230`)
@@ -929,14 +929,14 @@ class AgentRunner {
 
 ## References
 
-- [NIP-01](01.md): Basic protocol
-- [NIP-28](28.md): Public chat (trajectory channels)
-- [NIP-44](44.md): Versioned encryption
-- [NIP-46](46.md): Nostr remote signing
-- [NIP-57](57.md): Lightning zaps
-- [NIP-59](59.md): Gift wrap
-- [NIP-78](78.md): Application-specific data
-- [NIP-89](89.md): Recommended application handlers
-- [NIP-90](90.md): Data vending machines
-- [NIP-EE](EE.md): MLS encryption (private trajectory groups)
+- [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md): Basic protocol
+- [NIP-28](https://github.com/nostr-protocol/nips/blob/master/28.md): Public chat (trajectory channels)
+- [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md): Versioned encryption
+- [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md): Nostr remote signing
+- [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md): Lightning zaps
+- [NIP-59](https://github.com/nostr-protocol/nips/blob/master/59.md): Gift wrap
+- [NIP-78](https://github.com/nostr-protocol/nips/blob/master/78.md): Application-specific data
+- [NIP-89](https://github.com/nostr-protocol/nips/blob/master/89.md): Recommended application handlers
+- [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md): Data vending machines
+- NIP-EE: MLS encryption (private trajectory groups) (draft / external)
 - [FROSTR](https://github.com/FROSTR-ORG): Threshold signatures for Nostr

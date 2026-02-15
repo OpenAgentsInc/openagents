@@ -2,19 +2,9 @@ import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
 
 import type { TemplateResult } from "@openagentsinc/effuse";
+import type { ToolsPageData } from "../lib/pageData/contracts";
 
-export type ToolItem = {
-  readonly name: string;
-  readonly description: string;
-  readonly usage: string | null;
-  readonly inputSchemaJson: string;
-  readonly outputSchemaJson: string;
-};
-
-export type ToolsPageData = {
-  readonly errorText: string | null;
-  readonly sorted: ReadonlyArray<ToolItem> | null;
-};
+export type { ToolItem, ToolsPageData } from "../lib/pageData/contracts";
 
 export function toolsPageTemplate(data: ToolsPageData): TemplateResult {
   const body =

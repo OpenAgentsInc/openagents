@@ -35,13 +35,13 @@ We need canonical defaults that are safe-by-default while allowing explicit opt-
 
 ### Canonical owner
 
-- Preset definitions: [crates/dsrs/docs/PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md) (canonical)
+- Preset definitions: [docs/dse/PRIVACY.md](../dse/PRIVACY.md) (canonical)
 - Implementation: `crates/dsrs/src/privacy/policy.rs`
 - Integration: `crates/dsrs/src/adapter/swarm_dispatch.rs`
 
 ### Privacy policy presets
 
-Preset parameters are defined in [PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md). This ADR specifies only the invariants:
+Preset parameters are defined in [PRIVACY.md](../dse/PRIVACY.md). This ADR specifies only the invariants:
 
 | Preset | Purpose | Invariant |
 |--------|---------|-----------|
@@ -165,7 +165,7 @@ Backward compatibility:
 
 ## References
 
-- [crates/dsrs/docs/PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md) — canonical preset definitions
+- [docs/dse/PRIVACY.md](../dse/PRIVACY.md) — canonical preset definitions
 - [GLOSSARY.md](../GLOSSARY.md) — terminology
 - [ADR-0004](./ADR-0004-lane-taxonomy.md) — lane taxonomy (Swarm lane)
 - [ADR-0017](./ADR-0017-telemetry-trace-contract.md) — Layer C redaction references this policy

@@ -30,8 +30,8 @@ We need a canonical output format that serves all three purposes and can be expo
 ### Schema Authority
 
 The **canonical schema definitions** live in:
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — RECEIPT.json + PR_SUMMARY.md schemas
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — REPLAY.jsonl v1 schema
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — RECEIPT.json + PR_SUMMARY.md schemas
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — REPLAY.jsonl v1 schema
 
 This ADR states **what is canonical** and **compatibility guarantees**. It does not duplicate the full schemas.
 
@@ -130,7 +130,7 @@ The Verified Patch Bundle is the internal format. Forge Adapters export to:
 ## References
 
 - [GLOSSARY.md](../GLOSSARY.md) — `Verified Patch Bundle`, `policy_bundle_id`
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Canonical artifact schemas
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Canonical replay schema
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — Canonical artifact schemas
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — Canonical replay schema
 - [ADR-0003](./ADR-0003-replay-formats.md) — Replay format specification
 - [ADR-0008](./ADR-0008-session-storage-layout.md) — Session storage layout (base paths)

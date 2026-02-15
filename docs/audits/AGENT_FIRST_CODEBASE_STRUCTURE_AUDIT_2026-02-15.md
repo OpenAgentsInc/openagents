@@ -101,7 +101,7 @@ Why it matters:
 - The article emphasizes plans as first-class, versioned artifacts. This is what allows long-running agent work to stay coherent without out-of-band context.
 
 Recommendation summary:
-- Standardize a repo-wide plan layout: `docs/plans/{active,completed}/` plus `docs/plans/tech-debt.md` (or similar), and link from domain docs.
+- Standardize a repo-wide plan layout: `docs/plans/active/`, `docs/plans/completed/`, plus `docs/plans/tech-debt.md`, and link from domain docs.
 
 ---
 

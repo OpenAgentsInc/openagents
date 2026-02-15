@@ -83,5 +83,4 @@ Backward compatibility expectations:
 
 ## References
 
-- [crates/pylon/src/local_bridge.rs](../../crates/pylon/src/local_bridge.rs)
-- [crates/pylon/src/cli/mod.rs](../../crates/pylon/src/cli/mod.rs)
+- Rust-era `pylon` sources were archived during the 2026-02-11 deprecation (see `docs/RUST_DOCS_ARCHIVE_2026-02-11.md`).

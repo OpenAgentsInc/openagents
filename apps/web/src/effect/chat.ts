@@ -16,6 +16,32 @@ import type { ChatMessage, ChatMessageFinish } from "./chatProtocol";
 import { applyChatWirePart } from "./chatWire";
 import type { ActiveStream } from "./chatWire";
 
+const isLocalHost = (host: string): boolean =>
+  host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0";
+
+const isTruthyFlag = (value: string | null): boolean => value === "1" || value === "true" || value === "yes" || value === "on";
+
+/**
+ * Debug toggle for chat streaming wire events.
+ *
+ * Enable via:
+ * - query param: `?oa_debug_wire=1`
+ * - localStorage: `localStorage.setItem("oa.debug.wire", "1")`
+ *
+ * Defaults to enabled on localhost to make local debugging obvious.
+ */
+const isChatWireDebugEnabled = (): boolean => {
+  if (typeof window === "undefined") return false;
+  try {
+    const url = new URL(window.location.href);
+    if (isTruthyFlag(url.searchParams.get("oa_debug_wire"))) return true;
+    if (isTruthyFlag(window.localStorage.getItem("oa.debug.wire"))) return true;
+    return isLocalHost(url.hostname);
+  } catch {
+    return false;
+  }
+};
+
 export type ChatSnapshot = {
   readonly messages: ReadonlyArray<ChatMessage>;
   readonly status: ChatStatus;
@@ -32,6 +58,10 @@ type ChatSession = {
   dispose: () => void;
   activeRunId: string | null;
   readonly telemetryState: ReturnType<typeof createChatTelemetryState>;
+  readonly debug: {
+    readonly seenPartKeys: Set<string>;
+    readonly lastMessageFingerprintById: Map<string, string>;
+  };
 };
 
 export type ChatClient = {
@@ -200,6 +230,7 @@ export const ChatServiceLive = Layer.effect(
           dispose: () => {},
           activeRunId: null,
           telemetryState: createChatTelemetryState(),
+          debug: { seenPartKeys: new Set(), lastMessageFingerprintById: new Map() },
         });
         return state;
       }
@@ -214,6 +245,7 @@ export const ChatServiceLive = Layer.effect(
         dispose: () => {},
         activeRunId: null,
         telemetryState: createChatTelemetryState(),
+        debug: { seenPartKeys: new Set(), lastMessageFingerprintById: new Map() },
       };
 
       sessions.set(threadId, session);
@@ -235,6 +267,51 @@ export const ChatServiceLive = Layer.effect(
         Effect.sync(() => {
           const messagesRaw = parseSnapshotMessages(snap);
           const partsRaw = parseSnapshotParts(snap);
+
+          if (isChatWireDebugEnabled()) {
+            // Snapshot summary (backend -> client).
+            console.log("[oa:chat:snapshot]", {
+              threadId,
+              messages: messagesRaw.length,
+              parts: partsRaw.length,
+              tsMs: Date.now(),
+            });
+
+            // Log each unique part row once (LLM/tool/backend wire events).
+            // Note: snapshots often include the full part history; de-dup by (runId, messageId, seq).
+            // Cap memory to keep long sessions safe during debugging.
+            if (session.debug.seenPartKeys.size > 25_000) session.debug.seenPartKeys.clear();
+            for (const p of partsRaw) {
+              const key = `${p.runId}:${p.messageId}:${p.seq}`;
+              if (session.debug.seenPartKeys.has(key)) continue;
+              session.debug.seenPartKeys.add(key);
+              console.log("[oa:chat:wire]", {
+                threadId,
+                messageId: p.messageId,
+                runId: p.runId,
+                seq: p.seq,
+                part: p.part,
+              });
+            }
+
+            // Log message row transitions (status/final text updates).
+            if (session.debug.lastMessageFingerprintById.size > 5000) session.debug.lastMessageFingerprintById.clear();
+            for (const m of messagesRaw) {
+              const fp = `${m.role}|${m.status}|${m.runId ?? ""}|${m.text.length}`;
+              const prev = session.debug.lastMessageFingerprintById.get(m.messageId);
+              if (prev === fp) continue;
+              session.debug.lastMessageFingerprintById.set(m.messageId, fp);
+              console.log("[oa:chat:message]", {
+                threadId,
+                messageId: m.messageId,
+                role: m.role,
+                status: m.status,
+                runId: m.runId,
+                textLength: m.text.length,
+                textPreview: m.text.slice(0, 280),
+              });
+            }
+          }
 
           // Rebuild messages deterministically from Convex rows.
           const byMessageId = new Map<string, ActiveStream>();

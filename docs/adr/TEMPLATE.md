@@ -30,9 +30,9 @@ Be specific about:
 
 If this ADR relates to schemas defined elsewhere, link to the canonical spec:
 
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — RECEIPT.json, PR_SUMMARY.md
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — REPLAY.jsonl
-- [crates/dsrs/docs/OPTIMIZERS.md](../../crates/dsrs/docs/OPTIMIZERS.md) — Policy bundles
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — RECEIPT.json, PR_SUMMARY.md
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — REPLAY.jsonl
+- [docs/dse/OPTIMIZERS.md](../dse/OPTIMIZERS.md) — Policy bundles
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Protocol schemas
 
 This ADR states *what is canonical* and *compatibility guarantees*, not full schema duplication.
@@ -84,7 +84,7 @@ What are the results of this decision?
 
 ## References
 
-- [Relevant code path](../../crates/example/src/file.rs)
+- Relevant code path: `path/to/code`
 - [GLOSSARY.md](../GLOSSARY.md) — Canonical terminology
 - [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Protocol details
 

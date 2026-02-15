@@ -11,7 +11,7 @@ Related logs/runbooks:
 - `docs/lightning/runbooks/EP212_L402_BUYER_REHEARSAL_RUNBOOK.md` (demo rehearsal script)
 - `docs/lightning/runbooks/L402_WALLET_EXECUTOR_DEPLOY_RUNBOOK.md` (wallet executor deploy)
 - `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md` (Aperture deploy/config)
-- `docs/lightning/plans/212-demo-plan.md` (episode narrative + UI beats)
+- `docs/plans/active/lightning/212-demo-plan.md` (episode narrative + UI beats)
 
 ## 0) One-Paragraph System Summary
 
@@ -271,7 +271,7 @@ Note on caching:
 This is the “recording readiness” UI flow:
 
 1. Open `https://openagents.com` and start an Autopilot chat.
-2. Ask for an EP212 paid resource (per `docs/lightning/plans/212-demo-plan.md`).
+2. Ask for an EP212 paid resource (per `docs/plans/active/lightning/212-demo-plan.md`).
 3. Confirm the UI shows an approval prompt before payment.
 4. Approve; confirm the payment card transitions to paid/cached, and Autopilot summarizes the bounded premium payload preview.
 5. Open the L402 panes:

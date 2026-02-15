@@ -2,7 +2,7 @@
 
 This doc explains how the **bootstrap “ask user handle”** stage works in the web app and worker, how we avoid generic assistant greetings (e.g. “Hello! How can I assist you today?”), and how we keep asking for a name until the user provides one. It also describes the Convex + DSE flow that persists the handle and advances the stage.
 
-See [bootstrap-plan.md](./bootstrap-plan.md) for the overall bootstrap design (state machine, Blueprint records, schema).
+See [bootstrap-plan.md](../bootstrap-plan.md) for the overall bootstrap design (state machine, Blueprint records, schema).
 
 ---
 

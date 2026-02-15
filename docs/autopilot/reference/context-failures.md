@@ -13,7 +13,7 @@ Related docs:
 - RLM integration plan: `docs/autopilot/synergies/rlm-synergies.md`
 - DSE spec: `docs/autopilot/dse/dse.md`
 - Effect-only RLM/DSE design: `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
-- Foundations and routing triggers: `docs/AGENT_FOUNDATIONS.md`
+- Foundations and routing triggers: `docs/AGENT_MAP.md` and `docs/GLOSSARY.md`
 
 ---
 

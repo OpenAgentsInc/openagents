@@ -2,17 +2,9 @@ import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
 
 import type { TemplateResult } from "@openagentsinc/effuse";
+import type { ModulesPageData } from "../lib/pageData/contracts";
 
-export type ModuleItem = {
-  readonly moduleId: string;
-  readonly description: string;
-  readonly signatureIdsJson: string;
-};
-
-export type ModulesPageData = {
-  readonly errorText: string | null;
-  readonly sorted: ReadonlyArray<ModuleItem> | null;
-};
+export type { ModuleItem, ModulesPageData } from "../lib/pageData/contracts";
 
 export function modulesPageTemplate(data: ModulesPageData): TemplateResult {
   const body =

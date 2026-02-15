@@ -38,8 +38,8 @@ Without a contract:
 ### Canonical owner
 
 - Trait definition: TBD (target: `crates/adjutant/src/forge/mod.rs`)
-- Bundle format: [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
-- GitAfter tags: [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md)
+- Bundle format: [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md)
+- GitAfter tags: [docs/protocol/nostr/GIT_AFTER.md](../protocol/nostr/GIT_AFTER.md)
 - Terminology: [GLOSSARY.md](../GLOSSARY.md) (`Forge Adapter`)
 
 ### ForgeAdapter trait (Illustrative)
@@ -133,7 +133,7 @@ pub struct ForgeCapabilities {
 This is consistent with:
 - [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) receipt schema
 - [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) receipt fields
-- [GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) tag definitions
+- [docs/protocol/nostr/GIT_AFTER.md](../protocol/nostr/GIT_AFTER.md) tag definitions
 
 ### PR metadata format (Normative)
 
@@ -163,7 +163,7 @@ For GitHub (no structured metadata), append to PR description:
 
 ### NIP-34 / GitAfter tags (Normative)
 
-For forges supporting trajectory linking, PR events (kind:1618) MUST include these tags per [GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md):
+For forges supporting trajectory linking, PR events (kind:1618) MUST include these tags per [docs/protocol/nostr/GIT_AFTER.md](../protocol/nostr/GIT_AFTER.md):
 
 ```json
 {
@@ -248,8 +248,8 @@ Backward compatibility:
 ## References
 
 - [GLOSSARY.md](../GLOSSARY.md) — `Forge Adapter` definition
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Verified Patch Bundle format
-- [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) — GitAfter design and tag format
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — Verified Patch Bundle format
+- [docs/protocol/nostr/GIT_AFTER.md](../protocol/nostr/GIT_AFTER.md) — GitAfter design and tag format
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — `trajectory_hash` in receipt schema
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — Verified Patch Bundle contract
 - [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) — receipt fields including `trajectory_hash`

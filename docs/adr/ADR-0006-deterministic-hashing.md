@@ -27,7 +27,7 @@ We need a canonical hashing approach to ensure receipts and replay logs are veri
 Canonical hashing rules are defined and implemented in:
 - `crates/protocol/` (canonical JSON + job hashing)
 - `docs/protocol/PROTOCOL_SURFACE.md` (protocol-level hashing rules)
-- `crates/dsrs/docs/REPLAY.md` + `crates/dsrs/docs/ARTIFACTS.md` (artifact/replay hash requirements)
+- `docs/execution/REPLAY.md` + `docs/execution/ARTIFACTS.md` (artifact/replay hash requirements)
 
 This ADR defines **cross-system invariants** and forbids divergent "local" hashing schemes.
 
@@ -102,6 +102,6 @@ Backward compatibility:
 ## References
 
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — hashing rules
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — replay hashing invariants
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — receipt hashing invariants
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — replay hashing invariants
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — receipt hashing invariants
 - `crates/protocol/src/*` — canonical hashing helpers (source of truth)

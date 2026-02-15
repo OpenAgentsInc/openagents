@@ -49,9 +49,10 @@ If it's "just implementation" (bug fix, perf tweak) and doesn't change contracts
 
 ADRs should **decide**, not **reproduce** full schemas.
 
-If a schema is canonical elsewhere (or was; some paths are in the [Rust/docs archive](../RUST_DOCS_ARCHIVE_2026-02-11.md)):
-- ARTIFACTS.md / REPLAY.md (dsrs artifact and replay schemas; see ADR-0002, ADR-0003; archived if not in repo)
-- docs/protocol/PROTOCOL_SURFACE.md (protocol contracts; archived to backroom if not in repo)
+If a schema is canonical elsewhere:
+- `docs/execution/ARTIFACTS.md` / `docs/execution/REPLAY.md` (Verified Patch Bundle + replay schemas; see ADR-0002, ADR-0003)
+- `docs/protocol/PROTOCOL_SURFACE.md` (protocol contracts)
+- `docs/dse/` (compiler-layer contracts referenced by ADRs)
 
 Then ADRs should:
 1. Link to the canonical spec

@@ -11,6 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint:structure": "depcruise src --config .dependency-cruiser.cjs --validate",
     "test": "bun test"
   },
   "peerDependencies": {
@@ -18,7 +19,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "dependency-cruiser": "^17.3.8",
     "typescript": "^5.9.3"
   }
 }
-

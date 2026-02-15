@@ -49,7 +49,7 @@ ${OPENAGENTS_HOME}/
 
 A "session directory" contains the Verified Patch Bundle (see [ADR-0002](./ADR-0002-verified-patch-bundle.md)).
 
-**Policy bundle internal layout** (subdirectory structure, manifest format) is defined by [OPTIMIZERS.md](../../crates/dsrs/docs/OPTIMIZERS.md). This ADR only defines the root discovery (`${OPENAGENTS_HOME}/policies/`).
+**Policy bundle internal layout** (subdirectory structure, manifest format) is defined by [OPTIMIZERS.md](../dse/OPTIMIZERS.md). This ADR only defines the root discovery (`${OPENAGENTS_HOME}/policies/`).
 
 The session directory path is derived from a single path resolver (e.g., `OpenAgentsPaths`) so crates do not invent their own roots.
 
@@ -136,5 +136,5 @@ Backward compatibility:
 - [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) — current implementation status
 - `crates/adjutant/src/dspy/sessions.rs` (session tracking)
 - `crates/autopilot-core/src/replay.rs` (replay implementation)
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — canonical schemas
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — canonical schemas
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — canonical schemas
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — canonical schemas
