@@ -2,7 +2,7 @@
 
 Status: Draft recommendations
 Date: 2026-02-11
-Scope: OpenAgents active TypeScript/Effect stack (`apps/web`, `apps/autopilot-worker`, `apps/expo`, `apps/desktop`, `packages/*`) + archived Rust wallet model in backroom
+Scope: OpenAgents active TypeScript/Effect stack (`apps/web`, `apps/autopilot-worker`, `apps/mobile`, `apps/desktop`, `packages/*`) + archived Rust wallet model in backroom
 
 ## 1. Executive Verdict
 
@@ -31,7 +31,7 @@ If we sequence this correctly, we get faster product velocity and avoid a forced
   - `apps/autopilot-worker/src/tools.ts` includes `lightning_l402_fetch` for typed buyer-side L402 fetch orchestration.
   - `apps/web/src/effect/lightning.ts` and `apps/web/convex/lightning/tasks.ts` provide a typed L402 task control plane.
   - `apps/web` includes L402 wallet/transaction panes in the home chat surface.
-  - `apps/expo` still has no active Lightning wallet implementation.
+  - `apps/mobile` still has no active Lightning wallet implementation.
 
 ### 2.2 Archived Rust-era findings (backroom)
 
@@ -105,7 +105,7 @@ Recommendation:
 - Call an execution adapter (hosted wallet service or desktop bridge) instead of running local binaries.
 - Keep payment proofs and spend limits as first-class UI entities.
 
-### 5.2 `apps/expo` (React Native)
+### 5.2 `apps/mobile` (React Native)
 
 Role:
 
