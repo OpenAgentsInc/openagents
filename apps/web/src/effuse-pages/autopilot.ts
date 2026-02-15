@@ -269,16 +269,31 @@ const paymentStateOneLiner = (state: PaymentStateKind): string => {
 };
 
 export const renderPaymentStateCard = (model: L402PaymentStateCardModel): TemplateResult => {
+  const shouldOpenByDefault = model.state === "payment.intent";
+  const headerHint = (() => {
+    const bits: Array<string> = [];
+    if (typeof model.host === "string" && model.host.length > 0) bits.push(model.host);
+    if (typeof model.amountMsats === "number" && Number.isFinite(model.amountMsats)) bits.push(formatMsats(model.amountMsats));
+    if (typeof model.proofReference === "string" && model.proofReference.length > 0) bits.push(model.proofReference);
+    return bits.length > 0 ? bits.join(" · ") : null;
+  })();
+
   return html`
-    <section
+    <details
       data-payment-state-card="1"
       data-payment-state="${model.state}"
       class="rounded-lg border border-white/15 bg-white/5 px-3 py-3"
+      ?open=${shouldOpenByDefault}
     >
-      <header class="flex items-center justify-between gap-3">
-        <div class="text-xs text-white/80 font-mono">${paymentStateOneLiner(model.state)}</div>
-        ${paymentStateBadge(model.state)}
-      </header>
+      <summary class="cursor-pointer list-none">
+        <header class="flex items-center justify-between gap-3">
+          <div class="flex flex-col gap-0.5 min-w-0">
+            <div class="text-xs text-white/80 font-mono truncate">${paymentStateOneLiner(model.state)}</div>
+            ${headerHint ? html`<div class="text-[11px] text-white/55 font-mono truncate">${headerHint}</div>` : null}
+          </div>
+          ${paymentStateBadge(model.state)}
+        </header>
+      </summary>
       <div class="mt-2 flex flex-col gap-2">
         ${dseRow("toolCallId", model.toolCallId)}
         ${dseRow("taskId", model.taskId)}
@@ -315,7 +330,7 @@ export const renderPaymentStateCard = (model: L402PaymentStateCardModel): Templa
             </div>
           `
         : null}
-    </section>
+    </details>
   `;
 };
 
