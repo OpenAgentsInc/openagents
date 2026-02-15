@@ -22,7 +22,7 @@ final class RunOrchestrator
      * Persistence is decoupled from the client connection: if the client disconnects,
      * we continue consuming the model stream and finalize the run in the DB.
      */
-    public function streamAutopilotRun(Authenticatable $user, string $threadId, string $prompt): StreamedResponse
+    public function streamAutopilotRun(Authenticatable $user, string $threadId, string $prompt, ?callable $streamableFactory = null): StreamedResponse
     {
         $userId = (int) $user->getAuthIdentifier();
 
@@ -58,14 +58,18 @@ final class RunOrchestrator
             'updated_at' => $now,
         ]);
 
-        $agent = AutopilotAgent::make()->continue($threadId, $user);
-        $streamable = $agent->stream($prompt);
+        $streamable = $streamableFactory
+            ? $streamableFactory($user, $threadId, $prompt)
+            : AutopilotAgent::make()->continue($threadId, $user)->stream($prompt);
 
         $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId): void {
             $writeToClient = true;
+            $shouldFlush = ! app()->runningUnitTests();
 
             $streamStarted = false;
             $toolCalls = [];
+            $toolCallStartedAt = [];
+            $toolCallParamsHash = [];
             $lastStreamEndVercel = null;
 
             $assistantText = '';
@@ -104,11 +108,45 @@ final class RunOrchestrator
                     }
 
                     if ($event instanceof ToolCall) {
-                        $toolCalls[$event->toolCall->id] = true;
+                        $toolCallId = $event->toolCall->id;
+
+                        $toolCalls[$toolCallId] = true;
+
+                        $paramsCanonical = $this->canonicalJson($event->toolCall->arguments);
+                        $paramsHash = hash('sha256', $paramsCanonical);
+
+                        $toolCallStartedAt[$toolCallId] = $event->timestamp;
+                        $toolCallParamsHash[$toolCallId] = $paramsHash;
+
+                        $this->appendEvent($threadId, $runId, $userId, 'tool_call_started', [
+                            'tool_call_id' => $toolCallId,
+                            'tool_name' => $event->toolCall->name,
+                            'params_hash' => $paramsHash,
+                        ]);
                     }
 
-                    if ($event instanceof ToolResult && ! isset($toolCalls[$event->toolResult->id])) {
-                        continue;
+                    if ($event instanceof ToolResult) {
+                        $toolCallId = $event->toolResult->id;
+
+                        if (! isset($toolCalls[$toolCallId])) {
+                            continue;
+                        }
+
+                        $outputCanonical = $this->canonicalJson($event->toolResult->result);
+                        $outputHash = hash('sha256', $outputCanonical);
+
+                        $latencyMs = isset($toolCallStartedAt[$toolCallId])
+                            ? max(0, $event->timestamp - $toolCallStartedAt[$toolCallId])
+                            : null;
+
+                        $this->appendEvent($threadId, $runId, $userId, $event->successful ? 'tool_call_succeeded' : 'tool_call_failed', [
+                            'tool_call_id' => $toolCallId,
+                            'tool_name' => $event->toolResult->name,
+                            'params_hash' => $toolCallParamsHash[$toolCallId] ?? null,
+                            'output_hash' => $outputHash,
+                            'latency_ms' => $latencyMs,
+                            'error' => $event->successful ? null : $event->error,
+                        ]);
                     }
 
                     if ($event instanceof TextDelta) {
@@ -138,10 +176,12 @@ final class RunOrchestrator
                     if ($writeToClient) {
                         echo 'data: '.json_encode($data)."\n\n";
 
-                        if (ob_get_level() > 0) {
-                            ob_flush();
+                        if ($shouldFlush) {
+                            if (ob_get_level() > 0) {
+                                ob_flush();
+                            }
+                            flush();
                         }
-                        flush();
                     }
                 }
 
@@ -179,10 +219,12 @@ final class RunOrchestrator
 
                     echo "data: [DONE]\n\n";
 
-                    if (ob_get_level() > 0) {
-                        ob_flush();
+                    if ($shouldFlush) {
+                        if (ob_get_level() > 0) {
+                            ob_flush();
+                        }
+                        flush();
                     }
-                    flush();
                 }
             } catch (Throwable $e) {
                 $now = now();
@@ -202,10 +244,12 @@ final class RunOrchestrator
                     // Best-effort graceful shutdown of the SSE stream.
                     echo "data: [DONE]\n\n";
 
-                    if (ob_get_level() > 0) {
-                        ob_flush();
+                    if ($shouldFlush) {
+                        if (ob_get_level() > 0) {
+                            ob_flush();
+                        }
+                        flush();
                     }
-                    flush();
                 }
             }
         }, 200, [
@@ -218,6 +262,35 @@ final class RunOrchestrator
         return tap($response, function (StreamedResponse $r) use ($runId): void {
             $r->headers->set('x-oa-run-id', $runId);
         });
+    }
+
+    private function canonicalJson(mixed $value): string
+    {
+        return json_encode($this->canonicalize($value), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    private function canonicalize(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            if (array_is_list($value)) {
+                return array_map(fn ($v) => $this->canonicalize($v), $value);
+            }
+
+            ksort($value);
+
+            $out = [];
+            foreach ($value as $k => $v) {
+                $out[$k] = $this->canonicalize($v);
+            }
+
+            return $out;
+        }
+
+        if (is_object($value)) {
+            return $this->canonicalize((array) $value);
+        }
+
+        return $value;
     }
 
     private function ensureThreadExists(string $threadId, int $userId): void

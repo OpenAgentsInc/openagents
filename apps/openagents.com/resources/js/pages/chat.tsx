@@ -41,33 +41,98 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-function messageToText(message: UIMessage): string {
-    return message.parts
-        .map((p) => {
-            if (p.type === 'text') return p.text;
-            if (p.type === 'reasoning') return p.text;
-            return '';
-        })
-        .join('')
-        .trim();
-}
+function prettyJson(value: unknown): string {
+    if (value == null) return '';
 
-function prettyPayload(payload: unknown): string {
-    if (payload == null) return '';
-    if (typeof payload === 'string') {
-        // Postgres JSON columns may come through as strings depending on driver settings.
+    if (typeof value === 'string') {
         try {
-            const parsed = JSON.parse(payload);
+            const parsed = JSON.parse(value);
             return JSON.stringify(parsed, null, 2);
         } catch {
-            return payload;
+            return value;
         }
     }
+
     try {
-        return JSON.stringify(payload, null, 2);
+        return JSON.stringify(value, null, 2);
     } catch {
-        return String(payload);
+        return String(value);
     }
+}
+
+function toolNameFromPart(part: unknown): string {
+    if (typeof part !== 'object' || part === null) return 'tool';
+
+    const p = part as Record<string, unknown>;
+    const type = p.type;
+
+    if (type === 'dynamic-tool' && typeof p.toolName === 'string') return p.toolName;
+    if (typeof type === 'string' && type.startsWith('tool-')) return type.slice('tool-'.length);
+
+    return 'tool';
+}
+
+function renderPart(part: unknown, idx: number) {
+    if (typeof part !== 'object' || part === null) return null;
+
+    const p = part as Record<string, unknown>;
+    const type = p.type;
+
+    if (type === 'text' || type === 'reasoning') {
+        const text = typeof p.text === 'string' ? p.text : '';
+        if (!text.trim()) return null;
+
+        return (
+            <div key={idx} className="whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-sm">
+                {text}
+            </div>
+        );
+    }
+
+    if (type === 'dynamic-tool' || (typeof type === 'string' && type.startsWith('tool-'))) {
+        const toolName = toolNameFromPart(part);
+        const state = typeof p.state === 'string' ? p.state : '';
+        const toolCallId = typeof p.toolCallId === 'string' ? p.toolCallId : '';
+
+        return (
+            <details key={idx} className="rounded-md border border-sidebar-border/70 bg-muted/10 p-2">
+                <summary className="cursor-pointer select-none text-xs font-mono">
+                    {toolName} · {state || 'tool'} · {toolCallId}
+                </summary>
+
+                <div className="mt-2 grid gap-2">
+                    {p.input !== undefined ? (
+                        <div>
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">input</div>
+                            <pre className="mt-1 overflow-x-auto rounded bg-muted/30 p-2 text-[11px] leading-snug">
+                                {prettyJson(p.input)}
+                            </pre>
+                        </div>
+                    ) : null}
+
+                    {p.output !== undefined ? (
+                        <div>
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">output</div>
+                            <pre className="mt-1 overflow-x-auto rounded bg-muted/30 p-2 text-[11px] leading-snug">
+                                {prettyJson(p.output)}
+                            </pre>
+                        </div>
+                    ) : null}
+
+                    {typeof p.errorText === 'string' && p.errorText ? (
+                        <div>
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">error</div>
+                            <pre className="mt-1 overflow-x-auto rounded bg-muted/30 p-2 text-[11px] leading-snug">
+                                {p.errorText}
+                            </pre>
+                        </div>
+                    ) : null}
+                </div>
+            </details>
+        );
+    }
+
+    return null;
 }
 
 export default function Chat({ conversationId, conversationTitle, initialMessages, runs, selectedRunId, runEvents }: Props) {
@@ -144,9 +209,9 @@ export default function Chat({ conversationId, conversationTitle, initialMessage
                     {messages.length === 0 ? <div className="text-sm text-muted-foreground">Send a message to start.</div> : null}
 
                     {messages.map((m) => (
-                        <div key={m.id} className="flex flex-col gap-1">
+                        <div key={m.id} className="flex flex-col gap-2">
                             <div className="text-xs uppercase tracking-wide text-muted-foreground">{m.role}</div>
-                            <div className="whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-sm">{messageToText(m)}</div>
+                            <div className="flex flex-col gap-2">{m.parts.map(renderPart)}</div>
                         </div>
                     ))}
 
@@ -186,7 +251,7 @@ export default function Chat({ conversationId, conversationTitle, initialMessage
                                         </div>
                                         {e.payload ? (
                                             <pre className="mt-2 overflow-x-auto rounded bg-muted/30 p-2 text-[11px] leading-snug">
-                                                {prettyPayload(e.payload)}
+                                                {prettyJson(e.payload)}
                                             </pre>
                                         ) : null}
                                     </div>
