@@ -6,13 +6,21 @@ Date: 2026-02-15
 
 Rebuild OpenAgents' current Effuse/Cloudflare/Convex web stack into **Laravel 12 + Inertia + React (TypeScript)** and use **Laravel AI SDK (`laravel/ai`)** as the primary model/tooling interface.
 
-Near-term objective: migrate **basic tools** (starting with **L402 buying**) into the new Laravel app so we can run the EP212-style L402 demo and then expand from there.
+Near-term objective: migrate **basic tools** (starting with **L402 buying**) into the Laravel app so we can run an EP212-style L402 demo and then expand from there.
 
 ## Decisions (Locked)
 
-- Frontend: **Inertia + React (TypeScript)**.
-- Laravel AI integration: use **`laravel/ai` streaming + tools**.
-- MVP safety model: **no explicit approval UX**. Instead, enforce strict caps/allowlists in the tool contract (e.g. `maxSpendSats`).
+- New app location: `apps/openagents.com/` (Laravel 12 + Inertia + React starter kit).
+- UI stack: **Inertia + React (TypeScript)**.
+- AI stack: **Laravel AI SDK (`laravel/ai`)** for agent + tool orchestration.
+- Streaming protocol: **Vercel AI SDK data stream protocol** (what `laravel/ai` emits).
+- MVP safety model: **no approval UX**. Enforce strict caps/allowlists in the tool contract (e.g. `maxSpendSats`).
+
+## Current Status (Repo)
+
+- `apps/openagents.com/` exists and already includes Inertia + React + TypeScript.
+- WorkOS is installed (`laravel/workos`).
+- Dev scripts exist (`composer dev`, `composer test`, `npm run dev`, `npm run build`, etc.).
 
 ## What We Learned From `laravel/ai`
 
@@ -20,238 +28,259 @@ We reviewed `/Users/christopherdavid/code/laravel-ai/`.
 
 Key capabilities that matter for OpenAgents:
 
-- Unified provider abstraction (OpenAI, Anthropic, Gemini, OpenRouter, etc.) with failover.
-- Agents with tools (`HasTools`) and structured output (`HasStructuredOutput`).
-- Streaming: `StreamableAgentResponse` can stream SSE using the **Vercel AI SDK data stream protocol**.
-  - `StreamableAgentResponse::usingVercelDataProtocol()`
-  - Implementation: `CanStreamUsingVercelProtocol` (SSE `data:` lines; ends with `data: [DONE]`).
+- Agents + tools:
+  - Agents can expose tools via `HasTools`.
+  - Tools are objects with name/description/JSON schema and a callable handler.
+- Streaming:
+  - `StreamableAgentResponse` can stream SSE using the **Vercel AI SDK data stream protocol**.
+  - `StreamableAgentResponse::usingVercelDataProtocol()` produces `data:` lines and ends with `data: [DONE]`.
 
 Important limitation for OpenAgents:
 
-- The built-in conversation store captures final assistant content and tool calls/results, but it is not a complete replay log of runtime decisions. If we keep our “receipts are replayable” invariant, we must implement an append-only **run event / receipt log**.
+- The built-in conversation store captures final assistant content and tool calls/results, but it is not a full replay log of runtime decisions.
+- If we keep our "receipts are replayable" invariant, we must implement an append-only **run event / receipt log** as a first-class table.
 
-## OpenAgents Tool Surface (Current)
+## OpenAgents Tool Surface (Current Codebase)
 
-From this repo’s current Autopilot tool registry (`apps/autopilot-worker/src/tools.ts`), the core “basic tools” we should expect to replicate over time include:
+From the current Autopilot tool registry (`apps/autopilot-worker/src/tools.ts`), the core "basic tools" we should expect to port over time include:
 
 - `get_time`, `echo`
-- L402 buyer: `lightning_l402_fetch` (and `lightning_l402_approve`, but MVP will not use approval)
+- L402 buyer: `lightning_l402_fetch`
 - Hosted paywall control plane tools (later): `lightning_paywall_*`, `lightning_paywall_settlement_list`
 - Bootstrap / identity / memory helpers (may become app features rather than LLM tools):
   - `bootstrap_set_user_handle`, `bootstrap_set_agent_name`, `bootstrap_set_agent_vibe`, `bootstrap_complete`
   - `identity_update`, `user_update`, `character_update`
   - `memory_append`, `tools_update_notes`, `heartbeat_set_checklist`, `blueprint_export`
 
-## Architecture Sketch (Laravel)
+## Target Architecture (Laravel)
 
 ### Runtime Components
 
-- Laravel app (HTTP)
+- Laravel HTTP app (`apps/openagents.com/`)
   - Inertia + React UI
-  - SSE endpoint(s) for active runs
-  - REST endpoints for history + receipts (and for RN/Electron later)
-
+  - SSE endpoint(s) for streaming runs
+  - REST endpoints for history + receipts
 - Postgres (durable state)
   - threads, runs, messages
-  - run events (append-only)
+  - append-only run events (receipts)
   - lightning receipts + caches
-
-- Redis (optional but recommended early)
+- Redis (recommended early)
   - queues for background work
-  - locks
-  - rate limiting
+  - locks + rate limiting
 
 ### Data Model (MVP)
 
 - `threads`
 - `runs` (status: `queued|running|completed|failed|canceled`)
-- `messages` (user/assistant; final text)
+- `messages` (user/assistant; final text; linked to threads and runs)
 - `run_events` (append-only)
-  - includes tool call/result, finish usage, and receipt hashes
+  - text deltas (optional)
+  - tool call started/succeeded/failed
+  - tool receipts (hashes, latency, policy decision)
+  - model finish + usage
 
 ### Streaming Strategy
 
-- Use `laravel/ai` streaming with `usingVercelDataProtocol()`.
-- React consumes SSE and renders:
-  - text deltas
-  - tool call/result cards
-  - final finish
+- Server emits SSE via `laravel/ai` using Vercel data stream protocol.
+- Client consumes the stream using the Vercel AI SDK React hook (`useChat`).
+  - Do not hand-roll an SSE parser.
+  - The hook already understands tool events like `tool-input-available` and `tool-output-available`.
 
 Durability rules:
 
-- The stream is “best effort for UX”.
+- The stream is "best effort UX".
 - The database is the source of truth.
-- After stream completion, the UI should be able to refresh and reconstruct the same state from DB.
+- After stream completion, the UI must be able to refresh and reconstruct the run from DB.
 
 ## Roadmap (Detailed, Ordered)
 
-This is the order we should implement, with explicit scope boundaries so we can ship incremental value.
+This is the implementation order. Each phase is scoped so it can be shipped and tested independently.
 
-### Phase 0: Repo/App Bootstrap
+### Phase 0: Foundation (Dev, CI, Deploy Skeleton)
 
-**Objective:** create the new Laravel app scaffold and CI that can run in isolation.
+**Objective:** make `apps/openagents.com/` a stable app we can iterate on quickly.
 
-1. Create a new Laravel 12 app (in this monorepo under `apps/laravel-web/` or in a new repo; pick one and standardize).
-2. Add Inertia + React + TypeScript.
-3. Add local dev environment:
-   - Postgres (Docker compose)
-   - Redis (Docker compose)
-4. Add baseline CI + scripts:
-   - `composer test` (phpunit)
-   - `composer lint` (pint)
-   - `npm test` / `npm run lint` for frontend
-
-**Verification:**
-- `composer test`
-- `composer lint`
-- `npm run build`
-
-### Phase 1: Streaming Chat MVP (No Tools Yet)
-
-**Objective:** prove end-to-end streaming chat works with Laravel AI SDK and React UI.
-
-1. Install/configure `laravel/ai`.
-2. Implement a minimal agent class (e.g. `AutopilotAgent`) with static instructions.
-3. Create a route like `POST /api/chat/stream` that returns SSE via `->stream(...)->usingVercelDataProtocol()`.
-4. React UI:
-   - a chat page that opens the SSE stream and renders text deltas.
-   - a durable “send message” UX with retries.
-
-**Data:**
-- Persist thread + messages (final text only) so refresh works.
+1. Add a canonical "how to run" doc (or update an existing one) for the Laravel app:
+   - `composer setup`
+   - `composer dev`
+   - `composer test`
+2. Standardize environments:
+   - Local: keep SQLite for fast iteration.
+   - Add Docker Compose for Postgres + Redis so we can validate prod parity early.
+3. CI baseline (Laravel app only):
+   - Backend: `composer lint` and `composer test`.
+   - Frontend: `npm run lint`, `npm run types`, `npm run build`.
+4. Deploy skeleton (no AI yet):
+   - Choose a staging domain (e.g. `next.openagents.com`).
+   - Deploy "hello world" + a health endpoint.
 
 **Verification:**
-- Unit test: stream endpoint returns valid SSE (`data:` lines + `[DONE]`).
-- Manual: send a message and watch deltas render.
+- `cd apps/openagents.com && composer test`
+- `cd apps/openagents.com && npm run lint && npm run types && npm run build`
 
-### Phase 2: Run/Event Log + Tool Card Rendering
+### Phase 1: Streaming Chat MVP (No Tools)
 
-**Objective:** reintroduce our auditability invariant and make tool output first-class in the UI.
+**Objective:** prove end-to-end streaming chat works (server streams, client renders, DB persists).
 
-1. Implement `runs` + `run_events` tables.
-2. Add a server-side run orchestrator that:
+1. Add/configure `laravel/ai`.
+2. Implement an agent class (e.g. `App\AI\Agents\AutopilotAgent`) with:
+   - stable system prompt
+   - a deterministic "no tools" mode
+3. Create a streaming endpoint compatible with Vercel AI SDK:
+   - Prefer `POST /api/chat` because `useChat` assumes it.
+   - Return SSE using `StreamableAgentResponse::usingVercelDataProtocol()`.
+4. UI: build a minimal chat page in Inertia React that uses `useChat`:
+   - render incremental text deltas
+   - render final assistant message
+   - show a clear error state when streaming fails
+5. Persistence:
+   - store thread + messages (final text only) so refresh works
+
+**Verification:**
+- Feature test: stream endpoint returns valid SSE frames and ends with `[DONE]`.
+- Manual: send message, observe deltas render.
+
+### Phase 2: Runs + Append-Only Run Events (Receipts)
+
+**Objective:** reintroduce auditability and determinism before adding tools.
+
+1. Add migrations:
+   - `threads`, `runs`, `messages`, `run_events`
+2. Implement a Run Orchestrator service that:
    - creates a `run`
-   - streams the model response
-   - appends `run_events` as the stream progresses (bounded)
-   - finalizes `run` and writes final assistant message
-3. React UI:
-   - render tool cards using the Vercel protocol tool events (`tool-input-available`, `tool-output-available`).
-   - add a “details” drawer per run that shows:
-     - tool call ids
-     - receipt hashes
-     - cost/usage
-
-4. Port the easiest tools first (parity checks):
-   - `get_time`
-   - `echo`
+   - streams the agent response
+   - writes the final assistant message
+   - records finish metadata (provider/model/usage)
+3. Add `run_events` writing:
+   - `run_started`
+   - `model_stream_started`
+   - `model_finished`
+   - `run_completed` / `run_failed`
+4. UI: add a "Run details" drawer that loads from DB and shows the event timeline.
 
 **Verification:**
-- Programmatic test that a run produces an ordered `run_events` log and is reconstructible after refresh.
+- Feature test: refresh reconstructs a run from DB even if the client missed part of the stream.
 
-### Phase 3: L402 Buyer Tool (MVP)
+### Phase 3: Tool Framework + First Tools (`get_time`, `echo`)
 
-**Objective:** migrate L402 buying into Laravel and make the EP212 demo path work without explicit approvals.
+**Objective:** establish the tool contract and tool UI rendering pattern in Laravel.
 
-Tool contract (target shape):
+1. Implement a tool registry with stable tool names and JSON schemas.
+2. Implement deterministic hashing:
+   - `params_hash = sha256(json_encode(params_canonical))`
+   - `output_hash = sha256(json_encode(output_canonical))`
+3. Wire tools into the agent via `HasTools`.
+4. Persist tool events to `run_events`:
+   - `tool_call_started` (includes `tool_name`, `tool_call_id`, `params_hash`)
+   - `tool_call_succeeded|failed` (includes `output_hash`, latency, errors)
+5. UI:
+   - show compact tool summaries inline
+   - keep raw JSON behind a collapsible
+
+**Verification:**
+- Feature test: tool execution produces ordered run events and correct hashes.
+
+### Phase 4: L402 Buyer Tool (`lightning_l402_fetch`) MVP
+
+**Objective:** implement the real EP212 demo path (pay for an L402 endpoint and return the paid payload).
+
+**Tool contract (target):**
 
 - Name: `lightning_l402_fetch`
 - Params:
   - `url`, `method`, `headers`, `body`
   - `maxSpendSats` (hard cap)
-  - `scope` (cache key namespace; e.g. `ep212.sats4ai`)
-  - optional: `allowHosts` / `denyHosts` policy inputs (server-side allowlist is still recommended)
-- Output:
+  - `scope` (cache namespace; e.g. `ep212.sats4ai`)
+  - optional: `allowHosts` / `denyHosts` (but keep a server-side allowlist as the real gate)
+- Output (bounded):
   - `status` (`completed|cached|blocked|failed`)
-  - `amountMsats`, `quotedAmountMsats`, `paymentBackend`
-  - `proofReference` (e.g. preimage prefix) and receipt hashes
-  - response metadata: `responseStatusCode`, `responseContentType`, `responseBytes`, `responseBodyTextPreview`, `responseBodySha256`
+  - `amountMsats`, `quotedAmountMsats`
+  - `paymentBackend`
+  - `proofReference` (never dump full secrets into the transcript)
+  - response metadata:
+    - `responseStatusCode`, `responseContentType`, `responseBytes`
+    - `responseBodyTextPreview` (truncated)
+    - `responseBodySha256`
   - `cacheHit`
 
-Implementation steps:
+**Implementation steps:**
 
-1. Implement an L402 HTTP client that:
-   - makes the initial request
-   - if `402`, parses `WWW-Authenticate: L402 macaroon=..., invoice=...`
-   - enforces policy before paying (`maxSpendSats`, allowlist)
-   - pays the BOLT11 invoice
-   - retries with `Authorization: L402 <macaroon>:<preimage>`
-   - captures response body (bounded) + sha256
-
-2. Wallet backend (pick one for MVP):
-   - **Spark wallet** (preferred): hold a Spark seed in the server-side DB/secret store; pay invoices; return preimage.
-   - LND (optional later).
-
+1. L402 HTTP client:
+   - initial request
+   - on 402: parse `WWW-Authenticate: L402 macaroon=..., invoice=...`
+   - apply policy before payment (hard cap + allowlist)
+   - pay invoice, get preimage
+   - retry request with `Authorization: L402 <macaroon>:<preimage>`
+   - capture response preview + sha256 (bounded)
+2. Payment backend abstraction:
+   - define an internal `InvoicePayer` interface
+   - ship at least:
+     - `FakeInvoicePayer` (tests)
+     - `LndRestInvoicePayer` (pragmatic default if we have an LND we control)
+   - treat Spark as a follow-on unless we have a clean PHP client
 3. Credential cache:
-   - persist `(host, scope) -> macaroon + preimage + created_at + ttl` (bounded)
-   - on repeat request, try cached credential first (must not pay again).
-
-4. UI:
-   - show a compact “payment sent” line item (host + sats + proof ref prefix + cache hit/miss)
-   - keep full receipt JSON behind a collapsible.
+   - persist `(host, scope) -> macaroon + preimage + ttl`
+   - store encrypted at rest (Laravel encryption) and enforce TTL
+4. Receipts:
+   - always write a run event with:
+     - params hash
+     - whether we paid
+     - amount quoted/paid
+     - response hash
+     - cache hit/miss
+5. UI:
+   - show 1-line summary: `host + sats + cache hit/miss + proofReference prefix`
+   - collapse full response preview and receipt JSON
 
 **Verification (must be deterministic):**
 
-- Local fake L402 server for tests:
-  - request 1: returns 402 + invoice + macaroon
-  - request 2 (with auth): returns 200 + premium payload
-- Fake wallet payer in tests returns deterministic preimage.
+- Local fake L402 server in tests:
+  - request 1 returns 402 + invoice + macaroon
+  - request 2 (with auth) returns 200 + premium payload
+- Fake payer returns deterministic preimage.
 - Tests assert:
   - first call pays and stores receipt + response preview/hash
-  - second call uses cache and does not pay
+  - second call is cache hit and does not pay
   - over-cap blocks pre-payment
 
-### Phase 4: External Demo Endpoints + Internal Gateway
+### Phase 5: Demo Presets + Programmatic Demo Runner
 
-**Objective:** make the demo stable with 2 endpoints:
+**Objective:** make the demo executable by humans and by agents (CLI), not just in the UI.
 
-1. External seller endpoint (e.g. sats4ai)
-2. Our own endpoint behind our gateway (Aperture) when we’re ready
-
-For the Laravel rebuild, we should treat these as configurations/presets:
-
-- `EP212_ENDPOINT_A` (external)
-- `EP212_ENDPOINT_B` (internal)
+1. Create endpoint presets (env/config) for EP212:
+   - external L402 endpoint (e.g. sats4ai)
+   - our internal endpoint later
+2. Add an Artisan command that runs the demo end-to-end without a browser:
+   - `php artisan demo:l402 --preset=sats4ai --max-spend-sats=100`
+   - should print the payment summary + response sha256
+3. Add a smoke test suite that runs against the local fake L402 server.
 
 **Verification:**
-- A scripted “demo runner” that executes both endpoints and asserts:
-  - endpoint A paid success
-  - endpoint A repeat cache hit
-  - endpoint B blocked or paid depending on config
+- `php artisan demo:l402` succeeds locally against the fake server.
 
-### Phase 5: Parity Expansion (After MVP)
+### Phase 6: Productionization + Cutover
 
-1. Port remaining core tools that should remain “tool-shaped” (not just app features).
-2. Reintroduce optional approvals (only if we need them for safety; not part of MVP).
-3. Build admin pages for:
-   - wallet status/balance
-   - payments list
-   - L402 cache state
-   - run receipts
+**Objective:** run Laravel alongside the existing app until it is ready for traffic.
 
-### Phase 6: Cutover Strategy
-
-1. Run Laravel app on a staging domain.
-2. Mirror key flows (auth + chat + L402).
-3. Gradually route traffic or switch DNS.
-
-## Notes on Skipping Approvals (MVP)
-
-Skipping approvals is feasible if we enforce:
-
-- hard `maxSpendSats` caps
-- allowlist/denylist on hosts
-- bounded response storage
-- receipts + logs so we can audit what happened
-
-If we later reintroduce approvals, it should be treated as a UX addition on top of the same tool contract, not a rewrite.
+1. Staging domain + deployment:
+   - Postgres (Cloud SQL)
+   - Redis (Memorystore)
+   - secrets via Secret Manager
+2. Streaming reliability validation (SSE):
+   - verify no buffering timeouts
+   - verify proxy settings
+3. Cutover plan:
+   - keep current Effuse app as primary
+   - route internal users to Laravel staging
+   - later switch DNS / edge routing
 
 ## Risks / Open Questions
 
-- Streaming reliability depends heavily on infra buffering (nginx/fpm/Cloud Run). We should pick a deployment mode that supports SSE well.
-- Spark wallet integration in PHP may require:
-  - a separate wallet service, or
-  - calling an existing SDK via another runtime.
-- We must not regress our “tools are auditable” invariant; `run_events` needs to exist early, not as an afterthought.
+- SSE streaming reliability depends heavily on infra buffering (nginx/php-fpm/Cloud Run defaults). We must validate streaming early in staging.
+- Spark wallet integration from PHP may require either:
+  - an internal wallet microservice (Node/TS), or
+  - LND as the payer in MVP, with Spark later.
+- `run_events` must exist early or we will recreate the same "we can't debug what happened" problem later.
 
 ## Decision Log
 

@@ -4,8 +4,11 @@ This document maps the active codebase after the Rust deprecation cleanup.
 
 ## Product Surface
 
+- `apps/openagents.com/`
+  **Incoming core web app.** Laravel 12 + Inertia + React (TypeScript), Laravel AI SDK–backed chat and tools. This app is being built to replace the current web stack; cutover is planned per `docs/plans/active/laravel-rebuild.md`.
+
 - `apps/web/`
-  Main OpenAgents web product. Includes homepage chat panes, auth flows, deployment scripts, and docs specific to web operations.
+  **Current** OpenAgents web product (Effuse/Cloudflare/Convex). Homepage chat panes, auth flows, deployment scripts. Remains production until Laravel cutover.
 
 - `apps/autopilot-worker/`
   Worker-focused runtime pieces used by the web product and automation paths.

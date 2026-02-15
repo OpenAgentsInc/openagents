@@ -2,6 +2,8 @@
 
 This roadmap tracks active priorities for the current TypeScript/Effect codebase.
 
+**Web stack transition:** We are swapping in **Laravel 12 + Inertia + React** at `apps/openagents.com/` as the core web app. See `docs/plans/active/laravel-rebuild.md` for the rebuild plan and cutover strategy. Until cutover, `apps/web/` remains the production web surface.
+
 ## Phase 1: Chat Reliability and Observability
 
 - Stabilize chat streaming behavior across all panes.

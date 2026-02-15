@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
-This directory tracks the active OpenAgents cross-platform stack built on Effuse.
-Current product surfaces are web (`openagents.com`), mobile (`apps/mobile`), and desktop (`apps/desktop`, early implementation).
+This directory tracks the active OpenAgents cross-platform stack.
+Current product surfaces: web — **incoming** Laravel app (`apps/openagents.com/`) and **current** Effuse/Cloudflare/Convex app (`apps/web/`); mobile (`apps/mobile`); desktop (`apps/desktop`, early implementation). See `plans/active/laravel-rebuild.md` for the web cutover plan.
 
 ## Start Here
 
@@ -34,7 +34,8 @@ Current product surfaces are web (`openagents.com`), mobile (`apps/mobile`), and
 
 ## Local Development
 
-- Web local dev: `../apps/web/README.md`
+- Laravel web (incoming core): `../apps/openagents.com/` — see plan `plans/active/laravel-rebuild.md`; typically `cd openagents.com && composer run dev`.
+- Web local dev (current): `../apps/web/README.md`
 - Mobile local dev: `../apps/mobile/README.md`
 - Desktop local dev: `../apps/desktop/README.md`
 - Storybook and component docs: `STORYBOOK.md`
