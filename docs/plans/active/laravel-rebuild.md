@@ -1,15 +1,18 @@
-# Laravel Rebuild Evaluation (Laravel AI SDK)
+# Laravel Rebuild Plan (Inertia + React + Laravel AI SDK)
 
 Date: 2026-02-15
 
 ## Goal
 
-Evaluate a from-scratch rebuild of OpenAgents' current Effuse/Cloudflare/Convex web stack into **Laravel 12 + Laravel AI SDK (`laravel/ai`)**, and recommend one of:
+Rebuild OpenAgents' current Effuse/Cloudflare/Convex web stack into **Laravel 12 + Inertia + React (TypeScript)** and use **Laravel AI SDK (`laravel/ai`)** as the primary model/tooling interface.
 
-1. **Laravel + Inertia + React (TypeScript)**
-2. **Laravel + Livewire**
+Near-term objective: migrate **basic tools** (starting with **L402 buying**) into the new Laravel app so we can run the EP212-style L402 demo and then expand from there.
 
-This doc focuses on the *product surface* (openagents.com Autopilot chat + Lightning/L402 UX + admin surfaces), and how the Laravel AI SDK changes the calculus.
+## Decisions (Locked)
+
+- Frontend: **Inertia + React (TypeScript)**.
+- Laravel AI integration: use **`laravel/ai` streaming + tools**.
+- MVP safety model: **no explicit approval UX**. Instead, enforce strict caps/allowlists in the tool contract (e.g. `maxSpendSats`).
 
 ## What We Learned From `laravel/ai`
 
@@ -17,198 +20,240 @@ We reviewed `/Users/christopherdavid/code/laravel-ai/`.
 
 Key capabilities that matter for OpenAgents:
 
-- **Unified provider abstraction** (OpenAI, Anthropic, Gemini, OpenRouter, etc.) with failover.
-- **Agents with tools**: agents implement interfaces like `HasTools`, `Conversational`, `HasStructuredOutput`.
-- **Structured output** via Laravel JSON schema builder (`illuminate/json-schema`).
-- **Streaming**: `StreamableAgentResponse` can stream SSE, including a mode that speaks the **Vercel AI SDK data stream protocol**.
-  - See `Laravel\\Ai\\Responses\\StreamableAgentResponse::usingVercelDataProtocol()`.
-  - Implementation: `Laravel\\Ai\\Responses\\Concerns\\CanStreamUsingVercelProtocol`.
-  - It emits SSE `data:` lines with `type: start|text-delta|tool-input-available|tool-output-available|finish` and terminates with `data: [DONE]`.
-- **Broadcasting streaming events** to channels (queue-backed or immediate). This is a natural fit for WebSockets (Laravel Reverb / Pusher style).
-- **Conversation persistence**: a built-in DB conversation store exists (`DatabaseConversationStore`) and migrations create:
-  - `agent_conversations`
-  - `agent_conversation_messages` (stores: role/content/tool_calls/tool_results/usage/meta)
+- Unified provider abstraction (OpenAI, Anthropic, Gemini, OpenRouter, etc.) with failover.
+- Agents with tools (`HasTools`) and structured output (`HasStructuredOutput`).
+- Streaming: `StreamableAgentResponse` can stream SSE using the **Vercel AI SDK data stream protocol**.
+  - `StreamableAgentResponse::usingVercelDataProtocol()`
+  - Implementation: `CanStreamUsingVercelProtocol` (SSE `data:` lines; ends with `data: [DONE]`).
 
 Important limitation for OpenAgents:
 
-- The built-in conversation store captures the **final** assistant content and tool calls/results, but it is *not* a complete “replay log” of stream deltas and runtime decisions. If we keep our “replayable receipts / deterministic audit” invariant, we must implement our own receipt/event log.
+- The built-in conversation store captures final assistant content and tool calls/results, but it is not a complete replay log of runtime decisions. If we keep our “receipts are replayable” invariant, we must implement an append-only **run event / receipt log**.
 
-## OpenAgents Requirements That Drive The Frontend Choice
+## OpenAgents Tool Surface (Current)
 
-Non-negotiable UX/engineering needs (based on current product direction):
+From this repo’s current Autopilot tool registry (`apps/autopilot-worker/src/tools.ts`), the core “basic tools” we should expect to replicate over time include:
 
-- Autopilot chat must support **streaming text**, **tool cards**, **approval gates** (e.g. L402 pay intent), and **retries**.
-- We need a UI that can present “rich runs”: tool calls/results, receipts, and human-friendly summaries.
-- We will maintain multiple clients:
-  - Web (openagents.com)
-  - React Native mobile
-  - Electron desktop (planned)
-- We should retain strong type-safety on the client (or we will regress reliability significantly).
+- `get_time`, `echo`
+- L402 buyer: `lightning_l402_fetch` (and `lightning_l402_approve`, but MVP will not use approval)
+- Hosted paywall control plane tools (later): `lightning_paywall_*`, `lightning_paywall_settlement_list`
+- Bootstrap / identity / memory helpers (may become app features rather than LLM tools):
+  - `bootstrap_set_user_handle`, `bootstrap_set_agent_name`, `bootstrap_set_agent_vibe`, `bootstrap_complete`
+  - `identity_update`, `user_update`, `character_update`
+  - `memory_append`, `tools_update_notes`, `heartbeat_set_checklist`, `blueprint_export`
 
-## Option A: Laravel + Inertia + React (TypeScript)
-
-### What It Looks Like
-
-- Laravel serves pages via Inertia.
-- React/TS renders the Autopilot chat UI, Lightning panes, admin UI, etc.
-- API endpoints (Laravel routes/controllers) provide:
-  - chat history (threads/messages)
-  - SSE streaming endpoint(s) for runs
-  - tool execution endpoints (or internal job dispatch)
-  - Lightning wallet/executor endpoints
-
-### Why This Fits `laravel/ai`
-
-Laravel AI SDK explicitly supports the **Vercel AI SDK stream protocol**.
-
-That means we can either:
-
-- Use Vercel AI SDK on the client (React) for parsing the stream, *or*
-- Implement our own SSE parser in TS (still easy), but keep protocol compatibility.
-
-Either way, React is the “native” client environment for that protocol.
-
-### How To Map Our Current Autopilot UX
-
-- Replace “Convex subscription → client rebuilds message parts” with:
-  - **SSE for the current run** (low-latency deltas)
-  - **DB persistence** for messages + a replay log (for refresh/backfill)
-  - optional **WebSockets broadcast** for multi-tab observers
-
-- Tool UX:
-  - Tools are modeled as `laravel/ai` Tools.
-  - We keep a strict schema boundary: input schema validation before execution.
-  - Tools emit receipts (see “Receipts and Replay” below).
-
-- Approval UX (e.g. L402):
-  - First tool invocation emits a `payment_intent` tool output and transitions the run to `approval_required`.
-  - React renders an approve button.
-  - Approve triggers a follow-up request that continues the run.
-
-### Pros
-
-- Best fit for streaming chat + rich UI.
-- Shared React component strategy across **web + Electron**, and mental model close to React Native.
-- TypeScript where we need it (UI correctness).
-- Directly aligns with `laravel/ai`’s Vercel protocol mode.
-
-### Cons
-
-- Still a “two-language” system (PHP backend + TS frontend).
-- You’ll build/maintain an API surface anyway for RN/Electron.
-
-## Option B: Laravel + Livewire
-
-### What It Looks Like
-
-- Laravel renders Livewire components for most UI.
-- Livewire sends incremental updates over its own transport.
-- For streaming AI, we would likely bridge in one of two ways:
-  1. Use `laravel/ai` streaming + **broadcast events** and subscribe from Livewire via Echo/Reverb.
-  2. Poll a “run state” row and append updates (worse UX).
-
-### Pros
-
-- Very fast to build CRUD/admin surfaces.
-- Great for forms + simple interactive pages.
-- Keeps most logic in PHP.
-
-### Cons (for OpenAgents)
-
-- Streaming chat with tool cards + approval + long-running flows becomes awkward.
-- Harder to share code/UX with Electron/RN.
-- Client-side type safety is weaker (you will re-learn these bugs).
-- We will likely end up building a separate API for RN/Electron anyway, which reduces the value of “all-in server UI”.
-
-## Recommendation
-
-If we do a Laravel rebuild, we should choose:
-
-**Laravel + Inertia + React (TypeScript)**
-
-Reasoning:
-
-- `laravel/ai` is intentionally compatible with the **Vercel AI SDK streaming protocol**, which is best consumed from **React**.
-- OpenAgents is trending toward a UI that is not “CRUD-ish”: it’s streaming, tool-heavy, and multi-client.
-- React gives us the highest leverage across web + Electron and keeps us closer to the RN mental model.
-
-Livewire remains attractive for an **internal admin** app, but it is the wrong primary UI technology for a streaming agent product.
-
-## Proposed Laravel Architecture (If We Rebuild)
+## Architecture Sketch (Laravel)
 
 ### Runtime Components
 
-- **Laravel App** (primary)
-  - Auth (WorkOS or Laravel native)
-  - Autopilot threads/runs storage in Postgres
-  - Streaming endpoints (SSE)
-  - Tool execution orchestration
-  - Lightning wallet + executor integration
+- Laravel app (HTTP)
+  - Inertia + React UI
+  - SSE endpoint(s) for active runs
+  - REST endpoints for history + receipts (and for RN/Electron later)
 
-- **Queue + workers**
-  - Redis-backed queue
-  - Separate worker pool for:
-    - tool execution
-    - L402 payments / wallet IO
-    - long tasks
+- Postgres (durable state)
+  - threads, runs, messages
+  - run events (append-only)
+  - lightning receipts + caches
 
-- **Realtime**
-  - Optional: Laravel Reverb (WebSockets) for observers
-  - Not strictly required if we rely on SSE per active run + DB backfill
+- Redis (optional but recommended early)
+  - queues for background work
+  - locks
+  - rate limiting
 
-### Data Model Sketch
+### Data Model (MVP)
 
 - `threads`
-- `runs` (status: queued, streaming, awaiting_approval, completed, failed, canceled)
-- `messages` (user/assistant)
-- `run_events` (the replay log / receipt log)
-  - append-only
-  - includes: text deltas (optional), tool call + tool result, approvals, errors
-  - references hashes and bounded payload previews
+- `runs` (status: `queued|running|completed|failed|canceled`)
+- `messages` (user/assistant; final text)
+- `run_events` (append-only)
+  - includes tool call/result, finish usage, and receipt hashes
 
-### Receipts and Replay (Carry Over Our Invariant)
+### Streaming Strategy
 
-`laravel/ai` already gives:
+- Use `laravel/ai` streaming with `usingVercelDataProtocol()`.
+- React consumes SSE and renders:
+  - text deltas
+  - tool call/result cards
+  - final finish
 
-- tool call/result content
-- a final assistant message
+Durability rules:
 
-But we need:
+- The stream is “best effort for UX”.
+- The database is the source of truth.
+- After stream completion, the UI should be able to refresh and reconstruct the same state from DB.
 
-- deterministic receipts
-- bounded payload hashing
-- ability to reproduce runs
+## Roadmap (Detailed, Ordered)
 
-Implementation approach:
+This is the order we should implement, with explicit scope boundaries so we can ship incremental value.
 
-- Subscribe to Laravel AI SDK streaming events (or wrap the stream generator) and persist `run_events`:
-  - `text-delta` events (optional; can store only final text + tool events if storage is too costly)
-  - `tool-input-available` / `tool-output-available`
-  - `finish` usage
-- Store:
-  - `params_hash`, `output_hash`, `latency_ms`, `side_effects`
-  - “counterfactuals” when migrating from legacy paths
+### Phase 0: Repo/App Bootstrap
 
-## Rebuild Plan (High Level)
+**Objective:** create the new Laravel app scaffold and CI that can run in isolation.
 
-1. **Spike**: new Laravel app that can stream a trivial agent response using `usingVercelDataProtocol()`.
-2. **Chat persistence**: threads/messages in Postgres; load history UI.
-3. **Tool system**: implement 2-3 tools with schemas and tool cards.
-4. **Approval gating**: implement an “approval required” tool loop.
-5. **Lightning / L402**: port or call existing L402 buyer capability behind a tool contract.
-6. **Receipts**: build `run_events` append-only log and a replay/export command.
-7. **Parity**: migrate remaining product surfaces (admin, ops).
-8. **Cutover**: ship on a new domain/staging, then switch traffic.
+1. Create a new Laravel 12 app (in this monorepo under `apps/laravel-web/` or in a new repo; pick one and standardize).
+2. Add Inertia + React + TypeScript.
+3. Add local dev environment:
+   - Postgres (Docker compose)
+   - Redis (Docker compose)
+4. Add baseline CI + scripts:
+   - `composer test` (phpunit)
+   - `composer lint` (pint)
+   - `npm test` / `npm run lint` for frontend
 
-## Risks
+**Verification:**
+- `composer test`
+- `composer lint`
+- `npm run build`
 
-- Large rewrite will stall product work unless we timebox a spike and prove it increases velocity.
-- We may lose key properties of the current system if we do not re-introduce:
-  - strict tool schemas
-  - deterministic receipts
-  - replay bundles
-- Laravel AI SDK is new and targets Laravel 12 / PHP 8.4; the ecosystem may shift quickly.
+### Phase 1: Streaming Chat MVP (No Tools Yet)
+
+**Objective:** prove end-to-end streaming chat works with Laravel AI SDK and React UI.
+
+1. Install/configure `laravel/ai`.
+2. Implement a minimal agent class (e.g. `AutopilotAgent`) with static instructions.
+3. Create a route like `POST /api/chat/stream` that returns SSE via `->stream(...)->usingVercelDataProtocol()`.
+4. React UI:
+   - a chat page that opens the SSE stream and renders text deltas.
+   - a durable “send message” UX with retries.
+
+**Data:**
+- Persist thread + messages (final text only) so refresh works.
+
+**Verification:**
+- Unit test: stream endpoint returns valid SSE (`data:` lines + `[DONE]`).
+- Manual: send a message and watch deltas render.
+
+### Phase 2: Run/Event Log + Tool Card Rendering
+
+**Objective:** reintroduce our auditability invariant and make tool output first-class in the UI.
+
+1. Implement `runs` + `run_events` tables.
+2. Add a server-side run orchestrator that:
+   - creates a `run`
+   - streams the model response
+   - appends `run_events` as the stream progresses (bounded)
+   - finalizes `run` and writes final assistant message
+3. React UI:
+   - render tool cards using the Vercel protocol tool events (`tool-input-available`, `tool-output-available`).
+   - add a “details” drawer per run that shows:
+     - tool call ids
+     - receipt hashes
+     - cost/usage
+
+4. Port the easiest tools first (parity checks):
+   - `get_time`
+   - `echo`
+
+**Verification:**
+- Programmatic test that a run produces an ordered `run_events` log and is reconstructible after refresh.
+
+### Phase 3: L402 Buyer Tool (MVP)
+
+**Objective:** migrate L402 buying into Laravel and make the EP212 demo path work without explicit approvals.
+
+Tool contract (target shape):
+
+- Name: `lightning_l402_fetch`
+- Params:
+  - `url`, `method`, `headers`, `body`
+  - `maxSpendSats` (hard cap)
+  - `scope` (cache key namespace; e.g. `ep212.sats4ai`)
+  - optional: `allowHosts` / `denyHosts` policy inputs (server-side allowlist is still recommended)
+- Output:
+  - `status` (`completed|cached|blocked|failed`)
+  - `amountMsats`, `quotedAmountMsats`, `paymentBackend`
+  - `proofReference` (e.g. preimage prefix) and receipt hashes
+  - response metadata: `responseStatusCode`, `responseContentType`, `responseBytes`, `responseBodyTextPreview`, `responseBodySha256`
+  - `cacheHit`
+
+Implementation steps:
+
+1. Implement an L402 HTTP client that:
+   - makes the initial request
+   - if `402`, parses `WWW-Authenticate: L402 macaroon=..., invoice=...`
+   - enforces policy before paying (`maxSpendSats`, allowlist)
+   - pays the BOLT11 invoice
+   - retries with `Authorization: L402 <macaroon>:<preimage>`
+   - captures response body (bounded) + sha256
+
+2. Wallet backend (pick one for MVP):
+   - **Spark wallet** (preferred): hold a Spark seed in the server-side DB/secret store; pay invoices; return preimage.
+   - LND (optional later).
+
+3. Credential cache:
+   - persist `(host, scope) -> macaroon + preimage + created_at + ttl` (bounded)
+   - on repeat request, try cached credential first (must not pay again).
+
+4. UI:
+   - show a compact “payment sent” line item (host + sats + proof ref prefix + cache hit/miss)
+   - keep full receipt JSON behind a collapsible.
+
+**Verification (must be deterministic):**
+
+- Local fake L402 server for tests:
+  - request 1: returns 402 + invoice + macaroon
+  - request 2 (with auth): returns 200 + premium payload
+- Fake wallet payer in tests returns deterministic preimage.
+- Tests assert:
+  - first call pays and stores receipt + response preview/hash
+  - second call uses cache and does not pay
+  - over-cap blocks pre-payment
+
+### Phase 4: External Demo Endpoints + Internal Gateway
+
+**Objective:** make the demo stable with 2 endpoints:
+
+1. External seller endpoint (e.g. sats4ai)
+2. Our own endpoint behind our gateway (Aperture) when we’re ready
+
+For the Laravel rebuild, we should treat these as configurations/presets:
+
+- `EP212_ENDPOINT_A` (external)
+- `EP212_ENDPOINT_B` (internal)
+
+**Verification:**
+- A scripted “demo runner” that executes both endpoints and asserts:
+  - endpoint A paid success
+  - endpoint A repeat cache hit
+  - endpoint B blocked or paid depending on config
+
+### Phase 5: Parity Expansion (After MVP)
+
+1. Port remaining core tools that should remain “tool-shaped” (not just app features).
+2. Reintroduce optional approvals (only if we need them for safety; not part of MVP).
+3. Build admin pages for:
+   - wallet status/balance
+   - payments list
+   - L402 cache state
+   - run receipts
+
+### Phase 6: Cutover Strategy
+
+1. Run Laravel app on a staging domain.
+2. Mirror key flows (auth + chat + L402).
+3. Gradually route traffic or switch DNS.
+
+## Notes on Skipping Approvals (MVP)
+
+Skipping approvals is feasible if we enforce:
+
+- hard `maxSpendSats` caps
+- allowlist/denylist on hosts
+- bounded response storage
+- receipts + logs so we can audit what happened
+
+If we later reintroduce approvals, it should be treated as a UX addition on top of the same tool contract, not a rewrite.
+
+## Risks / Open Questions
+
+- Streaming reliability depends heavily on infra buffering (nginx/fpm/Cloud Run). We should pick a deployment mode that supports SSE well.
+- Spark wallet integration in PHP may require:
+  - a separate wallet service, or
+  - calling an existing SDK via another runtime.
+- We must not regress our “tools are auditable” invariant; `run_events` needs to exist early, not as an afterthought.
 
 ## Decision Log
 
-- 2026-02-15: Based on `laravel/ai`’s explicit support for the Vercel AI SDK data stream protocol and our multi-client, tool-heavy UI requirements, prefer **Laravel + Inertia + React (TS)** over Livewire for a rebuild.
+- 2026-02-15: Commit to **Laravel + Inertia + React (TS)** and adopt `laravel/ai` streaming protocol for chat.
+- 2026-02-15: MVP will **skip approvals**; safety enforced via strict tool caps/allowlists.

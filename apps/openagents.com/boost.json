@@ -1,0 +1,15 @@
+{
+    "agents": [
+        "cursor",
+        "codex",
+        "opencode"
+    ],
+    "guidelines": true,
+    "herd_mcp": true,
+    "mcp": true,
+    "sail": false,
+    "skills": [
+        "wayfinder-development",
+        "pest-testing"
+    ]
+}

@@ -1,0 +1,12 @@
+[mcp_servers.laravel-boost]
+command = "php"
+args = ["artisan", "boost:mcp"]
+cwd = "/Users/christopherdavid/code/openagents/apps/openagents.com"
+
+[mcp_servers.herd]
+command = "php"
+args = ["/Applications/Herd.app/Contents/Resources/herd-mcp.phar"]
+cwd = "/Users/christopherdavid/code/openagents/apps/openagents.com"
+
+[mcp_servers.herd.env]
+SITE_PATH = "/Users/christopherdavid/code/openagents/apps/openagents.com"

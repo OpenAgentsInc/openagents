@@ -1,0 +1,25 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "mcp": {
+        "laravel-boost": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "php",
+                "artisan",
+                "boost:mcp"
+            ]
+        },
+        "herd": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "php",
+                "/Applications/Herd.app/Contents/Resources/herd-mcp.phar"
+            ],
+            "environment": {
+                "SITE_PATH": "/Users/christopherdavid/code/openagents/apps/openagents.com"
+            }
+        }
+    }
+}
