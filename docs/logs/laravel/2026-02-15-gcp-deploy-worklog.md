@@ -376,3 +376,97 @@ npm run lint
 npm run types
 npm run build
 ```
+
+### Commit
+
+Phase 1 implementation was committed as:
+
+- `2c064ae2a` apps(openagents.com): add streaming chat MVP (laravel/ai)
+
+### AI Provider Config (OpenRouter)
+
+To make the deployed chat actually respond (not just stream an error), we need an AI provider key.
+
+For staging, we created a Secret Manager secret and bound it into Cloud Run:
+
+- Secret: `openagents-web-openrouter-api-key`
+- Env var: `OPENROUTER_API_KEY` (from the secret)
+- Env var: `AI_DEFAULT=openrouter`
+
+Note: the secret value itself is not logged here and not committed.
+
+### Cloud Build
+
+Built and pushed the Laravel image (including Phase 1) to Artifact Registry:
+
+```bash
+SHA=$(git rev-parse --short HEAD)
+
+gcloud builds submit \
+  --project openagentsgemini \
+  --config apps/openagents.com/deploy/cloudbuild.yaml \
+  --substitutions _TAG="$SHA" \
+  apps/openagents.com
+```
+
+Example build ID:
+
+- `4e6c09b6-2d0e-4ad3-a2a0-27945dccc9d7`
+
+Resulting image tags:
+
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:2c064ae2a`
+- `us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest`
+
+### Cloud Run Deploy
+
+Deployed the updated image to Cloud Run service `openagents-web`:
+
+```bash
+PROJECT=openagentsgemini
+REGION=us-central1
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:2c064ae2a
+CLOUDSQL=openagentsgemini:us-central1:l402-aperture-db
+
+gcloud run deploy openagents-web \
+  --project "$PROJECT" \
+  --region "$REGION" \
+  --image "$IMAGE" \
+  --allow-unauthenticated \
+  --port 8080 \
+  --memory 1Gi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 4 \
+  --set-env-vars "APP_ENV=production,APP_DEBUG=0,LOG_CHANNEL=stderr,AI_DEFAULT=openrouter,DB_CONNECTION=pgsql,DB_HOST=/cloudsql/$CLOUDSQL,DB_DATABASE=openagents_web,DB_USERNAME=openagents_web" \
+  --set-secrets "APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest,WORKOS_REDIRECT_URL=openagents-web-workos-redirect-url:latest,OPENROUTER_API_KEY=openagents-web-openrouter-api-key:latest" \
+  --add-cloudsql-instances "$CLOUDSQL"
+```
+
+Service URL:
+
+- `https://openagents-web-157437760789.us-central1.run.app`
+
+### Migrations
+
+Ran the existing Cloud Run job `openagents-migrate` again to apply the new `agent_conversations` tables:
+
+```bash
+gcloud run jobs execute openagents-migrate \
+  --project openagentsgemini \
+  --region us-central1 \
+  --wait
+```
+
+Example execution:
+
+- `openagents-migrate-74wmx`
+
+### Post-deploy verification
+
+```bash
+curl -i https://openagents-web-157437760789.us-central1.run.app/up
+curl -i https://openagents-web-157437760789.us-central1.run.app/
+```
+
+Both returned HTTP 200.
