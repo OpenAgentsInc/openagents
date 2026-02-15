@@ -110,6 +110,26 @@ type SnapshotPartRow = {
   readonly part: unknown;
 };
 
+export const deriveActiveRunIdFromSnapshotRows = (
+  input: {
+    readonly messages: ReadonlyArray<SnapshotMessageRow>;
+    readonly finishByMessageId: ReadonlyMap<string, ChatMessageFinish>;
+  },
+): string | null => {
+  let activeRunId: string | null = null;
+  for (const m of input.messages) {
+    if (
+      m.role === "assistant" &&
+      m.status === "streaming" &&
+      m.runId &&
+      !input.finishByMessageId.has(m.messageId)
+    ) {
+      activeRunId = m.runId;
+    }
+  }
+  return activeRunId;
+};
+
 const parseSnapshotMessages = (snapshot: unknown): ReadonlyArray<SnapshotMessageRow> => {
   if (!isRecord(snapshot)) return [];
   if (!Array.isArray(snapshot.messages)) return [];
@@ -315,7 +335,6 @@ export const ChatServiceLive = Layer.effect(
 
           // Rebuild messages deterministically from Convex rows.
           const byMessageId = new Map<string, ActiveStream>();
-          let activeRunId: string | null = null;
 
           const partsSorted = [...partsRaw]
             .sort((a, b) => a.seq - b.seq);
@@ -335,6 +354,11 @@ export const ChatServiceLive = Layer.effect(
             const finish = parseFinishPart(p.part);
             if (finish) finishByMessageId.set(p.messageId, finish);
           }
+
+          const activeRunId = deriveActiveRunIdFromSnapshotRows({
+            messages: messagesRaw,
+            finishByMessageId,
+          });
 
           const finishByRunId = new Map<string, ChatMessageFinish>();
           const messages: Array<ChatMessage> = [];
@@ -392,10 +416,6 @@ export const ChatServiceLive = Layer.effect(
                 });
               } else {
                 messages.push({ ...baseMsg, parts: [] });
-              }
-
-              if (m.status === "streaming" && m.runId) {
-                activeRunId = m.runId;
               }
               if (m.runId && finish) finishByRunId.set(m.runId, finish);
               continue;
