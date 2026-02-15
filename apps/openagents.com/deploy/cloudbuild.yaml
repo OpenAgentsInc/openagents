@@ -1,13 +1,18 @@
 # Build and push the Laravel web image.
+#
+# IMPORTANT: submit the build with context limited to the Laravel app directory,
+# otherwise Cloud Build will upload the entire monorepo.
+#
 # Run from repo root:
-#   gcloud builds submit --config apps/openagents.com/deploy/cloudbuild.yaml \
-#     --substitutions _TAG="$(git rev-parse --short HEAD)" .
+#   gcloud builds submit \
+#     --config apps/openagents.com/deploy/cloudbuild.yaml \
+#     --substitutions _TAG="$(git rev-parse --short HEAD)" \
+#     apps/openagents.com
 substitutions:
   _TAG: ${SHORT_SHA}
 
 steps:
   - name: gcr.io/cloud-builders/docker
-    dir: apps/openagents.com
     args:
       - build
       - -t
