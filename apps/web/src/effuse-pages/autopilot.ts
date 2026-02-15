@@ -291,7 +291,21 @@ export const renderPaymentStateCard = (model: L402PaymentStateCardModel): Templa
             <div class="text-xs text-white/80 font-mono truncate">${paymentStateOneLiner(model.state)}</div>
             ${headerHint ? html`<div class="text-[11px] text-white/55 font-mono truncate">${headerHint}</div>` : null}
           </div>
-          ${paymentStateBadge(model.state)}
+          <div class="flex items-center gap-2">
+            ${model.state === "payment.intent" && typeof model.taskId === "string" && model.taskId.length > 0
+              ? html`
+                  <button
+                    type="button"
+                    data-oa-l402-approve="1"
+                    data-task-id="${model.taskId}"
+                    class="h-8 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-mono text-white/85 hover:bg-white/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+                  >
+                    Approve payment
+                  </button>
+                `
+              : null}
+            ${paymentStateBadge(model.state)}
+          </div>
         </header>
       </summary>
       <div class="mt-2 flex flex-col gap-2">
@@ -316,20 +330,6 @@ export const renderPaymentStateCard = (model: L402PaymentStateCardModel): Templa
         ${dseRow("host", model.host)}
         ${dseRow("status", model.statusLabel)}
       </div>
-      ${model.state === "payment.intent" && typeof model.taskId === "string" && model.taskId.length > 0
-        ? html`
-            <div class="mt-3 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                data-oa-l402-approve="1"
-                data-task-id="${model.taskId}"
-                class="h-8 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-mono text-white/85 hover:bg-white/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-              >
-                Approve payment
-              </button>
-            </div>
-          `
-        : null}
     </details>
   `;
 };

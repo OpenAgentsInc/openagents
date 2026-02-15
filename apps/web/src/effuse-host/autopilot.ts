@@ -3392,7 +3392,7 @@ const runAutopilotStream = (input: {
           });
           yield* flush(true);
         } else {
-          const primary = yield* runStream.pipe(
+          yield* runStream.pipe(
             Effect.timeoutFail({
               duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
               onTimeout: () => new Error("model.stream_timeout"),
@@ -3400,8 +3400,9 @@ const runAutopilotStream = (input: {
           );
           yield* flush(true);
 
-          // If the primary model produced no user-visible text (no text deltas), retry once with Workers AI.
-          if (openRouterApiKey && outputText.trim().length === 0 && !primary.sawTextDelta) {
+          // If the primary model produced no user-visible text, retry once with Workers AI.
+          // Some upstream providers emit "delta" envelopes with empty content which can still mark `sawTextDelta=true`.
+          if (openRouterApiKey && outputText.trim().length === 0) {
             const fallbackPrompt = AiPrompt.make(
               `${rawPrompt}
 
@@ -3421,7 +3422,7 @@ Return only the final answer as plain text. Do not include hidden reasoning or t
           }
         }
       } else {
-        const primary = yield* runStream.pipe(
+        yield* runStream.pipe(
           Effect.timeoutFail({
             duration: `${MODEL_STREAM_TIMEOUT_MS} millis`,
             onTimeout: () => new Error("model.stream_timeout"),
@@ -3429,7 +3430,7 @@ Return only the final answer as plain text. Do not include hidden reasoning or t
         );
         yield* flush(true);
 
-        if (openRouterApiKey && outputText.trim().length === 0 && !primary.sawTextDelta) {
+        if (openRouterApiKey && outputText.trim().length === 0) {
           const fallbackPrompt = AiPrompt.make(
             `${rawPrompt}
 
