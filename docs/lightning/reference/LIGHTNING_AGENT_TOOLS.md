@@ -41,8 +41,8 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 
 ### Payment Rails and Receipts
 
-- OpenAgents already treats **Lightning** as a rail (see [GLOSSARY.md](../GLOSSARY.md): Rail, AssetId, payment proofs).
-- [ADR-0013](../adr/ADR-0013-receipt-schema-payment-proofs.md) defines `payment_proof` with type `lightning_preimage`. L402 payments produce exactly that: pay invoice → get preimage → use for auth. Session receipts can record L402 spends as payment receipt entries with `rail`, `asset_id`, `amount_msats`, and `payment_proof: { type: "lightning_preimage", value: "..." }`.
+- OpenAgents already treats **Lightning** as a rail (see [GLOSSARY.md](../../GLOSSARY.md): Rail, AssetId, payment proofs).
+- [ADR-0013](../../adr/ADR-0013-receipt-schema-payment-proofs.md) defines `payment_proof` with type `lightning_preimage`. L402 payments produce exactly that: pay invoice → get preimage → use for auth. Session receipts can record L402 spends as payment receipt entries with `rail`, `asset_id`, `amount_msats`, and `payment_proof: { type: "lightning_preimage", value: "..." }`.
 - **No change to receipt schema** is required; L402 fits the existing Lightning proof type.
 
 ### Lanes and Providers
@@ -70,7 +70,7 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 
 ### Phase 1: Documentation and Vocabulary
 
-- Add Lightning agent tools terms to [GLOSSARY.md](../GLOSSARY.md): L402, lnget, Macaroon, Aperture, LNC (brief).
+- Add Lightning agent tools terms to [GLOSSARY.md](../../GLOSSARY.md): L402, lnget, Macaroon, Aperture, LNC (brief).
 - Keep this doc as the canonical integration plan and reference to the Lightning Labs repo and article.
 - In any payment/receipt docs, state that L402 payments are recorded as `lightning_preimage` and that agent-facing payment flows can use lnget/Aperture as the implementation.
 
@@ -92,7 +92,7 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 
 ### Phase 5: Stale Doc Cleanup (Ongoing)
 
-- When touching docs that still reference Rust/crates, update or add a pointer to [RUST_DOCS_ARCHIVE_2026-02-11.md](../RUST_DOCS_ARCHIVE_2026-02-11.md) and [PROJECT_OVERVIEW.md](../PROJECT_OVERVIEW.md) so readers know the active stack is web/TypeScript/Effect.
+- When touching docs that still reference Rust/crates, update or add a pointer to [RUST_DOCS_ARCHIVE_2026-02-11.md](../../RUST_DOCS_ARCHIVE_2026-02-11.md) and [PROJECT_OVERVIEW.md](../../PROJECT_OVERVIEW.md) so readers know the active stack is web/TypeScript/Effect.
 
 ---
 
@@ -100,7 +100,7 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 
 - [Lightning Labs – The Agents Are Here and They Want to Transact](https://lightning.engineering/posts/2026-02-11-ln-agent-tools/) (2026-02-11)
 - [lightning-agent-tools repo](https://github.com/lightninglabs/lightning-agent-tools)
-- [GLOSSARY.md](../GLOSSARY.md) — Rail, AssetId, payment proofs
-- [ADR-0013: Receipt schema, payment proofs](../adr/ADR-0013-receipt-schema-payment-proofs.md)
-- [ADR-0007: Tool execution contract](../adr/ADR-0007-tool-execution-contract.md)
-- [PROJECT_OVERVIEW.md](../PROJECT_OVERVIEW.md) — Active codebase (web-first)
+- [GLOSSARY.md](../../GLOSSARY.md) — Rail, AssetId, payment proofs
+- [ADR-0013: Receipt schema, payment proofs](../../adr/ADR-0013-receipt-schema-payment-proofs.md)
+- [ADR-0007: Tool execution contract](../../adr/ADR-0007-tool-execution-contract.md)
+- [PROJECT_OVERVIEW.md](../../PROJECT_OVERVIEW.md) — Active codebase (web-first)

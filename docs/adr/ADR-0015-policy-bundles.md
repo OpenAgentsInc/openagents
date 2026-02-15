@@ -33,8 +33,8 @@ We need a single policy artifact that:
 
 ### Canonical owner (where the details live)
 
-- Bundle format + manifests: `crates/dsrs/docs/OPTIMIZERS.md` (policy bundles) and `crates/dsrs/docs/COMPILER-CONTRACT.md` (compiled manifests).
-- Session linkage: `crates/dsrs/docs/ARTIFACTS.md` (RECEIPT.json fields) and `crates/dsrs/docs/REPLAY.md` (replay header/session start fields).
+- Bundle format + manifests: `docs/dse/OPTIMIZERS.md` (policy bundles) and `docs/dse/COMPILER-CONTRACT.md` (compiled manifests).
+- Session linkage: `docs/execution/ARTIFACTS.md` (RECEIPT.json fields) and `docs/execution/REPLAY.md` (replay header/session start fields).
 - Terminology: [GLOSSARY.md](../GLOSSARY.md)
 
 This ADR defines *what is canonical* and *stability/rollout requirements*, not full schema duplication.
@@ -130,8 +130,8 @@ Backward compatibility expectations:
 ## References
 
 - [GLOSSARY.md](../GLOSSARY.md) — `policy_bundle_id`, terminology
-- [crates/dsrs/docs/OPTIMIZERS.md](../../crates/dsrs/docs/OPTIMIZERS.md) — policy bundle format (canonical)
-- [crates/dsrs/docs/COMPILER-CONTRACT.md](../../crates/dsrs/docs/COMPILER-CONTRACT.md) — compiled manifests
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — RECEIPT.json attribution
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — replay attribution
+- [docs/dse/OPTIMIZERS.md](../dse/OPTIMIZERS.md) — policy bundle format (canonical)
+- [docs/dse/COMPILER-CONTRACT.md](../dse/COMPILER-CONTRACT.md) — compiled manifests
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — RECEIPT.json attribution
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — replay attribution
 - [ROADMAP.md](../ROADMAP.md) — pin/rollback + rollout gating as MVP items

@@ -6,10 +6,21 @@ Current product surfaces are web (`openagents.com`), mobile (`apps/mobile`), and
 ## Start Here
 
 - Product and mission: `MANIFESTO.md`
+- Progressive disclosure map: `AGENT_MAP.md`
 - Terminology: `GLOSSARY.md`
 - Repository map (current): `PROJECT_OVERVIEW.md`
 - Current roadmap: `ROADMAP.md`
 - Agent contract and engineering rules: `../AGENTS.md`
+
+## Contracts (Canonical Specs)
+
+- Execution artifacts + replay: `execution/`
+- Protocol surface: `protocol/`
+- DSE/compiler contracts: `dse/`
+
+## Plans
+
+- Repo-wide plans hub: `plans/`
 
 ## Product Surfaces
 

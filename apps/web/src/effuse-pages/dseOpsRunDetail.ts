@@ -2,35 +2,9 @@ import { html } from "@openagentsinc/effuse";
 
 import type { TemplateResult } from "@openagentsinc/effuse";
 
-export type DseOpsRunEventItem = {
-  readonly tsMs: number;
-  readonly level: "info" | "warn" | "error";
-  readonly phase: string | null;
-  readonly message: string;
-  readonly jsonPreview: string | null;
-};
+import type { DseOpsRunDetailPageData, DseOpsRunEventItem } from "../lib/pageData/dse";
 
-export type DseOpsRunDetail = {
-  readonly runId: string;
-  readonly status: "running" | "finished" | "failed";
-  readonly startedAtMs: number;
-  readonly endedAtMs: number | null;
-  readonly commitSha: string | null;
-  readonly baseUrl: string | null;
-  readonly actorUserId: string | null;
-  readonly signatureIds: ReadonlyArray<string> | null;
-  readonly notes: string | null;
-  readonly linksJson: string | null;
-  readonly summaryJson: string | null;
-  readonly updatedAtMs: number;
-};
-
-export type DseOpsRunDetailPageData = {
-  readonly runId: string;
-  readonly errorText: string | null;
-  readonly run: DseOpsRunDetail | null;
-  readonly events: ReadonlyArray<DseOpsRunEventItem> | null;
-};
+export type { DseOpsRunDetail, DseOpsRunDetailPageData, DseOpsRunEventItem } from "../lib/pageData/dse";
 
 const formatMs = (ms: number | null): string => {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "-";

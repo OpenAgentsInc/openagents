@@ -348,7 +348,7 @@ gcloud logging read 'resource.labels.revision_name="l402-aperture-REVISION_NAME"
 - **Voltage → L402:** `docs/lightning/reference/VOLTAGE_TO_L402_CONNECT.md`
 - **Deploy (image + config):** `docs/lightning/deploy/README.md`
 - **Staging reconcile:** `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`
-- **L402 plan:** `docs/lightning/plans/L402_AGENT_PAYWALL_INFRA_PLAN.md`
+- **L402 plan:** `docs/plans/active/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md`
 - **lightning-ops compiler:** `apps/lightning-ops/README.md`
 
 ---

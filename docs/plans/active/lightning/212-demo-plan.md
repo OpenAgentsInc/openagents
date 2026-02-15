@@ -9,7 +9,7 @@ Owner: OpenAgents
 
 Current GCP node foundation + liquidity bootstrap:
 
-- Plan/runbook: `docs/lightning/plans/GCP_BITCOIND_LND_2VM_PLAN.md`
+- Plan/runbook: `docs/plans/active/lightning/GCP_BITCOIND_LND_2VM_PLAN.md`
 - Liquidity + E2E L402 payment log: `docs/lightning/status/20260214-ep212-liquidity-bootstrap-log.md`
 - Wallet executor deploy log (Spark buyer wallet): `docs/lightning/status/20260212-wallet-executor-cloudrun-deploy-log.md`
 
@@ -230,7 +230,7 @@ Selection requirements:
 References:
 
 - Deploy/runbook: `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md`
-- GCP node foundation (LND backend): `docs/lightning/plans/GCP_BITCOIND_LND_2VM_PLAN.md`
+- GCP node foundation (LND backend): `docs/plans/active/lightning/GCP_BITCOIND_LND_2VM_PLAN.md`
 
 ## 5.5 Pane System Plan (effuse-panes + apps/web)
 

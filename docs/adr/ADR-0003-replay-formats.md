@@ -19,7 +19,7 @@ OpenAgents captures agent execution traces for debugging, training data generati
 ### Schema Authority
 
 The **canonical REPLAY.jsonl v1 schema** is defined in:
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
+- [docs/execution/REPLAY.md](../execution/REPLAY.md)
 
 This ADR states **what is canonical**, **migration expectations**, and **exporter requirements**. It does not duplicate the full schema.
 
@@ -38,7 +38,7 @@ REPLAY.jsonl is a JSON Lines file where each line is a typed event with an `even
 
 ### Current Implementation: ReplayBundle
 
-The `ReplayBundle` struct in [`crates/autopilot-core/src/replay.rs`](../../crates/autopilot-core/src/replay.rs) is the current runtime representation. It differs from the target REPLAY.jsonl format.
+The `ReplayBundle` struct in `crates/autopilot-core/src/replay.rs` (archived Rust-era path) is the historical runtime representation. It differs from the target REPLAY.jsonl format.
 
 ### Migration Path
 
@@ -49,7 +49,7 @@ The `ReplayBundle` struct in [`crates/autopilot-core/src/replay.rs`](../../crate
 
 ### MVP Acceptance Criteria
 
-Per [REPLAY.md](../../crates/dsrs/docs/REPLAY.md), MVP is achieved when either:
+Per [REPLAY.md](../execution/REPLAY.md), MVP is achieved when either:
 - Native REPLAY.jsonl v1 emission is implemented, OR
 - ReplayBundle emission + working exporter to REPLAY.jsonl v1 exists
 
@@ -122,7 +122,7 @@ Backward compatibility:
 
 ## References
 
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Canonical REPLAY.jsonl v1 specification
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Artifact overview
+- [docs/execution/REPLAY.md](../execution/REPLAY.md) — Canonical REPLAY.jsonl v1 specification
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — Artifact overview
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — Verified Patch Bundle contract
 - [GLOSSARY.md](../GLOSSARY.md) — `REPLAY.jsonl`, `ReplayBundle`

@@ -5,11 +5,13 @@ import { api } from "../../../convex/_generated/api";
 import { ConvexService } from "../convex";
 import { AppAtomRuntime } from "./appRuntime";
 
-import type { DseCompileReportPageData } from "../../effuse-pages/dseCompileReport";
-import type { DseEvalReportPageData } from "../../effuse-pages/dseEvalReport";
-import type { DseOpsRunDetailPageData } from "../../effuse-pages/dseOpsRunDetail";
-import type { DseOpsRunsPageData } from "../../effuse-pages/dseOpsRuns";
-import type { DseSignaturePageData } from "../../effuse-pages/dseSignature";
+import type {
+  DseCompileReportPageData,
+  DseEvalReportPageData,
+  DseOpsRunDetailPageData,
+  DseOpsRunsPageData,
+  DseSignaturePageData,
+} from "../../lib/pageData/dse";
 
 function safeStableStringify(value: unknown, indent = 2, maxChars = 100_000): string {
   if (value == null) return String(value);

@@ -2,26 +2,9 @@ import { html } from "@openagentsinc/effuse";
 
 import type { TemplateResult } from "@openagentsinc/effuse";
 
-export type DseEvalReportDetail = {
-  readonly signatureId: string;
-  readonly evalHash: string;
-  readonly compiled_id: string;
-  readonly datasetId: string;
-  readonly datasetHash: string;
-  readonly rewardId: string;
-  readonly rewardVersion: number;
-  readonly split: string | null;
-  readonly n: number | null;
-  readonly createdAtMs: number;
-  readonly jsonPretty: string;
-};
+import type { DseEvalReportPageData } from "../lib/pageData/dse";
 
-export type DseEvalReportPageData = {
-  readonly signatureId: string;
-  readonly evalHash: string;
-  readonly errorText: string | null;
-  readonly report: DseEvalReportDetail | null;
-};
+export type { DseEvalReportDetail, DseEvalReportPageData } from "../lib/pageData/dse";
 
 const formatMs = (ms: number | null): string => {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "-";

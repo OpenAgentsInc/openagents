@@ -127,6 +127,6 @@ The `OutcomeCoupledScorer` combines `step_utility`, `verification_delta`, repeti
 ## References
 
 - [GLOSSARY.md](../GLOSSARY.md) — `step_utility`, `verification_delta`, `sAPM`
-- [crates/dsrs/docs/SIGNATURES.md](../../crates/dsrs/docs/SIGNATURES.md) — Signature definitions
-- [crates/dsrs/docs/METRICS.md](../../crates/dsrs/docs/METRICS.md) — Metric definitions
-- [crates/dsrs/docs/OPTIMIZERS.md](../../crates/dsrs/docs/OPTIMIZERS.md) — Scorer implementation
+- [docs/dse/SIGNATURES.md](../dse/SIGNATURES.md) — Signature definitions
+- [docs/dse/METRICS.md](../dse/METRICS.md) — Metric definitions
+- [docs/dse/OPTIMIZERS.md](../dse/OPTIMIZERS.md) — Scorer implementation

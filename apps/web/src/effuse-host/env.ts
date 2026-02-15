@@ -23,6 +23,8 @@ export type WorkerEnv = {
   readonly PRELAUNCH_BYPASS_KEY?: string
   /** OpenRouter API key. When set, primary inference uses OpenRouter (e.g. moonshotai/kimi-k2.5) with Cloudflare Workers AI as fallback. Set via wrangler secret put OPENROUTER_API_KEY. */
   readonly OPENROUTER_API_KEY?: string
+  /** Debug: when truthy, logs autopilot wire parts (LLM stream + Convex append batches) to console. */
+  readonly OA_DEBUG_STREAM?: string
 
   /**
    * E2E auth bypass (prod testing only).

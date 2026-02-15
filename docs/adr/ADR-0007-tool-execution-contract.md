@@ -99,9 +99,9 @@ Backward compatibility:
 ## References
 
 - [GLOSSARY.md](../GLOSSARY.md) — Adapter vs Execution Runtime definitions
-- [crates/dsrs/docs/ADAPTERS.md](../../crates/dsrs/docs/ADAPTERS.md)
-- [crates/dsrs/docs/TOOLS.md](../../crates/dsrs/docs/TOOLS.md)
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
+- [docs/dse/ADAPTERS.md](../dse/ADAPTERS.md)
+- [docs/dse/TOOLS.md](../dse/TOOLS.md)
+- [docs/execution/REPLAY.md](../execution/REPLAY.md)
+- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md)
 - `crates/adjutant/src/tools.rs`, `crates/rlm/src/tools/*` (tool implementations)
 - `crates/dsrs/src/adapter/*`, `crates/dsrs/src/predictors/refine.rs` (adapter + refine implementations)

@@ -3,9 +3,14 @@ import { Cause, Effect } from 'effect';
 import { ContractsApiService } from "../contracts";
 import { AppAtomRuntime } from './appRuntime';
 
-import type { ModuleItem, ModulesPageData } from '../../effuse-pages/modules';
-import type { SignatureItem, SignaturesPageData } from '../../effuse-pages/signatures';
-import type { ToolItem, ToolsPageData } from '../../effuse-pages/tools';
+import type {
+  ModuleItem,
+  ModulesPageData,
+  SignatureItem,
+  SignaturesPageData,
+  ToolItem,
+  ToolsPageData,
+} from "../../lib/pageData/contracts";
 import type { ToolContract, ModuleContract, SignatureContract } from "../contracts";
 
 function safeStableStringify(value: unknown, indent = 2): string {

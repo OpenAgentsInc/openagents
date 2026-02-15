@@ -207,6 +207,12 @@ const parseEnsureOwnedThreadResult = (value: unknown): EnsureOwnedThreadResult |
 const clampString = (value: string, max: number): string =>
   value.trim().slice(0, Math.max(0, max));
 
+const isLocalHost = (host: string): boolean =>
+  host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0";
+
+const isTruthyFlag = (value: unknown): boolean =>
+  value === "1" || value === "true" || value === "yes" || value === "on";
+
 const LIGHTNING_L402_FETCH_TOOL_NAME = "lightning_l402_fetch" as const;
 const LIGHTNING_L402_APPROVE_TOOL_NAME = "lightning_l402_approve" as const;
 const LIGHTNING_TERMINAL_STATUSES = ["completed", "cached", "blocked", "failed"] as const;
@@ -2465,6 +2471,21 @@ const runAutopilotStream = (input: {
     pathname: url.pathname,
   });
 
+  const debugWire =
+    isTruthyFlag(input.env.OA_DEBUG_STREAM) ||
+    isTruthyFlag(url.searchParams.get("oa_debug_wire")) ||
+    isTruthyFlag(input.request.headers.get("x-oa-debug-wire")) ||
+    isLocalHost(url.hostname);
+
+  if (debugWire) {
+    console.log(`[oa:autopilot:debug] ${formatRequestIdLogToken(requestId)}`, {
+      threadId: input.threadId,
+      runId: input.runId,
+      messageId: input.assistantMessageId,
+      hostname: url.hostname,
+    });
+  }
+
   // Bound worst-case wall time for worker-side Convex + model operations.
   // This must be conservative: `ctx.waitUntil` tasks can be evicted, and upstream streams can stall.
   const CONVEX_QUERY_TIMEOUT_MS = 8_000;
@@ -2554,6 +2575,18 @@ const runAutopilotStream = (input: {
       const batch = bufferedParts;
       bufferedParts = [];
       lastFlushAtMs = now;
+
+      if (debugWire) {
+        for (const item of batch) {
+          console.log(`[oa:autopilot:wire] ${formatRequestIdLogToken(requestId)}`, {
+            threadId: input.threadId,
+            runId: input.runId,
+            messageId: input.assistantMessageId,
+            seq: item.seq,
+            part: item.part,
+          });
+        }
+      }
 
       yield* flushPartsToConvex({
         convex,
@@ -3177,6 +3210,37 @@ const runAutopilotStream = (input: {
             Effect.sync(() => {
               if (input.controller.signal.aborted) return;
               const encoded = encodeStreamPart(part) as AiResponse.StreamPartEncoded;
+
+              if (debugWire) {
+                const type = (encoded as any)?.type;
+                if (type === "text-delta") {
+                  const delta = String((encoded as any).delta ?? "");
+                  console.log(`[oa:autopilot:model] ${formatRequestIdLogToken(requestId)}`, {
+                    threadId: input.threadId,
+                    runId: input.runId,
+                    messageId: input.assistantMessageId,
+                    type,
+                    delta,
+                    deltaLength: delta.length,
+                  });
+                } else if (type === "reasoning-delta") {
+                  const delta = String((encoded as any).delta ?? "");
+                  console.log(`[oa:autopilot:model] ${formatRequestIdLogToken(requestId)}`, {
+                    threadId: input.threadId,
+                    runId: input.runId,
+                    messageId: input.assistantMessageId,
+                    type,
+                    deltaLength: delta.length,
+                  });
+                } else {
+                  console.log(`[oa:autopilot:model] ${formatRequestIdLogToken(requestId)}`, {
+                    threadId: input.threadId,
+                    runId: input.runId,
+                    messageId: input.assistantMessageId,
+                    part: encoded,
+                  });
+                }
+              }
 
               if (encoded.type === "reasoning-start" || encoded.type === "reasoning-delta" || encoded.type === "reasoning-end") {
                 sawReasoning = true;

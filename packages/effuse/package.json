@@ -12,6 +12,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "effect:patch": "effect-language-service patch",
+    "lint:structure": "depcruise src --config .dependency-cruiser.cjs --validate",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@effect/language-service": "^0.73.1",
     "@effect/vitest": "^0.27.0",
+    "dependency-cruiser": "^17.3.8",
     "effect": "^3.19.16",
     "happy-dom": "^20.5.0",
     "typescript": "^5.9.3",

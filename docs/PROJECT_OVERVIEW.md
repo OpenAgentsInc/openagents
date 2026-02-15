@@ -38,11 +38,20 @@ This document maps the active codebase after the Rust deprecation cleanup.
 
 ## Docs and Operational Runbooks
 
+- `docs/README.md`
+  Documentation index and entry points.
+
 - `docs/autopilot/`
   Primary operational docs for the web product (production E2E, stream testing, trace retrieval, debugging).
 
 - `docs/lightning/`
   Lightning agent tools (L402, lnget, Aperture) integration plan and references.
+
+- `docs/execution/`, `docs/protocol/`, `docs/dse/`
+  Canonical contracts referenced by ADRs (artifacts/replay, protocol fields, compiler contracts).
+
+- `docs/plans/`
+  Repo-wide plan hub (active/completed execution plans).
 
 - `apps/*/README.md` and `docs/STORYBOOK.md`
   Local development entry points and component-level testing/docs.

@@ -177,7 +177,7 @@ Aperture sits in front of your backend; it returns 402 with an L402 challenge, t
 
 - Repo: [github.com/lightninglabs/lightning-agent-tools](https://github.com/lightninglabs/lightning-agent-tools)
 - Article: [The Agents Are Here and They Want to Transact](https://lightning.engineering/posts/2026-02-11-ln-agent-tools/)
-- In this repo: [LIGHTNING_AGENT_TOOLS.md](./LIGHTNING_AGENT_TOOLS.md) (integration plan), [../GLOSSARY.md](../GLOSSARY.md) (L402, lnget, Aperture, etc.)
+- In this repo: [LIGHTNING_AGENT_TOOLS.md](../reference/LIGHTNING_AGENT_TOOLS.md) (integration plan), [GLOSSARY.md](../../GLOSSARY.md) (L402, lnget, Aperture, etc.)
 
 ---
 

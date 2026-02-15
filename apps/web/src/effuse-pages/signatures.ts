@@ -2,20 +2,9 @@ import { Effect } from "effect";
 import { DomServiceTag, EffuseLive, html } from "@openagentsinc/effuse";
 
 import type { TemplateResult } from "@openagentsinc/effuse";
+import type { SignaturesPageData } from "../lib/pageData/contracts";
 
-export type SignatureItem = {
-  readonly signatureId: string;
-  readonly promptSummary: string;
-  readonly inputSchemaJson: string;
-  readonly outputSchemaJson: string;
-  readonly promptIrJson: string;
-  readonly defaultsJson: string;
-};
-
-export type SignaturesPageData = {
-  readonly errorText: string | null;
-  readonly sorted: ReadonlyArray<SignatureItem> | null;
-};
+export type { SignatureItem, SignaturesPageData } from "../lib/pageData/contracts";
 
 export function signaturesPageTemplate(data: SignaturesPageData): TemplateResult {
   const body =

@@ -48,5 +48,5 @@ npm run deploy
 
 ## See Also
 
-- [PROD_E2E_TESTING.md](./PROD_E2E_TESTING.md) — Production E2E and auth bypass (web).
+- [PROD_E2E_TESTING.md](../testing/PROD_E2E_TESTING.md) — Production E2E and auth bypass (web).
 - [login-only-removal-of-anon.md](./login-only-removal-of-anon.md) — Web auth context (no anon).
