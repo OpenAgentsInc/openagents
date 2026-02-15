@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM php:8.2-cli-bookworm AS php_deps
+# Dependencies for PHP (Composer).
+FROM php:8.4-cli-bookworm AS php_deps
 
 WORKDIR /app
 
@@ -16,21 +17,47 @@ RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
   && rm composer-setup.php
 
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader
+# Laravel's default Composer scripts expect `artisan` to exist.
+# We skip scripts here for better layer caching and run discovery in the runtime stage.
+RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-scripts
 
 
-FROM node:22-bookworm AS node_build
+# Node runtime image (we copy only node/npm from here into the build stage).
+FROM node:22-bookworm AS node_runtime
+
+
+# Build JS assets (requires PHP to run `php artisan wayfinder:generate` during Vite build).
+FROM php:8.4-cli-bookworm AS node_build
 
 WORKDIR /app
+
+# Bring in Node + npm without clobbering PHP's /usr/local.
+COPY --from=node_runtime /usr/local /opt/node
+ENV PATH="/opt/node/bin:$PATH"
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . ./
+COPY --from=php_deps /app/vendor ./vendor
+
+# The build context may include a stale discovery cache (e.g. generated with dev deps).
+# Regenerate it for the production vendor set before any artisan commands run.
+RUN rm -f bootstrap/cache/packages.php bootstrap/cache/services.php || true
+
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache
+
+RUN php -r 'file_put_contents(".env", "APP_KEY=base64:" . base64_encode(random_bytes(32)) . PHP_EOL . "APP_ENV=production" . PHP_EOL . "APP_DEBUG=0" . PHP_EOL);'
+
+RUN php artisan package:discover --ansi
+
+
+
 RUN npm run build
 
 
-FROM php:8.2-fpm-bookworm AS runtime
+# Runtime image: Nginx + PHP-FPM
+FROM php:8.4-fpm-bookworm AS runtime
 
 WORKDIR /var/www/app
 
@@ -45,11 +72,15 @@ COPY --chown=www-data:www-data . ./
 COPY --from=php_deps /app/vendor ./vendor
 COPY --from=node_build /app/public/build ./public/build
 
+# Generate the package discovery manifest in the image.
+RUN rm -f bootstrap/cache/packages.php bootstrap/cache/services.php || true
+RUN php artisan package:discover --ansi
+
 COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY deploy/start.sh /start.sh
 
 RUN chmod +x /start.sh \
-  && mkdir -p storage/framework/{cache,sessions,views} bootstrap/cache \
+  && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
   && chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 8080

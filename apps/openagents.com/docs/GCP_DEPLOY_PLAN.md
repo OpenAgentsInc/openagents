@@ -146,7 +146,7 @@ Cloud Run supports overriding `--command` and `--args` per service/job.
 
 ### 6.1 PHP Version + Extensions
 
-- PHP: 8.2+ (match `composer.json`)
+- PHP: 8.4+ (match `composer.json`)
 - Common extensions: `pdo_pgsql`, `pdo_sqlite`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `fileinfo`, `zip`, `pcntl`
 
 ### 6.2 Nginx Config Requirements
