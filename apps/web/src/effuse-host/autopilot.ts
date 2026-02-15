@@ -843,11 +843,53 @@ const terminalTextFromLightningToolResult = (result: LightningToolTerminalResult
     return `L402 fetch queued.${tid} Approval required: click Approve payment (or run ${approveHint}).`;
   }
 
+  const previewForUser = (raw: string, host: string | null): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+
+    // Some L402 endpoints return LLM-style wrappers. Prefer to show the *answer payload*,
+    // not the prompt scaffold, in the user-visible "Preview:" line.
+    let candidate = trimmed;
+
+    const lower = candidate.toLowerCase();
+    const idxAnswerInst = lower.indexOf("answer:[/inst]");
+    if (idxAnswerInst >= 0) {
+      candidate = candidate.slice(idxAnswerInst + "answer:[/inst]".length);
+    } else {
+      const idxInstClose = candidate.indexOf("[/INST]");
+      if (idxInstClose >= 0 && idxInstClose < 1200) {
+        candidate = candidate.slice(idxInstClose + "[/INST]".length);
+      } else {
+        const idxAnswer = lower.indexOf("answer:");
+        if (idxAnswer >= 0 && idxAnswer < 400) {
+          candidate = candidate.slice(idxAnswer + "answer:".length);
+        }
+      }
+    }
+
+    // If still empty (or we stripped too much), fall back to raw.
+    candidate = candidate.trim() || trimmed;
+
+    // Drop code fences for the one-line summary (they often dominate previews).
+    const fenceIdx = candidate.indexOf("```");
+    if (fenceIdx >= 0) candidate = candidate.slice(0, fenceIdx);
+
+    // Collapse whitespace/newlines into a single line.
+    candidate = candidate.replace(/\s+/g, " ").trim();
+
+    // If the endpoint produced something that still looks like a prompt scaffold, prefer the raw one-liner.
+    if (host === "sats4ai.com" && /^\[inst\]/i.test(candidate)) {
+      return trimmed.replace(/\s+/g, " ").trim();
+    }
+
+    return candidate;
+  };
+
   if (result.status === "completed" || result.status === "cached") {
     const proof = result.proofReference ? ` Proof: ${result.proofReference}` : "";
     const code = typeof result.responseStatusCode === "number" ? ` HTTP ${result.responseStatusCode}.` : "";
     const preview = result.responseBodyTextPreview
-      ? ` Preview: ${clampString(result.responseBodyTextPreview, 280)}`
+      ? ` Preview: ${clampString(previewForUser(result.responseBodyTextPreview, result.host), 280)}`
       : "";
     return `L402 fetch ${result.status}.${code}${proof}${preview}`.trim();
   }
