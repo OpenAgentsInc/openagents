@@ -1062,7 +1062,7 @@ const runLiveEp212FullFlow = (input: {
         : null;
     const walletTimeoutMs = yield* envInt(
       "OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS",
-      12_000,
+      60_000,
     );
 
     const payerCalls = { count: 0 };

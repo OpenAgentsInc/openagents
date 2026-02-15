@@ -80,7 +80,7 @@ Set Cloudflare Worker secrets for `autopilot-web`:
 cd apps/web
 printf '%s' 'https://<l402-wallet-executor-url>' | npx wrangler secret put OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL --name autopilot-web
 printf '%s' '<same-bearer-token-as-gcp-secret>' | npx wrangler secret put OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN --name autopilot-web
-printf '%s' '12000' | npx wrangler secret put OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS --name autopilot-web
+printf '%s' '60000' | npx wrangler secret put OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS --name autopilot-web
 printf '%s' 'sats4ai.com,l402.openagents.com' | npx wrangler secret put OA_LIGHTNING_L402_ALLOWED_HOSTS --name autopilot-web
 npm run deploy:worker
 ```

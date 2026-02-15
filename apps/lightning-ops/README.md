@@ -102,7 +102,7 @@ Environment variables for `smoke:ep212-routes -- --mode live`:
 
 - `OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL` (required)
 - `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN` (optional)
-- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `12000`)
+- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `60000`)
 - `OA_LIGHTNING_OPS_EP212_ROUTE_A_URL` (optional, default `https://l402.openagents.com/ep212/premium-signal`)
 - `OA_LIGHTNING_OPS_EP212_ROUTE_B_URL` (optional, default `https://l402.openagents.com/ep212/expensive-signal`)
 - `OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS` (optional, default `100000`)
@@ -115,7 +115,7 @@ Additional environment variables for `smoke:ep212-full-flow -- --mode live`:
 - `OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS` (optional, default `100000`)
 - `OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL` (required for `--mode live`)
 - `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN` (optional)
-- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `12000`)
+- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `60000`)
 
 Example: copy `env.staging.example` to `.env.staging`, set the two required vars, then `source .env.staging && ./scripts/staging-reconcile.sh`.
 

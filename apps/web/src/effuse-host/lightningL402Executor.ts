@@ -21,7 +21,9 @@ import type { WorkerEnv } from "./env";
 
 const MAX_RESPONSE_PREVIEW_BYTES = 8_192;
 const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1_000;
-const DEFAULT_WALLET_EXECUTOR_TIMEOUT_MS = 12_000;
+// Needs to cover: Cloud Run cold start + Spark payment completion timeout (default 45s).
+// Cloudflare Workers can await network I/O without consuming much CPU, so a 60s wall timeout is acceptable here.
+const DEFAULT_WALLET_EXECUTOR_TIMEOUT_MS = 60_000;
 
 type CacheEntry = Readonly<{
   readonly credential: L402Credential;
