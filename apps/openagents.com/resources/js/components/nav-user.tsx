@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import { ChevronsUpDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -17,6 +18,11 @@ import { UserMenuContent } from '@/components/user-menu-content';
 export function NavUser() {
     const { auth } = usePage().props;
     const { state, dropdownPortalRef } = useSidebar();
+    const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+
+    useEffect(() => {
+        setPortalContainer(dropdownPortalRef.current);
+    }, [dropdownPortalRef]);
 
     return (
         <SidebarMenu>
@@ -38,7 +44,7 @@ export function NavUser() {
                         side={state === 'collapsed' ? 'right' : 'top'}
                         sideOffset={6}
                         avoidCollisions={true}
-                        container={dropdownPortalRef}
+                        container={portalContainer ?? undefined}
                     >
                         <UserMenuContent user={auth.user} />
                     </DropdownMenuContent>
