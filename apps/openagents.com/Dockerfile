@@ -62,11 +62,12 @@ FROM php:8.4-fpm-bookworm AS runtime
 WORKDIR /var/www/app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends nginx ca-certificates libpq-dev libsqlite3-dev \
+  && apt-get install -y --no-install-recommends nginx ca-certificates libpq-dev libsqlite3-dev $PHPIZE_DEPS \
+  && docker-php-ext-install pdo pdo_pgsql pdo_sqlite \
+  && pecl install redis \
+  && docker-php-ext-enable redis \
+  && apt-get purge -y --auto-remove $PHPIZE_DEPS \
   && rm -rf /var/lib/apt/lists/*
-
-# PHP extensions commonly needed by Laravel
-RUN docker-php-ext-install pdo pdo_pgsql pdo_sqlite
 
 COPY --chown=www-data:www-data . ./
 COPY --from=php_deps /app/vendor ./vendor
