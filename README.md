@@ -1,6 +1,6 @@
 # OpenAgents
 
-OpenAgents is building a **cross-platform app**: web at **openagents.com**, mobile in **`apps/mobile/`**, and a desktop app in progress.
+OpenAgents is the **operating system for the AI agent economy**. We ship three apps—**web** at [openagents.com](https://openagents.com), **mobile** in **`apps/mobile/`**, and **desktop** in progress—and the platform beneath: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
