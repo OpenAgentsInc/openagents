@@ -650,3 +650,124 @@ Image tag:
 
 - Revision: `openagents-web-00004-hhm`
 - URL: `https://openagents-web-157437760789.us-central1.run.app`
+
+## 2026-02-16: Phase 4-6 Updates (L402 buyer + demo runner + Redis + smoke)
+
+### Phase 4 + 5 (Code)
+
+Merged into `main`:
+- `67b0f330f` apps(openagents.com): add L402 buyer tool + demo runner
+- `d38d38f3b` laravel: add SSE smoke + cutover/tenancy plan
+
+Key features added:
+- Tool: `lightning_l402_fetch`
+  - strict `maxSpendSats` cap + server-side allowlist
+  - L402 flow (402 challenge -> pay invoice -> retry)
+  - credential cache persisted in `l402_credentials` (encrypted at rest)
+  - run receipt event: `l402_fetch_receipt`
+- CLI demo runner:
+  - `php artisan demo:l402 --preset=fake --max-spend-sats=100`
+- SSE smoke endpoint (gated by a header secret):
+  - `GET /api/smoke/stream` (Vercel AI data-stream compatible frames)
+
+### Memorystore Redis (Enable + Create)
+
+Enabled API:
+
+```bash
+gcloud services enable redis.googleapis.com --project openagentsgemini
+```
+
+Created Redis instance:
+
+```bash
+gcloud redis instances create openagents-web-redis \
+  --project openagentsgemini \
+  --region us-central1 \
+  --tier basic \
+  --size 1 \
+  --network oa-lightning
+```
+
+Instance details:
+- name: `openagents-web-redis`
+- host: `10.163.121.75`
+- port: `6379`
+- network: `oa-lightning` (DIRECT_PEERING)
+
+### Smoke Secret
+
+Created Secret Manager secret:
+
+```bash
+# value generated locally via openssl rand -hex 32
+printf "%s" "$SMOKE_SECRET" | gcloud secrets create openagents-web-smoke-secret \
+  --project openagentsgemini \
+  --replication-policy=automatic \
+  --data-file=-
+```
+
+### Cloud Run Deploy (Redis + Direct VPC Egress)
+
+Updated `openagents-web` to:
+- use the latest image
+- connect to VPC for Redis (direct VPC egress)
+- use Redis for cache/queues/sessions
+- expose smoke stream gated by `OA_SMOKE_SECRET`
+
+```bash
+gcloud run services update openagents-web \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest \
+  --update-env-vars "CACHE_STORE=redis,QUEUE_CONNECTION=redis,SESSION_DRIVER=redis,REDIS_HOST=10.163.121.75,REDIS_PORT=6379" \
+  --update-secrets "OA_SMOKE_SECRET=openagents-web-smoke-secret:latest" \
+  --network oa-lightning \
+  --subnet oa-lightning-us-central1
+```
+
+Ran migrations (to create `l402_credentials`):
+
+```bash
+gcloud run jobs execute openagents-migrate \
+  --project openagentsgemini \
+  --region us-central1 \
+  --wait
+```
+
+### Redis Runtime Fix (phpredis)
+
+Issue:
+- Setting `SESSION_DRIVER=redis` caused HTTP 500 because the runtime image did not include the `redis` PHP extension.
+
+Fix:
+- `04e401eb1` apps(openagents.com): install redis extension in runtime image
+
+Rebuild + redeploy:
+
+```bash
+gcloud builds submit \
+  --project openagentsgemini \
+  --config apps/openagents.com/deploy/cloudbuild.yaml \
+  --substitutions _TAG="$(git rev-parse --short HEAD)" \
+  apps/openagents.com
+
+gcloud run services update openagents-web \
+  --project openagentsgemini \
+  --region us-central1 \
+  --image us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest
+```
+
+### Smoke Verification (Health + Stream)
+
+```bash
+SMOKE_SECRET="$(gcloud secrets versions access latest --secret openagents-web-smoke-secret --project openagentsgemini)"
+
+OPENAGENTS_BASE_URL="https://openagents-web-157437760789.us-central1.run.app" \
+  OA_SMOKE_SECRET="$SMOKE_SECRET" \
+  apps/openagents.com/deploy/smoke/health.sh
+
+OPENAGENTS_BASE_URL="https://openagents-web-157437760789.us-central1.run.app" \
+  OA_SMOKE_SECRET="$SMOKE_SECRET" \
+  apps/openagents.com/deploy/smoke/stream.sh
+```
