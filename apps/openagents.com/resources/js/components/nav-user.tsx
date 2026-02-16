@@ -13,12 +13,10 @@ import {
 } from '@/components/ui/sidebar';
 import { UserInfo } from '@/components/user-info';
 import { UserMenuContent } from '@/components/user-menu-content';
-import { useIsMobile } from '@/hooks/use-mobile';
 
 export function NavUser() {
     const { auth } = usePage().props;
-    const { state } = useSidebar();
-    const isMobile = useIsMobile();
+    const { state, dropdownPortalRef } = useSidebar();
 
     return (
         <SidebarMenu>
@@ -37,13 +35,10 @@ export function NavUser() {
                     <DropdownMenuContent
                         className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
                         align="end"
-                        side={
-                            isMobile
-                                ? 'bottom'
-                                : state === 'collapsed'
-                                  ? 'left'
-                                  : 'bottom'
-                        }
+                        side={state === 'collapsed' ? 'right' : 'top'}
+                        sideOffset={6}
+                        avoidCollisions={true}
+                        container={dropdownPortalRef}
                     >
                         <UserMenuContent user={auth.user} />
                     </DropdownMenuContent>
