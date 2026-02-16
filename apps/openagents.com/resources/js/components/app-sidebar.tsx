@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, Github, LayoutGrid, MessageSquare } from 'lucide-react';
+import { BookOpen, Github, LayoutGrid, MessageSquare, Plus } from 'lucide-react';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -7,6 +7,7 @@ import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
+    SidebarGroup,
     SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
@@ -45,10 +46,10 @@ const footerNavItems: NavItem[] = [
 export function AppSidebar() {
     return (
         <Sidebar collapsible="icon" variant="inset">
-            <SidebarHeader>
+            <SidebarHeader className="flex h-14 shrink-0 flex-row items-center px-3">
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild>
+                        <SidebarMenuButton size="lg" asChild className="flex-1 justify-center group-data-[collapsible=icon]:justify-center">
                             <Link href={dashboard()} prefetch>
                                 <AppLogo />
                             </Link>
@@ -57,7 +58,19 @@ export function AppSidebar() {
                 </SidebarMenu>
             </SidebarHeader>
 
-            <SidebarContent>
+            <SidebarContent className="group-data-[collapsible=icon]:overflow-hidden">
+                <SidebarGroup className="mb-1">
+                    <SidebarMenu>
+                        <SidebarMenuItem>
+                            <SidebarMenuButton asChild className="w-full justify-start font-medium">
+                                <Link href="/chat" prefetch className="gap-2">
+                                    <Plus className="size-5 shrink-0" />
+                                    <span>New chat</span>
+                                </Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                    </SidebarMenu>
+                </SidebarGroup>
                 <NavMain items={mainNavItems} />
             </SidebarContent>
 

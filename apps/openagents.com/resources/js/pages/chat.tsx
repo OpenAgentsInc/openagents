@@ -176,7 +176,7 @@ function MessageBubble({ message }: { message: UIMessage }) {
             <div
                 className={
                     isUser
-                        ? 'flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-lg bg-secondary px-4 py-3 text-sm text-foreground'
+                        ? 'flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-lg bg-muted px-4 py-3 text-sm text-foreground'
                         : 'flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm text-foreground'
                 }
             >
@@ -220,6 +220,7 @@ function ChatContent({
     });
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const inputContainerRef = useRef<HTMLDivElement | null>(null);
     const isLoading = status === 'submitted' || status === 'streaming';
     const controller = usePromptInputController();
 
@@ -258,7 +259,7 @@ function ChatContent({
                     </Alert>
                 )}
 
-                <div className="relative flex min-h-0 flex-1 flex-col overflow-y-hidden" role="log">
+                <div className="relative mx-auto flex w-full max-w-[768px] min-h-0 flex-1 flex-col overflow-y-hidden" role="log">
                     <ScrollArea className="min-h-0 flex-1 overflow-hidden">
                         <div className="flex flex-col gap-8 p-4">
                             {messages.length === 0 ? (
@@ -275,12 +276,16 @@ function ChatContent({
                     </ScrollArea>
                 </div>
 
+                <div ref={inputContainerRef} className="mx-auto w-full max-w-[768px] shrink-0">
                 <PromptInput
-                    className="shrink-0"
+                    className="w-full"
                     onSubmit={async ({ text }) => {
                         const trimmed = text?.trim();
                         if (!trimmed || isLoading) return;
                         await sendMessage({ text: trimmed });
+                        setTimeout(() => {
+                            inputContainerRef.current?.querySelector('textarea')?.focus();
+                        }, 0);
                     }}
                 >
                     <PromptInputBody>
@@ -288,6 +293,7 @@ function ChatContent({
                             placeholder="Type a message…"
                             disabled={isLoading}
                             aria-label="Message"
+                            autoFocus={initialMessages.length === 0}
                         />
                     </PromptInputBody>
                     <PromptInputFooter className="justify-end">
@@ -302,6 +308,7 @@ function ChatContent({
                         />
                     </PromptInputFooter>
                 </PromptInput>
+                </div>
             </div>
         </AppLayout>
     );

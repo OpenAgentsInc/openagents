@@ -34,10 +34,18 @@ function DropdownMenuTrigger({
 function DropdownMenuContent({
   className,
   sideOffset = 4,
+  container,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  /** Portal container (e.g. sidebar element) so dropdown positions correctly in fixed layouts */
+  container?: HTMLElement | React.RefObject<HTMLElement | null>
+}) {
+  const resolvedContainer =
+    container != null && typeof container === "object" && "current" in container
+      ? (container as React.RefObject<HTMLElement | null>).current
+      : (container as HTMLElement | undefined)
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={resolvedContainer ?? undefined}>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}

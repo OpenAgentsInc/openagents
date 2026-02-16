@@ -39,6 +39,8 @@ type SidebarContext = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  /** Ref to a div inside the sidebar used as portal container for dropdowns (fixes position in fixed sidebar) */
+  dropdownPortalRef: React.RefObject<HTMLDivElement | null>
 }
 
 const SidebarContext = React.createContext<SidebarContext | null>(null)
@@ -111,6 +113,7 @@ function SidebarProvider({
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
   const state = open ? "expanded" : "collapsed"
+  const dropdownPortalRef = React.useRef<HTMLDivElement | null>(null)
 
   const contextValue = React.useMemo<SidebarContext>(
     () => ({
@@ -121,6 +124,7 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      dropdownPortalRef,
     }),
     [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
   )
@@ -162,7 +166,7 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, openMobile, setOpenMobile, dropdownPortalRef } = useSidebar()
 
   if (collapsible === "none") {
     return (
@@ -230,9 +234,9 @@ function Sidebar({
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-          // Adjust the padding for floating and inset variants.
+          // Adjust for floating and inset variants (no outer padding).
           variant === "floating" || variant === "inset"
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
@@ -243,6 +247,7 @@ function Sidebar({
           className="bg-sidebar group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm"
         >
           {children}
+          <div ref={dropdownPortalRef} aria-hidden className="h-0 shrink-0 overflow-visible" />
         </div>
       </div>
     </div>
@@ -306,7 +311,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
       data-slot="sidebar-inset"
       className={cn(
         "bg-background relative flex min-h-0 max-w-full flex-1 flex-col overflow-hidden",
-        "peer-data-[variant=inset]:min-h-[calc(100svh-(--spacing(4)))] md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-0",
+        "peer-data-[variant=inset]:min-h-svh md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-0",
         className
       )}
       {...props}
