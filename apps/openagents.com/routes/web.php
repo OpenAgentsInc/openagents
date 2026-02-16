@@ -3,10 +3,10 @@
 use App\Http\Controllers\ChatApiController;
 use App\Http\Controllers\ChatPageController;
 use App\Http\Controllers\L402PageController;
+use App\Http\Middleware\ValidateWorkOSSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use Laravel\WorkOS\Http\Middleware\ValidateSessionWithWorkOS;
 
 Route::get('/', function (Request $request) {
     if ($request->user()) {
@@ -61,7 +61,7 @@ Route::get('api/smoke/stream', function (Request $request) {
 
 Route::middleware([
     'auth',
-    ValidateSessionWithWorkOS::class,
+    ValidateWorkOSSession::class,
 ])->group(function () {
     Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
         ->name('chat');

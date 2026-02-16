@@ -112,4 +112,22 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Local Test Login (Maintenance Testing)
+    |--------------------------------------------------------------------------
+    |
+    | This is a maintenance/testing-only bypass for situations where WorkOS
+    | email code auth is unavailable. Keep disabled by default.
+    |
+    */
+
+    'local_test_login' => [
+        'enabled' => (bool) env('OA_ALLOW_LOCAL_TEST_AUTH', false),
+        'allowed_emails' => array_values(array_filter(array_map(
+            static fn (string $email): string => strtolower(trim($email)),
+            explode(',', (string) env('OA_LOCAL_TEST_AUTH_EMAILS', '')),
+        ))),
+    ],
+
 ];
