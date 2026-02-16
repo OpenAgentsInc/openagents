@@ -1,28 +1,44 @@
 import { createInertiaApp } from '@inertiajs/react';
+import { PostHogProvider } from '@posthog/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
-import { StrictMode } from 'react';
+import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { PostHogIdentify } from '@/components/posthog-identify';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { posthog } from '@/lib/posthog';
 import '../css/app.css';
 import { initializeTheme } from './hooks/use-appearance';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = import.meta.env.VITE_APP_NAME || 'OpenAgents';
 
 createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
-    resolve: (name) =>
-        resolvePageComponent(
+    title: (title) =>
+        title ? (title === appName ? title : `${title} - ${appName}`) : appName,
+    resolve: async (name) => {
+        const module = (await resolvePageComponent(
             `./pages/${name}.tsx`,
             import.meta.glob('./pages/**/*.tsx'),
-        ),
+        )) as { default: React.ComponentType<object> };
+        const Page = module.default;
+        return function InertiaPageWrapper(props: object) {
+            return (
+                <>
+                    <PostHogIdentify />
+                    <Page {...props} />
+                </>
+            );
+        };
+    },
     setup({ el, App, props }) {
         const root = createRoot(el);
 
         root.render(
             <StrictMode>
-                <TooltipProvider>
-                    <App {...props} />
-                </TooltipProvider>
+                <PostHogProvider client={posthog}>
+                    <TooltipProvider>
+                        <App {...props} />
+                    </TooltipProvider>
+                </PostHogProvider>
             </StrictMode>,
         );
     },
