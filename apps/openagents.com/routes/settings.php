@@ -1,13 +1,13 @@
 <?php
 
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Middleware\ValidateWorkOSSession;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use Laravel\WorkOS\Http\Middleware\ValidateSessionWithWorkOS;
 
 Route::middleware([
     'auth',
-    ValidateSessionWithWorkOS::class,
+    ValidateWorkOSSession::class,
 ])->group(function () {
     Route::redirect('settings', '/settings/profile');
 

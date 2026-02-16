@@ -117,3 +117,49 @@ Artisan::command('convex:import-chat {source : Path to Convex export ZIP or dire
 
     return 0;
 })->purpose('Import users/threads/messages/runs/receipts from a Convex snapshot export into Laravel chat tables.');
+
+Artisan::command('ops:test-login-link {email : Allowlisted email to log in as} {--minutes=30 : Signed URL expiry in minutes} {--name= : Optional display name override} {--base-url= : Optional base URL override}', function () {
+    $email = strtolower(trim((string) $this->argument('email')));
+
+    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $this->error('Invalid email address.');
+
+        return 1;
+    }
+
+    $minutes = (int) $this->option('minutes');
+    if ($minutes < 1 || $minutes > 1440) {
+        $this->error('--minutes must be between 1 and 1440.');
+
+        return 1;
+    }
+
+    $query = ['email' => $email];
+    $name = trim((string) $this->option('name'));
+    if ($name !== '') {
+        $query['name'] = $name;
+    }
+
+    $signedUrl = \Illuminate\Support\Facades\URL::temporarySignedRoute(
+        'internal.test-login',
+        now()->addMinutes($minutes),
+        $query,
+    );
+
+    $baseUrl = rtrim((string) $this->option('base-url'), '/');
+    if ($baseUrl !== '') {
+        $parts = parse_url($signedUrl);
+        $path = (string) ($parts['path'] ?? '/');
+        $queryString = isset($parts['query']) ? ('?'.$parts['query']) : '';
+        $signedUrl = $baseUrl.$path.$queryString;
+    }
+
+    $this->line('Signed maintenance test-login URL:');
+    $this->line($signedUrl);
+
+    if (! config('auth.local_test_login.enabled', false)) {
+        $this->warn('OA_ALLOW_LOCAL_TEST_AUTH is disabled in this environment. Enable it for this URL to work.');
+    }
+
+    return 0;
+})->purpose('Generate a temporary signed test-login URL for maintenance-mode verification.');
