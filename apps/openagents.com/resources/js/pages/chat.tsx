@@ -14,6 +14,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { MessageResponse } from '@/components/ai-elements/message';
 import {
     Collapsible,
     CollapsibleContent,
@@ -93,14 +94,14 @@ function MessagePart({ part, idx }: { part: unknown; idx: number }) {
     if (type === 'text' || type === 'reasoning') {
         const text = typeof p.text === 'string' ? p.text : '';
         if (!text.trim()) return null;
-        return (
-            <div
-                key={idx}
-                className={type === 'reasoning' ? 'whitespace-pre-wrap rounded-md border-l-2 border-muted-foreground/30 bg-muted/20 p-2 text-sm italic text-muted-foreground' : 'whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-sm'}
-            >
-                {text}
-            </div>
-        );
+        if (type === 'reasoning') {
+            return (
+                <div key={idx} className="border-l-2 border-muted-foreground/30 pl-2 text-sm italic text-muted-foreground">
+                    <MessageResponse>{text}</MessageResponse>
+                </div>
+            );
+        }
+        return <MessageResponse key={idx}>{text}</MessageResponse>;
     }
 
     if (type === 'dynamic-tool' || (typeof type === 'string' && type.startsWith('tool-'))) {
@@ -170,17 +171,19 @@ function MessageBubble({ message }: { message: UIMessage }) {
     const isUser = message.role === 'user';
     return (
         <div
-            className={`flex flex-col gap-2 ${isUser ? 'ml-auto max-w-[85%] items-end' : 'mr-auto max-w-[95%] items-start'}`}
+            className={`group flex w-full max-w-[95%] flex-col gap-2 ${isUser ? 'is-user ml-auto justify-end' : 'is-assistant'}`}
         >
-            <Card
-                className={`w-full ${isUser ? 'bg-muted text-foreground' : 'bg-card'} border-sidebar-border/70 py-2`}
+            <div
+                className={
+                    isUser
+                        ? 'flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden rounded-lg bg-secondary px-4 py-3 text-sm text-foreground'
+                        : 'flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm text-foreground'
+                }
             >
-                <CardContent className="flex flex-col gap-2 px-3 py-0">
-                    {message.parts.map((part, idx) => (
-                        <MessagePart key={idx} part={part} idx={idx} />
-                    ))}
-                </CardContent>
-            </Card>
+                {message.parts.map((part, idx) => (
+                    <MessagePart key={idx} part={part} idx={idx} />
+                ))}
+            </div>
         </div>
     );
 }
@@ -255,9 +258,9 @@ function ChatContent({
                     </Alert>
                 )}
 
-                <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-sidebar-border/70">
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-y-hidden" role="log">
                     <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-                        <div className="flex flex-col gap-4 p-4">
+                        <div className="flex flex-col gap-8 p-4">
                             {messages.length === 0 ? (
                                 <p className="py-8 text-center text-sm text-muted-foreground">
                                     Send a message to start.
@@ -270,7 +273,7 @@ function ChatContent({
                             <div ref={scrollRef} />
                         </div>
                     </ScrollArea>
-                </Card>
+                </div>
 
                 <PromptInput
                     className="shrink-0"
