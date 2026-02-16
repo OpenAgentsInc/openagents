@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -35,13 +36,28 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'chatThreads' => $user
+                ? DB::table('threads')
+                    ->where('user_id', $user->id)
+                    ->orderByDesc('updated_at')
+                    ->limit(50)
+                    ->get(['id', 'title', 'updated_at'])
+                    ->map(fn ($thread) => [
+                        'id' => (string) $thread->id,
+                        'title' => (string) ($thread->title ?: 'New conversation'),
+                        'updatedAt' => $thread->updated_at,
+                    ])
+                    ->all()
+                : [],
         ];
     }
 }
