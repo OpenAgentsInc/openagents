@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Github, MessageSquare, Plus } from 'lucide-react';
+import { BookOpen, CircleDollarSign, Github, Landmark, List, MessageSquare, Plus, Server, Shield, Wallet } from 'lucide-react';
 import { NavFooter } from '@/components/nav-footer';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -25,6 +25,7 @@ type SharedChatThread = {
 
 type SharedProps = {
     chatThreads?: SharedChatThread[];
+    isAdmin?: boolean;
 };
 
 const footerNavItems: NavItem[] = [
@@ -40,13 +41,41 @@ const footerNavItems: NavItem[] = [
     },
 ];
 
+const lightningFooterItems: NavItem[] = [
+    {
+        title: 'L402 Wallet',
+        href: '/l402',
+        icon: Wallet,
+    },
+    {
+        title: 'L402 Transactions',
+        href: '/l402/transactions',
+        icon: List,
+    },
+    {
+        title: 'L402 Paywalls',
+        href: '/l402/paywalls',
+        icon: Landmark,
+    },
+    {
+        title: 'L402 Settlements',
+        href: '/l402/settlements',
+        icon: CircleDollarSign,
+    },
+    {
+        title: 'L402 Deployments',
+        href: '/l402/deployments',
+        icon: Server,
+    },
+];
+
 function toThreadLabel(value: string): string {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : 'New conversation';
 }
 
 export function AppSidebar() {
-    const { chatThreads = [] } = usePage<SharedProps>().props;
+    const { chatThreads = [], isAdmin = false } = usePage<SharedProps>().props;
     const { isCurrentUrl } = useCurrentUrl();
 
     return (
@@ -67,13 +96,23 @@ export function AppSidebar() {
                 <SidebarGroup className="mb-1">
                     <SidebarMenu>
                         <SidebarMenuItem>
-                            <SidebarMenuButton asChild className="w-full justify-start font-medium">
+                            <SidebarMenuButton asChild className="w-full justify-start font-medium" isActive={isCurrentUrl('/chat')}>
                                 <Link href="/chat" prefetch className="gap-2">
                                     <Plus className="size-5 shrink-0" />
                                     <span>New chat</span>
                                 </Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
+                        {isAdmin ? (
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild className="w-full justify-start font-medium" isActive={isCurrentUrl('/admin')}>
+                                    <Link href="/admin" prefetch className="gap-2">
+                                        <Shield className="size-5 shrink-0" />
+                                        <span>Admin</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        ) : null}
                     </SidebarMenu>
                 </SidebarGroup>
 
@@ -109,6 +148,21 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
+                <SidebarGroup className="group-data-[collapsible=icon]:p-0">
+                    <SidebarGroupLabel className="group-data-[collapsible=icon]:sr-only">L402</SidebarGroupLabel>
+                    <SidebarMenu>
+                        {lightningFooterItems.map((item) => (
+                            <SidebarMenuItem key={item.title}>
+                                <SidebarMenuButton asChild isActive={isCurrentUrl(item.href)}>
+                                    <Link href={item.href} prefetch>
+                                        {item.icon ? <item.icon className="h-4 w-4" /> : null}
+                                        <span>{item.title}</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        ))}
+                    </SidebarMenu>
+                </SidebarGroup>
                 <NavFooter items={footerNavItems} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
