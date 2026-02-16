@@ -94,7 +94,7 @@ export default function Profile() {
                                         leave="transition ease-in-out"
                                         leaveTo="opacity-0"
                                     >
-                                        <p className="text-sm text-neutral-600">
+                                        <p className="text-sm text-zinc-600">
                                             Saved
                                         </p>
                                     </Transition>
