@@ -188,4 +188,22 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    /*
+     * App layout (sidebar) only: fixed viewport, no document scroll/bounce.
+     * Body gets .app-layout-fixed when sidebar layout is mounted.
+     */
+    html.app-layout-fixed,
+    body.app-layout-fixed {
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        overscroll-behavior: none;
+    }
+
+    body.app-layout-fixed > div {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
 }
