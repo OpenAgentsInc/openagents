@@ -1,10 +1,16 @@
 # PostHog backend usage (PHP / Laravel)
 
-This app can use [PostHog](https://posthog.com) for server-side analytics via the official PHP SDK. The SDK batches events and flushes at the end of the request; it can run asynchronously.
+[PostHog](https://posthog.com) can provide analytics, custom event capture, feature flags, and more for this Laravel app. This guide uses the [PostHog PHP SDK](https://posthog.com/docs/libraries/php).
 
 ## Installation
 
-Add to `composer.json`:
+With [Composer](https://getcomposer.org/) installed, add the PHP SDK:
+
+```bash
+composer require posthog/posthog-php
+```
+
+Or add to `composer.json` and run `composer install`:
 
 ```json
 {
@@ -14,28 +20,52 @@ Add to `composer.json`:
 }
 ```
 
-Then:
+## Initialization (Laravel)
 
-```bash
-composer install
-```
-
-## Initialization
-
-Set your project API key **before** any PostHog calls. Prefer an environment variable (do not commit keys).
+Initialize PostHog in the `boot` method of `app/Providers/AppServiceProvider.php` so it is ready before any requests. Use an environment variable for the API key (do not commit keys).
 
 ```php
+<?php
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
 use PostHog\PostHog;
 
-PostHog::init(
-    env('POSTHOG_API_KEY'), // e.g. from .env / production secrets
-    [
-        'host' => 'https://us.i.posthog.com',
-    ]
-);
+class AppServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+        PostHog::init(
+            config('services.posthog.key') ?? env('POSTHOG_API_KEY'),
+            [
+                'host' => 'https://us.i.posthog.com',
+            ]
+        );
+    }
+}
 ```
 
-Use the same US Cloud host (`us.i.posthog.com`) as the frontend (e.g. `apps/web`) so all data stays in one project. Get the project API key and host from [PostHog project settings](https://app.posthog.com/project/settings).
+Use the same US Cloud host (`us.i.posthog.com`) as the frontend (e.g. `apps/web`) so all data stays in one project. You can find your project API key and instance address in [your PostHog project settings](https://us.posthog.com/project/settings). Optional: define `services.posthog.key` in `config/services.php` and read it here.
+
+## Usage
+
+Use the PostHog client anywhere by importing `use PostHog\PostHog;` and calling `PostHog::method_name`. Example: capture an event in a route.
+
+```php
+<?php
+use Illuminate\Support\Facades\Route;
+use PostHog\PostHog;
+
+Route::get('/', function () {
+    PostHog::capture([
+        'distinctId' => 'distinct_id_of_your_user',
+        'event' => 'route_called',
+    ]);
+    return view('welcome');
+});
+```
+
+In real usage, pass the authenticated user’s ID (or session ID) as `distinctId`.
 
 ## Capturing events
 
@@ -211,9 +241,17 @@ PostHog::init(env('POSTHOG_API_KEY'), [
 - Add `POSTHOG_API_KEY` to `.env` (and to production via Secret Manager or your deploy process). Do not commit the key.
 - For production, follow `docs/PRODUCTION_ENV_AND_SECRETS.md` and allowlist `POSTHOG_API_KEY` in the deploy script if it is stored in the env file used by `apply-production-env.sh`.
 
+## Next steps
+
+For more detail on specific PostHog features (analytics, feature flags, A/B tests, etc.) in Laravel, see the [PHP SDK docs](https://posthog.com/docs/libraries/php) and these tutorials:
+
+- [Set up analytics in Laravel](https://posthog.com/tutorials/laravel-analytics)
+- [Set up feature flags in Laravel](https://posthog.com/tutorials/laravel-feature-flags)
+- [Set up A/B tests in Laravel](https://posthog.com/tutorials/laravel-ab-tests)
+
 ## References
 
 - [PostHog PHP library docs](https://posthog.com/docs/libraries/php)
-- [PostHog project settings](https://app.posthog.com/project/settings) (API key and host)
+- [PostHog project settings](https://us.posthog.com/project/settings) (API key and host)
 - [Events and properties](https://posthog.com/docs/data/events)
 - [Feature flags](https://posthog.com/docs/feature-flags)
