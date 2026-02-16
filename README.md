@@ -1,6 +1,6 @@
 # OpenAgents
 
-OpenAgents is the **operating system for the AI agent economy**. We ship three apps—**web** at [openagents.com](https://openagents.com), **mobile** in **`apps/mobile/`**, and **desktop** in progress—and the platform beneath: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
+OpenAgents is the **operating system for the AI agent economy**. We ship three apps—**web** at [openagents.com](https://openagents.com) (refactoring **`apps/web/`** → **`apps/openagents.com/`**), **mobile** in **`apps/mobile/`**, and **desktop** in progress—and the platform beneath: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
@@ -16,7 +16,7 @@ New behaviors are added as **signatures**—versioned, measurable steps with cle
 
 ## Quick Start (Web)
 
-The web app lives in **[apps/web/](apps/web/)**.
+The web app is being refactored from **[apps/web/](apps/web/)** to **[apps/openagents.com/](apps/openagents.com/)**. Current quick start:
 
 ```bash
 cd apps/web
@@ -39,7 +39,7 @@ The mobile app lives in **`apps/mobile/`**.
 
 Start with:
 
-* **Web app**: [apps/web/](apps/web/)
+* **Web app**: [apps/openagents.com/](apps/openagents.com/) (refactor target), [apps/web/](apps/web/) (current)
 * **Mobile app**: [apps/mobile/](apps/mobile/)
 * **Vision / architecture (north-star spec)**: [docs/SYNTHESIS.md](docs/SYNTHESIS.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
