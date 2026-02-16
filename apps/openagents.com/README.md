@@ -7,11 +7,26 @@
 
 ## Local development
 
+### Option A: Laravel Herd (recommended for `.test` domain)
+
+From this directory (`apps/openagents.com`):
+
+```bash
+herd link openagents.com   # one-time: use link, not park, so Herd uses public/ as doc root
+herd secure openagents.com # one-time: TLS for https://openagents.com.test
+```
+
+Set in `.env`: `APP_URL=https://openagents.com.test`
+
+Then in one terminal: `npm run dev` (Vite). Herd serves PHP; open **https://openagents.com.test** in the browser.
+
+### Option B: Artisan serve
+
 ```bash
 composer run dev
 ```
 
-Or: `php artisan serve` in one terminal and `npm run dev` in another.
+Or: `php artisan serve` in one terminal and `npm run dev` in another. Use **http://localhost:8000** and `APP_URL=http://localhost:8000` in `.env`.
 
 ## Stack
 
