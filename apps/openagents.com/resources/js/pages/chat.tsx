@@ -72,6 +72,58 @@ function toolNameFromPart(part: unknown): string {
     return 'tool';
 }
 
+
+function l402ToolSummary(output: unknown): string | null {
+    let normalized: unknown = output;
+
+    if (typeof normalized === 'string') {
+        try {
+            normalized = JSON.parse(normalized);
+        } catch {
+            return null;
+        }
+    }
+
+    if (typeof normalized !== 'object' || normalized === null) return null;
+
+    const o = normalized as Record<string, unknown>;
+
+    const host = typeof o.host === 'string' ? o.host : 'unknown';
+    const status = typeof o.status === 'string' ? o.status : null;
+
+    const paid = o.paid === true;
+    const cacheHit = o.cacheHit === true;
+
+    const cacheStatus = typeof o.cacheStatus === 'string' ? o.cacheStatus : cacheHit ? 'hit' : null;
+
+    const amountMsats = typeof o.amountMsats === 'number' ? o.amountMsats : null;
+    const quotedAmountMsats = typeof o.quotedAmountMsats === 'number' ? o.quotedAmountMsats : null;
+    const msats = amountMsats ?? quotedAmountMsats;
+
+    const sats = typeof msats === 'number' ? Math.round(msats / 1000) : null;
+
+    const proofReference = typeof o.proofReference === 'string' ? o.proofReference : null;
+    const denyCode = typeof o.denyCode === 'string' ? o.denyCode : null;
+
+    if (status === 'blocked') {
+        return `L402 blocked · ${host}${denyCode ? ` · ${denyCode}` : ''}`;
+    }
+
+    if (status === 'failed') {
+        return `L402 failed · ${host}`;
+    }
+
+    if (status === 'cached' || cacheStatus === 'hit') {
+        return `L402 cached · ${host}${sats != null ? ` · ${sats} sats` : ''}${proofReference ? ` · ${proofReference}` : ''}`;
+    }
+
+    if (paid) {
+        return `L402 paid · ${host}${sats != null ? ` · ${sats} sats` : ''}${proofReference ? ` · ${proofReference}` : ''}`;
+    }
+
+    return `L402 fetch · ${host}`;
+}
+
 function renderPart(part: unknown, idx: number) {
     if (typeof part !== 'object' || part === null) return null;
 
@@ -97,7 +149,7 @@ function renderPart(part: unknown, idx: number) {
         return (
             <details key={idx} className="rounded-md border border-sidebar-border/70 bg-muted/10 p-2">
                 <summary className="cursor-pointer select-none text-xs font-mono">
-                    {toolName} · {state || 'tool'} · {toolCallId}
+                    {(toolName === 'lightning_l402_fetch' ? l402ToolSummary(p.output) : null) ?? toolName} · {state || 'tool'} · {toolCallId}
                 </summary>
 
                 <div className="mt-2 grid gap-2">
