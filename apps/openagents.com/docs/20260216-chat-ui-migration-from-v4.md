@@ -1,7 +1,7 @@
 # Chat UI migration plan: v4 → openagents.com
 
-**Status:** Plan only — no implementation yet.  
-**Sources:** `~/code/v4` (Next.js + Convex) for layout/components; `~/code/v5` for **Berkeley Mono** typography and **colors**.  
+**Status:** Plan only — no implementation yet.
+**Sources:** `~/code/v4` (Next.js + Convex) for layout/components; `~/code/v5` for **Berkeley Mono** typography and **colors**.
 **Target:** `apps/openagents.com` (Laravel + Inertia + React + Vite).
 
 This doc outlines how to make the openagents.com chat UI look and behave more like the v4 chat UI, and how to adopt Berkeley Mono and v5’s color palette from v5.
@@ -75,7 +75,7 @@ Use **v5** (`~/code/v5`) as the reference for typography and color palette so th
 
 v5 defines two dark palettes we can reuse:
 
-**Option A — Arwes / teal (v5 `app/globals.css` `.dark`):**  
+**Option A — Arwes / teal (v5 `app/globals.css` `.dark`):**
 Cyan/teal accent, good for a “product” feel.
 
 - Background: `240 10% 3.92%` (near black).
@@ -84,7 +84,7 @@ Cyan/teal accent, good for a “product” feel.
 - Sidebar: `200 100% 2%` background, `195 100% 50%` primary.
 - Optional extra variables: `--arwes-primary`, `--arwes-primary-dark`, `--arwes-primary-light`, `--arwes-bg-dark`, `--arwes-bg-darker`, `--arwes-accent-yellow/purple/red/green`, `--arwes-text-color`, `--arwes-text-secondary`, frames and alert colors (see v5 `app/globals.css` `.dark` block).
 
-**Option B — Cursor Dark High Contrast (v5 `app/teal-theme.css`):**  
+**Option B — Cursor Dark High Contrast (v5 `app/teal-theme.css`):**
 Neutral grays with a single cyan accent for focus/charts.
 
 - Background: `0 0% 4%` (#0A0A0A).
