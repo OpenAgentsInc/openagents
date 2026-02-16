@@ -198,7 +198,7 @@ export default function Chat({ conversationId, conversationTitle, initialMessage
         }));
     }, [initialMessages]);
 
-    const transport = useMemo(() => new DefaultChatTransport({ api }), [api]);
+    const transport = useMemo(() => new DefaultChatTransport({ api, credentials: 'include' }), [api]);
 
     const { messages, sendMessage, status, error, clearError } = useChat({
         id: conversationId,
