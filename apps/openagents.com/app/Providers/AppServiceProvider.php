@@ -2,11 +2,15 @@
 
 namespace App\Providers;
 
+use App\Lightning\L402\InvoicePayer;
+use App\Lightning\L402\InvoicePayers\FakeInvoicePayer;
+use App\Lightning\L402\InvoicePayers\LndRestInvoicePayer;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -15,7 +19,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(InvoicePayer::class, function () {
+            $kind = (string) config('lightning.l402.invoice_payer', 'fake');
+
+            return match ($kind) {
+                'lnd_rest' => new LndRestInvoicePayer,
+                'fake' => new FakeInvoicePayer,
+                default => throw new RuntimeException('Unknown L402 invoice payer: '.$kind),
+            };
+        });
     }
 
     /**

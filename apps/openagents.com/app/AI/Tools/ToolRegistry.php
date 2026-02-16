@@ -14,6 +14,7 @@ class ToolRegistry
         return [
             new GetTimeTool,
             new EchoTool,
+            new LightningL402FetchTool,
         ];
     }
 }

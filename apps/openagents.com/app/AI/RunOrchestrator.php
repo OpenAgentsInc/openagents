@@ -147,6 +147,39 @@ final class RunOrchestrator
                             'latency_ms' => $latencyMs,
                             'error' => $event->successful ? null : $event->error,
                         ]);
+
+                        if ($event->toolResult->name === 'lightning_l402_fetch') {
+                            $r = null;
+
+                            if (is_array($event->toolResult->result)) {
+                                $r = $event->toolResult->result;
+                            } elseif (is_string($event->toolResult->result)) {
+                                $decoded = json_decode($event->toolResult->result, true);
+                                if (is_array($decoded)) {
+                                    $r = $decoded;
+                                }
+                            }
+
+                            if (is_array($r)) {
+                                $this->appendEvent($threadId, $runId, $userId, 'l402_fetch_receipt', [
+                                    'tool_call_id' => $toolCallId,
+                                    'tool_name' => 'lightning_l402_fetch',
+                                    'status' => $r['status'] ?? null,
+                                    'host' => $r['host'] ?? null,
+                                    'scope' => $r['scope'] ?? null,
+                                    'paid' => $r['paid'] ?? null,
+                                    'cacheHit' => $r['cacheHit'] ?? null,
+                                    'cacheStatus' => $r['cacheStatus'] ?? null,
+                                    'maxSpendMsats' => $r['maxSpendMsats'] ?? null,
+                                    'quotedAmountMsats' => $r['quotedAmountMsats'] ?? null,
+                                    'amountMsats' => $r['amountMsats'] ?? null,
+                                    'proofReference' => $r['proofReference'] ?? null,
+                                    'denyCode' => $r['denyCode'] ?? null,
+                                    'responseStatusCode' => $r['responseStatusCode'] ?? null,
+                                    'responseBodySha256' => $r['responseBodySha256'] ?? null,
+                                ]);
+                            }
+                        }
                     }
 
                     if ($event instanceof TextDelta) {
