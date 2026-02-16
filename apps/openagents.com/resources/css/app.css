@@ -44,7 +44,7 @@
 }
 
 .hatchery-button-font {
-    font-family: var(--font-square721), ui-serif, Georgia, serif;
+    font-family: var(--font-square721);
 }
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
