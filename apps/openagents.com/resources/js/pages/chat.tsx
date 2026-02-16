@@ -171,7 +171,7 @@ function MessageBubble({ message }: { message: UIMessage }) {
     const isUser = message.role === 'user';
     return (
         <div
-            className={`group flex w-full max-w-[95%] flex-col gap-2 ${isUser ? 'is-user ml-auto justify-end' : 'is-assistant'}`}
+            className={`group flex flex-col gap-2 ${isUser ? 'is-user ml-auto w-fit max-w-[85%] items-end' : 'is-assistant w-full max-w-[95%]'}`}
         >
             <div
                 className={
