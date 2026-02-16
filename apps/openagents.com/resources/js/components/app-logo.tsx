@@ -1,16 +1,16 @@
-import AppLogoIcon from './app-logo-icon';
-
 export default function AppLogo() {
     return (
-        <>
-            <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-                <AppLogoIcon className="size-5 fill-current text-white dark:text-black" />
-            </div>
-            <div className="ml-1 grid flex-1 text-left text-sm">
+        <div className="flex w-full items-center gap-2 group-data-[collapsible=icon]:justify-center">
+            <img
+                src="/favicon.ico"
+                alt=""
+                className="size-6 shrink-0 rounded-md object-contain"
+            />
+            <div className="logo-text ml-1 grid flex-1 min-w-0 text-left text-sm group-data-[collapsible=icon]:hidden">
                 <span className="mb-0.5 truncate leading-tight font-semibold">
                     OpenAgents
                 </span>
             </div>
-        </>
+        </div>
     );
 }
