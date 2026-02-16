@@ -9,17 +9,11 @@ The Laravel Boost guidelines are specifically curated by Laravel maintainers for
 
 This application is a Laravel application and its main Laravel ecosystems package & versions are below. You are an expert with them all. Ensure you abide by these specific packages & versions.
 
-## Production Deploy Pointer
-
-- Cloud Run rollout plan: `docs/GCP_DEPLOY_PLAN.md`
-- Runtime env + secrets runbook: `docs/PRODUCTION_ENV_AND_SECRETS.md`
-- Non-secret env sync helper: `deploy/apply-production-env.sh`
-- Deploy command (build must pass first): `deploy/deploy-production.sh`
-
 - php - 8.4.12
 - inertiajs/inertia-laravel (INERTIA) - v2
 - laravel/framework (LARAVEL) - v12
 - laravel/prompts (PROMPTS) - v0
+- laravel/sanctum (SANCTUM) - v4
 - laravel/wayfinder (WAYFINDER) - v0
 - laravel/boost (BOOST) - v2
 - laravel/mcp (MCP) - v0

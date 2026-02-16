@@ -1,6 +1,6 @@
 import { Head, Link } from '@inertiajs/react';
-import { login } from '@/routes';
 import { HatcheryButton } from '@/components/hatchery-button';
+import { login } from '@/routes';
 
 export default function Home() {
     return (
@@ -20,7 +20,7 @@ export default function Home() {
                             OpenAgents
                         </Link>
                         <HatcheryButton
-                            href={login()}
+                            href={login().url}
                             label="Log in"
                             variant="outline"
                             size="small"
@@ -38,7 +38,7 @@ export default function Home() {
 
                             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                                 <HatcheryButton
-                                    href={login()}
+                                    href={login().url}
                                     label="Start for free"
                                     size="large"
                                     className="w-full max-w-xs sm:w-auto"

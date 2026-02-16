@@ -1,84 +1,119 @@
 # PostHog backend usage (PHP / Laravel)
 
-[PostHog](https://posthog.com) can provide analytics, custom event capture, feature flags, and more for this Laravel app. This guide uses the [PostHog PHP SDK](https://posthog.com/docs/libraries/php).
+[PostHog](https://posthog.com) provides analytics, custom event capture, feature flags, and more for this Laravel + Inertia.js app. This doc describes the **backend** (PHP/Laravel) integration. For the **React (Inertia + Vite)** frontend — provider, identify, capture, feature flags — see [POSTHOG_REACT.md](POSTHOG_REACT.md). This doc covers the backend integration added by the [PostHog Laravel wizard](https://posthog.com/docs/libraries/php) and how to use it.
 
-## Installation
+## Installation (wizard)
 
-With [Composer](https://getcomposer.org/) installed, add the PHP SDK:
+The recommended way to install and wire PostHog is the official wizard (Laravel + Inertia.js):
+
+```bash
+cd apps/openagents.com
+npx -y @posthog/wizard@latest --region us
+```
+
+The wizard will:
+
+- Detect Laravel with Inertia.js and read the project (`.env` is not sent off-machine).
+- Install the PostHog PHP package via Composer.
+- Create `config/posthog.php` and add PostHog env vars to `.env`.
+- Create `app/Services/PostHogService.php` (wrapper for identify, capture, feature flags).
+- Initialize PostHog in `app/Providers/AppServiceProvider.php` (`configurePostHog()`).
+- Add `getPostHogProperties()` to `app/Models/User.php` for person properties.
+- Insert capture/identify calls in auth, chat, runs, and settings (see [Events integrated](#events-integrated)).
+- Optionally install the PostHog MCP server for Cursor, VS Code, Zed, or Codex CLI.
+
+After running it, review the diff and ensure `.env` has `POSTHOG_API_KEY` (and optionally `POSTHOG_HOST`, `POSTHOG_DISABLED`) for production.
+
+### Manual installation
+
+To add only the PHP SDK without the wizard:
 
 ```bash
 composer require posthog/posthog-php
 ```
 
-Or add to `composer.json` and run `composer install`:
+Then add config, a service wrapper, and initialization as in the files the wizard creates (see [Configuration](#configuration) and [Usage](#usage)).
 
-```json
-{
-    "require": {
-        "posthog/posthog-php": "3.0.*"
-    }
-}
-```
+## Configuration
 
-## Initialization (Laravel)
+- **Config file:** `config/posthog.php`  
+  - `api_key` from `POSTHOG_API_KEY`  
+  - `host` from `POSTHOG_HOST` (default `https://us.i.posthog.com`)  
+  - `disabled` from `POSTHOG_DISABLED` (default `false`)  
+  - `debug` from `APP_DEBUG`
 
-Initialize PostHog in the `boot` method of `app/Providers/AppServiceProvider.php` so it is ready before any requests. Use an environment variable for the API key (do not commit keys).
+- **Initialization:** `AppServiceProvider::boot()` calls `configurePostHog()`, which runs `PostHog::init()` when `posthog.disabled` is false and `posthog.api_key` is set. Use the same US host as the frontend so all data stays in one project.
 
-```php
-<?php
-namespace App\Providers;
+- **Environment:** Set `POSTHOG_API_KEY` in `.env` (and in production via your deploy process). Do not commit the key. For production, see `docs/PRODUCTION_ENV_AND_SECRETS.md` and allowlist `POSTHOG_API_KEY` in the deploy script if stored in the env file used by `apply-production-env.sh`.
 
-use Illuminate\Support\ServiceProvider;
-use PostHog\PostHog;
+## Events integrated
 
-class AppServiceProvider extends ServiceProvider
-{
-    public function boot(): void
-    {
-        PostHog::init(
-            config('services.posthog.key') ?? env('POSTHOG_API_KEY'),
-            [
-                'host' => 'https://us.i.posthog.com',
-            ]
-        );
-    }
-}
-```
+The wizard (or existing integration) sends these backend events:
 
-Use the same US Cloud host (`us.i.posthog.com`) as the frontend (e.g. `apps/web`) so all data stays in one project. You can find your project API key and instance address in [your PostHog project settings](https://us.posthog.com/project/settings). Optional: define `services.posthog.key` in `config/services.php` and read it here.
+| Event | Location | Properties (typical) |
+|-------|----------|----------------------|
+| `login code sent` | `EmailCodeAuthController::sendCode` | `method` (e.g. `magic_auth`) |
+| `user signed up` | `EmailCodeAuthController::verifyCode` (new user) | `signup_method` |
+| `user logged in` | `EmailCodeAuthController::verifyCode` (existing user) | `login_method` |
+| `user logged out` | `routes/auth.php` logout route | — |
+| `chat started` | `ChatPageController` (new conversation) | `conversation_id` |
+| `chat message sent` | `ChatApiController` | `conversation_id`, `message_length` |
+| `chat run completed` | `RunOrchestrator` | `run_id`, `thread_id` |
+| `chat run failed` | `RunOrchestrator` | `run_id`, `thread_id` |
+| `l402 payment made` | `RunOrchestrator` (when run paid) | `run_id`, `thread_id`, etc. |
+| `profile updated` | `ProfileController::update` | `field_updated` |
+| `account deleted` | `ProfileController::destroy` | — |
+
+On login/verify, the app also calls `PostHogService::identify($user->email, $user->getPostHogProperties())` so person profiles get email, name, and `date_joined`.
 
 ## Usage
 
-Use the PostHog client anywhere by importing `use PostHog\PostHog;` and calling `PostHog::method_name`. Example: capture an event in a route.
+Prefer the **PostHogService** wrapper (inject or `resolve(PostHogService::class)`): it respects `posthog.disabled` and uses `config/posthog.*`.
 
 ```php
-<?php
-use Illuminate\Support\Facades\Route;
-use PostHog\PostHog;
+use App\Services\PostHogService;
 
-Route::get('/', function () {
-    PostHog::capture([
-        'distinctId' => 'distinct_id_of_your_user',
-        'event' => 'route_called',
-    ]);
-    return view('welcome');
-});
+// In a controller or route
+$posthog = resolve(PostHogService::class);
+$posthog->capture($user->email, 'thing happened', ['key' => 'value']);
+$posthog->identify($user->email, $user->getPostHogProperties());
 ```
 
-In real usage, pass the authenticated user’s ID (or session ID) as `distinctId`.
+For one-off or non-service usage you can still use the client directly:
+
+```php
+use PostHog\PostHog;
+
+PostHog::capture([
+    'distinctId' => $distinctId,
+    'event' => 'event_name',
+    'properties' => [],
+]);
+```
+
+Use the authenticated user’s ID (e.g. `$user->email`) or a stable anonymous ID as `distinctId`.
 
 ## Capturing events
 
-Send custom events with `capture`:
+Use **PostHogService** in app code:
+
+```php
+$posthog->capture($distinctId, 'user_signed_up', ['login_type' => 'email']);
+```
+
+Or the client directly:
 
 ```php
 PostHog::capture([
-    'distinctId' => 'distinct_id_of_the_user',
+    'distinctId' => $distinctId,
     'event' => 'user_signed_up',
+    'properties' => [],
 ]);
 ```
 
 **Tip:** Use `[object] [verb]` for event names (e.g. `project created`, `user signed up`, `invite sent`).
+
+**Exception tracking:** `PostHogService::captureException($exception, $distinctId)` sends a `$exception` event with type, message, file, line, and stack trace. Omit `$distinctId` to use the current user’s email or `'anonymous'`.
 
 ### Event properties
 
@@ -111,7 +146,7 @@ PostHog::capture([
 
 ## Person profiles and properties
 
-Identified events create person profiles. Set [person properties](https://posthog.com/docs/data/user-properties) via `$set` and `$set_once` in `properties`:
+The app identifies users on login with `$user->getPostHogProperties()` (see `User::getPostHogProperties()`: email, name, `date_joined`). Identified events create person profiles. To set [person properties](https://posthog.com/docs/data/user-properties) manually, use `$set` and `$set_once` in `properties`:
 
 ```php
 PostHog::capture([
@@ -155,21 +190,23 @@ See [PostHog: Alias](https://posthog.com/docs/data/identify#alias-assigning-mult
 
 ## Feature flags
 
-Use [feature flags](https://posthog.com/docs/feature-flags) for rollouts and targeting.
+Use [feature flags](https://posthog.com/docs/feature-flags) for rollouts and targeting. **PostHogService** exposes `isFeatureEnabled()` and `getFeatureFlagPayload()` (they no-op when `posthog.disabled` is true).
 
 **Boolean:**
 
 ```php
-$enabled = PostHog::isFeatureEnabled('flag-key', $distinctId);
+$enabled = $posthog->isFeatureEnabled('flag-key', $distinctId);
+// or: PostHog::isFeatureEnabled('flag-key', $distinctId);
 if ($enabled) {
     // new behavior
 }
 ```
 
-**Multivariate:**
+**Multivariate / payload:**
 
 ```php
 $variant = PostHog::getFeatureFlag('flag-key', $distinctId);
+$payload = $posthog->getFeatureFlagPayload('flag-key', $distinctId);
 if ($variant === 'variant-key') {
     // variant behavior
 }
@@ -213,9 +250,9 @@ PostHog::groupIdentify([
 
 Group analytics is a paid feature; see [PostHog pricing](https://posthog.com/pricing).
 
-## Config options
+## Config options (PostHog::init)
 
-Pass options into `PostHog::init()` as the second argument:
+Pass options into `PostHog::init()` as the second argument (AppServiceProvider uses `config/posthog.php`):
 
 | Option | Description |
 |--------|-------------|
@@ -236,10 +273,10 @@ PostHog::init(env('POSTHOG_API_KEY'), [
 ]);
 ```
 
-## Environment
+## Inertia.js and React frontend
 
-- Add `POSTHOG_API_KEY` to `.env` (and to production via Secret Manager or your deploy process). Do not commit the key.
-- For production, follow `docs/PRODUCTION_ENV_AND_SECRETS.md` and allowlist `POSTHOG_API_KEY` in the deploy script if it is stored in the env file used by `apply-production-env.sh`.
+- **Frontend integration:** This app uses PostHog in React (Inertia + Vite): `PostHogProvider` and `usePostHog` in the frontend, with automatic identify when `auth.user` is present. See **[POSTHOG_REACT.md](POSTHOG_REACT.md)** for setup, env vars (`VITE_POSTHOG_KEY`, `VITE_POSTHOG_HOST`), capture, feature flags, and visibility tracking.
+- **MCP:** The wizard can optionally install the PostHog MCP server for Cursor, VS Code, Zed, or Codex CLI (Dashboards, Insights, Experiments, etc.). Re-run the wizard and choose the MCP option, or install it separately.
 
 ## Next steps
 

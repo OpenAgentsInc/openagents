@@ -76,6 +76,9 @@ Examples of existing secret names:
 - `openagents-web-workos-redirect-url`
 - `openagents-web-openrouter-api-key`
 - `openagents-web-smoke-secret`
+- `openagents-web-posthog-api-key` (optional; for PostHog backend analytics — bind as `POSTHOG_API_KEY`)
+
+**PostHog:** Backend uses `POSTHOG_API_KEY` (and optionally `POSTHOG_HOST`, `POSTHOG_DISABLED`). Prefer storing the key in Secret Manager and binding `POSTHOG_API_KEY` via `--update-secrets`. Frontend uses `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` at **build time** (set in CI or local env when running `npm run build`); they are not runtime env on Cloud Run. See `docs/POSTHOG_BACKEND.md` and `docs/POSTHOG_REACT.md`.
 
 ## 3) Bind/update secret env refs on Cloud Run
 After rotating secret versions, point the service env refs at latest:

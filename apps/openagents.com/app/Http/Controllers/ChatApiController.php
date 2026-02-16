@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\AI\RunOrchestrator;
+use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,11 +18,17 @@ class ChatApiController extends Controller
             abort(401);
         }
 
-        $conversationId = $request->query('conversationId');
+        $conversationId = $request->route('conversationId');
 
-        if (! is_string($conversationId) || $conversationId === '') {
-            return $this->unprocessable('conversationId query param is required');
+        if (! is_string($conversationId) || trim($conversationId) === '') {
+            $conversationId = $request->query('conversationId');
         }
+
+        if (! is_string($conversationId) || trim($conversationId) === '') {
+            return $this->unprocessable('conversationId is required (route param or query param)');
+        }
+
+        $conversationId = trim($conversationId);
 
         $conversationExists = DB::table('agent_conversations')
             ->where('id', $conversationId)
@@ -56,6 +63,13 @@ class ChatApiController extends Controller
         if ($prompt === null || $prompt === '') {
             return $this->unprocessable('A non-empty user message is required');
         }
+
+        // PostHog: Track chat message sent
+        $posthog = resolve(PostHogService::class);
+        $posthog->capture($user->email, 'chat message sent', [
+            'conversation_id' => $conversationId,
+            'message_length' => strlen($prompt),
+        ]);
 
         $orchestrator = resolve(RunOrchestrator::class);
 
