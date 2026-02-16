@@ -33,6 +33,20 @@
     font-style: italic;
     font-display: swap;
 }
+
+/* Square721: proportional serif (hatchery / HUD button, from apps/web) */
+@font-face {
+    font-family: 'Square721';
+    src: url('/fonts/Square721StdRoman.woff2') format('woff2'), url('/fonts/Square721StdRoman.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+.hatchery-button-font {
+    font-family: var(--font-square721), ui-serif, Georgia, serif;
+}
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
 @custom-variant dark (&:is(.dark *));
@@ -97,6 +111,7 @@
 
 :root {
     --font-berkeley-mono: 'Berkeley Mono';
+    --font-square721: 'Square721', ui-serif, Georgia, serif;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
