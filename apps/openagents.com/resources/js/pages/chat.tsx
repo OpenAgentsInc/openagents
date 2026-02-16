@@ -256,7 +256,7 @@ function ChatContent({
                 )}
 
                 <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-sidebar-border/70">
-                    <ScrollArea className="flex-1">
+                    <ScrollArea className="min-h-0 flex-1 overflow-hidden">
                         <div className="flex flex-col gap-4 p-4">
                             {messages.length === 0 ? (
                                 <p className="py-8 text-center text-sm text-muted-foreground">

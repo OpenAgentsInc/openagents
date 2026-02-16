@@ -71,6 +71,8 @@ final class RunOrchestrator
             $toolCallStartedAt = [];
             $toolCallParamsHash = [];
             $lastStreamEndVercel = null;
+            /** @var array<string, true> IDs for which we have sent text-start to the client (AI SDK requires text-start before text-delta) */
+            $textStartSentForMessageId = [];
 
             $assistantText = '';
             $modelProvider = null;
@@ -207,6 +209,40 @@ final class RunOrchestrator
                     }
 
                     if ($writeToClient) {
+                        // AI SDK requires start-step after start for the stream to be valid.
+                        if (($data['type'] ?? '') === 'start') {
+                            echo 'data: '.json_encode($data)."\n\n";
+                            echo 'data: '.json_encode(['type' => 'start-step'])."\n\n";
+                            if ($shouldFlush) {
+                                if (ob_get_level() > 0) {
+                                    ob_flush();
+                                }
+                                flush();
+                            }
+                            continue;
+                        }
+
+                        // AI SDK requires text-start before any text-delta for the same id; inject if missing.
+                        if (($data['type'] ?? '') === 'text-delta') {
+                            $textId = $data['id'] ?? null;
+                            if (is_string($textId) && ! isset($textStartSentForMessageId[$textId])) {
+                                echo 'data: '.json_encode(['type' => 'text-start', 'id' => $textId])."\n\n";
+                                $textStartSentForMessageId[$textId] = true;
+                                if ($shouldFlush) {
+                                    if (ob_get_level() > 0) {
+                                        ob_flush();
+                                    }
+                                    flush();
+                                }
+                            }
+                        }
+                        if (($data['type'] ?? '') === 'text-start') {
+                            $textId = $data['id'] ?? null;
+                            if (is_string($textId)) {
+                                $textStartSentForMessageId[$textId] = true;
+                            }
+                        }
+
                         echo 'data: '.json_encode($data)."\n\n";
 
                         if ($shouldFlush) {
@@ -246,6 +282,8 @@ final class RunOrchestrator
                 ]);
 
                 if ($writeToClient) {
+                    // AI SDK expects finish-step before finish.
+                    echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
                     if (is_array($lastStreamEndVercel) && $lastStreamEndVercel !== []) {
                         echo 'data: '.json_encode($lastStreamEndVercel)."\n\n";
                     }
@@ -275,6 +313,7 @@ final class RunOrchestrator
 
                 if ($writeToClient) {
                     // Best-effort graceful shutdown of the SSE stream.
+                    echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
                     echo "data: [DONE]\n\n";
 
                     if ($shouldFlush) {
@@ -290,6 +329,7 @@ final class RunOrchestrator
             'Content-Type' => 'text/event-stream',
             'x-vercel-ai-ui-message-stream' => 'v1',
             'x-oa-run-id' => $runId,
+            'x-accel-buffering' => 'no',
         ]);
 
         return tap($response, function (StreamedResponse $r) use ($runId): void {
