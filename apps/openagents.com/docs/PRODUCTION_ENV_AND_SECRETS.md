@@ -16,6 +16,27 @@ Use two buckets of runtime config:
 
 Do not put secret values in `.env` files in git, docs, or shell history where avoidable.
 
+## Helper script: apply non-secret vars from `.env.production`
+Use the deploy helper to apply only allowlisted non-secret keys from your local `.env.production` (or another file path):
+
+```bash
+# Dry run (shows keys + command)
+DRY_RUN=1 apps/openagents.com/deploy/apply-production-env.sh
+
+# Apply to Cloud Run
+apps/openagents.com/deploy/apply-production-env.sh
+
+# Optional custom file
+apps/openagents.com/deploy/apply-production-env.sh apps/openagents.com/.env.production
+```
+
+Notes:
+- Script path: `apps/openagents.com/deploy/apply-production-env.sh`
+- Uses `--update-env-vars` (does not clear unrelated env vars).
+- Ignores non-allowlisted keys, so secret keys in the file are skipped.
+- Extend allowlist ad hoc with `OA_ENV_ALLOWLIST_EXTRA="KEY_A,KEY_B"`.
+
+
 ## 1) Update non-secret env vars
 Use this pattern to update production-safe values.
 
