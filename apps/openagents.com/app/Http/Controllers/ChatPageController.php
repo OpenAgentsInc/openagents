@@ -115,48 +115,10 @@ class ChatPageController extends Controller
                 ->all();
         }
 
-        $runs = DB::table('runs')
-            ->where('thread_id', $conversationId)
-            ->where('user_id', $user->id)
-            ->orderByDesc('created_at')
-            ->limit(20)
-            ->get(['id', 'status', 'model_provider', 'model', 'started_at', 'completed_at', 'created_at'])
-            ->map(fn ($r) => [
-                'id' => $r->id,
-                'status' => $r->status,
-                'modelProvider' => $r->model_provider,
-                'model' => $r->model,
-                'startedAt' => $r->started_at,
-                'completedAt' => $r->completed_at,
-                'createdAt' => $r->created_at,
-            ])
-            ->all();
-
-        $selectedRunId = $runs[0]['id'] ?? null;
-
-        $runEvents = [];
-        if (is_string($selectedRunId)) {
-            $runEvents = DB::table('run_events')
-                ->where('run_id', $selectedRunId)
-                ->where('user_id', $user->id)
-                ->orderBy('id')
-                ->get(['id', 'type', 'payload', 'created_at'])
-                ->map(fn ($e) => [
-                    'id' => $e->id,
-                    'type' => $e->type,
-                    'payload' => $e->payload,
-                    'createdAt' => $e->created_at,
-                ])
-                ->all();
-        }
-
         return Inertia::render('chat', [
             'conversationId' => $conversationId,
             'conversationTitle' => $thread->title,
             'initialMessages' => $messages,
-            'runs' => $runs,
-            'selectedRunId' => $selectedRunId,
-            'runEvents' => $runEvents,
         ]);
     }
 }
