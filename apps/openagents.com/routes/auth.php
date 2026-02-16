@@ -10,6 +10,10 @@ Route::get('login', function (AuthKitLoginRequest $request) {
 })->middleware(['guest'])->name('login');
 
 Route::get('authenticate', function (AuthKitAuthenticationRequest $request) {
+    if (! $request->filled('code') || ! $request->filled('state')) {
+        return redirect()->route('login');
+    }
+
     return tap(redirect()->intended(route('dashboard')), fn () => $request->authenticate());
 })->middleware(['guest']);
 
