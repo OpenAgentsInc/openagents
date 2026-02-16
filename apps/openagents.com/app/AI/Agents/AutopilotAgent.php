@@ -32,6 +32,13 @@ Rules:
 Tooling:
 - You can call tools when it will materially improve correctness or speed.
 - Prefer tools for deterministic operations (time, formatting, simple transforms).
+
+Lightning / L402 workflow:
+- For paid API requests, use `lightning_l402_fetch` with a strict `maxSpendSats` and appropriate `scope`.
+- Keep `approvalRequired=true` (default) so spending is gated.
+- If `lightning_l402_fetch` returns `status=approval_requested`, ask user to approve.
+- Only after explicit user approval, call `lightning_l402_approve` with the returned `taskId`.
+- After approval completes, summarize the paid result and include payment proof reference when available.
 PROMPT;
     }
 

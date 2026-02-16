@@ -19,6 +19,9 @@ return [
         // Invoice payment timeout (ms).
         'payment_timeout_ms' => (int) env('L402_PAYMENT_TIMEOUT_MS', 12000),
 
+        // Approval intent TTL (seconds) for queued payment tasks.
+        'approval_ttl_seconds' => (int) env('L402_APPROVAL_TTL_SECONDS', 600),
+
         // Which invoice payer to use: "lnd_rest" | "fake".
         'invoice_payer' => (string) env('L402_INVOICE_PAYER', 'fake'),
     ],

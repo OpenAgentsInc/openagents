@@ -173,3 +173,81 @@ test('l402 tool results can be JSON strings and still emit an l402_fetch_receipt
     expect($payload['quotedAmountMsats'])->toBe(42000);
     expect($payload['proofReference'])->toBe('preimage:deadbeefdeadbeef');
 });
+
+test('l402 approve tool results also emit an l402_fetch_receipt run_event', function () {
+    $user = User::factory()->create();
+
+    $conversationId = (string) Str::uuid7();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'user_id' => $user->id,
+        'title' => 'L402 approve receipt test',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $toolCallId = 'toolcall_l402_approve_1';
+    $messageId = 'msg_l402_approve_1';
+
+    $toolArgs = [
+        'taskId' => 'task_123',
+    ];
+
+    $toolResult = [
+        'toolName' => 'lightning_l402_fetch',
+        'status' => 'completed',
+        'taskId' => 'task_123',
+        'host' => 'sats4ai.com',
+        'scope' => 'ep212.sats4ai',
+        'paid' => true,
+        'cacheHit' => false,
+        'cacheStatus' => 'miss',
+        'approvalRequired' => false,
+        'maxSpendMsats' => 100000,
+        'quotedAmountMsats' => 42000,
+        'amountMsats' => 42000,
+        'proofReference' => 'preimage:feedfacefeedface',
+        'responseStatusCode' => 200,
+        'responseBodySha256' => str_repeat('c', 64),
+    ];
+
+    $streamable = new StreamableAgentResponse('invocation_l402_approve_1', function () use ($messageId, $toolCallId, $toolArgs, $toolResult) {
+        yield (new StreamStart('start_l402_approve', 'fake', 'fake-model', 1000))->withInvocationId('invocation_l402_approve_1');
+
+        yield (new ToolCall('tc_l402_approve', new ToolCallData($toolCallId, 'lightning_l402_approve', $toolArgs), 1100))->withInvocationId('invocation_l402_approve_1');
+
+        yield (new ToolResult('tr_l402_approve', new ToolResultData($toolCallId, 'lightning_l402_approve', $toolArgs, $toolResult), true, null, 1200))->withInvocationId('invocation_l402_approve_1');
+
+        yield (new TextDelta('td_l402_approve', $messageId, 'done', 1300))->withInvocationId('invocation_l402_approve_1');
+
+        yield (new StreamEnd('end_l402_approve', 'stop', new Usage, 1400))->withInvocationId('invocation_l402_approve_1');
+    });
+
+    $orch = resolve(RunOrchestrator::class);
+
+    $resp = $orch->streamAutopilotRun(
+        user: $user,
+        threadId: $conversationId,
+        prompt: 'Hello',
+        streamableFactory: fn () => $streamable,
+    );
+
+    ob_start();
+    $resp->sendContent();
+    ob_end_clean();
+
+    $run = DB::table('runs')->where('thread_id', $conversationId)->where('user_id', $user->id)->first();
+    expect($run)->not->toBeNull();
+
+    $receipt = DB::table('run_events')->where('run_id', $run->id)->where('type', 'l402_fetch_receipt')->first();
+    expect($receipt)->not->toBeNull();
+
+    $payload = json_decode($receipt->payload, true);
+
+    expect($payload['tool_call_id'])->toBe($toolCallId);
+    expect($payload['tool_name'])->toBe('lightning_l402_fetch');
+    expect($payload['taskId'])->toBe('task_123');
+    expect($payload['approvalRequired'])->toBe(false);
+    expect($payload['proofReference'])->toBe('preimage:feedfacefeedface');
+});

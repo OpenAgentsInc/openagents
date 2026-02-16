@@ -15,6 +15,7 @@ class ToolRegistry
             new GetTimeTool,
             new EchoTool,
             new LightningL402FetchTool,
+            new LightningL402ApproveTool,
         ];
     }
 }

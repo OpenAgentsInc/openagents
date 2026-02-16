@@ -150,7 +150,7 @@ final class RunOrchestrator
                             'error' => $event->successful ? null : $event->error,
                         ]);
 
-                        if ($event->toolResult->name === 'lightning_l402_fetch') {
+                        if (in_array($event->toolResult->name, ['lightning_l402_fetch', 'lightning_l402_approve'], true)) {
                             $r = null;
 
                             if (is_array($event->toolResult->result)) {
@@ -165,13 +165,15 @@ final class RunOrchestrator
                             if (is_array($r)) {
                                 $this->appendEvent($threadId, $runId, $userId, 'l402_fetch_receipt', [
                                     'tool_call_id' => $toolCallId,
-                                    'tool_name' => 'lightning_l402_fetch',
+                                    'tool_name' => is_string($r['toolName'] ?? null) ? $r['toolName'] : 'lightning_l402_fetch',
                                     'status' => $r['status'] ?? null,
+                                    'taskId' => $r['taskId'] ?? null,
                                     'host' => $r['host'] ?? null,
                                     'scope' => $r['scope'] ?? null,
                                     'paid' => $r['paid'] ?? null,
                                     'cacheHit' => $r['cacheHit'] ?? null,
                                     'cacheStatus' => $r['cacheStatus'] ?? null,
+                                    'approvalRequired' => $r['approvalRequired'] ?? null,
                                     'maxSpendMsats' => $r['maxSpendMsats'] ?? null,
                                     'quotedAmountMsats' => $r['quotedAmountMsats'] ?? null,
                                     'amountMsats' => $r['amountMsats'] ?? null,

@@ -5,7 +5,7 @@ import {
     type ToolUIPart,
     type UIMessage,
 } from 'ai';
-import { useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
     Conversation,
     ConversationContent,
@@ -80,7 +80,7 @@ function toolNameFromPart(part: unknown): string {
     return 'tool';
 }
 
-function l402ToolSummary(output: unknown): string | null {
+function parseL402Output(output: unknown): Record<string, unknown> | null {
     let normalized: unknown = output;
 
     if (typeof normalized === 'string') {
@@ -91,9 +91,38 @@ function l402ToolSummary(output: unknown): string | null {
         }
     }
 
-    if (typeof normalized !== 'object' || normalized === null) return null;
+    if (typeof normalized !== 'object' || normalized === null) {
+        return null;
+    }
 
-    const o = normalized as Record<string, unknown>;
+    return normalized as Record<string, unknown>;
+}
+
+function l402Status(output: unknown): string | null {
+    const o = parseL402Output(output);
+    return o && typeof o.status === 'string' ? o.status : null;
+}
+
+function l402TaskId(output: unknown): string | null {
+    const o = parseL402Output(output);
+    return o && typeof o.taskId === 'string' && o.taskId.trim() !== '' ? o.taskId : null;
+}
+
+function l402ToolStateFromOutput(output: unknown, fallback: ToolPart['state']): ToolPart['state'] {
+    const status = l402Status(output);
+    if (!status) return fallback;
+
+    if (status === 'approval_requested') return 'approval-requested';
+    if (status === 'blocked') return 'output-denied';
+    if (status === 'failed') return 'output-error';
+
+    return 'output-available';
+}
+
+function l402ToolSummary(output: unknown): string | null {
+    const o = parseL402Output(output);
+    if (!o) return null;
+
     const host = typeof o.host === 'string' ? o.host : 'unknown';
     const status = typeof o.status === 'string' ? o.status : null;
     const paid = o.paid === true;
@@ -108,12 +137,16 @@ function l402ToolSummary(output: unknown): string | null {
         typeof o.proofReference === 'string' ? o.proofReference : null;
     const denyCode = typeof o.denyCode === 'string' ? o.denyCode : null;
 
+    if (status === 'approval_requested') {
+        return `L402 payment intent · ${host}${sats != null ? ` · ${sats} sats max` : ''}`;
+    }
+
     if (status === 'blocked') {
         return `L402 blocked · ${host}${denyCode ? ` · ${denyCode}` : ''}`;
     }
 
     if (status === 'failed') {
-        return `L402 failed · ${host}`;
+        return `L402 failed · ${host}${denyCode ? ` · ${denyCode}` : ''}`;
     }
 
     if (status === 'cached' || cacheStatus === 'hit') {
@@ -127,14 +160,27 @@ function l402ToolSummary(output: unknown): string | null {
     return `L402 fetch · ${host}`;
 }
 
-function renderToolPart(part: Record<string, unknown>, idx: number) {
+function renderToolPart(
+    part: Record<string, unknown>,
+    idx: number,
+    onApproveTask?: (taskId: string) => void,
+) {
     const toolName = toolNameFromPart(part);
     const toolType = typeof part.type === 'string' ? part.type : `tool-${toolName}`;
-    const toolState = normalizeToolState(part.state);
+    const rawToolState = normalizeToolState(part.state);
+    const summary =
+        toolName === 'lightning_l402_fetch' || toolName === 'lightning_l402_approve'
+            ? l402ToolSummary(part.output)
+            : null;
+
+    const toolState =
+        toolName === 'lightning_l402_fetch' || toolName === 'lightning_l402_approve'
+            ? l402ToolStateFromOutput(part.output, rawToolState)
+            : rawToolState;
+
     const toolCallId =
         typeof part.toolCallId === 'string' ? part.toolCallId : undefined;
-    const summary =
-        toolName === 'lightning_l402_fetch' ? l402ToolSummary(part.output) : null;
+
     const errorText =
         typeof part.errorText === 'string'
             ? part.errorText
@@ -163,6 +209,9 @@ function renderToolPart(part: Record<string, unknown>, idx: number) {
             />
         );
 
+    const taskId = l402TaskId(part.output);
+    const approvalRequested = toolState === 'approval-requested' && taskId !== null;
+
     return (
         <Tool key={idx} defaultOpen={defaultOpen}>
             {header}
@@ -174,6 +223,20 @@ function renderToolPart(part: Record<string, unknown>, idx: number) {
                     output={part.output as ToolPart['output']}
                     errorText={errorText as ToolPart['errorText']}
                 />
+                {approvalRequested ? (
+                    <div className="flex items-center gap-2">
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                                if (taskId && onApproveTask) onApproveTask(taskId);
+                            }}
+                        >
+                            Approve payment
+                        </Button>
+                        <span className="text-xs text-muted-foreground">task: {taskId}</span>
+                    </div>
+                ) : null}
                 {toolCallId ? (
                     <div className="font-mono text-[11px] text-muted-foreground">
                         toolCallId: {toolCallId}
@@ -184,7 +247,15 @@ function renderToolPart(part: Record<string, unknown>, idx: number) {
     );
 }
 
-function MessagePart({ part, idx }: { part: unknown; idx: number }) {
+function MessagePart({
+    part,
+    idx,
+    onApproveTask,
+}: {
+    part: unknown;
+    idx: number;
+    onApproveTask?: (taskId: string) => void;
+}) {
     if (typeof part !== 'object' || part === null) return null;
 
     const p = part as Record<string, unknown>;
@@ -210,18 +281,24 @@ function MessagePart({ part, idx }: { part: unknown; idx: number }) {
     }
 
     if (type === 'dynamic-tool' || (typeof type === 'string' && type.startsWith('tool-'))) {
-        return renderToolPart(p, idx);
+        return renderToolPart(p, idx, onApproveTask);
     }
 
     return null;
 }
 
-function MessageBubble({ message }: { message: UIMessage }) {
+function MessageBubble({
+    message,
+    onApproveTask,
+}: {
+    message: UIMessage;
+    onApproveTask?: (taskId: string) => void;
+}) {
     return (
         <Message from={message.role}>
             <MessageContent>
                 {message.parts.map((part, idx) => (
-                    <MessagePart key={idx} part={part} idx={idx} />
+                    <MessagePart key={idx} part={part} idx={idx} onApproveTask={onApproveTask} />
                 ))}
             </MessageContent>
         </Message>
@@ -262,6 +339,21 @@ function ChatContent({
     const inputContainerRef = useRef<HTMLDivElement | null>(null);
     const isLoading = status === 'submitted' || status === 'streaming';
     const controller = usePromptInputController();
+
+    const focusInputSoon = useCallback(() => {
+        setTimeout(() => {
+            inputContainerRef.current
+                ?.querySelector('textarea')
+                ?.focus();
+        }, 0);
+    }, []);
+
+    const handleApproveTask = useCallback(async (taskId: string) => {
+        if (!taskId || isLoading) return;
+
+        await sendMessage({ text: `lightning_l402_approve({"taskId":"${taskId}"})` });
+        focusInputSoon();
+    }, [focusInputSoon, isLoading, sendMessage]);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Chat', href: '/chat' },
@@ -304,7 +396,7 @@ function ChatContent({
                                 />
                             ) : (
                                 messages.map((m) => (
-                                    <MessageBubble key={m.id} message={m} />
+                                    <MessageBubble key={m.id} message={m} onApproveTask={handleApproveTask} />
                                 ))
                             )}
                         </ConversationContent>
@@ -323,12 +415,7 @@ function ChatContent({
                             if (!trimmed || isLoading) return;
 
                             await sendMessage({ text: trimmed });
-
-                            setTimeout(() => {
-                                inputContainerRef.current
-                                    ?.querySelector('textarea')
-                                    ?.focus();
-                            }, 0);
+                            focusInputSoon();
                         }}
                     >
                         <PromptInputBody>
