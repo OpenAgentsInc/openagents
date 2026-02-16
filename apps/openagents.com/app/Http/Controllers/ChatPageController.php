@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\PostHogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +32,12 @@ class ChatPageController extends Controller
                 'title' => 'New conversation',
                 'created_at' => $now,
                 'updated_at' => $now,
+            ]);
+
+            // PostHog: Track new chat started
+            $posthog = resolve(PostHogService::class);
+            $posthog->capture($user->email, 'chat started', [
+                'conversation_id' => $conversationId,
             ]);
 
             return redirect()->route('chat', ['conversationId' => $conversationId]);

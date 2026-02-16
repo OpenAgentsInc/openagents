@@ -3,6 +3,7 @@
 namespace App\AI;
 
 use App\AI\Agents\AutopilotAgent;
+use App\Services\PostHogService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,6 +26,7 @@ final class RunOrchestrator
     public function streamAutopilotRun(Authenticatable $user, string $threadId, string $prompt, ?callable $streamableFactory = null): StreamedResponse
     {
         $userId = (int) $user->getAuthIdentifier();
+        $userEmail = $user->email ?? 'unknown';
 
         $runId = (string) Str::uuid();
         $now = now();
@@ -62,7 +64,7 @@ final class RunOrchestrator
             ? $streamableFactory($user, $threadId, $prompt)
             : AutopilotAgent::make()->continue($threadId, $user)->stream($prompt);
 
-        $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId): void {
+        $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId, $userEmail): void {
             $writeToClient = true;
             $shouldFlush = ! app()->runningUnitTests();
 
@@ -182,6 +184,17 @@ final class RunOrchestrator
                                     'responseStatusCode' => $r['responseStatusCode'] ?? null,
                                     'responseBodySha256' => $r['responseBodySha256'] ?? null,
                                 ]);
+
+                                // PostHog: Track L402 payment if paid
+                                if (($r['paid'] ?? false) === true && isset($r['amountMsats'])) {
+                                    $posthog = resolve(PostHogService::class);
+                                    $posthog->capture($userEmail, 'l402 payment made', [
+                                        'run_id' => $runId,
+                                        'thread_id' => $threadId,
+                                        'host' => $r['host'] ?? null,
+                                        'amount_msats' => $r['amountMsats'] ?? null,
+                                    ]);
+                                }
                             }
                         }
                     }
@@ -284,6 +297,17 @@ final class RunOrchestrator
                     'assistant_chars' => mb_strlen($assistantText),
                 ]);
 
+                // PostHog: Track chat run completed
+                $posthog = resolve(PostHogService::class);
+                $posthog->capture($userEmail, 'chat run completed', [
+                    'run_id' => $runId,
+                    'thread_id' => $threadId,
+                    'model_provider' => $modelProvider,
+                    'model' => $modelName,
+                    'input_tokens' => $usage['inputTokens'] ?? null,
+                    'output_tokens' => $usage['outputTokens'] ?? null,
+                ]);
+
                 if ($writeToClient) {
                     // AI SDK expects finish-step before finish.
                     echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
@@ -311,6 +335,14 @@ final class RunOrchestrator
                 ]);
 
                 $this->appendEvent($threadId, $runId, $userId, 'run_failed', [
+                    'error' => $e->getMessage(),
+                ]);
+
+                // PostHog: Track chat run failed
+                $posthog = resolve(PostHogService::class);
+                $posthog->capture($userEmail, 'chat run failed', [
+                    'run_id' => $runId,
+                    'thread_id' => $threadId,
                     'error' => $e->getMessage(),
                 ]);
 

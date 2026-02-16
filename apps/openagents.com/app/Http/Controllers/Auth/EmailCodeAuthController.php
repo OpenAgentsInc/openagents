@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\SendEmailCodeRequest;
 use App\Http\Requests\Auth\VerifyEmailCodeRequest;
 use App\Models\User;
+use App\Services\PostHogService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -64,6 +65,12 @@ class EmailCodeAuthController extends Controller
             'sent_at' => now()->toIso8601String(),
         ]);
 
+        // PostHog: Track login code sent
+        $posthog = resolve(PostHogService::class);
+        $posthog->capture($email, 'login code sent', [
+            'method' => 'magic_auth',
+        ]);
+
         return redirect()->route('login')
             ->with('status', 'code-sent');
     }
@@ -116,7 +123,9 @@ class EmailCodeAuthController extends Controller
             ]);
         }
 
-        $user = $this->synchronizeUser($workosUser);
+        $posthog = resolve(PostHogService::class);
+        $isNewUser = false;
+        $user = $this->synchronizeUser($workosUser, $isNewUser);
 
         Auth::guard('web')->login($user);
 
@@ -125,10 +134,23 @@ class EmailCodeAuthController extends Controller
         $request->session()->forget('auth.magic_auth');
         $request->session()->regenerate();
 
+        // PostHog: Identify user and track login/signup
+        $posthog->identify($user->email, $user->getPostHogProperties());
+
+        if ($isNewUser) {
+            $posthog->capture($user->email, 'user signed up', [
+                'signup_method' => 'magic_auth',
+            ]);
+        } else {
+            $posthog->capture($user->email, 'user logged in', [
+                'login_method' => 'magic_auth',
+            ]);
+        }
+
         return redirect()->intended(route('chat'));
     }
 
-    private function synchronizeUser(object $workosUser): User
+    private function synchronizeUser(object $workosUser, bool &$isNewUser = false): User
     {
         $workosId = $this->resolveString($workosUser, ['id']);
         $email = $this->resolveString($workosUser, ['email']);
@@ -155,6 +177,8 @@ class EmailCodeAuthController extends Controller
             ->first();
 
         if (! $existingUser) {
+            $isNewUser = true;
+
             /** @var User $newUser */
             $newUser = User::query()->create([
                 'name' => $name,
@@ -168,6 +192,8 @@ class EmailCodeAuthController extends Controller
 
             return $newUser;
         }
+
+        $isNewUser = false;
 
         $existingUser->fill([
             'name' => $name,

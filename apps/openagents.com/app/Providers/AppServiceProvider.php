@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use PostHog\PostHog;
 use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
@@ -36,6 +37,28 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configurePostHog();
+    }
+
+    /**
+     * Initialize PostHog analytics.
+     */
+    protected function configurePostHog(): void
+    {
+        if (config('posthog.disabled')) {
+            return;
+        }
+
+        $apiKey = config('posthog.api_key');
+
+        if (! is_string($apiKey) || $apiKey === '') {
+            return;
+        }
+
+        PostHog::init($apiKey, [
+            'host' => config('posthog.host', 'https://us.i.posthog.com'),
+            'debug' => config('posthog.debug', false),
+        ]);
     }
 
     /**

@@ -163,3 +163,70 @@ Artisan::command('ops:test-login-link {email : Allowlisted email to log in as} {
 
     return 0;
 })->purpose('Generate a temporary signed test-login URL for maintenance-mode verification.');
+
+Artisan::command('ops:create-api-token {email : Email of the existing user} {name=ops-cli : Token display name} {--abilities=* : Comma-separated abilities} {--expires-days= : Optional token expiration in days}', function () {
+    $email = strtolower(trim((string) $this->argument('email')));
+    $name = trim((string) $this->argument('name'));
+
+    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $this->error('Invalid email address.');
+
+        return 1;
+    }
+
+    if ($name === '') {
+        $this->error('Token name cannot be empty.');
+
+        return 1;
+    }
+
+    $user = \App\Models\User::query()->where('email', $email)->first();
+    if (! $user) {
+        $this->error('User not found for email: '.$email);
+
+        return 1;
+    }
+
+    $abilitiesRaw = $this->option('abilities');
+    $abilityInputs = is_array($abilitiesRaw)
+        ? $abilitiesRaw
+        : [$abilitiesRaw];
+
+    $abilities = collect($abilityInputs)
+        ->filter(static fn (mixed $ability): bool => is_string($ability))
+        ->flatMap(static fn (string $ability): array => explode(',', $ability))
+        ->map(static fn (string $ability): string => trim($ability))
+        ->filter(static fn (string $ability): bool => $ability !== '')
+        ->values()
+        ->all();
+
+    if ($abilities === []) {
+        $abilities = ['*'];
+    }
+    $expiresAt = null;
+    $expiresDaysOption = trim((string) $this->option('expires-days'));
+    if ($expiresDaysOption !== '') {
+        $days = (int) $expiresDaysOption;
+        if ($days < 1 || $days > 3650) {
+            $this->error('--expires-days must be between 1 and 3650 when provided.');
+
+            return 1;
+        }
+
+        $expiresAt = now()->addDays($days);
+    }
+
+    $token = $user->createToken($name, $abilities, $expiresAt);
+
+    $this->line('Token created successfully. Copy now; it will not be shown again:');
+    $this->line($token->plainTextToken);
+    $this->line('');
+    $this->line('metadata:');
+    $this->line('  user_id='.$user->id);
+    $this->line('  email='.$user->email);
+    $this->line('  name='.$name);
+    $this->line('  abilities='.implode(',', $abilities));
+    $this->line('  expires_at='.($expiresAt?->toISOString() ?? 'null'));
+
+    return 0;
+})->purpose('Create a Sanctum API token for an existing user.');
