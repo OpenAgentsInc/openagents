@@ -1,11 +1,9 @@
 "use client";
 
-import type { ComponentProps, HTMLAttributes } from "react";
-
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import Ansi from "ansi-to-react";
 import { CheckIcon, CopyIcon, TerminalIcon, Trash2Icon } from "lucide-react";
+import type { ComponentProps, HTMLAttributes } from "react";
+
 import {
   createContext,
   useCallback,
@@ -15,6 +13,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 import { Shimmer } from "./shimmer";
 
@@ -133,7 +133,7 @@ export const TerminalStatus = ({
       className={cn("flex items-center gap-2 text-xs text-zinc-400", className)}
       {...props}
     >
-      {children ?? <Shimmer className="w-16" />}
+      {children ?? <Shimmer className="w-16">Running...</Shimmer>}
     </div>
   );
 };
