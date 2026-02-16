@@ -1,8 +1,10 @@
 # OpenAgents
 
-OpenAgents is building a **cross-platform Effuse app**: web at **openagents.com**, mobile in **`apps/mobile/`**, and a desktop app in progress. The stack is centered on **Effect** (application runtime) + **Effuse** (UI runtime), with **Convex** realtime state and **WorkOS** AuthKit.
+OpenAgents is building a **cross-platform app**: web at **openagents.com**, mobile in **`apps/mobile/`**, and a desktop app in progress.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
+
+**Vision and architecture:** [docs/SYNTHESIS.md](docs/SYNTHESIS.md) (“OpenAgents: The Agentic OS”) is the north-star spec: what OpenAgents is (the OS for the AI agent economy), core primitives (identity, transport, payments, treasury, FX), the wedge→platform path (Autopilot → trajectory/issue moat → Neobank → skills/compute marketplace → Exchange), and a status-tagged stack. It defers to [SYNTHESIS_EXECUTION.md](docs/SYNTHESIS_EXECUTION.md) for what’s wired today and to [GLOSSARY.md](docs/GLOSSARY.md) and [PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) for terminology and protocol details.
 
 ## What’s possible with Autopilot (evolving agent)
 
@@ -39,7 +41,7 @@ Start with:
 
 * **Web app**: [apps/web/](apps/web/)
 * **Mobile app**: [apps/mobile/](apps/mobile/)
-* **Effuse plan/spec**: [packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md](packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md)
+* **Vision / architecture (north-star spec)**: [docs/SYNTHESIS.md](docs/SYNTHESIS.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
-* **Repo map / ownership**: [PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md)
+* **Repo map / ownership**: [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
 * **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)
