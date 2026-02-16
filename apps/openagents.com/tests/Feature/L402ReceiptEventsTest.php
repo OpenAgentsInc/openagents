@@ -92,3 +92,84 @@ test('l402 tool results emit an l402_fetch_receipt run_event with key metadata',
     expect($payload['quotedAmountMsats'])->toBe(42000);
     expect($payload['proofReference'])->toBe('preimage:deadbeefdeadbeef');
 });
+
+test('l402 tool results can be JSON strings and still emit an l402_fetch_receipt run_event', function () {
+    $user = User::factory()->create();
+
+    $conversationId = (string) Str::uuid7();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'user_id' => $user->id,
+        'title' => 'L402 receipt test (string)',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $toolCallId = 'toolcall_l402_str_1';
+    $messageId = 'msg_l402_str_1';
+
+    $toolArgs = [
+        'url' => 'https://sats4ai.com/api/l402/text-generation',
+        'method' => 'POST',
+        'maxSpendSats' => 100,
+        'scope' => 'ep212.sats4ai',
+    ];
+
+    $toolResultArray = [
+        'status' => 'completed',
+        'host' => 'sats4ai.com',
+        'scope' => 'ep212.sats4ai',
+        'paid' => true,
+        'cacheHit' => false,
+        'cacheStatus' => 'miss',
+        'maxSpendMsats' => 100000,
+        'quotedAmountMsats' => 42000,
+        'amountMsats' => 42000,
+        'proofReference' => 'preimage:deadbeefdeadbeef',
+        'responseStatusCode' => 200,
+        'responseBodySha256' => str_repeat('b', 64),
+    ];
+
+    $toolResultString = json_encode($toolResultArray);
+
+    $streamable = new StreamableAgentResponse('invocation_l402_str_1', function () use ($messageId, $toolCallId, $toolArgs, $toolResultString) {
+        yield (new StreamStart('start_l402_str', 'fake', 'fake-model', 1000))->withInvocationId('invocation_l402_str_1');
+
+        yield (new ToolCall('tc_l402_str', new ToolCallData($toolCallId, 'lightning_l402_fetch', $toolArgs), 1100))->withInvocationId('invocation_l402_str_1');
+
+        yield (new ToolResult('tr_l402_str', new ToolResultData($toolCallId, 'lightning_l402_fetch', $toolArgs, $toolResultString), true, null, 1200))->withInvocationId('invocation_l402_str_1');
+
+        yield (new TextDelta('td_l402_str', $messageId, 'done', 1300))->withInvocationId('invocation_l402_str_1');
+
+        yield (new StreamEnd('end_l402_str', 'stop', new Usage, 1400))->withInvocationId('invocation_l402_str_1');
+    });
+
+    $orch = resolve(RunOrchestrator::class);
+
+    $resp = $orch->streamAutopilotRun(
+        user: $user,
+        threadId: $conversationId,
+        prompt: 'Hello',
+        streamableFactory: fn () => $streamable,
+    );
+
+    ob_start();
+    $resp->sendContent();
+    ob_end_clean();
+
+    $run = DB::table('runs')->where('thread_id', $conversationId)->where('user_id', $user->id)->first();
+    expect($run)->not->toBeNull();
+
+    $receipt = DB::table('run_events')->where('run_id', $run->id)->where('type', 'l402_fetch_receipt')->first();
+    expect($receipt)->not->toBeNull();
+
+    $payload = json_decode($receipt->payload, true);
+
+    expect($payload['tool_call_id'])->toBe($toolCallId);
+    expect($payload['status'])->toBe('completed');
+    expect($payload['host'])->toBe('sats4ai.com');
+    expect($payload['paid'])->toBe(true);
+    expect($payload['quotedAmountMsats'])->toBe(42000);
+    expect($payload['proofReference'])->toBe('preimage:deadbeefdeadbeef');
+});
