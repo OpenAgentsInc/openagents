@@ -1,22 +1,27 @@
 <?php
 
+use App\Http\Controllers\Auth\EmailCodeAuthController;
 use Illuminate\Support\Facades\Route;
-use Laravel\WorkOS\Http\Requests\AuthKitAuthenticationRequest;
-use Laravel\WorkOS\Http\Requests\AuthKitLoginRequest;
 use Laravel\WorkOS\Http\Requests\AuthKitLogoutRequest;
 
-Route::get('login', function (AuthKitLoginRequest $request) {
-    return $request->redirect();
-})->middleware(['guest'])->name('login');
+Route::middleware('guest')->group(function () {
+    Route::get('login', [EmailCodeAuthController::class, 'show'])
+        ->name('login');
 
-Route::get('authenticate', function (AuthKitAuthenticationRequest $request) {
-    if (! $request->filled('code') || ! $request->filled('state')) {
-        return redirect()->route('login');
-    }
+    Route::post('login/email', [EmailCodeAuthController::class, 'sendCode'])
+        ->middleware('throttle:6,1')
+        ->name('login.email');
 
-    return tap(redirect()->intended(route('dashboard')), fn () => $request->authenticate());
-})->middleware(['guest']);
+    Route::post('login/verify', [EmailCodeAuthController::class, 'verifyCode'])
+        ->middleware('throttle:10,1')
+        ->name('login.verify');
+
+    Route::get('register', fn () => redirect()->route('login'))
+        ->name('register');
+
+    Route::get('authenticate', fn () => redirect()->route('login'));
+});
 
 Route::post('logout', function (AuthKitLogoutRequest $request) {
-    return $request->logout();
-})->middleware(['auth'])->name('logout');
+    return $request->logout('/');
+})->middleware('auth')->name('logout');

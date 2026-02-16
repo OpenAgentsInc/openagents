@@ -2,12 +2,12 @@
 
 use App\Models\User;
 
-test('guests are redirected to the login page', function () {
-    $this->get('/dashboard')->assertRedirect('/login');
+test('guests are redirected to the login page for chat', function () {
+    $this->get('/chat')->assertRedirect('/login');
 });
 
-test('authenticated users can visit the dashboard', function () {
-    $this->actingAs($user = User::factory()->create());
+test('authenticated users can visit chat', function () {
+    $this->actingAs(User::factory()->create());
 
-    $this->get('/dashboard')->assertOk();
+    $this->get('/chat')->assertRedirect();
 });

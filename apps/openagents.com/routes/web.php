@@ -8,7 +8,13 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\WorkOS\Http\Middleware\ValidateSessionWithWorkOS;
 
-Route::get('/', fn () => Inertia::render('welcome'))->name('home');
+Route::get('/', function (Request $request) {
+    if ($request->user()) {
+        return redirect()->route('chat');
+    }
+
+    return Inertia::render('home');
+})->name('home');
 
 // Lightweight SSE smoke endpoint (auth-less) for infra validation.
 // Gate with a header secret to avoid exposing it publicly.
@@ -22,7 +28,7 @@ Route::get('api/smoke/stream', function (Request $request) {
 
     return response()->stream(function () {
         $write = function (array $payload): void {
-            echo "data: " . json_encode($payload) . "\n\n";
+            echo 'data: '.json_encode($payload)."\n\n";
 
             if (ob_get_level() > 0) {
                 ob_flush();
@@ -57,10 +63,6 @@ Route::middleware([
     'auth',
     ValidateSessionWithWorkOS::class,
 ])->group(function () {
-    Route::get('dashboard', function () {
-        return Inertia::render('dashboard');
-    })->name('dashboard');
-
     Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
         ->name('chat');
 
