@@ -28,6 +28,21 @@ composer run dev
 
 Or: `php artisan serve` in one terminal and `npm run dev` in another. Use **http://localhost:8000** and `APP_URL=http://localhost:8000` in `.env`.
 
+## Production deploy
+
+Deploy via `deploy/deploy-production.sh` so Cloud Build must succeed before Cloud Run rollout:
+
+```bash
+cd apps/openagents.com
+PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-web deploy/deploy-production.sh
+```
+
+This path is enforced as:
+
+1. Cloud Build Docker image build (Dockerfile runs `npm run build` in the `node_build` stage).
+2. If Vite build fails, image build fails and deploy stops.
+3. Only a successful image is deployed to Cloud Run.
+
 ## Stack
 
 - Laravel 12, Inertia, React (TS), Vite

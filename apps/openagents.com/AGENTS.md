@@ -14,6 +14,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - Cloud Run rollout plan: `docs/GCP_DEPLOY_PLAN.md`
 - Runtime env + secrets runbook: `docs/PRODUCTION_ENV_AND_SECRETS.md`
 - Non-secret env sync helper: `deploy/apply-production-env.sh`
+- Deploy command (build must pass first): `deploy/deploy-production.sh`
 
 - php - 8.4.12
 - inertiajs/inertia-laravel (INERTIA) - v2
