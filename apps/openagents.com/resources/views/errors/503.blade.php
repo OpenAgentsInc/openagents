@@ -42,15 +42,14 @@
             position: fixed;
             inset: 0;
             pointer-events: none;
-            opacity: 0.35;
-            background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.75) 1px, transparent 1px);
-            background-size: 22px 22px;
+            background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+            background-size: 36px 36px;
         }
 
         .container {
-            position: relative;
+            position: fixed;
+            inset: 0;
             z-index: 2;
-            min-height: 100dvh;
             display: grid;
             place-items: center;
             padding: 2rem;
