@@ -211,8 +211,8 @@ final class RunOrchestrator
                     if ($writeToClient) {
                         // AI SDK requires start-step after start for the stream to be valid.
                         if (($data['type'] ?? '') === 'start') {
-                            echo 'data: '.json_encode($data)."\n\n";
-                            echo 'data: '.json_encode(['type' => 'start-step'])."\n\n";
+                            echo 'data: ' . json_encode($data) . "\n\n";
+                            echo 'data: ' . json_encode(['type' => 'start-step']) . "\n\n";
                             if ($shouldFlush) {
                                 if (ob_get_level() > 0) {
                                     ob_flush();
@@ -226,7 +226,7 @@ final class RunOrchestrator
                         if (($data['type'] ?? '') === 'text-delta') {
                             $textId = $data['id'] ?? null;
                             if (is_string($textId) && ! isset($textStartSentForMessageId[$textId])) {
-                                echo 'data: '.json_encode(['type' => 'text-start', 'id' => $textId])."\n\n";
+                                echo 'data: ' . json_encode(['type' => 'text-start', 'id' => $textId]) . "\n\n";
                                 $textStartSentForMessageId[$textId] = true;
                                 if ($shouldFlush) {
                                     if (ob_get_level() > 0) {
@@ -243,7 +243,7 @@ final class RunOrchestrator
                             }
                         }
 
-                        echo 'data: '.json_encode($data)."\n\n";
+                        echo 'data: ' . json_encode($data) . "\n\n";
 
                         if ($shouldFlush) {
                             if (ob_get_level() > 0) {
@@ -283,9 +283,9 @@ final class RunOrchestrator
 
                 if ($writeToClient) {
                     // AI SDK expects finish-step before finish.
-                    echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
+                    echo 'data: ' . json_encode(['type' => 'finish-step']) . "\n\n";
                     if (is_array($lastStreamEndVercel) && $lastStreamEndVercel !== []) {
-                        echo 'data: '.json_encode($lastStreamEndVercel)."\n\n";
+                        echo 'data: ' . json_encode($lastStreamEndVercel) . "\n\n";
                     }
 
                     echo "data: [DONE]\n\n";
@@ -313,7 +313,7 @@ final class RunOrchestrator
 
                 if ($writeToClient) {
                     // Best-effort graceful shutdown of the SSE stream.
-                    echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
+                    echo 'data: ' . json_encode(['type' => 'finish-step']) . "\n\n";
                     echo "data: [DONE]\n\n";
 
                     if ($shouldFlush) {
@@ -346,7 +346,7 @@ final class RunOrchestrator
     {
         if (is_array($value)) {
             if (array_is_list($value)) {
-                return array_map(fn ($v) => $this->canonicalize($v), $value);
+                return array_map(fn($v) => $this->canonicalize($v), $value);
             }
 
             ksort($value);
