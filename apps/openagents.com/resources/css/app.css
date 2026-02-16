@@ -3,15 +3,49 @@
 @import 'tw-animate-css';
 
 @source '../views';
+
+/* Berkeley Mono (from v5) */
+@font-face {
+    font-family: 'Berkeley Mono';
+    src: url('/fonts/BerkeleyMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Berkeley Mono';
+    src: url('/fonts/BerkeleyMono-Italic.woff2') format('woff2');
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Berkeley Mono';
+    src: url('/fonts/BerkeleyMono-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Berkeley Mono';
+    src: url('/fonts/BerkeleyMono-BoldItalic.woff2') format('woff2');
+    font-weight: 700;
+    font-style: italic;
+    font-display: swap;
+}
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Inter', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+
+    --font-mono:
+        var(--font-berkeley-mono), ui-monospace, 'SFMono-Regular', Consolas,
+        'Liberation Mono', Menlo, monospace;
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -62,6 +96,7 @@
 }
 
 :root {
+    --font-berkeley-mono: 'Berkeley Mono';
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -97,44 +132,57 @@
     --sidebar-ring: oklch(0.87 0 0);
 }
 
+/* Cursor Dark High Contrast (v5 teal-theme.css) – dark mode only */
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.396 0.141 25.723);
-    --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.269 0 0);
-    --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.985 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0 0);
-    --sidebar-ring: oklch(0.439 0 0);
+    --background: #101011;
+    --foreground: hsl(208 29% 88%); /* #D8DEE9 */
+    --card: hsl(0 0% 10%); /* #1A1A1A */
+    --card-foreground: hsl(208 29% 88%);
+    --popover: hsl(0 0% 10%);
+    --popover-foreground: hsl(208 29% 88%);
+    --primary: hsl(217 17% 31%); /* #434C5E */
+    --primary-foreground: hsl(208 29% 88%);
+    --secondary: hsl(0 0% 25%); /* #404040 */
+    --secondary-foreground: hsl(208 29% 88%);
+    --muted: hsl(0 0% 16%); /* #2A2A2A */
+    --muted-foreground: hsl(0 0% 60%); /* #999999 */
+    --accent: hsl(0 0% 31%); /* #505050 */
+    --accent-foreground: hsl(208 29% 88%);
+    --destructive: hsl(354 42% 56%); /* #BF616A */
+    --destructive-foreground: hsl(208 29% 88%);
+    --border: hsl(0 0% 16%);
+    --input: hsl(0 0% 16%);
+    --ring: hsl(191 41% 67%); /* #88C0D0 - light cyan focus */
+    --chart-1: hsl(191 41% 67%);
+    --chart-2: hsl(25 68% 71%);
+    --chart-3: hsl(245 58% 76%);
+    --chart-4: hsl(43 88% 67%);
+    --chart-5: hsl(309 57% 73%);
+    --radius: 0rem;
+    --sidebar: #090909;
+    --sidebar-foreground: hsl(0 0% 80%); /* #CCCCCC */
+    --sidebar-primary: hsl(217 17% 31%);
+    --sidebar-primary-foreground: hsl(208 29% 88%);
+    /* Darker sidebar hover/active so it isn’t too light */
+    --sidebar-accent: hsl(0 0% 12%);
+    --sidebar-accent-foreground: hsl(208 29% 88%);
+    --sidebar-border: hsl(0 0% 16%);
+    --sidebar-ring: hsl(191 41% 67%);
 }
 
 @layer base {
     * {
         @apply border-border;
+    }
+
+    /* Restore cursor: pointer for buttons (Tailwind v4 defaults to cursor: default) */
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
+    }
+
+    html.dark {
+        color-scheme: dark;
     }
 
     body {
