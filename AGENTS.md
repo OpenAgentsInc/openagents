@@ -59,6 +59,7 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 ## Verification Entry Points
 
 - **Laravel web (incoming core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
+- **Laravel web production deploy/runbooks:** `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md` and `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md` (env/secrets + Cloud Run deploy flow).
 - Web (current): `apps/web/README.md`
 - Autopilot worker: `apps/autopilot-worker/README.md`
 - Mobile: `apps/mobile/README.md`
