@@ -1,7 +1,7 @@
 <?php
 
-test('returns a successful response', function () {
+test('home route redirects to chat onboarding', function () {
     $response = $this->get(route('home'));
 
-    $response->assertOk();
+    $response->assertRedirect('/chat');
 });

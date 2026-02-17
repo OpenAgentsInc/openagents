@@ -21,6 +21,11 @@ class ValidateWorkOSSession
 
     private function shouldBypassWorkOsValidation(Request $request): bool
     {
+        // Allow unauthenticated onboarding/chat routes to render before login.
+        if (! $request->user()) {
+            return true;
+        }
+
         if (! config('auth.local_test_login.enabled', false)) {
             return false;
         }

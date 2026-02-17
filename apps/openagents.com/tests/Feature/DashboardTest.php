@@ -5,8 +5,15 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-test('guests are redirected to the login page for chat', function () {
-    $this->get('/chat')->assertRedirect('/login');
+test('guests are routed to the in-chat onboarding flow', function () {
+    $response = $this->get('/chat');
+
+    $response->assertRedirect();
+    $location = (string) $response->headers->get('Location');
+
+    expect($location)->toContain('/chat/guest-');
+
+    $this->get($location)->assertOk();
 });
 
 test('authenticated users can visit chat', function () {

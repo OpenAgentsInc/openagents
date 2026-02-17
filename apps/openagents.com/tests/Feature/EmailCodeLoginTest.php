@@ -42,6 +42,29 @@ test('send code stores pending workos session in the Laravel session', function 
     $response->assertSessionHas('auth.magic_auth.user_id', 'user_abc123');
 });
 
+test('send code JSON endpoint supports in-chat onboarding flow', function () {
+    configureWorkosForTests();
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('createMagicAuth')
+        ->once()
+        ->with('chris@openagents.com')
+        ->andReturn((object) [
+            'userId' => 'user_abc123',
+        ]);
+
+    $response = $this->postJson('/api/auth/email', [
+        'email' => 'chris@openagents.com',
+    ]);
+
+    $response->assertOk()
+        ->assertJsonPath('status', 'code-sent')
+        ->assertJsonPath('email', 'chris@openagents.com');
+
+    $response->assertSessionHas('auth.magic_auth.email', 'chris@openagents.com');
+    $response->assertSessionHas('auth.magic_auth.user_id', 'user_abc123');
+});
+
 test('verify code signs in user and stores workos tokens', function () {
     configureWorkosForTests();
 
@@ -89,6 +112,51 @@ test('verify code signs in user and stores workos tokens', function () {
     $response->assertSessionHas('workos_refresh_token', 'refresh_token_123');
 });
 
+test('verify code JSON endpoint signs in user for chat onboarding', function () {
+    configureWorkosForTests();
+
+    $workosUser = (object) [
+        'id' => 'user_abc123',
+        'email' => 'chris@openagents.com',
+        'firstName' => 'Chris',
+        'lastName' => 'David',
+        'profilePictureUrl' => 'https://example.com/avatar.png',
+    ];
+
+    $authResponse = (object) [
+        'user' => $workosUser,
+        'accessToken' => 'access_token_123',
+        'refreshToken' => 'refresh_token_123',
+    ];
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->with('client_test_123', '123456', 'user_abc123', \Mockery::any(), \Mockery::any())
+        ->andReturn($authResponse);
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'chris@openagents.com',
+                'user_id' => 'user_abc123',
+            ],
+        ])
+        ->postJson('/api/auth/verify', [
+            'code' => '123456',
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('status', 'authenticated')
+        ->assertJsonPath('redirect', '/chat')
+        ->assertJsonPath('user.email', 'chris@openagents.com');
+
+    $this->assertAuthenticated();
+
+    $response->assertSessionHas('workos_access_token', 'access_token_123');
+    $response->assertSessionHas('workos_refresh_token', 'refresh_token_123');
+});
+
 test('verify code requires pending email-code session', function () {
     configureWorkosForTests();
 
@@ -100,8 +168,20 @@ test('verify code requires pending email-code session', function () {
     $this->assertGuest();
 });
 
-test('logged-in users hitting login are redirected to home', function () {
-    $this->actingAs(User::factory()->create());
+test('verify code JSON requires pending email-code session', function () {
+    configureWorkosForTests();
 
+    $response = $this->postJson('/api/auth/verify', [
+        'code' => '123456',
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors('code');
+
+    $this->assertGuest();
+});
+
+test('logged-in users hitting login are redirected by guest middleware', function () {
+    $this->actingAs(User::factory()->create());
     $this->get('/login')->assertRedirect('/');
 });

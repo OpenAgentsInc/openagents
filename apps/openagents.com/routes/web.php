@@ -9,13 +9,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function (Request $request) {
-    if ($request->user()) {
-        return redirect()->route('chat');
-    }
+Route::get('/', fn () => redirect()->route('chat'))->name('home');
 
-    return Inertia::render('home');
-})->name('home');
+Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
+    ->middleware(ValidateWorkOSSession::class)
+    ->name('chat');
 
 Route::get('openapi.json', [OpenApiSpecController::class, 'show'])->name('openapi.default.specification');
 
@@ -68,9 +66,6 @@ Route::middleware([
     'auth',
     ValidateWorkOSSession::class,
 ])->group(function () {
-    Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
-        ->name('chat');
-
     Route::prefix('l402')->name('l402.')->group(function () {
         Route::get('/', [L402PageController::class, 'wallet'])->name('wallet');
         Route::get('/transactions', [L402PageController::class, 'transactions'])->name('transactions.index');

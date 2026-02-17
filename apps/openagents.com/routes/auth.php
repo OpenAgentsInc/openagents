@@ -18,6 +18,14 @@ Route::middleware('guest')->group(function () {
         ->middleware('throttle:10,1')
         ->name('login.verify');
 
+    Route::post('api/auth/email', [EmailCodeAuthController::class, 'sendCodeJson'])
+        ->middleware('throttle:6,1')
+        ->name('api.auth.email');
+
+    Route::post('api/auth/verify', [EmailCodeAuthController::class, 'verifyCodeJson'])
+        ->middleware('throttle:10,1')
+        ->name('api.auth.verify');
+
     Route::get('register', fn () => redirect()->route('login'))
         ->name('register');
 
