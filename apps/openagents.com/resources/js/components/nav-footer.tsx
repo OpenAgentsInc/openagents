@@ -1,3 +1,4 @@
+import { Link } from '@inertiajs/react';
 import type { ComponentPropsWithoutRef } from 'react';
 import {
     SidebarGroup,
@@ -23,25 +24,34 @@ export function NavFooter({
         >
             <SidebarGroupContent>
                 <SidebarMenu>
-                    {items.map((item) => (
-                        <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton
-                                asChild
-                                className="text-zinc-600 hover:text-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
-                            >
-                                <a
-                                    href={toUrl(item.href)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                    {items.map((item) => {
+                        const external = item.external === true;
+
+                        return (
+                            <SidebarMenuItem key={item.title}>
+                                <SidebarMenuButton
+                                    asChild
+                                    className="text-zinc-600 hover:text-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
                                 >
-                                    {item.icon && (
-                                        <item.icon className="h-5 w-5" />
+                                    {external ? (
+                                        <a
+                                            href={toUrl(item.href)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            {item.icon ? <item.icon className="h-5 w-5" /> : null}
+                                            <span>{item.title}</span>
+                                        </a>
+                                    ) : (
+                                        <Link href={item.href} prefetch>
+                                            {item.icon ? <item.icon className="h-5 w-5" /> : null}
+                                            <span>{item.title}</span>
+                                        </Link>
                                     )}
-                                    <span>{item.title}</span>
-                                </a>
-                            </SidebarMenuButton>
-                        </SidebarMenuItem>
-                    ))}
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        );
+                    })}
                 </SidebarMenu>
             </SidebarGroupContent>
         </SidebarGroup>

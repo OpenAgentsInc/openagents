@@ -34,7 +34,6 @@ import {
     ToolOutput,
     type ToolPart,
 } from '@/components/ai-elements/tool';
-import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
@@ -318,21 +317,6 @@ function MessageBubble({
     );
 }
 
-function messageHasL402Tool(message: UIMessage): boolean {
-    return message.parts.some((part) => {
-        if (typeof part !== 'object' || part === null) return false;
-
-        const p = part as Record<string, unknown>;
-        const type = p.type;
-
-        if (type !== 'dynamic-tool' && (typeof type !== 'string' || !type.startsWith('tool-'))) {
-            return false;
-        }
-
-        return isL402ToolName(toolNameFromPart(p));
-    });
-}
-
 function ChatContent({
     conversationId,
     conversationTitle,
@@ -366,10 +350,6 @@ function ChatContent({
 
     const inputContainerRef = useRef<HTMLDivElement | null>(null);
     const isLoading = status === 'submitted' || status === 'streaming';
-    const walletRefreshKey = useMemo(
-        () => messages.filter(messageHasL402Tool).map((message) => String(message.id)).join(':'),
-        [messages],
-    );
     const controller = usePromptInputController();
 
     const focusInputSoon = useCallback(() => {
@@ -417,9 +397,6 @@ function ChatContent({
                         </AlertDescription>
                     </Alert>
                 )}
-
-                <ChatWalletSnapshot refreshKey={walletRefreshKey} disabled={isLoading} />
-
                 <div className="relative mx-auto flex w-full max-w-[768px] min-h-0 flex-1 flex-col overflow-hidden">
                     <Conversation>
                         <ConversationContent>
