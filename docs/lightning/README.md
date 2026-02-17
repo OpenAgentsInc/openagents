@@ -4,7 +4,7 @@ Docs are organized into subfolders:
 
 | Folder | Contents |
 |--------|----------|
-| **runbooks/** | Operational runbooks: Aperture deploy, staging reconcile, observability rehearsal, EP212 buyer rehearsal. |
+| **runbooks/** | Operational runbooks: Aperture deploy, staging reconcile, observability rehearsal, EP212 buyer rehearsal, and Laravel EP212 release-gate rehearsal. |
 | **plans/** | Redirect to repo-wide plans under `docs/plans/active/lightning/`. |
 | **reference/** | Reference and guides: Voltage → L402 connect, Breez/Spark comparison, Lightning agent tools. |
 | **status/** | Status snapshots and worklogs: current EP212 deployed status, liquidity bootstrap log, wallet executor/aperture deploy logs, historical desktop/LND Neutrino work. |

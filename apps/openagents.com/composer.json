@@ -91,6 +91,13 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "test:ep212": [
+            "@php artisan test tests/Feature/Ep212RehearsalGateTest.php --colors=always"
+        ],
+        "test:ep212:junit": [
+            "@php -r \"is_dir('output/ep212-rehearsal') || mkdir('output/ep212-rehearsal', 0777, true);\"",
+            "@php artisan test tests/Feature/Ep212RehearsalGateTest.php --colors=always --log-junit=output/ep212-rehearsal/ep212-deterministic-junit.xml"
         ]
     },
     "extra": {

@@ -21,6 +21,11 @@ For full implementation audit details, see:
 
 - `docs/plans/active/lightning/212-demo-laravel-audit.md`
 
+For release-gate execution, see:
+
+- `docs/lightning/runbooks/EP212_LARAVEL_REHEARSAL_GATE.md`
+- `docs/lightning/status/20260217-ep212-laravel-rehearsal-gate-log.md`
+
 ## 1) Demo Goal
 
 Inside `openagents.com` chat, show a complete L402 buyer flow:
@@ -40,6 +45,9 @@ Implemented in `apps/openagents.com`:
 - L402 chat tools:
   - `lightning_l402_fetch`
   - `lightning_l402_approve`
+  - `lightning_l402_paywall_create`
+  - `lightning_l402_paywall_update`
+  - `lightning_l402_paywall_delete`
 - Approval queue store + task lifecycle with TTL and user binding.
 - L402 client flow:
   - allowlist
@@ -58,21 +66,32 @@ Implemented in `apps/openagents.com`:
   - wallet, transactions, paywalls, settlements, deployments
 - L402 read APIs:
   - `/api/l402/*`
+- Seller paywall mutation APIs (admin-scoped):
+  - `POST /api/l402/paywalls`
+  - `PATCH /api/l402/paywalls/{paywallId}`
+  - `DELETE /api/l402/paywalls/{paywallId}`
 
 ## 3) Clarification: Paywall Creation Via API
 
-Current answer: **No**.
+Current answer: **Yes, with admin/operator scope**.
 
 What exists:
 
-- `GET /api/l402/paywalls` (read-only aggregation from receipt history)
+- Read APIs:
+  - `GET /api/l402/paywalls`
+  - `GET /api/l402/deployments`
+- Mutation APIs (admin only):
+  - `POST /api/l402/paywalls`
+  - `PATCH /api/l402/paywalls/{paywallId}`
+  - `DELETE /api/l402/paywalls/{paywallId}`
+- Agent tools (admin only) route through `L402PaywallOperatorService` with deterministic operation and deployment references.
 
-What does not exist:
+Guardrails:
 
-- No API endpoint to create/update/delete paywalls from `apps/openagents.com`
-- No agent tool in Laravel for provisioning seller paywall routes
-
-Paywall lifecycle today remains an infra operation (Aperture/GCP config workflow), not an app API mutation.
+- strict admin email enforcement
+- host/path regex safety validation
+- price validation
+- reconcile rollback on failure with explicit failure context
 
 ## 4) Demo-Ready Sequence
 
@@ -95,6 +114,7 @@ If there is time, briefly show:
 - `GET /api/l402/transactions`
 - `POST /api/agent-payments/invoice`
 - `POST /api/agent-payments/pay`
+- `POST /api/l402/paywalls` (admin-only seller lifecycle capability)
 
 This reinforces that the same Lightning state used by chat is available by API.
 
@@ -108,12 +128,23 @@ EP212 is ready when all are true:
 4. Policy deny path clearly blocks pre-payment when cap/allowlist fails.
 5. L402 pages reflect the same run receipt data used in chat.
 6. OpenAPI and `/api/l402/*` endpoints reflect current behavior.
+7. Rehearsal gate is passed and logged before recording.
 
-## 7) Follow-up After EP212
+## 7) Rehearsal Gate Requirement
 
-If we want agents to create seller paywalls directly from app/API:
+No recording should proceed without passing all sections in:
 
-1. Add authenticated/admin mutation endpoints for paywall lifecycle.
-2. Add controlled operator service for Aperture config + deploy orchestration.
-3. Add event logging and deployment receipts for paywall mutations.
-4. Add dedicated agent tooling for seller operations.
+- `docs/lightning/runbooks/EP212_LARAVEL_REHEARSAL_GATE.md`
+
+The canonical pass/fail log must be updated at:
+
+- `docs/lightning/status/20260217-ep212-laravel-rehearsal-gate-log.md`
+
+## 8) Follow-up After EP212
+
+Post-episode hardening:
+
+1. Expand production live smoke automation (scheduled/API-driven, with artifact retention).
+2. Add richer operator change controls for seller paywall lifecycle (approval workflows, audit UX).
+3. Add stronger per-autopilot policy templates for multi-tenant production defaults.
+4. Expand external endpoint compatibility fixtures and regression harness coverage.

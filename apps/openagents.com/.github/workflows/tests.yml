@@ -52,5 +52,16 @@ jobs:
       - name: Build Assets
         run: npm run build
 
+      - name: EP212 deterministic rehearsal gate
+        run: composer test:ep212:junit
+
+      - name: Upload EP212 deterministic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ep212-deterministic-junit-php${{ matrix.php-version }}
+          path: output/ep212-rehearsal/ep212-deterministic-junit.xml
+          if-no-files-found: ignore
+
       - name: Tests
         run: ./vendor/bin/pest
