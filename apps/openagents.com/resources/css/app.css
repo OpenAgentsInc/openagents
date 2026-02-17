@@ -207,7 +207,7 @@
         cursor: pointer;
     }
 
-    html.dark {
+    html {
         color-scheme: dark;
     }
 

@@ -1,7 +1,8 @@
+import { useChat } from '@ai-sdk/react';
 import { Head } from '@inertiajs/react';
 import { ArrowUpIcon } from '@radix-ui/react-icons';
-import { nanoid } from 'nanoid';
-import { useCallback, useRef, useState } from 'react';
+import { DefaultChatTransport, type UIMessage } from 'ai';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Conversation,
     ConversationContent,
@@ -9,105 +10,84 @@ import {
 } from '@/components/ai-elements/conversation';
 import {
     Message,
-    MessageBranch,
-    MessageBranchContent,
-    MessageBranchNext,
-    MessageBranchPage,
-    MessageBranchPrevious,
-    MessageBranchSelector,
     MessageContent,
     MessageResponse,
 } from '@/components/ai-elements/message';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-/** Message shape aligned with ai-elements demo (simplified: no sources/reasoning/tools) */
-interface IndexMessage {
-    key: string;
-    from: 'user' | 'assistant';
-    versions: { id: string; content: string }[];
+/** Extract plain text from UIMessage parts for display (text parts only). */
+function textFromParts(parts: UIMessage['parts']): string {
+    if (!Array.isArray(parts)) return '';
+    return parts
+        .filter((p): p is { type: 'text'; text: string } => p?.type === 'text' && typeof (p as { text?: unknown }).text === 'string')
+        .map((p) => p.text)
+        .join('');
 }
 
-const MOCK_RESPONSES = [
-    "Got it. I'll help with that once we're wired to the API.",
-    "Message received. Ready to connect this to the backend.",
-    "Noted. The next step is hooking this up to your chat API.",
-];
-
-const delay = (ms: number): Promise<void> =>
-    new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-
 /**
- * Submit behavior adapted from assistant-ui:
- * - ComposerInput: Enter submits, Shift+Enter newline, IME composition respected
- * - Conversation/submit flow from ai-elements demo: addUserMessage + streamed assistant reply
+ * Index chat: connects to Laravel POST api/chat (Vercel AI SDK protocol).
+ * Creates a conversation via POST /api/chats when needed; uses useChat + DefaultChatTransport.
  */
 export default function Index() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [value, setValue] = useState('');
     const [isComposing, setIsComposing] = useState(false);
-    const [messages, setMessages] = useState<IndexMessage[]>([]);
-    const [status, setStatus] = useState<'ready' | 'submitted' | 'streaming'>('ready');
+    const [conversationId, setConversationId] = useState<string | null>(null);
+    const [authRequired, setAuthRequired] = useState(false);
+    const createAttemptedRef = useRef(false);
 
-    const updateMessageContent = useCallback((messageId: string, newContent: string) => {
-        setMessages((prev) =>
-            prev.map((msg) => {
-                if (msg.versions.some((v) => v.id === messageId)) {
-                    return {
-                        ...msg,
-                        versions: msg.versions.map((v) =>
-                            v.id === messageId ? { ...v, content: newContent } : v,
-                        ),
-                    };
+    // Create a conversation when mounted (authenticated user only)
+    useEffect(() => {
+        if (createAttemptedRef.current || conversationId) return;
+        createAttemptedRef.current = true;
+        fetch('/api/chats', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ title: 'Chat' }),
+        })
+            .then((res) => {
+                if (res.status === 401) {
+                    setAuthRequired(true);
+                    return;
                 }
-                return msg;
-            }),
-        );
-    }, []);
+                if (!res.ok) return;
+                return res.json();
+            })
+            .then((data: { data?: { id?: string } } | undefined) => {
+                const id = data?.data?.id;
+                if (typeof id === 'string' && id.trim() !== '') {
+                    setConversationId(id.trim());
+                }
+            })
+            .catch(() => {});
+    }, [conversationId]);
 
-    const streamResponse = useCallback(
-        async (messageId: string, content: string) => {
-            setStatus('streaming');
-            const words = content.split(' ');
-            let currentContent = '';
-            for (const [i, word] of words.entries()) {
-                currentContent += (i > 0 ? ' ' : '') + word;
-                updateMessageContent(messageId, currentContent);
-                await delay(Math.random() * 80 + 40);
-            }
-            setStatus('ready');
-        },
-        [updateMessageContent],
+    const api = useMemo(
+        () => (conversationId ? `/api/chat?conversationId=${encodeURIComponent(conversationId)}` : ''),
+        [conversationId],
+    );
+    const transport = useMemo(
+        () => (api ? new DefaultChatTransport({ api, credentials: 'include' }) : null),
+        [api],
     );
 
-    const addUserMessage = useCallback(
-        (content: string) => {
-            const userMessage: IndexMessage = {
-                from: 'user',
-                key: `user-${nanoid()}`,
-                versions: [{ id: `user-${nanoid()}`, content }],
-            };
-            setMessages((prev) => [...prev, userMessage]);
-            setValue('');
-            setStatus('submitted');
+    const { messages, sendMessage, status, error, clearError } = useChat({
+        id: conversationId ?? undefined,
+        messages: [],
+        transport: transport ?? undefined,
+    });
 
-            const assistantMessageId = `assistant-${nanoid()}`;
-            const assistantMessage: IndexMessage = {
-                from: 'assistant',
-                key: `assistant-${nanoid()}`,
-                versions: [{ id: assistantMessageId, content: '' }],
-            };
-            setTimeout(() => {
-                setMessages((prev) => [...prev, assistantMessage]);
-                const response =
-                    MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)];
-                streamResponse(assistantMessageId, response);
-            }, 400);
-        },
-        [streamResponse],
-    );
+    // Auto-scroll message container to bottom when messages change (new message or streaming update)
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el || messages.length === 0) return;
+        requestAnimationFrame(() => {
+            el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        });
+    }, [messages]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -115,67 +95,90 @@ export default function Index() {
             if (isComposing || e.nativeEvent.isComposing) return;
             if (e.shiftKey) return;
             e.preventDefault();
-            if (!value.trim() || status === 'streaming') return;
+            const trimmed = value.trim();
+            if (!trimmed || status === 'streaming' || status === 'submitted' || !conversationId) return;
             const form = e.currentTarget.form;
             const submitButton = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
             if (submitButton?.disabled) return;
             form?.requestSubmit();
         },
-        [isComposing, value, status],
+        [isComposing, value, status, conversationId],
     );
 
     const handleSubmit = useCallback(
-        (e: React.FormEvent<HTMLFormElement>) => {
+        async (e: React.FormEvent<HTMLFormElement>) => {
             e.preventDefault();
             const trimmed = value.trim();
-            if (!trimmed || status === 'streaming') return;
-            addUserMessage(trimmed);
+            if (!trimmed || status === 'streaming' || status === 'submitted' || !conversationId) return;
+            setValue('');
+            await sendMessage({ text: trimmed });
             requestAnimationFrame(() => {
                 textareaRef.current?.focus({ preventScroll: true });
                 textareaRef.current?.setSelectionRange(0, 0);
             });
         },
-        [value, status, addUserMessage],
+        [value, status, conversationId, sendMessage],
     );
 
-    const isSubmitDisabled = !value.trim() || status === 'streaming';
+    const isStreaming = status === 'submitted' || status === 'streaming';
+    const isSubmitDisabled = !value.trim() || isStreaming || !conversationId || authRequired;
 
     return (
         <>
             <Head title="" />
             <div className="chat-page-root min-h-pwa flex h-dvh flex-col overflow-hidden bg-black">
                 <main className="firefox-scrollbar-margin-fix relative flex min-h-0 w-full flex-1 flex-col overflow-hidden transition-[width,height] print:absolute print:left-0 print:top-0 print:h-auto print:min-h-auto print:overflow-visible">
-                    {/* Scrollable content: ai-elements Conversation + Messages */}
+                    {/* Scrollable content: ai-elements Conversation + Messages from useChat */}
                     <div
+                        ref={scrollContainerRef}
                         className="absolute inset-0 overflow-y-auto print:static print:inset-auto print:block print:h-auto print:overflow-visible print:pb-0"
                         style={{ paddingBottom: 144, scrollbarGutter: 'stable both-edges' }}
                     >
                         <Conversation className="mx-auto w-full max-w-3xl">
                             <ConversationContent className="min-h-[calc(100vh-20rem)] px-4 pt-8 pb-10">
-                                {messages.map(({ versions, ...message }) => (
-                                    <MessageBranch defaultBranch={0} key={message.key}>
-                                        <MessageBranchContent>
-                                            {versions.map((version) => (
-                                                <Message from={message.from} key={`${message.key}-${version.id}`}>
-                                                    <MessageContent>
-                                                        <MessageResponse>{version.content}</MessageResponse>
-                                                    </MessageContent>
-                                                </Message>
-                                            ))}
-                                        </MessageBranchContent>
-                                        {versions.length > 1 && (
-                                            <MessageBranchSelector>
-                                                <MessageBranchPrevious />
-                                                <MessageBranchPage />
-                                                <MessageBranchNext />
-                                            </MessageBranchSelector>
-                                        )}
-                                    </MessageBranch>
-                                ))}
+                                {authRequired && (
+                                    <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+                                        <p>Sign in to chat.</p>
+                                        <Button asChild variant="outline" size="sm">
+                                            <a href="/login">Sign in</a>
+                                        </Button>
+                                    </div>
+                                )}
+                                {!authRequired && !conversationId && (
+                                    <div className="py-12 text-center text-muted-foreground">
+                                        Loading…
+                                    </div>
+                                )}
+                                {!authRequired && conversationId && messages.length === 0 && (
+                                    <div className="py-12 text-center text-muted-foreground">
+                                        Send a message to start.
+                                    </div>
+                                )}
+                                {!authRequired && conversationId && messages.length > 0 && (
+                                    <>
+                                        {messages.map((m) => (
+                                            <Message key={m.id} from={m.role}>
+                                                <MessageContent>
+                                                    <MessageResponse>{textFromParts(m.parts)}</MessageResponse>
+                                                </MessageContent>
+                                            </Message>
+                                        ))}
+                                    </>
+                                )}
                             </ConversationContent>
                             <ConversationScrollButton />
                         </Conversation>
                     </div>
+
+                    {/* Error banner */}
+                    {error && (
+                        <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between gap-2 bg-destructive/90 px-4 py-2 text-destructive-foreground text-sm">
+                            <span>{error.message}</span>
+                            <Button variant="ghost" size="sm" onClick={() => clearError()}>
+                                Dismiss
+                            </Button>
+                        </div>
+                    )}
 
                     {/* Fixed bottom input bar (unchanged look) */}
                     <div className="pointer-events-none absolute bottom-0 z-10 w-full overflow-x-visible px-2">
@@ -200,7 +203,7 @@ export default function Index() {
                                                 ref={textareaRef}
                                                 name="input"
                                                 id="chat-input"
-                                                placeholder="Type message here"
+                                                placeholder={authRequired ? 'Sign in to chat' : 'Type message here'}
                                                 value={value}
                                                 onChange={(e) => setValue(e.target.value)}
                                                 className="chat-input-textarea w-full min-w-0 resize-none bg-transparent text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
@@ -211,6 +214,7 @@ export default function Index() {
                                                 onKeyDown={handleKeyDown}
                                                 onCompositionStart={() => setIsComposing(true)}
                                                 onCompositionEnd={() => setIsComposing(false)}
+                                                disabled={authRequired || !conversationId}
                                             />
                                         </div>
                                         <div className="@container -mb-px mt-2 flex w-full min-w-0 flex-row-reverse justify-between">

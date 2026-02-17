@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react';
-import AppearanceTabs from '@/components/appearance-tabs';
+import { Moon } from 'lucide-react';
 import Heading from '@/components/heading';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
@@ -25,9 +25,14 @@ export default function Appearance() {
                     <Heading
                         variant="small"
                         title="Appearance settings"
-                        description="Update your account's appearance settings"
+                        description="The app uses dark mode for everyone."
                     />
-                    <AppearanceTabs />
+                    <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground">
+                        <Moon className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                            Dark mode is always on. There is no theme toggle.
+                        </p>
+                    </div>
                 </div>
             </SettingsLayout>
         </AppLayout>
