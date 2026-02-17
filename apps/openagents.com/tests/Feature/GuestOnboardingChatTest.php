@@ -28,7 +28,7 @@ test('guest chat keeps a stable guest conversation id in session', function () {
     $firstPayload = inertiaPayload($first);
     $firstConversationId = (string) ($firstPayload['props']['conversationId'] ?? '');
 
-    expect($firstConversationId)->toStartWith('guest-');
+    expect($firstConversationId)->toMatch('/^g-[a-f0-9]{32}$/');
     expect(session('chat.guest.conversation_id'))->toBe($firstConversationId);
 
     $second = $this->get('/chat');

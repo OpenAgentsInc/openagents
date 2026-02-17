@@ -72,14 +72,23 @@ function renderMessagePart(part: unknown, idx: number): ReactNode {
         return <MessageResponse key={idx}>{text}</MessageResponse>;
     }
 
-    if (type === 'dynamic-tool' || (typeof type === 'string' && type.startsWith('tool-'))) {
+    if (type === 'step-start') return null;
+
+    if (
+        type === 'dynamic-tool' ||
+        (typeof type === 'string' && type.startsWith('tool-')) ||
+        (typeof p.toolCallId === 'string' && ('input' in p || 'output' in p))
+    ) {
         const toolName = toolNameFromPart(part);
         const toolType = typeof type === 'string' ? type : `tool-${toolName}`;
         const toolState = normalizeToolState(p.state);
         const errorText =
             typeof p.errorText === 'string' ? p.errorText : typeof p.error === 'string' ? p.error : undefined;
         const defaultOpen =
-            toolState === 'approval-requested' || toolState === 'output-error' || toolState === 'output-denied';
+            toolState === 'approval-requested' ||
+            toolState === 'output-error' ||
+            toolState === 'output-denied' ||
+            toolState === 'output-available';
 
         const header =
             toolType === 'dynamic-tool' ? (
@@ -91,8 +100,9 @@ function renderMessagePart(part: unknown, idx: number): ReactNode {
                 />
             );
 
+        const key = typeof p.toolCallId === 'string' ? p.toolCallId : `part-${idx}`;
         return (
-            <Tool key={idx} defaultOpen={defaultOpen}>
+            <Tool key={key} defaultOpen={defaultOpen}>
                 {header}
                 <ToolContent>
                     {p.input !== undefined && <ToolInput input={p.input as ToolPart['input']} />}
@@ -110,9 +120,29 @@ function renderMessagePart(part: unknown, idx: number): ReactNode {
 
 type IndexPageProps = { auth?: { user?: unknown } };
 
+function isGuestConversationId(value: unknown): value is string {
+    return typeof value === 'string' && /^g-[a-f0-9]{32}$/i.test(value.trim());
+}
+
+function createGuestConversationId(): string {
+    const raw =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+
+    const compact = raw
+        .replace(/[^a-f0-9]/gi, '')
+        .toLowerCase()
+        .padEnd(32, '0')
+        .slice(0, 32);
+
+    return `g-${compact}`;
+}
+
 /**
  * Index chat: works for guests and authenticated users. Everyone stays on the homepage.
- * Guests: GET /api/chat/guest-session for conversation id. Authed: POST /api/chats.
+ * Guests get an immediate local id so input is usable instantly, then sync it to session.
+ * Authenticated users create a conversation via POST /api/chats.
  */
 export default function Index() {
     const { auth } = usePage<IndexPageProps>().props;
@@ -122,27 +152,48 @@ export default function Index() {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [value, setValue] = useState('');
     const [isComposing, setIsComposing] = useState(false);
-    const [conversationId, setConversationId] = useState<string | null>(null);
+    const [conversationId, setConversationId] = useState<string | null>(() =>
+        isGuest ? createGuestConversationId() : null,
+    );
     const [createFailedAuth, setCreateFailedAuth] = useState(false);
     const initAttemptedRef = useRef(false);
 
-    // Resolve conversation id: guests use guest-session; authed users create via POST /api/chats
+    // Resolve conversation id once:
+    // Guests: sync current guest id into session (non-blocking for input).
+    // Auth users: create via POST /api/chats.
     useEffect(() => {
-        if (initAttemptedRef.current || conversationId) return;
-        initAttemptedRef.current = true;
+        if (initAttemptedRef.current) return;
 
         if (isGuest) {
-            fetch('/api/chat/guest-session', { credentials: 'include' })
+            initAttemptedRef.current = true;
+
+            const requestedId = isGuestConversationId(conversationId)
+                ? conversationId
+                : createGuestConversationId();
+
+            if (requestedId !== conversationId) {
+                setConversationId(requestedId);
+            }
+
+            fetch(
+                `/api/chat/guest-session?conversationId=${encodeURIComponent(requestedId)}`,
+                { credentials: 'include' },
+            )
                 .then((res) => (res.ok ? res.json() : null))
                 .then((data: { conversationId?: string } | null) => {
                     const id = data?.conversationId;
-                    if (typeof id === 'string' && id.trim() !== '') {
-                        setConversationId(id.trim());
+                    if (isGuestConversationId(id) && id !== requestedId) {
+                        setConversationId(id);
                     }
                 })
                 .catch(() => {});
+
             return;
         }
+
+        if (conversationId) return;
+
+        initAttemptedRef.current = true;
 
         fetch('/api/chats', {
             method: 'POST',
@@ -184,14 +235,19 @@ export default function Index() {
         transport: transport ?? undefined,
     });
 
-    // Focus the textarea when conversation is ready (input becomes enabled)
+    // Focus the textarea when conversation is ready.
+    // For guests, conversationId is immediate and should not wait on network.
     useEffect(() => {
-        if (!conversationId || authRequired) return;
+        if (authRequired) return;
+        if (!conversationId) return;
+
         const el = textareaRef.current;
         if (!el) return;
+
         const id = requestAnimationFrame(() => {
             el.focus({ preventScroll: true });
         });
+
         return () => cancelAnimationFrame(id);
     }, [conversationId, authRequired]);
 
@@ -210,8 +266,10 @@ export default function Index() {
             if (isComposing || e.nativeEvent.isComposing) return;
             if (e.shiftKey) return;
             e.preventDefault();
+
             const trimmed = value.trim();
             if (!trimmed || status === 'streaming' || status === 'submitted' || !conversationId) return;
+
             const form = e.currentTarget.form;
             const submitButton = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
             if (submitButton?.disabled) return;

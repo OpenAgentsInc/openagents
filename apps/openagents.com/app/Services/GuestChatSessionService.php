@@ -15,35 +15,38 @@ class GuestChatSessionService
     {
         $existing = $request->session()->get('chat.guest.conversation_id');
 
-        if (is_string($existing) && trim($existing) !== '') {
-            return $existing;
+        if ($this->isGuestConversationId($existing)) {
+            return strtolower(trim((string) $existing));
         }
 
         if ($this->isGuestConversationId($requestedConversationId)) {
-            $request->session()->put('chat.guest.conversation_id', $requestedConversationId);
+            $id = strtolower(trim((string) $requestedConversationId));
+            $request->session()->put('chat.guest.conversation_id', $id);
 
-            return $requestedConversationId;
+            return $id;
         }
 
-        $id = 'guest-'.Str::uuid7();
+        $id = $this->generateGuestConversationId();
         $request->session()->put('chat.guest.conversation_id', $id);
 
         return $id;
     }
 
-    public function isGuestConversationId(?string $value): bool
+    public function isGuestConversationId(mixed $value): bool
     {
         if (! is_string($value)) {
             return false;
         }
 
-        $candidate = trim($value);
+        $candidate = strtolower(trim($value));
 
         if ($candidate === '') {
             return false;
         }
 
-        return (bool) preg_match('/^guest-[a-z0-9-]+$/i', $candidate);
+        // Keep ids <= 36 chars to fit `agent_conversations.id` and `threads.id` schema.
+        // Format: g- + 32 lowercase hex chars (34 chars total).
+        return (bool) preg_match('/^g-[a-f0-9]{32}$/', $candidate);
     }
 
     public function guestUser(): User
@@ -95,5 +98,12 @@ class GuestChatSessionService
                 'updated_at' => $now,
             ]);
         }
+    }
+
+    private function generateGuestConversationId(): string
+    {
+        $uuid = str_replace('-', '', strtolower((string) Str::uuid7()));
+
+        return 'g-'.substr($uuid, 0, 32);
     }
 }
