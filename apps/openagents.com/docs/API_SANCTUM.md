@@ -52,6 +52,10 @@ This app now exposes a token-authenticated API under `/api` using Laravel Sanctu
 - `GET /api/l402/settlements`
 - `GET /api/l402/deployments`
 
+Optional query for wallet/transactions/paywalls/settlements/deployments:
+- `autopilot=<id-or-handle>` to scope analytics to one owned autopilot.
+- Unknown autopilot => `404`, non-owned autopilot => `403`.
+
 ### Agent Payments (Spark)
 
 Primary endpoints:

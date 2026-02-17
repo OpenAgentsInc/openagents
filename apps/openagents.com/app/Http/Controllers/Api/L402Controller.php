@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\OpenApi\Parameters\PerPageQueryParameter;
+use App\OpenApi\Parameters\AutopilotQueryParameter;
+use App\OpenApi\Parameters\L402TransactionsQueryParameters;
 use App\OpenApi\Responses\DataObjectResponse;
+use App\OpenApi\Responses\ForbiddenResponse;
 use App\OpenApi\Responses\NotFoundResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
 use Illuminate\Http\JsonResponse;
@@ -22,13 +24,17 @@ class L402Controller extends Controller
      * client-side policy settings.
      */
     #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Parameters(factory: AutopilotQueryParameter::class)]
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function wallet(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
+        $autopilotFilter = $this->resolveAutopilotFilter($request, $userId);
+        $autopilotId = $autopilotFilter['id'] ?? null;
 
-        $receipts = $this->receiptQuery($userId)
+        $receipts = $this->receiptQuery($userId, $autopilotId)
             ->limit(200)
             ->get()
             ->map(fn ($row) => $this->mapReceiptRow($row))
@@ -88,6 +94,9 @@ class L402Controller extends Controller
                     'responseMaxBytes' => (int) config('lightning.l402.response_max_bytes', 0),
                     'responsePreviewBytes' => (int) config('lightning.l402.response_preview_bytes', 0),
                 ],
+                'filter' => [
+                    'autopilot' => $autopilotFilter,
+                ],
             ],
         ]);
     }
@@ -99,15 +108,18 @@ class L402Controller extends Controller
      * correlation metadata.
      */
     #[OpenApi\Operation(tags: ['L402'])]
-    #[OpenApi\Parameters(factory: PerPageQueryParameter::class)]
+    #[OpenApi\Parameters(factory: L402TransactionsQueryParameters::class)]
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function transactions(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
+        $autopilotFilter = $this->resolveAutopilotFilter($request, $userId);
+        $autopilotId = $autopilotFilter['id'] ?? null;
 
         $perPage = max(1, min(200, (int) $request->integer('per_page', 30)));
-        $paginator = $this->receiptQuery($userId)->paginate($perPage);
+        $paginator = $this->receiptQuery($userId, $autopilotId)->paginate($perPage);
 
         $rows = collect($paginator->items())
             ->map(fn ($row) => $this->mapReceiptRow($row))
@@ -123,6 +135,9 @@ class L402Controller extends Controller
                     'perPage' => $paginator->perPage(),
                     'total' => $paginator->total(),
                     'hasMorePages' => $paginator->hasMorePages(),
+                ],
+                'filter' => [
+                    'autopilot' => $autopilotFilter,
                 ],
             ],
         ]);
@@ -158,13 +173,17 @@ class L402Controller extends Controller
      * Get paywall aggregation by host/scope.
      */
     #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Parameters(factory: AutopilotQueryParameter::class)]
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function paywalls(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
+        $autopilotFilter = $this->resolveAutopilotFilter($request, $userId);
+        $autopilotId = $autopilotFilter['id'] ?? null;
 
-        $receipts = $this->receiptQuery($userId)
+        $receipts = $this->receiptQuery($userId, $autopilotId)
             ->limit(500)
             ->get()
             ->map(fn ($row) => $this->mapReceiptRow($row));
@@ -206,6 +225,9 @@ class L402Controller extends Controller
                     'totalAttempts' => $receipts->count(),
                     'totalPaidCount' => $receipts->where('paid', true)->count(),
                 ],
+                'filter' => [
+                    'autopilot' => $autopilotFilter,
+                ],
             ],
         ]);
     }
@@ -214,13 +236,17 @@ class L402Controller extends Controller
      * Get settlement-focused paid receipt summary.
      */
     #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Parameters(factory: AutopilotQueryParameter::class)]
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function settlements(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
+        $autopilotFilter = $this->resolveAutopilotFilter($request, $userId);
+        $autopilotId = $autopilotFilter['id'] ?? null;
 
-        $receipts = $this->receiptQuery($userId)
+        $receipts = $this->receiptQuery($userId, $autopilotId)
             ->limit(500)
             ->get()
             ->map(fn ($row) => $this->mapReceiptRow($row));
@@ -256,6 +282,9 @@ class L402Controller extends Controller
                 ],
                 'daily' => $daily->all(),
                 'settlements' => $settlements->take(100)->all(),
+                'filter' => [
+                    'autopilot' => $autopilotFilter,
+                ],
             ],
         ]);
     }
@@ -264,11 +293,15 @@ class L402Controller extends Controller
      * List L402 deployment and gateway-related operational events.
      */
     #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Parameters(factory: AutopilotQueryParameter::class)]
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function deployments(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
+        $autopilotFilter = $this->resolveAutopilotFilter($request, $userId);
+        $autopilotId = $autopilotFilter['id'] ?? null;
 
         $events = DB::table('run_events as e')
             ->where('e.user_id', $userId)
@@ -277,6 +310,7 @@ class L402Controller extends Controller
                 'l402_gateway_event',
                 'l402_executor_heartbeat',
             ])
+            ->when($autopilotId !== null, fn ($query) => $query->where('e.autopilot_id', $autopilotId))
             ->orderByDesc('e.id')
             ->limit(100)
             ->get(['e.id', 'e.type', 'e.payload', 'e.created_at'])
@@ -300,11 +334,14 @@ class L402Controller extends Controller
                     'paymentTimeoutMs' => (int) config('lightning.l402.payment_timeout_ms', 0),
                     'demoPresets' => array_keys((array) config('lightning.demo_presets', [])),
                 ],
+                'filter' => [
+                    'autopilot' => $autopilotFilter,
+                ],
             ],
         ]);
     }
 
-    private function receiptQuery(int $userId)
+    private function receiptQuery(int $userId, ?string $autopilotId = null)
     {
         return DB::table('run_events as e')
             ->leftJoin('threads as t', function ($join) {
@@ -317,6 +354,7 @@ class L402Controller extends Controller
             })
             ->where('e.user_id', $userId)
             ->where('e.type', 'l402_fetch_receipt')
+            ->when($autopilotId !== null, fn ($query) => $query->where('e.autopilot_id', $autopilotId))
             ->select([
                 'e.id',
                 'e.thread_id',
@@ -329,6 +367,44 @@ class L402Controller extends Controller
                 'r.completed_at as run_completed_at',
             ])
             ->orderByDesc('e.id');
+    }
+
+    /**
+     * @return array{id:string,handle:string}|null
+     */
+    private function resolveAutopilotFilter(Request $request, int $userId): ?array
+    {
+        $candidate = $this->toNullableString($request->query('autopilot'));
+        if ($candidate === null) {
+            return null;
+        }
+
+        $needle = strtolower($candidate);
+
+        $autopilot = DB::table('autopilots')
+            ->whereNull('deleted_at')
+            ->where(function ($query) use ($candidate, $needle) {
+                $query->where('id', $candidate)
+                    ->orWhereRaw('LOWER(handle) = ?', [$needle]);
+            })
+            ->first([
+                'id',
+                'handle',
+                'owner_user_id',
+            ]);
+
+        if (! $autopilot) {
+            abort(404, 'autopilot_not_found');
+        }
+
+        if ((int) $autopilot->owner_user_id !== $userId) {
+            abort(403, 'autopilot_forbidden');
+        }
+
+        return [
+            'id' => (string) $autopilot->id,
+            'handle' => (string) $autopilot->handle,
+        ];
     }
 
     /**
