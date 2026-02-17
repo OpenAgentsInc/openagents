@@ -5,8 +5,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-it('requires sanctum authentication for api v1 routes', function () {
-    $this->getJson('/api/v1/me')->assertUnauthorized();
+it('requires sanctum authentication for api routes', function () {
+    $this->getJson('/api/me')->assertUnauthorized();
 });
 
 it('supports me and personal access token lifecycle via api', function () {
@@ -18,7 +18,7 @@ it('supports me and personal access token lifecycle via api', function () {
     $seedToken = $user->createToken('seed-token')->plainTextToken;
 
     $this->withToken($seedToken)
-        ->getJson('/api/v1/me')
+        ->getJson('/api/me')
         ->assertOk()
         ->assertJsonPath('data.user.email', 'token-user@openagents.com')
         ->assertJsonPath('data.user.name', 'Token User');
@@ -26,7 +26,7 @@ it('supports me and personal access token lifecycle via api', function () {
     $expiresAt = Carbon::now()->addDays(7)->toIso8601String();
 
     $createResponse = $this->withToken($seedToken)
-        ->postJson('/api/v1/tokens', [
+        ->postJson('/api/tokens', [
             'name' => 'api-cli',
             'abilities' => ['chat:read', 'chat:write'],
             'expires_at' => $expiresAt,
@@ -41,7 +41,7 @@ it('supports me and personal access token lifecycle via api', function () {
     expect($plainToken)->toBeString()->not->toBeEmpty();
 
     $listResponse = $this->withToken($seedToken)
-        ->getJson('/api/v1/tokens')
+        ->getJson('/api/tokens')
         ->assertOk();
 
     $tokens = collect($listResponse->json('data'));
@@ -51,22 +51,22 @@ it('supports me and personal access token lifecycle via api', function () {
     expect($createdToken)->not->toBeNull();
 
     $this->withToken($seedToken)
-        ->deleteJson('/api/v1/tokens/'.$createdToken['id'])
+        ->deleteJson('/api/tokens/'.$createdToken['id'])
         ->assertOk()
         ->assertJsonPath('data.deleted', true);
 
     $this->withToken($seedToken)
-        ->deleteJson('/api/v1/tokens')
+        ->deleteJson('/api/tokens')
         ->assertOk()
         ->assertJsonPath('data.deletedCount', 1);
 
     $this->withToken($seedToken)
-        ->getJson('/api/v1/tokens')
+        ->getJson('/api/tokens')
         ->assertOk()
         ->assertJsonCount(0, 'data');
 });
 
-it('returns non-empty threads plus only the newest empty thread in /api/v1/me', function () {
+it('returns non-empty threads plus only the newest empty thread in /api/me', function () {
     $user = User::factory()->create([
         'email' => 'thread-filter-user@openagents.com',
     ]);
@@ -138,7 +138,7 @@ it('returns non-empty threads plus only the newest empty thread in /api/v1/me', 
     ]);
 
     $response = $this->withToken($token)
-        ->getJson('/api/v1/me')
+        ->getJson('/api/me')
         ->assertOk();
 
     $threadIds = collect($response->json('data.chatThreads'))

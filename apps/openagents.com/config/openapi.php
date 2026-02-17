@@ -8,7 +8,7 @@ return [
 
             'info' => [
                 'title' => 'OpenAgents API',
-                'description' => 'OpenAgents REST API (Laravel). Primary auth is Sanctum bearer tokens for /api/v1 endpoints.',
+                'description' => 'OpenAgents REST API (Laravel). Primary auth is Sanctum bearer tokens for /api endpoints.',
                 'version' => env('APP_VERSION', '1.0.0'),
                 'contact' => [
                     'name' => 'OpenAgents',

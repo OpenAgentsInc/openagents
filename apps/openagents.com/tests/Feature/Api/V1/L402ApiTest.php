@@ -4,7 +4,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-it('exposes l402 wallet and receipt endpoints via api v1', function () {
+it('exposes l402 wallet and receipt endpoints via api', function () {
     $user = User::factory()->create([
         'email' => 'l402-user@openagents.com',
     ]);
@@ -74,39 +74,39 @@ it('exposes l402 wallet and receipt endpoints via api v1', function () {
     ]);
 
     $this->withToken($token)
-        ->getJson('/api/v1/l402/wallet')
+        ->getJson('/api/l402/wallet')
         ->assertOk()
         ->assertJsonPath('data.summary.totalAttempts', 1)
         ->assertJsonPath('data.summary.paidCount', 1)
         ->assertJsonPath('data.summary.totalPaidMsats', 42000);
 
     $this->withToken($token)
-        ->getJson('/api/v1/l402/transactions')
+        ->getJson('/api/l402/transactions')
         ->assertOk()
         ->assertJsonPath('data.pagination.total', 1)
         ->assertJsonPath('data.transactions.0.eventId', $eventId)
         ->assertJsonPath('data.transactions.0.paid', true);
 
     $this->withToken($token)
-        ->getJson('/api/v1/l402/transactions/'.$eventId)
+        ->getJson('/api/l402/transactions/'.$eventId)
         ->assertOk()
         ->assertJsonPath('data.transaction.eventId', $eventId)
         ->assertJsonPath('data.transaction.host', 'sats4ai.com');
 
     $this->withToken($token)
-        ->getJson('/api/v1/l402/paywalls')
+        ->getJson('/api/l402/paywalls')
         ->assertOk()
         ->assertJsonPath('data.summary.uniqueTargets', 1)
         ->assertJsonPath('data.summary.totalPaidCount', 1);
 
     $this->withToken($token)
-        ->getJson('/api/v1/l402/settlements')
+        ->getJson('/api/l402/settlements')
         ->assertOk()
         ->assertJsonPath('data.summary.settledCount', 1)
         ->assertJsonPath('data.summary.totalMsats', 42000);
 
     $this->withToken($token)
-        ->getJson('/api/v1/l402/deployments')
+        ->getJson('/api/l402/deployments')
         ->assertOk()
         ->assertJsonPath('data.deployments.0.type', 'l402_gateway_deployment');
 });

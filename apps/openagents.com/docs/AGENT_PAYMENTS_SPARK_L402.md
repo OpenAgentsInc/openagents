@@ -62,21 +62,21 @@ Files:
 
 Sanctum-authenticated endpoints:
 
-- `GET /api/v1/agent-payments/wallet`
-- `POST /api/v1/agent-payments/wallet`
-- `GET /api/v1/agent-payments/balance`
-- `POST /api/v1/agent-payments/invoice`
-- `POST /api/v1/agent-payments/pay`
-- `POST /api/v1/agent-payments/send-spark`
+- `GET /api/agent-payments/wallet`
+- `POST /api/agent-payments/wallet`
+- `GET /api/agent-payments/balance`
+- `POST /api/agent-payments/invoice`
+- `POST /api/agent-payments/pay`
+- `POST /api/agent-payments/send-spark`
 
 Back-compat aliases (Episode 169 style):
 
-- `GET /api/v1/agents/me/wallet`
-- `POST /api/v1/agents/me/wallet`
-- `GET /api/v1/agents/me/balance`
-- `POST /api/v1/payments/invoice`
-- `POST /api/v1/payments/pay`
-- `POST /api/v1/payments/send-spark`
+- `GET /api/agents/me/wallet`
+- `POST /api/agents/me/wallet`
+- `GET /api/agents/me/balance`
+- `POST /api/payments/invoice`
+- `POST /api/payments/pay`
+- `POST /api/payments/send-spark`
 
 Files:
 
@@ -86,7 +86,7 @@ Files:
 
 ### 5) L402 API wallet endpoint includes Spark wallet snapshot
 
-`GET /api/v1/l402/wallet` now returns `data.sparkWallet` (if present) so L402 views/API consumers can see payer wallet identity/balance context.
+`GET /api/l402/wallet` now returns `data.sparkWallet` (if present) so L402 views/API consumers can see payer wallet identity/balance context.
 
 ## Required runtime env
 

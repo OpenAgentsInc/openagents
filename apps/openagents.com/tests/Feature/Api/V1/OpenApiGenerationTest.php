@@ -1,6 +1,6 @@
 <?php
 
-it('generates OpenAPI spec with api v1 coverage and sanctum security', function () {
+it('generates OpenAPI spec with api coverage and sanctum security', function () {
     $outputPath = storage_path('app/openapi-test-output.json');
 
     if (file_exists($outputPath)) {
@@ -22,13 +22,13 @@ it('generates OpenAPI spec with api v1 coverage and sanctum security', function 
 
     $paths = $spec['paths'] ?? [];
 
-    expect($paths)->toHaveKey('/api/v1/me');
-    expect($paths)->toHaveKey('/api/v1/tokens');
-    expect($paths)->toHaveKey('/api/v1/chats/{conversationId}/stream');
-    expect($paths)->toHaveKey('/api/v1/chat/stream');
-    expect($paths)->toHaveKey('/api/v1/l402/wallet');
-    expect($paths)->toHaveKey('/api/v1/agent-payments/wallet');
-    expect($paths)->toHaveKey('/api/v1/payments/pay');
+    expect($paths)->toHaveKey('/api/me');
+    expect($paths)->toHaveKey('/api/tokens');
+    expect($paths)->toHaveKey('/api/chats/{conversationId}/stream');
+    expect($paths)->toHaveKey('/api/chat/stream');
+    expect($paths)->toHaveKey('/api/l402/wallet');
+    expect($paths)->toHaveKey('/api/agent-payments/wallet');
+    expect($paths)->toHaveKey('/api/payments/pay');
 
     expect($paths)->not->toHaveKey('/api/chat');
 
@@ -48,6 +48,6 @@ it('serves OpenAPI spec from openapi json route', function () {
     expect($spec['openapi'] ?? null)->toBe('3.0.2');
 
     $paths = $spec['paths'] ?? [];
-    expect($paths)->toHaveKey('/api/v1/me');
-    expect($paths)->toHaveKey('/api/v1/settings/profile');
+    expect($paths)->toHaveKey('/api/me');
+    expect($paths)->toHaveKey('/api/settings/profile');
 });

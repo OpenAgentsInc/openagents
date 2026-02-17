@@ -9,8 +9,8 @@ beforeEach(function () {
     config()->set('posthog.disabled', true);
 });
 
-it('supports creating and reading chats through api v1', function () {
-    Ai::fakeAgent(AutopilotAgent::class, ['Hello from API v1']);
+it('supports creating and reading chats through api', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Hello from API']);
 
     $user = User::factory()->create([
         'email' => 'chat-user@openagents.com',
@@ -19,7 +19,7 @@ it('supports creating and reading chats through api v1', function () {
     $token = $user->createToken('chat-api')->plainTextToken;
 
     $createResponse = $this->withToken($token)
-        ->postJson('/api/v1/chats', [
+        ->postJson('/api/chats', [
             'title' => 'API Chat',
         ]);
 
@@ -30,7 +30,7 @@ it('supports creating and reading chats through api v1', function () {
     expect($conversationId)->toBeString()->not->toBeEmpty();
 
     $streamResponse = $this->withToken($token)
-        ->postJson('/api/v1/chats/'.$conversationId.'/stream', [
+        ->postJson('/api/chats/'.$conversationId.'/stream', [
             'messages' => [
                 ['id' => 'm1', 'role' => 'user', 'content' => 'Say hi from API'],
             ],
@@ -44,18 +44,18 @@ it('supports creating and reading chats through api v1', function () {
     expect($streamed)->toContain("data: [DONE]\n\n");
 
     $this->withToken($token)
-        ->getJson('/api/v1/chats')
+        ->getJson('/api/chats')
         ->assertOk()
         ->assertJsonFragment(['id' => $conversationId]);
 
     $showResponse = $this->withToken($token)
-        ->getJson('/api/v1/chats/'.$conversationId)
+        ->getJson('/api/chats/'.$conversationId)
         ->assertOk();
 
     $showResponse->assertJsonPath('data.conversation.id', $conversationId);
 
     $messagesResponse = $this->withToken($token)
-        ->getJson('/api/v1/chats/'.$conversationId.'/messages')
+        ->getJson('/api/chats/'.$conversationId.'/messages')
         ->assertOk();
 
     $messages = collect($messagesResponse->json('data'));
@@ -63,7 +63,7 @@ it('supports creating and reading chats through api v1', function () {
     expect($messages->pluck('role')->all())->toContain('assistant');
 
     $runsResponse = $this->withToken($token)
-        ->getJson('/api/v1/chats/'.$conversationId.'/runs')
+        ->getJson('/api/chats/'.$conversationId.'/runs')
         ->assertOk();
 
     $runs = collect($runsResponse->json('data'));
@@ -72,7 +72,7 @@ it('supports creating and reading chats through api v1', function () {
     $runId = (string) $runs->first()['id'];
 
     $this->withToken($token)
-        ->getJson('/api/v1/chats/'.$conversationId.'/runs/'.$runId.'/events')
+        ->getJson('/api/chats/'.$conversationId.'/runs/'.$runId.'/events')
         ->assertOk()
         ->assertJsonPath('data.run.id', $runId);
 
