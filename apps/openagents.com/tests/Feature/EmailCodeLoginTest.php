@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use WorkOS\Exception\GenericException;
 
 afterEach(function () {
     \Mockery::close();
@@ -63,6 +64,38 @@ test('send code JSON endpoint supports in-chat onboarding flow', function () {
 
     $response->assertSessionHas('auth.magic_auth.email', 'chris@openagents.com');
     $response->assertSessionHas('auth.magic_auth.user_id', 'user_abc123');
+});
+
+test('send code surfaces provider errors for chat onboarding', function () {
+    configureWorkosForTests();
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('createMagicAuth')
+        ->once()
+        ->andThrow(new GenericException('provider down'));
+
+    $response = $this->postJson('/api/auth/email', [
+        'email' => 'chris@openagents.com',
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors('email');
+});
+
+test('send code rejects invalid provider payload without user id', function () {
+    configureWorkosForTests();
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('createMagicAuth')
+        ->once()
+        ->andReturn((object) []);
+
+    $response = $this->postJson('/api/auth/email', [
+        'email' => 'chris@openagents.com',
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors('email');
 });
 
 test('verify code signs in user and stores workos tokens', function () {
@@ -155,6 +188,31 @@ test('verify code JSON endpoint signs in user for chat onboarding', function () 
 
     $response->assertSessionHas('workos_access_token', 'access_token_123');
     $response->assertSessionHas('workos_refresh_token', 'refresh_token_123');
+});
+
+test('verify code surfaces provider errors for chat onboarding', function () {
+    configureWorkosForTests();
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->andThrow(new GenericException('invalid code'));
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'chris@openagents.com',
+                'user_id' => 'user_abc123',
+            ],
+        ])
+        ->postJson('/api/auth/verify', [
+            'code' => '123456',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors('code');
+
+    $this->assertGuest();
 });
 
 test('verify code requires pending email-code session', function () {
