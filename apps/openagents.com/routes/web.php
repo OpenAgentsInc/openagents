@@ -3,6 +3,7 @@
 use App\Http\Controllers\ChatApiController;
 use App\Http\Controllers\ChatPageController;
 use App\Http\Controllers\FeedPageController;
+use App\Http\Controllers\GuestChatSessionController;
 use App\Http\Controllers\L402PageController;
 use App\Http\Controllers\OpenApiSpecController;
 use App\Http\Middleware\ValidateWorkOSSession;
@@ -10,13 +11,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function (Request $request) {
-    if (! $request->user()) {
-        return redirect()->route('chat');
-    }
+Route::get('/', fn () => Inertia::render('index'))->name('home');
 
-    return Inertia::render('index');
-})->name('home');
+Route::get('api/chat/guest-session', GuestChatSessionController::class)->name('api.chat.guest-session');
+
+Route::post('api/chat', [ChatApiController::class, 'stream'])
+    ->middleware(ValidateWorkOSSession::class)
+    ->name('api.chat');
 
 Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
     ->middleware(ValidateWorkOSSession::class)
@@ -36,7 +37,7 @@ Route::get('api/smoke/stream', function (Request $request) {
 
     return response()->stream(function () {
         $write = function (array $payload): void {
-            echo 'data: '.json_encode($payload)."\n\n";
+            echo 'data: ' . json_encode($payload) . "\n\n";
 
             if (ob_get_level() > 0) {
                 ob_flush();
@@ -67,7 +68,7 @@ Route::get('api/smoke/stream', function (Request $request) {
     ]);
 })->name('api.smoke.stream');
 
-Route::get('aui', fn () => Inertia::render('aui'))->name('aui');
+Route::get('aui', fn() => Inertia::render('aui'))->name('aui');
 
 Route::middleware([
     'auth',
@@ -89,11 +90,7 @@ Route::middleware([
     Route::get('admin', function () {
         return Inertia::render('admin/index');
     })->middleware('admin')->name('admin');
-
-    // Vercel AI SDK-compatible endpoint (SSE, Vercel data stream protocol).
-    Route::post('api/chat', [ChatApiController::class, 'stream'])
-        ->name('api.chat');
 });
 
-require __DIR__.'/settings.php';
-require __DIR__.'/auth.php';
+require __DIR__ . '/settings.php';
+require __DIR__ . '/auth.php';

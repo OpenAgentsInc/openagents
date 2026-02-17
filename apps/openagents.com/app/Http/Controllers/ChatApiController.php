@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\AI\RunOrchestrator;
+use App\Services\GuestChatSessionService;
 use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,13 +12,9 @@ use Illuminate\Support\Facades\Log;
 
 class ChatApiController extends Controller
 {
-    public function stream(Request $request)
+    public function stream(Request $request, GuestChatSessionService $guestService)
     {
         $user = $request->user();
-
-        if (! $user) {
-            abort(401);
-        }
 
         $conversationId = $request->route('conversationId');
 
@@ -31,9 +28,18 @@ class ChatApiController extends Controller
 
         $conversationId = trim($conversationId);
 
+        if (! $user) {
+            $sessionGuestId = $request->session()->get('chat.guest.conversation_id');
+            if (! $guestService->isGuestConversationId($conversationId) || $sessionGuestId !== $conversationId) {
+                abort(401);
+            }
+            $guestService->ensureGuestConversationAndThread($conversationId);
+            $user = $guestService->guestUser();
+        }
+
         $conversationExists = DB::table('agent_conversations')
             ->where('id', $conversationId)
-            ->where('user_id', $user->id)
+            ->where('user_id', $user->getAuthIdentifier())
             ->exists();
 
         if (! $conversationExists) {
