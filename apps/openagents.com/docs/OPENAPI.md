@@ -19,6 +19,29 @@ The spec is generated in two ways:
 
 This means deploys will not succeed unless a valid spec can be generated.
 
+## Docs Sync (Mintlify)
+
+The production deploy script now auto-syncs OpenAPI to the docs repo:
+
+- Script: `deploy/sync-openapi-to-docs.sh`
+- Default docs target: `~/code/docs/api/openapi.json`
+- Triggered by: `deploy/deploy-production.sh` after Cloud Run deploy succeeds
+- Commit behavior: commits/pushes docs repo **only when `api/openapi.json` changed**
+
+### Controls
+
+- Disable docs sync for a deploy run:
+
+```bash
+SYNC_DOCS_OPENAPI=0 ./deploy/deploy-production.sh
+```
+
+- Override docs repo path:
+
+```bash
+DOCS_REPO=/path/to/docs ./deploy/sync-openapi-to-docs.sh
+```
+
 ## Local Regeneration
 
 From `apps/openagents.com/`:
