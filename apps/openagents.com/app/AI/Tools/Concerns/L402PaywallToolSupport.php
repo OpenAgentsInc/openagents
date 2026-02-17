@@ -4,20 +4,15 @@ namespace App\AI\Tools\Concerns;
 
 use App\Models\L402Paywall;
 use App\Models\User;
-use App\Support\AdminAccess;
 use Illuminate\Support\Facades\Validator;
 use RuntimeException;
 
 trait L402PaywallToolSupport
 {
-    private function resolveAdminUser(): ?User
+    private function resolveAuthenticatedUser(): ?User
     {
         $user = auth()->user();
         if (! $user instanceof User) {
-            return null;
-        }
-
-        if (! AdminAccess::isAdminEmail($user->email)) {
             return null;
         }
 

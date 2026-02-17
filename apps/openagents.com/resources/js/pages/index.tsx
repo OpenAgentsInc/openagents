@@ -15,7 +15,7 @@ import {
     MessageResponse,
 } from '@/components/ai-elements/message';
 import { Shimmer } from '@/components/ai-elements/shimmer';
-import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion';
+import { Suggestion } from '@/components/ai-elements/suggestion';
 import {
     Tool,
     ToolContent,
@@ -393,7 +393,7 @@ export default function Index() {
     );
 
     const handleSuggestionClick = useCallback(
-        (suggestion: string) => {
+        async (suggestion: string) => {
             if (
                 authRequired ||
                 !conversationId ||
@@ -407,18 +407,14 @@ export default function Index() {
                 conversationId,
                 suggestion,
             });
-
-            setValue(suggestion);
-
+            setValue('');
+            await sendMessage({ text: suggestion });
             requestAnimationFrame(() => {
-                const el = textareaRef.current;
-                if (!el) return;
-                el.focus({ preventScroll: true });
-                const len = suggestion.length;
-                el.setSelectionRange(len, len);
+                textareaRef.current?.focus({ preventScroll: true });
+                textareaRef.current?.setSelectionRange(0, 0);
             });
         },
-        [authRequired, capture, conversationId, status],
+        [authRequired, capture, conversationId, sendMessage, status],
     );
 
     const isStreaming = status === 'submitted' || status === 'streaming';
@@ -434,6 +430,9 @@ export default function Index() {
             (status === 'streaming' &&
                 lastMessage?.role === 'assistant' &&
                 !textFromParts(lastMessage.parts)));
+
+    const shouldShowQuickSuggestions =
+        !authRequired && messages.length === 0 && !showThinking;
 
     useEffect(() => {
         if (!error?.message) return;
@@ -541,10 +540,26 @@ export default function Index() {
                     <div className="pointer-events-none absolute bottom-0 z-10 w-full overflow-x-visible px-2">
                         <div className="relative mx-auto flex w-full max-w-3xl flex-col overflow-x-visible text-center">
                             <div className="pointer-events-auto mx-auto w-full max-w-[calc(100%-2rem)]">
+                                {shouldShowQuickSuggestions && (
+                                    <div className="mb-2 grid grid-cols-2 gap-2">
+                                        {QUICK_SUGGESTIONS.map((suggestion) => (
+                                            <Suggestion
+                                                key={suggestion}
+                                                suggestion={suggestion}
+                                                onClick={handleSuggestionClick}
+                                                disabled={
+                                                    authRequired ||
+                                                    !conversationId ||
+                                                    isStreaming
+                                                }
+                                                className="h-auto w-full justify-start rounded-lg px-3 py-2 text-left whitespace-normal"
+                                            />
+                                        ))}
+                                    </div>
+                                )}
                                 <div
                                     className={cn(
-                                        'chat-input-outer min-w-0 overflow-hidden rounded-t-lg border border-b-0 border-white/20 p-2 pb-0 backdrop-blur-lg',
-                                        'dark:border-white/12',
+                                        'chat-input-outer min-w-0 overflow-hidden rounded-t-lg p-2 pb-0 backdrop-blur-lg',
                                     )}
                                 >
                                     <form
@@ -555,24 +570,6 @@ export default function Index() {
                                         id="chat-input-form"
                                         onSubmit={handleSubmit}
                                     >
-                                        <Suggestions className="pb-1">
-                                            {QUICK_SUGGESTIONS.map(
-                                                (suggestion) => (
-                                                    <Suggestion
-                                                        key={suggestion}
-                                                        suggestion={suggestion}
-                                                        onClick={
-                                                            handleSuggestionClick
-                                                        }
-                                                        disabled={
-                                                            authRequired ||
-                                                            !conversationId ||
-                                                            isStreaming
-                                                        }
-                                                    />
-                                                ),
-                                            )}
-                                        </Suggestions>
                                         <div className="flex min-w-0 grow flex-row items-start">
                                             <textarea
                                                 ref={textareaRef}

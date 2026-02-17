@@ -81,7 +81,7 @@ test('paywall tools create update and delete with deterministic operation and de
     expect(L402Paywall::withTrashed()->where('id', $paywallId)->exists())->toBeTrue();
 });
 
-test('paywall tools reject unauthorized users', function () {
+test('paywall tools allow any authenticated user and reject guests', function () {
     config()->set('lightning.operator.aperture_reconcile_command', 'sh -c "exit 0"');
 
     $owner = User::factory()->create([
@@ -98,18 +98,18 @@ test('paywall tools reject unauthorized users', function () {
         'enabled' => true,
     ]);
 
-    $nonAdmin = User::factory()->create([
+    $user = User::factory()->create([
         'email' => 'dev@openagents.com',
     ]);
 
-    $this->actingAs($nonAdmin);
+    $this->actingAs($user);
 
     $create = json_decode((new LightningL402PaywallCreateTool)->handle(new Request([
-        'name' => 'Forbidden',
+        'name' => 'Created By Auth User',
         'hostRegexp' => '^l402\\.openagents\\.com$',
-        'pathRegexp' => '^/forbidden$',
+        'pathRegexp' => '^/created-by-auth-user$',
         'priceMsats' => 1000,
-        'upstream' => 'https://example.com/forbidden',
+        'upstream' => 'https://example.com/created-by-auth-user',
     ])), true);
 
     $update = json_decode((new LightningL402PaywallUpdateTool)->handle(new Request([
@@ -121,12 +121,9 @@ test('paywall tools reject unauthorized users', function () {
         'paywallId' => (string) $paywall->id,
     ])), true);
 
-    expect($create['status'])->toBe('failed');
-    expect($create['denyCode'])->toBe('operator_forbidden');
-    expect($update['status'])->toBe('failed');
-    expect($update['denyCode'])->toBe('operator_forbidden');
-    expect($delete['status'])->toBe('failed');
-    expect($delete['denyCode'])->toBe('operator_forbidden');
+    expect($create['status'])->toBe('completed');
+    expect($update['status'])->toBe('completed');
+    expect($delete['status'])->toBe('completed');
 
     auth()->logout();
 
@@ -139,7 +136,7 @@ test('paywall tools reject unauthorized users', function () {
     ])), true);
 
     expect($guest['status'])->toBe('failed');
-    expect($guest['denyCode'])->toBe('operator_forbidden');
+    expect($guest['denyCode'])->toBe('auth_required');
 });
 
 test('paywall tools enforce host path and price guardrails', function () {
