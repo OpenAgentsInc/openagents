@@ -172,4 +172,165 @@ describe("wallet executor http server", () => {
       expect(authorizedResponse.status).toBe(200)
     }),
   )
+
+  it.scoped("serves compatibility /wallets/* routes", () =>
+    Effect.gen(function* () {
+      const config = makeTestConfig({
+        port: 8805,
+      })
+      const layer = makeWalletTestLayer({ config })
+      const server = yield* makeWalletExecutorHttpServer.pipe(Effect.provide(layer))
+      yield* Effect.addFinalizer(() => server.close.pipe(Effect.orDie))
+
+      const createPayerResponse = yield* Effect.tryPromise({
+        try: async () =>
+          await fetch(`${server.address}/wallets/create`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              walletId: "mock-payer",
+            }),
+          }),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(createPayerResponse.status).toBe(200)
+      const createPayerJson = (yield* Effect.tryPromise({
+        try: async () => await createPayerResponse.json(),
+        catch: (error) => new Error(String(error)),
+      })) as {
+        ok: boolean
+        result: { walletId: string; mnemonic: string; sparkAddress: string; balanceSats: number }
+      }
+      expect(createPayerJson.ok).toBe(true)
+      expect(createPayerJson.result.walletId).toBe("mock-payer")
+      expect(createPayerJson.result.mnemonic.split(" ").length).toBeGreaterThanOrEqual(12)
+
+      const createReceiverResponse = yield* Effect.tryPromise({
+        try: async () =>
+          await fetch(`${server.address}/wallets/create`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              walletId: "mock-receiver",
+            }),
+          }),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(createReceiverResponse.status).toBe(200)
+      const createReceiverJson = (yield* Effect.tryPromise({
+        try: async () => await createReceiverResponse.json(),
+        catch: (error) => new Error(String(error)),
+      })) as {
+        ok: boolean
+        result: { walletId: string; mnemonic: string; sparkAddress: string; balanceSats: number }
+      }
+      expect(createReceiverJson.ok).toBe(true)
+
+      const createInvoiceResponse = yield* Effect.tryPromise({
+        try: async () =>
+          await fetch(`${server.address}/wallets/create-invoice`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              walletId: "mock-receiver",
+              mnemonic: createReceiverJson.result.mnemonic,
+              amountSats: 5,
+              description: "integration test",
+            }),
+          }),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(createInvoiceResponse.status).toBe(200)
+      const createInvoiceJson = (yield* Effect.tryPromise({
+        try: async () => await createInvoiceResponse.json(),
+        catch: (error) => new Error(String(error)),
+      })) as {
+        ok: boolean
+        result: { paymentRequest: string }
+      }
+      expect(createInvoiceJson.ok).toBe(true)
+      expect(createInvoiceJson.result.paymentRequest.startsWith("lnmock")).toBe(true)
+
+      const payInvoiceResponse = yield* Effect.tryPromise({
+        try: async () =>
+          await fetch(`${server.address}/wallets/pay-bolt11`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              walletId: "mock-payer",
+              mnemonic: createPayerJson.result.mnemonic,
+              invoice: createInvoiceJson.result.paymentRequest,
+              maxAmountMsats: 20_000,
+              timeoutMs: 12_000,
+              host: "sats4ai.com",
+            }),
+          }),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(payInvoiceResponse.status).toBe(200)
+      const payInvoiceJson = (yield* Effect.tryPromise({
+        try: async () => await payInvoiceResponse.json(),
+        catch: (error) => new Error(String(error)),
+      })) as {
+        ok: boolean
+        result: { preimage: string; status: string }
+      }
+      expect(payInvoiceJson.ok).toBe(true)
+      expect(payInvoiceJson.result.preimage).toHaveLength(64)
+      expect(payInvoiceJson.result.status).toBe("completed")
+
+      const sendSparkResponse = yield* Effect.tryPromise({
+        try: async () =>
+          await fetch(`${server.address}/wallets/send-spark`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              walletId: "mock-payer",
+              mnemonic: createPayerJson.result.mnemonic,
+              sparkAddress: createReceiverJson.result.sparkAddress,
+              amountSats: 1,
+              timeoutMs: 12_000,
+            }),
+          }),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(sendSparkResponse.status).toBe(200)
+
+      const receiverStatusResponse = yield* Effect.tryPromise({
+        try: async () =>
+          await fetch(`${server.address}/wallets/status`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              walletId: "mock-receiver",
+              mnemonic: createReceiverJson.result.mnemonic,
+            }),
+          }),
+        catch: (error) => new Error(String(error)),
+      })
+      expect(receiverStatusResponse.status).toBe(200)
+      const receiverStatusJson = (yield* Effect.tryPromise({
+        try: async () => await receiverStatusResponse.json(),
+        catch: (error) => new Error(String(error)),
+      })) as {
+        ok: boolean
+        result: { balanceSats: number }
+      }
+      expect(receiverStatusJson.ok).toBe(true)
+      expect(receiverStatusJson.result.balanceSats).toBeGreaterThan(1000)
+    }),
+  )
+
 })
