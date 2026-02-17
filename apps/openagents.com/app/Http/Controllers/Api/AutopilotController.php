@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Autopilot;
+use App\Models\Thread;
 use App\OpenApi\Parameters\LimitQueryParameter;
 use App\OpenApi\RequestBodies\CreateAutopilotRequestBody;
 use App\OpenApi\RequestBodies\CreateAutopilotThreadRequestBody;
@@ -14,62 +16,69 @@ use App\OpenApi\Responses\AutopilotThreadResponse;
 use App\OpenApi\Responses\NotFoundResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
-use App\Support\ChatThreadList;
+use App\Services\AutopilotService;
+use App\Services\AutopilotThreadService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Laravel\Ai\Contracts\ConversationStore;
 use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 
 #[OpenApi\PathItem]
 class AutopilotController extends Controller
 {
-    private const DEFAULT_AUTOPILOT_ID = 'default';
-
     /**
      * List autopilots owned by the authenticated user.
      */
     #[OpenApi\Operation(tags: ['Autopilot'])]
     #[OpenApi\Response(factory: AutopilotListResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, AutopilotService $autopilotService): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
             abort(401);
         }
 
+        $limit = max(1, min(200, (int) $request->integer('limit', 100)));
+
+        $autopilots = $autopilotService
+            ->listForUser($user, $limit)
+            ->map(fn (Autopilot $autopilot): array => $this->autopilotPayload($autopilot))
+            ->values()
+            ->all();
+
         return response()->json([
-            'data' => [
-                $this->autopilotPayload($user),
-            ],
+            'data' => $autopilots,
         ]);
     }
 
     /**
      * Create an autopilot resource.
-     *
-     * Phase A behavior: idempotently returns the default autopilot skeleton.
      */
     #[OpenApi\Operation(tags: ['Autopilot'])]
     #[OpenApi\RequestBody(factory: CreateAutopilotRequestBody::class)]
     #[OpenApi\Response(factory: AutopilotResponse::class, statusCode: 201)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, AutopilotService $autopilotService): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
             abort(401);
         }
 
-        $request->validate([
-            'handle' => ['nullable', 'string', 'max:64'],
+        $validated = $request->validate([
+            'handle' => ['nullable', 'string', 'max:64', 'regex:/^[a-zA-Z0-9:_-]+$/'],
             'displayName' => ['nullable', 'string', 'max:120'],
+            'avatar' => ['nullable', 'string', 'max:255'],
+            'tagline' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:active,disabled,archived'],
+            'visibility' => ['nullable', 'string', 'in:private,discoverable,public'],
         ]);
 
+        $autopilot = $autopilotService->createForUser($user, $validated);
+
         return response()->json([
-            'data' => $this->autopilotPayload($user),
+            'data' => $this->autopilotPayload($autopilot),
         ], 201);
     }
 
@@ -80,24 +89,22 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: AutopilotResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function show(Request $request, string $autopilot): JsonResponse
+    public function show(Request $request, string $autopilot, AutopilotService $autopilotService): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
             abort(401);
         }
 
-        $this->assertDefaultAutopilot($autopilot);
+        $entity = $autopilotService->resolveOwned($user, $autopilot);
 
         return response()->json([
-            'data' => $this->autopilotPayload($user),
+            'data' => $this->autopilotPayload($entity),
         ]);
     }
 
     /**
      * Update one autopilot.
-     *
-     * Phase A behavior: validates input and returns the default autopilot skeleton.
      */
     #[OpenApi\Operation(tags: ['Autopilot'])]
     #[OpenApi\RequestBody(factory: UpdateAutopilotRequestBody::class)]
@@ -105,23 +112,48 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function update(Request $request, string $autopilot): JsonResponse
+    public function update(Request $request, string $autopilot, AutopilotService $autopilotService): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
             abort(401);
         }
 
-        $this->assertDefaultAutopilot($autopilot);
-
-        $request->validate([
+        $validated = $request->validate([
             'displayName' => ['nullable', 'string', 'max:120'],
             'status' => ['nullable', 'string', 'in:active,disabled,archived'],
             'visibility' => ['nullable', 'string', 'in:private,discoverable,public'],
+            'avatar' => ['nullable', 'string', 'max:255'],
+            'tagline' => ['nullable', 'string', 'max:255'],
+
+            'profile' => ['sometimes', 'array'],
+            'profile.ownerDisplayName' => ['nullable', 'string', 'max:120'],
+            'profile.personaSummary' => ['nullable', 'string'],
+            'profile.autopilotVoice' => ['nullable', 'string', 'max:64'],
+            'profile.principles' => ['nullable', 'array'],
+            'profile.preferences' => ['nullable', 'array'],
+            'profile.onboardingAnswers' => ['nullable', 'array'],
+            'profile.schemaVersion' => ['nullable', 'integer', 'min:1'],
+
+            'policy' => ['sometimes', 'array'],
+            'policy.modelProvider' => ['nullable', 'string', 'max:64'],
+            'policy.model' => ['nullable', 'string', 'max:128'],
+            'policy.toolAllowlist' => ['nullable', 'array'],
+            'policy.toolAllowlist.*' => ['string', 'max:128'],
+            'policy.toolDenylist' => ['nullable', 'array'],
+            'policy.toolDenylist.*' => ['string', 'max:128'],
+            'policy.l402RequireApproval' => ['nullable', 'boolean'],
+            'policy.l402MaxSpendMsatsPerCall' => ['nullable', 'integer', 'min:1'],
+            'policy.l402MaxSpendMsatsPerDay' => ['nullable', 'integer', 'min:1'],
+            'policy.l402AllowedHosts' => ['nullable', 'array'],
+            'policy.l402AllowedHosts.*' => ['string', 'max:255'],
+            'policy.dataPolicy' => ['nullable', 'array'],
         ]);
 
+        $entity = $autopilotService->updateOwned($user, $autopilot, $validated);
+
         return response()->json([
-            'data' => $this->autopilotPayload($user),
+            'data' => $this->autopilotPayload($entity),
         ]);
     }
 
@@ -134,43 +166,27 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function storeThread(Request $request, string $autopilot, ConversationStore $conversationStore): JsonResponse
-    {
+    public function storeThread(
+        Request $request,
+        string $autopilot,
+        AutopilotService $autopilotService,
+        AutopilotThreadService $autopilotThreadService,
+    ): JsonResponse {
         $user = $request->user();
         if (! $user) {
             abort(401);
         }
 
-        $this->assertDefaultAutopilot($autopilot);
+        $entity = $autopilotService->resolveOwned($user, $autopilot);
 
         $validated = $request->validate([
             'title' => ['nullable', 'string', 'max:200'],
         ]);
 
-        $title = trim((string) ($validated['title'] ?? ''));
-        if ($title === '') {
-            $title = 'New conversation';
-        }
-
-        $conversationId = (string) $conversationStore->storeConversation($user->id, $title);
-        $now = now();
-
-        DB::table('threads')->insert([
-            'id' => $conversationId,
-            'user_id' => $user->id,
-            'title' => $title,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        $thread = $autopilotThreadService->ensureThread($user, $entity, null, (string) ($validated['title'] ?? ''));
 
         return response()->json([
-            'data' => [
-                'id' => $conversationId,
-                'autopilotId' => self::DEFAULT_AUTOPILOT_ID,
-                'title' => $title,
-                'createdAt' => $now->toISOString(),
-                'updatedAt' => $now->toISOString(),
-            ],
+            'data' => $this->threadPayload($thread),
         ], 201);
     }
 
@@ -182,25 +198,24 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: AutopilotThreadListResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function threads(Request $request, string $autopilot, ChatThreadList $threadList): JsonResponse
+    public function threads(Request $request, string $autopilot, AutopilotService $autopilotService): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
             abort(401);
         }
 
-        $this->assertDefaultAutopilot($autopilot);
+        $entity = $autopilotService->resolveOwned($user, $autopilot);
 
         $limit = max(1, min(200, (int) $request->integer('limit', 50)));
 
-        $threads = $threadList->forUser((int) $user->id, $limit)
-            ->map(fn ($thread): array => [
-                'id' => (string) $thread->id,
-                'autopilotId' => self::DEFAULT_AUTOPILOT_ID,
-                'title' => $threadList->normalizeTitle($thread->title),
-                'createdAt' => $thread->created_at,
-                'updatedAt' => $thread->updated_at,
-            ])
+        $threads = Thread::query()
+            ->where('user_id', $user->id)
+            ->where('autopilot_id', $entity->id)
+            ->orderByDesc('updated_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Thread $thread): array => $this->threadPayload($thread))
             ->values()
             ->all();
 
@@ -209,29 +224,37 @@ class AutopilotController extends Controller
         ]);
     }
 
-    private function assertDefaultAutopilot(string $autopilot): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function autopilotPayload(Autopilot $autopilot): array
     {
-        $value = strtolower(trim($autopilot));
-        if ($value !== self::DEFAULT_AUTOPILOT_ID) {
-            abort(404);
-        }
+        return [
+            'id' => $autopilot->id,
+            'handle' => $autopilot->handle,
+            'displayName' => $autopilot->display_name,
+            'status' => $autopilot->status,
+            'visibility' => $autopilot->visibility,
+            'ownerUserId' => (int) $autopilot->owner_user_id,
+            'avatar' => $autopilot->avatar,
+            'tagline' => $autopilot->tagline,
+            'configVersion' => (int) $autopilot->config_version,
+            'createdAt' => $autopilot->created_at?->toISOString(),
+            'updatedAt' => $autopilot->updated_at?->toISOString(),
+        ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function autopilotPayload(object $user): array
+    private function threadPayload(Thread $thread): array
     {
         return [
-            'id' => self::DEFAULT_AUTOPILOT_ID,
-            'handle' => self::DEFAULT_AUTOPILOT_ID,
-            'displayName' => 'Autopilot',
-            'status' => 'active',
-            'visibility' => 'private',
-            'ownerUserId' => (int) $user->id,
-            'createdAt' => $user->created_at?->toISOString(),
-            'updatedAt' => $user->updated_at?->toISOString(),
-            'phase' => 'phase_a_skeleton',
+            'id' => (string) $thread->id,
+            'autopilotId' => (string) $thread->autopilot_id,
+            'title' => (string) $thread->title,
+            'createdAt' => $thread->created_at?->toISOString(),
+            'updatedAt' => $thread->updated_at?->toISOString(),
         ];
     }
 }
