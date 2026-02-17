@@ -5,15 +5,15 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-test('guests are routed to the in-chat onboarding flow', function () {
+test('guests can access in-chat onboarding without guest-id redirect', function () {
     $response = $this->get('/chat');
 
-    $response->assertRedirect();
-    $location = (string) $response->headers->get('Location');
+    $response->assertOk();
+    $response->assertDontSee('/chat/guest-');
+    $response->assertSee("enter your email and I'll send a one-time code");
 
-    expect($location)->toContain('/chat/guest-');
-
-    $this->get($location)->assertOk();
+    $guestConversationId = session('chat.guest.conversation_id');
+    expect($guestConversationId)->toBeString()->and($guestConversationId)->toStartWith('guest-');
 });
 
 test('authenticated users can visit chat', function () {

@@ -18,15 +18,7 @@ class ChatPageController extends Controller
         $user = $request->user();
 
         if (! $user) {
-            $guestConversationId = $this->ensureGuestConversationId($request);
-
-            if ($conversationId === null || trim($conversationId) === '') {
-                return redirect()->route('chat', ['conversationId' => $guestConversationId]);
-            }
-
-            if ($conversationId !== $guestConversationId) {
-                return redirect()->route('chat', ['conversationId' => $guestConversationId]);
-            }
+            $guestConversationId = $this->ensureGuestConversationId($request, $conversationId);
 
             /** @var array{email?: string}|null $pending */
             $pending = $request->session()->get('auth.magic_auth');
@@ -172,7 +164,7 @@ class ChatPageController extends Controller
         ]);
     }
 
-    private function ensureGuestConversationId(Request $request): string
+    private function ensureGuestConversationId(Request $request, ?string $requestedConversationId = null): string
     {
         $existing = $request->session()->get('chat.guest.conversation_id');
 
@@ -180,9 +172,30 @@ class ChatPageController extends Controller
             return $existing;
         }
 
+        if ($this->isGuestConversationId($requestedConversationId)) {
+            $request->session()->put('chat.guest.conversation_id', $requestedConversationId);
+
+            return $requestedConversationId;
+        }
+
         $id = 'guest-'.Str::uuid7();
         $request->session()->put('chat.guest.conversation_id', $id);
 
         return $id;
+    }
+
+    private function isGuestConversationId(?string $value): bool
+    {
+        if (! is_string($value)) {
+            return false;
+        }
+
+        $candidate = trim($value);
+
+        if ($candidate === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/^guest-[a-z0-9-]+$/i', $candidate);
     }
 }

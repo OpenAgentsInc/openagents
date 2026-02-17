@@ -23,30 +23,39 @@ function inertiaPayload(TestResponse $response): array
 
 test('guest chat keeps a stable guest conversation id in session', function () {
     $first = $this->get('/chat');
-    $first->assertRedirect();
+    $first->assertOk();
 
-    $guestLocation = (string) $first->headers->get('Location');
-    expect($guestLocation)->toContain('/chat/guest-');
+    $firstPayload = inertiaPayload($first);
+    $firstConversationId = (string) ($firstPayload['props']['conversationId'] ?? '');
 
-    $this->get($guestLocation)->assertOk();
+    expect($firstConversationId)->toStartWith('guest-');
+    expect(session('chat.guest.conversation_id'))->toBe($firstConversationId);
 
-    // A mismatched guest conversation id should be corrected to the session id.
+    $second = $this->get('/chat');
+    $second->assertOk();
+
+    $secondPayload = inertiaPayload($second);
+    $secondConversationId = (string) ($secondPayload['props']['conversationId'] ?? '');
+
+    expect($secondConversationId)->toBe($firstConversationId);
+
+    // A mismatched guest conversation id in URL should not redirect-loop.
     $mismatch = $this->get('/chat/guest-does-not-match');
-    $mismatch->assertRedirect($guestLocation);
+    $mismatch->assertOk();
+
+    $mismatchPayload = inertiaPayload($mismatch);
+    expect((string) ($mismatchPayload['props']['conversationId'] ?? ''))
+        ->toBe($firstConversationId);
 });
 
 test('guest chat shows verification step when pending email exists', function () {
-    $response = $this->withSession([
+    $chat = $this->withSession([
         'auth.magic_auth' => [
             'email' => 'chris@openagents.com',
             'user_id' => 'user_abc123',
         ],
     ])->get('/chat');
 
-    $response->assertRedirect();
-    $location = (string) $response->headers->get('Location');
-
-    $chat = $this->get($location);
     $chat->assertOk();
 
     $payload = inertiaPayload($chat);
@@ -60,14 +69,10 @@ test('guest chat shows verification step when pending email exists', function ()
 });
 
 test('guest chat falls back to email step when pending auth session is malformed', function () {
-    $response = $this->withSession([
+    $chat = $this->withSession([
         'auth.magic_auth' => 'invalid-structure',
     ])->get('/chat');
 
-    $response->assertRedirect();
-    $location = (string) $response->headers->get('Location');
-
-    $chat = $this->get($location);
     $chat->assertOk();
 
     $payload = inertiaPayload($chat);
