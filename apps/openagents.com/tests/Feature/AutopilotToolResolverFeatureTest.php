@@ -50,7 +50,7 @@ test('resolver falls back to authenticated tool registry when no autopilot polic
     expect($toolNames)->not->toContain('echo');
 });
 
-test('resolver exposes only chat_login for unauthenticated guest sessions', function () {
+test('resolver exposes guest-safe tools for unauthenticated guest sessions', function () {
     $autopilotId = (string) Str::uuid7();
 
     AutopilotPolicy::query()->create([
@@ -66,11 +66,10 @@ test('resolver exposes only chat_login for unauthenticated guest sessions', func
 
     $toolNames = array_map(fn ($tool) => $tool->name(), $resolution['tools']);
 
-    expect($toolNames)->toBe(['chat_login']);
+    expect($toolNames)->toBe(['chat_login', 'openagents_api']);
     expect($resolution['audit']['policyApplied'] ?? null)->toBeFalse();
     expect($resolution['audit']['authRestricted'] ?? null)->toBeTrue();
     expect($resolution['audit']['sessionAuthenticated'] ?? null)->toBeFalse();
-    expect($resolution['audit']['removedByAuthGate'] ?? [])->toContain('openagents_api');
     expect($resolution['audit']['removedByAuthGate'] ?? [])->toContain('lightning_l402_fetch');
     expect($resolution['audit']['removedByAuthGate'] ?? [])->toContain('lightning_l402_approve');
 });

@@ -329,7 +329,7 @@ test('guest chat stream can establish session without guest-session preflight', 
 
     expect($toolPolicyPayload['sessionAuthenticated'] ?? null)->toBeFalse();
     expect($toolPolicyPayload['authRestricted'] ?? null)->toBeTrue();
-    expect($toolPolicyPayload['exposedTools'] ?? [])->toBe(['chat_login']);
+    expect($toolPolicyPayload['exposedTools'] ?? [])->toBe(['chat_login', 'openagents_api']);
 });
 
 test('guest chat stream rejects conversation id that mismatches established guest session', function () {
