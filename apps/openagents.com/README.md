@@ -51,3 +51,15 @@ This path is enforced as:
 - WorkOS auth
 - Laravel Wayfinder (typed routes/actions)
 - Pest for PHP tests
+
+## Staging smoke checks
+
+Run deploy smoke checks against staging:
+
+```bash
+OPENAGENTS_BASE_URL="https://staging.openagents.com" ./deploy/smoke/health.sh
+SMOKE_SECRET="$(gcloud secrets versions access latest --secret openagents-web-staging-smoke-secret --project openagentsgemini)" OPENAGENTS_BASE_URL="https://staging.openagents.com" OA_SMOKE_SECRET="$SMOKE_SECRET" ./deploy/smoke/stream.sh
+OPENAGENTS_BASE_URL="https://staging.openagents.com" OA_SMOKE_ADMIN_EMAIL="chris@openagents.com" ./deploy/smoke/paywall-e2e.sh
+```
+
+`paywall-e2e.sh` is intentionally staging-safe and refuses non-staging URLs unless `OA_SMOKE_ALLOW_NON_STAGING=1` is set.
