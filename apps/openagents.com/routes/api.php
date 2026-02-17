@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AgentPaymentsController;
 use App\Http\Controllers\Api\AutopilotController;
 use App\Http\Controllers\Api\AutopilotStreamController;
+use App\Http\Controllers\Api\AuthRegisterController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\L402PaywallController;
@@ -16,6 +17,10 @@ use Illuminate\Support\Facades\Route;
 // Public discoverability endpoints.
 Route::get('/shouts', [ShoutsController::class, 'index']);
 Route::get('/shouts/zones', [ShoutsController::class, 'zones']);
+
+// Staging/automation bootstrap signup (disabled by default via config).
+Route::post('/auth/register', [AuthRegisterController::class, 'store'])
+    ->middleware('throttle:30,1');
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [MeController::class, 'show']);
