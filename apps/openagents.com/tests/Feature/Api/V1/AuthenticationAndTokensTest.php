@@ -2,6 +2,8 @@
 
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 it('requires sanctum authentication for api v1 routes', function () {
     $this->getJson('/api/v1/me')->assertUnauthorized();
@@ -62,4 +64,88 @@ it('supports me and personal access token lifecycle via api', function () {
         ->getJson('/api/v1/tokens')
         ->assertOk()
         ->assertJsonCount(0, 'data');
+});
+
+it('returns non-empty threads plus only the newest empty thread in /api/v1/me', function () {
+    $user = User::factory()->create([
+        'email' => 'thread-filter-user@openagents.com',
+    ]);
+    $otherUser = User::factory()->create();
+
+    $token = $user->createToken('thread-filter-token')->plainTextToken;
+
+    $now = now();
+
+    $emptyOldId = (string) Str::uuid7();
+    $emptyNewestId = (string) Str::uuid7();
+    $withMessagesId = (string) Str::uuid7();
+    $otherUserThreadId = (string) Str::uuid7();
+
+    DB::table('threads')->insert([
+        [
+            'id' => $emptyOldId,
+            'user_id' => $user->id,
+            'title' => 'Old empty',
+            'created_at' => $now->copy()->subMinutes(30),
+            'updated_at' => $now->copy()->subMinutes(30),
+        ],
+        [
+            'id' => $withMessagesId,
+            'user_id' => $user->id,
+            'title' => 'Has messages',
+            'created_at' => $now->copy()->subMinutes(10),
+            'updated_at' => $now->copy()->subMinutes(2),
+        ],
+        [
+            'id' => $emptyNewestId,
+            'user_id' => $user->id,
+            'title' => 'Newest empty',
+            'created_at' => $now->copy()->subMinute(),
+            'updated_at' => $now->copy()->subMinute(),
+        ],
+        [
+            'id' => $otherUserThreadId,
+            'user_id' => $otherUser->id,
+            'title' => 'Other user thread',
+            'created_at' => $now->copy()->subMinute(),
+            'updated_at' => $now->copy()->subMinute(),
+        ],
+    ]);
+
+    DB::table('messages')->insert([
+        [
+            'id' => (string) Str::uuid7(),
+            'thread_id' => $withMessagesId,
+            'run_id' => null,
+            'user_id' => $user->id,
+            'role' => 'user',
+            'content' => 'hello',
+            'meta' => null,
+            'created_at' => $now->copy()->subMinutes(2),
+            'updated_at' => $now->copy()->subMinutes(2),
+        ],
+        [
+            'id' => (string) Str::uuid7(),
+            'thread_id' => $otherUserThreadId,
+            'run_id' => null,
+            'user_id' => $otherUser->id,
+            'role' => 'user',
+            'content' => 'ignore',
+            'meta' => null,
+            'created_at' => $now->copy()->subMinute(),
+            'updated_at' => $now->copy()->subMinute(),
+        ],
+    ]);
+
+    $response = $this->withToken($token)
+        ->getJson('/api/v1/me')
+        ->assertOk();
+
+    $threadIds = collect($response->json('data.chatThreads'))
+        ->pluck('id')
+        ->all();
+
+    expect($threadIds)->toBe([$emptyNewestId, $withMessagesId]);
+    expect($threadIds)->not->toContain($emptyOldId);
+    expect($threadIds)->not->toContain($otherUserThreadId);
 });

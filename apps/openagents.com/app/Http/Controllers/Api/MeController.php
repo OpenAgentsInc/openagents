@@ -7,9 +7,9 @@ use App\OpenApi\Parameters\ChatLimitQueryParameter;
 use App\OpenApi\Responses\MeResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
 use App\Support\AdminAccess;
+use App\Support\ChatThreadList;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 
 #[OpenApi\PathItem]
@@ -33,15 +33,12 @@ class MeController extends Controller
         }
 
         $limit = max(1, min(200, (int) $request->integer('chat_limit', 50)));
+        $threadList = app(ChatThreadList::class);
 
-        $threads = DB::table('threads')
-            ->where('user_id', $user->id)
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get(['id', 'title', 'updated_at'])
+        $threads = $threadList->forUser((int) $user->id, $limit)
             ->map(fn ($thread): array => [
                 'id' => (string) $thread->id,
-                'title' => (string) ($thread->title ?: 'New conversation'),
+                'title' => $threadList->normalizeTitle($thread->title),
                 'updatedAt' => $thread->updated_at,
             ])
             ->all();

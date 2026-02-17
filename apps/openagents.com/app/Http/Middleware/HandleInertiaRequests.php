@@ -3,8 +3,8 @@
 namespace App\Http\Middleware;
 
 use App\Support\AdminAccess;
+use App\Support\ChatThreadList;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -38,6 +38,7 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $threadList = app(ChatThreadList::class);
 
         return [
             ...parent::share($request),
@@ -48,14 +49,10 @@ class HandleInertiaRequests extends Middleware
             'isAdmin' => AdminAccess::isAdminEmail($user?->email),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'chatThreads' => $user
-                ? DB::table('threads')
-                    ->where('user_id', $user->id)
-                    ->orderByDesc('updated_at')
-                    ->limit(50)
-                    ->get(['id', 'title', 'updated_at'])
+                ? $threadList->forUser((int) $user->id, 50)
                     ->map(fn ($thread) => [
                         'id' => (string) $thread->id,
-                        'title' => (string) ($thread->title ?: 'New conversation'),
+                        'title' => $threadList->normalizeTitle($thread->title),
                         'updatedAt' => $thread->updated_at,
                     ])
                     ->all()

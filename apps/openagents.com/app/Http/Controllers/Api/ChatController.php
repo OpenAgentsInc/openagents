@@ -44,14 +44,12 @@ class ChatController extends Controller
 
         $limit = max(1, min(200, (int) $request->integer('limit', 50)));
 
-        $threads = DB::table('threads')
-            ->where('user_id', $user->id)
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get(['id', 'title', 'created_at', 'updated_at'])
+        $threadList = app(\App\Support\ChatThreadList::class);
+
+        $threads = $threadList->forUser((int) $user->id, $limit)
             ->map(fn ($thread): array => [
                 'id' => (string) $thread->id,
-                'title' => (string) ($thread->title ?: 'New conversation'),
+                'title' => $threadList->normalizeTitle($thread->title),
                 'createdAt' => $thread->created_at,
                 'updatedAt' => $thread->updated_at,
             ])
