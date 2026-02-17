@@ -221,7 +221,7 @@ final class ConvexChatImportService
             $threadId = $this->stringOrNull($row['threadId'] ?? null);
             $runId = $this->stringOrNull($row['runId'] ?? null);
 
-            if (! $threadId || ! $runId) {
+            if (! $threadId || ! $runId || ! Str::isUuid($runId)) {
                 continue;
             }
 
@@ -344,7 +344,7 @@ final class ConvexChatImportService
             $threadId = $this->stringOrNull($row['threadId'] ?? null);
             $runId = $this->stringOrNull($row['runId'] ?? null);
 
-            if (! $threadId || ! $runId) {
+            if (! $threadId || ! $runId || ! Str::isUuid($runId)) {
                 continue;
             }
 
@@ -369,14 +369,21 @@ final class ConvexChatImportService
             $createdAt = $this->fromMs($this->intOrNull($row['createdAtMs'] ?? null));
 
             if (! $dryRun) {
-                $exists = DB::table('run_events')
+                $existsQuery = DB::table('run_events')
                     ->where('thread_id', $threadId)
                     ->where('run_id', $runId)
                     ->where('user_id', $ownerUserId)
                     ->where('type', $eventType)
-                    ->where('created_at', $createdAt)
-                    ->where('payload', $payloadJson)
-                    ->exists();
+                    ->where('created_at', $createdAt);
+
+                if (DB::connection()->getDriverName() === 'pgsql') {
+                    // Postgres does not support equality on json without explicit casts.
+                    $existsQuery->whereRaw('payload::jsonb = ?::jsonb', [$payloadJson]);
+                } else {
+                    $existsQuery->where('payload', $payloadJson);
+                }
+
+                $exists = $existsQuery->exists();
 
                 if (! $exists) {
                     DB::table('run_events')->insert([
