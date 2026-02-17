@@ -6,7 +6,7 @@
 
 This NIP defines a **Bitcoin-native, outcome-scoped credit** protocol for sovereign agents on Nostr.
 
-Instead of lending agents free capital, this protocol issues **bounded “credit envelopes”** that can only be spent on a **specific, verifiable outcome** (e.g. a NIP-90 job, an L402 API call series, a paid skill invocation). Credit capacity is derived from **reputation**, and failure is handled via **reputation decay and limit reductions**, not token slashing.
+Instead of lending agents free capital, this protocol issues **bounded "credit envelopes"** that can only be spent on a **specific, verifiable outcome** (e.g. a NIP-90 job, an L402 API call series, a paid skill invocation). Credit capacity is derived from **reputation**, and failure is handled via **reputation decay and limit reductions**, not token slashing.
 
 This NIP is designed to **fit alongside NIP-SA** (Sovereign Agents) and existing commerce NIPs:
 
@@ -16,7 +16,7 @@ This NIP is designed to **fit alongside NIP-SA** (Sovereign Agents) and existing
 * NIP-44 / NIP-59: encryption / gift wrap (private terms and receipts)
 * NIP-57: Lightning zaps (optional repayment / fees)
 * NIP-60 / NIP-61 / NIP-87: Cashu / nutzaps / mint discovery (optional settlement rails)
-* NIP-90: Data Vending Machines (primary “outcome” rail)
+* NIP-90: Data Vending Machines (primary "outcome" rail)
 * NIP-98: HTTP Auth (useful for L402-ish flows)
 
 It also RECOMMENDS threshold signing for agent keys (e.g. FROST/FROSTR), but does not require it.
@@ -25,7 +25,7 @@ It also RECOMMENDS threshold signing for agent keys (e.g. FROST/FROSTR), but doe
 
 Agents operate faster than humans and consume finite resources (compute, bandwidth, paid APIs). If every resource purchase requires a human top-up, autonomous operation collapses.
 
-Traditional “fully collateralized” lending does not work for new agents because they often start with **zero funds** and **no physical collateral**. Their only credible collateral is:
+Traditional "fully collateralized" lending does not work for new agents because they often start with **zero funds** and **no physical collateral**. Their only credible collateral is:
 
 * identity continuity
 * public history of outcomes
@@ -145,7 +145,7 @@ An **addressable** event that defines the enforceable credit capability.
 
 * MUST include a stable `d` identifier (envelope id).
 * SHOULD include all scope/cap/expiry fields in tags.
-* `content` SHOULD contain a JSON “terms” payload (stringified). It MAY be encrypted.
+* `content` SHOULD contain a JSON "terms" payload (stringified). It MAY be encrypted.
 
 ```jsonc
 {
@@ -305,7 +305,7 @@ Example label (default):
 
 ### 2) L402-like APIs (capability gating)
 
-Same flow, but `scope=l402:<resource_hash>`, and the “outcome” is a bounded set of paid requests under that resource hash. Settlement receipts SHOULD include aggregate counts / time windows and a rail reference.
+Same flow, but `scope=l402:<resource_hash>`, and the "outcome" is a bounded set of paid requests under that resource hash. Settlement receipts SHOULD include aggregate counts / time windows and a rail reference.
 
 ### 3) Skill invocation
 
@@ -323,9 +323,9 @@ Implementations SHOULD ensure envelopes authorize only scoped spends, not transf
 
 Because Nostr relays do not enforce semantics, enforcement occurs at:
 
-* issuer policy engine (won’t pay outside scope)
-* provider policy engine (won’t serve without valid envelope)
-* verifier policy (won’t attest success without evidence)
+* issuer policy engine (won't pay outside scope)
+* provider policy engine (won't serve without valid envelope)
+* verifier policy (won't attest success without evidence)
 
 ### Replay / double-spend protection
 
@@ -360,7 +360,7 @@ This NIP is intended as an **extension** to NIP-SA.
 
 * Agents already have identity (39200) and trajectories (39230/39231).
 * Credit envelopes add a standardized way for agents to acquire resources without operator top-ups.
-* Settlement receipts can be referenced from trajectories and from NIP-SA tick results to make “cost of autonomy” auditable.
+* Settlement receipts can be referenced from trajectories and from NIP-SA tick results to make "cost of autonomy" auditable.
 
 Recommended NIP-SA integration points:
 
