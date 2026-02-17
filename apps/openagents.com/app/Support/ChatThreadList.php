@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 class ChatThreadList
 {
     /**
-     * @return Collection<int, object{id:string,title:string,created_at:mixed,updated_at:mixed}>
+     * @return Collection<int, object{id:string,title:string,autopilot_id:?string,created_at:mixed,updated_at:mixed}>
      */
     public function forUser(int $userId, int $limit = 50): Collection
     {
@@ -26,14 +26,14 @@ class ChatThreadList
             ->whereExists($hasMessages)
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get(['id', 'title', 'created_at', 'updated_at']);
+            ->get(['id', 'title', 'autopilot_id', 'created_at', 'updated_at']);
 
         $latestEmpty = DB::table('threads')
             ->where('user_id', $userId)
             ->whereNotExists($hasMessages)
             ->orderByDesc('created_at')
             ->limit(1)
-            ->get(['id', 'title', 'created_at', 'updated_at']);
+            ->get(['id', 'title', 'autopilot_id', 'created_at', 'updated_at']);
 
         return $nonEmpty
             ->concat($latestEmpty)

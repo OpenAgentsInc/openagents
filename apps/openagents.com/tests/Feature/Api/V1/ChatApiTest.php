@@ -24,7 +24,8 @@ it('supports creating and reading chats through api', function () {
         ]);
 
     $createResponse->assertCreated()
-        ->assertJsonPath('data.title', 'API Chat');
+        ->assertJsonPath('data.title', 'API Chat')
+        ->assertJsonPath('data.autopilotId', null);
 
     $conversationId = $createResponse->json('data.id');
     expect($conversationId)->toBeString()->not->toBeEmpty();
@@ -58,16 +59,22 @@ it('supports creating and reading chats through api', function () {
     expect($aliasStreamed)->toContain('data: {"type":"finish"');
     expect($aliasStreamed)->toContain("data: [DONE]\n\n");
 
-    $this->withToken($token)
+    $listResponse = $this->withToken($token)
         ->getJson('/api/chats')
         ->assertOk()
         ->assertJsonFragment(['id' => $conversationId]);
+
+    $firstListItem = collect($listResponse->json('data'))->firstWhere('id', $conversationId);
+    expect($firstListItem)->not->toBeNull();
+    expect($firstListItem)->toHaveKey('autopilotId');
+    expect($firstListItem['autopilotId'])->toBeNull();
 
     $showResponse = $this->withToken($token)
         ->getJson('/api/chats/'.$conversationId)
         ->assertOk();
 
-    $showResponse->assertJsonPath('data.conversation.id', $conversationId);
+    $showResponse->assertJsonPath('data.conversation.id', $conversationId)
+        ->assertJsonPath('data.conversation.autopilotId', null);
 
     $messagesResponse = $this->withToken($token)
         ->getJson('/api/chats/'.$conversationId.'/messages')
@@ -76,6 +83,8 @@ it('supports creating and reading chats through api', function () {
     $messages = collect($messagesResponse->json('data'));
     expect($messages->pluck('role')->all())->toContain('user');
     expect($messages->pluck('role')->all())->toContain('assistant');
+    expect($messages->first())->toHaveKey('autopilotId');
+    expect($messages->pluck('autopilotId')->unique()->values()->all())->toBe([null]);
 
     $runsResponse = $this->withToken($token)
         ->getJson('/api/chats/'.$conversationId.'/runs')
@@ -84,12 +93,26 @@ it('supports creating and reading chats through api', function () {
     $runs = collect($runsResponse->json('data'));
     expect($runs)->not->toBeEmpty();
 
-    $runId = (string) $runs->first()['id'];
+    $firstRun = $runs->first();
+    expect($firstRun)->toHaveKey('autopilotId');
+    expect($firstRun)->toHaveKey('autopilotConfigVersion');
+    expect($firstRun['autopilotId'])->toBeNull();
+    expect($firstRun['autopilotConfigVersion'])->toBeNull();
 
-    $this->withToken($token)
+    $runId = (string) $firstRun['id'];
+
+    $runEventsResponse = $this->withToken($token)
         ->getJson('/api/chats/'.$conversationId.'/runs/'.$runId.'/events')
         ->assertOk()
-        ->assertJsonPath('data.run.id', $runId);
+        ->assertJsonPath('data.run.id', $runId)
+        ->assertJsonPath('data.run.autopilotId', null)
+        ->assertJsonPath('data.run.autopilotConfigVersion', null);
+
+    $events = collect($runEventsResponse->json('data.events'));
+    expect($events)->not->toBeEmpty();
+    expect($events->first())->toHaveKey('autopilotId');
+    expect($events->first())->toHaveKey('actorType');
+    expect($events->first())->toHaveKey('actorAutopilotId');
 
     expect(DB::table('threads')->where('id', $conversationId)->where('user_id', $user->id)->exists())->toBeTrue();
 });

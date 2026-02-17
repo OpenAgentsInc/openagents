@@ -50,6 +50,7 @@ class ChatController extends Controller
             ->map(fn ($thread): array => [
                 'id' => (string) $thread->id,
                 'title' => $threadList->normalizeTitle($thread->title),
+                'autopilotId' => is_string($thread->autopilot_id ?? null) ? (string) $thread->autopilot_id : null,
                 'createdAt' => $thread->created_at,
                 'updatedAt' => $thread->updated_at,
             ])
@@ -87,6 +88,7 @@ class ChatController extends Controller
         DB::table('threads')->insert([
             'id' => $conversationId,
             'user_id' => $user->id,
+            'autopilot_id' => null,
             'title' => $title,
             'created_at' => $now,
             'updated_at' => $now,
@@ -101,6 +103,7 @@ class ChatController extends Controller
             'data' => [
                 'id' => $conversationId,
                 'title' => $title,
+                'autopilotId' => null,
                 'createdAt' => $now->toISOString(),
                 'updatedAt' => $now->toISOString(),
             ],
@@ -143,6 +146,7 @@ class ChatController extends Controller
             DB::table('threads')->insert([
                 'id' => $conversationId,
                 'user_id' => $user->id,
+                'autopilot_id' => null,
                 'title' => (string) $conversation->title,
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -151,6 +155,7 @@ class ChatController extends Controller
             $thread = (object) [
                 'id' => $conversationId,
                 'title' => (string) $conversation->title,
+                'autopilot_id' => null,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -164,6 +169,7 @@ class ChatController extends Controller
                 'conversation' => [
                     'id' => (string) $thread->id,
                     'title' => (string) $thread->title,
+                    'autopilotId' => is_string($thread->autopilot_id ?? null) ? (string) $thread->autopilot_id : null,
                     'createdAt' => $thread->created_at,
                     'updatedAt' => $thread->updated_at,
                 ],
@@ -272,10 +278,13 @@ class ChatController extends Controller
             ->where('user_id', $user->id)
             ->orderBy('id')
             ->limit($limit)
-            ->get(['id', 'type', 'payload', 'created_at'])
+            ->get(['id', 'type', 'autopilot_id', 'actor_type', 'actor_autopilot_id', 'payload', 'created_at'])
             ->map(fn ($event): array => [
                 'id' => (int) $event->id,
                 'type' => (string) $event->type,
+                'autopilotId' => is_string($event->autopilot_id ?? null) ? (string) $event->autopilot_id : null,
+                'actorType' => (string) $event->actor_type,
+                'actorAutopilotId' => is_string($event->actor_autopilot_id ?? null) ? (string) $event->actor_autopilot_id : null,
                 'payload' => $this->decodeJsonColumn($event->payload),
                 'createdAt' => (string) $event->created_at,
             ])
@@ -287,6 +296,8 @@ class ChatController extends Controller
                 'run' => [
                     'id' => (string) $run->id,
                     'status' => (string) $run->status,
+                    'autopilotId' => is_string($run->autopilot_id ?? null) ? (string) $run->autopilot_id : null,
+                    'autopilotConfigVersion' => is_numeric($run->autopilot_config_version) ? (int) $run->autopilot_config_version : null,
                     'modelProvider' => $run->model_provider,
                     'model' => $run->model,
                     'usage' => $this->decodeJsonColumn($run->usage),
@@ -334,10 +345,11 @@ class ChatController extends Controller
             ->where('thread_id', $conversationId)
             ->where('user_id', $userId)
             ->orderBy('created_at')
-            ->get(['id', 'run_id', 'role', 'content', 'meta', 'created_at', 'updated_at'])
+            ->get(['id', 'run_id', 'autopilot_id', 'role', 'content', 'meta', 'created_at', 'updated_at'])
             ->map(fn ($message): array => [
                 'id' => (string) $message->id,
                 'runId' => $message->run_id ? (string) $message->run_id : null,
+                'autopilotId' => is_string($message->autopilot_id ?? null) ? (string) $message->autopilot_id : null,
                 'role' => (string) $message->role,
                 'content' => (string) $message->content,
                 'meta' => $this->decodeJsonColumn($message->meta),
@@ -364,6 +376,7 @@ class ChatController extends Controller
                     'thread_id' => $conversationId,
                     'run_id' => null,
                     'user_id' => $userId,
+                    'autopilot_id' => null,
                     'role' => $legacyMessage->role,
                     'content' => $legacyMessage->content,
                     'meta' => null,
@@ -377,10 +390,11 @@ class ChatController extends Controller
             ->where('thread_id', $conversationId)
             ->where('user_id', $userId)
             ->orderBy('created_at')
-            ->get(['id', 'run_id', 'role', 'content', 'meta', 'created_at', 'updated_at'])
+            ->get(['id', 'run_id', 'autopilot_id', 'role', 'content', 'meta', 'created_at', 'updated_at'])
             ->map(fn ($message): array => [
                 'id' => (string) $message->id,
                 'runId' => $message->run_id ? (string) $message->run_id : null,
+                'autopilotId' => is_string($message->autopilot_id ?? null) ? (string) $message->autopilot_id : null,
                 'role' => (string) $message->role,
                 'content' => (string) $message->content,
                 'meta' => $this->decodeJsonColumn($message->meta),
@@ -400,10 +414,12 @@ class ChatController extends Controller
             ->where('user_id', $userId)
             ->orderByDesc('created_at')
             ->limit($limit)
-            ->get(['id', 'status', 'model_provider', 'model', 'usage', 'meta', 'error', 'started_at', 'completed_at', 'created_at', 'updated_at'])
+            ->get(['id', 'status', 'autopilot_id', 'autopilot_config_version', 'model_provider', 'model', 'usage', 'meta', 'error', 'started_at', 'completed_at', 'created_at', 'updated_at'])
             ->map(fn ($run): array => [
                 'id' => (string) $run->id,
                 'status' => (string) $run->status,
+                'autopilotId' => is_string($run->autopilot_id ?? null) ? (string) $run->autopilot_id : null,
+                'autopilotConfigVersion' => is_numeric($run->autopilot_config_version) ? (int) $run->autopilot_config_version : null,
                 'modelProvider' => $run->model_provider,
                 'model' => $run->model,
                 'usage' => $this->decodeJsonColumn($run->usage),
