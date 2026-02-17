@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\AI\Runtime\AutopilotExecutionContext;
 use App\Lightning\L402\InvoicePayer;
 use App\Lightning\L402\InvoicePayers\FakeInvoicePayer;
 use App\Lightning\L402\InvoicePayers\LndRestInvoicePayer;
@@ -24,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->scoped(AutopilotExecutionContext::class, fn () => new AutopilotExecutionContext);
+
         $this->app->singleton(InvoicePayer::class, function ($app) {
             $kind = (string) config('lightning.l402.invoice_payer', 'fake');
 

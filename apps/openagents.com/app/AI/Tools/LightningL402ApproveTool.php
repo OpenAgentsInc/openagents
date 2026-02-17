@@ -3,6 +3,7 @@
 namespace App\AI\Tools;
 
 use App\Lightning\L402\L402Client;
+use App\Lightning\L402\L402PolicyEnforcer;
 use App\Lightning\L402\PendingL402ApprovalStore;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Tool;
@@ -32,6 +33,7 @@ class LightningL402ApproveTool implements Tool
                 'paid' => false,
                 'cacheHit' => false,
                 'denyCode' => 'task_id_missing',
+                'requireApproval' => false,
                 'approvalRequired' => false,
             ]);
         }
@@ -48,6 +50,7 @@ class LightningL402ApproveTool implements Tool
                 'paid' => false,
                 'cacheHit' => false,
                 'denyCode' => $denyCode,
+                'requireApproval' => false,
                 'approvalRequired' => false,
                 'taskId' => $taskId,
             ]);
@@ -64,6 +67,7 @@ class LightningL402ApproveTool implements Tool
                 'paid' => false,
                 'cacheHit' => false,
                 'denyCode' => 'task_user_mismatch',
+                'requireApproval' => false,
                 'approvalRequired' => false,
                 'taskId' => $taskId,
             ]);
@@ -74,18 +78,58 @@ class LightningL402ApproveTool implements Tool
         $headers = isset($payload['headers']) && is_array($payload['headers']) ? $payload['headers'] : [];
         $body = isset($payload['body']) && is_string($payload['body']) ? $payload['body'] : null;
         $scope = isset($payload['scope']) && is_string($payload['scope']) ? $payload['scope'] : 'default';
-        $maxSpendSats = isset($payload['maxSpendSats']) && is_numeric($payload['maxSpendSats']) ? (int) $payload['maxSpendSats'] : null;
+        $maxSpendMsats = $this->resolveMaxSpendMsatsFromPayload($payload);
+        $autopilotId = isset($payload['autopilotId']) && is_string($payload['autopilotId']) ? trim($payload['autopilotId']) : null;
 
-        if (! is_string($url) || $url === '' || ! is_int($maxSpendSats)) {
+        if (! is_string($url) || $url === '' || ! is_int($maxSpendMsats) || $maxSpendMsats <= 0) {
             return $this->encode([
                 'toolName' => 'lightning_l402_fetch',
                 'status' => 'failed',
                 'paid' => false,
                 'cacheHit' => false,
                 'denyCode' => 'task_payload_invalid',
+                'requireApproval' => false,
                 'approvalRequired' => false,
                 'taskId' => $taskId,
             ]);
+        }
+
+        $policyDecision = resolve(L402PolicyEnforcer::class)->evaluate(
+            url: $url,
+            requestedMaxSpendMsats: $maxSpendMsats,
+            requestedRequireApproval: false,
+            autopilotId: $autopilotId,
+        );
+
+        $effectiveMaxSpendMsats = (int) ($policyDecision['effectiveMaxSpendMsats'] ?? $maxSpendMsats);
+        $effectiveMaxSpendSats = $this->safeSatsFromMsats($effectiveMaxSpendMsats);
+
+        $denyCode = $policyDecision['denyCode'] ?? null;
+        if (is_string($denyCode) && $denyCode !== '') {
+            return $this->encode([
+                'toolName' => 'lightning_l402_fetch',
+                'status' => 'blocked',
+                'paid' => false,
+                'cacheHit' => false,
+                'cacheStatus' => 'none',
+                'denyCode' => $denyCode,
+                'denyReason' => $policyDecision['denyReason'] ?? null,
+                'taskId' => $taskId,
+                'requireApproval' => false,
+                'approvalRequired' => false,
+                'maxSpendMsats' => $effectiveMaxSpendMsats,
+                'maxSpendSats' => $effectiveMaxSpendSats,
+                'policySource' => $policyDecision['policySource'] ?? 'config',
+            ]);
+        }
+
+        $context = [
+            'userId' => $currentUserId ?? $expectedUserId,
+            'autopilotId' => is_string($policyDecision['autopilotId'] ?? null) ? (string) $policyDecision['autopilotId'] : $autopilotId,
+        ];
+
+        if (($policyDecision['policySource'] ?? 'config') === 'autopilot' && is_array($policyDecision['allowedHosts'] ?? null)) {
+            $context['allowedHosts'] = $policyDecision['allowedHosts'];
         }
 
         $result = resolve(L402Client::class)->fetch(
@@ -93,16 +137,18 @@ class LightningL402ApproveTool implements Tool
             method: $method,
             headers: $headers,
             body: $body,
-            maxSpendSats: $maxSpendSats,
+            maxSpendSats: $effectiveMaxSpendSats,
             scope: $scope,
-            context: [
-                'userId' => $currentUserId ?? $expectedUserId,
-            ],
+            context: $context,
         );
 
         $result['toolName'] = 'lightning_l402_fetch';
+        $result['requireApproval'] = false;
         $result['approvalRequired'] = false;
         $result['taskId'] = $taskId;
+        $result['maxSpendMsats'] = $effectiveMaxSpendMsats;
+        $result['maxSpendSats'] = $effectiveMaxSpendSats;
+        $result['policySource'] = $policyDecision['policySource'] ?? 'config';
 
         return $this->encode($result);
     }
@@ -115,6 +161,44 @@ class LightningL402ApproveTool implements Tool
                 ->description('Task id returned by lightning_l402_fetch when approval was requested.')
                 ->required(),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveMaxSpendMsatsFromPayload(array $payload): ?int
+    {
+        if (array_key_exists('maxSpendMsats', $payload) && is_numeric($payload['maxSpendMsats'])) {
+            return max(0, (int) $payload['maxSpendMsats']);
+        }
+
+        if (array_key_exists('maxSpendSats', $payload) && is_numeric($payload['maxSpendSats'])) {
+            return $this->safeMsatsFromSats((int) $payload['maxSpendSats']);
+        }
+
+        return null;
+    }
+
+    private function safeMsatsFromSats(int $sats): int
+    {
+        $sats = max(0, $sats);
+
+        if ($sats > intdiv(PHP_INT_MAX, 1000)) {
+            return PHP_INT_MAX;
+        }
+
+        return $sats * 1000;
+    }
+
+    private function safeSatsFromMsats(int $msats): int
+    {
+        $msats = max(0, $msats);
+
+        if ($msats === 0) {
+            return 0;
+        }
+
+        return intdiv($msats + 999, 1000);
     }
 
     private function resolveUserId(): ?int

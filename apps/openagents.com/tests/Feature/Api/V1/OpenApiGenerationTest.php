@@ -42,6 +42,12 @@ it('generates OpenAPI spec with api coverage and sanctum security', function () 
     expect($paths)->not->toHaveKey('/api/admin/status');
     expect($paths)->not->toHaveKey('/api/v1/me');
 
+    $chatStreamDescription = (string) data_get($spec, 'paths./api/chats/{conversationId}/stream.post.requestBody.description', '');
+    expect($chatStreamDescription)->toContain('maxSpendMsats');
+    expect($chatStreamDescription)->toContain('maxSpendSats');
+    expect($chatStreamDescription)->toContain('requireApproval');
+    expect($chatStreamDescription)->toContain('approvalRequired');
+
     expect(data_get($spec, 'components.securitySchemes.SanctumToken.type'))->toBe('http');
     expect(data_get($spec, 'components.securitySchemes.SanctumToken.scheme'))->toBe('bearer');
 

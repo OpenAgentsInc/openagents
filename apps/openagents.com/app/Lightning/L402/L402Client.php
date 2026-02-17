@@ -25,7 +25,7 @@ final class L402Client
 
         $maxSpendMsats = $this->safeMsatsFromSats($maxSpendSats);
 
-        if (! $this->isHostAllowed($host)) {
+        if (! $this->isHostAllowed($host, $context)) {
             return [
                 'status' => 'blocked',
                 'paid' => false,
@@ -34,6 +34,7 @@ final class L402Client
                 'denyCode' => 'domain_not_allowed',
                 'denyReason' => [
                     'host' => $host,
+                    'allowlistHosts' => $this->resolveAllowlist($context),
                 ],
                 'host' => $host,
                 'url' => $url,
@@ -296,17 +297,44 @@ final class L402Client
         return strtolower($host);
     }
 
-    private function isHostAllowed(string $host): bool
+    private function isHostAllowed(string $host, array $context): bool
     {
-        $allowlist = config('lightning.l402.allowlist_hosts', []);
+        $allow = $this->resolveAllowlist($context);
 
-        if (! is_array($allowlist) || $allowlist === []) {
+        if ($allow === []) {
             return false;
         }
 
-        $allow = array_map(fn ($h) => strtolower((string) $h), $allowlist);
-
         return in_array(strtolower($host), $allow, true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveAllowlist(array $context): array
+    {
+        $rawAllowlist = $context['allowedHosts'] ?? config('lightning.l402.allowlist_hosts', []);
+
+        if (! is_array($rawAllowlist) || $rawAllowlist === []) {
+            return [];
+        }
+
+        $allow = [];
+
+        foreach ($rawAllowlist as $host) {
+            if (! is_string($host)) {
+                continue;
+            }
+
+            $candidate = strtolower(trim($host));
+            if ($candidate === '') {
+                continue;
+            }
+
+            $allow[$candidate] = $candidate;
+        }
+
+        return array_values($allow);
     }
 
     private function safeMsatsFromSats(int $sats): int
