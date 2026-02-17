@@ -13,6 +13,7 @@ type DeploymentEvent = {
 type Props = {
     deployments: DeploymentEvent[];
     configSnapshot: {
+        enforceHostAllowlist: boolean;
         allowlistHosts: string[];
         invoicePayer: string;
         credentialTtlSeconds: number;
@@ -59,9 +60,11 @@ export default function L402DeploymentsPage({ deployments, configSnapshot }: Pro
                             <div>
                                 allowlist:{' '}
                                 <span className="font-mono">
-                                    {configSnapshot.allowlistHosts.length > 0
-                                        ? configSnapshot.allowlistHosts.join(', ')
-                                        : '(none)'}
+                                    {configSnapshot.enforceHostAllowlist
+                                        ? configSnapshot.allowlistHosts.length > 0
+                                            ? configSnapshot.allowlistHosts.join(', ')
+                                            : '(enabled, but empty)'
+                                        : 'disabled (all domains allowed)'}
                                 </span>
                             </div>
                             <div>

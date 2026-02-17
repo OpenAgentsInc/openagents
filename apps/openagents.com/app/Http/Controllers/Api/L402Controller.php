@@ -87,6 +87,7 @@ class L402Controller extends Controller
                     'lastSyncedAt' => $wallet->last_synced_at,
                 ] : null,
                 'settings' => [
+                    'enforceHostAllowlist' => (bool) config('lightning.l402.enforce_host_allowlist', false),
                     'allowlistHosts' => array_values(config('lightning.l402.allowlist_hosts', [])),
                     'invoicePayer' => (string) config('lightning.l402.invoice_payer', 'unknown'),
                     'credentialTtlSeconds' => (int) config('lightning.l402.credential_ttl_seconds', 0),
@@ -331,6 +332,7 @@ class L402Controller extends Controller
             'data' => [
                 'deployments' => $events->all(),
                 'configSnapshot' => [
+                    'enforceHostAllowlist' => (bool) config('lightning.l402.enforce_host_allowlist', false),
                     'allowlistHosts' => array_values(config('lightning.l402.allowlist_hosts', [])),
                     'invoicePayer' => (string) config('lightning.l402.invoice_payer', 'unknown'),
                     'credentialTtlSeconds' => (int) config('lightning.l402.credential_ttl_seconds', 0),

@@ -299,6 +299,10 @@ final class L402Client
 
     private function isHostAllowed(string $host, array $context): bool
     {
+        if (! $this->shouldEnforceAllowlist($context)) {
+            return true;
+        }
+
         $allow = $this->resolveAllowlist($context);
 
         if ($allow === []) {
@@ -306,6 +310,15 @@ final class L402Client
         }
 
         return in_array(strtolower($host), $allow, true);
+    }
+
+    private function shouldEnforceAllowlist(array $context): bool
+    {
+        if (array_key_exists('allowedHosts', $context)) {
+            return true;
+        }
+
+        return (bool) config('lightning.l402.enforce_host_allowlist', false);
     }
 
     /**

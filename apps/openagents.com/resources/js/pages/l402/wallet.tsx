@@ -31,6 +31,7 @@ type Props = {
     lastPaid: L402Receipt | null;
     recent: L402Receipt[];
     settings: {
+        enforceHostAllowlist: boolean;
         allowlistHosts: string[];
         invoicePayer: string;
         credentialTtlSeconds: number;
@@ -121,7 +122,12 @@ export default function L402WalletPage({ summary, lastPaid, recent, settings }: 
                             <div>response preview bytes: <span className="font-mono">{settings.responsePreviewBytes}</span></div>
                         </div>
                         <div className="mt-3 text-xs text-muted-foreground">
-                            allowlist: {settings.allowlistHosts.length > 0 ? settings.allowlistHosts.join(', ') : '(none)'}
+                            host allowlist: {' '}
+                            {settings.enforceHostAllowlist
+                                ? settings.allowlistHosts.length > 0
+                                    ? settings.allowlistHosts.join(', ')
+                                    : '(enabled, but empty)'
+                                : 'disabled (all domains allowed)'}
                         </div>
                     </div>
                 </div>

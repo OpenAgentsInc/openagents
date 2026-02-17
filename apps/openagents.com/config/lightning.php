@@ -2,8 +2,13 @@
 
 return [
     'l402' => [
+        // Optional host allowlist gate. Off by default to avoid blocking valid
+        // L402 endpoints (for example api.sats4ai.com) unless explicitly enabled.
+        'enforce_host_allowlist' => (bool) env('L402_ENFORCE_HOST_ALLOWLIST', false),
+
         // Comma-separated list of hostnames that are allowed for paid fetches.
-        // This is enforced server-side regardless of tool input.
+        // Used only when enforce_host_allowlist is true (or when a per-autopilot
+        // policy provides explicit allowed hosts).
         'allowlist_hosts' => array_values(array_filter(array_map(
             fn (string $h) => trim($h),
             explode(',', (string) env('L402_ALLOWLIST_HOSTS', 'sats4ai.com,l402.openagents.com'))
