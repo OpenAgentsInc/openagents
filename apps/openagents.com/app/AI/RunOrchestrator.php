@@ -27,8 +27,13 @@ final class RunOrchestrator
      * Persistence is decoupled from the client connection: if the client disconnects,
      * we continue consuming the model stream and finalize the run in the DB.
      */
-    public function streamAutopilotRun(Authenticatable $user, string $threadId, string $prompt, ?callable $streamableFactory = null): StreamedResponse
-    {
+    public function streamAutopilotRun(
+        Authenticatable $user,
+        string $threadId,
+        string $prompt,
+        bool $authenticatedSession = true,
+        ?callable $streamableFactory = null,
+    ): StreamedResponse {
         $userId = (int) $user->getAuthIdentifier();
         $userEmail = $user->email ?? 'unknown';
 
@@ -78,7 +83,7 @@ final class RunOrchestrator
         ]);
 
         $executionContext = resolve(AutopilotExecutionContext::class);
-        $executionContext->set($userId, $autopilotId);
+        $executionContext->set($userId, $autopilotId, $authenticatedSession);
 
         $runtimeActorType = $this->runtimeActorType($autopilotId);
         $runtimeActorAutopilotId = $runtimeActorType === 'autopilot' ? $autopilotId : null;

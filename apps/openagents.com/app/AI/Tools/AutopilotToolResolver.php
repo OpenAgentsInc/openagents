@@ -8,6 +8,9 @@ use Laravel\Ai\Contracts\Tool;
 
 class AutopilotToolResolver
 {
+    /** @var list<string> */
+    private const GUEST_ALLOWED_TOOLS = ['chat_login'];
+
     public function __construct(
         private readonly ToolRegistry $toolRegistry,
         private readonly AutopilotExecutionContext $executionContext,
@@ -48,12 +51,18 @@ class AutopilotToolResolver
 
         $availableToolNames = array_keys($toolByName);
 
+        if (! $this->executionContext->authenticatedSession()) {
+            return $this->guestOnlyResolution($toolByName, $availableToolNames);
+        }
+
         $policy = $this->resolvePolicy($autopilotId);
         if (! $policy) {
             return [
                 'tools' => array_values($toolByName),
                 'audit' => [
                     'policyApplied' => false,
+                    'authRestricted' => false,
+                    'sessionAuthenticated' => true,
                     'autopilotId' => null,
                     'availableTools' => $availableToolNames,
                     'exposedTools' => $availableToolNames,
@@ -61,6 +70,7 @@ class AutopilotToolResolver
                     'denylist' => [],
                     'removedByAllowlist' => [],
                     'removedByDenylist' => [],
+                    'removedByAuthGate' => [],
                 ],
             ];
         }
@@ -81,6 +91,8 @@ class AutopilotToolResolver
             'tools' => $resolvedTools,
             'audit' => [
                 'policyApplied' => true,
+                'authRestricted' => false,
+                'sessionAuthenticated' => true,
                 'autopilotId' => $policy->autopilot_id,
                 'availableTools' => $availableToolNames,
                 'exposedTools' => $resolved['exposed'],
@@ -88,6 +100,7 @@ class AutopilotToolResolver
                 'denylist' => $denylist,
                 'removedByAllowlist' => $resolved['removedByAllowlist'],
                 'removedByDenylist' => $resolved['removedByDenylist'],
+                'removedByAuthGate' => [],
             ],
         ];
     }
@@ -195,5 +208,52 @@ class AutopilotToolResolver
         }
 
         return array_values($names);
+    }
+
+    /**
+     * @param  array<string, Tool>  $toolByName
+     * @param  list<string>  $availableToolNames
+     * @return array{tools:list<Tool>,audit:array<string,mixed>}
+     */
+    private function guestOnlyResolution(array $toolByName, array $availableToolNames): array
+    {
+        $allowed = self::normalizeStaticNameList(self::GUEST_ALLOWED_TOOLS);
+        $allowedSet = array_fill_keys($allowed, true);
+
+        $exposed = [];
+        foreach ($allowed as $name) {
+            if (isset($toolByName[$name])) {
+                $exposed[] = $name;
+            }
+        }
+
+        $resolvedTools = [];
+        foreach ($exposed as $name) {
+            $resolvedTools[] = $toolByName[$name];
+        }
+
+        $removedByAuthGate = [];
+        foreach ($availableToolNames as $name) {
+            if (! isset($allowedSet[$name])) {
+                $removedByAuthGate[] = $name;
+            }
+        }
+
+        return [
+            'tools' => $resolvedTools,
+            'audit' => [
+                'policyApplied' => false,
+                'authRestricted' => true,
+                'sessionAuthenticated' => false,
+                'autopilotId' => null,
+                'availableTools' => $availableToolNames,
+                'exposedTools' => $exposed,
+                'allowlist' => $allowed,
+                'denylist' => [],
+                'removedByAllowlist' => [],
+                'removedByDenylist' => [],
+                'removedByAuthGate' => $removedByAuthGate,
+            ],
+        ];
     }
 }

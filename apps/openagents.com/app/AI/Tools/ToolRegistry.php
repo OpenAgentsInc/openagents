@@ -12,6 +12,7 @@ class ToolRegistry
     public function all(): array
     {
         return [
+            new ChatLoginTool,
             new OpenAgentsApiTool,
             new LightningL402FetchTool,
             new LightningL402ApproveTool,

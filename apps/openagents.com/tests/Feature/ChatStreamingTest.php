@@ -309,6 +309,27 @@ test('guest chat stream can establish session without guest-session preflight', 
         ->exists())->toBeTrue();
 
     expect(session('chat.guest.conversation_id'))->toBe($conversationId);
+
+    $run = DB::table('runs')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $guest->id)
+        ->latest('created_at')
+        ->first();
+
+    expect($run)->not->toBeNull();
+
+    $toolPolicyApplied = DB::table('run_events')
+        ->where('run_id', $run->id)
+        ->where('type', 'tool_policy_applied')
+        ->first();
+
+    expect($toolPolicyApplied)->not->toBeNull();
+
+    $toolPolicyPayload = json_decode((string) ($toolPolicyApplied->payload ?? ''), true);
+
+    expect($toolPolicyPayload['sessionAuthenticated'] ?? null)->toBeFalse();
+    expect($toolPolicyPayload['authRestricted'] ?? null)->toBeTrue();
+    expect($toolPolicyPayload['exposedTools'] ?? [])->toBe(['chat_login']);
 });
 
 test('guest chat stream rejects conversation id that mismatches established guest session', function () {
