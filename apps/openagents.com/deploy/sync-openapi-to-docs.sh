@@ -41,7 +41,7 @@ if (json_last_error() !== JSON_ERROR_NONE) {
     exit(1);
 }
 $minified = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-if (!is_string($minified) || $minified === '') {
+if (!is_string($minified) || $minified === "") {
     fwrite(STDERR, "error: failed to minify OpenAPI JSON\\n");
     exit(1);
 }
