@@ -1,9 +1,9 @@
 <?php
 
 use App\Http\Controllers\Api\AgentPaymentsController;
+use App\Http\Controllers\Api\AuthRegisterController;
 use App\Http\Controllers\Api\AutopilotController;
 use App\Http\Controllers\Api\AutopilotStreamController;
-use App\Http\Controllers\Api\AuthRegisterController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\L402PaywallController;

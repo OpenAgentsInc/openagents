@@ -299,3 +299,40 @@ it('rejects unauthorized autopilot filters and missing autopilot filters', funct
         ->getJson('/api/l402/settlements?autopilot=missing-bot')
         ->assertNotFound();
 });
+
+it('returns spark wallet snapshot fields used by the sidebar card', function () {
+    $user = User::factory()->create([
+        'email' => 'l402-wallet-snapshot@openagents.com',
+    ]);
+
+    DB::table('user_spark_wallets')->insert([
+        'user_id' => $user->id,
+        'wallet_id' => 'wallet_sidebar_snapshot_1',
+        'mnemonic' => encrypt('abandon ability able about above absent absorb abstract absurd abuse access accident'),
+        'spark_address' => 'spark:sidebar-demo',
+        'lightning_address' => 'sidebar-demo@openagents.com',
+        'identity_pubkey' => '02'.str_repeat('a', 64),
+        'last_balance_sats' => 12345,
+        'status' => 'active',
+        'provider' => 'spark_executor',
+        'last_error' => null,
+        'meta' => json_encode(['source' => 'test']),
+        'last_synced_at' => now(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $token = $user->createToken('l402-wallet-card')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/l402/wallet')
+        ->assertOk()
+        ->assertJsonPath('data.sparkWallet.walletId', 'wallet_sidebar_snapshot_1')
+        ->assertJsonPath('data.sparkWallet.sparkAddress', 'spark:sidebar-demo')
+        ->assertJsonPath('data.sparkWallet.lightningAddress', 'sidebar-demo@openagents.com')
+        ->assertJsonPath('data.sparkWallet.balanceSats', 12345)
+        ->assertJsonPath('data.sparkWallet.status', 'active')
+        ->assertJsonPath('data.settings.invoicePayer', 'spark_wallet')
+        ->assertJsonPath('data.summary.totalAttempts', 0)
+        ->assertJsonPath('data.filter.autopilot', null);
+});
