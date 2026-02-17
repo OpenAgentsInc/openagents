@@ -116,3 +116,21 @@ it('supports creating and reading chats through api', function () {
 
     expect(DB::table('threads')->where('id', $conversationId)->where('user_id', $user->id)->exists())->toBeTrue();
 });
+
+it('creates chats even when posthog is enabled but api key is empty', function () {
+    config()->set('posthog.disabled', false);
+    config()->set('posthog.api_key', '');
+
+    $user = User::factory()->create([
+        'email' => 'chat-no-posthog-key@openagents.com',
+    ]);
+
+    $token = $user->createToken('chat-no-posthog-key')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/chats', [
+            'title' => 'No PostHog Key Chat',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.title', 'No PostHog Key Chat');
+});

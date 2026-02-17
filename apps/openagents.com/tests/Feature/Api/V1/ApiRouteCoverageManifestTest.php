@@ -61,6 +61,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'POST api/agent-payments/send-spark',
         'POST api/agent-payments/wallet',
         'POST api/agents/me/wallet',
+        'POST api/auth/register',
         'POST api/autopilots',
         'POST api/autopilots/{autopilot}/stream',
         'POST api/autopilots/{autopilot}/threads',

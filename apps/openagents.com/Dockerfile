@@ -40,6 +40,7 @@ RUN npm ci
 
 COPY . ./
 COPY --from=php_deps /app/vendor ./vendor
+RUN php scripts/patch-oooas.php
 
 # The build context may include a stale discovery cache (e.g. generated with dev deps).
 # Regenerate it for the production vendor set before any artisan commands run.
@@ -53,8 +54,6 @@ RUN php artisan package:discover --ansi
 RUN APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" APP_ENV=production APP_DEBUG=0 APP_URL=https://openagents.com php artisan openapi:generate --output=public/openapi.json --ansi
 RUN php -r '$p = "public/openapi.json"; $raw = file_get_contents($p); $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR); $minified = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); if (!is_string($minified) || $minified === "") { throw new RuntimeException("failed to minify openapi"); } file_put_contents($p, $minified);'
 RUN test -s public/openapi.json
-
-
 
 RUN npm run build
 
@@ -74,6 +73,7 @@ RUN apt-get update \
 
 COPY --chown=www-data:www-data . ./
 COPY --from=php_deps /app/vendor ./vendor
+RUN php scripts/patch-oooas.php
 COPY --from=node_build /app/public/build ./public/build
 COPY --from=node_build /app/public/openapi.json ./public/openapi.json
 

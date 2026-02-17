@@ -11,7 +11,7 @@ class PostHogService
 
     public function __construct()
     {
-        if (config('posthog.disabled')) {
+        if (! $this->isEnabled()) {
             return;
         }
 
@@ -30,7 +30,7 @@ class PostHogService
 
     public function identify(string $distinctId, array $properties = []): void
     {
-        if (config('posthog.disabled')) {
+        if (! $this->isEnabled()) {
             return;
         }
 
@@ -42,7 +42,7 @@ class PostHogService
 
     public function capture(string $distinctId, string $event, array $properties = []): void
     {
-        if (config('posthog.disabled')) {
+        if (! $this->isEnabled()) {
             return;
         }
 
@@ -55,7 +55,7 @@ class PostHogService
 
     public function captureException(\Throwable $exception, ?string $distinctId = null): ?string
     {
-        if (config('posthog.disabled')) {
+        if (! $this->isEnabled()) {
             return null;
         }
 
@@ -77,7 +77,7 @@ class PostHogService
 
     public function isFeatureEnabled(string $key, string $distinctId, array $properties = []): ?bool
     {
-        if (config('posthog.disabled')) {
+        if (! $this->isEnabled()) {
             return false;
         }
 
@@ -86,10 +86,21 @@ class PostHogService
 
     public function getFeatureFlagPayload(string $key, string $distinctId): mixed
     {
-        if (config('posthog.disabled')) {
+        if (! $this->isEnabled()) {
             return null;
         }
 
         return PostHog::getFeatureFlagPayload($key, $distinctId);
+    }
+
+    private function isEnabled(): bool
+    {
+        if ((bool) config('posthog.disabled', false)) {
+            return false;
+        }
+
+        $apiKey = trim((string) config('posthog.api_key', ''));
+
+        return $apiKey !== '';
     }
 }
