@@ -223,3 +223,56 @@ test('chat API emits a visible fallback message when the model returns no text',
     expect($eventTypes)->toContain('model_empty_response');
     expect($eventTypes)->toContain('run_completed');
 });
+
+test('chat API returns 422 when conversationId is missing', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->postJson('/api/chat', [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'Hello'],
+        ],
+    ]);
+
+    $response->assertStatus(422)
+        ->assertJsonPath('message', 'conversationId is required (route param or query param)');
+});
+
+test('chat API returns 404 when conversation does not belong to user', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->postJson('/api/chat?conversationId=missing-conversation', [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'Hello'],
+        ],
+    ]);
+
+    $response->assertNotFound();
+});
+
+test('chat API returns 422 when messages are missing or invalid', function () {
+    $user = User::factory()->create();
+
+    $conversationId = (string) Str::uuid7();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'user_id' => $user->id,
+        'title' => 'Invalid messages conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $missingMessages = $this->actingAs($user)->postJson('/api/chat?conversationId='.$conversationId, []);
+
+    $missingMessages->assertStatus(422)
+        ->assertJsonPath('message', 'messages must be a non-empty array');
+
+    $invalidMessages = $this->actingAs($user)->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'assistant', 'content' => 'no user prompt'],
+        ],
+    ]);
+
+    $invalidMessages->assertStatus(422)
+        ->assertJsonPath('message', 'A non-empty user message is required');
+});
