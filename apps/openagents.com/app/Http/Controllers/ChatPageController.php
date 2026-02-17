@@ -110,7 +110,7 @@ class ChatPageController extends Controller
             ->where('user_id', $user->id)
             ->orderBy('created_at')
             ->get(['id', 'role', 'content'])
-            ->map(fn ($m) => [
+            ->map(fn($m) => [
                 'id' => $m->id,
                 'role' => $m->role,
                 'content' => $m->content,
@@ -145,7 +145,7 @@ class ChatPageController extends Controller
                 ->where('user_id', $user->id)
                 ->orderBy('created_at')
                 ->get(['id', 'role', 'content'])
-                ->map(fn ($m) => [
+                ->map(fn($m) => [
                     'id' => $m->id,
                     'role' => $m->role,
                     'content' => $m->content,
@@ -164,5 +164,4 @@ class ChatPageController extends Controller
             ],
         ]);
     }
-
 }
