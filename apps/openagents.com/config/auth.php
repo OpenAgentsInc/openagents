@@ -130,4 +130,24 @@ return [
         ))),
     ],
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | API Signup Bootstrap (Staging / Automation)
+    |--------------------------------------------------------------------------
+    |
+    | Allows programmatic user bootstrap without WorkOS for staging and
+    | end-to-end API validation. Keep disabled in production unless needed.
+    |
+    */
+
+    'api_signup' => [
+        'enabled' => (bool) env('OA_API_SIGNUP_ENABLED', false),
+        'allowed_domains' => array_values(array_filter(array_map(
+            static fn (string $domain): string => strtolower(trim($domain)),
+            explode(',', (string) env('OA_API_SIGNUP_ALLOWED_DOMAINS', '')),
+        ))),
+        'default_token_name' => (string) env('OA_API_SIGNUP_DEFAULT_TOKEN_NAME', 'api-bootstrap'),
+    ],
+
 ];

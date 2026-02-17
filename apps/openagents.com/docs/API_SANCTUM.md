@@ -12,6 +12,30 @@ This app now exposes a token-authenticated API under `/api` using Laravel Sanctu
   - `routes/api.php` protected by `auth:sanctum`
   - `bootstrap/app.php` with `$middleware->statefulApi()` for SPA/session compatibility
 
+## Bootstrap Signup (Staging/Automation)
+
+A programmatic signup endpoint is available for staging/automation when enabled by env:
+
+- `POST /api/auth/register`
+
+Guardrails:
+- Disabled by default (`OA_API_SIGNUP_ENABLED=false`).
+- Optional domain allowlist via `OA_API_SIGNUP_ALLOWED_DOMAINS` (comma-separated).
+
+Request body example:
+
+```json
+{
+  "email": "creator.openagents.com",
+  "name": "Creator",
+  "tokenName": "staging-e2e",
+  "createAutopilot": true,
+  "autopilotDisplayName": "Creator Agent"
+}
+```
+
+Response includes a one-time bearer token under `data.token` plus the created/resolved user and optional autopilot.
+
 ## Endpoints
 
 ### Identity
