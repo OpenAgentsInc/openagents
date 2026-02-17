@@ -3,8 +3,9 @@
 use App\Http\Controllers\Auth\EmailCodeAuthController;
 use App\Http\Controllers\Auth\LocalTestLoginController;
 use App\Services\PostHogService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-use Laravel\WorkOS\Http\Requests\AuthKitLogoutRequest;
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [EmailCodeAuthController::class, 'show'])
@@ -36,13 +37,16 @@ Route::middleware('guest')->group(function () {
         ->name('internal.test-login');
 });
 
-Route::post('logout', function (AuthKitLogoutRequest $request, PostHogService $posthog) {
+Route::post('logout', function (Request $request, PostHogService $posthog) {
     $user = $request->user();
 
     if ($user) {
-        // PostHog: Track logout
         $posthog->capture($user->email, 'user logged out');
     }
 
-    return $request->logout('/');
+    Auth::guard('web')->logout();
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
+
+    return redirect()->to(url('/'));
 })->middleware('auth')->name('logout');

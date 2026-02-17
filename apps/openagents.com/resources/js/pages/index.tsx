@@ -236,7 +236,7 @@ export default function Index() {
         })
             .then((res) => {
                 if (res.status === 401 || res.status === 419) {
-                    setCreateFailedAuth(true);
+                    window.location.assign('/chat');
                     return null;
                 }
                 if (!res.ok) return null;
@@ -268,7 +268,7 @@ export default function Index() {
         [api],
     );
 
-    const { messages, sendMessage, status, error, clearError } = useChat({
+    const { messages, setMessages, sendMessage, status, error, clearError, stop } = useChat({
         id: conversationId ?? undefined,
         messages: [],
         transport: transport ?? undefined,
@@ -280,6 +280,28 @@ export default function Index() {
             conversationId,
         });
     }, [capture, conversationId, isGuest]);
+
+    useEffect(() => {
+        const handleNewChat = () => {
+            stop();
+            clearError();
+            setMessages([]);
+            setValue('');
+            setCreateFailedAuth(false);
+            initAttemptedRef.current = false;
+            setConversationId(isGuest ? createGuestConversationId() : null);
+
+            requestAnimationFrame(() => {
+                textareaRef.current?.focus({ preventScroll: true });
+            });
+        };
+
+        window.addEventListener('openagents:new-chat', handleNewChat);
+
+        return () => {
+            window.removeEventListener('openagents:new-chat', handleNewChat);
+        };
+    }, [clearError, isGuest, setMessages, stop]);
 
     // Focus the textarea when conversation is ready.
     // For guests, conversationId is immediate and should not wait on network.

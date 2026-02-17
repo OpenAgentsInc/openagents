@@ -43,11 +43,11 @@ export default function Login() {
         <>
             <Head title="Log in" />
 
-            <div className="fixed inset-0 overflow-hidden bg-[#06090f] text-white">
-                <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(120%_85%_at_50%_0%,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0)_55%),radial-gradient(ellipse_100%_100%_at_50%_50%,transparent_12%,rgba(0,0,0,0.55)_60%,rgba(0,0,0,0.88)_100%)]" />
-                <div className="pointer-events-none fixed inset-0 [background-image:radial-gradient(circle_at_center,rgba(255,255,255,0.15)_1px,transparent_1px)] [background-size:36px_36px]" />
+            <div className="relative min-h-screen overflow-hidden bg-[#06090f] text-white">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_85%_at_50%_0%,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0)_55%),radial-gradient(ellipse_100%_100%_at_50%_50%,transparent_12%,rgba(0,0,0,0.55)_60%,rgba(0,0,0,0.88)_100%)]" />
+                <div className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle_at_center,rgba(255,255,255,0.15)_1px,transparent_1px)] [background-size:36px_36px]" />
 
-                <div className="fixed inset-0 z-10 flex items-center justify-center overflow-auto px-6 py-12">
+                <div className="absolute inset-0 z-10 flex items-center justify-center overflow-auto px-6 py-12">
                     <div className="w-full max-w-md rounded-xl border border-white/20 bg-black/40 p-6 shadow-2xl backdrop-blur">
                         <div className="mb-6">
                             <Link href="/" className="text-sm text-white/70 transition hover:text-white">
