@@ -9,21 +9,19 @@ use App\OpenApi\Responses\NotFoundResponse;
 use App\OpenApi\Responses\SseStreamResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
+use App\Services\AutopilotService;
+use App\Services\AutopilotThreadService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Laravel\Ai\Contracts\ConversationStore;
 use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 
 #[OpenApi\PathItem]
 class AutopilotStreamController extends Controller
 {
-    private const DEFAULT_AUTOPILOT_ID = 'default';
-
     /**
      * Stream a run via autopilot alias route.
      *
-     * Phase A behavior: defaults to the built-in "default" autopilot and
-     * forwards to the canonical chat stream runtime.
+     * Resolves the owned autopilot, ensures a compatible thread exists,
+     * and then forwards to the canonical chat stream runtime.
      */
     #[OpenApi\Operation(tags: ['Autopilot'])]
     #[OpenApi\RequestBody(factory: ChatStreamRequestBody::class)]
@@ -35,16 +33,15 @@ class AutopilotStreamController extends Controller
         Request $request,
         string $autopilot,
         ChatApiController $chatApiController,
-        ConversationStore $conversationStore,
+        AutopilotService $autopilotService,
+        AutopilotThreadService $autopilotThreadService,
     ) {
         $user = $request->user();
         if (! $user) {
             abort(401);
         }
 
-        if (strtolower(trim($autopilot)) !== self::DEFAULT_AUTOPILOT_ID) {
-            abort(404);
-        }
+        $entity = $autopilotService->resolveOwned($user, $autopilot);
 
         $conversationId = $request->route('conversationId');
         if (! is_string($conversationId) || trim($conversationId) === '') {
@@ -57,31 +54,17 @@ class AutopilotStreamController extends Controller
             $conversationId = $request->input('threadId');
         }
 
-        if (! is_string($conversationId) || trim($conversationId) === '') {
-            $conversationId = (string) $conversationStore->storeConversation($user->id, 'Autopilot conversation');
+        $thread = $autopilotThreadService->ensureThread(
+            $user,
+            $entity,
+            is_string($conversationId) ? $conversationId : null,
+            'Autopilot conversation',
+        );
 
-            $now = now();
-            DB::table('threads')->insert([
-                'id' => $conversationId,
-                'user_id' => $user->id,
-                'title' => 'Autopilot conversation',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+        $request->query->set('conversationId', $thread->id);
+        if ($request->route()) {
+            $request->route()->setParameter('conversationId', $thread->id);
         }
-
-        $conversationId = trim((string) $conversationId);
-
-        $conversationExists = DB::table('agent_conversations')
-            ->where('id', $conversationId)
-            ->where('user_id', $user->id)
-            ->exists();
-
-        if (! $conversationExists) {
-            abort(404);
-        }
-
-        $request->query->set('conversationId', $conversationId);
 
         return $chatApiController->stream($request);
     }

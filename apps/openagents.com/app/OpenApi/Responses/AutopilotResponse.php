@@ -23,7 +23,9 @@ class AutopilotResponse extends ResponseFactory
                             Schema::string('status'),
                             Schema::string('visibility'),
                             Schema::integer('ownerUserId'),
-                            Schema::string('phase')->nullable(),
+                            Schema::integer('configVersion'),
+                            Schema::string('avatar')->nullable(),
+                            Schema::string('tagline')->nullable(),
                             Schema::string('createdAt')->format(Schema::FORMAT_DATE_TIME)->nullable(),
                             Schema::string('updatedAt')->format(Schema::FORMAT_DATE_TIME)->nullable(),
                         )

@@ -1,14 +1,17 @@
 <?php
 
 use App\AI\Agents\AutopilotAgent;
+use App\Models\Autopilot;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Ai;
+use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     config()->set('posthog.disabled', true);
 });
 
-it('supports autopilot phase a api routes and stream alias', function () {
+it('manages owned autopilots threads and stream alias through the existing run pipeline', function () {
     Ai::fakeAgent(AutopilotAgent::class, ['Autopilot stream reply']);
 
     $user = User::factory()->create([
@@ -17,53 +20,78 @@ it('supports autopilot phase a api routes and stream alias', function () {
 
     $token = $user->createToken('autopilot-api')->plainTextToken;
 
-    $this->withToken($token)
-        ->getJson('/api/autopilots')
-        ->assertOk()
-        ->assertJsonPath('data.0.id', 'default')
-        ->assertJsonPath('data.0.ownerUserId', $user->id);
-
-    $this->withToken($token)
+    $created = $this->withToken($token)
         ->postJson('/api/autopilots', [
-            'handle' => 'default',
-            'displayName' => 'Autopilot',
-        ])
-        ->assertCreated()
-        ->assertJsonPath('data.id', 'default');
-
-    $this->withToken($token)
-        ->getJson('/api/autopilots/default')
-        ->assertOk()
-        ->assertJsonPath('data.handle', 'default');
-
-    $this->withToken($token)
-        ->patchJson('/api/autopilots/default', [
-            'displayName' => 'Autopilot',
+            'handle' => 'ep212-bot',
+            'displayName' => 'EP212 Bot',
             'status' => 'active',
             'visibility' => 'private',
         ])
-        ->assertOk()
-        ->assertJsonPath('data.id', 'default');
+        ->assertCreated()
+        ->assertJsonPath('data.id', fn (mixed $id): bool => is_string($id) && trim($id) !== '')
+        ->assertJsonPath('data.handle', 'ep212-bot');
 
-    $threadCreate = $this->withToken($token)
-        ->postJson('/api/autopilots/default/threads', [
-            'title' => 'Autopilot test thread',
-        ])
-        ->assertCreated();
-
-    $threadId = $threadCreate->json('data.id');
-    expect($threadId)->toBeString()->not->toBeEmpty();
+    $autopilotId = (string) $created->json('data.id');
+    expect($autopilotId)->not->toBe('')->and(substr($autopilotId, 14, 1))->toBe('7');
 
     $this->withToken($token)
-        ->getJson('/api/autopilots/default/threads')
+        ->getJson('/api/autopilots')
+        ->assertOk()
+        ->assertJsonFragment(['id' => $autopilotId]);
+
+    $this->withToken($token)
+        ->getJson('/api/autopilots/'.$autopilotId)
+        ->assertOk()
+        ->assertJsonPath('data.handle', 'ep212-bot');
+
+    $this->withToken($token)
+        ->getJson('/api/autopilots/ep212-bot')
+        ->assertOk()
+        ->assertJsonPath('data.id', $autopilotId);
+
+    $this->withToken($token)
+        ->patchJson('/api/autopilots/'.$autopilotId, [
+            'displayName' => 'EP212 Bot Updated',
+            'profile' => [
+                'ownerDisplayName' => 'Chris',
+                'personaSummary' => 'Pragmatic and concise',
+            ],
+            'policy' => [
+                'l402RequireApproval' => true,
+                'l402MaxSpendMsatsPerCall' => 100000,
+                'l402AllowedHosts' => ['sats4ai.com'],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.displayName', 'EP212 Bot Updated')
+        ->assertJsonPath('data.configVersion', 2);
+
+    $threadCreated = $this->withToken($token)
+        ->postJson('/api/autopilots/'.$autopilotId.'/threads', [
+            'title' => 'Autopilot test thread',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.autopilotId', $autopilotId);
+
+    $threadId = (string) $threadCreated->json('data.id');
+    expect($threadId)->not->toBe('');
+
+    $autopilotIdOnThread = DB::table('threads')
+        ->where('id', $threadId)
+        ->value('autopilot_id');
+
+    expect($autopilotIdOnThread)->toBe($autopilotId);
+
+    $this->withToken($token)
+        ->getJson('/api/autopilots/'.$autopilotId.'/threads')
         ->assertOk()
         ->assertJsonFragment([
             'id' => $threadId,
-            'autopilotId' => 'default',
+            'autopilotId' => $autopilotId,
         ]);
 
     $streamResponse = $this->withToken($token)
-        ->postJson('/api/autopilots/default/stream', [
+        ->postJson('/api/autopilots/'.$autopilotId.'/stream', [
             'conversationId' => $threadId,
             'messages' => [
                 ['id' => 'm1', 'role' => 'user', 'content' => 'hello from autopilot stream alias'],
@@ -71,29 +99,83 @@ it('supports autopilot phase a api routes and stream alias', function () {
         ]);
 
     $streamResponse->assertOk();
-
     $streamed = $streamResponse->streamedContent();
     expect($streamed)->toContain('data: {"type":"start"');
     expect($streamed)->toContain('data: {"type":"finish"');
     expect($streamed)->toContain("data: [DONE]\n\n");
-});
 
-it('returns not found for unsupported autopilot id', function () {
-    $user = User::factory()->create([
-        'email' => 'autopilot-not-found@openagents.com',
-    ]);
+    expect(DB::table('runs')->where('thread_id', $threadId)->where('user_id', $user->id)->exists())->toBeTrue();
 
-    $token = $user->createToken('autopilot-api')->plainTextToken;
-
-    $this->withToken($token)
-        ->getJson('/api/autopilots/nonexistent')
-        ->assertNotFound();
+    $threadCountBefore = DB::table('threads')
+        ->where('user_id', $user->id)
+        ->where('autopilot_id', $autopilotId)
+        ->count();
 
     $this->withToken($token)
-        ->postJson('/api/autopilots/nonexistent/stream', [
+        ->postJson('/api/autopilots/'.$autopilotId.'/stream', [
             'messages' => [
-                ['id' => 'm1', 'role' => 'user', 'content' => 'hi'],
+                ['id' => 'm2', 'role' => 'user', 'content' => 'create a new thread implicitly'],
             ],
         ])
+        ->assertOk();
+
+    $threadCountAfter = DB::table('threads')
+        ->where('user_id', $user->id)
+        ->where('autopilot_id', $autopilotId)
+        ->count();
+
+    expect($threadCountAfter)->toBe($threadCountBefore + 1);
+});
+
+it('enforces autopilot ownership for read write thread and stream routes', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['ownership check']);
+
+    $owner = User::factory()->create([
+        'email' => 'autopilot-owner@openagents.com',
+    ]);
+    $intruder = User::factory()->create([
+        'email' => 'autopilot-intruder@openagents.com',
+    ]);
+
+    Sanctum::actingAs($owner);
+
+    $created = $this->postJson('/api/autopilots', [
+        'handle' => 'owner-bot',
+        'displayName' => 'Owner Bot',
+    ])
+        ->assertCreated()
+        ->assertJsonPath('data.id', fn (mixed $id): bool => is_string($id) && trim($id) !== '');
+
+    $autopilotId = (string) $created->json('data.id');
+
+    Sanctum::actingAs($intruder);
+
+    $this->getJson('/api/autopilots/'.$autopilotId)
         ->assertNotFound();
+
+    $this->patchJson('/api/autopilots/'.$autopilotId, [
+        'displayName' => 'Hacked',
+    ])
+        ->assertNotFound();
+
+    $this->getJson('/api/autopilots/owner-bot')
+        ->assertNotFound();
+
+    $this->getJson('/api/autopilots/'.$autopilotId.'/threads')
+        ->assertNotFound();
+
+    $this->postJson('/api/autopilots/'.$autopilotId.'/threads', [
+        'title' => 'intruder thread',
+    ])
+        ->assertNotFound();
+
+    $this->postJson('/api/autopilots/'.$autopilotId.'/stream', [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'intruder stream'],
+        ],
+    ])
+        ->assertNotFound();
+
+    expect(Autopilot::query()->where('owner_user_id', $owner->id)->where('id', $autopilotId)->exists())->toBeTrue();
+    expect(Autopilot::query()->where('owner_user_id', $intruder->id)->where('id', $autopilotId)->exists())->toBeFalse();
 });
