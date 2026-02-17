@@ -1,6 +1,6 @@
-# OpenAgents API v1 (Sanctum)
+# OpenAgents API (Sanctum)
 
-This app now exposes a token-authenticated API under `/api/v1` using Laravel Sanctum.
+This app now exposes a token-authenticated API under `/api` using Laravel Sanctum.
 
 ## Auth model
 
@@ -16,62 +16,62 @@ This app now exposes a token-authenticated API under `/api/v1` using Laravel San
 
 ### Identity / Admin
 
-- `GET /api/v1/me`
-- `GET /api/v1/admin/status` (requires `admin` middleware)
+- `GET /api/me`
+- `GET /api/admin/status` (requires `admin` middleware)
 
 ### Token management
 
-- `GET /api/v1/tokens`
-- `POST /api/v1/tokens`
-- `DELETE /api/v1/tokens/current`
-- `DELETE /api/v1/tokens/{tokenId}`
-- `DELETE /api/v1/tokens`
+- `GET /api/tokens`
+- `POST /api/tokens`
+- `DELETE /api/tokens/current`
+- `DELETE /api/tokens/{tokenId}`
+- `DELETE /api/tokens`
 
 ### Chat
 
-- `GET /api/v1/chats`
-- `POST /api/v1/chats`
-- `GET /api/v1/chats/{conversationId}`
-- `GET /api/v1/chats/{conversationId}/messages`
-- `GET /api/v1/chats/{conversationId}/runs`
-- `GET /api/v1/chats/{conversationId}/runs/{runId}/events`
-- `POST /api/v1/chats/{conversationId}/stream`
-- `POST /api/v1/chat/stream` (query param fallback: `conversationId`)
+- `GET /api/chats`
+- `POST /api/chats`
+- `GET /api/chats/{conversationId}`
+- `GET /api/chats/{conversationId}/messages`
+- `GET /api/chats/{conversationId}/runs`
+- `GET /api/chats/{conversationId}/runs/{runId}/events`
+- `POST /api/chats/{conversationId}/stream`
+- `POST /api/chat/stream` (query param fallback: `conversationId`)
 
 ### User settings
 
-- `GET /api/v1/settings/profile`
-- `PATCH /api/v1/settings/profile`
-- `DELETE /api/v1/settings/profile`
+- `GET /api/settings/profile`
+- `PATCH /api/settings/profile`
+- `DELETE /api/settings/profile`
 
 ### L402 data surfaces
 
-- `GET /api/v1/l402/wallet`
-- `GET /api/v1/l402/transactions`
-- `GET /api/v1/l402/transactions/{eventId}`
-- `GET /api/v1/l402/paywalls`
-- `GET /api/v1/l402/settlements`
-- `GET /api/v1/l402/deployments`
+- `GET /api/l402/wallet`
+- `GET /api/l402/transactions`
+- `GET /api/l402/transactions/{eventId}`
+- `GET /api/l402/paywalls`
+- `GET /api/l402/settlements`
+- `GET /api/l402/deployments`
 
 ### Agent Payments (Spark)
 
 Primary endpoints:
 
-- `GET /api/v1/agent-payments/wallet`
-- `POST /api/v1/agent-payments/wallet`
-- `GET /api/v1/agent-payments/balance`
-- `POST /api/v1/agent-payments/invoice`
-- `POST /api/v1/agent-payments/pay`
-- `POST /api/v1/agent-payments/send-spark`
+- `GET /api/agent-payments/wallet`
+- `POST /api/agent-payments/wallet`
+- `GET /api/agent-payments/balance`
+- `POST /api/agent-payments/invoice`
+- `POST /api/agent-payments/pay`
+- `POST /api/agent-payments/send-spark`
 
 Backward-compatible aliases:
 
-- `GET /api/v1/agents/me/wallet`
-- `POST /api/v1/agents/me/wallet`
-- `GET /api/v1/agents/me/balance`
-- `POST /api/v1/payments/invoice`
-- `POST /api/v1/payments/pay`
-- `POST /api/v1/payments/send-spark`
+- `GET /api/agents/me/wallet`
+- `POST /api/agents/me/wallet`
+- `GET /api/agents/me/balance`
+- `POST /api/payments/invoice`
+- `POST /api/payments/pay`
+- `POST /api/payments/send-spark`
 
 ## Production token creation
 
@@ -104,7 +104,7 @@ Example:
 
 ```bash
 curl -I https://openagents.com/<maintenance-secret>
-curl -H "Authorization: Bearer <token>" https://openagents.com/api/v1/me
+curl -H "Authorization: Bearer <token>" https://openagents.com/api/me
 ```
 
 ## Validation coverage

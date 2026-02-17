@@ -8,7 +8,7 @@ beforeEach(function () {
     Config::set('admin.emails', ['chris@openagents.com']);
 });
 
-it('forbids non-admin users from api v1 admin status endpoint', function () {
+it('forbids non-admin users from api admin status endpoint', function () {
     $nonAdmin = User::factory()->create([
         'email' => 'user@openagents.com',
     ]);
@@ -16,11 +16,11 @@ it('forbids non-admin users from api v1 admin status endpoint', function () {
     $nonAdminToken = $nonAdmin->createToken('non-admin')->plainTextToken;
 
     $this->withToken($nonAdminToken)
-        ->getJson('/api/v1/admin/status')
+        ->getJson('/api/admin/status')
         ->assertForbidden();
 });
 
-it('allows admin users on api v1 admin status endpoint', function () {
+it('allows admin users on api admin status endpoint', function () {
     $admin = User::factory()->create([
         'email' => 'chris@openagents.com',
     ]);
@@ -28,13 +28,13 @@ it('allows admin users on api v1 admin status endpoint', function () {
     $adminToken = $admin->createToken('admin')->plainTextToken;
 
     $this->withToken($adminToken)
-        ->getJson('/api/v1/admin/status')
+        ->getJson('/api/admin/status')
         ->assertOk()
         ->assertJsonPath('data.status', 'ok')
         ->assertJsonPath('data.adminEmails.0', 'chris@openagents.com');
 });
 
-it('supports profile read, update, and delete via api v1', function () {
+it('supports profile read, update, and delete via api', function () {
     $user = User::factory()->create([
         'email' => 'profile-user@openagents.com',
         'name' => 'Original Name',
@@ -43,27 +43,27 @@ it('supports profile read, update, and delete via api v1', function () {
     $token = $user->createToken('profile')->plainTextToken;
 
     $this->withToken($token)
-        ->getJson('/api/v1/settings/profile')
+        ->getJson('/api/settings/profile')
         ->assertOk()
         ->assertJsonPath('data.email', 'profile-user@openagents.com')
         ->assertJsonPath('data.name', 'Original Name');
 
     $this->withToken($token)
-        ->patchJson('/api/v1/settings/profile', [
+        ->patchJson('/api/settings/profile', [
             'name' => 'Updated Name',
         ])
         ->assertOk()
         ->assertJsonPath('data.name', 'Updated Name');
 
     $this->withToken($token)
-        ->deleteJson('/api/v1/settings/profile', [
+        ->deleteJson('/api/settings/profile', [
             'email' => 'wrong@openagents.com',
         ])
         ->assertUnprocessable()
         ->assertJsonPath('message', 'Email confirmation does not match the authenticated user.');
 
     $this->withToken($token)
-        ->deleteJson('/api/v1/settings/profile', [
+        ->deleteJson('/api/settings/profile', [
             'email' => 'profile-user@openagents.com',
         ])
         ->assertOk()

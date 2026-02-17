@@ -67,28 +67,28 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
     $token = $user->createToken('agent-payments')->plainTextToken;
 
     $this->withToken($token)
-        ->getJson('/api/v1/agent-payments/wallet')
+        ->getJson('/api/agent-payments/wallet')
         ->assertNotFound();
 
     $this->withToken($token)
-        ->postJson('/api/v1/agent-payments/wallet', [])
+        ->postJson('/api/agent-payments/wallet', [])
         ->assertOk()
         ->assertJsonPath('data.wallet.walletId', 'oa-user-1')
         ->assertJsonPath('data.wallet.sparkAddress', 'user1@spark.openagents.com')
         ->assertJsonPath('data.wallet.balanceSats', 2100);
 
     $this->withToken($token)
-        ->getJson('/api/v1/agents/me/wallet')
+        ->getJson('/api/agents/me/wallet')
         ->assertOk()
         ->assertJsonPath('data.wallet.walletId', 'oa-user-1');
 
     $this->withToken($token)
-        ->getJson('/api/v1/agents/me/balance')
+        ->getJson('/api/agents/me/balance')
         ->assertOk()
         ->assertJsonPath('data.balanceSats', 2100);
 
     $this->withToken($token)
-        ->postJson('/api/v1/payments/invoice', [
+        ->postJson('/api/payments/invoice', [
             'amountSats' => 123,
             'description' => 'Funding test',
         ])
@@ -97,7 +97,7 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
         ->assertJsonPath('data.invoice.amountSats', 123);
 
     $this->withToken($token)
-        ->postJson('/api/v1/payments/pay', [
+        ->postJson('/api/payments/pay', [
             'invoice' => 'lnbc1anotherinvoicepayloadforpaying',
             'maxAmountSats' => 100,
             'timeoutMs' => 12000,
@@ -108,7 +108,7 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
         ->assertJsonPath('data.payment.proofReference', 'preimage:'.substr(str_repeat('b', 64), 0, 16));
 
     $this->withToken($token)
-        ->postJson('/api/v1/payments/send-spark', [
+        ->postJson('/api/payments/send-spark', [
             'sparkAddress' => 'other@spark.openagents.com',
             'amountSats' => 21,
         ])
