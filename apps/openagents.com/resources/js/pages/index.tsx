@@ -26,6 +26,7 @@ import {
 } from '@/components/ai-elements/tool';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 const TOOL_STATES: ReadonlyArray<ToolPart['state']> = [
     'approval-requested',
@@ -175,6 +176,7 @@ function createGuestConversationId(): string {
 export default function Index() {
     const { auth } = usePage<IndexPageProps>().props;
     const isGuest = !auth?.user;
+    const capture = usePostHogEvent('home_chat');
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -272,6 +274,13 @@ export default function Index() {
         transport: transport ?? undefined,
     });
 
+    useEffect(() => {
+        capture('home_chat.page_opened', {
+            isGuest,
+            conversationId,
+        });
+    }, [capture, conversationId, isGuest]);
+
     // Focus the textarea when conversation is ready.
     // For guests, conversationId is immediate and should not wait on network.
     useEffect(() => {
@@ -296,6 +305,40 @@ export default function Index() {
             el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
         });
     }, [messages]);
+
+    const lastStatusRef = useRef(status);
+
+    useEffect(() => {
+        const previousStatus = lastStatusRef.current;
+        lastStatusRef.current = status;
+
+        const transitionedFromStreaming =
+            previousStatus === 'submitted' || previousStatus === 'streaming';
+
+        if (!transitionedFromStreaming || status !== 'ready') return;
+
+        const lastAssistant =
+            [...messages]
+                .reverse()
+                .find((message) => message.role === 'assistant') ?? null;
+        const hasContent =
+            lastAssistant !== null &&
+            textFromParts(lastAssistant.parts).trim().length > 0;
+
+        if (!hasContent) {
+            capture('home_chat.response_empty', {
+                conversationId,
+                messageCount: messages.length,
+            });
+
+            return;
+        }
+
+        capture('home_chat.response_completed', {
+            conversationId,
+            messageCount: messages.length,
+        });
+    }, [capture, conversationId, messages, status]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -335,13 +378,18 @@ export default function Index() {
             )
                 return;
             setValue('');
+            capture('home_chat.message_submitted', {
+                conversationId,
+                source: isGuest ? 'guest' : 'authed',
+                characterCount: trimmed.length,
+            });
             await sendMessage({ text: trimmed });
             requestAnimationFrame(() => {
                 textareaRef.current?.focus({ preventScroll: true });
                 textareaRef.current?.setSelectionRange(0, 0);
             });
         },
-        [value, status, conversationId, sendMessage],
+        [capture, conversationId, isGuest, sendMessage, status, value],
     );
 
     const handleSuggestionClick = useCallback(
@@ -355,6 +403,11 @@ export default function Index() {
                 return;
             }
 
+            capture('home_chat.suggestion_clicked', {
+                conversationId,
+                suggestion,
+            });
+
             setValue(suggestion);
 
             requestAnimationFrame(() => {
@@ -365,7 +418,7 @@ export default function Index() {
                 el.setSelectionRange(len, len);
             });
         },
-        [authRequired, conversationId, status],
+        [authRequired, capture, conversationId, status],
     );
 
     const isStreaming = status === 'submitted' || status === 'streaming';
@@ -381,6 +434,15 @@ export default function Index() {
             (status === 'streaming' &&
                 lastMessage?.role === 'assistant' &&
                 !textFromParts(lastMessage.parts)));
+
+    useEffect(() => {
+        if (!error?.message) return;
+
+        capture('home_chat.error_shown', {
+            conversationId,
+            errorMessage: error.message,
+        });
+    }, [capture, conversationId, error?.message]);
 
     return (
         <>
@@ -463,7 +525,12 @@ export default function Index() {
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => clearError()}
+                                onClick={() => {
+                                    capture('home_chat.error_dismissed', {
+                                        conversationId,
+                                    });
+                                    clearError();
+                                }}
                             >
                                 Dismiss
                             </Button>
