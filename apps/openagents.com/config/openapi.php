@@ -1,0 +1,103 @@
+<?php
+
+return [
+
+    'collections' => [
+
+        'default' => [
+
+            'info' => [
+                'title' => 'OpenAgents API',
+                'description' => 'OpenAgents REST API (Laravel). Primary auth is Sanctum bearer tokens for /api/v1 endpoints.',
+                'version' => env('APP_VERSION', '1.0.0'),
+                'contact' => [
+                    'name' => 'OpenAgents',
+                    'url' => 'https://openagents.com',
+                ],
+            ],
+
+            'servers' => [
+                [
+                    'url' => env('APP_URL', 'https://openagents.com'),
+                    'description' => 'Primary production server',
+                    'variables' => [],
+                ],
+            ],
+
+            'tags' => [
+                [
+                    'name' => 'Auth',
+                    'description' => 'Authentication context and token lifecycle endpoints.',
+                ],
+                [
+                    'name' => 'Chat',
+                    'description' => 'Conversation, run, and stream endpoints.',
+                ],
+                [
+                    'name' => 'Profile',
+                    'description' => 'Authenticated profile management endpoints.',
+                ],
+                [
+                    'name' => 'Admin',
+                    'description' => 'Admin-only endpoints scoped by configured admin email allowlist.',
+                ],
+                [
+                    'name' => 'L402',
+                    'description' => 'Lightning L402 wallet, receipts, and deployment telemetry endpoints.',
+                ],
+            ],
+
+            'security' => [
+                \GoldSpecDigital\ObjectOrientedOAS\Objects\SecurityRequirement::create()->securityScheme('SanctumToken'),
+            ],
+
+            // Non standard attributes used by code/doc generation tools can be added here
+            'extensions' => [
+                'x-generatedBy' => 'vyuldashev/laravel-openapi',
+            ],
+
+            // Route for exposing specification.
+            // Leave uri null to disable.
+            'route' => [
+                'uri' => '/openapi.json',
+                'middleware' => [],
+            ],
+
+            // Register custom middlewares for different objects.
+            'middlewares' => [
+                'paths' => [
+                    //
+                ],
+                'components' => [
+                    //
+                ],
+            ],
+
+        ],
+
+    ],
+
+    // Directories to use for locating OpenAPI object definitions.
+    'locations' => [
+        'callbacks' => [
+            app_path('OpenApi/Callbacks'),
+        ],
+
+        'request_bodies' => [
+            app_path('OpenApi/RequestBodies'),
+        ],
+
+        'responses' => [
+            app_path('OpenApi/Responses'),
+        ],
+
+        'schemas' => [
+            app_path('OpenApi/Schemas'),
+        ],
+
+        'security_schemes' => [
+            app_path('OpenApi/SecuritySchemes'),
+        ],
+    ],
+
+];

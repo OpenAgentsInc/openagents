@@ -17,7 +17,8 @@
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.9",
         "laravel/workos": "^0.5.0",
-        "posthog/posthog-php": "^3.7"
+        "posthog/posthog-php": "^3.7",
+        "vyuldashev/laravel-openapi": "dev-master"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

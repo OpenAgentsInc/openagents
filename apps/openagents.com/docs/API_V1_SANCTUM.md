@@ -96,3 +96,11 @@ Pest coverage for API/Sanctum lives in:
 - `tests/Feature/Api/V1/L402ApiTest.php`
 - `tests/Feature/Api/V1/AdminAndProfileApiTest.php`
 - `tests/Feature/CreateApiTokenCommandTest.php`
+
+## OpenAPI
+
+This API is documented with auto-generated OpenAPI output at:
+
+- `/openapi.json`
+
+Generation source is controller attributes + `app/OpenApi/*` factory classes.

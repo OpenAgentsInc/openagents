@@ -27,3 +27,5 @@ yarn-error.log
 /.vscode
 /.zed
 .env.example
+
+public/openapi.json
