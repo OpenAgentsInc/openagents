@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', fn () => redirect()->route('chat'))->name('home');
+Route::get('/', fn () => Inertia::render('index'))->name('home');
 
 Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
     ->middleware(ValidateWorkOSSession::class)

@@ -1,7 +1,8 @@
 <?php
 
-test('home route redirects to chat onboarding', function () {
+test('home route renders index page', function () {
     $response = $this->get(route('home'));
 
-    $response->assertRedirect('/chat');
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page->component('index'));
 });
