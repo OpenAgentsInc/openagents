@@ -9,18 +9,18 @@ test('resolver applies autopilot policy allowlist and denylist to exposed tools'
 
     AutopilotPolicy::query()->create([
         'autopilot_id' => $autopilotId,
-        'tool_allowlist' => ['echo', 'get_time'],
-        'tool_denylist' => ['get_time'],
+        'tool_allowlist' => ['openagents_api', 'lightning_l402_fetch'],
+        'tool_denylist' => ['lightning_l402_fetch'],
     ]);
 
     $resolution = resolve(AutopilotToolResolver::class)->resolutionForAutopilot($autopilotId);
 
     $toolNames = array_map(fn ($tool) => $tool->name(), $resolution['tools']);
 
-    expect($toolNames)->toBe(['echo']);
+    expect($toolNames)->toBe(['openagents_api']);
     expect($resolution['audit']['policyApplied'] ?? null)->toBeTrue();
-    expect($resolution['audit']['removedByDenylist'] ?? [])->toContain('get_time');
-    expect($resolution['audit']['removedByAllowlist'] ?? [])->toContain('lightning_l402_fetch');
+    expect($resolution['audit']['removedByDenylist'] ?? [])->toContain('lightning_l402_fetch');
+    expect($resolution['audit']['removedByAllowlist'] ?? [])->toContain('lightning_l402_approve');
 });
 
 test('resolver falls back to full tool registry when no autopilot policy exists', function () {
@@ -29,11 +29,12 @@ test('resolver falls back to full tool registry when no autopilot policy exists'
     $toolNames = array_map(fn ($tool) => $tool->name(), $resolution['tools']);
 
     expect($resolution['audit']['policyApplied'] ?? null)->toBeFalse();
-    expect($toolNames)->toContain('get_time');
-    expect($toolNames)->toContain('echo');
+    expect($toolNames)->toContain('openagents_api');
     expect($toolNames)->toContain('lightning_l402_fetch');
     expect($toolNames)->toContain('lightning_l402_approve');
     expect($toolNames)->toContain('lightning_l402_paywall_create');
     expect($toolNames)->toContain('lightning_l402_paywall_update');
     expect($toolNames)->toContain('lightning_l402_paywall_delete');
+    expect($toolNames)->not->toContain('get_time');
+    expect($toolNames)->not->toContain('echo');
 });

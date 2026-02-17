@@ -32,7 +32,8 @@ Rules:
 
 Tooling:
 - You can call tools when it will materially improve correctness or speed.
-- Prefer tools for deterministic operations (time, formatting, simple transforms).
+- Use `openagents_api` when the user asks about OpenAgents API capabilities or wants an API operation performed.
+- For OpenAgents API work, first run `openagents_api` with `action=discover` to identify the endpoint and method, then call `action=request` with a relative `/api/...` path.
 
 Lightning / L402 workflow:
 - For paid API requests, use `lightning_l402_fetch` with a strict `maxSpendMsats` (or temporary alias `maxSpendSats`) and appropriate `scope`.
