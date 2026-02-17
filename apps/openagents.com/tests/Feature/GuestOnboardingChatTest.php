@@ -48,7 +48,7 @@ test('guest chat keeps a stable guest conversation id in session', function () {
         ->toBe($firstConversationId);
 });
 
-test('guest chat shows verification step when pending email exists', function () {
+test('guest chat defers onboarding to chat_login tool path', function () {
     $chat = $this->withSession([
         'auth.magic_auth' => [
             'email' => 'chris@openagents.com',
@@ -61,26 +61,9 @@ test('guest chat shows verification step when pending email exists', function ()
     $payload = inertiaPayload($chat);
     $props = $payload['props'] ?? [];
 
-    expect($props['guestOnboarding']['enabled'] ?? null)->toBeTrue();
-    expect($props['guestOnboarding']['step'] ?? null)->toBe('code');
-    expect($props['guestOnboarding']['pendingEmail'] ?? null)->toBe('chris@openagents.com');
-    expect((string) ($props['initialMessages'][0]['content'] ?? ''))
-        ->toContain('Enter your 6-digit verification code');
-});
-
-test('guest chat falls back to email step when pending auth session is malformed', function () {
-    $chat = $this->withSession([
-        'auth.magic_auth' => 'invalid-structure',
-    ])->get('/chat');
-
-    $chat->assertOk();
-
-    $payload = inertiaPayload($chat);
-    $props = $payload['props'] ?? [];
-
-    expect($props['guestOnboarding']['enabled'] ?? null)->toBeTrue();
-    expect($props['guestOnboarding']['step'] ?? null)->toBe('email');
+    expect($props['guestOnboarding']['enabled'] ?? null)->toBeFalse();
+    expect($props['guestOnboarding']['step'] ?? null)->toBeNull();
     expect($props['guestOnboarding']['pendingEmail'] ?? null)->toBeNull();
     expect((string) ($props['initialMessages'][0]['content'] ?? ''))
-        ->toContain("enter your email and I'll send a one-time code");
+        ->toContain('walk you through setup in chat');
 });

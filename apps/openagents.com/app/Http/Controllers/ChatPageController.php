@@ -21,18 +21,6 @@ class ChatPageController extends Controller
         if (! $user) {
             $guestConversationId = $guestService->ensureGuestConversationId($request, $conversationId);
 
-            /** @var array{email?: string}|null $pending */
-            $pending = $request->session()->get('auth.magic_auth');
-            $pendingEmail = is_array($pending) && is_string($pending['email'] ?? null)
-                ? trim((string) $pending['email'])
-                : null;
-
-            $guestStep = $pendingEmail ? 'code' : 'email';
-
-            $initialAssistant = $pendingEmail
-                ? "Check {$pendingEmail}. Enter your 6-digit verification code to continue setup."
-                : "Welcome to Autopilot. To set up your agent, enter your email and I'll send a one-time code.";
-
             return Inertia::render('chat', [
                 'conversationId' => $guestConversationId,
                 'conversationTitle' => 'New conversation',
@@ -40,13 +28,14 @@ class ChatPageController extends Controller
                     [
                         'id' => (string) Str::uuid7(),
                         'role' => 'assistant',
-                        'content' => $initialAssistant,
+                        'content' => "Welcome to Autopilot. Tell me what you want to do, and I'll walk you through setup in chat.",
                     ],
                 ],
+                // Guest onboarding now runs through AI tool calls (`chat_login`).
                 'guestOnboarding' => [
-                    'enabled' => true,
-                    'step' => $guestStep,
-                    'pendingEmail' => $pendingEmail,
+                    'enabled' => false,
+                    'step' => null,
+                    'pendingEmail' => null,
                 ],
             ]);
         }
@@ -110,7 +99,7 @@ class ChatPageController extends Controller
             ->where('user_id', $user->id)
             ->orderBy('created_at')
             ->get(['id', 'role', 'content'])
-            ->map(fn($m) => [
+            ->map(fn ($m) => [
                 'id' => $m->id,
                 'role' => $m->role,
                 'content' => $m->content,
@@ -145,7 +134,7 @@ class ChatPageController extends Controller
                 ->where('user_id', $user->id)
                 ->orderBy('created_at')
                 ->get(['id', 'role', 'content'])
-                ->map(fn($m) => [
+                ->map(fn ($m) => [
                     'id' => $m->id,
                     'role' => $m->role,
                     'content' => $m->content,

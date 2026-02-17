@@ -10,7 +10,7 @@ test('guests can access in-chat onboarding without guest-id redirect', function 
 
     $response->assertOk();
     $response->assertDontSee('/chat/guest-');
-    $response->assertSee("enter your email and I'll send a one-time code");
+    $response->assertSee('walk you through setup in chat');
 
     $guestConversationId = session('chat.guest.conversation_id');
     expect($guestConversationId)->toBeString()->and($guestConversationId)->toMatch('/^g-[a-f0-9]{32}$/');

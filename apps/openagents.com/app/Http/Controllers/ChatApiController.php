@@ -17,6 +17,7 @@ class ChatApiController extends Controller
         /** @var GuestChatSessionService $guestService */
         $guestService = resolve(GuestChatSessionService::class);
         $user = $request->user();
+        $authenticatedSession = $user !== null;
 
         $conversationId = $request->route('conversationId');
 
@@ -90,7 +91,7 @@ class ChatApiController extends Controller
         Log::info('Chat stream: starting', ['conversation_id' => $conversationId, 'prompt_length' => strlen($prompt)]);
 
         $orchestrator = resolve(RunOrchestrator::class);
-        $response = $orchestrator->streamAutopilotRun($user, $conversationId, $prompt);
+        $response = $orchestrator->streamAutopilotRun($user, $conversationId, $prompt, $authenticatedSession);
 
         Log::info('Chat stream: response created', ['conversation_id' => $conversationId]);
 

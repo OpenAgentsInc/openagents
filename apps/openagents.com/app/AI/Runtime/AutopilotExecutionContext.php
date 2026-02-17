@@ -8,16 +8,24 @@ final class AutopilotExecutionContext
 
     private ?string $autopilotId = null;
 
-    public function set(?int $userId, ?string $autopilotId): void
+    /**
+     * True when the current request session is authenticated as a real user.
+     * False for guest/onboarding chat sessions.
+     */
+    private bool $authenticatedSession = true;
+
+    public function set(?int $userId, ?string $autopilotId, bool $authenticatedSession = true): void
     {
         $this->userId = $this->normalizeUserId($userId);
         $this->autopilotId = $this->normalizeAutopilotId($autopilotId);
+        $this->authenticatedSession = $authenticatedSession;
     }
 
     public function clear(): void
     {
         $this->userId = null;
         $this->autopilotId = null;
+        $this->authenticatedSession = true;
     }
 
     public function userId(): ?int
@@ -28,6 +36,11 @@ final class AutopilotExecutionContext
     public function autopilotId(): ?string
     {
         return $this->autopilotId;
+    }
+
+    public function authenticatedSession(): bool
+    {
+        return $this->authenticatedSession;
     }
 
     private function normalizeUserId(?int $userId): ?int
