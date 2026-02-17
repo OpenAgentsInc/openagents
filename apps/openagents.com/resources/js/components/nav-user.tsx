@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { ChevronsUpDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -35,17 +35,7 @@ export function NavUser() {
     }, [dropdownPortalRef]);
 
     if (!user) {
-        return (
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton size="lg" asChild>
-                        <Link href="/login" prefetch>
-                            <span className="truncate">Sign in (backup)</span>
-                        </Link>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
-        );
+        return null;
     }
 
     return (

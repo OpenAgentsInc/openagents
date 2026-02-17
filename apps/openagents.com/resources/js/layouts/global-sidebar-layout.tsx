@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -12,6 +13,17 @@ import {
 type Props = { children: ReactNode };
 
 export function GlobalSidebarLayout({ children }: Props) {
+    useEffect(() => {
+        const prevHtml = document.documentElement.style.overflow;
+        const prevBody = document.body.style.overflow;
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.documentElement.style.overflow = prevHtml;
+            document.body.style.overflow = prevBody;
+        };
+    }, []);
+
     return (
         <SidebarProvider>
             <div className="fixed left-[10px] top-[10px] z-30">

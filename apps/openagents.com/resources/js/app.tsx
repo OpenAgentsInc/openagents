@@ -25,7 +25,9 @@ createInertiaApp({
             return (
                 <>
                     <PostHogIdentify />
-                    <Page {...props} />
+                    <GlobalSidebarLayout>
+                        <Page {...props} />
+                    </GlobalSidebarLayout>
                 </>
             );
         };
@@ -36,10 +38,8 @@ createInertiaApp({
         root.render(
             <StrictMode>
                 <PostHogProvider client={posthog}>
-                        <TooltipProvider>
-                        <GlobalSidebarLayout>
-                            <App {...props} />
-                        </GlobalSidebarLayout>
+                    <TooltipProvider>
+                        <App {...props} />
                     </TooltipProvider>
                 </PostHogProvider>
             </StrictMode>,
