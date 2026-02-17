@@ -34,6 +34,7 @@ import {
     ToolOutput,
     type ToolPart,
 } from '@/components/ai-elements/tool';
+import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
@@ -78,6 +79,17 @@ function toolNameFromPart(part: unknown): string {
     }
 
     return 'tool';
+}
+
+function isL402ToolName(name: string): boolean {
+    return name === 'lightning_l402_fetch' || name === 'lightning_l402_approve';
+}
+
+function compactProofReference(value: string | null): string | null {
+    if (!value) return null;
+    if (value.length <= 28) return value;
+
+    return value.slice(0, 24) + '...';
 }
 
 function parseL402Output(output: unknown): Record<string, unknown> | null {
@@ -133,8 +145,9 @@ function l402ToolSummary(output: unknown): string | null {
     const quotedAmountMsats = typeof o.quotedAmountMsats === 'number' ? o.quotedAmountMsats : null;
     const msats = amountMsats ?? quotedAmountMsats;
     const sats = typeof msats === 'number' ? Math.round(msats / 1000) : null;
-    const proofReference =
-        typeof o.proofReference === 'string' ? o.proofReference : null;
+    const proofReference = compactProofReference(
+        typeof o.proofReference === 'string' ? o.proofReference : null,
+    );
     const denyCode = typeof o.denyCode === 'string' ? o.denyCode : null;
 
     if (status === 'approval_requested') {
@@ -169,12 +182,12 @@ function renderToolPart(
     const toolType = typeof part.type === 'string' ? part.type : `tool-${toolName}`;
     const rawToolState = normalizeToolState(part.state);
     const summary =
-        toolName === 'lightning_l402_fetch' || toolName === 'lightning_l402_approve'
+        isL402ToolName(toolName)
             ? l402ToolSummary(part.output)
             : null;
 
     const toolState =
-        toolName === 'lightning_l402_fetch' || toolName === 'lightning_l402_approve'
+        isL402ToolName(toolName)
             ? l402ToolStateFromOutput(part.output, rawToolState)
             : rawToolState;
 
@@ -305,6 +318,21 @@ function MessageBubble({
     );
 }
 
+function messageHasL402Tool(message: UIMessage): boolean {
+    return message.parts.some((part) => {
+        if (typeof part !== 'object' || part === null) return false;
+
+        const p = part as Record<string, unknown>;
+        const type = p.type;
+
+        if (type !== 'dynamic-tool' && (typeof type !== 'string' || !type.startsWith('tool-'))) {
+            return false;
+        }
+
+        return isL402ToolName(toolNameFromPart(p));
+    });
+}
+
 function ChatContent({
     conversationId,
     conversationTitle,
@@ -338,6 +366,10 @@ function ChatContent({
 
     const inputContainerRef = useRef<HTMLDivElement | null>(null);
     const isLoading = status === 'submitted' || status === 'streaming';
+    const walletRefreshKey = useMemo(
+        () => messages.filter(messageHasL402Tool).map((message) => String(message.id)).join(':'),
+        [messages],
+    );
     const controller = usePromptInputController();
 
     const focusInputSoon = useCallback(() => {
@@ -385,6 +417,8 @@ function ChatContent({
                         </AlertDescription>
                     </Alert>
                 )}
+
+                <ChatWalletSnapshot refreshKey={walletRefreshKey} disabled={isLoading} />
 
                 <div className="relative mx-auto flex w-full max-w-[768px] min-h-0 flex-1 flex-col overflow-hidden">
                     <Conversation>
