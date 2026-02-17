@@ -23,13 +23,18 @@ export default function Home() {
             </Head>
 
             <div className="fixed inset-0 h-screen flex flex-col overflow-hidden bg-[#06090f] text-white">
-                {/* Radial gradient fixed to viewport */}
-                <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(120%_85%_at_50%_0%,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0)_55%),radial-gradient(ellipse_100%_100%_at_50%_50%,transparent_12%,rgba(0,0,0,0.55)_60%,rgba(0,0,0,0.88)_100%)]" />
-
-                <div className="min-h-0 flex-1 overflow-y-auto">
+                {/* Single radial gradient (no dark ellipse) so no dark bar at top */}
+                <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(120%_85%_at_50%_0%,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0)_55%)]" />
+                {/* Dots as background of scroll area; base bg so body/gradient never show through */}
+                <div
+                    className="relative z-[1] min-h-0 flex-1 overflow-y-auto"
+                    style={{
+                        backgroundColor: '#06090f',
+                        backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.05) 1px, transparent 1px)',
+                        backgroundSize: '36px 36px',
+                    }}
+                >
                     <div className="relative min-h-0">
-                        {/* Grid scrolls with content — z-0 so it sits behind header */}
-                        <div className="pointer-events-none absolute inset-0 z-0 [background-image:radial-gradient(circle_at_center,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:36px_36px]" />
                         <header className="relative z-10">
                         <nav aria-label="Global" className="flex items-center justify-between p-6 lg:px-8">
                         <div className="flex lg:flex-1">
