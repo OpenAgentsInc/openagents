@@ -1,5 +1,3 @@
-'use client';
-
 import {
     ActionBarPrimitive,
     AuiIf,
@@ -8,12 +6,13 @@ import {
     ComposerPrimitive,
     MessagePrimitive,
     ThreadPrimitive,
+    useAuiState,
 } from '@assistant-ui/react';
 import {
     AssistantChatTransport,
     useChatRuntime,
 } from '@assistant-ui/react-ai-sdk';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Avatar from '@radix-ui/react-avatar';
 import {
     ArrowUpIcon,
@@ -24,19 +23,25 @@ import {
     Pencil1Icon,
     ReloadIcon,
 } from '@radix-ui/react-icons';
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import type { FC } from 'react';
 import { TooltipIconButton } from '@/components/aui/tooltip-icon-button';
 import { cn } from '@/lib/utils';
 
-function AuiRuntimeProvider({ children }: { children: React.ReactNode }) {
+function AuiRuntimeProvider({
+    conversationId,
+    children,
+}: {
+    conversationId: string;
+    children: React.ReactNode;
+}) {
     const transport = useMemo(
         () =>
             new AssistantChatTransport({
-                api: '/api/chat',
+                api: `/api/chat?conversationId=${encodeURIComponent(conversationId)}`,
                 credentials: 'include',
             }),
-        [],
+        [conversationId],
     );
     const runtime = useChatRuntime({ transport });
     return (
@@ -47,6 +52,24 @@ function AuiRuntimeProvider({ children }: { children: React.ReactNode }) {
 }
 
 const ChatGPT: FC = () => {
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const isRunning = useAuiState((s) => s.thread.isRunning);
+    const wasRunningRef = useRef(false);
+
+    // Focus on first page load (once thread is mounted)
+    useEffect(() => {
+        const t = setTimeout(() => inputRef.current?.focus(), 100);
+        return () => clearTimeout(t);
+    }, []);
+
+    // Focus after every message user sends (when run finishes)
+    useEffect(() => {
+        if (wasRunningRef.current && !isRunning) {
+            inputRef.current?.focus();
+        }
+        wasRunningRef.current = isRunning;
+    }, [isRunning]);
+
     return (
         <ThreadPrimitive.Root className="dark flex h-full flex-col items-stretch bg-[#212121] px-4 text-foreground">
             <ThreadPrimitive.Viewport className="flex grow flex-col gap-8 overflow-y-scroll pt-16">
@@ -72,7 +95,8 @@ const ChatGPT: FC = () => {
 
             <ComposerPrimitive.Root className="mx-auto flex w-full max-w-3xl items-end rounded-3xl bg-white/5 pl-2">
                 <ComposerPrimitive.Input
-                    placeholder="Message ChatGPT"
+                    ref={inputRef}
+                    placeholder="Message Autopilot"
                     className="h-12 max-h-40 grow resize-none bg-transparent p-3.5 text-sm text-white outline-none placeholder:text-white/50"
                 />
                 <AuiIf condition={({ thread }) => !thread.isRunning}>
@@ -223,13 +247,71 @@ const BranchPicker: FC<{ className?: string }> = ({ className }) => {
 };
 
 export default function AuiPage() {
+    const { props } = usePage<{ csrfToken?: string }>();
+    const [conversationId, setConversationId] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        setError(null);
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        };
+        if (props.csrfToken) {
+            headers['X-CSRF-TOKEN'] = props.csrfToken;
+        }
+        fetch('/api/chats', {
+            method: 'POST',
+            headers,
+            credentials: 'include',
+            body: JSON.stringify({ title: 'AUI chat' }),
+        })
+            .then((res) => {
+                if (cancelled) return;
+                if (!res.ok) {
+                    if (res.status === 401) setError('Sign in to chat');
+                    else setError('Could not start chat');
+                    return;
+                }
+                return res.json();
+            })
+            .then((data) => {
+                if (cancelled || !data?.data?.id) return;
+                setConversationId(data.data.id);
+            })
+            .catch(() => {
+                if (!cancelled) setError('Could not start chat');
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     return (
         <>
             <Head title="Assistant UI – ChatGPT clone" />
             <div className="fixed inset-0 flex h-screen flex-col bg-[#212121]">
-                <AuiRuntimeProvider>
-                    <ChatGPT />
-                </AuiRuntimeProvider>
+                {error && (
+                    <div className="flex items-center justify-center gap-2 border-b border-white/10 bg-white/5 px-4 py-2 text-sm text-white">
+                        {error}
+                        {error === 'Sign in to chat' && (
+                            <a href="/login" className="underline">
+                                Log in
+                            </a>
+                        )}
+                    </div>
+                )}
+                {!conversationId && !error && (
+                    <div className="flex flex-1 items-center justify-center text-white/70">
+                        Preparing chat…
+                    </div>
+                )}
+                {conversationId && (
+                    <AuiRuntimeProvider conversationId={conversationId}>
+                        <ChatGPT />
+                    </AuiRuntimeProvider>
+                )}
             </div>
         </>
     );
