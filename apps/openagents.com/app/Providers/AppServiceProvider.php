@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Lightning\L402\InvoicePayer;
 use App\Lightning\L402\InvoicePayers\FakeInvoicePayer;
 use App\Lightning\L402\InvoicePayers\LndRestInvoicePayer;
+use App\Lightning\L402\InvoicePayers\SparkWalletInvoicePayer;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -20,10 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(InvoicePayer::class, function () {
+        $this->app->singleton(InvoicePayer::class, function ($app) {
             $kind = (string) config('lightning.l402.invoice_payer', 'fake');
 
             return match ($kind) {
+                'spark_wallet' => $app->make(SparkWalletInvoicePayer::class),
                 'lnd_rest' => new LndRestInvoicePayer,
                 'fake' => new FakeInvoicePayer,
                 default => throw new RuntimeException('Unknown L402 invoice payer: '.$kind),

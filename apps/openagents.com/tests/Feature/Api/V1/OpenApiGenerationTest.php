@@ -27,6 +27,8 @@ it('generates OpenAPI spec with api v1 coverage and sanctum security', function 
     expect($paths)->toHaveKey('/api/v1/chats/{conversationId}/stream');
     expect($paths)->toHaveKey('/api/v1/chat/stream');
     expect($paths)->toHaveKey('/api/v1/l402/wallet');
+    expect($paths)->toHaveKey('/api/v1/agent-payments/wallet');
+    expect($paths)->toHaveKey('/api/v1/payments/pay');
 
     expect($paths)->not->toHaveKey('/api/chat');
 

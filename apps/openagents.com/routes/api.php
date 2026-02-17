@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\AgentPaymentsController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\MeController;
@@ -33,6 +34,24 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('/settings/profile', [ProfileController::class, 'show']);
     Route::patch('/settings/profile', [ProfileController::class, 'update']);
     Route::delete('/settings/profile', [ProfileController::class, 'destroy']);
+
+    // Agent Payments API (Laravel port of Episode 169-style wallet endpoints)
+    Route::prefix('/agent-payments')->group(function () {
+        Route::get('/wallet', [AgentPaymentsController::class, 'wallet']);
+        Route::post('/wallet', [AgentPaymentsController::class, 'upsertWallet']);
+        Route::get('/balance', [AgentPaymentsController::class, 'balance']);
+        Route::post('/invoice', [AgentPaymentsController::class, 'createInvoice']);
+        Route::post('/pay', [AgentPaymentsController::class, 'payInvoice']);
+        Route::post('/send-spark', [AgentPaymentsController::class, 'sendSpark']);
+    });
+
+    // Backward-compatible aliases for older OpenAgents Agent Payments API shape.
+    Route::get('/agents/me/wallet', [AgentPaymentsController::class, 'wallet']);
+    Route::post('/agents/me/wallet', [AgentPaymentsController::class, 'upsertWallet']);
+    Route::get('/agents/me/balance', [AgentPaymentsController::class, 'balance']);
+    Route::post('/payments/invoice', [AgentPaymentsController::class, 'createInvoice']);
+    Route::post('/payments/pay', [AgentPaymentsController::class, 'payInvoice']);
+    Route::post('/payments/send-spark', [AgentPaymentsController::class, 'sendSpark']);
 
     Route::prefix('/l402')->group(function () {
         Route::get('/wallet', [L402Controller::class, 'wallet']);

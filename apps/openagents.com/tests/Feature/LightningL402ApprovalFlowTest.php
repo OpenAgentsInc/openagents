@@ -37,7 +37,7 @@ test('fetch tool queues approval and approve tool executes the queued payment', 
             return 'fake';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             return new InvoicePaymentResult(hash('sha256', 'preimage:'.$invoice), 'fake');
         }

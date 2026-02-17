@@ -12,7 +12,10 @@ final class FakeInvoicePayer implements InvoicePayer
         return 'fake';
     }
 
-    public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
     {
         // Deterministic "preimage" for tests and local demos.
         $preimage = hash('sha256', 'preimage:'.$invoice);

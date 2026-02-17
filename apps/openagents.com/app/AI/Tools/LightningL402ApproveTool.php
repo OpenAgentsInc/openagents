@@ -55,6 +55,20 @@ class LightningL402ApproveTool implements Tool
 
         $payload = $consumed['payload'];
 
+        $currentUserId = $this->resolveUserId();
+        $expectedUserId = isset($payload['userId']) && is_numeric($payload['userId']) ? (int) $payload['userId'] : null;
+        if (is_int($expectedUserId) && is_int($currentUserId) && $expectedUserId !== $currentUserId) {
+            return $this->encode([
+                'toolName' => 'lightning_l402_fetch',
+                'status' => 'failed',
+                'paid' => false,
+                'cacheHit' => false,
+                'denyCode' => 'task_user_mismatch',
+                'approvalRequired' => false,
+                'taskId' => $taskId,
+            ]);
+        }
+
         $url = isset($payload['url']) && is_string($payload['url']) ? $payload['url'] : null;
         $method = isset($payload['method']) && is_string($payload['method']) ? $payload['method'] : 'GET';
         $headers = isset($payload['headers']) && is_array($payload['headers']) ? $payload['headers'] : [];
@@ -81,6 +95,9 @@ class LightningL402ApproveTool implements Tool
             body: $body,
             maxSpendSats: $maxSpendSats,
             scope: $scope,
+            context: [
+                'userId' => $currentUserId ?? $expectedUserId,
+            ],
         );
 
         $result['toolName'] = 'lightning_l402_fetch';
@@ -98,6 +115,21 @@ class LightningL402ApproveTool implements Tool
                 ->description('Task id returned by lightning_l402_fetch when approval was requested.')
                 ->required(),
         ];
+    }
+
+    private function resolveUserId(): ?int
+    {
+        $id = auth()->id();
+
+        if (is_int($id)) {
+            return $id;
+        }
+
+        if (is_numeric($id)) {
+            return (int) $id;
+        }
+
+        return null;
     }
 
     /**

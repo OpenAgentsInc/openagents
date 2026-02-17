@@ -22,8 +22,8 @@ return [
         // Approval intent TTL (seconds) for queued payment tasks.
         'approval_ttl_seconds' => (int) env('L402_APPROVAL_TTL_SECONDS', 600),
 
-        // Which invoice payer to use: "lnd_rest" | "fake".
-        'invoice_payer' => (string) env('L402_INVOICE_PAYER', 'fake'),
+        // Which invoice payer to use: "spark_wallet" | "lnd_rest" | "fake".
+        'invoice_payer' => (string) env('L402_INVOICE_PAYER', 'spark_wallet'),
     ],
 
     'lnd_rest' => [
@@ -33,6 +33,16 @@ return [
         'tls_cert_base64' => env('LND_REST_TLS_CERT_BASE64'),
         // Set to "false" only for local experiments.
         'tls_verify' => env('LND_REST_TLS_VERIFY', true),
+    ],
+
+    'spark_executor' => [
+        'base_url' => env('SPARK_EXECUTOR_BASE_URL', env('OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL')),
+        'auth_token' => env('SPARK_EXECUTOR_AUTH_TOKEN', env('OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN')),
+        'timeout_ms' => (int) env('SPARK_EXECUTOR_TIMEOUT_MS', 20000),
+    ],
+
+    'agent_wallets' => [
+        'wallet_id_prefix' => (string) env('SPARK_AGENT_WALLET_ID_PREFIX', 'oa-user-'),
     ],
 
     // Demo presets (Phase 5). Keep endpoints here so demos are reproducible.

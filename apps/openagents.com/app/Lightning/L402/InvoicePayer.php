@@ -10,6 +10,8 @@ interface InvoicePayer
      * Pay a BOLT11 invoice and return the payment preimage.
      *
      * Implementations must throw on failure.
+     *
+     * @param  array<string, mixed>  $context
      */
-    public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult;
+    public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult;
 }
