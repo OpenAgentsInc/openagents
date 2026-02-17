@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ChatApiController;
 use App\Http\Controllers\ChatPageController;
+use App\Http\Controllers\FeedPageController;
 use App\Http\Controllers\L402PageController;
 use App\Http\Controllers\OpenApiSpecController;
 use App\Http\Middleware\ValidateWorkOSSession;
@@ -66,6 +67,8 @@ Route::middleware([
     'auth',
     ValidateWorkOSSession::class,
 ])->group(function () {
+    Route::get('feed', [FeedPageController::class, 'index'])->name('feed');
+
     Route::prefix('l402')->name('l402.')->group(function () {
         Route::get('/', [L402PageController::class, 'wallet'])->name('wallet');
         Route::get('/transactions', [L402PageController::class, 'transactions'])->name('transactions.index');

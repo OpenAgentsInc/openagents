@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Github, MessageSquare, Plus, Shield, Zap } from 'lucide-react';
+import { BookOpen, Github, MessageSquare, Plus, Rss, Shield, Zap } from 'lucide-react';
 import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
 import { NavFooter } from '@/components/nav-footer';
 import { NavUser } from '@/components/nav-user';
@@ -89,6 +89,14 @@ export function AppSidebar() {
                                 <Link href="/chat" prefetch className="gap-2">
                                     <Plus className="size-5 shrink-0" />
                                     <span>New chat</span>
+                                </Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                            <SidebarMenuButton asChild className="w-full justify-start font-medium" isActive={isCurrentUrl('/feed')}>
+                                <Link href="/feed" prefetch className="gap-2">
+                                    <Rss className="size-5 shrink-0" />
+                                    <span>Feed</span>
                                 </Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
