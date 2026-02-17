@@ -145,6 +145,7 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.87 0 0);
+    --chat-input-bg: var(--muted);
 }
 
 /* Cursor Dark High Contrast (v5 teal-theme.css) – dark mode only */
@@ -183,11 +184,21 @@
     --sidebar-accent-foreground: hsl(208 29% 88%);
     --sidebar-border: hsl(0 0% 16%);
     --sidebar-ring: hsl(191 41% 67%);
+    --chat-input-bg: var(--card);
 }
 
 @layer base {
     * {
         @apply border-border;
+    }
+
+    ::selection {
+        background-color: var(--secondary);
+        color: var(--foreground);
+    }
+    ::-moz-selection {
+        background-color: var(--secondary);
+        color: var(--foreground);
     }
 
     /* Restore cursor: pointer for buttons (Tailwind v4 defaults to cursor: default) */
@@ -221,4 +232,58 @@
         min-height: 0;
         overflow: hidden;
     }
+}
+
+/* PWA / safe area: full viewport height including notches */
+@media screen {
+    html,
+    body,
+    .min-h-pwa {
+        min-height: calc(100svh + env(safe-area-inset-top));
+    }
+}
+
+/* Chat layout: bottom input bar (replicated structure) */
+.chat-input-outer {
+    box-shadow:
+        0 0 24px rgba(255, 255, 255, 0.06),
+        0 0 8px rgba(255, 255, 255, 0.04);
+}
+
+.chat-input-form {
+    box-shadow:
+        0 80px 50px 0 rgba(0, 0, 0, 0.1),
+        0 50px 30px 0 rgba(0, 0, 0, 0.07),
+        0 30px 15px 0 rgba(0, 0, 0, 0.06),
+        0 15px 8px rgba(0, 0, 0, 0.04),
+        0 6px 4px rgba(0, 0, 0, 0.04),
+        0 2px 2px rgba(0, 0, 0, 0.02);
+}
+
+.chat-input-form {
+    background-color: var(--chat-input-bg);
+}
+
+/* Auto-resize upward with content (same pattern as ai-elements prompt-input) */
+.chat-input-form .chat-input-textarea {
+    field-sizing: content;
+    min-height: 48px;
+    max-height: 12rem;
+}
+
+/* Reserve space for fixed bottom input so scroll content doesn't sit under it */
+.chat-scroll-padding {
+    padding-bottom: 144px;
+}
+
+/* Firefox: reserve space for scrollbar so content doesn't jump when scrollbar appears */
+.firefox-scrollbar-margin-fix {
+    scrollbar-gutter: stable;
+}
+
+/* Chat/index page: fixed viewport height so only the content area scrolls (input stays fixed) */
+.chat-page-root {
+    height: 100dvh;
+    max-height: 100dvh;
+    overscroll-behavior: none;
 }
