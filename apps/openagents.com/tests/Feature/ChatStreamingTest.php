@@ -276,3 +276,54 @@ test('chat API returns 422 when messages are missing or invalid', function () {
     $invalidMessages->assertStatus(422)
         ->assertJsonPath('message', 'A non-empty user message is required');
 });
+
+test('guest chat stream can establish session without guest-session preflight', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Hello from guest stream']);
+
+    $conversationId = 'g-'.str_repeat('b', 32);
+
+    $response = $this->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'Hello as guest'],
+        ],
+    ]);
+
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+    expect($content)->toContain('data: {"type":"start"');
+    expect($content)->toContain('data: {"type":"finish"');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    /** @var User $guest */
+    $guest = User::query()->where('email', 'guest@openagents.internal')->firstOrFail();
+
+    expect(DB::table('agent_conversations')
+        ->where('id', $conversationId)
+        ->where('user_id', $guest->id)
+        ->exists())->toBeTrue();
+
+    expect(DB::table('threads')
+        ->where('id', $conversationId)
+        ->where('user_id', $guest->id)
+        ->exists())->toBeTrue();
+
+    expect(session('chat.guest.conversation_id'))->toBe($conversationId);
+});
+
+test('guest chat stream rejects conversation id that mismatches established guest session', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Hello from guest stream']);
+
+    $establishedId = 'g-'.str_repeat('c', 32);
+    $mismatchId = 'g-'.str_repeat('d', 32);
+
+    $this->getJson('/api/chat/guest-session?conversationId='.$establishedId)->assertOk();
+
+    $response = $this->postJson('/api/chat?conversationId='.$mismatchId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'This should fail'],
+        ],
+    ]);
+
+    $response->assertUnauthorized();
+});

@@ -10,7 +10,12 @@ class GuestChatSessionController extends Controller
 {
     public function __invoke(Request $request, GuestChatSessionService $guestService): JsonResponse
     {
-        $conversationId = $guestService->ensureGuestConversationId($request, null);
+        $requestedConversationId = $request->query('conversationId');
+        $conversationId = $guestService->ensureGuestConversationId(
+            $request,
+            is_string($requestedConversationId) ? $requestedConversationId : null,
+        );
+
         $guestService->ensureGuestConversationAndThread($conversationId);
 
         return response()->json([

@@ -12,8 +12,10 @@ use Illuminate\Support\Facades\Log;
 
 class ChatApiController extends Controller
 {
-    public function stream(Request $request, GuestChatSessionService $guestService)
+    public function stream(Request $request)
     {
+        /** @var GuestChatSessionService $guestService */
+        $guestService = resolve(GuestChatSessionService::class);
         $user = $request->user();
 
         $conversationId = $request->route('conversationId');
@@ -29,10 +31,17 @@ class ChatApiController extends Controller
         $conversationId = trim($conversationId);
 
         if (! $user) {
-            $sessionGuestId = $request->session()->get('chat.guest.conversation_id');
-            if (! $guestService->isGuestConversationId($conversationId) || $sessionGuestId !== $conversationId) {
+            if (! $guestService->isGuestConversationId($conversationId)) {
                 abort(401);
             }
+
+            // Non-blocking guest UX: allow first stream call to establish the
+            // session guest id if the guest-session preflight is still in flight.
+            $sessionGuestId = $guestService->ensureGuestConversationId($request, $conversationId);
+            if ($sessionGuestId !== $conversationId) {
+                abort(401);
+            }
+
             $guestService->ensureGuestConversationAndThread($conversationId);
             $user = $guestService->guestUser();
         }

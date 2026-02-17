@@ -34,6 +34,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'GET api/autopilots',
         'GET api/autopilots/{autopilot}',
         'GET api/autopilots/{autopilot}/threads',
+        'GET api/chat/guest-session',
         'GET api/chats',
         'GET api/chats/{conversationId}',
         'GET api/chats/{conversationId}/messages',
