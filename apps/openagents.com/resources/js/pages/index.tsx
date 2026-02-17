@@ -15,6 +15,7 @@ import {
     MessageResponse,
 } from '@/components/ai-elements/message';
 import { Shimmer } from '@/components/ai-elements/shimmer';
+import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion';
 import {
     Tool,
     ToolContent,
@@ -36,8 +37,18 @@ const TOOL_STATES: ReadonlyArray<ToolPart['state']> = [
     'output-error',
 ];
 
+const QUICK_SUGGESTIONS = [
+    'What tools do you have?',
+    'How do I create an account?',
+    'What can you do with bitcoin?',
+    'Explain what you can do with the OpenAgents API',
+] as const;
+
 function isKnownToolState(value: unknown): value is ToolPart['state'] {
-    return typeof value === 'string' && TOOL_STATES.includes(value as ToolPart['state']);
+    return (
+        typeof value === 'string' &&
+        TOOL_STATES.includes(value as ToolPart['state'])
+    );
 }
 
 function normalizeToolState(value: unknown): ToolPart['state'] {
@@ -47,8 +58,10 @@ function normalizeToolState(value: unknown): ToolPart['state'] {
 function toolNameFromPart(part: unknown): string {
     if (typeof part !== 'object' || part === null) return 'tool';
     const p = part as Record<string, unknown>;
-    if (p.type === 'dynamic-tool' && typeof p.toolName === 'string') return p.toolName;
-    if (typeof p.type === 'string' && p.type.startsWith('tool-')) return p.type.slice('tool-'.length);
+    if (p.type === 'dynamic-tool' && typeof p.toolName === 'string')
+        return p.toolName;
+    if (typeof p.type === 'string' && p.type.startsWith('tool-'))
+        return p.type.slice('tool-'.length);
     return 'tool';
 }
 
@@ -56,7 +69,11 @@ function toolNameFromPart(part: unknown): string {
 function textFromParts(parts: UIMessage['parts']): string {
     if (!Array.isArray(parts)) return '';
     return parts
-        .filter((p): p is { type: 'text'; text: string } => p?.type === 'text' && typeof (p as { text?: unknown }).text === 'string')
+        .filter(
+            (p): p is { type: 'text'; text: string } =>
+                p?.type === 'text' &&
+                typeof (p as { text?: unknown }).text === 'string',
+        )
         .map((p) => p.text)
         .join('');
 }
@@ -83,7 +100,11 @@ function renderMessagePart(part: unknown, idx: number): ReactNode {
         const toolType = typeof type === 'string' ? type : `tool-${toolName}`;
         const toolState = normalizeToolState(p.state);
         const errorText =
-            typeof p.errorText === 'string' ? p.errorText : typeof p.error === 'string' ? p.error : undefined;
+            typeof p.errorText === 'string'
+                ? p.errorText
+                : typeof p.error === 'string'
+                  ? p.error
+                  : undefined;
         const defaultOpen =
             toolState === 'approval-requested' ||
             toolState === 'output-error' ||
@@ -92,7 +113,11 @@ function renderMessagePart(part: unknown, idx: number): ReactNode {
 
         const header =
             toolType === 'dynamic-tool' ? (
-                <ToolHeader type="dynamic-tool" toolName={toolName} state={toolState} />
+                <ToolHeader
+                    type="dynamic-tool"
+                    toolName={toolName}
+                    state={toolState}
+                />
             ) : (
                 <ToolHeader
                     type={toolType as Exclude<ToolPart['type'], 'dynamic-tool'>}
@@ -100,12 +125,15 @@ function renderMessagePart(part: unknown, idx: number): ReactNode {
                 />
             );
 
-        const key = typeof p.toolCallId === 'string' ? p.toolCallId : `part-${idx}`;
+        const key =
+            typeof p.toolCallId === 'string' ? p.toolCallId : `part-${idx}`;
         return (
             <Tool key={key} defaultOpen={defaultOpen}>
                 {header}
                 <ToolContent>
-                    {p.input !== undefined && <ToolInput input={p.input as ToolPart['input']} />}
+                    {p.input !== undefined && (
+                        <ToolInput input={p.input as ToolPart['input']} />
+                    )}
                     <ToolOutput
                         output={p.output as ToolPart['output']}
                         errorText={errorText as ToolPart['errorText']}
@@ -198,7 +226,10 @@ export default function Index() {
         fetch('/api/chats', {
             method: 'POST',
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+            },
             body: JSON.stringify({ title: 'Chat' }),
         })
             .then((res) => {
@@ -221,11 +252,17 @@ export default function Index() {
     const authRequired = createFailedAuth;
 
     const api = useMemo(
-        () => (conversationId ? `/api/chat?conversationId=${encodeURIComponent(conversationId)}` : ''),
+        () =>
+            conversationId
+                ? `/api/chat?conversationId=${encodeURIComponent(conversationId)}`
+                : '',
         [conversationId],
     );
     const transport = useMemo(
-        () => (api ? new DefaultChatTransport({ api, credentials: 'include' }) : null),
+        () =>
+            api
+                ? new DefaultChatTransport({ api, credentials: 'include' })
+                : null,
         [api],
     );
 
@@ -268,10 +305,18 @@ export default function Index() {
             e.preventDefault();
 
             const trimmed = value.trim();
-            if (!trimmed || status === 'streaming' || status === 'submitted' || !conversationId) return;
+            if (
+                !trimmed ||
+                status === 'streaming' ||
+                status === 'submitted' ||
+                !conversationId
+            )
+                return;
 
             const form = e.currentTarget.form;
-            const submitButton = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+            const submitButton = form?.querySelector<HTMLButtonElement>(
+                'button[type="submit"]',
+            );
             if (submitButton?.disabled) return;
             form?.requestSubmit();
         },
@@ -282,7 +327,13 @@ export default function Index() {
         async (e: React.FormEvent<HTMLFormElement>) => {
             e.preventDefault();
             const trimmed = value.trim();
-            if (!trimmed || status === 'streaming' || status === 'submitted' || !conversationId) return;
+            if (
+                !trimmed ||
+                status === 'streaming' ||
+                status === 'submitted' ||
+                !conversationId
+            )
+                return;
             setValue('');
             await sendMessage({ text: trimmed });
             requestAnimationFrame(() => {
@@ -293,10 +344,36 @@ export default function Index() {
         [value, status, conversationId, sendMessage],
     );
 
-    const isStreaming = status === 'submitted' || status === 'streaming';
-    const isSubmitDisabled = !value.trim() || isStreaming || !conversationId || authRequired;
+    const handleSuggestionClick = useCallback(
+        (suggestion: string) => {
+            if (
+                authRequired ||
+                !conversationId ||
+                status === 'streaming' ||
+                status === 'submitted'
+            ) {
+                return;
+            }
 
-    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+            setValue(suggestion);
+
+            requestAnimationFrame(() => {
+                const el = textareaRef.current;
+                if (!el) return;
+                el.focus({ preventScroll: true });
+                const len = suggestion.length;
+                el.setSelectionRange(len, len);
+            });
+        },
+        [authRequired, conversationId, status],
+    );
+
+    const isStreaming = status === 'submitted' || status === 'streaming';
+    const isSubmitDisabled =
+        !value.trim() || isStreaming || !conversationId || authRequired;
+
+    const lastMessage =
+        messages.length > 0 ? messages[messages.length - 1] : null;
     const showThinking =
         !authRequired &&
         conversationId &&
@@ -309,45 +386,71 @@ export default function Index() {
         <>
             <Head title="" />
             <div className="chat-page-root min-h-pwa flex h-dvh flex-col overflow-hidden bg-black">
-                <main className="firefox-scrollbar-margin-fix relative flex min-h-0 w-full flex-1 flex-col overflow-hidden transition-[width,height] print:absolute print:left-0 print:top-0 print:h-auto print:min-h-auto print:overflow-visible">
+                <main className="firefox-scrollbar-margin-fix relative flex min-h-0 w-full flex-1 flex-col overflow-hidden transition-[width,height] print:absolute print:top-0 print:left-0 print:h-auto print:min-h-auto print:overflow-visible">
                     {/* Scrollable content: ai-elements Conversation + Messages from useChat */}
                     <div
                         ref={scrollContainerRef}
                         className="absolute inset-0 overflow-y-auto print:static print:inset-auto print:block print:h-auto print:overflow-visible print:pb-0"
-                        style={{ paddingBottom: 144, scrollbarGutter: 'stable both-edges' }}
+                        style={{
+                            paddingBottom: 144,
+                            scrollbarGutter: 'stable both-edges',
+                        }}
                     >
                         <Conversation className="mx-auto w-full max-w-3xl">
                             <ConversationContent className="min-h-[calc(100vh-20rem)] px-4 pt-8 pb-10">
                                 {authRequired && (
                                     <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
                                         <p>Sign in to chat.</p>
-                                        <Button asChild variant="outline" size="sm">
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            size="sm"
+                                        >
                                             <a href="/login">Sign in</a>
                                         </Button>
                                     </div>
                                 )}
-                                {!authRequired && conversationId && (messages.length > 0 || showThinking) && (
-                                    <>
-                                        {messages.map((m) => (
-                                            <Message key={m.id} from={m.role}>
-                                                <MessageContent>
-                                                    {Array.isArray(m.parts)
-                                                        ? m.parts.map((part, idx) => renderMessagePart(part, idx))
-                                                        : textFromParts(m.parts) && (
-                                                              <MessageResponse>{textFromParts(m.parts)}</MessageResponse>
-                                                          )}
-                                                </MessageContent>
-                                            </Message>
-                                        ))}
-                                        {showThinking && (
-                                            <div className="flex w-full max-w-[95%] flex-col gap-2 is-assistant">
-                                                <div className="flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm text-foreground">
-                                                    <Shimmer>Thinking</Shimmer>
+                                {!authRequired &&
+                                    conversationId &&
+                                    (messages.length > 0 || showThinking) && (
+                                        <>
+                                            {messages.map((m) => (
+                                                <Message
+                                                    key={m.id}
+                                                    from={m.role}
+                                                >
+                                                    <MessageContent>
+                                                        {Array.isArray(m.parts)
+                                                            ? m.parts.map(
+                                                                  (part, idx) =>
+                                                                      renderMessagePart(
+                                                                          part,
+                                                                          idx,
+                                                                      ),
+                                                              )
+                                                            : textFromParts(
+                                                                  m.parts,
+                                                              ) && (
+                                                                  <MessageResponse>
+                                                                      {textFromParts(
+                                                                          m.parts,
+                                                                      )}
+                                                                  </MessageResponse>
+                                                              )}
+                                                    </MessageContent>
+                                                </Message>
+                                            ))}
+                                            {showThinking && (
+                                                <div className="is-assistant flex w-full max-w-[95%] flex-col gap-2">
+                                                    <div className="flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm text-foreground">
+                                                        <Shimmer>
+                                                            Thinking
+                                                        </Shimmer>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
+                                            )}
+                                        </>
+                                    )}
                             </ConversationContent>
                             <ConversationScrollButton />
                         </Conversation>
@@ -355,9 +458,13 @@ export default function Index() {
 
                     {/* Error banner */}
                     {error && (
-                        <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between gap-2 bg-destructive/90 px-4 py-2 text-destructive-foreground text-sm">
+                        <div className="absolute top-0 right-0 left-0 z-20 flex items-center justify-between gap-2 bg-destructive/90 px-4 py-2 text-sm text-destructive-foreground">
                             <span>{error.message}</span>
-                            <Button variant="ghost" size="sm" onClick={() => clearError()}>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => clearError()}
+                            >
                                 Dismiss
                             </Button>
                         </div>
@@ -381,27 +488,58 @@ export default function Index() {
                                         id="chat-input-form"
                                         onSubmit={handleSubmit}
                                     >
+                                        <Suggestions className="pb-1">
+                                            {QUICK_SUGGESTIONS.map(
+                                                (suggestion) => (
+                                                    <Suggestion
+                                                        key={suggestion}
+                                                        suggestion={suggestion}
+                                                        onClick={
+                                                            handleSuggestionClick
+                                                        }
+                                                        disabled={
+                                                            authRequired ||
+                                                            !conversationId ||
+                                                            isStreaming
+                                                        }
+                                                    />
+                                                ),
+                                            )}
+                                        </Suggestions>
                                         <div className="flex min-w-0 grow flex-row items-start">
                                             <textarea
                                                 ref={textareaRef}
                                                 name="input"
                                                 id="chat-input"
-                                                placeholder={authRequired ? 'Sign in to chat' : 'Type message here'}
+                                                placeholder={
+                                                    authRequired
+                                                        ? 'Sign in to chat'
+                                                        : 'Type message here'
+                                                }
                                                 value={value}
-                                                onChange={(e) => setValue(e.target.value)}
+                                                onChange={(e) =>
+                                                    setValue(e.target.value)
+                                                }
                                                 className="chat-input-textarea w-full min-w-0 resize-none bg-transparent text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
                                                 aria-label="Message input"
                                                 autoComplete="off"
                                                 autoFocus
                                                 rows={1}
                                                 onKeyDown={handleKeyDown}
-                                                onCompositionStart={() => setIsComposing(true)}
-                                                onCompositionEnd={() => setIsComposing(false)}
-                                                disabled={authRequired || !conversationId}
+                                                onCompositionStart={() =>
+                                                    setIsComposing(true)
+                                                }
+                                                onCompositionEnd={() =>
+                                                    setIsComposing(false)
+                                                }
+                                                disabled={
+                                                    authRequired ||
+                                                    !conversationId
+                                                }
                                             />
                                         </div>
-                                        <div className="@container -mb-px mt-2 flex w-full min-w-0 flex-row-reverse justify-between">
-                                            <div className="-mr-0.5 -mt-0.5 flex shrink-0 items-center justify-center gap-2">
+                                        <div className="@container mt-2 -mb-px flex w-full min-w-0 flex-row-reverse justify-between">
+                                            <div className="-mt-0.5 -mr-0.5 flex shrink-0 items-center justify-center gap-2">
                                                 <Button
                                                     type="submit"
                                                     size="icon"
