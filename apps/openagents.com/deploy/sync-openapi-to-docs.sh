@@ -8,6 +8,7 @@ DOCS_REPO="${DOCS_REPO:-${HOME}/code/docs}"
 DOCS_BRANCH="${DOCS_BRANCH:-main}"
 DOCS_OPENAPI_PATH="${DOCS_OPENAPI_PATH:-api/openapi.json}"
 SKIP_PUSH="${SKIP_PUSH:-0}"
+OPENAPI_APP_URL="${OPENAPI_APP_URL:-https://openagents.com}"
 
 if [[ ! -d "${DOCS_REPO}/.git" ]]; then
   echo "error: docs repo not found at ${DOCS_REPO}" >&2
@@ -21,9 +22,11 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[openapi-sync] generating OpenAPI from ${APP_DIR}"
+echo "[openapi-sync] forcing APP_URL=${OPENAPI_APP_URL}"
 (
   cd "${APP_DIR}"
-  php artisan openapi:generate --output="${TMP_OPENAPI}" --ansi >/dev/null
+  APP_URL="${OPENAPI_APP_URL}" APP_ENV=production APP_DEBUG=false \
+    php artisan openapi:generate --output="${TMP_OPENAPI}" --ansi >/dev/null
 )
 
 php -r '
