@@ -29,24 +29,7 @@ echo "[openapi-sync] forcing APP_URL=${OPENAPI_APP_URL}"
     php artisan openapi:generate --output="${TMP_OPENAPI}" --ansi >/dev/null
 )
 
-php -r '
-$json = @file_get_contents($argv[1]);
-if ($json === false) {
-    fwrite(STDERR, "error: unable to read generated OpenAPI file\\n");
-    exit(1);
-}
-$decoded = json_decode($json, true);
-if (json_last_error() !== JSON_ERROR_NONE) {
-    fwrite(STDERR, "error: generated OpenAPI is invalid JSON: " . json_last_error_msg() . "\\n");
-    exit(1);
-}
-$minified = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-if (!is_string($minified) || $minified === "") {
-    fwrite(STDERR, "error: failed to minify OpenAPI JSON\\n");
-    exit(1);
-}
-file_put_contents($argv[1], $minified);
-' "${TMP_OPENAPI}"
+php "${APP_DIR}/scripts/normalize-openapi.php" "${TMP_OPENAPI}"
 
 TARGET="${DOCS_REPO}/${DOCS_OPENAPI_PATH}"
 mkdir -p "$(dirname "${TARGET}")"
