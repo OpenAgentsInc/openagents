@@ -49,16 +49,22 @@ class AutopilotToolResolver
             $toolByName[$name] = $tool;
         }
 
-        $availableToolNames = array_keys($toolByName);
+        $allAvailableToolNames = array_keys($toolByName);
 
         if (! $this->executionContext->authenticatedSession()) {
-            return $this->guestOnlyResolution($toolByName, $availableToolNames);
+            return $this->guestOnlyResolution($toolByName, $allAvailableToolNames);
         }
+
+        // Guests authenticate via `chat_login`; hide it for authenticated runs.
+        $authenticatedToolByName = $toolByName;
+        unset($authenticatedToolByName['chat_login']);
+
+        $availableToolNames = array_keys($authenticatedToolByName);
 
         $policy = $this->resolvePolicy($autopilotId);
         if (! $policy) {
             return [
-                'tools' => array_values($toolByName),
+                'tools' => array_values($authenticatedToolByName),
                 'audit' => [
                     'policyApplied' => false,
                     'authRestricted' => false,
@@ -82,8 +88,8 @@ class AutopilotToolResolver
 
         $resolvedTools = [];
         foreach ($resolved['exposed'] as $name) {
-            if (isset($toolByName[$name])) {
-                $resolvedTools[] = $toolByName[$name];
+            if (isset($authenticatedToolByName[$name])) {
+                $resolvedTools[] = $authenticatedToolByName[$name];
             }
         }
 

@@ -26,10 +26,10 @@ test('resolver applies autopilot policy allowlist and denylist to exposed tools'
     expect($resolution['audit']['authRestricted'] ?? null)->toBeFalse();
     expect($resolution['audit']['removedByDenylist'] ?? [])->toContain('lightning_l402_fetch');
     expect($resolution['audit']['removedByAllowlist'] ?? [])->toContain('lightning_l402_approve');
-    expect($resolution['audit']['removedByAllowlist'] ?? [])->toContain('chat_login');
+    expect($resolution['audit']['removedByAllowlist'] ?? [])->not->toContain('chat_login');
 });
 
-test('resolver falls back to full tool registry when no autopilot policy exists', function () {
+test('resolver falls back to authenticated tool registry when no autopilot policy exists', function () {
     $context = resolve(AutopilotExecutionContext::class);
     $context->set(1, null, true);
 
@@ -39,7 +39,7 @@ test('resolver falls back to full tool registry when no autopilot policy exists'
 
     expect($resolution['audit']['policyApplied'] ?? null)->toBeFalse();
     expect($resolution['audit']['authRestricted'] ?? null)->toBeFalse();
-    expect($toolNames)->toContain('chat_login');
+    expect($toolNames)->not->toContain('chat_login');
     expect($toolNames)->toContain('openagents_api');
     expect($toolNames)->toContain('lightning_l402_fetch');
     expect($toolNames)->toContain('lightning_l402_approve');
