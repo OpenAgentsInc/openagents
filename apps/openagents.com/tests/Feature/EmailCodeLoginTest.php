@@ -132,7 +132,7 @@ test('verify code signs in user and stores workos tokens', function () {
             'code' => '123456',
         ]);
 
-    $response->assertRedirect('/chat');
+    $response->assertRedirect('/');
     $this->assertAuthenticated();
 
     $this->assertDatabaseHas('users', [
@@ -181,7 +181,7 @@ test('verify code JSON endpoint signs in user for chat onboarding', function () 
 
     $response->assertOk()
         ->assertJsonPath('status', 'authenticated')
-        ->assertJsonPath('redirect', '/chat')
+        ->assertJsonPath('redirect', '/')
         ->assertJsonPath('user.email', 'chris@openagents.com');
 
     $this->assertAuthenticated();

@@ -21,7 +21,7 @@ class EmailCodeAuthController extends Controller
     public function show(Request $request): Response|RedirectResponse
     {
         if ($request->user()) {
-            return redirect()->route('chat');
+            return redirect()->route('home');
         }
 
         /** @var array{email?: string}|null $pending */
@@ -79,7 +79,7 @@ class EmailCodeAuthController extends Controller
 
         $this->completeSignIn($request, $verified, $posthog);
 
-        return redirect()->intended(route('chat'));
+        return redirect()->intended(route('home'));
     }
 
     public function verifyCodeJson(VerifyEmailCodeRequest $request, MagicAuthService $magicAuthService, PostHogService $posthog): JsonResponse
@@ -103,7 +103,7 @@ class EmailCodeAuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
             ],
-            'redirect' => '/chat',
+            'redirect' => '/',
         ]);
     }
 

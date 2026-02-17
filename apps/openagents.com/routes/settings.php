@@ -3,7 +3,6 @@
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Middleware\ValidateWorkOSSession;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 Route::middleware([
     'auth',
@@ -14,8 +13,4 @@ Route::middleware([
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-
-    Route::get('settings/appearance', function () {
-        return Inertia::render('settings/appearance');
-    })->name('appearance.edit');
 });
