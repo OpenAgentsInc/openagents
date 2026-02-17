@@ -3,6 +3,7 @@
 namespace App\AI;
 
 use App\AI\Agents\AutopilotAgent;
+use App\AI\Runtime\AutopilotExecutionContext;
 use App\Services\PostHogService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,8 @@ final class RunOrchestrator
             $finishReason = null;
             $runtimeActorType = $this->runtimeActorType($autopilotId);
             $runtimeActorAutopilotId = $runtimeActorType === 'autopilot' ? $autopilotId : null;
+            $executionContext = resolve(AutopilotExecutionContext::class);
+            $executionContext->set($userId, $autopilotId);
 
             try {
                 foreach ($streamable as $event) {
@@ -222,7 +225,7 @@ final class RunOrchestrator
                                         'paid' => $r['paid'] ?? null,
                                         'cacheHit' => $r['cacheHit'] ?? null,
                                         'cacheStatus' => $r['cacheStatus'] ?? null,
-                                        'approvalRequired' => $r['approvalRequired'] ?? null,
+                                        'approvalRequired' => $r['requireApproval'] ?? $r['approvalRequired'] ?? null,
                                         'maxSpendMsats' => $r['maxSpendMsats'] ?? null,
                                         'quotedAmountMsats' => $r['quotedAmountMsats'] ?? null,
                                         'amountMsats' => $r['amountMsats'] ?? null,
@@ -436,6 +439,8 @@ final class RunOrchestrator
                         flush();
                     }
                 }
+            } finally {
+                $executionContext->clear();
             }
         }, 200, [
             'Cache-Control' => 'no-cache, no-transform',

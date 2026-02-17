@@ -12,7 +12,7 @@ class ChatStreamRequestBody extends RequestBodyFactory
     public function build(): RequestBody
     {
         return RequestBody::create()
-            ->description('Full client-side message history; backend executes using the latest user message')
+            ->description('Full client-side message history; backend executes using the latest user message. L402 tool contract: `maxSpendMsats` is canonical (`maxSpendSats` temporary alias) and `requireApproval` is canonical (`approvalRequired` temporary alias).')
             ->required()
             ->content(
                 MediaType::json()->schema(
