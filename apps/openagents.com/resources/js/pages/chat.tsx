@@ -33,6 +33,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 import type { BreadcrumbItem } from '@/types';
 
 type GuestOnboardingStep = 'email' | 'code';
@@ -393,6 +394,40 @@ function extractApiError(payload: unknown): string | null {
     return null;
 }
 
+function hasVisibleAssistantContent(
+    message: UIMessage | null | undefined,
+): boolean {
+    if (
+        !message ||
+        message.role !== 'assistant' ||
+        !Array.isArray(message.parts)
+    ) {
+        return false;
+    }
+
+    return message.parts.some((part) => {
+        if (!part || typeof part !== 'object') return false;
+
+        const p = part as Record<string, unknown>;
+
+        if (
+            (p.type === 'text' || p.type === 'reasoning') &&
+            typeof p.text === 'string'
+        ) {
+            return p.text.trim().length > 0;
+        }
+
+        if (
+            typeof p.type === 'string' &&
+            (p.type === 'dynamic-tool' || p.type.startsWith('tool-'))
+        ) {
+            return true;
+        }
+
+        return false;
+    });
+}
+
 function ChatContent({
     conversationId,
     conversationTitle,
@@ -400,6 +435,7 @@ function ChatContent({
     guestOnboarding,
 }: Props) {
     const page = usePage<SharedPageProps>();
+    const capture = usePostHogEvent('chat');
     const csrfToken =
         typeof page.props.csrfToken === 'string' ? page.props.csrfToken : null;
 
@@ -439,6 +475,14 @@ function ChatContent({
     const [guestError, setGuestError] = useState<string | null>(null);
 
     useEffect(() => {
+        capture('chat.page_opened', {
+            conversationId,
+            guestOnboardingEnabled: guestEnabled,
+            initialMessageCount: normalizedInitial.length,
+        });
+    }, [capture, conversationId, guestEnabled, normalizedInitial.length]);
+
+    useEffect(() => {
         setGuestMessages(normalizedInitial);
         setGuestStep(guestOnboarding?.step === 'code' ? 'code' : 'email');
         setGuestBusy(false);
@@ -454,6 +498,38 @@ function ChatContent({
     const isStreaming = status === 'submitted' || status === 'streaming';
     const isLoading = guestEnabled ? guestBusy : isStreaming;
     const controller = usePromptInputController();
+    const lastStatusRef = useRef(status);
+
+    useEffect(() => {
+        const previousStatus = lastStatusRef.current;
+        lastStatusRef.current = status;
+
+        if (guestEnabled) return;
+
+        const transitionedFromStreaming =
+            previousStatus === 'submitted' || previousStatus === 'streaming';
+
+        if (!transitionedFromStreaming || status !== 'ready') return;
+
+        const lastAssistant =
+            [...messages]
+                .reverse()
+                .find((message) => message.role === 'assistant') ?? null;
+
+        if (!hasVisibleAssistantContent(lastAssistant)) {
+            capture('chat.response_empty', {
+                conversationId,
+                messageCount: messages.length,
+            });
+
+            return;
+        }
+
+        capture('chat.response_completed', {
+            conversationId,
+            messageCount: messages.length,
+        });
+    }, [capture, conversationId, guestEnabled, messages, status]);
 
     const focusInputSoon = useCallback(() => {
         setTimeout(() => {
@@ -503,6 +579,13 @@ function ChatContent({
             const trimmed = text.trim();
             if (!trimmed) return;
 
+            capture('chat.message_submitted', {
+                conversationId,
+                source: 'guest',
+                guestStep,
+                characterCount: trimmed.length,
+            });
+
             setGuestError(null);
 
             const userDisplayText =
@@ -514,6 +597,10 @@ function ChatContent({
 
             if (guestStep === 'email') {
                 if (!looksLikeEmail(trimmed)) {
+                    capture('chat.guest_email_invalid', {
+                        conversationId,
+                        submittedValueLength: trimmed.length,
+                    });
                     appendGuestMessage(
                         makeUiTextMessage(
                             'assistant',
@@ -533,6 +620,10 @@ function ChatContent({
                     );
 
                     if (!response.ok) {
+                        capture('chat.guest_code_send_failed', {
+                            conversationId,
+                            status: response.status,
+                        });
                         const errorText =
                             extractApiError(body) ??
                             'Unable to send code right now. Please try again.';
@@ -543,6 +634,10 @@ function ChatContent({
                     }
 
                     setGuestStep('code');
+                    capture('chat.guest_code_sent', {
+                        conversationId,
+                        destinationDomain: email.split('@')[1] ?? null,
+                    });
                     appendGuestMessage(
                         makeUiTextMessage(
                             'assistant',
@@ -550,6 +645,10 @@ function ChatContent({
                         ),
                     );
                 } catch {
+                    capture('chat.guest_code_send_failed', {
+                        conversationId,
+                        status: null,
+                    });
                     appendGuestMessage(
                         makeUiTextMessage(
                             'assistant',
@@ -567,6 +666,9 @@ function ChatContent({
                 trimmed.toLowerCase() === 'change email' ||
                 trimmed.toLowerCase() === 'start over'
             ) {
+                capture('chat.guest_email_reset', {
+                    conversationId,
+                });
                 setGuestStep('email');
                 appendGuestMessage(
                     makeUiTextMessage(
@@ -578,6 +680,10 @@ function ChatContent({
             }
 
             if (!isSixDigitCode(trimmed)) {
+                capture('chat.guest_code_invalid', {
+                    conversationId,
+                    submittedValueLength: trimmed.length,
+                });
                 appendGuestMessage(
                     makeUiTextMessage(
                         'assistant',
@@ -596,6 +702,10 @@ function ChatContent({
                 });
 
                 if (!response.ok) {
+                    capture('chat.guest_code_verify_failed', {
+                        conversationId,
+                        status: response.status,
+                    });
                     const errorText =
                         extractApiError(body) ??
                         'Verification failed. Request a new code and try again.';
@@ -605,6 +715,9 @@ function ChatContent({
                     return;
                 }
 
+                capture('chat.guest_code_verified', {
+                    conversationId,
+                });
                 appendGuestMessage(
                     makeUiTextMessage(
                         'assistant',
@@ -624,6 +737,10 @@ function ChatContent({
                     window.location.assign(redirectTo);
                 }, 250);
             } catch {
+                capture('chat.guest_code_verify_failed', {
+                    conversationId,
+                    status: null,
+                });
                 appendGuestMessage(
                     makeUiTextMessage(
                         'assistant',
@@ -634,19 +751,38 @@ function ChatContent({
                 setGuestBusy(false);
             }
         },
-        [appendGuestMessage, guestBusy, guestStep, postJson],
+        [
+            appendGuestMessage,
+            capture,
+            conversationId,
+            guestBusy,
+            guestStep,
+            postJson,
+        ],
     );
 
     const handleApproveTask = useCallback(
         async (taskId: string) => {
             if (!taskId || isLoading || guestEnabled) return;
 
+            capture('chat.l402_approval_clicked', {
+                conversationId,
+                taskId,
+            });
+
             await sendMessage({
                 text: `lightning_l402_approve({"taskId":"${taskId}"})`,
             });
             focusInputSoon();
         },
-        [focusInputSoon, guestEnabled, isLoading, sendMessage],
+        [
+            capture,
+            conversationId,
+            focusInputSoon,
+            guestEnabled,
+            isLoading,
+            sendMessage,
+        ],
     );
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -665,6 +801,16 @@ function ChatContent({
         : status;
     const errorMessage = guestEnabled ? guestError : (error?.message ?? null);
 
+    useEffect(() => {
+        if (!errorMessage) return;
+
+        capture('chat.error_shown', {
+            conversationId,
+            guestOnboardingEnabled: guestEnabled,
+            errorMessage,
+        });
+    }, [capture, conversationId, errorMessage, guestEnabled]);
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={conversationTitle || 'Chat'} />
@@ -681,6 +827,11 @@ function ChatContent({
                                 size="sm"
                                 className="mt-2"
                                 onClick={() => {
+                                    capture('chat.error_dismissed', {
+                                        conversationId,
+                                        guestOnboardingEnabled: guestEnabled,
+                                    });
+
                                     if (guestEnabled) {
                                         setGuestError(null);
                                     } else {
@@ -730,6 +881,12 @@ function ChatContent({
                                 focusInputSoon();
                                 return;
                             }
+
+                            capture('chat.message_submitted', {
+                                conversationId,
+                                source: 'authed',
+                                characterCount: trimmed.length,
+                            });
 
                             await sendMessage({ text: trimmed });
                             focusInputSoon();

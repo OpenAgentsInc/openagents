@@ -11,13 +11,13 @@ PostHog is integrated in this app’s **React (Inertia.js + Vite)** frontend for
 
 ### PostHog env checklist (backend + frontend)
 
-| Var | Where | Purpose |
-|-----|--------|---------|
-| `POSTHOG_API_KEY` | Backend (`.env`) | PHP/PostHogService; do not commit. |
-| `POSTHOG_HOST` | Backend (`.env`) | Optional; default `https://us.i.posthog.com`. |
-| `POSTHOG_DISABLED` | Backend (`.env`) | Optional; set `true` to disable backend capture. |
-| `VITE_POSTHOG_KEY` | Frontend (`.env`, build-time) | Same project key as backend; baked into assets at build. |
-| `VITE_POSTHOG_HOST` | Frontend (`.env`, build-time) | Optional; default `https://us.i.posthog.com`. |
+| Var                 | Where                         | Purpose                                                  |
+| ------------------- | ----------------------------- | -------------------------------------------------------- |
+| `POSTHOG_API_KEY`   | Backend (`.env`)              | PHP/PostHogService; do not commit.                       |
+| `POSTHOG_HOST`      | Backend (`.env`)              | Optional; default `https://us.i.posthog.com`.            |
+| `POSTHOG_DISABLED`  | Backend (`.env`)              | Optional; set `true` to disable backend capture.         |
+| `VITE_POSTHOG_KEY`  | Frontend (`.env`, build-time) | Same project key as backend; baked into assets at build. |
+| `VITE_POSTHOG_HOST` | Frontend (`.env`, build-time) | Optional; default `https://us.i.posthog.com`.            |
 
 Example (add to `.env`):
 
@@ -107,12 +107,12 @@ Use `trackAllChildren` to track each child separately (e.g. list items). You can
 
 Use hooks or the `PostHogFeature` component. See [PostHog: Feature flags](https://posthog.com/docs/feature-flags).
 
-| Hook | Description |
-|------|-------------|
-| `useFeatureFlagEnabled` | Boolean; sends `$feature_flag_called` |
-| `useFeatureFlagVariantKey` | Variant key; sends `$feature_flag_called` |
-| `useFeatureFlagPayload` | Payload; does **not** send exposure — use with one of the above |
-| `useActiveFeatureFlags` | List of active flags; no exposure event |
+| Hook                       | Description                                                     |
+| -------------------------- | --------------------------------------------------------------- |
+| `useFeatureFlagEnabled`    | Boolean; sends `$feature_flag_called`                           |
+| `useFeatureFlagVariantKey` | Variant key; sends `$feature_flag_called`                       |
+| `useFeatureFlagPayload`    | Payload; does **not** send exposure — use with one of the above |
+| `useActiveFeatureFlags`    | List of active flags; no exposure event                         |
 
 **Boolean example:**
 
@@ -132,7 +132,9 @@ function App() {
 import { useFeatureFlagVariantKey } from '@posthog/react';
 
 const variant = useFeatureFlagVariantKey('experiment-key');
-if (variant === 'variant-a') { /* ... */ }
+if (variant === 'variant-a') {
+    /* ... */
+}
 ```
 
 **Component-based:**
@@ -166,3 +168,35 @@ By default, posthog-js autocaptures pageviews, clicks, and inputs. Configure or 
 - [PostHog React library](https://posthog.com/docs/libraries/react)
 - [posthog-js docs](https://posthog.com/docs/libraries/js)
 - [PostHog PHP / backend](./POSTHOG_BACKEND.md) (this app)
+
+## Explicit UI Events Tracked
+
+This app now emits explicit high-signal events through `usePostHogEvent` (`resources/js/hooks/use-posthog-event.ts`) in addition to standard PostHog autocapture.
+
+Chat surface events:
+
+- `chat.page_opened`
+- `chat.message_submitted`
+- `chat.response_completed`
+- `chat.response_empty`
+- `chat.error_shown`
+- `chat.error_dismissed`
+- `chat.l402_approval_clicked`
+- Guest onboarding: `chat.guest_email_invalid`, `chat.guest_code_sent`, `chat.guest_code_send_failed`, `chat.guest_code_invalid`, `chat.guest_code_verify_failed`, `chat.guest_code_verified`, `chat.guest_email_reset`
+
+Homepage chat events:
+
+- `home_chat.page_opened`
+- `home_chat.suggestion_clicked`
+- `home_chat.message_submitted`
+- `home_chat.response_completed`
+- `home_chat.response_empty`
+- `home_chat.error_shown`
+- `home_chat.error_dismissed`
+
+Click coverage:
+
+- PostHog autocapture remains enabled in production builds and captures general click interactions (including nav/link clicks) unless suppressed with `ph-no-capture`.
+- The explicit events above capture intent-level actions in chat that are critical for funnel and failure analysis.
+
+Each explicit event includes a `namespace` property plus contextual metadata such as `conversationId`, `characterCount`, `taskId`, `guestStep`, and status codes where applicable.
