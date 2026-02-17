@@ -1,9 +1,8 @@
-# NIP Drafts (Moved)
+# NIP Drafts
 
-These drafts moved from `crates/` (Rust-era naming) to the protocol docs area:
+Draft Nostr Implementation Possibilities maintained in-repo:
 
-- `docs/protocol/nostr/nips/SA.md`
-- `docs/protocol/nostr/nips/AC.md`
+- **SA.md** — NIP-SA: Sovereign Agents
+- **AC.md** — NIP-AC: Agent Credit
 
-Rationale: keep active protocol specs under `docs/` so agent runs can discover and navigate them consistently.
-
+These are the canonical locations for linking (e.g. from the web, docs, or other repos).
