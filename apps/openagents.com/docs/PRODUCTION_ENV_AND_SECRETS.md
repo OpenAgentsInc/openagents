@@ -6,7 +6,7 @@ This runbook documents how to manage production configuration for `apps/openagen
 - Service: `openagents-web`
 - Project: `openagentsgemini`
 - Region: `us-central1`
-- Primary custom domain target: `https://next.openagents.com`
+- Primary custom domain target: `https://openagents.com`
 
 ## Configuration model
 Use two buckets of runtime config:
@@ -45,7 +45,7 @@ gcloud run services update openagents-web \
   --project openagentsgemini \
   --region us-central1 \
   --update-env-vars \
-APP_ENV=production,APP_DEBUG=0,APP_URL=https://next.openagents.com,ASSET_URL=https://next.openagents.com,SESSION_DOMAIN=.openagents.com,LOG_CHANNEL=stderr
+APP_ENV=production,APP_DEBUG=0,APP_URL=https://openagents.com,ASSET_URL=https://openagents.com,SESSION_DOMAIN=.openagents.com,LOG_CHANNEL=stderr
 ```
 
 Common non-secret vars in this deployment:
@@ -77,6 +77,7 @@ Examples of existing secret names:
 - `openagents-web-workos-api-key`
 - `openagents-web-workos-redirect-url`
 - `openagents-web-openrouter-api-key`
+- `openagents-web-ai-gateway-api-key`
 - `openagents-web-smoke-secret`
 - `openagents-web-posthog-api-key` (optional; for PostHog backend analytics — bind as `POSTHOG_API_KEY`)
 - `openagents-web-spark-executor-auth-token` (optional; bind as `SPARK_EXECUTOR_AUTH_TOKEN` when executor requires bearer auth)
@@ -91,7 +92,7 @@ gcloud run services update openagents-web \
   --project openagentsgemini \
   --region us-central1 \
   --update-secrets \
-APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest,WORKOS_REDIRECT_URL=openagents-web-workos-redirect-url:latest,OPENROUTER_API_KEY=openagents-web-openrouter-api-key:latest,OA_SMOKE_SECRET=openagents-web-smoke-secret:latest,SPARK_EXECUTOR_AUTH_TOKEN=openagents-web-spark-executor-auth-token:latest
+APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest,WORKOS_REDIRECT_URL=openagents-web-workos-redirect-url:latest,OPENROUTER_API_KEY=openagents-web-openrouter-api-key:latest,AI_GATEWAY_API_KEY=openagents-web-ai-gateway-api-key:latest,OA_SMOKE_SECRET=openagents-web-smoke-secret:latest,SPARK_EXECUTOR_AUTH_TOKEN=openagents-web-spark-executor-auth-token:latest
 ```
 
 ## 4) Verify active runtime config
@@ -109,19 +110,20 @@ Read smoke secret and run smoke checks:
 
 ```bash
 SMOKE_SECRET="$(gcloud secrets versions access latest --secret openagents-web-smoke-secret --project openagentsgemini)"
-OPENAGENTS_BASE_URL="https://next.openagents.com" OA_SMOKE_SECRET="$SMOKE_SECRET" apps/openagents.com/deploy/smoke/health.sh
-OPENAGENTS_BASE_URL="https://next.openagents.com" OA_SMOKE_SECRET="$SMOKE_SECRET" apps/openagents.com/deploy/smoke/stream.sh
+OPENAGENTS_BASE_URL="https://openagents.com" OA_SMOKE_SECRET="$SMOKE_SECRET" apps/openagents.com/deploy/smoke/health.sh
+OPENAGENTS_BASE_URL="https://openagents.com" OA_SMOKE_SECRET="$SMOKE_SECRET" apps/openagents.com/deploy/smoke/stream.sh
 ```
 
 Expected:
-- Health: `ok: https://next.openagents.com/up`
+- Health: `ok: https://openagents.com/up`
 - Stream: `ok: stream done (...)`
 
 ## 6) Domain/cert notes
-For Cloud Run managed TLS on `next.openagents.com`:
-- Use Cloud Run domain mapping for `next.openagents.com` -> `openagents-web`
+For Cloud Run managed TLS on `openagents.com`:
+- Use Cloud Run domain mapping for `openagents.com` -> `openagents-web`
 - DNS record must be:
-  - `next CNAME ghs.googlehosted.com.`
+  - `@ CNAME ghs.googlehosted.com.`
+  - If your DNS provider does not support apex CNAME, use its ALIAS/ANAME equivalent.
 - If using Cloudflare, keep it DNS-only during certificate issuance.
 
 Check mapping status:
@@ -130,7 +132,7 @@ Check mapping status:
 gcloud beta run domain-mappings describe \
   --project openagentsgemini \
   --region us-central1 \
-  --domain next.openagents.com
+  --domain openagents.com
 ```
 
 Ready state requires:
