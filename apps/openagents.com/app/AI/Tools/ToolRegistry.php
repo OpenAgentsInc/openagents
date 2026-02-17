@@ -16,6 +16,9 @@ class ToolRegistry
             new EchoTool,
             new LightningL402FetchTool,
             new LightningL402ApproveTool,
+            new LightningL402PaywallCreateTool,
+            new LightningL402PaywallUpdateTool,
+            new LightningL402PaywallDeleteTool,
         ];
     }
 }

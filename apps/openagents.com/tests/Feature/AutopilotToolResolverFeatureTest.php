@@ -33,4 +33,7 @@ test('resolver falls back to full tool registry when no autopilot policy exists'
     expect($toolNames)->toContain('echo');
     expect($toolNames)->toContain('lightning_l402_fetch');
     expect($toolNames)->toContain('lightning_l402_approve');
+    expect($toolNames)->toContain('lightning_l402_paywall_create');
+    expect($toolNames)->toContain('lightning_l402_paywall_update');
+    expect($toolNames)->toContain('lightning_l402_paywall_delete');
 });
