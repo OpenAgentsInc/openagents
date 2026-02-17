@@ -44,9 +44,13 @@ it('has endpoint coverage manifest for all API routes', function () {
         'GET api/l402/wallet',
         'GET api/me',
         'GET api/settings/profile',
+        'GET api/shouts',
+        'GET api/shouts/zones',
         'GET api/smoke/stream',
         'GET api/tokens',
+        'GET api/whispers',
         'PATCH api/settings/profile',
+        'PATCH api/whispers/{id}/read',
         'POST api/agent-payments/invoice',
         'POST api/agent-payments/pay',
         'POST api/agent-payments/send-spark',
@@ -59,7 +63,9 @@ it('has endpoint coverage manifest for all API routes', function () {
         'POST api/payments/invoice',
         'POST api/payments/pay',
         'POST api/payments/send-spark',
+        'POST api/shouts',
         'POST api/tokens',
+        'POST api/whispers',
     ];
 
     expect($actual)->toBe($expected);

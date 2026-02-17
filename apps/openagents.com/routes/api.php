@@ -6,8 +6,14 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\ShoutsController;
 use App\Http\Controllers\Api\TokenController;
+use App\Http\Controllers\Api\WhispersController;
 use Illuminate\Support\Facades\Route;
+
+// Public discoverability endpoints.
+Route::get('/shouts', [ShoutsController::class, 'index']);
+Route::get('/shouts/zones', [ShoutsController::class, 'zones']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [MeController::class, 'show']);
@@ -34,6 +40,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/settings/profile', [ProfileController::class, 'show']);
     Route::patch('/settings/profile', [ProfileController::class, 'update']);
     Route::delete('/settings/profile', [ProfileController::class, 'destroy']);
+
+    Route::post('/shouts', [ShoutsController::class, 'store']);
+
+    Route::get('/whispers', [WhispersController::class, 'index']);
+    Route::post('/whispers', [WhispersController::class, 'store']);
+    Route::patch('/whispers/{id}/read', [WhispersController::class, 'read'])->whereNumber('id');
 
     // Agent Payments API (Laravel port of Episode 169-style wallet endpoints)
     Route::prefix('/agent-payments')->group(function () {
