@@ -21,18 +21,18 @@ class LightningL402PaywallDeleteTool implements Tool
 
     public function description(): string
     {
-        return 'Delete (soft-delete) an existing L402 seller paywall route (operator-only) with deployment references.';
+        return 'Delete (soft-delete) an existing L402 seller paywall route (authenticated) with deployment references.';
     }
 
     public function handle(Request $request): string
     {
-        $user = $this->resolveAdminUser();
+        $user = $this->resolveAuthenticatedUser();
         if (! $user) {
             return $this->encodePayload([
                 'toolName' => $this->name(),
                 'status' => 'failed',
-                'denyCode' => 'operator_forbidden',
-                'message' => 'Only configured operator/admin users may manage paywalls.',
+                'denyCode' => 'auth_required',
+                'message' => 'Authentication is required to manage paywalls.',
             ]);
         }
 

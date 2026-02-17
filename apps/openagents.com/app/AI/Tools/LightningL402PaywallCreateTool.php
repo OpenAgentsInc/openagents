@@ -20,18 +20,18 @@ class LightningL402PaywallCreateTool implements Tool
 
     public function description(): string
     {
-        return 'Create an L402 seller paywall route (operator-only). Applies strict guardrails and returns deployment references.';
+        return 'Create an L402 seller paywall route (authenticated). Applies strict guardrails and returns deployment references.';
     }
 
     public function handle(Request $request): string
     {
-        $user = $this->resolveAdminUser();
+        $user = $this->resolveAuthenticatedUser();
         if (! $user) {
             return $this->encodePayload([
                 'toolName' => $this->name(),
                 'status' => 'failed',
-                'denyCode' => 'operator_forbidden',
-                'message' => 'Only configured operator/admin users may manage paywalls.',
+                'denyCode' => 'auth_required',
+                'message' => 'Authentication is required to manage paywalls.',
             ]);
         }
 
@@ -88,7 +88,7 @@ class LightningL402PaywallCreateTool implements Tool
             'priceMsats' => $schema->integer()->required()->description('Price in millisats (>=1).'),
             'upstream' => $schema->string()->required()->description('HTTPS upstream URL for the protected resource.'),
             'enabled' => $schema->boolean()->description('Whether this paywall is active. Defaults to true.'),
-            'metadata' => $schema->object()->description('Optional operator metadata.'),
+            'metadata' => $schema->object()->description('Optional metadata.'),
         ];
     }
 }
