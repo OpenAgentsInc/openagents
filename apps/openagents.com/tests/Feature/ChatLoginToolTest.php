@@ -184,3 +184,48 @@ test('chat_login verify_code authenticates and adopts guest conversation ownersh
         ->where('user_id', $user->id)
         ->exists())->toBeTrue();
 });
+
+test('chat_login send_code persists pending session when invoked inside streamed response', function () {
+    configureWorkosForChatLoginToolTests();
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('createMagicAuth')
+        ->once()
+        ->with('chris@openagents.com')
+        ->andReturn((object) [
+            'userId' => 'user_stream_abc123',
+        ]);
+
+    $streamPath = '/_test/chat-login/'.Str::lower(Str::random(12)).'/stream-send-code';
+    $pendingPath = '/_test/chat-login/'.Str::lower(Str::random(12)).'/pending';
+
+    \Illuminate\Support\Facades\Route::post($streamPath, function (HttpRequest $request) {
+        return response()->stream(function () use ($request): void {
+            $tool = new ChatLoginTool;
+            echo $tool->handle(new ToolRequest([
+                'action' => 'send_code',
+                'email' => (string) $request->input('email'),
+            ]));
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+        ]);
+    })->middleware('web');
+
+    \Illuminate\Support\Facades\Route::get($pendingPath, function () {
+        return response()->json([
+            'pending' => session('auth.magic_auth'),
+        ]);
+    })->middleware('web');
+
+    $stream = $this->post($streamPath, [
+        'email' => 'chris@openagents.com',
+    ]);
+
+    $stream->assertOk();
+    $stream->streamedContent();
+
+    $this->get($pendingPath)
+        ->assertOk()
+        ->assertJsonPath('pending.email', 'chris@openagents.com')
+        ->assertJsonPath('pending.user_id', 'user_stream_abc123');
+});
