@@ -45,7 +45,7 @@ return [
         'wallet_id_prefix' => (string) env('SPARK_AGENT_WALLET_ID_PREFIX', 'oa-user-'),
     ],
 
-    // Demo presets (Phase 5). Keep endpoints here so demos are reproducible.
+    // Demo presets (EP212). Keep endpoints here so demos are reproducible.
     'demo_presets' => [
         'sats4ai' => [
             'url' => (string) env('L402_DEMO_SATS4AI_URL', 'https://sats4ai.com/api/l402/text-generation'),
@@ -55,6 +55,24 @@ return [
             ],
             'body' => '{"input":[{"role":"User","content":"Tell me one short fact about Bitcoin."}],"model":"Best"}',
             'scope' => 'ep212.sats4ai',
+        ],
+
+        'ep212_openagents_premium' => [
+            'url' => (string) env('L402_DEMO_EP212_OPENAGENTS_PREMIUM_URL', 'https://l402.openagents.com/ep212/premium-signal'),
+            'method' => 'GET',
+            'headers' => [
+                'Accept' => 'application/json',
+            ],
+            'scope' => 'ep212.openagents.premium',
+        ],
+
+        'ep212_openagents_expensive' => [
+            'url' => (string) env('L402_DEMO_EP212_OPENAGENTS_EXPENSIVE_URL', 'https://l402.openagents.com/ep212/expensive-signal'),
+            'method' => 'GET',
+            'headers' => [
+                'Accept' => 'application/json',
+            ],
+            'scope' => 'ep212.openagents.expensive',
         ],
 
         // In-process fake seller used for deterministic demos/tests. No network required.
