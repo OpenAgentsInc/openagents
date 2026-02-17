@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, CircleDollarSign, Github, Landmark, List, MessageSquare, Plus, Server, Shield, Wallet } from 'lucide-react';
+import { BookOpen, Github, MessageSquare, Plus, Shield, Zap } from 'lucide-react';
+import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
 import { NavFooter } from '@/components/nav-footer';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -28,44 +29,18 @@ type SharedProps = {
     isAdmin?: boolean;
 };
 
-const footerNavItems: NavItem[] = [
+const baseFooterNavItems: NavItem[] = [
     {
         title: 'Repository',
         href: 'https://github.com/OpenAgentsInc/openagents',
         icon: Github,
+        external: true,
     },
     {
         title: 'Documentation',
         href: 'https://docs.openagents.com',
         icon: BookOpen,
-    },
-];
-
-const lightningFooterItems: NavItem[] = [
-    {
-        title: 'L402 Wallet',
-        href: '/l402',
-        icon: Wallet,
-    },
-    {
-        title: 'L402 Transactions',
-        href: '/l402/transactions',
-        icon: List,
-    },
-    {
-        title: 'L402 Paywalls',
-        href: '/l402/paywalls',
-        icon: Landmark,
-    },
-    {
-        title: 'L402 Settlements',
-        href: '/l402/settlements',
-        icon: CircleDollarSign,
-    },
-    {
-        title: 'L402 Deployments',
-        href: '/l402/deployments',
-        icon: Server,
+        external: true,
     },
 ];
 
@@ -75,8 +50,22 @@ function toThreadLabel(value: string): string {
 }
 
 export function AppSidebar() {
-    const { chatThreads = [], isAdmin = false } = usePage<SharedProps>().props;
-    const { isCurrentUrl } = useCurrentUrl();
+    const page = usePage<SharedProps>();
+    const { chatThreads = [], isAdmin = false } = page.props;
+    const { currentUrl, isCurrentUrl } = useCurrentUrl();
+
+    const footerNavItems: NavItem[] = isAdmin
+        ? [
+            ...baseFooterNavItems,
+            {
+                title: 'Admin',
+                href: '/admin',
+                icon: Shield,
+            },
+        ]
+        : baseFooterNavItems;
+
+    const isLightningActive = currentUrl === '/l402' || currentUrl.startsWith('/l402/');
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -103,16 +92,6 @@ export function AppSidebar() {
                                 </Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>
-                        {isAdmin ? (
-                            <SidebarMenuItem>
-                                <SidebarMenuButton asChild className="w-full justify-start font-medium" isActive={isCurrentUrl('/admin')}>
-                                    <Link href="/admin" prefetch className="gap-2">
-                                        <Shield className="size-5 shrink-0" />
-                                        <span>Admin</span>
-                                    </Link>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ) : null}
                     </SidebarMenu>
                 </SidebarGroup>
 
@@ -148,21 +127,24 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
+                <SidebarGroup className="px-2 pb-2 pt-0 group-data-[collapsible=icon]:hidden">
+                    <ChatWalletSnapshot refreshKey={currentUrl} variant="sidebar" />
+                </SidebarGroup>
+
                 <SidebarGroup className="group-data-[collapsible=icon]:p-0">
-                    <SidebarGroupLabel className="group-data-[collapsible=icon]:sr-only">L402</SidebarGroupLabel>
+                    <SidebarGroupLabel className="group-data-[collapsible=icon]:sr-only">Lightning</SidebarGroupLabel>
                     <SidebarMenu>
-                        {lightningFooterItems.map((item) => (
-                            <SidebarMenuItem key={item.title}>
-                                <SidebarMenuButton asChild isActive={isCurrentUrl(item.href)}>
-                                    <Link href={item.href} prefetch>
-                                        {item.icon ? <item.icon className="h-4 w-4" /> : null}
-                                        <span>{item.title}</span>
-                                    </Link>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
+                        <SidebarMenuItem>
+                            <SidebarMenuButton asChild isActive={isLightningActive}>
+                                <Link href="/l402" prefetch>
+                                    <Zap className="h-4 w-4" />
+                                    <span>Lightning</span>
+                                </Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
                     </SidebarMenu>
                 </SidebarGroup>
+
                 <NavFooter items={footerNavItems} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
