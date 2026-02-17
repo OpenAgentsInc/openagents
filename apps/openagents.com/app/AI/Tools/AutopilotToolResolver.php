@@ -9,7 +9,7 @@ use Laravel\Ai\Contracts\Tool;
 class AutopilotToolResolver
 {
     /** @var list<string> */
-    private const GUEST_ALLOWED_TOOLS = ['chat_login'];
+    private const GUEST_ALLOWED_TOOLS = ['chat_login', 'openagents_api'];
 
     public function __construct(
         private readonly ToolRegistry $toolRegistry,
