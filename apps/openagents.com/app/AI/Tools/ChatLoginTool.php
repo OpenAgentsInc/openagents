@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Contracts\Tool;
-use Throwable;
 use Laravel\Ai\Tools\Request;
+use Throwable;
 
 class ChatLoginTool implements Tool
 {

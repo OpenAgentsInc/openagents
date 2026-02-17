@@ -8,54 +8,44 @@ import { cn } from "@/lib/utils";
 import { MicIcon, SquareIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-interface SpeechRecognition extends EventTarget {
+interface LocalSpeechRecognition extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
   start(): void;
   stop(): void;
-  onstart: ((this: SpeechRecognition, ev: Event) => void) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => void) | null;
-  onresult:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void)
-    | null;
-  onerror:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void)
-    | null;
 }
 
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList;
+interface LocalSpeechRecognitionEvent extends Event {
+  results: LocalSpeechRecognitionResultList;
   resultIndex: number;
 }
 
-interface SpeechRecognitionResultList {
+interface LocalSpeechRecognitionResultList {
   readonly length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
+  item(index: number): LocalSpeechRecognitionResult;
+  [index: number]: LocalSpeechRecognitionResult;
 }
 
-interface SpeechRecognitionResult {
+interface LocalSpeechRecognitionResult {
   readonly length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
+  item(index: number): LocalSpeechRecognitionAlternative;
+  [index: number]: LocalSpeechRecognitionAlternative;
   isFinal: boolean;
 }
 
-interface SpeechRecognitionAlternative {
+interface LocalSpeechRecognitionAlternative {
   transcript: string;
   confidence: number;
 }
 
-interface SpeechRecognitionErrorEvent extends Event {
+interface LocalSpeechRecognitionErrorEvent extends Event {
   error: string;
 }
 
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
+type BrowserSpeechWindow = Window & {
+  SpeechRecognition?: new () => LocalSpeechRecognition;
+  webkitSpeechRecognition?: new () => LocalSpeechRecognition;
 }
 
 type SpeechInputMode = "speech-recognition" | "media-recorder" | "none";
@@ -99,7 +89,7 @@ export const SpeechInput = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [mode] = useState<SpeechInputMode>(detectSpeechInputMode);
   const [isRecognitionReady, setIsRecognitionReady] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<LocalSpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -119,9 +109,15 @@ export const SpeechInput = ({
       return;
     }
 
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    const speechRecognition = new SpeechRecognition();
+    const speechWindow = window as BrowserSpeechWindow;
+    const recognitionCtor =
+      speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+
+    if (!recognitionCtor) {
+      return;
+    }
+
+    const speechRecognition = new recognitionCtor();
 
     speechRecognition.continuous = true;
     speechRecognition.interimResults = true;
@@ -136,7 +132,7 @@ export const SpeechInput = ({
     };
 
     const handleResult = (event: Event) => {
-      const speechEvent = event as SpeechRecognitionEvent;
+      const speechEvent = event as LocalSpeechRecognitionEvent;
       let finalTranscript = "";
 
       for (

@@ -37,7 +37,7 @@ Route::get('api/smoke/stream', function (Request $request) {
 
     return response()->stream(function () {
         $write = function (array $payload): void {
-            echo 'data: ' . json_encode($payload) . "\n\n";
+            echo 'data: '.json_encode($payload)."\n\n";
 
             if (ob_get_level() > 0) {
                 ob_flush();
@@ -68,7 +68,7 @@ Route::get('api/smoke/stream', function (Request $request) {
     ]);
 })->name('api.smoke.stream');
 
-Route::get('aui', fn() => Inertia::render('aui'))->name('aui');
+Route::get('aui', fn () => Inertia::render('aui'))->name('aui');
 
 Route::middleware([
     'auth',
@@ -92,5 +92,5 @@ Route::middleware([
     })->middleware('admin')->name('admin');
 });
 
-require __DIR__ . '/settings.php';
-require __DIR__ . '/auth.php';
+require __DIR__.'/settings.php';
+require __DIR__.'/auth.php';
