@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\AgentPaymentsController;
+use App\Http\Controllers\Api\AutopilotController;
+use App\Http\Controllers\Api\AutopilotStreamController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\MeController;
@@ -17,7 +19,6 @@ Route::get('/shouts/zones', [ShoutsController::class, 'zones']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [MeController::class, 'show']);
 
-
     Route::get('/tokens', [TokenController::class, 'index']);
     Route::post('/tokens', [TokenController::class, 'store']);
     Route::delete('/tokens/current', [TokenController::class, 'destroyCurrent']);
@@ -33,6 +34,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/chats/{conversationId}/runs/{runId}/events', [ChatController::class, 'runEvents']);
     Route::post('/chats/{conversationId}/stream', [ChatController::class, 'stream']);
     Route::post('/chat/stream', [ChatController::class, 'stream']);
+
+    // Autopilot API (phase A skeleton).
+    Route::get('/autopilots', [AutopilotController::class, 'index']);
+    Route::post('/autopilots', [AutopilotController::class, 'store']);
+    Route::get('/autopilots/{autopilot}', [AutopilotController::class, 'show']);
+    Route::patch('/autopilots/{autopilot}', [AutopilotController::class, 'update']);
+    Route::get('/autopilots/{autopilot}/threads', [AutopilotController::class, 'threads']);
+    Route::post('/autopilots/{autopilot}/threads', [AutopilotController::class, 'storeThread']);
+    Route::post('/autopilots/{autopilot}/stream', [AutopilotStreamController::class, 'stream']);
 
     Route::get('/settings/profile', [ProfileController::class, 'show']);
     Route::patch('/settings/profile', [ProfileController::class, 'update']);
