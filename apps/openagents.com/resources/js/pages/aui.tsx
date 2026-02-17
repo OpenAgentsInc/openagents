@@ -93,7 +93,7 @@ const ChatGPT: FC = () => {
                 />
             </ThreadPrimitive.Viewport>
 
-            <ComposerPrimitive.Root className="mx-auto flex w-full max-w-3xl items-end rounded-3xl bg-white/5 pl-2">
+            <ComposerPrimitive.Root className="mx-auto mb-2 flex w-full max-w-3xl items-end rounded-3xl bg-white/5 pl-2">
                 <ComposerPrimitive.Input
                     ref={inputRef}
                     placeholder="Message Autopilot"
@@ -110,9 +110,6 @@ const ChatGPT: FC = () => {
                     </ComposerPrimitive.Cancel>
                 </AuiIf>
             </ComposerPrimitive.Root>
-            <p className="p-2 text-center text-[#cdcdcd] text-xs">
-                ChatGPT can make mistakes. Check important info.
-            </p>
         </ThreadPrimitive.Root>
     );
 };
