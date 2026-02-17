@@ -50,6 +50,8 @@ RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framewor
 RUN php -r 'file_put_contents(".env", "APP_KEY=base64:" . base64_encode(random_bytes(32)) . PHP_EOL . "APP_ENV=production" . PHP_EOL . "APP_DEBUG=0" . PHP_EOL);'
 
 RUN php artisan package:discover --ansi
+RUN APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" APP_ENV=production APP_DEBUG=0 APP_URL=https://openagents.com php artisan openapi:generate --output=public/openapi.json --ansi
+RUN test -s public/openapi.json
 
 
 
@@ -72,6 +74,7 @@ RUN apt-get update \
 COPY --chown=www-data:www-data . ./
 COPY --from=php_deps /app/vendor ./vendor
 COPY --from=node_build /app/public/build ./public/build
+COPY --from=node_build /app/public/openapi.json ./public/openapi.json
 
 # Generate the package discovery manifest in the image.
 RUN rm -f bootstrap/cache/packages.php bootstrap/cache/services.php || true

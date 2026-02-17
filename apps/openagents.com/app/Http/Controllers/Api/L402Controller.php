@@ -3,12 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\OpenApi\Parameters\PerPageQueryParameter;
+use App\OpenApi\Responses\DataObjectResponse;
+use App\OpenApi\Responses\NotFoundResponse;
+use App\OpenApi\Responses\UnauthorizedResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 
+#[OpenApi\PathItem]
 class L402Controller extends Controller
 {
+    /**
+     * Get wallet-level Lightning spend summary.
+     *
+     * Returns aggregate L402 payment stats, latest paid receipt, and configured
+     * client-side policy settings.
+     */
+    #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function wallet(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
@@ -52,6 +67,16 @@ class L402Controller extends Controller
         ]);
     }
 
+    /**
+     * List L402 transaction receipts.
+     *
+     * Returns paginated receipt rows that include payment, cache, and run
+     * correlation metadata.
+     */
+    #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Parameters(factory: PerPageQueryParameter::class)]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function transactions(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
@@ -78,6 +103,13 @@ class L402Controller extends Controller
         ]);
     }
 
+    /**
+     * Get one L402 transaction receipt by event id.
+     */
+    #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
     public function transactionShow(Request $request, int $eventId): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
@@ -97,6 +129,12 @@ class L402Controller extends Controller
         ]);
     }
 
+    /**
+     * Get paywall aggregation by host/scope.
+     */
+    #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function paywalls(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
@@ -147,6 +185,12 @@ class L402Controller extends Controller
         ]);
     }
 
+    /**
+     * Get settlement-focused paid receipt summary.
+     */
+    #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function settlements(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
@@ -191,6 +235,12 @@ class L402Controller extends Controller
         ]);
     }
 
+    /**
+     * List L402 deployment and gateway-related operational events.
+     */
+    #[OpenApi\Operation(tags: ['L402'])]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function deployments(Request $request): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();

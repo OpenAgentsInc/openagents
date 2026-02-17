@@ -2,16 +2,39 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\ChatApiController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\CreateChatRequest;
+use App\OpenApi\Parameters\LimitQueryParameter;
+use App\OpenApi\RequestBodies\ChatStreamRequestBody;
+use App\OpenApi\RequestBodies\CreateChatRequestBody;
+use App\OpenApi\Responses\CreatedDataObjectResponse;
+use App\OpenApi\Responses\DataArrayResponse;
+use App\OpenApi\Responses\DataObjectResponse;
+use App\OpenApi\Responses\NotFoundResponse;
+use App\OpenApi\Responses\SseStreamResponse;
+use App\OpenApi\Responses\UnauthorizedResponse;
+use App\OpenApi\Responses\ValidationErrorResponse;
 use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Contracts\ConversationStore;
+use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 
+#[OpenApi\PathItem]
 class ChatController extends Controller
 {
+    /**
+     * List authenticated user's conversation threads.
+     *
+     * Returns recent thread ids/titles sorted by update time. Use the `limit` query
+     * parameter to bound result size.
+     */
+    #[OpenApi\Operation(tags: ['Chat'])]
+    #[OpenApi\Parameters(factory: LimitQueryParameter::class)]
+    #[OpenApi\Response(factory: DataArrayResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -37,6 +60,16 @@ class ChatController extends Controller
         return response()->json(['data' => $threads]);
     }
 
+    /**
+     * Create a new conversation thread.
+     *
+     * Creates a conversation container and persists an initial thread title.
+     */
+    #[OpenApi\Operation(tags: ['Chat'])]
+    #[OpenApi\RequestBody(factory: CreateChatRequestBody::class)]
+    #[OpenApi\Response(factory: CreatedDataObjectResponse::class, statusCode: 201)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
     public function store(CreateChatRequest $request, ConversationStore $conversationStore, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
@@ -76,7 +109,17 @@ class ChatController extends Controller
         ], 201);
     }
 
-    public function show(Request $request, string $conversationId): JsonResponse
+    /**
+     * Get one conversation with messages and runs.
+     *
+     * Returns the thread metadata plus current message/run snapshots for the
+     * authenticated user.
+     */
+    #[OpenApi\Operation(tags: ['Chat'])]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
+    public function show(Request $request, ?string $conversationId): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -132,7 +175,16 @@ class ChatController extends Controller
         ]);
     }
 
-    public function messages(Request $request, string $conversationId): JsonResponse
+    /**
+     * List messages for a conversation.
+     *
+     * Returns normalized message records in chronological order.
+     */
+    #[OpenApi\Operation(tags: ['Chat'])]
+    #[OpenApi\Response(factory: DataArrayResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
+    public function messages(Request $request, ?string $conversationId): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -153,7 +205,17 @@ class ChatController extends Controller
         ]);
     }
 
-    public function runs(Request $request, string $conversationId): JsonResponse
+    /**
+     * List runs for a conversation.
+     *
+     * Returns run metadata sorted newest-first. Use `limit` to cap returned rows.
+     */
+    #[OpenApi\Operation(tags: ['Chat'])]
+    #[OpenApi\Parameters(factory: LimitQueryParameter::class)]
+    #[OpenApi\Response(factory: DataArrayResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
+    public function runs(Request $request, ?string $conversationId): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -176,7 +238,18 @@ class ChatController extends Controller
         ]);
     }
 
-    public function runEvents(Request $request, string $conversationId, string $runId): JsonResponse
+    /**
+     * List events for a specific run.
+     *
+     * Returns the selected run plus ordered event payloads. Use `limit` to bound
+     * event rows.
+     */
+    #[OpenApi\Operation(tags: ['Chat'])]
+    #[OpenApi\Parameters(factory: LimitQueryParameter::class)]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
+    public function runEvents(Request $request, ?string $conversationId, string $runId): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -232,9 +305,32 @@ class ChatController extends Controller
     }
 
     /**
+     * Stream a chat run over server-sent events.
+     *
+     * Expects the full message history and executes against the latest non-empty
+     * user message.
+     *
+     * @param  string|null  $conversationId  Conversation identifier.
+     */
+    #[OpenApi\Operation(tags: ['Chat'])]
+    #[OpenApi\RequestBody(factory: ChatStreamRequestBody::class)]
+    #[OpenApi\Response(factory: SseStreamResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
+    #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
+    public function stream(Request $request, ChatApiController $chatApiController, ?string $conversationId = null)
+    {
+        if (is_string($conversationId) && trim($conversationId) !== '') {
+            $request->route()->setParameter('conversationId', $conversationId);
+        }
+
+        return $chatApiController->stream($request);
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
-    private function messagesForConversation(int $userId, string $conversationId): array
+    private function messagesForConversation(int $userId, ?string $conversationId): array
     {
         $messages = DB::table('messages')
             ->where('thread_id', $conversationId)
@@ -299,7 +395,7 @@ class ChatController extends Controller
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function runsForConversation(int $userId, string $conversationId, int $limit): array
+    private function runsForConversation(int $userId, ?string $conversationId, int $limit): array
     {
         return DB::table('runs')
             ->where('thread_id', $conversationId)

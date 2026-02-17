@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\TokenController;
-use App\Http\Controllers\ChatApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
@@ -28,8 +27,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('/chats/{conversationId}/messages', [ChatController::class, 'messages']);
     Route::get('/chats/{conversationId}/runs', [ChatController::class, 'runs']);
     Route::get('/chats/{conversationId}/runs/{runId}/events', [ChatController::class, 'runEvents']);
-    Route::post('/chats/{conversationId}/stream', [ChatApiController::class, 'stream']);
-    Route::post('/chat/stream', [ChatApiController::class, 'stream']);
+    Route::post('/chats/{conversationId}/stream', [ChatController::class, 'stream']);
+    Route::post('/chat/stream', [ChatController::class, 'stream']);
 
     Route::get('/settings/profile', [ProfileController::class, 'show']);
     Route::patch('/settings/profile', [ProfileController::class, 'update']);

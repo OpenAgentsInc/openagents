@@ -6,12 +6,26 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\DeleteProfileRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
 use App\Models\User;
+use App\OpenApi\RequestBodies\DeleteProfileRequestBody;
+use App\OpenApi\RequestBodies\ProfileUpdateRequestBody;
+use App\OpenApi\Responses\DataObjectResponse;
+use App\OpenApi\Responses\ProfileResponse;
+use App\OpenApi\Responses\UnauthorizedResponse;
+use App\OpenApi\Responses\ValidationErrorResponse;
 use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 
+#[OpenApi\PathItem]
 class ProfileController extends Controller
 {
+    /**
+     * Get the authenticated user's profile.
+     */
+    #[OpenApi\Operation(tags: ['Profile'])]
+    #[OpenApi\Response(factory: ProfileResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     public function show(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -31,6 +45,16 @@ class ProfileController extends Controller
         ]);
     }
 
+    /**
+     * Update profile fields.
+     *
+     * Currently supports `name` updates.
+     */
+    #[OpenApi\Operation(tags: ['Profile'])]
+    #[OpenApi\RequestBody(factory: ProfileUpdateRequestBody::class)]
+    #[OpenApi\Response(factory: ProfileResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
     public function update(ProfileUpdateRequest $request, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
@@ -58,6 +82,16 @@ class ProfileController extends Controller
         ]);
     }
 
+    /**
+     * Delete the authenticated account.
+     *
+     * Requires confirming the currently authenticated email address.
+     */
+    #[OpenApi\Operation(tags: ['Profile'])]
+    #[OpenApi\RequestBody(factory: DeleteProfileRequestBody::class)]
+    #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
+    #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
+    #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
     public function destroy(DeleteProfileRequest $request, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
