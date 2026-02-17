@@ -53,18 +53,42 @@ test('chat API streams Vercel protocol and persists final messages', function ()
     $run = DB::table('runs')->where('thread_id', $conversationId)->where('user_id', $user->id)->first();
     expect($run)->not->toBeNull();
     expect($run->status)->toBe('completed');
+    expect($run->autopilot_id)->toBeNull();
+    expect($run->autopilot_config_version)->toBeNull();
 
-    $msgs = DB::table('messages')->where('thread_id', $conversationId)->where('user_id', $user->id)->orderBy('created_at')->get(['role', 'content']);
+    $msgs = DB::table('messages')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->orderBy('created_at')
+        ->get(['role', 'content', 'autopilot_id']);
+
     expect($msgs)->toHaveCount(2);
     expect($msgs[0]->role)->toBe('user');
     expect($msgs[1]->role)->toBe('assistant');
     expect($msgs[1]->content)->toContain('Hello from fake agent');
+    expect($msgs->pluck('autopilot_id')->unique()->values()->all())->toBe([null]);
 
-    $events = DB::table('run_events')->where('run_id', $run->id)->where('user_id', $user->id)->orderBy('id')->pluck('type')->all();
-    expect($events)->toContain('run_started');
-    expect($events)->toContain('model_stream_started');
-    expect($events)->toContain('model_finished');
-    expect($events)->toContain('run_completed');
+    $events = DB::table('run_events')
+        ->where('run_id', $run->id)
+        ->where('user_id', $user->id)
+        ->orderBy('id')
+        ->get(['type', 'autopilot_id', 'actor_type', 'actor_autopilot_id']);
+
+    expect($events->pluck('type')->all())->toContain('run_started');
+    expect($events->pluck('type')->all())->toContain('model_stream_started');
+    expect($events->pluck('type')->all())->toContain('model_finished');
+    expect($events->pluck('type')->all())->toContain('run_completed');
+    expect($events->pluck('autopilot_id')->unique()->values()->all())->toBe([null]);
+
+    $runStarted = $events->firstWhere('type', 'run_started');
+    expect($runStarted)->not->toBeNull();
+    expect($runStarted->actor_type)->toBe('user');
+    expect($runStarted->actor_autopilot_id)->toBeNull();
+
+    $modelStarted = $events->firstWhere('type', 'model_stream_started');
+    expect($modelStarted)->not->toBeNull();
+    expect($modelStarted->actor_type)->toBe('system');
+    expect($modelStarted->actor_autopilot_id)->toBeNull();
 });
 
 test('chat API accepts AI SDK parts payload and streams a response', function () {

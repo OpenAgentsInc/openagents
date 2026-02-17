@@ -104,7 +104,50 @@ it('manages owned autopilots threads and stream alias through the existing run p
     expect($streamed)->toContain('data: {"type":"finish"');
     expect($streamed)->toContain("data: [DONE]\n\n");
 
-    expect(DB::table('runs')->where('thread_id', $threadId)->where('user_id', $user->id)->exists())->toBeTrue();
+    $run = DB::table('runs')
+        ->where('thread_id', $threadId)
+        ->where('user_id', $user->id)
+        ->orderByDesc('created_at')
+        ->first(['id', 'autopilot_id', 'autopilot_config_version']);
+
+    expect($run)->not->toBeNull();
+    expect($run->autopilot_id)->toBe($autopilotId);
+    expect((int) $run->autopilot_config_version)->toBe(2);
+
+    $runMessages = DB::table('messages')
+        ->where('run_id', $run->id)
+        ->where('thread_id', $threadId)
+        ->where('user_id', $user->id)
+        ->orderBy('created_at')
+        ->get(['role', 'autopilot_id']);
+
+    expect($runMessages)->toHaveCount(2);
+    expect($runMessages->pluck('autopilot_id')->unique()->values()->all())->toBe([$autopilotId]);
+
+    $runEvents = DB::table('run_events')
+        ->where('run_id', $run->id)
+        ->where('thread_id', $threadId)
+        ->where('user_id', $user->id)
+        ->orderBy('id')
+        ->get(['type', 'autopilot_id', 'actor_type', 'actor_autopilot_id']);
+
+    expect($runEvents)->not->toBeEmpty();
+    expect($runEvents->pluck('autopilot_id')->unique()->values()->all())->toBe([$autopilotId]);
+
+    $runStarted = $runEvents->firstWhere('type', 'run_started');
+    expect($runStarted)->not->toBeNull();
+    expect($runStarted->actor_type)->toBe('user');
+    expect($runStarted->actor_autopilot_id)->toBeNull();
+
+    $modelStarted = $runEvents->firstWhere('type', 'model_stream_started');
+    expect($modelStarted)->not->toBeNull();
+    expect($modelStarted->actor_type)->toBe('autopilot');
+    expect($modelStarted->actor_autopilot_id)->toBe($autopilotId);
+
+    $runCompleted = $runEvents->firstWhere('type', 'run_completed');
+    expect($runCompleted)->not->toBeNull();
+    expect($runCompleted->actor_type)->toBe('autopilot');
+    expect($runCompleted->actor_autopilot_id)->toBe($autopilotId);
 
     $threadCountBefore = DB::table('threads')
         ->where('user_id', $user->id)
@@ -125,6 +168,13 @@ it('manages owned autopilots threads and stream alias through the existing run p
         ->count();
 
     expect($threadCountAfter)->toBe($threadCountBefore + 1);
+
+    $autopilotRunCount = DB::table('runs')
+        ->where('user_id', $user->id)
+        ->where('autopilot_id', $autopilotId)
+        ->count();
+
+    expect($autopilotRunCount)->toBeGreaterThanOrEqual(2);
 });
 
 it('enforces autopilot ownership for read write thread and stream routes', function () {

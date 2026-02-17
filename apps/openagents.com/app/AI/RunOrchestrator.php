@@ -31,28 +31,41 @@ final class RunOrchestrator
         $runId = (string) Str::uuid();
         $now = now();
 
-        $this->ensureThreadExists($threadId, $userId);
+        $threadContext = $this->resolveThreadContext($threadId, $userId);
+        $autopilotId = $threadContext['autopilotId'];
+        $autopilotConfigVersion = $threadContext['autopilotConfigVersion'];
 
         DB::table('runs')->insert([
             'id' => $runId,
             'thread_id' => $threadId,
             'user_id' => $userId,
+            'autopilot_id' => $autopilotId,
+            'autopilot_config_version' => $autopilotConfigVersion,
             'status' => 'running',
             'started_at' => $now,
             'created_at' => $now,
             'updated_at' => $now,
         ]);
 
-        $this->appendEvent($threadId, $runId, $userId, 'run_started', [
-            'prompt_sha256' => hash('sha256', $prompt),
-            'prompt_chars' => mb_strlen($prompt),
-        ]);
+        $this->appendEvent(
+            threadId: $threadId,
+            runId: $runId,
+            userId: $userId,
+            type: 'run_started',
+            payload: [
+                'prompt_sha256' => hash('sha256', $prompt),
+                'prompt_chars' => mb_strlen($prompt),
+            ],
+            autopilotId: $autopilotId,
+            actorType: 'user',
+        );
 
         DB::table('messages')->insert([
             'id' => (string) Str::uuid(),
             'thread_id' => $threadId,
             'run_id' => $runId,
             'user_id' => $userId,
+            'autopilot_id' => $autopilotId,
             'role' => 'user',
             'content' => $prompt,
             'meta' => null,
@@ -64,7 +77,7 @@ final class RunOrchestrator
             ? $streamableFactory($user, $threadId, $prompt)
             : AutopilotAgent::make()->continue($threadId, $user)->stream($prompt);
 
-        $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId, $userEmail): void {
+        $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId, $userEmail, $autopilotId): void {
             $writeToClient = true;
             $shouldFlush = ! app()->runningUnitTests();
 
@@ -81,6 +94,8 @@ final class RunOrchestrator
             $modelName = null;
             $usage = null;
             $finishReason = null;
+            $runtimeActorType = $this->runtimeActorType($autopilotId);
+            $runtimeActorAutopilotId = $runtimeActorType === 'autopilot' ? $autopilotId : null;
 
             try {
                 foreach ($streamable as $event) {
@@ -105,10 +120,19 @@ final class RunOrchestrator
                             'updated_at' => now(),
                         ]);
 
-                        $this->appendEvent($threadId, $runId, $userId, 'model_stream_started', [
-                            'provider' => $modelProvider,
-                            'model' => $modelName,
-                        ]);
+                        $this->appendEvent(
+                            threadId: $threadId,
+                            runId: $runId,
+                            userId: $userId,
+                            type: 'model_stream_started',
+                            payload: [
+                                'provider' => $modelProvider,
+                                'model' => $modelName,
+                            ],
+                            autopilotId: $autopilotId,
+                            actorType: $runtimeActorType,
+                            actorAutopilotId: $runtimeActorAutopilotId,
+                        );
                     }
 
                     if ($event instanceof ToolCall) {
@@ -122,11 +146,20 @@ final class RunOrchestrator
                         $toolCallStartedAt[$toolCallId] = $event->timestamp;
                         $toolCallParamsHash[$toolCallId] = $paramsHash;
 
-                        $this->appendEvent($threadId, $runId, $userId, 'tool_call_started', [
-                            'tool_call_id' => $toolCallId,
-                            'tool_name' => $event->toolCall->name,
-                            'params_hash' => $paramsHash,
-                        ]);
+                        $this->appendEvent(
+                            threadId: $threadId,
+                            runId: $runId,
+                            userId: $userId,
+                            type: 'tool_call_started',
+                            payload: [
+                                'tool_call_id' => $toolCallId,
+                                'tool_name' => $event->toolCall->name,
+                                'params_hash' => $paramsHash,
+                            ],
+                            autopilotId: $autopilotId,
+                            actorType: $runtimeActorType,
+                            actorAutopilotId: $runtimeActorAutopilotId,
+                        );
                     }
 
                     if ($event instanceof ToolResult) {
@@ -143,14 +176,23 @@ final class RunOrchestrator
                             ? max(0, $event->timestamp - $toolCallStartedAt[$toolCallId])
                             : null;
 
-                        $this->appendEvent($threadId, $runId, $userId, $event->successful ? 'tool_call_succeeded' : 'tool_call_failed', [
-                            'tool_call_id' => $toolCallId,
-                            'tool_name' => $event->toolResult->name,
-                            'params_hash' => $toolCallParamsHash[$toolCallId] ?? null,
-                            'output_hash' => $outputHash,
-                            'latency_ms' => $latencyMs,
-                            'error' => $event->successful ? null : $event->error,
-                        ]);
+                        $this->appendEvent(
+                            threadId: $threadId,
+                            runId: $runId,
+                            userId: $userId,
+                            type: $event->successful ? 'tool_call_succeeded' : 'tool_call_failed',
+                            payload: [
+                                'tool_call_id' => $toolCallId,
+                                'tool_name' => $event->toolResult->name,
+                                'params_hash' => $toolCallParamsHash[$toolCallId] ?? null,
+                                'output_hash' => $outputHash,
+                                'latency_ms' => $latencyMs,
+                                'error' => $event->successful ? null : $event->error,
+                            ],
+                            autopilotId: $autopilotId,
+                            actorType: $runtimeActorType,
+                            actorAutopilotId: $runtimeActorAutopilotId,
+                        );
 
                         if (in_array($event->toolResult->name, ['lightning_l402_fetch', 'lightning_l402_approve'], true)) {
                             $r = null;
@@ -165,25 +207,34 @@ final class RunOrchestrator
                             }
 
                             if (is_array($r)) {
-                                $this->appendEvent($threadId, $runId, $userId, 'l402_fetch_receipt', [
-                                    'tool_call_id' => $toolCallId,
-                                    'tool_name' => is_string($r['toolName'] ?? null) ? $r['toolName'] : 'lightning_l402_fetch',
-                                    'status' => $r['status'] ?? null,
-                                    'taskId' => $r['taskId'] ?? null,
-                                    'host' => $r['host'] ?? null,
-                                    'scope' => $r['scope'] ?? null,
-                                    'paid' => $r['paid'] ?? null,
-                                    'cacheHit' => $r['cacheHit'] ?? null,
-                                    'cacheStatus' => $r['cacheStatus'] ?? null,
-                                    'approvalRequired' => $r['approvalRequired'] ?? null,
-                                    'maxSpendMsats' => $r['maxSpendMsats'] ?? null,
-                                    'quotedAmountMsats' => $r['quotedAmountMsats'] ?? null,
-                                    'amountMsats' => $r['amountMsats'] ?? null,
-                                    'proofReference' => $r['proofReference'] ?? null,
-                                    'denyCode' => $r['denyCode'] ?? null,
-                                    'responseStatusCode' => $r['responseStatusCode'] ?? null,
-                                    'responseBodySha256' => $r['responseBodySha256'] ?? null,
-                                ]);
+                                $this->appendEvent(
+                                    threadId: $threadId,
+                                    runId: $runId,
+                                    userId: $userId,
+                                    type: 'l402_fetch_receipt',
+                                    payload: [
+                                        'tool_call_id' => $toolCallId,
+                                        'tool_name' => is_string($r['toolName'] ?? null) ? $r['toolName'] : 'lightning_l402_fetch',
+                                        'status' => $r['status'] ?? null,
+                                        'taskId' => $r['taskId'] ?? null,
+                                        'host' => $r['host'] ?? null,
+                                        'scope' => $r['scope'] ?? null,
+                                        'paid' => $r['paid'] ?? null,
+                                        'cacheHit' => $r['cacheHit'] ?? null,
+                                        'cacheStatus' => $r['cacheStatus'] ?? null,
+                                        'approvalRequired' => $r['approvalRequired'] ?? null,
+                                        'maxSpendMsats' => $r['maxSpendMsats'] ?? null,
+                                        'quotedAmountMsats' => $r['quotedAmountMsats'] ?? null,
+                                        'amountMsats' => $r['amountMsats'] ?? null,
+                                        'proofReference' => $r['proofReference'] ?? null,
+                                        'denyCode' => $r['denyCode'] ?? null,
+                                        'responseStatusCode' => $r['responseStatusCode'] ?? null,
+                                        'responseBodySha256' => $r['responseBodySha256'] ?? null,
+                                    ],
+                                    autopilotId: $autopilotId,
+                                    actorType: $runtimeActorType,
+                                    actorAutopilotId: $runtimeActorAutopilotId,
+                                );
 
                                 // PostHog: Track L402 payment if paid
                                 if (($r['paid'] ?? false) === true && isset($r['amountMsats'])) {
@@ -207,10 +258,19 @@ final class RunOrchestrator
                         $finishReason = $event->reason;
                         $usage = $event->usage->toArray();
 
-                        $this->appendEvent($threadId, $runId, $userId, 'model_finished', [
-                            'reason' => $finishReason,
-                            'usage' => $usage,
-                        ]);
+                        $this->appendEvent(
+                            threadId: $threadId,
+                            runId: $runId,
+                            userId: $userId,
+                            type: 'model_finished',
+                            payload: [
+                                'reason' => $finishReason,
+                                'usage' => $usage,
+                            ],
+                            autopilotId: $autopilotId,
+                            actorType: $runtimeActorType,
+                            actorAutopilotId: $runtimeActorAutopilotId,
+                        );
 
                         // Save until the very end (mirrors laravel/ai Vercel protocol impl).
                         $lastStreamEndVercel = $event->toVercelProtocolArray();
@@ -277,6 +337,7 @@ final class RunOrchestrator
                     'thread_id' => $threadId,
                     'run_id' => $runId,
                     'user_id' => $userId,
+                    'autopilot_id' => $autopilotId,
                     'role' => 'assistant',
                     'content' => $assistantText,
                     'meta' => null,
@@ -292,10 +353,19 @@ final class RunOrchestrator
                     'updated_at' => $now,
                 ]);
 
-                $this->appendEvent($threadId, $runId, $userId, 'run_completed', [
-                    'assistant_sha256' => hash('sha256', $assistantText),
-                    'assistant_chars' => mb_strlen($assistantText),
-                ]);
+                $this->appendEvent(
+                    threadId: $threadId,
+                    runId: $runId,
+                    userId: $userId,
+                    type: 'run_completed',
+                    payload: [
+                        'assistant_sha256' => hash('sha256', $assistantText),
+                        'assistant_chars' => mb_strlen($assistantText),
+                    ],
+                    autopilotId: $autopilotId,
+                    actorType: $runtimeActorType,
+                    actorAutopilotId: $runtimeActorAutopilotId,
+                );
 
                 // PostHog: Track chat run completed
                 $posthog = resolve(PostHogService::class);
@@ -334,9 +404,17 @@ final class RunOrchestrator
                     'updated_at' => $now,
                 ]);
 
-                $this->appendEvent($threadId, $runId, $userId, 'run_failed', [
-                    'error' => $e->getMessage(),
-                ]);
+                $this->appendEvent(
+                    threadId: $threadId,
+                    runId: $runId,
+                    userId: $userId,
+                    type: 'run_failed',
+                    payload: [
+                        'error' => $e->getMessage(),
+                    ],
+                    autopilotId: $autopilotId,
+                    actorType: 'system',
+                );
 
                 // PostHog: Track chat run failed
                 $posthog = resolve(PostHogService::class);
@@ -401,35 +479,90 @@ final class RunOrchestrator
         return $value;
     }
 
-    private function ensureThreadExists(string $threadId, int $userId): void
+    /**
+     * @return array{autopilotId: ?string, autopilotConfigVersion: ?int}
+     */
+    private function resolveThreadContext(string $threadId, int $userId): array
     {
-        $exists = DB::table('threads')->where('id', $threadId)->where('user_id', $userId)->exists();
-        if ($exists) {
-            return;
+        $thread = DB::table('threads')
+            ->where('id', $threadId)
+            ->where('user_id', $userId)
+            ->first(['id', 'autopilot_id']);
+
+        if (! $thread) {
+            $title = DB::table('agent_conversations')->where('id', $threadId)->where('user_id', $userId)->value('title');
+            if (! is_string($title) || trim($title) === '') {
+                $title = 'New conversation';
+            }
+
+            $now = now();
+
+            DB::table('threads')->insert([
+                'id' => $threadId,
+                'user_id' => $userId,
+                'autopilot_id' => null,
+                'title' => $title,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return [
+                'autopilotId' => null,
+                'autopilotConfigVersion' => null,
+            ];
         }
 
-        $title = DB::table('agent_conversations')->where('id', $threadId)->where('user_id', $userId)->value('title');
-        if (! is_string($title) || $title === '') {
-            $title = 'New conversation';
+        $autopilotId = is_string($thread->autopilot_id ?? null) && trim((string) $thread->autopilot_id) !== ''
+            ? trim((string) $thread->autopilot_id)
+            : null;
+
+        if ($autopilotId === null) {
+            return [
+                'autopilotId' => null,
+                'autopilotConfigVersion' => null,
+            ];
         }
 
-        $now = now();
+        $configVersion = DB::table('autopilots')->where('id', $autopilotId)->value('config_version');
 
-        DB::table('threads')->insert([
-            'id' => $threadId,
-            'user_id' => $userId,
-            'title' => $title,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        return [
+            'autopilotId' => $autopilotId,
+            'autopilotConfigVersion' => is_numeric($configVersion) ? (int) $configVersion : null,
+        ];
     }
 
-    private function appendEvent(string $threadId, string $runId, int $userId, string $type, ?array $payload = null): void
+    private function runtimeActorType(?string $autopilotId): string
     {
+        return is_string($autopilotId) && $autopilotId !== '' ? 'autopilot' : 'system';
+    }
+
+    private function appendEvent(
+        string $threadId,
+        string $runId,
+        int $userId,
+        string $type,
+        ?array $payload = null,
+        ?string $autopilotId = null,
+        string $actorType = 'user',
+        ?string $actorAutopilotId = null,
+    ): void {
+        $resolvedActorType = in_array($actorType, ['user', 'autopilot', 'system'], true)
+            ? $actorType
+            : 'system';
+
+        if ($resolvedActorType !== 'autopilot') {
+            $actorAutopilotId = null;
+        } elseif (! is_string($actorAutopilotId) || trim($actorAutopilotId) === '') {
+            $actorAutopilotId = $autopilotId;
+        }
+
         DB::table('run_events')->insert([
             'thread_id' => $threadId,
             'run_id' => $runId,
             'user_id' => $userId,
+            'autopilot_id' => $autopilotId,
+            'actor_type' => $resolvedActorType,
+            'actor_autopilot_id' => $actorAutopilotId,
             'type' => $type,
             'payload' => is_array($payload) ? json_encode($payload) : null,
             'created_at' => now(),
