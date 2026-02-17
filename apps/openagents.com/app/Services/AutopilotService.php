@@ -203,7 +203,9 @@ class AutopilotService
 
     private function handleExists(string $handle, ?string $ignoreAutopilotId = null): bool
     {
-        $query = Autopilot::query()->where('handle', $handle);
+        // Handles are globally unique even across soft-deleted rows due the DB
+        // unique index, so include trashed records in collision checks.
+        $query = Autopilot::query()->withTrashed()->where('handle', $handle);
 
         if (is_string($ignoreAutopilotId) && $ignoreAutopilotId !== '') {
             $query->where('id', '!=', $ignoreAutopilotId);

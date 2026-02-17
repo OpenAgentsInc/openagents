@@ -78,3 +78,29 @@ test('api signup can create default autopilot for new account', function () {
 
     expect(Autopilot::query()->where('owner_user_id', $user->id)->count())->toBe(1);
 });
+
+test('api signup autopilot creation avoids handles held by soft deleted autopilots', function () {
+    config()->set('auth.api_signup.enabled', true);
+
+    $first = $this->postJson('/api/auth/register', [
+        'email' => 'softdelete-owner@staging.openagents.com',
+        'createAutopilot' => true,
+    ]);
+
+    $first->assertCreated();
+
+    $firstUser = User::query()->where('email', 'softdelete-owner@staging.openagents.com')->firstOrFail();
+    $firstAutopilot = Autopilot::query()->where('owner_user_id', $firstUser->id)->firstOrFail();
+    $firstAutopilot->delete();
+
+    $second = $this->postJson('/api/auth/register', [
+        'email' => 'softdelete-next@staging.openagents.com',
+        'createAutopilot' => true,
+    ]);
+
+    $second->assertCreated();
+
+    $secondHandle = (string) $second->json('data.autopilot.handle');
+    expect($secondHandle)->not->toBe('autopilot');
+    expect(str_starts_with($secondHandle, 'autopilot-'))->toBeTrue();
+});
