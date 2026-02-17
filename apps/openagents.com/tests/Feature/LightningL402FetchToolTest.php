@@ -131,6 +131,7 @@ test('over-cap blocks pre-payment', function () {
 });
 
 test('domain allowlist blocks before making any http request', function () {
+    config()->set('lightning.l402.enforce_host_allowlist', true);
     config()->set('lightning.l402.allowlist_hosts', ['some-other-host.local']);
 
     $called = false;
@@ -153,4 +154,31 @@ test('domain allowlist blocks before making any http request', function () {
     expect($called)->toBeFalse();
     expect($out['status'])->toBe('blocked');
     expect($out['denyCode'])->toBe('domain_not_allowed');
+});
+
+test('domain allowlist is optional when enforcement is disabled', function () {
+    config()->set('lightning.l402.enforce_host_allowlist', false);
+    config()->set('lightning.l402.allowlist_hosts', ['some-other-host.local']);
+
+    $called = false;
+
+    Http::fake(function () use (&$called) {
+        $called = true;
+
+        return Http::response('free payload', 200, ['Content-Type' => 'text/plain']);
+    });
+
+    $out = resolve(L402Client::class)->fetch(
+        url: 'https://fake-l402.local/premium',
+        method: 'GET',
+        headers: [],
+        body: null,
+        maxSpendSats: 100,
+        scope: 'demo.fake',
+    );
+
+    expect($called)->toBeTrue();
+    expect($out['status'])->toBe('completed');
+    expect($out['paid'])->toBeFalse();
+    expect($out['responseStatusCode'])->toBe(200);
 });

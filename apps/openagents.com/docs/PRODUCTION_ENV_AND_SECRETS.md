@@ -58,6 +58,8 @@ Common non-secret vars in this deployment:
 - `DB_CONNECTION`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`
 - `AI_DEFAULT`
 - `L402_INVOICE_PAYER` (`spark_wallet` for real wallet-backed L402)
+- `L402_ENFORCE_HOST_ALLOWLIST` (`false` by default; set `true` to enforce `L402_ALLOWLIST_HOSTS`)
+- `L402_ALLOWLIST_HOSTS` (comma-separated hostnames used when enforcement is enabled)
 - `SPARK_EXECUTOR_BASE_URL`, `SPARK_EXECUTOR_TIMEOUT_MS`, `SPARK_AGENT_WALLET_ID_PREFIX`
 
 ## 2) Rotate secret values in Secret Manager

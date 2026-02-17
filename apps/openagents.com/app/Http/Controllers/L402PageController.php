@@ -40,6 +40,7 @@ class L402PageController extends Controller
             'lastPaid' => $lastPaid,
             'recent' => $receipts->take(20)->all(),
             'settings' => [
+                'enforceHostAllowlist' => (bool) config('lightning.l402.enforce_host_allowlist', false),
                 'allowlistHosts' => array_values(config('lightning.l402.allowlist_hosts', [])),
                 'invoicePayer' => (string) config('lightning.l402.invoice_payer', 'unknown'),
                 'credentialTtlSeconds' => (int) config('lightning.l402.credential_ttl_seconds', 0),
@@ -207,6 +208,7 @@ class L402PageController extends Controller
         return Inertia::render('l402/deployments', [
             'deployments' => $events->all(),
             'configSnapshot' => [
+                'enforceHostAllowlist' => (bool) config('lightning.l402.enforce_host_allowlist', false),
                 'allowlistHosts' => array_values(config('lightning.l402.allowlist_hosts', [])),
                 'invoicePayer' => (string) config('lightning.l402.invoice_payer', 'unknown'),
                 'credentialTtlSeconds' => (int) config('lightning.l402.credential_ttl_seconds', 0),
