@@ -78,6 +78,16 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
         ->assertJsonPath('data.wallet.balanceSats', 2100);
 
     $this->withToken($token)
+        ->getJson('/api/agent-payments/wallet')
+        ->assertOk()
+        ->assertJsonPath('data.wallet.walletId', 'oa-user-1');
+
+    $this->withToken($token)
+        ->getJson('/api/agent-payments/balance')
+        ->assertOk()
+        ->assertJsonPath('data.balanceSats', 2100);
+
+    $this->withToken($token)
         ->getJson('/api/agents/me/wallet')
         ->assertOk()
         ->assertJsonPath('data.wallet.walletId', 'oa-user-1');
@@ -86,6 +96,15 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
         ->getJson('/api/agents/me/balance')
         ->assertOk()
         ->assertJsonPath('data.balanceSats', 2100);
+
+    $this->withToken($token)
+        ->postJson('/api/agent-payments/invoice', [
+            'amountSats' => 123,
+            'description' => 'Funding test',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.invoice.paymentRequest', 'lnbc1testinvoicecreatedforwallet')
+        ->assertJsonPath('data.invoice.amountSats', 123);
 
     $this->withToken($token)
         ->postJson('/api/payments/invoice', [
@@ -97,6 +116,17 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
         ->assertJsonPath('data.invoice.amountSats', 123);
 
     $this->withToken($token)
+        ->postJson('/api/agent-payments/pay', [
+            'invoice' => 'lnbc1anotherinvoicepayloadforpaying',
+            'maxAmountSats' => 100,
+            'timeoutMs' => 12000,
+            'host' => 'sats4ai.com',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.payment.paymentId', 'pay_hash_001')
+        ->assertJsonPath('data.payment.proofReference', 'preimage:'.substr(str_repeat('b', 64), 0, 16));
+
+    $this->withToken($token)
         ->postJson('/api/payments/pay', [
             'invoice' => 'lnbc1anotherinvoicepayloadforpaying',
             'maxAmountSats' => 100,
@@ -106,6 +136,15 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
         ->assertOk()
         ->assertJsonPath('data.payment.paymentId', 'pay_hash_001')
         ->assertJsonPath('data.payment.proofReference', 'preimage:'.substr(str_repeat('b', 64), 0, 16));
+
+    $this->withToken($token)
+        ->postJson('/api/agent-payments/send-spark', [
+            'sparkAddress' => 'other@spark.openagents.com',
+            'amountSats' => 21,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.transfer.paymentId', 'spark_transfer_hash_1')
+        ->assertJsonPath('data.transfer.amountSats', 21);
 
     $this->withToken($token)
         ->postJson('/api/payments/send-spark', [
@@ -121,5 +160,9 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
         ->and($walletRow->wallet_id)->toBe('oa-user-1')
         ->and($walletRow->mnemonic)->not->toBe($mnemonic);
 
-    Http::assertSentCount(9);
+    Http::assertSent(fn ($request) => $request->url() === 'https://spark-executor.test/wallets/create');
+    Http::assertSent(fn ($request) => $request->url() === 'https://spark-executor.test/wallets/status');
+    Http::assertSent(fn ($request) => $request->url() === 'https://spark-executor.test/wallets/create-invoice');
+    Http::assertSent(fn ($request) => $request->url() === 'https://spark-executor.test/wallets/pay-bolt11');
+    Http::assertSent(fn ($request) => $request->url() === 'https://spark-executor.test/wallets/send-spark');
 });

@@ -62,8 +62,9 @@ return [
 
             // Route for exposing specification.
             // Leave uri null to disable.
+            // We serve /openapi.json via App\Http\Controllers\OpenApiSpecController to guarantee minified JSON.
             'route' => [
-                'uri' => '/openapi.json',
+                'uri' => null,
                 'middleware' => [],
             ],
 

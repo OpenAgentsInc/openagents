@@ -51,3 +51,14 @@ it('serves OpenAPI spec from openapi json route', function () {
     expect($paths)->toHaveKey('/api/me');
     expect($paths)->toHaveKey('/api/settings/profile');
 });
+
+it('returns minified JSON at /openapi.json', function () {
+    $response = $this->get('/openapi.json');
+
+    $response->assertOk();
+
+    $content = (string) $response->getContent();
+
+    expect($content)->toStartWith('{"openapi":');
+    expect($content)->not->toContain("\n");
+});

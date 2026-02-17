@@ -3,6 +3,7 @@
 use App\Http\Controllers\ChatApiController;
 use App\Http\Controllers\ChatPageController;
 use App\Http\Controllers\L402PageController;
+use App\Http\Controllers\OpenApiSpecController;
 use App\Http\Middleware\ValidateWorkOSSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -15,6 +16,8 @@ Route::get('/', function (Request $request) {
 
     return Inertia::render('home');
 })->name('home');
+
+Route::get('openapi.json', [OpenApiSpecController::class, 'show'])->name('openapi.default.specification');
 
 // Lightweight SSE smoke endpoint (auth-less) for infra validation.
 // Gate with a header secret to avoid exposing it publicly.

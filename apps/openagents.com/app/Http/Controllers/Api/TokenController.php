@@ -14,6 +14,7 @@ use App\OpenApi\Responses\ValidationErrorResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Laravel\Sanctum\PersonalAccessToken;
 use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
 
 #[OpenApi\PathItem]
@@ -145,12 +146,24 @@ class TokenController extends Controller
             abort(401);
         }
 
+        $deleted = false;
+
         $current = $user->currentAccessToken();
         if ($current) {
-            $current->delete();
+            $deleted = $user->tokens()->whereKey($current->getKey())->delete() > 0;
         }
 
-        return response()->json(['data' => ['deleted' => $current !== null]]);
+        if (! $deleted) {
+            $bearer = (string) $request->bearerToken();
+            if ($bearer !== '') {
+                $resolved = PersonalAccessToken::findToken($bearer);
+                if ($resolved && (int) $resolved->tokenable_id === (int) $user->id) {
+                    $deleted = $user->tokens()->whereKey($resolved->getKey())->delete() > 0;
+                }
+            }
+        }
+
+        return response()->json(['data' => ['deleted' => $deleted]]);
     }
 
     /**
