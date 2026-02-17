@@ -46,4 +46,36 @@ PROMPT;
     {
         return resolve(ToolRegistry::class)->all();
     }
+
+    /**
+     * Always use Vercel AI Gateway for chat (never OpenRouter).
+     */
+    public function provider(): string
+    {
+        return 'ai_gateway';
+    }
+
+    /**
+     * Default model for text generation (Vercel AI Gateway via ai_gateway).
+     */
+    public function model(): string
+    {
+        return self::defaultModel();
+    }
+
+    /**
+     * Primary model (used first).
+     */
+    public static function defaultModel(): string
+    {
+        return 'google/gemini-3-flash';
+    }
+
+    /**
+     * Backup model if primary fails (e.g. rate limit or model down).
+     */
+    public static function backupModel(): string
+    {
+        return 'xai/grok-4.1-fast-non-reasoning';
+    }
 }

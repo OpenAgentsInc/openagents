@@ -7,6 +7,7 @@ use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ChatApiController extends Controller
 {
@@ -71,9 +72,14 @@ class ChatApiController extends Controller
             'message_length' => strlen($prompt),
         ]);
 
-        $orchestrator = resolve(RunOrchestrator::class);
+        Log::info('Chat stream: starting', ['conversation_id' => $conversationId, 'prompt_length' => strlen($prompt)]);
 
-        return $orchestrator->streamAutopilotRun($user, $conversationId, $prompt);
+        $orchestrator = resolve(RunOrchestrator::class);
+        $response = $orchestrator->streamAutopilotRun($user, $conversationId, $prompt);
+
+        Log::info('Chat stream: response created', ['conversation_id' => $conversationId]);
+
+        return $response;
     }
 
     /**
