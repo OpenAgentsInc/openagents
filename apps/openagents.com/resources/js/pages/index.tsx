@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react';
-import { Head, usePage } from '@inertiajs/react';
+import { Head } from '@inertiajs/react';
 import { ArrowUpIcon } from '@radix-ui/react-icons';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -25,16 +25,11 @@ function textFromParts(parts: UIMessage['parts']): string {
         .join('');
 }
 
-type IndexPageProps = { auth?: { user?: unknown } };
-
 /**
- * Index chat: connects to Laravel POST api/chat (Vercel AI SDK protocol).
- * Creates a conversation via POST /api/chats when needed (authenticated only); uses useChat + DefaultChatTransport.
+ * Index chat: for authenticated users only. Guests are redirected to /chat by the server.
+ * Creates a conversation via POST /api/chats when mounted; uses useChat + DefaultChatTransport.
  */
 export default function Index() {
-    const { auth } = usePage<IndexPageProps>().props;
-    const isGuest = !auth?.user;
-
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [value, setValue] = useState('');
@@ -43,11 +38,9 @@ export default function Index() {
     const [createFailedAuth, setCreateFailedAuth] = useState(false);
     const createAttemptedRef = useRef(false);
 
-    const authRequired = isGuest || createFailedAuth;
-
-    // Create a conversation only when authenticated; never call API for guests
+    // Create one conversation on mount (this page is only rendered for authenticated users)
     useEffect(() => {
-        if (isGuest || createAttemptedRef.current || conversationId) return;
+        if (createAttemptedRef.current || conversationId) return;
         createAttemptedRef.current = true;
         fetch('/api/chats', {
             method: 'POST',
@@ -70,7 +63,9 @@ export default function Index() {
                 }
             })
             .catch(() => {});
-    }, [isGuest, conversationId]);
+    }, [conversationId]);
+
+    const authRequired = createFailedAuth;
 
     const api = useMemo(
         () => (conversationId ? `/api/chat?conversationId=${encodeURIComponent(conversationId)}` : ''),
