@@ -115,7 +115,7 @@ Pest coverage for API/Sanctum lives in:
 - `tests/Feature/Api/V1/L402ApiTest.php`
 - `tests/Feature/Api/V1/AgentPaymentsApiTest.php`
 - `tests/Feature/SparkWalletInvoicePayerTest.php`
-- `tests/Feature/Api/V1/AdminAndProfileApiTest.php`
+- `tests/Feature/Api/V1/ProfileApiTest.php`
 - `tests/Feature/CreateApiTokenCommandTest.php`
 
 ## OpenAPI
