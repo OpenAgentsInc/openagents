@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AutopilotController;
 use App\Http\Controllers\Api\AutopilotStreamController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\L402Controller;
+use App\Http\Controllers\Api\L402PaywallController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ShoutsController;
@@ -78,6 +79,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/transactions/{eventId}', [L402Controller::class, 'transactionShow'])
             ->whereNumber('eventId');
         Route::get('/paywalls', [L402Controller::class, 'paywalls']);
+        Route::post('/paywalls', [L402PaywallController::class, 'store'])->middleware('admin');
+        Route::patch('/paywalls/{paywallId}', [L402PaywallController::class, 'update'])->middleware('admin');
+        Route::delete('/paywalls/{paywallId}', [L402PaywallController::class, 'destroy'])->middleware('admin');
         Route::get('/settlements', [L402Controller::class, 'settlements']);
         Route::get('/deployments', [L402Controller::class, 'deployments']);
     });

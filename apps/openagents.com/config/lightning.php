@@ -45,6 +45,12 @@ return [
         'wallet_id_prefix' => (string) env('SPARK_AGENT_WALLET_ID_PREFIX', 'oa-user-'),
     ],
 
+    'operator' => [
+        'aperture_config_path' => (string) env('L402_APERTURE_CONFIG_PATH', storage_path('app/l402/aperture-paywalls.json')),
+        'aperture_reconcile_command' => env('L402_APERTURE_RECONCILE_COMMAND'),
+        'aperture_reconcile_timeout_seconds' => (int) env('L402_APERTURE_RECONCILE_TIMEOUT_SECONDS', 120),
+    ],
+
     // Demo presets (EP212). Keep endpoints here so demos are reproducible.
     'demo_presets' => [
         'sats4ai' => [

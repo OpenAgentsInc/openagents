@@ -51,6 +51,9 @@ This app now exposes a token-authenticated API under `/api` using Laravel Sanctu
 - `GET /api/l402/paywalls`
 - `GET /api/l402/settlements`
 - `GET /api/l402/deployments`
+- `POST /api/l402/paywalls` (admin-only)
+- `PATCH /api/l402/paywalls/{paywallId}` (admin-only)
+- `DELETE /api/l402/paywalls/{paywallId}` (admin-only)
 
 Optional query for wallet/transactions/paywalls/settlements/deployments:
 - `autopilot=<id-or-handle>` to scope analytics to one owned autopilot.

@@ -22,6 +22,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         ->all();
 
     $expected = [
+        'DELETE api/l402/paywalls/{paywallId}',
         'DELETE api/settings/profile',
         'DELETE api/tokens',
         'DELETE api/tokens/current',
@@ -52,6 +53,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'GET api/tokens',
         'GET api/whispers',
         'PATCH api/autopilots/{autopilot}',
+        'PATCH api/l402/paywalls/{paywallId}',
         'PATCH api/settings/profile',
         'PATCH api/whispers/{id}/read',
         'POST api/agent-payments/invoice',
@@ -66,6 +68,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'POST api/chat/stream',
         'POST api/chats',
         'POST api/chats/{conversationId}/stream',
+        'POST api/l402/paywalls',
         'POST api/payments/invoice',
         'POST api/payments/pay',
         'POST api/payments/send-spark',
