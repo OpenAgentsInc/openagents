@@ -64,6 +64,17 @@ it('supports me and personal access token lifecycle via api', function () {
         ->getJson('/api/tokens')
         ->assertOk()
         ->assertJsonCount(0, 'data');
+
+    $currentTokenResult = $user->createToken('current-token');
+    $currentToken = $currentTokenResult->plainTextToken;
+    $currentTokenId = (int) $currentTokenResult->accessToken->id;
+
+    $this->withToken($currentToken)
+        ->deleteJson('/api/tokens/current')
+        ->assertOk()
+        ->assertJsonPath('data.deleted', true);
+
+    expect($user->tokens()->where('id', $currentTokenId)->exists())->toBeFalse();
 });
 
 it('returns non-empty threads plus only the newest empty thread in /api/me', function () {

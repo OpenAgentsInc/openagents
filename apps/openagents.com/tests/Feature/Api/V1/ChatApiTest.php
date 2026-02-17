@@ -43,6 +43,21 @@ it('supports creating and reading chats through api', function () {
     expect($streamed)->toContain('data: {"type":"finish"');
     expect($streamed)->toContain("data: [DONE]\n\n");
 
+    $aliasStreamResponse = $this->withToken($token)
+        ->postJson('/api/chat/stream?conversationId='.$conversationId, [
+            'conversationId' => $conversationId,
+            'messages' => [
+                ['id' => 'm2', 'role' => 'user', 'content' => 'Say hi from alias stream'],
+            ],
+        ]);
+
+    $aliasStreamResponse->assertOk();
+
+    $aliasStreamed = $aliasStreamResponse->streamedContent();
+    expect($aliasStreamed)->toContain('data: {"type":"start"');
+    expect($aliasStreamed)->toContain('data: {"type":"finish"');
+    expect($aliasStreamed)->toContain("data: [DONE]\n\n");
+
     $this->withToken($token)
         ->getJson('/api/chats')
         ->assertOk()
