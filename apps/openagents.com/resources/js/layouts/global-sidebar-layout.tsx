@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { LogIn, Plus, Rss, Zap } from 'lucide-react';
+import { LogIn, MessageSquare, Plus, Rss, Zap } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
@@ -9,6 +9,7 @@ import {
     SidebarContent,
     SidebarFooter,
     SidebarGroup,
+    SidebarGroupLabel,
     SidebarHeader,
     SidebarInset,
     SidebarMenu,
@@ -19,15 +20,29 @@ import {
 } from '@/components/ui/sidebar';
 
 type Props = { children: ReactNode };
+
+type SharedChatThread = {
+    id: string;
+    title: string;
+    updatedAt: string | null;
+};
+
 type SharedProps = {
     auth?: {
         user?: unknown;
     };
+    chatThreads?: SharedChatThread[];
 };
+
+function toThreadLabel(value: string): string {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : 'New conversation';
+}
 
 export function GlobalSidebarLayout({ children }: Props) {
     const page = usePage<SharedProps>();
     const isAuthenticated = Boolean(page.props.auth?.user);
+    const chatThreads = page.props.chatThreads ?? [];
     const refreshKey = page.url ?? '/';
 
     const handleNewChat = useCallback(() => {
@@ -52,7 +67,7 @@ export function GlobalSidebarLayout({ children }: Props) {
 
     return (
         <SidebarProvider>
-            <div className="fixed top-2 left-2 z-50 md:hidden">
+            <div className="fixed left-3 top-3 z-[70]">
                 <SidebarTrigger className="h-8 w-8 rounded-md border border-border bg-background/80 backdrop-blur" />
             </div>
 
@@ -62,8 +77,7 @@ export function GlobalSidebarLayout({ children }: Props) {
                 className="border-r border-border dark:border-input"
             >
                 <SidebarHeader className="h-14 px-2">
-                    <div className="flex items-center gap-2">
-                        <SidebarTrigger className="hidden md:inline-flex" />
+                    <div className="flex items-center gap-2 pl-10">
                         <Link
                             href="/"
                             className="text-sm font-medium tracking-wide text-foreground/90"
@@ -106,6 +120,32 @@ export function GlobalSidebarLayout({ children }: Props) {
                             ) : null}
                         </SidebarMenu>
                     </SidebarGroup>
+
+                    {isAuthenticated ? (
+                        <SidebarGroup>
+                            <SidebarGroupLabel>Recent chats</SidebarGroupLabel>
+                            <SidebarMenu>
+                                {chatThreads.length === 0 ? (
+                                    <SidebarMenuItem>
+                                        <div className="px-2 py-1 text-xs text-muted-foreground">
+                                            No chats yet.
+                                        </div>
+                                    </SidebarMenuItem>
+                                ) : (
+                                    chatThreads.map((thread) => (
+                                        <SidebarMenuItem key={thread.id}>
+                                            <SidebarMenuButton asChild className="w-full justify-start gap-2">
+                                                <Link href={`/chat/${thread.id}`}>
+                                                    <MessageSquare className="size-4" />
+                                                    <span className="truncate">{toThreadLabel(thread.title)}</span>
+                                                </Link>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                    ))
+                                )}
+                            </SidebarMenu>
+                        </SidebarGroup>
+                    ) : null}
                 </SidebarContent>
 
                 <SidebarFooter>
