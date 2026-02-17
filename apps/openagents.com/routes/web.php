@@ -66,6 +66,7 @@ Route::middleware([
     'auth',
     ValidateWorkOSSession::class,
 ])->group(function () {
+    Route::get('aui', fn () => Inertia::render('aui'))->name('aui');
     Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
         ->name('chat');
 
