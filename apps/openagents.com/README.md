@@ -37,6 +37,8 @@ cd apps/openagents.com
 PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-web deploy/deploy-production.sh
 ```
 
+The script runs `npm install` in the app directory before uploading to Cloud Build so `package-lock.json` is in sync with `package.json` (Cloud Build uses `npm ci`, which requires an exact match). If `package-lock.json` changes, commit and push it after a successful deploy.
+
 This path is enforced as:
 
 1. Cloud Build Docker image build (Dockerfile runs `npm run build` in the `node_build` stage).

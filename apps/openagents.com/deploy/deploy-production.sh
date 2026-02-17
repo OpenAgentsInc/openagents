@@ -15,6 +15,10 @@ if [[ -z "${PROJECT}" || "${PROJECT}" == "(unset)" ]]; then
   exit 1
 fi
 
+# Ensure package-lock.json is in sync with package.json so Cloud Build's `npm ci` succeeds.
+echo "[deploy] ensuring package-lock.json is in sync (npm install)"
+(cd "${APP_DIR}" && npm install --no-audit --no-fund)
+
 echo "[deploy] project=${PROJECT} region=${REGION} service=${SERVICE} tag=${TAG}"
 echo "[deploy] building image via Cloud Build (Dockerfile runs npm run build)"
 gcloud builds submit \
