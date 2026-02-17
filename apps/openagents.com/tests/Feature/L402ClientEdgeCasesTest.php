@@ -25,7 +25,7 @@ test('missing L402 challenge returns a typed failure without attempting payment'
             return 'should_not_pay';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             throw new RuntimeException('payment should not be attempted without a parseable L402 challenge');
         }
@@ -62,7 +62,7 @@ test('amountless invoices are blocked pre-payment with quoted_amount_missing', f
             return 'should_not_pay';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             throw new RuntimeException('payment should not be attempted when quoted amount cannot be parsed');
         }
@@ -114,7 +114,7 @@ test('response capture enforces truncation and preview limits', function () {
             return 'fake';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             return new InvoicePaymentResult(hash('sha256', 'preimage:'.$invoice), 'fake');
         }
@@ -201,7 +201,7 @@ test('cache rejection invalidates the credential and retries full flow', functio
             return 'fake';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             $fn = $this->payFn;
 
@@ -255,7 +255,7 @@ test('non-402 responses return completed without paying', function () {
             return 'should_not_pay';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             throw new RuntimeException('payment should not be attempted for non-402 responses');
         }

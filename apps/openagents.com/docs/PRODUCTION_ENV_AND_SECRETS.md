@@ -57,6 +57,8 @@ Common non-secret vars in this deployment:
 - `REDIS_HOST`, `REDIS_PORT`
 - `DB_CONNECTION`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`
 - `AI_DEFAULT`
+- `L402_INVOICE_PAYER` (`spark_wallet` for real wallet-backed L402)
+- `SPARK_EXECUTOR_BASE_URL`, `SPARK_EXECUTOR_TIMEOUT_MS`, `SPARK_AGENT_WALLET_ID_PREFIX`
 
 ## 2) Rotate secret values in Secret Manager
 Add a new secret version (example shown for one key):
@@ -77,6 +79,7 @@ Examples of existing secret names:
 - `openagents-web-openrouter-api-key`
 - `openagents-web-smoke-secret`
 - `openagents-web-posthog-api-key` (optional; for PostHog backend analytics — bind as `POSTHOG_API_KEY`)
+- `openagents-web-spark-executor-auth-token` (optional; bind as `SPARK_EXECUTOR_AUTH_TOKEN` when executor requires bearer auth)
 
 **PostHog:** Backend uses `POSTHOG_API_KEY` (and optionally `POSTHOG_HOST`, `POSTHOG_DISABLED`). Prefer storing the key in Secret Manager and binding `POSTHOG_API_KEY` via `--update-secrets`. Frontend uses `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` at **build time** (set in CI or local env when running `npm run build`); they are not runtime env on Cloud Run. See `docs/POSTHOG_BACKEND.md` and `docs/POSTHOG_REACT.md`.
 
@@ -88,7 +91,7 @@ gcloud run services update openagents-web \
   --project openagentsgemini \
   --region us-central1 \
   --update-secrets \
-APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest,WORKOS_REDIRECT_URL=openagents-web-workos-redirect-url:latest,OPENROUTER_API_KEY=openagents-web-openrouter-api-key:latest,OA_SMOKE_SECRET=openagents-web-smoke-secret:latest
+APP_KEY=openagents-web-app-key:latest,DB_PASSWORD=openagents-web-db-password:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest,WORKOS_API_KEY=openagents-web-workos-api-key:latest,WORKOS_REDIRECT_URL=openagents-web-workos-redirect-url:latest,OPENROUTER_API_KEY=openagents-web-openrouter-api-key:latest,OA_SMOKE_SECRET=openagents-web-smoke-secret:latest,SPARK_EXECUTOR_AUTH_TOKEN=openagents-web-spark-executor-auth-token:latest
 ```
 
 ## 4) Verify active runtime config

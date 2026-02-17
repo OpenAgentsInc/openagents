@@ -50,11 +50,36 @@ class L402Controller extends Controller
 
         $lastPaid = $receipts->first(fn (array $r) => $r['paid'] === true);
 
+        $wallet = DB::table('user_spark_wallets')
+            ->where('user_id', $userId)
+            ->first([
+                'wallet_id',
+                'spark_address',
+                'lightning_address',
+                'identity_pubkey',
+                'last_balance_sats',
+                'status',
+                'provider',
+                'last_error',
+                'last_synced_at',
+            ]);
+
         return response()->json([
             'data' => [
                 'summary' => $summary,
                 'lastPaid' => $lastPaid,
                 'recent' => $receipts->take(20)->all(),
+                'sparkWallet' => $wallet ? [
+                    'walletId' => (string) $wallet->wallet_id,
+                    'sparkAddress' => $wallet->spark_address,
+                    'lightningAddress' => $wallet->lightning_address,
+                    'identityPubkey' => $wallet->identity_pubkey,
+                    'balanceSats' => is_numeric($wallet->last_balance_sats) ? (int) $wallet->last_balance_sats : null,
+                    'status' => $wallet->status,
+                    'provider' => $wallet->provider,
+                    'lastError' => $wallet->last_error,
+                    'lastSyncedAt' => $wallet->last_synced_at,
+                ] : null,
                 'settings' => [
                     'allowlistHosts' => array_values(config('lightning.l402.allowlist_hosts', [])),
                     'invoicePayer' => (string) config('lightning.l402.invoice_payer', 'unknown'),

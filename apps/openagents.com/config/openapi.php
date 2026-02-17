@@ -45,6 +45,10 @@ return [
                     'name' => 'L402',
                     'description' => 'Lightning L402 wallet, receipts, and deployment telemetry endpoints.',
                 ],
+                [
+                    'name' => 'Agent Payments',
+                    'description' => 'Per-user Spark wallet lifecycle and payment APIs (invoice + pay + spark transfers).',
+                ],
             ],
 
             'security' => [

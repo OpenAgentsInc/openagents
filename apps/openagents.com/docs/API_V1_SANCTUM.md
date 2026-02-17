@@ -53,6 +53,26 @@ This app now exposes a token-authenticated API under `/api/v1` using Laravel San
 - `GET /api/v1/l402/settlements`
 - `GET /api/v1/l402/deployments`
 
+### Agent Payments (Spark)
+
+Primary endpoints:
+
+- `GET /api/v1/agent-payments/wallet`
+- `POST /api/v1/agent-payments/wallet`
+- `GET /api/v1/agent-payments/balance`
+- `POST /api/v1/agent-payments/invoice`
+- `POST /api/v1/agent-payments/pay`
+- `POST /api/v1/agent-payments/send-spark`
+
+Backward-compatible aliases:
+
+- `GET /api/v1/agents/me/wallet`
+- `POST /api/v1/agents/me/wallet`
+- `GET /api/v1/agents/me/balance`
+- `POST /api/v1/payments/invoice`
+- `POST /api/v1/payments/pay`
+- `POST /api/v1/payments/send-spark`
+
 ## Production token creation
 
 Use the existing ops command:
@@ -94,6 +114,8 @@ Pest coverage for API/Sanctum lives in:
 - `tests/Feature/Api/V1/AuthenticationAndTokensTest.php`
 - `tests/Feature/Api/V1/ChatApiTest.php`
 - `tests/Feature/Api/V1/L402ApiTest.php`
+- `tests/Feature/Api/V1/AgentPaymentsApiTest.php`
+- `tests/Feature/SparkWalletInvoicePayerTest.php`
 - `tests/Feature/Api/V1/AdminAndProfileApiTest.php`
 - `tests/Feature/CreateApiTokenCommandTest.php`
 

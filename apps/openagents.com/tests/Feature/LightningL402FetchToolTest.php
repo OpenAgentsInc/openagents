@@ -37,7 +37,7 @@ test('l402 client pays once, caches credential, then uses cache without paying a
             return 'fake';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             return new InvoicePaymentResult(hash('sha256', 'preimage:'.$invoice), 'fake');
         }
@@ -69,7 +69,7 @@ test('l402 client pays once, caches credential, then uses cache without paying a
             return 'should_not_pay';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             throw new RuntimeException('payment should not be attempted on cache hit');
         }
@@ -108,7 +108,7 @@ test('over-cap blocks pre-payment', function () {
             return 'should_not_pay';
         }
 
-        public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+        public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
         {
             throw new RuntimeException('payment should not be attempted when quoted cost exceeds cap');
         }

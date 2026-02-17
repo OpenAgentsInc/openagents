@@ -14,7 +14,10 @@ final class LndRestInvoicePayer implements InvoicePayer
         return 'lnd_rest';
     }
 
-    public function payBolt11(string $invoice, int $timeoutMs): InvoicePaymentResult
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    public function payBolt11(string $invoice, int $timeoutMs, array $context = []): InvoicePaymentResult
     {
         $baseUrl = (string) config('lightning.lnd_rest.base_url');
         $macaroonHex = (string) config('lightning.lnd_rest.macaroon_hex');

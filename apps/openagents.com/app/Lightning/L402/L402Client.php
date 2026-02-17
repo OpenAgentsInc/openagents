@@ -18,7 +18,7 @@ final class L402Client
      *
      * @param  array<string, string>  $headers
      */
-    public function fetch(string $url, string $method, array $headers, ?string $body, int $maxSpendSats, string $scope): array
+    public function fetch(string $url, string $method, array $headers, ?string $body, int $maxSpendSats, string $scope, array $context = []): array
     {
         $host = $this->hostFromUrl($url);
         $method = strtoupper(trim($method));
@@ -169,7 +169,17 @@ final class L402Client
         $timeoutMs = (int) config('lightning.l402.payment_timeout_ms', 12000);
 
         // 3) Pay invoice -> preimage.
-        $payment = $this->invoicePayer->payBolt11($challenge->invoice, $timeoutMs);
+        $paymentContext = array_merge($context, [
+            'host' => $host,
+            'scope' => $scope,
+            'url' => $url,
+            'method' => $method,
+            'maxSpendSats' => $maxSpendSats,
+            'maxSpendMsats' => $maxSpendMsats,
+            'quotedAmountMsats' => $quotedAmountMsats,
+        ]);
+
+        $payment = $this->invoicePayer->payBolt11($challenge->invoice, $timeoutMs, $paymentContext);
         $preimage = $payment->preimage;
 
         if (! is_string($preimage) || preg_match('/^[0-9a-f]{64}$/i', $preimage) !== 1) {

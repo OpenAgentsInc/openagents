@@ -72,6 +72,7 @@ class LightningL402FetchTool implements Tool
             $body = $preset['body'];
         }
 
+        $userId = $this->resolveUserId();
         $approvalRequired = $request->boolean('approvalRequired', true);
 
         if ($approvalRequired) {
@@ -84,6 +85,7 @@ class LightningL402FetchTool implements Tool
                 'scope' => $scope,
                 'preset' => $presetName !== '' ? $presetName : null,
                 'createdAt' => now()->toISOString(),
+                'userId' => $userId,
             ];
 
             $taskId = resolve(PendingL402ApprovalStore::class)->create($taskPayload);
@@ -114,6 +116,9 @@ class LightningL402FetchTool implements Tool
             body: $body,
             maxSpendSats: $maxSpendSats,
             scope: $scope,
+            context: [
+                'userId' => $userId,
+            ],
         );
 
         $result['toolName'] = 'lightning_l402_fetch';
@@ -187,6 +192,21 @@ class LightningL402FetchTool implements Tool
         }
 
         return $sats * 1000;
+    }
+
+    private function resolveUserId(): ?int
+    {
+        $id = auth()->id();
+
+        if (is_int($id)) {
+            return $id;
+        }
+
+        if (is_numeric($id)) {
+            return (int) $id;
+        }
+
+        return null;
     }
 
     /**
