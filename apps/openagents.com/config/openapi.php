@@ -42,6 +42,14 @@ return [
                     'description' => 'Admin-only endpoints scoped by configured admin email allowlist.',
                 ],
                 [
+                    'name' => 'Shouts',
+                    'description' => 'Global public broadcast messages, optionally scoped by zone.',
+                ],
+                [
+                    'name' => 'Whispers',
+                    'description' => 'Direct messages between two users, inbox and thread retrieval.',
+                ],
+                [
                     'name' => 'L402',
                     'description' => 'Lightning L402 wallet, receipts, and deployment telemetry endpoints.',
                 ],

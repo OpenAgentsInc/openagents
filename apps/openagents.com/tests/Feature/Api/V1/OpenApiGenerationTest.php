@@ -29,6 +29,10 @@ it('generates OpenAPI spec with api coverage and sanctum security', function () 
     expect($paths)->toHaveKey('/api/l402/wallet');
     expect($paths)->toHaveKey('/api/agent-payments/wallet');
     expect($paths)->toHaveKey('/api/payments/pay');
+    expect($paths)->toHaveKey('/api/shouts');
+    expect($paths)->toHaveKey('/api/shouts/zones');
+    expect($paths)->toHaveKey('/api/whispers');
+    expect($paths)->toHaveKey('/api/whispers/{id}/read');
 
     expect($paths)->not->toHaveKey('/api/chat');
 
@@ -50,6 +54,8 @@ it('serves OpenAPI spec from openapi json route', function () {
     $paths = $spec['paths'] ?? [];
     expect($paths)->toHaveKey('/api/me');
     expect($paths)->toHaveKey('/api/settings/profile');
+    expect($paths)->toHaveKey('/api/shouts');
+    expect($paths)->toHaveKey('/api/whispers');
 });
 
 it('returns minified JSON at /openapi.json', function () {

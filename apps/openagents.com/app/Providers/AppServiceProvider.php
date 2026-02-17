@@ -6,9 +6,12 @@ use App\Lightning\L402\InvoicePayer;
 use App\Lightning\L402\InvoicePayers\FakeInvoicePayer;
 use App\Lightning\L402\InvoicePayers\LndRestInvoicePayer;
 use App\Lightning\L402\InvoicePayers\SparkWalletInvoicePayer;
+use App\Models\Whisper;
+use App\Policies\WhisperPolicy;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use PostHog\PostHog;
@@ -39,7 +42,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configurePolicies();
         $this->configurePostHog();
+    }
+
+    protected function configurePolicies(): void
+    {
+        Gate::policy(Whisper::class, WhisperPolicy::class);
     }
 
     /**
