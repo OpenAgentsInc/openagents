@@ -13,6 +13,10 @@ class ChatThreadList
     public function forUser(int $userId, int $limit = 50): Collection
     {
         $limit = max(1, min(200, $limit));
+        $hasAutopilotIdColumn = DB::getSchemaBuilder()->hasColumn('threads', 'autopilot_id');
+        $select = $hasAutopilotIdColumn
+            ? ['id', 'title', 'autopilot_id', 'created_at', 'updated_at']
+            : ['id', 'title', 'created_at', 'updated_at'];
 
         $hasMessages = function ($query) use ($userId): void {
             $query->selectRaw('1')
@@ -26,17 +30,24 @@ class ChatThreadList
             ->whereExists($hasMessages)
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get(['id', 'title', 'autopilot_id', 'created_at', 'updated_at']);
+            ->get($select);
 
         $latestEmpty = DB::table('threads')
             ->where('user_id', $userId)
             ->whereNotExists($hasMessages)
             ->orderByDesc('created_at')
             ->limit(1)
-            ->get(['id', 'title', 'autopilot_id', 'created_at', 'updated_at']);
+            ->get($select);
 
         return $nonEmpty
             ->concat($latestEmpty)
+            ->map(function ($thread) use ($hasAutopilotIdColumn) {
+                if (! $hasAutopilotIdColumn) {
+                    $thread->autopilot_id = null;
+                }
+
+                return $thread;
+            })
             ->unique('id')
             ->sortByDesc(fn ($thread) => $thread->updated_at ?? $thread->created_at)
             ->take($limit)
