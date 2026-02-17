@@ -4,7 +4,7 @@ PostHog is integrated in this app’s **React (Inertia.js + Vite)** frontend for
 
 ## In this app
 
-- **Init:** `resources/js/lib/posthog.ts` — initializes PostHog when `VITE_POSTHOG_KEY` is set; uses `VITE_POSTHOG_HOST` (default `https://us.i.posthog.com`).
+- **Init:** `resources/js/lib/posthog.ts` — initializes PostHog when `VITE_POSTHOG_KEY` is set in non-development builds; uses `VITE_POSTHOG_HOST` (default `https://us.i.posthog.com`).
 - **Provider:** `resources/js/app.tsx` — root is wrapped in `<PostHogProvider client={posthog}>`.
 - **Identify:** `resources/js/components/posthog-identify.tsx` — runs on every page; calls `posthog.identify(user.email, { email, name })` when `auth.user` is present (Inertia shared props).
 - **Env:** Add to `.env` (and to your hosting provider). Use the **same project API key and host** as the backend so data stays in one project. Names match `apps/web` for consistency.

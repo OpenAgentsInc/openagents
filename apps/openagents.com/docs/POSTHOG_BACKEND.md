@@ -39,12 +39,12 @@ Then add config, a service wrapper, and initialization as in the files the wizar
 - **Config file:** `config/posthog.php`  
   - `api_key` from `POSTHOG_API_KEY`  
   - `host` from `POSTHOG_HOST` (default `https://us.i.posthog.com`)  
-  - `disabled` from `POSTHOG_DISABLED` (default `false`)  
+  - `disabled` from `POSTHOG_DISABLED` (default `true` for `local/dev/testing/staging`, `false` for `production`)  
   - `debug` from `APP_DEBUG`
 
 - **Initialization:** `AppServiceProvider::boot()` calls `configurePostHog()`, which runs `PostHog::init()` when `posthog.disabled` is false and `posthog.api_key` is set. Use the same US host as the frontend so all data stays in one project.
 
-- **Environment:** Set `POSTHOG_API_KEY` in `.env` (and in production via your deploy process). Do not commit the key. For production, see `docs/PRODUCTION_ENV_AND_SECRETS.md` and allowlist `POSTHOG_API_KEY` in the deploy script if stored in the env file used by `apply-production-env.sh`.
+- **Environment:** Set `POSTHOG_API_KEY` in `.env` (and in production via your deploy process). Do not commit the key. For production, see `docs/PRODUCTION_ENV_AND_SECRETS.md` and use `apply-production-env.sh`, which syncs `POSTHOG_API_KEY` into Secret Manager and binds it to Cloud Run automatically when present in `.env.production`.
 
 ## Events integrated
 

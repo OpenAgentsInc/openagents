@@ -9,6 +9,8 @@ GCP_PROJECT="${GCP_PROJECT:-openagentsgemini}"
 GCP_REGION="${GCP_REGION:-us-central1}"
 CLOUD_RUN_SERVICE="${CLOUD_RUN_SERVICE:-openagents-web}"
 DRY_RUN="${DRY_RUN:-0}"
+SYNC_POSTHOG_SECRET="${SYNC_POSTHOG_SECRET:-1}"
+POSTHOG_SECRET_NAME="${POSTHOG_SECRET_NAME:-openagents-web-posthog-api-key}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "error: env file not found: ${ENV_FILE}" >&2
@@ -47,6 +49,9 @@ declare -a ALLOWLIST_KEYS=(
 
   LND_REST_BASE_URL
   LND_REST_TLS_VERIFY
+
+  POSTHOG_HOST
+  POSTHOG_DISABLED
 )
 
 # Optional additional allowlist keys can be supplied at runtime:
@@ -95,6 +100,7 @@ strip_wrapping_quotes() {
 declare -a pairs=()
 declare -a applied=()
 declare -a skipped=()
+posthog_api_key=""
 
 while IFS= read -r raw || [[ -n "${raw}" ]]; do
   line="${raw%$'\r'}"
@@ -121,6 +127,12 @@ while IFS= read -r raw || [[ -n "${raw}" ]]; do
   value="$(strip_wrapping_quotes "${value}")"
 
   if [[ -z "${key}" ]]; then
+    continue
+  fi
+
+  if [[ "${key}" == "POSTHOG_API_KEY" ]]; then
+    posthog_api_key="${value}"
+    skipped+=("${key}")
     continue
   fi
 
@@ -161,9 +173,27 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   printf 'Command: '
   printf '%q ' "${cmd[@]}"
   echo
+  if [[ "${SYNC_POSTHOG_SECRET}" == "1" && -n "${posthog_api_key}" ]]; then
+    echo "DRY_RUN=1, would also sync POSTHOG_API_KEY to secret ${POSTHOG_SECRET_NAME} and bind POSTHOG_API_KEY on ${CLOUD_RUN_SERVICE}."
+  fi
   exit 0
 fi
 
 "${cmd[@]}"
+
+if [[ "${SYNC_POSTHOG_SECRET}" == "1" && -n "${posthog_api_key}" ]]; then
+  echo "Syncing POSTHOG_API_KEY to Secret Manager (${POSTHOG_SECRET_NAME}) and binding Cloud Run secret env."
+
+  if ! gcloud secrets describe "${POSTHOG_SECRET_NAME}" --project "${GCP_PROJECT}" >/dev/null 2>&1; then
+    gcloud secrets create "${POSTHOG_SECRET_NAME}" --project "${GCP_PROJECT}" --replication-policy="automatic"
+  fi
+
+  printf '%s' "${posthog_api_key}" | gcloud secrets versions add "${POSTHOG_SECRET_NAME}" --project "${GCP_PROJECT}" --data-file=- >/dev/null
+
+  gcloud run services update "${CLOUD_RUN_SERVICE}" \
+    --project "${GCP_PROJECT}" \
+    --region "${GCP_REGION}" \
+    --update-secrets "POSTHOG_API_KEY=${POSTHOG_SECRET_NAME}:latest"
+fi
 
 echo "Done."
