@@ -33,8 +33,10 @@ apps/openagents.com/deploy/apply-production-env.sh apps/openagents.com/.env.prod
 Notes:
 - Script path: `apps/openagents.com/deploy/apply-production-env.sh`
 - Uses `--update-env-vars` (does not clear unrelated env vars).
-- Ignores non-allowlisted keys, so secret keys in the file are skipped.
+- `POSTHOG_API_KEY` is handled specially: when present in the env file, the script writes it to Secret Manager (`openagents-web-posthog-api-key`) and binds it to `POSTHOG_API_KEY` via `--update-secrets`.
+- Other non-allowlisted keys are skipped.
 - Extend allowlist ad hoc with `OA_ENV_ALLOWLIST_EXTRA="KEY_A,KEY_B"`.
+- Set `SYNC_POSTHOG_SECRET=0` to disable PostHog secret sync for a run.
 
 
 ## 1) Update non-secret env vars
@@ -61,6 +63,7 @@ Common non-secret vars in this deployment:
 - `L402_ENFORCE_HOST_ALLOWLIST` (`false` by default; set `true` to enforce `L402_ALLOWLIST_HOSTS`)
 - `L402_ALLOWLIST_HOSTS` (comma-separated hostnames used when enforcement is enabled)
 - `SPARK_EXECUTOR_BASE_URL`, `SPARK_EXECUTOR_TIMEOUT_MS`, `SPARK_AGENT_WALLET_ID_PREFIX`
+- `POSTHOG_HOST`, `POSTHOG_DISABLED`
 
 ## 2) Rotate secret values in Secret Manager
 Add a new secret version (example shown for one key):
