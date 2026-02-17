@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react';
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { ArrowUpIcon } from '@radix-ui/react-icons';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -25,23 +25,42 @@ function textFromParts(parts: UIMessage['parts']): string {
         .join('');
 }
 
+type IndexPageProps = { auth?: { user?: unknown } };
+
 /**
- * Index chat: for authenticated users only. Guests are redirected to /chat by the server.
- * Creates a conversation via POST /api/chats when mounted; uses useChat + DefaultChatTransport.
+ * Index chat: works for guests and authenticated users. Everyone stays on the homepage.
+ * Guests: GET /api/chat/guest-session for conversation id. Authed: POST /api/chats.
  */
 export default function Index() {
+    const { auth } = usePage<IndexPageProps>().props;
+    const isGuest = !auth?.user;
+
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [value, setValue] = useState('');
     const [isComposing, setIsComposing] = useState(false);
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [createFailedAuth, setCreateFailedAuth] = useState(false);
-    const createAttemptedRef = useRef(false);
+    const initAttemptedRef = useRef(false);
 
-    // Create one conversation on mount (this page is only rendered for authenticated users)
+    // Resolve conversation id: guests use guest-session; authed users create via POST /api/chats
     useEffect(() => {
-        if (createAttemptedRef.current || conversationId) return;
-        createAttemptedRef.current = true;
+        if (initAttemptedRef.current || conversationId) return;
+        initAttemptedRef.current = true;
+
+        if (isGuest) {
+            fetch('/api/chat/guest-session', { credentials: 'include' })
+                .then((res) => (res.ok ? res.json() : null))
+                .then((data: { conversationId?: string } | null) => {
+                    const id = data?.conversationId;
+                    if (typeof id === 'string' && id.trim() !== '') {
+                        setConversationId(id.trim());
+                    }
+                })
+                .catch(() => {});
+            return;
+        }
+
         fetch('/api/chats', {
             method: 'POST',
             credentials: 'include',
@@ -51,19 +70,19 @@ export default function Index() {
             .then((res) => {
                 if (res.status === 401 || res.status === 419) {
                     setCreateFailedAuth(true);
-                    return;
+                    return null;
                 }
-                if (!res.ok) return;
+                if (!res.ok) return null;
                 return res.json();
             })
-            .then((data: { data?: { id?: string } } | undefined) => {
+            .then((data: { data?: { id?: string } } | null | undefined) => {
                 const id = data?.data?.id;
                 if (typeof id === 'string' && id.trim() !== '') {
                     setConversationId(id.trim());
                 }
             })
             .catch(() => {});
-    }, [conversationId]);
+    }, [isGuest, conversationId]);
 
     const authRequired = createFailedAuth;
 
@@ -81,6 +100,17 @@ export default function Index() {
         messages: [],
         transport: transport ?? undefined,
     });
+
+    // Focus the textarea when conversation is ready (input becomes enabled)
+    useEffect(() => {
+        if (!conversationId || authRequired) return;
+        const el = textareaRef.current;
+        if (!el) return;
+        const id = requestAnimationFrame(() => {
+            el.focus({ preventScroll: true });
+        });
+        return () => cancelAnimationFrame(id);
+    }, [conversationId, authRequired]);
 
     // Auto-scroll message container to bottom when messages change (new message or streaming update)
     useEffect(() => {
@@ -144,16 +174,6 @@ export default function Index() {
                                         <Button asChild variant="outline" size="sm">
                                             <a href="/login">Sign in</a>
                                         </Button>
-                                    </div>
-                                )}
-                                {!authRequired && !conversationId && (
-                                    <div className="py-12 text-center text-muted-foreground">
-                                        Loading…
-                                    </div>
-                                )}
-                                {!authRequired && conversationId && messages.length === 0 && (
-                                    <div className="py-12 text-center text-muted-foreground">
-                                        Send a message to start.
                                     </div>
                                 )}
                                 {!authRequired && conversationId && messages.length > 0 && (

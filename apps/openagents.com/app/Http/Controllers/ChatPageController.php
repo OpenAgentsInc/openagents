@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\GuestChatSessionService;
 use App\Services\PostHogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,12 +14,12 @@ use Laravel\Ai\Contracts\ConversationStore;
 
 class ChatPageController extends Controller
 {
-    public function show(Request $request, ?string $conversationId = null): Response|RedirectResponse
+    public function show(Request $request, GuestChatSessionService $guestService, ?string $conversationId = null): Response|RedirectResponse
     {
         $user = $request->user();
 
         if (! $user) {
-            $guestConversationId = $this->ensureGuestConversationId($request, $conversationId);
+            $guestConversationId = $guestService->ensureGuestConversationId($request, $conversationId);
 
             /** @var array{email?: string}|null $pending */
             $pending = $request->session()->get('auth.magic_auth');
@@ -164,38 +165,4 @@ class ChatPageController extends Controller
         ]);
     }
 
-    private function ensureGuestConversationId(Request $request, ?string $requestedConversationId = null): string
-    {
-        $existing = $request->session()->get('chat.guest.conversation_id');
-
-        if (is_string($existing) && trim($existing) !== '') {
-            return $existing;
-        }
-
-        if ($this->isGuestConversationId($requestedConversationId)) {
-            $request->session()->put('chat.guest.conversation_id', $requestedConversationId);
-
-            return $requestedConversationId;
-        }
-
-        $id = 'guest-'.Str::uuid7();
-        $request->session()->put('chat.guest.conversation_id', $id);
-
-        return $id;
-    }
-
-    private function isGuestConversationId(?string $value): bool
-    {
-        if (! is_string($value)) {
-            return false;
-        }
-
-        $candidate = trim($value);
-
-        if ($candidate === '') {
-            return false;
-        }
-
-        return (bool) preg_match('/^guest-[a-z0-9-]+$/i', $candidate);
-    }
 }
