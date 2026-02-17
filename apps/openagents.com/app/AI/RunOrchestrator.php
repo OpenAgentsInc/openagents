@@ -4,6 +4,7 @@ namespace App\AI;
 
 use App\AI\Agents\AutopilotAgent;
 use App\AI\Runtime\AutopilotExecutionContext;
+use App\AI\Tools\AutopilotToolResolver;
 use App\Services\PostHogService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
@@ -74,11 +75,36 @@ final class RunOrchestrator
             'updated_at' => $now,
         ]);
 
-        $streamable = $streamableFactory
-            ? $streamableFactory($user, $threadId, $prompt)
-            : AutopilotAgent::make()->continue($threadId, $user)->stream($prompt);
+        $executionContext = resolve(AutopilotExecutionContext::class);
+        $executionContext->set($userId, $autopilotId);
 
-        $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId, $userEmail, $autopilotId): void {
+        $runtimeActorType = $this->runtimeActorType($autopilotId);
+        $runtimeActorAutopilotId = $runtimeActorType === 'autopilot' ? $autopilotId : null;
+
+        $toolResolution = resolve(AutopilotToolResolver::class)->resolutionForAutopilot($autopilotId);
+
+        $this->appendEvent(
+            threadId: $threadId,
+            runId: $runId,
+            userId: $userId,
+            type: 'tool_policy_applied',
+            payload: $toolResolution['audit'] ?? [],
+            autopilotId: $autopilotId,
+            actorType: $runtimeActorType,
+            actorAutopilotId: $runtimeActorAutopilotId,
+        );
+
+        try {
+            $streamable = $streamableFactory
+                ? $streamableFactory($user, $threadId, $prompt)
+                : AutopilotAgent::make()->continue($threadId, $user)->stream($prompt);
+        } catch (Throwable $e) {
+            $executionContext->clear();
+
+            throw $e;
+        }
+
+        $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId, $userEmail, $autopilotId, $executionContext): void {
             $writeToClient = true;
             $shouldFlush = ! app()->runningUnitTests();
 
@@ -97,8 +123,6 @@ final class RunOrchestrator
             $finishReason = null;
             $runtimeActorType = $this->runtimeActorType($autopilotId);
             $runtimeActorAutopilotId = $runtimeActorType === 'autopilot' ? $autopilotId : null;
-            $executionContext = resolve(AutopilotExecutionContext::class);
-            $executionContext->set($userId, $autopilotId);
 
             try {
                 foreach ($streamable as $event) {

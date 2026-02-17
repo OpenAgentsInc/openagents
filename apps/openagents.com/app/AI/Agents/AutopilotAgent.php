@@ -2,7 +2,7 @@
 
 namespace App\AI\Agents;
 
-use App\AI\Tools\ToolRegistry;
+use App\AI\Tools\AutopilotToolResolver;
 use Illuminate\Support\Stringable;
 use Laravel\Ai\Concerns\RemembersConversations;
 use Laravel\Ai\Contracts\Agent;
@@ -34,8 +34,8 @@ Tooling:
 - Prefer tools for deterministic operations (time, formatting, simple transforms).
 
 Lightning / L402 workflow:
-- For paid API requests, use `lightning_l402_fetch` with a strict `maxSpendSats` and appropriate `scope`.
-- Keep `approvalRequired=true` (default) so spending is gated.
+- For paid API requests, use `lightning_l402_fetch` with a strict `maxSpendMsats` (or temporary alias `maxSpendSats`) and appropriate `scope`.
+- Keep `requireApproval=true` (or temporary alias `approvalRequired`) so spending is gated.
 - If `lightning_l402_fetch` returns `status=approval_requested`, ask user to approve.
 - Only after explicit user approval, call `lightning_l402_approve` with the returned `taskId`.
 - After approval completes, summarize the paid result and include payment proof reference when available.
@@ -44,7 +44,7 @@ PROMPT;
 
     public function tools(): iterable
     {
-        return resolve(ToolRegistry::class)->all();
+        return resolve(AutopilotToolResolver::class)->forCurrentAutopilot();
     }
 
     /**

@@ -57,6 +57,8 @@ it('manages owned autopilots threads and stream alias through the existing run p
                 'personaSummary' => 'Pragmatic and concise',
             ],
             'policy' => [
+                'toolAllowlist' => ['echo', 'get_time'],
+                'toolDenylist' => ['get_time', 'lightning_l402_fetch'],
                 'l402RequireApproval' => true,
                 'l402MaxSpendMsatsPerCall' => 100000,
                 'l402AllowedHosts' => ['sats4ai.com'],
@@ -129,7 +131,7 @@ it('manages owned autopilots threads and stream alias through the existing run p
         ->where('thread_id', $threadId)
         ->where('user_id', $user->id)
         ->orderBy('id')
-        ->get(['type', 'autopilot_id', 'actor_type', 'actor_autopilot_id']);
+        ->get(['type', 'autopilot_id', 'actor_type', 'actor_autopilot_id', 'payload']);
 
     expect($runEvents)->not->toBeEmpty();
     expect($runEvents->pluck('autopilot_id')->unique()->values()->all())->toBe([$autopilotId]);
@@ -138,6 +140,16 @@ it('manages owned autopilots threads and stream alias through the existing run p
     expect($runStarted)->not->toBeNull();
     expect($runStarted->actor_type)->toBe('user');
     expect($runStarted->actor_autopilot_id)->toBeNull();
+
+    $toolPolicyApplied = $runEvents->firstWhere('type', 'tool_policy_applied');
+    expect($toolPolicyApplied)->not->toBeNull();
+
+    $toolPolicyPayload = json_decode((string) ($toolPolicyApplied->payload ?? ''), true);
+    expect($toolPolicyPayload)->toBeArray();
+    expect($toolPolicyPayload['policyApplied'] ?? null)->toBeTrue();
+    expect($toolPolicyPayload['exposedTools'] ?? null)->toBe(['echo']);
+    expect($toolPolicyPayload['removedByDenylist'] ?? [])->toContain('get_time');
+    expect($toolPolicyPayload['removedByAllowlist'] ?? [])->toContain('lightning_l402_fetch');
 
     $modelStarted = $runEvents->firstWhere('type', 'model_stream_started');
     expect($modelStarted)->not->toBeNull();
