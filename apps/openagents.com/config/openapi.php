@@ -34,6 +34,10 @@ return [
                     'description' => 'Conversation, run, and stream endpoints.',
                 ],
                 [
+                    'name' => 'Autopilot',
+                    'description' => 'Autopilot resources, thread scoping, and stream alias routes.',
+                ],
+                [
                     'name' => 'Profile',
                     'description' => 'Authenticated profile management endpoints.',
                 ],

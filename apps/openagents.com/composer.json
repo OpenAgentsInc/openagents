@@ -74,6 +74,7 @@
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "@php scripts/patch-oooas.php",
             "@php artisan package:discover --ansi"
         ],
         "post-update-cmd": [
