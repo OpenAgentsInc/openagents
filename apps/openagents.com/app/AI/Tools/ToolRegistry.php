@@ -12,8 +12,7 @@ class ToolRegistry
     public function all(): array
     {
         return [
-            new GetTimeTool,
-            new EchoTool,
+            new OpenAgentsApiTool,
             new LightningL402FetchTool,
             new LightningL402ApproveTool,
             new LightningL402PaywallCreateTool,
