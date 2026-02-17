@@ -29,4 +29,11 @@ gcloud run deploy "${SERVICE}" \
   --region "${REGION}" \
   --image "${IMAGE}"
 
+if [[ "${SYNC_DOCS_OPENAPI:-1}" == "1" ]]; then
+  echo "[deploy] syncing OpenAPI spec into docs repo"
+  "${APP_DIR}/deploy/sync-openapi-to-docs.sh"
+else
+  echo "[deploy] SYNC_DOCS_OPENAPI=0; skipping docs sync"
+fi
+
 echo "[deploy] complete"
