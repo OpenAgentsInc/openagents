@@ -1,37 +1,9 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Support\Facades\Config;
 
 beforeEach(function () {
     config()->set('posthog.disabled', true);
-    Config::set('admin.emails', ['chris@openagents.com']);
-});
-
-it('forbids non-admin users from api admin status endpoint', function () {
-    $nonAdmin = User::factory()->create([
-        'email' => 'user@openagents.com',
-    ]);
-
-    $nonAdminToken = $nonAdmin->createToken('non-admin')->plainTextToken;
-
-    $this->withToken($nonAdminToken)
-        ->getJson('/api/admin/status')
-        ->assertForbidden();
-});
-
-it('allows admin users on api admin status endpoint', function () {
-    $admin = User::factory()->create([
-        'email' => 'chris@openagents.com',
-    ]);
-
-    $adminToken = $admin->createToken('admin')->plainTextToken;
-
-    $this->withToken($adminToken)
-        ->getJson('/api/admin/status')
-        ->assertOk()
-        ->assertJsonPath('data.status', 'ok')
-        ->assertJsonPath('data.adminEmails.0', 'chris@openagents.com');
 });
 
 it('supports profile read, update, and delete via api', function () {

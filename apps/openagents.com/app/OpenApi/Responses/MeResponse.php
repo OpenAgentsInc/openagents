@@ -26,7 +26,6 @@ class MeResponse extends ResponseFactory
                                 Schema::string('createdAt')->format(Schema::FORMAT_DATE_TIME)->nullable(),
                                 Schema::string('updatedAt')->format(Schema::FORMAT_DATE_TIME)->nullable(),
                             ),
-                            Schema::boolean('isAdmin'),
                             Schema::array('chatThreads')->items(
                                 Schema::object()->properties(
                                     Schema::string('id'),

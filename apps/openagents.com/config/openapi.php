@@ -38,10 +38,6 @@ return [
                     'description' => 'Authenticated profile management endpoints.',
                 ],
                 [
-                    'name' => 'Admin',
-                    'description' => 'Admin-only endpoints scoped by configured admin email allowlist.',
-                ],
-                [
                     'name' => 'Shouts',
                     'description' => 'Global public broadcast messages, optionally scoped by zone.',
                 ],

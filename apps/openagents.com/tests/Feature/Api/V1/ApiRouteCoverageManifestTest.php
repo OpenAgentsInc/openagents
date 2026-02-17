@@ -26,7 +26,6 @@ it('has endpoint coverage manifest for all API routes', function () {
         'DELETE api/tokens',
         'DELETE api/tokens/current',
         'DELETE api/tokens/{tokenId}',
-        'GET api/admin/status',
         'GET api/agent-payments/balance',
         'GET api/agent-payments/wallet',
         'GET api/agents/me/balance',

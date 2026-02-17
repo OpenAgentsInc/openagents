@@ -35,6 +35,7 @@ it('generates OpenAPI spec with api coverage and sanctum security', function () 
     expect($paths)->toHaveKey('/api/whispers/{id}/read');
 
     expect($paths)->not->toHaveKey('/api/chat');
+    expect($paths)->not->toHaveKey('/api/admin/status');
 
     expect(data_get($spec, 'components.securitySchemes.SanctumToken.type'))->toBe('http');
     expect(data_get($spec, 'components.securitySchemes.SanctumToken.scheme'))->toBe('bearer');

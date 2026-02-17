@@ -14,10 +14,9 @@ This app now exposes a token-authenticated API under `/api` using Laravel Sanctu
 
 ## Endpoints
 
-### Identity / Admin
+### Identity
 
 - `GET /api/me`
-- `GET /api/admin/status` (requires `admin` middleware)
 
 ### Token management
 
