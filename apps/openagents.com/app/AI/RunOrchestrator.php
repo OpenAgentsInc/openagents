@@ -359,6 +359,28 @@ final class RunOrchestrator
 
                 $now = now();
 
+                if (trim($assistantText) === '') {
+                    $assistantText = "I couldn't generate a response from the model. Please try again.";
+
+                    $this->appendEvent(
+                        threadId: $threadId,
+                        runId: $runId,
+                        userId: $userId,
+                        type: 'model_empty_response',
+                        payload: [
+                            'reason' => $finishReason,
+                            'usage' => $usage,
+                        ],
+                        autopilotId: $autopilotId,
+                        actorType: $runtimeActorType,
+                        actorAutopilotId: $runtimeActorAutopilotId,
+                    );
+
+                    if ($writeToClient) {
+                        $this->emitSyntheticAssistantText($assistantText, $runId, $streamStarted, $shouldFlush);
+                    }
+                }
+
                 DB::table('messages')->insert([
                     'id' => (string) Str::uuid(),
                     'thread_id' => $threadId,
@@ -431,6 +453,23 @@ final class RunOrchestrator
                     'updated_at' => $now,
                 ]);
 
+                $assistantText = 'I ran into an internal error while generating a response. Please retry.';
+
+                DB::table('messages')->insert([
+                    'id' => (string) Str::uuid(),
+                    'thread_id' => $threadId,
+                    'run_id' => $runId,
+                    'user_id' => $userId,
+                    'autopilot_id' => $autopilotId,
+                    'role' => 'assistant',
+                    'content' => $assistantText,
+                    'meta' => json_encode([
+                        'error' => 'run_failed',
+                    ]),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+
                 $this->appendEvent(
                     threadId: $threadId,
                     runId: $runId,
@@ -452,6 +491,8 @@ final class RunOrchestrator
                 ]);
 
                 if ($writeToClient) {
+                    $this->emitSyntheticAssistantText($assistantText, $runId, $streamStarted, $shouldFlush);
+
                     // Best-effort graceful shutdown of the SSE stream.
                     echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
                     echo "data: [DONE]\n\n";
@@ -477,6 +518,39 @@ final class RunOrchestrator
         return tap($response, function (StreamedResponse $r) use ($runId): void {
             $r->headers->set('x-oa-run-id', $runId);
         });
+    }
+
+    private function emitSyntheticAssistantText(string $text, string $runId, bool &$streamStarted, bool $shouldFlush): void
+    {
+        if ($text === '') {
+            return;
+        }
+
+        if (! $streamStarted) {
+            echo 'data: '.json_encode(['type' => 'start'])."\n\n";
+            echo 'data: '.json_encode(['type' => 'start-step'])."\n\n";
+            $this->flushStream($shouldFlush);
+            $streamStarted = true;
+        }
+
+        $messageId = 'fallback-'.$runId;
+        echo 'data: '.json_encode(['type' => 'text-start', 'id' => $messageId])."\n\n";
+        echo 'data: '.json_encode(['type' => 'text-delta', 'id' => $messageId, 'delta' => $text])."\n\n";
+        echo 'data: '.json_encode(['type' => 'text-end', 'id' => $messageId])."\n\n";
+        $this->flushStream($shouldFlush);
+    }
+
+    private function flushStream(bool $shouldFlush): void
+    {
+        if (! $shouldFlush) {
+            return;
+        }
+
+        if (ob_get_level() > 0) {
+            ob_flush();
+        }
+
+        flush();
     }
 
     private function canonicalJson(mixed $value): string

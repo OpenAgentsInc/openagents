@@ -167,3 +167,59 @@ test('chat API returns a JSON 422 error when user text is missing', function () 
     $response->assertStatus(422)
         ->assertJsonPath('message', 'A non-empty user message is required');
 });
+
+test('chat API emits a visible fallback message when the model returns no text', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['']);
+
+    $user = User::factory()->create();
+
+    $conversationId = (string) Str::uuid7();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'user_id' => $user->id,
+        'title' => 'Empty model response conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'Hello'],
+        ],
+    ]);
+
+    $response->assertOk();
+    $content = $response->streamedContent();
+
+    expect($content)->toContain("I couldn't generate a response from the model. Please try again.");
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    $assistant = DB::table('messages')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->where('role', 'assistant')
+        ->latest('created_at')
+        ->first(['content']);
+
+    expect($assistant)->not->toBeNull();
+    expect((string) $assistant->content)->toContain("I couldn't generate a response from the model.");
+
+    $run = DB::table('runs')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->latest('created_at')
+        ->first(['id', 'status']);
+
+    expect($run)->not->toBeNull();
+    expect((string) $run->status)->toBe('completed');
+
+    $eventTypes = DB::table('run_events')
+        ->where('run_id', $run->id)
+        ->orderBy('id')
+        ->pluck('type')
+        ->all();
+
+    expect($eventTypes)->toContain('model_empty_response');
+    expect($eventTypes)->toContain('run_completed');
+});
