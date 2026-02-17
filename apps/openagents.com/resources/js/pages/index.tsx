@@ -536,7 +536,7 @@ export default function Index() {
                         </div>
                     )}
 
-                    {/* Fixed bottom input bar (unchanged look) */}
+                    {/* Fixed bottom input bar */}
                     <div className="pointer-events-none absolute bottom-0 z-10 w-full overflow-x-visible px-2">
                         <div className="relative mx-auto flex w-full max-w-3xl flex-col overflow-x-visible text-center">
                             <div className="pointer-events-auto mx-auto w-full max-w-[calc(100%-2rem)]">
@@ -557,14 +557,10 @@ export default function Index() {
                                         ))}
                                     </div>
                                 )}
-                                <div
-                                    className={cn(
-                                        'chat-input-outer min-w-0 overflow-hidden rounded-t-lg p-2 pb-0 backdrop-blur-lg',
-                                    )}
-                                >
+                                <div className="chat-input-outer min-w-0 overflow-hidden rounded-t-lg">
                                     <form
                                         className={cn(
-                                            'chat-input-form pointer-events-auto relative flex w-full min-w-0 flex-col items-stretch gap-2 rounded-t-md border border-b-0 border-white/25 px-3 pt-3 pb-3 text-secondary-foreground outline-none',
+                                            'chat-input-form pointer-events-auto relative flex w-full min-w-0 flex-col items-stretch gap-2 rounded-t-lg border border-b-0 border-white/25 px-3 pt-3 pb-3 text-secondary-foreground outline-none',
                                             'max-sm:pb-6 sm:max-w-3xl dark:border-white/15',
                                         )}
                                         id="chat-input-form"

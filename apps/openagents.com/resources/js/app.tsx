@@ -5,6 +5,7 @@ import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PostHogIdentify } from '@/components/posthog-identify';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { GlobalSidebarLayout } from '@/layouts/global-sidebar-layout';
 import { posthog } from '@/lib/posthog';
 import '../css/app.css';
 import { initializeTheme } from './hooks/use-appearance';
@@ -35,8 +36,10 @@ createInertiaApp({
         root.render(
             <StrictMode>
                 <PostHogProvider client={posthog}>
-                    <TooltipProvider>
-                        <App {...props} />
+                        <TooltipProvider>
+                        <GlobalSidebarLayout>
+                            <App {...props} />
+                        </GlobalSidebarLayout>
                     </TooltipProvider>
                 </PostHogProvider>
             </StrictMode>,
