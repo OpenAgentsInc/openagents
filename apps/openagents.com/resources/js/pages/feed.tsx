@@ -1,6 +1,4 @@
 import { Head, Link } from '@inertiajs/react';
-import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 
 type FeedShout = {
     id: number;
@@ -31,10 +29,6 @@ type Props = {
     };
 };
 
-const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Feed', href: '/feed' },
-];
-
 function formatTimestamp(value: string | null): string {
     if (!value) {
         return 'Unknown time';
@@ -63,7 +57,7 @@ export default function FeedPage({ feed }: Props) {
     const activeZone = feed.zone ?? 'all';
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <>
             <Head title="Feed" />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
                 <div className="rounded-xl border border-sidebar-border/70 bg-card p-4">
@@ -132,6 +126,6 @@ export default function FeedPage({ feed }: Props) {
                     )}
                 </div>
             </div>
-        </AppLayout>
+        </>
     );
 }

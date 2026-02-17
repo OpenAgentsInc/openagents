@@ -3,8 +3,10 @@
 use App\Models\Shout;
 use App\Models\User;
 
-it('redirects guests away from the feed page', function () {
-    $this->get('/feed')->assertRedirect('/login');
+it('renders the feed page for guests', function () {
+    $this->get('/feed')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('feed'));
 });
 
 it('renders the feed page for authenticated users', function () {
@@ -12,11 +14,11 @@ it('renders the feed page for authenticated users', function () {
 
     $this->actingAs($user)
         ->get('/feed')
-        ->assertOk();
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('feed'));
 });
 
 it('filters feed by zone and supports all view', function () {
-    $viewer = User::factory()->create();
     $author = User::factory()->create();
 
     Shout::query()->create([
@@ -33,15 +35,20 @@ it('filters feed by zone and supports all view', function () {
         'visibility' => 'public',
     ]);
 
-    $this->actingAs($viewer)
-        ->get('/feed?zone=l402')
+    $this->get('/feed?zone=l402')
         ->assertOk()
-        ->assertSee('L402-only shout body')
-        ->assertDontSee('Dev-only shout body');
+        ->assertInertia(fn ($page) => $page
+            ->component('feed')
+            ->where('feed.zone', 'l402')
+            ->where('feed.items.0.body', 'L402-only shout body')
+            ->where('feed.items', fn ($items) => count($items) === 1)
+        );
 
-    $this->actingAs($viewer)
-        ->get('/feed?zone=all')
+    $this->get('/feed?zone=all')
         ->assertOk()
-        ->assertSee('L402-only shout body')
-        ->assertSee('Dev-only shout body');
+        ->assertInertia(fn ($page) => $page
+            ->component('feed')
+            ->where('feed.zone', null)
+            ->where('feed.items', fn ($items) => count($items) === 2)
+        );
 });

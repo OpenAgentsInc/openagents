@@ -25,6 +25,9 @@ Route::get('chat/{conversationId?}', [ChatPageController::class, 'show'])
 
 Route::get('openapi.json', [OpenApiSpecController::class, 'show'])->name('openapi.default.specification');
 
+// Public global feed.
+Route::get('feed', [FeedPageController::class, 'index'])->name('feed');
+
 // Lightweight SSE smoke endpoint (auth-less) for infra validation.
 // Gate with a header secret to avoid exposing it publicly.
 Route::get('api/smoke/stream', function (Request $request) {
@@ -74,8 +77,6 @@ Route::middleware([
     'auth',
     ValidateWorkOSSession::class,
 ])->group(function () {
-    Route::get('feed', [FeedPageController::class, 'index'])->name('feed');
-
     Route::prefix('l402')->name('l402.')->group(function () {
         Route::get('/', [L402PageController::class, 'wallet'])->name('wallet');
         Route::get('/transactions', [L402PageController::class, 'transactions'])->name('transactions.index');
