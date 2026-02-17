@@ -55,7 +55,9 @@ export default function Login() {
                             </Link>
                             <h1 className="mt-2 text-2xl font-semibold tracking-tight">Sign in with email</h1>
                             <p className="mt-1 text-sm text-white/75">
-                                Enter your email to receive a one-time sign-in code.
+                                {hasPendingCode
+                                    ? `Enter the one-time code sent to ${pendingEmail}.`
+                                    : 'Enter your email to receive a one-time sign-in code.'}
                             </p>
                         </div>
 
@@ -80,40 +82,38 @@ export default function Login() {
                             </div>
 
                             <Button type="submit" className="w-full" disabled={emailForm.processing}>
-                                {emailForm.processing ? 'Sending code...' : 'Send verification code'}
+                                {emailForm.processing
+                                    ? 'Sending code...'
+                                    : hasPendingCode
+                                      ? 'Resend verification code'
+                                      : 'Send verification code'}
                             </Button>
                         </form>
 
-                        <div className="my-5 border-t border-white/10" />
+                        {hasPendingCode ? (
+                            <>
+                                <div className="my-5 border-t border-white/10" />
 
-                        <form onSubmit={submitCode} className="space-y-3">
-                            <div className="space-y-2">
-                                <Label htmlFor="code">Verification code</Label>
-                                <Input
-                                    id="code"
-                                    type="text"
-                                    autoComplete="one-time-code"
-                                    value={verifyForm.data.code}
-                                    onChange={(event) => verifyForm.setData('code', event.target.value)}
-                                    placeholder="Enter the code from your email"
-                                />
-                                <InputError message={verifyForm.errors.code} />
-                            </div>
+                                <form onSubmit={submitCode} className="space-y-3">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="code">Verification code</Label>
+                                        <Input
+                                            id="code"
+                                            type="text"
+                                            autoComplete="one-time-code"
+                                            value={verifyForm.data.code}
+                                            onChange={(event) => verifyForm.setData('code', event.target.value)}
+                                            placeholder="Enter the code from your email"
+                                        />
+                                        <InputError message={verifyForm.errors.code} />
+                                    </div>
 
-                            <p className="text-xs text-white/65">
-                                {hasPendingCode
-                                    ? `Code requested for ${pendingEmail}.`
-                                    : 'Send a code first, then enter it here.'}
-                            </p>
-
-                            <Button
-                                type="submit"
-                                className="w-full"
-                                disabled={verifyForm.processing || !hasPendingCode}
-                            >
-                                {verifyForm.processing ? 'Verifying...' : 'Verify and continue'}
-                            </Button>
-                        </form>
+                                    <Button type="submit" className="w-full" disabled={verifyForm.processing}>
+                                        {verifyForm.processing ? 'Verifying...' : 'Verify and continue'}
+                                    </Button>
+                                </form>
+                            </>
+                        ) : null}
                     </div>
                 </div>
             </div>
