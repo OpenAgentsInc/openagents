@@ -309,6 +309,9 @@ class L402Controller extends Controller
                 'l402_gateway_deployment',
                 'l402_gateway_event',
                 'l402_executor_heartbeat',
+                'l402_paywall_created',
+                'l402_paywall_updated',
+                'l402_paywall_deleted',
             ])
             ->when($autopilotId !== null, fn ($query) => $query->where('e.autopilot_id', $autopilotId))
             ->orderByDesc('e.id')
