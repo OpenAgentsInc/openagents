@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { LogIn, Plus } from 'lucide-react';
+import { LogIn, Plus, Rss } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { NavUser } from '@/components/nav-user';
@@ -82,6 +82,14 @@ export function GlobalSidebarLayout({ children }: Props) {
                                 >
                                     <Plus className="size-4" />
                                     <span>New Chat</span>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild className="w-full justify-start gap-2">
+                                    <Link href="/feed">
+                                        <Rss className="size-4" />
+                                        <span>Global Feed</span>
+                                    </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
                         </SidebarMenu>
