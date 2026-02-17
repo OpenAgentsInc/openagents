@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Contracts\Tool;
+use Throwable;
 use Laravel\Ai\Tools\Request;
 
 class ChatLoginTool implements Tool
@@ -158,6 +159,7 @@ class ChatLoginTool implements Tool
         }
 
         $session->put('auth.magic_auth', $pending);
+        $this->persistSession($session);
 
         $posthog = resolve(PostHogService::class);
         $posthog->capture($email, 'login code sent', [
@@ -261,7 +263,8 @@ class ChatLoginTool implements Tool
         $session->put('workos_refresh_token', $refreshToken);
         $session->forget('auth.magic_auth');
         $session->forget('chat.guest.conversation_id');
-        $session->regenerate();
+        $session->regenerateToken();
+        $this->persistSession($session);
 
         $posthog = resolve(PostHogService::class);
         $posthog->identify($user->email, $user->getPostHogProperties());
@@ -424,6 +427,17 @@ class ChatLoginTool implements Tool
         }
 
         return $session;
+    }
+
+    private function persistSession(Session $session): void
+    {
+        try {
+            if (method_exists($session, 'save')) {
+                $session->save();
+            }
+        } catch (Throwable) {
+            // Best-effort persistence for streamed tool calls.
+        }
     }
 
     /**
