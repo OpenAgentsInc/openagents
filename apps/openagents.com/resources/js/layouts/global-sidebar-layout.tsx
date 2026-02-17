@@ -50,17 +50,21 @@ export function GlobalSidebarLayout({ children }: Props) {
 
     return (
         <SidebarProvider>
+            <div className="fixed top-2 left-2 z-50 md:hidden">
+                <SidebarTrigger className="h-8 w-8 rounded-md border border-border bg-background/80 backdrop-blur" />
+            </div>
+
             <Sidebar
-                collapsible="icon"
+                collapsible="offcanvas"
                 variant="inset"
                 className="border-r border-border dark:border-input"
             >
                 <SidebarHeader className="h-14 px-2">
                     <div className="flex items-center gap-2">
-                        <SidebarTrigger />
+                        <SidebarTrigger className="hidden md:inline-flex" />
                         <Link
                             href="/"
-                            className="text-sm font-medium tracking-wide text-foreground/90 group-data-[collapsible=icon]:hidden"
+                            className="text-sm font-medium tracking-wide text-foreground/90"
                         >
                             OpenAgents
                         </Link>
