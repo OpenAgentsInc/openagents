@@ -6,6 +6,7 @@ use App\Services\PostHogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Ai\Contracts\ConversationStore;
@@ -17,7 +18,44 @@ class ChatPageController extends Controller
         $user = $request->user();
 
         if (! $user) {
-            abort(401);
+            $guestConversationId = $this->ensureGuestConversationId($request);
+
+            if ($conversationId === null || trim($conversationId) === '') {
+                return redirect()->route('chat', ['conversationId' => $guestConversationId]);
+            }
+
+            if ($conversationId !== $guestConversationId) {
+                return redirect()->route('chat', ['conversationId' => $guestConversationId]);
+            }
+
+            /** @var array{email?: string}|null $pending */
+            $pending = $request->session()->get('auth.magic_auth');
+            $pendingEmail = is_array($pending) && is_string($pending['email'] ?? null)
+                ? trim((string) $pending['email'])
+                : null;
+
+            $guestStep = $pendingEmail ? 'code' : 'email';
+
+            $initialAssistant = $pendingEmail
+                ? "Check {$pendingEmail}. Enter your 6-digit verification code to continue setup."
+                : "Welcome to Autopilot. To set up your agent, enter your email and I'll send a one-time code.";
+
+            return Inertia::render('chat', [
+                'conversationId' => $guestConversationId,
+                'conversationTitle' => 'New conversation',
+                'initialMessages' => [
+                    [
+                        'id' => (string) Str::uuid7(),
+                        'role' => 'assistant',
+                        'content' => $initialAssistant,
+                    ],
+                ],
+                'guestOnboarding' => [
+                    'enabled' => true,
+                    'step' => $guestStep,
+                    'pendingEmail' => $pendingEmail,
+                ],
+            ]);
         }
 
         if ($conversationId === null) {
@@ -126,6 +164,25 @@ class ChatPageController extends Controller
             'conversationId' => $conversationId,
             'conversationTitle' => $thread->title,
             'initialMessages' => $messages,
+            'guestOnboarding' => [
+                'enabled' => false,
+                'step' => null,
+                'pendingEmail' => null,
+            ],
         ]);
+    }
+
+    private function ensureGuestConversationId(Request $request): string
+    {
+        $existing = $request->session()->get('chat.guest.conversation_id');
+
+        if (is_string($existing) && trim($existing) !== '') {
+            return $existing;
+        }
+
+        $id = 'guest-'.Str::uuid7();
+        $request->session()->put('chat.guest.conversation_id', $id);
+
+        return $id;
     }
 }

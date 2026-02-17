@@ -1,11 +1,7 @@
 import { useChat } from '@ai-sdk/react';
-import { Head } from '@inertiajs/react';
-import {
-    DefaultChatTransport,
-    type ToolUIPart,
-    type UIMessage,
-} from 'ai';
-import { useCallback, useMemo, useRef } from 'react';
+import { Head, usePage } from '@inertiajs/react';
+import { DefaultChatTransport, type ToolUIPart, type UIMessage } from 'ai';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Conversation,
     ConversationContent,
@@ -39,10 +35,23 @@ import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 
+type GuestOnboardingStep = 'email' | 'code';
+
+type GuestOnboarding = {
+    enabled: boolean;
+    step: GuestOnboardingStep | null;
+    pendingEmail: string | null;
+};
+
 type Props = {
     conversationId: string;
     conversationTitle: string;
     initialMessages: Array<{ id: string; role: string; content: string }>;
+    guestOnboarding?: GuestOnboarding;
+};
+
+type SharedPageProps = {
+    csrfToken?: string;
 };
 
 const TOOL_STATES: ReadonlyArray<ToolPart['state']> = [
@@ -56,7 +65,10 @@ const TOOL_STATES: ReadonlyArray<ToolPart['state']> = [
 ];
 
 function isKnownToolState(value: unknown): value is ToolPart['state'] {
-    return typeof value === 'string' && TOOL_STATES.includes(value as ToolPart['state']);
+    return (
+        typeof value === 'string' &&
+        TOOL_STATES.includes(value as ToolPart['state'])
+    );
 }
 
 function normalizeToolState(value: unknown): ToolPart['state'] {
@@ -116,10 +128,15 @@ function l402Status(output: unknown): string | null {
 
 function l402TaskId(output: unknown): string | null {
     const o = parseL402Output(output);
-    return o && typeof o.taskId === 'string' && o.taskId.trim() !== '' ? o.taskId : null;
+    return o && typeof o.taskId === 'string' && o.taskId.trim() !== ''
+        ? o.taskId
+        : null;
 }
 
-function l402ToolStateFromOutput(output: unknown, fallback: ToolPart['state']): ToolPart['state'] {
+function l402ToolStateFromOutput(
+    output: unknown,
+    fallback: ToolPart['state'],
+): ToolPart['state'] {
     const status = l402Status(output);
     if (!status) return fallback;
 
@@ -139,9 +156,15 @@ function l402ToolSummary(output: unknown): string | null {
     const paid = o.paid === true;
     const cacheHit = o.cacheHit === true;
     const cacheStatus =
-        typeof o.cacheStatus === 'string' ? o.cacheStatus : cacheHit ? 'hit' : null;
-    const amountMsats = typeof o.amountMsats === 'number' ? o.amountMsats : null;
-    const quotedAmountMsats = typeof o.quotedAmountMsats === 'number' ? o.quotedAmountMsats : null;
+        typeof o.cacheStatus === 'string'
+            ? o.cacheStatus
+            : cacheHit
+              ? 'hit'
+              : null;
+    const amountMsats =
+        typeof o.amountMsats === 'number' ? o.amountMsats : null;
+    const quotedAmountMsats =
+        typeof o.quotedAmountMsats === 'number' ? o.quotedAmountMsats : null;
     const msats = amountMsats ?? quotedAmountMsats;
     const sats = typeof msats === 'number' ? Math.round(msats / 1000) : null;
     const proofReference = compactProofReference(
@@ -178,17 +201,16 @@ function renderToolPart(
     onApproveTask?: (taskId: string) => void,
 ) {
     const toolName = toolNameFromPart(part);
-    const toolType = typeof part.type === 'string' ? part.type : `tool-${toolName}`;
+    const toolType =
+        typeof part.type === 'string' ? part.type : `tool-${toolName}`;
     const rawToolState = normalizeToolState(part.state);
-    const summary =
-        isL402ToolName(toolName)
-            ? l402ToolSummary(part.output)
-            : null;
+    const summary = isL402ToolName(toolName)
+        ? l402ToolSummary(part.output)
+        : null;
 
-    const toolState =
-        isL402ToolName(toolName)
-            ? l402ToolStateFromOutput(part.output, rawToolState)
-            : rawToolState;
+    const toolState = isL402ToolName(toolName)
+        ? l402ToolStateFromOutput(part.output, rawToolState)
+        : rawToolState;
 
     const toolCallId =
         typeof part.toolCallId === 'string' ? part.toolCallId : undefined;
@@ -222,7 +244,8 @@ function renderToolPart(
         );
 
     const taskId = l402TaskId(part.output);
-    const approvalRequested = toolState === 'approval-requested' && taskId !== null;
+    const approvalRequested =
+        toolState === 'approval-requested' && taskId !== null;
 
     return (
         <Tool key={idx} defaultOpen={defaultOpen}>
@@ -241,12 +264,15 @@ function renderToolPart(
                             type="button"
                             size="sm"
                             onClick={() => {
-                                if (taskId && onApproveTask) onApproveTask(taskId);
+                                if (taskId && onApproveTask)
+                                    onApproveTask(taskId);
                             }}
                         >
                             Approve payment
                         </Button>
-                        <span className="text-xs text-muted-foreground">task: {taskId}</span>
+                        <span className="text-xs text-muted-foreground">
+                            task: {taskId}
+                        </span>
                     </div>
                 ) : null}
                 {toolCallId ? (
@@ -282,7 +308,7 @@ function MessagePart({
             return (
                 <div
                     key={idx}
-                    className="border-l-2 border-muted-foreground/30 pl-2 text-sm italic text-muted-foreground"
+                    className="border-l-2 border-muted-foreground/30 pl-2 text-sm text-muted-foreground italic"
                 >
                     <MessageResponse>{text}</MessageResponse>
                 </div>
@@ -292,7 +318,10 @@ function MessagePart({
         return <MessageResponse key={idx}>{text}</MessageResponse>;
     }
 
-    if (type === 'dynamic-tool' || (typeof type === 'string' && type.startsWith('tool-'))) {
+    if (
+        type === 'dynamic-tool' ||
+        (typeof type === 'string' && type.startsWith('tool-'))
+    ) {
         return renderToolPart(p, idx, onApproveTask);
     }
 
@@ -310,18 +339,70 @@ function MessageBubble({
         <Message from={message.role}>
             <MessageContent>
                 {message.parts.map((part, idx) => (
-                    <MessagePart key={idx} part={part} idx={idx} onApproveTask={onApproveTask} />
+                    <MessagePart
+                        key={idx}
+                        part={part}
+                        idx={idx}
+                        onApproveTask={onApproveTask}
+                    />
                 ))}
             </MessageContent>
         </Message>
     );
 }
 
+function looksLikeEmail(input: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+}
+
+function isSixDigitCode(input: string): boolean {
+    return /^\d{6}$/.test(input.replace(/\s+/g, ''));
+}
+
+function makeUiTextMessage(role: UIMessage['role'], text: string): UIMessage {
+    const id =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    return {
+        id,
+        role,
+        parts: [{ type: 'text', text }],
+    };
+}
+
+function extractApiError(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+
+    const data = payload as Record<string, unknown>;
+
+    if (typeof data.message === 'string' && data.message.trim() !== '') {
+        return data.message;
+    }
+
+    const errors = data.errors;
+    if (!errors || typeof errors !== 'object') return null;
+
+    for (const value of Object.values(errors as Record<string, unknown>)) {
+        if (Array.isArray(value) && typeof value[0] === 'string') {
+            return value[0];
+        }
+    }
+
+    return null;
+}
+
 function ChatContent({
     conversationId,
     conversationTitle,
     initialMessages,
+    guestOnboarding,
 }: Props) {
+    const page = usePage<SharedPageProps>();
+    const csrfToken =
+        typeof page.props.csrfToken === 'string' ? page.props.csrfToken : null;
+
     const api = useMemo(
         () => `/api/chat?conversationId=${encodeURIComponent(conversationId)}`,
         [conversationId],
@@ -348,24 +429,225 @@ function ChatContent({
         transport,
     });
 
+    const guestEnabled = guestOnboarding?.enabled === true;
+    const [guestMessages, setGuestMessages] =
+        useState<UIMessage[]>(normalizedInitial);
+    const [guestStep, setGuestStep] = useState<GuestOnboardingStep>(
+        guestOnboarding?.step === 'code' ? 'code' : 'email',
+    );
+    const [guestBusy, setGuestBusy] = useState(false);
+    const [guestError, setGuestError] = useState<string | null>(null);
+
+    useEffect(() => {
+        setGuestMessages(normalizedInitial);
+        setGuestStep(guestOnboarding?.step === 'code' ? 'code' : 'email');
+        setGuestBusy(false);
+        setGuestError(null);
+    }, [
+        conversationId,
+        guestOnboarding?.pendingEmail,
+        guestOnboarding?.step,
+        normalizedInitial,
+    ]);
+
     const inputContainerRef = useRef<HTMLDivElement | null>(null);
-    const isLoading = status === 'submitted' || status === 'streaming';
+    const isStreaming = status === 'submitted' || status === 'streaming';
+    const isLoading = guestEnabled ? guestBusy : isStreaming;
     const controller = usePromptInputController();
 
     const focusInputSoon = useCallback(() => {
         setTimeout(() => {
-            inputContainerRef.current
-                ?.querySelector('textarea')
-                ?.focus();
+            inputContainerRef.current?.querySelector('textarea')?.focus();
         }, 0);
     }, []);
 
-    const handleApproveTask = useCallback(async (taskId: string) => {
-        if (!taskId || isLoading) return;
+    const postJson = useCallback(
+        async (url: string, payload: Record<string, unknown>) => {
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            };
 
-        await sendMessage({ text: `lightning_l402_approve({"taskId":"${taskId}"})` });
-        focusInputSoon();
-    }, [focusInputSoon, isLoading, sendMessage]);
+            if (csrfToken) {
+                headers['X-CSRF-TOKEN'] = csrfToken;
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                credentials: 'include',
+                headers,
+                body: JSON.stringify(payload),
+            });
+
+            let body: unknown = null;
+            try {
+                body = await response.json();
+            } catch {
+                body = null;
+            }
+
+            return { response, body };
+        },
+        [csrfToken],
+    );
+
+    const appendGuestMessage = useCallback((message: UIMessage) => {
+        setGuestMessages((current) => [...current, message]);
+    }, []);
+
+    const handleGuestSubmit = useCallback(
+        async (text: string) => {
+            if (guestBusy) return;
+
+            const trimmed = text.trim();
+            if (!trimmed) return;
+
+            setGuestError(null);
+
+            const userDisplayText =
+                guestStep === 'code' && isSixDigitCode(trimmed)
+                    ? '••••••'
+                    : trimmed;
+
+            appendGuestMessage(makeUiTextMessage('user', userDisplayText));
+
+            if (guestStep === 'email') {
+                if (!looksLikeEmail(trimmed)) {
+                    appendGuestMessage(
+                        makeUiTextMessage(
+                            'assistant',
+                            'To finish setup, please enter a valid email address.',
+                        ),
+                    );
+                    return;
+                }
+
+                setGuestBusy(true);
+
+                try {
+                    const email = trimmed.toLowerCase();
+                    const { response, body } = await postJson(
+                        '/api/auth/email',
+                        { email },
+                    );
+
+                    if (!response.ok) {
+                        const errorText =
+                            extractApiError(body) ??
+                            'Unable to send code right now. Please try again.';
+                        appendGuestMessage(
+                            makeUiTextMessage('assistant', errorText),
+                        );
+                        return;
+                    }
+
+                    setGuestStep('code');
+                    appendGuestMessage(
+                        makeUiTextMessage(
+                            'assistant',
+                            `Check ${email}. Enter your 6-digit verification code to continue.`,
+                        ),
+                    );
+                } catch {
+                    appendGuestMessage(
+                        makeUiTextMessage(
+                            'assistant',
+                            'Unable to send code right now. Please try again.',
+                        ),
+                    );
+                } finally {
+                    setGuestBusy(false);
+                }
+
+                return;
+            }
+
+            if (
+                trimmed.toLowerCase() === 'change email' ||
+                trimmed.toLowerCase() === 'start over'
+            ) {
+                setGuestStep('email');
+                appendGuestMessage(
+                    makeUiTextMessage(
+                        'assistant',
+                        'No problem. Enter the email address you want to use.',
+                    ),
+                );
+                return;
+            }
+
+            if (!isSixDigitCode(trimmed)) {
+                appendGuestMessage(
+                    makeUiTextMessage(
+                        'assistant',
+                        'Please enter the 6-digit code from your email. You can also reply "change email".',
+                    ),
+                );
+                return;
+            }
+
+            setGuestBusy(true);
+
+            try {
+                const code = trimmed.replace(/\s+/g, '');
+                const { response, body } = await postJson('/api/auth/verify', {
+                    code,
+                });
+
+                if (!response.ok) {
+                    const errorText =
+                        extractApiError(body) ??
+                        'Verification failed. Request a new code and try again.';
+                    appendGuestMessage(
+                        makeUiTextMessage('assistant', errorText),
+                    );
+                    return;
+                }
+
+                appendGuestMessage(
+                    makeUiTextMessage(
+                        'assistant',
+                        'Setup complete. You are signed in. What would you like to do first?',
+                    ),
+                );
+
+                const redirectTo =
+                    body &&
+                    typeof body === 'object' &&
+                    typeof (body as Record<string, unknown>).redirect ===
+                        'string'
+                        ? ((body as Record<string, unknown>).redirect as string)
+                        : '/chat';
+
+                window.setTimeout(() => {
+                    window.location.assign(redirectTo);
+                }, 250);
+            } catch {
+                appendGuestMessage(
+                    makeUiTextMessage(
+                        'assistant',
+                        'Verification failed. Request a new code and try again.',
+                    ),
+                );
+            } finally {
+                setGuestBusy(false);
+            }
+        },
+        [appendGuestMessage, guestBusy, guestStep, postJson],
+    );
+
+    const handleApproveTask = useCallback(
+        async (taskId: string) => {
+            if (!taskId || isLoading || guestEnabled) return;
+
+            await sendMessage({
+                text: `lightning_l402_approve({"taskId":"${taskId}"})`,
+            });
+            focusInputSoon();
+        },
+        [focusInputSoon, guestEnabled, isLoading, sendMessage],
+    );
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Chat', href: '/chat' },
@@ -375,39 +657,57 @@ function ChatContent({
         },
     ];
 
+    const activeMessages = guestEnabled ? guestMessages : messages;
+    const activeStatus = guestEnabled
+        ? guestBusy
+            ? 'submitted'
+            : 'ready'
+        : status;
+    const errorMessage = guestEnabled ? guestError : (error?.message ?? null);
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={conversationTitle || 'Chat'} />
 
             <div className="flex h-full flex-1 flex-col gap-4 overflow-hidden rounded-xl p-4">
-                {error && (
+                {errorMessage && (
                     <Alert variant="destructive" className="shrink-0">
                         <AlertTitle>Chat failed</AlertTitle>
                         <AlertDescription>
-                            <p>{error.message}</p>
+                            <p>{errorMessage}</p>
                             <Button
                                 type="button"
                                 variant="secondary"
                                 size="sm"
                                 className="mt-2"
-                                onClick={() => clearError()}
+                                onClick={() => {
+                                    if (guestEnabled) {
+                                        setGuestError(null);
+                                    } else {
+                                        clearError();
+                                    }
+                                }}
                             >
                                 Dismiss
                             </Button>
                         </AlertDescription>
                     </Alert>
                 )}
-                <div className="relative mx-auto flex w-full max-w-[768px] min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="relative mx-auto flex min-h-0 w-full max-w-[768px] flex-1 flex-col overflow-hidden">
                     <Conversation>
                         <ConversationContent>
-                            {messages.length === 0 ? (
+                            {activeMessages.length === 0 ? (
                                 <ConversationEmptyState
                                     title="No messages yet"
                                     description="Send a message to start."
                                 />
                             ) : (
-                                messages.map((m) => (
-                                    <MessageBubble key={m.id} message={m} onApproveTask={handleApproveTask} />
+                                activeMessages.map((m) => (
+                                    <MessageBubble
+                                        key={m.id}
+                                        message={m}
+                                        onApproveTask={handleApproveTask}
+                                    />
                                 ))
                             )}
                         </ConversationContent>
@@ -425,6 +725,12 @@ function ChatContent({
                             const trimmed = text?.trim();
                             if (!trimmed || isLoading) return;
 
+                            if (guestEnabled) {
+                                await handleGuestSubmit(trimmed);
+                                focusInputSoon();
+                                return;
+                            }
+
                             await sendMessage({ text: trimmed });
                             focusInputSoon();
                         }}
@@ -439,12 +745,12 @@ function ChatContent({
                         </PromptInputBody>
                         <PromptInputFooter className="justify-end">
                             <PromptInputSubmit
-                                status={status}
-                                onStop={stop}
+                                status={activeStatus}
+                                onStop={guestEnabled ? undefined : stop}
                                 disabled={
                                     !controller.textInput.value.trim() &&
-                                    status !== 'submitted' &&
-                                    status !== 'streaming'
+                                    activeStatus !== 'submitted' &&
+                                    activeStatus !== 'streaming'
                                 }
                             />
                         </PromptInputFooter>

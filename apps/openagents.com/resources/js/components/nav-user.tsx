@@ -1,4 +1,4 @@
-import { usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { ChevronsUpDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -14,15 +14,39 @@ import {
 } from '@/components/ui/sidebar';
 import { UserInfo } from '@/components/user-info';
 import { UserMenuContent } from '@/components/user-menu-content';
+import type { User } from '@/types';
+
+type SharedProps = {
+    auth?: {
+        user?: User | null;
+    };
+};
 
 export function NavUser() {
-    const { auth } = usePage().props;
+    const { auth } = usePage<SharedProps>().props;
+    const user = auth?.user ?? null;
     const { state, dropdownPortalRef } = useSidebar();
-    const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+    const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
+        null,
+    );
 
     useEffect(() => {
         setPortalContainer(dropdownPortalRef.current);
     }, [dropdownPortalRef]);
+
+    if (!user) {
+        return (
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton size="lg" asChild>
+                        <Link href="/login" prefetch>
+                            <span className="truncate">Sign in (backup)</span>
+                        </Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        );
+    }
 
     return (
         <SidebarMenu>
@@ -34,7 +58,7 @@ export function NavUser() {
                             className="group text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent"
                             data-test="sidebar-menu-button"
                         >
-                            <UserInfo user={auth.user} />
+                            <UserInfo user={user} />
                             <ChevronsUpDown className="ml-auto size-4" />
                         </SidebarMenuButton>
                     </DropdownMenuTrigger>
@@ -46,7 +70,7 @@ export function NavUser() {
                         avoidCollisions={true}
                         container={portalContainer ?? undefined}
                     >
-                        <UserMenuContent user={auth.user} />
+                        <UserMenuContent user={user} />
                     </DropdownMenuContent>
                 </DropdownMenu>
             </SidebarMenuItem>
