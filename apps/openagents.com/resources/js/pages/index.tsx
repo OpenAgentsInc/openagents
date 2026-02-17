@@ -2,6 +2,7 @@ import { useChat } from '@ai-sdk/react';
 import { Head, usePage } from '@inertiajs/react';
 import { ArrowUpIcon } from '@radix-ui/react-icons';
 import { DefaultChatTransport, type UIMessage } from 'ai';
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Conversation,
@@ -13,8 +14,43 @@ import {
     MessageContent,
     MessageResponse,
 } from '@/components/ai-elements/message';
+import { Shimmer } from '@/components/ai-elements/shimmer';
+import {
+    Tool,
+    ToolContent,
+    ToolHeader,
+    ToolInput,
+    ToolOutput,
+    type ToolPart,
+} from '@/components/ai-elements/tool';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+const TOOL_STATES: ReadonlyArray<ToolPart['state']> = [
+    'approval-requested',
+    'approval-responded',
+    'input-available',
+    'input-streaming',
+    'output-available',
+    'output-denied',
+    'output-error',
+];
+
+function isKnownToolState(value: unknown): value is ToolPart['state'] {
+    return typeof value === 'string' && TOOL_STATES.includes(value as ToolPart['state']);
+}
+
+function normalizeToolState(value: unknown): ToolPart['state'] {
+    return isKnownToolState(value) ? value : 'output-available';
+}
+
+function toolNameFromPart(part: unknown): string {
+    if (typeof part !== 'object' || part === null) return 'tool';
+    const p = part as Record<string, unknown>;
+    if (p.type === 'dynamic-tool' && typeof p.toolName === 'string') return p.toolName;
+    if (typeof p.type === 'string' && p.type.startsWith('tool-')) return p.type.slice('tool-'.length);
+    return 'tool';
+}
 
 /** Extract plain text from UIMessage parts for display (text parts only). */
 function textFromParts(parts: UIMessage['parts']): string {
@@ -23,6 +59,53 @@ function textFromParts(parts: UIMessage['parts']): string {
         .filter((p): p is { type: 'text'; text: string } => p?.type === 'text' && typeof (p as { text?: unknown }).text === 'string')
         .map((p) => p.text)
         .join('');
+}
+
+function renderMessagePart(part: unknown, idx: number): ReactNode {
+    if (typeof part !== 'object' || part === null) return null;
+    const p = part as Record<string, unknown>;
+    const type = p.type;
+
+    if (type === 'text' || type === 'reasoning') {
+        const text = typeof p.text === 'string' ? p.text : '';
+        if (!text.trim()) return null;
+        return <MessageResponse key={idx}>{text}</MessageResponse>;
+    }
+
+    if (type === 'dynamic-tool' || (typeof type === 'string' && type.startsWith('tool-'))) {
+        const toolName = toolNameFromPart(part);
+        const toolType = typeof type === 'string' ? type : `tool-${toolName}`;
+        const toolState = normalizeToolState(p.state);
+        const errorText =
+            typeof p.errorText === 'string' ? p.errorText : typeof p.error === 'string' ? p.error : undefined;
+        const defaultOpen =
+            toolState === 'approval-requested' || toolState === 'output-error' || toolState === 'output-denied';
+
+        const header =
+            toolType === 'dynamic-tool' ? (
+                <ToolHeader type="dynamic-tool" toolName={toolName} state={toolState} />
+            ) : (
+                <ToolHeader
+                    type={toolType as Exclude<ToolPart['type'], 'dynamic-tool'>}
+                    state={toolState}
+                />
+            );
+
+        return (
+            <Tool key={idx} defaultOpen={defaultOpen}>
+                {header}
+                <ToolContent>
+                    {p.input !== undefined && <ToolInput input={p.input as ToolPart['input']} />}
+                    <ToolOutput
+                        output={p.output as ToolPart['output']}
+                        errorText={errorText as ToolPart['errorText']}
+                    />
+                </ToolContent>
+            </Tool>
+        );
+    }
+
+    return null;
 }
 
 type IndexPageProps = { auth?: { user?: unknown } };
@@ -155,6 +238,15 @@ export default function Index() {
     const isStreaming = status === 'submitted' || status === 'streaming';
     const isSubmitDisabled = !value.trim() || isStreaming || !conversationId || authRequired;
 
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const showThinking =
+        !authRequired &&
+        conversationId &&
+        (status === 'submitted' ||
+            (status === 'streaming' &&
+                lastMessage?.role === 'assistant' &&
+                !textFromParts(lastMessage.parts)));
+
     return (
         <>
             <Head title="" />
@@ -176,15 +268,26 @@ export default function Index() {
                                         </Button>
                                     </div>
                                 )}
-                                {!authRequired && conversationId && messages.length > 0 && (
+                                {!authRequired && conversationId && (messages.length > 0 || showThinking) && (
                                     <>
                                         {messages.map((m) => (
                                             <Message key={m.id} from={m.role}>
                                                 <MessageContent>
-                                                    <MessageResponse>{textFromParts(m.parts)}</MessageResponse>
+                                                    {Array.isArray(m.parts)
+                                                        ? m.parts.map((part, idx) => renderMessagePart(part, idx))
+                                                        : textFromParts(m.parts) && (
+                                                              <MessageResponse>{textFromParts(m.parts)}</MessageResponse>
+                                                          )}
                                                 </MessageContent>
                                             </Message>
                                         ))}
+                                        {showThinking && (
+                                            <div className="flex w-full max-w-[95%] flex-col gap-2 is-assistant">
+                                                <div className="flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm text-foreground">
+                                                    <Shimmer>Thinking</Shimmer>
+                                                </div>
+                                            </div>
+                                        )}
                                     </>
                                 )}
                             </ConversationContent>

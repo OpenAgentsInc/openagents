@@ -69,7 +69,8 @@ PROMPT;
      */
     public static function defaultModel(): string
     {
-        return 'google/gemini-3-flash';
+        // Gemini 2.5: tool calls work without thought_signature (Gemini 3 requires it; gateway doesn't send it yet).
+        return 'google/gemini-2.5-flash';
     }
 
     /**

@@ -3,11 +3,13 @@
 namespace App\AI;
 
 use App\AI\Agents\AutopilotAgent;
+use App\AI\Agents\ErrorExplainerAgent;
 use App\AI\Runtime\AutopilotExecutionContext;
 use App\AI\Tools\AutopilotToolResolver;
 use App\Services\PostHogService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Ai\Streaming\Events\StreamEnd;
 use Laravel\Ai\Streaming\Events\StreamStart;
@@ -101,7 +103,7 @@ final class RunOrchestrator
         } catch (Throwable $e) {
             $executionContext->clear();
 
-            throw $e;
+            return $this->streamErrorOnlyResponse($e, $runId, $threadId, $userId, $userEmail, $autopilotId);
         }
 
         $response = response()->stream(function () use ($streamable, $threadId, $runId, $userId, $userEmail, $autopilotId, $executionContext): void {
@@ -446,6 +448,14 @@ final class RunOrchestrator
             } catch (Throwable $e) {
                 $now = now();
 
+                Log::error('Chat run failed', [
+                    'run_id' => $runId,
+                    'thread_id' => $threadId,
+                    'error' => $e->getMessage(),
+                    'exception' => get_class($e),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+
                 DB::table('runs')->where('id', $runId)->update([
                     'status' => 'failed',
                     'error' => $e->getMessage(),
@@ -453,7 +463,14 @@ final class RunOrchestrator
                     'updated_at' => $now,
                 ]);
 
-                $assistantText = 'I ran into an internal error while generating a response. Please retry.';
+                $assistantText = $this->streamErrorExplanationFromLlm(
+                    $e,
+                    $runId,
+                    $streamStarted,
+                    $writeToClient,
+                    $shouldFlush,
+                );
+                // If explainer threw or returned empty, streamStarted may still be false; emit fallback below if needed.
 
                 DB::table('messages')->insert([
                     'id' => (string) Str::uuid(),
@@ -491,8 +508,10 @@ final class RunOrchestrator
                 ]);
 
                 if ($writeToClient) {
-                    $this->emitSyntheticAssistantText($assistantText, $runId, $streamStarted, $shouldFlush);
-
+                    // If we didn't stream (explainer failed or returned nothing), emit the message we have.
+                    if (trim($assistantText) !== '' && ! $streamStarted) {
+                        $this->emitSyntheticAssistantText($assistantText, $runId, $streamStarted, $shouldFlush);
+                    }
                     // Best-effort graceful shutdown of the SSE stream.
                     echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
                     echo "data: [DONE]\n\n";
@@ -518,6 +537,141 @@ final class RunOrchestrator
         return tap($response, function (StreamedResponse $r) use ($runId): void {
             $r->headers->set('x-oa-run-id', $runId);
         });
+    }
+
+    /**
+     * When stream creation fails (e.g. initial API error), return an SSE stream that
+     * runs only the error path: LLM explains the error, then finish.
+     */
+    private function streamErrorOnlyResponse(Throwable $e, string $runId, string $threadId, int $userId, string $userEmail, ?string $autopilotId): StreamedResponse
+    {
+        Log::error('Chat run failed (stream creation)', [
+            'run_id' => $runId,
+            'thread_id' => $threadId,
+            'error' => $e->getMessage(),
+            'exception' => get_class($e),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        $now = now();
+        DB::table('runs')->where('id', $runId)->update([
+            'status' => 'failed',
+            'error' => $e->getMessage(),
+            'completed_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $shouldFlush = ! app()->runningUnitTests();
+
+        $response = response()->stream(function () use ($e, $runId, $threadId, $userId, $userEmail, $autopilotId, $shouldFlush): void {
+            $streamStarted = false;
+            $assistantText = $this->streamErrorExplanationFromLlm($e, $runId, $streamStarted, true, $shouldFlush);
+
+            $now = now();
+            DB::table('messages')->insert([
+                'id' => (string) Str::uuid(),
+                'thread_id' => $threadId,
+                'run_id' => $runId,
+                'user_id' => $userId,
+                'autopilot_id' => $autopilotId,
+                'role' => 'assistant',
+                'content' => $assistantText,
+                'meta' => json_encode(['error' => 'run_failed']),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            $this->appendEvent(
+                threadId: $threadId,
+                runId: $runId,
+                userId: $userId,
+                type: 'run_failed',
+                payload: ['error' => $e->getMessage()],
+                autopilotId: $autopilotId,
+                actorType: 'system',
+            );
+
+            $posthog = resolve(PostHogService::class);
+            $posthog->capture($userEmail, 'chat run failed', [
+                'run_id' => $runId,
+                'thread_id' => $threadId,
+                'error' => $e->getMessage(),
+            ]);
+
+            if (trim($assistantText) !== '' && ! $streamStarted) {
+                $this->emitSyntheticAssistantText($assistantText, $runId, $streamStarted, $shouldFlush);
+            }
+            echo 'data: '.json_encode(['type' => 'finish-step'])."\n\n";
+            echo "data: [DONE]\n\n";
+            if ($shouldFlush) {
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+            }
+        }, 200, [
+            'Cache-Control' => 'no-cache, no-transform',
+            'Content-Type' => 'text/event-stream',
+            'x-vercel-ai-ui-message-stream' => 'v1',
+            'x-oa-run-id' => $runId,
+            'x-accel-buffering' => 'no',
+        ]);
+
+        return tap($response, function (StreamedResponse $r) use ($runId): void {
+            $r->headers->set('x-oa-run-id', $runId);
+        });
+    }
+
+    /**
+     * Ask the LLM to explain the error to the user; stream to client when possible.
+     * Returns the assistant text (from LLM or fallback). Sets $streamStarted when streaming.
+     */
+    private function streamErrorExplanationFromLlm(Throwable $e, string $runId, bool &$streamStarted, bool $writeToClient, bool $shouldFlush): string
+    {
+        $fallback = 'I ran into an internal error while generating a response. Please retry.';
+        $prompt = 'The system encountered this error while generating a response: '.$e->getMessage()."\n\nExplain to the user what went wrong in simple, friendly terms. Be brief.";
+
+        try {
+            $streamable = ErrorExplainerAgent::make()->stream($prompt);
+        } catch (Throwable) {
+            return $fallback;
+        }
+
+        $assistantText = '';
+        $messageId = 'error-explainer-'.$runId;
+        $textStartEmitted = false;
+
+        try {
+            foreach ($streamable as $event) {
+                if ($event instanceof TextDelta) {
+                    if ($writeToClient && ! $streamStarted) {
+                        echo 'data: '.json_encode(['type' => 'start'])."\n\n";
+                        echo 'data: '.json_encode(['type' => 'start-step'])."\n\n";
+                        $this->flushStream($shouldFlush);
+                        $streamStarted = true;
+                    }
+                    if ($writeToClient && ! $textStartEmitted) {
+                        echo 'data: '.json_encode(['type' => 'text-start', 'id' => $messageId])."\n\n";
+                        $this->flushStream($shouldFlush);
+                        $textStartEmitted = true;
+                    }
+                    $assistantText .= $event->delta;
+                    if ($writeToClient) {
+                        echo 'data: '.json_encode(['type' => 'text-delta', 'id' => $messageId, 'delta' => $event->delta])."\n\n";
+                        $this->flushStream($shouldFlush);
+                    }
+                }
+            }
+        } catch (Throwable) {
+            return trim($assistantText) !== '' ? $assistantText : $fallback;
+        }
+
+        if ($writeToClient && $textStartEmitted) {
+            echo 'data: '.json_encode(['type' => 'text-end', 'id' => $messageId])."\n\n";
+            $this->flushStream($shouldFlush);
+        }
+
+        return trim($assistantText) !== '' ? $assistantText : $fallback;
     }
 
     private function emitSyntheticAssistantText(string $text, string $runId, bool &$streamStarted, bool $shouldFlush): void

@@ -20,7 +20,18 @@ class EchoTool implements Tool
 
     public function handle(Request $request): string
     {
-        return (string) $request->string('text');
+        $args = $request->toArray();
+        $text = $args['text'] ?? $args['message'] ?? null;
+        if (is_string($text) && $text !== '') {
+            return $text;
+        }
+        foreach ($args as $value) {
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return '(no text provided)';
     }
 
     public function schema(JsonSchema $schema): array

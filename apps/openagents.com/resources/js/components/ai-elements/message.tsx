@@ -329,6 +329,9 @@ export const MessageResponse = memo(
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        " [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-3 [&_ul]:pl-6 [&_ul]:text-foreground",
+        " [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-3 [&_ol]:pl-6 [&_ol]:text-foreground",
+        " [&_li]:py-1",
         className
       )}
       plugins={streamdownPlugins}
