@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('AI_DEFAULT', 'openrouter'),
+    'default' => env('AI_DEFAULT', 'ai_gateway'),
     'default_for_images' => 'gemini',
     'default_for_audio' => 'openai',
     'default_for_transcription' => 'openai',
@@ -50,6 +50,12 @@ return [
     */
 
     'providers' => [
+        'ai_gateway' => [
+            'driver' => 'openai',
+            'key' => env('AI_GATEWAY_API_KEY'),
+            'url' => 'https://ai-gateway.vercel.sh/v1',
+        ],
+
         'anthropic' => [
             'driver' => 'anthropic',
             'key' => env('ANTHROPIC_API_KEY'),
@@ -113,7 +119,7 @@ return [
         'openrouter' => [
             'driver' => 'openrouter',
             'key' => env('OPENROUTER_API_KEY'),
-        ],
+        ], // backup: set AI_DEFAULT=openrouter to use
 
         'voyageai' => [
             'driver' => 'voyageai',

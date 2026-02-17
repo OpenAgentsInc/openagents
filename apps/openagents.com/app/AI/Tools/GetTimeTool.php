@@ -23,8 +23,14 @@ class GetTimeTool implements Tool
         return now()->utc()->toIso8601String();
     }
 
+    /**
+     * Return a minimal schema so the API receives a valid parameters object.
+     * (Empty array causes OpenAI/Vercel gateway to reject: "expected record, received undefined".)
+     */
     public function schema(JsonSchema $schema): array
     {
-        return [];
+        return [
+            '_' => $schema->string()->description('Unused; ensures parameters is sent as an object.'),
+        ];
     }
 }
