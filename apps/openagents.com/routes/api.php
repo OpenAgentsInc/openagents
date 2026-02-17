@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AgentPaymentsController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\L402Controller;
@@ -18,8 +17,6 @@ Route::get('/shouts/zones', [ShoutsController::class, 'zones']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [MeController::class, 'show']);
 
-    Route::get('/admin/status', [AdminController::class, 'status'])
-        ->middleware('admin');
 
     Route::get('/tokens', [TokenController::class, 'index']);
     Route::post('/tokens', [TokenController::class, 'store']);

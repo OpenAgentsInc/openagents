@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\OpenApi\Parameters\ChatLimitQueryParameter;
 use App\OpenApi\Responses\MeResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
-use App\Support\AdminAccess;
 use App\Support\ChatThreadList;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +17,7 @@ class MeController extends Controller
     /**
      * Get authenticated user context.
      *
-     * Returns current user profile fields, admin flag, and recent chat thread
+     * Returns current user profile fields and recent chat thread
      * summaries.
      */
     #[OpenApi\Operation(tags: ['Auth'])]
@@ -53,7 +52,6 @@ class MeController extends Controller
                     'createdAt' => $user->created_at?->toISOString(),
                     'updatedAt' => $user->updated_at?->toISOString(),
                 ],
-                'isAdmin' => AdminAccess::isAdminEmail($user->email),
                 'chatThreads' => $threads,
             ],
         ]);
