@@ -13,6 +13,7 @@ import {
 } from "../errors.js"
 import type { WalletExecutorConfig } from "../runtime/config.js"
 import { WalletExecutorConfigService } from "../runtime/config.js"
+import { handleCompatWalletRoute, isWalletCompatHttpError } from "./wallets-compat.js"
 import type { WalletExecutorApi } from "../wallet/executor.js"
 import { WalletExecutorService } from "../wallet/executor.js"
 
@@ -108,6 +109,53 @@ const routeRequest = (
         json(401, { ok: false, error: toErrorResponse(requestId, "unauthorized", "missing or invalid bearer token") }, response, requestId)
         return
       }
+    }
+
+    if (path.startsWith("/wallets/")) {
+      const parsed = yield* readRequestBody(request).pipe(
+        Effect.flatMap(decodeJsonBody),
+      )
+
+      const compatResult = yield* Effect.either(
+        Effect.tryPromise({
+          try: async () => await handleCompatWalletRoute(method, path, parsed, config),
+          catch: (error) => error,
+        }),
+      )
+
+      if (compatResult._tag === "Left") {
+        const error = compatResult.left
+        if (isWalletCompatHttpError(error)) {
+          json(
+            error.status,
+            {
+              ok: false,
+              error: toErrorResponse(requestId, error.code, error.message, error.details),
+            },
+            response,
+            requestId,
+          )
+          return
+        }
+
+        json(
+          500,
+          {
+            ok: false,
+            error: toErrorResponse(
+              requestId,
+              "internal_error",
+              error instanceof Error ? error.message : String(error),
+            ),
+          },
+          response,
+          requestId,
+        )
+        return
+      }
+
+      json(compatResult.right.status, compatResult.right.body, response, requestId)
+      return
     }
 
     if (method === "GET" && path === "/status") {
