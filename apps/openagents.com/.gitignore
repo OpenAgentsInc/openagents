@@ -29,3 +29,6 @@ yarn-error.log
 .env.example
 
 public/openapi.json
+
+# PostHog integration skill working file (created during setup, removed on completion)
+.posthog-events.json
