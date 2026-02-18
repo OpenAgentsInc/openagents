@@ -40,3 +40,4 @@ Internal API docs:
 
 - Contract: `docs/RUNTIME_CONTRACT.md`
 - OpenAPI spec: `docs/openapi-internal-v1.yaml`
+- Laravel SSE mapping: `docs/LARAVEL_SSE_MAPPING.md`

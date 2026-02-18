@@ -3,6 +3,7 @@ defmodule OpenAgentsRuntime.Runs.StreamTailer do
   Tail run events with wakeup notifications and bounded backoff.
   """
 
+  alias OpenAgentsRuntime.Integrations.LaravelEventMapper
   alias OpenAgentsRuntime.Runs.EventListener
   alias OpenAgentsRuntime.Runs.RunEvents
 
@@ -56,21 +57,24 @@ defmodule OpenAgentsRuntime.Runs.StreamTailer do
   defp emit_available(conn, run_id, cursor) do
     events = RunEvents.list_after(run_id, cursor)
 
-    Enum.reduce_while(events, {:ok, conn, cursor, false}, fn event,
-                                                             {:ok, conn, _cursor, _emitted?} ->
-      payload =
-        Jason.encode!(%{
-          "runId" => run_id,
-          "seq" => event.seq,
-          "type" => event.event_type,
-          "payload" => event.payload
-        })
+    Enum.reduce_while(events, {:ok, conn, cursor, false}, fn event, state ->
+      case emit_mapped_event(state, run_id, event) do
+        {:ok, _conn, _cursor, _emitted?} = next_state -> {:cont, next_state}
+        {:closed, _conn, _cursor} = closed_state -> {:halt, closed_state}
+      end
+    end)
+  end
 
-      chunk = "event: run.event\nid: #{event.seq}\ndata: #{payload}\n\n"
+  defp emit_mapped_event({:ok, conn, _cursor, _emitted?}, run_id, event) do
+    frames =
+      LaravelEventMapper.map_runtime_event(run_id, event.seq, event.event_type, event.payload)
+
+    Enum.reduce_while(frames, {:ok, conn, event.seq, true}, fn frame, {:ok, conn, cursor, _} ->
+      chunk = LaravelEventMapper.to_sse_chunk(frame)
 
       case Plug.Conn.chunk(conn, chunk) do
-        {:ok, conn} -> {:cont, {:ok, conn, event.seq, true}}
-        {:error, :closed} -> {:halt, {:closed, conn, event.seq}}
+        {:ok, conn} -> {:cont, {:ok, conn, cursor, true}}
+        {:error, :closed} -> {:halt, {:closed, conn, cursor}}
       end
     end)
   end

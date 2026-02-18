@@ -1,0 +1,75 @@
+[
+  {
+    "name": "start_event",
+    "input": {
+      "run_id": "run_1",
+      "seq": 1,
+      "event_type": "run.started",
+      "payload": {"phase": "boot"}
+    },
+    "expected": [
+      {
+        "event": "message",
+        "id": "1",
+        "data": {"type": "start", "runId": "run_1", "meta": {"phase": "boot"}}
+      }
+    ]
+  },
+  {
+    "name": "text_delta_event",
+    "input": {
+      "run_id": "run_1",
+      "seq": 2,
+      "event_type": "run.delta",
+      "payload": {"delta": "hello"}
+    },
+    "expected": [
+      {
+        "event": "message",
+        "id": "2",
+        "data": {"type": "text-delta", "runId": "run_1", "delta": "hello"}
+      }
+    ]
+  },
+  {
+    "name": "tool_call_event",
+    "input": {
+      "run_id": "run_1",
+      "seq": 3,
+      "event_type": "tool.call",
+      "payload": {"name": "search", "arguments": {"q": "foo"}}
+    },
+    "expected": [
+      {
+        "event": "message",
+        "id": "3",
+        "data": {
+          "type": "tool-call",
+          "runId": "run_1",
+          "toolCall": {"name": "search", "arguments": {"q": "foo"}}
+        }
+      }
+    ]
+  },
+  {
+    "name": "finish_event",
+    "input": {
+      "run_id": "run_1",
+      "seq": 4,
+      "event_type": "run.finished",
+      "payload": {"reason": "completed"}
+    },
+    "expected": [
+      {
+        "event": "message",
+        "id": "4",
+        "data": {"type": "finish", "runId": "run_1", "meta": {"reason": "completed"}}
+      },
+      {
+        "event": "message",
+        "id": "4",
+        "data": "[DONE]"
+      }
+    ]
+  }
+]
