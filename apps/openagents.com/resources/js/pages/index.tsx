@@ -203,6 +203,7 @@ type IndexPageProps = {
     conversationId?: string | null;
     conversationTitle?: string | null;
     initialMessages?: Array<{ id: string; role: string; content: string }>;
+    csrfToken?: string;
 };
 
 function isGuestConversationId(value: unknown): value is string {
@@ -236,6 +237,7 @@ export default function Index() {
         conversationId: serverConversationIdRaw,
         initialMessages: serverInitialMessages,
     } = page.props;
+    const csrfToken = typeof page.props.csrfToken === 'string' ? page.props.csrfToken : null;
     const isGuest = !auth?.user;
     const capture = usePostHogEvent('home_chat');
 
@@ -320,12 +322,17 @@ export default function Index() {
             headers: {
                 'Content-Type': 'application/json',
                 Accept: 'application/json',
+                ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
             },
             body: JSON.stringify({ title: 'Chat' }),
         })
             .then((res) => {
-                if (res.status === 401 || res.status === 419) {
+                if (res.status === 401) {
                     window.location.assign('/login');
+                    return null;
+                }
+                if (res.status === 419) {
+                    setCreateFailedAuth(true);
                     return null;
                 }
                 if (!res.ok) return null;
@@ -338,7 +345,7 @@ export default function Index() {
                 }
             })
             .catch(() => {});
-    }, [isGuest, conversationId]);
+    }, [isGuest, conversationId, csrfToken]);
     const authRequired = createFailedAuth;
 
     const api = useMemo(
