@@ -1,9 +1,30 @@
 # OpenAgents Elixir Agent Runtime Plan (No Web Rewrite)
 
 Date: 2026-02-18  
-Status: Active plan  
+Status: Active plan (Epic 0-3 implementation complete; next execution wave in progress)  
 Owner: OpenAgents platform/runtime  
 Scope: Add an Elixir-based agent runtime to `~/code/openagents` while keeping `apps/openagents.com` (Laravel) as the web/control plane.
+
+## Progress snapshot (updated 2026-02-18)
+
+Delivered in `apps/openagents-runtime`:
+
+- Runtime app scaffold, CI workflow, Docker/Cloud Build, and GKE manifest skeletons.
+- Internal contract docs and OpenAPI artifact.
+- Signed token verifier module, ownership guard, and trace propagation plumbing.
+- Baseline runtime schema, run event log, frames, leases, append notifications, hash-chain integrity.
+- Stream endpoint with cursor resume semantics, wakeup-driven tailing with backoff, and Laravel SSE mapper + golden tests.
+
+Closed issue range for this delivered slice:
+
+- `#1655` through `#1671` (Epic 0, Epic 1/A, Epic 2/B, Epic 3/C).
+
+Roadmap adjustments from implementation review:
+
+1. Add explicit auth enforcement middleware for `/internal/v1/*` so signed token verification is mandatory in request flow, not only available as a module.
+2. Keep contract artifacts aligned with implemented runtime behavior:
+`thread_id` ownership parameter requirements on stream/snapshot/frame append and `tail_ms` stream-tail control.
+3. Add contract-convergence checks in CI to prevent drift between controller behavior, `RUNTIME_CONTRACT.md`, and `openapi-internal-v1.yaml`.
 
 ## Goal
 
