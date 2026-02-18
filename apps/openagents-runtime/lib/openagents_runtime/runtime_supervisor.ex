@@ -15,7 +15,8 @@ defmodule OpenAgentsRuntime.RuntimeSupervisor do
     children = [
       {Registry, keys: :unique, name: OpenAgentsRuntime.AgentRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: OpenAgentsRuntime.AgentSupervisor},
-      {Task.Supervisor, name: OpenAgentsRuntime.Tools.TaskSupervisor}
+      {Task.Supervisor, name: OpenAgentsRuntime.Tools.TaskSupervisor},
+      OpenAgentsRuntime.Runs.EventListener
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
