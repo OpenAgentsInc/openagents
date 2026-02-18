@@ -1,0 +1,68 @@
+name: OpenAgents Runtime Elixir CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/openagents-runtime/**"
+      - ".github/workflows/openagents-runtime-elixir.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/openagents-runtime/**"
+      - ".github/workflows/openagents-runtime-elixir.yml"
+
+jobs:
+  runtime-elixir:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: openagents_runtime_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: apps/openagents-runtime
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Elixir + Erlang
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.1.2"
+          elixir-version: "1.19.1"
+
+      - name: Restore mix cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/openagents-runtime/deps
+            apps/openagents-runtime/_build
+          key: ${{ runner.os }}-mix-${{ hashFiles('apps/openagents-runtime/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Format check
+        run: mix format --check-formatted
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Run tests (warnings as errors)
+        run: mix test --warnings-as-errors

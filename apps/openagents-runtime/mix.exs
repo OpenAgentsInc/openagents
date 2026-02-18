@@ -26,7 +26,7 @@ defmodule OpenAgentsRuntime.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, ci: :test]
     ]
   end
 
@@ -62,6 +62,13 @@ defmodule OpenAgentsRuntime.MixProject do
       setup: ["deps.get", "ecto.setup"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
+      ci: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "ecto.create --quiet",
+        "ecto.migrate --quiet",
+        "test --warnings-as-errors"
+      ],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"]
     ]
