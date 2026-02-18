@@ -35,3 +35,8 @@ Kubernetes manifests:
   - `kubectl apply -k deploy/k8s/overlays/dev`
   - `kubectl apply -k deploy/k8s/overlays/staging`
   - `kubectl apply -k deploy/k8s/overlays/prod`
+
+Internal API docs:
+
+- Contract: `docs/RUNTIME_CONTRACT.md`
+- OpenAPI spec: `docs/openapi-internal-v1.yaml`
