@@ -21,7 +21,7 @@ function configureWorkosForChatLoginToolTests(): void
     config()->set('services.workos.redirect_url', 'https://next.openagents.com/authenticate');
 }
 
-function bindHttpRequestWithSession(): void
+function bindHttpRequestWithSession(?string $latestUserText = null): void
 {
     /** @var \Illuminate\Session\Store $session */
     $session = app('session.store');
@@ -29,7 +29,19 @@ function bindHttpRequestWithSession(): void
         $session->start();
     }
 
-    $request = HttpRequest::create('/chat/test', 'POST');
+    $payload = [];
+
+    if (is_string($latestUserText) && trim($latestUserText) !== '') {
+        $payload['messages'] = [[
+            'role' => 'user',
+            'parts' => [[
+                'type' => 'text',
+                'text' => $latestUserText,
+            ]],
+        ]];
+    }
+
+    $request = HttpRequest::create('/chat/test', 'POST', $payload);
     $request->setLaravelSession($session);
 
     app()->instance('request', $request);
@@ -62,7 +74,7 @@ test('chat_login status reports guest and pending states', function () {
 
 test('chat_login send_code stores pending magic auth in session', function () {
     configureWorkosForChatLoginToolTests();
-    bindHttpRequestWithSession();
+    bindHttpRequestWithSession('my email is chris@openagents.com');
 
     $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
     $workos->shouldReceive('createMagicAuth')
@@ -88,7 +100,7 @@ test('chat_login send_code stores pending magic auth in session', function () {
 
 test('chat_login send_code surfaces provider errors', function () {
     configureWorkosForChatLoginToolTests();
-    bindHttpRequestWithSession();
+    bindHttpRequestWithSession('send a login code to chris@openagents.com');
 
     $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
     $workos->shouldReceive('createMagicAuth')
@@ -104,6 +116,24 @@ test('chat_login send_code surfaces provider errors', function () {
 
     expect($result['status'] ?? null)->toBe('failed');
     expect($result['denyCode'] ?? null)->toBe('send_code_failed');
+});
+
+test('chat_login send_code requires email confirmation in latest user turn', function () {
+    configureWorkosForChatLoginToolTests();
+    bindHttpRequestWithSession('how do i create an account');
+
+    $workos = \Mockery::mock('overload:WorkOS\UserManagement');
+    $workos->shouldNotReceive('createMagicAuth');
+
+    $tool = new ChatLoginTool;
+
+    $result = json_decode($tool->handle(new ToolRequest([
+        'action' => 'send_code',
+        'email' => 'chris@openagents.com',
+    ])), true);
+
+    expect($result['status'] ?? null)->toBe('failed');
+    expect($result['denyCode'] ?? null)->toBe('email_confirmation_required');
 });
 
 test('chat_login verify_code authenticates and adopts guest conversation ownership', function () {
@@ -221,6 +251,13 @@ test('chat_login send_code persists pending session when invoked inside streamed
 
     $stream = $this->post($streamPath, [
         'email' => 'chris@openagents.com',
+        'messages' => [[
+            'role' => 'user',
+            'parts' => [[
+                'type' => 'text',
+                'text' => 'my email is chris@openagents.com',
+            ]],
+        ]],
     ]);
 
     $stream->assertOk();

@@ -146,6 +146,16 @@ class ChatLoginTool implements Tool
             ];
         }
 
+        if (! $this->emailMentionedInLatestUserTurn($email)) {
+            return [
+                'toolName' => self::TOOL_NAME,
+                'status' => 'failed',
+                'action' => 'send_code',
+                'denyCode' => 'email_confirmation_required',
+                'message' => 'Ask the user for their email first, then send the code after they provide it in chat.',
+            ];
+        }
+
         try {
             $pending = resolve(MagicAuthService::class)->startMagicCode($email);
         } catch (ValidationException $exception) {
@@ -399,6 +409,57 @@ class ChatLoginTool implements Tool
         Auth::guard('web')->login($rehydrated);
 
         return $rehydrated;
+    }
+
+
+    private function emailMentionedInLatestUserTurn(string $email): bool
+    {
+        $httpRequest = request();
+
+        if (! is_object($httpRequest) || ! method_exists($httpRequest, 'input')) {
+            return false;
+        }
+
+        /** @var mixed $messages */
+        $messages = $httpRequest->input('messages');
+        if (! is_array($messages) || $messages === []) {
+            return false;
+        }
+
+        $latestUserText = '';
+
+        foreach (array_reverse($messages) as $message) {
+            if (! is_array($message)) {
+                continue;
+            }
+
+            $role = isset($message['role']) && is_string($message['role'])
+                ? strtolower(trim($message['role']))
+                : '';
+
+            if ($role !== 'user') {
+                continue;
+            }
+
+            $parts = $message['parts'] ?? null;
+            if (is_array($parts)) {
+                foreach ($parts as $part) {
+                    if (is_array($part) && (($part['type'] ?? null) === 'text') && isset($part['text']) && is_string($part['text'])) {
+                        $latestUserText .= ' '.$part['text'];
+                    }
+                }
+            }
+
+            if (isset($message['content']) && is_string($message['content'])) {
+                $latestUserText .= ' '.$message['content'];
+            }
+
+            break;
+        }
+
+        $latestUserText = strtolower($latestUserText);
+
+        return $latestUserText !== '' && str_contains($latestUserText, strtolower($email));
     }
 
     private function pendingMagicAuth(Session $session): ?array

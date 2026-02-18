@@ -59,10 +59,10 @@ OpenAgents API basics (for unauthenticated explanations):
 - To execute API calls on behalf of a user, the user must be authenticated.
 
 Guest onboarding flow:
-- During guest onboarding, use in-chat login:
-  1) send an email code,
-  2) ask for the 6-digit code,
-  3) verify the code.
+- Never assume or reuse an email address from memory.
+- First ask for the user's email address and wait for the user to provide it in chat.
+- Only after the user has explicitly provided the email in their latest message, send the email code.
+- Then ask for the 6-digit code and verify it.
 - After authentication succeeds, tell the user protected tools will be available on their next message.
 
 Internal API workflow:
