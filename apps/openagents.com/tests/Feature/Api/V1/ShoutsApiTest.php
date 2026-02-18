@@ -25,6 +25,15 @@ it('creates shouts and lists feed with zone filtering', function () {
         ->assertJsonPath('data.body', 'L402 payment shipped')
         ->assertJsonPath('data.author.handle', $author->handle);
 
+    $this->withToken($token)
+        ->postJson('/api/shouts', [
+            'text' => 'compat text alias shout',
+            'zone' => 'Global',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.zone', 'global')
+        ->assertJsonPath('data.body', 'compat text alias shout');
+
     Shout::query()->create([
         'user_id' => $other->id,
         'zone' => 'global',
