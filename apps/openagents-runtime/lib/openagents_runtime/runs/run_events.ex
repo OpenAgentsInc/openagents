@@ -1,12 +1,94 @@
 defmodule OpenAgentsRuntime.Runs.RunEvents do
   @moduledoc """
-  Event helpers used by stream/log layers.
+  Durable event log operations with monotonic sequence allocation per run.
   """
 
-  @type run_event :: %{required(:run_id) => String.t(), required(:seq) => non_neg_integer()}
+  import Ecto.Query
 
-  @spec sort([run_event()]) :: [run_event()]
-  def sort(events) when is_list(events) do
-    Enum.sort_by(events, &{&1.run_id, &1.seq})
+  alias Ecto.Multi
+  alias OpenAgentsRuntime.Repo
+  alias OpenAgentsRuntime.Runs.Run
+  alias OpenAgentsRuntime.Runs.RunEvent
+
+  @type append_error :: :run_not_found | Ecto.Changeset.t()
+
+  @spec append_event(String.t(), String.t(), map()) ::
+          {:ok, RunEvent.t()} | {:error, append_error()}
+  def append_event(run_id, event_type, payload \\ %{})
+      when is_binary(run_id) and is_binary(event_type) and is_map(payload) do
+    multi =
+      Multi.new()
+      |> Multi.run(:next_seq, fn repo, _changes ->
+        with %Run{} = run <- repo.get(Run, run_id),
+             {:ok, {1, [next_seq]}} <- increment_run_sequence(repo, run_id) do
+          {:ok, {run, next_seq}}
+        else
+          nil -> {:error, :run_not_found}
+          {:error, reason} -> {:error, reason}
+        end
+      end)
+      |> Multi.insert(:event, fn %{next_seq: {_run, next_seq}} ->
+        RunEvent.changeset(%RunEvent{}, %{
+          run_id: run_id,
+          seq: next_seq,
+          event_type: event_type,
+          payload: payload
+        })
+      end)
+
+    case Repo.transaction(multi) do
+      {:ok, %{event: event}} -> {:ok, event}
+      {:error, :next_seq, :run_not_found, _changes} -> {:error, :run_not_found}
+      {:error, :event, changeset, _changes} -> {:error, changeset}
+      {:error, _step, reason, _changes} -> {:error, reason}
+    end
+  end
+
+  @spec list_after(String.t(), non_neg_integer()) :: [RunEvent.t()]
+  def list_after(run_id, seq) when is_binary(run_id) and is_integer(seq) and seq >= 0 do
+    query =
+      from(event in RunEvent,
+        where: event.run_id == ^run_id and event.seq > ^seq,
+        order_by: [asc: event.seq]
+      )
+
+    Repo.all(query)
+  end
+
+  @spec latest_seq(String.t()) :: non_neg_integer()
+  def latest_seq(run_id) when is_binary(run_id) do
+    query =
+      from(event in RunEvent,
+        where: event.run_id == ^run_id,
+        select: max(event.seq)
+      )
+
+    Repo.one(query) || 0
+  end
+
+  @spec sort([RunEvent.t()]) :: [RunEvent.t()]
+  def sort(events) when is_list(events), do: Enum.sort_by(events, &{&1.run_id, &1.seq})
+
+  defp increment_run_sequence(repo, run_id) do
+    sql = """
+    UPDATE runtime.runs
+    SET latest_seq = latest_seq + 1
+    WHERE run_id = $1
+    RETURNING latest_seq
+    """
+
+    case repo.query(sql, [run_id]) do
+      {:ok, %{rows: [[latest_seq]]}} when is_integer(latest_seq) ->
+        {:ok, {1, [latest_seq]}}
+
+      {:ok, %{rows: []}} ->
+        {:error, :run_not_found}
+
+      {:ok, other} ->
+        {:error, {:unexpected_update_result, other}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 end
