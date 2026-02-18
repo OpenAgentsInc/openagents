@@ -60,6 +60,12 @@ DS-Elixir modules in target runtime app:
 - `lib/openagents_runtime/ds/compile/dataset_exporter.ex`
 - `lib/openagents_runtime/ds/compile/promote_service.ex`
 
+Runtime correctness bindings (from main runtime plan):
+
+1. Single executor per run is lease-controlled (`runtime.run_leases` with TTL heartbeat).
+2. Streams are served from event log with monotonic `(run_id, seq)` cursor semantics.
+3. Stream wakeups use `LISTEN/NOTIFY`, but durable event log remains source of truth.
+
 ## Legacy mapping: `apps/web` DSE -> DS-Elixir
 
 | Legacy component | Prior role | DS-Elixir target |
@@ -124,6 +130,7 @@ Execution strategy support required immediately:
 - latency and budget counters
 - terminal status/error class
 - optional `trace_ref` for RLM-like runs
+- trace/request linkage (`trace_id`, `x_request_id`) for end-to-end correlation
 
 ### Cross-language contract packaging
 
@@ -137,6 +144,7 @@ Schema policy:
 1. Additive evolution by default.
 2. Explicit major version bump on breaking contract changes.
 3. Contract docs remain language-agnostic even when implementation is Elixir-first.
+4. Event payload contracts include `event_version` and upcaster coverage requirements for replay compatibility.
 
 ## Tool replay contract
 
