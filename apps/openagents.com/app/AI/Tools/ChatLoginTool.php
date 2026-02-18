@@ -81,7 +81,7 @@ class ChatLoginTool implements Tool
             ];
         }
 
-        $user = Auth::user();
+        $user = $this->resolveAuthenticatedUser($session);
         $pending = $this->pendingMagicAuth($session);
 
         if ($user instanceof User) {
@@ -126,7 +126,7 @@ class ChatLoginTool implements Tool
             ];
         }
 
-        if (Auth::user() instanceof User) {
+        if ($this->resolveAuthenticatedUser($session) instanceof User) {
             return [
                 'toolName' => self::TOOL_NAME,
                 'status' => 'already_authenticated',
@@ -194,7 +194,7 @@ class ChatLoginTool implements Tool
             ];
         }
 
-        if (Auth::user() instanceof User) {
+        if ($this->resolveAuthenticatedUser($session) instanceof User) {
             return [
                 'toolName' => self::TOOL_NAME,
                 'status' => 'already_authenticated',
@@ -262,6 +262,7 @@ class ChatLoginTool implements Tool
         Auth::guard('web')->login($user);
         $session->put('workos_access_token', $accessToken);
         $session->put('workos_refresh_token', $refreshToken);
+        $session->put('chat.auth_user_id', (int) $user->getAuthIdentifier());
         $session->forget('auth.magic_auth');
         $session->forget('chat.guest.conversation_id');
         // Do not regenerate session token here: we are inside a streamed response, so the
@@ -373,8 +374,33 @@ class ChatLoginTool implements Tool
     }
 
     /**
-     * @return array{email: string, user_id: string}|null
+     * Resolve authenticated user from guard or chat-session fallback key.
      */
+    private function resolveAuthenticatedUser(Session $session): ?User
+    {
+        $user = Auth::guard('web')->user();
+        if ($user instanceof User) {
+            return $user;
+        }
+
+        $userId = (int) $session->get('chat.auth_user_id', 0);
+        if ($userId <= 0) {
+            return null;
+        }
+
+        $rehydrated = User::query()->find($userId);
+        if (! $rehydrated instanceof User) {
+            $session->forget('chat.auth_user_id');
+            $this->persistSession($session);
+
+            return null;
+        }
+
+        Auth::guard('web')->login($rehydrated);
+
+        return $rehydrated;
+    }
+
     private function pendingMagicAuth(Session $session): ?array
     {
         /** @var mixed $pending */

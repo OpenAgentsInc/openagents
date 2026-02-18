@@ -287,3 +287,12 @@
     max-height: 100dvh;
     overscroll-behavior: none;
 }
+
+/* Streamdown markdown links: keep readable contrast in dark chat surfaces. */
+.dark [data-streamdown="link"] {
+    color: hsl(208 29% 88%) !important;
+}
+
+.dark [data-streamdown="link"]:hover {
+    color: hsl(0 0% 98%) !important;
+}
