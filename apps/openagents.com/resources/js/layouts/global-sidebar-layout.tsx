@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { LogIn, MessageSquare, Plus, Zap } from 'lucide-react';
+import { LogIn, MessageSquare, Plus, Shield, Zap } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
@@ -33,6 +33,7 @@ type SharedProps = {
         user?: unknown;
     };
     chatThreads?: SharedChatThread[];
+    isAdmin?: boolean;
 };
 
 function toThreadLabel(value: string): string {
@@ -54,6 +55,7 @@ function SidebarCloseOnNavigate() {
 export function GlobalSidebarLayout({ children }: Props) {
     const page = usePage<SharedProps>();
     const isAuthenticated = Boolean(page.props.auth?.user);
+    const isAdmin = Boolean(page.props.isAdmin);
     const chatThreads = page.props.chatThreads ?? [];
     const refreshKey = page.url ?? '/';
 
@@ -160,6 +162,20 @@ export function GlobalSidebarLayout({ children }: Props) {
                                     variant="sidebar"
                                 />
                             </SidebarGroup>
+                            {isAdmin ? (
+                                <SidebarGroup>
+                                    <SidebarMenu>
+                                        <SidebarMenuItem>
+                                            <SidebarMenuButton asChild className="w-full justify-start gap-2">
+                                                <Link href="/admin">
+                                                    <Shield className="size-4" />
+                                                    <span>Admin</span>
+                                                </Link>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                    </SidebarMenu>
+                                </SidebarGroup>
+                            ) : null}
                             <NavUser />
                         </>
                     ) : (
