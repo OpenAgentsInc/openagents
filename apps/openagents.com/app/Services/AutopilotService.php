@@ -17,6 +17,7 @@ class AutopilotService
         $safeLimit = max(1, min(500, $limit));
 
         return Autopilot::query()
+            ->with(['profile', 'policy'])
             ->where('owner_user_id', $owner->id)
             ->orderByDesc('updated_at')
             ->limit($safeLimit)
@@ -66,6 +67,7 @@ class AutopilotService
         $handleCandidate = strtolower($value);
 
         $autopilot = Autopilot::query()
+            ->with(['profile', 'policy'])
             ->where('owner_user_id', $owner->id)
             ->where(function ($query) use ($value, $handleCandidate): void {
                 $query->where('id', $value)

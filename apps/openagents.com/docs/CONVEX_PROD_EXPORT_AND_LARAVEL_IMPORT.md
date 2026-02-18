@@ -206,3 +206,109 @@ cd apps/openagents.com
 php artisan convex:import-chat /tmp/convex-prod-export-20260216-142537.zip --dry-run
 ```
 
+
+---
+
+## Importer v2 (identity + personality migration)
+
+As of issue `#1654`, `convex:import-chat` supports identity hydration and blueprint personality migration in one pass.
+
+### New source table usage
+
+In addition to `users`, `threads`, `runs`, `messages`, and `receipts`, importer v2 reads:
+
+- `blueprints/documents.jsonl`
+
+### New command options
+
+```bash
+php artisan convex:import-chat "$EXPORT_ZIP" --dry-run --resolve-workos-users
+php artisan convex:import-chat "$EXPORT_ZIP" --resolve-workos-users
+php artisan convex:import-chat "$EXPORT_ZIP" --replace --resolve-workos-users
+php artisan convex:import-chat "$EXPORT_ZIP" --skip-blueprints
+```
+
+### New summary counters
+
+Importer output now includes:
+
+- `users_resolved_via_workos`
+- `users_unresolved_placeholder`
+- `users_email_conflicts`
+- `autopilots_created`
+- `autopilot_profiles_upserted`
+- `autopilot_policies_upserted`
+- `blueprints_mapped`
+- `threads_linked_backfilled`
+- `runs_linked_backfilled`
+- `messages_linked_backfilled`
+- `run_events_linked_backfilled`
+
+### Identity behavior
+
+- If Convex user email is blank and the owner id looks like a WorkOS id (`user_*`), importer can resolve email/name/avatar from WorkOS (`--resolve-workos-users`).
+- If lookup fails, importer deterministically falls back to `migrated+...@openagents.local`.
+- If WorkOS email conflicts with an existing user email, importer records conflict metric and keeps deterministic placeholder for that WorkOS user.
+
+### Blueprint -> Autopilot mapping behavior
+
+Importer ensures one autopilot per owner user (idempotent) and upserts:
+
+- `autopilots`
+- `autopilot_profiles`
+- `autopilot_policies`
+
+Then importer backfills autopilot linkage into legacy runtime rows:
+
+- `threads.autopilot_id`
+- `runs.autopilot_id` and `runs.autopilot_config_version`
+- `messages.autopilot_id`
+- `run_events.autopilot_id` and actor autopilot fields where applicable
+
+---
+
+## Production backfill runbook (v2)
+
+Use this exact sequence for production migrations.
+
+### 1) Snapshot before counts
+
+```bash
+cd apps/openagents.com
+php artisan tinker --execute="echo 'users='.DB::table('users')->count().PHP_EOL; echo 'threads='.DB::table('threads')->count().PHP_EOL; echo 'runs='.DB::table('runs')->count().PHP_EOL; echo 'messages='.DB::table('messages')->count().PHP_EOL; echo 'run_events='.DB::table('run_events')->count().PHP_EOL; echo 'autopilots='.DB::table('autopilots')->count().PHP_EOL; echo 'autopilot_profiles='.DB::table('autopilot_profiles')->count().PHP_EOL; echo 'autopilot_policies='.DB::table('autopilot_policies')->count().PHP_EOL;"
+```
+
+### 2) Dry-run with WorkOS hydration
+
+```bash
+php artisan convex:import-chat "$EXPORT_ZIP" --dry-run --resolve-workos-users
+```
+
+Capture the summary output in release notes / migration log.
+
+### 3) Real import
+
+```bash
+php artisan convex:import-chat "$EXPORT_ZIP" --resolve-workos-users
+```
+
+Use `--replace` only for planned full replacement windows.
+
+### 4) Snapshot after counts
+
+```bash
+php artisan tinker --execute="echo 'users='.DB::table('users')->count().PHP_EOL; echo 'threads='.DB::table('threads')->count().PHP_EOL; echo 'runs='.DB::table('runs')->count().PHP_EOL; echo 'messages='.DB::table('messages')->count().PHP_EOL; echo 'run_events='.DB::table('run_events')->count().PHP_EOL; echo 'autopilots='.DB::table('autopilots')->count().PHP_EOL; echo 'autopilot_profiles='.DB::table('autopilot_profiles')->count().PHP_EOL; echo 'autopilot_policies='.DB::table('autopilot_policies')->count().PHP_EOL; echo 'threads_with_autopilot='.DB::table('threads')->whereNotNull('autopilot_id')->count().PHP_EOL; echo 'runs_with_autopilot='.DB::table('runs')->whereNotNull('autopilot_id')->count().PHP_EOL; echo 'messages_with_autopilot='.DB::table('messages')->whereNotNull('autopilot_id')->count().PHP_EOL; echo 'run_events_with_autopilot='.DB::table('run_events')->whereNotNull('autopilot_id')->count().PHP_EOL;"
+```
+
+### 5) Rollback strategy
+
+- Preferred rollback: restore DB snapshot/backup captured immediately before step 3.
+- If rollback is only needed for imported runtime data and not other writes, run import again in `--replace` mode from a known-good export artifact.
+- Keep the export ZIP and SHA256 hash until verification is complete.
+
+### 6) Verification checklist
+
+- `autopilots`, `autopilot_profiles`, and `autopilot_policies` are non-zero for imported owners.
+- Imported owner threads/runs/messages/events have autopilot linkage.
+- At least one imported user with missing Convex email resolves via WorkOS in summary counters.
+- Settings page can edit autopilot profile; a subsequent run reflects updated profile context.

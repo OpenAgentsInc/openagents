@@ -82,10 +82,12 @@ Artisan::command('demo:l402 {--preset=fake : Endpoint preset name (fake|sats4ai)
     return ($out['status'] ?? '') === 'failed' ? 1 : 0;
 })->purpose('Run a deterministic L402 buying demo (no browser required).');
 
-Artisan::command('convex:import-chat {source : Path to Convex export ZIP or directory} {--replace : Truncate target chat tables before import} {--dry-run : Parse and map without writing}', function () {
+Artisan::command('convex:import-chat {source : Path to Convex export ZIP or directory} {--replace : Truncate target chat tables before import} {--dry-run : Parse and map without writing} {--resolve-workos-users : Resolve missing user emails via WorkOS User Management API} {--skip-blueprints : Skip blueprint-to-autopilot migration}', function () {
     $source = (string) $this->argument('source');
     $replace = (bool) $this->option('replace');
     $dryRun = (bool) $this->option('dry-run');
+    $resolveWorkosUsers = (bool) $this->option('resolve-workos-users');
+    $skipBlueprints = (bool) $this->option('skip-blueprints');
 
     /** @var ConvexChatImportService $service */
     $service = resolve(ConvexChatImportService::class);
@@ -94,19 +96,23 @@ Artisan::command('convex:import-chat {source : Path to Convex export ZIP or dire
     $this->line('  source: '.$source);
     $this->line('  mode: '.($dryRun ? 'dry-run' : 'write'));
     $this->line('  replace: '.($replace ? 'yes' : 'no'));
+    $this->line('  resolve_workos_users: '.($resolveWorkosUsers ? 'yes' : 'no'));
+    $this->line('  import_blueprints: '.($skipBlueprints ? 'no' : 'yes'));
 
     $stats = $service->import(
         sourcePath: $source,
         replace: $replace,
         dryRun: $dryRun,
         logger: fn (string $message) => $this->line('  '.$message),
+        resolveWorkosUsers: $resolveWorkosUsers,
+        importBlueprints: ! $skipBlueprints,
     );
 
     $this->newLine();
     $this->info('Convex chat import summary:');
 
     foreach ($stats as $key => $value) {
-        $this->line(sprintf('  %-22s %d', $key.':', $value));
+        $this->line(sprintf('  %-32s %d', $key.':', $value));
     }
 
     if ($dryRun) {
@@ -116,7 +122,7 @@ Artisan::command('convex:import-chat {source : Path to Convex export ZIP or dire
     }
 
     return 0;
-})->purpose('Import users/threads/messages/runs/receipts from a Convex snapshot export into Laravel chat tables.');
+})->purpose('Import Convex users/threads/runs/messages/receipts + optional blueprints into Laravel chat/autopilot tables.');
 
 Artisan::command('ops:test-login-link {email : Allowlisted email to log in as} {--minutes=30 : Signed URL expiry in minutes} {--name= : Optional display name override} {--base-url= : Optional base URL override}', function () {
     $email = strtolower(trim((string) $this->argument('email')));

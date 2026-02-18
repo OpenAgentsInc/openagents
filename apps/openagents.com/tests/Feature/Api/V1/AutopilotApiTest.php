@@ -55,6 +55,7 @@ it('manages owned autopilots threads and stream alias through the existing run p
             'profile' => [
                 'ownerDisplayName' => 'Chris',
                 'personaSummary' => 'Pragmatic and concise',
+                'autopilotVoice' => 'calm and direct',
             ],
             'policy' => [
                 'toolAllowlist' => ['openagents_api', 'lightning_l402_fetch'],
@@ -102,6 +103,15 @@ it('manages owned autopilots threads and stream alias through the existing run p
 
     $streamResponse->assertOk();
     $streamed = $streamResponse->streamedContent();
+
+    AutopilotAgent::assertPrompted(function ($prompt): bool {
+        $instructions = (string) $prompt->agent->instructions();
+
+        return str_contains($instructions, 'Runtime Autopilot profile context (private):')
+            && str_contains($instructions, 'owner_display_name=Chris')
+            && str_contains($instructions, 'persona_summary=Pragmatic and concise')
+            && str_contains($instructions, 'autopilot_voice=calm and direct');
+    });
     expect($streamed)->toContain('data: {"type":"start"');
     expect($streamed)->toContain('data: {"type":"finish"');
     expect($streamed)->toContain("data: [DONE]\n\n");

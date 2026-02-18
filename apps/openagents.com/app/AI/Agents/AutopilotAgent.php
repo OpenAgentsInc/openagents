@@ -2,6 +2,7 @@
 
 namespace App\AI\Agents;
 
+use App\AI\Runtime\AutopilotPromptContextBuilder;
 use App\AI\Tools\AutopilotToolResolver;
 use Illuminate\Support\Stringable;
 use Laravel\Ai\Concerns\RemembersConversations;
@@ -15,9 +16,15 @@ class AutopilotAgent implements Agent, Conversational, HasTools
     use Promptable;
     use RemembersConversations;
 
+    private ?string $cachedInstructions = null;
+
     public function instructions(): Stringable|string
     {
-        return <<<'PROMPT'
+        if (is_string($this->cachedInstructions)) {
+            return $this->cachedInstructions;
+        }
+
+        $instructions = <<<'PROMPT'
 You are Autopilot, the user's personal agent.
 
 Style:
@@ -68,6 +75,20 @@ Lightning / L402 workflow (authenticated sessions):
 - Only after explicit user approval, complete the payment step.
 - After payment completes, summarize the result and include payment proof reference when available.
 PROMPT;
+
+        $profileContext = resolve(AutopilotPromptContextBuilder::class)->forCurrentAutopilot();
+
+        if (is_string($profileContext) && trim($profileContext) !== '') {
+            $instructions .= "
+
+Runtime Autopilot profile context (private):
+".$profileContext;
+            $instructions .= "
+Apply this profile context as authoritative for tone, preferences, and guardrails for this run.";
+        }
+        $this->cachedInstructions = $instructions;
+
+        return $this->cachedInstructions;
     }
 
     public function tools(): iterable
