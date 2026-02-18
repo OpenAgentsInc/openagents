@@ -382,19 +382,19 @@ export default function Index() {
         });
     }, [capture, conversationId, isGuest]);
 
-    // After successful chat login, reload page data so sidebar shows authenticated user immediately.
+    // After successful chat login, wait for stream completion before reload so
+    // session persistence is not interrupted by early navigation.
     const didReloadForAuthRef = useRef(false);
+    const pendingAuthReloadRef = useRef(false);
     useEffect(() => {
         if (!isGuest || didReloadForAuthRef.current) return;
         for (const message of messages) {
             if (message.role !== 'assistant') continue;
             const parts = message.parts ?? [];
             for (const part of parts) {
-                const p = part as Record<string, unknown>;
-                const status = chatLoginStatusFromPart(part);
-                if (status === 'authenticated' || status === 'already_authenticated') {
-                    didReloadForAuthRef.current = true;
-                    window.location.assign('/');
+                const loginStatus = chatLoginStatusFromPart(part);
+                if (loginStatus === 'authenticated' || loginStatus === 'already_authenticated') {
+                    pendingAuthReloadRef.current = true;
                     return;
                 }
             }
@@ -458,6 +458,15 @@ export default function Index() {
             previousStatus === 'submitted' || previousStatus === 'streaming';
 
         if (!transitionedFromStreaming || status !== 'ready') return;
+
+        if (pendingAuthReloadRef.current && !didReloadForAuthRef.current) {
+            pendingAuthReloadRef.current = false;
+            didReloadForAuthRef.current = true;
+            window.setTimeout(() => {
+                window.location.assign('/');
+            }, 75);
+            return;
+        }
 
         const lastAssistant =
             [...messages]
