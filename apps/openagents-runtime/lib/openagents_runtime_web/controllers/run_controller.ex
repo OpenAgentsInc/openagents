@@ -2,30 +2,33 @@ defmodule OpenAgentsRuntimeWeb.RunController do
   use OpenAgentsRuntimeWeb, :controller
 
   alias OpenAgentsRuntime.Runs.OwnershipGuard
+  alias OpenAgentsRuntime.Telemetry.Tracing
 
   @spec snapshot(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def snapshot(conn, %{"run_id" => run_id, "thread_id" => thread_id}) do
-    principal = principal_from_headers(conn)
+    Tracing.with_phase_span(:persist, %{run_id: run_id, thread_id: thread_id}, fn ->
+      principal = principal_from_headers(conn)
 
-    with {:ok, principal} <- OwnershipGuard.normalize_principal(principal),
-         :ok <- OwnershipGuard.authorize(run_id, thread_id, principal) do
-      json(conn, %{
-        "runId" => run_id,
-        "threadId" => thread_id,
-        "status" => "unknown",
-        "latestSeq" => 0,
-        "updatedAt" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-      })
-    else
-      {:error, :invalid_principal} ->
-        error(conn, 401, "unauthorized", "missing or invalid principal headers")
+      with {:ok, principal} <- OwnershipGuard.normalize_principal(principal),
+           :ok <- OwnershipGuard.authorize(run_id, thread_id, principal) do
+        json(conn, %{
+          "runId" => run_id,
+          "threadId" => thread_id,
+          "status" => "unknown",
+          "latestSeq" => 0,
+          "updatedAt" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+        })
+      else
+        {:error, :invalid_principal} ->
+          error(conn, 401, "unauthorized", "missing or invalid principal headers")
 
-      {:error, :not_found} ->
-        error(conn, 404, "not_found", "run/thread ownership record not found")
+        {:error, :not_found} ->
+          error(conn, 404, "not_found", "run/thread ownership record not found")
 
-      {:error, :forbidden} ->
-        error(conn, 403, "forbidden", "run/thread does not belong to principal")
-    end
+        {:error, :forbidden} ->
+          error(conn, 403, "forbidden", "run/thread does not belong to principal")
+      end
+    end)
   end
 
   def snapshot(conn, _params) do

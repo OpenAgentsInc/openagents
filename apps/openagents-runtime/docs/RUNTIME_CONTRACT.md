@@ -193,6 +193,22 @@ Success (`200`):
 
 Runtime must validate run/thread ownership from DB records. Runtime does not trust request payload `userId` claims.
 
+## Tracing Contract
+
+Runtime accepts and propagates:
+
+- `traceparent`
+- `tracestate`
+- `x-request-id`
+
+Standard runtime span names:
+
+- `runtime.ingest`
+- `runtime.infer`
+- `runtime.tool`
+- `runtime.persist`
+- `runtime.stream`
+
 ## Backward Compatibility Rule
 
 All contract changes must be additive or versioned under a new path. Breaking changes to `/internal/v1/*` require explicit migration plan.

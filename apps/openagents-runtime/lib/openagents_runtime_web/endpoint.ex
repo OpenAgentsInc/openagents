@@ -34,6 +34,7 @@ defmodule OpenAgentsRuntimeWeb.Endpoint do
   end
 
   plug Plug.RequestId
+  plug OpenAgentsRuntimeWeb.Plugs.TraceContext
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   plug Plug.Parsers,
