@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openagents-runtime
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: runtime
+          env:
+            - name: POOL_SIZE
+              value: "10"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

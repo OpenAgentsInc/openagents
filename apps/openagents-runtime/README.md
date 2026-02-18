@@ -22,3 +22,16 @@ Container build:
 
 - `docker build -t openagents-runtime:dev .`
 - Cloud Build config: `deploy/cloudbuild.yaml`
+
+Kubernetes manifests:
+
+- Base manifests: `deploy/k8s/base`
+- Environment overlays: `deploy/k8s/overlays/{dev,staging,prod}`
+- Render manifests:
+  - `kubectl kustomize deploy/k8s/overlays/dev`
+  - `kubectl kustomize deploy/k8s/overlays/staging`
+  - `kubectl kustomize deploy/k8s/overlays/prod`
+- Apply manifests:
+  - `kubectl apply -k deploy/k8s/overlays/dev`
+  - `kubectl apply -k deploy/k8s/overlays/staging`
+  - `kubectl apply -k deploy/k8s/overlays/prod`
