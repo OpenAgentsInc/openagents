@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { LogIn, MessageSquare, Plus, Shield, Zap } from 'lucide-react';
+import { LogIn, MessageSquare, Plus, Rss, Shield, Zap } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
@@ -60,6 +60,7 @@ export function GlobalSidebarLayout({ children }: Props) {
     const chatThreads = page.props.chatThreads ?? [];
     const refreshKey = page.url ?? '/';
     const capture = usePostHogEvent('sidebar');
+    const showLightningLink = false;
 
     const handleNewChat = useCallback(() => {
         capture('sidebar.new_chat_clicked', {
@@ -135,7 +136,23 @@ export function GlobalSidebarLayout({ children }: Props) {
                                     <span>New Chat</span>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
-                            {isAuthenticated ? (
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild className="w-full justify-start gap-2">
+                                    <Link
+                                        href="/feed"
+                                        onClick={() => {
+                                            capture('sidebar.feed_clicked', {
+                                                path: page.url,
+                                                isAuthenticated,
+                                            });
+                                        }}
+                                    >
+                                        <Rss className="size-4" />
+                                        <span>Feed</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            {showLightningLink && isAuthenticated ? (
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild className="w-full justify-start gap-2">
                                         <Link
