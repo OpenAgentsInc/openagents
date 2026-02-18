@@ -6,6 +6,41 @@ OpenAgents is the **operating system for the AI agent economy**. We ship three a
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
+## Apps architecture
+
+```mermaid
+flowchart LR
+  subgraph user["User-facing"]
+    web["openagents.com<br/>(Laravel + Inertia + React)<br/>Web UI, chat, API, control plane"]
+    mobile["mobile<br/>React Native / Expo<br/>Prerelease"]
+    desktop["desktop<br/>Electron + Effuse<br/>Lightning wallet execution, L402"]
+  end
+
+  subgraph platform["Platform services"]
+    ops["lightning-ops<br/>L402 gateway ops, Convex, aperture"]
+    executor["lightning-wallet-executor<br/>Spark wallet HTTP (pay-bolt11)"]
+  end
+
+  subgraph planned["Planned"]
+    runtime["openagents-runtime<br/>Elixir/BEAM agent runtime<br/>GCP GKE · stream-from-log · DS-Elixir"]
+  end
+
+  web <--> desktop
+  web --> ops
+  desktop --> executor
+  web -.->|"orchestration (future)"| runtime
+
+  style runtime stroke-dasharray: 5 5
+  style planned stroke-dasharray: 5 5
+```
+
+- **openagents.com** (`apps/openagents.com/`): Core web app — Laravel 12, Inertia, React; chat, auth, API; production deploy to Cloud Run.
+- **mobile** (`apps/mobile/`): React Native (Ignite/Expo) mobile surface — prerelease.
+- **desktop** (`apps/desktop/`): Electron shell for Lightning (EP212); wallet/payment execution; Convex + OpenAgents API.
+- **lightning-ops** (`apps/lightning-ops/`): Effect service for L402 gateway — Convex state, aperture config, route validation.
+- **lightning-wallet-executor** (`apps/lightning-wallet-executor/`): HTTP service for agent-owned Spark wallet (e.g. pay-bolt11).
+- **openagents-runtime** (planned): Elixir agent runtime; see [docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md](docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md) (does not exist yet).
+
 **Vision and architecture:** [docs/SYNTHESIS.md](docs/SYNTHESIS.md) (“OpenAgents: The Agentic OS”) is the north-star spec: what OpenAgents is (the OS for the AI agent economy), core primitives (identity, transport, payments, treasury, FX), the wedge→platform path (Autopilot → trajectory/issue moat → Neobank → skills/compute marketplace → Exchange), and a status-tagged stack. It defers to [SYNTHESIS_EXECUTION.md](docs/SYNTHESIS_EXECUTION.md) for what’s wired today and to [GLOSSARY.md](docs/GLOSSARY.md) and [PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) for terminology and protocol details.
 
 ## What’s possible with Autopilot (evolving agent)
