@@ -83,6 +83,42 @@ test('openagents_api request uses scoped sanctum token and deletes it after call
     expect(DB::table('personal_access_tokens')->count())->toBe(0);
 });
 
+test('openagents_api request forwards incoming cookie header for maintenance/session continuity', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $incomingRequest = \Illuminate\Http\Request::create('https://openagents.com/chat', 'POST');
+    $incomingRequest->headers->set('Cookie', 'laravel_maintenance=demo-bypass; openagents_session=demo-session');
+    app()->instance('request', $incomingRequest);
+
+    Http::fake([
+        'https://openagents.com/api/me' => Http::response([
+            'data' => ['id' => $user->id],
+        ], 200),
+    ]);
+
+    $tool = new OpenAgentsApiTool;
+
+    $json = $tool->handle(new ToolRequest([
+        'action' => 'request',
+        'method' => 'GET',
+        'path' => '/api/me',
+    ]));
+
+    $result = json_decode($json, true);
+
+    expect($result)->toBeArray();
+    expect($result['status'])->toBe('ok');
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+        $cookie = $request->header('Cookie')[0] ?? '';
+
+        return $request->method() === 'GET'
+            && $request->url() === 'https://openagents.com/api/me'
+            && str_contains($cookie, 'laravel_maintenance=demo-bypass')
+            && str_contains($cookie, 'openagents_session=demo-session');
+    });
+});
 test('openagents_api request blocks absolute and non-api paths', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

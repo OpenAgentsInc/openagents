@@ -16,6 +16,8 @@ test('autopilot instructions include runtime authenticated auth state', function
 
     expect($instructions)->toContain('Runtime session auth state (private): authenticated');
     expect($instructions)->toContain('If runtime auth state is authenticated: do not ask the user to sign in');
+    expect($instructions)->toContain('/api/agent-payments/balance');
+    expect($instructions)->toContain('Never say an endpoint is unavailable unless discover has been run with limit=100');
 });
 
 test('autopilot instructions include runtime guest auth state', function () {
