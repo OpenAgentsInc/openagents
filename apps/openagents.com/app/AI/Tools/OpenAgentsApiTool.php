@@ -78,8 +78,8 @@ class OpenAgentsApiTool implements Tool
                 ->description('Optional OpenAPI tag filter for action=discover.'),
             'limit' => $schema
                 ->integer()
-                ->description('Max endpoints returned for discover (default 25, max 100).')
-                ->default(25),
+                ->description('Max endpoints returned for discover (default 100, max 100).')
+                ->default(100),
             'includeSchema' => $schema
                 ->boolean()
                 ->description('When true, discover includes requestBody and parameters snippets.')
@@ -117,9 +117,9 @@ class OpenAgentsApiTool implements Tool
         $tagFilter = strtolower(trim((string) $request->string('tag', '')));
         $includeSchema = (bool) $request->boolean('includeSchema', false);
 
-        $limit = (int) $request->integer('limit', 25);
+        $limit = (int) $request->integer('limit', 100);
         if ($limit <= 0) {
-            $limit = 25;
+            $limit = 100;
         }
         $limit = min($limit, 100);
 
@@ -286,6 +286,11 @@ class OpenAgentsApiTool implements Tool
                     'Accept' => 'application/json',
                 ], $headers),
             ];
+
+            $incomingCookieHeader = request()?->header('Cookie');
+            if (is_string($incomingCookieHeader) && trim($incomingCookieHeader) !== '') {
+                $options['headers']['Cookie'] = $incomingCookieHeader;
+            }
 
             if ($query !== []) {
                 $options['query'] = $query;
