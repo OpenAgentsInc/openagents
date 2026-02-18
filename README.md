@@ -1,8 +1,8 @@
 # OpenAgents
 
-OpenAgents is the **operating system for the AI agent economy**. We ship three apps—**web** at [openagents.com](https://openagents.com) (refactoring **`apps/web/`** → **`apps/openagents.com/`**), **mobile** in **`apps/mobile/`**, and **desktop** in progress—and the platform beneath: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
+OpenAgents is the **operating system for the AI agent economy**. We ship three apps—**web** at [openagents.com](https://openagents.com) (**`apps/openagents.com/`**), **mobile** in **`apps/mobile/`**, and **desktop** in progress—and the platform beneath: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
 
-**Release quality:** Web is **alpha** (live at [openagents.com](https://openagents.com), currently the **`apps/web/`** build; refactoring to **`apps/openagents.com/`**). Mobile and desktop are **prerelease**.
+**Release quality:** Web is **alpha** (live at [openagents.com](https://openagents.com), Laravel app in **`apps/openagents.com/`**). Mobile and desktop are **prerelease**.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
@@ -18,20 +18,13 @@ New behaviors are added as **signatures**—versioned, measurable steps with cle
 
 ## Quick Start (Web)
 
-The web app is being refactored from **[apps/web/](apps/web/)** to **[apps/openagents.com/](apps/openagents.com/)**. Current quick start:
-
 ```bash
-cd apps/web
-npm install
-npm run dev
+cd apps/openagents.com
+composer install && npm install
+composer run dev
 ```
 
-Deploy (Convex + Worker):
-
-```bash
-cd apps/web
-npm run deploy
-```
+See [apps/openagents.com/README.md](apps/openagents.com/README.md) for full dev and deploy instructions.
 
 ## Mobile
 
@@ -41,7 +34,7 @@ The mobile app lives in **`apps/mobile/`**.
 
 Start with:
 
-* **Web app**: [apps/openagents.com/](apps/openagents.com/) (refactor target), [apps/web/](apps/web/) (current)
+* **Web app**: [apps/openagents.com/](apps/openagents.com/)
 * **Mobile app**: [apps/mobile/](apps/mobile/)
 * **Vision / architecture (north-star spec)**: [docs/SYNTHESIS.md](docs/SYNTHESIS.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)

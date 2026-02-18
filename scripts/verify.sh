@@ -6,18 +6,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "==> docs-check"
 "$ROOT/scripts/docs-check.mjs"
 
-if [ -d "$ROOT/apps/web" ]; then
-  echo "==> apps/web lint+test"
-  (cd "$ROOT/apps/web" && npm run lint)
-  (cd "$ROOT/apps/web" && npm run lint:structure)
-  (cd "$ROOT/apps/web" && npm test)
-fi
-
-if [ -d "$ROOT/apps/autopilot-worker" ]; then
-  echo "==> apps/autopilot-worker lint+test"
-  (cd "$ROOT/apps/autopilot-worker" && npm run lint && npm test)
-fi
-
 if command -v bun >/dev/null 2>&1; then
   has_script() {
     local dir="$1"

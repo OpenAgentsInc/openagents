@@ -10,8 +10,8 @@ import { run } from "./runner/runner.ts"
 
 const project = Options.text("project").pipe(
   Options.withAlias("p"),
-  Options.withDescription("Project directory (currently only apps/web is supported)"),
-  Options.withDefault("../../apps/web"),
+  Options.withDescription("Project directory (e.g. ../../apps/openagents.com)"),
+  Options.withDefault("../../apps/openagents.com"),
 )
 
 const serverPort = Options.integer("server-port").pipe(

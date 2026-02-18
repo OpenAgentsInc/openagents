@@ -33,8 +33,7 @@ const sanitizeFileName = (value: string): string =>
   value.replaceAll(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160)
 
 const baselineRoot = (): string =>
-  // Runner currently supports only apps/web, and `effuse-test` is executed from `packages/effuse-test`.
-  Path.resolve(process.cwd(), "../../apps/web/tests/visual/storybook")
+  Path.resolve(process.cwd(), "../../apps/openagents.com/tests/visual/storybook")
 
 const readPng = (bytes: Buffer): PNG => PNG.sync.read(bytes)
 

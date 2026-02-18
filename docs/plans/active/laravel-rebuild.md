@@ -42,7 +42,7 @@ Important limitation for OpenAgents:
 
 ## OpenAgents Tool Surface (Current Codebase)
 
-From the current Autopilot tool registry (`apps/autopilot-worker/src/tools.ts`), the core "basic tools" we should expect to port over time include:
+The core "basic tools" we support or expect to port over time include:
 
 - `get_time`, `echo`
 - L402 buyer: `lightning_l402_fetch`

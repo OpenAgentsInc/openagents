@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Copies apps/web/ and apps/website/ (minus gitignored and long/noisy files) to the
+# Copies apps/openagents.com/ and apps/website/ (minus gitignored and long/noisy files) to the
 # system clipboard with file path dividers. Target: under 400 KB so an AI can
 # understand both projects well enough to give advice.
 
@@ -57,9 +57,9 @@ should_skip() {
     apps/website/src/content/*) return 0 ;;
     esac
 
-  # Web: public assets (favicon etc.) — not needed for advice
+  # Web app: public assets (favicon etc.) — not needed for advice
   case "$rel" in
-    apps/web/public/*) return 0 ;;
+    apps/openagents.com/public/*) return 0 ;;
     esac
 
   # Optional: skip long dev/log docs
@@ -92,4 +92,4 @@ else
 fi
 
 bytes="$(wc -c <"$tmp_file" | tr -d ' ')"
-echo "Copied web + website bundle to clipboard (${bytes} bytes)."
+echo "Copied openagents.com + website bundle to clipboard (${bytes} bytes)."

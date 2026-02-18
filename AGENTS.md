@@ -48,9 +48,7 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 
 ## Where To Change Things
 
-- **Core web app (incoming):** `apps/openagents.com/` — Laravel 12 + Inertia + React (TypeScript), target replacement for the current web stack. See `docs/plans/active/laravel-rebuild.md`.
-- **Web product surface (current/legacy until cutover):** `apps/web/` — Effuse/Cloudflare/Convex stack.
-- Autopilot worker surface: `apps/autopilot-worker/`
+- **Core web app:** `apps/openagents.com/` — Laravel 12 + Inertia + React (TypeScript). See `docs/plans/active/laravel-rebuild.md`.
 - Mobile surface: `apps/mobile/`
 - Desktop surface: `apps/desktop/`
 - Shared packages: `packages/*`
@@ -58,10 +56,8 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 
 ## Verification Entry Points
 
-- **Laravel web (incoming core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
+- **Laravel web (core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
 - **Laravel web production deploy/runbooks:** `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md` and `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md` (env/secrets + Cloud Run deploy flow).
-- Web (current): `apps/web/README.md`
-- Autopilot worker: `apps/autopilot-worker/README.md`
 - Mobile: `apps/mobile/README.md`
 - Desktop: `apps/desktop/README.md`
 

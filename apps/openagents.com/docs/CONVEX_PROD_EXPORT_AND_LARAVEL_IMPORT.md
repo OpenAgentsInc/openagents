@@ -4,7 +4,7 @@
 
 This runbook documents the exact process to:
 
-1. Export production chat/user data from the legacy `apps/web` Convex deployment.
+1. Export production chat/user data from the legacy Convex deployment (when you have Convex CLI and prod access).
 2. Validate the export artifact.
 3. Import that artifact into the Laravel app (`apps/openagents.com`) using `convex:import-chat`.
 
@@ -32,7 +32,7 @@ This is written to be executable by humans and agents, with deterministic comman
 ## Prerequisites
 
 - Local checkout of this repo.
-- Convex CLI available via npm in `apps/web`.
+- Convex CLI available (e.g. `npx convex` with valid prod auth).
 - Valid Convex auth in terminal (`npx convex` can access prod deployment).
 - Laravel app migrated and command available in `apps/openagents.com`.
 - Sufficient disk space for ZIP artifact.
@@ -73,10 +73,9 @@ Test coverage:
 
 ## Step 1: Export Convex production data
 
-Run from `apps/web`:
+From repo root (or any directory with Convex project config and prod auth):
 
 ```bash
-cd apps/web
 npx convex export --prod --path /tmp/convex-prod-export-$(date +%Y%m%d-%H%M%S).zip
 ```
 
@@ -171,7 +170,6 @@ Also verify app-level behavior:
 #### Command executed
 
 ```bash
-cd apps/web
 npx convex export --prod --path /tmp/convex-prod-export-20260216-142537.zip
 ```
 

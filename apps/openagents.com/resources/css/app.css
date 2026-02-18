@@ -34,7 +34,7 @@
     font-display: swap;
 }
 
-/* Square721: proportional serif (hatchery / HUD button, from apps/web) */
+/* Square721: proportional serif (hatchery / HUD button) */
 @font-face {
     font-family: 'Square721';
     src: url('/fonts/Square721StdRoman.woff2') format('woff2'), url('/fonts/Square721StdRoman.ttf') format('truetype');

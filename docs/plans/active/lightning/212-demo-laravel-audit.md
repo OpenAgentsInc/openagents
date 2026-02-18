@@ -14,7 +14,7 @@ This audit covers the current Laravel rebuild implementation in `apps/openagents
 - L402 UI pages and API surfaces.
 - What is missing vs the original EP212 plan.
 
-It supersedes old assumptions tied to `apps/web` + Convex + desktop executor.
+It supersedes legacy Convex + desktop executor assumptions.
 
 ## 2) What Is Implemented Now (Laravel)
 

@@ -36,13 +36,9 @@ This repo is designed for **progressive disclosure**: start with a small set of 
 ## Product Surfaces
 
 - `apps/openagents.com/`
-  **Incoming core web app** (Laravel 12 + Inertia + React). Plan: `docs/plans/active/laravel-rebuild.md`.
-- `apps/web/README.md`
-  Current web app dev/test/deploy entry point (Effuse/Cloudflare/Convex; legacy until cutover).
+  **Core web app** (Laravel 12 + Inertia + React). Plan: `docs/plans/active/laravel-rebuild.md`.
 - `docs/autopilot/spec.md`
   Autopilot behavior spec (web surface).
-- `apps/autopilot-worker/README.md` (if present)
-  Worker surface entry point (tools/runtime).
 - `apps/mobile/README.md`
   Mobile app entry point.
 - `apps/desktop/README.md`

@@ -243,7 +243,7 @@ Default stays current user-wide behavior if filter is not supplied.
 Current mismatch:
 
 - Laravel tool input: `maxSpendSats` (`apps/openagents.com/app/AI/Tools/LightningL402FetchTool.php`)
-- Worker/Effect contracts: `maxSpendMsats` (`apps/autopilot-worker/src/tools.ts`, `packages/lightning-effect/src/contracts/l402.ts`)
+- Effect contracts: `maxSpendMsats` (`packages/lightning-effect/src/contracts/l402.ts`)
 
 Decision:
 

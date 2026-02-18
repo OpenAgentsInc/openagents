@@ -1,8 +1,8 @@
-# apps/web -> apps/openagents.com parity status
+# Laravel web parity status
 
 Updated: 2026-02-16
 
-This document tracks which user-facing and L402-critical behaviors from `apps/web` are now reflected in the Laravel app at `apps/openagents.com`.
+This document tracks which user-facing and L402-critical behaviors are implemented in the Laravel app at `apps/openagents.com`.
 
 ## Scope used for "relevant"
 

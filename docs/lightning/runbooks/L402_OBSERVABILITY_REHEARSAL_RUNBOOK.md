@@ -194,8 +194,7 @@ Run these before sign-off:
 cd packages/lnd-effect && npm run typecheck && npm test
 cd packages/lightning-effect && npm test
 cd apps/lightning-ops && npm run typecheck && npm test && npm run smoke:full-flow -- --json
-cd apps/autopilot-worker && npm run smoke:paywall-tools -- --json
-cd apps/web && npm run test:e2e -- --tag l402-hosted --grep "apps-web\\.hosted-l402\\.full-flow"
+# apps/autopilot-worker and apps/web removed; run L402 e2e from apps/openagents.com or packages/effuse-test as applicable
 cd apps/desktop && npm run typecheck && npm test && npm run test:l402-local-node-smoke -- --json
 ```
 

@@ -12,7 +12,7 @@ import {
 import { ProbeServiceLive, ProbeService } from "../effect/ProbeService.ts"
 import { CurrentSpanId } from "../effect/span.ts"
 import type { SpanId, TestCase, TestStatus } from "../spec.ts"
-import { appsWebSuite } from "../suites/apps-web.ts"
+import { openagentsComSuite } from "../suites/openagents-com.ts"
 import { startViewerServer } from "../viewer/server.ts"
 import { TestContext } from "./TestContext.ts"
 import { startWranglerDev } from "./TestServer.ts"
@@ -60,11 +60,15 @@ const selectSuite = (
   projectDir: string,
 ): Effect.Effect<ReadonlyArray<TestCase<TestEnv>>, RunnerError, EffuseTestConfig> =>
   Effect.gen(function* () {
-    // v1: only apps/web is supported.
     const normalized = projectDir.replaceAll("\\", "/")
-    if (normalized.endsWith("/apps/web")) return yield* appsWebSuite()
+    if (normalized.endsWith("/apps/openagents.com"))
+      return yield* openagentsComSuite() as Effect.Effect<
+        ReadonlyArray<TestCase<TestEnv>>,
+        RunnerError,
+        EffuseTestConfig
+      >
     return yield* Effect.fail(
-      new RunnerError("select suite", `Unsupported projectDir for v1 runner: ${projectDir}`),
+      new RunnerError("select suite", `Unsupported projectDir: ${projectDir}`),
     )
   })
 

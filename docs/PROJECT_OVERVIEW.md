@@ -5,13 +5,7 @@ This document maps the active codebase after the Rust deprecation cleanup.
 ## Product Surface
 
 - `apps/openagents.com/`
-  **Incoming core web app.** Laravel 12 + Inertia + React (TypeScript), Laravel AI SDK–backed chat and tools. This app is being built to replace the current web stack; cutover is planned per `docs/plans/active/laravel-rebuild.md`.
-
-- `apps/web/`
-  **Current** OpenAgents web product (Effuse/Cloudflare/Convex). Homepage chat panes, auth flows, deployment scripts. Remains production until Laravel cutover.
-
-- `apps/autopilot-worker/`
-  Worker-focused runtime pieces used by the web product and automation paths.
+  **Core web app.** Laravel 12 + Inertia + React (TypeScript), Laravel AI SDK–backed chat and tools. See `docs/plans/active/laravel-rebuild.md`.
 
 - `apps/mobile/`
   Mobile app surface.
@@ -67,4 +61,4 @@ Rust code and Rust-era docs were removed from this repo and archived to backroom
 - `~/code/backroom/openagents-docs-rust-archive-2026-02-11/docs/`
 - `~/code/backroom/openagents-docs-social-archive-2026-02-11/docs/`
 
-If a legacy document references `crates/*`, `Cargo.toml`, `apps/api/`, or `apps/autopilot-desktop/`, treat it as historical unless it has been explicitly rewritten for the current web stack.
+If a legacy document references `crates/*`, `Cargo.toml`, `apps/api/`, `apps/autopilot-desktop/`, `apps/web/`, or `apps/autopilot-worker/`, treat it as historical unless it has been explicitly rewritten for the current stack. The former `apps/web` and `apps/autopilot-worker` have been removed; the web app is `apps/openagents.com`.

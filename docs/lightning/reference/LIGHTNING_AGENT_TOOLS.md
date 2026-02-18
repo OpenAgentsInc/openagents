@@ -54,7 +54,7 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 
 ### Tools and Runtime
 
-- Today, tools are defined in `apps/autopilot-worker` (tool contracts + handlers). Adding an **lnget-style capability** would mean either:
+- Today, tools are defined in the Laravel app (`apps/openagents.com`, tool contracts + handlers). Adding an **lnget-style capability** would mean either:
   - A first-class tool (e.g. `lnget_fetch`) that invokes the lnget CLI when available and returns response body + receipt-relevant data (e.g. amount paid, preimage for logging), or
   - Documentation and prompts so that agents running in environments where they can execute shell (e.g. OpenClaw, Codex, desktop) use the lightning-agent-tools skills and lnget directly.
 - Runtime invariants (ADR-0007): any new tool must have a JSON schema, validation before execution, and receipt/replay events. If the tool runs lnget, receipt should include payment_proof when a payment occurred.

@@ -2,7 +2,7 @@ export interface ConfigBaseProps {
   persistNavigation: "always" | "dev" | "prod" | "never"
   catchErrors: "always" | "dev" | "prod" | "never"
   exitRoutes: string[]
-  /** Base URL for auth API (WorkOS magic + SSO). Same origin as apps/web. */
+  /** Base URL for auth API (WorkOS magic + SSO). Same origin as web app. */
   authApiUrl: string
   /** Convex deployment URL (dev vs prod). Override with EXPO_PUBLIC_CONVEX_URL. */
   convexUrl: string
