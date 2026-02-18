@@ -125,6 +125,19 @@ Execution strategy support required immediately:
 - terminal status/error class
 - optional `trace_ref` for RLM-like runs
 
+### Cross-language contract packaging
+
+Contracts above must be published as canonical versioned JSON schemas consumed by both:
+
+- Elixir runtime (writer/enforcer),
+- Laravel/control-plane surfaces (reader/validator).
+
+Schema policy:
+
+1. Additive evolution by default.
+2. Explicit major version bump on breaking contract changes.
+3. Contract docs remain language-agnostic even when implementation is Elixir-first.
+
 ## Tool replay contract
 
 Tool replay must preserve safety and usefulness:
@@ -136,6 +149,15 @@ Tool replay must preserve safety and usefulness:
 - inject replay summary as system context on next frame.
 
 This is required to prevent tool-result amnesia in multi-step autonomous loops.
+
+## Payment and settlement idempotency contract
+
+For L402/Lightning-adjacent tools, DS-Elixir runtime must enforce:
+
+1. Deterministic `tool_call_id` per execution intent.
+2. Settlement boundary classification (`safe_retry` vs `dedupe_reconcile_required`).
+3. Provider-level idempotency keys for settlement-affecting operations.
+4. Receipt linkage fields required for post-crash reconciliation without duplicate spend attempts.
 
 ## Compile/eval/promotion loop in runtime
 
@@ -152,6 +174,12 @@ Operational posture:
 - runtime predict uses active pointer only,
 - rollback is one pointer mutation.
 
+## Large trace/artifact storage seam
+
+Keep relational metadata in Postgres, but store large trace/artifact payloads in object storage (GCS) behind immutable object keys and hash-addressed references.
+
+This prevents unbounded Postgres growth and keeps query paths for runtime execution fast.
+
 ## Rollout sequencing
 
 1. Wire DS-Elixir predict into run loop behind feature flags.
@@ -167,6 +195,7 @@ Operational posture:
 3. Tool replay context visible and bounded in traces.
 4. Canary promotion/rollback exercised in staging and production.
 5. No regression to Laravel SSE contract during DS-Elixir rollout.
+6. Canonical JSON schemas published and consumed by both Elixir and Laravel surfaces.
 
 ## Open decisions to resolve early
 

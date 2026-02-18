@@ -48,6 +48,22 @@ DS-Elixir constraints adopted in this plan:
 4. Runtime must be restart-safe: process memory is a cache, not source of truth.
 5. Existing frontend stream contract (AI SDK/Vercel protocol over SSE) is preserved for compatibility.
 6. DS-Elixir is included in runtime scope for signature execution, receipts, and compile/promotion control.
+7. Stream serving is location-independent (`stream-from-log`), never sticky-pod dependent for correctness.
+8. Single active executor per run is enforced with Postgres advisory locking keyed by `run_id`.
+
+## Correctness dependencies (day-one invariants)
+
+1. Event log is source of truth for run state and stream reconstruction.
+2. Any runtime pod can serve `GET /internal/v1/runs/{runId}/stream` by tailing durable events.
+3. At most one active executor exists per run (`pg_try_advisory_lock` on `run_id`).
+4. BEAM distribution is optional for correctness; it is an optimization for coordination/fanout.
+
+## Day-1 critical decisions checklist
+
+- `stream-from-log` selected as migration invariant.
+- advisory-lock single executor guarantee selected.
+- frame-only ingestion contract selected (no full history payload from Laravel).
+- dual-writer overlap minimized by projection ownership and reprojection tooling.
 
 ## BEAM lessons explicitly adopted in this plan
 
@@ -223,9 +239,9 @@ Elixir (`apps/openagents-runtime`) owns:
 
 1. Browser sends message to existing Laravel endpoint (`/api/chat` or `/api/chats/{id}/stream`).
 2. Laravel validates auth/session/ownership exactly as today.
-3. Laravel calls Elixir internal API to start/continue run.
-4. Elixir appends runtime events and executes DS-Elixir signatures for routing/tool/memory decisions.
-5. Laravel proxies runtime stream frames to browser as SSE (same AI SDK protocol).
+3. Laravel calls Elixir internal API to start run (if needed) and append a frame into the run event log.
+4. Elixir acquires run executor lock and executes DS-Elixir signatures for routing/tool/memory decisions.
+5. Laravel proxies runtime stream frames to browser as SSE (same AI SDK protocol), and stream data is served from durable log tailing (not pod affinity).
 6. Elixir persists canonical runtime events + run state + DS receipts/traces.
 7. Laravel read APIs continue returning conversation/runs/events for refresh/history.
 
@@ -240,13 +256,26 @@ Elixir (`apps/openagents-runtime`) owns:
 7. Persist predict receipt and optional trace handle.
 8. Continue until deterministic terminal run state is emitted.
 
+## Run-level concurrency control (single executor guarantee)
+
+To prevent double execution and duplicate side effects:
+
+1. Runtime attempts `pg_try_advisory_lock(run_id_hash)` at run execution start.
+2. If lock is acquired, caller becomes active executor.
+3. If lock is not acquired, runtime returns `already_running` (or stream-attach response) and does not execute tools/model calls.
+4. Lock lifetime is bound to executor DB session; crash/restart releases lock and allows safe re-acquire.
+
+This gives at-most-one active executor per run without requiring sticky routing or cluster-wide process discovery for correctness.
+
 ## Internal runtime contract (Laravel <-> Elixir)
 
 All runtime APIs are internal-only (`/internal/v1/*`), authenticated via service-to-service identity + signed token.
 
-## Start/continue run
+## Start run
 
 `POST /internal/v1/runs`
+
+Purpose: create or upsert run envelope metadata and return acceptance status.
 
 Request (shape, not final):
 
@@ -257,9 +286,6 @@ Request (shape, not final):
   "userId": 123,
   "autopilotId": "optional",
   "authenticatedSession": true,
-  "prompt": "latest user text",
-  "messages": [],
-  "contextFrames": [],
   "toolPolicy": {
     "allow": [],
     "deny": [],
@@ -277,6 +303,34 @@ Response:
 }
 ```
 
+## Append frame (primary ingestion contract)
+
+`POST /internal/v1/runs/{runId}/frames`
+
+Purpose: append one idempotent frame/event to the run log. Laravel sends minimal payload only; runtime loads historical context from durable runtime state + tiered memory.
+
+Request (shape, not final):
+
+```json
+{
+  "frameId": "uuid-or-deterministic-id",
+  "type": "user_message",
+  "payload": {
+    "text": "latest user text"
+  },
+  "source": {
+    "kind": "laravel_api",
+    "requestId": "req_..."
+  }
+}
+```
+
+Rules:
+
+- `frameId` is idempotency key for retries.
+- Runtime rejects duplicate frame appends as no-op success.
+- Laravel must not send full `messages` or `contextFrames` arrays.
+
 ## Stream run events
 
 `GET /internal/v1/runs/{runId}/stream`
@@ -292,6 +346,13 @@ Returns SSE frames compatible with current frontend expectations:
 - `finish-step`
 - `finish`
 - `[DONE]`
+
+Streaming architecture (day one):
+
+- Stream endpoint is location-independent (`stream-from-log`).
+- Any pod can serve stream by tailing persisted run events (with optional PubSub fast-path fanout).
+- No sticky session routing is required for correctness.
+- Reconnect uses event cursor/watermark so clients resume without replay ambiguity.
 
 Laravel should proxy bytes with minimal transformation.
 
@@ -324,7 +385,8 @@ Goal: keep compatibility for Laravel APIs while giving Elixir first-class event 
 
 Use the same Postgres cluster but a dedicated schema for runtime internals.
 
-- Existing Laravel tables remain source for current API contracts:
+- Existing Laravel tables remain source for current API contracts in legacy mode.
+- In elixir mode, Laravel-facing tables become read models projected from runtime events:
   - `threads`, `runs`, `messages`, `run_events`, `autopilots*`
 - New Elixir schema for deeper runtime state:
   - `runtime.agent_instances`
@@ -362,6 +424,16 @@ Projection rules:
 This gives migration safety while preserving UI/API behavior.
 
 DS-Elixir artifacts and receipts remain runtime-internal sources of truth. Laravel projections should expose only summary/debug fields needed by existing product surfaces.
+
+Projection writer requirements:
+
+1. Idempotent writes using deterministic projection ids/keys.
+2. Monotonic projection watermarks to prevent out-of-order rewinds.
+3. Rebuildable read models via full reprojection jobs.
+
+Potential simplifier (phase-2+):
+
+- evaluate DB views/materialized views to reduce ORM coupling and dual-writer friction.
 
 ## Process model in Elixir
 
@@ -447,6 +519,7 @@ Even with stable StatefulSet identities, pod restarts and node drains are normal
 - Any state needed after restart must be persisted.
 - In-memory state is a performance cache and coordination helper only.
 - Cluster membership must converge automatically after pod reschedules.
+- Network partitions (netsplits) are expected failure modes, not edge cases.
 
 This plan enforces those constraints from day one.
 
@@ -495,11 +568,21 @@ Core DS-Elixir runtime contracts in this plan:
   - budget limits/usage and latency counters
   - error class and optional trace reference
 
+Canonical contract requirement:
+
+- Define these as canonical JSON schemas shared by Elixir runtime and Laravel integration surfaces (language-agnostic contract source of truth).
+
 Design rules:
 
 1. Artifact mutation is forbidden; only active pointer changes.
 2. Any strategy/budget decision affecting behavior must be receipt-visible.
 3. Compile/promotion uses deterministic job and dataset hashes.
+
+Large artifact/trace storage seam:
+
+- Keep metadata and pointers in Postgres.
+- Store large trace/artifact payloads in object storage (GCS) with immutable object keys and content hashes.
+- Keep DB payload size bounded to prevent table bloat and degraded query paths.
 
 ## Tool execution model
 
@@ -522,6 +605,13 @@ Required capabilities:
 - cancel tool execution from user request or policy engine
 - persist deterministic receipts (params hash, output hash, latency, error)
 - persist bounded/redacted tool replay summaries for next-frame context injection
+
+Financial/idempotency requirements (payments, L402, settlement-adjacent tools):
+
+- every tool task must have deterministic `tool_call_id`
+- every task declares settlement boundary: `safe_retry` or `dedupe_reconcile_required`
+- settlement-affecting tools must use idempotency keys at provider boundary
+- receipts must contain settlement correlation ids so crash recovery can reconcile without double-spend attempts
 
 ## Compatibility with current Laravel stream/UI
 
@@ -552,12 +642,22 @@ Why this is the chosen architecture:
 
 ## BEAM cluster requirements (day one)
 
+Note: cluster/distribution features support coordination and fanout, but correctness does not depend on cross-node process discovery.
+
 1. StatefulSet deployment for runtime nodes (minimum 3 replicas in production).
 2. Headless service for node discovery.
 3. `libcluster` Kubernetes DNS strategy for automatic cluster formation/healing.
 4. Erlang distribution configuration with explicit node naming and cookie management.
 5. Pod anti-affinity and PodDisruptionBudget to reduce correlated restarts.
 6. Graceful termination hooks (`SIGTERM` drain + checkpoint flush).
+7. Narrow Erlang distribution port range (`inet_dist_listen_min/max`) for enforceable NetworkPolicy.
+8. Netsplit posture: correctness remains event-log + advisory-lock based even during cluster partitions.
+
+Recommended initial range:
+
+- `inet_dist_listen_min=9100`
+- `inet_dist_listen_max=9155`
+- `epmd` on `4369` allowed only within runtime workload selectors
 
 ## Kubernetes BEAM cluster spec (concrete)
 
@@ -576,6 +676,7 @@ Why this is the chosen architecture:
 
 4. Network boundaries:
    - NetworkPolicy allowing Erlang distribution traffic only within runtime namespace/workload selectors.
+   - Explicit allowlist for narrowed Erlang dist port range (not broad ephemeral ranges).
    - Internal HTTP API exposed through separate ClusterIP service.
 
 5. Scheduling guarantees:
@@ -726,16 +827,21 @@ Behavior:
 
 - Laravel continues current runtime path.
 - Laravel asynchronously mirrors eligible chat requests to Elixir shadow endpoint.
-- Compare event outputs and timing offline.
+- Compare semantic behavior and timing offline (not literal text equality).
 
 Deliverables:
 
-- Diff tooling for `run_events` parity
+- Semantic diff tooling for runtime parity, including:
+  - event ordering invariants
+  - emitted frame/event type coverage
+  - tool intent presence/absence
+  - terminal state and error class parity
+  - budget counters and receipt completeness
 - Latency and error telemetry comparisons
 
 Exit criteria:
 
-- 95%+ semantic parity for sampled runs
+- 95%+ semantic parity for sampled runs across defined invariants
 - no elevated error rates in Laravel path
 
 ## Phase 2: Canary mode (small traffic %)
@@ -850,7 +956,7 @@ This reduces context ambiguity for human and agent contributors and keeps migrat
 
 ## Milestone B: Run acceptance + stream
 
-- start/continue run endpoints
+- start run + frame append endpoints
 - SSE stream output mapper compatible with AI SDK protocol
 
 ## Milestone C: Agent process supervision
@@ -1005,8 +1111,18 @@ Mitigation:
 Mitigation:
 
 - keep event mapping deterministic
+- serve streams from durable log tail (location-independent)
 - parity tests against existing `ChatStreamingTest` expectations
-- shadow mode diffing before canary
+- semantic shadow diffing before canary
+
+## Risk: multi-pod routing causes stream gaps or duplicate execution
+
+Mitigation:
+
+- stream-from-log endpoint design (any pod can serve stream)
+- advisory-lock single executor per run
+- do not rely on sticky sessions for correctness
+- reconnect resumes from stream cursor/watermark
 
 ## Risk: dual writer inconsistency (Laravel + Elixir)
 
@@ -1014,7 +1130,9 @@ Mitigation:
 
 - strict ownership per runtime driver mode
 - idempotent writes with deterministic ids
+- monotonic projection watermarks
 - projection reconciler jobs
+- full reprojection job path for recovery
 
 ## Risk: runtime service becomes public attack surface
 
@@ -1052,13 +1170,17 @@ Scaling policy:
 3. Add deploy assets under `apps/openagents-runtime/deploy`.
 4. Deploy runtime service to GCP in internal-only mode.
 5. Add Laravel runtime client + config flags.
-6. Implement shadow traffic mirror and parity diff pipeline.
-7. Enable canary by user/autopilot flags.
-8. Promote to default-on when SLO and parity pass.
-9. Enable autonomous frame + tiered memory features gradually.
-10. Implement DS-Elixir signature catalog + predict runtime for initial signatures.
-11. Implement DS-Elixir receipts/traces + tool replay context pipeline.
-12. Implement DS-Elixir compile/eval/promote/canary controls.
+6. Implement frame-only ingestion contract (`/runs/{runId}/frames`) with idempotent `frameId`.
+7. Implement stream-from-log endpoint with resume cursor/watermark support.
+8. Implement advisory-lock single executor guarantee on run execution.
+9. Implement shadow traffic mirror + semantic parity diff pipeline.
+10. Enable canary by user/autopilot flags.
+11. Promote to default-on when SLO and parity pass.
+12. Enable autonomous frame + tiered memory features gradually.
+13. Implement DS-Elixir signature catalog + predict runtime for initial signatures.
+14. Implement DS-Elixir receipts/traces + tool replay context pipeline.
+15. Implement DS-Elixir compile/eval/promote/canary controls.
+16. Publish canonical cross-language DS JSON schema docs and object-storage seam for large traces/artifacts.
 
 ## Non-goals
 
@@ -1074,3 +1196,6 @@ Scaling policy:
 - 2026-02-18: Chose GKE Standard + StatefulSet BEAM clustering as primary production architecture.
 - 2026-02-18: Preserved SSE AI SDK compatibility as migration invariant.
 - 2026-02-18: Added DS-Elixir as first-class runtime subsystem to preserve proven DSE behavior controls.
+- 2026-02-18: Chose stream-from-log as day-one multi-pod streaming invariant.
+- 2026-02-18: Chose Postgres advisory locking for single active run executor guarantee.
+- 2026-02-18: Chose semantic (invariant-based) shadow diffing over literal text diffing.
