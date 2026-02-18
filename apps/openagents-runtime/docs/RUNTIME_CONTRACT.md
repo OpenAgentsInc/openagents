@@ -1,20 +1,20 @@
 # OpenAgents Runtime Internal Contract (`/internal/v1/*`)
 
-This document defines the internal control-plane contract between Laravel and `openagents-runtime`.
+This document defines the implemented internal control-plane contract between Laravel and `openagents-runtime`.
 
 ## Conventions
 
 - Base path: `/internal/v1`
 - Content type: `application/json`
 - Streaming content type: `text/event-stream`
-- Authentication header: `X-OA-RUNTIME-SIGNATURE`
+- Authentication header: `X-OA-RUNTIME-SIGNATURE` (required on all `/internal/v1/*` routes)
 - Trace headers: `traceparent`, `tracestate`, `x-request-id`
 
 ## Entity IDs
 
-- `runId`: stable identifier of an execution run
-- `threadId`: logical conversation/session identifier
-- `frameId`: idempotency key for frame ingestion
+- `run_id`: stable identifier of an execution run
+- `thread_id`: logical conversation/session identifier
+- `frame_id`: idempotency key for frame ingestion
 - `seq`: monotonic run-local stream sequence (integer > 0)
 
 ## Error Envelope
@@ -25,10 +25,7 @@ Non-SSE endpoints return JSON errors:
 {
   "error": {
     "code": "invalid_request",
-    "message": "frameId is required",
-    "details": {
-      "field": "frameId"
-    }
+    "message": "thread_id is required"
   }
 }
 ```
@@ -45,7 +42,7 @@ Standard error codes:
 
 ## Cursor Semantics
 
-`GET /internal/v1/runs/{runId}/stream` supports cursor resume via either:
+`GET /internal/v1/runs/{run_id}/stream` supports cursor resume via either:
 
 - `Last-Event-ID: <seq>`
 - query parameter `?cursor=<seq>`
@@ -53,65 +50,90 @@ Standard error codes:
 Resolution rules:
 
 1. If both are present and differ, return `400 invalid_request`.
-2. If both are absent, stream starts from latest position + new events.
+2. If both are absent, stream starts at current latest durable seq and waits for tail events.
 3. If cursor points to retained history, stream resumes from `seq + 1`.
 4. If cursor is older than retention floor, return `410 stale_cursor`.
 
 SSE event `id:` always equals the run event `seq`.
 
-## Idempotency (`frameId`)
+## Stream Tail Window (`tail_ms`)
 
-`POST /internal/v1/runs/{runId}/frames` is idempotent by `frameId` per run.
+`GET /internal/v1/runs/{run_id}/stream` accepts optional `tail_ms` query parameter.
 
-- First request persists the frame and appends corresponding run event(s).
-- Duplicate requests with the same `frameId` return success with canonical persisted result.
-- Payload mismatches for an existing `frameId` return `409 conflict`.
+- `tail_ms` must be a positive integer.
+- Runtime keeps the stream tail open for up to `tail_ms` waiting for wakeups/events.
+- Invalid `tail_ms` returns `400 invalid_request`.
 
-## Endpoints
+## Idempotency (`frame_id`)
 
-### `POST /internal/v1/runs`
+`POST /internal/v1/runs/{run_id}/frames` is idempotent by `frame_id` per run.
 
-Create or start a run execution.
+- First request persists the frame and returns `202 accepted`.
+- Duplicate request with same `frame_id` and equivalent payload/type returns `200 accepted` with `idempotentReplay=true`.
+- Payload/type mismatch for existing `frame_id` returns `409 conflict`.
 
-Request:
+## Implemented endpoints
+
+### `GET /internal/v1/health`
+
+Health probe endpoint.
+
+Success (`200`):
+
+```json
+{
+  "status": "ok",
+  "service": "openagents-runtime",
+  "version": "0.1.0"
+}
+```
+
+### `GET /internal/v1/runs/{run_id}/snapshot`
+
+Returns latest run snapshot for a run/thread principal.
+
+Required query params:
+
+- `thread_id`
+
+Required principal header (at least one):
+
+- `x-oa-user-id`
+- `x-oa-guest-scope`
+
+Success (`200`):
 
 ```json
 {
   "runId": "run_123",
   "threadId": "thread_abc",
-  "authorizationRef": {
-    "autopilotId": "ap_9",
-    "mode": "delegated_budget"
-  },
-  "metadata": {
-    "source": "chat"
-  }
+  "status": "unknown",
+  "latestSeq": 12,
+  "updatedAt": "2026-02-18T12:30:00Z"
 }
 ```
 
-Success (`202`):
-
-```json
-{
-  "runId": "run_123",
-  "status": "accepted"
-}
-```
-
-### `POST /internal/v1/runs/{runId}/frames`
+### `POST /internal/v1/runs/{run_id}/frames`
 
 Append an input frame to a run.
+
+Required fields:
+
+- `thread_id`
+- `frame_id`
+- `type`
+- `payload`
 
 Request:
 
 ```json
 {
-  "frameId": "frm_001",
+  "thread_id": "thread_abc",
+  "frame_id": "frm_001",
   "type": "user_message",
   "payload": {
     "text": "hi"
-  },
-  "occurredAt": "2026-02-18T12:00:00Z"
+  }
 }
 ```
 
@@ -137,61 +159,33 @@ Duplicate success (`200`):
 }
 ```
 
-### `GET /internal/v1/runs/{runId}/stream`
+### `GET /internal/v1/runs/{run_id}/stream`
 
 Location-independent stream from durable run events.
+
+Required query params:
+
+- `thread_id`
+
+Optional query params:
+
+- `cursor`
+- `tail_ms`
 
 SSE output example:
 
 ```text
-event: run.event
+event: message
 id: 42
-data: {"type":"text-delta","delta":"Hello"}
+data: {"type":"text-delta","delta":"Hello","runId":"run_123"}
 
 ```
 
-Terminal output includes mapped finish events and `[DONE]`.
-
-### `POST /internal/v1/runs/{runId}/cancel`
-
-Request cancellation for a run.
-
-Request:
-
-```json
-{
-  "reason": "user_requested"
-}
-```
-
-Success (`202`):
-
-```json
-{
-  "runId": "run_123",
-  "status": "cancel_requested"
-}
-```
-
-### `GET /internal/v1/runs/{runId}/snapshot`
-
-Returns latest durable run snapshot for control-plane inspection.
-
-Success (`200`):
-
-```json
-{
-  "runId": "run_123",
-  "threadId": "thread_abc",
-  "status": "running",
-  "latestSeq": 128,
-  "updatedAt": "2026-02-18T12:30:00Z"
-}
-```
+Terminal flows can emit `data: [DONE]`.
 
 ## Ownership and Principal Enforcement
 
-Runtime must validate run/thread ownership from DB records. Runtime does not trust request payload `userId` claims.
+Runtime validates run/thread ownership from DB records. Runtime does not trust request payload `user_id` claims.
 
 ## Tracing Contract
 
@@ -209,6 +203,15 @@ Standard runtime span names:
 - `runtime.persist`
 - `runtime.stream`
 
+## Contract change log
+
+### 2026-02-18
+
+- Clarified that signed internal auth is mandatory on all `/internal/v1/*` routes.
+- Aligned request field names to implemented snake_case params (`thread_id`, `frame_id`).
+- Added implemented stream `tail_ms` behavior.
+- Removed unimplemented `/runs` start and `/runs/{run_id}/cancel` operations from the active contract.
+
 ## Backward Compatibility Rule
 
-All contract changes must be additive or versioned under a new path. Breaking changes to `/internal/v1/*` require explicit migration plan.
+Contract changes must be additive or versioned. Breaking changes to `/internal/v1/*` require explicit migration notes and Laravel adapter updates.
