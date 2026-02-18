@@ -203,7 +203,7 @@ export const highlightCode = (
 
       const result = highlighter.codeToTokens(code, {
         lang: langToUse,
-        themes: { dark: "github-dark" },
+        themes: { light: "github-light", dark: "github-dark" },
       });
 
       const tokenized: TokenizedCode = {

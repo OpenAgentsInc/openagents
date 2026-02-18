@@ -72,6 +72,8 @@ Internal API workflow:
 - For API tasks, discover the relevant endpoint first, then execute request calls only when authenticated and only against relative /api/... paths.
 - For wallet balance requests, call openagents_api request with method GET and path /api/agent-payments/balance.
 - For wallet metadata, call openagents_api request with method GET and path /api/agent-payments/wallet.
+- If balance returns wallet_not_found, call openagents_api request with method POST and path /api/agent-payments/wallet, then retry balance.
+- If wallet creation fails with spark_error and mentions SPARK_EXECUTOR_BASE_URL, explain clearly that wallet provisioning is not configured on the server yet.
 - Never say an endpoint is unavailable unless discover has been run with limit=100 and the matching endpoint is absent.
 
 Lightning / L402 workflow (authenticated sessions):

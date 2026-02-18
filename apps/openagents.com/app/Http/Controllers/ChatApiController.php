@@ -35,6 +35,13 @@ class ChatApiController extends Controller
 
         $conversationId = trim($conversationId);
 
+        $this->logAuthDebug($request, 'stream.auth_resolution', [
+            'conversation_id' => $conversationId,
+            'resolved_user_id' => $user?->id,
+            'authenticated_session' => $authenticatedSession,
+            'guard_authenticated' => $request->user() instanceof User,
+        ]);
+
         if (! $user) {
             if (! $guestService->isGuestConversationId($conversationId)) {
                 return $this->unauthorized();
@@ -60,6 +67,11 @@ class ChatApiController extends Controller
             }
 
             $user = $guestService->guestUser();
+            $this->logAuthDebug($request, 'stream.guest_fallback', [
+                'conversation_id' => $conversationId,
+                'resolved_user_id' => $user->id,
+                'authenticated_session' => false,
+            ]);
         }
 
         $conversationExists = $this->ensureConversationAccessibleForUser(
@@ -257,15 +269,25 @@ class ChatApiController extends Controller
     {
         $user = $request->user();
         if ($user instanceof User) {
+            $this->logAuthDebug($request, 'resolve_user.guard_hit', [
+                'resolved_user_id' => $user->id,
+            ]);
+
             return $user;
         }
 
         if (! $request->hasSession()) {
+            $this->logAuthDebug($request, 'resolve_user.no_session');
+
             return null;
         }
 
         $userId = (int) $request->session()->get('chat.auth_user_id', 0);
         if ($userId <= 0) {
+            $this->logAuthDebug($request, 'resolve_user.no_chat_auth_user_id', [
+                'chat_auth_user_id' => $userId,
+            ]);
+
             return null;
         }
 
@@ -276,12 +298,40 @@ class ChatApiController extends Controller
                 $request->session()->save();
             }
 
+            $this->logAuthDebug($request, 'resolve_user.chat_user_missing', [
+                'chat_auth_user_id' => $userId,
+            ]);
+
             return null;
         }
 
         Auth::guard('web')->login($rehydrated);
+        $this->logAuthDebug($request, 'resolve_user.rehydrated', [
+            'resolved_user_id' => $rehydrated->id,
+            'chat_auth_user_id' => $userId,
+        ]);
 
         return $rehydrated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function logAuthDebug(Request $request, string $event, array $context = []): void
+    {
+        if (! app()->environment('local')) {
+            return;
+        }
+
+        $session = $request->hasSession() ? $request->session() : null;
+
+        Log::info('chat_api.'.$event, [
+            'session_id' => $session && method_exists($session, 'getId') ? $session->getId() : null,
+            'guard_authenticated' => Auth::guard('web')->check(),
+            'guard_user_id' => Auth::guard('web')->id(),
+            'chat_auth_user_id' => $session ? (int) $session->get('chat.auth_user_id', 0) : null,
+            ...$context,
+        ]);
     }
 
     /**

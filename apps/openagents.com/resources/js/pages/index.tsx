@@ -38,9 +38,16 @@ const TOOL_STATES: ReadonlyArray<ToolPart['state']> = [
     'output-error',
 ];
 
-const QUICK_SUGGESTIONS = [
+const GUEST_QUICK_SUGGESTIONS = [
     'What tools do you have?',
     'How do I create an account?',
+    'What can you do with bitcoin?',
+    'Explain what you can do with the OpenAgents API',
+] as const;
+
+const AUTHED_QUICK_SUGGESTIONS = [
+    'What tools do you have?',
+    'Make a test OpenAgents API call',
     'What can you do with bitcoin?',
     'Explain what you can do with the OpenAgents API',
 ] as const;
@@ -584,6 +591,9 @@ export default function Index() {
 
     const shouldShowQuickSuggestions =
         !authRequired && messages.length === 0 && !showThinking;
+    const quickSuggestions = isGuest
+        ? GUEST_QUICK_SUGGESTIONS
+        : AUTHED_QUICK_SUGGESTIONS;
 
     const displayErrorMessage = formatChatErrorMessage(error?.message);
 
@@ -708,7 +718,7 @@ export default function Index() {
                             <div className="pointer-events-auto mx-auto w-full max-w-[calc(100%-2rem)]">
                                 {shouldShowQuickSuggestions && (
                                     <div className="mb-2 grid grid-cols-2 gap-2">
-                                        {QUICK_SUGGESTIONS.map((suggestion) => (
+                                        {quickSuggestions.map((suggestion) => (
                                             <Suggestion
                                                 key={suggestion}
                                                 suggestion={suggestion}

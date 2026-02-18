@@ -326,6 +326,10 @@ class OpenAgentsApiTool implements Tool
         $decoded = json_decode($responseBody, true);
         $decodedOk = json_last_error() === JSON_ERROR_NONE && is_array($decoded);
 
+        $errorSummary = ! $response->successful()
+            ? $this->extractErrorSummary($decodedOk ? $decoded : null, $responseBody)
+            : null;
+
         return [
             'toolName' => self::TOOL_NAME,
             'status' => $response->successful() ? 'ok' : 'http_error',
@@ -334,11 +338,14 @@ class OpenAgentsApiTool implements Tool
             'path' => $path,
             'statusCode' => $response->status(),
             'ok' => $response->successful(),
+            'error' => $errorSummary,
             'response' => [
                 'contentType' => $this->nullableString($response->header('Content-Type')),
                 'bytes' => strlen($responseBody),
-                'json' => $decodedOk ? $decoded : null,
-                'bodyPreview' => $decodedOk ? null : Str::limit($responseBody, 2000, '...'),
+                'json' => $decodedOk
+                    ? ($response->successful() ? $decoded : $this->sanitizeErrorPayload($decoded))
+                    : null,
+                'bodyPreview' => $decodedOk ? null : Str::limit($responseBody, 600, '...'),
             ],
         ];
     }
@@ -514,6 +521,49 @@ class OpenAgentsApiTool implements Tool
         $configured = trim((string) config('app.url'));
 
         return $configured !== '' ? rtrim($configured, '/') : null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $decoded
+     * @return array{code?:string,message?:string}
+     */
+    private function sanitizeErrorPayload(?array $decoded): array
+    {
+        $code = $this->nullableString(data_get($decoded, 'error.code'))
+            ?? $this->nullableString(data_get($decoded, 'code'));
+
+        $message = $this->nullableString(data_get($decoded, 'error.message'))
+            ?? $this->nullableString(data_get($decoded, 'message'));
+
+        $payload = [];
+        if (is_string($code) && $code !== '') {
+            $payload['code'] = $code;
+        }
+        if (is_string($message) && $message !== '') {
+            $payload['message'] = $message;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $decoded
+     * @return array{code?:string,message?:string}
+     */
+    private function extractErrorSummary(?array $decoded, string $rawBody): array
+    {
+        $summary = $this->sanitizeErrorPayload($decoded);
+
+        if ($summary !== []) {
+            return $summary;
+        }
+
+        $preview = trim(Str::limit($rawBody, 300, '...'));
+        if ($preview === '') {
+            return [];
+        }
+
+        return ['message' => $preview];
     }
 
     private function nullableString(mixed $value): ?string
