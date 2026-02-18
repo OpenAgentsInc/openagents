@@ -7,7 +7,9 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Laravel\WorkOS\WorkOS;
+use WorkOS\Client;
 use WorkOS\Exception\WorkOSException;
+use WorkOS\Resource\AuthenticationResponse;
 use WorkOS\UserManagement;
 
 class MagicAuthService
@@ -52,24 +54,43 @@ class MagicAuthService
      *   refresh_token: string
      * }
      */
-    public function verifyMagicCode(string $code, string $pendingUserId, string $ipAddress, string $userAgent): array
+    public function verifyMagicCode(string $code, string $pendingUserId, string $ipAddress, string $userAgent, ?string $pendingEmail = null): array
     {
         WorkOS::configure();
 
-        try {
-            $authResponse = (new UserManagement)->authenticateWithMagicAuth(
-                config('services.workos.client_id'),
-                $code,
-                $pendingUserId,
-                $ipAddress,
-                $userAgent,
-            );
-        } catch (WorkOSException $exception) {
-            report($exception);
+        $authResponse = null;
 
-            throw ValidationException::withMessages([
-                'code' => 'That code is invalid or expired. Request a new one.',
-            ]);
+        // Prefer email + code (matches Node SDK and working legacy app); fall back to user_id.
+        if ($pendingEmail !== null && $pendingEmail !== '') {
+            try {
+                $authResponse = $this->authenticateWithMagicAuthUsingEmail(
+                    $pendingEmail,
+                    $code,
+                    $ipAddress,
+                    $userAgent,
+                );
+            } catch (WorkOSException $e) {
+                report($e);
+                // Fall through to try user_id in case API accepts it.
+            }
+        }
+
+        if ($authResponse === null) {
+            try {
+                $authResponse = (new UserManagement)->authenticateWithMagicAuth(
+                    config('services.workos.client_id'),
+                    $code,
+                    $pendingUserId,
+                    $ipAddress,
+                    $userAgent,
+                );
+            } catch (WorkOSException $exception) {
+                report($exception);
+
+                throw ValidationException::withMessages([
+                    'code' => 'That code is invalid or expired. Request a new one.',
+                ]);
+            }
         }
 
         $workosUser = $this->resolveObject($authResponse, ['user']);
@@ -98,6 +119,29 @@ class MagicAuthService
             'access_token' => $accessToken,
             'refresh_token' => $refreshToken,
         ];
+    }
+
+    /**
+     * Authenticate with magic auth using email + code (matches Node SDK / REST API).
+     *
+     * @throws WorkOSException
+     */
+    private function authenticateWithMagicAuthUsingEmail(string $email, string $code, string $ipAddress, string $userAgent): AuthenticationResponse
+    {
+        $path = 'user_management/authenticate';
+        $params = array_filter([
+            'client_id' => config('services.workos.client_id'),
+            'client_secret' => \WorkOS\WorkOS::getApiKey(),
+            'grant_type' => 'urn:workos:oauth:grant-type:magic-auth:code',
+            'email' => $email,
+            'code' => $code,
+            'ip_address' => $ipAddress !== '' ? $ipAddress : null,
+            'user_agent' => $userAgent !== '' ? $userAgent : null,
+        ], fn ($v) => $v !== null && $v !== '');
+
+        $response = Client::request(Client::METHOD_POST, $path, null, $params, true);
+
+        return AuthenticationResponse::constructFromResponse($response);
     }
 
     private function synchronizeUser(object $workosUser, bool &$isNewUser = false): User

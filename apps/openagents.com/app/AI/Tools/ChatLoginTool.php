@@ -239,6 +239,7 @@ class ChatLoginTool implements Tool
                 pendingUserId: $pending['user_id'],
                 ipAddress: $ipAddress,
                 userAgent: $userAgent,
+                pendingEmail: $pending['email'] ?? null,
             );
         } catch (ValidationException $exception) {
             return [
@@ -263,7 +264,9 @@ class ChatLoginTool implements Tool
         $session->put('workos_refresh_token', $refreshToken);
         $session->forget('auth.magic_auth');
         $session->forget('chat.guest.conversation_id');
-        $session->regenerateToken();
+        // Do not regenerate session token here: we are inside a streamed response, so the
+        // client cannot receive a new Set-Cookie. Keeping the same session ID lets the
+        // existing cookie continue to identify the (now authenticated) session on refresh.
         $this->persistSession($session);
 
         $posthog = resolve(PostHogService::class);

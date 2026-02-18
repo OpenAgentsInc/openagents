@@ -71,7 +71,7 @@ export const assertPngSnapshot = (input: {
           new VisualSnapshotError(
             "baseline missing",
             `Missing visual snapshot baseline for ${input.name}: ${input.baselinePngPath}\\n` +
-              `Run with EFFUSE_TEST_UPDATE_SNAPSHOTS=1 to generate baselines.`,
+            `Run with EFFUSE_TEST_UPDATE_SNAPSHOTS=1 to generate baselines.`,
           ),
         )
       }
@@ -128,10 +128,10 @@ export const assertPngSnapshot = (input: {
       new VisualSnapshotError(
         "pixel mismatch",
         `Visual snapshot mismatch for ${input.name}: ${mismatched} pixels differ.\\n` +
-          `Baseline: ${input.baselinePngPath}\\n` +
-          `Actual: ${input.actualPngPath}\\n` +
-          `Diff: ${input.diffPngPath}\\n` +
-          `To accept new output, run with EFFUSE_TEST_UPDATE_SNAPSHOTS=1.`,
+        `Baseline: ${input.baselinePngPath}\\n` +
+        `Actual: ${input.actualPngPath}\\n` +
+        `Diff: ${input.diffPngPath}\\n` +
+        `To accept new output, run with EFFUSE_TEST_UPDATE_SNAPSHOTS=1.`,
       ),
     )
   })
