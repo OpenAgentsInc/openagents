@@ -4,25 +4,47 @@ use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Testing\TestResponse;
 
-test('guests can access in-chat onboarding without guest-id redirect', function () {
+/**
+ * @return array<string, mixed>
+ */
+function dashboardInertiaPayload(TestResponse $response): array
+{
+    $html = (string) $response->getContent();
+
+    preg_match('/data-page="([^"]+)"/', $html, $matches);
+
+    expect($matches)->toHaveKey(1);
+
+    $json = html_entity_decode((string) $matches[1], ENT_QUOTES);
+
+    /** @var array<string, mixed> $payload */
+    $payload = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+
+    return $payload;
+}
+
+test('guests can access chat route without guest-id redirect', function () {
     $response = $this->get('/chat');
 
     $response->assertOk();
     $response->assertDontSee('/chat/guest-');
-    $response->assertSee('walk you through setup in chat');
+
+    $payload = dashboardInertiaPayload($response);
+    expect((string) ($payload['component'] ?? ''))->toBe('index');
 
     $guestConversationId = session('chat.guest.conversation_id');
     expect($guestConversationId)->toBeString()->and($guestConversationId)->toMatch('/^g-[a-f0-9]{32}$/');
 });
 
-test('authenticated users can visit chat', function () {
+test('authenticated users visiting chat root are redirected to homepage', function () {
     $this->actingAs(User::factory()->create());
 
-    $this->get('/chat')->assertRedirect();
+    $this->get('/chat')->assertRedirect('/');
 });
 
-test('chat routes still work when threads table lacks autopilot_id', function () {
+test('chat root route still works when threads table lacks autopilot_id', function () {
     $user = User::factory()->create();
 
     DB::statement('DROP INDEX IF EXISTS threads_autopilot_id_index');
@@ -33,5 +55,5 @@ test('chat routes still work when threads table lacks autopilot_id', function ()
 
     $this->actingAs($user)
         ->get('/chat')
-        ->assertRedirectContains('/chat/');
+        ->assertRedirect('/');
 });

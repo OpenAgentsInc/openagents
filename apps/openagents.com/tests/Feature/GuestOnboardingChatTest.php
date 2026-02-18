@@ -48,7 +48,7 @@ test('guest chat keeps a stable guest conversation id in session', function () {
         ->toBe($firstConversationId);
 });
 
-test('guest chat defers onboarding to chat_login tool path', function () {
+test('guest chat route renders the shared index chat page', function () {
     $chat = $this->withSession([
         'auth.magic_auth' => [
             'email' => 'chris@openagents.com',
@@ -61,9 +61,9 @@ test('guest chat defers onboarding to chat_login tool path', function () {
     $payload = inertiaPayload($chat);
     $props = $payload['props'] ?? [];
 
+    expect((string) ($payload['component'] ?? ''))->toBe('index');
     expect($props['guestOnboarding']['enabled'] ?? null)->toBeFalse();
     expect($props['guestOnboarding']['step'] ?? null)->toBeNull();
     expect($props['guestOnboarding']['pendingEmail'] ?? null)->toBeNull();
-    expect((string) ($props['initialMessages'][0]['content'] ?? ''))
-        ->toContain('walk you through setup in chat');
+    expect($props['initialMessages'] ?? [])->toBeArray();
 });

@@ -3,14 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Services\GuestChatSessionService;
-use App\Services\PostHogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
-use Laravel\Ai\Contracts\ConversationStore;
 
 class ChatPageController extends Controller
 {
@@ -21,17 +18,10 @@ class ChatPageController extends Controller
         if (! $user) {
             $guestConversationId = $guestService->ensureGuestConversationId($request, $conversationId);
 
-            return Inertia::render('chat', [
+            return Inertia::render('index', [
                 'conversationId' => $guestConversationId,
                 'conversationTitle' => 'New conversation',
-                'initialMessages' => [
-                    [
-                        'id' => (string) Str::uuid7(),
-                        'role' => 'assistant',
-                        'content' => "Welcome to Autopilot. Tell me what you want to do, and I'll walk you through setup in chat.",
-                    ],
-                ],
-                // Guest onboarding now runs through AI tool calls (`chat_login`).
+                'initialMessages' => [],
                 'guestOnboarding' => [
                     'enabled' => false,
                     'step' => null,
@@ -41,26 +31,7 @@ class ChatPageController extends Controller
         }
 
         if ($conversationId === null) {
-            $conversationId = resolve(ConversationStore::class)
-                ->storeConversation($user->id, 'New conversation');
-
-            $now = now();
-
-            DB::table('threads')->insert([
-                'id' => $conversationId,
-                'user_id' => $user->id,
-                'title' => 'New conversation',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-
-            // PostHog: Track new chat started
-            $posthog = resolve(PostHogService::class);
-            $posthog->capture($user->email, 'chat started', [
-                'conversation_id' => $conversationId,
-            ]);
-
-            return redirect()->route('chat', ['conversationId' => $conversationId]);
+            return redirect()->route('home');
         }
 
         $conversation = DB::table('agent_conversations')
@@ -142,7 +113,7 @@ class ChatPageController extends Controller
                 ->all();
         }
 
-        return Inertia::render('chat', [
+        return Inertia::render('index', [
             'conversationId' => $conversationId,
             'conversationTitle' => $thread->title,
             'initialMessages' => $messages,
