@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\AI\RunOrchestrator;
+use App\Models\User;
 use App\Services\GuestChatSessionService;
 use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -16,7 +18,7 @@ class ChatApiController extends Controller
     {
         /** @var GuestChatSessionService $guestService */
         $guestService = resolve(GuestChatSessionService::class);
-        $user = $request->user();
+        $user = $this->resolveAuthenticatedUser($request);
         $authenticatedSession = $user !== null;
 
         $conversationId = $request->route('conversationId');
@@ -241,6 +243,41 @@ class ChatApiController extends Controller
             ->exists();
     }
 
+
+    /**
+     * Resolve the authenticated user from the web guard or chat session fallback.
+     */
+    private function resolveAuthenticatedUser(Request $request): ?User
+    {
+        $user = $request->user();
+        if ($user instanceof User) {
+            return $user;
+        }
+
+        if (! $request->hasSession()) {
+            return null;
+        }
+
+        $userId = (int) $request->session()->get('chat.auth_user_id', 0);
+        if ($userId <= 0) {
+            return null;
+        }
+
+        $rehydrated = User::query()->find($userId);
+        if (! $rehydrated instanceof User) {
+            $request->session()->forget('chat.auth_user_id');
+            if (method_exists($request->session(), 'save')) {
+                $request->session()->save();
+            }
+
+            return null;
+        }
+
+        Auth::guard('web')->login($rehydrated);
+
+        return $rehydrated;
+    }
+
     /**
      * @param  array<int, mixed>  $rawMessages
      * @return array<int, array{role: string, content: string}>
@@ -275,7 +312,6 @@ class ChatApiController extends Controller
 
         return $normalized;
     }
-
     /**
      * @param  array<int, mixed>  $parts
      */

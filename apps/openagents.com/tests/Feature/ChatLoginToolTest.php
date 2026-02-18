@@ -4,6 +4,7 @@ use App\AI\Tools\ChatLoginTool;
 use App\Models\User;
 use App\Services\GuestChatSessionService;
 use Illuminate\Http\Request as HttpRequest;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Ai\Tools\Request as ToolRequest;
@@ -168,6 +169,7 @@ test('chat_login verify_code authenticates and adopts guest conversation ownersh
     $this->assertAuthenticatedAs($user);
     expect(session('workos_access_token'))->toBe('access_token_123');
     expect(session('workos_refresh_token'))->toBe('refresh_token_123');
+    expect(session('chat.auth_user_id'))->toBe((int) $user->id);
 
     expect(DB::table('agent_conversations')
         ->where('id', $conversationId)
@@ -228,4 +230,28 @@ test('chat_login send_code persists pending session when invoked inside streamed
         ->assertOk()
         ->assertJsonPath('pending.email', 'chris@openagents.com')
         ->assertJsonPath('pending.user_id', 'user_stream_abc123');
+});
+
+test('chat_login status rehydrates authenticated user from chat session key', function () {
+    bindHttpRequestWithSession();
+
+    $user = User::factory()->create([
+        'email' => 'rehydrate@openagents.com',
+    ]);
+
+    session()->put('chat.auth_user_id', (int) $user->id);
+
+    Auth::guard('web')->logout();
+
+    $tool = new ChatLoginTool;
+
+    $result = json_decode($tool->handle(new ToolRequest([
+        'action' => 'status',
+    ])), true);
+
+    expect($result['status'] ?? null)->toBe('authenticated');
+    expect((bool) ($result['authenticated'] ?? false))->toBeTrue();
+    expect((int) ($result['user']['id'] ?? 0))->toBe((int) $user->id);
+
+    $this->assertAuthenticatedAs($user);
 });

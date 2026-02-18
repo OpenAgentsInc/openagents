@@ -3,6 +3,7 @@
 use App\AI\Agents\AutopilotAgent;
 use App\Models\User;
 use App\Services\GuestChatSessionService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Ai\Ai;
@@ -528,5 +529,47 @@ test('guest chat stream rotates conversation when ownership changes after prefli
     expect(DB::table('agent_conversations')
         ->where('id', $conversationId)
         ->where('user_id', $owner->id)
+        ->exists())->toBeTrue();
+});
+
+test('chat API rehydrates authenticated session from chat auth fallback key', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Hello from rehydrated auth']);
+
+    $user = User::factory()->create();
+    $conversationId = (string) Str::uuid7();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'user_id' => $user->id,
+        'title' => 'Rehydrated auth conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    session()->put('chat.auth_user_id', (int) $user->id);
+    Auth::guard('web')->logout();
+
+    $response = $this->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'am i signed in now?'],
+        ],
+    ]);
+
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+    expect($content)->toContain('data: {"type":"start"');
+    expect($content)->toContain('data: {"type":"finish"');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    expect(DB::table('runs')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->exists())->toBeTrue();
+
+    expect(DB::table('messages')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->where('role', 'assistant')
         ->exists())->toBeTrue();
 });
