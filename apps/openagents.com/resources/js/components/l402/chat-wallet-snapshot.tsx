@@ -8,6 +8,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type WalletSnapshot = {
     hasWallet: boolean;
@@ -139,6 +140,7 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
     const [snapshot, setSnapshot] = useState<WalletSnapshot | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const capture = usePostHogEvent('l402');
 
     const isSidebar = variant === 'sidebar';
 
@@ -149,6 +151,12 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
             const nextSnapshot = await fetchWalletSnapshot(signal);
             setSnapshot(nextSnapshot);
             setError(null);
+            capture('l402.wallet_snapshot_loaded', {
+                variant,
+                hasWallet: nextSnapshot.hasWallet,
+                sparkStatus: nextSnapshot.sparkStatus,
+                hasWalletError: Boolean(nextSnapshot.sparkLastError),
+            });
         } catch (err) {
             if (signal?.aborted) {
                 return;
@@ -156,12 +164,16 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
 
             const message = err instanceof Error ? err.message : 'Failed to load wallet snapshot.';
             setError(message);
+            capture('l402.wallet_snapshot_failed', {
+                variant,
+                errorMessage: message,
+            });
         } finally {
             if (!signal?.aborted) {
                 setLoading(false);
             }
         }
-    }, []);
+    }, [capture, variant]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -183,6 +195,10 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                             size="sm"
                             disabled={loading || disabled}
                             onClick={() => {
+                                capture('l402.wallet_snapshot_refresh_clicked', {
+                                    variant,
+                                    disabled,
+                                });
                                 void refresh();
                             }}
                         >
@@ -223,6 +239,10 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                         size="sm"
                         disabled={loading || disabled}
                         onClick={() => {
+                            capture('l402.wallet_snapshot_refresh_clicked', {
+                                variant,
+                                disabled,
+                            });
                             void refresh();
                         }}
                     >

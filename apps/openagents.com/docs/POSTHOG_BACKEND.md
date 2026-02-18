@@ -48,25 +48,29 @@ Then add config, a service wrapper, and initialization as in the files the wizar
 
 ## Events integrated
 
-The wizard (or existing integration) sends these backend events:
+The app emits backend events for auth, chat/runs, settings, and API mutations:
 
 | Event | Location | Properties (typical) |
 |-------|----------|----------------------|
-| `login code sent` | `EmailCodeAuthController::sendCode` | `method` (e.g. `magic_auth`) |
-| `user signed up` | `EmailCodeAuthController::verifyCode` (new user) | `signup_method` |
-| `user logged in` | `EmailCodeAuthController::verifyCode` (existing user) | `login_method` |
+| `login code sent` | `EmailCodeAuthController::sendCode` and `ChatLoginTool` | `method` |
+| `user signed up` | `EmailCodeAuthController::verifyCode` / `ChatLoginTool` | `signup_method` |
+| `user logged in` | `EmailCodeAuthController::verifyCode` / `ChatLoginTool` | `login_method` |
 | `user logged out` | `routes/auth.php` logout route | — |
-| `chat started` | `ChatPageController` (new conversation) | `conversation_id` |
-| `chat message sent` | `ChatApiController` | `conversation_id`, `message_length` |
-| `chat run completed` | `RunOrchestrator` | `run_id`, `thread_id` |
-| `chat run failed` | `RunOrchestrator` | `run_id`, `thread_id` |
-| `l402 payment made` | `RunOrchestrator` (when run paid) | `run_id`, `thread_id`, etc. |
-| `profile updated` | `ProfileController::update` | `field_updated` |
-| `account deleted` | `ProfileController::destroy` | — |
+| `chat started` | `Api\\ChatController::store` | `conversation_id` |
+| `chat message sent` | `ChatApiController::stream` | `conversation_id`, `message_length` |
+| `chat run completed` | `RunOrchestrator` | `run_id`, `thread_id`, latency/usage |
+| `chat run failed` | `RunOrchestrator` | `run_id`, `thread_id`, error |
+| `l402 payment made` | `RunOrchestrator` (paid receipts) | `run_id`, `thread_id`, amount/proof |
+| `profile updated` | `ProfileController::update` and `Api\\ProfileController::update` | changed fields |
+| `account deleted` | `ProfileController::destroy` and `Api\\ProfileController::destroy` | — |
+| `agent_payments.*` | `Api\\AgentPaymentsController` | wallet lifecycle, invoice/payment/send-spark success + failures |
+| `l402.paywall_*` | `Api\\L402PaywallController` | create/update/delete and reconcile failures |
+| `shouts.created` | `Api\\ShoutsController::store` | `shoutId`, `zone`, `bodyLength` |
+| `whispers.*` | `Api\\WhispersController` | list viewed, sent, marked-read |
+| `autopilot.*` | `Api\\AutopilotController` | list/view/create/update/thread actions |
 
 On login/verify, the app also calls `PostHogService::identify($user->email, $user->getPostHogProperties())` so person profiles get email, name, and `date_joined`.
 
-## Usage
 
 Prefer the **PostHogService** wrapper (inject or `resolve(PostHogService::class)`): it respects `posthog.disabled` and uses `config/posthog.*`.
 

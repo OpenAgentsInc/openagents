@@ -18,6 +18,7 @@ use App\OpenApi\Responses\UnauthorizedResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
 use App\Services\AutopilotService;
 use App\Services\AutopilotThreadService;
+use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Vyuldashev\LaravelOpenApi\Attributes as OpenApi;
@@ -31,7 +32,7 @@ class AutopilotController extends Controller
     #[OpenApi\Operation(tags: ['Autopilot'])]
     #[OpenApi\Response(factory: AutopilotListResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
-    public function index(Request $request, AutopilotService $autopilotService): JsonResponse
+    public function index(Request $request, AutopilotService $autopilotService, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -46,6 +47,11 @@ class AutopilotController extends Controller
             ->values()
             ->all();
 
+        $posthog->capture($user->email, 'autopilot.list_viewed', [
+            'limit' => $limit,
+            'count' => count($autopilots),
+        ]);
+
         return response()->json([
             'data' => $autopilots,
         ]);
@@ -59,7 +65,7 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: AutopilotResponse::class, statusCode: 201)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function store(Request $request, AutopilotService $autopilotService): JsonResponse
+    public function store(Request $request, AutopilotService $autopilotService, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -76,6 +82,12 @@ class AutopilotController extends Controller
         ]);
 
         $autopilot = $autopilotService->createForUser($user, $validated);
+        $posthog->capture($user->email, 'autopilot.created', [
+            'autopilotId' => $autopilot->id,
+            'handle' => $autopilot->handle,
+            'status' => $autopilot->status,
+            'visibility' => $autopilot->visibility,
+        ]);
 
         return response()->json([
             'data' => $this->autopilotPayload($autopilot),
@@ -89,7 +101,7 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: AutopilotResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function show(Request $request, string $autopilot, AutopilotService $autopilotService): JsonResponse
+    public function show(Request $request, string $autopilot, AutopilotService $autopilotService, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -97,6 +109,10 @@ class AutopilotController extends Controller
         }
 
         $entity = $autopilotService->resolveOwned($user, $autopilot);
+        $posthog->capture($user->email, 'autopilot.viewed', [
+            'autopilotId' => $entity->id,
+            'handle' => $entity->handle,
+        ]);
 
         return response()->json([
             'data' => $this->autopilotPayload($entity),
@@ -112,7 +128,7 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function update(Request $request, string $autopilot, AutopilotService $autopilotService): JsonResponse
+    public function update(Request $request, string $autopilot, AutopilotService $autopilotService, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -151,6 +167,12 @@ class AutopilotController extends Controller
         ]);
 
         $entity = $autopilotService->updateOwned($user, $autopilot, $validated);
+        $posthog->capture($user->email, 'autopilot.updated', [
+            'autopilotId' => $entity->id,
+            'fieldCount' => count($validated),
+            'status' => $entity->status,
+            'visibility' => $entity->visibility,
+        ]);
 
         return response()->json([
             'data' => $this->autopilotPayload($entity),
@@ -171,6 +193,7 @@ class AutopilotController extends Controller
         string $autopilot,
         AutopilotService $autopilotService,
         AutopilotThreadService $autopilotThreadService,
+        PostHogService $posthog,
     ): JsonResponse {
         $user = $request->user();
         if (! $user) {
@@ -184,6 +207,11 @@ class AutopilotController extends Controller
         ]);
 
         $thread = $autopilotThreadService->ensureThread($user, $entity, null, (string) ($validated['title'] ?? ''));
+        $posthog->capture($user->email, 'autopilot.thread_created', [
+            'autopilotId' => $entity->id,
+            'threadId' => (string) $thread->id,
+            'titleLength' => mb_strlen((string) $thread->title),
+        ]);
 
         return response()->json([
             'data' => $this->threadPayload($thread),
@@ -198,7 +226,7 @@ class AutopilotController extends Controller
     #[OpenApi\Response(factory: AutopilotThreadListResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function threads(Request $request, string $autopilot, AutopilotService $autopilotService): JsonResponse
+    public function threads(Request $request, string $autopilot, AutopilotService $autopilotService, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -218,6 +246,12 @@ class AutopilotController extends Controller
             ->map(fn (Thread $thread): array => $this->threadPayload($thread))
             ->values()
             ->all();
+
+        $posthog->capture($user->email, 'autopilot.threads_viewed', [
+            'autopilotId' => $entity->id,
+            'limit' => $limit,
+            'count' => count($threads),
+        ]);
 
         return response()->json([
             'data' => $threads,

@@ -1,5 +1,7 @@
 import { Head } from '@inertiajs/react';
+import { useEffect } from 'react';
 import { L402PageNav } from '@/components/l402/page-nav';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type DeploymentEvent = {
     eventId: number;
@@ -29,6 +31,16 @@ function pretty(value: unknown): string {
 }
 
 export default function L402DeploymentsPage({ deployments, configSnapshot }: Props) {
+    const capture = usePostHogEvent('l402');
+
+    useEffect(() => {
+        capture('l402.deployments_page_opened', {
+            eventCount: deployments.length,
+            invoicePayer: configSnapshot.invoicePayer,
+            presetCount: configSnapshot.demoPresets.length,
+        });
+    }, [capture, configSnapshot.demoPresets.length, configSnapshot.invoicePayer, deployments.length]);
+
     return (
         <>
             <Head title="L402 Deployments" />

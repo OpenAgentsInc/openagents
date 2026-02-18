@@ -1,5 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
+import { useEffect } from 'react';
 import { L402PageNav } from '@/components/l402/page-nav';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type Tx = {
     eventId: number;
@@ -37,6 +39,16 @@ function statusClass(status: string): string {
 }
 
 export default function L402TransactionsPage({ transactions, pagination }: Props) {
+    const capture = usePostHogEvent('l402');
+
+    useEffect(() => {
+        capture('l402.transactions_page_opened', {
+            total: pagination.total,
+            currentPage: pagination.currentPage,
+            count: transactions.length,
+        });
+    }, [capture, pagination.currentPage, pagination.total, transactions.length]);
+
     return (
         <>
             <Head title="L402 Transactions" />
@@ -78,7 +90,17 @@ export default function L402TransactionsPage({ transactions, pagination }: Props
                                                 </span>
                                             </td>
                                             <td className="px-2 py-2 align-top">
-                                                <Link href={`/l402/transactions/${tx.eventId}`} className="font-medium hover:underline">
+                                                <Link
+                                                    href={`/l402/transactions/${tx.eventId}`}
+                                                    onClick={() => {
+                                                        capture('l402.transaction_detail_clicked', {
+                                                            source: 'transactions_table',
+                                                            eventId: tx.eventId,
+                                                            status: tx.status,
+                                                        });
+                                                    }}
+                                                    className="font-medium hover:underline"
+                                                >
                                                     {tx.host}
                                                 </Link>
                                                 <div className="text-xs text-muted-foreground">{tx.scope ?? 'no-scope'}</div>

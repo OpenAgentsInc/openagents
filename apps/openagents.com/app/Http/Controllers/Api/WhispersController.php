@@ -15,6 +15,7 @@ use App\OpenApi\Responses\UnauthorizedResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
 use App\OpenApi\Responses\WhisperListResponse;
 use App\OpenApi\Responses\WhisperResponse;
+use App\Services\PostHogService;
 use App\Services\WhispersService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,7 +38,7 @@ class WhispersController extends Controller
     #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function index(Request $request, WhispersService $service): JsonResponse
+    public function index(Request $request, WhispersService $service, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -67,6 +68,12 @@ class WhispersController extends Controller
 
         $whispers = $service->listFor($user, $withUser, $limit, $beforeId);
 
+        $posthog->capture($user->email, 'whispers.list_viewed', [
+            'withUser' => $withUser?->handle,
+            'limit' => $limit,
+            'returnedCount' => $whispers->count(),
+        ]);
+
         return response()->json([
             'data' => WhisperResource::collection($whispers)->resolve(),
             'meta' => [
@@ -86,7 +93,7 @@ class WhispersController extends Controller
     #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function store(CreateWhisperRequest $request, WhispersService $service): JsonResponse
+    public function store(CreateWhisperRequest $request, WhispersService $service, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -115,6 +122,13 @@ class WhispersController extends Controller
 
         $whisper = $service->send($user, $recipient, (string) $validated['body']);
 
+        $posthog->capture($user->email, 'whispers.sent', [
+            'whisperId' => (int) $whisper->id,
+            'recipientId' => (int) $recipient->id,
+            'recipientHandle' => $recipient->handle,
+            'bodyLength' => mb_strlen((string) $validated['body']),
+        ]);
+
         return response()->json([
             'data' => (new WhisperResource($whisper))->resolve(),
         ], 201);
@@ -128,7 +142,7 @@ class WhispersController extends Controller
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function read(Request $request, int $id, WhispersService $service): JsonResponse
+    public function read(Request $request, int $id, WhispersService $service, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -145,6 +159,11 @@ class WhispersController extends Controller
         $this->authorize('update', $whisper);
 
         $updated = $service->markRead($whisper, $user);
+        $posthog->capture($user->email, 'whispers.marked_read', [
+            'whisperId' => (int) $updated->id,
+            'senderId' => (int) $updated->sender_id,
+            'recipientId' => (int) $updated->recipient_id,
+        ]);
 
         return response()->json([
             'data' => (new WhisperResource($updated))->resolve(),

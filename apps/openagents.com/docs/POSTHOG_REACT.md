@@ -171,7 +171,7 @@ By default, posthog-js autocaptures pageviews, clicks, and inputs. Configure or 
 
 ## Explicit UI Events Tracked
 
-This app now emits explicit high-signal events through `usePostHogEvent` (`resources/js/hooks/use-posthog-event.ts`) in addition to standard PostHog autocapture.
+This app emits explicit high-signal events through `usePostHogEvent` (`resources/js/hooks/use-posthog-event.ts`) in addition to PostHog autocapture.
 
 Chat surface events:
 
@@ -194,9 +194,40 @@ Homepage chat events:
 - `home_chat.error_shown`
 - `home_chat.error_dismissed`
 
+Sidebar and account-menu events:
+
+- `sidebar.page_opened`
+- `sidebar.home_clicked`
+- `sidebar.new_chat_clicked`
+- `sidebar.lightning_clicked`
+- `sidebar.thread_clicked`
+- `sidebar.login_clicked`
+- `sidebar.admin_clicked`
+- `sidebar_user_menu.settings_clicked`
+- `sidebar_user_menu.logout_clicked`
+
+Login and settings events:
+
+- `login.page_opened`
+- `login.code_send_submitted`
+- `login.code_verify_submitted`
+- `settings.page_opened`
+- `settings.nav_clicked`
+- `settings_profile.page_opened`
+- `settings_profile.save_submitted`
+- `settings_autopilot.page_opened`
+- `settings_autopilot.save_submitted`
+
+Feed and Lightning UI events:
+
+- Feed: `feed.page_opened`, `feed.zone_filter_clicked`
+- L402 navigation: `l402.nav_clicked`
+- L402 pages: `l402.wallet_page_opened`, `l402.transactions_page_opened`, `l402.transaction_detail_opened`, `l402.paywalls_page_opened`, `l402.settlements_page_opened`, `l402.deployments_page_opened`
+- L402 actions: `l402.wallet_snapshot_refresh_clicked`, `l402.wallet_snapshot_loaded`, `l402.wallet_snapshot_failed`, `l402.transaction_detail_clicked`, `l402.transactions_page_clicked`, `l402.transaction_open_conversation_clicked`
+
 Click coverage:
 
 - PostHog autocapture remains enabled in production builds and captures general click interactions (including nav/link clicks) unless suppressed with `ph-no-capture`.
-- The explicit events above capture intent-level actions in chat that are critical for funnel and failure analysis.
+- The explicit events above capture intent-level actions and key UI milestones so funnels can be analyzed without brittle DOM selectors.
 
-Each explicit event includes a `namespace` property plus contextual metadata such as `conversationId`, `characterCount`, `taskId`, `guestStep`, and status codes where applicable.
+Each explicit event includes a `namespace` property plus contextual metadata such as `conversationId`, `characterCount`, `taskId`, `status`, `path`, and selected entity ids.

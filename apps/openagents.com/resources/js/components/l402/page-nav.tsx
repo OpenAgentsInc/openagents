@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
 import { CircleDollarSign, Landmark, List, Server, Wallet } from 'lucide-react';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 
 const links = [
@@ -12,6 +13,7 @@ const links = [
 
 export function L402PageNav() {
     const { isCurrentUrl } = useCurrentUrl();
+    const capture = usePostHogEvent('l402');
 
     return (
         <div className="mb-4 flex flex-wrap gap-2">
@@ -24,6 +26,13 @@ export function L402PageNav() {
                         key={item.href}
                         href={item.href}
                         prefetch
+                        onClick={() => {
+                            capture('l402.nav_clicked', {
+                                href: item.href,
+                                label: item.label,
+                                active,
+                            });
+                        }}
                         className={`inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs transition-colors ${
                             active
                                 ? 'border-primary bg-primary/10 text-primary'

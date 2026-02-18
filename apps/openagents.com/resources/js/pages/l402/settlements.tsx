@@ -1,5 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
+import { useEffect } from 'react';
 import { L402PageNav } from '@/components/l402/page-nav';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type Settlement = {
     eventId: number;
@@ -30,6 +32,17 @@ type Props = {
 };
 
 export default function L402SettlementsPage({ summary, daily, settlements }: Props) {
+    const capture = usePostHogEvent('l402');
+
+    useEffect(() => {
+        capture('l402.settlements_page_opened', {
+            settledCount: summary.settledCount,
+            totalSats: summary.totalSats,
+            dailyCount: daily.length,
+            settlementRows: settlements.length,
+        });
+    }, [capture, daily.length, settlements.length, summary.settledCount, summary.totalSats]);
+
     return (
         <>
             <Head title="L402 Settlements" />
@@ -105,7 +118,17 @@ export default function L402SettlementsPage({ summary, daily, settlements }: Pro
                                     <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
                                         <span>{item.threadTitle}</span>
                                         <span>status: {item.status}</span>
-                                        <Link href={`/l402/transactions/${item.eventId}`} className="text-primary hover:underline">
+                                        <Link
+                                            href={`/l402/transactions/${item.eventId}`}
+                                            onClick={() => {
+                                                capture('l402.transaction_detail_clicked', {
+                                                    source: 'settlements_list',
+                                                    eventId: item.eventId,
+                                                    status: item.status,
+                                                });
+                                            }}
+                                            className="text-primary hover:underline"
+                                        >
                                             View detail
                                         </Link>
                                     </div>

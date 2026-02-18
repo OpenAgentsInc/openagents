@@ -1,4 +1,6 @@
 import { Head, Link } from '@inertiajs/react';
+import { useEffect } from 'react';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type FeedShout = {
     id: number;
@@ -55,6 +57,15 @@ function feedHref(zone: string | null): string {
 
 export default function FeedPage({ feed }: Props) {
     const activeZone = feed.zone ?? 'all';
+    const capture = usePostHogEvent('feed');
+
+    useEffect(() => {
+        capture('feed.page_opened', {
+            activeZone,
+            shoutCount: feed.items.length,
+            zoneCount: feed.zones.length,
+        });
+    }, [activeZone, capture, feed.items.length, feed.zones.length]);
 
     return (
         <>
@@ -69,6 +80,12 @@ export default function FeedPage({ feed }: Props) {
                         <Link
                             href={feedHref(null)}
                             prefetch
+                            onClick={() => {
+                                capture('feed.zone_filter_clicked', {
+                                    fromZone: activeZone,
+                                    toZone: 'all',
+                                });
+                            }}
                             className={`rounded border px-3 py-1 text-xs transition ${
                                 activeZone === 'all'
                                     ? 'border-primary bg-primary/15 text-primary'
@@ -82,6 +99,12 @@ export default function FeedPage({ feed }: Props) {
                                 key={zone.zone}
                                 href={feedHref(zone.zone)}
                                 prefetch
+                                onClick={() => {
+                                    capture('feed.zone_filter_clicked', {
+                                        fromZone: activeZone,
+                                        toZone: zone.zone,
+                                    });
+                                }}
                                 className={`rounded border px-3 py-1 text-xs transition ${
                                     activeZone === zone.zone
                                         ? 'border-primary bg-primary/15 text-primary'

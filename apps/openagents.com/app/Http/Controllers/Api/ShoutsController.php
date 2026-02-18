@@ -14,6 +14,7 @@ use App\OpenApi\Responses\ShoutResponse;
 use App\OpenApi\Responses\ShoutZonesResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
+use App\Services\PostHogService;
 use App\Services\ShoutsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -68,7 +69,7 @@ class ShoutsController extends Controller
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function store(CreateShoutRequest $request, ShoutsService $service): JsonResponse
+    public function store(CreateShoutRequest $request, ShoutsService $service, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         if (! $user) {
@@ -81,6 +82,12 @@ class ShoutsController extends Controller
             (string) $validated['body'],
             $validated['zone'] ?? null,
         );
+
+        $posthog->capture($user->email, 'shouts.created', [
+            'shoutId' => (int) $shout->id,
+            'zone' => $shout->zone,
+            'bodyLength' => mb_strlen((string) $shout->body),
+        ]);
 
         return response()->json([
             'data' => (new ShoutResource($shout))->resolve(),

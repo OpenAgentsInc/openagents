@@ -4,6 +4,7 @@ import { useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
 import { NavUser } from '@/components/nav-user';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 import {
     Sidebar,
     SidebarContent,
@@ -58,15 +59,30 @@ export function GlobalSidebarLayout({ children }: Props) {
     const isAdmin = Boolean(page.props.isAdmin);
     const chatThreads = page.props.chatThreads ?? [];
     const refreshKey = page.url ?? '/';
+    const capture = usePostHogEvent('sidebar');
 
     const handleNewChat = useCallback(() => {
+        capture('sidebar.new_chat_clicked', {
+            path: window.location.pathname,
+            isAuthenticated,
+        });
+
         if (window.location.pathname !== '/') {
             window.location.assign('/');
             return;
         }
 
         window.dispatchEvent(new Event('openagents:new-chat'));
-    }, []);
+    }, [capture, isAuthenticated]);
+
+    useEffect(() => {
+        capture('sidebar.page_opened', {
+            path: page.url,
+            isAuthenticated,
+            isAdmin,
+            threadCount: chatThreads.length,
+        });
+    }, [capture, chatThreads.length, isAdmin, isAuthenticated, page.url]);
 
     useEffect(() => {
         const prevHtml = document.documentElement.style.overflow;
@@ -94,6 +110,12 @@ export function GlobalSidebarLayout({ children }: Props) {
                 <SidebarHeader className="flex h-14 items-center justify-center px-2 pt-2">
                     <Link
                         href="/"
+                        onClick={() => {
+                            capture('sidebar.home_clicked', {
+                                path: page.url,
+                                isAuthenticated,
+                            });
+                        }}
                         className="text-sm font-medium tracking-wide text-foreground/90"
                     >
                         OpenAgents
@@ -116,7 +138,14 @@ export function GlobalSidebarLayout({ children }: Props) {
                             {isAuthenticated ? (
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild className="w-full justify-start gap-2">
-                                        <Link href="/l402">
+                                        <Link
+                                            href="/l402"
+                                            onClick={() => {
+                                                capture('sidebar.lightning_clicked', {
+                                                    path: page.url,
+                                                });
+                                            }}
+                                        >
                                             <Zap className="size-4" />
                                             <span>Lightning</span>
                                         </Link>
@@ -140,7 +169,15 @@ export function GlobalSidebarLayout({ children }: Props) {
                                     chatThreads.map((thread) => (
                                         <SidebarMenuItem key={thread.id}>
                                             <SidebarMenuButton asChild className="w-full justify-start gap-2">
-                                                <Link href={`/chat/${thread.id}`}>
+                                                <Link
+                                                    href={`/chat/${thread.id}`}
+                                                    onClick={() => {
+                                                        capture('sidebar.thread_clicked', {
+                                                            threadId: thread.id,
+                                                            threadTitle: toThreadLabel(thread.title),
+                                                        });
+                                                    }}
+                                                >
                                                     <MessageSquare className="size-4" />
                                                     <span className="truncate">{toThreadLabel(thread.title)}</span>
                                                 </Link>
@@ -167,7 +204,14 @@ export function GlobalSidebarLayout({ children }: Props) {
                                     <SidebarMenu>
                                         <SidebarMenuItem>
                                             <SidebarMenuButton asChild className="w-full justify-start gap-2">
-                                                <Link href="/admin">
+                                                <Link
+                                                    href="/admin"
+                                                    onClick={() => {
+                                                        capture('sidebar.admin_clicked', {
+                                                            path: page.url,
+                                                        });
+                                                    }}
+                                                >
                                                     <Shield className="size-4" />
                                                     <span>Admin</span>
                                                 </Link>
@@ -186,7 +230,14 @@ export function GlobalSidebarLayout({ children }: Props) {
                                     size="lg"
                                     className="w-full justify-start gap-3"
                                 >
-                                    <Link href="/login">
+                                    <Link
+                                        href="/login"
+                                        onClick={() => {
+                                            capture('sidebar.login_clicked', {
+                                                path: page.url,
+                                            });
+                                        }}
+                                    >
                                         <LogIn className="size-4" />
                                         <span>Login</span>
                                     </Link>

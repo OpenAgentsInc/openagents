@@ -7,6 +7,7 @@ import {
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { UserInfo } from '@/components/user-info';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { logout } from '@/routes';
 import { edit } from '@/routes/profile';
@@ -18,8 +19,12 @@ type Props = {
 
 export function UserMenuContent({ user }: Props) {
     const cleanup = useMobileNavigation();
+    const capture = usePostHogEvent('sidebar_user_menu');
 
     const handleLogout = () => {
+        capture('sidebar_user_menu.logout_clicked', {
+            userEmail: user.email,
+        });
         cleanup();
         router.flushAll();
     };
@@ -38,7 +43,12 @@ export function UserMenuContent({ user }: Props) {
                         className="block w-full cursor-pointer"
                         href={edit()}
                         prefetch
-                        onClick={cleanup}
+                        onClick={() => {
+                            capture('sidebar_user_menu.settings_clicked', {
+                                userEmail: user.email,
+                            });
+                            cleanup();
+                        }}
                     >
                         <Settings className="mr-2" />
                         Settings
