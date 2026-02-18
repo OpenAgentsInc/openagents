@@ -1,4 +1,4 @@
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -49,10 +49,7 @@ export default function Login() {
                 <div className="absolute inset-0 z-10 flex items-center justify-center overflow-auto px-6 py-12">
                     <div className="w-full max-w-md rounded-xl border border-white/20 bg-black/40 p-6 shadow-2xl backdrop-blur">
                         <div className="mb-6">
-                            <Link href="/" className="text-sm text-white/70 transition hover:text-white">
-                                OpenAgents
-                            </Link>
-                            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Sign in with email</h1>
+                            <h1 className="text-2xl font-semibold tracking-tight">Sign in with email</h1>
                             <p className="mt-1 text-sm text-white/75">
                                 {hasPendingCode
                                     ? `Enter the one-time code sent to ${pendingEmail}.`
@@ -73,9 +70,11 @@ export default function Login() {
                                     id="email"
                                     type="email"
                                     autoComplete="email"
+                                    autoFocus
                                     value={emailForm.data.email}
                                     onChange={(event) => emailForm.setData('email', event.target.value)}
                                     placeholder="you@openagents.com"
+                                    className="focus-visible:border-white focus-visible:ring-white/50"
                                 />
                                 <InputError message={emailForm.errors.email} />
                             </div>
@@ -100,9 +99,11 @@ export default function Login() {
                                             id="code"
                                             type="text"
                                             autoComplete="one-time-code"
+                                            autoFocus={hasPendingCode}
                                             value={verifyForm.data.code}
                                             onChange={(event) => verifyForm.setData('code', event.target.value)}
                                             placeholder="Enter the code from your email"
+                                            className="focus-visible:border-white focus-visible:ring-white/50"
                                         />
                                         <InputError message={verifyForm.errors.code} />
                                     </div>
