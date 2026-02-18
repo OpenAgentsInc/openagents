@@ -119,6 +119,8 @@ final class RunOrchestrator
             $toolCalls = [];
             $toolCallStartedAt = [];
             $toolCallParamsHash = [];
+            $toolResultCount = 0;
+            $lastToolResultSummary = null;
             $lastStreamEndVercel = null;
             /** @var array<string, true> IDs for which we have sent text-start to the client (AI SDK requires text-start before text-delta) */
             $textStartSentForMessageId = [];
@@ -227,6 +229,14 @@ final class RunOrchestrator
                             actorType: $runtimeActorType,
                             actorAutopilotId: $runtimeActorAutopilotId,
                         );
+
+                        $toolResultCount++;
+                        $lastToolResultSummary = [
+                            'tool_name' => $event->toolResult->name,
+                            'successful' => $event->successful,
+                            'error' => $event->successful ? null : $event->error,
+                            'result' => $event->toolResult->result,
+                        ];
 
                         if (in_array($event->toolResult->name, ['lightning_l402_fetch', 'lightning_l402_approve'], true)) {
                             $r = null;
@@ -367,7 +377,7 @@ final class RunOrchestrator
                 $now = now();
 
                 if (trim($assistantText) === '') {
-                    $assistantText = "I couldn't generate a response from the model. Please try again.";
+                    $assistantText = $this->buildEmptyResponseFallback($lastToolResultSummary, $finishReason);
 
                     $this->appendEvent(
                         threadId: $threadId,
@@ -377,6 +387,9 @@ final class RunOrchestrator
                         payload: [
                             'reason' => $finishReason,
                             'usage' => $usage,
+                            'tool_result_count' => $toolResultCount,
+                            'last_tool_name' => is_array($lastToolResultSummary) ? ($lastToolResultSummary['tool_name'] ?? null) : null,
+                            'last_tool_successful' => is_array($lastToolResultSummary) ? ($lastToolResultSummary['successful'] ?? null) : null,
                         ],
                         autopilotId: $autopilotId,
                         actorType: $runtimeActorType,
@@ -677,6 +690,112 @@ final class RunOrchestrator
         }
 
         return trim($assistantText) !== '' ? $assistantText : $fallback;
+    }
+
+    private function buildEmptyResponseFallback(?array $lastToolResultSummary, mixed $finishReason): string
+    {
+        $default = "I couldn't generate a response from the model. Please try again.";
+
+        if (! is_array($lastToolResultSummary)) {
+            return $default;
+        }
+
+        $toolName = is_string($lastToolResultSummary['tool_name'] ?? null)
+            ? (string) $lastToolResultSummary['tool_name']
+            : 'tool';
+
+        $successful = (bool) ($lastToolResultSummary['successful'] ?? false);
+        $error = $lastToolResultSummary['error'] ?? null;
+        $errorMessage = is_string($error) ? trim($error) : null;
+
+        if (! $successful) {
+            return $errorMessage !== null && $errorMessage !== ''
+                ? "I tried that step, but it failed: {$errorMessage}"
+                : "I tried that step, but it failed. Please try again.";
+        }
+
+        $payload = $this->parseToolResultPayload($lastToolResultSummary['result'] ?? null);
+
+        if ($toolName === 'openagents_api' && is_array($payload)) {
+            $status = strtolower((string) ($payload['status'] ?? ''));
+            $action = strtolower((string) ($payload['action'] ?? ''));
+            $path = is_string($payload['path'] ?? null) ? (string) $payload['path'] : '';
+
+            if ($status === 'ok' && $action === 'request') {
+                if ($path === '/api/shouts') {
+                    return 'Done. I posted that shout to the feed.';
+                }
+
+                if ($path === '/api/agent-payments/invoice') {
+                    return 'Done. I created your Lightning invoice.';
+                }
+
+                return $path !== ''
+                    ? "Done. I completed that API request to {$path}."
+                    : 'Done. I completed that OpenAgents API request.';
+            }
+
+            if ($status === 'ok' && $action === 'discover') {
+                return 'Done. I fetched the API endpoint details.';
+            }
+
+            if ($status === 'http_error' || $status === 'failed') {
+                $statusCode = $payload['statusCode'] ?? null;
+                $apiError = $this->extractToolPayloadErrorMessage($payload);
+
+                if (is_int($statusCode) || is_numeric($statusCode)) {
+                    return $apiError !== null
+                        ? "The API call returned {$statusCode}: {$apiError}"
+                        : "The API call returned {$statusCode}.";
+                }
+
+                return $apiError !== null
+                    ? "The API call failed: {$apiError}"
+                    : 'The API call failed.';
+            }
+        }
+
+        $finishReasonValue = null;
+
+        if (is_string($finishReason)) {
+            $finishReasonValue = trim($finishReason);
+        } elseif (is_object($finishReason) && property_exists($finishReason, 'value') && is_string($finishReason->value)) {
+            $finishReasonValue = trim((string) $finishReason->value);
+        }
+
+        return $finishReasonValue === 'length'
+            ? 'The model stopped before producing text. Please retry, and I will continue.'
+            : 'I completed that step, but the model returned no additional text.';
+    }
+
+    private function parseToolResultPayload(mixed $result): ?array
+    {
+        if (is_array($result)) {
+            return $result;
+        }
+
+        if (! is_string($result)) {
+            return null;
+        }
+
+        $decoded = json_decode($result, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private function extractToolPayloadErrorMessage(array $payload): ?string
+    {
+        $message = data_get($payload, 'error.message')
+            ?? data_get($payload, 'message')
+            ?? data_get($payload, 'response.json.message');
+
+        if (is_string($message)) {
+            $trimmed = trim($message);
+
+            return $trimmed !== '' ? $trimmed : null;
+        }
+
+        return null;
     }
 
     private function emitSyntheticAssistantText(string $text, string $runId, bool &$streamStarted, bool $shouldFlush): void

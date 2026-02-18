@@ -174,3 +174,24 @@ it('reverts paywall mutations when reconcile fails', function () {
     expect($mutationTypes)->toContain('l402_paywall_updated');
     expect($mutationTypes)->toContain('l402_paywall_deleted');
 });
+
+it('accepts host regex with plain dots for paywall creation', function () {
+    config()->set('lightning.operator.aperture_reconcile_command', 'sh -c "exit 0"');
+
+    $admin = User::factory()->create([
+        'email' => 'chris@openagents.com',
+    ]);
+
+    $token = $admin->createToken('admin-l402-plain-dot-host')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/l402/paywalls', [
+            'name' => 'Plain Dot Host Regex',
+            'hostRegexp' => '^l402.openagents.com$',
+            'pathRegexp' => '^/plain-dot-host$',
+            'priceMsats' => 1000,
+            'upstream' => 'https://example.com/plain-dot-host',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.paywall.hostRegexp', '^l402.openagents.com$');
+});

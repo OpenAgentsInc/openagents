@@ -146,7 +146,7 @@ trait L402PaywallToolSupport
             return;
         }
 
-        if (! $pathScoped && ! str_contains($normalized, '\\.')) {
+        if (! $pathScoped && preg_match('/[a-z0-9](?:\\\.|\.)[a-z0-9]/i', $normalized) !== 1) {
             $fail("The {$attribute} must include an explicit host pattern.");
 
             return;
