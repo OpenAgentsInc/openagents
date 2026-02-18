@@ -15,9 +15,25 @@ The Laravel app remains the user-facing product surface and API contract. Elixir
 
 1. No Phoenix/Laravel rewrite in this plan.
 2. Elixir runtime lives inside the existing `openagents` monorepo under `apps/`.
-3. Primary deployment target is GCP to stay co-located with current infra.
+3. Primary deployment target is GCP GKE Standard using StatefulSets and stable BEAM node identity.
 4. Runtime must be restart-safe: process memory is a cache, not source of truth.
 5. Existing frontend stream contract (AI SDK/Vercel protocol over SSE) is preserved for compatibility.
+
+## BEAM lessons explicitly adopted in this plan
+
+The following BEAM/OTP lessons are now design constraints, not optional implementation details:
+
+1. Process-per-session/per-agent isolation.
+2. Message passing between processes; no shared mutable in-memory session state.
+3. Supervisor-driven recovery ("let it crash") for non-deterministic AI/tool failures.
+4. Preemptive scheduling advantage is preserved by avoiding CPU-heavy work on scheduler threads.
+5. Runtime introspection is first-class: process mailboxes, reductions, memory, restart counts, queue depth.
+
+Practical interpretation for OpenAgents:
+
+- AI and tool failures are expected conditions, not exceptional architecture events.
+- Recovery policy must be in supervision strategy and persisted checkpoints, not only try/catch logic.
+- Any state required for correctness must survive process/node restart.
 
 ## Why this plan (current state summary)
 
@@ -290,6 +306,17 @@ OpenAgentsRuntime.Application
     └── Telemetry/metrics exporters
 ```
 
+## OTP primitive mapping (agent runtime)
+
+| Runtime concern | OTP primitive | OpenAgents implementation target |
+|---|---|---|
+| Isolated agent state | GenServer process | `AgentProcess` per active runtime session |
+| Agent discovery | Registry | `agent_registry.ex` keyed by agent/thread id |
+| Failure containment | Supervisor trees | `:one_for_one` for single agent/tool failures |
+| Background orchestration | Oban + supervisors | compaction, rollups, replay, reconciliation |
+| Broadcast/event fanout | Phoenix.PubSub / `:pg` (phase-2) | stream fanout to Laravel proxy + internal observers |
+| In-memory fast lookup | ETS (phase-2 selective) | cache-only indexes with DB as source of truth |
+
 ## Agent process responsibilities
 
 Each `AgentProcess`:
@@ -303,15 +330,52 @@ Each `AgentProcess`:
 - Periodically checkpoints process state to Postgres
 - Can fully recover from checkpoint + event log replay
 
-## Important constraint for Cloud Run
+## Let-it-crash policy boundaries
 
-Cloud Run instances are not permanent. Therefore:
+We adopt "let it crash" for runtime process correctness, but with explicit boundaries to prevent user-facing data loss:
+
+- Crash-allowed components:
+  - per-agent inference process
+  - per-tool task process
+  - per-run transient stream process
+- Must-never-lose boundaries:
+  - run acceptance record
+  - frame/event append log
+  - checkpoint state and projection watermark
+- Required guarantees:
+  - idempotent run/frame ingestion (client retries safe)
+  - restart from last durable checkpoint + replay tail events
+  - deterministic terminal status (`completed|failed|canceled`) per run id
+
+## Backpressure and mailbox controls (required)
+
+To avoid hidden overload pathologies in high-concurrency agent workloads:
+
+- Set explicit mailbox and queue-size thresholds for agent and tool processes.
+- Emit telemetry and shed load/slow-path when thresholds are exceeded.
+- Bound concurrent tool tasks per agent and globally.
+- Separate latency-sensitive stream processes from heavy maintenance queues.
+- Add admission control for new runs when runtime is degraded.
+
+## CPU and blocking work policy
+
+BEAM preemption is valuable only if we avoid scheduler starvation:
+
+- No heavy CPU parsing/transforms inside hot GenServer callbacks.
+- Offload expensive work to supervised tasks or native services with timeouts.
+- Keep callback handlers short; push long operations to async continuation steps.
+- Track scheduler utilization and long reductions as production alerts.
+
+## Important constraints for GKE + BEAM clustering
+
+Even with stable StatefulSet identities, pod restarts and node drains are normal in Kubernetes. Therefore:
 
 - GenServer process state cannot be treated as durable.
 - Any state needed after restart must be persisted.
 - In-memory state is a performance cache and coordination helper only.
+- Cluster membership must converge automatically after pod reschedules.
 
-This plan enforces that from day one.
+This plan enforces those constraints from day one.
 
 ## Memory architecture (tiered timeline)
 
@@ -375,35 +439,75 @@ Mapping examples:
 - runtime `run.finished` -> `{"type":"finish", ...}`
 - runtime terminal -> `data: [DONE]`
 
-## Deployment options: Fly.io vs GCP
+## Chosen deployment architecture: GKE Standard on GCP
 
-## Fly.io strengths
+This plan standardizes on GKE Standard as the correct runtime substrate for proper BEAM handling.
 
-- Excellent BEAM ergonomics (long-lived processes, easy clustering, region placement).
-- Operationally simple for Phoenix/Elixir teams.
-- Straightforward websocket support.
+Why this is the chosen architecture:
 
-## Fly.io drawbacks for OpenAgents now
+- StatefulSets provide stable pod identity and DNS names for Erlang node naming.
+- Headless services and Kubernetes-native discovery support reliable BEAM clustering.
+- Long-lived BEAM processes run without request-timeout coupling.
+- We stay co-located with current GCP infra (Cloud SQL, Secret Manager, observability stack, existing project IAM).
 
-- Splits infra across clouds (current stack is GCP-centric).
-- Adds cross-cloud latency and egress between Laravel, DB, Redis, and runtime.
-- Increases operational surface and incident complexity.
+## BEAM cluster requirements (day one)
 
-## GCP strengths
+1. StatefulSet deployment for runtime nodes (minimum 3 replicas in production).
+2. Headless service for node discovery.
+3. `libcluster` Kubernetes DNS strategy for automatic cluster formation/healing.
+4. Erlang distribution configuration with explicit node naming and cookie management.
+5. Pod anti-affinity and PodDisruptionBudget to reduce correlated restarts.
+6. Graceful termination hooks (`SIGTERM` drain + checkpoint flush).
 
-- Co-locates runtime with existing OpenAgents services, secrets, monitoring, and DB.
-- Reuses current Cloud Build, Artifact Registry, Cloud Run conventions.
-- Simplifies IAM and service-to-service trust with existing project setup.
+## Kubernetes BEAM cluster spec (concrete)
 
-## GCP drawbacks
+1. StatefulSet + headless service:
+   - StatefulSet name: `openagents-runtime`
+   - Headless service: `openagents-runtime-headless`
+   - Pod DNS pattern: `openagents-runtime-<ordinal>.openagents-runtime-headless.openagents-runtime.svc.cluster.local`
 
-- Cloud Run is not a stable node identity platform for classic distributed Erlang clustering.
-- Must design for stateless/process-recoverable runtime semantics.
+2. Node identity:
+   - Set node name from pod DNS (long names).
+   - Use release env to configure node and cookie at startup.
 
-## Recommendation
+3. Discovery:
+   - `libcluster` with Kubernetes DNS strategy against headless service records.
+   - Auto-heal cluster membership on pod replace/reschedule.
 
-Start on GCP (Cloud Run) now.  
-Only revisit Fly.io if we later require persistent BEAM cluster semantics that Cloud Run cannot satisfy without too much complexity.
+4. Network boundaries:
+   - NetworkPolicy allowing Erlang distribution traffic only within runtime namespace/workload selectors.
+   - Internal HTTP API exposed through separate ClusterIP service.
+
+5. Scheduling guarantees:
+   - required pod anti-affinity across nodes
+   - PDB to preserve quorum/availability during voluntary disruptions
+   - topology spread constraints to avoid single-node concentration
+
+## GKE profile (recommended)
+
+- GKE mode: Standard
+- Region: `us-central1`
+- Runtime namespace: `openagents-runtime`
+- Node pools:
+  - `runtime-general` for API/runtime nodes
+  - optional `runtime-jobs` pool for heavy compaction/reprojection jobs
+- Autoscaling:
+  - HPA for runtime API StatefulSet targets
+  - Cluster Autoscaler enabled for node pools
+
+## Runtime upgrade strategy (hot code vs rolling deploy)
+
+BEAM supports hot code upgrades, but this plan does not require hot upgrades on day one.
+
+Day-one production strategy:
+
+- Use Kubernetes rolling updates with controlled StatefulSet rollout policies.
+- Preserve runtime continuity through checkpoint + replay, not in-place VM code swaps.
+- Add state-version fields in checkpoints/events to support code evolution safely.
+
+Future optional phase:
+
+- Evaluate full OTP release upgrades only after runtime contracts stabilize and operational burden is justified.
 
 ## GCP reference topology (recommended)
 
@@ -412,33 +516,33 @@ Project/region aligned with current app:
 - Project: `openagentsgemini`
 - Region: `us-central1`
 
-Services/jobs:
+GKE workloads:
 
-1. `openagents-runtime-api` (Cloud Run service)
-   - Internal ingress only
-   - Handles internal HTTP/SSE API from Laravel
-   - Runs Phoenix endpoint + runtime supervisors
-
-2. `openagents-runtime-jobs` (Cloud Run job or secondary service command)
-   - Runs migrations, backfills, maintenance one-offs
-
-3. Optional: `openagents-runtime-worker` (Cloud Run service)
-   - If we split web ingress from heavy background execution later
+1. `openagents-runtime` StatefulSet
+   - Internal API + runtime supervisors
+   - Stable pod identities for BEAM node membership
+2. `openagents-runtime-migrate` Kubernetes Job
+   - One-off DB migrations per release
+3. `openagents-runtime-maintenance` CronJobs
+   - Compaction backfills, projection reconciliation, periodic integrity scans
+4. Optional `openagents-runtime-worker` Deployment/StatefulSet
+   - If we split API-facing workload from heavy autonomous/background workloads
 
 Backing services:
 
 - Cloud SQL Postgres (same instance or dedicated DB/schema)
 - Memorystore Redis (optional phase-1, recommended phase-2)
 - Secret Manager (API keys, DB creds, service auth secrets)
-- Cloud Scheduler (if external cron needed, though Oban cron is preferred)
+- Cloud Scheduler (only if triggering external admin workflows; internal periodic work uses Kubernetes CronJobs and/or Oban)
 
 ## Networking and security model
 
 ## Ingress
 
-`openagents-runtime-api` should be internal/private:
+`openagents-runtime` runtime API should be internal/private:
 
-- Cloud Run ingress: internal + load balancer or internal only
+- Internal L7/L4 load balancer fronting GKE service
+- VPC-private service routing from Laravel web service(s) to runtime service
 - No public internet traffic directly to runtime endpoints
 
 Laravel reaches runtime via private network path.
@@ -491,7 +595,7 @@ Add:
 
 ## Runtime migration command
 
-Cloud Run job command:
+Kubernetes Job command:
 
 - `bin/openagents_runtime eval "OpenAgentsRuntime.Release.migrate()"`
 
@@ -513,7 +617,7 @@ Deliverables:
 Exit criteria:
 
 - `mix test` green
-- container builds and starts on Cloud Run
+- container builds and deploys to development GKE namespace
 - health smoke passes
 
 ## Phase 1: Shadow mode (no user impact)
@@ -623,6 +727,19 @@ Eventually:
 
 - Elixir becomes sole writer for runtime projections in elixir mode.
 
+## Elixir engineering policy for agent-generated code
+
+To leverage Elixir's strengths in local reasoning and iterative feedback loops:
+
+- Keep runtime state immutable at module boundaries (explicit input/output transforms).
+- Require `@moduledoc` and `@doc` for public runtime modules and internal API handlers.
+- Add doctests for critical contract examples (stream event shapes, checkpoint formats).
+- Enforce compiler hygiene in CI (`--warnings-as-errors`).
+- Prefer explicit deprecation over breaking internal contracts used by Laravel adapter code.
+- Keep public runtime contract versioned (`/internal/v1`) and additive by default.
+
+This reduces context ambiguity for human and agent contributors and keeps migration velocity high without breaking production paths.
+
 ## Elixir implementation milestones (specific)
 
 ## Milestone A: Runtime API skeleton
@@ -670,6 +787,9 @@ Eventually:
 - tool name/status
 - compaction level (`raw|l1|l2|l3`)
 - phase (`ingest|infer|tool|persist|stream`)
+- process identifiers (`agent_pid`, logical process key)
+- supervisor restart reason/category
+- mailbox pressure level
 
 ## Minimum dashboards
 
@@ -683,6 +803,11 @@ Eventually:
    - queue depth, task duration, failure rate, cancel rate
 5. Memory compaction
    - backlog, chunk counts, compaction latency
+6. BEAM process health
+   - mailbox length percentile
+   - restart counts by child spec
+   - reductions/scheduler utilization
+   - top memory-consuming process groups
 
 ## SLO targets (initial)
 
@@ -698,6 +823,9 @@ Eventually:
 - unit tests for agent/frame/memory/tool modules
 - integration tests for runtime API contracts
 - property tests for event ordering/idempotency (recommended)
+- doctests for public runtime modules and contracts
+- supervisor/restart behavior tests (crash injection)
+- mailbox/backpressure behavior tests under load
 
 Commands:
 
@@ -706,6 +834,7 @@ Commands:
 - `cd apps/openagents-runtime && mix format --check-formatted`
 - `cd apps/openagents-runtime && mix credo` (if enabled)
 - `cd apps/openagents-runtime && mix dialyzer` (phase 2+)
+- `cd apps/openagents-runtime && mix test --warnings-as-errors`
 
 ## Laravel integration tests
 
@@ -744,7 +873,7 @@ Data safety:
 
 ## Risks and mitigations
 
-## Risk: Cloud Run restarts kill in-memory agent processes
+## Risk: Kubernetes pod churn kills in-memory agent processes
 
 Mitigation:
 
@@ -779,21 +908,23 @@ Mitigation:
 
 ## Capacity and scaling notes
 
-Initial Cloud Run sizing (starting point, tune with load tests):
+Initial GKE sizing (starting point, tune with load tests):
 
-- `openagents-runtime-api`
-  - CPU: 2
-  - Memory: 2Gi
-  - Min instances: 1
-  - Max instances: 10
-  - Concurrency: 100 (reduce if tail latency rises)
-  - Timeout: set for long stream windows (within Cloud Run limits)
+- `openagents-runtime` StatefulSet
+  - Replicas: 3
+  - CPU request/limit: `1000m/2000m`
+  - Memory request/limit: `2Gi/4Gi`
+  - Pod anti-affinity: required across nodes
+  - PodDisruptionBudget: `minAvailable: 2`
+- HPA target:
+  - CPU 60-70% target range
+  - custom metrics target for mailbox pressure and run queue depth (phase-2)
 
-If runtime workloads outgrow Cloud Run semantics:
+Scaling policy:
 
-Phase-2 platform option:
-
-- Move runtime to GKE Autopilot (or Compute Engine managed cluster) while preserving same internal HTTP contract, so Laravel integration remains unchanged.
+- scale out first by replicas
+- scale up node/pod resources when scheduler pressure or GC latency indicates
+- isolate heavy maintenance jobs onto separate queue/pool before increasing core API pod limits
 
 ## Concrete execution checklist
 
@@ -812,11 +943,11 @@ Phase-2 platform option:
 - Rewriting `apps/openagents.com` to Phoenix.
 - Replacing WorkOS/Sanctum session and guest auth flows.
 - Replacing existing public API route structure in this phase.
-- Building full distributed Erlang cluster semantics on day one.
+- Building multi-region active/active BEAM federation on day one.
 
 ## Decision log
 
 - 2026-02-18: Chose runtime-only migration (no web rewrite).
 - 2026-02-18: Chose monorepo placement `apps/openagents-runtime`.
-- 2026-02-18: Chose GCP-first deployment strategy, Fly.io deferred.
+- 2026-02-18: Chose GKE Standard + StatefulSet BEAM clustering as primary production architecture.
 - 2026-02-18: Preserved SSE AI SDK compatibility as migration invariant.
