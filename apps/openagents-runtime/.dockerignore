@@ -1,0 +1,9 @@
+_build
+coverage
+deps
+.env
+.env.*
+.git
+.github
+node_modules
+test

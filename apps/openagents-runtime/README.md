@@ -17,3 +17,8 @@ Useful commands:
 - `mix format`
 - `mix format --check-formatted`
 - `mix ci` (format check + compile warnings-as-errors + test warnings-as-errors)
+
+Container build:
+
+- `docker build -t openagents-runtime:dev .`
+- Cloud Build config: `deploy/cloudbuild.yaml`
