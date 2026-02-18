@@ -31,15 +31,28 @@ class CreateShoutRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $merged = [];
+
         $zone = $this->input('zone');
-        if (! is_string($zone)) {
-            return;
+        if (is_string($zone)) {
+            $normalizedZone = strtolower(trim($zone));
+            $merged['zone'] = $normalizedZone === '' ? null : $normalizedZone;
         }
 
-        $zone = strtolower(trim($zone));
+        $body = $this->input('body');
+        if (! is_string($body) || trim($body) === '') {
+            $textAlias = $this->input('text');
+            if (is_string($textAlias) && trim($textAlias) !== '') {
+                $body = $textAlias;
+            }
+        }
 
-        $this->merge([
-            'zone' => $zone === '' ? null : $zone,
-        ]);
+        if (is_string($body)) {
+            $merged['body'] = trim($body);
+        }
+
+        if ($merged !== []) {
+            $this->merge($merged);
+        }
     }
 }
