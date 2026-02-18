@@ -462,3 +462,71 @@ test('guest chat stream succeeds when request conversation id mismatches active 
         ->where('user_id', $guest->id)
         ->exists())->toBeTrue();
 });
+
+test('guest chat stream rotates conversation when ownership changes after preflight', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Recovered after ownership race']);
+
+    $guestService = resolve(GuestChatSessionService::class);
+    $owner = User::factory()->create();
+
+    $conversationId = 'g-'.str_repeat('6', 32);
+
+    // Step 1: preflight establishes a valid guest conversation id.
+    $guestService->ensureGuestConversationAndThread($conversationId);
+    $this->getJson('/api/chat/guest-session?conversationId='.$conversationId)
+        ->assertOk()
+        ->assertJsonPath('conversationId', $conversationId);
+
+    // Step 2: simulate a race where another flow adopts/claims this id
+    // before the next guest stream request executes.
+    DB::table('agent_conversations')
+        ->where('id', $conversationId)
+        ->update([
+            'user_id' => $owner->id,
+            'updated_at' => now(),
+        ]);
+
+    DB::table('threads')
+        ->where('id', $conversationId)
+        ->update([
+            'user_id' => $owner->id,
+            'updated_at' => now(),
+        ]);
+
+    $response = $this->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'recover from ownership race'],
+        ],
+    ]);
+
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+    expect($content)->toContain('data: {"type":"start"');
+    expect($content)->toContain('data: {"type":"finish"');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    $rotated = (string) session('chat.guest.conversation_id');
+
+    expect($rotated)->toMatch('/^g-[a-f0-9]{32}$/');
+    expect($rotated)->not->toBe($conversationId);
+
+    /** @var User $guest */
+    $guest = User::query()->where('email', 'guest@openagents.internal')->firstOrFail();
+
+    expect(DB::table('agent_conversations')
+        ->where('id', $rotated)
+        ->where('user_id', $guest->id)
+        ->exists())->toBeTrue();
+
+    expect(DB::table('runs')
+        ->where('thread_id', $rotated)
+        ->where('user_id', $guest->id)
+        ->exists())->toBeTrue();
+
+    // Original id remains with the non-guest owner.
+    expect(DB::table('agent_conversations')
+        ->where('id', $conversationId)
+        ->where('user_id', $owner->id)
+        ->exists())->toBeTrue();
+});

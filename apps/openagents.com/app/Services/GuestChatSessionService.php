@@ -107,6 +107,24 @@ class GuestChatSessionService
         }
     }
 
+    public function guestOwnsConversation(string $conversationId): bool
+    {
+        $guestId = (int) $this->guestUser()->getAuthIdentifier();
+
+        return DB::table('agent_conversations')
+            ->where('id', $conversationId)
+            ->where('user_id', $guestId)
+            ->exists();
+    }
+
+    public function rotateGuestConversationId(Request $request): string
+    {
+        $id = $this->generateGuestConversationId();
+        $request->session()->put('chat.guest.conversation_id', $id);
+
+        return $id;
+    }
+
     private function isConversationUsableForGuest(string $conversationId): bool
     {
         /** @var int|null $ownerIdRaw */
