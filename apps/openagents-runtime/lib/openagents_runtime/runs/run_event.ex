@@ -13,23 +13,27 @@ defmodule OpenAgentsRuntime.Runs.RunEvent do
     field :seq, :integer
     field :event_type, :string
     field :payload, :map
+    field :prev_hash, :string
+    field :event_hash, :string
 
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 
-  @required_fields ~w(run_id seq event_type payload)a
+  @required_fields ~w(run_id seq event_type payload event_hash)a
 
   @type t :: %__MODULE__{
           run_id: String.t(),
           seq: integer(),
           event_type: String.t(),
-          payload: map()
+          payload: map(),
+          prev_hash: String.t() | nil,
+          event_hash: String.t()
         }
 
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(event, attrs) do
     event
-    |> cast(attrs, @required_fields)
+    |> cast(attrs, @required_fields ++ [:prev_hash])
     |> validate_required(@required_fields)
     |> validate_number(:seq, greater_than: 0)
   end

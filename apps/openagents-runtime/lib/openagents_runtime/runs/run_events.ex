@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
 
   alias Ecto.Multi
   alias OpenAgentsRuntime.Repo
+  alias OpenAgentsRuntime.Runs.EventHashChain
   alias OpenAgentsRuntime.Runs.EventNotifier
   alias OpenAgentsRuntime.Runs.Run
   alias OpenAgentsRuntime.Runs.RunEvent
@@ -28,12 +29,37 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
           {:error, reason} -> {:error, reason}
         end
       end)
-      |> Multi.insert(:event, fn %{next_seq: {_run, next_seq}} ->
+      |> Multi.run(:prev_hash, fn repo, %{next_seq: {_run, next_seq}} ->
+        previous_seq = next_seq - 1
+
+        case previous_seq do
+          0 ->
+            {:ok, nil}
+
+          _ ->
+            query =
+              from(event in RunEvent,
+                where: event.run_id == ^run_id and event.seq == ^previous_seq,
+                select: event.event_hash,
+                limit: 1
+              )
+
+            case repo.one(query) do
+              hash when is_binary(hash) -> {:ok, hash}
+              nil -> {:error, :previous_hash_missing}
+            end
+        end
+      end)
+      |> Multi.insert(:event, fn %{next_seq: {_run, next_seq}, prev_hash: prev_hash} ->
+        event_hash = EventHashChain.hash_event(run_id, next_seq, event_type, payload, prev_hash)
+
         RunEvent.changeset(%RunEvent{}, %{
           run_id: run_id,
           seq: next_seq,
           event_type: event_type,
-          payload: payload
+          payload: payload,
+          prev_hash: prev_hash,
+          event_hash: event_hash
         })
       end)
       |> Multi.run(:notify, fn repo, %{event: event} ->
