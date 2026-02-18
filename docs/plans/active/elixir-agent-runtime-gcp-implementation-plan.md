@@ -11,6 +11,8 @@ Ship a production Elixir runtime for long-running autonomous agents (GenServer/S
 
 The Laravel app remains the user-facing product surface and API contract. Elixir becomes the autonomous execution engine.
 
+DS-Elixir-specific migration and contract details are in `docs/plans/active/elixir-ds-runtime-integration-addendum.md`.
+
 ## Strategic context: how this runtime enables the OpenAgents vision
 
 OpenAgents is explicitly pursuing the "operating system for the AI agent economy" model described in `docs/SYNTHESIS.md`: identity rails, payment rails, market rails, and transparency rails that let agents operate as sovereign economic actors rather than as stateless chat endpoints. That strategy only works if the runtime can sustain long-lived autonomous behavior with durable state transitions, policy-enforced spending, reproducible trajectories, and fault-tolerant recovery across continuous operation. In other words, this is not just about faster chat responses. It is about building a reliable execution substrate for agents that need to coordinate work, spend budget, call tools, participate in markets, and continue operating through failures without violating financial or policy boundaries.
@@ -23,6 +25,21 @@ Elixir on the BEAM is selected because OpenAgents needs runtime-level concurrenc
 
 Just as importantly, the BEAM model supports the operational quality required by OpenAgents' economic layer: budget enforcement, payment-linked receipts, and post-failure reconciliation are only credible when runtime failures are contained and recovery paths are first-class. "Let it crash" is not a slogan here; it is a mechanism for keeping the system live while preserving correctness boundaries for run acceptance, event logs, checkpoints, and settlement-relevant projections. This plan adopts Elixir/BEAM because it reduces systemic fragility in exactly the areas where OpenAgents must be strongest to realize the OS vision in production.
 
+## DS-Elixir is part of the runtime architecture, not a later add-on
+
+OpenAgents previously implemented a substantial DSPy-inspired DSE layer in the now-removed `apps/web` stack (`8c460f956` removal commit; key prior integration state in `42700ddef`, plus tool replay hardening in `c79250a58`). That implementation already validated critical behavior-shaping primitives: stable signature IDs, artifact-pinned strategy selection (`direct.v1` and `rlm_lite.v1`), deterministic budget envelopes, canary policy selection, prediction receipts/traces, and compile/promote loops with rollback.
+
+This plan carries those primitives forward into Elixir as DS-Elixir inside `apps/openagents-runtime`. The goal is to preserve what worked in DSE while removing the previous coupling constraints. DS-Elixir is therefore a first-class subsystem in this runtime plan because autonomous execution quality depends on explicit contracts for inference behavior, not only on process supervision.
+
+DS-Elixir constraints adopted in this plan:
+
+1. Signature contracts are versioned, typed, and hashable.
+2. Compiled artifacts are immutable; promotion/rollback is pointer-based.
+3. Inference strategy is explicit and receipt-visible (`direct.v1` or `rlm_lite.v1`).
+4. Budget usage is recorded per run for audit and guardrails.
+5. Tool replay context is bounded and redacted before reinjection.
+6. Compile/eval/canary flows are operational controls, not ad-hoc scripts.
+
 ## Hard decisions (locked)
 
 1. No Phoenix/Laravel rewrite in this plan.
@@ -30,6 +47,7 @@ Just as importantly, the BEAM model supports the operational quality required by
 3. Primary deployment target is GCP GKE Standard using StatefulSets and stable BEAM node identity.
 4. Runtime must be restart-safe: process memory is a cache, not source of truth.
 5. Existing frontend stream contract (AI SDK/Vercel protocol over SSE) is preserved for compatibility.
+6. DS-Elixir is included in runtime scope for signature execution, receipts, and compile/promotion control.
 
 ## BEAM lessons explicitly adopted in this plan
 
@@ -102,6 +120,21 @@ apps/openagents-runtime/
       tools/
         tool_runner.ex
         tool_task_supervisor.ex
+      ds/
+        signatures/
+          catalog.ex
+        predict.ex
+        strategies/
+          direct_v1.ex
+          rlm_lite_v1.ex
+        policy_registry.ex
+        receipts.ex
+        traces.ex
+        tool_replay.ex
+        compile/
+          compile_service.ex
+          dataset_exporter.ex
+          promote_service.ex
       runs/
         run_store.ex
         run_events.ex
@@ -156,8 +189,11 @@ Touch points:
 - `apps/openagents-runtime/docs/DEPLOY_GCP.md`
 - `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
 - `apps/openagents-runtime/docs/OPERATIONS.md`
+- `apps/openagents-runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
+- `apps/openagents-runtime/docs/DS_ELIXIR_OPERATIONS.md`
 - `docs/PROJECT_OVERVIEW.md` update with new app
 - `docs/README.md` update with new runtime docs links
+- `docs/plans/active/elixir-ds-runtime-integration-addendum.md`
 
 ## Target architecture (no rewrite)
 
@@ -178,6 +214,9 @@ Elixir (`apps/openagents-runtime`) owns:
 - Async tool execution and cancellation
 - Tiered memory compaction and expansion
 - Autonomous scheduling (cron-style ticks, map/reduce scans)
+- DS-Elixir signature execution (strategy selection, budgets, receipts, traces)
+- DS-Elixir artifact policy registry and canary selection
+- DS-Elixir compile/eval/promote/rollback controls
 - Runtime event emission for UI stream compatibility
 
 ## High-level data flow
@@ -185,9 +224,21 @@ Elixir (`apps/openagents-runtime`) owns:
 1. Browser sends message to existing Laravel endpoint (`/api/chat` or `/api/chats/{id}/stream`).
 2. Laravel validates auth/session/ownership exactly as today.
 3. Laravel calls Elixir internal API to start/continue run.
-4. Laravel proxies runtime stream frames to browser as SSE (same AI SDK protocol).
-5. Elixir persists canonical runtime events + run state.
-6. Laravel read APIs continue returning conversation/runs/events for refresh/history.
+4. Elixir appends runtime events and executes DS-Elixir signatures for routing/tool/memory decisions.
+5. Laravel proxies runtime stream frames to browser as SSE (same AI SDK protocol).
+6. Elixir persists canonical runtime events + run state + DS receipts/traces.
+7. Laravel read APIs continue returning conversation/runs/events for refresh/history.
+
+## DS-Elixir execution loop (inside a run)
+
+1. Accept frame/event and append durable runtime event.
+2. Choose relevant signature(s) for the frame (for example: tool selection, recap, upgrade detection).
+3. Resolve active compiled artifact for signature (or fall back to signature defaults).
+4. Execute predict with explicit strategy (`direct.v1` or `rlm_lite.v1`) and budgets.
+5. Run tools asynchronously when selected; persist tool receipts/events.
+6. Build bounded/redacted tool replay context for subsequent inference.
+7. Persist predict receipt and optional trace handle.
+8. Continue until deterministic terminal run state is emitted.
 
 ## Internal runtime contract (Laravel <-> Elixir)
 
@@ -284,6 +335,14 @@ Use the same Postgres cluster but a dedicated schema for runtime internals.
   - `runtime.tool_tasks`
   - `runtime.checkpoints`
   - `runtime.expansion_jobs`
+  - `runtime.ds_signatures`
+  - `runtime.ds_active_policies`
+  - `runtime.ds_compiled_artifacts`
+  - `runtime.ds_predict_receipts`
+  - `runtime.ds_traces`
+  - `runtime.ds_examples`
+  - `runtime.ds_compile_reports`
+  - `runtime.ds_eval_reports`
 
 Elixir writes canonical runtime events and updates Laravel-compatible projections.
 
@@ -301,6 +360,8 @@ Projection rules:
 3. Laravel read endpoints remain unchanged.
 
 This gives migration safety while preserving UI/API behavior.
+
+DS-Elixir artifacts and receipts remain runtime-internal sources of truth. Laravel projections should expose only summary/debug fields needed by existing product surfaces.
 
 ## Process model in Elixir
 
@@ -414,6 +475,32 @@ All compactions produce auditable artifacts:
 - token/latency stats
 - hash of output summary text
 
+## DS-Elixir contract layer (required)
+
+Core DS-Elixir runtime contracts in this plan:
+
+- Signature contract:
+  - `signature_id` (stable versioned ID)
+  - input/output schema hash
+  - prompt/program hash
+  - default strategy + budgets + constraints
+- Compiled artifact:
+  - immutable `compiled_id`
+  - signature compatibility hashes
+  - chosen params/strategy
+  - provenance (`job_hash`, `dataset_hash`, compiler version)
+- Predict receipt:
+  - `signature_id`, `compiled_id`, `strategy_id`
+  - `params_hash`, `prompt_hash`, `output_hash`
+  - budget limits/usage and latency counters
+  - error class and optional trace reference
+
+Design rules:
+
+1. Artifact mutation is forbidden; only active pointer changes.
+2. Any strategy/budget decision affecting behavior must be receipt-visible.
+3. Compile/promotion uses deterministic job and dataset hashes.
+
 ## Tool execution model
 
 Tool calls run async under `Task.Supervisor`.
@@ -434,6 +521,7 @@ Required capabilities:
 - stream partial progress events
 - cancel tool execution from user request or policy engine
 - persist deterministic receipts (params hash, output hash, latency, error)
+- persist bounded/redacted tool replay summaries for next-frame context injection
 
 ## Compatibility with current Laravel stream/UI
 
@@ -789,6 +877,22 @@ This reduces context ambiguity for human and agent contributors and keeps migrat
 - aggregate semantic outputs
 - merge back into main agent context
 
+## Milestone G: DS-Elixir runtime predict core
+
+- signature catalog + typed contracts
+- strategy-pinned execution (`direct.v1`, `rlm_lite.v1`)
+- policy registry lookup for active artifacts
+- receipt/trace persistence and retrieval APIs
+- tool replay context injection into frame builder
+
+## Milestone H: DS-Elixir compile/eval/promote loop
+
+- dataset export from runtime receipts/traces
+- compile job runner with hash-stable job specs
+- compile/eval report persistence
+- canary rollout pointer controls
+- promote/rollback APIs with audit log
+
 ## Observability and SLOs
 
 ## Required telemetry dimensions
@@ -796,6 +900,9 @@ This reduces context ambiguity for human and agent contributors and keeps migrat
 - `run_id`, `thread_id`, `user_id`, `autopilot_id`
 - runtime driver (`legacy|elixir`)
 - model/provider
+- `signature_id`, `compiled_id`, `strategy_id`
+- `params_hash`, `prompt_hash`, `output_hash`
+- budget profile + budget usage counters (`lm_calls`, `tool_calls`, `rlm_iterations`, `sub_lm_calls`)
 - tool name/status
 - compaction level (`raw|l1|l2|l3`)
 - phase (`ingest|infer|tool|persist|stream`)
@@ -949,6 +1056,9 @@ Scaling policy:
 7. Enable canary by user/autopilot flags.
 8. Promote to default-on when SLO and parity pass.
 9. Enable autonomous frame + tiered memory features gradually.
+10. Implement DS-Elixir signature catalog + predict runtime for initial signatures.
+11. Implement DS-Elixir receipts/traces + tool replay context pipeline.
+12. Implement DS-Elixir compile/eval/promote/canary controls.
 
 ## Non-goals
 
@@ -963,3 +1073,4 @@ Scaling policy:
 - 2026-02-18: Chose monorepo placement `apps/openagents-runtime`.
 - 2026-02-18: Chose GKE Standard + StatefulSet BEAM clustering as primary production architecture.
 - 2026-02-18: Preserved SSE AI SDK compatibility as migration invariant.
+- 2026-02-18: Added DS-Elixir as first-class runtime subsystem to preserve proven DSE behavior controls.
