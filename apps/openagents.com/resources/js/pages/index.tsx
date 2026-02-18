@@ -534,6 +534,19 @@ export default function Index() {
                                             )}
                                         </>
                                     )}
+                                {!authRequired &&
+                                    conversationId &&
+                                    messages.length === 0 &&
+                                    !showThinking && (
+                                        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2 text-center">
+                                            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                                                Autopilot online.
+                                            </h1>
+                                            <p className="text-base text-muted-foreground sm:text-lg">
+                                                How can I help you?
+                                            </p>
+                                        </div>
+                                    )}
                             </ConversationContent>
                             <ConversationScrollButton />
                         </Conversation>
