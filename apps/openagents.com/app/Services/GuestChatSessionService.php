@@ -16,14 +16,21 @@ class GuestChatSessionService
         $existing = $request->session()->get('chat.guest.conversation_id');
 
         if ($this->isGuestConversationId($existing)) {
-            return strtolower(trim((string) $existing));
+            $existingId = strtolower(trim((string) $existing));
+
+            if ($this->isConversationUsableForGuest($existingId)) {
+                return $existingId;
+            }
         }
 
         if ($this->isGuestConversationId($requestedConversationId)) {
-            $id = strtolower(trim((string) $requestedConversationId));
-            $request->session()->put('chat.guest.conversation_id', $id);
+            $requestedId = strtolower(trim((string) $requestedConversationId));
 
-            return $id;
+            if ($this->isConversationUsableForGuest($requestedId)) {
+                $request->session()->put('chat.guest.conversation_id', $requestedId);
+
+                return $requestedId;
+            }
         }
 
         $id = $this->generateGuestConversationId();
@@ -98,6 +105,24 @@ class GuestChatSessionService
                 'updated_at' => $now,
             ]);
         }
+    }
+
+    private function isConversationUsableForGuest(string $conversationId): bool
+    {
+        /** @var int|null $ownerIdRaw */
+        $ownerIdRaw = DB::table('agent_conversations')
+            ->where('id', $conversationId)
+            ->value('user_id');
+
+        // No owner yet means the id is safe for guest bootstrap.
+        if ($ownerIdRaw === null) {
+            return true;
+        }
+
+        $ownerId = (int) $ownerIdRaw;
+        $guestId = (int) $this->guestUser()->getAuthIdentifier();
+
+        return $ownerId > 0 && $ownerId === $guestId;
     }
 
     private function generateGuestConversationId(): string
