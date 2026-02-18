@@ -25,7 +25,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   test "returns snapshot for authorized user", %{conn: conn} do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> get(~p"/internal/v1/runs/run_snapshot/snapshot?thread_id=thread_snapshot")
 
     assert %{
@@ -40,14 +40,17 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   test "returns forbidden for cross-tenant request", %{conn: conn} do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "999")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 999)
       |> get(~p"/internal/v1/runs/run_snapshot/snapshot?thread_id=thread_snapshot")
 
     assert %{"error" => %{"code" => "forbidden"}} = json_response(conn, 403)
   end
 
   test "returns unauthorized for missing principal headers", %{conn: conn} do
-    conn = get(conn, ~p"/internal/v1/runs/run_snapshot/snapshot?thread_id=thread_snapshot")
+    conn =
+      conn
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot")
+      |> get(~p"/internal/v1/runs/run_snapshot/snapshot?thread_id=thread_snapshot")
 
     assert %{"error" => %{"code" => "unauthorized"}} = json_response(conn, 401)
   end
@@ -55,7 +58,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   test "returns not_found when run/thread is missing", %{conn: conn} do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_missing", thread_id: "thread_missing", user_id: 77)
       |> get(~p"/internal/v1/runs/run_missing/snapshot?thread_id=thread_missing")
 
     assert %{"error" => %{"code" => "not_found"}} = json_response(conn, 404)
@@ -64,7 +67,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   test "returns invalid request when thread_id is missing", %{conn: conn} do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", user_id: 77)
       |> get(~p"/internal/v1/runs/run_snapshot/snapshot")
 
     assert %{"error" => %{"code" => "invalid_request"}} = json_response(conn, 400)
@@ -73,7 +76,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   test "append_frame accepts first write and marks duplicate as idempotent replay", %{conn: conn} do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> post(~p"/internal/v1/runs/run_snapshot/frames", %{
         "thread_id" => "thread_snapshot",
         "frame_id" => "frame_1",
@@ -90,7 +93,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
 
     conn =
       build_conn()
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> put_req_header("content-type", "application/json")
       |> post(~p"/internal/v1/runs/run_snapshot/frames", %{
         "thread_id" => "thread_snapshot",
@@ -110,7 +113,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   test "append_frame returns conflict when duplicate frame_id payload differs", %{conn: conn} do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> post(~p"/internal/v1/runs/run_snapshot/frames", %{
         "thread_id" => "thread_snapshot",
         "frame_id" => "frame_conflict",
@@ -122,7 +125,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
 
     conn =
       build_conn()
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> put_req_header("content-type", "application/json")
       |> post(~p"/internal/v1/runs/run_snapshot/frames", %{
         "thread_id" => "thread_snapshot",
@@ -140,7 +143,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
 
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> get(~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&cursor=1")
 
     assert conn.status == 200
@@ -155,7 +158,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
 
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> put_req_header("last-event-id", "1")
       |> get(~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot")
 
@@ -168,7 +171,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   } do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> put_req_header("last-event-id", "2")
       |> get(~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&cursor=1")
 
@@ -189,7 +192,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
 
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> get(~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&cursor=0")
 
     assert %{"error" => %{"code" => "stale_cursor"}} = json_response(conn, 410)
@@ -204,7 +207,11 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
           {:go, test_pid} ->
             conn =
               build_conn()
-              |> put_req_header("x-oa-user-id", "77")
+              |> put_internal_auth(
+                run_id: "run_snapshot",
+                thread_id: "thread_snapshot",
+                user_id: 77
+              )
               |> get(
                 ~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&cursor=0&tail_ms=500"
               )
@@ -228,7 +235,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
   test "stream rejects invalid tail timeout", %{conn: conn} do
     conn =
       conn
-      |> put_req_header("x-oa-user-id", "77")
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
       |> get(~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&tail_ms=abc")
 
     assert %{"error" => %{"code" => "invalid_request"}} = json_response(conn, 400)
