@@ -975,6 +975,12 @@ final class ConvexChatImportService
             $id = (string) Str::uuid7();
             $now = now();
 
+            $tagline = null;
+            if ($importBlueprints) {
+                $taglineSource = $this->stringOrNull($profileData['persona_summary'] ?? null);
+                $tagline = is_string($taglineSource) ? Str::limit($taglineSource, 255, '') : null;
+            }
+
             DB::table('autopilots')->insert([
                 'id' => $id,
                 'owner_user_id' => $ownerUserId,
@@ -983,7 +989,7 @@ final class ConvexChatImportService
                 'avatar' => null,
                 'status' => 'active',
                 'visibility' => 'private',
-                'tagline' => $importBlueprints ? $this->stringOrNull($profileData['persona_summary'] ?? null) : null,
+                'tagline' => $tagline,
                 'config_version' => 1,
                 'deleted_at' => null,
                 'created_at' => $now,
