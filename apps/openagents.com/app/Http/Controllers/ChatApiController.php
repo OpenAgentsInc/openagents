@@ -47,6 +47,14 @@ class ChatApiController extends Controller
             }
 
             $guestService->ensureGuestConversationAndThread($conversationId);
+
+            // If ownership changed between preflight and stream (race), rotate to a
+            // fresh guest conversation id and continue instead of surfacing a 404.
+            if (! $guestService->guestOwnsConversation($conversationId)) {
+                $conversationId = $guestService->rotateGuestConversationId($request);
+                $guestService->ensureGuestConversationAndThread($conversationId);
+            }
+
             $user = $guestService->guestUser();
         }
 
@@ -125,7 +133,7 @@ class ChatApiController extends Controller
         }
 
         $guestUserId = (int) $guestService->guestUser()->getAuthIdentifier();
-        if ($guestUserId <= 0 || $guestUserId === $userId) {
+        if ($guestUserId <= 0) {
             return false;
         }
 
