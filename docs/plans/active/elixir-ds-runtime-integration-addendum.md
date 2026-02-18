@@ -128,6 +128,9 @@ Execution strategy support required immediately:
 - `signature_id`, `compiled_id`, `strategy_id`
 - `params_hash`, `prompt_hash`, `output_hash`
 - latency and budget counters
+- `authorization_id`, `authorization_mode`
+- `policy_decision`
+- `budget_before`, `reserved`, `spent`, `budget_after`
 - terminal status/error class
 - optional `trace_ref` for RLM-like runs
 - trace/request linkage (`trace_id`, `x_request_id`) for end-to-end correlation
@@ -166,6 +169,28 @@ For L402/Lightning-adjacent tools, DS-Elixir runtime must enforce:
 2. Settlement boundary classification (`safe_retry` vs `dedupe_reconcile_required`).
 3. Provider-level idempotency keys for settlement-affecting operations.
 4. Receipt linkage fields required for post-crash reconciliation without duplicate spend attempts.
+
+Authorization modes:
+
+- `interactive`
+- `delegated_budget`
+- `deny`
+- optional `delegated_budget_with_threshold`
+
+SpendAuthorization requirement:
+
+- settlement-adjacent execution must use control-plane-issued budget envelope authorization.
+- authorization scope: `{autopilot_id?, thread_id?, run_id?}`
+- authorization mode determines whether in-the-moment approval is required.
+- runtime must enforce without user interaction when mode is delegated.
+- authorization validation and consumption must be receipt-visible and auditable.
+
+Required receipt linkage fields:
+
+- `authorization_id`
+- `authorization_mode`
+- `policy_decision`
+- `budget_before`, `reserved`, `spent`, `budget_after`
 
 ## Compile/eval/promotion loop in runtime
 
