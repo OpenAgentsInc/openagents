@@ -55,6 +55,28 @@ function feedHref(zone: string | null): string {
     return `/feed?zone=${encodeURIComponent(zone)}`;
 }
 
+function looksLikeEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function safeAuthorName(value: string): string {
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || looksLikeEmail(trimmed)) {
+        return 'OpenAgents user';
+    }
+
+    return trimmed;
+}
+
+function safeAuthorHandle(value: string): string | null {
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || looksLikeEmail(trimmed)) {
+        return null;
+    }
+
+    return trimmed;
+}
+
 export default function FeedPage({ feed }: Props) {
     const activeZone = feed.zone ?? 'all';
     const capture = usePostHogEvent('feed');
@@ -124,27 +146,30 @@ export default function FeedPage({ feed }: Props) {
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {feed.items.map((item) => (
-                                <article
-                                    key={item.id}
-                                    className="rounded border border-sidebar-border/70 px-3 py-3"
-                                >
-                                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                        <span className="rounded border border-sidebar-border/70 px-2 py-0.5 font-medium text-foreground">
-                                            {item.zone || 'global'}
-                                        </span>
-                                        <span className="font-medium text-foreground">
-                                            {item.author.name}
-                                        </span>
-                                        <span>@{item.author.handle}</span>
-                                        <span>·</span>
-                                        <span>{formatTimestamp(item.createdAt)}</span>
-                                    </div>
-                                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                                        {item.body}
-                                    </p>
-                                </article>
-                            ))}
+                            {feed.items.map((item) => {
+                                const authorName = safeAuthorName(item.author.name);
+                                const authorHandle = safeAuthorHandle(item.author.handle);
+
+                                return (
+                                    <article
+                                        key={item.id}
+                                        className="rounded border border-sidebar-border/70 px-3 py-3"
+                                    >
+                                        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                            <span className="rounded border border-sidebar-border/70 px-2 py-0.5 font-medium text-foreground">
+                                                {item.zone || 'global'}
+                                            </span>
+                                            <span className="font-medium text-foreground">{authorName}</span>
+                                            {authorHandle ? <span>@{authorHandle}</span> : null}
+                                            <span>·</span>
+                                            <span>{formatTimestamp(item.createdAt)}</span>
+                                        </div>
+                                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                                            {item.body}
+                                        </p>
+                                    </article>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
