@@ -1,10 +1,18 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use WorkOS\Exception\GenericException;
 
 afterEach(function () {
     \Mockery::close();
+});
+
+beforeEach(function () {
+    config()->set('lightning.spark_executor.base_url', '');
+    config()->set('lightning.spark_executor.auth_token', '');
+    config()->set('lightning.agent_wallets.auto_provision_on_auth', true);
 });
 
 function configureWorkosForTests(): void
@@ -188,6 +196,68 @@ test('verify code JSON endpoint signs in user for chat onboarding', function () 
 
     $response->assertSessionHas('workos_access_token', 'access_token_123');
     $response->assertSessionHas('workos_refresh_token', 'refresh_token_123');
+});
+
+test('verify code auto provisions a spark wallet when executor is configured', function () {
+    configureWorkosForTests();
+
+    config()->set('lightning.spark_executor.base_url', 'https://spark-executor.test');
+    config()->set('lightning.spark_executor.auth_token', 'spark-token');
+
+    Http::fake([
+        'https://spark-executor.test/wallets/create' => Http::response([
+            'ok' => true,
+            'result' => [
+                'mnemonic' => 'abandon ability able about above absent absorb abstract absurd abuse access accident',
+                'sparkAddress' => 'chris@spark.wallet',
+                'lightningAddress' => 'chris@lightning.openagents.com',
+                'identityPubkey' => '02abc123',
+                'balanceSats' => 0,
+            ],
+        ], 200),
+    ]);
+
+    $workosUser = (object) [
+        'id' => 'user_abc123',
+        'email' => 'chris@openagents.com',
+        'firstName' => 'Chris',
+        'lastName' => 'David',
+        'profilePictureUrl' => 'https://example.com/avatar.png',
+    ];
+
+    $authResponse = (object) [
+        'user' => $workosUser,
+        'accessToken' => 'access_token_123',
+        'refreshToken' => 'refresh_token_123',
+    ];
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->with('client_test_123', '123456', 'user_abc123', \Mockery::any(), \Mockery::any())
+        ->andReturn($authResponse);
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'chris@openagents.com',
+                'user_id' => 'user_abc123',
+            ],
+        ])
+        ->postJson('/api/auth/verify', [
+            'code' => '123456',
+        ]);
+
+    $response->assertOk()->assertJsonPath('status', 'authenticated');
+
+    $user = User::query()->where('email', 'chris@openagents.com')->firstOrFail();
+
+    expect(DB::table('user_spark_wallets')->where('user_id', $user->id)->exists())->toBeTrue();
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+        return $request->url() === 'https://spark-executor.test/wallets/create'
+            && $request->method() === 'POST';
+    });
 });
 
 test('verify code surfaces provider errors for chat onboarding', function () {

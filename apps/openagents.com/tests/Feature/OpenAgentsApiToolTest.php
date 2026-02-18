@@ -44,6 +44,33 @@ test('openagents_api request requires an authenticated user context', function (
     expect($result['denyCode'])->toBe('auth_required');
 });
 
+test('openagents_api infers request action when method/path are provided', function () {
+    config()->set('app.url', 'https://openagents.com.test');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Http::fake([
+        'https://openagents.com.test/api/agent-payments/wallet' => Http::response([
+            'data' => ['wallet' => ['walletId' => 'oa-user-1']],
+        ], 200),
+    ]);
+
+    $tool = new OpenAgentsApiTool;
+
+    $json = $tool->handle(new ToolRequest([
+        'method' => 'POST',
+        'path' => '/api/agent-payments/wallet',
+    ]));
+
+    $result = json_decode($json, true);
+
+    expect($result)->toBeArray();
+    expect($result['status'])->toBe('ok');
+    expect($result['action'])->toBe('request');
+    expect($result['statusCode'])->toBe(200);
+});
+
 test('openagents_api request uses scoped sanctum token and deletes it after call', function () {
     config()->set('app.url', 'https://openagents.com.test');
 

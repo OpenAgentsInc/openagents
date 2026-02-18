@@ -8,6 +8,8 @@ use App\OpenApi\Responses\DataObjectResponse;
 use App\OpenApi\Responses\NotFoundResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
 use App\Services\AutopilotService;
+use App\Lightning\Spark\UserSparkWalletService;
+use Throwable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -82,6 +84,8 @@ class AuthRegisterController extends Controller
             $user->save();
         }
 
+        $this->provisionWalletIfConfigured($user);
+
         $tokenName = isset($validated['tokenName']) && is_string($validated['tokenName']) && trim($validated['tokenName']) !== ''
             ? trim((string) $validated['tokenName'])
             : (string) config('auth.api_signup.default_token_name', 'api-bootstrap');
@@ -135,6 +139,24 @@ class AuthRegisterController extends Controller
                 'autopilot' => $autopilotPayload,
             ],
         ], $created ? 201 : 200);
+    }
+
+    private function provisionWalletIfConfigured(User $user): void
+    {
+        if (! (bool) config('lightning.agent_wallets.auto_provision_on_auth', true)) {
+            return;
+        }
+
+        $sparkBaseUrl = trim((string) config('lightning.spark_executor.base_url', ''));
+        if ($sparkBaseUrl === '') {
+            return;
+        }
+
+        try {
+            resolve(UserSparkWalletService::class)->ensureWalletForUser((int) $user->getAuthIdentifier());
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     private function assertDomainAllowed(string $email): void

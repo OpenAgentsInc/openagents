@@ -30,7 +30,7 @@ class OpenAgentsApiTool implements Tool
 
     public function handle(Request $request): string
     {
-        $action = strtolower(trim((string) $request->string('action', 'discover')));
+        $action = $this->resolveAction($request);
 
         return $this->encode(match ($action) {
             'discover' => $this->discover($request),
@@ -43,6 +43,35 @@ class OpenAgentsApiTool implements Tool
                 'message' => 'action must be discover or request.',
             ],
         });
+    }
+
+    private function resolveAction(Request $request): string
+    {
+        $raw = strtolower(trim((string) $request->string('action', '')));
+        if ($raw !== '') {
+            return $raw;
+        }
+
+        $payload = $request->all();
+        $path = trim((string) ($payload['path'] ?? ''));
+        $method = strtoupper(trim((string) ($payload['method'] ?? '')));
+        $hasQuery = isset($payload['query']) && is_array($payload['query']) && $payload['query'] !== [];
+        $hasJson = isset($payload['json']) && is_array($payload['json']) && $payload['json'] !== [];
+        $hasRawBody = is_string($payload['body'] ?? null) && trim((string) $payload['body']) !== '';
+        $hasHeaders = isset($payload['headers']) && is_array($payload['headers']) && $payload['headers'] !== [];
+
+        if (
+            in_array($method, self::HTTP_METHODS, true)
+            || ($path !== '' && str_starts_with($path, '/api/'))
+            || $hasQuery
+            || $hasJson
+            || $hasRawBody
+            || $hasHeaders
+        ) {
+            return 'request';
+        }
+
+        return 'discover';
     }
 
     public function schema(JsonSchema $schema): array

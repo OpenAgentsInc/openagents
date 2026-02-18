@@ -2,10 +2,15 @@
 
 use App\Models\Autopilot;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     config()->set('auth.api_signup.enabled', false);
     config()->set('auth.api_signup.allowed_domains', []);
+    config()->set('lightning.spark_executor.base_url', '');
+    config()->set('lightning.spark_executor.auth_token', '');
+    config()->set('lightning.agent_wallets.auto_provision_on_auth', true);
 });
 
 test('api signup endpoint is disabled by default', function () {
@@ -40,6 +45,36 @@ test('api signup creates user and returns sanctum bearer token when enabled', fu
     $me->assertOk()->assertJsonPath('data.user.email', 'staging-user-1@staging.openagents.com');
 
     expect(User::query()->where('email', 'staging-user-1@staging.openagents.com')->exists())->toBeTrue();
+});
+
+test('api signup auto provisions a wallet when spark executor is configured', function () {
+    config()->set('auth.api_signup.enabled', true);
+    config()->set('lightning.spark_executor.base_url', 'https://spark-executor.test');
+    config()->set('lightning.spark_executor.auth_token', 'spark-token');
+
+    Http::fake([
+        'https://spark-executor.test/wallets/create' => Http::response([
+            'ok' => true,
+            'result' => [
+                'mnemonic' => 'abandon ability able about above absent absorb abstract absurd abuse access accident',
+                'sparkAddress' => 'staging-user-2@spark.wallet',
+                'lightningAddress' => 'staging-user-2@lightning.openagents.com',
+                'identityPubkey' => '02abc123',
+                'balanceSats' => 0,
+            ],
+        ], 200),
+    ]);
+
+    $response = $this->postJson('/api/auth/register', [
+        'email' => 'staging-user-2@staging.openagents.com',
+        'name' => 'Staging User 2',
+    ]);
+
+    $response->assertCreated();
+
+    $user = User::query()->where('email', 'staging-user-2@staging.openagents.com')->firstOrFail();
+
+    expect(DB::table('user_spark_wallets')->where('user_id', $user->id)->exists())->toBeTrue();
 });
 
 test('api signup enforces configured email domain allowlist', function () {

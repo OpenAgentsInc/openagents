@@ -210,7 +210,7 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                     {error ? (
                         <div className="text-[11px] text-destructive">{error}</div>
                     ) : !snapshot?.hasWallet ? (
-                        <div className="text-xs text-muted-foreground">No wallet yet</div>
+                        <div className="text-xs text-muted-foreground">0 sats</div>
                     ) : (
                         <div className="text-xs text-muted-foreground">
                             <span className="font-medium text-foreground">{formatSats(snapshot.sparkBalanceSats)}</span>
@@ -257,7 +257,7 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                     <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
                         <div>
                             <span className="font-medium text-foreground">Balance:</span>{' '}
-                            {snapshot?.hasWallet ? formatSats(snapshot.sparkBalanceSats) : 'No wallet yet'}
+                            {snapshot?.hasWallet ? formatSats(snapshot.sparkBalanceSats) : formatSats(0)}
                             {snapshot?.sparkStatus ? ` (${snapshot.sparkStatus})` : ''}
                         </div>
                         <div>
@@ -278,7 +278,7 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                         </div>
                         <div className="sm:col-span-2">
                             <span className="font-medium text-foreground">Updated:</span>{' '}
-                            {snapshot?.lastUpdatedAt ?? (snapshot?.hasWallet ? 'n/a' : 'No wallet yet')}
+                            {snapshot?.lastUpdatedAt ?? 'n/a'}
                         </div>
                         {snapshot?.sparkLastError ? (
                             <div className="sm:col-span-2 text-destructive/90">
