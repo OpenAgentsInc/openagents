@@ -11,6 +11,18 @@ Ship a production Elixir runtime for long-running autonomous agents (GenServer/S
 
 The Laravel app remains the user-facing product surface and API contract. Elixir becomes the autonomous execution engine.
 
+## Strategic context: how this runtime enables the OpenAgents vision
+
+OpenAgents is explicitly pursuing the "operating system for the AI agent economy" model described in `docs/SYNTHESIS.md`: identity rails, payment rails, market rails, and transparency rails that let agents operate as sovereign economic actors rather than as stateless chat endpoints. That strategy only works if the runtime can sustain long-lived autonomous behavior with durable state transitions, policy-enforced spending, reproducible trajectories, and fault-tolerant recovery across continuous operation. In other words, this is not just about faster chat responses. It is about building a reliable execution substrate for agents that need to coordinate work, spend budget, call tools, participate in markets, and continue operating through failures without violating financial or policy boundaries.
+
+The wedge-to-platform path in `docs/SYNTHESIS.md` starts with Autopilot and expands toward skills and compute marketplaces, treasury controls, and eventually protocol-level agent interoperability. The runtime is the bridge across those stages. Autopilot as "first buyer" creates demand floor by continuously purchasing inference, verification, and compute work; that demand floor only remains trustworthy if runtime execution is deterministic enough to audit, resilient enough to recover, and scalable enough to manage many concurrent agent sessions and sub-tasks. The architecture in this plan is therefore a platform decision, not a local implementation detail: it is the mechanism that turns product usage into reliable market activity and durable protocol network effects.
+
+## Why Elixir/BEAM is the right runtime for this phase
+
+Elixir on the BEAM is selected because OpenAgents needs runtime-level concurrency semantics, not library-level approximations. The target workload is a large number of concurrent, long-lived, stateful agent sessions with asynchronous tool execution, intermittent external API failures, and continuous background compaction/reconciliation work. BEAM's process isolation, message passing, supervisor hierarchies, preemptive scheduling, and process-level introspection directly match this workload shape. The intent is to treat agent failures as routine events in a supervised system rather than exceptional control-flow accidents in a shared-state runtime.
+
+Just as importantly, the BEAM model supports the operational quality required by OpenAgents' economic layer: budget enforcement, payment-linked receipts, and post-failure reconciliation are only credible when runtime failures are contained and recovery paths are first-class. "Let it crash" is not a slogan here; it is a mechanism for keeping the system live while preserving correctness boundaries for run acceptance, event logs, checkpoints, and settlement-relevant projections. This plan adopts Elixir/BEAM because it reduces systemic fragility in exactly the areas where OpenAgents must be strongest to realize the OS vision in production.
+
 ## Hard decisions (locked)
 
 1. No Phoenix/Laravel rewrite in this plan.
