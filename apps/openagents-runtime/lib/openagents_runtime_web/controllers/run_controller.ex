@@ -4,6 +4,7 @@ defmodule OpenAgentsRuntimeWeb.RunController do
   alias OpenAgentsRuntime.Runs.Frames
   alias OpenAgentsRuntime.Runs.OwnershipGuard
   alias OpenAgentsRuntime.Runs.RunEvents
+  alias OpenAgentsRuntime.Runs.StreamTailer
   alias OpenAgentsRuntime.Telemetry.Tracing
 
   @spec snapshot(Plug.Conn.t(), map()) :: Plug.Conn.t()
@@ -89,9 +90,16 @@ defmodule OpenAgentsRuntimeWeb.RunController do
       with {:ok, principal} <- OwnershipGuard.normalize_principal(principal),
            :ok <- OwnershipGuard.authorize(run_id, thread_id, principal),
            {:ok, cursor} <- resolve_cursor(conn, params, run_id),
+           {:ok, tail_timeout_ms} <- parse_tail_timeout(params),
            :ok <- validate_cursor_window(run_id, cursor) do
-        events = RunEvents.list_after(run_id, cursor)
-        send_event_stream(conn, run_id, events)
+        conn =
+          conn
+          |> put_resp_content_type("text/event-stream")
+          |> put_resp_header("cache-control", "no-cache")
+          |> put_resp_header("x-accel-buffering", "no")
+          |> send_chunked(200)
+
+        StreamTailer.stream(conn, run_id, cursor, tail_timeout_ms: tail_timeout_ms)
       else
         {:error, :invalid_principal} ->
           error(conn, 401, "unauthorized", "missing or invalid principal headers")
@@ -110,6 +118,9 @@ defmodule OpenAgentsRuntimeWeb.RunController do
 
         {:error, :stale_cursor} ->
           error(conn, 410, "stale_cursor", "cursor is older than retention floor")
+
+        {:error, :invalid_tail_timeout} ->
+          error(conn, 400, "invalid_request", "tail_ms must be a positive integer")
       end
     end)
   end
@@ -183,30 +194,17 @@ defmodule OpenAgentsRuntimeWeb.RunController do
     end
   end
 
-  defp send_event_stream(conn, run_id, events) do
-    conn =
-      conn
-      |> put_resp_content_type("text/event-stream")
-      |> put_resp_header("cache-control", "no-cache")
-      |> put_resp_header("x-accel-buffering", "no")
-      |> send_chunked(200)
+  defp parse_tail_timeout(params) do
+    case Map.get(params, "tail_ms") do
+      nil ->
+        {:ok, Application.get_env(:openagents_runtime, :stream_tail_timeout_ms, 1_000)}
 
-    Enum.reduce_while(events, conn, fn event, conn ->
-      payload =
-        Jason.encode!(%{
-          "runId" => run_id,
-          "seq" => event.seq,
-          "type" => event.event_type,
-          "payload" => event.payload
-        })
-
-      chunk = "event: run.event\\nid: #{event.seq}\\ndata: #{payload}\\n\\n"
-
-      case chunk(conn, chunk) do
-        {:ok, conn} -> {:cont, conn}
-        {:error, :closed} -> {:halt, conn}
-      end
-    end)
+      value ->
+        case Integer.parse(value) do
+          {parsed, ""} when parsed > 0 -> {:ok, parsed}
+          _ -> {:error, :invalid_tail_timeout}
+        end
+    end
   end
 
   defp error(conn, status, code, message) do
