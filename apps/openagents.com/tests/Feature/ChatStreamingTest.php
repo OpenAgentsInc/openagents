@@ -333,7 +333,7 @@ test('guest chat stream can establish session without guest-session preflight', 
     expect($toolPolicyPayload['exposedTools'] ?? [])->toBe(['chat_login', 'openagents_api']);
 });
 
-test('guest chat stream rejects conversation id that mismatches established guest session', function () {
+test('guest chat stream recovers when request conversation id mismatches established guest session', function () {
     Ai::fakeAgent(AutopilotAgent::class, ['Hello from guest stream']);
 
     $establishedId = 'g-'.str_repeat('c', 32);
@@ -347,7 +347,12 @@ test('guest chat stream rejects conversation id that mismatches established gues
         ],
     ]);
 
-    $response->assertUnauthorized();
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+    expect($content)->toContain('data: {"type":"start"');
+    expect($content)->toContain('data: {"type":"finish"');
+    expect($content)->toContain("data: [DONE]\n\n");
 });
 
 test('authenticated chat stream adopts guest conversation on demand after chat login', function () {
@@ -423,5 +428,37 @@ test('authenticated chat stream can start from a fresh guest-style conversation 
     expect(DB::table('threads')
         ->where('id', $conversationId)
         ->where('user_id', $user->id)
+        ->exists())->toBeTrue();
+});
+
+test('guest chat stream succeeds when request conversation id mismatches active guest session', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Recovered from conversation id mismatch']);
+
+    $active = 'g-'.str_repeat('1', 32);
+    $stale = 'g-'.str_repeat('2', 32);
+
+    $this->getJson('/api/chat/guest-session?conversationId='.$active)->assertOk();
+
+    $response = $this->postJson('/api/chat?conversationId='.$stale, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'Continue despite mismatch'],
+        ],
+    ]);
+
+    $response->assertOk();
+    $content = $response->streamedContent();
+
+    expect($content)->toContain('data: {"type":"start"');
+    expect($content)->toContain('data: {"type":"finish"');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    expect(session('chat.guest.conversation_id'))->toBe($active);
+
+    /** @var User $guest */
+    $guest = User::query()->where('email', 'guest@openagents.internal')->firstOrFail();
+
+    expect(DB::table('agent_conversations')
+        ->where('id', $active)
+        ->where('user_id', $guest->id)
         ->exists())->toBeTrue();
 });

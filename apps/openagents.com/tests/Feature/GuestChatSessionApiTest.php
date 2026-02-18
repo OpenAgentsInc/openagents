@@ -54,3 +54,37 @@ it('replaces legacy oversized guest ids in session with bounded ids', function (
     expect($conversationId)->not->toBe($legacy);
     expect(session('chat.guest.conversation_id'))->toBe($conversationId);
 });
+
+it('rotates stale guest session ids that are now owned by a real user', function () {
+    $owner = User::factory()->create();
+    $stale = 'g-'.str_repeat('f', 32);
+
+    DB::table('agent_conversations')->insert([
+        'id' => $stale,
+        'user_id' => $owner->id,
+        'title' => 'Owned by real user',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('threads')->insert([
+        'id' => $stale,
+        'user_id' => $owner->id,
+        'title' => 'Owned by real user',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $response = $this
+        ->withSession(['chat.guest.conversation_id' => $stale])
+        ->getJson('/api/chat/guest-session?conversationId='.$stale);
+
+    $response->assertOk();
+
+    $conversationId = $response->json('conversationId');
+
+    expect($conversationId)->toBeString();
+    expect($conversationId)->toMatch('/^g-[a-f0-9]{32}$/');
+    expect($conversationId)->not->toBe($stale);
+    expect(session('chat.guest.conversation_id'))->toBe($conversationId);
+});

@@ -39,8 +39,11 @@ class ChatApiController extends Controller
             // Non-blocking guest UX: allow first stream call to establish the
             // session guest id if the guest-session preflight is still in flight.
             $sessionGuestId = $guestService->ensureGuestConversationId($request, $conversationId);
+
+            // If the requested id was stale or unusable, continue with the valid
+            // guest session id instead of failing the request.
             if ($sessionGuestId !== $conversationId) {
-                return $this->unauthorized();
+                $conversationId = $sessionGuestId;
             }
 
             $guestService->ensureGuestConversationAndThread($conversationId);
