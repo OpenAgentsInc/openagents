@@ -143,3 +143,35 @@ test('openagents_api request blocks absolute and non-api paths', function () {
     expect($nonApi['status'])->toBe('failed');
     expect($nonApi['denyCode'])->toBe('path_not_allowed');
 });
+
+test('openagents_api request sanitizes http error payloads', function () {
+    config()->set('app.url', 'https://openagents.com.test');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Http::fake([
+        'https://openagents.com.test/api/agent-payments/balance' => Http::response([
+            'message' => 'wallet_not_found',
+            'trace' => ['should-not-be-returned'],
+            'exception' => 'ExampleException',
+        ], 404),
+    ]);
+
+    $tool = new OpenAgentsApiTool;
+
+    $json = $tool->handle(new ToolRequest([
+        'action' => 'request',
+        'method' => 'GET',
+        'path' => '/api/agent-payments/balance',
+    ]));
+
+    $result = json_decode($json, true);
+
+    expect($result['status'])->toBe('http_error');
+    expect($result['statusCode'])->toBe(404);
+    expect(data_get($result, 'error.message'))->toBe('wallet_not_found');
+    expect(data_get($result, 'response.json.message'))->toBe('wallet_not_found');
+    expect(data_get($result, 'response.json.trace'))->toBeNull();
+    expect(data_get($result, 'response.json.exception'))->toBeNull();
+});

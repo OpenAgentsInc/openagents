@@ -289,10 +289,14 @@
 }
 
 /* Streamdown markdown links: keep readable contrast in dark chat surfaces. */
-.dark [data-streamdown="link"] {
+.dark [data-streamdown="link"],
+.dark button[data-streamdown="link"],
+.dark a[data-streamdown="link"] {
     color: hsl(208 29% 88%) !important;
 }
 
-.dark [data-streamdown="link"]:hover {
+.dark [data-streamdown="link"]:hover,
+.dark button[data-streamdown="link"]:hover,
+.dark a[data-streamdown="link"]:hover {
     color: hsl(0 0% 98%) !important;
 }

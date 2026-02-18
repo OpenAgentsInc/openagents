@@ -166,3 +166,19 @@ it('provisions wallet and executes agent payment endpoints with legacy aliases',
     Http::assertSent(fn ($request) => $request->url() === 'https://spark-executor.test/wallets/pay-bolt11');
     Http::assertSent(fn ($request) => $request->url() === 'https://spark-executor.test/wallets/send-spark');
 });
+
+it('returns a clear config error when spark executor is not configured', function () {
+    config()->set('lightning.spark_executor.base_url', null);
+    config()->set('lightning.spark_executor.auth_token', null);
+
+    $user = User::factory()->create([
+        'email' => 'agent-payments-missing-config@openagents.com',
+    ]);
+
+    $token = $user->createToken('agent-payments')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/agent-payments/wallet', [])
+        ->assertStatus(502)
+        ->assertJsonPath('error.code', 'spark_executor_not_configured');
+});

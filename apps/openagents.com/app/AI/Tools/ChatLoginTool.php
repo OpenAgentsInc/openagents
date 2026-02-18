@@ -10,6 +10,7 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -32,6 +33,19 @@ class ChatLoginTool implements Tool
     public function handle(Request $request): string
     {
         $action = strtolower(trim((string) $request->string('action', 'status')));
+        $session = $this->sessionOrNull();
+
+        if ($session) {
+            $this->logAuthDebug('handle.start', [
+                'action' => $action,
+                ...$this->sessionSummary($session),
+            ]);
+        } else {
+            $this->logAuthDebug('handle.start', [
+                'action' => $action,
+                'session_available' => false,
+            ]);
+        }
 
         return $this->encode(match ($action) {
             'status' => $this->status(),
@@ -85,6 +99,11 @@ class ChatLoginTool implements Tool
         $pending = $this->pendingMagicAuth($session);
 
         if ($user instanceof User) {
+            $this->logAuthDebug('status.authenticated', [
+                ...$this->sessionSummary($session),
+                'resolved_user_id' => (int) $user->id,
+            ]);
+
             return [
                 'toolName' => self::TOOL_NAME,
                 'status' => 'authenticated',
@@ -99,6 +118,12 @@ class ChatLoginTool implements Tool
                 ],
             ];
         }
+
+        $this->logAuthDebug('status.guest_or_pending', [
+            ...$this->sessionSummary($session),
+            'pending' => $pending !== null,
+            'pending_email' => $pending['email'] ?? null,
+        ]);
 
         return [
             'toolName' => self::TOOL_NAME,
@@ -170,6 +195,11 @@ class ChatLoginTool implements Tool
 
         $session->put('auth.magic_auth', $pending);
         $this->persistSession($session);
+        $this->logAuthDebug('send_code.pending_stored', [
+            ...$this->sessionSummary($session),
+            'pending_email' => $email,
+            'pending_user_id' => $pending['user_id'] ?? null,
+        ]);
 
         $posthog = resolve(PostHogService::class);
         $posthog->capture($email, 'login code sent', [
@@ -215,6 +245,10 @@ class ChatLoginTool implements Tool
 
         $pending = $this->pendingMagicAuth($session);
         if ($pending === null) {
+            $this->logAuthDebug('verify_code.missing_pending_session', [
+                ...$this->sessionSummary($session),
+            ]);
+
             return [
                 'toolName' => self::TOOL_NAME,
                 'status' => 'failed',
@@ -269,7 +303,7 @@ class ChatLoginTool implements Tool
 
         $this->adoptGuestConversationIfNeeded($session, $user);
 
-        Auth::guard('web')->login($user);
+        $this->authenticateWithoutSessionMigration($session, $user);
         $session->put('workos_access_token', $accessToken);
         $session->put('workos_refresh_token', $refreshToken);
         $session->put('chat.auth_user_id', (int) $user->getAuthIdentifier());
@@ -279,6 +313,11 @@ class ChatLoginTool implements Tool
         // client cannot receive a new Set-Cookie. Keeping the same session ID lets the
         // existing cookie continue to identify the (now authenticated) session on refresh.
         $this->persistSession($session);
+        $this->logAuthDebug('verify_code.authenticated', [
+            ...$this->sessionSummary($session),
+            'resolved_user_id' => (int) $user->id,
+            'is_new_user' => $isNewUser,
+        ]);
 
         $posthog = resolve(PostHogService::class);
         $posthog->identify($user->email, $user->getPostHogProperties());
@@ -390,11 +429,20 @@ class ChatLoginTool implements Tool
     {
         $user = Auth::guard('web')->user();
         if ($user instanceof User) {
+            $this->logAuthDebug('resolve_authenticated_user.guard_hit', [
+                ...$this->sessionSummary($session),
+                'resolved_user_id' => (int) $user->id,
+            ]);
+
             return $user;
         }
 
         $userId = (int) $session->get('chat.auth_user_id', 0);
         if ($userId <= 0) {
+            $this->logAuthDebug('resolve_authenticated_user.no_chat_auth_user_id', [
+                ...$this->sessionSummary($session),
+            ]);
+
             return null;
         }
 
@@ -402,11 +450,19 @@ class ChatLoginTool implements Tool
         if (! $rehydrated instanceof User) {
             $session->forget('chat.auth_user_id');
             $this->persistSession($session);
+            $this->logAuthDebug('resolve_authenticated_user.chat_user_missing', [
+                ...$this->sessionSummary($session),
+                'missing_user_id' => $userId,
+            ]);
 
             return null;
         }
 
-        Auth::guard('web')->login($rehydrated);
+        $this->authenticateWithoutSessionMigration($session, $rehydrated);
+        $this->logAuthDebug('resolve_authenticated_user.rehydrated', [
+            ...$this->sessionSummary($session),
+            'resolved_user_id' => (int) $rehydrated->id,
+        ]);
 
         return $rehydrated;
     }
@@ -519,14 +575,41 @@ class ChatLoginTool implements Tool
         return $session;
     }
 
+    private function authenticateWithoutSessionMigration(Session $session, User $user): void
+    {
+        $guard = Auth::guard('web');
+
+        // IMPORTANT: do not call guard->login() inside a streamed tool run.
+        // SessionGuard::login() migrates the session id, but streamed responses
+        // cannot emit a fresh Set-Cookie after headers have already been sent.
+        if (method_exists($guard, 'setUser')) {
+            $guard->setUser($user);
+        }
+
+        if (method_exists($guard, 'getName')) {
+            $session->put($guard->getName(), $user->getAuthIdentifier());
+        }
+
+        $this->logAuthDebug('auth.guard_session_written', [
+            ...$this->sessionSummary($session),
+            'resolved_user_id' => (int) $user->id,
+            'guard_session_key' => method_exists($guard, 'getName') ? $guard->getName() : null,
+        ]);
+    }
+
     private function persistSession(Session $session): void
     {
         try {
             if (method_exists($session, 'save')) {
                 $session->save();
+                $this->logAuthDebug('session.persisted', $this->sessionSummary($session));
             }
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             // Best-effort persistence for streamed tool calls.
+            $this->logAuthDebug('session.persist_failed', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
         }
     }
 
@@ -536,5 +619,34 @@ class ChatLoginTool implements Tool
     private function encode(array $payload): string
     {
         return json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{"toolName":"chat_login","status":"failed","denyCode":"encoding_failed"}';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function sessionSummary(Session $session): array
+    {
+        return [
+            'session_available' => true,
+            'session_id' => method_exists($session, 'getId') ? $session->getId() : null,
+            'guard_authenticated' => Auth::guard('web')->check(),
+            'guard_user_id' => Auth::guard('web')->id(),
+            'chat_auth_user_id' => (int) $session->get('chat.auth_user_id', 0),
+            'has_pending_magic_auth' => is_array($session->get('auth.magic_auth')),
+        ];
+    }
+
+    /**
+     * Emit local-only auth trace logs for chat login debugging.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function logAuthDebug(string $event, array $context = []): void
+    {
+        if (! app()->environment('local')) {
+            return;
+        }
+
+        Log::info('chat_login_tool.'.$event, $context);
     }
 }

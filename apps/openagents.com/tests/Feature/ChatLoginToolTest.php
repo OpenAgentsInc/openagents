@@ -164,6 +164,8 @@ test('chat_login verify_code authenticates and adopts guest conversation ownersh
         'user_id' => 'user_abc123',
     ]);
 
+    $sessionIdBefore = session()->getId();
+
     $workosUser = (object) [
         'id' => 'user_abc123',
         'email' => 'chris@openagents.com',
@@ -191,6 +193,8 @@ test('chat_login verify_code authenticates and adopts guest conversation ownersh
         'code' => '123456',
     ])), true);
 
+    $sessionIdAfter = session()->getId();
+
     expect($result['status'] ?? null)->toBe('authenticated');
     expect($result['authenticated'] ?? null)->toBeTrue();
 
@@ -200,6 +204,10 @@ test('chat_login verify_code authenticates and adopts guest conversation ownersh
     expect(session('workos_access_token'))->toBe('access_token_123');
     expect(session('workos_refresh_token'))->toBe('refresh_token_123');
     expect(session('chat.auth_user_id'))->toBe((int) $user->id);
+    expect($sessionIdAfter)->toBe($sessionIdBefore);
+
+    $guardSessionKey = Auth::guard('web')->getName();
+    expect((int) session($guardSessionKey))->toBe((int) $user->id);
 
     expect(DB::table('agent_conversations')
         ->where('id', $conversationId)

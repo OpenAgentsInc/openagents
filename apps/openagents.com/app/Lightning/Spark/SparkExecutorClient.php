@@ -102,7 +102,7 @@ final class SparkExecutorClient
     {
         $baseUrl = trim((string) config('lightning.spark_executor.base_url', ''));
         if ($baseUrl === '') {
-            throw new SparkExecutorException('Spark executor not configured. Set SPARK_EXECUTOR_BASE_URL.');
+            throw SparkExecutorException::fromError('spark_executor_not_configured', 'Spark wallet executor is not configured in this environment. Set SPARK_EXECUTOR_BASE_URL and SPARK_EXECUTOR_AUTH_TOKEN.');
         }
 
         $timeoutMs = (int) config('lightning.spark_executor.timeout_ms', 20000);

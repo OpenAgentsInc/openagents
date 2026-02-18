@@ -10,8 +10,10 @@ import {
 } from '@/components/ui/card';
 
 type WalletSnapshot = {
+    hasWallet: boolean;
     sparkBalanceSats: number | null;
     sparkStatus: string | null;
+    sparkLastError: string | null;
     totalPaidSats: number | null;
     paidCount: number;
     cachedCount: number;
@@ -86,9 +88,11 @@ function buildSnapshot(payload: unknown): WalletSnapshot {
         ? data.summary as Record<string, unknown>
         : {};
 
-    const sparkWallet = typeof data.sparkWallet === 'object' && data.sparkWallet !== null
+    const sparkWalletRaw = typeof data.sparkWallet === 'object' && data.sparkWallet !== null
         ? data.sparkWallet as Record<string, unknown>
-        : {};
+        : null;
+
+    const sparkWallet = sparkWalletRaw ?? {};
 
     const lastPaid = typeof data.lastPaid === 'object' && data.lastPaid !== null
         ? data.lastPaid as Record<string, unknown>
@@ -99,8 +103,10 @@ function buildSnapshot(payload: unknown): WalletSnapshot {
         : {};
 
     return {
+        hasWallet: sparkWalletRaw !== null,
         sparkBalanceSats: toNullableNumber(sparkWallet.balanceSats),
         sparkStatus: toNullableString(sparkWallet.status),
+        sparkLastError: toNullableString(sparkWallet.lastError),
         totalPaidSats: toNullableNumber(summary.totalPaidSats),
         paidCount: Math.max(0, Math.trunc(toNullableNumber(summary.paidCount) ?? 0)),
         cachedCount: Math.max(0, Math.trunc(toNullableNumber(summary.cachedCount) ?? 0)),
@@ -187,12 +193,17 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                 <CardContent className="px-3 py-0">
                     {error ? (
                         <div className="text-[11px] text-destructive">{error}</div>
+                    ) : !snapshot?.hasWallet ? (
+                        <div className="text-xs text-muted-foreground">No wallet yet</div>
                     ) : (
                         <div className="text-xs text-muted-foreground">
-                            <span className="font-medium text-foreground">{formatSats(snapshot?.sparkBalanceSats ?? null)}</span>
-                            {snapshot?.sparkStatus ? ` (${snapshot.sparkStatus})` : ''}
+                            <span className="font-medium text-foreground">{formatSats(snapshot.sparkBalanceSats)}</span>
+                            {snapshot.sparkStatus ? ` (${snapshot.sparkStatus})` : ''}
                         </div>
                     )}
+                    {!error && snapshot?.hasWallet && snapshot.sparkLastError ? (
+                        <div className="mt-1 text-[11px] text-destructive/90">{snapshot.sparkLastError}</div>
+                    ) : null}
                 </CardContent>
             </Card>
         );
@@ -226,7 +237,7 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                     <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
                         <div>
                             <span className="font-medium text-foreground">Balance:</span>{' '}
-                            {formatSats(snapshot?.sparkBalanceSats ?? null)}
+                            {snapshot?.hasWallet ? formatSats(snapshot.sparkBalanceSats) : 'No wallet yet'}
                             {snapshot?.sparkStatus ? ` (${snapshot.sparkStatus})` : ''}
                         </div>
                         <div>
@@ -247,8 +258,14 @@ export function ChatWalletSnapshot({ refreshKey, disabled = false, variant = 'ch
                         </div>
                         <div className="sm:col-span-2">
                             <span className="font-medium text-foreground">Updated:</span>{' '}
-                            {snapshot?.lastUpdatedAt ?? 'n/a'}
+                            {snapshot?.lastUpdatedAt ?? (snapshot?.hasWallet ? 'n/a' : 'No wallet yet')}
                         </div>
+                        {snapshot?.sparkLastError ? (
+                            <div className="sm:col-span-2 text-destructive/90">
+                                <span className="font-medium text-foreground">Wallet error:</span>{' '}
+                                {snapshot.sparkLastError}
+                            </div>
+                        ) : null}
                     </div>
                 )}
             </CardContent>
