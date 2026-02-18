@@ -630,7 +630,7 @@ export default function Index() {
                                                 Autopilot online.
                                             </h1>
                                             <p className="text-base text-muted-foreground sm:text-lg">
-                                                How can I help you?
+                                                Send a message to start
                                             </p>
                                         </div>
                                     )}
