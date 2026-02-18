@@ -1,5 +1,20 @@
 Below is a concrete GitHub issue set (titles + 1-paragraph summaries) that should cover implementing the plan end-to-end. I’ve grouped them by milestone/epic, but each bullet is intended to be a **separate GitHub issue**.
 
+## Status Update (2026-02-18)
+
+Completed and closed:
+
+- Epic 0 (items 1-4): `#1655` to `#1658`
+- Epic 1 / A (items 5-8): `#1659` to `#1662`
+- Epic 2 / B (items 9-14): `#1663` to `#1668`
+- Epic 3 / C (items 15-17): `#1669` to `#1671`
+
+Roadmap follow-ups identified after implementation:
+
+- Add explicit internal auth enforcement plug/middleware so `X-OA-RUNTIME-SIGNATURE` verification is mandatory for all `/internal/v1/*` endpoints (verifier module exists, endpoint enforcement should be explicit).
+- Align contract artifacts with implemented endpoint requirements (`thread_id` ownership parameter on stream/snapshot/frame append, optional `tail_ms` stream tail window).
+- Add a small contract-convergence pass to keep runtime controller behavior, `RUNTIME_CONTRACT.md`, and `openapi-internal-v1.yaml` lockstep in CI.
+
 Suggested labels (optional): `runtime`, `laravel`, `infra`, `db`, `security`, `streaming`, `tools`, `ds-elixir`, `observability`, `tests`, `docs`.
 
 ---
