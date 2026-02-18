@@ -11,6 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChatApiController extends Controller
 {
@@ -93,6 +95,10 @@ class ChatApiController extends Controller
 
         if ($prompt === null || $prompt === '') {
             return $this->unprocessable('A non-empty user message is required');
+        }
+
+        if (! $authenticatedSession && $this->requiresExplicitEmailTurn($prompt)) {
+            return $this->streamGuestLoginEmailPrompt();
         }
 
         // PostHog: Track chat message sent
@@ -331,6 +337,66 @@ class ChatApiController extends Controller
         }
 
         return implode('', $chunks);
+    }
+
+
+    private function requiresExplicitEmailTurn(string $prompt): bool
+    {
+        $text = strtolower(trim($prompt));
+
+        if ($text === '') {
+            return false;
+        }
+
+        if ($this->containsEmailAddress($text)) {
+            return false;
+        }
+
+        return preg_match('/\b(create\s+an?\s+account|create\s+account|sign\s*up|signup|log\s*in|login|sign\s*in)\b/i', $text) === 1;
+    }
+
+    private function containsEmailAddress(string $text): bool
+    {
+        return preg_match('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', $text) === 1;
+    }
+
+    private function streamGuestLoginEmailPrompt(): StreamedResponse
+    {
+        $shouldFlush = ! app()->runningUnitTests();
+        $messageId = 'msg_'.Str::lower(Str::random(12));
+        $text = "To create an account, tell me your email address and I'll send a 6-digit code.";
+
+        return response()->stream(function () use ($shouldFlush, $messageId, $text): void {
+            $write = function (array $payload) use ($shouldFlush): void {
+                echo 'data: '.json_encode($payload)."\n\n";
+                if ($shouldFlush) {
+                    if (ob_get_level() > 0) {
+                        ob_flush();
+                    }
+                    flush();
+                }
+            };
+
+            $write(['type' => 'start']);
+            $write(['type' => 'start-step']);
+            $write(['type' => 'text-start', 'id' => $messageId]);
+            $write(['type' => 'text-delta', 'id' => $messageId, 'delta' => $text]);
+            $write(['type' => 'text-end', 'id' => $messageId]);
+            $write(['type' => 'finish-step']);
+            $write(['type' => 'finish', 'finishReason' => 'stop', 'usage' => ['inputTokens' => 0, 'outputTokens' => 0, 'totalTokens' => 0]]);
+            echo "data: [DONE]\n\n";
+            if ($shouldFlush) {
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+            }
+        }, 200, [
+            'Cache-Control' => 'no-cache, no-transform',
+            'Content-Type' => 'text/event-stream',
+            'x-vercel-ai-ui-message-stream' => 'v1',
+            'x-oa-guest-onboarding' => 'email-required',
+        ]);
     }
 
     private function unauthorized(string $message = 'Unauthenticated.'): JsonResponse
