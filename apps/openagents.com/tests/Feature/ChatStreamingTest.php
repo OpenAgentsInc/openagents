@@ -395,3 +395,33 @@ test('authenticated chat stream adopts guest conversation on demand after chat l
         ->where('user_id', $user->id)
         ->exists())->toBeTrue();
 });
+
+test('authenticated chat stream can start from a fresh guest-style conversation id', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Hello from a fresh guest-style id']);
+
+    $user = User::factory()->create();
+    $conversationId = 'g-'.substr(str_replace('-', '', (string) Str::uuid7()), 0, 32);
+
+    $response = $this->actingAs($user)->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'Start from fresh guest id'],
+        ],
+    ]);
+
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+    expect($content)->toContain('data: {"type":"start"');
+    expect($content)->toContain('data: {"type":"finish"');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    expect(DB::table('agent_conversations')
+        ->where('id', $conversationId)
+        ->where('user_id', $user->id)
+        ->exists())->toBeTrue();
+
+    expect(DB::table('threads')
+        ->where('id', $conversationId)
+        ->where('user_id', $user->id)
+        ->exists())->toBeTrue();
+});

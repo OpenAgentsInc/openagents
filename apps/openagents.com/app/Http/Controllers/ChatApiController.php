@@ -126,6 +126,51 @@ class ChatApiController extends Controller
             return false;
         }
 
+        /** @var int|null $ownerIdRaw */
+        $ownerIdRaw = DB::table('agent_conversations')
+            ->where('id', $conversationId)
+            ->value('user_id');
+
+        // If no conversation exists yet, self-heal by creating one for this user.
+        if ($ownerIdRaw === null) {
+            $now = now();
+
+            DB::transaction(function () use ($conversationId, $userId, $now): void {
+                DB::table('agent_conversations')->insertOrIgnore([
+                    'id' => $conversationId,
+                    'user_id' => $userId,
+                    'title' => 'Chat',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+
+                DB::table('threads')->insertOrIgnore([
+                    'id' => $conversationId,
+                    'user_id' => $userId,
+                    'autopilot_id' => null,
+                    'title' => 'Chat',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            });
+
+            return DB::table('agent_conversations')
+                ->where('id', $conversationId)
+                ->where('user_id', $userId)
+                ->exists();
+        }
+
+        $ownerId = (int) $ownerIdRaw;
+
+        if ($ownerId === $userId) {
+            return true;
+        }
+
+        // Do not steal non-guest conversations from other real users.
+        if ($ownerId !== $guestUserId) {
+            return false;
+        }
+
         $now = now();
 
         DB::transaction(function () use ($conversationId, $guestUserId, $userId, $now): void {
