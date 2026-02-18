@@ -1,0 +1,271 @@
+openapi: 3.1.0
+info:
+  title: OpenAgents Runtime Internal API
+  version: 0.1.0
+  description: Internal Laravel <-> runtime contract for /internal/v1 endpoints.
+servers:
+  - url: /internal/v1
+security:
+  - RuntimeSignature: []
+paths:
+  /runs:
+    post:
+      summary: Start or enqueue a run
+      operationId: startRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartRunRequest'
+      responses:
+        '202':
+          description: Run accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunAccepted'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /runs/{runId}/frames:
+    post:
+      summary: Append an idempotent frame
+      operationId: appendFrame
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppendFrameRequest'
+      responses:
+        '200':
+          description: Duplicate idempotent replay accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameAccepted'
+        '202':
+          description: Frame accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameAccepted'
+        '409':
+          $ref: '#/components/responses/Error'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /runs/{runId}/stream:
+    get:
+      summary: Stream run events as SSE
+      operationId: streamRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: Resume from a previously received sequence id.
+      responses:
+        '200':
+          description: SSE stream
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/event-stream
+        '410':
+          $ref: '#/components/responses/Error'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /runs/{runId}/cancel:
+    post:
+      summary: Request cancellation of a run
+      operationId: cancelRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRunRequest'
+      responses:
+        '202':
+          description: Cancel requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelAccepted'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /runs/{runId}/snapshot:
+    get:
+      summary: Read latest run snapshot
+      operationId: getRunSnapshot
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Snapshot returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunSnapshot'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    RuntimeSignature:
+      type: apiKey
+      in: header
+      name: X-OA-RUNTIME-SIGNATURE
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Error:
+      description: Structured error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    AuthorizationRef:
+      type: object
+      properties:
+        autopilotId:
+          type: string
+        mode:
+          type: string
+          enum: [interactive, delegated_budget, deny, delegated_budget_with_threshold]
+      additionalProperties: true
+    StartRunRequest:
+      type: object
+      required: [runId, threadId]
+      properties:
+        runId:
+          type: string
+        threadId:
+          type: string
+        authorizationRef:
+          $ref: '#/components/schemas/AuthorizationRef'
+        metadata:
+          type: object
+          additionalProperties: true
+    RunAccepted:
+      type: object
+      required: [runId, status]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [accepted]
+    AppendFrameRequest:
+      type: object
+      required: [frameId, type, payload]
+      properties:
+        frameId:
+          type: string
+        type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        occurredAt:
+          type: string
+          format: date-time
+    FrameAccepted:
+      type: object
+      required: [runId, frameId, status, idempotentReplay]
+      properties:
+        runId:
+          type: string
+        frameId:
+          type: string
+        status:
+          type: string
+          enum: [accepted]
+        idempotentReplay:
+          type: boolean
+    CancelRunRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+    CancelAccepted:
+      type: object
+      required: [runId, status]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [cancel_requested]
+    RunSnapshot:
+      type: object
+      required: [runId, threadId, status, latestSeq, updatedAt]
+      properties:
+        runId:
+          type: string
+        threadId:
+          type: string
+        status:
+          type: string
+        latestSeq:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - unauthorized
+                - forbidden
+                - invalid_request
+                - not_found
+                - conflict
+                - stale_cursor
+                - internal_error
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
