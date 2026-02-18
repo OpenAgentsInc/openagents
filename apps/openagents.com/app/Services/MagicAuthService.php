@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Laravel\WorkOS\WorkOS;
@@ -158,19 +159,30 @@ class MagicAuthService
             ]);
         }
 
+        $email = strtolower(trim($email));
         $name = trim(implode(' ', array_filter([$firstName, $lastName])));
 
         if ($name === '') {
             $name = $email;
         }
 
-        /** @var User|null $existingUser */
-        $existingUser = User::query()
-            ->where('workos_id', $workosId)
-            ->orWhere('email', $email)
-            ->first();
+        /** @var User|null $existingByWorkos */
+        $existingByWorkos = User::query()->where('workos_id', $workosId)->first();
+        /** @var User|null $existingByEmail */
+        $existingByEmail = User::query()->where('email', $email)->first();
 
-        if (! $existingUser) {
+        // If both match different rows, keep the email-owned account as canonical login identity.
+        // This prevents duplicate-key failures when old import/placeholder rows hold a WorkOS id.
+        $existingUser = null;
+        if ($existingByEmail instanceof User && $existingByWorkos instanceof User && $existingByEmail->id !== $existingByWorkos->id) {
+            $existingUser = $existingByEmail;
+        } elseif ($existingByWorkos instanceof User) {
+            $existingUser = $existingByWorkos;
+        } elseif ($existingByEmail instanceof User) {
+            $existingUser = $existingByEmail;
+        }
+
+        if (! $existingUser instanceof User) {
             $isNewUser = true;
 
             /** @var User $newUser */
@@ -189,10 +201,12 @@ class MagicAuthService
 
         $isNewUser = false;
 
+        $safeWorkosId = $this->resolveSafeWorkosId($existingUser, $workosId);
+
         $existingUser->fill([
             'name' => $name,
             'email' => $email,
-            'workos_id' => $workosId,
+            'workos_id' => $safeWorkosId,
             'avatar' => $avatar,
         ]);
 
@@ -200,9 +214,48 @@ class MagicAuthService
             $existingUser->email_verified_at = now();
         }
 
-        $existingUser->save();
+        try {
+            $existingUser->save();
+        } catch (QueryException $exception) {
+            report($exception);
+
+            /** @var User|null $fallback */
+            $fallback = User::query()
+                ->where('email', $email)
+                ->orWhere('workos_id', $workosId)
+                ->first();
+
+            if ($fallback instanceof User) {
+                return $fallback;
+            }
+
+            throw ValidationException::withMessages([
+                'code' => 'Unable to complete sign-in because this account is already linked. Please try again.',
+            ]);
+        }
 
         return $existingUser;
+    }
+
+    private function resolveSafeWorkosId(User $existingUser, string $candidateWorkosId): string
+    {
+        $candidateWorkosId = trim($candidateWorkosId);
+        if ($candidateWorkosId === '') {
+            return (string) $existingUser->workos_id;
+        }
+
+        if ((string) $existingUser->workos_id === $candidateWorkosId) {
+            return $candidateWorkosId;
+        }
+
+        /** @var User|null $owner */
+        $owner = User::query()->where('workos_id', $candidateWorkosId)->first();
+
+        if ($owner instanceof User && (int) $owner->id !== (int) $existingUser->id) {
+            return (string) $existingUser->workos_id;
+        }
+
+        return $candidateWorkosId;
     }
 
     private function resolveString(object $source, array $keys): ?string

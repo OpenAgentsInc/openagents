@@ -243,3 +243,62 @@ test('logged-in users hitting login are redirected by guest middleware', functio
     $this->actingAs(User::factory()->create());
     $this->get('/login')->assertRedirect('/');
 });
+
+test('verify code signs into existing email user when workos id is already linked elsewhere', function () {
+    configureWorkosForTests();
+
+    $emailOwner = User::factory()->create([
+        'name' => 'Chris Email Owner',
+        'email' => 'chris@openagents.com',
+        'workos_id' => 'legacy_workos_user',
+    ]);
+
+    User::factory()->create([
+        'name' => 'Imported Placeholder',
+        'email' => 'placeholder+conflict@openagents.local',
+        'workos_id' => 'user_abc123',
+    ]);
+
+    $workosUser = (object) [
+        'id' => 'user_abc123',
+        'email' => 'chris@openagents.com',
+        'firstName' => 'Chris',
+        'lastName' => 'David',
+        'profilePictureUrl' => 'https://example.com/avatar.png',
+    ];
+
+    $authResponse = (object) [
+        'user' => $workosUser,
+        'accessToken' => 'access_token_123',
+        'refreshToken' => 'refresh_token_123',
+    ];
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->with('client_test_123', '123456', 'user_abc123', \Mockery::any(), \Mockery::any())
+        ->andReturn($authResponse);
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'chris@openagents.com',
+                'user_id' => 'user_abc123',
+            ],
+        ])
+        ->postJson('/api/auth/verify', [
+            'code' => '123456',
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('status', 'authenticated')
+        ->assertJsonPath('user.email', 'chris@openagents.com');
+
+    $this->assertAuthenticatedAs($emailOwner);
+
+    $this->assertDatabaseHas('users', [
+        'id' => $emailOwner->id,
+        'email' => 'chris@openagents.com',
+        'workos_id' => 'legacy_workos_user',
+    ]);
+});
