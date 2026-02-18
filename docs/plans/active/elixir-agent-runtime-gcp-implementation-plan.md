@@ -274,6 +274,13 @@ Implementation note:
   - `INSERT ... ON CONFLICT (run_id) DO UPDATE ... WHERE run_leases.lease_expires_at < now()`
   - or equivalent `SELECT ... FOR UPDATE SKIP LOCKED` lease transaction.
 
+Lease tuning (initial defaults):
+
+- heartbeat interval: 3s
+- lease TTL: 20s
+- steal gate: lease expired and no progress watermark movement in the steal window
+- do not steal when progress watermark is moving, even if clock skew suggests expiry
+
 This gives at-most-one active executor per run without requiring sticky routing or cluster-wide process discovery for correctness.
 
 ## Internal runtime contract (Laravel <-> Elixir)
@@ -288,6 +295,13 @@ Trace propagation contract (required):
   - model/tool calls,
   - DS receipts/traces.
 - All logs and metrics must be joinable by trace/request id across browser -> Laravel -> runtime -> tool/model boundaries.
+
+Confused-deputy prevention (required):
+
+1. Runtime does not trust inbound `userId`/`threadId` claims blindly.
+2. Runtime validates that `run_id` and `thread_id` belong to the claimed user (or guest scope) in durable DB state.
+3. Signed internal token claims include `run_id`, `thread_id`, `user_id` (or guest scope id), and `exp`.
+4. Runtime rejects claim/payload/DB mismatches as authorization failures.
 
 ## Start run
 
@@ -304,6 +318,10 @@ Request (shape, not final):
   "userId": 123,
   "autopilotId": "optional",
   "authenticatedSession": true,
+  "authorizationRef": {
+    "autopilotId": "ap_...",
+    "mode": "delegated_budget"
+  },
   "toolPolicy": {
     "allow": [],
     "deny": [],
@@ -311,6 +329,8 @@ Request (shape, not final):
   }
 }
 ```
+
+`authorizationRef` identifies the active spending authorization context. Runtime resolves and validates authoritative records from DB; it does not treat request payload as proof of permission.
 
 Response:
 
@@ -383,6 +403,13 @@ Stream cursor contract (required):
 4. If cursor points before retention floor, server returns explicit stale-cursor response with restart instructions.
 5. SSE `id:` field is always set to event `seq`.
 
+Event append transaction boundary (required):
+
+1. Event insert, `seq` allocation, and `NOTIFY` are emitted in the same DB transaction.
+2. `seq` allocation is transactional (sequence or per-run allocator), not in-memory.
+3. Projection watermarks advance only from committed events.
+4. `NOTIFY` is a wakeup signal only; stream readers always re-read committed DB state.
+
 Laravel should proxy bytes with minimal transformation.
 
 ## Cancel run
@@ -438,6 +465,8 @@ Use the same Postgres cluster but a dedicated schema for runtime internals.
   - `runtime.agent_instances`
   - `runtime.frames`
   - `runtime.run_leases`
+  - `runtime.spend_authorizations`
+  - `runtime.spend_reservations`
   - `runtime.frame_chunks_l1`
   - `runtime.frame_chunks_l2`
   - `runtime.frame_chunks_l3`
@@ -571,6 +600,19 @@ To avoid hidden overload pathologies in high-concurrency agent workloads:
 - Separate latency-sensitive stream processes from heavy maintenance queues.
 - Add admission control for new runs when runtime is degraded.
 
+## Admission control limits (required)
+
+Define explicit caps (policy/tier configurable):
+
+1. max concurrent runs per user/autopilot
+2. max tool tasks per run and global max tool tasks
+3. max event emission rate per run (deltas/sec)
+4. max payload bytes for frame append
+5. max payload bytes for tool result persistence
+6. max concurrent stream consumers per run
+
+On limit breach, return explicit throttle/reject outcomes; do not allow uncontrolled queue growth.
+
 ## CPU and blocking work policy
 
 BEAM preemption is valuable only if we avoid scheduler starvation:
@@ -635,6 +677,9 @@ Core DS-Elixir runtime contracts in this plan:
   - `signature_id`, `compiled_id`, `strategy_id`
   - `params_hash`, `prompt_hash`, `output_hash`
   - budget limits/usage and latency counters
+  - `authorization_id`, `authorization_mode`
+  - budget accounting deltas (`budget_before`, `reserved`, `spent`, `budget_after`)
+  - `policy_decision` (`allowed`, `denied_over_budget`, `denied_tool_not_allowed`, `needs_interactive_approval`)
   - error class and optional trace reference
 
 Canonical contract requirement:
@@ -681,12 +726,90 @@ Required capabilities:
 - persist deterministic receipts (params hash, output hash, latency, error)
 - persist bounded/redacted tool replay summaries for next-frame context injection
 
+Authorization modes for settlement-boundary tools (required):
+
+- `interactive`: runtime requires explicit in-the-moment approval before execution.
+- `delegated_budget`: runtime may execute while user is AFK if all budget/constraint checks pass.
+- `deny`: runtime must never execute settlement-boundary actions.
+- `delegated_budget_with_threshold` (optional): delegated under threshold; interactive required above threshold.
+
+Interactive approval is optional mode, not a global default.
+
+SpendAuthorization (Budget Envelope) primitive (required):
+
+Control-plane issued authorization envelope used for unattended execution:
+
+- `authorization_id`
+- `owner_user_id`
+- scope: `{autopilot_id?, thread_id?, run_id?}`
+- `mode`: `interactive | delegated_budget | deny | delegated_budget_with_threshold`
+- `expires_at`
+- budgets:
+  - `max_total_sats`
+  - `max_per_call_sats`
+  - optional `max_per_day_sats`
+- constraints:
+  - tool allowlist/denylist
+  - domain/provider allowlist for settlement-boundary tools
+  - optional model/provider allowlists
+  - optional time-window constraints
+- accounting:
+  - `reserved_sats`
+  - `spent_sats`
+  - derived `remaining_sats`
+
+Runtime must validate and enforce SpendAuthorization without user interaction when mode allows delegation.
+
+Settlement-boundary execution flow (required):
+
+1. Identify `settlement_boundary=true` for the tool intent.
+2. Resolve active `SpendAuthorization` by scope (`run_id`, `thread_id`, `autopilot_id`).
+3. Perform atomic reserve:
+   - reserve succeeds only if `spent + reserved + requested_amount <= budget_limit`.
+4. Execute tool with deterministic `tool_call_id` and provider idempotency key.
+5. On success: commit reservation (`spent += amount`, `reserved -= amount`) with settlement correlation ids.
+6. On failure/cancel/unknown outcome: release reservation or reconcile deterministically before retry.
+
 Financial/idempotency requirements (payments, L402, settlement-adjacent tools):
 
 - every tool task must have deterministic `tool_call_id`
 - every task declares settlement boundary: `safe_retry` or `dedupe_reconcile_required`
 - settlement-affecting tools must use idempotency keys at provider boundary
-- receipts must contain settlement correlation ids so crash recovery can reconcile without double-spend attempts
+- receipts must include `authorization_id`, `authorization_mode`, and settlement correlation ids
+- policy decision is persisted (`allowed`, `denied_over_budget`, `denied_tool_not_allowed`, `needs_interactive_approval`)
+
+Budget exhaustion behavior (required):
+
+1. Append `policy.budget_exhausted` when authorization budget cannot reserve required amount.
+2. Stop starting settlement-boundary tools for the affected run authorization context.
+3. Either:
+   - continue non-settlement work, or
+   - terminate run with explicit policy error classification.
+4. Never silently loop retries against exhausted budget.
+
+Provider circuit breaker and fallback policy (required):
+
+1. enforce per-provider timeout/rate budgets
+2. open circuit on sustained provider failure rates
+3. allow fallback provider/model only when:
+   - policy allows fallback, and
+   - fallback is receipt-visible (`provider_fallback`, original provider error class)
+4. prohibit silent fallback that hides provider degradation
+
+Sanitization policy for traces and tool replay (required):
+
+1. Never persist secrets in events/receipts/traces:
+   - authorization headers
+   - cookies/session tokens
+   - API keys/private tokens
+2. Apply PII handling policy for logs and object blobs:
+   - redact/hash direct identifiers unless required for explicit business record
+   - enforce retention class for sensitive fields
+3. Enforce sanitization in shared boundaries:
+   - tool runner adapters
+   - HTTP client middleware
+   - trace serialization pipeline
+4. Tool replay context is built only from sanitized payloads.
 
 ## Compatibility with current Laravel stream/UI
 
@@ -830,6 +953,12 @@ Use both:
 1. GCP identity-based service invocation (IAM-bound service account)
 2. Signed internal runtime token (`X-OA-RUNTIME-SIGNATURE`) with short TTL
 
+Signed token claim requirements:
+
+- include `run_id`, `thread_id`, `user_id`/guest scope id, `iat`, `exp`, and nonce
+- reject expired, replayed, or claim-mismatched tokens
+- bind signature verification to trusted Laravel service account identity
+
 This dual layer protects against misconfigured ingress and replay.
 
 ## Secrets
@@ -878,6 +1007,17 @@ Kubernetes Job command:
 Release helper module required:
 
 - `lib/openagents_runtime/release.ex`
+
+## Zero-downtime schema evolution runbook
+
+1. Additive schema changes first; no destructive migrations in initial deploy step.
+2. Ship code that can read old+new shapes before writing new-only paths.
+3. Run backfills asynchronously; avoid long blocking migrations.
+4. Drop/rename fields only after old read/write paths are removed.
+5. When `event_version` changes:
+   - upcaster coverage is mandatory in CI,
+   - replay tests must pass across previous and current versions.
+6. Reprojection jobs must execute against mixed-schema windows during rolling deploys.
 
 ## Rollout strategy (phased, with flags)
 
@@ -1095,6 +1235,12 @@ This reduces context ambiguity for human and agent contributors and keeps migrat
 - supervisor restart reason/category
 - mailbox pressure level
 
+Telemetry cardinality guardrails:
+
+1. High-cardinality ids are allowed in logs and traces.
+2. Metrics labels must remain bounded; do not use unbounded ids (`run_id`, `thread_id`, `user_id`) as metric labels.
+3. Dashboard aggregations should be based on bounded dimensions (driver, provider, strategy, status class, queue).
+
 ## Minimum dashboards
 
 1. Runtime health
@@ -1161,6 +1307,16 @@ Commands:
 - forced runtime restart + resume
 - cancel in-progress run
 
+## Load test plan (production-shape)
+
+Required scenarios before broad cutover:
+
+1. high concurrent SSE streams, including slow clients and reconnect churn
+2. burst frame ingestion across many concurrent runs
+3. tool fanout bursts plus cancel storms
+4. provider timeout/rate-limit incidents validating circuit breakers and receipt-visible fallback behavior
+5. pod kill/node drain during active runs validating lease takeover, stream cursor resume, and janitor reconciliation
+
 ## Rollback strategy
 
 Fast rollback is flag-based, not deploy-based.
@@ -1211,6 +1367,16 @@ Mitigation:
 - if PHP-FPM worker saturation appears, move SSE serving to long-lived worker mode (Octane/RoadRunner/Swoole) or dedicated stream service
 - keep frontend wire protocol unchanged regardless of serving topology
 
+## Risk: delegated budgets allow unattended spending if misconfigured
+
+Mitigation:
+
+- conservative default budgets and per-tool caps
+- required authorization expirations
+- strict allowlists for settlement-boundary providers/domains
+- clear Laravel audit UI for active authorizations and spend/reserve state
+- immediate revoke path in control plane and fast runtime revocation observation
+
 ## Risk: dual writer inconsistency (Laravel + Elixir)
 
 Mitigation:
@@ -1229,6 +1395,15 @@ Mitigation:
 - IAM service auth
 - HMAC/JWT request signing
 - short-lived nonces
+
+## Risk: upstream model/tool provider incident degrades runtime SLO
+
+Mitigation:
+
+- per-provider timeout/rate budgets
+- circuit breakers with explicit open/half-open/closed states
+- receipt-visible fallback behavior only when policy allows
+- load-shedding before provider saturation cascades into run backlog
 
 ## Capacity and scaling notes
 
@@ -1268,6 +1443,21 @@ Scaling policy:
 14. Implement DS-Elixir receipts/traces + tool replay context pipeline.
 15. Implement DS-Elixir compile/eval/promote/canary controls.
 16. Publish canonical cross-language DS JSON schema docs and object-storage seam for large traces/artifacts.
+17. Enforce confused-deputy guards (token claim binding + DB ownership checks).
+18. Implement SpendAuthorization issuance/validation/lifecycle with delegated AFK-safe modes.
+19. Enforce transactional event append boundary (`insert + seq + NOTIFY` in one commit path).
+20. Add admission-control limits and telemetry cardinality guardrails in production configs.
+21. Run production-shape load tests (SSE/slow clients, burst ingestion, cancel storms, pod-kill recovery).
+
+## Delegated spending doc checklist
+
+- [x] Authorization modes section added.
+- [x] SpendGrant language replaced with SpendAuthorization budget envelope model.
+- [x] Atomic reserve/commit/release settlement flow defined.
+- [x] Internal runtime contract updated with `authorizationRef` (policy reference).
+- [x] Receipt fields include authorization linkage, policy decision, and budget deltas.
+- [x] Deterministic budget exhaustion behavior defined.
+- [x] Risks/mitigations updated for delegation misconfiguration.
 
 ## Non-goals
 
@@ -1286,3 +1476,6 @@ Scaling policy:
 - 2026-02-18: Chose stream-from-log as day-one multi-pod streaming invariant.
 - 2026-02-18: Chose Postgres lease-row TTL model for single active run executor guarantee.
 - 2026-02-18: Chose semantic (invariant-based) shadow diffing over literal text diffing.
+- 2026-02-18: Added confused-deputy protections with token claim binding and DB ownership checks.
+- 2026-02-18: Added SpendAuthorization budget envelope with delegated and interactive modes.
+- 2026-02-18: Added transactional append boundary (`event + seq + notify`) as correctness invariant.
