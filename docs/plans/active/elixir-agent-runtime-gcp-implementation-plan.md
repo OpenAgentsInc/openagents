@@ -49,19 +49,19 @@ DS-Elixir constraints adopted in this plan:
 5. Existing frontend stream contract (AI SDK/Vercel protocol over SSE) is preserved for compatibility.
 6. DS-Elixir is included in runtime scope for signature execution, receipts, and compile/promotion control.
 7. Stream serving is location-independent (`stream-from-log`), never sticky-pod dependent for correctness.
-8. Single active executor per run is enforced with Postgres advisory locking keyed by `run_id`.
+8. Single active executor per run is enforced with a Postgres lease row (`runtime.run_leases`) + TTL heartbeat semantics.
 
 ## Correctness dependencies (day-one invariants)
 
 1. Event log is source of truth for run state and stream reconstruction.
 2. Any runtime pod can serve `GET /internal/v1/runs/{runId}/stream` by tailing durable events.
-3. At most one active executor exists per run (`pg_try_advisory_lock` on `run_id`).
+3. At most one active executor exists per run via lease acquisition/renewal on `runtime.run_leases`.
 4. BEAM distribution is optional for correctness; it is an optimization for coordination/fanout.
 
 ## Day-1 critical decisions checklist
 
 - `stream-from-log` selected as migration invariant.
-- advisory-lock single executor guarantee selected.
+- lease-row single executor guarantee selected.
 - frame-only ingestion contract selected (no full history payload from Laravel).
 - dual-writer overlap minimized by projection ownership and reprojection tooling.
 
@@ -240,7 +240,7 @@ Elixir (`apps/openagents-runtime`) owns:
 1. Browser sends message to existing Laravel endpoint (`/api/chat` or `/api/chats/{id}/stream`).
 2. Laravel validates auth/session/ownership exactly as today.
 3. Laravel calls Elixir internal API to start run (if needed) and append a frame into the run event log.
-4. Elixir acquires run executor lock and executes DS-Elixir signatures for routing/tool/memory decisions.
+4. Elixir acquires/renews run executor lease and executes DS-Elixir signatures for routing/tool/memory decisions.
 5. Laravel proxies runtime stream frames to browser as SSE (same AI SDK protocol), and stream data is served from durable log tailing (not pod affinity).
 6. Elixir persists canonical runtime events + run state + DS receipts/traces.
 7. Laravel read APIs continue returning conversation/runs/events for refresh/history.
@@ -260,16 +260,34 @@ Elixir (`apps/openagents-runtime`) owns:
 
 To prevent double execution and duplicate side effects:
 
-1. Runtime attempts `pg_try_advisory_lock(run_id_hash)` at run execution start.
-2. If lock is acquired, caller becomes active executor.
-3. If lock is not acquired, runtime returns `already_running` (or stream-attach response) and does not execute tools/model calls.
-4. Lock lifetime is bound to executor DB session; crash/restart releases lock and allows safe re-acquire.
+1. Runtime acquires lease in `runtime.run_leases` keyed by `run_id`:
+   - acquire if absent, or
+   - steal only when `lease_expires_at < now()`.
+2. Active executor heartbeats lease on short interval while processing frames.
+3. If lease is held by a live executor, runtime returns `already_running` (or stream-attach response) and does not execute tools/model calls.
+4. Executor releases lease on terminal run states; crash recovery relies on lease TTL expiration.
+
+Implementation note:
+
+- This plan chooses lease rows over session-bound advisory locks to avoid Ecto connection-pool edge cases for long-lived run execution.
+- Recommended acquisition pattern:
+  - `INSERT ... ON CONFLICT (run_id) DO UPDATE ... WHERE run_leases.lease_expires_at < now()`
+  - or equivalent `SELECT ... FOR UPDATE SKIP LOCKED` lease transaction.
 
 This gives at-most-one active executor per run without requiring sticky routing or cluster-wide process discovery for correctness.
 
 ## Internal runtime contract (Laravel <-> Elixir)
 
 All runtime APIs are internal-only (`/internal/v1/*`), authenticated via service-to-service identity + signed token.
+
+Trace propagation contract (required):
+
+- Laravel forwards W3C `traceparent` (and `tracestate` when present) plus `x-request-id`.
+- Runtime preserves/propagates these ids through:
+  - run/frame/event writes,
+  - model/tool calls,
+  - DS receipts/traces.
+- All logs and metrics must be joinable by trace/request id across browser -> Laravel -> runtime -> tool/model boundaries.
 
 ## Start run
 
@@ -350,9 +368,20 @@ Returns SSE frames compatible with current frontend expectations:
 Streaming architecture (day one):
 
 - Stream endpoint is location-independent (`stream-from-log`).
-- Any pod can serve stream by tailing persisted run events (with optional PubSub fast-path fanout).
+- Any pod can serve stream by tailing persisted run events.
 - No sticky session routing is required for correctness.
 - Reconnect uses event cursor/watermark so clients resume without replay ambiguity.
+- Stream wakeups use Postgres `LISTEN/NOTIFY` on event append; DB log tail remains source of truth.
+
+Stream cursor contract (required):
+
+1. Every run event has strictly monotonic `(run_id, seq)` ordering.
+2. Stream resume supports both:
+   - `Last-Event-ID: <seq>`
+   - query param `?cursor=<seq>`
+3. Server guarantees gap-free replay from cursor+1 while retained events exist.
+4. If cursor points before retention floor, server returns explicit stale-cursor response with restart instructions.
+5. SSE `id:` field is always set to event `seq`.
 
 Laravel should proxy bytes with minimal transformation.
 
@@ -360,7 +389,13 @@ Laravel should proxy bytes with minimal transformation.
 
 `POST /internal/v1/runs/{runId}/cancel`
 
-Best effort immediate cancel of model/tool tasks, then emit terminal status event.
+Cancellation contract:
+
+1. Append durable `run.cancel_requested` event immediately.
+2. Executor stops starting new model/tool work after cancel is observed.
+3. In-flight work receives best-effort cancel/timeout signals.
+4. If in-flight work still returns, result is marked late and is either discarded or recorded as non-authoritative (must not reopen run).
+5. Run ends in deterministic terminal state (`canceled` or `failed`) with reason classification.
 
 ## Snapshot/recovery
 
@@ -368,6 +403,17 @@ Best effort immediate cancel of model/tool tasks, then emit terminal status even
 `GET /internal/v1/threads/{threadId}/state`
 
 Used by Laravel for recovery, diagnostics, and fallback paths.
+
+## Crash recovery reconciliation loop (janitor)
+
+Run continuously as maintenance worker:
+
+1. Detect runs in `running` with stale lease heartbeat/progress.
+2. Append `run.executor_lost` event with recovery metadata.
+3. Attempt safe resume via normal lease acquisition path.
+4. If recovery budget/time is exceeded, append deterministic terminal failure with explicit error class.
+
+This turns pod death or node eviction into a normal recoverable lifecycle outcome.
 
 ## Agent lifecycle endpoints (phase 2+)
 
@@ -391,6 +437,7 @@ Use the same Postgres cluster but a dedicated schema for runtime internals.
 - New Elixir schema for deeper runtime state:
   - `runtime.agent_instances`
   - `runtime.frames`
+  - `runtime.run_leases`
   - `runtime.frame_chunks_l1`
   - `runtime.frame_chunks_l2`
   - `runtime.frame_chunks_l3`
@@ -435,6 +482,22 @@ Potential simplifier (phase-2+):
 
 - evaluate DB views/materialized views to reduce ORM coupling and dual-writer friction.
 
+## Event log storage hygiene (required)
+
+Because runtime event log is source of truth, storage discipline is mandatory:
+
+1. Baseline indexes:
+   - `(run_id, seq)` unique
+   - `(thread_id, created_at)`
+   - `(run_id, created_at)`
+2. Growth plan:
+   - partition event tables (time or hash strategy) before large-scale traffic,
+   - keep hot partitions small enough for fast tail queries.
+3. Retention policy:
+   - retain canonical control/receipt events long-term,
+   - age out raw high-volume deltas once compacted and checkpoint-safe,
+   - enforce clear retention windows per event class.
+
 ## Process model in Elixir
 
 ## Supervisor tree (initial)
@@ -450,6 +513,12 @@ OpenAgentsRuntime.Application
     ├── Finch (HTTP clients)
     └── Telemetry/metrics exporters
 ```
+
+Oban/load isolation rule:
+
+- Run-execution hot paths and maintenance jobs must not compete unchecked.
+- Separate Oban queues for compaction/reprojection/maintenance with strict concurrency caps.
+- Prefer separate DB pool sizing (or separate repo) for heavy maintenance jobs when load increases.
 
 ## OTP primitive mapping (agent runtime)
 
@@ -584,6 +653,12 @@ Large artifact/trace storage seam:
 - Store large trace/artifact payloads in object storage (GCS) with immutable object keys and content hashes.
 - Keep DB payload size bounded to prevent table bloat and degraded query paths.
 
+Event evolution requirements:
+
+- every runtime event carries `event_type` + `event_version`.
+- replay path includes upcasters to map older versions into current in-memory shapes.
+- breaking event payload changes require version bump + tested upcaster coverage.
+
 ## Tool execution model
 
 Tool calls run async under `Task.Supervisor`.
@@ -651,7 +726,7 @@ Note: cluster/distribution features support coordination and fanout, but correct
 5. Pod anti-affinity and PodDisruptionBudget to reduce correlated restarts.
 6. Graceful termination hooks (`SIGTERM` drain + checkpoint flush).
 7. Narrow Erlang distribution port range (`inet_dist_listen_min/max`) for enforceable NetworkPolicy.
-8. Netsplit posture: correctness remains event-log + advisory-lock based even during cluster partitions.
+8. Netsplit posture: correctness remains event-log + lease-based executor control even during cluster partitions.
 
 Recommended initial range:
 
@@ -958,18 +1033,21 @@ This reduces context ambiguity for human and agent contributors and keeps migrat
 
 - start run + frame append endpoints
 - SSE stream output mapper compatible with AI SDK protocol
+- stream cursor contract (`seq`, `Last-Event-ID`, `?cursor`) + LISTEN/NOTIFY wakeups
 
 ## Milestone C: Agent process supervision
 
 - DynamicSupervisor and per-agent process startup
 - frame ingestion loop
 - checkpoint persistence
+- lease acquisition/heartbeat/release for single-executor guarantee
 
 ## Milestone D: Tool async model
 
 - non-blocking tool tasks
 - progress events
 - cancellation path
+- financial idempotency (`tool_call_id`, settlement boundary, reconciliation ids)
 
 ## Milestone E: Tiered memory
 
@@ -1004,6 +1082,7 @@ This reduces context ambiguity for human and agent contributors and keeps migrat
 ## Required telemetry dimensions
 
 - `run_id`, `thread_id`, `user_id`, `autopilot_id`
+- `trace_id`, `span_id`, `x_request_id`
 - runtime driver (`legacy|elixir`)
 - model/provider
 - `signature_id`, `compiled_id`, `strategy_id`
@@ -1120,9 +1199,17 @@ Mitigation:
 Mitigation:
 
 - stream-from-log endpoint design (any pod can serve stream)
-- advisory-lock single executor per run
+- lease-row single executor per run
 - do not rely on sticky sessions for correctness
 - reconnect resumes from stream cursor/watermark
+
+## Risk: Laravel SSE serving becomes control-plane bottleneck
+
+Mitigation:
+
+- capacity-model concurrent SSE connections explicitly in web tier
+- if PHP-FPM worker saturation appears, move SSE serving to long-lived worker mode (Octane/RoadRunner/Swoole) or dedicated stream service
+- keep frontend wire protocol unchanged regardless of serving topology
 
 ## Risk: dual writer inconsistency (Laravel + Elixir)
 
@@ -1172,7 +1259,7 @@ Scaling policy:
 5. Add Laravel runtime client + config flags.
 6. Implement frame-only ingestion contract (`/runs/{runId}/frames`) with idempotent `frameId`.
 7. Implement stream-from-log endpoint with resume cursor/watermark support.
-8. Implement advisory-lock single executor guarantee on run execution.
+8. Implement lease-row single executor guarantee on run execution.
 9. Implement shadow traffic mirror + semantic parity diff pipeline.
 10. Enable canary by user/autopilot flags.
 11. Promote to default-on when SLO and parity pass.
@@ -1197,5 +1284,5 @@ Scaling policy:
 - 2026-02-18: Preserved SSE AI SDK compatibility as migration invariant.
 - 2026-02-18: Added DS-Elixir as first-class runtime subsystem to preserve proven DSE behavior controls.
 - 2026-02-18: Chose stream-from-log as day-one multi-pod streaming invariant.
-- 2026-02-18: Chose Postgres advisory locking for single active run executor guarantee.
+- 2026-02-18: Chose Postgres lease-row TTL model for single active run executor guarantee.
 - 2026-02-18: Chose semantic (invariant-based) shadow diffing over literal text diffing.
