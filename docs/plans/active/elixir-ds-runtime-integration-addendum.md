@@ -185,12 +185,22 @@ SpendAuthorization requirement:
 - runtime must enforce without user interaction when mode is delegated.
 - authorization validation and consumption must be receipt-visible and auditable.
 
+Revocation and reservation reconciliation requirements:
+
+1. authorization revoke/expire must block new settlement reserves immediately.
+2. stuck reservations must be reconciled by janitor flow with deterministic release/commit outcome.
+3. unknown settlement outcomes require reconcile-before-retry when `dedupe_reconcile_required`.
+
 Required receipt linkage fields:
 
 - `authorization_id`
 - `authorization_mode`
 - `policy_decision`
 - `budget_before`, `reserved`, `spent`, `budget_after`
+
+Background budget attribution rule:
+
+- DS-driven maintenance work (compaction/map-reduce/eval prep) defaults to system maintenance budget unless explicitly marked billable to user/autopilot scope.
 
 ## Compile/eval/promotion loop in runtime
 
@@ -229,6 +239,7 @@ This prevents unbounded Postgres growth and keeps query paths for runtime execut
 4. Canary promotion/rollback exercised in staging and production.
 5. No regression to Laravel SSE contract during DS-Elixir rollout.
 6. Canonical JSON schemas published and consumed by both Elixir and Laravel surfaces.
+7. Replay harness supports deterministic frozen-IO replays for incident debugging and dataset provenance.
 
 ## Open decisions to resolve early
 

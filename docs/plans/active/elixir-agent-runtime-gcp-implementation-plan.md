@@ -256,6 +256,42 @@ Elixir (`apps/openagents-runtime`) owns:
 7. Persist predict receipt and optional trace handle.
 8. Continue until deterministic terminal run state is emitted.
 
+## Run lifecycle state machine and hard execution caps (required)
+
+Run lifecycle states:
+
+- `accepted`
+- `running`
+- `waiting_tool`
+- `cancel_requested`
+- terminal: `completed | failed | canceled`
+
+Terminal reason classes (minimum):
+
+- `completed`
+- `canceled_by_user`
+- `max_steps_exceeded`
+- `max_wall_clock_exceeded`
+- `max_tokens_exceeded`
+- `max_model_calls_exceeded`
+- `max_tool_calls_exceeded`
+- `policy_budget_exhausted`
+- `internal_error`
+
+Deterministic hard caps (policy configurable, must be enforced):
+
+1. max steps per run
+2. max wall-clock duration per run
+3. max model tokens per run
+4. max model calls per run
+5. max tool calls per run
+
+Cap breach behavior:
+
+- append explicit cap-breach event,
+- stop new work immediately,
+- transition run to deterministic terminal state with reason class.
+
 ## Run-level concurrency control (single executor guarantee)
 
 To prevent double execution and duplicate side effects:
@@ -409,6 +445,13 @@ Event append transaction boundary (required):
 2. `seq` allocation is transactional (sequence or per-run allocator), not in-memory.
 3. Projection watermarks advance only from committed events.
 4. `NOTIFY` is a wakeup signal only; stream readers always re-read committed DB state.
+
+Tamper-evident event integrity (required):
+
+1. each run event stores `prev_hash` and `event_hash` (per-run hash chain).
+2. checkpoints store chain head hash at checkpoint time.
+3. replay/projection paths can verify chain integrity on demand.
+4. integrity mismatch emits explicit audit/integrity incident events.
 
 Laravel should proxy bytes with minimal transformation.
 
@@ -659,6 +702,19 @@ All compactions produce auditable artifacts:
 - token/latency stats
 - hash of output summary text
 
+## Budget attribution policy for background work (required)
+
+Background runtime jobs (compaction, rollups, timeline map-reduce, maintenance inference) must have explicit budget attribution:
+
+1. default attribution: `maintenance_budget` (system-funded), not user delegated spend authorization.
+2. user/autopilot budget attribution is allowed only when operation is explicitly user-initiated and marked as billable.
+3. every background receipt must record:
+   - `payer_type` (`system` | `user` | `autopilot`)
+   - `authorization_id` when applicable
+   - budget deltas and decision path
+
+This prevents silent user budget drain from autonomous maintenance work.
+
 ## DS-Elixir contract layer (required)
 
 Core DS-Elixir runtime contracts in this plan:
@@ -787,6 +843,14 @@ Budget exhaustion behavior (required):
    - terminate run with explicit policy error classification.
 4. Never silently loop retries against exhausted budget.
 
+SpendAuthorization revocation and reservation reconciliation (required):
+
+1. revocation is control-plane authoritative and must be observed on every reserve/commit check.
+2. revoked/expired authorization immediately blocks new settlement-boundary reserves.
+3. janitor reconciles stuck reservations (reserved with no terminal commit/release due to crash/timeout).
+4. `dedupe_reconcile_required` outcomes must run reconcile-before-retry, never blind retry.
+5. unknown settlement outcomes must remain blocked until reconciliation determines final state.
+
 Provider circuit breaker and fallback policy (required):
 
 1. enforce per-provider timeout/rate budgets
@@ -810,6 +874,13 @@ Sanitization policy for traces and tool replay (required):
    - HTTP client middleware
    - trace serialization pipeline
 4. Tool replay context is built only from sanitized payloads.
+
+Tool runner isolation and egress controls (required):
+
+1. run settlement/network-capable tools in isolated worker pool/process boundary.
+2. use separate service account and minimal IAM scopes for tool workers.
+3. enforce network egress allowlists at network policy/firewall layer, not only app logic.
+4. secrets are never returned in tool outputs, logs, or replay payloads; enforce via shared middleware.
 
 ## Compatibility with current Laravel stream/UI
 
@@ -1018,6 +1089,18 @@ Release helper module required:
    - upcaster coverage is mandatory in CI,
    - replay tests must pass across previous and current versions.
 6. Reprojection jobs must execute against mixed-schema windows during rolling deploys.
+
+## Laravel + runtime migration coordination (shared Postgres)
+
+Because Laravel and runtime share one Postgres cluster, migration order must be explicit:
+
+1. deploy additive schema migrations first (compatible with both current Laravel and runtime).
+2. deploy runtime and Laravel application versions that tolerate old+new schema during compatibility window.
+3. enable new write paths behind flags only after both services are on compatible versions.
+4. run backfills/reprojections.
+5. remove old fields/indexes only after both services and projections no longer depend on them.
+
+Define one authoritative migration pipeline owner per release to avoid cross-service race conditions.
 
 ## Rollout strategy (phased, with flags)
 
@@ -1229,6 +1312,7 @@ This reduces context ambiguity for human and agent contributors and keeps migrat
 - `params_hash`, `prompt_hash`, `output_hash`
 - budget profile + budget usage counters (`lm_calls`, `tool_calls`, `rlm_iterations`, `sub_lm_calls`)
 - tool name/status
+- terminal reason class
 - compaction level (`raw|l1|l2|l3`)
 - phase (`ingest|infer|tool|persist|stream`)
 - process identifiers (`agent_pid`, logical process key)
@@ -1307,6 +1391,17 @@ Commands:
 - forced runtime restart + resume
 - cancel in-progress run
 
+## Replay harness (required)
+
+Provide an offline replay path for debugging and DS dataset generation:
+
+1. reconstruct run execution from durable `(run_id, seq)` event stream.
+2. support deterministic replay mode using recorded model/tool outputs ("frozen IO").
+3. support live-replay mode where policies/run logic are re-evaluated against historical events.
+4. export replay slices into DS compile/eval datasets with provenance linkage.
+
+This is required for incident debugging, regression analysis, and reliable self-improvement workflows.
+
 ## Load test plan (production-shape)
 
 Required scenarios before broad cutover:
@@ -1376,6 +1471,15 @@ Mitigation:
 - strict allowlists for settlement-boundary providers/domains
 - clear Laravel audit UI for active authorizations and spend/reserve state
 - immediate revoke path in control plane and fast runtime revocation observation
+
+## Risk: stuck reservations or unknown settlement outcomes lock budget or trigger duplicate spend
+
+Mitigation:
+
+- reservation janitor with deterministic release/reconcile rules
+- explicit unknown-outcome state requiring reconcile-before-retry
+- idempotency keys + settlement correlation ids in every settlement-boundary receipt
+- operator tooling to inspect and resolve aged reservations
 
 ## Risk: dual writer inconsistency (Laravel + Elixir)
 
@@ -1448,6 +1552,12 @@ Scaling policy:
 19. Enforce transactional event append boundary (`insert + seq + NOTIFY` in one commit path).
 20. Add admission-control limits and telemetry cardinality guardrails in production configs.
 21. Run production-shape load tests (SSE/slow clients, burst ingestion, cancel storms, pod-kill recovery).
+22. Enforce run state machine caps (steps/wall-clock/tokens/model calls/tool calls) with deterministic terminal reasons.
+23. Implement maintenance budget attribution and payer visibility in receipts.
+24. Implement per-run tamper-evident event hash chain and integrity verification hooks.
+25. Isolate tool runner execution and enforce network egress allowlists.
+26. Ship offline replay harness with frozen IO mode for incident/debug and DS datasets.
+27. Adopt coordinated Laravel/runtime migration pipeline ownership for shared Postgres releases.
 
 ## Delegated spending doc checklist
 
@@ -1479,3 +1589,6 @@ Scaling policy:
 - 2026-02-18: Added confused-deputy protections with token claim binding and DB ownership checks.
 - 2026-02-18: Added SpendAuthorization budget envelope with delegated and interactive modes.
 - 2026-02-18: Added transactional append boundary (`event + seq + notify`) as correctness invariant.
+- 2026-02-18: Added run state machine caps with deterministic terminal reason classes.
+- 2026-02-18: Added maintenance-budget attribution rules for background compaction/map-reduce work.
+- 2026-02-18: Added tamper-evident event hash chain, tool-runner isolation controls, and replay harness requirement.
