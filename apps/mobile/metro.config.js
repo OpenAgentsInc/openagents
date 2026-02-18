@@ -6,8 +6,7 @@ const path = require("path")
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname)
 
-// Resolve Convex API from apps/web (shared backend)
-config.watchFolders = [path.resolve(__dirname), path.resolve(__dirname, "..", "web")]
+config.watchFolders = [path.resolve(__dirname)]
 config.resolver.extraNodeModules = {
   convex: path.resolve(__dirname, "node_modules", "convex"),
 }

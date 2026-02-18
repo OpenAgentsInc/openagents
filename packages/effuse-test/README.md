@@ -1,6 +1,6 @@
 # @openagentsinc/effuse-test
 
-Effect-native E2E and visual regression runner used by `apps/web`.
+Effect-native E2E and visual regression runner (e.g. for `apps/openagents.com`).
 
 ## Development Setup
 

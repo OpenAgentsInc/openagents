@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext"
 
 /**
  * Hook for ConvexProviderWithAuth. Supplies WorkOS token from AuthContext so Convex
- * can authenticate the user (same JWT issuer as apps/web).
+ * can authenticate the user (same JWT issuer as web app).
  */
 export function useConvexAuth(): {
   isLoading: boolean

@@ -7,7 +7,7 @@ PostHog is integrated in this app’s **React (Inertia.js + Vite)** frontend for
 - **Init:** `resources/js/lib/posthog.ts` — initializes PostHog when `VITE_POSTHOG_KEY` is set in non-development builds; uses `VITE_POSTHOG_HOST` (default `https://us.i.posthog.com`).
 - **Provider:** `resources/js/app.tsx` — root is wrapped in `<PostHogProvider client={posthog}>`.
 - **Identify:** `resources/js/components/posthog-identify.tsx` — runs on every page; calls `posthog.identify(user.email, { email, name })` when `auth.user` is present (Inertia shared props).
-- **Env:** Add to `.env` (and to your hosting provider). Use the **same project API key and host** as the backend so data stays in one project. Names match `apps/web` for consistency.
+- **Env:** Add to `.env` (and to your hosting provider). Use the **same project API key and host** as the backend so data stays in one project.
 
 ### PostHog env checklist (backend + frontend)
 
@@ -35,7 +35,7 @@ npm install --save posthog-js @posthog/react
 # or: pnpm add posthog-js @posthog/react  /  yarn add posthog-js @posthog/react  /  bun add posthog-js @posthog/react
 ```
 
-Vite exposes any `VITE_*` env var to the client (see [Vite env](https://vitejs.dev/guide/env-and-mode.html)). This app uses `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` to align with `apps/web`.
+Vite exposes any `VITE_*` env var to the client (see [Vite env](https://vitejs.dev/guide/env-and-mode.html)). This app uses `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST`.
 
 ## Usage
 

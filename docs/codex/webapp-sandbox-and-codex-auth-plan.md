@@ -1,17 +1,16 @@
 # Plan: Sandbox + Codex Auth for the Webapp
 
-This document outlines how to integrate **Cloudflare Sandbox SDK** and **Codex (ChatGPT) auth** with the OpenAgents webapp (`apps/web/`). Sandboxes are not yet integrated; Codex auth is documented in [opencode-codex-auth.md](./opencode-codex-auth.md). The plan is split into two parts so sandbox work can proceed first and Codex auth can follow once a sandbox-backed runtime exists.
+This document outlines how to integrate **Cloudflare Sandbox SDK** and **Codex (ChatGPT) auth** with the OpenAgents webapp. Sandboxes are not yet integrated; Codex auth is documented in [opencode-codex-auth.md](./opencode-codex-auth.md). The plan is split into two parts so sandbox work can proceed first and Codex auth can follow once a sandbox-backed runtime exists.
 
 **Audience:** Engineers wiring the webapp to a sandbox-backed agent and/or Codex OAuth.
 
-**Related:** `docs/autopilot/spec.md`, `apps/autopilot-worker/`, [Sandbox SDK docs](https://developers.cloudflare.com/sandbox/).
+**Related:** `docs/autopilot/spec.md`, [Sandbox SDK docs](https://developers.cloudflare.com/sandbox/). **Note:** The former `apps/web` and `apps/autopilot-worker` have been removed; the web app is now `apps/openagents.com` (Laravel).
 
 ---
 
 ## Current state
 
-- **Webapp (`apps/web/`):** TanStack Start + Convex + WorkOS Auth. Chat UI uses `@assistant-ui/react`, `@cloudflare/ai-chat`, and `agents` (Agents SDK client). Threads are Convex-backed; the runtime connects via **WebSocket** to the Autopilot worker (`WS /agents/chat/{id}`).
-- **Autopilot worker (`apps/autopilot-worker/`):** Cloudflare Workers + typed tool/runtime surfaces used by the web product. Sandbox integration is not currently wired here.
+- **Webapp:** `apps/openagents.com` (Laravel + Inertia + React + WorkOS Auth). Chat and tool runtime are Laravel-backed; no separate worker.
 - **Codex:** OpenCode’s built-in Codex plugin does OAuth (browser PKCE + localhost callback, or device code). See [opencode-codex-auth.md](./opencode-codex-auth.md) for flows and web viability.
 
 ---
@@ -206,18 +205,18 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
   - Use `getAgentByName` for Codex auth DO access (avoids missing `x-partykit-room` errors).
   - Avoid `AbortSignal` in `sandbox.containerFetch` (fixes `DataCloneError: AbortSignal serialization is not enabled`).
   - Callback now proxies and blocks as expected; add manual timeout handling + 504 on timeout.
-- Tests: `npm run test` in `apps/liteclaw-worker` (pass); `npm run test` in `apps/web` (failed: `localStorage.clear is not a function` in relay/query/nostr sync tests).
+- Tests: `npm run test` in `apps/liteclaw-worker` (pass). (Former `apps/web` removed.) `localStorage.clear is not a function` in relay/query/nostr sync tests).
 - Manual smoke: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize` returns device code; `/callback` blocks until user completes device flow (curl timed out as expected).
-- Deploy attempt: `apps/web` deploy blocked by WorkOS env mismatch (WORKOS_CLIENT_ID / WORKOS_API_KEY).
+- Deploy attempt: former web app deploy was blocked by WorkOS env mismatch (WORKOS_CLIENT_ID / WORKOS_API_KEY).
 
 ### Next Steps (Webapp Deploy + Validation)
 
 1. Fix Convex/WorkOS env mismatch on the deploy machine:
    - Remove the conflicting Convex env values or update them to match the local `.env.production` values used for deploy.
-   - Then re-run `npm run deploy` from `apps/web` (this runs `deploy:convex` + build + wrangler deploy).
+   - Then re-run deploy from the web app (Laravel: see `apps/openagents.com`).
 2. Ensure required secrets/envs are present on the deploy machine:
    - `AUTOPILOT_CODEX_SECRET` (must match Autopilot worker).
-   - `WORKOS_*` secrets for the webapp (per `apps/web/wrangler.jsonc` comments).
+   - `WORKOS_*` secrets for the webapp (see `apps/openagents.com` env docs).
    - Optional: `VITE_LITECLAW_WORKER_URL` if the webapp is not served from the same origin as the worker.
 3. Sanity check device code flow end-to-end:
    - Open the webapp, click “Connect Codex”.
@@ -232,4 +231,4 @@ If you only want “OpenCode in sandbox” without Codex, Part A is enough (use 
 - [opencode-codex-auth.md](./opencode-codex-auth.md) – OpenCode Codex flows and web viability.
 - [Sandbox SDK](https://developers.cloudflare.com/sandbox/) – Getting started, API, concepts, tutorials.
 - Autopilot spec: `docs/autopilot/spec.md`
-- Worker surface: `apps/autopilot-worker/`
+- (Former worker surface `apps/autopilot-worker` removed.)
