@@ -48,6 +48,7 @@ return [
 
     'agent_wallets' => [
         'wallet_id_prefix' => (string) env('SPARK_AGENT_WALLET_ID_PREFIX', 'oa-user-'),
+        'auto_provision_on_auth' => (bool) env('SPARK_AGENT_WALLET_AUTO_PROVISION_ON_AUTH', true),
     ],
 
     'operator' => [

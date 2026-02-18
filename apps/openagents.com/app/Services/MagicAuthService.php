@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Lightning\Spark\UserSparkWalletService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -12,6 +13,7 @@ use WorkOS\Client;
 use WorkOS\Exception\WorkOSException;
 use WorkOS\Resource\AuthenticationResponse;
 use WorkOS\UserManagement;
+use Throwable;
 
 class MagicAuthService
 {
@@ -113,6 +115,7 @@ class MagicAuthService
 
         $isNewUser = false;
         $user = $this->synchronizeUser($workosUser, $isNewUser);
+        $this->provisionWalletIfConfigured($user);
 
         return [
             'user' => $user,
@@ -256,6 +259,24 @@ class MagicAuthService
         }
 
         return $candidateWorkosId;
+    }
+
+    private function provisionWalletIfConfigured(User $user): void
+    {
+        if (! (bool) config('lightning.agent_wallets.auto_provision_on_auth', true)) {
+            return;
+        }
+
+        $sparkBaseUrl = trim((string) config('lightning.spark_executor.base_url', ''));
+        if ($sparkBaseUrl === '') {
+            return;
+        }
+
+        try {
+            resolve(UserSparkWalletService::class)->ensureWalletForUser((int) $user->getAuthIdentifier());
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     private function resolveString(object $source, array $keys): ?string
