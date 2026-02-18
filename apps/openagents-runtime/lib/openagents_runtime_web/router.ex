@@ -9,5 +9,6 @@ defmodule OpenAgentsRuntimeWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show
+    get "/runs/:run_id/snapshot", RunController, :snapshot
   end
 end
