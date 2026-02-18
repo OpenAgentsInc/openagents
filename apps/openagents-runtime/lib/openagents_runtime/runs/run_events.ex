@@ -96,6 +96,17 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
     Repo.one(query) || 0
   end
 
+  @spec oldest_seq(String.t()) :: non_neg_integer()
+  def oldest_seq(run_id) when is_binary(run_id) do
+    query =
+      from(event in RunEvent,
+        where: event.run_id == ^run_id,
+        select: min(event.seq)
+      )
+
+    Repo.one(query) || 0
+  end
+
   @spec sort([RunEvent.t()]) :: [RunEvent.t()]
   def sort(events) when is_list(events), do: Enum.sort_by(events, &{&1.run_id, &1.seq})
 
