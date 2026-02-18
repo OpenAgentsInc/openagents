@@ -79,6 +79,39 @@ function textFromParts(parts: UIMessage['parts']): string {
         .join('');
 }
 
+
+function parseToolOutputRecord(output: unknown): Record<string, unknown> | null {
+    if (typeof output === 'object' && output !== null) {
+        return output as Record<string, unknown>;
+    }
+
+    if (typeof output !== 'string') {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(output) as unknown;
+        return typeof parsed === 'object' && parsed !== null
+            ? (parsed as Record<string, unknown>)
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+function chatLoginStatusFromPart(part: unknown): string | null {
+    if (typeof part !== 'object' || part === null) return null;
+
+    const p = part as Record<string, unknown>;
+    const output = parseToolOutputRecord(p.output);
+
+    if (!output) return null;
+    if (output.toolName !== 'chat_login') return null;
+
+    const status = output.status;
+    return typeof status === 'string' ? status : null;
+}
+
 function formatChatErrorMessage(raw: string | undefined): string {
     const text = typeof raw === 'string' ? raw.trim() : '';
     if (text === '') return 'Chat request failed. Please try again.';
@@ -351,13 +384,8 @@ export default function Index() {
             const parts = message.parts ?? [];
             for (const part of parts) {
                 const p = part as Record<string, unknown>;
-                const output = p?.output;
-                if (
-                    typeof output === 'object' &&
-                    output !== null &&
-                    (output as Record<string, unknown>).toolName === 'chat_login' &&
-                    (output as Record<string, unknown>).status === 'authenticated'
-                ) {
+                const status = chatLoginStatusFromPart(part);
+                if (status === 'authenticated' || status === 'already_authenticated') {
                     didReloadForAuthRef.current = true;
                     window.location.assign('/');
                     return;

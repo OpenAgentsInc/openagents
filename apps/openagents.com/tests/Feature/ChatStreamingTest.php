@@ -279,6 +279,34 @@ test('chat API returns 422 when messages are missing or invalid', function () {
         ->assertJsonPath('message', 'A non-empty user message is required');
 });
 
+
+test('guest onboarding asks for explicit email before sending a login code', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['This should not be used for onboarding email prompt']);
+
+    $conversationId = 'g-'.str_repeat('c', 32);
+
+    $response = $this->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'How do I create an account?'],
+        ],
+    ]);
+
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+
+    expect($content)->toContain('tell me your email address');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    /** @var User $guest */
+    $guest = User::query()->where('email', 'guest@openagents.internal')->firstOrFail();
+
+    expect(DB::table('runs')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $guest->id)
+        ->count())->toBe(0);
+});
+
 test('guest chat stream can establish session without guest-session preflight', function () {
     Ai::fakeAgent(AutopilotAgent::class, ['Hello from guest stream']);
 
