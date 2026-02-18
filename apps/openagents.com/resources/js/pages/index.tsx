@@ -538,7 +538,7 @@ export default function Index() {
                                     conversationId &&
                                     messages.length === 0 &&
                                     !showThinking && (
-                                        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2 text-center">
+                                        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2 pt-16 text-center">
                                             <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
                                                 Autopilot online.
                                             </h1>

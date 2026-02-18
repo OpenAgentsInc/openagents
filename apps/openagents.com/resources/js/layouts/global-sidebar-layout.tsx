@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import { LogIn, MessageSquare, Plus, Rss, Zap } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
@@ -17,6 +17,7 @@ import {
     SidebarMenuItem,
     SidebarProvider,
     SidebarTrigger,
+    useSidebar,
 } from '@/components/ui/sidebar';
 
 type Props = { children: ReactNode };
@@ -37,6 +38,17 @@ type SharedProps = {
 function toThreadLabel(value: string): string {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : 'New conversation';
+}
+
+function SidebarCloseOnNavigate() {
+    const { isMobile, setOpenMobile } = useSidebar();
+    useEffect(() => {
+        const cleanup = router.on('navigate', () => {
+            if (isMobile) setOpenMobile(false);
+        });
+        return cleanup;
+    }, [isMobile, setOpenMobile]);
+    return null;
 }
 
 export function GlobalSidebarLayout({ children }: Props) {
@@ -67,6 +79,7 @@ export function GlobalSidebarLayout({ children }: Props) {
 
     return (
         <SidebarProvider>
+            <SidebarCloseOnNavigate />
             <div className="fixed left-3 top-3 z-[70]">
                 <SidebarTrigger className="h-8 w-8 rounded-md border border-border bg-background/80 backdrop-blur" />
             </div>
@@ -76,15 +89,13 @@ export function GlobalSidebarLayout({ children }: Props) {
                 variant="inset"
                 className="border-r border-border dark:border-input"
             >
-                <SidebarHeader className="h-14 px-2">
-                    <div className="flex items-center gap-2 pl-10">
-                        <Link
-                            href="/"
-                            className="text-sm font-medium tracking-wide text-foreground/90"
-                        >
-                            OpenAgents
-                        </Link>
-                    </div>
+                <SidebarHeader className="flex h-14 justify-center px-2 pt-5">
+                    <Link
+                        href="/"
+                        className="text-sm font-medium tracking-wide text-foreground/90"
+                    >
+                        OpenAgents
+                    </Link>
                 </SidebarHeader>
 
                 <SidebarContent>

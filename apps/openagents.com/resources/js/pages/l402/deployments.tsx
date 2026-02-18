@@ -1,7 +1,5 @@
 import { Head } from '@inertiajs/react';
 import { L402PageNav } from '@/components/l402/page-nav';
-import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 
 type DeploymentEvent = {
     eventId: number;
@@ -22,11 +20,6 @@ type Props = {
     };
 };
 
-const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'L402', href: '/l402' },
-    { title: 'Deployments', href: '/l402/deployments' },
-];
-
 function pretty(value: unknown): string {
     try {
         return JSON.stringify(value, null, 2);
@@ -37,7 +30,7 @@ function pretty(value: unknown): string {
 
 export default function L402DeploymentsPage({ deployments, configSnapshot }: Props) {
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <>
             <Head title="L402 Deployments" />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
                 <L402PageNav />
@@ -101,6 +94,6 @@ export default function L402DeploymentsPage({ deployments, configSnapshot }: Pro
                     )}
                 </div>
             </div>
-        </AppLayout>
+        </>
     );
 }

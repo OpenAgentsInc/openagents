@@ -32,9 +32,7 @@ import {
 } from '@/components/ai-elements/tool';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import AppLayout from '@/layouts/app-layout';
 import { usePostHogEvent } from '@/hooks/use-posthog-event';
-import type { BreadcrumbItem } from '@/types';
 
 type GuestOnboardingStep = 'email' | 'code';
 
@@ -785,14 +783,6 @@ function ChatContent({
         ],
     );
 
-    const breadcrumbs: BreadcrumbItem[] = [
-        { title: 'Chat', href: '/chat' },
-        {
-            title: conversationTitle || 'New conversation',
-            href: `/chat/${conversationId}`,
-        },
-    ];
-
     const activeMessages = guestEnabled ? guestMessages : messages;
     const activeStatus = guestEnabled
         ? guestBusy
@@ -812,7 +802,7 @@ function ChatContent({
     }, [capture, conversationId, errorMessage, guestEnabled]);
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <>
             <Head title={conversationTitle || 'Chat'} />
 
             <div className="flex h-full flex-1 flex-col gap-4 overflow-hidden rounded-xl p-4">
@@ -914,7 +904,7 @@ function ChatContent({
                     </PromptInput>
                 </div>
             </div>
-        </AppLayout>
+        </>
     );
 }
 

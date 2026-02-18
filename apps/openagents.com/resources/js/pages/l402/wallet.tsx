@@ -1,7 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
 import { L402PageNav } from '@/components/l402/page-nav';
-import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 
 type L402Receipt = {
     eventId: number;
@@ -41,11 +39,6 @@ type Props = {
     };
 };
 
-const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'L402', href: '/l402' },
-    { title: 'Wallet', href: '/l402' },
-];
-
 function statusClass(status: string): string {
     if (status === 'completed') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
     if (status === 'cached') return 'bg-sky-500/15 text-sky-300 border-sky-500/30';
@@ -56,7 +49,7 @@ function statusClass(status: string): string {
 
 export default function L402WalletPage({ summary, lastPaid, recent, settings }: Props) {
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <>
             <Head title="L402 Wallet" />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
                 <L402PageNav />
@@ -165,6 +158,6 @@ export default function L402WalletPage({ summary, lastPaid, recent, settings }: 
                     </div>
                 </div>
             </div>
-        </AppLayout>
+        </>
     );
 }

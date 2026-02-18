@@ -1,7 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
 import { L402PageNav } from '@/components/l402/page-nav';
-import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 
 type Settlement = {
     eventId: number;
@@ -31,14 +29,9 @@ type Props = {
     settlements: Settlement[];
 };
 
-const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'L402', href: '/l402' },
-    { title: 'Settlements', href: '/l402/settlements' },
-];
-
 export default function L402SettlementsPage({ summary, daily, settlements }: Props) {
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <>
             <Head title="L402 Settlements" />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
                 <L402PageNav />
@@ -122,6 +115,6 @@ export default function L402SettlementsPage({ summary, daily, settlements }: Pro
                     )}
                 </div>
             </div>
-        </AppLayout>
+        </>
     );
 }
