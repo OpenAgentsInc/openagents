@@ -1,5 +1,5 @@
 defmodule OpenAgentsRuntimeWeb.RunControllerTest do
-  use OpenAgentsRuntimeWeb.ConnCase, async: true
+  use OpenAgentsRuntimeWeb.ConnCase, async: false
 
   import Ecto.Query
 
@@ -193,5 +193,44 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
       |> get(~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&cursor=0")
 
     assert %{"error" => %{"code" => "stale_cursor"}} = json_response(conn, 410)
+  end
+
+  test "stream wakes up and emits events appended during tail window" do
+    parent = self()
+
+    stream_pid =
+      spawn(fn ->
+        receive do
+          {:go, test_pid} ->
+            conn =
+              build_conn()
+              |> put_req_header("x-oa-user-id", "77")
+              |> get(
+                ~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&cursor=0&tail_ms=500"
+              )
+
+            send(test_pid, {:stream_response, conn.status, conn.resp_body})
+        end
+      end)
+
+    Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), stream_pid)
+    send(stream_pid, {:go, parent})
+    Process.sleep(75)
+
+    assert {:ok, _event} =
+             RunEvents.append_event("run_snapshot", "run.delta", %{"delta" => "late"})
+
+    assert_receive {:stream_response, 200, body}, 2_000
+    assert body =~ "id: 1"
+    assert body =~ "\"delta\":\"late\""
+  end
+
+  test "stream rejects invalid tail timeout", %{conn: conn} do
+    conn =
+      conn
+      |> put_req_header("x-oa-user-id", "77")
+      |> get(~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&tail_ms=abc")
+
+    assert %{"error" => %{"code" => "invalid_request"}} = json_response(conn, 400)
   end
 end
