@@ -751,6 +751,8 @@ final class RunOrchestrator
             ->where('user_id', $userId)
             ->first(['id', 'autopilot_id']);
 
+        $defaultAutopilot = $this->defaultAutopilotContextForUser($userId);
+
         if (! $thread) {
             $title = DB::table('agent_conversations')->where('id', $threadId)->where('user_id', $userId)->value('title');
             if (! is_string($title) || trim($title) === '') {
@@ -762,15 +764,15 @@ final class RunOrchestrator
             DB::table('threads')->insert([
                 'id' => $threadId,
                 'user_id' => $userId,
-                'autopilot_id' => null,
+                'autopilot_id' => $defaultAutopilot['id'] ?? null,
                 'title' => $title,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
 
             return [
-                'autopilotId' => null,
-                'autopilotConfigVersion' => null,
+                'autopilotId' => $defaultAutopilot['id'] ?? null,
+                'autopilotConfigVersion' => $defaultAutopilot['configVersion'] ?? null,
             ];
         }
 
@@ -779,6 +781,22 @@ final class RunOrchestrator
             : null;
 
         if ($autopilotId === null) {
+            if (is_array($defaultAutopilot)) {
+                DB::table('threads')
+                    ->where('id', $threadId)
+                    ->where('user_id', $userId)
+                    ->whereNull('autopilot_id')
+                    ->update([
+                        'autopilot_id' => $defaultAutopilot['id'],
+                        'updated_at' => now(),
+                    ]);
+
+                return [
+                    'autopilotId' => $defaultAutopilot['id'],
+                    'autopilotConfigVersion' => $defaultAutopilot['configVersion'],
+                ];
+            }
+
             return [
                 'autopilotId' => null,
                 'autopilotConfigVersion' => null,
@@ -790,6 +808,30 @@ final class RunOrchestrator
         return [
             'autopilotId' => $autopilotId,
             'autopilotConfigVersion' => is_numeric($configVersion) ? (int) $configVersion : null,
+        ];
+    }
+
+    /**
+     * @return array{id:string,configVersion:int}|null
+     */
+    private function defaultAutopilotContextForUser(int $userId): ?array
+    {
+        $autopilot = DB::table('autopilots')
+            ->where('owner_user_id', $userId)
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'archived')
+            ->orderByDesc('updated_at')
+            ->first(['id', 'config_version']);
+
+        if (! $autopilot || ! is_string($autopilot->id) || trim($autopilot->id) === '') {
+            return null;
+        }
+
+        return [
+            'id' => trim((string) $autopilot->id),
+            'configVersion' => is_numeric($autopilot->config_version)
+                ? max(1, (int) $autopilot->config_version)
+                : 1,
         ];
     }
 

@@ -229,6 +229,9 @@ class AutopilotController extends Controller
      */
     private function autopilotPayload(Autopilot $autopilot): array
     {
+        $profile = $autopilot->profile;
+        $policy = $autopilot->policy;
+
         return [
             'id' => $autopilot->id,
             'handle' => $autopilot->handle,
@@ -239,6 +242,26 @@ class AutopilotController extends Controller
             'avatar' => $autopilot->avatar,
             'tagline' => $autopilot->tagline,
             'configVersion' => (int) $autopilot->config_version,
+            'profile' => $profile ? [
+                'ownerDisplayName' => $profile->owner_display_name,
+                'personaSummary' => $profile->persona_summary,
+                'autopilotVoice' => $profile->autopilot_voice,
+                'principles' => $profile->principles ?? [],
+                'preferences' => $profile->preferences ?? [],
+                'onboardingAnswers' => $profile->onboarding_answers ?? [],
+                'schemaVersion' => (int) $profile->schema_version,
+            ] : null,
+            'policy' => $policy ? [
+                'modelProvider' => $policy->model_provider,
+                'model' => $policy->model,
+                'toolAllowlist' => $policy->tool_allowlist ?? [],
+                'toolDenylist' => $policy->tool_denylist ?? [],
+                'l402RequireApproval' => (bool) $policy->l402_require_approval,
+                'l402MaxSpendMsatsPerCall' => $policy->l402_max_spend_msats_per_call,
+                'l402MaxSpendMsatsPerDay' => $policy->l402_max_spend_msats_per_day,
+                'l402AllowedHosts' => $policy->l402_allowed_hosts ?? [],
+                'dataPolicy' => $policy->data_policy ?? [],
+            ] : null,
             'createdAt' => $autopilot->created_at?->toISOString(),
             'updatedAt' => $autopilot->updated_at?->toISOString(),
         ];

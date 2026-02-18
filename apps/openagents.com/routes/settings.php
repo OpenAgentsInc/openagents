@@ -12,5 +12,6 @@ Route::middleware([
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::patch('settings/autopilot', [ProfileController::class, 'updateAutopilot'])->name('profile.autopilot.update');
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
