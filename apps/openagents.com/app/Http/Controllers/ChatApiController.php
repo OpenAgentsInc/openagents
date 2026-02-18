@@ -383,7 +383,6 @@ class ChatApiController extends Controller
             $write(['type' => 'text-delta', 'id' => $messageId, 'delta' => $text]);
             $write(['type' => 'text-end', 'id' => $messageId]);
             $write(['type' => 'finish-step']);
-            $write(['type' => 'finish', 'finishReason' => 'stop', 'usage' => ['inputTokens' => 0, 'outputTokens' => 0, 'totalTokens' => 0]]);
             echo "data: [DONE]\n\n";
             if ($shouldFlush) {
                 if (ob_get_level() > 0) {
