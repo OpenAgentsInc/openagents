@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
 
   alias Ecto.Multi
   alias OpenAgentsRuntime.Repo
+  alias OpenAgentsRuntime.Runs.EventNotifier
   alias OpenAgentsRuntime.Runs.Run
   alias OpenAgentsRuntime.Runs.RunEvent
 
@@ -34,6 +35,9 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
           event_type: event_type,
           payload: payload
         })
+      end)
+      |> Multi.run(:notify, fn repo, %{event: event} ->
+        EventNotifier.notify(repo, event.run_id, event.seq)
       end)
 
     case Repo.transaction(multi) do
