@@ -49,7 +49,7 @@ export default function Login() {
                 <div className="absolute inset-0 z-10 flex items-center justify-center overflow-auto px-6 py-12">
                     <div className="w-full max-w-md rounded-xl border border-white/20 bg-black/40 p-6 shadow-2xl backdrop-blur">
                         <div className="mb-6">
-                            <h1 className="text-2xl font-semibold tracking-tight">Sign in with email</h1>
+                            <h1 className="text-2xl font-semibold tracking-tight">Log in with email</h1>
                             <p className="mt-1 text-sm text-white/75">
                                 {hasPendingCode
                                     ? `Enter the one-time code sent to ${pendingEmail}.`
