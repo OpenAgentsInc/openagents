@@ -1,17 +1,20 @@
 import { Transition } from '@headlessui/react';
 import { Form, Head, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 import SettingsLayout from '@/layouts/settings/layout';
 
 type PageProps = {
     auth: {
         user: {
             name: string;
+            email?: string;
         };
     };
     status?: string | null;
@@ -32,10 +35,19 @@ type PageProps = {
 
 export default function AutopilotSettings() {
     const { auth, status, autopilotSettings } = usePage<PageProps>().props;
+    const capture = usePostHogEvent('settings_autopilot');
 
     const principlesText = Array.isArray(autopilotSettings?.profile?.principles)
         ? autopilotSettings.profile.principles.join('\n')
         : '';
+
+    useEffect(() => {
+        capture('settings_autopilot.page_opened', {
+            hasAutopilotSettings: Boolean(autopilotSettings),
+            configVersion: autopilotSettings?.configVersion ?? null,
+            userEmail: auth.user.email ?? null,
+        });
+    }, [auth.user.email, autopilotSettings, capture]);
 
     return (
         <>
@@ -56,6 +68,12 @@ export default function AutopilotSettings() {
                         method="patch"
                         options={{ preserveScroll: true }}
                         className="space-y-6"
+                        onSubmit={() => {
+                            capture('settings_autopilot.save_submitted', {
+                                userEmail: auth.user.email ?? null,
+                                configVersion: autopilotSettings?.configVersion ?? null,
+                            });
+                        }}
                     >
                         {({ processing, recentlySuccessful, errors }) => (
                             <>

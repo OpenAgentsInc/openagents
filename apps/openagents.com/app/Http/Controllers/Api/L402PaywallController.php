@@ -11,6 +11,7 @@ use App\OpenApi\Responses\NotFoundResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
 use App\Services\L402\L402PaywallOperatorService;
+use App\Services\PostHogService;
 use App\Support\AdminAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,7 +29,7 @@ class L402PaywallController extends Controller
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function store(Request $request, L402PaywallOperatorService $service): JsonResponse
+    public function store(Request $request, L402PaywallOperatorService $service, PostHogService $posthog): JsonResponse
     {
         $user = $this->assertOperator($request);
 
@@ -49,11 +50,24 @@ class L402PaywallController extends Controller
         try {
             $result = $service->create($user, $validated);
         } catch (ApertureReconcileException $exception) {
+            $posthog->capture($user->email, 'l402.paywall_create_reconcile_failed', [
+                'name' => (string) $validated['name'],
+                'hostRegexp' => (string) $validated['hostRegexp'],
+                'pathRegexp' => (string) $validated['pathRegexp'],
+                'priceMsats' => (int) $validated['priceMsats'],
+                'error' => $exception->getMessage(),
+            ]);
             return $this->reconcileFailureResponse($exception);
         }
 
         /** @var L402Paywall $paywall */
         $paywall = $result['paywall'];
+        $posthog->capture($user->email, 'l402.paywall_created', [
+            'paywallId' => (string) $paywall->id,
+            'name' => (string) $paywall->name,
+            'priceMsats' => (int) $paywall->price_msats,
+            'enabled' => (bool) $paywall->enabled,
+        ]);
 
         return response()->json([
             'data' => [
@@ -73,7 +87,7 @@ class L402PaywallController extends Controller
     #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function update(string $paywallId, Request $request, L402PaywallOperatorService $service): JsonResponse
+    public function update(string $paywallId, Request $request, L402PaywallOperatorService $service, PostHogService $posthog): JsonResponse
     {
         $user = $this->assertOperator($request);
 
@@ -105,11 +119,22 @@ class L402PaywallController extends Controller
         try {
             $result = $service->update($user, $paywall, $validated);
         } catch (ApertureReconcileException $exception) {
+            $posthog->capture($user->email, 'l402.paywall_update_reconcile_failed', [
+                'paywallId' => $paywallId,
+                'fieldCount' => count($validated),
+                'error' => $exception->getMessage(),
+            ]);
             return $this->reconcileFailureResponse($exception);
         }
 
         /** @var L402Paywall $updated */
         $updated = $result['paywall'];
+        $posthog->capture($user->email, 'l402.paywall_updated', [
+            'paywallId' => (string) $updated->id,
+            'fieldCount' => count($validated),
+            'enabled' => (bool) $updated->enabled,
+            'priceMsats' => (int) $updated->price_msats,
+        ]);
 
         return response()->json([
             'data' => [
@@ -129,7 +154,7 @@ class L402PaywallController extends Controller
     #[OpenApi\Response(factory: ForbiddenResponse::class, statusCode: 403)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function destroy(string $paywallId, Request $request, L402PaywallOperatorService $service): JsonResponse
+    public function destroy(string $paywallId, Request $request, L402PaywallOperatorService $service, PostHogService $posthog): JsonResponse
     {
         $user = $this->assertOperator($request);
 
@@ -141,11 +166,20 @@ class L402PaywallController extends Controller
         try {
             $result = $service->delete($user, $paywall);
         } catch (ApertureReconcileException $exception) {
+            $posthog->capture($user->email, 'l402.paywall_delete_reconcile_failed', [
+                'paywallId' => $paywallId,
+                'error' => $exception->getMessage(),
+            ]);
             return $this->reconcileFailureResponse($exception);
         }
 
         /** @var L402Paywall $deleted */
         $deleted = $result['paywall'];
+        $posthog->capture($user->email, 'l402.paywall_deleted', [
+            'paywallId' => (string) $deleted->id,
+            'name' => (string) $deleted->name,
+            'deletedAt' => $deleted->deleted_at?->toISOString(),
+        ]);
 
         return response()->json([
             'data' => [

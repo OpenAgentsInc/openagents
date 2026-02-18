@@ -1,5 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
+import { useEffect } from 'react';
 import { L402PageNav } from '@/components/l402/page-nav';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type L402Receipt = {
     eventId: number;
@@ -48,6 +50,17 @@ function statusClass(status: string): string {
 }
 
 export default function L402WalletPage({ summary, lastPaid, recent, settings }: Props) {
+    const capture = usePostHogEvent('l402');
+
+    useEffect(() => {
+        capture('l402.wallet_page_opened', {
+            paidCount: summary.paidCount,
+            recentCount: recent.length,
+            hasLastPaid: Boolean(lastPaid),
+            invoicePayer: settings.invoicePayer,
+        });
+    }, [capture, lastPaid, recent.length, settings.invoicePayer, summary.paidCount]);
+
     return (
         <>
             <Head title="L402 Wallet" />
@@ -95,6 +108,12 @@ export default function L402WalletPage({ summary, lastPaid, recent, settings }: 
                                 ) : null}
                                 <Link
                                     href={`/l402/transactions/${lastPaid.eventId}`}
+                                    onClick={() => {
+                                        capture('l402.transaction_detail_clicked', {
+                                            source: 'wallet_last_paid',
+                                            eventId: lastPaid.eventId,
+                                        });
+                                    }}
                                     className="inline-flex text-xs text-primary hover:underline"
                                 >
                                     Open transaction detail
@@ -128,7 +147,15 @@ export default function L402WalletPage({ summary, lastPaid, recent, settings }: 
                 <div className="rounded-xl border border-sidebar-border/70 bg-card p-4">
                     <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="text-xs uppercase tracking-wide text-muted-foreground">Recent L402 attempts</div>
-                        <Link href="/l402/transactions" className="text-xs text-primary hover:underline">
+                        <Link
+                            href="/l402/transactions"
+                            onClick={() => {
+                                capture('l402.transactions_page_clicked', {
+                                    source: 'wallet_recent_header',
+                                });
+                            }}
+                            className="text-xs text-primary hover:underline"
+                        >
                             View all
                         </Link>
                     </div>
@@ -140,6 +167,13 @@ export default function L402WalletPage({ summary, lastPaid, recent, settings }: 
                                 <Link
                                     key={item.eventId}
                                     href={`/l402/transactions/${item.eventId}`}
+                                    onClick={() => {
+                                        capture('l402.transaction_detail_clicked', {
+                                            source: 'wallet_recent_list',
+                                            eventId: item.eventId,
+                                            status: item.status,
+                                        });
+                                    }}
                                     className="flex items-center justify-between gap-2 rounded border border-sidebar-border/60 px-3 py-2 text-sm hover:bg-muted/50"
                                 >
                                     <div className="min-w-0">

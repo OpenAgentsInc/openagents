@@ -1,9 +1,11 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import type { FormEvent } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type LoginProps = {
     pendingEmail?: string | null;
@@ -12,6 +14,7 @@ type LoginProps = {
 
 export default function Login() {
     const { pendingEmail, status } = usePage<LoginProps>().props;
+    const capture = usePostHogEvent('login');
 
     const emailForm = useForm({
         email: pendingEmail ?? '',
@@ -23,8 +26,18 @@ export default function Login() {
 
     const hasPendingCode = typeof pendingEmail === 'string' && pendingEmail.length > 0;
 
+    useEffect(() => {
+        capture('login.page_opened', {
+            hasPendingCode,
+            hasStatusCodeSent: status === 'code-sent',
+        });
+    }, [capture, hasPendingCode, status]);
+
     const submitEmail = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+        capture('login.code_send_submitted', {
+            emailLength: emailForm.data.email.trim().length,
+        });
 
         emailForm.post('/login/email', {
             preserveScroll: true,
@@ -33,6 +46,9 @@ export default function Login() {
 
     const submitCode = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+        capture('login.code_verify_submitted', {
+            codeLength: verifyForm.data.code.trim().length,
+        });
 
         verifyForm.post('/login/verify', {
             preserveScroll: true,

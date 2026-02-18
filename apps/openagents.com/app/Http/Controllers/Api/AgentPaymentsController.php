@@ -15,6 +15,7 @@ use App\OpenApi\Responses\DataObjectResponse;
 use App\OpenApi\Responses\NotFoundResponse;
 use App\OpenApi\Responses\UnauthorizedResponse;
 use App\OpenApi\Responses\ValidationErrorResponse;
+use App\Services\PostHogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
@@ -32,14 +33,21 @@ class AgentPaymentsController extends Controller
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function wallet(Request $request): JsonResponse
+    public function wallet(Request $request, PostHogService $posthog): JsonResponse
     {
         $user = $request->user();
         $wallet = $this->wallets->walletForUser((int) $user->getAuthIdentifier());
 
         if (! $wallet) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.wallet_missing', []);
             abort(404, 'wallet_not_found');
         }
+
+        $posthog->capture($this->distinctId($request), 'agent_payments.wallet_viewed', [
+            'walletId' => $wallet->wallet_id,
+            'status' => $wallet->status,
+            'balanceSats' => $wallet->last_balance_sats,
+        ]);
 
         return response()->json([
             'data' => [
@@ -56,7 +64,7 @@ class AgentPaymentsController extends Controller
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function upsertWallet(Request $request): JsonResponse
+    public function upsertWallet(Request $request, PostHogService $posthog): JsonResponse
     {
         $validated = $request->validate([
             'mnemonic' => ['nullable', 'string', 'min:20'],
@@ -64,21 +72,34 @@ class AgentPaymentsController extends Controller
 
         $userId = (int) $request->user()->getAuthIdentifier();
         $mnemonic = isset($validated['mnemonic']) ? trim((string) $validated['mnemonic']) : null;
+        $action = is_string($mnemonic) && $mnemonic !== '' ? 'imported' : 'ensured';
 
         try {
-            $wallet = is_string($mnemonic) && $mnemonic !== ''
-                ? $this->wallets->importWalletForUser($userId, $mnemonic)
+            $wallet = $action === 'imported'
+                ? $this->wallets->importWalletForUser($userId, (string) $mnemonic)
                 : $this->wallets->ensureWalletForUser($userId);
 
             $wallet = $this->wallets->syncWallet($wallet);
 
+            $posthog->capture($this->distinctId($request), 'agent_payments.wallet_upserted', [
+                'action' => $action,
+                'walletId' => $wallet->wallet_id,
+                'status' => $wallet->status,
+            ]);
+
             return response()->json([
                 'data' => [
                     'wallet' => $this->walletPayload($wallet),
-                    'action' => is_string($mnemonic) && $mnemonic !== '' ? 'imported' : 'ensured',
+                    'action' => $action,
                 ],
             ]);
         } catch (Throwable $e) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.wallet_upsert_failed', [
+                'action' => $action,
+                'errorCode' => $this->sparkCode($e),
+                'errorMessage' => $e->getMessage(),
+            ]);
+
             return $this->sparkError($e, 502);
         }
     }
@@ -90,17 +111,23 @@ class AgentPaymentsController extends Controller
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: NotFoundResponse::class, statusCode: 404)]
-    public function balance(Request $request): JsonResponse
+    public function balance(Request $request, PostHogService $posthog): JsonResponse
     {
         $userId = (int) $request->user()->getAuthIdentifier();
         $wallet = $this->wallets->walletForUser($userId);
 
         if (! $wallet) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.balance_wallet_missing', []);
             abort(404, 'wallet_not_found');
         }
 
         try {
             $wallet = $this->wallets->syncWallet($wallet);
+
+            $posthog->capture($this->distinctId($request), 'agent_payments.balance_viewed', [
+                'walletId' => $wallet->wallet_id,
+                'balanceSats' => $wallet->last_balance_sats,
+            ]);
 
             return response()->json([
                 'data' => [
@@ -112,6 +139,12 @@ class AgentPaymentsController extends Controller
                 ],
             ]);
         } catch (Throwable $e) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.balance_view_failed', [
+                'walletId' => $wallet->wallet_id,
+                'errorCode' => $this->sparkCode($e),
+                'errorMessage' => $e->getMessage(),
+            ]);
+
             return $this->sparkError($e, 502);
         }
     }
@@ -124,7 +157,7 @@ class AgentPaymentsController extends Controller
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function createInvoice(Request $request): JsonResponse
+    public function createInvoice(Request $request, PostHogService $posthog): JsonResponse
     {
         $validated = $request->validate([
             'amountSats' => ['required', 'integer', 'min:1'],
@@ -140,10 +173,17 @@ class AgentPaymentsController extends Controller
                 description: isset($validated['description']) ? (string) $validated['description'] : null,
             );
 
+            $paymentRequest = $this->firstString($result, ['paymentRequest', 'invoice', 'bolt11']);
+            $posthog->capture($this->distinctId($request), 'agent_payments.invoice_created', [
+                'amountSats' => (int) $validated['amountSats'],
+                'hasDescription' => isset($validated['description']) && trim((string) $validated['description']) !== '',
+                'hasPaymentRequest' => is_string($paymentRequest),
+            ]);
+
             return response()->json([
                 'data' => [
                     'invoice' => [
-                        'paymentRequest' => $this->firstString($result, ['paymentRequest', 'invoice', 'bolt11']),
+                        'paymentRequest' => $paymentRequest,
                         'amountSats' => (int) $validated['amountSats'],
                         'description' => $validated['description'] ?? null,
                         'expiresAt' => $this->firstString($result, ['expiresAt', 'expiryAt']),
@@ -152,6 +192,12 @@ class AgentPaymentsController extends Controller
                 ],
             ]);
         } catch (Throwable $e) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.invoice_create_failed', [
+                'amountSats' => (int) $validated['amountSats'],
+                'errorCode' => $this->sparkCode($e),
+                'errorMessage' => $e->getMessage(),
+            ]);
+
             return $this->sparkError($e, 502);
         }
     }
@@ -164,7 +210,7 @@ class AgentPaymentsController extends Controller
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function payInvoice(Request $request): JsonResponse
+    public function payInvoice(Request $request, PostHogService $posthog): JsonResponse
     {
         $validated = $request->validate([
             'invoice' => ['required', 'string', 'min:20'],
@@ -187,6 +233,11 @@ class AgentPaymentsController extends Controller
         }
 
         if (! is_int($maxAmountMsats) || $maxAmountMsats <= 0) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.invoice_pay_rejected', [
+                'reason' => 'max_amount_missing',
+                'quotedAmountMsats' => $quotedMsats,
+            ]);
+
             return response()->json([
                 'error' => [
                     'code' => 'max_amount_missing',
@@ -212,6 +263,15 @@ class AgentPaymentsController extends Controller
 
             $preimage = $this->firstString($result, ['preimage', 'paymentPreimage', 'payment.preimage', 'payment.paymentPreimage']);
             $paymentId = $this->firstString($result, ['paymentId', 'paymentHash', 'payment.paymentId', 'payment.paymentHash']);
+            $status = $this->firstString($result, ['status', 'payment.status']) ?? 'completed';
+
+            $posthog->capture($this->distinctId($request), 'agent_payments.invoice_paid', [
+                'status' => $status,
+                'quotedAmountMsats' => $quotedMsats,
+                'maxAmountMsats' => $maxAmountMsats,
+                'paymentId' => $paymentId,
+                'hasPreimage' => is_string($preimage) && $preimage !== '',
+            ]);
 
             return response()->json([
                 'data' => [
@@ -221,12 +281,19 @@ class AgentPaymentsController extends Controller
                         'proofReference' => is_string($preimage) && $preimage !== '' ? 'preimage:'.substr($preimage, 0, 16) : null,
                         'quotedAmountMsats' => $quotedMsats,
                         'maxAmountMsats' => $maxAmountMsats,
-                        'status' => $this->firstString($result, ['status', 'payment.status']) ?? 'completed',
+                        'status' => $status,
                         'raw' => $result,
                     ],
                 ],
             ]);
         } catch (Throwable $e) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.invoice_pay_failed', [
+                'quotedAmountMsats' => $quotedMsats,
+                'maxAmountMsats' => $maxAmountMsats,
+                'errorCode' => $this->sparkCode($e),
+                'errorMessage' => $e->getMessage(),
+            ]);
+
             return $this->sparkError($e, 502);
         }
     }
@@ -239,7 +306,7 @@ class AgentPaymentsController extends Controller
     #[OpenApi\Response(factory: DataObjectResponse::class, statusCode: 200)]
     #[OpenApi\Response(factory: UnauthorizedResponse::class, statusCode: 401)]
     #[OpenApi\Response(factory: ValidationErrorResponse::class, statusCode: 422)]
-    public function sendSpark(Request $request): JsonResponse
+    public function sendSpark(Request $request, PostHogService $posthog): JsonResponse
     {
         $validated = $request->validate([
             'sparkAddress' => ['required', 'string', 'min:3', 'max:255'],
@@ -258,18 +325,35 @@ class AgentPaymentsController extends Controller
                 timeoutMs: $timeoutMs,
             );
 
+            $status = $this->firstString($result, ['status', 'payment.status']) ?? 'completed';
+            $paymentId = $this->firstString($result, ['paymentId', 'paymentHash', 'payment.paymentId', 'payment.paymentHash']);
+
+            $posthog->capture($this->distinctId($request), 'agent_payments.spark_sent', [
+                'sparkAddress' => (string) $validated['sparkAddress'],
+                'amountSats' => (int) $validated['amountSats'],
+                'status' => $status,
+                'paymentId' => $paymentId,
+            ]);
+
             return response()->json([
                 'data' => [
                     'transfer' => [
                         'sparkAddress' => (string) $validated['sparkAddress'],
                         'amountSats' => (int) $validated['amountSats'],
-                        'status' => $this->firstString($result, ['status', 'payment.status']) ?? 'completed',
-                        'paymentId' => $this->firstString($result, ['paymentId', 'paymentHash', 'payment.paymentId', 'payment.paymentHash']),
+                        'status' => $status,
+                        'paymentId' => $paymentId,
                         'raw' => $result,
                     ],
                 ],
             ]);
         } catch (Throwable $e) {
+            $posthog->capture($this->distinctId($request), 'agent_payments.spark_send_failed', [
+                'sparkAddress' => (string) $validated['sparkAddress'],
+                'amountSats' => (int) $validated['amountSats'],
+                'errorCode' => $this->sparkCode($e),
+                'errorMessage' => $e->getMessage(),
+            ]);
+
             return $this->sparkError($e, 502);
         }
     }
@@ -286,6 +370,18 @@ class AgentPaymentsController extends Controller
                 'message' => $e->getMessage(),
             ],
         ], $status);
+    }
+
+    private function sparkCode(Throwable $e): string
+    {
+        return $e instanceof SparkExecutorException && is_string($e->codeName())
+            ? $e->codeName()
+            : 'spark_error';
+    }
+
+    private function distinctId(Request $request): string
+    {
+        return (string) ($request->user()?->email ?? 'anonymous');
     }
 
     /**

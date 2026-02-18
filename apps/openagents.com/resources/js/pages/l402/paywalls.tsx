@@ -1,5 +1,7 @@
 import { Head } from '@inertiajs/react';
+import { useEffect } from 'react';
 import { L402PageNav } from '@/components/l402/page-nav';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type Paywall = {
     host: string;
@@ -32,6 +34,16 @@ function statusClass(status: string): string {
 }
 
 export default function L402PaywallsPage({ paywalls, summary }: Props) {
+    const capture = usePostHogEvent('l402');
+
+    useEffect(() => {
+        capture('l402.paywalls_page_opened', {
+            paywallCount: paywalls.length,
+            uniqueTargets: summary.uniqueTargets,
+            totalAttempts: summary.totalAttempts,
+        });
+    }, [capture, paywalls.length, summary.totalAttempts, summary.uniqueTargets]);
+
     return (
         <>
             <Head title="L402 Paywalls" />

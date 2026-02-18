@@ -1,5 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
+import { useEffect } from 'react';
 import { L402PageNav } from '@/components/l402/page-nav';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 
 type Tx = {
     eventId: number;
@@ -43,6 +45,17 @@ function statusClass(status: string): string {
 }
 
 export default function L402TransactionDetailPage({ transaction }: Props) {
+    const capture = usePostHogEvent('l402');
+
+    useEffect(() => {
+        capture('l402.transaction_detail_opened', {
+            eventId: transaction.eventId,
+            status: transaction.status,
+            host: transaction.host,
+            paid: transaction.paid,
+        });
+    }, [capture, transaction.eventId, transaction.host, transaction.paid, transaction.status]);
+
     return (
         <>
             <Head title={`L402 Transaction #${transaction.eventId}`} />
@@ -83,10 +96,28 @@ export default function L402TransactionDetailPage({ transaction }: Props) {
                     </div>
 
                     <div className="mt-4 flex gap-2">
-                        <Link href="/l402/transactions" className="text-xs text-primary hover:underline">
+                        <Link
+                            href="/l402/transactions"
+                            onClick={() => {
+                                capture('l402.transactions_page_clicked', {
+                                    source: 'transaction_detail_back',
+                                    eventId: transaction.eventId,
+                                });
+                            }}
+                            className="text-xs text-primary hover:underline"
+                        >
                             Back to transactions
                         </Link>
-                        <Link href={`/chat/${transaction.threadId}`} className="text-xs text-primary hover:underline">
+                        <Link
+                            href={`/chat/${transaction.threadId}`}
+                            onClick={() => {
+                                capture('l402.transaction_open_conversation_clicked', {
+                                    eventId: transaction.eventId,
+                                    threadId: transaction.threadId,
+                                });
+                            }}
+                            className="text-xs text-primary hover:underline"
+                        >
                             Open conversation
                         </Link>
                     </div>

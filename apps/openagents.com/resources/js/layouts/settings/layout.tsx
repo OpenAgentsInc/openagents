@@ -1,6 +1,8 @@
 import { Link, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import type { PropsWithChildren } from 'react';
 import Heading from '@/components/heading';
+import { usePostHogEvent } from '@/hooks/use-posthog-event';
 import { cn } from '@/lib/utils';
 
 const SETTINGS_NAV = [
@@ -11,6 +13,13 @@ const SETTINGS_NAV = [
 export default function SettingsLayout({ children }: PropsWithChildren) {
     const { url } = usePage();
     const pathname = url.split('?')[0];
+    const capture = usePostHogEvent('settings');
+
+    useEffect(() => {
+        capture('settings.page_opened', {
+            path: pathname,
+        });
+    }, [capture, pathname]);
 
     return (
         <div className="px-4 py-6">
@@ -27,6 +36,12 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
                         <Link
                             key={item.href}
                             href={item.href}
+                            onClick={() => {
+                                capture('settings.nav_clicked', {
+                                    fromPath: pathname,
+                                    toPath: item.href,
+                                });
+                            }}
                             className={cn(
                                 'rounded-md border px-3 py-1.5 text-sm transition-colors',
                                 isActive
