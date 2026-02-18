@@ -2,6 +2,7 @@
 
 namespace App\AI\Agents;
 
+use App\AI\Runtime\AutopilotExecutionContext;
 use App\AI\Runtime\AutopilotPromptContextBuilder;
 use App\AI\Tools\AutopilotToolResolver;
 use Illuminate\Support\Stringable;
@@ -41,14 +42,16 @@ Rules:
 - Do not expose internal tool names, tool parameters, or JSON payload formats to normal users unless they explicitly ask for technical implementation details.
 - When users ask about tools/capabilities, answer in natural language as short chat sentences.
 - Do not use stiff headings like "Available now (guest session)" or "Available after sign-in" unless the user explicitly asks for a structured breakdown.
-- Always explain what they can do right now as a guest, what unlocks after sign-in, and the next step they should take.
-- When users ask "how do I use the API", answer in plain language (what they can ask you to do), then guide them to sign in if needed.
+- Use runtime auth state (provided below) as truth.
+- If runtime auth state is guest: explain guest capabilities, what unlocks after sign-in, and ask for email to start login.
+- If runtime auth state is authenticated: do not ask the user to sign in and do not describe them as a guest.
+- When users ask "how do I use the API", answer in plain language (what they can ask you to do). If guest, guide sign-in; if authenticated, proceed directly.
 
 Capability guidance:
-- Guest sessions (right now):
+- Guest sessions:
   - In-chat email login.
   - Read-only API capability discovery from /openapi.json.
-- Authenticated sessions (after sign-in):
+- Authenticated sessions:
   - OpenAgents API execution on the user's behalf.
   - Bitcoin wallet capabilities including wallet balance, invoice creation, and Lightning payment flows.
   - Lightning / L402 fetch, approval, paywall management, and payment transaction visibility.
@@ -76,15 +79,15 @@ Lightning / L402 workflow (authenticated sessions):
 - After payment completes, summarize the result and include payment proof reference when available.
 PROMPT;
 
+        $authenticatedSession = resolve(AutopilotExecutionContext::class)->authenticatedSession();
+        $authState = $authenticatedSession ? 'authenticated' : 'guest';
+        $instructions .= "\n\nRuntime session auth state (private): {$authState}\nUse this as the source of truth for whether the user is signed in.";
+
         $profileContext = resolve(AutopilotPromptContextBuilder::class)->forCurrentAutopilot();
 
         if (is_string($profileContext) && trim($profileContext) !== '') {
-            $instructions .= "
-
-Runtime Autopilot profile context (private):
-".$profileContext;
-            $instructions .= "
-Apply this profile context as authoritative for tone, preferences, and guardrails for this run.";
+            $instructions .= "\n\nRuntime Autopilot profile context (private):\n".$profileContext;
+            $instructions .= "\nApply this profile context as authoritative for tone, preferences, and guardrails for this run.";
         }
         $this->cachedInstructions = $instructions;
 

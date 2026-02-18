@@ -1,0 +1,30 @@
+<?php
+
+use App\AI\Agents\AutopilotAgent;
+use App\AI\Runtime\AutopilotExecutionContext;
+
+afterEach(function () {
+    app()->forgetInstance(AutopilotExecutionContext::class);
+});
+
+test('autopilot instructions include runtime authenticated auth state', function () {
+    $context = new AutopilotExecutionContext;
+    $context->set(123, null, true);
+    app()->instance(AutopilotExecutionContext::class, $context);
+
+    $instructions = (string) (new AutopilotAgent)->instructions();
+
+    expect($instructions)->toContain('Runtime session auth state (private): authenticated');
+    expect($instructions)->toContain('If runtime auth state is authenticated: do not ask the user to sign in');
+});
+
+test('autopilot instructions include runtime guest auth state', function () {
+    $context = new AutopilotExecutionContext;
+    $context->set(null, null, false);
+    app()->instance(AutopilotExecutionContext::class, $context);
+
+    $instructions = (string) (new AutopilotAgent)->instructions();
+
+    expect($instructions)->toContain('Runtime session auth state (private): guest');
+    expect($instructions)->toContain('If runtime auth state is guest: explain guest capabilities');
+});
