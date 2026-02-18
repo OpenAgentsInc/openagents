@@ -1,7 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
 import { L402PageNav } from '@/components/l402/page-nav';
-import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 
 type Tx = {
     eventId: number;
@@ -45,14 +43,8 @@ function statusClass(status: string): string {
 }
 
 export default function L402TransactionDetailPage({ transaction }: Props) {
-    const breadcrumbs: BreadcrumbItem[] = [
-        { title: 'L402', href: '/l402' },
-        { title: 'Transactions', href: '/l402/transactions' },
-        { title: `Event ${transaction.eventId}`, href: `/l402/transactions/${transaction.eventId}` },
-    ];
-
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <>
             <Head title={`L402 Transaction #${transaction.eventId}`} />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
                 <L402PageNav />
@@ -107,6 +99,6 @@ export default function L402TransactionDetailPage({ transaction }: Props) {
                     </pre>
                 </div>
             </div>
-        </AppLayout>
+        </>
     );
 }
