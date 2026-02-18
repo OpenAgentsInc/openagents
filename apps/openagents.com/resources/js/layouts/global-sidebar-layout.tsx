@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { LogIn, MessageSquare, Plus, Rss, Zap } from 'lucide-react';
+import { LogIn, MessageSquare, Plus, Zap } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { ChatWalletSnapshot } from '@/components/l402/chat-wallet-snapshot';
@@ -89,7 +89,7 @@ export function GlobalSidebarLayout({ children }: Props) {
                 variant="inset"
                 className="border-r border-border dark:border-input"
             >
-                <SidebarHeader className="flex h-14 justify-center px-2 pt-5">
+                <SidebarHeader className="flex h-14 items-center justify-center px-2 pt-2">
                     <Link
                         href="/"
                         className="text-sm font-medium tracking-wide text-foreground/90"
@@ -109,14 +109,6 @@ export function GlobalSidebarLayout({ children }: Props) {
                                 >
                                     <Plus className="size-4" />
                                     <span>New Chat</span>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                            <SidebarMenuItem>
-                                <SidebarMenuButton asChild className="w-full justify-start gap-2">
-                                    <Link href="/feed">
-                                        <Rss className="size-4" />
-                                        <span>Global Feed</span>
-                                    </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
                             {isAuthenticated ? (
