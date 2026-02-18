@@ -156,8 +156,8 @@
     --card-foreground: hsl(208 29% 88%);
     --popover: hsl(0 0% 10%);
     --popover-foreground: hsl(208 29% 88%);
-    --primary: hsl(217 17% 31%); /* #434C5E */
-    --primary-foreground: hsl(208 29% 88%);
+    --primary: hsl(240 4% 32%); /* zinc-600 */
+    --primary-foreground: hsl(0 0% 98%);
     --secondary: hsl(0 0% 25%); /* #404040 */
     --secondary-foreground: hsl(208 29% 88%);
     --muted: hsl(0 0% 16%); /* #2A2A2A */
@@ -177,8 +177,8 @@
     --radius: 0rem;
     --sidebar: #090909;
     --sidebar-foreground: hsl(0 0% 80%); /* #CCCCCC */
-    --sidebar-primary: hsl(217 17% 31%);
-    --sidebar-primary-foreground: hsl(208 29% 88%);
+    --sidebar-primary: hsl(240 4% 32%); /* zinc-600 */
+    --sidebar-primary-foreground: hsl(0 0% 98%);
     /* Darker sidebar hover/active so it isn’t too light */
     --sidebar-accent: hsl(0 0% 12%);
     --sidebar-accent-foreground: hsl(208 29% 88%);
