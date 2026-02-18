@@ -37,7 +37,7 @@ class LocalTestLoginController extends Controller
         $request->session()->put('oa_local_test_auth', true);
         $request->session()->regenerate();
 
-        return redirect()->route('chat');
+        return redirect()->route('home');
     }
 
     private function isAllowedEmail(string $email): bool

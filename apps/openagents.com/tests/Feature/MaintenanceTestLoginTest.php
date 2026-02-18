@@ -42,7 +42,7 @@ test('maintenance test-login route enforces allowlisted email', function () {
     $this->assertGuest();
 });
 
-test('maintenance test-login creates allowlisted user and can access chat', function () {
+test('maintenance test-login creates allowlisted user and can access home chat', function () {
     config()->set('auth.local_test_login.enabled', true);
     config()->set('auth.local_test_login.allowed_emails', ['tester@openagents.com']);
 
@@ -50,7 +50,7 @@ test('maintenance test-login creates allowlisted user and can access chat', func
         'name' => 'Maintenance Tester',
     ]));
 
-    $response->assertRedirect('/chat');
+    $response->assertRedirect('/');
     $response->assertSessionHas('oa_local_test_auth', true);
     $this->assertAuthenticated();
 
@@ -61,6 +61,5 @@ test('maintenance test-login creates allowlisted user and can access chat', func
     expect((string) $user->workos_id)->toStartWith('test_local_');
 
     $chatResponse = $this->get('/chat');
-    $chatResponse->assertRedirect();
-    expect((string) $chatResponse->headers->get('Location'))->toContain('/chat/');
+    $chatResponse->assertRedirect('/');
 });

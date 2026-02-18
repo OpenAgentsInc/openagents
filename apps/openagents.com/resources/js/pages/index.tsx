@@ -165,7 +165,12 @@ function renderMessagePart(part: unknown, idx: number): ReactNode {
     return null;
 }
 
-type IndexPageProps = { auth?: { user?: unknown } };
+type IndexPageProps = {
+    auth?: { user?: unknown };
+    conversationId?: string | null;
+    conversationTitle?: string | null;
+    initialMessages?: Array<{ id: string; role: string; content: string }>;
+};
 
 function isGuestConversationId(value: unknown): value is string {
     return typeof value === 'string' && /^g-[a-f0-9]{32}$/i.test(value.trim());
@@ -192,7 +197,12 @@ function createGuestConversationId(): string {
  * Authenticated users create a conversation via POST /api/chats.
  */
 export default function Index() {
-    const { auth } = usePage<IndexPageProps>().props;
+    const page = usePage<IndexPageProps>();
+    const {
+        auth,
+        conversationId: serverConversationIdRaw,
+        initialMessages: serverInitialMessages,
+    } = page.props;
     const isGuest = !auth?.user;
     const capture = usePostHogEvent('home_chat');
 
@@ -200,9 +210,34 @@ export default function Index() {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [value, setValue] = useState('');
     const [isComposing, setIsComposing] = useState(false);
-    const [conversationId, setConversationId] = useState<string | null>(() =>
-        isGuest ? createGuestConversationId() : null,
-    );
+
+    const initialConversationId = useMemo(() => {
+        if (isGuest) {
+            return isGuestConversationId(serverConversationIdRaw)
+                ? serverConversationIdRaw
+                : createGuestConversationId();
+        }
+
+        if (typeof serverConversationIdRaw === 'string' && serverConversationIdRaw.trim() !== '') {
+            return serverConversationIdRaw.trim();
+        }
+
+        return null;
+    }, [isGuest, serverConversationIdRaw]);
+
+    const initialMessagesFromServer = useMemo<UIMessage[]>(() => {
+        if (!Array.isArray(serverInitialMessages)) {
+            return [];
+        }
+
+        return serverInitialMessages.map((m) => ({
+            id: String(m.id),
+            role: m.role as UIMessage['role'],
+            parts: [{ type: 'text' as const, text: String(m.content ?? '') }],
+        }));
+    }, [serverInitialMessages]);
+
+    const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
     const [createFailedAuth, setCreateFailedAuth] = useState(false);
     const initAttemptedRef = useRef(false);
 
@@ -257,7 +292,7 @@ export default function Index() {
         })
             .then((res) => {
                 if (res.status === 401 || res.status === 419) {
-                    window.location.assign('/chat');
+                    window.location.assign('/login');
                     return null;
                 }
                 if (!res.ok) return null;
@@ -271,7 +306,6 @@ export default function Index() {
             })
             .catch(() => {});
     }, [isGuest, conversationId]);
-
     const authRequired = createFailedAuth;
 
     const api = useMemo(
@@ -291,9 +325,15 @@ export default function Index() {
 
     const { messages, setMessages, sendMessage, status, error, clearError, stop } = useChat({
         id: conversationId ?? undefined,
-        messages: [],
+        messages: initialMessagesFromServer,
         transport: transport ?? undefined,
     });
+
+    useEffect(() => {
+        setConversationId(initialConversationId);
+        setMessages(initialMessagesFromServer);
+        initAttemptedRef.current = false;
+    }, [initialConversationId, initialMessagesFromServer, setMessages]);
 
     useEffect(() => {
         capture('home_chat.page_opened', {
@@ -590,7 +630,7 @@ export default function Index() {
                                                 Autopilot online.
                                             </h1>
                                             <p className="text-base text-muted-foreground sm:text-lg">
-                                                Send a message to begin
+                                                How can I help you?
                                             </p>
                                         </div>
                                     )}
