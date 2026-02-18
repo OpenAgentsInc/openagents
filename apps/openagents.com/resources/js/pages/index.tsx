@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { ArrowUpIcon } from '@radix-ui/react-icons';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import type { ReactNode } from 'react';
@@ -77,6 +77,24 @@ function textFromParts(parts: UIMessage['parts']): string {
         )
         .map((p) => p.text)
         .join('');
+}
+
+function formatChatErrorMessage(raw: string | undefined): string {
+    const text = typeof raw === 'string' ? raw.trim() : '';
+    if (text === '') return 'Chat request failed. Please try again.';
+
+    if (/<!doctype html/i.test(text) || /<html/i.test(text)) {
+        return 'Chat request failed due to a server response error. Please retry or start a new chat.';
+    }
+
+    try {
+        const parsed = JSON.parse(text) as { message?: unknown };
+        if (typeof parsed.message === 'string' && parsed.message.trim() !== '') {
+            return parsed.message.trim();
+        }
+    } catch {}
+
+    return text.length > 400 ? text.slice(0, 400) + '...' : text;
 }
 
 function renderMessagePart(part: unknown, idx: number): ReactNode {
@@ -301,7 +319,7 @@ export default function Index() {
                     (output as Record<string, unknown>).status === 'authenticated'
                 ) {
                     didReloadForAuthRef.current = true;
-                    router.reload();
+                    window.location.assign('/');
                     return;
                 }
             }
@@ -483,14 +501,16 @@ export default function Index() {
     const shouldShowQuickSuggestions =
         !authRequired && messages.length === 0 && !showThinking;
 
+    const displayErrorMessage = formatChatErrorMessage(error?.message);
+
     useEffect(() => {
         if (!error?.message) return;
 
         capture('home_chat.error_shown', {
             conversationId,
-            errorMessage: error.message,
+            errorMessage: displayErrorMessage,
         });
-    }, [capture, conversationId, error?.message]);
+    }, [capture, conversationId, error?.message, displayErrorMessage]);
 
     return (
         <>
@@ -582,7 +602,7 @@ export default function Index() {
                     {/* Error banner */}
                     {error && (
                         <div className="absolute top-0 right-0 left-0 z-20 flex items-center justify-between gap-2 bg-destructive/90 px-4 py-2 text-sm text-destructive-foreground">
-                            <span>{error.message}</span>
+                            <span>{displayErrorMessage}</span>
                             <Button
                                 variant="ghost"
                                 size="sm"
