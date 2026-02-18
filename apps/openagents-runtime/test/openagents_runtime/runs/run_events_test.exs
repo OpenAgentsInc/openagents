@@ -23,6 +23,10 @@ defmodule OpenAgentsRuntime.Runs.RunEventsTest do
 
     assert event_1.seq == 1
     assert event_2.seq == 2
+    assert is_nil(event_1.prev_hash)
+    assert is_binary(event_1.event_hash)
+    assert event_2.prev_hash == event_1.event_hash
+    assert is_binary(event_2.event_hash)
     assert RunEvents.latest_seq("run_events_1") == 2
   end
 
