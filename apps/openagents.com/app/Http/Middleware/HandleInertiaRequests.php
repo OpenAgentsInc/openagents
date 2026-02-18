@@ -2,9 +2,11 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use App\Support\AdminAccess;
 use App\Support\ChatThreadList;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -37,7 +39,7 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        $user = $request->user();
+        $user = $this->resolveInertiaUser($request);
         $threadList = app(ChatThreadList::class);
 
         return [
@@ -59,5 +61,34 @@ class HandleInertiaRequests extends Middleware
                     ->all()
                 : [],
         ];
+    }
+
+    private function resolveInertiaUser(Request $request): ?User
+    {
+        $user = $request->user();
+        if ($user instanceof User) {
+            return $user;
+        }
+
+        if (! $request->hasSession()) {
+            return null;
+        }
+
+        $userId = (int) $request->session()->get('chat.auth_user_id', 0);
+        if ($userId <= 0) {
+            return null;
+        }
+
+        $rehydrated = User::query()->find($userId);
+        if (! $rehydrated instanceof User) {
+            $request->session()->forget('chat.auth_user_id');
+
+            return null;
+        }
+
+        Auth::guard('web')->login($rehydrated);
+        $request->setUserResolver(static fn (): User => $rehydrated);
+
+        return $rehydrated;
     }
 }
