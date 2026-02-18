@@ -57,3 +57,20 @@ test('chat root route still works when threads table lacks autopilot_id', functi
         ->get('/chat')
         ->assertRedirect('/');
 });
+
+test('home rehydrates authenticated user from chat auth session key', function () {
+    $user = User::factory()->create([
+        'email' => 'rehydrate-user@openagents.com',
+    ]);
+
+    $response = $this->withSession([
+        'chat.auth_user_id' => (int) $user->id,
+    ])->get('/');
+
+    $response->assertOk();
+
+    $payload = dashboardInertiaPayload($response);
+
+    expect($payload['props']['auth']['user']['email'] ?? null)->toBe($user->email);
+    expect(auth()->check())->toBeTrue();
+});
