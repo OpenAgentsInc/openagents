@@ -13,6 +13,16 @@ test('profile page is displayed', function () {
     $response->assertOk();
 });
 
+test('autopilot settings page is displayed', function () {
+    $user = User::factory()->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->get(route('profile.autopilot.edit'));
+
+    $response->assertOk();
+});
+
 test('profile information can be updated', function () {
     $user = User::factory()->create();
 
@@ -31,7 +41,7 @@ test('profile information can be updated', function () {
     expect($user->name)->toBe('Updated Name');
 });
 
-test('autopilot settings can be created and updated from profile settings page', function () {
+test('autopilot settings can be created and updated from autopilot settings page', function () {
     $user = User::factory()->create([
         'name' => 'Chris',
     ]);
@@ -49,7 +59,7 @@ test('autopilot settings can be created and updated from profile settings page',
 
     $response
         ->assertSessionHasNoErrors()
-        ->assertRedirect(route('profile.edit'));
+        ->assertRedirect(route('profile.autopilot.edit'));
 
     $autopilot = DB::table('autopilots')
         ->where('owner_user_id', $user->id)
