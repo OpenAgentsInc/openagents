@@ -33,27 +33,28 @@ class ChatApiController extends Controller
 
         if (! $user) {
             if (! $guestService->isGuestConversationId($conversationId)) {
-                abort(401);
+                return $this->unauthorized();
             }
 
             // Non-blocking guest UX: allow first stream call to establish the
             // session guest id if the guest-session preflight is still in flight.
             $sessionGuestId = $guestService->ensureGuestConversationId($request, $conversationId);
             if ($sessionGuestId !== $conversationId) {
-                abort(401);
+                return $this->unauthorized();
             }
 
             $guestService->ensureGuestConversationAndThread($conversationId);
             $user = $guestService->guestUser();
         }
 
-        $conversationExists = DB::table('agent_conversations')
-            ->where('id', $conversationId)
-            ->where('user_id', $user->getAuthIdentifier())
-            ->exists();
+        $conversationExists = $this->ensureConversationAccessibleForUser(
+            $conversationId,
+            (int) $user->getAuthIdentifier(),
+            $guestService,
+        );
 
         if (! $conversationExists) {
-            abort(404);
+            return $this->notFound('Conversation not found or inaccessible. Start a new chat and try again.');
         }
 
         $rawMessages = $request->input('messages');
@@ -96,6 +97,92 @@ class ChatApiController extends Controller
         Log::info('Chat stream: response created', ['conversation_id' => $conversationId]);
 
         return $response;
+    }
+
+    /**
+     * Ensure the given conversation is accessible for the user. If this is an adopted
+     * guest conversation after in-chat login, migrate ownership on-demand.
+     */
+    private function ensureConversationAccessibleForUser(
+        string $conversationId,
+        int $userId,
+        GuestChatSessionService $guestService,
+    ): bool {
+        $exists = DB::table('agent_conversations')
+            ->where('id', $conversationId)
+            ->where('user_id', $userId)
+            ->exists();
+
+        if ($exists) {
+            return true;
+        }
+
+        if (! $guestService->isGuestConversationId($conversationId)) {
+            return false;
+        }
+
+        $guestUserId = (int) $guestService->guestUser()->getAuthIdentifier();
+        if ($guestUserId <= 0 || $guestUserId === $userId) {
+            return false;
+        }
+
+        $now = now();
+
+        DB::transaction(function () use ($conversationId, $guestUserId, $userId, $now): void {
+            DB::table('agent_conversations')
+                ->where('id', $conversationId)
+                ->where('user_id', $guestUserId)
+                ->update([
+                    'user_id' => $userId,
+                    'updated_at' => $now,
+                ]);
+
+            DB::table('threads')
+                ->where('id', $conversationId)
+                ->where('user_id', $guestUserId)
+                ->update([
+                    'user_id' => $userId,
+                    'updated_at' => $now,
+                ]);
+
+            DB::table('messages')
+                ->where('thread_id', $conversationId)
+                ->where('user_id', $guestUserId)
+                ->update([
+                    'user_id' => $userId,
+                    'updated_at' => $now,
+                ]);
+
+            DB::table('runs')
+                ->where('thread_id', $conversationId)
+                ->where('user_id', $guestUserId)
+                ->update([
+                    'user_id' => $userId,
+                    'updated_at' => $now,
+                ]);
+
+            DB::table('run_events')
+                ->where('thread_id', $conversationId)
+                ->where('user_id', $guestUserId)
+                ->update([
+                    'user_id' => $userId,
+                ]);
+
+            if (DB::getSchemaBuilder()->hasTable('agent_conversation_messages')) {
+                DB::table('agent_conversation_messages')
+                    ->where('conversation_id', $conversationId)
+                    ->where('user_id', $guestUserId)
+                    ->update([
+                        'user_id' => $userId,
+                        'updated_at' => $now,
+                    ]);
+            }
+        });
+
+        return DB::table('agent_conversations')
+            ->where('id', $conversationId)
+            ->where('user_id', $userId)
+            ->exists();
     }
 
     /**
@@ -152,6 +239,20 @@ class ChatApiController extends Controller
         }
 
         return implode('', $chunks);
+    }
+
+    private function unauthorized(string $message = 'Unauthenticated.'): JsonResponse
+    {
+        return response()->json([
+            'message' => $message,
+        ], 401);
+    }
+
+    private function notFound(string $message = 'Not found.'): JsonResponse
+    {
+        return response()->json([
+            'message' => $message,
+        ], 404);
     }
 
     private function unprocessable(string $message): JsonResponse

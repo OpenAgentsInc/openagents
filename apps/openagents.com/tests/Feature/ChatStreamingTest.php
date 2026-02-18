@@ -2,6 +2,7 @@
 
 use App\AI\Agents\AutopilotAgent;
 use App\Models\User;
+use App\Services\GuestChatSessionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Ai\Ai;
@@ -347,4 +348,50 @@ test('guest chat stream rejects conversation id that mismatches established gues
     ]);
 
     $response->assertUnauthorized();
+});
+
+test('authenticated chat stream adopts guest conversation on demand after chat login', function () {
+    Ai::fakeAgent(AutopilotAgent::class, ['Hello after adoption']);
+
+    $user = User::factory()->create();
+    $guestService = resolve(GuestChatSessionService::class);
+
+    $conversationId = 'g-'.str_repeat('e', 32);
+    $guestService->ensureGuestConversationAndThread($conversationId);
+
+    $response = $this->actingAs($user)->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'Continue this chat after login'],
+        ],
+    ]);
+
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+    expect($content)->toContain('data: {"type":"start"');
+    expect($content)->toContain('data: {"type":"finish"');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    expect(DB::table('agent_conversations')
+        ->where('id', $conversationId)
+        ->where('user_id', $user->id)
+        ->exists())->toBeTrue();
+
+    expect(DB::table('threads')
+        ->where('id', $conversationId)
+        ->where('user_id', $user->id)
+        ->exists())->toBeTrue();
+
+    $run = DB::table('runs')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->latest('created_at')
+        ->first();
+
+    expect($run)->not->toBeNull();
+
+    expect(DB::table('messages')
+        ->where('thread_id', $conversationId)
+        ->where('user_id', $user->id)
+        ->exists())->toBeTrue();
 });
