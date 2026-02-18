@@ -5,8 +5,13 @@ defmodule OpenAgentsRuntimeWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :internal_api do
+    plug :accepts, ["json"]
+    plug OpenAgentsRuntimeWeb.Plugs.InternalAuth
+  end
+
   scope "/internal/v1", OpenAgentsRuntimeWeb do
-    pipe_through :api
+    pipe_through :internal_api
 
     get "/health", HealthController, :show
     get "/runs/:run_id/snapshot", RunController, :snapshot
