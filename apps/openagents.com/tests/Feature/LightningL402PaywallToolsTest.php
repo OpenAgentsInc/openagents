@@ -217,3 +217,24 @@ test('paywall create tool returns reconcile failure context and reverts changes 
     expect($result['context']['action'] ?? null)->toBe('create');
     expect(L402Paywall::query()->count())->toBe(0);
 });
+
+test('paywall create tool accepts host regex with plain dots', function () {
+    config()->set('lightning.operator.aperture_reconcile_command', 'sh -c "exit 0"');
+
+    $admin = User::factory()->create([
+        'email' => 'chris@openagents.com',
+    ]);
+
+    $this->actingAs($admin);
+
+    $created = json_decode((new LightningL402PaywallCreateTool)->handle(new Request([
+        'name' => 'Plain Dot Host Regex',
+        'hostRegexp' => '^l402.openagents.com$',
+        'pathRegexp' => '^/plain-dot-host$',
+        'priceMsats' => 1500,
+        'upstream' => 'https://example.com/plain-dot-host',
+    ])), true);
+
+    expect($created['status'])->toBe('completed');
+    expect($created['paywall']['hostRegexp'])->toBe('^l402.openagents.com$');
+});

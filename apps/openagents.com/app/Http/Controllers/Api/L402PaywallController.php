@@ -202,13 +202,21 @@ class L402PaywallController extends Controller
             return;
         }
 
-        if ($mustStartWithPathAnchor && ! str_starts_with($value, '^/')) {
+        $normalized = trim($value);
+
+        if ($mustStartWithPathAnchor && ! str_starts_with($normalized, '^/')) {
             $fail("The {$attribute} must start with '^/' to scope path matching.");
 
             return;
         }
 
-        $candidate = '/'.str_replace('/', '\\/', $value).'/';
+        if (! $mustStartWithPathAnchor && preg_match('/[a-z0-9](?:\\\.|\.)[a-z0-9]/i', $normalized) !== 1) {
+            $fail("The {$attribute} must include an explicit host pattern.");
+
+            return;
+        }
+
+        $candidate = '/'.str_replace('/', '\\/', $normalized).'/';
 
         if (@preg_match($candidate, 'openagents') === false) {
             $fail("The {$attribute} must be a valid regex body.");
