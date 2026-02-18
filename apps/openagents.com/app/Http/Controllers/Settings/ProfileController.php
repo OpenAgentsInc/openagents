@@ -21,37 +21,19 @@ class ProfileController extends Controller
      */
     public function edit(Request $request): Response
     {
-        $user = $request->user();
-
-        $autopilot = null;
-
-        if ($user) {
-            $autopilot = Autopilot::query()
-                ->with(['profile', 'policy'])
-                ->where('owner_user_id', $user->id)
-                ->orderByDesc('updated_at')
-                ->first();
-        }
-
         return Inertia::render('settings/profile', [
             'status' => $request->session()->get('status'),
-            'autopilotSettings' => $autopilot ? [
-                'id' => (string) $autopilot->id,
-                'handle' => (string) $autopilot->handle,
-                'displayName' => (string) $autopilot->display_name,
-                'tagline' => $autopilot->tagline,
-                'configVersion' => (int) $autopilot->config_version,
-                'profile' => $autopilot->profile ? [
-                    'ownerDisplayName' => $autopilot->profile->owner_display_name,
-                    'personaSummary' => $autopilot->profile->persona_summary,
-                    'autopilotVoice' => $autopilot->profile->autopilot_voice,
-                    'principles' => $autopilot->profile->principles ?? [],
-                ] : null,
-                'policy' => $autopilot->policy ? [
-                    'l402RequireApproval' => (bool) $autopilot->policy->l402_require_approval,
-                    'l402AllowedHosts' => $autopilot->policy->l402_allowed_hosts ?? [],
-                ] : null,
-            ] : null,
+        ]);
+    }
+
+    /**
+     * Show the user's autopilot settings page.
+     */
+    public function editAutopilot(Request $request): Response
+    {
+        return Inertia::render('settings/autopilot', [
+            'status' => $request->session()->get('status'),
+            'autopilotSettings' => $this->autopilotSettingsForUser($request->user()),
         ]);
     }
 
@@ -128,7 +110,7 @@ class ProfileController extends Controller
             'source' => 'settings_profile',
         ]);
 
-        return to_route('profile.edit')->with('status', 'autopilot-updated');
+        return to_route('profile.autopilot.edit')->with('status', 'autopilot-updated');
     }
 
     /**
@@ -145,5 +127,45 @@ class ProfileController extends Controller
         return $request->delete(
             using: fn (User $user) => $user->delete()
         );
+    }
+
+    /**
+     * Build the autopilot settings payload for the current user.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function autopilotSettingsForUser(?User $user): ?array
+    {
+        if (! $user) {
+            return null;
+        }
+
+        $autopilot = Autopilot::query()
+            ->with(['profile', 'policy'])
+            ->where('owner_user_id', $user->id)
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if (! $autopilot) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $autopilot->id,
+            'handle' => (string) $autopilot->handle,
+            'displayName' => (string) $autopilot->display_name,
+            'tagline' => $autopilot->tagline,
+            'configVersion' => (int) $autopilot->config_version,
+            'profile' => $autopilot->profile ? [
+                'ownerDisplayName' => $autopilot->profile->owner_display_name,
+                'personaSummary' => $autopilot->profile->persona_summary,
+                'autopilotVoice' => $autopilot->profile->autopilot_voice,
+                'principles' => $autopilot->profile->principles ?? [],
+            ] : null,
+            'policy' => $autopilot->policy ? [
+                'l402RequireApproval' => (bool) $autopilot->policy->l402_require_approval,
+                'l402AllowedHosts' => $autopilot->policy->l402_allowed_hosts ?? [],
+            ] : null,
+        ];
     }
 }
