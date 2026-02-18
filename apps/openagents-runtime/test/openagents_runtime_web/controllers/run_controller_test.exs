@@ -146,7 +146,7 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
     assert conn.status == 200
     assert List.first(get_resp_header(conn, "content-type")) =~ "text/event-stream"
     assert conn.resp_body =~ "id: 2"
-    assert conn.resp_body =~ "\"type\":\"run.delta\""
+    assert conn.resp_body =~ "\"type\":\"text-delta\""
   end
 
   test "stream resumes from Last-Event-ID header", %{conn: conn} do
