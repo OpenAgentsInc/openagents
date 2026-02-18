@@ -1,6 +1,7 @@
 defmodule OpenAgentsRuntimeWeb.RunController do
   use OpenAgentsRuntimeWeb, :controller
 
+  alias OpenAgentsRuntime.Runs.Frames
   alias OpenAgentsRuntime.Runs.OwnershipGuard
   alias OpenAgentsRuntime.Telemetry.Tracing
 
@@ -32,6 +33,50 @@ defmodule OpenAgentsRuntimeWeb.RunController do
   end
 
   def snapshot(conn, _params) do
+    error(conn, 400, "invalid_request", "thread_id is required")
+  end
+
+  @spec append_frame(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def append_frame(conn, %{"run_id" => run_id, "thread_id" => thread_id} = params) do
+    Tracing.with_phase_span(:ingest, %{run_id: run_id, thread_id: thread_id}, fn ->
+      principal = principal_from_headers(conn)
+
+      with {:ok, principal} <- OwnershipGuard.normalize_principal(principal),
+           :ok <- OwnershipGuard.authorize(run_id, thread_id, principal),
+           {:ok, result} <- Frames.append_frame(run_id, params) do
+        status = if result.idempotent_replay, do: 200, else: 202
+
+        conn
+        |> put_status(status)
+        |> json(%{
+          "runId" => run_id,
+          "frameId" => result.frame.frame_id,
+          "status" => "accepted",
+          "idempotentReplay" => result.idempotent_replay
+        })
+      else
+        {:error, :invalid_principal} ->
+          error(conn, 401, "unauthorized", "missing or invalid principal headers")
+
+        {:error, :not_found} ->
+          error(conn, 404, "not_found", "run/thread ownership record not found")
+
+        {:error, :forbidden} ->
+          error(conn, 403, "forbidden", "run/thread does not belong to principal")
+
+        {:error, :run_not_found} ->
+          error(conn, 404, "not_found", "run not found")
+
+        {:error, :idempotency_conflict} ->
+          error(conn, 409, "conflict", "frame_id payload mismatch for existing frame")
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          error(conn, 400, "invalid_request", inspect(changeset.errors))
+      end
+    end)
+  end
+
+  def append_frame(conn, _params) do
     error(conn, 400, "invalid_request", "thread_id is required")
   end
 
