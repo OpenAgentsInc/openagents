@@ -63,57 +63,49 @@ export default function Login() {
                             </div>
                         ) : null}
 
-                        <form onSubmit={submitEmail} className="space-y-3">
-                            <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    autoComplete="email"
-                                    autoFocus
-                                    value={emailForm.data.email}
-                                    onChange={(event) => emailForm.setData('email', event.target.value)}
-                                    placeholder="you@openagents.com"
-                                    className="focus-visible:border-white focus-visible:ring-white/50"
-                                />
-                                <InputError message={emailForm.errors.email} />
-                            </div>
-
-                            <Button type="submit" className="w-full" disabled={emailForm.processing}>
-                                {emailForm.processing
-                                    ? 'Sending code...'
-                                    : hasPendingCode
-                                      ? 'Resend verification code'
-                                      : 'Send verification code'}
-                            </Button>
-                        </form>
-
                         {hasPendingCode ? (
-                            <>
-                                <div className="my-5 border-t border-white/10" />
+                            <form onSubmit={submitCode} className="space-y-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="code">Verification code</Label>
+                                    <Input
+                                        id="code"
+                                        type="text"
+                                        autoComplete="one-time-code"
+                                        autoFocus
+                                        value={verifyForm.data.code}
+                                        onChange={(event) => verifyForm.setData('code', event.target.value)}
+                                        placeholder="Enter the code from your email"
+                                        className="focus-visible:border-white focus-visible:ring-white/50"
+                                    />
+                                    <InputError message={verifyForm.errors.code} />
+                                </div>
 
-                                <form onSubmit={submitCode} className="space-y-3">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="code">Verification code</Label>
-                                        <Input
-                                            id="code"
-                                            type="text"
-                                            autoComplete="one-time-code"
-                                            autoFocus={hasPendingCode}
-                                            value={verifyForm.data.code}
-                                            onChange={(event) => verifyForm.setData('code', event.target.value)}
-                                            placeholder="Enter the code from your email"
-                                            className="focus-visible:border-white focus-visible:ring-white/50"
-                                        />
-                                        <InputError message={verifyForm.errors.code} />
-                                    </div>
+                                <Button type="submit" className="w-full" disabled={verifyForm.processing}>
+                                    {verifyForm.processing ? 'Verifying...' : 'Verify and continue'}
+                                </Button>
+                            </form>
+                        ) : (
+                            <form onSubmit={submitEmail} className="space-y-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="email">Email</Label>
+                                    <Input
+                                        id="email"
+                                        type="email"
+                                        autoComplete="email"
+                                        autoFocus
+                                        value={emailForm.data.email}
+                                        onChange={(event) => emailForm.setData('email', event.target.value)}
+                                        placeholder="you@openagents.com"
+                                        className="focus-visible:border-white focus-visible:ring-white/50"
+                                    />
+                                    <InputError message={emailForm.errors.email} />
+                                </div>
 
-                                    <Button type="submit" className="w-full" disabled={verifyForm.processing}>
-                                        {verifyForm.processing ? 'Verifying...' : 'Verify and continue'}
-                                    </Button>
-                                </form>
-                            </>
-                        ) : null}
+                                <Button type="submit" className="w-full" disabled={emailForm.processing}>
+                                    {emailForm.processing ? 'Sending code...' : 'Send verification code'}
+                                </Button>
+                            </form>
+                        )}
                     </div>
                 </div>
             </div>
