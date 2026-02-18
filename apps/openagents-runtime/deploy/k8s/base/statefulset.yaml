@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openagents-runtime
+spec:
+  serviceName: openagents-runtime-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: openagents-runtime
+  template:
+    metadata:
+      labels:
+        app: openagents-runtime
+    spec:
+      serviceAccountName: openagents-runtime
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: openagents-runtime
+      containers:
+        - name: runtime
+          image: openagents-runtime:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4000
+            - name: epmd
+              containerPort: 4369
+            - name: dist
+              containerPort: 9000
+          env:
+            - name: PHX_SERVER
+              value: "true"
+            - name: PORT
+              value: "4000"
+            - name: RELEASE_DISTRIBUTION
+              value: "name"
+            - name: ERL_AFLAGS
+              value: "-kernel inet_dist_listen_min 9000 inet_dist_listen_max 9000"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RELEASE_NODE
+              value: "openagents-runtime@$(POD_IP)"
+            - name: DNS_CLUSTER_QUERY
+              value: "openagents-runtime-headless.$(POD_NAMESPACE).svc.cluster.local"
+            - name: PHX_HOST
+              value: "openagents-runtime.$(POD_NAMESPACE).svc.cluster.local"
+            - name: ECTO_IPV6
+              value: "true"
+            - name: POOL_SIZE
+              value: "20"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: openagents-runtime-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: openagents-runtime-secrets
+                  key: SECRET_KEY_BASE
+          readinessProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /internal/v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi

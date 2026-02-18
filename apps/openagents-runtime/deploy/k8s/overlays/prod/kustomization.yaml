@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: openagents
+
+resources:
+  - ../../base
+
+images:
+  - name: openagents-runtime
+    newName: us-central1-docker.pkg.dev/PROJECT_ID/openagents-runtime/runtime
+    newTag: latest
+
+patches:
+  - path: patch-statefulset.yaml
+  - path: patch-hpa.yaml
+  - path: patch-pdb.yaml
