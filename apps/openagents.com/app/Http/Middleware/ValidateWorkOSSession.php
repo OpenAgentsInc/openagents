@@ -26,6 +26,12 @@ class ValidateWorkOSSession
             return true;
         }
 
+        // Chat stream runs in a long-lived request; skip WorkOS token refresh here so we
+        // don't redirect or throw when the client sends the next message right after login.
+        if ($request->routeIs('api.chat')) {
+            return true;
+        }
+
         if (! config('auth.local_test_login.enabled', false)) {
             return false;
         }

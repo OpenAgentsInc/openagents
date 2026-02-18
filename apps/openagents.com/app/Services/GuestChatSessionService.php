@@ -73,7 +73,7 @@ class GuestChatSessionService
 
         if (! $exists) {
             $now = now();
-            DB::table('agent_conversations')->insert([
+            DB::table('agent_conversations')->insertOrIgnore([
                 'id' => $conversationId,
                 'user_id' => $userId,
                 'title' => 'Chat',
@@ -89,7 +89,7 @@ class GuestChatSessionService
 
         if (! $threadExists) {
             $now = now();
-            DB::table('threads')->insert([
+            DB::table('threads')->insertOrIgnore([
                 'id' => $conversationId,
                 'user_id' => $userId,
                 'autopilot_id' => null,

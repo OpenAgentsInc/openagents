@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { ArrowUpIcon } from '@radix-ui/react-icons';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import type { ReactNode } from 'react';
@@ -25,8 +25,8 @@ import {
     type ToolPart,
 } from '@/components/ai-elements/tool';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { usePostHogEvent } from '@/hooks/use-posthog-event';
+import { cn } from '@/lib/utils';
 
 const TOOL_STATES: ReadonlyArray<ToolPart['state']> = [
     'approval-requested',
@@ -207,7 +207,10 @@ export default function Index() {
 
             fetch(
                 `/api/chat/guest-session?conversationId=${encodeURIComponent(requestedId)}`,
-                { credentials: 'include' },
+                {
+                    credentials: 'include',
+                    headers: { Accept: 'application/json' },
+                },
             )
                 .then((res) => (res.ok ? res.json() : null))
                 .then((data: { conversationId?: string } | null) => {
@@ -280,6 +283,30 @@ export default function Index() {
             conversationId,
         });
     }, [capture, conversationId, isGuest]);
+
+    // After successful chat login, reload page data so sidebar shows authenticated user immediately.
+    const didReloadForAuthRef = useRef(false);
+    useEffect(() => {
+        if (!isGuest || didReloadForAuthRef.current) return;
+        for (const message of messages) {
+            if (message.role !== 'assistant') continue;
+            const parts = message.parts ?? [];
+            for (const part of parts) {
+                const p = part as Record<string, unknown>;
+                const output = p?.output;
+                if (
+                    typeof output === 'object' &&
+                    output !== null &&
+                    (output as Record<string, unknown>).toolName === 'chat_login' &&
+                    (output as Record<string, unknown>).status === 'authenticated'
+                ) {
+                    didReloadForAuthRef.current = true;
+                    router.reload();
+                    return;
+                }
+            }
+        }
+    }, [isGuest, messages]);
 
     useEffect(() => {
         const handleNewChat = () => {
@@ -543,7 +570,7 @@ export default function Index() {
                                                 Autopilot online.
                                             </h1>
                                             <p className="text-base text-muted-foreground sm:text-lg">
-                                                How can I help you?
+                                                Send a message to begin
                                             </p>
                                         </div>
                                     )}

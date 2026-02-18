@@ -122,8 +122,8 @@ const runEffect = Effect.fn("effuseTest.runner.run")(function* (options: RunnerO
 
       const viewer = options.watch
         ? yield* startViewerServer(options.viewerPort).pipe(
-            Effect.tap((v) => Effect.logInfo(`Viewer: ${v.url}`)),
-          )
+          Effect.tap((v) => Effect.logInfo(`Viewer: ${v.url}`)),
+        )
         : undefined
 
       const eventsPath = Path.join(artifactsRoot, "events.jsonl")
@@ -142,15 +142,15 @@ const runEffect = Effect.fn("effuseTest.runner.run")(function* (options: RunnerO
       const server = baseUrl
         ? ({ baseUrl } satisfies { readonly baseUrl: string })
         : yield* startWranglerDev({
-            projectDir: options.projectDir,
-            port: options.serverPort,
-            env: config.childProcessEnv,
-          })
+          projectDir: options.projectDir,
+          port: options.serverPort,
+          env: config.childProcessEnv,
+        })
       const browserLayer = needsBrowser
         ? BrowserServiceLive({
-            headless: options.headless,
-            chromePath: config.chromePath,
-          })
+          headless: options.headless,
+          chromePath: config.chromePath,
+        })
         : BrowserServiceNone
 
       const mainLayer = Layer.mergeAll(probeLayer, browserLayer)
@@ -220,9 +220,9 @@ const runEffect = Effect.fn("effuseTest.runner.run")(function* (options: RunnerO
             test.steps.pipe(
               test.timeoutMs != null
                 ? Effect.timeoutFail({
-                    duration: `${test.timeoutMs} millis`,
-                    onTimeout: () => new Error(`Timed out after ${test.timeoutMs}ms`),
-                  })
+                  duration: `${test.timeoutMs} millis`,
+                  onTimeout: () => new Error(`Timed out after ${test.timeoutMs}ms`),
+                })
                 : (a) => a,
             ),
           ).pipe(Effect.provide(ctxLayer))
