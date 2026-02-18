@@ -1,0 +1,39 @@
+# Build and push the OpenAgents runtime image.
+#
+# IMPORTANT: submit with context limited to the runtime app directory.
+#
+# Run from repo root:
+#   gcloud builds submit \
+#     --config apps/openagents-runtime/deploy/cloudbuild.yaml \
+#     --substitutions _TAG="$(git rev-parse --short HEAD)" \
+#     apps/openagents-runtime
+substitutions:
+  _TAG: ${SHORT_SHA}
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+      - -t
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+
+images:
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
