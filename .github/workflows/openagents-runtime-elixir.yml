@@ -64,5 +64,8 @@ jobs:
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
+      - name: Contract convergence check
+        run: mix runtime.contract.check
+
       - name: Run tests (warnings as errors)
         run: mix test --warnings-as-errors

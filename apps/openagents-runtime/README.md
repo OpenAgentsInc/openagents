@@ -16,7 +16,8 @@ Useful commands:
 - `mix test`
 - `mix format`
 - `mix format --check-formatted`
-- `mix ci` (format check + compile warnings-as-errors + test warnings-as-errors)
+- `mix runtime.contract.check` (validate `docs/` artifacts against implemented `/internal/v1` routes)
+- `mix ci` (format check + compile warnings-as-errors + contract check + test warnings-as-errors)
 
 Container build:
 
