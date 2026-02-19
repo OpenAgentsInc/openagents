@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.RunEvents
+  alias OpenAgentsRuntime.Spend.Policy
   alias OpenAgentsRuntime.Spend.Reservations
   alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Telemetry.Events
@@ -201,7 +202,13 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
         error_class = settlement_error_class(reason)
         error_message = settlement_error_message(reason)
 
-        _ = maybe_mark_failed(run_id, tool_call_id, error_class, error_message)
+        policy_payload =
+          emit_settlement_policy_decision(run_id, tool_call_id, reason, settlement_opts)
+
+        _ =
+          maybe_mark_failed(run_id, tool_call_id, error_class, error_message,
+            policy: policy_payload
+          )
 
         emit_tool_lifecycle(
           run_id,
@@ -460,6 +467,29 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
 
   defp settlement_error_message(_), do: sanitize("settlement-boundary execution failed")
 
+  defp emit_settlement_policy_decision(run_id, tool_call_id, reason, settlement_opts) do
+    reason_code =
+      case reason do
+        :settlement_over_budget -> "policy_denied.budget_exhausted"
+        :settlement_metadata_missing -> "policy_denied.authorization_missing"
+        :settlement_reconcile_required -> "policy_denied.explicit_deny"
+        :settlement_idempotency_conflict -> "policy_denied.explicit_deny"
+        :settlement_already_finalized -> "policy_denied.explicit_deny"
+        _ -> "policy_denied.explicit_deny"
+      end
+
+    attrs = %{
+      authorization_id: settlement_opts.authorization_id,
+      authorization_mode: "delegated_budget",
+      reason_code: reason_code
+    }
+
+    case Policy.emit_denial(run_id, tool_call_id, attrs) do
+      {:ok, payload} -> payload
+      {:error, _reason} -> nil
+    end
+  end
+
   defp maybe_mark_running(nil), do: {:ok, nil}
 
   defp maybe_mark_running(%ToolTask{state: state} = task)
@@ -558,7 +588,9 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
     end
   end
 
-  defp maybe_mark_failed(run_id, tool_call_id, error_class, error_message) do
+  defp maybe_mark_failed(run_id, tool_call_id, error_class, error_message, opts \\ []) do
+    policy_payload = Keyword.get(opts, :policy)
+
     if is_binary(run_id) and is_binary(tool_call_id) do
       with {:ok, _task} <-
              ToolTasks.transition(run_id, tool_call_id, "failed", %{
@@ -569,7 +601,8 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
              append_tool_result_event(run_id, tool_call_id, %{
                status: "failed",
                error_class: error_class,
-               error_message: error_message
+               error_message: error_message,
+               policy: policy_payload
              }) do
         :ok
       else

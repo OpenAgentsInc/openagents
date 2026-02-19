@@ -241,6 +241,59 @@ defmodule OpenAgentsRuntime.Tools.ToolRunnerExecutionTest do
              )
   end
 
+  test "budget exhaustion emits policy events and does not invoke settlement tool execution" do
+    run_id = unique_run_id("tool_runner_budget_exhausted")
+    insert_run(run_id)
+    authorization = insert_settlement_authorization!(run_id, 20)
+
+    assert {:ok, %{"provider_correlation_id" => "corr-initial", "result" => "ok"}} =
+             ToolRunner.run(
+               fn ->
+                 %{"provider_correlation_id" => "corr-initial", "result" => "ok"}
+               end,
+               run_id: run_id,
+               tool_call_id: "tool_call_budget_initial",
+               tool_name: "payments.capture",
+               settlement_boundary: true,
+               authorization_id: authorization.authorization_id,
+               amount_sats: 20,
+               settlement_retry_class: "dedupe_reconcile_required",
+               provider_idempotency_key: "idem-budget-initial"
+             )
+
+    parent = self()
+
+    assert {:error, {:failed, "settlement_budget_exhausted"}} =
+             ToolRunner.run(
+               fn ->
+                 send(parent, :unexpected_settlement_execution)
+                 %{"provider_correlation_id" => "corr-budget-fail", "result" => "should-not-run"}
+               end,
+               run_id: run_id,
+               tool_call_id: "tool_call_budget_exhausted",
+               tool_name: "payments.capture",
+               settlement_boundary: true,
+               authorization_id: authorization.authorization_id,
+               amount_sats: 5,
+               settlement_retry_class: "dedupe_reconcile_required",
+               provider_idempotency_key: "idem-budget-fail"
+             )
+
+    refute_receive :unexpected_settlement_execution, 150
+
+    events = RunEvents.list_after(run_id, 0)
+    event_types = Enum.map(events, & &1.event_type)
+
+    assert "policy.decision" in event_types
+    assert "policy.budget_exhausted" in event_types
+
+    assert Enum.any?(events, fn event ->
+             event.event_type == "policy.decision" and
+               event.payload["tool_call_id"] == "tool_call_budget_exhausted" and
+               event.payload["reason_code"] == "policy_denied.budget_exhausted"
+           end)
+  end
+
   defp insert_run(run_id) do
     Repo.insert!(%Run{
       run_id: run_id,
