@@ -5,14 +5,15 @@ use App\Http\Controllers\Api\AuthRegisterController;
 use App\Http\Controllers\Api\AutopilotController;
 use App\Http\Controllers\Api\AutopilotStreamController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\ConvexTokenController;
 use App\Http\Controllers\Api\Internal\RuntimeSecretController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\L402PaywallController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\ProfileController;
-use App\Http\Controllers\Api\RuntimeToolsController;
-use App\Http\Controllers\Api\RuntimeSkillRegistryController;
 use App\Http\Controllers\Api\RuntimeCodexWorkersController;
+use App\Http\Controllers\Api\RuntimeSkillRegistryController;
+use App\Http\Controllers\Api\RuntimeToolsController;
 use App\Http\Controllers\Api\ShoutsController;
 use App\Http\Controllers\Api\TokenController;
 use App\Http\Controllers\Api\Webhooks\ResendWebhookController;
@@ -46,6 +47,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('/tokens/{tokenId}', [TokenController::class, 'destroy'])
         ->whereNumber('tokenId');
     Route::delete('/tokens', [TokenController::class, 'destroyAll']);
+    Route::post('/convex/token', [ConvexTokenController::class, 'store']);
 
     Route::get('/chats', [ChatController::class, 'index']);
     Route::post('/chats', [ChatController::class, 'store']);
