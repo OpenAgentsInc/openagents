@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\AI\Runtime\AutopilotExecutionContext;
+use App\AI\Runtime\ElixirRuntimeClient;
+use App\AI\Runtime\LegacyRuntimeClient;
+use App\AI\Runtime\RuntimeClient;
 use App\Lightning\L402\InvoicePayer;
 use App\Lightning\L402\InvoicePayers\FakeInvoicePayer;
 use App\Lightning\L402\InvoicePayers\LndRestInvoicePayer;
@@ -26,6 +29,15 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(AutopilotExecutionContext::class, fn () => new AutopilotExecutionContext);
+        $this->app->scoped(RuntimeClient::class, function ($app) {
+            $driver = (string) config('runtime.driver', 'legacy');
+
+            return match ($driver) {
+                'elixir' => $app->make(ElixirRuntimeClient::class),
+                'legacy' => $app->make(LegacyRuntimeClient::class),
+                default => throw new RuntimeException('Unknown runtime driver: '.$driver),
+            };
+        });
 
         $this->app->singleton(InvoicePayer::class, function ($app) {
             $kind = (string) config('lightning.l402.invoice_payer', 'fake');
