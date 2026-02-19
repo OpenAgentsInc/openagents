@@ -72,6 +72,16 @@ SSE event `id:` always equals the run event `seq`.
 - Duplicate request with same `frame_id` and equivalent payload/type returns `200 accepted` with `idempotentReplay=true`.
 - Payload/type mismatch for existing `frame_id` returns `409 conflict`.
 
+## Cancellation Semantics
+
+`POST /internal/v1/runs/{run_id}/cancel` appends a durable `run.cancel_requested` event and is idempotent.
+
+- First cancel request returns `202` with `idempotentReplay=false`.
+- Duplicate cancel request returns `200` with `idempotentReplay=true`.
+- Runtime stops starting new work after cancel is observed.
+- Best-effort cancel is issued for in-flight tool work.
+- Late model/tool results cannot reopen a terminal canceled run.
+
 ## Implemented endpoints
 
 ### `GET /internal/v1/health`
@@ -183,6 +193,45 @@ data: {"type":"text-delta","delta":"Hello","runId":"run_123"}
 
 Terminal flows can emit `data: [DONE]`.
 
+### `POST /internal/v1/runs/{run_id}/cancel`
+
+Request durable cancellation for a run.
+
+Required fields:
+
+- `thread_id`
+
+Request:
+
+```json
+{
+  "thread_id": "thread_abc",
+  "reason": "user requested stop"
+}
+```
+
+Accepted (`202`) for first cancel:
+
+```json
+{
+  "runId": "run_123",
+  "status": "canceling",
+  "cancelRequested": true,
+  "idempotentReplay": false
+}
+```
+
+Idempotent replay (`200`) for duplicate cancel:
+
+```json
+{
+  "runId": "run_123",
+  "status": "canceling",
+  "cancelRequested": true,
+  "idempotentReplay": true
+}
+```
+
 ## Ownership and Principal Enforcement
 
 Runtime validates run/thread ownership from DB records. Runtime does not trust request payload `user_id` claims.
@@ -211,6 +260,11 @@ Standard runtime span names:
 - Aligned request field names to implemented snake_case params (`thread_id`, `frame_id`).
 - Added implemented stream `tail_ms` behavior.
 - Removed unimplemented `/runs` start and `/runs/{run_id}/cancel` operations from the active contract.
+
+### 2026-02-19
+
+- Added implemented `POST /internal/v1/runs/{run_id}/cancel` with durable and idempotent cancel semantics.
+- Clarified runtime cancel behavior for stop-new-work, best-effort in-flight tool cancellation, and late-result handling.
 
 ## Backward Compatibility Rule
 

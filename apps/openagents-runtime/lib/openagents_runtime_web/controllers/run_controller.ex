@@ -1,7 +1,10 @@
 defmodule OpenAgentsRuntimeWeb.RunController do
   use OpenAgentsRuntimeWeb, :controller
 
+  alias OpenAgentsRuntime.AgentProcess
+  alias OpenAgentsRuntime.AgentSupervisor
   alias OpenAgentsRuntime.FrameRouter
+  alias OpenAgentsRuntime.Runs.Cancel
   alias OpenAgentsRuntime.Runs.Frames
   alias OpenAgentsRuntime.Runs.OwnershipGuard
   alias OpenAgentsRuntime.Runs.RunEvents
@@ -84,6 +87,47 @@ defmodule OpenAgentsRuntimeWeb.RunController do
   def append_frame(conn, _params) do
     error(conn, 400, "invalid_request", "thread_id is required")
   end
+
+  @spec cancel(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def cancel(conn, %{"run_id" => run_id, "thread_id" => thread_id} = params) do
+    Tracing.with_phase_span(:persist, %{run_id: run_id, thread_id: thread_id}, fn ->
+      principal = principal_from_headers(conn)
+
+      with {:ok, principal} <- OwnershipGuard.normalize_principal(principal),
+           :ok <- OwnershipGuard.authorize(run_id, thread_id, principal),
+           {:ok, result} <- Cancel.request_cancel(run_id, %{reason: params["reason"]}),
+           {:ok, _pid} <- AgentSupervisor.ensure_agent(run_id),
+           :ok <- AgentProcess.cancel(run_id) do
+        status = if result.idempotent_replay, do: 200, else: 202
+
+        conn
+        |> put_status(status)
+        |> json(%{
+          "runId" => run_id,
+          "status" => result.status,
+          "cancelRequested" => true,
+          "idempotentReplay" => result.idempotent_replay
+        })
+      else
+        {:error, :invalid_principal} ->
+          error(conn, 401, "unauthorized", "missing or invalid principal headers")
+
+        {:error, :not_found} ->
+          error(conn, 404, "not_found", "run/thread ownership record not found")
+
+        {:error, :forbidden} ->
+          error(conn, 403, "forbidden", "run/thread does not belong to principal")
+
+        {:error, :run_not_found} ->
+          error(conn, 404, "not_found", "run not found")
+
+        {:error, _reason} ->
+          error(conn, 500, "internal_error", "failed to enqueue cancel request")
+      end
+    end)
+  end
+
+  def cancel(conn, _params), do: error(conn, 400, "invalid_request", "thread_id is required")
 
   @spec stream(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def stream(conn, %{"run_id" => run_id, "thread_id" => thread_id} = params) do

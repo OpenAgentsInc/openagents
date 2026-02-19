@@ -128,6 +128,41 @@ paths:
           $ref: '#/components/responses/Error'
         '410':
           $ref: '#/components/responses/Error'
+  /runs/{run_id}/cancel:
+    post:
+      summary: Request durable cancellation for a run
+      operationId: cancelRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRunRequest'
+      responses:
+        '200':
+          description: Cancel request already present (idempotent replay)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelAccepted'
+        '202':
+          description: Cancel request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelAccepted'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
 components:
   securitySchemes:
     RuntimeSignature:
@@ -210,6 +245,27 @@ components:
         updatedAt:
           type: string
           format: date-time
+    CancelRunRequest:
+      type: object
+      required: [thread_id]
+      properties:
+        thread_id:
+          type: string
+        reason:
+          type: string
+    CancelAccepted:
+      type: object
+      required: [runId, status, cancelRequested, idempotentReplay]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [canceling, canceled, succeeded, failed]
+        cancelRequested:
+          type: boolean
+        idempotentReplay:
+          type: boolean
     ErrorEnvelope:
       type: object
       required: [error]
