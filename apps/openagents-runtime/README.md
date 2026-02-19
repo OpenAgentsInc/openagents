@@ -43,6 +43,8 @@ Internal API docs:
 - Contract: `docs/RUNTIME_CONTRACT.md`
 - OpenAPI spec: `docs/openapi-internal-v1.yaml`
 - Laravel SSE mapping: `docs/LARAVEL_SSE_MAPPING.md`
+- DS-Elixir runtime contract: `docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
+- DS-Elixir operations runbook: `docs/DS_ELIXIR_OPERATIONS.md`
 - Observability + telemetry guardrails: `docs/OBSERVABILITY.md`
 - Dashboards + alerts runbook: `docs/OPERATIONS_ALERTING.md`
 - Load/chaos validation suite: `docs/LOAD_TESTING.md`
