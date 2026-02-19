@@ -108,5 +108,5 @@ Backward compatibility:
 ## References
 
 - [GLOSSARY.md](../GLOSSARY.md) — `Lane` definition
-- FRLM docs referenced by Rust-era paths were archived; use `docs/GLOSSARY.md` and `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md` for current context.
+- Current FRLM/lane context references: `docs/GLOSSARY.md` and `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`.
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Protocol routing

@@ -12,8 +12,8 @@ Architecture Decision Records for the OpenAgents project.
 |-----|-------|--------|------|------|------------|-------|---------------|
 | [ADR-0001](./ADR-0001-adoption-of-adrs.md) | Adoption of Architecture Decision Records | Accepted | 2026-01-13 | Ops | — | core | 2026-01-13 |
 | [ADR-0002](./ADR-0002-verified-patch-bundle.md) | Verified Patch Bundle Contract | Accepted | 2026-01-13 | Execution | — | adjutant | 2026-01-13 |
-| [ADR-0003](./ADR-0003-replay-formats.md) | Replay Formats and Migration | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-01-13 |
-| [ADR-0004](./ADR-0004-lane-taxonomy.md) | Lane Taxonomy and Naming | Accepted | 2026-01-13 | Routing | — | frlm | 2026-01-13 |
+| [ADR-0003](./ADR-0003-replay-formats.md) | Replay Formats and Migration | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-02-19 |
+| [ADR-0004](./ADR-0004-lane-taxonomy.md) | Lane Taxonomy and Naming | Accepted | 2026-01-13 | Routing | — | frlm | 2026-02-19 |
 | [ADR-0005](./ADR-0005-step-utility-semantics.md) | Step Utility Semantics | Accepted | 2026-01-13 | Compiler | — | dsrs | 2026-01-13 |
 | [ADR-0006](./ADR-0006-deterministic-hashing.md) | Deterministic Hashing and Canonicalization | Accepted | 2026-01-13 | Protocol | — | protocol | 2026-01-13 |
 | [ADR-0007](./ADR-0007-tool-execution-contract.md) | Tool Execution Contract | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-01-13 |
@@ -29,7 +29,7 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0017](./ADR-0017-telemetry-trace-contract.md) | Telemetry and Trace Contract | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-01-13 |
 | [ADR-0018](./ADR-0018-forge-adapter-contract.md) | Forge Adapter Contract | Accepted | 2026-01-13 | Execution | — | adjutant | 2026-01-13 |
 | [ADR-0019](./ADR-0019-wgpui-hud-component-contract.md) | WGPUI HUD Component Contract | Accepted | 2026-01-13 | UX | — | autopilot | 2026-01-13 |
-| [ADR-0020](./ADR-0020-pylon-local-ui-bridge.md) | Pylon Local UI Bridge (Pusher-Compatible) | Accepted | 2026-01-13 | UX | — | pylon | 2026-01-13 |
+| [ADR-0020](./ADR-0020-pylon-local-ui-bridge.md) | Pylon Local UI Bridge (Pusher-Compatible) | Accepted | 2026-01-13 | UX | — | pylon | 2026-02-19 |
 | [ADR-0021](./ADR-0021-rust-ts-type-generation.md) | Rust-to-TypeScript Contract Generation for Tauri IPC | Deprecated | 2026-01-25 | UX | — | autopilot-desktop | 2026-02-19 |
 | [ADR-0022](./ADR-0022-effuse-uitree-ipc.md) | Effuse UITree + UI Patch IPC Contract | Deprecated | 2026-01-25 | UX | — | autopilot-desktop | 2026-02-19 |
 | [ADR-0023](./ADR-0023-file-editor-open-save-events.md) | File Editor Open/Save Event Contract | Accepted | 2026-01-30 | UX | — | autopilot-ui | 2026-01-30 |
