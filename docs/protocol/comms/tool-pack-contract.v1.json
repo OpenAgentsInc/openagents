@@ -1,0 +1,58 @@
+{
+  "id": "openagents.comms.tool-pack.v1",
+  "version": "2026-02-19",
+  "tool_pack": "comms.v1",
+  "owner": "openagents-runtime",
+  "tools": [
+    {
+      "tool_name": "comms.send",
+      "description": "Send an outbound message via configured provider adapter.",
+      "requires_manifest_capability": "send",
+      "input": {
+        "type": "object",
+        "required": ["integration_id", "recipient", "template_id", "variables"],
+        "properties": {
+          "integration_id": { "type": "string" },
+          "recipient": { "type": "string" },
+          "template_id": { "type": "string" },
+          "variables": { "type": "object" }
+        }
+      },
+      "output": {
+        "type": "object",
+        "required": ["message_id", "state"],
+        "properties": {
+          "message_id": { "type": "string" },
+          "state": { "type": "string", "enum": ["queued", "sent", "failed", "blocked"] },
+          "reason_code": { "type": "string" }
+        }
+      }
+    },
+    {
+      "tool_name": "comms.render_template",
+      "description": "Render a comms template deterministically before send.",
+      "requires_manifest_capability": "render_template"
+    },
+    {
+      "tool_name": "comms.upsert_suppression",
+      "description": "Insert/update suppression record for recipient/provider.",
+      "requires_manifest_capability": "upsert_suppression"
+    },
+    {
+      "tool_name": "comms.record_delivery_event",
+      "description": "Record normalized provider webhook delivery state into runtime canonical event log.",
+      "requires_manifest_capability": "record_delivery_event"
+    }
+  ],
+  "receipt_requirements": {
+    "required_fields": [
+      "integration_id",
+      "provider",
+      "state",
+      "reason_code",
+      "authorization_id",
+      "decision"
+    ],
+    "reason_taxonomy_ref": "docs/protocol/reasons/runtime-policy-reason-codes.v1.json"
+  }
+}
