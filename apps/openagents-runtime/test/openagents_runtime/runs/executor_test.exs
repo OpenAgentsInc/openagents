@@ -145,6 +145,59 @@ defmodule OpenAgentsRuntime.Runs.ExecutorTest do
     assert run.status == "canceled"
   end
 
+  test "loop detection transitions run into deterministic failed terminal state" do
+    run_id = unique_run_id("exec_loop")
+    insert_run(run_id)
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "loop_1",
+               type: "user_message",
+               payload: %{"text" => "repeat"}
+             })
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "loop_2",
+               type: "user_message",
+               payload: %{"text" => "repeat"}
+             })
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "loop_3",
+               type: "user_message",
+               payload: %{"text" => "repeat"}
+             })
+
+    assert {:ok, %{status: "failed", terminal_reason_class: "loop_detected"}} =
+             Executor.run_once(run_id,
+               lease_owner: "worker-loop",
+               loop_detection: [
+                 warning_threshold: 3,
+                 critical_threshold: 4,
+                 global_circuit_breaker_threshold: 10
+               ]
+             )
+
+    events = RunEvents.list_after(run_id, 0)
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.loop_detected" and
+                 &1.payload["reason_code"] == "loop_detected.no_progress")
+           )
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.finished" and &1.payload["reason_class"] == "loop_detected")
+           )
+
+    run = Repo.get!(Run, run_id)
+    assert run.status == "failed"
+    assert run.terminal_reason_class == "loop_detected"
+  end
+
   defp insert_run(run_id) do
     Repo.insert!(%Run{
       run_id: run_id,

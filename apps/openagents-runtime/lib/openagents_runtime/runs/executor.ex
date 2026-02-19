@@ -9,6 +9,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   alias OpenAgentsRuntime.Runs.Cancel
   alias OpenAgentsRuntime.Runs.Frames
   alias OpenAgentsRuntime.Runs.Leases
+  alias OpenAgentsRuntime.Runs.LoopDetection
   alias OpenAgentsRuntime.Runs.Run
   alias OpenAgentsRuntime.Runs.RunEvent
   alias OpenAgentsRuntime.Runs.RunEvents
@@ -22,6 +23,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   @type run_once_opt ::
           {:lease_owner, String.t()}
           | {:lease_ttl_seconds, pos_integer()}
+          | {:loop_detection, keyword() | map()}
           | {:now, DateTime.t()}
 
   @type run_result :: %{
@@ -34,6 +36,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   def run_once(run_id, opts \\ []) when is_binary(run_id) do
     lease_owner = Keyword.get(opts, :lease_owner, default_lease_owner())
     lease_ttl_seconds = Keyword.get(opts, :lease_ttl_seconds, @default_lease_ttl_seconds)
+    loop_detection_opts = normalize_loop_detection_opts(Keyword.get(opts, :loop_detection, []))
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
     Tracing.with_phase_span(:infer, %{run_id: run_id, lease_owner: lease_owner}, fn ->
@@ -48,7 +51,8 @@ defmodule OpenAgentsRuntime.Runs.Executor do
                  observed_progress_seq: run.latest_seq || 0
                ),
              {:ok, run} <- maybe_mark_started(run, lease_owner),
-             {:ok, result} <- loop(run, lease_owner, lease_ttl_seconds, 0) do
+             {:ok, result} <-
+               loop(run, lease_owner, lease_ttl_seconds, loop_detection_opts, 0) do
           {:ok, result}
         else
           nil -> {:error, :run_not_found}
@@ -60,7 +64,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
     end)
   end
 
-  defp loop(%Run{} = run, lease_owner, lease_ttl_seconds, processed_frames) do
+  defp loop(%Run{} = run, lease_owner, lease_ttl_seconds, loop_detection_opts, processed_frames) do
     cond do
       terminal_status?(run.status) ->
         {:ok,
@@ -93,7 +97,8 @@ defmodule OpenAgentsRuntime.Runs.Executor do
           %RunFrame{} = frame ->
             with {:ok, _lease} <-
                    Leases.renew(run.run_id, lease_owner, ttl_seconds: lease_ttl_seconds),
-                 {:ok, next_run, terminal?} <- process_frame(run, frame, lease_owner) do
+                 {:ok, next_run, terminal?} <-
+                   process_frame(run, frame, lease_owner, loop_detection_opts) do
               if terminal? do
                 {:ok,
                  %{
@@ -102,7 +107,13 @@ defmodule OpenAgentsRuntime.Runs.Executor do
                    terminal_reason_class: next_run.terminal_reason_class
                  }}
               else
-                loop(next_run, lease_owner, lease_ttl_seconds, processed_frames + 1)
+                loop(
+                  next_run,
+                  lease_owner,
+                  lease_ttl_seconds,
+                  loop_detection_opts,
+                  processed_frames + 1
+                )
               end
             end
         end
@@ -120,37 +131,85 @@ defmodule OpenAgentsRuntime.Runs.Executor do
 
   defp maybe_mark_started(%Run{} = run, _lease_owner), do: {:ok, run}
 
-  defp process_frame(%Run{} = run, %RunFrame{} = frame, lease_owner) do
+  defp process_frame(%Run{} = run, %RunFrame{} = frame, lease_owner, loop_detection_opts) do
     if frame_already_consumed?(run.run_id, frame.frame_id) do
       with {:ok, run} <- advance_cursor(run, frame.id) do
         emit_frame_telemetry(run.run_id, frame.frame_type, true)
         {:ok, run, terminal_status?(run.status)}
       end
     else
-      case classify_frame(frame) do
-        {:continue, event_type, payload} ->
-          with {:ok, event} <- RunEvents.append_event(run.run_id, event_type, payload),
-               {:ok, run} <- advance_cursor(run, frame.id),
-               {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, event.seq) do
-            emit_frame_telemetry(run.run_id, frame.frame_type, false)
-            {:ok, run, false}
-          end
+      with {:ok, loop_detection} <- LoopDetection.detect(run.run_id, frame, loop_detection_opts) do
+        if loop_detection do
+          handle_loop_detected(run, frame, lease_owner, loop_detection)
+        else
+          case classify_frame(frame) do
+            {:continue, event_type, payload} ->
+              with {:ok, event} <- RunEvents.append_event(run.run_id, event_type, payload),
+                   {:ok, run} <- advance_cursor(run, frame.id),
+                   {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, event.seq) do
+                emit_frame_telemetry(run.run_id, frame.frame_type, false)
+                {:ok, run, false}
+              end
 
-        {:terminal, status, reason_class, reason, events} ->
-          with {:ok, last_seq} <- append_events(run.run_id, events),
-               {:ok, run} <-
-                 persist_terminal(run, %{
-                   status: status,
-                   terminal_reason_class: reason_class,
-                   terminal_reason: reason,
-                   terminal_at: DateTime.utc_now(),
-                   last_processed_frame_id: frame.id
-                 }),
-               {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
-            emit_terminal_telemetry(run.run_id, status, reason_class)
-            {:ok, run, true}
+            {:terminal, status, reason_class, reason, events} ->
+              with {:ok, last_seq} <- append_events(run.run_id, events),
+                   {:ok, run} <-
+                     persist_terminal(run, %{
+                       status: status,
+                       terminal_reason_class: reason_class,
+                       terminal_reason: reason,
+                       terminal_at: DateTime.utc_now(),
+                       last_processed_frame_id: frame.id
+                     }),
+                   {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
+                emit_terminal_telemetry(run.run_id, status, reason_class)
+                {:ok, run, true}
+              end
           end
+        end
       end
+    end
+  end
+
+  defp handle_loop_detected(%Run{} = run, %RunFrame{} = frame, lease_owner, detection) do
+    detector = detection.detector |> to_string()
+
+    events = [
+      {"run.loop_detected",
+       %{
+         "frame_id" => frame.frame_id,
+         "frame_type" => frame.frame_type,
+         "detector" => detector,
+         "level" => to_string(detection.level),
+         "count" => detection.count,
+         "reason_code" => detection.reason_code,
+         "loop_detected_reason" => detection.reason_code,
+         "message" => detection.message
+       }},
+      {"run.finished",
+       %{
+         "status" => "failed",
+         "reason_class" => "loop_detected",
+         "reason" => detection.message,
+         "reason_code" => detection.reason_code,
+         "detector" => detector,
+         "frame_id" => frame.frame_id,
+         "loop_detected_reason" => detection.reason_code
+       }}
+    ]
+
+    with {:ok, last_seq} <- append_events(run.run_id, events),
+         {:ok, run} <-
+           persist_terminal(run, %{
+             status: "failed",
+             terminal_reason_class: "loop_detected",
+             terminal_reason: detection.message,
+             terminal_at: DateTime.utc_now(),
+             last_processed_frame_id: frame.id
+           }),
+         {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
+      emit_terminal_telemetry(run.run_id, "failed", "loop_detected")
+      {:ok, run, true}
     end
   end
 
@@ -402,6 +461,28 @@ defmodule OpenAgentsRuntime.Runs.Executor do
       {key, value} when is_atom(key) -> {Atom.to_string(key), value}
       {key, value} -> {to_string(key), value}
     end)
+  end
+
+  defp normalize_loop_detection_opts(nil), do: []
+  defp normalize_loop_detection_opts(opts) when is_list(opts), do: opts
+
+  defp normalize_loop_detection_opts(opts) when is_map(opts) do
+    opts
+    |> Enum.map(fn
+      {key, value} when is_binary(key) -> {to_existing_atom_safely(key), value}
+      pair -> pair
+    end)
+    |> Enum.reject(fn {key, _value} -> is_nil(key) end)
+  end
+
+  defp normalize_loop_detection_opts(_opts), do: []
+
+  defp to_existing_atom_safely(key) when is_binary(key) do
+    try do
+      String.to_existing_atom(key)
+    rescue
+      ArgumentError -> nil
+    end
   end
 
   defp default_lease_owner do
