@@ -415,6 +415,17 @@ Exit criteria:
 4. Require explicit change control for production MCP enablement.
 5. Validate no runtime receipt/log path leaks secrets.
 
+Implementation status (2026-02-19):
+
+- Security checklist automation:
+  - `apps/openagents-runtime/deploy/convex/run-security-review-checklist.sh`
+- MCP production default-deny gate + temporary enablement controls:
+  - `apps/openagents-runtime/deploy/convex/mcp-production-access-gate.sh`
+- Secret-handling hardening now redacts `admin_key` and `*_admin_key` payload fields
+  in runtime sanitization paths.
+- Review evidence and sign-off:
+  - `apps/openagents-runtime/docs/reports/2026-02-19-convex-security-review-checklist.md`
+
 ## Observability
 
 1. Dashboard panels for runtime event throughput and projection lag.

@@ -50,6 +50,8 @@ Normative rules:
    mode:
    - use `CONVEX_AGENT_MODE=anonymous` for remote dev environments,
    - keep MCP production access disabled unless explicitly enabled for a task,
+   - require explicit change-control fields and TTL guard via
+     `apps/openagents-runtime/deploy/convex/mcp-production-access-gate.sh`,
    - for self-hosted deployments, use explicit env-file deployment selection
      (`CONVEX_SELF_HOSTED_URL`, `CONVEX_SELF_HOSTED_ADMIN_KEY`).
 

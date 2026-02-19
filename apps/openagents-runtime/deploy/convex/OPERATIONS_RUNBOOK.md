@@ -258,3 +258,66 @@ Escalation order:
    - execute rollback drill path,
    - notify engineering incident commander and product owner,
    - freeze rollout progression until post-incident review.
+
+## Security Hardening Controls
+
+Admin key handling:
+
+1. Convex admin key remains in Secret Manager only (`oa-convex-nonprod-admin-key`).
+2. Cloud Run service envs must not contain `CONVEX_SELF_HOSTED_ADMIN_KEY`, `CONVEX_ADMIN_KEY`, or `ADMIN_KEY`.
+3. Runtime projection sink credentials are operator-managed and never issued to end-user clients.
+
+Least privilege and network boundaries:
+
+1. Backend and dashboard run under dedicated service accounts (not default compute SA).
+2. Backend DB connectivity is constrained through the `cloud-sql-proxy` sidecar.
+3. Runtime ingress network policy remains restricted to trusted control-plane clients:
+   - `apps/openagents-runtime/deploy/k8s/base/networkpolicy-ingress.yaml`
+
+## MCP Production Access Control
+
+Default posture:
+
+- production MCP access is denied by default.
+
+Gate command:
+
+```bash
+apps/openagents-runtime/deploy/convex/mcp-production-access-gate.sh
+```
+
+Temporary enablement requirements:
+
+1. `OA_CONVEX_MCP_PROD_ACCESS_ENABLED=1`
+2. `OA_CHANGE_TICKET=<ticket>`
+3. `OA_MCP_PROD_ACCESS_REASON=<reason>`
+4. `OA_MCP_PROD_ACCESS_TTL_MINUTES=<1..60>`
+5. `OA_MCP_PROD_ACKNOWLEDGE_RISK=YES`
+
+Without these fields the gate exits non-zero and access remains blocked.
+
+## Secret-Handling Audit Path
+
+Runtime sanitization guards secret/PII surfaces across:
+
+1. run events and codex worker payloads,
+2. tool task inputs/outputs,
+3. telemetry metadata,
+4. trace capture payloads.
+
+Validation tests:
+
+- `apps/openagents-runtime/test/openagents_runtime/security/sanitizer_test.exs`
+- `apps/openagents-runtime/test/openagents_runtime/security/sanitization_integration_test.exs`
+
+## Security Review Checklist Command
+
+Run this checklist before production rollout:
+
+```bash
+apps/openagents-runtime/deploy/convex/run-security-review-checklist.sh
+```
+
+Current evidence artifact:
+
+- `apps/openagents-runtime/docs/reports/2026-02-19-convex-security-review-checklist.md`

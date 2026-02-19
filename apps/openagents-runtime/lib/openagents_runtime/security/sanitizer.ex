@@ -16,6 +16,7 @@ defmodule OpenAgentsRuntime.Security.Sanitizer do
                           "passphrase",
                           "secret",
                           "api_key",
+                          "admin_key",
                           "apikey",
                           "x_api_key",
                           "access_token",
@@ -37,7 +38,7 @@ defmodule OpenAgentsRuntime.Security.Sanitizer do
                     "zip"
                   ])
 
-  @key_suffixes ["_token", "_secret", "_password", "_api_key", "_apikey"]
+  @key_suffixes ["_token", "_secret", "_password", "_api_key", "_apikey", "_admin_key"]
   @preserve_redaction_key "__preserve__"
 
   @type option :: {:preserve_keys, [atom() | String.t()]}
