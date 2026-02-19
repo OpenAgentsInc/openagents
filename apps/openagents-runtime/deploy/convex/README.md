@@ -79,3 +79,35 @@ Day-2 operations (admin key policy, export/import backup validation, upgrade and
 rollback flow) are documented in:
 
 - `apps/openagents-runtime/deploy/convex/OPERATIONS_RUNBOOK.md`
+
+## Gate G7 drill helpers
+
+Backup/restore drill:
+
+```bash
+apps/openagents-runtime/deploy/convex/run-backup-restore-drill.sh
+```
+
+Rollback drill (dry-run by default):
+
+```bash
+apps/openagents-runtime/deploy/convex/run-rollback-drill.sh
+```
+
+Rollback drill (apply):
+
+```bash
+OA_CONVEX_ROLLBACK_DRILL_APPLY=1 \
+apps/openagents-runtime/deploy/convex/run-rollback-drill.sh
+```
+
+Runtime replay drill:
+
+```bash
+apps/openagents-runtime/deploy/convex/run-runtime-replay-drill.sh
+```
+
+Drill evidence/reporting artifacts:
+
+- `apps/openagents-runtime/docs/reports/2026-02-19-convex-runtime-projector-load-chaos-report.md`
+- `apps/openagents-runtime/docs/reports/2026-02-19-convex-g7-backup-restore-replay-rollback-drill.md`

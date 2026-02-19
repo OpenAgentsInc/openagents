@@ -173,3 +173,88 @@ Projection health metrics to watch during/after rebuild:
 - `openagents_runtime.convex.projection.write.count` (filter `result=error`)
 - `openagents_runtime.convex.projection.write_failure.count`
 - `openagents_runtime.convex.projection.drift.count`
+
+## Gate G7 Drill Automation
+
+Use the helper scripts for repeatable drills:
+
+- backup/restore drill:
+  - `apps/openagents-runtime/deploy/convex/run-backup-restore-drill.sh`
+- rollback drill (dry-run by default):
+  - `apps/openagents-runtime/deploy/convex/run-rollback-drill.sh`
+- rollback drill (apply):
+  - `OA_CONVEX_ROLLBACK_DRILL_APPLY=1 apps/openagents-runtime/deploy/convex/run-rollback-drill.sh`
+- runtime replay drill:
+  - `apps/openagents-runtime/deploy/convex/run-runtime-replay-drill.sh`
+
+Evidence reports:
+
+- `apps/openagents-runtime/docs/reports/2026-02-19-convex-runtime-projector-load-chaos-report.md`
+- `apps/openagents-runtime/docs/reports/2026-02-19-convex-g7-backup-restore-replay-rollback-drill.md`
+
+## Staged Rollout Plan (Internal -> Limited -> Full)
+
+Phase A: Internal users only
+
+1. Route 100% of OpenAgents staff/admin users to Convex-backed sync surfaces.
+2. Hold period: 24h.
+3. Promotion requirements:
+   - no critical alerts in `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`,
+   - rollback drill RTO remains within target.
+
+Phase B: Limited cohort
+
+1. Expand to 5-10% of external users (canary cohort).
+2. Hold period: 48h.
+3. Promotion requirements:
+   - alert budgets hold for lag/drift/write-failure/replay,
+   - no unresolved Sev1/Sev2 incidents in cohort.
+
+Phase C: Full exposure
+
+1. Ramp to 25%, then 50%, then 100% with health checks between each step.
+2. Keep rollback command path pre-staged and validated before each increment.
+3. Stop ramp immediately if any critical Convex projection alert fires for >5m.
+
+## Rollback Drill Objective and Evidence
+
+RTO target:
+
+- rollback to known-good Convex revisions + health restoration in <= 5 minutes.
+
+2026-02-19 non-prod measured drill:
+
+- backend rollback revision: `oa-convex-backend-nonprod-00010-kpf`
+- dashboard rollback revision: `oa-convex-dashboard-nonprod-00001-8rs`
+- restored target revisions:
+  - backend: `oa-convex-backend-nonprod-00011-v4r`
+  - dashboard: `oa-convex-dashboard-nonprod-00002-hwm`
+- measured rollback RTO: 20 seconds
+- measured restore duration: 18 seconds
+- total drill duration: 38 seconds
+
+Result: RTO target met in non-prod production-like environment.
+
+## On-Call Ownership and Escalation
+
+Primary ownership:
+
+1. Runtime on-call:
+   - owns runtime projector behavior, replay operations, and runtime API health.
+2. Infra/SRE on-call:
+   - owns Cloud Run revision traffic management, Cloud SQL health, secret access.
+3. Web platform on-call:
+   - owns Laravel Convex token minting path and client auth bridge.
+
+Escalation order:
+
+1. Runtime on-call triages first and classifies incident lane:
+   - projector lag/drift/error/replay
+   - Convex infra/service availability
+   - auth token bridge
+2. If infra lane: page Infra/SRE on-call immediately.
+3. If auth lane: page Web platform on-call immediately.
+4. If blast radius exceeds canary cohort or Sev1 impact:
+   - execute rollback drill path,
+   - notify engineering incident commander and product owner,
+   - freeze rollout progression until post-incident review.
