@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openagents-runtime-smoke
+  labels:
+    app.kubernetes.io/name: openagents-runtime
+    app.kubernetes.io/component: smoke-test
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app: openagents-runtime-smoke
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: openagents-runtime
+      containers:
+        - name: smoke
+          image: openagents-runtime:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - bin/openagents_runtime
+            - eval
+            - 'OpenAgentsRuntime.Deploy.Smoke.run!(base_url: System.get_env("SMOKE_BASE_URL"), tail_ms: 150)'
+          env:
+            - name: RELEASE_DISTRIBUTION
+              value: none
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SMOKE_BASE_URL
+              value: "http://openagents-runtime.$(POD_NAMESPACE).svc.cluster.local"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: openagents-runtime-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: openagents-runtime-secrets
+                  key: SECRET_KEY_BASE
+            - name: RUNTIME_SIGNATURE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openagents-runtime-secrets
+                  key: RUNTIME_SIGNATURE_SECRET

@@ -73,6 +73,11 @@ spec:
                 secretKeyRef:
                   name: openagents-runtime-secrets
                   key: SECRET_KEY_BASE
+            - name: RUNTIME_SIGNATURE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openagents-runtime-secrets
+                  key: RUNTIME_SIGNATURE_SECRET
           readinessProbe:
             httpGet:
               path: /internal/v1/health
