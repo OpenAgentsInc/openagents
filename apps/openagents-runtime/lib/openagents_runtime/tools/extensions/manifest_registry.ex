@@ -11,6 +11,7 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistry do
 
   alias OpenAgentsRuntime.Telemetry.Events
   alias OpenAgentsRuntime.Telemetry.Parity
+  alias OpenAgentsRuntime.Tools.Extensions.CodingManifestValidator
   alias OpenAgentsRuntime.Tools.Extensions.CommsManifestValidator
   alias OpenAgentsRuntime.Tools.Extensions.ManifestValidator
 
@@ -20,11 +21,16 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistry do
     "comms.v1" => [
       "docs/protocol/comms/integration-manifest.schema.v1.json",
       "docs/protocol/comms/tool-pack-contract.v1.json"
+    ],
+    "coding.v1" => [
+      "docs/protocol/coding/integration-manifest.schema.v1.json",
+      "docs/protocol/coding/tool-pack-contract.v1.json"
     ]
   }
 
   @validators %{
-    "comms.v1" => CommsManifestValidator
+    "comms.v1" => CommsManifestValidator,
+    "coding.v1" => CodingManifestValidator
   }
 
   @type validation_error :: %{

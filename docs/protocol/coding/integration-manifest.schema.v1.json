@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/coding/integration-manifest.v1.json",
+  "title": "Coding Integration Manifest v1",
+  "type": "object",
+  "required": [
+    "manifest_version",
+    "integration_id",
+    "provider",
+    "status",
+    "tool_pack",
+    "capabilities",
+    "secrets_ref",
+    "policy"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "const": "coding.integration.v1"
+    },
+    "integration_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9._:-]+$"
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["github"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "inactive", "error"]
+    },
+    "tool_pack": {
+      "type": "string",
+      "const": "coding.v1"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "get_issue",
+          "get_pull_request",
+          "add_issue_comment"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "secrets_ref": {
+      "type": "object",
+      "required": ["provider", "key_id"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["laravel"]
+        },
+        "key_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 256
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "required": ["write_operations_mode", "max_requests_per_minute"],
+      "additionalProperties": false,
+      "properties": {
+        "write_operations_mode": {
+          "type": "string",
+          "enum": ["enforce", "audit_only"]
+        },
+        "max_requests_per_minute": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "default_repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,8 @@
     "loop_detected",
     "ssrf_block",
     "manifest_validation",
-    "comms_failed"
+    "comms_failed",
+    "coding_failed"
   ],
   "reason_codes": [
     {
@@ -148,6 +149,18 @@
       "domain": "comms_failed",
       "decision": "denied",
       "description": "Comms provider call failed and fallback path did not recover."
+    },
+    {
+      "code": "coding_failed.provider_error",
+      "domain": "coding_failed",
+      "decision": "denied",
+      "description": "Coding provider adapter failed to execute operation."
+    },
+    {
+      "code": "coding_failed.provider_circuit_open",
+      "domain": "coding_failed",
+      "decision": "denied",
+      "description": "Coding provider call denied because provider circuit breaker is open."
     }
   ]
 }

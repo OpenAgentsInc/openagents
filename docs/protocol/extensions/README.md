@@ -8,6 +8,8 @@ Tool-pack specific specializations:
 
 - `docs/protocol/comms/integration-manifest.schema.v1.json`
 - `docs/protocol/comms/tool-pack-contract.v1.json`
+- `docs/protocol/coding/integration-manifest.schema.v1.json`
+- `docs/protocol/coding/tool-pack-contract.v1.json`
 
 Runtime validation path:
 

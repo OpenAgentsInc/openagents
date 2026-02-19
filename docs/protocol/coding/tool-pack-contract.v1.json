@@ -1,0 +1,66 @@
+{
+  "id": "openagents.coding.tool-pack.v1",
+  "version": "2026-02-19",
+  "tool_pack": "coding.v1",
+  "owner": "openagents-runtime",
+  "tools": [
+    {
+      "tool_name": "coding.github.get_issue",
+      "description": "Fetch a GitHub issue for coding/review context.",
+      "requires_manifest_capability": "get_issue",
+      "input": {
+        "type": "object",
+        "required": ["integration_id", "operation", "repository", "issue_number"],
+        "properties": {
+          "integration_id": { "type": "string" },
+          "operation": { "type": "string", "const": "get_issue" },
+          "repository": { "type": "string" },
+          "issue_number": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    {
+      "tool_name": "coding.github.get_pull_request",
+      "description": "Fetch a GitHub pull request for coding/review context.",
+      "requires_manifest_capability": "get_pull_request",
+      "input": {
+        "type": "object",
+        "required": ["integration_id", "operation", "repository", "pull_number"],
+        "properties": {
+          "integration_id": { "type": "string" },
+          "operation": { "type": "string", "const": "get_pull_request" },
+          "repository": { "type": "string" },
+          "pull_number": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    {
+      "tool_name": "coding.github.add_issue_comment",
+      "description": "Post a comment on a GitHub issue.",
+      "requires_manifest_capability": "add_issue_comment",
+      "input": {
+        "type": "object",
+        "required": ["integration_id", "operation", "repository", "issue_number", "body"],
+        "properties": {
+          "integration_id": { "type": "string" },
+          "operation": { "type": "string", "const": "add_issue_comment" },
+          "repository": { "type": "string" },
+          "issue_number": { "type": "integer", "minimum": 1 },
+          "body": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ],
+  "receipt_requirements": {
+    "required_fields": [
+      "integration_id",
+      "provider",
+      "operation",
+      "state",
+      "reason_code",
+      "decision",
+      "evaluation_hash"
+    ],
+    "reason_taxonomy_ref": "docs/protocol/reasons/runtime-policy-reason-codes.v1.json"
+  }
+}

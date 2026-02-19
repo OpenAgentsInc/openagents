@@ -16,6 +16,20 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistryTest do
     assert "docs/protocol/comms/integration-manifest.schema.v1.json" in manifest["contract_refs"]
   end
 
+  test "validate_for_activation/2 accepts valid coding manifest and attaches contract refs" do
+    assert {:ok, manifest} = ManifestRegistry.validate_for_activation(valid_coding_manifest())
+
+    assert manifest["extension_id"] == "github.primary"
+    assert manifest["integration_id"] == "github.primary"
+
+    assert "docs/protocol/extensions/extension-manifest.schema.v1.json" in manifest[
+             "contract_refs"
+           ]
+
+    assert "docs/protocol/coding/integration-manifest.schema.v1.json" in manifest["contract_refs"]
+    assert "docs/protocol/coding/tool-pack-contract.v1.json" in manifest["contract_refs"]
+  end
+
   test "validate_for_activation/2 rejects unsupported tool packs deterministically" do
     invalid_manifest =
       valid_comms_manifest()
@@ -91,8 +105,9 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistryTest do
     assert parity_metadata.reason_class == "manifest_validation.invalid_schema"
   end
 
-  test "supported_tool_packs/0 includes comms tool pack" do
+  test "supported_tool_packs/0 includes comms and coding tool packs" do
     assert "comms.v1" in ManifestRegistry.supported_tool_packs()
+    assert "coding.v1" in ManifestRegistry.supported_tool_packs()
   end
 
   defp valid_comms_manifest do
@@ -110,6 +125,23 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistryTest do
         "max_send_per_minute" => 120
       },
       "webhook" => %{"verification" => "hmac_sha256", "events" => ["delivered"]}
+    }
+  end
+
+  defp valid_coding_manifest do
+    %{
+      "manifest_version" => "coding.integration.v1",
+      "integration_id" => "github.primary",
+      "provider" => "github",
+      "status" => "active",
+      "tool_pack" => "coding.v1",
+      "capabilities" => ["get_issue", "get_pull_request", "add_issue_comment"],
+      "secrets_ref" => %{"provider" => "laravel", "key_id" => "intsec_github_1"},
+      "policy" => %{
+        "write_operations_mode" => "enforce",
+        "max_requests_per_minute" => 120,
+        "default_repository" => "OpenAgentsInc/openagents"
+      }
     }
   end
 end
