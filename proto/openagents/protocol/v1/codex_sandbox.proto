@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package openagents.protocol.v1;
+
+import "google/protobuf/struct.proto";
+
+enum CodexExecutionMode {
+  CODEX_EXECUTION_MODE_UNSPECIFIED = 0;
+  CODEX_EXECUTION_MODE_DESKTOP = 1;
+  CODEX_EXECUTION_MODE_SANDBOX = 2;
+}
+
+enum CodexSandboxBackend {
+  CODEX_SANDBOX_BACKEND_UNSPECIFIED = 0;
+  CODEX_SANDBOX_BACKEND_CLOUDFLARE_SANDBOX = 1;
+  CODEX_SANDBOX_BACKEND_DAYTONA = 2;
+  CODEX_SANDBOX_BACKEND_OPENAGENTS_GCP = 3;
+}
+
+message CodexSandboxBinding {
+  CodexExecutionMode execution_mode = 1;
+  CodexSandboxBackend sandbox_backend = 2;
+
+  string workspace_ref = 3;
+  string codex_home_ref = 4;
+  string sandbox_session_ref = 5;
+
+  string region = 6;
+  string provider_project_ref = 7;
+  string placement_ref = 8;
+  string adapter = 9;
+
+  google.protobuf.Struct metadata = 10;
+}
