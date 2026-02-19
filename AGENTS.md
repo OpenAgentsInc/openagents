@@ -4,11 +4,46 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 
 ## Map
 
-- Progressive disclosure entry points: `docs/AGENT_MAP.md`, `docs/README.md`
-- Repo map / ownership: `docs/PROJECT_OVERVIEW.md`
-- Priorities: `docs/ROADMAP.md`
-- Vocabulary (terminology authority): `docs/GLOSSARY.md`
-- Architecture decisions (invariants/contracts): `docs/adr/`
+### Core orientation
+
+- Progressive disclosure map: `docs/AGENT_MAP.md`
+- Documentation index: `docs/README.md`
+- Repository map / ownership: `docs/PROJECT_OVERVIEW.md`
+- Priorities and sequencing: `docs/ROADMAP.md`
+- Vocabulary authority: `docs/GLOSSARY.md`
+- Architecture decisions (invariants/contracts): `docs/adr/INDEX.md`
+
+### Contracts (canonical specs)
+
+- Execution artifacts + replay: `docs/execution/README.md`
+- Protocol contracts + reasons + comms: `docs/protocol/README.md`
+- DSE/compiler contracts: `docs/dse/README.md`
+
+### Planning and delivery
+
+- Plans hub (active/completed/template): `docs/plans/README.md`
+- Active plans: `docs/plans/active/`
+- Completed plans: `docs/plans/completed/`
+
+### Product/runtime surfaces
+
+- Core web app: `apps/openagents.com/`
+- Runtime: `apps/openagents-runtime/`
+- Mobile app: `apps/mobile/`
+- Desktop app: `apps/desktop/`
+- Shared packages: `packages/`
+
+### Operations, testing, and audits
+
+- Production-safe E2E flow: `docs/autopilot/testing/PROD_E2E_TESTING.md`
+- Trace retrieval and debugging: `docs/autopilot/testing/TRACE_RETRIEVAL.md`
+- Architecture audits: `docs/audits/README.md`
+
+### Local and research context
+
+- Local notes/runbooks (operator-facing): `docs/local/`
+- Research and references: `docs/research/`, `docs/rlm/`
+- Transcript archives: `docs/transcripts/`
 
 ## Authority (Non-Negotiable)
 
