@@ -30,3 +30,6 @@ config :openagents_runtime, :runtime_signature_secret, "test-runtime-signature-s
 config :openagents_runtime, :agent_process_idle_shutdown_ms, 100
 config :openagents_runtime, :janitor_scan_interval_ms, 60_000
 config :openagents_runtime, :janitor_recovery_cooldown_ms, 0
+config :openagents_runtime, :l1_compaction_interval_ms, 60_000
+config :openagents_runtime, :l1_compaction_batch_size, 1
+config :openagents_runtime, :l1_compaction_min_events, 2

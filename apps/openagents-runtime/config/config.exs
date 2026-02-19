@@ -13,7 +13,10 @@ config :openagents_runtime,
   generators: [timestamp_type: :utc_datetime],
   janitor_scan_interval_ms: 5_000,
   janitor_max_recovery_attempts: 3,
-  janitor_recovery_cooldown_ms: 30_000
+  janitor_recovery_cooldown_ms: 30_000,
+  l1_compaction_interval_ms: 60_000,
+  l1_compaction_batch_size: 3,
+  l1_compaction_min_events: 30
 
 # Configures the endpoint
 config :openagents_runtime, OpenAgentsRuntimeWeb.Endpoint,

@@ -18,6 +18,7 @@ defmodule OpenAgentsRuntime.RuntimeSupervisor do
       {DynamicSupervisor, strategy: :one_for_one, name: OpenAgentsRuntime.AgentSupervisor},
       {Task.Supervisor, name: OpenAgentsRuntime.Tools.TaskSupervisor},
       OpenAgentsRuntime.Runs.EventListener,
+      OpenAgentsRuntime.Memory.CompactionJob,
       OpenAgentsRuntime.Runs.Janitor
     ]
 

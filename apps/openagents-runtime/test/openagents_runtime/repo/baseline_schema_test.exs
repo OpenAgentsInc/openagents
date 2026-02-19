@@ -21,5 +21,8 @@ defmodule OpenAgentsRuntime.Repo.BaselineSchemaTest do
 
     assert {:ok, %{rows: [["runtime.memory_retention_policies"]]}} =
              Repo.query("SELECT to_regclass('runtime.memory_retention_policies')::text")
+
+    assert {:ok, %{rows: [["runtime.memory_compactions"]]}} =
+             Repo.query("SELECT to_regclass('runtime.memory_compactions')::text")
   end
 end
