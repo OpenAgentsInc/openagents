@@ -1,0 +1,22 @@
+[package]
+name = "arrow"
+version.workspace = true
+edition.workspace = true
+description = "Happy path testing for Autopilot"
+license.workspace = true
+
+[[bin]]
+name = "arrow"
+path = "src/main.rs"
+
+[dependencies]
+gpt-oss = { path = "../gpt-oss" }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1.0"
+serde = "1.0"
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio-stream = "0.1.18"
+dsrs = { version = "0.1.0", path = "../dsrs" }

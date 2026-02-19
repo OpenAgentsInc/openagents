@@ -1,0 +1,22 @@
+[package]
+name = "local-inference"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1", features = ["sync"] }
+async-trait = "0.1"
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tokio-stream = "0.1"
+wiremock = "0.6"
+gpt-oss = { path = "../gpt-oss" }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "backend_overhead"
+harness = false

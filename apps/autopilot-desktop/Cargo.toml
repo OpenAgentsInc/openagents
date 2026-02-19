@@ -1,0 +1,53 @@
+[package]
+name = "autopilot-desktop"
+version = "0.0.1"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Native WGPUI desktop app for Autopilot"
+
+[[bin]]
+name = "autopilot-desktop"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }
+wgpu = { workspace = true }
+winit = { workspace = true }
+pollster = { workspace = true }
+futures = { workspace = true }
+autopilot_app = { path = "../../crates/autopilot_app" }
+autopilot_ui = { path = "../../crates/autopilot_ui" }
+autopilot-core = { path = "../../crates/autopilot-core" }
+codex-client = { path = "../../crates/codex-client" }
+serde_json = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+dsrs = { path = "../../crates/dsrs" }
+pylon = { path = "../../crates/pylon" }
+openagents-runtime = { path = "../../crates/runtime", default-features = false }
+openagents-spark = { path = "../../crates/spark" }
+nostr = { path = "../../crates/nostr/core" }
+nostr-client = { path = "../../crates/nostr/client" }
+moltbook = { path = "../../crates/moltbook" }
+clap = { workspace = true }
+rustls = "0.23"
+arboard = "3.4"
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = "5"
+
+[package.metadata.bundle]
+name = "Autopilot"
+identifier = "com.openagents.autopilot"
+icon = ["resources/icon.icns", "resources/icon.png"]
+category = "public.app-category.productivity"
+short_description = "Autopilot desktop app"
+osx_minimum_system_version = "10.15"

@@ -1,0 +1,152 @@
+[package]
+name = "wgpui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "GPU-accelerated UI rendering library"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["web"]
+web = [
+    "wasm-bindgen",
+    "wasm-bindgen-futures",
+    "web-sys",
+    "js-sys",
+    "console_error_panic_hook",
+]
+desktop = ["winit", "pollster"]
+# Optional features - not included in production builds by default
+testing = []  # E2E testing framework (~6,850 lines)
+audio = []    # Bleeps audio system (~1,163 lines)
+
+[dependencies]
+# GPU
+wgpu = { version = "24.0", features = ["webgpu", "webgl"] }
+
+# Layout
+taffy = "0.9"
+
+# Text
+cosmic-text = "0.12"
+
+# Data structures
+bytemuck = { version = "1", features = ["derive"] }
+smallvec = "1"
+slotmap = "1"
+parking_lot = "0.12"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+# Async
+futures = "0.3"
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+# Logging
+log = "0.4"
+
+# Markdown
+pulldown-cmark = "0.12"
+
+# Syntax highlighting (WASM-compatible via fancy-regex)
+syntect = { version = "5.2", default-features = false, features = [
+    "default-fancy",
+    "parsing",
+] }
+
+# Web (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "CssStyleDeclaration",
+    "KeyboardEvent",
+    "MouseEvent",
+    "WheelEvent",
+    "PointerEvent",
+    "ResizeObserver",
+    "ResizeObserverEntry",
+    "ResizeObserverSize",
+    "DomRect",
+    "DomRectReadOnly",
+    "EventTarget",
+    "Performance",
+    "Navigator",
+    "console",
+    "AudioContext",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "GainNode",
+    "HtmlAudioElement",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "Response",
+] }
+js-sys = { version = "0.3", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+# Desktop (optional)
+winit = { version = "0.30", optional = true }
+pollster = { version = "0.4", optional = true }
+derive_more = { version = "2.1.1", features = ["deref", "deref_mut"] }
+web-time = "1.1.0"
+vim = { path = "../vim" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rodio = "0.20"
+reqwest = { workspace = true, features = ["blocking"] }
+# SVG rendering (desktop only - resvg doesn't support WASM)
+resvg = "0.44"
+usvg = "0.44"
+
+[dev-dependencies]
+criterion = "0.5"
+insta = { workspace = true }
+
+[[example]]
+name = "first_light"
+required-features = ["desktop"]
+
+[[example]]
+name = "component_showcase"
+required-features = ["desktop"]
+
+[[example]]
+name = "storybook"
+required-features = ["desktop"]
+
+[[example]]
+name = "ui_pane_demo"
+required-features = ["desktop"]
+
+[[example]]
+name = "pane_sequence"
+required-features = ["desktop"]
+
+[[example]]
+name = "test_viewer"
+required-features = ["desktop", "testing"]
+
+[[example]]
+name = "chat_streaming_test"
+required-features = ["desktop"]
+
+[[example]]
+name = "text_system_demo"
+required-features = ["desktop"]
+
+[[bench]]
+name = "performance"
+harness = false

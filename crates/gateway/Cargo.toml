@@ -1,0 +1,29 @@
+[package]
+name = "gateway"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Gateway abstraction for external AI services"
+
+[features]
+default = []
+dspy = ["rig-core"]
+
+[dependencies]
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+dsrs = { path = "../dsrs" }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rig-core = { git = "https://github.com/0xPlaygrounds/rig", rev = "e7849df", optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

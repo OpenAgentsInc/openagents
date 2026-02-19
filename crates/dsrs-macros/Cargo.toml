@@ -1,0 +1,25 @@
+[package]
+name = "dsrs-macros"
+version.workspace = true
+edition.workspace = true
+authors = ["Herumb Shandilya <herumb@stanford.edu>", "OpenAgents"]
+description = "Derive macros for DSRs (DSPy Rust)"
+license = "Apache-2.0"
+publish.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.143", features = ["preserve_order"] }
+anyhow = "1.0.99"
+schemars = "1.0.4"
+indexmap = "2.11.0"
+
+[dev-dependencies]
+dsrs = { path = "../dsrs" }
+trybuild = "1.0.110"
