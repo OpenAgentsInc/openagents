@@ -493,3 +493,4 @@ Use this checklist in order; do not claim completion without evidence.
 
 - 2026-02-19: Roadmap created as execution companion to ADR-0029 and Convex sync plan.
 - 2026-02-19: Kept architecture authority in existing docs; this file is delivery and sequencing only.
+- 2026-02-19: Master tracker execution issues `#1750` through `#1768` were completed and synchronized in issue `#1769`.
