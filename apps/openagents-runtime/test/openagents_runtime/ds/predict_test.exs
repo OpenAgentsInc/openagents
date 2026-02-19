@@ -1,5 +1,5 @@
 defmodule OpenAgentsRuntime.DS.PredictTest do
-  use ExUnit.Case, async: true
+  use OpenAgentsRuntime.DataCase, async: false
 
   alias OpenAgentsRuntime.DS.Predict
   alias OpenAgentsRuntime.DS.Signatures.Catalog

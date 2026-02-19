@@ -40,9 +40,10 @@ defmodule OpenAgentsRuntime.DS.Predict do
     run_id = Keyword.get(opts, :run_id, @default_run_id)
 
     with {:ok, signature} <- Catalog.fetch(signature_id),
-         strategy <- strategy_id(signature, opts),
-         :ok <- validate_strategy(signature, opts),
-         {:ok, compiled} <- resolve_compiled(signature_id, strategy, opts),
+         base_strategy <- strategy_id(signature, opts),
+         {:ok, compiled} <- resolve_compiled(signature_id, base_strategy, opts),
+         strategy <- resolved_strategy(base_strategy, compiled, opts),
+         :ok <- validate_strategy(strategy),
          :ok <- validate_artifact(signature_id, compiled[:artifact]),
          {:ok, execution} <- execute_strategy(strategy, signature, input, opts) do
       started_at = Keyword.get(opts, :started_at, DateTime.utc_now())
@@ -54,7 +55,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
       params_hash = Receipts.stable_hash(input)
       output_hash = Receipts.stable_hash(output)
       budget = normalize_budget(input, output, Keyword.get(opts, :budget, %{}))
-      policy = normalize_policy(Keyword.get(opts, :policy, %{}))
+      policy = normalize_policy(Keyword.get(opts, :policy, %{}), compiled)
 
       receipt =
         %{
@@ -95,6 +96,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
       {:error, {:artifact_incompatible, _reason} = reason} -> {:error, reason}
       {:error, :invalid_iteration_budget} -> {:error, :invalid_iteration_budget}
       {:error, :invalid_output} -> {:error, :invalid_output}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -105,9 +107,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
       @default_strategy_id
   end
 
-  defp validate_strategy(signature, opts) do
-    strategy = strategy_id(signature, opts)
-
+  defp validate_strategy(strategy) when is_binary(strategy) do
     if strategy in [DirectV1.id(), RlmLiteV1.id()] do
       :ok
     else
@@ -118,27 +118,48 @@ defmodule OpenAgentsRuntime.DS.Predict do
   defp resolve_compiled(signature_id, strategy, opts) do
     case Keyword.fetch(opts, :compiled_id) do
       {:ok, compiled_id} when is_binary(compiled_id) ->
-        {:ok, %{compiled_id: compiled_id, artifact: Keyword.get(opts, :artifact)}}
+        {:ok,
+         %{
+           compiled_id: compiled_id,
+           strategy_id: Keyword.get(opts, :strategy_id) || strategy,
+           artifact: Keyword.get(opts, :artifact),
+           pointer: nil
+         }}
 
       _ ->
-        case PolicyRegistry.active_artifact(signature_id) do
+        case PolicyRegistry.active_artifact(signature_id, opts) do
           {:ok, nil} ->
             {:ok,
              %{
                compiled_id: "catalog:#{signature_id}:#{strategy}",
-               artifact: Keyword.get(opts, :artifact)
+               strategy_id: strategy,
+               artifact: Keyword.get(opts, :artifact),
+               pointer: nil
              }}
 
           {:ok, artifact} when is_map(artifact) ->
+            compiled_id =
+              artifact[:compiled_id] ||
+                artifact["compiled_id"] ||
+                "catalog:#{signature_id}:#{strategy}"
+
+            strategy_id = artifact[:strategy_id] || artifact["strategy_id"] || strategy
+
             {:ok,
              %{
-               compiled_id:
-                 artifact[:compiled_id] ||
-                   artifact["compiled_id"] ||
-                   "catalog:#{signature_id}:#{strategy}",
-               artifact: artifact
+               compiled_id: compiled_id,
+               strategy_id: strategy_id,
+               artifact: Keyword.get(opts, :artifact) || artifact,
+               pointer: artifact
              }}
         end
+    end
+  end
+
+  defp resolved_strategy(base_strategy, compiled, opts) do
+    case Keyword.get(opts, :strategy_id) do
+      strategy when is_binary(strategy) -> strategy
+      _ -> compiled[:strategy_id] || base_strategy
     end
   end
 
@@ -168,13 +189,17 @@ defmodule OpenAgentsRuntime.DS.Predict do
   defp validate_artifact(_signature_id, nil), do: :ok
 
   defp validate_artifact(signature_id, artifact) do
-    case Catalog.validate_artifact(signature_id, artifact) do
-      :ok -> :ok
-      {:error, reason} -> {:error, {:artifact_incompatible, reason}}
+    if hash_fields_present?(artifact) do
+      case Catalog.validate_artifact(signature_id, artifact) do
+        :ok -> :ok
+        {:error, reason} -> {:error, {:artifact_incompatible, reason}}
+      end
+    else
+      :ok
     end
   end
 
-  defp normalize_policy(policy) when is_map(policy) do
+  defp normalize_policy(policy, compiled) when is_map(policy) do
     policy =
       Map.new(policy, fn
         {key, value} when is_atom(key) -> {Atom.to_string(key), value}
@@ -184,9 +209,16 @@ defmodule OpenAgentsRuntime.DS.Predict do
     policy
     |> Map.put_new("decision", @default_policy_decision)
     |> Map.put_new("authorization_mode", "delegated_budget")
+    |> put_compiled_policy(compiled)
   end
 
-  defp normalize_policy(_), do: %{"decision" => @default_policy_decision}
+  defp normalize_policy(_policy, compiled) do
+    %{
+      "decision" => @default_policy_decision,
+      "authorization_mode" => "delegated_budget"
+    }
+    |> put_compiled_policy(compiled)
+  end
 
   defp normalize_budget(input, output, budget) when is_map(budget) do
     default_budget = %{
@@ -215,6 +247,27 @@ defmodule OpenAgentsRuntime.DS.Predict do
     |> byte_size()
     |> div(4)
     |> max(1)
+  end
+
+  defp hash_fields_present?(artifact) when is_map(artifact) do
+    fields = [:schema_hash, :prompt_hash, :program_hash]
+
+    Enum.any?(fields, fn field ->
+      Map.has_key?(artifact, field) or Map.has_key?(artifact, Atom.to_string(field))
+    end)
+  end
+
+  defp hash_fields_present?(_), do: false
+
+  defp put_compiled_policy(policy, compiled) do
+    pointer = compiled[:pointer] || %{}
+
+    policy
+    |> Map.put_new("compiled_id", compiled[:compiled_id])
+    |> Map.put_new("strategy_id", compiled[:strategy_id])
+    |> Map.put_new("artifact_variant", pointer["variant"] || pointer[:variant] || "primary")
+    |> Map.put_new("canary_percent", pointer["canary_percent"] || pointer[:canary_percent] || 0)
+    |> Map.put_new("rollout_bucket", pointer["rollout_bucket"] || pointer[:rollout_bucket])
   end
 
   defp maybe_put(map, _key, nil), do: map
