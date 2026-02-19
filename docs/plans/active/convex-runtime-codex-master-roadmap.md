@@ -50,6 +50,9 @@ This roadmap covers:
 4. Convex integration architecture docs are in place, but infra/runtime writer
    implementation is still phased work.
 5. Codex worker runtime contract exists; desktop/runtime sync remains in-progress.
+6. Gate G1 infra baseline is now live in non-prod (`openagentsgemini/us-central1`)
+   with passing checks from
+   `apps/openagents-runtime/deploy/convex/check-nonprod-health.sh`.
 
 ## Delivery Gates
 

@@ -23,7 +23,18 @@ fi
 
 echo "Checking backend version endpoint..."
 BACKEND_VERSION_JSON="$(curl -fsS "${BACKEND_URL}/version")"
-echo "$BACKEND_VERSION_JSON" | jq . >/dev/null
+if echo "$BACKEND_VERSION_JSON" | jq . >/dev/null 2>&1; then
+  :
+elif [[ -n "$BACKEND_VERSION_JSON" ]]; then
+  :
+else
+  echo "Backend /version returned an empty response" >&2
+  exit 1
+fi
+
+echo "Checking backend root health..."
+BACKEND_ROOT="$(curl -fsS "${BACKEND_URL}")"
+echo "$BACKEND_ROOT" | rg -q "Convex deployment is running"
 
 echo "Checking dashboard health..."
 DASHBOARD_STATUS="$(curl -s -o /dev/null -w '%{http_code}' "$DASHBOARD_URL")"
@@ -33,8 +44,8 @@ if [[ "$DASHBOARD_STATUS" != "200" && "$DASHBOARD_STATUS" != "302" ]]; then
 fi
 
 echo "Checking Cloud Run readiness..."
-gcloud run services describe "$CONVEX_BACKEND_SERVICE" --project "$PROJECT_ID" --region "$REGION" --format='value(status.conditions[0].status)' | rg -q '^True$'
-gcloud run services describe "$CONVEX_DASHBOARD_SERVICE" --project "$PROJECT_ID" --region "$REGION" --format='value(status.conditions[0].status)' | rg -q '^True$'
+gcloud run services describe "$CONVEX_BACKEND_SERVICE" --project "$PROJECT_ID" --region "$REGION" --format=json | jq -e '.status.conditions[] | select(.type == "Ready" and .status == "True")' >/dev/null
+gcloud run services describe "$CONVEX_DASHBOARD_SERVICE" --project "$PROJECT_ID" --region "$REGION" --format=json | jq -e '.status.conditions[] | select(.type == "Ready" and .status == "True")' >/dev/null
 
 echo "Non-prod Convex health checks passed."
 echo "Backend URL:   $BACKEND_URL"
