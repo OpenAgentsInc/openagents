@@ -54,10 +54,25 @@ flowchart LR
 - **openagents.com** (`apps/openagents.com/`): Core web app — Laravel 12, Inertia, React; chat, auth, API; production deploy to Cloud Run.
 - **mobile** (`apps/mobile/`): React Native (Ignite/Expo) mobile surface — prerelease.
 - **desktop** (`apps/desktop/`): Electron shell for Lightning (EP212); wallet/payment execution; Convex + OpenAgents API.
-- **lightning-ops** (`apps/lightning-ops/`): Effect service that turns “what we sell and at what price” into the config that powers our L402 paywall. It reads route and policy state from Convex, compiles deterministic Aperture config (used by the gateway at l402.openagents.com), validates routes and security, and writes deployment intent back to Convex. So: Convex is the source of truth; lightning-ops is the compiler and validator that keeps the live gateway in sync.
+- **lightning-ops** (`apps/lightning-ops/`): Effect service that turns “what we sell and at what price” into the config that powers our L402 paywall. It reads route and policy state from Convex, compiles deterministic Aperture config (used by the gateway at l402.openagents.com), validates routes and security, and writes deployment intent back to Convex. So: for the L402 route/policy plane, Convex is the source of truth and lightning-ops is the compiler/validator that keeps the live gateway in sync.
 - **lightning-wallet-executor** (`apps/lightning-wallet-executor/`): HTTP service that pays Lightning invoices on behalf of agents. When Autopilot or another service needs to pay a bolt (e.g. to call a paid API like sats4ai or our own L402 route), this service holds the sats (via Breez Spark wallet) and exposes `POST /pay-bolt11`: you send an invoice and limits, it pays within policy (allowed hosts, max amount). So: the “agent-owned” wallet in the cloud that enables buyer-side L402 and paid tool calls.
 - **Bitcoin / Lightning nodes**: Our own full Bitcoin node (`bitcoind`) and Lightning node (`lnd`) on GCP VMs. LND uses bitcoind as its chain backend. The L402 gateway (Aperture) uses LND to verify incoming payments; desktop and other flows can use LND for outbound payments. Setup and ops: [docs/plans/active/lightning/GCP_BITCOIND_LND_2VM_PLAN.md](docs/plans/active/lightning/GCP_BITCOIND_LND_2VM_PLAN.md); see also [docs/lightning/README.md](docs/lightning/README.md).
 - **openagents-runtime** (planned): Elixir agent runtime; see [docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md](docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md).
+
+## Runtime + Convex boundary (current direction)
+
+For Codex and cross-client reactive state:
+
+- Runtime + Postgres remain kernel source of truth (runs/events, worker lifecycle, policy/spend, receipts/replay).
+- Convex is projection/sync-only for web/mobile/desktop live read models.
+- Runtime is the single writer into Convex projection docs.
+- Laravel remains auth/session authority and mints Convex client JWTs.
+
+See:
+
+- [docs/plans/active/convex-self-hosting-runtime-sync-plan.md](docs/plans/active/convex-self-hosting-runtime-sync-plan.md)
+- [apps/openagents-runtime/docs/CONVEX_SYNC.md](apps/openagents-runtime/docs/CONVEX_SYNC.md)
+- [docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md](docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md)
 
 **Vision and architecture:** [docs/SYNTHESIS.md](docs/SYNTHESIS.md) (“OpenAgents: The Agentic OS”) is the north-star spec: what OpenAgents is (the OS for the AI agent economy), core primitives (identity, transport, payments, treasury, FX), the wedge→platform path (Autopilot → trajectory/issue moat → Neobank → skills/compute marketplace → Exchange), and a status-tagged stack. It defers to [SYNTHESIS_EXECUTION.md](docs/SYNTHESIS_EXECUTION.md) for what’s wired today and to [GLOSSARY.md](docs/GLOSSARY.md) and [PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) for terminology and protocol details.
 
