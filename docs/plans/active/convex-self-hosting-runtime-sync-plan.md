@@ -183,6 +183,36 @@ For Codex coding agents working against Convex projects:
 5. Self-hosted auth path avoids Convex Auth CLI coupling and uses OpenAgents
    issuer/JWKS as the identity bridge.
 
+### Convex Claim Schema (`oa_convex_claims_v1`)
+
+Laravel token bridge currently emits:
+
+- `iss`: OpenAgents issuer (`OA_CONVEX_TOKEN_ISSUER`)
+- `aud`: Convex audience (`OA_CONVEX_TOKEN_AUDIENCE`)
+- `sub`: `<subject_prefix>:<oa_user_id>`
+- `iat` / `nbf` / `exp`: short-lived validity window
+- `jti`: per-token unique id
+- `oa_user_id`: OpenAgents user id
+- `oa_claims_version`: `oa_convex_claims_v1`
+- optional `scope`: requested scope list
+- optional `oa_workspace_id`: selected workspace context
+- optional `oa_role`: one of `member|admin|owner`
+
+TTL policy (server-enforced):
+
+- target TTL: `OA_CONVEX_TOKEN_TTL_SECONDS`
+- minimum allowed: `OA_CONVEX_TOKEN_MIN_TTL_SECONDS`
+- maximum allowed: `OA_CONVEX_TOKEN_MAX_TTL_SECONDS`
+
+### Client Refresh Flow (Web/Mobile/Desktop)
+
+1. Client calls `POST /api/convex/token` using current OA session/token.
+2. Laravel returns short-lived Convex JWT.
+3. Client initializes Convex with that JWT.
+4. On expiry/reconnect, client requests a fresh token from Laravel.
+5. If OA auth is expired, Laravel returns `401`; client must refresh/re-auth OA
+   first, then request Convex token again.
+
 ## Phase Plan
 
 ### Phase 0: Environment and topology validation

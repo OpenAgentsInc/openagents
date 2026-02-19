@@ -20,10 +20,15 @@ class ConvexTokenController extends Controller
         $validated = $request->validate([
             'scope' => ['nullable', 'array'],
             'scope.*' => ['string', 'max:120'],
+            'workspace_id' => ['nullable', 'string', 'max:120'],
+            'role' => ['nullable', 'string', 'in:member,admin,owner'],
         ]);
 
         try {
-            $token = $issuer->issueForUser($user, $validated['scope'] ?? []);
+            $token = $issuer->issueForUser($user, $validated['scope'] ?? [], [
+                'workspace_id' => $validated['workspace_id'] ?? null,
+                'role' => $validated['role'] ?? null,
+            ]);
         } catch (RuntimeException $exception) {
             return response()->json([
                 'error' => [
