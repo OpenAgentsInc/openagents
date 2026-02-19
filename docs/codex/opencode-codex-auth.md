@@ -1,3 +1,6 @@
+> Status: Reference only.
+> Canonical integration plan: `docs/codex/unified-runtime-desktop-plan.md`.
+
 ## How OpenCode does Codex auth
 
 Codex auth lives in the **built-in plugin** at `packages/opencode/src/plugin/codex.ts`. It’s loaded as an internal plugin (with Copilot) in `packages/opencode/src/plugin/index.ts` and registers **OpenAI** with two OAuth methods and one API-key method.
