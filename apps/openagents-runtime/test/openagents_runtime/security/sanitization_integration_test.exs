@@ -18,6 +18,7 @@ defmodule OpenAgentsRuntime.Security.SanitizationIntegrationTest do
              RunEvents.append_event(run_id, "run.delta", %{
                "authorization" => "Bearer secret",
                "api_key" => "sk-live-abc",
+               "convex_self_hosted_admin_key" => "convex-admin-secret",
                "email" => "user@example.com",
                "safe" => "ok"
              })
@@ -27,6 +28,7 @@ defmodule OpenAgentsRuntime.Security.SanitizationIntegrationTest do
 
     assert payload["authorization"] == "[REDACTED]"
     assert payload["api_key"] == "[REDACTED]"
+    assert payload["convex_self_hosted_admin_key"] == "[REDACTED]"
     assert payload["email"] == "[REDACTED_EMAIL]"
     assert payload["safe"] == "ok"
   end
@@ -111,6 +113,7 @@ defmodule OpenAgentsRuntime.Security.SanitizationIntegrationTest do
         run_id: "run_probe",
         authorization: "Bearer foo.bar.baz",
         api_key: "sk-live-999",
+        admin_key: "convex-admin-secret",
         email: "probe@example.com"
       }
     )
@@ -119,6 +122,7 @@ defmodule OpenAgentsRuntime.Security.SanitizationIntegrationTest do
     assert metadata.run_id == "run_probe"
     assert metadata.authorization == "[REDACTED]"
     assert metadata.api_key == "[REDACTED]"
+    assert metadata.admin_key == "[REDACTED]"
     assert metadata.email == "[REDACTED_EMAIL]"
   end
 

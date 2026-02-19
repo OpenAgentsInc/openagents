@@ -107,7 +107,22 @@ Runtime replay drill:
 apps/openagents-runtime/deploy/convex/run-runtime-replay-drill.sh
 ```
 
+## Security hardening helpers
+
+Security review checklist:
+
+```bash
+apps/openagents-runtime/deploy/convex/run-security-review-checklist.sh
+```
+
+MCP production access gate (default deny):
+
+```bash
+apps/openagents-runtime/deploy/convex/mcp-production-access-gate.sh
+```
+
 Drill evidence/reporting artifacts:
 
 - `apps/openagents-runtime/docs/reports/2026-02-19-convex-runtime-projector-load-chaos-report.md`
 - `apps/openagents-runtime/docs/reports/2026-02-19-convex-g7-backup-restore-replay-rollback-drill.md`
+- `apps/openagents-runtime/docs/reports/2026-02-19-convex-security-review-checklist.md`
