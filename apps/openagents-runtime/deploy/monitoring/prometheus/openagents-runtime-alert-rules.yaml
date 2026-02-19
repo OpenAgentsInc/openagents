@@ -1,0 +1,87 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: openagents-runtime-alert-rules
+  labels:
+    app.kubernetes.io/name: openagents-runtime
+    app.kubernetes.io/component: monitoring
+spec:
+  groups:
+    - name: openagents-runtime.slo
+      rules:
+        - alert: OpenAgentsRuntimeExecutorLatencyP95High
+          expr: quantile_over_time(0.95, openagents_runtime_executor_run_once_duration_ms[10m]) > 5000
+          for: 10m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Runtime executor p95 latency exceeded 5s
+            description: Investigate model/tool provider latency and runtime queue pressure.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#executor-latency
+
+        - alert: OpenAgentsRuntimeHttp5xxRateHigh
+          expr: sum(rate(phoenix_endpoint_stop_duration_count{status_class="5xx"}[5m])) / clamp_min(sum(rate(phoenix_endpoint_stop_duration_count[5m])), 1) > 0.02
+          for: 10m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Runtime 5xx ratio exceeded 2%
+            description: Runtime API failures are elevated; inspect recent error classes and request traces.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#http-5xx-rate
+
+        - alert: OpenAgentsRuntimeStreamDoneRatioLow
+          expr: sum(rate(openagents_runtime_stream_emit_count{event_type="run.finished", outcome="ok"}[10m])) / clamp_min(sum(rate(openagents_runtime_stream_session_count[10m])), 1) < 0.95
+          for: 15m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Stream completion ratio is below 95%
+            description: Stream sessions are not reaching run.finished often enough.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#stream-completion-ratio
+
+        - alert: OpenAgentsRuntimeLeaseStealRateHigh
+          expr: sum(rate(openagents_runtime_lease_operation_count{action="acquire", result="stolen"}[5m])) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Lease steals are elevated
+            description: Excessive lease steals may indicate executor churn or pod instability.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#lease-steal-rate
+
+        - alert: OpenAgentsRuntimeToolFailureSpike
+          expr: sum(rate(openagents_runtime_tool_lifecycle_count{phase="terminal", result=~"failed|timeout"}[5m])) > 0.2
+          for: 10m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Tool failure/timeout rate spiked
+            description: Tool runner terminal failures exceed expected baseline.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#tool-failure-rate
+
+        - alert: OpenAgentsRuntimeCircuitBreakerOpen
+          expr: max(openagents_runtime_provider_breaker_state{state="open"} or vector(0)) > 0
+          for: 5m
+          labels:
+            severity: critical
+            service: openagents-runtime
+          annotations:
+            summary: Provider circuit breaker is open
+            description: One or more model/tool provider breakers are open.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#provider-circuit-breakers
+
+        - alert: OpenAgentsRuntimePolicyDenialAnomaly
+          expr: sum(rate(openagents_runtime_policy_decision_count{decision!="allowed"}[10m])) / clamp_min(sum(rate(openagents_runtime_policy_decision_count[10m])), 1) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Spend/policy denial ratio is above 5%
+            description: Elevated denied or exhausted policy decisions detected.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#policy-denial-ratio

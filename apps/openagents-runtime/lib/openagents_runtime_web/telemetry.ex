@@ -28,6 +28,11 @@ defmodule OpenAgentsRuntimeWeb.Telemetry do
       summary("phoenix.endpoint.stop.duration",
         unit: {:native, :millisecond}
       ),
+      counter("phoenix.endpoint.stop.duration",
+        measurement: fn _measurements -> 1 end,
+        tags: [:status_class],
+        tag_values: &endpoint_tag_values/1
+      ),
       summary("phoenix.router_dispatch.start.system_time",
         tags: [:route],
         unit: {:native, :millisecond}
@@ -90,4 +95,18 @@ defmodule OpenAgentsRuntimeWeb.Telemetry do
       # {OpenAgentsRuntimeWeb, :count_users, []}
     ]
   end
+
+  defp endpoint_tag_values(metadata) do
+    conn = Map.get(metadata, :conn, %{})
+    status = Map.get(conn, :status)
+    status_class = status_class(status)
+
+    %{status_class: status_class}
+  end
+
+  defp status_class(status) when is_integer(status) and status >= 500, do: "5xx"
+  defp status_class(status) when is_integer(status) and status >= 400, do: "4xx"
+  defp status_class(status) when is_integer(status) and status >= 300, do: "3xx"
+  defp status_class(status) when is_integer(status) and status >= 200, do: "2xx"
+  defp status_class(_status), do: "unknown"
 end

@@ -105,7 +105,7 @@ defmodule OpenAgentsRuntime.Runs.LeasesTest do
     assert_receive {:lease_event, measurements, metadata}, 1_000
     assert measurements.count == 1
     assert metadata.action == "acquire"
-    assert metadata.result == "ok"
+    assert metadata.result == "acquired"
     assert metadata.run_id == "run_lease_1"
     assert metadata.lease_owner == "worker-a"
   end

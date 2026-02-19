@@ -24,16 +24,16 @@ defmodule OpenAgentsRuntime.Runs.Leases do
     observed_progress_seq = Keyword.get(opts, :observed_progress_seq, 0)
     lease_expires_at = DateTime.add(now, ttl_seconds, :second)
 
-    result =
+    raw_result =
       Repo.transaction(fn ->
         case lock_lease(run_id) do
           nil ->
-            create_lease(run_id, lease_owner, lease_expires_at, now)
+            {:acquired, create_lease(run_id, lease_owner, lease_expires_at, now)}
 
           %RunLease{} = lease ->
             cond do
               lease.lease_owner == lease_owner ->
-                renew_locked_lease(lease, lease_expires_at, now)
+                {:renewed, renew_locked_lease(lease, lease_expires_at, now)}
 
               DateTime.compare(lease.lease_expires_at, now) == :gt ->
                 Repo.rollback(:lease_held)
@@ -42,16 +42,18 @@ defmodule OpenAgentsRuntime.Runs.Leases do
                 Repo.rollback(:lease_progressed)
 
               true ->
-                steal_locked_lease(lease, lease_owner, lease_expires_at, now)
+                {:stolen, steal_locked_lease(lease, lease_owner, lease_expires_at, now)}
             end
         end
       end)
-      |> normalize_transaction_result()
+
+    result = normalize_transaction_result(raw_result)
 
     emit_lease_operation(:acquire, result, %{
       run_id: run_id,
       lease_owner: lease_owner,
-      observed_progress_seq: observed_progress_seq
+      observed_progress_seq: observed_progress_seq,
+      outcome: lease_result(result, raw_result)
     })
 
     result
@@ -77,7 +79,12 @@ defmodule OpenAgentsRuntime.Runs.Leases do
         {0, _} -> if get(run_id), do: {:error, :not_owner}, else: {:error, :not_found}
       end
 
-    emit_lease_operation(:renew, result, %{run_id: run_id, lease_owner: lease_owner})
+    emit_lease_operation(:renew, result, %{
+      run_id: run_id,
+      lease_owner: lease_owner,
+      outcome: lease_result(result)
+    })
+
     result
   end
 
@@ -104,7 +111,8 @@ defmodule OpenAgentsRuntime.Runs.Leases do
     emit_lease_operation(:mark_progress, result, %{
       run_id: run_id,
       lease_owner: lease_owner,
-      progress_seq: seq
+      progress_seq: seq,
+      outcome: lease_result(result)
     })
 
     result
@@ -170,7 +178,7 @@ defmodule OpenAgentsRuntime.Runs.Leases do
     end
   end
 
-  defp normalize_transaction_result({:ok, %RunLease{} = lease}), do: {:ok, lease}
+  defp normalize_transaction_result({:ok, {_outcome, %RunLease{} = lease}}), do: {:ok, lease}
   defp normalize_transaction_result({:error, :lease_held}), do: {:error, :lease_held}
   defp normalize_transaction_result({:error, :lease_progressed}), do: {:error, :lease_progressed}
 
@@ -188,7 +196,7 @@ defmodule OpenAgentsRuntime.Runs.Leases do
       %{count: 1},
       Map.merge(metadata, %{
         action: action |> to_string(),
-        result: lease_result(result)
+        result: Map.get(metadata, :outcome, lease_result(result))
       })
     )
   end
@@ -201,4 +209,9 @@ defmodule OpenAgentsRuntime.Runs.Leases do
   defp lease_result({:error, :run_not_found}), do: "run_not_found"
   defp lease_result({:error, %Ecto.Changeset{}}), do: "invalid"
   defp lease_result({:error, _}), do: "error"
+
+  defp lease_result({:ok, _}, {:ok, {:acquired, _}}), do: "acquired"
+  defp lease_result({:ok, _}, {:ok, {:renewed, _}}), do: "renewed"
+  defp lease_result({:ok, _}, {:ok, {:stolen, _}}), do: "stolen"
+  defp lease_result(result, _raw_result), do: lease_result(result)
 end

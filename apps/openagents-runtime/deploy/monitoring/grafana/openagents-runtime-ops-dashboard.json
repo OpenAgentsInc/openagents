@@ -1,0 +1,99 @@
+{
+  "id": null,
+  "uid": "openagents-runtime-ops",
+  "title": "OpenAgents Runtime Ops",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Executor p95 Run Duration (ms)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "quantile_over_time(0.95, openagents_runtime_executor_run_once_duration_ms[10m])",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Runtime 5xx Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(rate(phoenix_endpoint_stop_duration_count{status_class=\"5xx\"}[5m])) / clamp_min(sum(rate(phoenix_endpoint_stop_duration_count[5m])), 1)",
+          "legendFormat": "5xx ratio"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Stream Completion Ratio ([DONE]/session)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_stream_emit_count{event_type=\"run.finished\", outcome=\"ok\"}[10m])) / clamp_min(sum(rate(openagents_runtime_stream_session_count[10m])), 1)",
+          "legendFormat": "done ratio"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Lease Steal Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_lease_operation_count{action=\"acquire\", result=\"stolen\"}[5m]))",
+          "legendFormat": "lease steals/s"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Tool Terminal Failures",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_tool_lifecycle_count{phase=\"terminal\", result=~\"failed|timeout\"}[5m]))",
+          "legendFormat": "tool failures/s"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Provider Circuit Breaker Open",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "expr": "max(openagents_runtime_provider_breaker_state{state=\"open\"} or vector(0))",
+          "legendFormat": "open breakers"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Spend/Policy Denial Ratio",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_policy_decision_count{decision!=\"allowed\"}[10m])) / clamp_min(sum(rate(openagents_runtime_policy_decision_count[10m])), 1)",
+          "legendFormat": "policy deny ratio"
+        }
+      ]
+    }
+  ]
+}
