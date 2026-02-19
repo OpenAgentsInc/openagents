@@ -27,11 +27,20 @@ type PageProps = {
     integrations: {
         resend: ResendIntegration;
     };
+    integrationAudit?: {
+        resend?: Array<{
+            action: string;
+            createdAt?: string | null;
+            metadata?: Record<string, string | null>;
+        }>;
+    };
 };
 
 export default function IntegrationsSettings() {
-    const { status, integrations } = usePage<PageProps>().props;
+    const { status, integrations, integrationAudit } =
+        usePage<PageProps>().props;
     const resend = integrations.resend;
+    const resendAudit = integrationAudit?.resend ?? [];
     const capture = usePostHogEvent('settings_integrations');
 
     useEffect(() => {
@@ -175,7 +184,9 @@ export default function IntegrationsSettings() {
                                         <Transition
                                             show={
                                                 recentlySuccessful ||
-                                                status === 'resend-connected'
+                                                status === 'resend-connected' ||
+                                                status === 'resend-rotated' ||
+                                                status === 'resend-updated'
                                             }
                                             enter="transition ease-in-out"
                                             enterFrom="opacity-0"
@@ -183,7 +194,12 @@ export default function IntegrationsSettings() {
                                             leaveTo="opacity-0"
                                         >
                                             <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                                                Saved
+                                                {status === 'resend-rotated'
+                                                    ? 'Key rotated'
+                                                    : status ===
+                                                        'resend-updated'
+                                                      ? 'Integration updated'
+                                                      : 'Saved'}
                                             </p>
                                         </Transition>
                                     </div>
@@ -268,6 +284,37 @@ export default function IntegrationsSettings() {
                                         : 'Connection test queued'}
                                 </p>
                             </Transition>
+                        </div>
+
+                        <div className="mt-6 border-t border-border pt-4">
+                            <h3 className="mb-2 text-sm font-semibold">
+                                Recent lifecycle events
+                            </h3>
+                            {resendAudit.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No events recorded yet.
+                                </p>
+                            ) : (
+                                <ul className="space-y-1 text-sm text-muted-foreground">
+                                    {resendAudit.map((item, index) => (
+                                        <li
+                                            key={`${item.action}-${item.createdAt ?? index}`}
+                                        >
+                                            <span className="font-medium text-foreground">
+                                                {item.action}
+                                            </span>{' '}
+                                            {item.createdAt ? (
+                                                <span>
+                                                    at{' '}
+                                                    {new Date(
+                                                        item.createdAt,
+                                                    ).toLocaleString()}
+                                                </span>
+                                            ) : null}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     </div>
                 </div>

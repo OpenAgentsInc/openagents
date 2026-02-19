@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\UserIntegration;
+use App\Models\UserIntegrationAudit;
+use App\Services\IntegrationSecretLifecycleService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -25,15 +27,25 @@ class IntegrationController extends Controller
             ->where('provider', 'resend')
             ->first();
 
+        $resendAudit = UserIntegrationAudit::query()
+            ->where('user_id', $user->id)
+            ->where('provider', 'resend')
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get();
+
         return Inertia::render('settings/integrations', [
             'status' => $request->session()->get('status'),
             'integrations' => [
                 'resend' => $this->serializeIntegration($resend),
             ],
+            'integrationAudit' => [
+                'resend' => $this->serializeAuditLog($resendAudit),
+            ],
         ]);
     }
 
-    public function upsertResend(Request $request): RedirectResponse
+    public function upsertResend(Request $request, IntegrationSecretLifecycleService $lifecycle): RedirectResponse
     {
         $user = $request->user();
 
@@ -49,30 +61,21 @@ class IntegrationController extends Controller
 
         $apiKey = (string) $validated['resend_api_key'];
 
-        $integration = UserIntegration::query()->firstOrNew([
-            'user_id' => $user->id,
-            'provider' => 'resend',
+        $result = $lifecycle->upsertResend($user, $apiKey, [
+            'sender_email' => $validated['sender_email'] ?? null,
+            'sender_name' => $validated['sender_name'] ?? null,
         ]);
 
-        $integration->fill([
-            'status' => 'active',
-            'encrypted_secret' => $apiKey,
-            'secret_fingerprint' => hash('sha256', $apiKey),
-            'secret_last4' => substr($apiKey, -4),
-            'metadata' => [
-                'sender_email' => $validated['sender_email'] ?? null,
-                'sender_name' => $validated['sender_name'] ?? null,
-            ],
-            'connected_at' => now(),
-            'disconnected_at' => null,
-        ]);
+        $status = match ($result['action']) {
+            'secret_created' => 'resend-connected',
+            'secret_rotated' => 'resend-rotated',
+            default => 'resend-updated',
+        };
 
-        $integration->save();
-
-        return to_route('settings.integrations.edit')->with('status', 'resend-connected');
+        return to_route('settings.integrations.edit')->with('status', $status);
     }
 
-    public function disconnectResend(Request $request): RedirectResponse
+    public function disconnectResend(Request $request, IntegrationSecretLifecycleService $lifecycle): RedirectResponse
     {
         $user = $request->user();
 
@@ -80,26 +83,12 @@ class IntegrationController extends Controller
             abort(401);
         }
 
-        $integration = UserIntegration::query()
-            ->where('user_id', $user->id)
-            ->where('provider', 'resend')
-            ->first();
-
-        if ($integration) {
-            $integration->fill([
-                'status' => 'inactive',
-                'encrypted_secret' => null,
-                'secret_fingerprint' => null,
-                'secret_last4' => null,
-                'disconnected_at' => now(),
-            ]);
-            $integration->save();
-        }
+        $lifecycle->revokeResend($user);
 
         return to_route('settings.integrations.edit')->with('status', 'resend-disconnected');
     }
 
-    public function testResend(Request $request): RedirectResponse
+    public function testResend(Request $request, IntegrationSecretLifecycleService $lifecycle): RedirectResponse
     {
         $user = $request->user();
 
@@ -117,6 +106,8 @@ class IntegrationController extends Controller
                 'resend' => 'Connect an active Resend key before running a test.',
             ]);
         }
+
+        $lifecycle->auditTestRequest($user, $integration);
 
         return to_route('settings.integrations.edit')->with('status', 'resend-test-queued');
     }
@@ -150,5 +141,17 @@ class IntegrationController extends Controller
             'disconnectedAt' => $integration->disconnected_at?->toISOString(),
             'metadata' => $integration->metadata ?? [],
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function serializeAuditLog($audits): array
+    {
+        return $audits->map(fn (UserIntegrationAudit $audit): array => [
+            'action' => (string) $audit->action,
+            'createdAt' => $audit->created_at?->toISOString(),
+            'metadata' => $audit->metadata ?? [],
+        ])->values()->all();
     }
 }
