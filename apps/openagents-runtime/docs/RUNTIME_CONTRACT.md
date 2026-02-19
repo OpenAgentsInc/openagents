@@ -98,6 +98,66 @@ Success (`200`):
 }
 ```
 
+### `POST /internal/v1/comms/delivery-events`
+
+Ingests normalized provider webhook delivery events into runtime canonical storage.
+
+Required fields:
+
+- `event_id`
+- `provider`
+- `delivery_state`
+- `payload`
+
+Request:
+
+```json
+{
+  "event_id": "resend_evt_123",
+  "provider": "resend",
+  "delivery_state": "delivered",
+  "message_id": "email_abc",
+  "integration_id": "resend.primary",
+  "recipient": "user@example.com",
+  "occurred_at": "2026-02-19T18:00:00Z",
+  "reason": null,
+  "payload": {
+    "rawType": "email.delivered"
+  }
+}
+```
+
+Accepted (`202`) for first ingest:
+
+```json
+{
+  "eventId": "resend_evt_123",
+  "status": "accepted",
+  "idempotentReplay": false
+}
+```
+
+Idempotent replay (`200`) for duplicate payload:
+
+```json
+{
+  "eventId": "resend_evt_123",
+  "status": "accepted",
+  "idempotentReplay": true
+}
+```
+
+Conflict (`409`) when `event_id` already exists with a different payload:
+
+```json
+{
+  "error": {
+    "code": "conflict",
+    "message": "event_id payload mismatch for existing webhook event"
+  }
+}
+```
+
 ### `GET /internal/v1/runs/{run_id}/snapshot`
 
 Returns latest run snapshot for a run/thread principal.

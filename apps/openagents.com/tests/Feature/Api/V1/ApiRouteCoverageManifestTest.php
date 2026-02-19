@@ -79,6 +79,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'POST api/payments/send-spark',
         'POST api/shouts',
         'POST api/tokens',
+        'POST api/webhooks/resend',
         'POST api/whispers',
     ];
 

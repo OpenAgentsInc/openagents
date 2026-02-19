@@ -76,6 +76,10 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapterTest do
     assert api_key == "re_scoped_key"
     assert timeout_ms == 10_000
     assert payload["from"] == "noreply@example.com"
+    tags = payload["tags"] || []
+    assert Enum.any?(tags, &(&1["name"] == "user_id" and &1["value"] == "42"))
+    assert Enum.any?(tags, &(&1["name"] == "run_id" and &1["value"] == "run_1"))
+    assert Enum.any?(tags, &(&1["name"] == "tool_call_id" and &1["value"] == "tool_1"))
     assert result["state"] == "sent"
     assert result["message_id"] == "email_from_scoped_secret"
   end

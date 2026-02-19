@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ShoutsController;
 use App\Http\Controllers\Api\TokenController;
+use App\Http\Controllers\Api\Webhooks\ResendWebhookController;
 use App\Http\Controllers\Api\WhispersController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +23,8 @@ Route::get('/shouts/zones', [ShoutsController::class, 'zones']);
 // Staging/automation bootstrap signup (disabled by default via config).
 Route::post('/auth/register', [AuthRegisterController::class, 'store'])
     ->middleware('throttle:30,1');
+
+Route::post('/webhooks/resend', [ResendWebhookController::class, 'store']);
 
 $runtimeSecretFetchPath = ltrim((string) config('runtime.internal.secret_fetch_path', '/api/internal/runtime/integrations/secrets/fetch'), '/');
 if (str_starts_with($runtimeSecretFetchPath, 'api/')) {
