@@ -2,16 +2,25 @@
 
 This document maps the active codebase after the Rust deprecation cleanup.
 
-## Product Surface
+## Product Surfaces
 
 - `apps/openagents.com/`
-  **Core web app.** Laravel 12 + Inertia + React (TypeScript), Laravel AI SDK–backed chat and tools. See `docs/plans/active/laravel-rebuild.md`.
+  **Core web app and control plane.** Laravel 12 + Inertia + React (TypeScript), Laravel AI SDK–backed chat and tools. See `docs/plans/active/laravel-rebuild.md`.
+
+- `apps/openagents-runtime/`
+  **Elixir runtime execution plane.** Long-running run lifecycle, stream-from-log serving, tool orchestration, spend/policy enforcement, DS-Elixir execution, and replay safety.
 
 - `apps/mobile/`
   Mobile app surface.
 
 - `apps/desktop/`
   Desktop Electron surface for local execution boundaries (including Lightning executor workflows).
+
+## Control-Plane and Runtime Boundary
+
+- `apps/openagents.com` owns public APIs, user auth/session, UI, and operator-facing settings.
+- `apps/openagents-runtime` owns internal runtime correctness concerns: execution leases, durable run events, streaming, policy decisions, spend reservation state, and DS strategy execution.
+- Contributor rule: runtime correctness logic belongs in `apps/openagents-runtime`, not Laravel controllers/models.
 
 ## Shared Packages
 
@@ -37,6 +46,18 @@ This document maps the active codebase after the Rust deprecation cleanup.
 
 - `docs/README.md`
   Documentation index and entry points.
+
+- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+  Internal runtime contract (`/internal/v1/*`).
+
+- `apps/openagents-runtime/docs/OPERATIONS.md`
+  Runtime operations and incident runbook.
+
+- `apps/openagents-runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
+  DS-Elixir contract surface and invariants.
+
+- `apps/openagents-runtime/docs/DS_ELIXIR_OPERATIONS.md`
+  DS-Elixir operational workflows and replay procedures.
 
 - `docs/autopilot/`
   Primary operational docs for the web product (production E2E, stream testing, trace retrieval, debugging).
