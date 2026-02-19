@@ -385,9 +385,15 @@ Implementation status (2026-02-19):
   - `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
 - Load/chaos verification report is tracked at:
   - `apps/openagents-runtime/docs/reports/2026-02-19-convex-runtime-projector-load-chaos-report.md`
+- Backup/restore/replay + rollback drill evidence is tracked at:
+  - `apps/openagents-runtime/docs/reports/2026-02-19-convex-g7-backup-restore-replay-rollback-drill.md`
+- Drill automation and staged rollout/on-call runbooks are now in place:
+  - `apps/openagents-runtime/deploy/convex/run-backup-restore-drill.sh`
+  - `apps/openagents-runtime/deploy/convex/run-rollback-drill.sh`
+  - `apps/openagents-runtime/deploy/convex/run-runtime-replay-drill.sh`
+  - `apps/openagents-runtime/deploy/convex/OPERATIONS_RUNBOOK.md`
 - Remaining Phase 8 scope:
-  - production-like backup/restore + rollback drills,
-  - staged cohort rollout execution.
+  - staged cohort rollout execution in production.
 
 Verification:
 
