@@ -24,6 +24,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 
 - Canonical unified plan: `codex/unified-runtime-desktop-plan.md`
 - Convex sync-layer plan: `plans/active/convex-self-hosting-runtime-sync-plan.md`
+- Master execution roadmap: `plans/active/convex-runtime-codex-master-roadmap.md`
 - Codex docs index: `codex/README.md`
 
 ## Contracts (Canonical Specs)
@@ -52,6 +53,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 
 - Laravel web (control plane): `../apps/openagents.com/` — see `plans/active/laravel-rebuild.md`; typically `cd apps/openagents.com && composer run dev`.
 - Elixir runtime (execution): `../apps/openagents-runtime/` — `cd apps/openagents-runtime && mix phx.server`.
+- Local CI policy + hooks: `LOCAL_CI.md`
 - Mobile local dev: `../apps/mobile/README.md`
 - Rust desktop Codex local dev: `../apps/autopilot-desktop/` — typically `cargo run -p autopilot-desktop`.
 - Electron desktop Lightning local dev: `../apps/desktop/README.md`

@@ -19,6 +19,36 @@ Useful commands:
 - `mix runtime.contract.check` (validate `docs/` artifacts against implemented `/internal/v1` routes)
 - `mix ci` (format check + compile warnings-as-errors + contract check + test warnings-as-errors)
 
+## Local Postgres baseline (Gate G0)
+
+Use these commands to verify runtime local DB prerequisites before feature work.
+
+```bash
+pg_isready -h localhost -p 5432
+PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -Atc "select datname from pg_database where datname in ('openagents_runtime_dev','openagents_runtime_test') order by datname;"
+```
+
+Expected:
+
+- `localhost:5432 - accepting connections`
+- `openagents_runtime_dev`
+- `openagents_runtime_test`
+
+Then validate runtime schema + test + contract checks:
+
+```bash
+mix ecto.create
+mix ecto.migrate
+mix test
+mix runtime.contract.check
+```
+
+Expected:
+
+- DB create/migrate are idempotent and complete without errors.
+- Test suite passes.
+- Contract check prints `runtime contract check passed`.
+
 Container build:
 
 - `docker build -t openagents-runtime:dev .`

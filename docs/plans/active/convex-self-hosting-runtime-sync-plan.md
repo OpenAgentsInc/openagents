@@ -4,6 +4,9 @@ Date: 2026-02-19
 Status: Active  
 Owner: Runtime + Web + Mobile + Desktop
 
+Execution companion:
+- `docs/plans/active/convex-runtime-codex-master-roadmap.md`
+
 ## Purpose
 
 Define how OpenAgents should use self-hosted Convex without weakening runtime
