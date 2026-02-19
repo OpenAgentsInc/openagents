@@ -171,6 +171,12 @@ For Codex coding agents working against Convex projects:
 ## Security and Auth
 
 1. Laravel-issued Convex JWTs are short-lived and scoped to OpenAgents user.
+   - Endpoint: `POST /api/convex/token` (auth: `auth:sanctum`).
+   - Required claims:
+     - `iss` (config: `OA_CONVEX_TOKEN_ISSUER`)
+     - `aud` (config: `OA_CONVEX_TOKEN_AUDIENCE`)
+     - `sub` (`<subject_prefix>:<oa_user_id>`)
+     - `iat`, `nbf`, `exp` (TTL via `OA_CONVEX_TOKEN_TTL_SECONDS`)
 2. Convex auth provider uses custom JWT/OIDC config with explicit issuer/audience.
 3. Admin keys are operator secrets only; never issued to end-user clients.
 4. No kernel authority checks rely on Convex-only state.
