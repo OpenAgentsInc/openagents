@@ -6,6 +6,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   import Ecto.Query
 
   alias OpenAgentsRuntime.Repo
+  alias OpenAgentsRuntime.Runs.Cancel
   alias OpenAgentsRuntime.Runs.Frames
   alias OpenAgentsRuntime.Runs.Leases
   alias OpenAgentsRuntime.Runs.Run
@@ -53,39 +54,51 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   end
 
   defp loop(%Run{} = run, lease_owner, lease_ttl_seconds, processed_frames) do
-    if terminal_status?(run.status) do
-      {:ok,
-       %{
-         processed_frames: processed_frames,
-         status: run.status,
-         terminal_reason_class: run.terminal_reason_class
-       }}
-    else
-      case Frames.next_pending_frame(run.run_id, run.last_processed_frame_id || 0) do
-        nil ->
+    cond do
+      terminal_status?(run.status) ->
+        {:ok,
+         %{
+           processed_frames: processed_frames,
+           status: run.status,
+           terminal_reason_class: run.terminal_reason_class
+         }}
+
+      cancel_requested?(run) ->
+        with {:ok, canceled_run} <- transition_to_canceled(run, lease_owner) do
           {:ok,
            %{
              processed_frames: processed_frames,
-             status: run.status,
-             terminal_reason_class: run.terminal_reason_class
+             status: canceled_run.status,
+             terminal_reason_class: canceled_run.terminal_reason_class
            }}
+        end
 
-        %RunFrame{} = frame ->
-          with {:ok, _lease} <-
-                 Leases.renew(run.run_id, lease_owner, ttl_seconds: lease_ttl_seconds),
-               {:ok, next_run, terminal?} <- process_frame(run, frame, lease_owner) do
-            if terminal? do
-              {:ok,
-               %{
-                 processed_frames: processed_frames + 1,
-                 status: next_run.status,
-                 terminal_reason_class: next_run.terminal_reason_class
-               }}
-            else
-              loop(next_run, lease_owner, lease_ttl_seconds, processed_frames + 1)
+      true ->
+        case Frames.next_pending_frame(run.run_id, run.last_processed_frame_id || 0) do
+          nil ->
+            {:ok,
+             %{
+               processed_frames: processed_frames,
+               status: run.status,
+               terminal_reason_class: run.terminal_reason_class
+             }}
+
+          %RunFrame{} = frame ->
+            with {:ok, _lease} <-
+                   Leases.renew(run.run_id, lease_owner, ttl_seconds: lease_ttl_seconds),
+                 {:ok, next_run, terminal?} <- process_frame(run, frame, lease_owner) do
+              if terminal? do
+                {:ok,
+                 %{
+                   processed_frames: processed_frames + 1,
+                   status: next_run.status,
+                   terminal_reason_class: next_run.terminal_reason_class
+                 }}
+              else
+                loop(next_run, lease_owner, lease_ttl_seconds, processed_frames + 1)
+              end
             end
-          end
-      end
+        end
     end
   end
 
@@ -209,6 +222,71 @@ defmodule OpenAgentsRuntime.Runs.Executor do
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp cancel_requested?(%Run{} = run) do
+    run.status == "canceling" or Cancel.cancel_requested?(run.run_id)
+  end
+
+  defp transition_to_canceled(%Run{} = run, lease_owner) do
+    reason = latest_cancel_reason(run.run_id)
+
+    with {:ok, last_seq} <- maybe_append_canceled_finish(run.run_id, reason),
+         {:ok, run} <-
+           persist_terminal(run, %{
+             status: "canceled",
+             terminal_reason_class: "cancel_requested",
+             terminal_reason: reason,
+             terminal_at: DateTime.utc_now()
+           }),
+         {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
+      :ok = OpenAgentsRuntime.Tools.ToolRunner.cancel_run(run.run_id)
+      emit_terminal_telemetry(run.run_id, "canceled", "cancel_requested")
+      {:ok, run}
+    end
+  end
+
+  defp maybe_append_canceled_finish(run_id, reason) do
+    if canceled_finish_exists?(run_id) do
+      {:ok, RunEvents.latest_seq(run_id)}
+    else
+      with {:ok, event} <-
+             RunEvents.append_event(run_id, "run.finished", %{
+               "status" => "canceled",
+               "reason_class" => "cancel_requested",
+               "reason" => reason
+             }) do
+        {:ok, event.seq}
+      end
+    end
+  end
+
+  defp canceled_finish_exists?(run_id) do
+    query =
+      from(event in RunEvent,
+        where:
+          event.run_id == ^run_id and event.event_type == "run.finished" and
+            fragment("?->>'status' = 'canceled'", event.payload),
+        select: 1,
+        limit: 1
+      )
+
+    Repo.exists?(query)
+  end
+
+  defp latest_cancel_reason(run_id) do
+    query =
+      from(event in RunEvent,
+        where: event.run_id == ^run_id and event.event_type == "run.cancel_requested",
+        order_by: [desc: event.seq],
+        select: event.payload,
+        limit: 1
+      )
+
+    case Repo.one(query) do
+      %{"reason" => reason} when is_binary(reason) and reason != "" -> reason
+      _ -> "cancel requested"
+    end
   end
 
   defp frame_already_consumed?(run_id, frame_id) do

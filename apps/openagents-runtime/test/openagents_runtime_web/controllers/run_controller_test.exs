@@ -137,6 +137,43 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
     assert %{"error" => %{"code" => "conflict"}} = json_response(conn, 409)
   end
 
+  test "cancel appends durable cancel event and is idempotent", %{conn: conn} do
+    conn =
+      conn
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
+      |> post(~p"/internal/v1/runs/run_snapshot/cancel", %{
+        "thread_id" => "thread_snapshot",
+        "reason" => "user requested"
+      })
+
+    assert %{
+             "runId" => "run_snapshot",
+             "status" => "canceling",
+             "cancelRequested" => true,
+             "idempotentReplay" => false
+           } = json_response(conn, 202)
+
+    assert Enum.any?(
+             RunEvents.list_after("run_snapshot", 0),
+             &(&1.event_type == "run.cancel_requested")
+           )
+
+    conn =
+      build_conn()
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
+      |> post(~p"/internal/v1/runs/run_snapshot/cancel", %{
+        "thread_id" => "thread_snapshot",
+        "reason" => "user requested"
+      })
+
+    assert %{
+             "runId" => "run_snapshot",
+             "status" => "canceling",
+             "cancelRequested" => true,
+             "idempotentReplay" => true
+           } = json_response(conn, 200)
+  end
+
   test "stream returns SSE events after cursor", %{conn: conn} do
     assert {:ok, _} = RunEvents.append_event("run_snapshot", "run.delta", %{"delta" => "one"})
     assert {:ok, _} = RunEvents.append_event("run_snapshot", "run.delta", %{"delta" => "two"})

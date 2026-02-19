@@ -2,6 +2,7 @@ defmodule OpenAgentsRuntime.Runs.ExecutorTest do
   use OpenAgentsRuntime.DataCase, async: false
 
   alias OpenAgentsRuntime.Repo
+  alias OpenAgentsRuntime.Runs.Cancel
   alias OpenAgentsRuntime.Runs.Executor
   alias OpenAgentsRuntime.Runs.Frames
   alias OpenAgentsRuntime.Runs.Leases
@@ -92,6 +93,56 @@ defmodule OpenAgentsRuntime.Runs.ExecutorTest do
     assert finish_event.event_type == "run.finished"
     assert finish_event.payload["status"] == "failed"
     assert finish_event.payload["reason_class"] == "tool_timeout"
+  end
+
+  test "cancel requested is durable and prevents new work from starting" do
+    run_id = unique_run_id("exec_cancel")
+    insert_run(run_id)
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_1",
+               type: "user_message",
+               payload: %{"text" => "should not run"}
+             })
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_2",
+               type: "complete",
+               payload: %{}
+             })
+
+    assert {:ok, %{idempotent_replay: false, status: "canceling"}} =
+             Cancel.request_cancel(run_id, %{"reason" => "operator cancel"})
+
+    assert {:ok,
+            %{processed_frames: 0, status: "canceled", terminal_reason_class: "cancel_requested"}} =
+             Executor.run_once(run_id, lease_owner: "worker-cancel")
+
+    events = RunEvents.list_after(run_id, 0)
+    assert Enum.any?(events, &(&1.event_type == "run.cancel_requested"))
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.finished" and &1.payload["status"] == "canceled")
+           )
+
+    refute Enum.any?(events, &(&1.event_type == "run.delta"))
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_late",
+               type: "user_message",
+               payload: %{"text" => "late"}
+             })
+
+    assert {:ok,
+            %{processed_frames: 0, status: "canceled", terminal_reason_class: "cancel_requested"}} =
+             Executor.run_once(run_id, lease_owner: "worker-cancel")
+
+    run = Repo.get!(Run, run_id)
+    assert run.status == "canceled"
   end
 
   defp insert_run(run_id) do

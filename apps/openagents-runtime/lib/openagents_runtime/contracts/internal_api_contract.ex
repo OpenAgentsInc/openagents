@@ -40,6 +40,12 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
         %{name: "tail_ms", location: "query", required: false},
         %{name: "Last-Event-ID", location: "header", required: false}
       ]
+    },
+    {"/runs/{run_id}/cancel", "post"} => %{
+      statuses: ~w(200 202 400 401 403 404 500),
+      required_params: [
+        %{name: "run_id", location: "path", required: true}
+      ]
     }
   }
 
@@ -275,6 +281,10 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       |> maybe_push(
         String.contains?(body, "GET /internal/v1/runs/{run_id}/stream"),
         "RUNTIME_CONTRACT.md missing stream endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/runs/{run_id}/cancel"),
+        "RUNTIME_CONTRACT.md missing cancel endpoint section"
       )
       |> maybe_push(
         String.contains?(body, "tail_ms"),

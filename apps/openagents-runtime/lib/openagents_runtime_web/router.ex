@@ -17,5 +17,6 @@ defmodule OpenAgentsRuntimeWeb.Router do
     get "/runs/:run_id/snapshot", RunController, :snapshot
     get "/runs/:run_id/stream", RunController, :stream
     post "/runs/:run_id/frames", RunController, :append_frame
+    post "/runs/:run_id/cancel", RunController, :cancel
   end
 end
