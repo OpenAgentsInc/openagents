@@ -9,12 +9,13 @@ defmodule OpenAgentsRuntime.Runs.EventNotifierTest do
   alias OpenAgentsRuntime.Runs.RunEvents
 
   test "append_event emits pg_notify payload after commit" do
-    run_id = "run_notify_#{System.unique_integer([:positive])}"
+    run_id = unique_id("run_notify")
+    thread_id = unique_id("thread_notify")
 
     Sandbox.unboxed_run(Repo, fn ->
       Repo.insert!(%Run{
         run_id: run_id,
-        thread_id: "thread_notify_1",
+        thread_id: thread_id,
         status: "running",
         owner_user_id: 99,
         latest_seq: 0
@@ -41,12 +42,13 @@ defmodule OpenAgentsRuntime.Runs.EventNotifierTest do
   end
 
   test "listener broadcasts wakeup events to run topic" do
-    run_id = "run_notify_#{System.unique_integer([:positive])}"
+    run_id = unique_id("run_notify")
+    thread_id = unique_id("thread_notify")
 
     Sandbox.unboxed_run(Repo, fn ->
       Repo.insert!(%Run{
         run_id: run_id,
-        thread_id: "thread_notify_1",
+        thread_id: thread_id,
         status: "running",
         owner_user_id: 99,
         latest_seq: 0
@@ -76,5 +78,10 @@ defmodule OpenAgentsRuntime.Runs.EventNotifierTest do
       refute_receive {:notification, ^notifications_pid, _ref, "runtime_run_events", _payload},
                      300
     end)
+  end
+
+  defp unique_id(prefix) do
+    suffix = Ecto.UUID.generate() |> String.replace("-", "")
+    "#{prefix}_#{suffix}"
   end
 end
