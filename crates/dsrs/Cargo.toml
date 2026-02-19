@@ -1,0 +1,54 @@
+[package]
+name = "dsrs"
+version.workspace = true
+edition.workspace = true
+authors = ["Herumb Shandilya <herumb@stanford.edu>", "OpenAgents"]
+description = "A DSPy rewrite (not port) to Rust."
+license = "Apache-2.0"
+publish.workspace = true
+
+[dependencies]
+futures = "0.3.31"
+indexmap = "2.10.0"
+rayon = "1.10.0"
+rstest = "0.25.0"
+schemars = "1.0.4"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["preserve_order"] }
+tokio = { version = "1.46.1", features = ["full"] }
+async-trait = "0.1.83"
+anyhow = "1.0.99"
+bon = "3.7.0"
+dsrs-macros = { path = "../dsrs-macros" }
+csv = { version = "1.3.1" }
+hf-hub = { version = "0.4.3", features = ["tokio"] }
+parquet = { version = "56.1.0" }
+arrow = { version = "56.1.0" }
+regex = "1.11.2"
+reqwest = { version = "0.12.23", features = ["blocking"] }
+kdam = "0.6.3"
+rand = "0.8.5"
+foyer = { version = "0.20.0", features = ["serde"]}
+tempfile = "3.23.0"
+rig-core = { git = "https://github.com/0xPlaygrounds/rig", rev = "e7849df" }
+enum_dispatch = "0.3.13"
+lm-router = { path = "../lm-router" }
+async-openai = { version = "0.32.3", features = ["responses"] }
+
+# Pylon integration (swarm inference via NIP-90)
+nostr = { path = "../nostr/core" }
+nostr-client = { path = "../nostr/client" }
+bip39 = "2.2"
+
+# Protocol layer (job schemas, hashing, verification)
+protocol = { path = "../protocol" }
+uuid = { version = "1.1", features = ["v4"] }
+
+# Codex SDK integration (headless mode, primary)
+codex-client = { workspace = true }
+
+which = "7.0"
+dirs = "5.0"
+tracing.workspace = true
+gpt-oss = { version = "0.1.0", path = "../gpt-oss" }
+chrono.workspace = true

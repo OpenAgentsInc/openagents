@@ -1,0 +1,39 @@
+[package]
+name = "gpt-oss"
+version.workspace = true
+edition.workspace = true
+authors = ["OpenAgents"]
+description = "Rust client for GPT-OSS Responses API"
+license = "CC-0"
+
+[dependencies]
+# Local inference trait
+local-inference = { path = "../local-inference" }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+
+# SSE parsing
+eventsource-stream = "0.2"
+
+openai-harmony = "0.0.8"
+
+# Tracing
+tracing = "0.1"
+dirs = "6.0.0"
+
+[dev-dependencies]
+tokio-test = "0.4"

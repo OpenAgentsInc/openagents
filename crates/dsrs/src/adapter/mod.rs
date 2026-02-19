@@ -1,0 +1,43 @@
+pub mod chat;
+pub mod pylon_sandbox;
+pub mod swarm_dispatch;
+
+pub use chat::*;
+pub use pylon_sandbox::*;
+pub use swarm_dispatch::*;
+
+use crate::callbacks::DspyCallback;
+use crate::{Chat, Example, LM, Message, MetaSignature, Prediction};
+use anyhow::Result;
+use async_trait::async_trait;
+use rig::tool::ToolDyn;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+#[async_trait]
+pub trait Adapter: Send + Sync + 'static {
+    fn format(&self, signature: &dyn MetaSignature, inputs: Example) -> Chat;
+    fn parse_response(
+        &self,
+        signature: &dyn MetaSignature,
+        response: Message,
+    ) -> HashMap<String, Value>;
+    async fn call(
+        &self,
+        lm: Arc<LM>,
+        signature: &dyn MetaSignature,
+        inputs: Example,
+        tools: Vec<Arc<dyn ToolDyn>>,
+    ) -> Result<Prediction>;
+
+    /// Call with streaming callback support.
+    async fn call_streaming(
+        &self,
+        lm: Arc<LM>,
+        signature: &dyn MetaSignature,
+        inputs: Example,
+        tools: Vec<Arc<dyn ToolDyn>>,
+        callback: Option<&dyn DspyCallback>,
+    ) -> Result<Prediction>;
+}

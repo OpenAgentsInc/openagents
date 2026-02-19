@@ -1,0 +1,88 @@
+//! Pylon CLI commands
+
+mod agent;
+mod api;
+mod compute;
+mod doctor;
+mod earnings;
+mod gateway;
+mod infer;
+mod init;
+mod job;
+mod rlm;
+mod start;
+mod status;
+mod stop;
+mod wallet;
+
+use clap::{Parser, Subcommand};
+
+/// Pylon - Local runtime for sovereign AI agents
+#[derive(Parser)]
+#[command(name = "pylon")]
+#[command(about = "Run sovereign agents and earn Bitcoin as a compute provider")]
+pub struct PylonCli {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+/// Available commands
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Initialize pylon identity
+    Init(init::InitArgs),
+    /// Run local HTTP API for completions
+    Api(api::ApiArgs),
+    /// Start the pylon daemon
+    Start(start::StartArgs),
+    /// Stop the pylon daemon
+    Stop(stop::StopArgs),
+    /// Show daemon status
+    Status(status::StatusArgs),
+    /// Run diagnostics
+    Doctor(doctor::DoctorArgs),
+    /// Manage agents (host mode)
+    Agent(agent::AgentArgs),
+    /// View earnings (provider mode)
+    Earnings(earnings::EarningsArgs),
+    /// Run a local inference request
+    Infer(infer::InferArgs),
+    /// Show compute mix (all available compute options)
+    Compute(compute::ComputeArgs),
+    /// Manage wallet (Spark/Lightning)
+    Wallet(wallet::WalletArgs),
+    /// Submit and track NIP-90 jobs (buyer mode)
+    Job(job::JobArgs),
+    /// Run recursive language model queries (RLM)
+    Rlm(rlm::RlmArgs),
+    /// Interact with external AI gateways (Cerebras, etc.)
+    Gateway(gateway::GatewayArgs),
+}
+
+/// Execute a CLI command
+pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
+    let command = cli.command.unwrap_or_else(|| {
+        Commands::Start(start::StartArgs {
+            foreground: true,
+            mode: start::PylonMode::Both,
+            config: None,
+        })
+    });
+
+    match command {
+        Commands::Init(args) => init::run(args).await,
+        Commands::Api(args) => api::run(args).await,
+        Commands::Start(args) => start::run(args).await,
+        Commands::Stop(args) => stop::run(args).await,
+        Commands::Status(args) => status::run(args).await,
+        Commands::Doctor(args) => doctor::run(args).await,
+        Commands::Agent(args) => agent::run(args).await,
+        Commands::Earnings(args) => earnings::run(args).await,
+        Commands::Infer(args) => infer::run(args).await,
+        Commands::Compute(args) => compute::run(args).await,
+        Commands::Wallet(args) => wallet::run(args).await,
+        Commands::Job(args) => job::run(args).await,
+        Commands::Rlm(args) => rlm::run(args).await,
+        Commands::Gateway(args) => gateway::run(args).await,
+    }
+}

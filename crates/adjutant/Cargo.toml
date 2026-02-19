@@ -1,0 +1,67 @@
+[package]
+name = "adjutant"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Adjutant - The agent that does the work"
+
+[lib]
+name = "adjutant"
+path = "src/lib.rs"
+
+[[bin]]
+name = "autopilot-cli"
+path = "src/bin/main.rs"
+
+[dependencies]
+# CLI
+clap = { workspace = true }
+# OpenAgents internal crates
+codex-client = { workspace = true }
+rlm = { path = "../rlm" }
+issues = { path = "../issues" }
+gateway = { path = "../gateway" }
+dsrs = { path = "../dsrs" }
+dsrs-macros = { path = "../dsrs-macros" }
+protocol = { path = "../protocol" }
+
+# Discovery dependencies (formerly in oanix)
+sysinfo = "0.33"
+serde_yaml = "0.9"
+
+# Builder pattern
+bon = "3"
+indexmap = "2"
+
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+agent-client-protocol-schema = { version = "0.10" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono.workspace = true
+uuid = { workspace = true }
+
+# File operations
+walkdir = { workspace = true }
+glob = "0.3"
+
+# Process execution
+which = "8.0"
+dirs = "5.0"
+ctrlc = "3.4"
+
+# Async utilities
+futures = "0.3"
+reqwest = { workspace = true, features = ["stream", "json"] }
+gpt-oss = { version = "0.1.0", path = "../gpt-oss" }
+autopilot-core = { version = "0.1.0", path = "../autopilot-core" }
+regex = "1.12.2"
+
+[dev-dependencies]
+tempfile = { workspace = true }

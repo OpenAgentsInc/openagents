@@ -1,0 +1,39 @@
+[package]
+name = "agent"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Sovereign agent spawning, lifecycle, and registry"
+
+[dependencies]
+# OpenAgents crates
+openagents-runtime = { path = "../runtime", default-features = false }
+nostr = { path = "../nostr/core" }
+nostr-client = { path = "../nostr/client" }
+openagents-spark = { path = "../spark" }
+
+# Async
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+# Crypto
+bip39 = "2"
+hex = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+dirs = "5.0"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

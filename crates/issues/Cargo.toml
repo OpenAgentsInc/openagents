@@ -1,0 +1,47 @@
+[package]
+name = "issues"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Local issue tracking with SQLite"
+
+[dependencies]
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml = "0.9"
+
+# Time
+chrono.workspace = true
+
+# IDs
+uuid.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+openagents-utils = { path = "../openagents-utils" }
+
+[dev-dependencies]
+criterion = "0.8.1"
+proptest = "1.9.0"
+tempfile.workspace = true
+
+[[bench]]
+name = "database_operations"
+harness = false
+
+[[bench]]
+name = "validation"
+harness = false
+
+[lints]
+workspace = true

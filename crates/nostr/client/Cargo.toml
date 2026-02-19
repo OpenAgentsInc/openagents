@@ -1,0 +1,52 @@
+[package]
+name = "nostr-client"
+version.workspace = true
+edition.workspace = true
+authors = ["OpenAgents"]
+license = "MIT"
+description = "Nostr protocol client implementation"
+repository = "https://github.com/OpenAgentsInc/openagents"
+
+[dependencies]
+# Nostr core
+nostr = { path = "../core" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+
+# URL parsing
+url = "2"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Random (for tests)
+rand = "0.8"
+openagents-utils = { path = "../../openagents-utils" }
+hex.workspace = true
+
+[dev-dependencies]
+tokio-test = "0.4"
+tracing-subscriber = "0.3"
+criterion = "0.8.1"
+openagents-spark = { path = "../../spark" }
+
+[[bench]]
+name = "relay_performance"
+harness = false
+
+[features]
+default = ["full"]
+full = ["nostr/full"]
