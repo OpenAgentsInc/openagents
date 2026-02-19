@@ -9,6 +9,8 @@ defmodule OpenAgentsRuntime.Spend.Reservations do
   alias OpenAgentsRuntime.Spend.SpendAuthorization
   alias OpenAgentsRuntime.Spend.SpendReservation
 
+  @retry_classes MapSet.new(SpendReservation.retry_classes())
+
   @type op_result :: %{
           reservation: SpendReservation.t(),
           authorization: SpendAuthorization.t(),
@@ -18,10 +20,13 @@ defmodule OpenAgentsRuntime.Spend.Reservations do
   @spec reserve(String.t(), String.t(), String.t(), pos_integer(), keyword()) ::
           {:ok, op_result()}
           | {:error,
-             :authorization_not_found
+             :already_finalized
+             | :authorization_not_found
+             | :invalid_retry_class
              | :idempotency_conflict
              | :invalid_amount
-             | :over_budget}
+             | :over_budget
+             | :reconcile_required}
   def reserve(authorization_id, run_id, tool_call_id, amount_sats, opts \\ [])
 
   def reserve(authorization_id, run_id, tool_call_id, amount_sats, opts)
@@ -29,38 +34,75 @@ defmodule OpenAgentsRuntime.Spend.Reservations do
     if is_integer(amount_sats) and amount_sats > 0 do
       now = Keyword.get(opts, :now, DateTime.utc_now())
       metadata = normalize_map(Keyword.get(opts, :metadata, %{}))
+      retry_class = normalize_retry_class(Keyword.get(opts, :retry_class, "safe_retry"))
 
-      Repo.transaction(fn ->
-        authorization = lock_authorization!(authorization_id)
+      provider_idempotency_key =
+        normalize_optional_string(Keyword.get(opts, :provider_idempotency_key))
 
-        case lock_reservation(authorization_id, run_id, tool_call_id) do
-          %SpendReservation{} = reservation ->
-            ensure_amount_matches!(reservation, amount_sats)
-            %{reservation: reservation, authorization: authorization, idempotent_replay: true}
+      if MapSet.member?(@retry_classes, retry_class) do
+        Repo.transaction(fn ->
+          authorization = lock_authorization!(authorization_id)
 
-          nil ->
-            ensure_budget!(authorization, amount_sats)
+          case lock_reservation(authorization_id, run_id, tool_call_id) do
+            %SpendReservation{} = reservation ->
+              ensure_amount_matches!(reservation, amount_sats)
 
-            reservation =
-              insert_reservation!(%{
-                authorization_id: authorization_id,
-                run_id: run_id,
-                tool_call_id: tool_call_id,
-                amount_sats: amount_sats,
-                state: "reserved",
-                metadata: metadata,
-                reserved_at: now
-              })
+              case reservation.state do
+                "reserved" ->
+                  %{
+                    reservation: reservation,
+                    authorization: authorization,
+                    idempotent_replay: true
+                  }
 
-            authorization =
-              update_authorization!(authorization, %{
-                reserved_sats: normalize_int(authorization.reserved_sats) + amount_sats
-              })
+                "reconcile_required" when retry_class == "dedupe_reconcile_required" ->
+                  Repo.rollback(:reconcile_required)
 
-            %{reservation: reservation, authorization: authorization, idempotent_replay: false}
-        end
-      end)
-      |> unwrap_transaction()
+                "reconcile_required" ->
+                  %{
+                    reservation: reservation,
+                    authorization: authorization,
+                    idempotent_replay: true
+                  }
+
+                "committed" ->
+                  Repo.rollback(:already_finalized)
+
+                "released" ->
+                  Repo.rollback(:already_finalized)
+
+                _ ->
+                  Repo.rollback(:invalid_transition)
+              end
+
+            nil ->
+              ensure_budget!(authorization, amount_sats)
+
+              reservation =
+                insert_reservation!(%{
+                  authorization_id: authorization_id,
+                  run_id: run_id,
+                  tool_call_id: tool_call_id,
+                  amount_sats: amount_sats,
+                  state: "reserved",
+                  retry_class: retry_class,
+                  metadata: metadata,
+                  provider_idempotency_key: provider_idempotency_key,
+                  reserved_at: now
+                })
+
+              authorization =
+                update_authorization!(authorization, %{
+                  reserved_sats: normalize_int(authorization.reserved_sats) + amount_sats
+                })
+
+              %{reservation: reservation, authorization: authorization, idempotent_replay: false}
+          end
+        end)
+        |> unwrap_transaction()
+      else
+        {:error, :invalid_retry_class}
+      end
     else
       {:error, :invalid_amount}
     end
@@ -402,4 +444,20 @@ defmodule OpenAgentsRuntime.Spend.Reservations do
 
   defp normalize_int(value) when is_integer(value) and value >= 0, do: value
   defp normalize_int(_), do: 0
+
+  defp normalize_retry_class(value) when is_binary(value), do: String.trim(value)
+
+  defp normalize_retry_class(value) when is_atom(value),
+    do: value |> Atom.to_string() |> String.trim()
+
+  defp normalize_retry_class(_), do: "safe_retry"
+
+  defp normalize_optional_string(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      normalized -> normalized
+    end
+  end
+
+  defp normalize_optional_string(_), do: nil
 end

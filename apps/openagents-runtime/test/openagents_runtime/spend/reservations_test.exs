@@ -133,6 +133,51 @@ defmodule OpenAgentsRuntime.Spend.ReservationsTest do
              Reservations.reserve(auth_id, run_id, "tool_conflict", 30)
   end
 
+  test "dedupe_reconcile_required blocks retries until reconciliation", ctx do
+    auth_id = ctx.authorization.authorization_id
+    run_id = ctx.run_id
+
+    assert {:ok, _} =
+             Reservations.reserve(auth_id, run_id, "tool_reconcile", 15,
+               retry_class: "dedupe_reconcile_required",
+               provider_idempotency_key: "idem-reconcile-1"
+             )
+
+    assert {:ok, _} =
+             Reservations.mark_reconcile_required(auth_id, run_id, "tool_reconcile",
+               failure_reason: "timeout"
+             )
+
+    assert {:error, :reconcile_required} =
+             Reservations.reserve(auth_id, run_id, "tool_reconcile", 15,
+               retry_class: "dedupe_reconcile_required",
+               provider_idempotency_key: "idem-reconcile-1"
+             )
+  end
+
+  test "already finalized reservations cannot be reserved again", ctx do
+    auth_id = ctx.authorization.authorization_id
+    run_id = ctx.run_id
+
+    assert {:ok, _} =
+             Reservations.reserve(auth_id, run_id, "tool_finalized", 10,
+               retry_class: "safe_retry",
+               provider_idempotency_key: "idem-finalized-1"
+             )
+
+    assert {:ok, _} =
+             Reservations.commit(auth_id, run_id, "tool_finalized",
+               provider_correlation_id: "corr-finalized-1",
+               provider_idempotency_key: "idem-finalized-1"
+             )
+
+    assert {:error, :already_finalized} =
+             Reservations.reserve(auth_id, run_id, "tool_finalized", 10,
+               retry_class: "safe_retry",
+               provider_idempotency_key: "idem-finalized-1"
+             )
+  end
+
   defp insert_authorization!(attrs) do
     payload =
       Map.merge(
