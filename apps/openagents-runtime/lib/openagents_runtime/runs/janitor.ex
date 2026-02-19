@@ -14,6 +14,7 @@ defmodule OpenAgentsRuntime.Runs.Janitor do
   alias OpenAgentsRuntime.Runs.RunEvent
   alias OpenAgentsRuntime.Runs.RunEvents
   alias OpenAgentsRuntime.Runs.RunLease
+  alias OpenAgentsRuntime.Telemetry.Events
 
   @default_scan_interval_ms 5_000
   @default_max_recovery_attempts 3
@@ -42,10 +43,14 @@ defmodule OpenAgentsRuntime.Runs.Janitor do
   def run_once(opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
-    do_reconcile(now,
-      max_recovery_attempts: Keyword.get(opts, :max_recovery_attempts, max_recovery_attempts()),
-      recovery_cooldown_ms: Keyword.get(opts, :recovery_cooldown_ms, recovery_cooldown_ms())
-    )
+    summary =
+      do_reconcile(now,
+        max_recovery_attempts: Keyword.get(opts, :max_recovery_attempts, max_recovery_attempts()),
+        recovery_cooldown_ms: Keyword.get(opts, :recovery_cooldown_ms, recovery_cooldown_ms())
+      )
+
+    emit_cycle_telemetry(summary)
+    summary
   end
 
   @impl true
@@ -140,7 +145,7 @@ defmodule OpenAgentsRuntime.Runs.Janitor do
         last_recovery_at: now
       })
 
-    :telemetry.execute(
+    Events.emit(
       [:openagents_runtime, :janitor, :failed],
       %{count: 1},
       %{run_id: run.run_id, reason_class: @failure_reason_class}
@@ -178,7 +183,7 @@ defmodule OpenAgentsRuntime.Runs.Janitor do
   defp resume_run(run) do
     with {:ok, _pid} <- AgentSupervisor.ensure_agent(run.run_id),
          :ok <- AgentProcess.resume(run.run_id) do
-      :telemetry.execute(
+      Events.emit(
         [:openagents_runtime, :janitor, :resumed],
         %{count: 1},
         %{run_id: run.run_id}
@@ -224,6 +229,20 @@ defmodule OpenAgentsRuntime.Runs.Janitor do
       :openagents_runtime,
       :janitor_recovery_cooldown_ms,
       @default_recovery_cooldown_ms
+    )
+  end
+
+  defp emit_cycle_telemetry(summary) do
+    Events.emit(
+      [:openagents_runtime, :janitor, :cycle],
+      %{
+        count: 1,
+        scanned: summary.scanned,
+        resumed: summary.resumed,
+        failed: summary.failed,
+        skipped: summary.skipped
+      },
+      %{}
     )
   end
 end

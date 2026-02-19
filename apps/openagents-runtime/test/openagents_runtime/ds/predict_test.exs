@@ -138,4 +138,46 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
     assert result.trace["trace_ref"] == result.receipt.trace_ref
     assert result.output["confidence"] >= 0.45
   end
+
+  test "run/3 emits policy decision telemetry with budget counters" do
+    handler_id = "policy-decision-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:openagents_runtime, :policy, :decision],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:policy_decision, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert {:ok, _result} =
+             Predict.run(
+               @signature_id,
+               %{"messages" => [%{"role" => "user", "content" => "hello"}]},
+               run_id: "run_policy_001",
+               policy: %{
+                 authorization_mode: "delegated_budget",
+                 decision: "allowed",
+                 settlement_boundary: true,
+                 authorization_id: "auth_policy_1"
+               },
+               budget: %{spent_sats: 9, reserved_sats: 2, remaining_sats: 89}
+             )
+
+    assert_receive {:policy_decision, measurements, metadata}, 1_000
+    assert measurements.count == 1
+    assert measurements.spent_sats == 9
+    assert measurements.reserved_sats == 2
+    assert measurements.remaining_sats == 89
+    assert metadata.run_id == "run_policy_001"
+    assert metadata.signature_id == @signature_id
+    assert metadata.decision == "allowed"
+    assert metadata.authorization_mode == "delegated_budget"
+    assert metadata.settlement_boundary == "true"
+    assert metadata.authorization_id == "auth_policy_1"
+  end
 end

@@ -9,6 +9,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
   alias OpenAgentsRuntime.DS.Signatures.Catalog
   alias OpenAgentsRuntime.DS.Strategies.DirectV1
   alias OpenAgentsRuntime.DS.Strategies.RlmLiteV1
+  alias OpenAgentsRuntime.Telemetry.Events
 
   @default_run_id "runtime_predict"
   @default_strategy_id "direct.v1"
@@ -65,6 +66,8 @@ defmodule OpenAgentsRuntime.DS.Predict do
           budget,
           Keyword.get(opts, :policy_context, %{})
         )
+
+      emit_policy_decision_telemetry(run_id, signature_id, policy, budget)
 
       receipt =
         %{
@@ -287,4 +290,39 @@ defmodule OpenAgentsRuntime.DS.Predict do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp emit_policy_decision_telemetry(run_id, signature_id, policy, budget) do
+    decision = Map.get(policy, "decision", @default_policy_decision)
+    authorization_mode = Map.get(policy, "authorization_mode", "delegated_budget")
+    settlement_boundary = truthy?(Map.get(policy, "settlement_boundary", false))
+
+    Events.emit(
+      [:openagents_runtime, :policy, :decision],
+      %{
+        count: 1,
+        spent_sats: budget_number(budget, "spent_sats"),
+        reserved_sats: budget_number(budget, "reserved_sats"),
+        remaining_sats: budget_number(budget, "remaining_sats")
+      },
+      %{
+        run_id: run_id,
+        signature_id: signature_id,
+        decision: decision,
+        authorization_mode: authorization_mode,
+        settlement_boundary: if(settlement_boundary, do: "true", else: "false"),
+        authorization_id: Map.get(policy, "authorization_id")
+      }
+    )
+  end
+
+  defp budget_number(budget, key) do
+    case Map.get(budget, key) do
+      value when is_integer(value) -> value
+      value when is_float(value) -> value
+      _ -> 0
+    end
+  end
+
+  defp truthy?(value) when value in [true, "true", 1, "1"], do: true
+  defp truthy?(_), do: false
 end

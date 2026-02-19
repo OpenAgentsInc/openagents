@@ -81,4 +81,32 @@ defmodule OpenAgentsRuntime.Runs.LeasesTest do
     assert {:error, :not_owner} = Leases.renew("run_lease_1", "worker-b")
     assert {:error, :not_owner} = Leases.mark_progress("run_lease_1", "worker-b", 1)
   end
+
+  test "emits lease telemetry with low-cardinality action/result tags" do
+    handler_id = "lease-telemetry-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:openagents_runtime, :lease, :operation],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:lease_event, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    now = DateTime.utc_now()
+
+    assert {:ok, _lease} =
+             Leases.acquire("run_lease_1", "worker-a", now: now, ttl_seconds: 20)
+
+    assert_receive {:lease_event, measurements, metadata}, 1_000
+    assert measurements.count == 1
+    assert metadata.action == "acquire"
+    assert metadata.result == "ok"
+    assert metadata.run_id == "run_lease_1"
+    assert metadata.lease_owner == "worker-a"
+  end
 end

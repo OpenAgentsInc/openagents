@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Runs.Leases do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.RunLease
+  alias OpenAgentsRuntime.Telemetry.Events
 
   @type acquire_error :: :run_not_found | :lease_held | :lease_progressed | Ecto.Changeset.t()
   @type acquire_opts ::
@@ -23,28 +24,37 @@ defmodule OpenAgentsRuntime.Runs.Leases do
     observed_progress_seq = Keyword.get(opts, :observed_progress_seq, 0)
     lease_expires_at = DateTime.add(now, ttl_seconds, :second)
 
-    Repo.transaction(fn ->
-      case lock_lease(run_id) do
-        nil ->
-          create_lease(run_id, lease_owner, lease_expires_at, now)
+    result =
+      Repo.transaction(fn ->
+        case lock_lease(run_id) do
+          nil ->
+            create_lease(run_id, lease_owner, lease_expires_at, now)
 
-        %RunLease{} = lease ->
-          cond do
-            lease.lease_owner == lease_owner ->
-              renew_locked_lease(lease, lease_expires_at, now)
+          %RunLease{} = lease ->
+            cond do
+              lease.lease_owner == lease_owner ->
+                renew_locked_lease(lease, lease_expires_at, now)
 
-            DateTime.compare(lease.lease_expires_at, now) == :gt ->
-              Repo.rollback(:lease_held)
+              DateTime.compare(lease.lease_expires_at, now) == :gt ->
+                Repo.rollback(:lease_held)
 
-            lease.last_progress_seq > observed_progress_seq ->
-              Repo.rollback(:lease_progressed)
+              lease.last_progress_seq > observed_progress_seq ->
+                Repo.rollback(:lease_progressed)
 
-            true ->
-              steal_locked_lease(lease, lease_owner, lease_expires_at, now)
-          end
-      end
-    end)
-    |> normalize_transaction_result()
+              true ->
+                steal_locked_lease(lease, lease_owner, lease_expires_at, now)
+            end
+        end
+      end)
+      |> normalize_transaction_result()
+
+    emit_lease_operation(:acquire, result, %{
+      run_id: run_id,
+      lease_owner: lease_owner,
+      observed_progress_seq: observed_progress_seq
+    })
+
+    result
   end
 
   @spec renew(String.t(), String.t(), keyword()) ::
@@ -61,10 +71,14 @@ defmodule OpenAgentsRuntime.Runs.Leases do
         select: lease
       )
 
-    case Repo.update_all(query, []) do
-      {1, [%RunLease{} = lease]} -> {:ok, lease}
-      {0, _} -> if get(run_id), do: {:error, :not_owner}, else: {:error, :not_found}
-    end
+    result =
+      case Repo.update_all(query, []) do
+        {1, [%RunLease{} = lease]} -> {:ok, lease}
+        {0, _} -> if get(run_id), do: {:error, :not_owner}, else: {:error, :not_found}
+      end
+
+    emit_lease_operation(:renew, result, %{run_id: run_id, lease_owner: lease_owner})
+    result
   end
 
   @spec mark_progress(String.t(), String.t(), non_neg_integer()) ::
@@ -81,10 +95,19 @@ defmodule OpenAgentsRuntime.Runs.Leases do
         select: lease
       )
 
-    case Repo.update_all(query, []) do
-      {1, [%RunLease{} = lease]} -> {:ok, lease}
-      {0, _} -> if get(run_id), do: {:error, :not_owner}, else: {:error, :not_found}
-    end
+    result =
+      case Repo.update_all(query, []) do
+        {1, [%RunLease{} = lease]} -> {:ok, lease}
+        {0, _} -> if get(run_id), do: {:error, :not_owner}, else: {:error, :not_found}
+      end
+
+    emit_lease_operation(:mark_progress, result, %{
+      run_id: run_id,
+      lease_owner: lease_owner,
+      progress_seq: seq
+    })
+
+    result
   end
 
   @spec get(String.t()) :: RunLease.t() | nil
@@ -158,4 +181,24 @@ defmodule OpenAgentsRuntime.Runs.Leases do
     do: {:error, :run_not_found}
 
   defp normalize_transaction_result({:error, _}), do: {:error, :run_not_found}
+
+  defp emit_lease_operation(action, result, metadata) do
+    Events.emit(
+      [:openagents_runtime, :lease, :operation],
+      %{count: 1},
+      Map.merge(metadata, %{
+        action: action |> to_string(),
+        result: lease_result(result)
+      })
+    )
+  end
+
+  defp lease_result({:ok, _}), do: "ok"
+  defp lease_result({:error, :lease_held}), do: "lease_held"
+  defp lease_result({:error, :lease_progressed}), do: "lease_progressed"
+  defp lease_result({:error, :not_owner}), do: "not_owner"
+  defp lease_result({:error, :not_found}), do: "not_found"
+  defp lease_result({:error, :run_not_found}), do: "run_not_found"
+  defp lease_result({:error, %Ecto.Changeset{}}), do: "invalid"
+  defp lease_result({:error, _}), do: "error"
 end
