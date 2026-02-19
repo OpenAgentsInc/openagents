@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Models\CommsDeliveryProjection;
 use App\Models\UserIntegration;
 use App\Models\UserIntegrationAudit;
 use App\Services\IntegrationSecretLifecycleService;
@@ -34,6 +35,13 @@ class IntegrationController extends Controller
             ->limit(10)
             ->get();
 
+        $resendProjection = CommsDeliveryProjection::query()
+            ->where('user_id', $user->id)
+            ->where('provider', 'resend')
+            ->orderByDesc('last_event_at')
+            ->orderByDesc('id')
+            ->first();
+
         return Inertia::render('settings/integrations', [
             'status' => $request->session()->get('status'),
             'integrations' => [
@@ -41,6 +49,9 @@ class IntegrationController extends Controller
             ],
             'integrationAudit' => [
                 'resend' => $this->serializeAuditLog($resendAudit),
+            ],
+            'deliveryProjection' => [
+                'resend' => $this->serializeDeliveryProjection($resendProjection),
             ],
         ]);
     }
@@ -153,5 +164,26 @@ class IntegrationController extends Controller
             'createdAt' => $audit->created_at?->toISOString(),
             'metadata' => $audit->metadata ?? [],
         ])->values()->all();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function serializeDeliveryProjection(?CommsDeliveryProjection $projection): ?array
+    {
+        if (! $projection) {
+            return null;
+        }
+
+        return [
+            'provider' => (string) $projection->provider,
+            'integrationId' => (string) $projection->integration_id,
+            'lastState' => $projection->last_state,
+            'lastEventAt' => $projection->last_event_at?->toISOString(),
+            'lastMessageId' => $projection->last_message_id,
+            'lastRecipient' => $projection->last_recipient,
+            'runtimeEventId' => $projection->runtime_event_id,
+            'source' => (string) $projection->source,
+        ];
     }
 }

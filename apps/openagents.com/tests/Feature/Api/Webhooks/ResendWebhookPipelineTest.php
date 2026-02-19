@@ -1,9 +1,11 @@
 <?php
 
 use App\Jobs\ForwardResendWebhookToRuntime;
+use App\Models\CommsDeliveryProjection;
 use App\Models\User;
 use App\Models\UserIntegration;
 use App\Models\UserIntegrationAudit;
+use App\Services\CommsDeliveryProjectionProjector;
 use App\Support\Comms\RuntimeCommsDeliveryForwarder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -150,15 +152,16 @@ test('forward job retries after runtime failure and updates projection on succes
         ->push(['eventId' => 'evt_projection', 'status' => 'accepted', 'idempotentReplay' => false], 202);
 
     $forwarder = app(RuntimeCommsDeliveryForwarder::class);
+    $projector = app(CommsDeliveryProjectionProjector::class);
 
-    expect(fn () => $queuedJob->handle($forwarder))->toThrow(RuntimeException::class);
+    expect(fn () => $queuedJob->handle($forwarder, $projector))->toThrow(RuntimeException::class);
 
     $failedRow = DB::table('comms_webhook_events')->where('external_event_id', 'evt_projection')->first();
     expect($failedRow)->not->toBeNull();
     expect((string) $failedRow->status)->toBe('failed');
     expect((int) $failedRow->runtime_attempts)->toBe(1);
 
-    $queuedJob->handle($forwarder);
+    $queuedJob->handle($forwarder, $projector);
 
     $forwardedRow = DB::table('comms_webhook_events')->where('external_event_id', 'evt_projection')->first();
     expect((string) $forwardedRow->status)->toBe('forwarded');
@@ -166,12 +169,20 @@ test('forward job retries after runtime failure and updates projection on succes
     expect((int) $forwardedRow->runtime_status_code)->toBe(202);
     expect($forwardedRow->forwarded_at)->not->toBeNull();
 
+    $projection = CommsDeliveryProjection::query()
+        ->where('user_id', $user->id)
+        ->where('provider', 'resend')
+        ->where('integration_id', 'resend.primary')
+        ->first();
+
+    expect($projection)->not->toBeNull();
+    expect((string) $projection->last_state)->toBe('delivered');
+    expect((string) $projection->last_message_id)->toBe('email_projection');
+    expect((string) $projection->source)->toBe('runtime_forwarder');
+
     $integration = UserIntegration::query()->where('user_id', $user->id)->where('provider', 'resend')->first();
     expect($integration)->not->toBeNull();
-
-    $projection = $integration->metadata['delivery_projection'] ?? [];
-    expect((string) ($projection['last_state'] ?? ''))->toBe('delivered');
-    expect((string) ($projection['last_message_id'] ?? ''))->toBe('email_projection');
+    expect(array_key_exists('delivery_projection', $integration->metadata ?? []))->toBeFalse();
 
     $audit = UserIntegrationAudit::query()
         ->where('user_id', $user->id)
