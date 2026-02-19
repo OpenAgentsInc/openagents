@@ -12,6 +12,28 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 ---
 
+## Contents
+
+- `Cryptographic Identity`
+- `Payment Rails`
+- `Treasury & Exchange`
+- `Nostr Protocols`
+- `Core DSPy Primitives`
+- `Execution Concepts`
+- `Context & Long-Context`
+- `Product & Commercial Terms`
+- `Artifacts & Trajectories`
+- `Metrics & Scoring`
+- `Replay Events`
+- `UI Runtime`
+- `Job Types`
+- `Compute Supply Classes`
+- `Status Terms`
+- `Naming Collisions (Resolved)`
+- `See Also`
+
+---
+
 ## Cryptographic Identity
 
 | Term | Definition |

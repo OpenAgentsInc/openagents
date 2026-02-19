@@ -4,6 +4,16 @@ This roadmap tracks active priorities for the current TypeScript/Effect codebase
 
 **Web:** The core web app is **Laravel 12 + Inertia + React** at `apps/openagents.com/`. See `docs/plans/active/laravel-rebuild.md` for the plan.
 
+## Roadmap Navigation
+
+- Active execution plans: `docs/plans/active/`
+- Completed plans/history: `docs/plans/completed/`
+- Plan conventions/template: `docs/plans/README.md`, `docs/plans/TEMPLATE.md`
+- Repo map and ownership: `docs/PROJECT_OVERVIEW.md`
+- Architecture constraints: `docs/adr/INDEX.md`
+- Canonical terms: `docs/GLOSSARY.md`
+- Agent contract (non-negotiables): `AGENTS.md`
+
 ## Phase 1: Chat Reliability and Observability
 
 - Stabilize chat streaming behavior across all panes.
