@@ -42,6 +42,18 @@
       "description": "Execution denied because authorization_id is missing."
     },
     {
+      "code": "policy_denied.authorization_expired",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because the resolved authorization is expired."
+    },
+    {
+      "code": "policy_denied.authorization_revoked",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because the resolved authorization is revoked."
+    },
+    {
       "code": "policy_denied.invalid_authorization_mode",
       "domain": "policy_denied",
       "decision": "denied",
