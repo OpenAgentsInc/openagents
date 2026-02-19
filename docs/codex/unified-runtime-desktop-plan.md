@@ -113,6 +113,41 @@ This gives one worker contract for all surfaces while keeping desktop-first exec
 
 Without event ingest, web/mobile cannot see full local desktop Codex activity (only request/response envelopes).
 
+## Layer-0 Schema Authority
+
+Cross-surface contract authority for Codex worker lifecycle/events is `proto/`, not language-local DTOs.
+
+- Canonical schema root: `proto/`
+- Canonical package namespace: `proto/openagents/protocol/v1/*`
+- Governance and generation policy: `proto/README.md`
+- Compatibility enforcement: `buf lint` + `buf breaking` + `scripts/verify-proto-generate.sh`
+
+Wire format can remain JSON/SSE; mappings must stay proto-compatible (see `docs/protocol/LAYER0_PROTOBUF_MAPPING.md`).
+
+## Planned Proto Definitions (Codex)
+
+Add these Layer-0 protocol files to support desktop + hosted Codex parity:
+
+1. `proto/openagents/protocol/v1/codex_workers.proto`
+   - `CodexWorker`
+   - `CodexWorkerCreateRequest`
+   - `CodexWorkerCreateResponse`
+   - `CodexWorkerSnapshot`
+   - `CodexWorkerRequestEnvelope`
+   - `CodexWorkerRequestResponse`
+   - `CodexWorkerStopRequest`
+   - `CodexWorkerStopResponse`
+2. `proto/openagents/protocol/v1/codex_events.proto`
+   - `CodexWorkerEvent` (`oneof` event payload)
+   - payloads for started/request/response/error/heartbeat/stopped
+   - explicit `event_version`
+3. `proto/openagents/protocol/v1/codex_sandbox.proto`
+   - `CodexExecutionMode` (`DESKTOP`, `SANDBOX`)
+   - `CodexSandboxBackend` (`CLOUDFLARE_SANDBOX`, `DAYTONA`, `OPENAGENTS_GCP`)
+   - worker sandbox binding metadata (`workspace_ref`, `codex_home_ref`, region/placement hints)
+4. `proto/openagents/protocol/v1/codex_auth.proto`
+   - backend-neutral auth state envelopes (device flow status, token material references, hydration status; no secret value fields)
+
 ## Integration Plan
 
 ### Phase 0: Canonical doc alignment (this change)
@@ -235,8 +270,8 @@ These should map deterministically into runtime event payloads so web/mobile can
 
 ## Historical Docs Status
 
-- `docs/codex/webapp-sandbox-and-codex-auth-plan.md` is historical and no longer canonical for current desktop-first direction.
-- `docs/codex/opencode-codex-auth.md` remains a low-level auth flow reference.
+- `docs/codex/webapp-sandbox-and-codex-auth-plan.md` is the active hosted sandbox backend architecture companion (Cloudflare/Daytona/OpenAgents GCP).
+- `docs/plans/archived/codex/opencode-codex-auth.md` is archived historical auth deep-dive context.
 
 ## Change Control
 

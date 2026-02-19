@@ -1,237 +1,340 @@
-> Status: Historical (superseded for current desktop-first Codex direction).
-> Canonical integration plan: `docs/codex/unified-runtime-desktop-plan.md`.
+# Multi-Backend Sandbox + Codex Auth Plan
 
-# Plan: Sandbox + Codex Auth for the Webapp
+Status: Active (backend architecture companion)
+Date: 2026-02-19
+Primary companion: `docs/codex/unified-runtime-desktop-plan.md`
 
-This document outlines how to integrate **Cloudflare Sandbox SDK** and **Codex (ChatGPT) auth** with the OpenAgents webapp. Sandboxes are not yet integrated; Codex auth is documented in [opencode-codex-auth.md](./opencode-codex-auth.md). The plan is split into two parts so sandbox work can proceed first and Codex auth can follow once a sandbox-backed runtime exists.
+## Why this document exists
 
-**Audience:** Engineers wiring the webapp to a sandbox-backed agent and/or Codex OAuth.
+`docs/codex/unified-runtime-desktop-plan.md` defines the canonical Codex product direction: desktop-first execution with runtime as durable authority.
 
-**Related:** `docs/autopilot/spec.md`, [Sandbox SDK docs](https://developers.cloudflare.com/sandbox/). **Note:** The former `apps/web` and `apps/autopilot-worker` have been removed; the web app is now `apps/openagents.com` (Laravel).
+This document defines the hosted sandbox side of that same direction:
 
----
+- support multiple sandbox backends,
+- keep one runtime contract,
+- and define what "OpenAgents-hosted sandbox infra" means on Google Cloud.
 
-## Current state
+## Product stance
 
-- **Webapp:** `apps/openagents.com` (Laravel + Inertia + React + WorkOS Auth). Chat and tool runtime are Laravel-backed; no separate worker.
-- **Codex:** OpenCode’s built-in Codex plugin does OAuth (browser PKCE + localhost callback, or device code). See [opencode-codex-auth.md](./opencode-codex-auth.md) for flows and web viability.
+1. Desktop-first remains default for Codex execution.
+2. Hosted sandboxes are a parallel execution lane, not a separate product.
+3. Hosted lane must be backend-portable:
+   - Cloudflare Sandbox
+   - Daytona
+   - OpenAgents GCP-native sandbox infra
+4. Web/mobile surfaces always administer Codex through Laravel + runtime contracts, regardless of backend.
 
----
+## Current infrastructure baseline (already in repo/docs)
 
-## Part A: Sandbox integration plan
+OpenAgents already runs substantial GCP infrastructure:
 
-Goal: run agent workloads (and eventually OpenCode/Codex) inside Cloudflare Sandbox containers, with the webapp still talking to a worker that orchestrates them.
+- Laravel web control plane on Cloud Run (`apps/openagents.com/docs/GCP_DEPLOY_PLAN.md`)
+- Runtime deploy on GKE (`apps/openagents-runtime/docs/DEPLOY_GCP.md`)
+- Runtime ingress hardening and network policy (`apps/openagents-runtime/docs/NETWORK_POLICY.md`)
+- Existing Cloud Run and GCE Lightning/Bitcoin infra (`docs/lightning/status/20260215-current-status.md`)
 
-### A.1 Where sandboxes live
+This means we can define a first-party sandbox backend without introducing a new cloud footprint.
 
-**Decision:** Add sandbox usage **inside the existing Autopilot worker**. The worker gets a Sandbox Durable Object binding; for each thread, it obtains a sandbox, runs commands/processes, and (when needed) runs an OpenCode server in the container. This keeps chat + tools + Codex under a single worker endpoint.
+## Goals
 
-**Deferred:** A dedicated “sandbox worker” is a future split if we need isolation or independent scaling.
+1. Allow a user's Codex agent to run in its own isolated environment.
+2. Preserve runtime as durable event + ownership authority.
+3. Make backend choice an operator policy decision, not a product fork.
+4. Keep Codex auth behavior consistent across backends.
+5. Keep contract parity for web and (next) mobile.
 
-### A.2 Worker and wrangler
+## Non-goals
 
-- Add `@cloudflare/sandbox` (and peer deps) to the app that will host the Sandbox DO (e.g. `apps/liteclaw-worker` or a new `apps/sandbox-agent`).
-- In `wrangler.toml` (or equivalent):
-  - Define a Sandbox **class** (Durable Object) and bind it (e.g. `Sandbox` or `SandboxOpencode`).
-  - Use the **opencode** (or custom) image for Codex/OpenCode; default image for non-Codex use.
-  - Follow [Sandbox SDK Getting started](https://developers.cloudflare.com/sandbox/get-started/) and [Wrangler configuration](https://developers.cloudflare.com/sandbox/configuration/wrangler/).
-- Ensure the worker has the right **CPU/memory** and that **subrequest** usage is acceptable for sandbox RPC (see [Limits](https://developers.cloudflare.com/sandbox/platform/limits/)).
+- Replacing desktop-first with hosted-only execution.
+- Coupling web/mobile directly to vendor-specific sandbox APIs.
+- Reintroducing legacy worker-era architecture as the primary control plane.
 
-### A.3 Session and lifecycle
+## Canonical control plane and contract
 
-- **Decision:** `scope_id = thread_id` always. The webapp must create a thread **before** “Connect Codex” or any sandbox-backed tool. This guarantees Codex auth, OpenCode state, and tool runs share the same container.
-- Use **sessions** ([Session management](https://developers.cloudflare.com/sandbox/concepts/sessions/)) for isolation (working directory, env). Create a session when a thread first needs sandbox (e.g. first tool that requires execution or first “use Codex” action).
-- Respect **lifecycle** ([Sandbox lifecycle](https://developers.cloudflare.com/sandbox/concepts/sandboxes/)): cold start, sleep, eviction. Persist only what you store outside the container (e.g. in the DO or Convex); treat container filesystem as ephemeral unless you use [R2 mount](https://developers.cloudflare.com/sandbox/guides/mount-buckets/) or similar.
+Control-path remains:
 
-### A.4 Exposing sandbox to the chat agent
+`Web/Mobile -> apps/openagents.com (Laravel) -> apps/openagents-runtime (internal contract) -> sandbox backend adapter`
 
-- Today Autopilot uses **tools** (e.g. `workspace.read`/`write`/`edit`, `http.fetch`). To add sandbox:
-  - **Path 1:** Implement tools that the agent can call; the worker receives the tool call, runs the operation via Sandbox SDK (e.g. `sandbox.exec`, file APIs, or `createOpencodeServer`), and returns the result. No change to webapp other than new tool behaviors.
-  - **Path 2:** Run OpenCode inside the sandbox and proxy the **OpenCode UI** to the user (like [Sandbox OpenCode example](https://developers.cloudflare.com/sandbox/tutorials/claude-code/)). That gives a full IDE-like experience; the webapp would open it in an iframe or new window (see Part B for auth).
-- **Decision (for now):** Use **OpenCode** inside the sandbox for code execution and agent tool runs. Sky tools are deferred until after OpenCode is working end-to-end.
-- **OpenCode-first path (SDK):**
-  - Use `@cloudflare/sandbox/opencode` and `opencode-ai/sdk` to drive a session inside the container.
-  - Typical flow inside the worker:
-    - `const sandbox = getSandbox(env.Sandbox, "opencode");`
-    - `await sandbox.gitCheckout("https://github.com/cloudflare/agents.git", { targetDir: "/home/user/project" });`
-    - `const { client } = await createOpencode<OpencodeClient>(sandbox, { directory: "/home/user/project", config: { provider: { anthropic: { options: { apiKey: env.ANTHROPIC_API_KEY } } } } });`
-    - `const session = await client.session.create({ body: { title: "My Session" }, query: { directory: "/home/user/project" } });`
-    - `const result = await client.session.prompt({ path: { id: session.data!.id }, query: { directory: "/home/user/project" }, body: { model: { providerID: "anthropic", modelID: "claude-haiku-4-5" }, parts: [{ type: "text", text: "Summarize README.md in 2-3 sentences." }] } });`
-  - Map this into Autopilot tool calls so the agent can request OpenCode actions and receive structured results.
-- **Webapp changes for Part A (minimal):**
-  - No change to `useAgent` / `useAgentChat` if the worker URL and route stay the same.
-  - Optional: feature flag or “sandbox tools” toggle so only certain threads/users get sandbox-backed tools until stable.
-  - If you add a **separate** “OpenCode in sandbox” route (e.g. `GET /sandbox/opencode?thread=...`), add a link or tab in the chat UI that opens that URL (or embed via iframe with appropriate CSP).
+Runtime Codex worker contract remains authoritative:
 
-### A.5 Effect and type discipline
+- `POST /internal/v1/codex/workers`
+- `GET /internal/v1/codex/workers/{worker_id}/snapshot`
+- `POST /internal/v1/codex/workers/{worker_id}/requests`
+- `GET /internal/v1/codex/workers/{worker_id}/stream`
+- `POST /internal/v1/codex/workers/{worker_id}/stop`
 
-- All sandbox/OpenCode wiring must follow the **Effect** pattern used in `apps/cloudflare-agent-sdk-demo` and `apps/liteclaw-worker` (Autopilot worker).
-- Wrap Sandbox SDK calls in `Effect.tryPromise`, use **tagged errors**, and keep the **Effect boundary in the worker** (no ad-hoc Promise chains).
-- Preserve **exactOptionalPropertyTypes** and strict TS; add types for sandbox options (session id, image type, env) rather than loose objects.
+Backend-specific behavior must be hidden behind runtime adapter boundaries.
 
-### A.6 Testing and rollout
+## Layer-0 Schema Authority
 
-- **Unit:** Mock the Sandbox DO or SDK in tests (e.g. stub `getSandbox`, `exec`, `createOpencodeServer`).
-- **E2E:** Use a test worker with a sandbox class and a real (or test) image; run a minimal “exec one command” or “start OpenCode and GET /” flow. See [sandbox-sdk E2E](https://github.com/cloudflare/sandbox-sdk/tree/main/tests/e2e) for patterns.
-- Roll out behind a flag; monitor CPU time, subrequests, and error rates from the Sandbox API.
+For hosted sandbox backends, shared contracts must be proto-first and generated across languages from `proto/`.
 
-### A.7 Docs and references
+- Canonical contract root: `proto/`
+- Versioned package root: `proto/openagents/protocol/v1/*`
+- Governance baseline: `proto/README.md`
+- Mapping guidance for JSON/SSE: `docs/protocol/LAYER0_PROTOBUF_MAPPING.md`
 
-- [Sandbox SDK – Getting started](https://developers.cloudflare.com/sandbox/get-started/)
-- [Architecture](https://developers.cloudflare.com/sandbox/concepts/architecture/) and [Containers](https://developers.cloudflare.com/sandbox/concepts/containers/)
-- [Commands](https://developers.cloudflare.com/sandbox/api/commands/), [Files](https://developers.cloudflare.com/sandbox/api/files/), [Background processes](https://developers.cloudflare.com/sandbox/guides/background-processes/)
-- [Run Claude Code on a Sandbox](https://developers.cloudflare.com/sandbox/tutorials/claude-code/) (analogous to “run OpenCode on a Sandbox”)
+This follows the neutral-schema direction captured in `docs/local/convo.md` (proto3 + Buf + JSON wire compatibility) and prevents source-of-truth drift between Laravel/Elixir/TS/Rust.
 
----
+## Planned Proto Definitions (Hosted Sandbox + Codex)
 
-## Part B: Codex auth plan
+General additions needed to represent backend-portable hosted execution:
 
-Goal: let users sign in with **ChatGPT (Codex)** in the webapp when the agent (or an OpenCode instance) runs in a sandbox, so the model can use their ChatGPT Plus/Pro subscription instead of (or in addition to) API keys.
+1. `proto/openagents/protocol/v1/codex_workers.proto`
+   - worker create/snapshot/request/stop request+response envelopes
+   - backend and execution mode metadata
+2. `proto/openagents/protocol/v1/codex_events.proto`
+   - durable worker event envelope (`worker_id`, `seq`, `event_type`, `event_version`, `oneof payload`)
+   - codified event payloads for lifecycle and stream parity
+3. `proto/openagents/protocol/v1/codex_sandbox.proto`
+   - backend enum (`CLOUDFLARE_SANDBOX`, `DAYTONA`, `OPENAGENTS_GCP`)
+   - isolation and placement metadata for sandbox instances
+4. `proto/openagents/protocol/v1/codex_auth.proto`
+   - device-code and callback status envelopes
+   - token reference metadata for hydration (no secret payload material)
+5. `proto/openagents/protocol/v1/codex_admin.proto`
+   - optional admin/ops messages for backend health, routing decision reason, and teardown state
 
-Background: [opencode-codex-auth.md](./opencode-codex-auth.md) explains how OpenCode’s Codex plugin does OAuth (browser vs device code) and why the **browser redirect flow** fails when the UI is served via a Worker (redirect goes to localhost). The **device code flow** works today with OpenCode in a sandbox.
+## Backend abstraction
 
-### B.1 Where Codex auth runs
+Runtime should treat hosted sandbox providers through one adapter contract:
 
-- Codex auth is performed **inside the OpenCode server** running in the **sandbox container**. The OpenCode server exposes:
-  - `POST /provider/openai/oauth/authorize` (body: `{ method: number }`)
-  - `POST /provider/openai/oauth/callback` (body: `{ method, code? }`)
-- So: the **webapp** must send these requests to the **OpenCode server**. That implies the worker (or the webapp’s backend) must **proxy** these calls to the sandbox. With Part A in place, the flow is: **Browser → Worker → Sandbox (container:4096) → OpenCode server**. The worker already has a way to talk to the container (e.g. `sandbox.containerFetch` to port 4096).
+1. `provision(worker)`
+Create or reattach isolated environment for a worker.
+2. `start_codex(worker)`
+Launch Codex/OpenCode app-server in that environment.
+3. `request(worker, envelope)`
+Send JSON-RPC-style request.
+4. `stream(worker, cursor)`
+Surface worker events via runtime durable stream semantics.
+5. `snapshot(worker)`
+Report health/status/resources.
+6. `stop(worker)`
+Graceful shutdown + durability markers.
+7. `teardown(worker)`
+Hard delete/reclaim.
 
-### B.2 Webapp UX for “Connect Codex” (device code MVP)
+Backend values (initial set):
 
-- Add a **settings or provider-connect** surface in the webapp (e.g. in chat settings, or a “Connect ChatGPT (Codex)” entry next to existing provider options). For the **device code** flow (works without OpenCode changes):
-  1. User clicks “Connect ChatGPT (Codex)”.
-  2. If there is no active thread yet, the webapp **creates one first** and uses that `thread_id` for the sandbox scope.
-  3. Frontend calls an **app backend** route that proxies to the sandbox’s OpenCode:
-     `POST /provider/openai/oauth/authorize` with `{ method: 1 }` (headless).
-  4. Backend returns `{ url, method: "auto", instructions }` (e.g. `url: "https://auth.openai.com/codex/device"`, `instructions: "Enter code: XXXXX"`).
-  5. Webapp shows the **URL** and **code**, and tells the user to open the URL and enter the code.
-  6. Frontend then calls a backend route that proxies **blocking** `POST /provider/openai/oauth/callback` with `{ method: 1 }`. The request stays open until the user completes the device flow; OpenCode (in the container) polls until tokens are received, then returns.
-  7. On success, show “Codex connected” and optionally refresh provider list.
-- **Important:** The backend that proxies to OpenCode must be **session-scoped** and **thread-scoped**. We always use `scope_id = thread_id`.
+- `cloudflare_sandbox`
+- `daytona`
+- `openagents_gcp`
 
-### B.3 Backend routes (worker → sandbox)
-
-- Add HTTP routes on the worker that the webapp can call, for example:
-  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize`
-    Body: `{ method: number }`. Worker: get sandbox for `threadId`, ensure OpenCode is running (e.g. `createOpencodeServer`), then `fetch` to `http://container:4096/provider/openai/oauth/authorize` (via `sandbox.containerFetch`). Return JSON.
-  - `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/callback`
-    Body: `{ method, code? }`. Same: resolve sandbox, proxy to container `.../oauth/callback`. This request will block until the plugin’s callback resolves (device flow polls until user completes).
-  - Scope id is always `thread_id` so the same OpenCode process (and its `auth.json`) is used for chat and Codex.
-  - **Effect:** implement these routes using Effect handlers and `effect/Schema` for request/response validation. Convert sandbox/OpenCode failures into tagged errors and map them to consistent HTTP responses.
-  - **Timeouts:** enforce an upper bound for the blocking callback and abort the container fetch if the client disconnects, to avoid leaking long-poll requests.
-
-### B.4 Webapp → backend
-
-**Decision:** The webapp calls the **same worker** that owns the sandbox (Autopilot worker). Frontend uses:
-`fetch(workerUrl + '/api/sandbox/' + threadId + '/opencode/provider/openai/oauth/...')`.
-
-**Auth:** use a **short-lived, signed session token** that includes `thread_id`, `user_id`, and `exp`. The worker verifies this token (HMAC or JWT) before proxying to the sandbox. This keeps Convex out of the long-polling callback path while still enforcing thread ownership.
-
-### B.5 Browser redirect flow (optional, requires OpenCode changes)
-
-- To support the **browser** Codex flow (user clicks “Sign in with ChatGPT”, redirects back to our domain), OpenCode’s Codex plugin must support a **configurable redirect_uri** and a **callback route on the main OpenCode server** (see [opencode-codex-auth.md](./opencode-codex-auth.md) “Making the browser flow work”). That work is in the **OpenCode repo**, not in openagents.
-- The **PKCE state/verifier** must be stored server-side in the OpenCode process so the Worker callback can complete without the localhost listener.
-- Once OpenCode supports it:
-  - Worker would proxy a **GET** callback path (e.g. `GET /api/sandbox/opencode-oauth/redirect?code=...&state=...`) to the container’s OpenCode server, which would complete the exchange and return success HTML.
-  - Webapp would use method index **0** (browser) and open the auth URL; redirect would go to the worker’s public URL, then to the container.
-- Until then, **device code only** in the webapp.
-
-### B.6 Persistence and multi-tab (decision)
-
-- OpenCode stores tokens in `auth.json` inside the container. Containers are ephemeral; when the sandbox sleeps or is recreated, that file is lost unless we persist it.
-- **Decision:** Persist tokens **outside the container** and re-inject on sandbox start.
-  - Store encrypted token payloads in the Autopilot DO storage keyed by `thread_id`.
-  - Encrypt at rest with a worker secret (AES-GCM), rotate when needed, and fail closed if decryption fails.
-  - On sandbox start: hydrate `auth.json` before launching OpenCode.
-  - On refresh or re-auth: write-through to storage.
-
-### B.7 Summary for Codex
-
-| Item | Action |
-|------|--------|
-| Auth flow to use first | Device code (method 1); no OpenCode changes. |
-| Webapp | Add “Connect Codex” UI; call backend for authorize + callback (with thread). |
-| Backend | Worker routes that proxy authorize/callback to OpenCode in the sandbox; scope = thread. |
-| Browser redirect flow | Later; depends on OpenCode adding configurable redirect_uri + server callback route. |
-| Token persistence | Persist encrypted tokens in DO storage and re-inject `auth.json` on sandbox start. |
-
----
-
-## Dependency order
-
-1. **Part A (Sandbox)** first: worker with Sandbox DO, session per thread, and at least one of: (a) sandbox-backed tools, or (b) OpenCode server in container + proxy to webapp (e.g. iframe or new window).
-2. **Part B (Codex auth)** next: add worker routes that proxy OpenCode OAuth to the sandbox; add webapp “Connect Codex” using device code; persist tokens for cold start.
-
-If you only want “OpenCode in sandbox” without Codex, Part A is enough (use API keys for models). If you want Codex in the web without sandbox (e.g. a different backend that runs OpenCode on a long-lived server), that would be a different design and not covered here.
-
----
-
-## Files and places to touch (checklist)
-
-**Sandbox (Part A)**
-
-- [x] Worker app (`apps/liteclaw-worker`): add `@cloudflare/sandbox`, wrangler Sandbox class + binding, getSandbox + session id from thread.
-- [x] Worker: implement tool handlers or OpenCode proxy that use Sandbox SDK (exec, files, or `createOpencodeServer` + `proxyToOpencode`).
-- [ ] Optional: `apps/web` – link or route to “OpenCode in sandbox” (e.g. `/sandbox/opencode?thread=...`) if you expose the full UI.
-
-**Codex auth (Part B)**
-
-- [x] Worker: `POST .../opencode/provider/openai/oauth/authorize` and `.../callback` that proxy to container:4096.
-- [x] Webapp: “Connect ChatGPT (Codex)” UI (device code: show URL + code, then long-poll callback).
-- [x] Webapp: pass thread to backend; worker validates and maps to sandbox.
-- [x] Token persistence implementation and re-inject on sandbox start.
-
----
-
-## Implementation log
-
-### 2026-02-05 (Part A)
-
-- Added Sandbox SDK + OpenCode integration to `apps/liteclaw-worker`:
-  - Exported `Sandbox` DO, added `Sandbox` binding + container config in `apps/liteclaw-worker/wrangler.jsonc`.
-  - Added `apps/liteclaw-worker/Dockerfile` using `cloudflare/sandbox:0.7.0` with OpenCode installed.
-  - Implemented `/sandbox/opencode?thread=...` proxy route that boots OpenCode in the sandbox and proxies the UI via `proxyToOpencode`.
-  - Added container-backed implementations for `workspace.read/write/edit` when `LITECLAW_EXECUTOR_KIND=container`.
-  - Added `@cloudflare/sandbox` + `@opencode-ai/sdk` dependencies and mocked Sandbox imports in worker tests.
-- Not done yet: webapp link/route for OpenCode UI (optional Part A item).
-
-### 2026-02-05 (Part B)
-
-- Added Codex OAuth proxy routes to Autopilot worker: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/{authorize,callback}` with token validation, CORS handling, schema validation, and callback timeout.
-- Persisted Codex auth payloads in the Autopilot Chat DO (`sky_codex_auth`), encrypted at rest with AES-GCM (`AUTOPILOT_CODEX_SECRET`), and hydrated `auth.json` into the sandbox before OpenCode starts.
-- Added webapp support:
-  - `/codex-token` server route to mint short-lived HMAC tokens scoped to `thread_id` + `user_id`.
-  - `CodexConnectDialog` UI (device code flow) and Autopilot worker URL helper.
-  - Header button wiring in `AppLayout` for `/chat` and `/assistant`.
-- Follow-up fixes after live testing:
-  - Use `getAgentByName` for Codex auth DO access (avoids missing `x-partykit-room` errors).
-  - Avoid `AbortSignal` in `sandbox.containerFetch` (fixes `DataCloneError: AbortSignal serialization is not enabled`).
-  - Callback now proxies and blocks as expected; add manual timeout handling + 504 on timeout.
-- Tests: `npm run test` in `apps/liteclaw-worker` (pass). (Former `apps/web` removed.) `localStorage.clear is not a function` in relay/query/nostr sync tests).
-- Manual smoke: `POST /api/sandbox/:threadId/opencode/provider/openai/oauth/authorize` returns device code; `/callback` blocks until user completes device flow (curl timed out as expected).
-- Deploy attempt: former web app deploy was blocked by WorkOS env mismatch (WORKOS_CLIENT_ID / WORKOS_API_KEY).
-
-### Next Steps (Webapp Deploy + Validation)
-
-1. Fix Convex/WorkOS env mismatch on the deploy machine:
-   - Remove the conflicting Convex env values or update them to match the local `.env.production` values used for deploy.
-   - Then re-run deploy from the web app (Laravel: see `apps/openagents.com`).
-2. Ensure required secrets/envs are present on the deploy machine:
-   - `AUTOPILOT_CODEX_SECRET` (must match Autopilot worker).
-   - `WORKOS_*` secrets for the webapp (see `apps/openagents.com` env docs).
-   - Optional: `VITE_LITECLAW_WORKER_URL` if the webapp is not served from the same origin as the worker.
-3. Sanity check device code flow end-to-end:
-   - Open the webapp, click “Connect Codex”.
-   - Verify authorize returns a device URL + code and the UI waits on callback.
-   - Complete the device flow in the browser; callback should eventually return success and store `auth.json` (persisted in DO storage).
-   - Re-open “Connect Codex” to confirm no re-auth needed after sandbox restart (auth hydration).
-
----
-
-## References
-
-- [opencode-codex-auth.md](./opencode-codex-auth.md) – OpenCode Codex flows and web viability.
-- [Sandbox SDK](https://developers.cloudflare.com/sandbox/) – Getting started, API, concepts, tutorials.
-- Autopilot spec: `docs/autopilot/spec.md`
-- (Former worker surface `apps/autopilot-worker` removed.)
+## Backend options
+
+### 1) Cloudflare Sandbox backend
+
+Best when:
+
+- fast container startup and edge-adjacent execution matter,
+- sandbox APIs are preferred over managing infra directly.
+
+Tradeoffs:
+
+- runtime/control-plane integration still needs adapter and proxy ownership,
+- storage/auth persistence must stay outside ephemeral containers.
+
+### 2) Daytona backend
+
+Best when:
+
+- managed dev-workspace lifecycle is desired,
+- we want standardized workspace semantics across providers.
+
+Tradeoffs:
+
+- vendor API availability/latency profile must be monitored,
+- runtime still owns durable event ledger and user ownership checks.
+
+### 3) OpenAgents GCP backend (our own infra)
+
+Best when:
+
+- we want first-party control over isolation, network, and cost profile,
+- we need tight integration with existing GCP runtime + ops posture.
+
+Tradeoffs:
+
+- operational ownership shifts to us (scheduling, hardening, scaling),
+- requires stronger SRE/process discipline than managed backends.
+
+## Defining "our own infra" on Google Cloud
+
+OpenAgents GCP sandbox backend means:
+
+1. **Control plane stays the same**
+   - Laravel remains public API/UI authority.
+   - Runtime remains internal execution authority.
+
+2. **Sandbox orchestration lives with runtime**
+   - Runtime schedules sandbox workloads and tracks worker ownership.
+   - Runtime writes canonical worker events/status to `runtime.codex_*` tables.
+
+3. **Isolated execution on GKE**
+   - Dedicated sandbox node pool(s) separate from core runtime pods.
+   - One isolated sandbox runtime per worker/session boundary.
+   - Enforce pod/namespace isolation and deny-by-default networking.
+
+4. **Image and artifact supply chain on GCP**
+   - Sandbox images built via Cloud Build.
+   - Images stored in Artifact Registry.
+   - Signed/tagged images promoted by environment.
+
+5. **Durability outside sandbox containers**
+   - Workspace and Codex home material persisted outside the container lifecycle.
+   - Runtime stores durable references (`workspace_ref`, `codex_home_ref`) and event history.
+
+6. **Secret and identity model**
+   - Secret Manager + Workload Identity for backend service auth.
+   - No long-lived credentials baked into sandbox images.
+
+7. **Observability + guardrails**
+   - Runtime tracing/metrics policy from existing observability docs.
+   - Network policy boundaries from existing runtime hardening docs.
+
+## Isolation model for a user's Codex agent
+
+Minimum isolation contract:
+
+1. Environment is worker-scoped (default one environment per `worker_id`).
+2. Worker is principal-owned (`x-oa-user-id` or `x-oa-guest-scope`).
+3. Runtime enforces ownership at every read/write/stream/stop boundary.
+4. Cross-worker filesystem/process access is denied.
+5. Outbound network egress is policy-governed (allowlist/proxy path where required).
+
+Recommended default mapping:
+
+- `worker_id` is the hosted execution unit.
+- `thread_id` is logical chat/session context.
+- One user can have multiple workers; each worker remains isolated.
+
+## Codex auth across backends
+
+Codex/OpenCode auth flow should not depend on backend vendor.
+
+Baseline:
+
+- Device-code flow first (`method: 1`) for backend-neutral reliability.
+- Browser PKCE redirect flow is optional and gated on OpenCode support for non-localhost callback handling.
+
+Durability requirements:
+
+- Persist auth payloads outside ephemeral sandbox containers.
+- Rehydrate auth state on sandbox start.
+- Keep auth data encrypted at rest and scoped to worker ownership.
+
+Reference for OpenCode auth flow constraints:
+
+- `docs/plans/archived/codex/opencode-codex-auth.md`
+
+## Required runtime contract extensions for hosted sandboxes
+
+To make hosted backends first-class in current runtime contract, add:
+
+1. Worker backend metadata in create/snapshot payloads:
+   - `backend`
+   - `execution_mode` (`desktop` or `sandbox`)
+2. Async event ingest endpoint:
+   - `POST /internal/v1/codex/workers/{worker_id}/events`
+3. Heartbeat semantics for hosted workers.
+4. Laravel stream proxy for worker SSE:
+   - `GET /api/runtime/codex/workers/{workerId}/stream`
+
+## GCP implementation shape (proposed)
+
+### Components
+
+1. `openagents-web` (Cloud Run)
+   - user-facing admin/API for Codex worker operations.
+2. `openagents-runtime` (GKE)
+   - adapter routing, ownership checks, durable events.
+3. `openagents-sandbox-*` workloads (GKE)
+   - isolated execution workloads for Codex workers.
+4. Shared GCP services
+   - Artifact Registry (images)
+   - Secret Manager (secrets)
+   - Cloud Logging/Monitoring
+   - existing DB/storage/network foundations already used by web/runtime/lightning.
+
+### Request flow (hosted worker)
+
+1. User asks to start hosted Codex worker in web UI.
+2. Laravel calls runtime `POST /internal/v1/codex/workers`.
+3. Runtime selects backend (policy + availability).
+4. Backend adapter provisions isolated environment.
+5. Runtime appends `worker.started` and subsequent events durably.
+6. Web/mobile observe through runtime-backed snapshot/stream APIs.
+
+### Stop flow
+
+1. User/admin triggers stop.
+2. Laravel calls runtime stop endpoint.
+3. Runtime requests graceful backend shutdown.
+4. Runtime appends `worker.stopped`.
+5. Teardown policy decides immediate destroy vs timed retention.
+
+## Backend selection policy
+
+Selection should be deterministic and policy-driven:
+
+1. If user is desktop-linked and policy is `desktop_preferred`, use desktop worker.
+2. If hosted required, select backend based on:
+   - policy allowlist,
+   - region/latency target,
+   - cost/SLO,
+   - backend health.
+3. Persist chosen backend in worker metadata for auditability and reproducibility.
+
+## Delivery phases
+
+### Phase 0: Contract + docs alignment
+
+- Keep unified plan as canonical product direction.
+- Keep this document as canonical hosted-backend architecture.
+- Extend runtime contract docs/OpenAPI for backend metadata + events.
+
+### Phase 1: Runtime backend abstraction
+
+- Add backend enum + adapter routing in runtime Codex workers domain.
+- Keep `in_memory` for tests/dev.
+- Add conformance tests per adapter boundary.
+
+### Phase 2: First hosted adapter
+
+- Implement one production adapter (recommended first: `openagents_gcp` because infra already exists and is operator-controlled).
+- Add lifecycle smoke tests for create/request/stream/stop.
+
+### Phase 3: Additional adapters
+
+- Add Cloudflare and Daytona adapters behind same runtime contract.
+- Add policy-based backend routing and explicit fallback logic.
+
+### Phase 4: UX parity
+
+- Web admin panel: backend visibility, worker state, and live stream.
+- Mobile read/admin parity on same Laravel routes.
+
+## Verification gates
+
+1. Runtime contract tests pass for all adapters.
+2. Laravel feature tests cover worker lifecycle + stream proxy.
+3. Backend smoke run proves:
+   - isolated environment creation,
+   - Codex request/response path,
+   - durable event streaming,
+   - clean stop/teardown.
+4. Security checks prove:
+   - owner isolation,
+   - deny-by-default network posture,
+   - secret handling/redaction policy.
+
+## Operational references
+
+- Web deploy topology: `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md`
+- Web production env/secrets: `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md`
+- Runtime deploy on GKE: `apps/openagents-runtime/docs/DEPLOY_GCP.md`
+- Runtime network hardening: `apps/openagents-runtime/docs/NETWORK_POLICY.md`
+- Runtime observability: `apps/openagents-runtime/docs/OBSERVABILITY.md`
+- Existing GCP Lightning/Bitcoin estate: `docs/lightning/status/20260215-current-status.md`
+- Canonical Codex direction: `docs/codex/unified-runtime-desktop-plan.md`
+- OpenCode auth mechanics (archived deep-dive): `docs/plans/archived/codex/opencode-codex-auth.md`

@@ -2,7 +2,7 @@
 
 Architecture Decision Records for the OpenAgents project.
 
-**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0028**
+**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0029**
 
 ---
 
@@ -35,6 +35,7 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0023](./ADR-0023-file-editor-open-save-events.md) | File Editor Open/Save Event Contract | Accepted | 2026-01-30 | UX | — | autopilot-ui | 2026-01-30 |
 | [ADR-0026](./ADR-0026-openagents-control-plane-api.md) | OpenAgents API Control Plane | Accepted | 2026-02-01 | API | — | api | 2026-02-01 |
 | [ADR-0027](./ADR-0027-effect-rpc-and-atom-hydration-web.md) | Effect RPC + Atom Hydration in apps/web | Accepted | 2026-02-06 | UX | — | autopilot | 2026-02-06 |
+| [ADR-0028](./ADR-0028-layer0-proto-canonical-schema.md) | Layer-0 Proto Contracts Are Canonical in `proto/` | Accepted | 2026-02-19 | Protocol | — | protocol | 2026-02-19 |
 
 ---
 
@@ -61,6 +62,7 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0006](./ADR-0006-deterministic-hashing.md) — Deterministic Hashing and Canonicalization
 - [ADR-0011](./ADR-0011-schema-ids-canonical.md) — Schema IDs Canonical
 - [ADR-0012](./ADR-0012-objective-vs-subjective-jobs.md) — Objective vs Subjective Jobs
+- [ADR-0028](./ADR-0028-layer0-proto-canonical-schema.md) — Layer-0 Proto Contracts Are Canonical in `proto/`
 
 ### API (public surfaces)
 - [ADR-0026](./ADR-0026-openagents-control-plane-api.md) — OpenAgents API Control Plane
@@ -88,7 +90,7 @@ Architecture Decision Records for the OpenAgents project.
 ## By Status
 
 ### Accepted
-- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023, ADR-0026, ADR-0027
+- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023, ADR-0026, ADR-0027, ADR-0028
 
 ### Proposed
 - (none)
