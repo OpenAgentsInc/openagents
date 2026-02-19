@@ -46,12 +46,14 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
              %{}
            )}
 
-        {:allowed, policy_eval} ->
+        {:allowed, _policy_eval} ->
           execute_provider_send(
             adapter,
             manifest,
             request,
-            policy_eval,
+            base_policy,
+            budget,
+            policy_context,
             authorization_id,
             opts
           )
@@ -104,7 +106,16 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
     end
   end
 
-  defp execute_provider_send(adapter, manifest, request, policy_eval, authorization_id, opts) do
+  defp execute_provider_send(
+         adapter,
+         manifest,
+         request,
+         base_policy,
+         budget,
+         policy_context,
+         authorization_id,
+         opts
+       ) do
     provider = normalize_provider(manifest["provider"])
 
     case call_provider(adapter, provider, request, manifest, opts) do
@@ -112,7 +123,9 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
         finalize_provider_outcome(
           manifest,
           request,
-          policy_eval,
+          base_policy,
+          budget,
+          policy_context,
           authorization_id,
           provider_result
         )
@@ -123,7 +136,9 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
             finalize_provider_outcome(
               manifest,
               request,
-              policy_eval,
+              base_policy,
+              budget,
+              policy_context,
               authorization_id,
               fallback_result
             )
@@ -131,15 +146,34 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
           {:error, fallback_reason} ->
             denied_reason_code =
               case {failure_reason, fallback_reason} do
-                {_, :fallback_exhausted} -> "comms_failed.fallback_exhausted"
-                {:provider_circuit_open, _} -> "comms_failed.provider_circuit_open"
-                _ -> "comms_failed.provider_error"
+                {_, :fallback_exhausted} ->
+                  "comms_failed.fallback_exhausted"
+
+                {:provider_circuit_open, _} ->
+                  "comms_failed.provider_circuit_open"
+
+                {{:provider_error, provider_error}, _} ->
+                  normalize_reason_code(
+                    provider_error["reason_code"],
+                    "comms_failed.provider_error"
+                  )
+
+                _ ->
+                  "comms_failed.provider_error"
               end
 
+            failure_context = failure_policy_context(policy_context, denied_reason_code)
+
             policy_eval =
-              policy_eval
-              |> Map.put("decision", "denied")
-              |> Map.put("reason_code", denied_reason_code)
+              evaluate_provider_policy(
+                base_policy,
+                budget,
+                failure_context,
+                "denied",
+                denied_reason_code
+              )
+
+            provider_failure_result = provider_failure_result(provider, failure_reason)
 
             {:ok,
              build_outcome(
@@ -149,11 +183,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
                "failed",
                nil,
                authorization_id,
-               %{
-                 "provider" => provider,
-                 "fallback_used" => false,
-                 "failure_reason" => to_string(failure_reason)
-               }
+               provider_failure_result
              )}
         end
     end
@@ -162,7 +192,9 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
   defp finalize_provider_outcome(
          manifest,
          request,
-         policy_eval,
+         base_policy,
+         budget,
+         policy_context,
          authorization_id,
          provider_result
        ) do
@@ -200,10 +232,10 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
 
     decision = if(MapSet.member?(@send_success_states, state), do: "allowed", else: "denied")
 
+    policy_context = provider_policy_context(policy_context, provider_result, reason_code)
+
     policy_eval =
-      policy_eval
-      |> Map.put("decision", decision)
-      |> Map.put("reason_code", reason_code)
+      evaluate_provider_policy(base_policy, budget, policy_context, decision, reason_code)
 
     {:ok,
      build_outcome(
@@ -232,11 +264,60 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
       {:ok, result} when is_map(result) ->
         {:ok, Map.put(normalize_map(result), "provider", provider)}
 
+      {:error, result} when is_map(result) ->
+        {:error, {:provider_error, result |> normalize_map() |> Map.put("provider", provider)}}
+
       {:error, _reason} ->
         {:error, :provider_error}
 
       _other ->
         {:error, :provider_error}
+    end
+  end
+
+  defp provider_policy_context(policy_context, provider_result, reason_code) do
+    policy_context =
+      policy_context
+      |> normalize_map()
+      |> maybe_put(
+        "ssrf_block_reason",
+        provider_result["ssrf_block_reason"] || ssrf_reason_code(reason_code)
+      )
+
+    normalize_map(policy_context)
+  end
+
+  defp failure_policy_context(policy_context, reason_code) do
+    policy_context
+    |> normalize_map()
+    |> maybe_put("ssrf_block_reason", ssrf_reason_code(reason_code))
+  end
+
+  defp ssrf_reason_code(reason_code) when is_binary(reason_code) do
+    if String.starts_with?(reason_code, "ssrf_block."), do: reason_code, else: nil
+  end
+
+  defp ssrf_reason_code(_), do: nil
+
+  defp evaluate_provider_policy(base_policy, budget, policy_context, decision, reason_code) do
+    base_policy
+    |> Map.put("decision", decision)
+    |> Map.put("reason_code", reason_code)
+    |> PolicyEvaluator.evaluate(budget, policy_context)
+  end
+
+  defp provider_failure_result(provider, failure_reason) do
+    base = %{"provider" => provider, "fallback_used" => false}
+
+    case failure_reason do
+      {:provider_error, provider_error} ->
+        provider_error
+        |> normalize_map()
+        |> Map.merge(base)
+        |> maybe_put("failure_reason", provider_error["message"] || "provider_error")
+
+      reason ->
+        Map.put(base, "failure_reason", to_string(reason))
     end
   end
 

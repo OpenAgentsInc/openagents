@@ -57,6 +57,15 @@ if config_env() == :prod do
       This secret is required to verify internal runtime signatures.
       """
 
+  guarded_outbound_http_enabled =
+    case System.get_env("OA_RUNTIME_GUARDED_OUTBOUND_HTTP_ENABLED") do
+      nil ->
+        Application.get_env(:openagents_runtime, :guarded_outbound_http_enabled, true)
+
+      value ->
+        String.downcase(String.trim(value)) in ["1", "true", "yes", "on"]
+    end
+
   laravel_internal = Application.get_env(:openagents_runtime, :laravel_internal, [])
 
   laravel_internal_base_url =
@@ -85,6 +94,7 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :openagents_runtime, :runtime_signature_secret, runtime_signature_secret
+  config :openagents_runtime, :guarded_outbound_http_enabled, guarded_outbound_http_enabled
 
   config :openagents_runtime, :laravel_internal,
     base_url: laravel_internal_base_url,

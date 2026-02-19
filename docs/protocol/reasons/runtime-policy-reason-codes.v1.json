@@ -78,6 +78,54 @@
       "description": "Execution denied due to outbound network SSRF policy blocking private address targets."
     },
     {
+      "code": "ssrf_block.metadata_endpoint",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied due to outbound network SSRF policy blocking metadata service endpoints."
+    },
+    {
+      "code": "ssrf_block.host_not_allowed",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied because target host failed outbound allowlist policy."
+    },
+    {
+      "code": "ssrf_block.invalid_url",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied because outbound URL was malformed or unsupported."
+    },
+    {
+      "code": "ssrf_block.dns_resolution_failed",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied because DNS resolution for outbound target failed."
+    },
+    {
+      "code": "ssrf_block.dns_pin_mismatch",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied because DNS pinning detected target resolution drift."
+    },
+    {
+      "code": "ssrf_block.redirect_limit_exceeded",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied because outbound redirect chain exceeded configured bound."
+    },
+    {
+      "code": "ssrf_block.redirect_missing_location",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied because redirect response omitted a valid location."
+    },
+    {
+      "code": "ssrf_block.redirect_invalid_location",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied because redirect location was invalid or unsupported."
+    },
+    {
       "code": "manifest_validation.invalid_schema",
       "domain": "manifest_validation",
       "decision": "denied",
