@@ -9,17 +9,14 @@ import { Label } from '@/components/ui/label';
 import { usePostHogEvent } from '@/hooks/use-posthog-event';
 import SettingsLayout from '@/layouts/settings/layout';
 
-type ResendIntegration = {
+type Integration = {
     provider: string;
     status: string;
     connected: boolean;
     secretLast4?: string | null;
     connectedAt?: string | null;
     disconnectedAt?: string | null;
-    metadata?: {
-        sender_email?: string | null;
-        sender_name?: string | null;
-    };
+    metadata?: Record<string, string | null | undefined>;
 };
 
 type ResendDeliveryProjection = {
@@ -33,37 +30,53 @@ type ResendDeliveryProjection = {
     source?: string | null;
 };
 
+type AuditItem = {
+    action: string;
+    createdAt?: string | null;
+    metadata?: Record<string, string | null>;
+};
+
 type PageProps = {
     status?: string | null;
     integrations: {
-        resend: ResendIntegration;
+        resend: Integration;
+        google: Integration;
     };
     deliveryProjection?: {
         resend?: ResendDeliveryProjection | null;
     };
     integrationAudit?: {
-        resend?: Array<{
-            action: string;
-            createdAt?: string | null;
-            metadata?: Record<string, string | null>;
-        }>;
+        resend?: AuditItem[];
+        google?: AuditItem[];
     };
 };
 
 export default function IntegrationsSettings() {
     const { status, integrations, deliveryProjection, integrationAudit } =
         usePage<PageProps>().props;
+
     const resend = integrations.resend;
+    const google = integrations.google;
     const resendProjection = deliveryProjection?.resend ?? null;
     const resendAudit = integrationAudit?.resend ?? [];
+    const googleAudit = integrationAudit?.google ?? [];
+
     const capture = usePostHogEvent('settings_integrations');
 
     useEffect(() => {
         capture('settings_integrations.page_opened', {
             resendConnected: resend.connected,
             resendStatus: resend.status,
+            googleConnected: google.connected,
+            googleStatus: google.status,
         });
-    }, [capture, resend.connected, resend.status]);
+    }, [
+        capture,
+        google.connected,
+        google.status,
+        resend.connected,
+        resend.status,
+    ]);
 
     return (
         <>
@@ -78,6 +91,141 @@ export default function IntegrationsSettings() {
                         title="Integrations"
                         description="Connect provider credentials used by runtime tools."
                     />
+
+                    <div className="rounded-lg border border-border p-4">
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-base font-semibold">
+                                    Google (Gmail)
+                                </h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Status:{' '}
+                                    {google.connected
+                                        ? 'Connected'
+                                        : 'Not connected'}
+                                    {google.secretLast4
+                                        ? ` (refresh token ••••${google.secretLast4})`
+                                        : ''}
+                                </p>
+                                {google.metadata?.scope ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        Scopes: {google.metadata.scope}
+                                    </p>
+                                ) : null}
+                            </div>
+                            <span
+                                className={`rounded-md px-2 py-1 text-xs font-medium ${
+                                    google.connected
+                                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                        : 'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300'
+                                }`}
+                            >
+                                {google.status}
+                            </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            <Button asChild>
+                                <a
+                                    href="/settings/integrations/google/redirect"
+                                    onClick={() => {
+                                        capture(
+                                            'settings_integrations.google_connect_clicked',
+                                            {
+                                                googleConnected:
+                                                    google.connected,
+                                            },
+                                        );
+                                    }}
+                                >
+                                    {google.connected
+                                        ? 'Reconnect Google'
+                                        : 'Connect Google'}
+                                </a>
+                            </Button>
+
+                            <Form
+                                action="/settings/integrations/google"
+                                method="delete"
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <Button
+                                        type="submit"
+                                        variant="destructive"
+                                        disabled={
+                                            processing || !google.connected
+                                        }
+                                        onClick={() => {
+                                            capture(
+                                                'settings_integrations.google_disconnect_submitted',
+                                                {
+                                                    googleConnected:
+                                                        google.connected,
+                                                },
+                                            );
+                                        }}
+                                    >
+                                        Disconnect
+                                    </Button>
+                                )}
+                            </Form>
+
+                            <Transition
+                                show={
+                                    status === 'google-connected' ||
+                                    status === 'google-rotated' ||
+                                    status === 'google-updated' ||
+                                    status === 'google-disconnected'
+                                }
+                                enter="transition ease-in-out"
+                                enterFrom="opacity-0"
+                                leave="transition ease-in-out"
+                                leaveTo="opacity-0"
+                            >
+                                <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                                    {status === 'google-disconnected'
+                                        ? 'Google disconnected'
+                                        : status === 'google-rotated'
+                                          ? 'Google token rotated'
+                                          : status === 'google-updated'
+                                            ? 'Google integration updated'
+                                            : 'Google connected'}
+                                </p>
+                            </Transition>
+                        </div>
+
+                        <div className="mt-6 border-t border-border pt-4">
+                            <h3 className="mb-2 text-sm font-semibold">
+                                Google lifecycle events
+                            </h3>
+                            {googleAudit.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No events recorded yet.
+                                </p>
+                            ) : (
+                                <ul className="space-y-1 text-sm text-muted-foreground">
+                                    {googleAudit.map((item, index) => (
+                                        <li
+                                            key={`${item.action}-${item.createdAt ?? index}`}
+                                        >
+                                            <span className="font-medium text-foreground">
+                                                {item.action}
+                                            </span>{' '}
+                                            {item.createdAt ? (
+                                                <span>
+                                                    at{' '}
+                                                    {new Date(
+                                                        item.createdAt,
+                                                    ).toLocaleString()}
+                                                </span>
+                                            ) : null}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    </div>
 
                     <div className="rounded-lg border border-border p-4">
                         <div className="mb-4 flex items-center justify-between gap-3">
