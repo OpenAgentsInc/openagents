@@ -6,6 +6,7 @@ defmodule OpenAgentsRuntime.Memory.TimelineStore do
   import Ecto.Query
 
   alias OpenAgentsRuntime.Memory.MemoryChunk
+  alias OpenAgentsRuntime.Memory.MemoryCompaction
   alias OpenAgentsRuntime.Memory.RetentionPolicy
   alias OpenAgentsRuntime.Memory.TimelineEvent
   alias OpenAgentsRuntime.Repo
@@ -47,6 +48,7 @@ defmodule OpenAgentsRuntime.Memory.TimelineStore do
   @spec list_raw_events(String.t(), keyword()) :: [TimelineEvent.t()]
   def list_raw_events(run_id, opts \\ []) when is_binary(run_id) do
     since_seq = Keyword.get(opts, :since_seq, 0)
+    upto_seq = Keyword.get(opts, :upto_seq)
     limit = Keyword.get(opts, :limit, 200)
     event_class = Keyword.get(opts, :event_class)
 
@@ -60,6 +62,13 @@ defmodule OpenAgentsRuntime.Memory.TimelineStore do
     query =
       if is_binary(event_class) do
         from(event in query, where: event.event_class == ^event_class)
+      else
+        query
+      end
+
+    query =
+      if is_integer(upto_seq) and upto_seq > 0 do
+        from(event in query, where: event.seq <= ^upto_seq)
       else
         query
       end
@@ -175,6 +184,26 @@ defmodule OpenAgentsRuntime.Memory.TimelineStore do
   @spec get_retention_policy(String.t()) :: RetentionPolicy.t() | nil
   def get_retention_policy(event_class) when is_binary(event_class) do
     Repo.get(RetentionPolicy, event_class)
+  end
+
+  @spec insert_compaction(map()) :: {:ok, MemoryCompaction.t()} | {:error, term()}
+  def insert_compaction(attrs) when is_map(attrs) do
+    changeset = MemoryCompaction.changeset(%MemoryCompaction{}, attrs)
+    Repo.insert(changeset)
+  end
+
+  @spec list_compactions(String.t(), keyword()) :: [MemoryCompaction.t()]
+  def list_compactions(run_id, opts \\ []) when is_binary(run_id) do
+    limit = Keyword.get(opts, :limit, 50)
+
+    query =
+      from(compaction in MemoryCompaction,
+        where: compaction.run_id == ^run_id,
+        order_by: [desc: compaction.inserted_at],
+        limit: ^limit
+      )
+
+    Repo.all(query)
   end
 
   @spec apply_retention_defaults(String.t(), map()) :: map()
