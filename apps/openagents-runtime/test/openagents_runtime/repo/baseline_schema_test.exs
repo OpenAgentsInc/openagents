@@ -9,5 +9,8 @@ defmodule OpenAgentsRuntime.Repo.BaselineSchemaTest do
 
     assert {:ok, %{rows: [["runtime.global_event_id_seq"]]}} =
              Repo.query("SELECT to_regclass('runtime.global_event_id_seq')::text")
+
+    assert {:ok, %{rows: [["runtime.tool_tasks"]]}} =
+             Repo.query("SELECT to_regclass('runtime.tool_tasks')::text")
   end
 end
