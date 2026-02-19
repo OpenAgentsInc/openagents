@@ -122,3 +122,25 @@ From `apps/openagents-runtime/`:
 - `mix test test/openagents_runtime/deploy/jobs_assets_test.exs`
 - `mix test test/openagents_runtime/deploy/network_policy_assets_test.exs`
 - `mix test test/openagents_runtime/deploy/smoke_test.exs`
+
+## 9. Gate G0 local baseline verification
+
+Before runtime-adjacent integration work, verify local DB + runtime baseline:
+
+```bash
+pg_isready -h localhost -p 5432
+PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -Atc "select datname from pg_database where datname in ('openagents_runtime_dev','openagents_runtime_test') order by datname;"
+cd apps/openagents-runtime
+mix ecto.create
+mix ecto.migrate
+mix test
+mix runtime.contract.check
+```
+
+Expected outcome:
+
+- Postgres is accepting connections.
+- Both runtime DBs exist (`openagents_runtime_dev`, `openagents_runtime_test`).
+- Migrations run cleanly.
+- Runtime tests pass.
+- Contract check passes with `runtime contract check passed`.
