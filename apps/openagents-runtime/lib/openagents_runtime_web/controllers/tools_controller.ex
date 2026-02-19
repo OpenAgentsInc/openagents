@@ -2,6 +2,7 @@ defmodule OpenAgentsRuntimeWeb.ToolsController do
   use OpenAgentsRuntimeWeb, :controller
 
   alias OpenAgentsRuntime.Telemetry.Tracing
+  alias OpenAgentsRuntime.Skills.Registry, as: SkillRegistry
   alias OpenAgentsRuntime.Tools.Coding.Kernel, as: CodingKernel
   alias OpenAgentsRuntime.Tools.Coding.Providers.GitHubAdapter
 
@@ -14,7 +15,8 @@ defmodule OpenAgentsRuntimeWeb.ToolsController do
     Tracing.with_phase_span(:tool, %{tool_pack: params["tool_pack"], mode: params["mode"]}, fn ->
       with {:ok, payload} <- validate_payload(params),
            {:ok, payload} <- enforce_user_context(conn, payload),
-           {:ok, result} <- dispatch(payload) do
+           {:ok, manifest} <- resolve_manifest(payload),
+           {:ok, result} <- dispatch(payload, manifest) do
         json(conn, %{"data" => result})
       else
         {:error, {:bad_request, errors}} ->
@@ -26,29 +28,48 @@ defmodule OpenAgentsRuntimeWeb.ToolsController do
         {:error, {:invalid_request, errors}} ->
           validation_error(conn, 422, errors)
 
+        {:error, {:manifest_not_found, tool_pack, ref}} ->
+          validation_error(conn, 422, [
+            %{
+              "reason_code" => "manifest_resolution.not_found",
+              "path" => "manifest_ref",
+              "message" =>
+                "unable to resolve manifest for #{tool_pack} with reference #{inspect(ref)}"
+            }
+          ])
+
+        {:error, {:tool_not_found, tool_id, version}} ->
+          validation_error(conn, 422, [
+            %{
+              "reason_code" => "manifest_resolution.tool_not_found",
+              "path" => "manifest_ref",
+              "message" => "tool spec not found: #{tool_id}@#{version || "latest"}"
+            }
+          ])
+
         {:error, :forbidden} ->
           error(conn, 403, "forbidden", "request context does not match authenticated principal")
       end
     end)
   end
 
-  defp dispatch(%{"tool_pack" => "coding.v1", "mode" => @execute_mode} = payload) do
+  defp dispatch(%{"tool_pack" => "coding.v1", "mode" => @execute_mode} = payload, manifest) do
     CodingKernel.execute_operation(
-      payload["manifest"],
+      manifest,
       payload["request"],
       build_coding_opts(payload)
     )
   end
 
-  defp dispatch(%{"tool_pack" => "coding.v1", "mode" => @replay_mode} = payload) do
+  defp dispatch(%{"tool_pack" => "coding.v1", "mode" => @replay_mode} = payload, manifest) do
     CodingKernel.replay_decision(
-      payload["manifest"],
+      manifest,
       payload["request"],
       build_coding_opts(payload)
     )
   end
 
-  defp dispatch(%{"tool_pack" => tool_pack}) do
+  defp dispatch(%{"tool_pack" => tool_pack}, _manifest) do
     {:error, {:bad_request, ["tool_pack is not supported: #{tool_pack}"]}}
   end
 
@@ -56,6 +77,7 @@ defmodule OpenAgentsRuntimeWeb.ToolsController do
     tool_pack = normalize_optional_string(params["tool_pack"])
     mode = normalize_optional_string(params["mode"]) || @execute_mode
     manifest = params["manifest"]
+    manifest_ref = params["manifest_ref"]
     request = params["request"]
     policy = params["policy"] || %{}
 
@@ -66,7 +88,10 @@ defmodule OpenAgentsRuntimeWeb.ToolsController do
         not MapSet.member?(@supported_modes, mode),
         "mode must be execute or replay"
       )
-      |> maybe_add_error(not is_map(manifest), "manifest must be an object")
+      |> maybe_add_error(
+        not (is_map(manifest) or is_map(manifest_ref)),
+        "manifest or manifest_ref must be an object"
+      )
       |> maybe_add_error(not is_map(request), "request must be an object")
       |> maybe_add_error(not is_map(policy), "policy must be an object when provided")
       |> Enum.reverse()
@@ -84,6 +109,7 @@ defmodule OpenAgentsRuntimeWeb.ToolsController do
          "tool_pack" => tool_pack,
          "mode" => mode,
          "manifest" => normalize_map(manifest),
+         "manifest_ref" => normalize_map(manifest_ref),
          "request" => request,
          "policy" => normalize_map(policy),
          "run_id" => normalize_optional_string(params["run_id"]),
@@ -93,6 +119,14 @@ defmodule OpenAgentsRuntimeWeb.ToolsController do
     else
       {:error, {:bad_request, errors}}
     end
+  end
+
+  defp resolve_manifest(%{"manifest" => manifest}) when map_size(manifest) > 0 do
+    {:ok, manifest}
+  end
+
+  defp resolve_manifest(%{"tool_pack" => tool_pack, "manifest_ref" => manifest_ref}) do
+    SkillRegistry.resolve_tool_manifest(tool_pack, manifest_ref)
   end
 
   defp enforce_user_context(conn, payload) do

@@ -19,13 +19,23 @@ class RuntimeToolsController extends Controller
         $validated = $request->validate([
             'tool_pack' => ['required', 'string', 'max:120'],
             'mode' => ['nullable', 'string', 'in:execute,replay'],
-            'manifest' => ['required', 'array'],
+            'manifest' => ['nullable', 'array'],
+            'manifest_ref' => ['nullable', 'array'],
             'request' => ['required', 'array'],
             'policy' => ['nullable', 'array'],
             'run_id' => ['nullable', 'string', 'max:160'],
             'thread_id' => ['nullable', 'string', 'max:160'],
             'user_id' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        if (! isset($validated['manifest']) && ! isset($validated['manifest_ref'])) {
+            return response()->json([
+                'error' => [
+                    'code' => 'invalid_request',
+                    'message' => 'manifest or manifest_ref is required',
+                ],
+            ], 422);
+        }
 
         $authenticatedUserId = (int) $user->getAuthIdentifier();
         $requestedUserId = isset($validated['user_id']) ? (int) $validated['user_id'] : null;
@@ -42,7 +52,8 @@ class RuntimeToolsController extends Controller
         $payload = [
             'tool_pack' => (string) $validated['tool_pack'],
             'mode' => isset($validated['mode']) ? (string) $validated['mode'] : 'execute',
-            'manifest' => $validated['manifest'],
+            'manifest' => $validated['manifest'] ?? [],
+            'manifest_ref' => $validated['manifest_ref'] ?? [],
             'request' => $validated['request'],
             'policy' => $validated['policy'] ?? [],
             'run_id' => $validated['run_id'] ?? null,
@@ -86,4 +97,3 @@ class RuntimeToolsController extends Controller
         ], $status);
     }
 }
-

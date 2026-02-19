@@ -15,7 +15,10 @@ defmodule OpenAgentsRuntime.RuntimeSupervisor do
     children = [
       {Registry, keys: :unique, name: OpenAgentsRuntime.AgentRegistry},
       {Registry, keys: :duplicate, name: OpenAgentsRuntime.ToolTaskRegistry},
+      {Registry, keys: :unique, name: OpenAgentsRuntime.Codex.WorkerRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: OpenAgentsRuntime.AgentSupervisor},
+      {DynamicSupervisor,
+       strategy: :one_for_one, name: OpenAgentsRuntime.Codex.WorkerDynamicSupervisor},
       {Task.Supervisor, name: OpenAgentsRuntime.Tools.TaskSupervisor},
       OpenAgentsRuntime.Runs.EventListener,
       OpenAgentsRuntime.Memory.CompactionJob,

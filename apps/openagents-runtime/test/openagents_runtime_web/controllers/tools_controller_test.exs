@@ -71,6 +71,32 @@ defmodule OpenAgentsRuntimeWeb.ToolsControllerTest do
     assert is_binary(evaluation_hash) and byte_size(evaluation_hash) == 64
   end
 
+  test "execute resolves manifest via manifest_ref integration_id", %{conn: conn} do
+    payload =
+      base_payload()
+      |> Map.delete("manifest")
+      |> Map.put("manifest_ref", %{"integration_id" => "github.primary"})
+      |> Map.put("run_id", "run_tools_2_ref")
+      |> Map.put("thread_id", "thread_tools_2_ref")
+
+    conn =
+      conn
+      |> put_internal_auth(
+        run_id: "run_tools_2_ref",
+        thread_id: "thread_tools_2_ref",
+        user_id: 77
+      )
+      |> post(~p"/internal/v1/tools/execute", payload)
+
+    assert %{
+             "data" => %{
+               "state" => "succeeded",
+               "decision" => "allowed",
+               "reason_code" => "policy_allowed.default"
+             }
+           } = json_response(conn, 200)
+  end
+
   test "execute requires x-oa-user-id header", %{conn: conn} do
     payload =
       base_payload()
@@ -137,6 +163,25 @@ defmodule OpenAgentsRuntimeWeb.ToolsControllerTest do
       |> post(~p"/internal/v1/tools/execute", payload)
 
     assert %{"error" => %{"code" => "invalid_request"}} = json_response(conn, 400)
+  end
+
+  test "execute returns validation details when manifest_ref cannot be resolved", %{conn: conn} do
+    payload =
+      base_payload()
+      |> Map.delete("manifest")
+      |> Map.put("manifest_ref", %{"integration_id" => "does.not.exist"})
+      |> Map.put("run_id", "run_tools_7")
+      |> Map.put("thread_id", "thread_tools_7")
+
+    conn =
+      conn
+      |> put_internal_auth(run_id: "run_tools_7", thread_id: "thread_tools_7", user_id: 77)
+      |> post(~p"/internal/v1/tools/execute", payload)
+
+    assert %{"error" => %{"code" => "invalid_request", "details" => details}} =
+             json_response(conn, 422)
+
+    assert Enum.any?(details, &(&1["reason_code"] == "manifest_resolution.not_found"))
   end
 
   defp base_payload do

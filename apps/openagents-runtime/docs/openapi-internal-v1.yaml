@@ -75,6 +75,272 @@ paths:
           $ref: '#/components/responses/Error'
         '422':
           $ref: '#/components/responses/Error'
+  /skills/tool-specs:
+    get:
+      summary: List registered ToolSpec definitions (DB + built-ins)
+      operationId: listToolSpecs
+      responses:
+        '200':
+          description: Tool specs listed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillRegistryListResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+    post:
+      summary: Upsert ToolSpec definition
+      operationId: upsertToolSpec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolSpecSubmitRequest'
+      responses:
+        '201':
+          description: Tool spec accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillRegistryUpsertResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /skills/skill-specs:
+    get:
+      summary: List registered SkillSpec definitions (DB + built-ins)
+      operationId: listSkillSpecs
+      responses:
+        '200':
+          description: Skill specs listed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillRegistryListResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+    post:
+      summary: Upsert SkillSpec definition
+      operationId: upsertSkillSpec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillSpecSubmitRequest'
+      responses:
+        '201':
+          description: Skill spec accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillRegistryUpsertResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /skills/skill-specs/{skill_id}/{version}/publish:
+    post:
+      summary: Publish immutable SkillRelease from SkillSpec
+      operationId: publishSkillSpec
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/SkillVersion'
+      responses:
+        '201':
+          description: Skill release published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillPublishResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /skills/releases/{skill_id}/{version}:
+    get:
+      summary: Fetch immutable SkillRelease artifact
+      operationId: getSkillRelease
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/SkillVersion'
+      responses:
+        '200':
+          description: Skill release returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillReleaseResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /codex/workers:
+    post:
+      summary: Create or reattach Codex worker session
+      operationId: createCodexWorker
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodexWorkerCreateRequest'
+      responses:
+        '200':
+          description: Existing worker replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerCreateResponse'
+        '202':
+          description: New worker accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerCreateResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+  /codex/workers/{worker_id}/snapshot:
+    get:
+      summary: Fetch Codex worker snapshot
+      operationId: getCodexWorkerSnapshot
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: Worker snapshot returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerSnapshotResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /codex/workers/{worker_id}/requests:
+    post:
+      summary: Submit JSON-RPC style request to Codex worker
+      operationId: submitCodexWorkerRequest
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodexWorkerRequestEnvelope'
+      responses:
+        '200':
+          description: Worker request processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerRequestResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+  /codex/workers/{worker_id}/stream:
+    get:
+      summary: Stream Codex worker events as SSE
+      operationId: streamCodexWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: tail_ms
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '410':
+          $ref: '#/components/responses/Error'
+  /codex/workers/{worker_id}/stop:
+    post:
+      summary: Stop Codex worker session
+      operationId: stopCodexWorker
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Worker already stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerStopResponse'
+        '202':
+          description: Worker stop accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerStopResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /runs/{run_id}/snapshot:
     get:
       summary: Read latest run snapshot
@@ -236,6 +502,25 @@ components:
       required: true
       schema:
         type: string
+    SkillId:
+      name: skill_id
+      in: path
+      required: true
+      schema:
+        type: string
+    SkillVersion:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    WorkerId:
+      name: worker_id
+      in: path
+      required: true
+      schema:
+        type: string
   responses:
     Error:
       description: Structured error response
@@ -364,7 +649,7 @@ components:
           type: boolean
     ToolExecuteRequest:
       type: object
-      required: [tool_pack, manifest, request]
+      required: [tool_pack, request]
       properties:
         tool_pack:
           type: string
@@ -384,6 +669,9 @@ components:
         manifest:
           type: object
           additionalProperties: true
+        manifest_ref:
+          type: object
+          additionalProperties: true
         request:
           type: object
           additionalProperties: true
@@ -391,6 +679,114 @@ components:
           type: object
           additionalProperties: true
     ToolExecuteResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    ToolSpecSubmitRequest:
+      type: object
+      required: [tool_spec]
+      properties:
+        state:
+          type: string
+          enum: [draft, validated, published, deprecated]
+        tool_spec:
+          type: object
+          additionalProperties: true
+    SkillSpecSubmitRequest:
+      type: object
+      required: [skill_spec]
+      properties:
+        state:
+          type: string
+          enum: [draft, validated, published, deprecated]
+        skill_spec:
+          type: object
+          additionalProperties: true
+    SkillRegistryListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    SkillRegistryUpsertResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    SkillPublishResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    SkillReleaseResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    CodexWorkerCreateRequest:
+      type: object
+      properties:
+        worker_id:
+          type: string
+        workspace_ref:
+          type: string
+        codex_home_ref:
+          type: string
+        adapter:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    CodexWorkerCreateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          properties:
+            workerId:
+              type: string
+            status:
+              type: string
+            latestSeq:
+              type: integer
+              minimum: 0
+            idempotentReplay:
+              type: boolean
+    CodexWorkerSnapshotResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    CodexWorkerRequestEnvelope:
+      type: object
+      required: [request]
+      properties:
+        request:
+          type: object
+          additionalProperties: true
+    CodexWorkerRequestResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    CodexWorkerStopResponse:
       type: object
       required: [data]
       properties:
