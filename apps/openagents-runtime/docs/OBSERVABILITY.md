@@ -60,3 +60,9 @@ High-cardinality keys explicitly prohibited from metric labels:
 - Use metrics for fleet/system health and bounded alerting.
 - Use logs/traces + event metadata for run-level incident debugging.
 - Never add run/thread/tool identifiers as metric tags; update `metrics_test.exs` if taxonomy changes.
+
+## Dashboards and alerts
+
+- Dashboard artifact: `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
+- Alert rules: `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
+- Operator runbook: `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`

@@ -43,3 +43,4 @@ Internal API docs:
 - OpenAPI spec: `docs/openapi-internal-v1.yaml`
 - Laravel SSE mapping: `docs/LARAVEL_SSE_MAPPING.md`
 - Observability + telemetry guardrails: `docs/OBSERVABILITY.md`
+- Dashboards + alerts runbook: `docs/OPERATIONS_ALERTING.md`
