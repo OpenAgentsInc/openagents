@@ -146,6 +146,20 @@ defmodule OpenAgentsRuntime.Runs.ExecutorTest do
   end
 
   test "loop detection transitions run into deterministic failed terminal state" do
+    handler_id = "parity-loop-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:openagents_runtime, :parity, :failure],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:parity_failure, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
     run_id = unique_run_id("exec_loop")
     insert_run(run_id)
 
@@ -196,6 +210,11 @@ defmodule OpenAgentsRuntime.Runs.ExecutorTest do
     run = Repo.get!(Run, run_id)
     assert run.status == "failed"
     assert run.terminal_reason_class == "loop_detected"
+
+    assert_receive {:parity_failure, %{count: 1}, metadata}, 1_000
+    assert metadata.class == "loop"
+    assert metadata.reason_class == "loop_detected.no_progress"
+    assert metadata.component == "runs.executor"
   end
 
   test "applies hook lifecycle in deterministic order and keeps effects receipt-visible" do

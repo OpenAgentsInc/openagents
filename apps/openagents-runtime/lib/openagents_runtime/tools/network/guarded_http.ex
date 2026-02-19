@@ -12,6 +12,7 @@ defmodule OpenAgentsRuntime.Tools.Network.GuardedHTTP do
 
   alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Telemetry.Events
+  alias OpenAgentsRuntime.Telemetry.Parity
 
   @default_timeout_ms 10_000
   @default_connect_timeout_ms 10_000
@@ -439,6 +440,12 @@ defmodule OpenAgentsRuntime.Tools.Network.GuardedHTTP do
       |> Sanitizer.sanitize()
 
     emit_blocked_event(reason_code, details, opts)
+
+    Parity.emit_failure("network", reason_code, "tools.network", "denied", %{
+      host: details["host"] || "unknown",
+      url: details["url"] || "unknown"
+    })
+
     {:error, {:blocked, reason_code, details}}
   end
 

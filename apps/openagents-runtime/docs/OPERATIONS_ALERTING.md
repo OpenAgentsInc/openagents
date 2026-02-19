@@ -79,6 +79,20 @@ Prometheus rule artifact:
   2. Validate authorization envelope rollout and limits.
   3. Confirm no runaway loops consuming delegated budget.
 
+### Parity failure class spikes
+
+- Metric: `openagents_runtime.parity.failure.count`
+- Class taxonomy: `policy`, `loop`, `network`, `manifest`, `workflow`
+- Action:
+  1. Split by `class`, `reason_class`, and `component` to identify dominant parity regression lane.
+  2. Correlate with paired runtime surfaces:
+     - `policy` -> `openagents_runtime.policy.decision.*`
+     - `loop` -> `openagents_runtime.executor.terminal.count`
+     - `network` -> guarded network block telemetry (`tools.network`)
+     - `manifest` -> `tools.extensions.manifest_validation` outcomes
+     - `workflow` -> DS structured workflow receipts + step receipts
+  3. If class spike follows upstream parity import, run OpenClaw drift report and open ingestion follow-up issue.
+
 ## Guardrails
 
 - High-cardinality identifiers stay in logs/traces, never metric labels.

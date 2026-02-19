@@ -11,6 +11,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
   alias OpenAgentsRuntime.DS.Strategies.RlmLiteV1
   alias OpenAgentsRuntime.Contracts.Layer0TypeAdapters
   alias OpenAgentsRuntime.Telemetry.Events
+  alias OpenAgentsRuntime.Telemetry.Parity
 
   @default_run_id "runtime_predict"
   @default_strategy_id "direct.v1"
@@ -334,6 +335,19 @@ defmodule OpenAgentsRuntime.DS.Predict do
         authorization_id: Map.get(policy, "authorization_id")
       }
     )
+
+    if decision == "denied" do
+      Parity.emit_failure(
+        "policy",
+        to_string(Map.get(policy, "reason_code", "policy_denied.explicit_deny")),
+        "ds.predict",
+        "denied",
+        %{
+          run_id: run_id,
+          signature_id: signature_id
+        }
+      )
+    end
   end
 
   defp budget_number(budget, key) do

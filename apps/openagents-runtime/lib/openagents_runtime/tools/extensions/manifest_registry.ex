@@ -10,6 +10,7 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistry do
   """
 
   alias OpenAgentsRuntime.Telemetry.Events
+  alias OpenAgentsRuntime.Telemetry.Parity
   alias OpenAgentsRuntime.Tools.Extensions.CommsManifestValidator
   alias OpenAgentsRuntime.Tools.Extensions.ManifestValidator
 
@@ -139,6 +140,19 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistry do
       %{count: 1},
       metadata
     )
+
+    if outcome == "rejected" do
+      Parity.emit_failure(
+        "manifest",
+        metadata.reason_code |> to_string(),
+        "tools.extensions",
+        "rejected",
+        %{
+          tool_pack: metadata.tool_pack,
+          extension_id: metadata.extension_id
+        }
+      )
+    end
   end
 
   defp primary_reason_code([%{"reason_code" => reason_code} | _]), do: reason_code

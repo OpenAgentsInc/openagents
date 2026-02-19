@@ -86,6 +86,20 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
   end
 
   test "run/3 emits deny reason codes when replay context indicates loop detection" do
+    handler_id = "parity-policy-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:openagents_runtime, :parity, :failure],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:parity_failure, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
     input = %{
       "messages" => [%{"role" => "user", "content" => "keep trying forever"}]
     }
@@ -108,6 +122,11 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
     assert result.receipt.policy["reason_code"] == "loop_detected.no_progress"
     assert result.receipt.policy["reason_codes_version"] == PolicyReasonCodes.version()
     assert String.length(result.receipt.policy["evaluation_hash"]) == 64
+
+    assert_receive {:parity_failure, %{count: 1}, metadata}, 1_000
+    assert metadata.class == "policy"
+    assert metadata.reason_class == "loop_detected.no_progress"
+    assert metadata.component == "ds.predict"
   end
 
   test "run/3 supports rlm_lite.v1 with trace linkage in receipt" do

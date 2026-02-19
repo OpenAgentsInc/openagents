@@ -54,6 +54,20 @@ defmodule OpenAgentsRuntime.DS.Workflows.StructuredTasksTest do
   end
 
   test "run/3 returns budget_exhausted deterministically when step budget is depleted" do
+    handler_id = "parity-workflow-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:openagents_runtime, :parity, :failure],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:parity_failure, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
     input = %{
       "task" => %{"id" => "task_1", "objective" => "budget test"},
       "context" => %{},
@@ -65,6 +79,11 @@ defmodule OpenAgentsRuntime.DS.Workflows.StructuredTasksTest do
                run_id: "wf_budget_1",
                budget: %{"remaining_sats" => 0}
              )
+
+    assert_receive {:parity_failure, %{count: 1}, metadata}, 1_000
+    assert metadata.class == "workflow"
+    assert metadata.reason_class == "policy_denied.budget_exhausted"
+    assert metadata.component == "ds.workflows"
   end
 
   test "run/3 returns step_failed when workflow step strategy is unsupported" do

@@ -5,6 +5,7 @@ defmodule OpenAgentsRuntime.Tools.Network.GuardedHTTPTest do
 
   test "blocks private address targets before transport and emits blocked audit event" do
     handler_id = "guarded-http-blocked-#{System.unique_integer([:positive])}"
+    parity_handler_id = "guarded-http-parity-#{System.unique_integer([:positive])}"
     parent = self()
 
     :ok =
@@ -18,6 +19,18 @@ defmodule OpenAgentsRuntime.Tools.Network.GuardedHTTPTest do
       )
 
     on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    :ok =
+      :telemetry.attach(
+        parity_handler_id,
+        [:openagents_runtime, :parity, :failure],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:parity_failure, measurements, metadata})
+        end,
+        parent
+      )
+
+    on_exit(fn -> :telemetry.detach(parity_handler_id) end)
 
     transport = fn _method, _url, _headers, _body, _opts ->
       send(parent, :transport_called)
@@ -33,6 +46,9 @@ defmodule OpenAgentsRuntime.Tools.Network.GuardedHTTPTest do
     refute_receive :transport_called
     assert_receive {:blocked_event, %{count: 1}, metadata}
     assert metadata.reason_code == "ssrf_block.private_address"
+    assert_receive {:parity_failure, %{count: 1}, parity_metadata}
+    assert parity_metadata.class == "network"
+    assert parity_metadata.reason_class == "ssrf_block.private_address"
   end
 
   test "blocks metadata endpoint hostnames deterministically" do

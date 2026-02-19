@@ -31,5 +31,16 @@ defmodule OpenAgentsRuntime.Telemetry.MetricsTest do
     assert Map.has_key?(allowlist, :lease_operation)
     assert Map.has_key?(allowlist, :janitor_cycle)
     assert Map.has_key?(allowlist, :policy_decision)
+    assert Map.has_key?(allowlist, :parity_failure)
+  end
+
+  test "parity failure metric is declared with bounded tags" do
+    parity_metric =
+      Enum.find(Metrics.metrics(), fn metric ->
+        metric.name == [:openagents_runtime, :parity, :failure, :count]
+      end)
+
+    assert parity_metric
+    assert parity_metric.tags == [:class, :reason_class, :component, :outcome]
   end
 end
