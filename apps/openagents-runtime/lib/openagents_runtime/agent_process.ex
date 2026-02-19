@@ -65,6 +65,18 @@ defmodule OpenAgentsRuntime.AgentProcess do
     end
   end
 
+  @spec resume(String.t()) :: :ok | {:error, :agent_not_running}
+  def resume(run_id) when is_binary(run_id) do
+    case AgentRegistry.whereis(run_id) do
+      nil ->
+        {:error, :agent_not_running}
+
+      pid when is_pid(pid) ->
+        GenServer.cast(pid, :resume)
+        :ok
+    end
+  end
+
   @spec snapshot(String.t()) :: {:ok, state()} | {:error, :agent_not_running}
   def snapshot(run_id) when is_binary(run_id) do
     case AgentRegistry.whereis(run_id) do
@@ -126,6 +138,17 @@ defmodule OpenAgentsRuntime.AgentProcess do
       |> maybe_schedule_execute()
 
     emit_process_stats(state.run_id, :cancel)
+    {:noreply, state}
+  end
+
+  def handle_cast(:resume, state) do
+    state =
+      state
+      |> cancel_idle_shutdown()
+      |> Map.put(:pending_execution, true)
+      |> maybe_schedule_execute()
+
+    emit_process_stats(state.run_id, :resume)
     {:noreply, state}
   end
 

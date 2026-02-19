@@ -17,6 +17,8 @@ defmodule OpenAgentsRuntime.Runs.Run do
     field :terminal_reason_class, :string
     field :terminal_reason, :string
     field :terminal_at, :utc_datetime_usec
+    field :recovery_attempt_count, :integer
+    field :last_recovery_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime_usec)
   end

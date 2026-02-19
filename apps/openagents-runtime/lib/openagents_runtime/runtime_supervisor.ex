@@ -17,7 +17,8 @@ defmodule OpenAgentsRuntime.RuntimeSupervisor do
       {Registry, keys: :duplicate, name: OpenAgentsRuntime.ToolTaskRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: OpenAgentsRuntime.AgentSupervisor},
       {Task.Supervisor, name: OpenAgentsRuntime.Tools.TaskSupervisor},
-      OpenAgentsRuntime.Runs.EventListener
+      OpenAgentsRuntime.Runs.EventListener,
+      OpenAgentsRuntime.Runs.Janitor
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
