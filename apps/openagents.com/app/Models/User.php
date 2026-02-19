@@ -72,6 +72,11 @@ class User extends Authenticatable
         return $this->hasMany(Autopilot::class, 'owner_user_id');
     }
 
+    public function integrations(): HasMany
+    {
+        return $this->hasMany(UserIntegration::class);
+    }
+
     public function shouts(): HasMany
     {
         return $this->hasMany(Shout::class);
