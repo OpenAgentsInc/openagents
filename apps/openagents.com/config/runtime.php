@@ -34,4 +34,10 @@ return [
         // Streaming read chunk size.
         'stream_chunk_bytes' => (int) env('OA_RUNTIME_ELIXIR_STREAM_CHUNK_BYTES', 1024),
     ],
+
+    'shadow' => [
+        'enabled' => (bool) env('OA_RUNTIME_SHADOW_ENABLED', false),
+        'sample_rate' => (float) env('OA_RUNTIME_SHADOW_SAMPLE_RATE', 1.0),
+        'max_capture_bytes' => (int) env('OA_RUNTIME_SHADOW_MAX_CAPTURE_BYTES', 200_000),
+    ],
 ];
