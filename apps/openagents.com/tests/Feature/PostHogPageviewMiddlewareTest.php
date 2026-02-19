@@ -26,6 +26,15 @@ it('captures a posthog pageview for successful html get requests', function () {
         ->assertOk();
 });
 
+it('does not capture posthog pageview for unauthenticated requests', function () {
+    $mock = Mockery::mock(PostHogService::class);
+    $mock->shouldNotReceive('capture');
+
+    app()->instance(PostHogService::class, $mock);
+
+    $this->get('/')->assertOk();
+});
+
 it('does not capture posthog pageview for api paths', function () {
     $mock = Mockery::mock(PostHogService::class);
     $mock->shouldNotReceive('capture');
