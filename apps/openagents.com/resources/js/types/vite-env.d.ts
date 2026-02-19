@@ -11,3 +11,13 @@ interface ImportMetaEnv {
 interface ImportMeta {
     readonly env: ImportMetaEnv;
 }
+
+declare global {
+    interface Window {
+        __OA_POSTHOG__?: {
+            key?: string;
+            host?: string;
+            disabled?: boolean;
+        };
+    }
+}
