@@ -27,5 +27,8 @@ defmodule OpenAgentsRuntime.Repo.BaselineSchemaTest do
 
     assert {:ok, %{rows: [["runtime.memory_rollups"]]}} =
              Repo.query("SELECT to_regclass('runtime.memory_rollups')::text")
+
+    assert {:ok, %{rows: [["runtime.ds_artifact_pointers"]]}} =
+             Repo.query("SELECT to_regclass('runtime.ds_artifact_pointers')::text")
   end
 end
