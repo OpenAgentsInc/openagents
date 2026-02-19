@@ -1,5 +1,5 @@
 defmodule OpenAgentsRuntime.Tools.ToolRunnerTest do
-  use ExUnit.Case, async: true
+  use OpenAgentsRuntime.DataCase, async: false
 
   alias OpenAgentsRuntime.Telemetry.Tracing
   alias OpenAgentsRuntime.Tools.ToolRunner
