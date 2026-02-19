@@ -49,6 +49,17 @@ return [
         'secret_cache_ttl_ms' => (int) env('OA_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS', 60000),
     ],
 
+    'comms' => [
+        'resend' => [
+            'webhook_secret' => (string) env('OA_RESEND_WEBHOOK_SECRET', ''),
+            'webhook_tolerance_seconds' => (int) env('OA_RESEND_WEBHOOK_TOLERANCE_SECONDS', 300),
+        ],
+        'runtime_delivery_ingest_path' => (string) env('OA_RUNTIME_ELIXIR_COMMS_DELIVERY_INGEST_PATH', '/internal/v1/comms/delivery-events'),
+        'runtime_delivery_timeout_ms' => (int) env('OA_RUNTIME_ELIXIR_COMMS_DELIVERY_TIMEOUT_MS', 10000),
+        'runtime_delivery_max_retries' => (int) env('OA_RUNTIME_ELIXIR_COMMS_DELIVERY_MAX_RETRIES', 2),
+        'runtime_delivery_retry_backoff_ms' => (int) env('OA_RUNTIME_ELIXIR_COMMS_DELIVERY_RETRY_BACKOFF_MS', 200),
+    ],
+
     'shadow' => [
         'enabled' => (bool) env('OA_RUNTIME_SHADOW_ENABLED', false),
         'sample_rate' => (float) env('OA_RUNTIME_SHADOW_SAMPLE_RATE', 1.0),

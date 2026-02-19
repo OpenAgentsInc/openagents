@@ -19,6 +19,12 @@ type ResendIntegration = {
     metadata?: {
         sender_email?: string | null;
         sender_name?: string | null;
+        delivery_projection?: {
+            last_state?: string | null;
+            last_event_at?: string | null;
+            last_message_id?: string | null;
+            last_recipient?: string | null;
+        };
     };
 };
 
@@ -79,6 +85,20 @@ export default function IntegrationsSettings() {
                                         ? ` (••••${resend.secretLast4})`
                                         : ''}
                                 </p>
+                                {resend.metadata?.delivery_projection
+                                    ?.last_state ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        Last delivery:{' '}
+                                        {
+                                            resend.metadata
+                                                .delivery_projection.last_state
+                                        }
+                                        {resend.metadata.delivery_projection
+                                            .last_event_at
+                                            ? ` at ${new Date(resend.metadata.delivery_projection.last_event_at).toLocaleString()}`
+                                            : ''}
+                                    </p>
+                                ) : null}
                             </div>
                             <span
                                 className={`rounded-md px-2 py-1 text-xs font-medium ${

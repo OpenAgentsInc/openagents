@@ -21,6 +21,35 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
         '401':
           $ref: '#/components/responses/Error'
+  /comms/delivery-events:
+    post:
+      summary: Record normalized comms delivery event
+      operationId: recordCommsDeliveryEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommsDeliveryEventRequest'
+      responses:
+        '200':
+          description: Duplicate idempotent replay accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommsDeliveryAccepted'
+        '202':
+          description: Delivery event accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommsDeliveryAccepted'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /runs/{run_id}/snapshot:
     get:
       summary: Read latest run snapshot
@@ -264,6 +293,48 @@ components:
           enum: [canceling, canceled, succeeded, failed]
         cancelRequested:
           type: boolean
+        idempotentReplay:
+          type: boolean
+    CommsDeliveryEventRequest:
+      type: object
+      required: [event_id, provider, delivery_state, payload]
+      properties:
+        event_id:
+          type: string
+        provider:
+          type: string
+          enum: [resend]
+        delivery_state:
+          type: string
+          enum: [delivered, bounced, complained, unsubscribed]
+        message_id:
+          type: string
+          nullable: true
+        integration_id:
+          type: string
+          nullable: true
+        recipient:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+    CommsDeliveryAccepted:
+      type: object
+      required: [eventId, status, idempotentReplay]
+      properties:
+        eventId:
+          type: string
+        status:
+          type: string
+          enum: [accepted]
         idempotentReplay:
           type: boolean
     ErrorEnvelope:

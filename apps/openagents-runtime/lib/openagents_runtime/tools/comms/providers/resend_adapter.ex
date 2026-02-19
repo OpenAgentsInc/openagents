@@ -122,10 +122,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
             "text" => text
           }
           |> maybe_put("html", html)
-          |> maybe_put("tags", [
-            %{"name" => "template_id", "value" => template_id},
-            %{"name" => "integration_id", "value" => request["integration_id"] || "unknown"}
-          ])
+          |> maybe_put("tags", build_tags(request, template_id))
 
         {:ok, payload}
     end
@@ -251,6 +248,33 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
     do: "runtime_secret_fetch_failed:#{reason}"
 
   defp secret_fetch_error_message(_reason), do: "runtime_secret_fetch_failed"
+
+  defp build_tags(request, template_id) do
+    [%{"name" => "template_id", "value" => template_id}]
+    |> append_tag("integration_id", request["integration_id"] || "unknown")
+    |> append_tag("user_id", request["user_id"])
+    |> append_tag("run_id", request["run_id"])
+    |> append_tag("tool_call_id", request["tool_call_id"])
+  end
+
+  defp append_tag(tags, _name, nil), do: tags
+
+  defp append_tag(tags, name, value) do
+    tag_value =
+      cond do
+        is_binary(value) -> value
+        is_integer(value) -> Integer.to_string(value)
+        is_float(value) -> :erlang.float_to_binary(value, [:compact, decimals: 6])
+        is_atom(value) -> Atom.to_string(value)
+        true -> to_string(value)
+      end
+
+    if String.trim(tag_value) == "" do
+      tags
+    else
+      tags ++ [%{"name" => name, "value" => tag_value}]
+    end
+  end
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

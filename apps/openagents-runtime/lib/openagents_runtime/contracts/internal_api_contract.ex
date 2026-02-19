@@ -16,6 +16,10 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       statuses: ~w(200 401),
       required_params: []
     },
+    {"/comms/delivery-events", "post"} => %{
+      statuses: ~w(200 202 400 401 409),
+      required_params: []
+    },
     {"/runs/{run_id}/snapshot", "get"} => %{
       statuses: ~w(200 400 401 403 404),
       required_params: [
@@ -270,6 +274,10 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
     with true <- File.exists?(path),
          {:ok, body} <- File.read(path) do
       []
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/comms/delivery-events"),
+        "RUNTIME_CONTRACT.md missing comms delivery-events endpoint section"
+      )
       |> maybe_push(
         String.contains?(body, "GET /internal/v1/runs/{run_id}/snapshot"),
         "RUNTIME_CONTRACT.md missing snapshot endpoint section"

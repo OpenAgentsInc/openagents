@@ -22,16 +22,17 @@ class IntegrationSecretLifecycleService
         ]);
 
         $action = $this->resolveUpsertAction($integration, $fingerprint);
+        $existingMetadata = is_array($integration->metadata) ? $integration->metadata : [];
 
         $integration->fill([
             'status' => 'active',
             'encrypted_secret' => $apiKey,
             'secret_fingerprint' => $fingerprint,
             'secret_last4' => substr($apiKey, -4),
-            'metadata' => [
+            'metadata' => array_merge($existingMetadata, [
                 'sender_email' => $metadata['sender_email'] ?? null,
                 'sender_name' => $metadata['sender_name'] ?? null,
-            ],
+            ]),
             'connected_at' => now(),
             'disconnected_at' => null,
         ]);
