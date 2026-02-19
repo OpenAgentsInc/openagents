@@ -405,6 +405,9 @@ Success (`200`):
       "worker_id": "codexw_12345",
       "status": "running",
       "latest_seq": 17,
+      "heartbeat_state": "fresh",
+      "heartbeat_age_ms": 843,
+      "heartbeat_stale_after_ms": 120000,
       "workspace_ref": "workspace://demo",
       "convex_projection": {
         "status": "in_sync",
@@ -444,6 +447,12 @@ Request (optional):
 
 Returns durable worker status and latest stream sequence.
 
+Snapshot/list responses include deterministic heartbeat classification fields:
+
+- `heartbeat_state` (`fresh|stale|missing|stopped|failed`)
+- `heartbeat_age_ms` (nullable integer)
+- `heartbeat_stale_after_ms` (runtime policy threshold)
+
 ### `POST /internal/v1/codex/workers/{worker_id}/requests`
 
 Submits a JSON-RPC style request envelope to the worker process.
@@ -459,6 +468,11 @@ Request:
   }
 }
 ```
+
+Conflict behavior:
+
+- Returns `409` when worker is stopped or not currently runnable.
+- Use `POST /internal/v1/codex/workers` with the same `worker_id` to reattach/resume.
 
 ### `POST /internal/v1/codex/workers/{worker_id}/events`
 
@@ -485,6 +499,11 @@ Validation:
 - `event.event_type` is required.
 - `event.event_type` must start with `worker.`.
 - `event.payload` is optional map data.
+
+Conflict behavior:
+
+- Returns `409` when worker is stopped or not currently runnable.
+- `worker.stopped` events enforce terminal status durability.
 
 ### `GET /internal/v1/codex/workers/{worker_id}/stream`
 

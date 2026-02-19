@@ -123,6 +123,58 @@ defmodule OpenAgentsRuntime.Convex.ReprojectionTest do
                     _summary}
   end
 
+  test "rebuild_codex_worker/2 converges runtime snapshot and convex summary after stop/resume replay" do
+    worker_id = unique_id("worker_rebuild_resume")
+
+    assert {:ok, %{worker: _worker}} =
+             Workers.create_worker(%{"worker_id" => worker_id, "adapter" => "desktop_bridge"}, %{
+               user_id: 62
+             })
+
+    assert {:ok, _} =
+             Workers.ingest_event(worker_id, %{user_id: 62}, %{
+               "event_type" => "worker.heartbeat",
+               "payload" => %{"source" => "desktop"}
+             })
+
+    assert {:ok, _} = Workers.stop_worker(worker_id, %{user_id: 62}, reason: "desktop_exit")
+
+    assert {:ok, %{worker: _worker, idempotent_replay: false}} =
+             Workers.create_worker(%{"worker_id" => worker_id, "adapter" => "desktop_bridge"}, %{
+               user_id: 62
+             })
+
+    assert {:ok, _} =
+             Workers.ingest_event(worker_id, %{user_id: 62}, %{
+               "event_type" => "worker.heartbeat",
+               "payload" => %{"source" => "desktop", "kind" => "resume"}
+             })
+
+    assert {:ok, snapshot} = Workers.snapshot(worker_id, %{user_id: 62})
+
+    assert {:ok, result} =
+             Reprojection.rebuild_codex_worker(worker_id,
+               sink: __MODULE__.CaptureSink,
+               sink_opts: [test_pid: self()],
+               now: @fixed_now,
+               projection_version: @projection_version
+             )
+
+    assert result.scope == "codex_worker"
+    assert result.entity_id == worker_id
+    assert result.result == "ok"
+
+    assert_receive {:codex_worker_summary_upserted, document_id, summary}
+    assert document_id == "runtime/codex_worker_summary:#{worker_id}"
+    assert summary["worker_id"] == worker_id
+    assert summary["status"] == snapshot["status"]
+    assert summary["latest_seq"] == snapshot["latest_seq"]
+    assert summary["latest_event_type"] == "worker.heartbeat"
+
+    checkpoint = checkpoint!("codex_worker_summary", worker_id)
+    assert checkpoint.last_runtime_seq == snapshot["latest_seq"]
+  end
+
   defp checkpoint!(projection_name, entity_id) do
     Repo.get_by!(ProjectionCheckpoint, projection_name: projection_name, entity_id: entity_id)
   end

@@ -24,8 +24,16 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
       |> put_internal_auth(user_id: 900)
       |> get(~p"/internal/v1/codex/workers/#{worker_id}/snapshot")
 
-    assert %{"data" => %{"worker_id" => ^worker_id, "status" => "running"}} =
-             json_response(snapshot_conn, 200)
+    assert %{
+             "data" => %{
+               "worker_id" => ^worker_id,
+               "status" => "running",
+               "heartbeat_state" => "fresh",
+               "heartbeat_stale_after_ms" => stale_after_ms
+             }
+           } = json_response(snapshot_conn, 200)
+
+    assert is_integer(stale_after_ms) and stale_after_ms > 0
 
     request_conn =
       conn
@@ -64,6 +72,30 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
       |> post(~p"/internal/v1/codex/workers/#{worker_id}/stop", %{"reason" => "done"})
 
     assert %{"data" => %{"idempotent_replay" => true}} = json_response(replay_stop_conn, 200)
+
+    stopped_request_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 900)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/requests", %{
+        "request" => %{"request_id" => unique_id("req"), "method" => "thread/start"}
+      })
+
+    assert %{"error" => %{"code" => "conflict"}} = json_response(stopped_request_conn, 409)
+
+    resume_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 900)
+      |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+
+    assert %{
+             "data" => %{
+               "workerId" => ^worker_id,
+               "status" => "running",
+               "idempotentReplay" => false
+             }
+           } = json_response(resume_conn, 202)
   end
 
   test "stream validates cursor input", %{conn: conn} do
@@ -124,6 +156,34 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
 
     assert %{"data" => %{"latest_seq" => latest_seq}} = json_response(snapshot_conn, 200)
     assert latest_seq >= seq
+  end
+
+  test "events endpoint returns conflict when worker is stopped", %{conn: conn} do
+    worker_id = unique_id("codexw")
+
+    conn
+    |> put_internal_auth(user_id: 908)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+    |> json_response(202)
+
+    conn
+    |> recycle()
+    |> put_internal_auth(user_id: 908)
+    |> post(~p"/internal/v1/codex/workers/#{worker_id}/stop", %{"reason" => "done"})
+    |> json_response(202)
+
+    stopped_event_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 908)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/events", %{
+        "event" => %{
+          "event_type" => "worker.event",
+          "payload" => %{"source" => "desktop", "method" => "turn/started"}
+        }
+      })
+
+    assert %{"error" => %{"code" => "conflict"}} = json_response(stopped_event_conn, 409)
   end
 
   test "worker ownership is enforced", %{conn: conn} do

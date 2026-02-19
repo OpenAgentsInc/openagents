@@ -298,6 +298,8 @@ paths:
           $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
   /codex/workers/{worker_id}/events:
     post:
       summary: Ingest desktop-side Codex notification into worker event stream
@@ -324,6 +326,8 @@ paths:
         '403':
           $ref: '#/components/responses/Error'
         '404':
+          $ref: '#/components/responses/Error'
+        '409':
           $ref: '#/components/responses/Error'
   /codex/workers/{worker_id}/stream:
     get:
@@ -843,7 +847,7 @@ components:
             $ref: '#/components/schemas/CodexWorkerSummary'
     CodexWorkerSummary:
       type: object
-      required: [worker_id, status, latest_seq]
+      required: [worker_id, status, latest_seq, heartbeat_stale_after_ms, heartbeat_state]
       properties:
         worker_id:
           type: string
@@ -876,6 +880,16 @@ components:
           type: string
           format: date-time
           nullable: true
+        heartbeat_age_ms:
+          type: integer
+          minimum: 0
+          nullable: true
+        heartbeat_stale_after_ms:
+          type: integer
+          minimum: 1
+        heartbeat_state:
+          type: string
+          enum: [fresh, stale, missing, stopped, failed]
         updated_at:
           type: string
           format: date-time
