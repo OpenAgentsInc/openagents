@@ -11,6 +11,7 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
   alias OpenAgentsRuntime.Runs.EventNotifier
   alias OpenAgentsRuntime.Runs.Run
   alias OpenAgentsRuntime.Runs.RunEvent
+  alias OpenAgentsRuntime.Security.Sanitizer
 
   @type append_error :: :run_not_found | Ecto.Changeset.t()
 
@@ -18,6 +19,8 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
           {:ok, RunEvent.t()} | {:error, append_error()}
   def append_event(run_id, event_type, payload \\ %{})
       when is_binary(run_id) and is_binary(event_type) and is_map(payload) do
+    sanitized_payload = Sanitizer.sanitize(payload)
+
     multi =
       Multi.new()
       |> Multi.run(:next_seq, fn repo, _changes ->
@@ -51,13 +54,14 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
         end
       end)
       |> Multi.insert(:event, fn %{next_seq: {_run, next_seq}, prev_hash: prev_hash} ->
-        event_hash = EventHashChain.hash_event(run_id, next_seq, event_type, payload, prev_hash)
+        event_hash =
+          EventHashChain.hash_event(run_id, next_seq, event_type, sanitized_payload, prev_hash)
 
         RunEvent.changeset(%RunEvent{}, %{
           run_id: run_id,
           seq: next_seq,
           event_type: event_type,
-          payload: payload,
+          payload: sanitized_payload,
           prev_hash: prev_hash,
           event_hash: event_hash
         })

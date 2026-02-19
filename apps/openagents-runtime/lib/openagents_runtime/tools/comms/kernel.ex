@@ -6,6 +6,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
   alias OpenAgentsRuntime.DS.PolicyEvaluator
   alias OpenAgentsRuntime.DS.PolicyReasonCodes
   alias OpenAgentsRuntime.DS.Receipts
+  alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Tools.Comms.NoopAdapter
   alias OpenAgentsRuntime.Tools.Extensions.CommsManifestValidator
 
@@ -78,7 +79,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
       replay_hash =
         Receipts.stable_hash(%{
           "manifest_id" => manifest["integration_id"],
-          "request" => request,
+          "request" => Sanitizer.sanitize(request),
           "decision" => decision,
           "reason_code" => policy_eval["reason_code"],
           "evaluation_hash" => policy_eval["evaluation_hash"]
@@ -276,6 +277,8 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
          authorization_id,
          provider_result
        ) do
+    sanitized_request = Sanitizer.sanitize(request)
+    sanitized_provider_result = Sanitizer.sanitize(provider_result)
     reason_code = normalize_reason_code(policy_eval["reason_code"], "policy_denied.explicit_deny")
     decision = if(state in ["blocked", "failed"], do: "denied", else: "allowed")
 
@@ -286,8 +289,8 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
             String.slice(
               Receipts.stable_hash(%{
                 "integration_id" => manifest["integration_id"],
-                "recipient" => request["recipient"],
-                "template_id" => request["template_id"],
+                "recipient" => sanitized_request["recipient"],
+                "template_id" => sanitized_request["template_id"],
                 "state" => state,
                 "reason_code" => reason_code,
                 "evaluation_hash" => policy_eval["evaluation_hash"]
@@ -297,8 +300,8 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
             ),
         "integration_id" => manifest["integration_id"],
         "provider" => manifest["provider"],
-        "recipient" => request["recipient"],
-        "template_id" => request["template_id"],
+        "recipient" => sanitized_request["recipient"],
+        "template_id" => sanitized_request["template_id"],
         "state" => state,
         "reason_code" => reason_code,
         "authorization_id" => authorization_id || "auth_missing",
@@ -313,7 +316,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
       "reason_code" => reason_code,
       "decision" => decision,
       "policy" => policy_eval,
-      "provider_result" => provider_result,
+      "provider_result" => sanitized_provider_result,
       "receipt" => receipt
     }
   end
