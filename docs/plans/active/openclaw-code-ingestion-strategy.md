@@ -36,6 +36,30 @@ OpenClaw has a mature capability surface in exactly the areas OpenAgents needs n
 - lifecycle hook model for policy/observability,
 - memory-provider slot patterns.
 
+## Platform Delineation and Routing
+
+OpenAgents supports web, mobile, and desktop clients. Each imported capability must declare a layer and platform variance so routing decisions are deterministic.
+
+Layer values:
+
+1. `Protocol`: shared contracts, schemas, reason codes.
+2. `Kernel`: runtime execution semantics and guardrails.
+3. `Control plane`: Laravel-authored configuration, UX, and admin workflows.
+4. `Client`: platform-specific presentation and local device behavior.
+
+Platform variance values:
+
+- `core_shared`: behavior must stay identical across web/mobile/desktop.
+- `client_specific`: intentionally platform-specific behavior.
+- `hybrid`: shared kernel behavior with client-specific adapters/presentation.
+
+Routing rules:
+
+1. If a capability affects execution ordering, spend/security, replay, or canonical event semantics, route to `Kernel` (plus `Protocol` if contracts are updated).
+2. If a capability is primarily authoring, config, audit, or operator UX, route to `Control plane`.
+3. If a capability only changes UI/device behavior, route to `Client`.
+4. Mixed capabilities must split implementation by layer but keep one canonical kernel behavior path.
+
 ## Non-Negotiable Guardrails
 
 Every imported capability must satisfy OpenAgents invariants:
@@ -83,17 +107,17 @@ If a capability cannot satisfy the above safely in the current wave, classify as
 
 Prioritized mapping from OpenClaw to OpenAgents:
 
-| Capability cluster | OpenClaw references | OpenAgents destination | Decision |
-|---|---|---|---|
-| Tool policy pipeline (profiles, allow/deny, provider-specific filters, plugin groups) | `src/agents/tool-policy.ts`, `src/agents/tool-policy-pipeline.ts`, `src/agents/pi-tools.policy.ts` | `apps/openagents-runtime/lib/openagents_runtime/tools/policy/*` + Laravel admin/config controls | Port to Elixir core; Laravel as control-plane editor |
-| Optional tool gating + plugin tool metadata | `src/plugins/tools.ts`, `src/plugins/registry.ts` | Runtime tool registry + policy resolver | Port core logic; keep plugin loading model adapted |
-| Hook lifecycle (before/after tool call, prompt/model hooks, message hooks) | `src/plugins/types.ts`, `src/plugins/hooks.ts`, `src/plugins/hook-runner-global.ts` | `apps/openagents-runtime/lib/openagents_runtime/hooks/*` | Port as runtime extension seam, event-log integrated |
-| Loop detection and no-progress circuit breaker | `src/agents/tool-loop-detection.ts`, `src/agents/pi-tools.before-tool-call.ts` | Runtime execution guardrails in run executor/tool task state machine | Port now (high value for autonomous stability) |
-| Web/network safety guard (SSRF, DNS pinning, redirect controls) | `src/infra/net/fetch-guard.ts`, `src/infra/net/ssrf.ts`, `src/agents/tools/web-fetch.ts` | Runtime tool adapters for any outbound HTTP tooling | Port early before expanding external integrations |
-| Plugin manifest + schema validation | `docs/plugins/manifest.md`, `src/plugins/manifest.ts`, `src/plugins/manifest-registry.ts`, `src/plugins/schema-validator.ts` | OpenAgents integration manifest format + runtime validation + Laravel UI forms | Adapt model; preserve strict validation behavior |
-| Memory provider slot model (`memory-core` vs `memory-lancedb`) | `extensions/memory-core/index.ts`, `extensions/memory-lancedb/index.ts`, `docs/concepts/memory.md` | Runtime memory provider abstraction (`timeline`, compaction, recall adapters) | Adapt architecture; do not copy storage model 1:1 |
-| Structured workflow tool (`llm-task`/Lobster pattern) | `extensions/llm-task/src/llm-task-tool.ts`, `docs/tools/llm-task.md`, `docs/tools/lobster.md` | DS-Elixir strategy/tool orchestration boundary | Adapt as DS signature strategy, not a direct shell-style runtime dependency |
-| OTel diagnostics service plugin | `extensions/diagnostics-otel/src/service.ts` | Runtime telemetry emitters + ops dashboards | Reuse metric taxonomy ideas; implement natively in Elixir telemetry |
+| Capability cluster | OpenClaw references | Layer | OpenAgents destination | Decision |
+|---|---|---|---|---|
+| Tool policy pipeline (profiles, allow/deny, provider-specific filters, plugin groups) | `src/agents/tool-policy.ts`, `src/agents/tool-policy-pipeline.ts`, `src/agents/pi-tools.policy.ts` | `Kernel + Control plane` | `apps/openagents-runtime/lib/openagents_runtime/tools/policy/*` + Laravel admin/config controls | Port to Elixir core; Laravel as control-plane editor |
+| Optional tool gating + plugin tool metadata | `src/plugins/tools.ts`, `src/plugins/registry.ts` | `Kernel` | Runtime tool registry + policy resolver | Port core logic; keep plugin loading model adapted |
+| Hook lifecycle (before/after tool call, prompt/model hooks, message hooks) | `src/plugins/types.ts`, `src/plugins/hooks.ts`, `src/plugins/hook-runner-global.ts` | `Kernel` | `apps/openagents-runtime/lib/openagents_runtime/hooks/*` | Port as runtime extension seam, event-log integrated |
+| Loop detection and no-progress circuit breaker | `src/agents/tool-loop-detection.ts`, `src/agents/pi-tools.before-tool-call.ts` | `Kernel` | Runtime execution guardrails in run executor/tool task state machine | Port now (high value for autonomous stability) |
+| Web/network safety guard (SSRF, DNS pinning, redirect controls) | `src/infra/net/fetch-guard.ts`, `src/infra/net/ssrf.ts`, `src/agents/tools/web-fetch.ts` | `Kernel` | Runtime tool adapters for any outbound HTTP tooling | Port early before expanding external integrations |
+| Plugin manifest + schema validation | `docs/plugins/manifest.md`, `src/plugins/manifest.ts`, `src/plugins/manifest-registry.ts`, `src/plugins/schema-validator.ts` | `Protocol + Kernel + Control plane` | OpenAgents integration manifest format + runtime validation + Laravel UI forms | Adapt model; preserve strict validation behavior |
+| Memory provider slot model (`memory-core` vs `memory-lancedb`) | `extensions/memory-core/index.ts`, `extensions/memory-lancedb/index.ts`, `docs/concepts/memory.md` | `Kernel` | Runtime memory provider abstraction (`timeline`, compaction, recall adapters) | Adapt architecture; do not copy storage model 1:1 |
+| Structured workflow tool (`llm-task`/Lobster pattern) | `extensions/llm-task/src/llm-task-tool.ts`, `docs/tools/llm-task.md`, `docs/tools/lobster.md` | `Kernel + Protocol` | DS-Elixir strategy/tool orchestration boundary | Adapt as DS signature strategy, not a direct shell-style runtime dependency |
+| OTel diagnostics service plugin | `extensions/diagnostics-otel/src/service.ts` | `Kernel + Control plane` | Runtime telemetry emitters + ops dashboards | Reuse metric taxonomy ideas; implement natively in Elixir telemetry |
 
 Deprioritized for now:
 
@@ -154,7 +178,8 @@ Imported capabilities that cross language boundaries must publish versioned sche
 For each candidate capability, run this pipeline:
 
 1. Intake record
-   - capture upstream path(s), commit SHA, license note, capability summary, risk class.
+   - capture upstream path(s), commit SHA, license note, capability summary, risk class,
+   - assign `layer` and `platform_variance` values.
 2. Classification
    - apply the decision matrix in this order: `port`, `adapt`, `adopt`, `defer`,
    - record the explicit rule(s) that triggered the classification decision.
