@@ -25,7 +25,8 @@ We need a canonical hashing approach to ensure receipts and replay logs are veri
 ### Canonical Authority
 
 Canonical hashing rules are defined and implemented in:
-- `crates/protocol/` (canonical JSON + job hashing)
+- `proto/` (canonical Layer-0 schema authority; see ADR-0028)
+- `crates/protocol/` (canonical JSON hashing implementation helpers)
 - `docs/protocol/PROTOCOL_SURFACE.md` (protocol-level hashing rules)
 - `docs/execution/REPLAY.md` + `docs/execution/ARTIFACTS.md` (artifact/replay hash requirements)
 
@@ -104,4 +105,5 @@ Backward compatibility:
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — hashing rules
 - [docs/execution/REPLAY.md](../execution/REPLAY.md) — replay hashing invariants
 - [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — receipt hashing invariants
+- [ADR-0028](./ADR-0028-layer0-proto-canonical-schema.md) — Layer-0 authority
 - `crates/protocol/src/*` — canonical hashing helpers (source of truth)

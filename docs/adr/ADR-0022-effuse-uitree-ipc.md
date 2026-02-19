@@ -2,19 +2,26 @@
 
 ## Status
 
-Accepted
+Deprecated
 
 ## Date
 
 2026-01-25
 
+## Deprecated Date
+
+2026-02-19
+
+## Replacement
+
+- `crates/autopilot_app/src/lib.rs` and `crates/autopilot_ui/src/lib.rs` for current desktop action/event contracts
+- `apps/autopilot-desktop/src/main.rs` for current host-side event bridge behavior
+- `docs/codex/unified-runtime-desktop-plan.md` for current desktop/runtime direction
+
 ## Context
 
-Autopilot Desktop needs a deterministic, validated UI surface that can be
-generated and updated by DSRS signatures while remaining safe and replayable.
-The existing UI is static and tied to bespoke components, making it difficult
-to stream dynamic layouts or validate AI-driven output. We also need a stable
-IPC contract for UI updates across the Tauri boundary.
+This ADR captured a former Tauri IPC contract (`ui-event` channel) for a UI tree
+patch model. The active desktop architecture no longer uses this Tauri boundary.
 
 ## Decision
 
