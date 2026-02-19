@@ -25,7 +25,8 @@ Non-SSE endpoints return JSON errors:
 {
   "error": {
     "code": "invalid_request",
-    "message": "thread_id is required"
+    "message": "thread_id is required",
+    "details": ["optional machine-readable validation details"]
   }
 }
 ```
@@ -123,6 +124,94 @@ Request:
   "reason": null,
   "payload": {
     "rawType": "email.delivered"
+  }
+}
+```
+
+### `POST /internal/v1/tools/execute`
+
+Dispatches runtime tool-pack operations through a single internal endpoint. `coding.v1` is implemented.
+
+Required fields:
+
+- `tool_pack`
+- `manifest`
+- `request`
+
+Optional fields:
+
+- `mode` (`execute` default, `replay`)
+- `policy` (authorization/budget/write approval context)
+- `run_id`
+- `thread_id`
+- `user_id`
+
+Required principal header:
+
+- `x-oa-user-id`
+
+Request:
+
+```json
+{
+  "tool_pack": "coding.v1",
+  "mode": "execute",
+  "run_id": "run_123",
+  "thread_id": "thread_abc",
+  "manifest": {
+    "manifest_version": "coding.integration.v1",
+    "integration_id": "github.primary",
+    "provider": "github",
+    "status": "active",
+    "tool_pack": "coding.v1",
+    "capabilities": ["get_issue", "get_pull_request", "add_issue_comment"],
+    "policy": {
+      "write_operations_mode": "enforce",
+      "default_repository": "OpenAgentsInc/openagents"
+    }
+  },
+  "request": {
+    "integration_id": "github.primary",
+    "operation": "get_issue",
+    "repository": "OpenAgentsInc/openagents",
+    "issue_number": 1747,
+    "run_id": "run_123",
+    "tool_call_id": "tool_call_001"
+  },
+  "policy": {
+    "authorization_id": "auth_abc",
+    "authorization_mode": "delegated_budget",
+    "budget": {
+      "max_total_sats": 5000
+    }
+  }
+}
+```
+
+Success (`200`):
+
+```json
+{
+  "data": {
+    "state": "succeeded",
+    "decision": "allowed",
+    "reason_code": "policy_allowed.default",
+    "receipt": {
+      "receipt_id": "coding_abc123",
+      "replay_hash": "..."
+    }
+  }
+}
+```
+
+Validation failure (`422`):
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "tool invocation validation failed",
+    "details": ["machine-readable error details"]
   }
 }
 ```
@@ -325,6 +414,7 @@ Standard runtime span names:
 
 - Added implemented `POST /internal/v1/runs/{run_id}/cancel` with durable and idempotent cancel semantics.
 - Clarified runtime cancel behavior for stop-new-work, best-effort in-flight tool cancellation, and late-result handling.
+- Added implemented `POST /internal/v1/tools/execute` for internal tool-pack dispatch (`coding.v1` first).
 
 ## Backward Compatibility Rule
 

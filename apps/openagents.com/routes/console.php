@@ -170,6 +170,99 @@ Artisan::command('ops:test-login-link {email : Allowlisted email to log in as} {
     return 0;
 })->purpose('Generate a temporary signed test-login URL for maintenance-mode verification.');
 
+Artisan::command('runtime:tools:invoke-api {--api-base=http://127.0.0.1:8000 : Base URL for the Laravel API host} {--token= : Sanctum token used to call /api/runtime/tools/execute} {--tool-pack=coding.v1 : Runtime tool-pack name} {--mode=replay : execute or replay} {--operation=get_issue : coding operation (get_issue|get_pull_request|add_issue_comment)} {--repository=OpenAgentsInc/openagents : target repository owner/repo} {--issue-number=1 : issue number for issue/comment operations} {--pull-number=1 : pull request number for get_pull_request} {--comment-body= : body for add_issue_comment} {--run-id=run_cli_tools : optional run id context} {--thread-id=thread_cli_tools : optional thread id context} {--write-approved=0 : set 1 to approve write operation}', function () {
+    $token = trim((string) $this->option('token'));
+    if ($token === '') {
+        $this->error('--token is required');
+
+        return 1;
+    }
+
+    $apiBase = rtrim((string) $this->option('api-base'), '/');
+    if ($apiBase === '') {
+        $this->error('--api-base must be a valid URL');
+
+        return 1;
+    }
+
+    $operation = trim((string) $this->option('operation'));
+    $repository = trim((string) $this->option('repository'));
+    $mode = trim((string) $this->option('mode'));
+    $runId = trim((string) $this->option('run-id'));
+    $threadId = trim((string) $this->option('thread-id'));
+    $writeApproved = ((string) $this->option('write-approved')) === '1';
+
+    $requestPayload = [
+        'integration_id' => 'github.primary',
+        'operation' => $operation,
+        'repository' => $repository,
+        'run_id' => $runId,
+        'thread_id' => $threadId,
+        'tool_call_id' => 'tool_call_cli_'.time(),
+    ];
+
+    if ($operation === 'get_pull_request') {
+        $requestPayload['pull_number'] = max(1, (int) $this->option('pull-number'));
+    } else {
+        $requestPayload['issue_number'] = max(1, (int) $this->option('issue-number'));
+    }
+
+    if ($operation === 'add_issue_comment') {
+        $commentBody = trim((string) $this->option('comment-body'));
+        if ($commentBody === '') {
+            $this->error('--comment-body is required for add_issue_comment');
+
+            return 1;
+        }
+        $requestPayload['body'] = $commentBody;
+    }
+
+    $payload = [
+        'tool_pack' => trim((string) $this->option('tool-pack')),
+        'mode' => $mode === '' ? 'replay' : $mode,
+        'run_id' => $runId === '' ? null : $runId,
+        'thread_id' => $threadId === '' ? null : $threadId,
+        'manifest' => [
+            'manifest_version' => 'coding.integration.v1',
+            'integration_id' => 'github.primary',
+            'provider' => 'github',
+            'status' => 'active',
+            'tool_pack' => 'coding.v1',
+            'capabilities' => ['get_issue', 'get_pull_request', 'add_issue_comment'],
+            'secrets_ref' => ['provider' => 'laravel', 'key_id' => 'intsec_github_1'],
+            'policy' => [
+                'write_operations_mode' => 'enforce',
+                'max_requests_per_minute' => 240,
+                'default_repository' => $repository,
+            ],
+        ],
+        'request' => $requestPayload,
+        'policy' => [
+            'authorization_id' => 'auth_cli_demo',
+            'authorization_mode' => 'delegated_budget',
+            'write_approved' => $writeApproved,
+            'budget' => [
+                'max_total_sats' => 10_000,
+                'max_per_call_sats' => 2_000,
+            ],
+        ],
+    ];
+
+    $url = $apiBase.'/api/runtime/tools/execute';
+    $response = Http::withToken($token)->acceptJson()->timeout(30)->post($url, $payload);
+
+    $this->line('Runtime tools API status: '.$response->status());
+
+    $json = $response->json();
+    if (is_array($json)) {
+        $this->line(json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}');
+    } else {
+        $this->line((string) $response->body());
+    }
+
+    return $response->successful() ? 0 : 1;
+})->purpose('Call /api/runtime/tools/execute with a coding payload to validate runtime tool invocation through Laravel.');
+
 Artisan::command('ops:create-api-token {email : Email of the existing user} {name=ops-cli : Token display name} {--abilities=* : Comma-separated abilities} {--expires-days= : Optional token expiration in days}', function () {
     $email = strtolower(trim((string) $this->argument('email')));
     $name = trim((string) $this->argument('name'));

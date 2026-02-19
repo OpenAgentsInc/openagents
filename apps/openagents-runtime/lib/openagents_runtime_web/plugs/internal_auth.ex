@@ -37,7 +37,7 @@ defmodule OpenAgentsRuntimeWeb.Plugs.InternalAuth do
 
   defp expected_claims(conn) do
     %{}
-    |> maybe_put(:run_id, conn.path_params["run_id"])
+    |> maybe_put(:run_id, conn.path_params["run_id"] || conn.params["run_id"])
     |> maybe_put(:thread_id, conn.params["thread_id"])
     |> maybe_put(:user_id, parse_int_header(conn, "x-oa-user-id"))
     |> maybe_put(:guest_scope, header(conn, "x-oa-guest-scope"))
