@@ -2,7 +2,7 @@
 
 - **Status:** Implemented (v1 fixtures + renderer tests; more E2E-style transcript tests can be added)
 - **Last updated:** 2026-02-10
-- **Scope:** `apps/web` Convex-first MVP streaming + future DSE action parts
+- **Scope:** Legacy `apps/web` Convex-first MVP streaming + future DSE action parts
 - **If this doc conflicts with code behavior:** code wins
 
 This document defines a test posture where you can run a local test and get:

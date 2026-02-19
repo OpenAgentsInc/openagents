@@ -131,8 +131,8 @@ Verification events record objective checks run by the agent (lint/test/build/sm
   "type": "Verification",
   "ts": "2026-02-15T00:00:10.000Z",
   "session_id": "…",
-  "command": "cd apps/web && npm run lint",
-  "cwd": "apps/web",
+  "command": "cd apps/openagents.com && composer lint",
+  "cwd": "apps/openagents.com",
   "exit_code": 0,
   "duration_ms": 12345,
   "verification_delta": 0
@@ -181,4 +181,3 @@ Layer C (published/external) MUST:
 - apply privacy policy redaction rules.
 
 See `docs/adr/ADR-0017-telemetry-trace-contract.md` and `docs/adr/ADR-0016-privacy-defaults-swarm-dispatch.md`.
-

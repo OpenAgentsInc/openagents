@@ -2,6 +2,7 @@
 
 - **Status:** Draft (operational guide; matches current implementation)
 - **Last updated:** 2026-02-10
+- **Legacy scope:** This playbook reflects `apps/web`-era DSE operations; use as historical guidance unless explicitly mapped to current runtime integrations.
 - **Spec / intent:** `docs/autopilot/dse/dse.md`
 - **End-to-end roadmap:** `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
 - **If this doc conflicts with code behavior:** code wins

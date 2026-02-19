@@ -1,5 +1,7 @@
 # OpenAgents Local LND Neutrino (Electron) Implementation Plan
 
+> Archived on 2026-02-19 after Laravel/runtime cutover. Retained as historical implementation record for the local-node track.
+
 Status: Completed, phases N1-N10 implemented and closed
 Date: 2026-02-11
 Parent epic: #1605

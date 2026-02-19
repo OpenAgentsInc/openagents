@@ -14,5 +14,4 @@ Why:
 
 Where this matters in the repo:
 - Provider adapters live in DSE/compiler surfaces (see `packages/dse/`).
-- Tool execution and receipts live in runtime surfaces (`apps/autopilot-worker/`, `packages/effuse/`, `apps/web/` depending on surface).
-
+- Tool execution and receipts live in runtime/control-plane surfaces (`apps/openagents-runtime/`, `apps/openagents.com/`, `packages/effuse/`, and desktop Rust surfaces under `crates/`).

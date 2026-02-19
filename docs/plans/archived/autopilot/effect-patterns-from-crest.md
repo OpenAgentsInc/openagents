@@ -1,5 +1,7 @@
 # Notes from `~/code/crest`: Effect + Convex patterns to adopt
 
+> Archived on 2026-02-19 after Laravel/runtime cutover. This document targets the retired `apps/web` migration track.
+
 This doc summarizes concrete patterns from the `crest` repo (Next.js + Effect + Convex) that are directly applicable to how we should migrate `openagents/apps/web` toward Effect.
 
 The goal is not to copy Next.js abstractions verbatim, but to adopt the **architecture moves**: a single composed runtime, middleware-style cross-cutting concerns, and Effect-friendly adapters at boundaries (Convex, PostHog, WorkOS, etc.).
@@ -150,4 +152,3 @@ Pattern:
   - run an Effect and manage cancellation on unmount
   - stream results (if needed)
   - keep UI components as consumers of Effect outputs rather than hand-rolling async state
-

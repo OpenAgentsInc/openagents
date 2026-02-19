@@ -6,7 +6,7 @@ You have a Voltage node set up; this doc summarizes how it plugs into the OpenAg
 
 ## 1. Where Voltage Fits in the Architecture
 
-From `docs/plans/active/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` and `docs/lightning/status/20260212-0753-status.md`:
+From `docs/plans/archived/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` and `docs/lightning/status/20260212-0753-status.md`:
 
 - **Voltage = LND backend for the L402 gateway.** It is used for the **seller** path: issuing 402 challenges (invoices) and validating payments. It is **not** used for the desktop/buyer path (that uses Spark or local LND).
 - **Aperture** (Lightning Labs’ Go proxy) is the component that talks to LND. It:
@@ -61,7 +61,7 @@ Either way: **Voltage connection = Aperture’s `authenticator` section; L402 ro
 
 ## 4. Deployment (GCP + Voltage) – Summary
 
-From `L402_AGENT_PAYWALL_INFRA_PLAN.md` and `STAGING_GATEWAY_RECONCILE_RUNBOOK.md`:
+From `L402_AGENT_PAYWALL_INFRA_PLAN.md` (archived) and `STAGING_GATEWAY_RECONCILE_RUNBOOK.md`:
 
 1. **Secrets**
    - Put TLS cert and (scoped) macaroon in **GCP Secret Manager**.
@@ -245,7 +245,7 @@ docker run --rm -v /path/to/voltage-tls:/voltage-tls -v /path/to/voltage-mac:/vo
 ## 8. References in This Repo
 
 - **Deploy runbook (master reference):** `docs/lightning/runbooks/L402_APERTURE_DEPLOY_RUNBOOK.md` – how the system works, what was built, where secrets live, how to use and edit, troubleshooting. No sensitive values; safe for the public repo.
-- **High-level plan (Voltage + GCP):** `docs/plans/active/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` (§4–5, §6.2, §15).
+- **High-level plan (Voltage + GCP):** `docs/plans/archived/lightning/L402_AGENT_PAYWALL_INFRA_PLAN.md` (§4–5, §6.2, §15).
 - **Staging reconcile:** `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md`; `apps/lightning-ops/scripts/staging-reconcile.sh`. **Single operator checklist (reconcile, CI, routes):** `docs/lightning/status/20260212-0753-status.md` §12.
 - **What’s implemented:** `docs/lightning/status/20260212-0753-status.md`.
 - **Compiler (routes only):** `apps/lightning-ops/src/compiler/apertureCompiler.ts` – emits `version: 1`, `routes:` with match/upstream/auth/pricing; no authenticator block.

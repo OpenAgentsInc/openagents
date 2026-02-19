@@ -39,10 +39,10 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 ## Product Surfaces
 
 - Web app runbooks: `autopilot/`
-- Web production E2E testing: `autopilot/PROD_E2E_TESTING.md`
-- Web stream testing: `autopilot/STREAM_TESTING.md`
-- Web trace retrieval and debugging: `autopilot/TRACE_RETRIEVAL.md`
-- Pane system docs: `autopilot/EFFUSE_PANES.md`
+- Web production E2E testing: `autopilot/testing/PROD_E2E_TESTING.md`
+- Web stream testing: `autopilot/testing/STREAM_TESTING.md`
+- Web trace retrieval and debugging: `autopilot/testing/TRACE_RETRIEVAL.md`
+- Pane system docs: `autopilot/reference/EFFUSE_PANES.md`
 - Mobile app source: `../apps/mobile/`
 - Rust desktop Codex app source: `../apps/autopilot-desktop/`
 - Electron desktop Lightning app source: `../apps/desktop/`

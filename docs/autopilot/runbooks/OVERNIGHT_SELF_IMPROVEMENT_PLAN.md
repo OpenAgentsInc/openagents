@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (Phases 1–9 shipped in code; this doc is the runbook/checklist)
 - **Last updated:** 2026-02-10
+- **Legacy scope:** This runbook documents the former `apps/web` Worker + Convex loop and is retained for historical/operator context.
 - **Priority:** programmatic loop first; UI is read-only later
 - **Primary refs (do not duplicate):**
   - Operator workflow + current endpoints: `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
