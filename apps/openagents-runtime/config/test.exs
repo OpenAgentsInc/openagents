@@ -27,3 +27,4 @@ config :logger, level: :warning
 config :phoenix, :plug_init_mode, :runtime
 
 config :openagents_runtime, :runtime_signature_secret, "test-runtime-signature-secret"
+config :openagents_runtime, :agent_process_idle_shutdown_ms, 100
