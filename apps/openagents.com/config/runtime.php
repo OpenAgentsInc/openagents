@@ -41,6 +41,14 @@ return [
         'stream_chunk_bytes' => (int) env('OA_RUNTIME_ELIXIR_STREAM_CHUNK_BYTES', 1024),
     ],
 
+    'internal' => [
+        'shared_secret' => (string) env('OA_RUNTIME_INTERNAL_SHARED_SECRET', ''),
+        'key_id' => (string) env('OA_RUNTIME_INTERNAL_KEY_ID', 'runtime-internal-v1'),
+        'signature_ttl_seconds' => (int) env('OA_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS', 60),
+        'secret_fetch_path' => (string) env('OA_RUNTIME_INTERNAL_SECRET_FETCH_PATH', '/api/internal/runtime/integrations/secrets/fetch'),
+        'secret_cache_ttl_ms' => (int) env('OA_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS', 60000),
+    ],
+
     'shadow' => [
         'enabled' => (bool) env('OA_RUNTIME_SHADOW_ENABLED', false),
         'sample_rate' => (float) env('OA_RUNTIME_SHADOW_SAMPLE_RATE', 1.0),

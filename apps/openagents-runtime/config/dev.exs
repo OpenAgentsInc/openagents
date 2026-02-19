@@ -61,3 +61,12 @@ config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
+
+config :openagents_runtime, :laravel_internal,
+  base_url: "http://openagents.com",
+  secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch",
+  shared_secret: "dev-runtime-internal-shared-secret",
+  key_id: "runtime-internal-v1",
+  signature_ttl_seconds: 60,
+  request_timeout_ms: 2_500,
+  default_secret_cache_ttl_ms: 60_000

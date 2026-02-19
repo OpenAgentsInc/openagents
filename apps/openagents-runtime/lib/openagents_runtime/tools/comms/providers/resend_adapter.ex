@@ -5,6 +5,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
 
   @behaviour OpenAgentsRuntime.Tools.Comms.ProviderAdapter
 
+  alias OpenAgentsRuntime.Integrations.LaravelSecretClient
   alias OpenAgentsRuntime.Security.Sanitizer
 
   @resend_endpoint "https://api.resend.com/emails"
@@ -17,13 +18,17 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     http_client = Keyword.get(opts, :http_client, &default_http_post/4)
 
-    with {:ok, api_key} <- fetch_api_key(opts),
+    with {:ok, api_key} <- fetch_api_key(request, opts),
          {:ok, payload} <- build_payload(request, opts),
          {:ok, status, response_body} <- http_client.(endpoint, api_key, payload, timeout_ms) do
       map_response(status, response_body)
     else
       {:error, :missing_api_key} ->
         {:error, error_result("policy_denied.explicit_deny", nil, "missing_api_key")}
+
+      {:error, {:secret_fetch_failed, reason}} ->
+        {:error,
+         error_result("comms_failed.provider_error", nil, secret_fetch_error_message(reason))}
 
       {:error, {:invalid_payload, message}} ->
         {:error, error_result("manifest_validation.invalid_schema", nil, message)}
@@ -37,10 +42,52 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
     {:error, error_result("manifest_validation.invalid_schema", nil, "request must be an object")}
   end
 
-  defp fetch_api_key(opts) do
+  defp fetch_api_key(request, opts) do
     case Keyword.get(opts, :api_key) do
       value when is_binary(value) and value != "" -> {:ok, value}
+      _ -> fetch_api_key_from_runtime_scope(request, opts)
+    end
+  end
+
+  defp fetch_api_key_from_runtime_scope(request, opts) do
+    with {:ok, scope} <- build_secret_scope(request, opts),
+         secret_client <- Keyword.get(opts, :secret_client, LaravelSecretClient),
+         secret_opts <- Keyword.get(opts, :secret_client_opts, []),
+         {:ok, api_key} <- secret_client.fetch_secret("resend", scope, secret_opts),
+         true <- is_binary(api_key) and String.trim(api_key) != "" do
+      {:ok, api_key}
+    else
+      {:error, :secret_not_found} -> {:error, :missing_api_key}
+      {:error, :unauthorized} -> {:error, :missing_api_key}
+      {:error, :invalid_scope} -> {:error, :missing_api_key}
+      {:error, :misconfigured} -> {:error, :missing_api_key}
+      {:error, reason} -> {:error, {:secret_fetch_failed, reason}}
+      false -> {:error, :missing_api_key}
       _ -> {:error, :missing_api_key}
+    end
+  end
+
+  defp build_secret_scope(request, opts) do
+    user_id = request["user_id"] || Keyword.get(opts, :user_id)
+    integration_id = request["integration_id"] || Keyword.get(opts, :integration_id)
+    run_id = request["run_id"] || Keyword.get(opts, :run_id)
+    tool_call_id = request["tool_call_id"] || Keyword.get(opts, :tool_call_id)
+    org_id = request["org_id"] || Keyword.get(opts, :org_id)
+
+    with {:ok, user_id} <- normalize_user_id(user_id),
+         true <- present_string?(integration_id),
+         true <- present_string?(run_id),
+         true <- present_string?(tool_call_id) do
+      {:ok,
+       %{
+         "user_id" => user_id,
+         "integration_id" => to_string(integration_id),
+         "run_id" => to_string(run_id),
+         "tool_call_id" => to_string(tool_call_id),
+         "org_id" => normalize_optional_string(org_id)
+       }}
+    else
+      _ -> {:error, :invalid_scope}
     end
   end
 
@@ -168,6 +215,42 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
       {key, value} -> {to_string(key), value}
     end)
   end
+
+  defp normalize_user_id(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp normalize_user_id(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} when parsed > 0 -> {:ok, parsed}
+      _ -> :error
+    end
+  end
+
+  defp normalize_user_id(_), do: :error
+
+  defp present_string?(nil), do: false
+  defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
+
+  defp present_string?(value) when is_atom(value),
+    do: value |> Atom.to_string() |> present_string?()
+
+  defp present_string?(_), do: false
+
+  defp normalize_optional_string(nil), do: nil
+
+  defp normalize_optional_string(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: nil, else: trimmed
+  end
+
+  defp normalize_optional_string(value) when is_atom(value),
+    do: value |> Atom.to_string() |> normalize_optional_string()
+
+  defp normalize_optional_string(value), do: value |> to_string() |> normalize_optional_string()
+
+  defp secret_fetch_error_message(reason) when is_atom(reason),
+    do: "runtime_secret_fetch_failed:#{reason}"
+
+  defp secret_fetch_error_message(_reason), do: "runtime_secret_fetch_failed"
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
