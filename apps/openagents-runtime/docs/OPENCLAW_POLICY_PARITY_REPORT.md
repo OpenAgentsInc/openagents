@@ -5,11 +5,15 @@ Status: Active
 
 ## Scope
 
-This report tracks fixture parity for the imported OpenClaw tool-policy baseline helpers ported into OpenAgents runtime.
+This report tracks fixture parity for imported OpenClaw tool-policy helpers and layered policy pipeline behavior ported into OpenAgents runtime.
 
-- OpenClaw source: `src/agents/tool-policy.ts`
+- OpenClaw sources:
+  - `src/agents/tool-policy.ts`
+  - `src/agents/tool-policy-pipeline.ts`
 - OpenClaw commit: `8e1f25631b220f139e79003caecabd11b7e1e748`
-- Runtime port: `lib/openagents_runtime/tools/policy/openclaw_tool_policy.ex`
+- Runtime ports:
+  - `lib/openagents_runtime/tools/policy/openclaw_tool_policy.ex`
+  - `lib/openagents_runtime/tools/policy/openclaw_tool_policy_pipeline.ex`
 - Fixture set: `test/fixtures/openclaw/tool_policy_parity_cases.json`
 - Parity runner: `test/openagents_runtime/parity/openclaw_tool_policy_parity_test.exs`
 
@@ -30,8 +34,10 @@ The script imports OpenClaw functions from the local checkout, evaluates all fix
 - `build_plugin_tool_groups`
 - `expand_policy_with_plugin_groups`
 - `strip_plugin_only_allowlist`
+- `build_default_tool_policy_pipeline_steps`
+- `apply_tool_policy_pipeline`
 
-Current case count: `7`
+Current case count: `9`
 
 ## Verification Command
 

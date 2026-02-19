@@ -5,7 +5,7 @@
       "repo": "openclaw",
       "module": "src/agents/tool-policy.ts",
       "commit": "8e1f25631b220f139e79003caecabd11b7e1e748",
-      "captured_at": "2026-02-19T03:31:10.999Z",
+      "captured_at": "2026-02-19T08:37:56.422Z",
       "capture_command": "bun apps/openagents-runtime/scripts/capture_openclaw_tool_policy_parity.mjs"
     }
   },
@@ -224,6 +224,115 @@
           "group:unknown"
         ],
         "strippedAllowlist": true
+      }
+    },
+    {
+      "id": "build-default-tool-policy-pipeline-steps",
+      "operation": "build_default_tool_policy_pipeline_steps",
+      "input": {
+        "profile": "coding",
+        "providerProfile": "anthropic",
+        "agentId": "agent_42",
+        "globalPolicy": {
+          "deny": [
+            "group:automation"
+          ]
+        }
+      },
+      "expected_openclaw": [
+        {
+          "label": "tools.profile (coding)",
+          "stripPluginOnlyAllowlist": true
+        },
+        {
+          "label": "tools.byProvider.profile (anthropic)",
+          "stripPluginOnlyAllowlist": true
+        },
+        {
+          "policy": {
+            "deny": [
+              "group:automation"
+            ]
+          },
+          "label": "tools.allow",
+          "stripPluginOnlyAllowlist": true
+        },
+        {
+          "label": "tools.byProvider.allow",
+          "stripPluginOnlyAllowlist": true
+        },
+        {
+          "label": "agents.agent_42.tools.allow",
+          "stripPluginOnlyAllowlist": true
+        },
+        {
+          "label": "agents.agent_42.tools.byProvider.allow",
+          "stripPluginOnlyAllowlist": true
+        },
+        {
+          "label": "group tools.allow",
+          "stripPluginOnlyAllowlist": true
+        }
+      ]
+    },
+    {
+      "id": "apply-tool-policy-pipeline-layered",
+      "operation": "apply_tool_policy_pipeline",
+      "input": {
+        "tools": [
+          {
+            "name": "read"
+          },
+          {
+            "name": "exec"
+          },
+          {
+            "name": "gateway"
+          },
+          {
+            "name": "calendar.send",
+            "plugin_id": "plugin.calendar"
+          }
+        ],
+        "steps": [
+          {
+            "policy": {
+              "allow": [
+                "group:unknown"
+              ]
+            },
+            "label": "tools.allow",
+            "stripPluginOnlyAllowlist": true
+          },
+          {
+            "policy": {
+              "deny": [
+                "gateway"
+              ]
+            },
+            "label": "tools.byProvider.allow",
+            "stripPluginOnlyAllowlist": true
+          },
+          {
+            "policy": {
+              "allow": [
+                "group:fs",
+                "plugin.calendar"
+              ]
+            },
+            "label": "group tools.allow",
+            "stripPluginOnlyAllowlist": true
+          }
+        ]
+      },
+      "expected_openclaw": {
+        "tools": [
+          "read",
+          "calendar.send"
+        ],
+        "warnings": [
+          "tools: tools.allow allowlist contains unknown entries (group:unknown). Ignoring allowlist so core tools remain available. Use tools.alsoAllow for additive plugin tool enablement."
+        ]
       }
     }
   ]

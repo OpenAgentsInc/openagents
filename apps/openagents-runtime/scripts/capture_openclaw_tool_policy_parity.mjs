@@ -16,6 +16,8 @@ const fixturePath = process.env.FIXTURE_PATH ?? defaultFixturePath;
 
 const openclawModulePath = path.join(openclawPath, "src/agents/tool-policy.ts");
 const openclaw = await import(pathToFileURL(openclawModulePath).href);
+const openclawPipelineModulePath = path.join(openclawPath, "src/agents/tool-policy-pipeline.ts");
+const openclawPipeline = await import(pathToFileURL(openclawPipelineModulePath).href);
 
 const {
   normalizeToolName,
@@ -24,6 +26,8 @@ const {
   expandPolicyWithPluginGroups,
   stripPluginOnlyAllowlist,
 } = openclaw;
+
+const { buildDefaultToolPolicyPipelineSteps, applyToolPolicyPipeline } = openclawPipeline;
 
 const raw = await readFile(fixturePath, "utf8");
 const fixture = JSON.parse(raw);
@@ -73,6 +77,33 @@ for (const testCase of fixture.cases ?? []) {
         toOpenClawGroups(input.groups ?? {}),
         new Set(Array.isArray(input.core_tools) ? input.core_tools : []),
       );
+      break;
+    }
+    case "build_default_tool_policy_pipeline_steps": {
+      output = buildDefaultToolPolicyPipelineSteps(input ?? {});
+      break;
+    }
+    case "apply_tool_policy_pipeline": {
+      const warnings = [];
+      const tools = Array.isArray(input.tools) ? input.tools : [];
+      const steps = Array.isArray(input.steps) ? input.steps : [];
+
+      const filtered = applyToolPolicyPipeline({
+        tools,
+        steps,
+        toolMeta: (tool) => {
+          const pluginId = tool.plugin_id ?? tool.pluginId;
+          return typeof pluginId === "string" ? { pluginId } : undefined;
+        },
+        warn: (message) => {
+          warnings.push(String(message));
+        },
+      });
+
+      output = {
+        tools: filtered.map((tool) => tool.name),
+        warnings,
+      };
       break;
     }
     default: {
