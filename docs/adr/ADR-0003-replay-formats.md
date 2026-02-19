@@ -38,7 +38,7 @@ REPLAY.jsonl is a JSON Lines file where each line is a typed event with an `even
 
 ### Current Implementation: ReplayBundle
 
-The `ReplayBundle` struct in `crates/autopilot-core/src/replay.rs` (archived Rust-era path) is the historical runtime representation. It differs from the target REPLAY.jsonl format.
+The `ReplayBundle` struct in `crates/autopilot-core/src/replay.rs` is the current internal runtime representation. It differs from the target REPLAY.jsonl format.
 
 ### Migration Path
 

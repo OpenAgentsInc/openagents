@@ -83,4 +83,6 @@ Backward compatibility expectations:
 
 ## References
 
-- Rust-era `pylon` sources were archived during the 2026-02-11 deprecation (see `docs/RUST_DOCS_ARCHIVE_2026-02-11.md`).
+- `crates/pylon/` — local Pylon bridge/runtime implementation
+- `apps/autopilot-desktop/src/main.rs` — desktop integration surface
+- `docs/protocol/PROTOCOL_SURFACE.md` — protocol-level contract context
