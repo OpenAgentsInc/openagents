@@ -1,0 +1,230 @@
+{
+  "meta": {
+    "capability": "openclaw-tool-policy-baseline",
+    "upstream": {
+      "repo": "openclaw",
+      "module": "src/agents/tool-policy.ts",
+      "commit": "8e1f25631b220f139e79003caecabd11b7e1e748",
+      "captured_at": "2026-02-19T03:31:10.999Z",
+      "capture_command": "bun apps/openagents-runtime/scripts/capture_openclaw_tool_policy_parity.mjs"
+    }
+  },
+  "cases": [
+    {
+      "id": "normalize-tool-name-alias-apply-patch",
+      "operation": "normalize_tool_name",
+      "input": {
+        "name": "  apply-patch  "
+      },
+      "expected_openclaw": "apply_patch"
+    },
+    {
+      "id": "expand-tool-groups-fs-and-alias",
+      "operation": "expand_tool_groups",
+      "input": {
+        "list": [
+          "group:fs",
+          "bash"
+        ]
+      },
+      "expected_openclaw": [
+        "read",
+        "write",
+        "edit",
+        "apply_patch",
+        "exec"
+      ]
+    },
+    {
+      "id": "build-plugin-tool-groups-normalizes-tool-names",
+      "operation": "build_plugin_tool_groups",
+      "input": {
+        "tools": [
+          {
+            "name": "Calendar.Send",
+            "plugin_id": "plugin.calendar"
+          },
+          {
+            "name": "jira.create",
+            "plugin_id": "Plugin.Jira"
+          },
+          {
+            "name": "Read"
+          }
+        ]
+      },
+      "expected_openclaw": {
+        "all": [
+          "calendar.send",
+          "jira.create"
+        ],
+        "byPlugin": {
+          "plugin.calendar": [
+            "calendar.send"
+          ],
+          "plugin.jira": [
+            "jira.create"
+          ]
+        }
+      }
+    },
+    {
+      "id": "expand-policy-with-plugin-groups",
+      "operation": "expand_policy_with_plugin_groups",
+      "input": {
+        "policy": {
+          "allow": [
+            "group:plugins",
+            "plugin.calendar",
+            "read"
+          ],
+          "deny": [
+            "plugin.jira",
+            "gateway"
+          ]
+        },
+        "groups": {
+          "all": [
+            "calendar.send",
+            "jira.create"
+          ],
+          "by_plugin": {
+            "plugin.calendar": [
+              "calendar.send"
+            ],
+            "plugin.jira": [
+              "jira.create"
+            ]
+          }
+        }
+      },
+      "expected_openclaw": {
+        "allow": [
+          "calendar.send",
+          "jira.create",
+          "read"
+        ],
+        "deny": [
+          "jira.create",
+          "gateway"
+        ]
+      }
+    },
+    {
+      "id": "strip-plugin-only-allowlist",
+      "operation": "strip_plugin_only_allowlist",
+      "input": {
+        "policy": {
+          "allow": [
+            "plugin.calendar",
+            "calendar.send"
+          ],
+          "deny": [
+            "gateway"
+          ]
+        },
+        "groups": {
+          "all": [
+            "calendar.send"
+          ],
+          "by_plugin": {
+            "plugin.calendar": [
+              "calendar.send"
+            ]
+          }
+        },
+        "core_tools": [
+          "read",
+          "exec",
+          "apply_patch"
+        ]
+      },
+      "expected_openclaw": {
+        "policy": {
+          "deny": [
+            "gateway"
+          ]
+        },
+        "unknownAllowlist": [],
+        "strippedAllowlist": true
+      }
+    },
+    {
+      "id": "strip-allowlist-when-core-entry-present",
+      "operation": "strip_plugin_only_allowlist",
+      "input": {
+        "policy": {
+          "allow": [
+            "group:fs",
+            "plugin.calendar"
+          ],
+          "deny": [
+            "gateway"
+          ]
+        },
+        "groups": {
+          "all": [
+            "calendar.send"
+          ],
+          "by_plugin": {
+            "plugin.calendar": [
+              "calendar.send"
+            ]
+          }
+        },
+        "core_tools": [
+          "read",
+          "exec",
+          "apply_patch"
+        ]
+      },
+      "expected_openclaw": {
+        "policy": {
+          "allow": [
+            "group:fs",
+            "plugin.calendar"
+          ],
+          "deny": [
+            "gateway"
+          ]
+        },
+        "unknownAllowlist": [],
+        "strippedAllowlist": false
+      }
+    },
+    {
+      "id": "strip-allowlist-with-unknown-plugin-entry",
+      "operation": "strip_plugin_only_allowlist",
+      "input": {
+        "policy": {
+          "allow": [
+            "plugin.calendar",
+            "group:unknown"
+          ]
+        },
+        "groups": {
+          "all": [
+            "calendar.send"
+          ],
+          "by_plugin": {
+            "plugin.calendar": [
+              "calendar.send"
+            ]
+          }
+        },
+        "core_tools": [
+          "read",
+          "exec",
+          "apply_patch"
+        ]
+      },
+      "expected_openclaw": {
+        "policy": {},
+        "unknownAllowlist": [
+          "group:unknown"
+        ],
+        "strippedAllowlist": true
+      }
+    }
+  ]
+}
