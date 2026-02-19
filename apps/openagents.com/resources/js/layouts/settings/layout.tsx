@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 const SETTINGS_NAV = [
     { label: 'Profile', href: '/settings/profile' },
     { label: 'Autopilot', href: '/settings/autopilot' },
+    { label: 'Integrations', href: '/settings/integrations' },
 ];
 
 export default function SettingsLayout({ children }: PropsWithChildren) {
