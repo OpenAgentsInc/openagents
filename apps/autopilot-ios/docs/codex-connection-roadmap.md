@@ -135,6 +135,64 @@ Use Option A as the default production lane:
 2. keep runtime authority intact,
 3. add Option B/C later behind runtime contracts and policy gates.
 
+## Minimum Viable Handshake (Real iPhone <-> Desktop Codex)
+
+This is the minimum connection target for a real iOS device and a desktop Codex session.
+
+### Handshake definition
+
+Handshake is successful when all of the following happen:
+
+1. iOS can discover or select a desktop-backed worker through Laravel runtime APIs.
+2. iOS sends a handshake event into that worker stream.
+3. Desktop receives that handshake event from runtime and emits an ack event.
+4. iOS receives the ack on stream and marks the desktop session as connected.
+
+### Proposed handshake event pair (MVP)
+
+1. iOS -> runtime event ingest:
+   - endpoint: `POST /api/runtime/codex/workers/{workerId}/events`
+   - `event_type`: `worker.event`
+   - payload:
+     - `source: \"autopilot-ios\"`
+     - `method: \"ios/handshake\"`
+     - `handshake_id`
+     - `device_id`
+     - `occurred_at`
+2. Desktop -> runtime ack event:
+   - endpoint: `POST /api/runtime/codex/workers/{workerId}/events`
+   - `event_type`: `worker.event`
+   - payload:
+     - `source: \"autopilot-desktop\"`
+     - `method: \"desktop/handshake_ack\"`
+     - `handshake_id`
+     - `desktop_session_id`
+     - `occurred_at`
+3. iOS stream success condition:
+   - `desktop/handshake_ack` received with matching `handshake_id` within timeout window (e.g. 30s).
+
+### Why this MVP shape
+
+1. Uses existing Laravel/runtime worker event APIs without introducing a new authority path.
+2. Avoids forcing immediate runtime adapter redesign for request forwarding.
+3. Creates a real bidirectional signal path between iOS and desktop through the authoritative runtime event ledger.
+4. Keeps future Tailscale or hosted backend options compatible with the same handshake envelope.
+
+### MVP prerequisites
+
+1. Desktop launched with runtime sync env vars (`OPENAGENTS_RUNTIME_SYNC_*`).
+2. iOS user authenticated against Laravel API.
+3. Worker ownership is shared/principal-valid for both device actions.
+4. iOS stream client supports reconnect + cursor continuity.
+
+### GitHub execution issues
+
+1. Tracker: `#1775`
+2. iOS handshake client + ack matcher: `#1771`
+3. Desktop stream listener + ack emitter: `#1772`
+4. Runtime/Laravel contract docs + tests: `#1773`
+5. Real-device runbook + checklist: `#1774`
+
 ## Roadmap Phases
 
 ### Phase 0: iOS Foundation and Contracts
