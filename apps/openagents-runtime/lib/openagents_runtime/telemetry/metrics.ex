@@ -24,7 +24,8 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     janitor_resumed: [],
     janitor_failed: [:reason_class],
     policy_decision: [:decision, :authorization_mode, :settlement_boundary],
-    parity_failure: [:class, :reason_class, :component, :outcome]
+    parity_failure: [:class, :reason_class, :component, :outcome],
+    convex_projection_write: [:projection, :result]
   }
 
   @high_cardinality_tags [
@@ -106,7 +107,13 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       summary("openagents_runtime.policy.decision.remaining_sats",
         tags: tags_for(:policy_decision)
       ),
-      counter("openagents_runtime.parity.failure.count", tags: tags_for(:parity_failure))
+      counter("openagents_runtime.parity.failure.count", tags: tags_for(:parity_failure)),
+      counter("openagents_runtime.convex.projection.write.count",
+        tags: tags_for(:convex_projection_write)
+      ),
+      summary("openagents_runtime.convex.projection.write.duration_ms",
+        tags: tags_for(:convex_projection_write)
+      )
     ]
   end
 

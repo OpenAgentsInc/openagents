@@ -10,6 +10,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   alias OpenAgentsRuntime.Codex.WorkerEvent
   alias OpenAgentsRuntime.Codex.WorkerProcess
   alias OpenAgentsRuntime.Codex.WorkerSupervisor
+  alias OpenAgentsRuntime.Convex.Projector
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Security.Sanitizer
 
@@ -192,6 +193,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
     case Repo.transaction(multi) do
       {:ok, %{event: event}} ->
         broadcast_event(worker_id, event.seq)
+        _ = project_convex_summary(worker_id)
         {:ok, event}
 
       {:error, :next_seq, :worker_not_found, _changes} ->
@@ -370,4 +372,11 @@ defmodule OpenAgentsRuntime.Codex.Workers do
 
   defp maybe_put_opt(opts, _key, nil), do: opts
   defp maybe_put_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp project_convex_summary(worker_id) do
+    case Projector.project_codex_worker(worker_id) do
+      {:ok, _result} -> :ok
+      {:error, _reason} -> :ok
+    end
+  end
 end
