@@ -1,7 +1,7 @@
 <?php
 
 use App\AI\Runtime\ElixirRuntimeClient;
-use App\AI\Runtime\LegacyRuntimeClient;
+use App\AI\Runtime\RoutedRuntimeClient;
 use App\AI\Runtime\RuntimeClient;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Client\Request;
@@ -9,23 +9,23 @@ use Illuminate\Support\Facades\Http;
 
 uses(Tests\TestCase::class);
 
-test('runtime client binding resolves legacy driver', function () {
+test('runtime client binding resolves routed runtime client with legacy default', function () {
     config()->set('runtime.driver', 'legacy');
 
     $client = resolve(RuntimeClient::class);
 
-    expect($client)->toBeInstanceOf(LegacyRuntimeClient::class);
+    expect($client)->toBeInstanceOf(RoutedRuntimeClient::class);
     expect($client->driverName())->toBe('legacy');
 });
 
-test('runtime client binding resolves elixir driver', function () {
+test('runtime client binding resolves routed runtime client with elixir default', function () {
     config()->set('runtime.driver', 'elixir');
     config()->set('runtime.elixir.base_url', 'http://runtime.internal');
     config()->set('runtime.elixir.signing_key', 'test_signing_key');
 
     $client = resolve(RuntimeClient::class);
 
-    expect($client)->toBeInstanceOf(ElixirRuntimeClient::class);
+    expect($client)->toBeInstanceOf(RoutedRuntimeClient::class);
     expect($client->driverName())->toBe('elixir');
 });
 
