@@ -16,6 +16,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   alias OpenAgentsRuntime.Runs.RunEvents
   alias OpenAgentsRuntime.Runs.RunFrame
   alias OpenAgentsRuntime.Telemetry.Events
+  alias OpenAgentsRuntime.Telemetry.Parity
   alias OpenAgentsRuntime.Telemetry.Tracing
 
   @default_lease_ttl_seconds 30
@@ -237,6 +238,12 @@ defmodule OpenAgentsRuntime.Runs.Executor do
            }),
          {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
       emit_terminal_telemetry(run.run_id, "failed", "loop_detected")
+
+      Parity.emit_failure("loop", detection.reason_code, "runs.executor", "denied", %{
+        run_id: run.run_id,
+        frame_id: frame.frame_id
+      })
+
       {:ok, run, true}
     end
   end

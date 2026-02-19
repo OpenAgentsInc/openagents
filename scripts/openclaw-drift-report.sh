@@ -7,6 +7,7 @@ REPORT_PATH="$ROOT_DIR/docs/plans/active/openclaw-drift-report.md"
 FIXTURE_PATH="$ROOT_DIR/apps/openagents-runtime/test/fixtures/openclaw/tool_policy_parity_cases.json"
 
 OPENCLAW_UPSTREAM_URL="${OPENCLAW_UPSTREAM_URL:-https://github.com/openclaw/openclaw.git}"
+OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE="${OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE:-0}"
 NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 TODAY_UTC="$(date -u +"%Y-%m-%d")"
 
@@ -26,6 +27,7 @@ if [[ -z "$UPSTREAM_HEAD" ]]; then
 fi
 
 rows=()
+row_records=()
 
 append_row() {
   local capability="$1"
@@ -34,6 +36,7 @@ append_row() {
   local recommendation="$4"
 
   rows+=("| ${capability} | ${pinned_sha} | ${UPSTREAM_HEAD} | ${drift_type} | ${recommendation} |")
+  row_records+=("${capability}|${pinned_sha}|${drift_type}|${recommendation}")
 }
 
 classify_drift() {
@@ -109,6 +112,42 @@ if [[ -f "$FIXTURE_PATH" ]]; then
   append_row "openclaw-tool-policy-fixtures" "${fixture_sha:-pending}" "$fixture_drift_type" "$fixture_recommendation"
 fi
 
+count_in_sync=0
+count_mismatch=0
+count_missing=0
+count_invalid=0
+actionable_count=0
+actionable_records=()
+
+for record in "${row_records[@]}"; do
+  IFS='|' read -r capability pinned_sha drift_type recommendation <<< "$record"
+
+  case "$drift_type" in
+    in_sync)
+      count_in_sync=$((count_in_sync + 1))
+      ;;
+    upstream_head_mismatch)
+      count_mismatch=$((count_mismatch + 1))
+      actionable_count=$((actionable_count + 1))
+      actionable_records+=("$record")
+      ;;
+    missing_pin)
+      count_missing=$((count_missing + 1))
+      actionable_count=$((actionable_count + 1))
+      actionable_records+=("$record")
+      ;;
+    invalid_sha)
+      count_invalid=$((count_invalid + 1))
+      actionable_count=$((actionable_count + 1))
+      actionable_records+=("$record")
+      ;;
+    *)
+      actionable_count=$((actionable_count + 1))
+      actionable_records+=("$record")
+      ;;
+  esac
+done
+
 {
   echo "# OpenClaw Drift Report"
   echo
@@ -123,6 +162,14 @@ fi
   echo "- \`upstream_head_mismatch\`: pinned SHA differs from upstream HEAD"
   echo "- \`missing_pin\`: intake/fixture has no exact pinned SHA"
   echo "- \`invalid_sha\`: value is not a valid 40-char SHA"
+  echo
+  echo "## Drift Summary"
+  echo
+  echo "- In sync: ${count_in_sync}"
+  echo "- Upstream head mismatch: ${count_mismatch}"
+  echo "- Missing pin: ${count_missing}"
+  echo "- Invalid SHA: ${count_invalid}"
+  echo "- Actionable rows: ${actionable_count}"
   echo
   echo "## Capability Drift Table"
   echo
@@ -145,6 +192,28 @@ fi
   echo "2. Fixture/parity impact"
   echo "3. Port/adapt/adopt decision"
   echo "4. Rollout risk and test updates"
+
+  if [[ "${#actionable_records[@]}" -gt 0 ]]; then
+    echo
+    echo "## Actionable Follow-ups"
+    echo
+    for record in "${actionable_records[@]}"; do
+      IFS='|' read -r capability pinned_sha drift_type recommendation <<< "$record"
+
+      echo "- Capability: \`${capability}\`"
+      echo "  - Drift type: \`${drift_type}\`"
+      echo "  - Pinned SHA: \`${pinned_sha}\`"
+      echo "  - Action: ${recommendation}"
+      echo "  - Suggested issue command:"
+      echo "    \`gh issue create --title \"[OpenClaw Drift] ${capability} (${drift_type})\" --label planning --body \"Drift detected by scripts/openclaw-drift-report.sh on ${TODAY_UTC}.\\n\\nPinned SHA: ${pinned_sha}\\nUpstream HEAD: ${UPSTREAM_HEAD}\\n\\nAction: ${recommendation}\" \`"
+    done
+  fi
 } > "$REPORT_PATH"
 
 echo "Wrote drift report: $REPORT_PATH"
+echo "Actionable drift rows: ${actionable_count}"
+
+if [[ "$OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE" == "1" && "$actionable_count" -gt 0 ]]; then
+  echo "Failing due to actionable drift rows (OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1)." >&2
+  exit 2
+fi

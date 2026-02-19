@@ -9,6 +9,7 @@ defmodule OpenAgentsRuntime.DS.Workflows.StructuredTasks do
   alias OpenAgentsRuntime.DS.Predict
   alias OpenAgentsRuntime.DS.Receipts
   alias OpenAgentsRuntime.DS.Signatures.Catalog
+  alias OpenAgentsRuntime.Telemetry.Parity
 
   @structured_task_signature "@openagents/autopilot/workflow/StructuredTask.v1"
   @timeline_map_item_signature "@openagents/autopilot/workflow/TimelineMapItem.v1"
@@ -55,10 +56,12 @@ defmodule OpenAgentsRuntime.DS.Workflows.StructuredTasks do
 
   def run("llm_task.v1", input, opts) when is_map(input) do
     run_llm_task(input, opts)
+    |> maybe_emit_workflow_failure("llm_task.v1", opts)
   end
 
   def run("timeline_map_reduce.v1", input, opts) when is_map(input) do
     run_timeline_map_reduce(input, opts)
+    |> maybe_emit_workflow_failure("timeline_map_reduce.v1", opts)
   end
 
   def run(_workflow_id, _input, _opts), do: {:error, :unsupported_workflow}
@@ -484,4 +487,31 @@ defmodule OpenAgentsRuntime.DS.Workflows.StructuredTasks do
   end
 
   defp normalize_int(_value, fallback), do: fallback
+
+  defp maybe_emit_workflow_failure({:ok, _result} = result, _workflow_id, _opts), do: result
+
+  defp maybe_emit_workflow_failure({:error, reason} = error, workflow_id, opts) do
+    run_id = Keyword.get(opts, :run_id, "workflow")
+
+    Parity.emit_failure("workflow", workflow_reason_class(reason), "ds.workflows", "failed", %{
+      run_id: run_id,
+      workflow_id: workflow_id
+    })
+
+    error
+  end
+
+  defp workflow_reason_class(:budget_exhausted), do: "policy_denied.budget_exhausted"
+  defp workflow_reason_class(:signature_not_found), do: "workflow.signature_not_found"
+  defp workflow_reason_class(:unsupported_workflow), do: "workflow.unsupported"
+
+  defp workflow_reason_class({:schema_violation, _reason}),
+    do: "manifest_validation.invalid_schema"
+
+  defp workflow_reason_class({:step_failed, _step_id, {:unsupported_strategy, strategy_id}}) do
+    "workflow.step_failed.unsupported_strategy:#{strategy_id}"
+  end
+
+  defp workflow_reason_class({:step_failed, _step_id, _reason}), do: "workflow.step_failed"
+  defp workflow_reason_class(_reason), do: "workflow.failed"
 end

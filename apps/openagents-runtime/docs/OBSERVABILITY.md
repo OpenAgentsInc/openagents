@@ -44,6 +44,8 @@ High-cardinality keys explicitly prohibited from metric labels:
   - `:failed`
 - `[:openagents_runtime, :policy, :decision]`
   - DS policy/spend decision and budget counters
+- `[:openagents_runtime, :parity, :failure]`
+  - parity failure-class envelope across policy/loop/network/manifest/workflow
 - `[:openagents_runtime, :run_events, :notify]`
   - LISTEN/NOTIFY wakeup path
 - `[:openagents_runtime, :agent_process, :stats]`
@@ -60,6 +62,29 @@ High-cardinality keys explicitly prohibited from metric labels:
 - Use metrics for fleet/system health and bounded alerting.
 - Use logs/traces + event metadata for run-level incident debugging.
 - Never add run/thread/tool identifiers as metric tags; update `metrics_test.exs` if taxonomy changes.
+
+## Parity Failure Class Diagnosis
+
+- Metric: `openagents_runtime.parity.failure.count`
+- Tags: `class`, `reason_class`, `component`, `outcome`
+
+Failure classes and primary emitters:
+
+- `policy`
+  - Emitter: `OpenAgentsRuntime.DS.Predict` when policy decision is denied.
+  - Inspect alongside: `openagents_runtime.policy.decision.count`.
+- `loop`
+  - Emitter: `OpenAgentsRuntime.Runs.Executor` when loop detection transitions terminal failure.
+  - Inspect alongside: `openagents_runtime.executor.terminal.count`.
+- `network`
+  - Emitter: `OpenAgentsRuntime.Tools.Network.GuardedHTTP` when outbound request is blocked.
+  - Inspect alongside: `openagents_runtime.tool.lifecycle.count`.
+- `manifest`
+  - Emitter: `OpenAgentsRuntime.Tools.Extensions.ManifestRegistry` on rejected activation.
+  - Inspect alongside: `[:openagents_runtime, :tools, :extensions, :manifest_validation]`.
+- `workflow`
+  - Emitter: `OpenAgentsRuntime.DS.Workflows.StructuredTasks` on budget/schema/step failures.
+  - Inspect alongside DS workflow receipts and step receipts.
 
 ## Dashboards and alerts
 

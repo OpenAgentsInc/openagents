@@ -28,10 +28,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ripgrep
 
-      - name: Generate drift report
-        run: scripts/openclaw-drift-report.sh
+      - name: Generate drift report (strict actionable gate)
+        run: OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1 scripts/openclaw-drift-report.sh
 
       - name: Upload drift report artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: openclaw-drift-report

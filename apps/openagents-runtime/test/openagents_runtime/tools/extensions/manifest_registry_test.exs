@@ -48,6 +48,7 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistryTest do
 
   test "validate_for_activation/2 emits validation outcome telemetry for rejected manifests" do
     handler_id = "manifest-registry-reject-#{System.unique_integer([:positive])}"
+    parity_handler_id = "manifest-registry-parity-#{System.unique_integer([:positive])}"
     parent = self()
 
     :ok =
@@ -62,6 +63,18 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistryTest do
 
     on_exit(fn -> :telemetry.detach(handler_id) end)
 
+    :ok =
+      :telemetry.attach(
+        parity_handler_id,
+        [:openagents_runtime, :parity, :failure],
+        fn _event, measurements, metadata, test_pid ->
+          send(test_pid, {:parity_failure, measurements, metadata})
+        end,
+        parent
+      )
+
+    on_exit(fn -> :telemetry.detach(parity_handler_id) end)
+
     invalid_manifest =
       valid_comms_manifest()
       |> Map.delete("manifest_version")
@@ -72,6 +85,10 @@ defmodule OpenAgentsRuntime.Tools.Extensions.ManifestRegistryTest do
     assert_receive {:manifest_validation, %{count: 1}, metadata}
     assert metadata.outcome == "rejected"
     assert metadata.reason_code == "manifest_validation.invalid_schema"
+
+    assert_receive {:parity_failure, %{count: 1}, parity_metadata}
+    assert parity_metadata.class == "manifest"
+    assert parity_metadata.reason_class == "manifest_validation.invalid_schema"
   end
 
   test "supported_tool_packs/0 includes comms tool pack" do

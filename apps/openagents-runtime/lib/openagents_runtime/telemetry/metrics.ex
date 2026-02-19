@@ -23,7 +23,8 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     janitor_cycle: [],
     janitor_resumed: [],
     janitor_failed: [:reason_class],
-    policy_decision: [:decision, :authorization_mode, :settlement_boundary]
+    policy_decision: [:decision, :authorization_mode, :settlement_boundary],
+    parity_failure: [:class, :reason_class, :component, :outcome]
   }
 
   @high_cardinality_tags [
@@ -104,7 +105,8 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       ),
       summary("openagents_runtime.policy.decision.remaining_sats",
         tags: tags_for(:policy_decision)
-      )
+      ),
+      counter("openagents_runtime.parity.failure.count", tags: tags_for(:parity_failure))
     ]
   end
 

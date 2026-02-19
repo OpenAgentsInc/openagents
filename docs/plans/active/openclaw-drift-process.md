@@ -25,6 +25,12 @@ Optional override:
 OPENCLAW_UPSTREAM_URL=https://github.com/openclaw/openclaw.git scripts/openclaw-drift-report.sh
 ```
 
+Strict CI gate (fail when actionable rows exist):
+
+```bash
+OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1 scripts/openclaw-drift-report.sh
+```
+
 ## Output
 
 - `docs/plans/active/openclaw-drift-report.md`
@@ -35,6 +41,11 @@ Report rows include:
 - upstream HEAD
 - drift type (`in_sync`, `upstream_head_mismatch`, `missing_pin`, `invalid_sha`)
 - recommended action
+
+Report summary includes:
+- drift counts by class
+- actionable row count
+- issue command templates for each actionable capability
 
 ## Cadence
 
@@ -49,3 +60,7 @@ For each `upstream_head_mismatch` or `missing_pin` row:
 2. Summarize upstream diff scope.
 3. Refresh/extend parity fixtures and rerun harnesses.
 4. Confirm port/adapt/adopt decision and rollout risk.
+
+Enforcement:
+- CI workflow runs drift generation with `OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1`.
+- Any actionable row must be accompanied by an issue in-flight or an explicit pin refresh.
