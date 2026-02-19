@@ -460,6 +460,32 @@ Request:
 }
 ```
 
+### `POST /internal/v1/codex/workers/{worker_id}/events`
+
+Appends a desktop-originated Codex notification into the durable worker event
+stream.
+
+Request:
+
+```json
+{
+  "event": {
+    "event_type": "worker.event",
+    "payload": {
+      "source": "desktop",
+      "method": "turn/started",
+      "params": {"turnId": "turn_1"}
+    }
+  }
+}
+```
+
+Validation:
+
+- `event.event_type` is required.
+- `event.event_type` must start with `worker.`.
+- `event.payload` is optional map data.
+
 ### `GET /internal/v1/codex/workers/{worker_id}/stream`
 
 Streams worker event log as SSE with the same cursor semantics as run streams.

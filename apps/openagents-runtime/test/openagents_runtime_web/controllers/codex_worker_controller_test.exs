@@ -83,6 +83,49 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     assert %{"error" => %{"code" => "invalid_request"}} = json_response(invalid_cursor_conn, 400)
   end
 
+  test "ingests desktop event payload into durable worker stream", %{conn: conn} do
+    worker_id = unique_id("codexw")
+
+    conn
+    |> put_internal_auth(user_id: 907)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+    |> json_response(202)
+
+    ingest_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 907)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/events", %{
+        "event" => %{
+          "event_type" => "worker.event",
+          "payload" => %{
+            "source" => "desktop",
+            "method" => "turn/started",
+            "params" => %{"turnId" => "turn_1"}
+          }
+        }
+      })
+
+    assert %{
+             "data" => %{
+               "worker_id" => ^worker_id,
+               "event_type" => "worker.event",
+               "seq" => seq
+             }
+           } = json_response(ingest_conn, 202)
+
+    assert is_integer(seq) and seq >= 2
+
+    snapshot_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 907)
+      |> get(~p"/internal/v1/codex/workers/#{worker_id}/snapshot")
+
+    assert %{"data" => %{"latest_seq" => latest_seq}} = json_response(snapshot_conn, 200)
+    assert latest_seq >= seq
+  end
+
   test "worker ownership is enforced", %{conn: conn} do
     worker_id = unique_id("codexw")
 

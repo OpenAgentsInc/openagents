@@ -85,6 +85,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'POST api/payments/pay',
         'POST api/payments/send-spark',
         'POST api/runtime/codex/workers',
+        'POST api/runtime/codex/workers/{workerId}/events',
         'POST api/runtime/codex/workers/{workerId}/requests',
         'POST api/runtime/codex/workers/{workerId}/stop',
         'POST api/runtime/skills/skill-specs',

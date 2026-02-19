@@ -69,6 +69,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/runtime/codex/workers/{workerId}', [RuntimeCodexWorkersController::class, 'show']);
     Route::get('/runtime/codex/workers/{workerId}/stream', [RuntimeCodexWorkersController::class, 'stream']);
     Route::post('/runtime/codex/workers/{workerId}/requests', [RuntimeCodexWorkersController::class, 'request']);
+    Route::post('/runtime/codex/workers/{workerId}/events', [RuntimeCodexWorkersController::class, 'events']);
     Route::post('/runtime/codex/workers/{workerId}/stop', [RuntimeCodexWorkersController::class, 'stop']);
 
     // Autopilot API (phase A skeleton).

@@ -15,6 +15,7 @@ beforeEach(function () {
     config()->set('runtime.elixir.codex_worker_snapshot_path_template', '/internal/v1/codex/workers/{worker_id}/snapshot');
     config()->set('runtime.elixir.codex_worker_stream_path_template', '/internal/v1/codex/workers/{worker_id}/stream');
     config()->set('runtime.elixir.codex_worker_requests_path_template', '/internal/v1/codex/workers/{worker_id}/requests');
+    config()->set('runtime.elixir.codex_worker_events_path_template', '/internal/v1/codex/workers/{worker_id}/events');
     config()->set('runtime.elixir.codex_worker_stop_path_template', '/internal/v1/codex/workers/{worker_id}/stop');
 });
 
@@ -62,6 +63,9 @@ test('runtime codex workers api proxies lifecycle endpoints', function () {
         'http://runtime.internal/internal/v1/codex/workers/codexw_1/requests' => Http::response([
             'data' => ['worker_id' => 'codexw_1', 'ok' => true],
         ], 200),
+        'http://runtime.internal/internal/v1/codex/workers/codexw_1/events' => Http::response([
+            'data' => ['worker_id' => 'codexw_1', 'seq' => 4, 'event_type' => 'worker.event'],
+        ], 202),
         'http://runtime.internal/internal/v1/codex/workers/codexw_1/stop' => Http::response([
             'data' => ['worker_id' => 'codexw_1', 'status' => 'stopped', 'idempotent_replay' => false],
         ], 202),
@@ -84,6 +88,17 @@ test('runtime codex workers api proxies lifecycle endpoints', function () {
         ],
     ]);
     $request->assertOk()->assertJsonPath('data.ok', true);
+
+    $events = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_1/events', [
+        'event' => [
+            'event_type' => 'worker.event',
+            'payload' => [
+                'source' => 'desktop',
+                'method' => 'turn/started',
+            ],
+        ],
+    ]);
+    $events->assertStatus(202)->assertJsonPath('data.seq', 4);
 
     $stop = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_1/stop', ['reason' => 'done']);
     $stop->assertStatus(202)->assertJsonPath('data.status', 'stopped');

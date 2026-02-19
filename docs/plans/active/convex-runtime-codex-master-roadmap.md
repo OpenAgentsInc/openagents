@@ -298,6 +298,16 @@ Backlog:
 5. Mirror worker summaries into Convex via runtime projector.
 6. Validate reconnect/resume after desktop app restart.
 
+Implementation status (2026-02-19):
+
+- Items 1-3 are implemented:
+  - Desktop session start/resume paths now ensure runtime worker create/reattach.
+  - Runtime ingest endpoint is live at `POST /internal/v1/codex/workers/{worker_id}/events`.
+  - Laravel proxy route is live at `POST /api/runtime/codex/workers/{workerId}/events`.
+  - Desktop and Pylon local bridge now emit normalized runtime taxonomy mappings (`worker.started`, `worker.error`, `worker.heartbeat`, `worker.event`, `worker.request.received`).
+- Item 5 is live for status badges via runtime projection checkpoints in web admin.
+- Items 4 and 6 remain open hardening/test work (explicit heartbeat/restart-resume durability scenarios).
+
 Verification:
 
 - `cargo check -p autopilot-desktop`

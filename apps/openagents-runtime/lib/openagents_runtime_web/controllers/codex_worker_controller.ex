@@ -94,6 +94,33 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerController do
     error(conn, 400, "invalid_request", "worker_id is required")
   end
 
+  @spec events(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def events(conn, %{"worker_id" => worker_id} = params) do
+    with {:ok, principal} <- principal_from_headers(conn),
+         {:ok, event_payload} <- event_payload(params),
+         {:ok, result} <- Workers.ingest_event(worker_id, principal, event_payload) do
+      conn
+      |> put_status(202)
+      |> json(%{"data" => result})
+    else
+      {:error, :invalid_principal} ->
+        error(conn, 401, "unauthorized", "missing or invalid principal headers")
+
+      {:error, :invalid_event} ->
+        error(conn, 400, "invalid_request", "event.event_type must start with worker.")
+
+      {:error, :forbidden} ->
+        error(conn, 403, "forbidden", "worker does not belong to principal")
+
+      {:error, :not_found} ->
+        error(conn, 404, "not_found", "worker not found")
+    end
+  end
+
+  def events(conn, _params) do
+    error(conn, 400, "invalid_request", "worker_id is required")
+  end
+
   @spec stop(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def stop(conn, %{"worker_id" => worker_id} = params) do
     with {:ok, principal} <- principal_from_headers(conn),
@@ -191,6 +218,14 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerController do
   defp request_payload(%{"method" => _method} = params), do: {:ok, params}
 
   defp request_payload(_), do: {:error, :invalid_request}
+
+  defp event_payload(%{"event" => event}) when is_map(event), do: {:ok, event}
+
+  defp event_payload(%{"event_type" => _event_type} = params), do: {:ok, params}
+
+  defp event_payload(%{"type" => _event_type} = params), do: {:ok, params}
+
+  defp event_payload(_), do: {:error, :invalid_event}
 
   defp resolve_cursor(conn, params, worker_id) do
     query_cursor = params |> Map.get("cursor") |> parse_cursor()
