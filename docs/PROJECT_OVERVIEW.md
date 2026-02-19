@@ -1,6 +1,6 @@
 # OpenAgents Repository Overview
 
-This document maps the active codebase after the Rust deprecation cleanup.
+This document maps the active codebase.
 
 ## Product Surfaces
 
@@ -13,8 +13,11 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `apps/mobile/`
   Mobile app surface.
 
+- `apps/autopilot-desktop/`
+  Rust desktop app for local Codex execution and native Autopilot UI/runtime loops.
+
 - `apps/desktop/`
-  Desktop Electron surface for local execution boundaries (including Lightning executor workflows).
+  Electron desktop surface for local execution boundaries (including Lightning executor workflows).
 
 ## Control-Plane and Runtime Boundary
 
@@ -22,6 +25,13 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `apps/openagents-runtime` owns internal runtime correctness concerns: execution leases, durable run events, streaming, policy decisions, spend reservation state, and DS strategy execution.
 - Contributor rule: runtime correctness logic belongs in `apps/openagents-runtime`, not Laravel controllers/models.
 - Contract review ownership for runtime/proto surfaces is enforced in `.github/CODEOWNERS`.
+
+## Codex Desktop/Runtime Boundary
+
+- Desktop execution is currently centered in `apps/autopilot-desktop/` and local bridge code in `crates/pylon/`.
+- Runtime exposes internal Codex worker lifecycle APIs in `apps/openagents-runtime` (`/internal/v1/codex/workers*`).
+- Laravel proxies user-scoped Codex worker APIs in `apps/openagents.com` (`/api/runtime/codex/workers*`).
+- Canonical Codex architecture plan: `docs/codex/unified-runtime-desktop-plan.md`.
 
 ## Shared Packages
 
@@ -42,6 +52,11 @@ This document maps the active codebase after the Rust deprecation cleanup.
 
 - `packages/lightning-effect/`
   Effect-first Lightning and L402 contracts, services, adapters, and layers shared across app surfaces.
+
+## Rust Workspace
+
+- `crates/`
+  Active Rust workspace with shared runtime, Codex client, UI, and integration crates used by desktop and supporting services.
 
 ## Docs and Operational Runbooks
 
@@ -77,10 +92,9 @@ This document maps the active codebase after the Rust deprecation cleanup.
 
 ## Historical Code and Docs
 
-Rust code and Rust-era docs were removed from this repo and archived to backroom:
+Legacy references to removed surfaces should be treated as historical:
 
-- `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
-- `~/code/backroom/openagents-docs-rust-archive-2026-02-11/docs/`
-- `~/code/backroom/openagents-docs-social-archive-2026-02-11/docs/`
+- `apps/web/`
+- `apps/autopilot-worker/`
 
-If a legacy document references `crates/*`, `Cargo.toml`, `apps/api/`, `apps/autopilot-desktop/`, `apps/web/`, or `apps/autopilot-worker/`, treat it as historical unless it has been explicitly rewritten for the current stack. The former `apps/web` and `apps/autopilot-worker` have been removed; the web app is `apps/openagents.com`.
+The active web control plane is `apps/openagents.com/`, and runtime execution is `apps/openagents-runtime/`.

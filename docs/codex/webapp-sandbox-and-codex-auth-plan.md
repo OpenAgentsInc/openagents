@@ -1,3 +1,6 @@
+> Status: Historical (superseded for current desktop-first Codex direction).
+> Canonical integration plan: `docs/codex/unified-runtime-desktop-plan.md`.
+
 # Plan: Sandbox + Codex Auth for the Webapp
 
 This document outlines how to integrate **Cloudflare Sandbox SDK** and **Codex (ChatGPT) auth** with the OpenAgents webapp. Sandboxes are not yet integrated; Codex auth is documented in [opencode-codex-auth.md](./opencode-codex-auth.md). The plan is split into two parts so sandbox work can proceed first and Codex auth can follow once a sandbox-backed runtime exists.

@@ -385,6 +385,8 @@ Fetches immutable SkillRelease artifact including compiled bundle and compatibil
 
 Creates or reattaches a remote Codex worker session for the authenticated principal.
 
+Current implementation note (2026-02-19): `in_memory` is the only implemented adapter. The desktop-backed runtime sync path is tracked in `docs/codex/unified-runtime-desktop-plan.md`.
+
 Required principal header (at least one):
 
 - `x-oa-user-id`

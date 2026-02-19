@@ -22,6 +22,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `docs/protocol/PROTOCOL_SURFACE.md` — canonical field semantics.
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json` — canonical reason codes.
 - `docs/dse/README.md` — DSE/compiler contract index.
+- `docs/codex/unified-runtime-desktop-plan.md` — canonical Codex desktop+runtime integration plan.
 
 ### 3) Product and runtime code surfaces
 
@@ -30,7 +31,8 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `apps/openagents-runtime/` — Elixir runtime (execution, policy, replay, contracts).
 - `apps/openagents-runtime/README.md` — runtime setup and test entrypoint.
 - `apps/mobile/README.md` — mobile app.
-- `apps/desktop/README.md` — desktop app.
+- `apps/autopilot-desktop/` — Rust desktop Codex app.
+- `apps/desktop/README.md` — Electron desktop Lightning app.
 - `packages/` — shared libraries (`effuse*`, `dse`, `lightning-effect`, `hud`).
 
 ### 4) Plans, specs, and implementation tracking
@@ -60,5 +62,6 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - If you are changing protocol fields or IDs: start at `docs/protocol/PROTOCOL_SURFACE.md`, then `docs/adr/INDEX.md`.
 - If you are changing runtime execution behavior: start at `apps/openagents-runtime/` plus `docs/execution/REPLAY.md`.
 - If you are changing web behavior/UI/integrations: start at `apps/openagents.com/` plus `docs/plans/active/laravel-rebuild.md`.
+- If you are changing Codex runtime/desktop integration: start at `docs/codex/unified-runtime-desktop-plan.md`.
 - If you are changing terminology or naming: update `docs/GLOSSARY.md` first.
 - If you are changing architecture invariants: author/update an ADR in `docs/adr/`.

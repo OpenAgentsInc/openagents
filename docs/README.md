@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
 This directory tracks the active OpenAgents cross-platform stack.
-Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/openagents-runtime/`), mobile (`apps/mobile`), and desktop (`apps/desktop`, early implementation).
+Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/openagents-runtime/`), mobile (`apps/mobile`), Rust desktop Codex app (`apps/autopilot-desktop/`), and Electron desktop Lightning app (`apps/desktop/`).
 
 ## Start Here
 
@@ -19,6 +19,11 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Runtime operations runbook: `../apps/openagents-runtime/docs/OPERATIONS.md`
 - DS-Elixir runtime contract: `../apps/openagents-runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
 - DS-Elixir operations runbook: `../apps/openagents-runtime/docs/DS_ELIXIR_OPERATIONS.md`
+
+## Codex Architecture
+
+- Canonical unified plan: `codex/unified-runtime-desktop-plan.md`
+- Codex docs index: `codex/README.md`
 
 ## Contracts (Canonical Specs)
 
@@ -39,14 +44,16 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Web trace retrieval and debugging: `autopilot/TRACE_RETRIEVAL.md`
 - Pane system docs: `autopilot/EFFUSE_PANES.md`
 - Mobile app source: `../apps/mobile/`
-- Desktop app source: `../apps/desktop/`
+- Rust desktop Codex app source: `../apps/autopilot-desktop/`
+- Electron desktop Lightning app source: `../apps/desktop/`
 
 ## Local Development
 
 - Laravel web (control plane): `../apps/openagents.com/` — see `plans/active/laravel-rebuild.md`; typically `cd apps/openagents.com && composer run dev`.
 - Elixir runtime (execution): `../apps/openagents-runtime/` — `cd apps/openagents-runtime && mix phx.server`.
 - Mobile local dev: `../apps/mobile/README.md`
-- Desktop local dev: `../apps/desktop/README.md`
+- Rust desktop Codex local dev: `../apps/autopilot-desktop/` — typically `cargo run -p autopilot-desktop`.
+- Electron desktop Lightning local dev: `../apps/desktop/README.md`
 - Storybook and component docs: `STORYBOOK.md`
 
 ## Audits

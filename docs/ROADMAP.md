@@ -1,6 +1,6 @@
-# OpenAgents Roadmap (Web-First)
+# OpenAgents Roadmap (Current Stack)
 
-This roadmap tracks active priorities for the current TypeScript/Effect codebase.
+This roadmap tracks active priorities across web, runtime, and desktop surfaces.
 
 **Web:** The core web app is **Laravel 12 + Inertia + React** at `apps/openagents.com/`. See `docs/plans/active/laravel-rebuild.md` for the plan.
 
@@ -10,6 +10,7 @@ This roadmap tracks active priorities for the current TypeScript/Effect codebase
 - Completed plans/history: `docs/plans/completed/`
 - Plan conventions/template: `docs/plans/README.md`, `docs/plans/TEMPLATE.md`
 - Repo map and ownership: `docs/PROJECT_OVERVIEW.md`
+- Codex architecture plan: `docs/codex/unified-runtime-desktop-plan.md`
 - Architecture constraints: `docs/adr/INDEX.md`
 - Canonical terms: `docs/GLOSSARY.md`
 - Agent contract (non-negotiables): `AGENTS.md`
@@ -37,17 +38,17 @@ This roadmap tracks active priorities for the current TypeScript/Effect codebase
 ## Phase 4: Cross-Surface Consistency
 
 - Align web and mobile data contracts for chat and trace payloads.
-- Consolidate shared Effect services used by web, worker, and test harnesses.
+- Consolidate shared services used by web, runtime, desktop, and test harnesses.
 - Remove legacy assumptions left from deprecated runtime surfaces.
 
-## Phase 5: Documentation Quality Gates
+## Phase 5: Codex Runtime + Desktop Unification
+
+- Ship desktop-first Codex execution with runtime as durable worker/event authority.
+- Ensure web admin surfaces and mobile follow-up read/admin flows consume the same runtime-backed Codex worker contract.
+- Keep a single canonical plan and contract path (`docs/codex/unified-runtime-desktop-plan.md` + runtime OpenAPI/contract docs).
+
+## Phase 6: Documentation Quality Gates
 
 - Keep docs aligned with active code paths only.
 - Archive deprecated docs to backroom with explicit archive indexes.
 - Require updates to `docs/README.md` and `docs/PROJECT_OVERVIEW.md` when major architecture changes ship.
-
-## Notes
-
-- Rust code and Rust-era docs are deprecated and archived:
-  - `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/`
-  - `~/code/backroom/openagents-docs-rust-archive-2026-02-11/docs/`

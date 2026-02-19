@@ -11,4 +11,4 @@ Conventions:
 - Use concrete verification steps (commands, expected outputs).
 - Record decisions as they happen (short decision log).
 - Prefer linking to ADRs and canonical specs instead of duplicating them.
-
+- Codex cross-surface architecture planning is canonical in `docs/codex/unified-runtime-desktop-plan.md`; avoid creating competing Codex plan docs here.
