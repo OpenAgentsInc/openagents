@@ -1,8 +1,8 @@
 # OpenAgents
 
-OpenAgents is the **operating system for the AI agent economy**. We ship three apps—**web** at [openagents.com](https://openagents.com) (**`apps/openagents.com/`**), **mobile** in **`apps/mobile/`**, and **desktop** in progress—and the platform beneath: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
+OpenAgents is the **operating system for the AI agent economy**. We ship **web** at [openagents.com](https://openagents.com) (**`apps/openagents.com/`**), **mobile** in **`apps/mobile/`**, **desktop** in progress, and now a native **iOS** app in **`apps/autopilot-ios/`**. Beneath that is the platform: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
 
-**Release quality:** Web is **alpha** (live at [openagents.com](https://openagents.com), Laravel app in **`apps/openagents.com/`**). Mobile and desktop are **prerelease**.
+**Release quality:** Web is **alpha** (live at [openagents.com](https://openagents.com), Laravel app in **`apps/openagents.com/`**). Mobile, desktop, and iOS are **prerelease**.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
 
@@ -21,6 +21,7 @@ flowchart LR
   subgraph user["User-facing"]
     web["openagents.com<br/>(Laravel + Inertia + React)<br/>Web UI, chat, API, control plane"]
     mobile["mobile<br/>React Native / Expo<br/>Prerelease"]
+    ios["autopilot-ios<br/>Native iOS app (SwiftUI)<br/>Prerelease"]
     desktop["desktop<br/>Electron + Effuse<br/>Lightning wallet execution, L402"]
   end
 
@@ -39,6 +40,7 @@ flowchart LR
   end
 
   web <--> desktop
+  web <--> ios
   web --> ops
   desktop --> executor
   ops --> lnd
@@ -48,11 +50,13 @@ flowchart LR
   style runtime stroke-dasharray: 5 5
   style planned stroke-dasharray: 5 5
   style mobile stroke-dasharray: 5 5
+  style ios stroke-dasharray: 5 5
   style desktop stroke-dasharray: 5 5
 ```
 
 - **openagents.com** (`apps/openagents.com/`): Core web app — Laravel 12, Inertia, React; chat, auth, API; production deploy to Cloud Run.
 - **mobile** (`apps/mobile/`): React Native (Ignite/Expo) mobile surface — prerelease.
+- **autopilot-ios** (`apps/autopilot-ios/`): Native iOS Autopilot app surface — prerelease.
 - **desktop** (`apps/desktop/`): Electron shell for Lightning (EP212); wallet/payment execution; Convex + OpenAgents API.
 - **lightning-ops** (`apps/lightning-ops/`): Effect service that turns “what we sell and at what price” into the config that powers our L402 paywall. It reads route and policy state from Convex, compiles deterministic Aperture config (used by the gateway at l402.openagents.com), validates routes and security, and writes deployment intent back to Convex. So: for the L402 route/policy plane, Convex is the source of truth and lightning-ops is the compiler/validator that keeps the live gateway in sync.
 - **lightning-wallet-executor** (`apps/lightning-wallet-executor/`): HTTP service that pays Lightning invoices on behalf of agents. When Autopilot or another service needs to pay a bolt (e.g. to call a paid API like sats4ai or our own L402 route), this service holds the sats (via Breez Spark wallet) and exposes `POST /pay-bolt11`: you send an invoice and limits, it pays within policy (allowed hosts, max amount). So: the “agent-owned” wallet in the cloud that enables buyer-side L402 and paid tool calls.
@@ -90,12 +94,17 @@ See [apps/openagents.com/README.md](apps/openagents.com/README.md) for full dev 
 
 The mobile app lives in **`apps/mobile/`**.
 
+## iOS
+
+The native iOS app lives in **`apps/autopilot-ios/`**.
+
 ## Documentation
 
 Start with:
 
 * **Web app**: [apps/openagents.com/](apps/openagents.com/)
 * **Mobile app**: [apps/mobile/](apps/mobile/)
+* **iOS app**: [apps/autopilot-ios/](apps/autopilot-ios/)
 * **System architecture overview**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 * **Vision / architecture (north-star spec)**: [docs/SYNTHESIS.md](docs/SYNTHESIS.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
