@@ -19,19 +19,27 @@ type ResendIntegration = {
     metadata?: {
         sender_email?: string | null;
         sender_name?: string | null;
-        delivery_projection?: {
-            last_state?: string | null;
-            last_event_at?: string | null;
-            last_message_id?: string | null;
-            last_recipient?: string | null;
-        };
     };
+};
+
+type ResendDeliveryProjection = {
+    provider: string;
+    integrationId: string;
+    lastState?: string | null;
+    lastEventAt?: string | null;
+    lastMessageId?: string | null;
+    lastRecipient?: string | null;
+    runtimeEventId?: string | null;
+    source?: string | null;
 };
 
 type PageProps = {
     status?: string | null;
     integrations: {
         resend: ResendIntegration;
+    };
+    deliveryProjection?: {
+        resend?: ResendDeliveryProjection | null;
     };
     integrationAudit?: {
         resend?: Array<{
@@ -43,9 +51,10 @@ type PageProps = {
 };
 
 export default function IntegrationsSettings() {
-    const { status, integrations, integrationAudit } =
+    const { status, integrations, deliveryProjection, integrationAudit } =
         usePage<PageProps>().props;
     const resend = integrations.resend;
+    const resendProjection = deliveryProjection?.resend ?? null;
     const resendAudit = integrationAudit?.resend ?? [];
     const capture = usePostHogEvent('settings_integrations');
 
@@ -85,17 +94,12 @@ export default function IntegrationsSettings() {
                                         ? ` (••••${resend.secretLast4})`
                                         : ''}
                                 </p>
-                                {resend.metadata?.delivery_projection
-                                    ?.last_state ? (
+                                {resendProjection?.lastState ? (
                                     <p className="text-xs text-muted-foreground">
                                         Last delivery:{' '}
-                                        {
-                                            resend.metadata
-                                                .delivery_projection.last_state
-                                        }
-                                        {resend.metadata.delivery_projection
-                                            .last_event_at
-                                            ? ` at ${new Date(resend.metadata.delivery_projection.last_event_at).toLocaleString()}`
+                                        {resendProjection.lastState}
+                                        {resendProjection.lastEventAt
+                                            ? ` at ${new Date(resendProjection.lastEventAt).toLocaleString()}`
                                             : ''}
                                     </p>
                                 ) : null}

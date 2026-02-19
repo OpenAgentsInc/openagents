@@ -2,8 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\UserIntegration;
-use App\Models\UserIntegrationAudit;
+use App\Services\CommsDeliveryProjectionProjector;
 use App\Support\Comms\RuntimeCommsDeliveryForwarder;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -22,8 +21,10 @@ class ForwardResendWebhookToRuntime implements ShouldQueue
 
     public function __construct(public readonly int $webhookEventId) {}
 
-    public function handle(RuntimeCommsDeliveryForwarder $forwarder): void
-    {
+    public function handle(
+        RuntimeCommsDeliveryForwarder $forwarder,
+        CommsDeliveryProjectionProjector $projector,
+    ): void {
         $row = DB::table('comms_webhook_events')->where('id', $this->webhookEventId)->first();
 
         if (! $row) {
@@ -72,50 +73,7 @@ class ForwardResendWebhookToRuntime implements ShouldQueue
                 'updated_at' => now(),
             ]);
 
-        $this->updateIntegrationProjection($payload);
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function updateIntegrationProjection(array $payload): void
-    {
-        $userId = $payload['user_id'] ?? null;
-
-        if (! is_int($userId) || $userId <= 0) {
-            return;
-        }
-
-        $integration = UserIntegration::query()
-            ->where('user_id', $userId)
-            ->where('provider', 'resend')
-            ->first();
-
-        if (! $integration) {
-            return;
-        }
-
-        $metadata = is_array($integration->metadata) ? $integration->metadata : [];
-        $metadata['delivery_projection'] = [
-            'last_state' => is_string($payload['delivery_state'] ?? null) ? $payload['delivery_state'] : null,
-            'last_event_at' => is_string($payload['occurred_at'] ?? null) ? $payload['occurred_at'] : now()->toISOString(),
-            'last_message_id' => is_string($payload['message_id'] ?? null) ? $payload['message_id'] : null,
-            'last_recipient' => is_string($payload['recipient'] ?? null) ? $payload['recipient'] : null,
-        ];
-
-        $integration->metadata = $metadata;
-        $integration->save();
-
-        UserIntegrationAudit::query()->create([
-            'user_id' => $userId,
-            'user_integration_id' => $integration->id,
-            'provider' => 'resend',
-            'action' => 'delivery_projection_updated',
-            'metadata' => [
-                'delivery_state' => $metadata['delivery_projection']['last_state'] ?? null,
-                'message_id' => $metadata['delivery_projection']['last_message_id'] ?? null,
-            ],
-        ]);
+        $projector->projectFromRuntimeDelivery($payload, (int) $row->id);
     }
 
     private function markFailed(int $rowId, ?int $statusCode, mixed $body, string $error): void
