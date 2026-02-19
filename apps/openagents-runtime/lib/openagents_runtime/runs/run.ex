@@ -13,6 +13,10 @@ defmodule OpenAgentsRuntime.Runs.Run do
     field :owner_user_id, :integer
     field :owner_guest_scope, :string
     field :latest_seq, :integer
+    field :last_processed_frame_id, :integer
+    field :terminal_reason_class, :string
+    field :terminal_reason, :string
+    field :terminal_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime_usec)
   end

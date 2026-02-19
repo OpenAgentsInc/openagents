@@ -59,6 +59,20 @@ defmodule OpenAgentsRuntime.Runs.Frames do
     Repo.one(query)
   end
 
+  @spec next_pending_frame(String.t(), non_neg_integer()) :: RunFrame.t() | nil
+  def next_pending_frame(run_id, last_processed_frame_id)
+      when is_binary(run_id) and is_integer(last_processed_frame_id) and
+             last_processed_frame_id >= 0 do
+    query =
+      from(frame in RunFrame,
+        where: frame.run_id == ^run_id and frame.id > ^last_processed_frame_id,
+        order_by: [asc: frame.id],
+        limit: 1
+      )
+
+    Repo.one(query)
+  end
+
   @spec payload_hash(map()) :: String.t()
   def payload_hash(payload) when is_map(payload) do
     payload
