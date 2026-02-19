@@ -25,7 +25,8 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     janitor_failed: [:reason_class],
     policy_decision: [:decision, :authorization_mode, :settlement_boundary],
     parity_failure: [:class, :reason_class, :component, :outcome],
-    convex_projection_write: [:projection, :result]
+    convex_projection_write: [:projection, :result],
+    convex_projection_drift: [:projection, :reason_class]
   }
 
   @high_cardinality_tags [
@@ -113,6 +114,9 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       ),
       summary("openagents_runtime.convex.projection.write.duration_ms",
         tags: tags_for(:convex_projection_write)
+      ),
+      counter("openagents_runtime.convex.projection.drift.count",
+        tags: tags_for(:convex_projection_drift)
       )
     ]
   end

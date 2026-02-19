@@ -5,6 +5,7 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
 
   alias OpenAgentsRuntime.Codex.Workers
   alias OpenAgentsRuntime.Convex.Projector
+  alias OpenAgentsRuntime.Convex.ProjectionCheckpoint
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.Run
   alias OpenAgentsRuntime.Runs.RunEvents
@@ -27,8 +28,9 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
     {:ok, _} = RunEvents.append_event(run_id, "run.started", %{})
     {:ok, _} = RunEvents.append_event(run_id, "run.delta", %{"delta" => "hello"})
     {:ok, _} = RunEvents.append_event(run_id, "run.finished", %{"status" => "succeeded"})
+    clear_checkpoint("run_summary", run_id)
 
-    assert {:ok, %{document_id: document_id, summary: summary}} =
+    assert {:ok, %{document_id: document_id, summary: summary, write: write}} =
              Projector.project_run(run_id,
                sink: __MODULE__.CaptureSink,
                sink_opts: [test_pid: self()],
@@ -49,6 +51,7 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
     assert summary["runtime_source"] == %{"entity" => "run", "run_id" => run_id, "seq" => 3}
     assert summary["projection_version"] == @projection_version
     assert summary["projected_at"] == DateTime.to_iso8601(@fixed_now)
+    assert write == "applied"
   end
 
   test "project_codex_worker/2 writes deterministic worker summary projection from runtime events" do
@@ -72,8 +75,9 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
              })
 
     assert {:ok, _stop_result} = Workers.stop_worker(worker_id, %{user_id: 77}, reason: "done")
+    clear_checkpoint("codex_worker_summary", worker_id)
 
-    assert {:ok, %{document_id: document_id, summary: summary}} =
+    assert {:ok, %{document_id: document_id, summary: summary, write: write}} =
              Projector.project_codex_worker(worker_id,
                sink: __MODULE__.CaptureSink,
                sink_opts: [test_pid: self()],
@@ -99,6 +103,108 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
 
     assert summary["projection_version"] == @projection_version
     assert summary["projected_at"] == DateTime.to_iso8601(@fixed_now)
+    assert write == "applied"
+  end
+
+  test "project_run/2 skips sink writes for idempotent replay of same sequence range" do
+    run_id = unique_id("run_projection_idempotent")
+    thread_id = unique_id("thread_projection_idempotent")
+
+    Repo.insert!(%Run{
+      run_id: run_id,
+      thread_id: thread_id,
+      status: "running",
+      owner_user_id: 58,
+      latest_seq: 0
+    })
+
+    {:ok, _} = RunEvents.append_event(run_id, "run.started", %{})
+    {:ok, _} = RunEvents.append_event(run_id, "run.delta", %{"delta" => "hello"})
+    clear_checkpoint("run_summary", run_id)
+
+    assert {:ok, %{document_id: document_id, write: "applied"}} =
+             Projector.project_run(run_id,
+               sink: __MODULE__.CaptureSink,
+               sink_opts: [test_pid: self()],
+               now: @fixed_now,
+               projection_version: @projection_version
+             )
+
+    assert_receive {:run_summary_upserted, ^document_id, _summary}
+
+    assert {:ok, %{document_id: ^document_id, write: "skipped", reason: "idempotent"}} =
+             Projector.project_run(run_id,
+               sink: __MODULE__.CaptureSink,
+               sink_opts: [test_pid: self()],
+               now: DateTime.add(@fixed_now, 10, :second),
+               projection_version: @projection_version
+             )
+
+    refute_receive {:run_summary_upserted, ^document_id, _summary}
+
+    checkpoint = checkpoint!("run_summary", run_id)
+    assert checkpoint.last_runtime_seq == 2
+    assert checkpoint.projection_version == @projection_version
+    assert String.length(checkpoint.summary_hash) == 64
+  end
+
+  test "project_run/2 emits drift signal and rewrites projection when checkpoint hash diverges" do
+    run_id = unique_id("run_projection_drift")
+    thread_id = unique_id("thread_projection_drift")
+
+    Repo.insert!(%Run{
+      run_id: run_id,
+      thread_id: thread_id,
+      status: "running",
+      owner_user_id: 73,
+      latest_seq: 0
+    })
+
+    {:ok, _} = RunEvents.append_event(run_id, "run.started", %{})
+    {:ok, _} = RunEvents.append_event(run_id, "run.delta", %{"delta" => "hello drift"})
+    clear_checkpoint("run_summary", run_id)
+
+    assert {:ok, %{document_id: document_id, write: "applied"}} =
+             Projector.project_run(run_id,
+               sink: __MODULE__.CaptureSink,
+               sink_opts: [test_pid: self()],
+               now: @fixed_now,
+               projection_version: @projection_version
+             )
+
+    assert_receive {:run_summary_upserted, ^document_id, _summary}
+
+    checkpoint!("run_summary", run_id)
+    |> Ecto.Changeset.change(summary_hash: String.duplicate("0", 64))
+    |> Repo.update!()
+
+    drift_ref = "convex-projector-drift-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        drift_ref,
+        [:openagents_runtime, :convex, :projection, :drift],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:projection_drift_telemetry, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(drift_ref) end)
+
+    assert {:ok, %{document_id: ^document_id, write: "applied", reason: "summary_hash_mismatch"}} =
+             Projector.project_run(run_id,
+               sink: __MODULE__.CaptureSink,
+               sink_opts: [test_pid: self()],
+               now: DateTime.add(@fixed_now, 12, :second),
+               projection_version: @projection_version
+             )
+
+    assert_receive {:run_summary_upserted, ^document_id, _summary}
+    assert_receive {:projection_drift_telemetry, measurements, metadata}
+    assert measurements.count == 1
+    assert metadata.projection == "run_summary"
+    assert metadata.reason_class == "summary_hash_mismatch"
   end
 
   test "project_run/2 surfaces sink write failure via logs and telemetry" do
@@ -114,6 +220,7 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
     })
 
     {:ok, _} = RunEvents.append_event(run_id, "run.started", %{})
+    clear_checkpoint("run_summary", run_id)
 
     telemetry_ref = "convex-projector-#{System.unique_integer([:positive])}"
 
@@ -147,6 +254,17 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
     assert metadata.projection == "run_summary"
     assert metadata.result == "error"
     assert metadata.reason_class == "simulated_sink_failure"
+  end
+
+  defp checkpoint!(projection_name, entity_id) do
+    Repo.get_by!(ProjectionCheckpoint, projection_name: projection_name, entity_id: entity_id)
+  end
+
+  defp clear_checkpoint(projection_name, entity_id) do
+    from(checkpoint in ProjectionCheckpoint,
+      where: checkpoint.projection_name == ^projection_name and checkpoint.entity_id == ^entity_id
+    )
+    |> Repo.delete_all()
   end
 
   defp unique_id(prefix), do: "#{prefix}_#{System.unique_integer([:positive])}"

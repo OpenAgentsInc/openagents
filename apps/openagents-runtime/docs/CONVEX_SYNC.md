@@ -51,6 +51,26 @@ Each projection document should include:
 
 This allows drift checks and deterministic replay/rebuild.
 
+Runtime validates these fields before sink writes and records a checkpoint row in:
+
+- `runtime.convex_projection_checkpoints`
+
+Checkpoint fields:
+
+- `projection_name`
+- `entity_id`
+- `document_id`
+- `last_runtime_seq`
+- `projection_version`
+- `summary_hash`
+- `last_projected_at`
+
+Idempotent rule:
+
+- If `(last_runtime_seq, projection_version, summary_hash)` matches the current
+  projection payload, runtime skips sink mutation and marks the write as
+  `skipped`.
+
 ## Rebuild Posture
 
 If projection drift is detected:
