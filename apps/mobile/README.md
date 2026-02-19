@@ -22,6 +22,16 @@ bun run build:ios:device # build for ios device
 bun run build:ios:prod # build for ios device
 ```
 
+## OpenAgents Runtime + Codex
+
+Mobile Codex administration lives in the `Codex` tab:
+
+- Reads worker list/snapshot/stream through Laravel runtime proxy APIs (`/api/runtime/codex/workers*`).
+- Uses the same auth guard/policy behavior as web (`auth:sanctum` + runtime ownership checks).
+- Uses Laravel Convex token minting (`POST /api/convex/token`) for short-lived Convex auth.
+
+Default API base is configured in `app/config/config.base.ts` (`authApiUrl`).
+
 ### `./assets`
 
 This directory is designed to organize and store various assets, making it easy for you to manage and use them in your application. The assets are further categorized into subdirectories, including `icons` and `images`:

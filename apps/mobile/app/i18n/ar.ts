@@ -9,6 +9,7 @@ const ar: Translations = {
     logOut: "تسجيل خروج",
   },
   welcomeScreen: {
+    signedInAs: "تم تسجيل الدخول كـ {{email}}",
     postscript:
       "ربما لا يكون هذا هو الشكل الذي يبدو عليه تطبيقك مالم يمنحك المصمم هذه الشاشات وشحنها في هذه الحالة",
     readyForLaunch: "تطبيقك تقريبا جاهز للتشغيل",

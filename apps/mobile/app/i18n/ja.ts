@@ -9,6 +9,7 @@ const ja: Translations = {
     logOut: "ログアウト",
   },
   welcomeScreen: {
+    signedInAs: "{{email}} としてサインイン中",
     postscript:
       "注目！ — このアプリはお好みの見た目では無いかもしれません(デザイナーがこのスクリーンを送ってこない限りは。もしそうなら公開しちゃいましょう！)",
     readyForLaunch: "このアプリはもう少しで公開できます！",
