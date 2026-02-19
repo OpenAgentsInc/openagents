@@ -23,6 +23,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json` — canonical reason codes.
 - `docs/dse/README.md` — DSE/compiler contract index.
 - `docs/codex/unified-runtime-desktop-plan.md` — canonical Codex desktop+runtime integration plan.
+- `docs/plans/active/convex-self-hosting-runtime-sync-plan.md` — Convex self-hosted sync-layer architecture plan.
 
 ### 3) Product and runtime code surfaces
 
@@ -63,5 +64,6 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - If you are changing runtime execution behavior: start at `apps/openagents-runtime/` plus `docs/execution/REPLAY.md`.
 - If you are changing web behavior/UI/integrations: start at `apps/openagents.com/` plus `docs/plans/active/laravel-rebuild.md`.
 - If you are changing Codex runtime/desktop integration: start at `docs/codex/unified-runtime-desktop-plan.md`.
+- If you are changing Convex sync integration: start at `docs/plans/active/convex-self-hosting-runtime-sync-plan.md` and `apps/openagents-runtime/docs/CONVEX_SYNC.md`.
 - If you are changing terminology or naming: update `docs/GLOSSARY.md` first.
 - If you are changing architecture invariants: author/update an ADR in `docs/adr/`.
