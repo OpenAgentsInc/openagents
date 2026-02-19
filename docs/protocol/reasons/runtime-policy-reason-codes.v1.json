@@ -7,7 +7,8 @@
     "policy_denied",
     "loop_detected",
     "ssrf_block",
-    "manifest_validation"
+    "manifest_validation",
+    "comms_failed"
   ],
   "reason_codes": [
     {
@@ -21,6 +22,18 @@
       "domain": "policy_denied",
       "decision": "denied",
       "description": "Execution denied because policy input explicitly requested deny."
+    },
+    {
+      "code": "policy_denied.consent_required",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because recipient consent was required but not granted."
+    },
+    {
+      "code": "policy_denied.suppressed_recipient",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because recipient is suppressed and suppression enforcement is enabled."
     },
     {
       "code": "policy_denied.authorization_missing",
@@ -57,6 +70,12 @@
       "domain": "manifest_validation",
       "decision": "denied",
       "description": "Execution denied due to invalid manifest schema."
+    },
+    {
+      "code": "comms_failed.provider_error",
+      "domain": "comms_failed",
+      "decision": "denied",
+      "description": "Comms provider adapter failed to send message."
     }
   ]
 }

@@ -11,12 +11,15 @@ defmodule OpenAgentsRuntime.DS.PolicyReasonCodes do
   @reason_codes [
     "policy_allowed.default",
     "policy_denied.explicit_deny",
+    "policy_denied.consent_required",
+    "policy_denied.suppressed_recipient",
     "policy_denied.authorization_missing",
     "policy_denied.invalid_authorization_mode",
     "policy_denied.budget_exhausted",
     "loop_detected.no_progress",
     "ssrf_block.private_address",
-    "manifest_validation.invalid_schema"
+    "manifest_validation.invalid_schema",
+    "comms_failed.provider_error"
   ]
 
   @spec version() :: String.t()
