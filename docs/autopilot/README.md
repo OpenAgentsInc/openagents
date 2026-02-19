@@ -1,7 +1,7 @@
 # Autopilot documentation
 
 - **Main spec:** [spec.md](./spec.md) — product behavior and constraints
-- **iOS codex-first structure:** [ios-codex-first-structure.md](./ios-codex-first-structure.md) — native iOS app structure and phased Codex-first delivery shape
+- **iOS codex docs:** [../../apps/autopilot-ios/docs/README.md](../../apps/autopilot-ios/docs/README.md) — Codex-first structure and iOS-to-Codex connection roadmap
 - **Legacy note:** Some runbooks in this folder capture historical `apps/web` + Convex workflows. Treat those as reference-only unless explicitly mapped to current `apps/openagents.com` and `apps/openagents-runtime` flows.
 
 ## Structure
