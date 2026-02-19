@@ -25,6 +25,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Execution artifacts + replay: `execution/`
 - Protocol surface: `protocol/`
 - DSE/compiler contracts: `dse/`
+- Proto generation policy + verification command: `../proto/README.md` (`./scripts/verify-proto-generate.sh`)
 
 ## Plans
 

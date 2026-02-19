@@ -23,7 +23,17 @@ Initial generation targets configured in `buf.gen.yaml`:
 - TypeScript (`generated/ts`)
 - PHP (`generated/php`)
 
-Generation command:
+Policy:
+- Generated artifacts under `generated/` are **not checked into git**.
+- CI enforces generation viability for TS/PHP targets using `scripts/verify-proto-generate.sh`.
+
+Local verification command (canonical):
+
+```bash
+./scripts/verify-proto-generate.sh
+```
+
+Optional manual local generation (for inspection only):
 
 ```bash
 buf generate
