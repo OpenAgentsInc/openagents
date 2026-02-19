@@ -154,6 +154,18 @@
           "legendFormat": "replay errors"
         }
       ]
+    },
+    {
+      "id": 13,
+      "title": "Convex Token Mint Failure Ratio",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 56},
+      "targets": [
+        {
+          "expr": "(sum(rate(openagents_laravel_convex_token_mint_total{result=\"error\"}[10m])) or vector(0)) / clamp_min((sum(rate(openagents_laravel_convex_token_mint_total[10m])) or vector(0)), 1)",
+          "legendFormat": "token mint failure ratio"
+        }
+      ]
     }
   ]
 }

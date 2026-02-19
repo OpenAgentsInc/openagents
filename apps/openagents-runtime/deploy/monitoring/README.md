@@ -21,10 +21,12 @@ This directory contains baseline dashboards and alert rules for `openagents-runt
 - Convex projection write failure ratio
 - Convex projection drift incidents
 - Convex projection replay failure visibility
+- Convex token mint failure ratio (Laravel bridge)
 
 ## Runbook
 
 - Operations + thresholds: `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+- End-to-end correlation walkthrough: `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#end-to-end-request-correlation-walkthrough`
 - Telemetry contract and label guardrails: `apps/openagents-runtime/docs/OBSERVABILITY.md`
 
 ## Notes

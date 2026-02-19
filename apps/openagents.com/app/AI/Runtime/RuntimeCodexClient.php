@@ -190,6 +190,15 @@ final class RuntimeCodexClient
     {
         $payloadJson = json_encode($payload ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $payloadJson = $payloadJson === false ? '{}' : $payloadJson;
+        $request = request();
+
+        $forwardedRequestId = null;
+        if ($request) {
+            $requestIdHeader = $request->header('x-request-id');
+            if (is_string($requestIdHeader) && trim($requestIdHeader) !== '') {
+                $forwardedRequestId = trim($requestIdHeader);
+            }
+        }
 
         $claims = [
             'run_id' => $contextClaims['run_id'] ?? null,
@@ -202,7 +211,7 @@ final class RuntimeCodexClient
             'X-OA-RUNTIME-SIGNATURE' => $this->tokenFactory->issue($claims),
             'X-OA-RUNTIME-KEY-ID' => (string) config('runtime.elixir.signing_key_id', 'runtime-v1'),
             'X-OA-RUNTIME-BODY-SHA256' => hash('sha256', $payloadJson),
-            'X-Request-Id' => (string) Str::uuid(),
+            'X-Request-Id' => $forwardedRequestId ?? (string) Str::uuid(),
         ];
 
         if (is_int($claims['user_id']) && $claims['user_id'] > 0) {
@@ -218,8 +227,7 @@ final class RuntimeCodexClient
             $headers['Last-Event-ID'] = trim((string) $lastEventId);
         }
 
-        $request = request();
-        foreach (['traceparent', 'tracestate', 'x-request-id'] as $traceHeader) {
+        foreach (['traceparent', 'tracestate'] as $traceHeader) {
             $value = $request?->header($traceHeader);
             if (is_string($value) && $value !== '') {
                 $headers[$traceHeader] = $value;

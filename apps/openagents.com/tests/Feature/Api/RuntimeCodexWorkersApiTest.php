@@ -50,6 +50,43 @@ test('runtime codex workers api lists principal-owned workers with filters', fun
     });
 });
 
+test('runtime codex workers api forwards trace headers for correlation', function () {
+    $user = User::factory()->create();
+    $traceparent = '00-11111111111111111111111111111111-2222222222222222-01';
+    $tracestate = 'vendorname=opaque';
+    $requestId = 'req-codex-correlation';
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers?limit=1' => Http::response([
+            'data' => [],
+        ], 200),
+    ]);
+
+    $this->actingAs($user)
+        ->withHeaders([
+            'traceparent' => $traceparent,
+            'tracestate' => $tracestate,
+            'x-request-id' => $requestId,
+        ])
+        ->getJson('/api/runtime/codex/workers?limit=1')
+        ->assertOk();
+
+    Http::assertSentCount(1);
+    /** @var array{0: HttpRequest, 1: mixed} $recorded */
+    $recorded = Http::recorded()->first();
+    $forwarded = $recorded[0];
+
+    $normalizedHeaders = [];
+    foreach ($forwarded->headers() as $name => $values) {
+        $normalizedHeaders[strtolower((string) $name)] = $values;
+    }
+
+    expect($forwarded->url())->toBe('http://runtime.internal/internal/v1/codex/workers?limit=1');
+    expect($normalizedHeaders['traceparent'][0] ?? null)->toBe($traceparent);
+    expect($normalizedHeaders['tracestate'][0] ?? null)->toBe($tracestate);
+    expect($normalizedHeaders['x-request-id'][0] ?? null)->toBe($requestId);
+});
+
 test('runtime codex workers api proxies lifecycle endpoints', function () {
     $user = User::factory()->create();
 

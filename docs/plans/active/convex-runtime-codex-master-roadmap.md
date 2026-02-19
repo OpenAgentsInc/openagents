@@ -433,6 +433,17 @@ Implementation status (2026-02-19):
 3. Correlate request IDs across Laravel -> runtime -> projector writes.
 4. Add replay/rebuild duration and success metrics.
 
+Implementation status (2026-02-19):
+
+- Correlation headers are covered Laravel -> runtime and runtime -> projector telemetry:
+  - `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
+  - `apps/openagents-runtime/test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
+- Monitoring assets now include Convex token mint failure ratio dashboard + alert:
+  - `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
+  - `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
+- Operator runbooks now include correlation walkthrough + token mint failure response:
+  - `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+
 ## Data Governance
 
 1. Maintain data class split:

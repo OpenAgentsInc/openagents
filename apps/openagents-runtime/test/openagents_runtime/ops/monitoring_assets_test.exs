@@ -28,7 +28,8 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "Convex Projection Lag p95 (events)",
       "Convex Projection Write Failure Ratio",
       "Convex Projection Drift Incidents (10m)",
-      "Convex Projection Replay Errors (15m)"
+      "Convex Projection Replay Errors (15m)",
+      "Convex Token Mint Failure Ratio"
     ]
 
     Enum.each(required_titles, fn title ->
@@ -67,7 +68,8 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "OpenAgentsRuntimeConvexProjectionLagP95High",
       "OpenAgentsRuntimeConvexProjectionWriteFailureRatioHigh",
       "OpenAgentsRuntimeConvexProjectionDriftIncidentsHigh",
-      "OpenAgentsRuntimeConvexProjectionReplayFailures"
+      "OpenAgentsRuntimeConvexProjectionReplayFailures",
+      "OpenAgentsConvexTokenMintFailureRatioHigh"
     ]
 
     Enum.each(required_alerts, fn alert ->

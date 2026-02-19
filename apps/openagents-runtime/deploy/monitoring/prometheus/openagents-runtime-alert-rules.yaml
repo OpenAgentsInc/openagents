@@ -129,3 +129,14 @@ spec:
             summary: Convex projection replay failure detected
             description: Runtime replay/rebuild path for Convex projections is failing.
             runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-replay
+
+        - alert: OpenAgentsConvexTokenMintFailureRatioHigh
+          expr: ((sum(rate(openagents_laravel_convex_token_mint_total{result="error"}[10m])) or vector(0)) / clamp_min((sum(rate(openagents_laravel_convex_token_mint_total[10m])) or vector(0)), 1)) > 0.01
+          for: 15m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Convex token mint failure ratio exceeded 1%
+            description: Laravel token bridge is failing to issue Convex auth tokens above budget.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-token-mint-failures
