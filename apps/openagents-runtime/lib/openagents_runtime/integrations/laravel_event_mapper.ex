@@ -8,11 +8,22 @@ defmodule OpenAgentsRuntime.Integrations.LaravelEventMapper do
   - `data` (JSON payload or `[DONE]`)
   """
 
+  alias OpenAgentsRuntime.Contracts.Layer0TypeAdapters
+
   @type sse_frame :: %{event: String.t(), id: String.t() | nil, data: String.t()}
 
   @spec map_runtime_event(String.t(), non_neg_integer(), String.t(), map()) :: [sse_frame()]
   def map_runtime_event(run_id, seq, event_type, payload)
       when is_binary(run_id) and is_integer(seq) and is_binary(event_type) and is_map(payload) do
+    case Layer0TypeAdapters.run_event(run_id, seq, event_type, payload) do
+      {:ok, _contract_event} ->
+        :ok
+
+      {:error, errors} ->
+        raise ArgumentError,
+              "layer0 run event adapter validation failed: #{Enum.join(errors, "; ")}"
+    end
+
     payload = stringify_keys(payload)
     seq_id = Integer.to_string(seq)
 

@@ -41,6 +41,7 @@ Module-to-contract bindings:
 - Traces: `apps/openagents-runtime/lib/openagents_runtime/ds/traces.ex`
 - Pointer selection + canary rollout: `apps/openagents-runtime/lib/openagents_runtime/ds/policy_registry.ex`
 - Pointer audit + promotion/rollback: `apps/openagents-runtime/lib/openagents_runtime/ds/compile/promote_service.ex`
+- Proto-derived boundary adapters: `apps/openagents-runtime/lib/openagents_runtime/contracts/layer0_type_adapters.ex`
 
 ## 4) Signature contract
 
@@ -260,4 +261,3 @@ Spend policy and settlement coverage:
 - `apps/openagents-runtime/test/openagents_runtime/spend/authorizations_test.exs`
 - `apps/openagents-runtime/test/openagents_runtime/spend/reservations_test.exs`
 - `apps/openagents-runtime/test/openagents_runtime/tools/tool_runner_execution_test.exs`
-
