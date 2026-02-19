@@ -31,7 +31,9 @@ defmodule OpenAgentsRuntime.DS.PolicyReasonCodes do
     "manifest_validation.invalid_schema",
     "comms_failed.provider_error",
     "comms_failed.provider_circuit_open",
-    "comms_failed.fallback_exhausted"
+    "comms_failed.fallback_exhausted",
+    "coding_failed.provider_error",
+    "coding_failed.provider_circuit_open"
   ]
 
   @spec version() :: String.t()

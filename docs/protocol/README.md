@@ -9,6 +9,7 @@ Entry points:
 - `proto/README.md` (proto package layout + generation verification policy)
 - `docs/protocol/extensions/` (base extension manifest contract + specialization links)
 - `docs/protocol/comms/` (comms tool-pack contracts and integration manifest schema)
+- `docs/protocol/coding/` (coding tool-pack contracts and GitHub integration manifest schema)
 - `proto/` (canonical proto contracts for generated language bindings)
 - `crates/nostr/nips/` (draft NIPs: SA, AC — canonical location for links)
 

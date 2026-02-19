@@ -9,6 +9,10 @@ Runtime extension activation uses a two-stage validation path:
    - `docs/protocol/comms/integration-manifest.schema.v1.json`
    - `docs/protocol/comms/tool-pack-contract.v1.json`
    - Validator: `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/comms_manifest_validator.ex`
+3. Tool-pack specialization (for coding/GitHub):
+   - `docs/protocol/coding/integration-manifest.schema.v1.json`
+   - `docs/protocol/coding/tool-pack-contract.v1.json`
+   - Validator: `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/coding_manifest_validator.ex`
 
 Activation entrypoint:
 
