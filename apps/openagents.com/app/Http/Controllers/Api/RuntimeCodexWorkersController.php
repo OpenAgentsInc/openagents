@@ -6,6 +6,7 @@ use App\AI\Runtime\RuntimeCodexClient;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RuntimeCodexWorkersController extends Controller
 {
@@ -90,6 +91,54 @@ class RuntimeCodexWorkersController extends Controller
         ]);
 
         return $this->fromRuntimeResult($result);
+    }
+
+    public function stream(string $workerId, Request $request, RuntimeCodexClient $client): JsonResponse|StreamedResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(401);
+        }
+
+        $validated = $request->validate([
+            'cursor' => ['nullable', 'integer', 'min:0'],
+            'tail_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
+        ]);
+
+        $snapshotPathTemplate = (string) config('runtime.elixir.codex_worker_snapshot_path_template', '/internal/v1/codex/workers/{worker_id}/snapshot');
+        $snapshotPath = str_replace('{worker_id}', $workerId, $snapshotPathTemplate);
+
+        // Enforce ownership before opening long-lived SSE proxy.
+        $snapshot = $client->request('GET', $snapshotPath, null, [
+            'user_id' => (int) $user->getAuthIdentifier(),
+        ]);
+
+        if ($snapshot['ok'] !== true) {
+            return $this->fromRuntimeResult($snapshot);
+        }
+
+        $streamPathTemplate = (string) config('runtime.elixir.codex_worker_stream_path_template', '/internal/v1/codex/workers/{worker_id}/stream');
+        $streamPath = str_replace('{worker_id}', $workerId, $streamPathTemplate);
+
+        $query = [];
+
+        if (array_key_exists('cursor', $validated) && $validated['cursor'] !== null) {
+            $query['cursor'] = (int) $validated['cursor'];
+        }
+
+        if (array_key_exists('tail_ms', $validated) && $validated['tail_ms'] !== null) {
+            $query['tail_ms'] = (int) $validated['tail_ms'];
+        }
+
+        $lastEventId = $request->header('Last-Event-ID');
+        if (! is_string($lastEventId) || trim($lastEventId) === '') {
+            $lastEventId = null;
+        }
+
+        return $client->stream($streamPath, $query, [
+            'user_id' => (int) $user->getAuthIdentifier(),
+            'last_event_id' => $lastEventId,
+        ]);
     }
 
     /**

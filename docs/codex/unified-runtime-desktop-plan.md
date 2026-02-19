@@ -51,18 +51,17 @@ Current adapter behavior is development-only `in_memory`.
 - Adapter behavior: `apps/openagents-runtime/lib/openagents_runtime/codex/adapter.ex`
 - In-memory adapter: `apps/openagents-runtime/lib/openagents_runtime/codex/adapters/in_memory.ex`
 
-### Laravel proxy API exists (partial)
+### Laravel proxy API exists
 
 - Controller: `apps/openagents.com/app/Http/Controllers/Api/RuntimeCodexWorkersController.php`
 - Routes:
   - `POST /api/runtime/codex/workers`
   - `GET /api/runtime/codex/workers/{workerId}`
+  - `GET /api/runtime/codex/workers/{workerId}/stream`
   - `POST /api/runtime/codex/workers/{workerId}/requests`
   - `POST /api/runtime/codex/workers/{workerId}/stop`
   - Defined in `apps/openagents.com/routes/api.php`
 - Contract tests: `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
-
-Gap: Laravel does not yet expose a Codex worker stream proxy endpoint.
 
 ### Rust desktop Codex executor exists (not runtime-synced yet)
 
@@ -124,8 +123,6 @@ Active implementation plan:
 1. Runtime event ingest endpoint for async desktop notifications:
    - `POST /internal/v1/codex/workers/{worker_id}/events`
 2. Runtime heartbeat semantics for desktop-attached workers (via explicit event type or dedicated endpoint).
-3. Laravel SSE proxy for Codex stream:
-   - `GET /api/runtime/codex/workers/{workerId}/stream`
 
 Without event ingest, web/mobile cannot see full local desktop Codex activity (only request/response envelopes).
 
