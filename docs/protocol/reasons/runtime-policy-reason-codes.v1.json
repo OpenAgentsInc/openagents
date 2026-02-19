@@ -88,6 +88,18 @@
       "domain": "comms_failed",
       "decision": "denied",
       "description": "Comms provider adapter failed to send message."
+    },
+    {
+      "code": "comms_failed.provider_circuit_open",
+      "domain": "comms_failed",
+      "decision": "denied",
+      "description": "Comms provider call denied because provider circuit breaker is open."
+    },
+    {
+      "code": "comms_failed.fallback_exhausted",
+      "domain": "comms_failed",
+      "decision": "denied",
+      "description": "Comms provider call failed and fallback path did not recover."
     }
   ]
 }

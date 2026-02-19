@@ -27,6 +27,7 @@ defmodule OpenAgentsRuntime.Telemetry.MetricsTest do
     assert Map.has_key?(allowlist, :executor_frame_processed)
     assert Map.has_key?(allowlist, :stream_session)
     assert Map.has_key?(allowlist, :tool_lifecycle)
+    assert Map.has_key?(allowlist, :provider_breaker_state)
     assert Map.has_key?(allowlist, :lease_operation)
     assert Map.has_key?(allowlist, :janitor_cycle)
     assert Map.has_key?(allowlist, :policy_decision)

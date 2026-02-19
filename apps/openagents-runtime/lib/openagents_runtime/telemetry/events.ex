@@ -29,6 +29,8 @@ defmodule OpenAgentsRuntime.Telemetry.Events do
     :phase,
     :state,
     :event,
+    :provider,
+    :fallback_provider,
     :event_type,
     :duplicate,
     :cursor,

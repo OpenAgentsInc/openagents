@@ -2,6 +2,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
   use ExUnit.Case, async: true
 
   alias OpenAgentsRuntime.Tools.Comms.Kernel
+  alias OpenAgentsRuntime.Tools.ProviderCircuitBreaker
 
   defmodule SuccessAdapter do
     @behaviour OpenAgentsRuntime.Tools.Comms.ProviderAdapter
@@ -19,6 +20,20 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
     def send(_request, _manifest, _opts) do
       {:error, %{reason: "provider unavailable"}}
     end
+  end
+
+  defmodule FallbackAdapter do
+    @behaviour OpenAgentsRuntime.Tools.Comms.ProviderAdapter
+
+    @impl true
+    def send(_request, _manifest, _opts) do
+      {:ok, %{"message_id" => "msg_fallback_001", "state" => "sent"}}
+    end
+  end
+
+  setup do
+    ProviderCircuitBreaker.reset(:all)
+    :ok
   end
 
   test "execute_send/3 blocks when consent is required but not granted" do
@@ -77,6 +92,63 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
     assert outcome["decision"] == "denied"
     assert outcome["reason_code"] == "comms_failed.provider_error"
     assert outcome["receipt"]["state"] == "failed"
+  end
+
+  test "execute_send/3 returns circuit-open reason after breaker trips" do
+    request = Map.put(base_request(), "consent_granted", true)
+
+    assert {:ok, first_outcome} =
+             Kernel.execute_send(valid_manifest(), request,
+               authorization_id: "auth_123",
+               adapter: FailingAdapter,
+               provider_failure_threshold: 1,
+               provider_reset_timeout_ms: 500
+             )
+
+    assert first_outcome["reason_code"] == "comms_failed.provider_error"
+
+    assert {:ok, second_outcome} =
+             Kernel.execute_send(valid_manifest(), request,
+               authorization_id: "auth_123",
+               adapter: FailingAdapter,
+               provider_failure_threshold: 1,
+               provider_reset_timeout_ms: 500
+             )
+
+    assert second_outcome["state"] == "failed"
+    assert second_outcome["reason_code"] == "comms_failed.provider_circuit_open"
+    assert second_outcome["provider_result"]["failure_reason"] == "provider_circuit_open"
+  end
+
+  test "execute_send/3 uses fallback provider when enabled and primary breaker is open" do
+    request = Map.put(base_request(), "consent_granted", true)
+
+    assert {:ok, _first_outcome} =
+             Kernel.execute_send(valid_manifest(), request,
+               authorization_id: "auth_123",
+               adapter: FailingAdapter,
+               provider_failure_threshold: 1,
+               provider_reset_timeout_ms: 500
+             )
+
+    assert {:ok, outcome} =
+             Kernel.execute_send(valid_manifest(), request,
+               authorization_id: "auth_123",
+               adapter: FailingAdapter,
+               provider_failure_threshold: 1,
+               provider_reset_timeout_ms: 500,
+               allow_provider_fallback: true,
+               fallback_adapter: FallbackAdapter,
+               fallback_provider: "resend.backup"
+             )
+
+    assert outcome["state"] == "sent"
+    assert outcome["decision"] == "allowed"
+    assert outcome["fallback"]["used"] == true
+    assert outcome["fallback"]["provider"] == "resend.backup"
+    assert outcome["fallback"]["primary_provider"] == "resend"
+    assert outcome["receipt"]["provider"] == "resend.backup"
+    assert outcome["reason_code"] == "policy_allowed.default"
   end
 
   test "replay_decision/3 is deterministic and reason-coded" do
