@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package openagents.protocol.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "openagents/protocol/v1/reasons.proto";
+
+message RunEvent {
+  string run_id = 1;
+  uint64 seq = 2;
+  string event_type = 3;
+  google.protobuf.Timestamp emitted_at = 4;
+
+  oneof payload {
+    RunStartedPayload run_started = 10;
+    TextDeltaPayload text_delta = 11;
+    ToolCallPayload tool_call = 12;
+    ToolResultPayload tool_result = 13;
+    RunFinishedPayload run_finished = 14;
+    UnknownPayload unknown = 15;
+  }
+}
+
+message RunStartedPayload {
+  string actor = 1;
+}
+
+message TextDeltaPayload {
+  string delta = 1;
+}
+
+message ToolCallPayload {
+  string tool_call_id = 1;
+  string tool_name = 2;
+  google.protobuf.Struct input = 3;
+}
+
+message ToolResultPayload {
+  string tool_call_id = 1;
+  string tool_name = 2;
+  string state = 3;
+  ReasonCode reason_code = 4;
+  google.protobuf.Struct output = 5;
+}
+
+message RunFinishedPayload {
+  string status = 1;
+  ReasonCode reason_code = 2;
+}
+
+message UnknownPayload {
+  google.protobuf.Struct body = 1;
+}

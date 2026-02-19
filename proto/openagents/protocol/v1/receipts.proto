@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package openagents.protocol.v1;
+
+import "google/protobuf/struct.proto";
+import "openagents/protocol/v1/reasons.proto";
+
+message PolicyDecision {
+  string policy_id = 1;
+  string authorization_id = 2;
+  string authorization_mode = 3;
+  string decision = 4;
+  ReasonCode reason_code = 5;
+  string reason_code_text = 6;
+  string reason_codes_version = 7;
+  string evaluation_hash = 8;
+  string compiled_id = 9;
+  string strategy_id = 10;
+  string artifact_variant = 11;
+  int32 canary_percent = 12;
+  int32 rollout_bucket = 13;
+}
+
+message BudgetSummary {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 total_tokens = 3;
+  int64 spent_sats = 4;
+  int64 reserved_sats = 5;
+  int64 remaining_sats = 6;
+}
+
+message TimingSummary {
+  string started_at = 1;
+  string completed_at = 2;
+  int64 latency_ms = 3;
+}
+
+message PredictReceipt {
+  string receipt_id = 1;
+  string run_id = 2;
+  string signature_id = 3;
+  string strategy_id = 4;
+  string compiled_id = 5;
+
+  string schema_hash = 6;
+  string prompt_hash = 7;
+  string program_hash = 8;
+  string params_hash = 9;
+  string output_hash = 10;
+
+  PolicyDecision policy = 11;
+  BudgetSummary budget = 12;
+  TimingSummary timing = 13;
+
+  string trace_ref = 14;
+  string trace_hash = 15;
+  string trace_storage = 16;
+  string trace_artifact_uri = 17;
+
+  string catalog_version = 18;
+  google.protobuf.Struct output_preview = 19;
+}

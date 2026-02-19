@@ -1,0 +1,12 @@
+version: v2
+
+managed:
+  enabled: false
+
+plugins:
+  - remote: buf.build/protocolbuffers/php
+    out: generated/php
+  - remote: buf.build/bufbuild/es
+    out: generated/ts
+    opt:
+      - target=ts

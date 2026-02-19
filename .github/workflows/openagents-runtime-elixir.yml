@@ -4,12 +4,18 @@ on:
   pull_request:
     paths:
       - "apps/openagents-runtime/**"
+      - "proto/**"
+      - "buf.yaml"
+      - "buf.gen.yaml"
       - ".github/workflows/openagents-runtime-elixir.yml"
   push:
     branches:
       - main
     paths:
       - "apps/openagents-runtime/**"
+      - "proto/**"
+      - "buf.yaml"
+      - "buf.gen.yaml"
       - ".github/workflows/openagents-runtime-elixir.yml"
 
 jobs:
@@ -38,12 +44,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Elixir + Erlang
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28.1.2"
           elixir-version: "1.19.1"
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Buf lint (Layer-0 contracts)
+        run: buf lint
+        working-directory: .
+
+      - name: Buf breaking (against main)
+        if: github.event_name == 'pull_request'
+        run: |
+          if git ls-tree -r --name-only origin/main -- proto | grep -E '\.proto$' >/dev/null; then
+            buf breaking --against '.git#branch=main,subdir=proto'
+          else
+            echo "No proto files found on origin/main under proto/. Skipping bootstrap breaking check."
+          fi
+        working-directory: .
 
       - name: Restore mix cache
         uses: actions/cache@v4

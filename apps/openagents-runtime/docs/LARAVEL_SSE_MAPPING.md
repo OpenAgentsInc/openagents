@@ -3,6 +3,7 @@
 Runtime stream events are mapped to Laravel AI SDK-compatible SSE frames via:
 
 - `OpenAgentsRuntime.Integrations.LaravelEventMapper`
+- Layer-0 contract source: `docs/protocol/LAYER0_PROTOBUF_MAPPING.md` and `proto/openagents/protocol/v1/events.proto`
 
 ## Runtime Event → SSE Data Mapping
 
