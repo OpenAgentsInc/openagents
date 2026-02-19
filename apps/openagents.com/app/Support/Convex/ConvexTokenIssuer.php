@@ -10,9 +10,10 @@ class ConvexTokenIssuer
 {
     /**
      * @param  array<int, string>  $scope
+     * @param  array{workspace_id?: string|null, role?: string|null}  $identityContext
      * @return array<string, mixed>
      */
-    public function issueForUser(User $user, array $scope = []): array
+    public function issueForUser(User $user, array $scope = [], array $identityContext = []): array
     {
         $config = (array) config('convex.token', []);
 
@@ -29,14 +30,25 @@ class ConvexTokenIssuer
         $audience = trim((string) ($config['audience'] ?? ''));
         $subjectPrefix = trim((string) ($config['subject_prefix'] ?? 'user'));
         $keyId = trim((string) ($config['key_id'] ?? ''));
+        $claimsVersion = trim((string) ($config['claims_version'] ?? 'oa_convex_claims_v1'));
         $ttlSeconds = (int) ($config['ttl_seconds'] ?? 300);
+        $minTtlSeconds = (int) ($config['min_ttl_seconds'] ?? 60);
+        $maxTtlSeconds = (int) ($config['max_ttl_seconds'] ?? 900);
 
         if ($issuer === '' || $audience === '') {
             throw new RuntimeException('convex token issuer and audience must be configured');
         }
 
-        if ($ttlSeconds < 60) {
-            throw new RuntimeException('convex token ttl_seconds must be at least 60');
+        if ($claimsVersion === '') {
+            throw new RuntimeException('convex token claims_version must be configured');
+        }
+
+        if ($minTtlSeconds <= 0 || $maxTtlSeconds <= 0 || $maxTtlSeconds < $minTtlSeconds) {
+            throw new RuntimeException('convex token ttl bounds are invalid');
+        }
+
+        if ($ttlSeconds < $minTtlSeconds || $ttlSeconds > $maxTtlSeconds) {
+            throw new RuntimeException('convex token ttl_seconds is outside configured bounds');
         }
 
         $now = Carbon::now('UTC');
@@ -55,10 +67,21 @@ class ConvexTokenIssuer
             'exp' => $expiresAt,
             'jti' => bin2hex(random_bytes(12)),
             'oa_user_id' => (int) $user->getAuthIdentifier(),
+            'oa_claims_version' => $claimsVersion,
         ];
 
         if ($normalizedScope !== []) {
             $claims['scope'] = $normalizedScope;
+        }
+
+        $workspaceId = trim((string) ($identityContext['workspace_id'] ?? ''));
+        if ($workspaceId !== '') {
+            $claims['oa_workspace_id'] = $workspaceId;
+        }
+
+        $role = trim((string) ($identityContext['role'] ?? ''));
+        if ($role !== '') {
+            $claims['oa_role'] = $role;
         }
 
         $header = [
@@ -81,7 +104,10 @@ class ConvexTokenIssuer
             'issuer' => $issuer,
             'audience' => $audience,
             'subject' => $subject,
+            'claims_version' => $claimsVersion,
             'scope' => $normalizedScope,
+            'workspace_id' => $workspaceId !== '' ? $workspaceId : null,
+            'role' => $role !== '' ? $role : null,
         ];
     }
 
