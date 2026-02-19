@@ -145,6 +145,7 @@ Implementation assets:
 - `apps/openagents-runtime/deploy/convex/provision-nonprod-gcp.sh`
 - `apps/openagents-runtime/deploy/convex/check-nonprod-health.sh`
 - `apps/openagents-runtime/deploy/convex/README.md`
+- `apps/openagents-runtime/deploy/convex/OPERATIONS_RUNBOOK.md`
 
 Verification:
 

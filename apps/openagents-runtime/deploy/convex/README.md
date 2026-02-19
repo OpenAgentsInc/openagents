@@ -72,3 +72,10 @@ This validates:
 3. Cloud SQL region matches deployment region
 4. backend root health payload confirms the service is running
 5. Cloud Run service readiness conditions are `True`
+
+## Operations runbook
+
+Day-2 operations (admin key policy, export/import backup validation, upgrade and
+rollback flow) are documented in:
+
+- `apps/openagents-runtime/deploy/convex/OPERATIONS_RUNBOOK.md`
