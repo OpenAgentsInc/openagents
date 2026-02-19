@@ -13,6 +13,12 @@ return [
     */
     'driver' => env('OA_RUNTIME_DRIVER', 'legacy'),
 
+    // Emergency rollback and forcing controls.
+    'force_driver' => env('OA_RUNTIME_FORCE_DRIVER'),
+    'rollback' => [
+        'force_legacy' => (bool) env('OA_RUNTIME_FORCE_LEGACY', false),
+    ],
+
     'elixir' => [
         'base_url' => rtrim((string) env('OA_RUNTIME_ELIXIR_BASE_URL', 'http://openagents-runtime:4000'), '/'),
         'stream_path' => (string) env('OA_RUNTIME_ELIXIR_STREAM_PATH', '/internal/v1/runs/stream'),
@@ -39,5 +45,16 @@ return [
         'enabled' => (bool) env('OA_RUNTIME_SHADOW_ENABLED', false),
         'sample_rate' => (float) env('OA_RUNTIME_SHADOW_SAMPLE_RATE', 1.0),
         'max_capture_bytes' => (int) env('OA_RUNTIME_SHADOW_MAX_CAPTURE_BYTES', 200_000),
+    ],
+
+    'canary' => [
+        // Deterministic canary routing percentages (0-100).
+        'user_percent' => (int) env('OA_RUNTIME_CANARY_USER_PERCENT', 0),
+        'autopilot_percent' => (int) env('OA_RUNTIME_CANARY_AUTOPILOT_PERCENT', 0),
+        'seed' => (string) env('OA_RUNTIME_CANARY_SEED', 'runtime-canary-v1'),
+    ],
+
+    'overrides' => [
+        'enabled' => (bool) env('OA_RUNTIME_OVERRIDES_ENABLED', true),
     ],
 ];
