@@ -1,12 +1,14 @@
 <?php
 
 use App\AI\Agents\AutopilotAgent;
+use App\AI\Runtime\RuntimeClient;
 use App\Models\User;
 use App\Services\GuestChatSessionService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Ai\Ai;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 test('chat API streams Vercel protocol and persists final messages', function () {
     Ai::fakeAgent(AutopilotAgent::class, ['Hello from fake agent']);
@@ -91,6 +93,75 @@ test('chat API streams Vercel protocol and persists final messages', function ()
     expect($modelStarted)->not->toBeNull();
     expect($modelStarted->actor_type)->toBe('system');
     expect($modelStarted->actor_autopilot_id)->toBeNull();
+});
+
+test('chat API uses runtime client binding and proxies upstream SSE bytes', function () {
+    config()->set('runtime.driver', 'elixir');
+
+    $user = User::factory()->create();
+    $conversationId = (string) Str::uuid7();
+
+    DB::table('agent_conversations')->insert([
+        'id' => $conversationId,
+        'user_id' => $user->id,
+        'title' => 'Runtime client conversation',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $spyClient = new class implements RuntimeClient
+    {
+        /** @var array<int, array<string, mixed>> */
+        public array $calls = [];
+
+        public function driverName(): string
+        {
+            return 'elixir';
+        }
+
+        public function streamAutopilotRun(
+            \Illuminate\Contracts\Auth\Authenticatable $user,
+            string $threadId,
+            string $prompt,
+            bool $authenticatedSession = true,
+        ): StreamedResponse {
+            $this->calls[] = [
+                'user_id' => (int) $user->getAuthIdentifier(),
+                'thread_id' => $threadId,
+                'prompt' => $prompt,
+                'authenticated_session' => $authenticatedSession,
+            ];
+
+            return response()->stream(function (): void {
+                echo "data: {\"type\":\"start\"}\n\n";
+                echo "data: {\"type\":\"text-delta\",\"id\":\"runtime_1\",\"delta\":\"hello from runtime\"}\n\n";
+                echo "data: {\"type\":\"finish\"}\n\n";
+                echo "data: [DONE]\n\n";
+            }, 200, [
+                'Content-Type' => 'text/event-stream',
+                'x-vercel-ai-ui-message-stream' => 'v1',
+            ]);
+        }
+    };
+
+    app()->instance(RuntimeClient::class, $spyClient);
+
+    $response = $this->actingAs($user)->postJson('/api/chat?conversationId='.$conversationId, [
+        'messages' => [
+            ['id' => 'm1', 'role' => 'user', 'content' => 'hello runtime'],
+        ],
+    ]);
+
+    $response->assertOk();
+
+    $content = $response->streamedContent();
+    expect($content)->toContain('hello from runtime');
+    expect($content)->toContain("data: [DONE]\n\n");
+
+    expect($spyClient->calls)->toHaveCount(1);
+    expect($spyClient->calls[0]['thread_id'])->toBe($conversationId);
+    expect($spyClient->calls[0]['prompt'])->toBe('hello runtime');
+    expect($spyClient->calls[0]['authenticated_session'])->toBeTrue();
 });
 
 test('chat API accepts AI SDK parts payload and streams a response', function () {
@@ -278,7 +349,6 @@ test('chat API returns 422 when messages are missing or invalid', function () {
     $invalidMessages->assertStatus(422)
         ->assertJsonPath('message', 'A non-empty user message is required');
 });
-
 
 test('guest onboarding asks for explicit email before sending a login code', function () {
     Ai::fakeAgent(AutopilotAgent::class, ['This should not be used for onboarding email prompt']);
