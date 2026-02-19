@@ -29,6 +29,7 @@ return [
         'skills_release_path_template' => (string) env('OA_RUNTIME_ELIXIR_SKILLS_RELEASE_PATH_TEMPLATE', '/internal/v1/skills/releases/{skill_id}/{version}'),
         'codex_workers_path' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKERS_PATH', '/internal/v1/codex/workers'),
         'codex_worker_snapshot_path_template' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKER_SNAPSHOT_PATH_TEMPLATE', '/internal/v1/codex/workers/{worker_id}/snapshot'),
+        'codex_worker_stream_path_template' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKER_STREAM_PATH_TEMPLATE', '/internal/v1/codex/workers/{worker_id}/stream'),
         'codex_worker_requests_path_template' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKER_REQUESTS_PATH_TEMPLATE', '/internal/v1/codex/workers/{worker_id}/requests'),
         'codex_worker_stop_path_template' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKER_STOP_PATH_TEMPLATE', '/internal/v1/codex/workers/{worker_id}/stop'),
         'health_path' => (string) env('OA_RUNTIME_ELIXIR_HEALTH_PATH', '/healthz'),

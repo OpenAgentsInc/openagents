@@ -13,6 +13,7 @@ beforeEach(function () {
     config()->set('runtime.elixir.retry_backoff_ms', 1);
     config()->set('runtime.elixir.codex_workers_path', '/internal/v1/codex/workers');
     config()->set('runtime.elixir.codex_worker_snapshot_path_template', '/internal/v1/codex/workers/{worker_id}/snapshot');
+    config()->set('runtime.elixir.codex_worker_stream_path_template', '/internal/v1/codex/workers/{worker_id}/stream');
     config()->set('runtime.elixir.codex_worker_requests_path_template', '/internal/v1/codex/workers/{worker_id}/requests');
     config()->set('runtime.elixir.codex_worker_stop_path_template', '/internal/v1/codex/workers/{worker_id}/stop');
 });
@@ -60,4 +61,63 @@ test('runtime codex workers api proxies lifecycle endpoints', function () {
         return str_starts_with($request->url(), 'http://runtime.internal/internal/v1/codex/workers')
             && ($request->header('X-OA-USER-ID')[0] ?? null) === (string) $user->id;
     });
+});
+
+test('runtime codex workers api proxies stream endpoint with cursor and last-event-id semantics', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_stream/snapshot' => Http::response([
+            'data' => ['worker_id' => 'codexw_stream', 'status' => 'running'],
+        ], 200),
+        'http://runtime.internal/internal/v1/codex/workers/codexw_stream/stream*' => Http::response(
+            "event: message\nid: 3\ndata: {\"worker_id\":\"codexw_stream\",\"type\":\"worker.response\"}\n\n",
+            200,
+            ['Content-Type' => 'text/event-stream']
+        ),
+    ]);
+
+    $response = $this->actingAs($user)
+        ->withHeaders(['Last-Event-ID' => '2'])
+        ->get('/api/runtime/codex/workers/codexw_stream/stream?cursor=2&tail_ms=15000');
+
+    $response->assertOk();
+    expect((string) $response->headers->get('content-type'))->toContain('text/event-stream');
+
+    $streamBody = $response->streamedContent();
+    expect($streamBody)->toContain('id: 3');
+    expect($streamBody)->toContain('worker.response');
+
+    Http::assertSent(function (HttpRequest $request) use ($user): bool {
+        return $request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_stream/snapshot'
+            && ($request->header('X-OA-USER-ID')[0] ?? null) === (string) $user->id;
+    });
+
+    Http::assertSent(function (HttpRequest $request) use ($user): bool {
+        return $request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_stream/stream?cursor=2&tail_ms=15000'
+            && ($request->header('X-OA-USER-ID')[0] ?? null) === (string) $user->id
+            && ($request->header('Last-Event-ID')[0] ?? null) === '2';
+    });
+});
+
+test('runtime codex worker stream proxy denies unauthorized ownership before opening stream', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_forbidden/snapshot' => Http::response([
+            'error' => ['code' => 'forbidden', 'message' => 'forbidden'],
+        ], 403),
+        'http://runtime.internal/internal/v1/codex/workers/codexw_forbidden/stream*' => Http::response(
+            "event: message\nid: 9\ndata: should-not-open\n\n",
+            200,
+            ['Content-Type' => 'text/event-stream']
+        ),
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/runtime/codex/workers/codexw_forbidden/stream')
+        ->assertStatus(403)
+        ->assertJsonPath('error.code', 'forbidden');
+
+    Http::assertSentCount(1);
 });

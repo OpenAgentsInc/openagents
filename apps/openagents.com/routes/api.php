@@ -66,6 +66,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/runtime/skills/releases/{skillId}/{version}', [RuntimeSkillRegistryController::class, 'showSkillRelease']);
     Route::post('/runtime/codex/workers', [RuntimeCodexWorkersController::class, 'create']);
     Route::get('/runtime/codex/workers/{workerId}', [RuntimeCodexWorkersController::class, 'show']);
+    Route::get('/runtime/codex/workers/{workerId}/stream', [RuntimeCodexWorkersController::class, 'stream']);
     Route::post('/runtime/codex/workers/{workerId}/requests', [RuntimeCodexWorkersController::class, 'request']);
     Route::post('/runtime/codex/workers/{workerId}/stop', [RuntimeCodexWorkersController::class, 'stop']);
 
