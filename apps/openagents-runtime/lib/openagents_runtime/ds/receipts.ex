@@ -17,7 +17,11 @@ defmodule OpenAgentsRuntime.DS.Receipts do
           required(:policy) => map(),
           required(:budget) => map(),
           required(:timing) => map(),
-          required(:catalog_version) => pos_integer()
+          required(:catalog_version) => pos_integer(),
+          optional(:trace_ref) => String.t() | nil,
+          optional(:trace_hash) => String.t() | nil,
+          optional(:trace_storage) => String.t() | nil,
+          optional(:trace_artifact_uri) => String.t() | nil
         }
 
   @spec build_predict(map()) :: predict_receipt()
@@ -36,6 +40,10 @@ defmodule OpenAgentsRuntime.DS.Receipts do
     budget = normalize_map(attrs[:budget] || attrs["budget"] || %{})
     timing = normalize_map(attrs[:timing] || attrs["timing"] || %{})
     catalog_version = attrs[:catalog_version] || attrs["catalog_version"] || 1
+    trace_ref = attrs[:trace_ref] || attrs["trace_ref"]
+    trace_hash = attrs[:trace_hash] || attrs["trace_hash"]
+    trace_storage = attrs[:trace_storage] || attrs["trace_storage"]
+    trace_artifact_uri = attrs[:trace_artifact_uri] || attrs["trace_artifact_uri"]
 
     fingerprint = %{
       run_id: run_id,
@@ -48,7 +56,9 @@ defmodule OpenAgentsRuntime.DS.Receipts do
       params_hash: params_hash,
       output_hash: output_hash,
       policy: policy,
-      budget: budget
+      budget: budget,
+      trace_ref: trace_ref,
+      trace_hash: trace_hash
     }
 
     %{
@@ -67,6 +77,10 @@ defmodule OpenAgentsRuntime.DS.Receipts do
       timing: timing,
       catalog_version: catalog_version
     }
+    |> maybe_put(:trace_ref, trace_ref)
+    |> maybe_put(:trace_hash, trace_hash)
+    |> maybe_put(:trace_storage, trace_storage)
+    |> maybe_put(:trace_artifact_uri, trace_artifact_uri)
   end
 
   @spec stable_hash(term()) :: String.t()
@@ -99,4 +113,7 @@ defmodule OpenAgentsRuntime.DS.Receipts do
   defp normalize_value(%{} = value), do: normalize_map(value)
   defp normalize_value(list) when is_list(list), do: Enum.map(list, &normalize_value/1)
   defp normalize_value(value), do: value
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end
