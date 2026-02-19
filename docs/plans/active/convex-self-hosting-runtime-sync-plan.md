@@ -100,8 +100,9 @@ This gives a clean split:
 
 1. `convex-backend` container (`ghcr.io/get-convex/convex-backend:<rev>`)
 2. `convex-dashboard` container (`ghcr.io/get-convex/convex-dashboard:<rev>`)
-3. SQL backend (Cloud SQL Postgres)
-4. Persistent storage:
+3. Cloud SQL Auth Proxy sidecar in backend service
+4. SQL backend (Cloud SQL Postgres)
+5. Persistent storage:
    - phase 1: attached persistent disk
    - phase 2: S3-compatible object store path for exports/files/modules/search
      if required
@@ -111,7 +112,7 @@ This gives a clean split:
 - `CONVEX_CLOUD_ORIGIN`
 - `CONVEX_SITE_ORIGIN`
 - `NEXT_PUBLIC_DEPLOYMENT_URL`
-- `POSTGRES_URL` (preferred for production)
+- `POSTGRES_URL` (cluster URL, no db name, points at sidecar `localhost:5432`)
 - optional hardening flags: `REDACT_LOGS_TO_CLIENT=true`, `DISABLE_BEACON=true`
 
 ## Operational requirements

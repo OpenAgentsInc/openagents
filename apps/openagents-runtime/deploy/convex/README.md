@@ -3,19 +3,26 @@
 This directory provisions and validates a non-prod self-hosted Convex setup for
 OpenAgents:
 
-- Convex backend (`ghcr.io/get-convex/convex-backend`)
-- Convex dashboard (`ghcr.io/get-convex/convex-dashboard`)
+- Convex backend (pinned image mirrored to Artifact Registry)
+- Convex dashboard (pinned image mirrored to Artifact Registry)
+- Cloud SQL Auth Proxy sidecar in backend Cloud Run service
 - Cloud SQL Postgres in the same region
 
 ## Version pinning policy
 
-Images are pinned by digest in `provision-nonprod-gcp.sh` and must be bumped via
-PR with explicit digest updates.
+Images are pinned in `provision-nonprod-gcp.sh` and must be bumped via PR with
+explicit version updates.
 
-Current pinned digests (2026-02-19):
+Current pinned versions (2026-02-19):
 
-- Backend: `ghcr.io/get-convex/convex-backend@sha256:fde1830745d1c2c69dd731ff1a245591e3aba380df990df2d390f2338b574d73`
-- Dashboard: `ghcr.io/get-convex/convex-dashboard@sha256:f809827d55bc53f617199f7ec0962b6c261f774188fbc10c62737869ed3c631b`
+- Backend: `us-central1-docker.pkg.dev/openagentsgemini/thirdparty/convex-backend:2026-02-19-amd64`
+- Dashboard: `us-central1-docker.pkg.dev/openagentsgemini/thirdparty/convex-dashboard:2026-02-19-amd64`
+- Cloud SQL proxy: `gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.19.0`
+
+Source images for mirror refresh:
+
+- `ghcr.io/get-convex/convex-backend@sha256:fde1830745d1c2c69dd731ff1a245591e3aba380df990df2d390f2338b574d73`
+- `ghcr.io/get-convex/convex-dashboard@sha256:f809827d55bc53f617199f7ec0962b6c261f774188fbc10c62737869ed3c631b`
 
 ## Prerequisites
 
@@ -47,6 +54,7 @@ REGION=us-central1 \
 CLOUD_SQL_INSTANCE=oa-convex-nonprod-pg \
 CONVEX_BACKEND_SERVICE=oa-convex-backend-nonprod \
 CONVEX_DASHBOARD_SERVICE=oa-convex-dashboard-nonprod \
+CONVEX_PROXY_IMAGE=gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.19.0 \
 OA_CONVEX_APPLY=1 \
 apps/openagents-runtime/deploy/convex/provision-nonprod-gcp.sh
 ```
@@ -59,7 +67,8 @@ apps/openagents-runtime/deploy/convex/check-nonprod-health.sh
 
 This validates:
 
-1. backend `/version` endpoint returns JSON
+1. backend `/version` endpoint returns a non-empty response
 2. dashboard HTTP response is healthy (`200` or `302`)
 3. Cloud SQL region matches deployment region
-4. Cloud Run service readiness conditions are `True`
+4. backend root health payload confirms the service is running
+5. Cloud Run service readiness conditions are `True`
