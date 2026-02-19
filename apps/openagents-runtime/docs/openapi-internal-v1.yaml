@@ -50,6 +50,31 @@ paths:
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
+  /tools/execute:
+    post:
+      summary: Execute or replay a runtime tool-pack operation
+      operationId: executeToolPack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecuteRequest'
+      responses:
+        '200':
+          description: Tool execution or replay completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecuteResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
   /runs/{run_id}/snapshot:
     get:
       summary: Read latest run snapshot
@@ -337,6 +362,41 @@ components:
           enum: [accepted]
         idempotentReplay:
           type: boolean
+    ToolExecuteRequest:
+      type: object
+      required: [tool_pack, manifest, request]
+      properties:
+        tool_pack:
+          type: string
+          enum: [coding.v1]
+        mode:
+          type: string
+          enum: [execute, replay]
+        run_id:
+          type: string
+          nullable: true
+        thread_id:
+          type: string
+          nullable: true
+        user_id:
+          type: integer
+          nullable: true
+        manifest:
+          type: object
+          additionalProperties: true
+        request:
+          type: object
+          additionalProperties: true
+        policy:
+          type: object
+          additionalProperties: true
+    ToolExecuteResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
     ErrorEnvelope:
       type: object
       required: [error]
@@ -357,3 +417,10 @@ components:
                 - internal_error
             message:
               type: string
+            details:
+              type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: object
+                    additionalProperties: true

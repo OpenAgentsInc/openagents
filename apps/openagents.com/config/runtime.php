@@ -22,6 +22,7 @@ return [
     'elixir' => [
         'base_url' => rtrim((string) env('OA_RUNTIME_ELIXIR_BASE_URL', 'http://openagents-runtime:4000'), '/'),
         'stream_path' => (string) env('OA_RUNTIME_ELIXIR_STREAM_PATH', '/internal/v1/runs/stream'),
+        'tools_execute_path' => (string) env('OA_RUNTIME_ELIXIR_TOOLS_EXECUTE_PATH', '/internal/v1/tools/execute'),
         'health_path' => (string) env('OA_RUNTIME_ELIXIR_HEALTH_PATH', '/healthz'),
 
         // Bounded retries for runtime request establishment.

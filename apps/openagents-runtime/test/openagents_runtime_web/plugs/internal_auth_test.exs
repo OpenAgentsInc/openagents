@@ -58,6 +58,20 @@ defmodule OpenAgentsRuntimeWeb.Plugs.InternalAuthTest do
     assert %{"error" => %{"code" => "forbidden"}} = json_response(conn, 403)
   end
 
+  test "rejects claim mismatch when run_id is supplied in request body", %{conn: conn} do
+    conn =
+      conn
+      |> put_internal_auth(run_id: "run_other", user_id: 77)
+      |> post(~p"/internal/v1/tools/execute", %{
+        "tool_pack" => "coding.v1",
+        "manifest" => %{"manifest_version" => "coding.integration.v1"},
+        "request" => %{},
+        "run_id" => "run_snapshot"
+      })
+
+    assert %{"error" => %{"code" => "forbidden"}} = json_response(conn, 403)
+  end
+
   test "allows valid signed internal request", %{conn: conn} do
     conn = conn |> put_internal_auth() |> get(~p"/internal/v1/health")
 

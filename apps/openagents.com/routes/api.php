@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\L402PaywallController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\RuntimeToolsController;
 use App\Http\Controllers\Api\ShoutsController;
 use App\Http\Controllers\Api\TokenController;
 use App\Http\Controllers\Api\Webhooks\ResendWebhookController;
@@ -52,6 +53,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/chats/{conversationId}/runs/{runId}/events', [ChatController::class, 'runEvents']);
     Route::post('/chats/{conversationId}/stream', [ChatController::class, 'stream']);
     Route::post('/chat/stream', [ChatController::class, 'stream']);
+    Route::post('/runtime/tools/execute', [RuntimeToolsController::class, 'execute']);
 
     // Autopilot API (phase A skeleton).
     Route::get('/autopilots', [AutopilotController::class, 'index']);

@@ -15,6 +15,7 @@ defmodule OpenAgentsRuntimeWeb.Router do
 
     get "/health", HealthController, :show
     post "/comms/delivery-events", CommsController, :record_delivery_event
+    post "/tools/execute", ToolsController, :execute
     get "/runs/:run_id/snapshot", RunController, :snapshot
     get "/runs/:run_id/stream", RunController, :stream
     post "/runs/:run_id/frames", RunController, :append_frame

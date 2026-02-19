@@ -20,6 +20,10 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       statuses: ~w(200 202 400 401 409),
       required_params: []
     },
+    {"/tools/execute", "post"} => %{
+      statuses: ~w(200 400 401 403 422),
+      required_params: []
+    },
     {"/runs/{run_id}/snapshot", "get"} => %{
       statuses: ~w(200 400 401 403 404),
       required_params: [
@@ -277,6 +281,10 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       |> maybe_push(
         String.contains?(body, "POST /internal/v1/comms/delivery-events"),
         "RUNTIME_CONTRACT.md missing comms delivery-events endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/tools/execute"),
+        "RUNTIME_CONTRACT.md missing tools execute endpoint section"
       )
       |> maybe_push(
         String.contains?(body, "GET /internal/v1/runs/{run_id}/snapshot"),
