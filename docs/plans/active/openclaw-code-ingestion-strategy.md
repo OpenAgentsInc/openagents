@@ -239,6 +239,16 @@ Recommended artifact format:
 
 This keeps future syncs and audits tractable.
 
+## Drift Reporting Cadence (Required)
+
+OpenClaw imports must be monitored for upstream drift using pinned SHAs and fixture metadata.
+
+- Drift process doc: `docs/plans/active/openclaw-drift-process.md`
+- Drift report output: `docs/plans/active/openclaw-drift-report.md`
+- Drift report command: `scripts/openclaw-drift-report.sh`
+
+Any report row marked `upstream_head_mismatch`, `missing_pin`, or `invalid_sha` requires an ingestion follow-up issue before the next release cycle.
+
 ## Security Review Gates (Required)
 
 Before enabling imported code in production:
