@@ -186,6 +186,56 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     assert %{"error" => %{"code" => "conflict"}} = json_response(stopped_event_conn, 409)
   end
 
+  test "event ingest propagates request correlation ids into projection telemetry", %{conn: conn} do
+    worker_id = unique_id("codexw")
+
+    conn
+    |> put_internal_auth(user_id: 909)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+    |> json_response(202)
+
+    telemetry_ref = "codex-worker-correlation-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        telemetry_ref,
+        [:openagents_runtime, :convex, :projection, :write],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:projection_write_telemetry, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
+    traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+    request_id = "req-corr-#{System.unique_integer([:positive])}"
+
+    ingest_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 909)
+      |> put_req_header("traceparent", traceparent)
+      |> put_req_header("x-request-id", request_id)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/events", %{
+        "event" => %{
+          "event_type" => "worker.event",
+          "payload" => %{"source" => "desktop", "method" => "turn/started"}
+        }
+      })
+
+    assert %{"data" => %{"worker_id" => ^worker_id, "event_type" => "worker.event"}} =
+             json_response(ingest_conn, 202)
+
+    [response_request_id] = Plug.Conn.get_resp_header(ingest_conn, "x-request-id")
+    assert is_binary(response_request_id) and response_request_id != ""
+
+    assert_receive {:projection_write_telemetry, _measurements, metadata}, 1_000
+    assert metadata.projection == "codex_worker_summary"
+    assert metadata.x_request_id == request_id
+    assert metadata.traceparent == traceparent
+  end
+
   test "worker ownership is enforced", %{conn: conn} do
     worker_id = unique_id("codexw")
 

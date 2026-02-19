@@ -122,6 +122,33 @@ Prometheus rule artifact:
   2. Confirm checkpoint table health and sequence continuity.
   3. Escalate before rollout expansion; replay failure blocks production promotion.
 
+### Convex token mint failures
+
+- Alert: `OpenAgentsConvexTokenMintFailureRatioHigh`
+- Threshold: token mint failure ratio > 1% for 15m
+- Action:
+  1. Check Laravel token mint endpoint health (`POST /api/convex/token`) and auth/session middleware failures.
+  2. Split failures by class (`authz_denied`, `signing_error`, `upstream_unavailable`) in Laravel logs.
+  3. Validate Convex auth key rotation state and runtime bridge config alignment.
+  4. If failure ratio stays elevated, pause rollout of new subscription clients and use runtime fallback polling paths.
+
+### End-to-end request correlation walkthrough
+
+Use this flow to trace one worker action across browser -> Laravel -> runtime -> Convex projection telemetry.
+
+1. Capture the request identifiers from the client call.
+   - Required headers: `traceparent`, `tracestate`, `x-request-id`.
+2. Confirm Laravel forwarded the same headers to runtime.
+   - Proxy contract: `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`.
+3. Confirm runtime response carries an `x-request-id` for runtime-side log correlation.
+   - Internal API contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`.
+4. Locate runtime telemetry for projector writes and verify metadata carries forwarded correlation IDs.
+   - Event family: `[:openagents_runtime, :convex, :projection, :write]`.
+   - Correlation contract: `apps/openagents-runtime/docs/OBSERVABILITY.md`.
+5. Validate project health in Grafana/Prometheus while tracing the same time window.
+   - Dashboard: `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`.
+   - Alerts: `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`.
+
 ### Parity failure class spikes
 
 - Metric: `openagents_runtime.parity.failure.count`
