@@ -57,6 +57,16 @@ if config_env() == :prod do
       This secret is required to verify internal runtime signatures.
       """
 
+  laravel_internal = Application.get_env(:openagents_runtime, :laravel_internal, [])
+
+  laravel_internal_base_url =
+    System.get_env("OA_RUNTIME_INTERNAL_LARAVEL_BASE_URL") ||
+      Keyword.get(laravel_internal, :base_url, "")
+
+  laravel_internal_shared_secret =
+    System.get_env("OA_RUNTIME_INTERNAL_SHARED_SECRET") ||
+      Keyword.get(laravel_internal, :shared_secret, "")
+
   host = System.get_env("PHX_HOST") || "example.com"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
@@ -75,6 +85,35 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :openagents_runtime, :runtime_signature_secret, runtime_signature_secret
+
+  config :openagents_runtime, :laravel_internal,
+    base_url: laravel_internal_base_url,
+    secret_fetch_path:
+      System.get_env("OA_RUNTIME_INTERNAL_SECRET_FETCH_PATH") ||
+        Keyword.get(
+          laravel_internal,
+          :secret_fetch_path,
+          "/api/internal/runtime/integrations/secrets/fetch"
+        ),
+    shared_secret: laravel_internal_shared_secret,
+    key_id:
+      System.get_env("OA_RUNTIME_INTERNAL_KEY_ID") ||
+        Keyword.get(laravel_internal, :key_id, "runtime-internal-v1"),
+    signature_ttl_seconds:
+      String.to_integer(
+        System.get_env("OA_RUNTIME_INTERNAL_SIGNATURE_TTL_SECONDS") ||
+          Integer.to_string(Keyword.get(laravel_internal, :signature_ttl_seconds, 60))
+      ),
+    request_timeout_ms:
+      String.to_integer(
+        System.get_env("OA_RUNTIME_INTERNAL_REQUEST_TIMEOUT_MS") ||
+          Integer.to_string(Keyword.get(laravel_internal, :request_timeout_ms, 2500))
+      ),
+    default_secret_cache_ttl_ms:
+      String.to_integer(
+        System.get_env("OA_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS") ||
+          Integer.to_string(Keyword.get(laravel_internal, :default_secret_cache_ttl_ms, 60_000))
+      )
 
   # ## SSL Support
   #

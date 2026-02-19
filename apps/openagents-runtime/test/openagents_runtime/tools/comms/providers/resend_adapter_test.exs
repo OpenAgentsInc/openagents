@@ -3,6 +3,17 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapterTest do
 
   alias OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter
 
+  defmodule SecretClientStub do
+    def fetch_secret("resend", scope, opts) do
+      send(self(), {:secret_fetch_scope, scope, opts})
+      {:ok, "re_scoped_key"}
+    end
+  end
+
+  defmodule SecretClientFailureStub do
+    def fetch_secret("resend", _scope, _opts), do: {:error, :transport_error}
+  end
+
   test "send/3 maps successful Resend responses to sent state" do
     http_client = fn endpoint, api_key, payload, timeout_ms ->
       send(self(), {:http_called, endpoint, api_key, payload, timeout_ms})
@@ -31,6 +42,59 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapterTest do
     assert result["reason_code"] == "policy_allowed.default"
     assert result["message_id"] == "email_123"
     assert result["provider_status"] == 200
+  end
+
+  test "send/3 fetches API key from scoped runtime secret client when direct key is absent" do
+    http_client = fn endpoint, api_key, payload, timeout_ms ->
+      send(self(), {:http_called, endpoint, api_key, payload, timeout_ms})
+      {:ok, 200, ~s({"id":"email_from_scoped_secret"})}
+    end
+
+    request =
+      base_request()
+      |> Map.put("user_id", 42)
+      |> Map.put("run_id", "run_1")
+      |> Map.put("tool_call_id", "tool_1")
+
+    assert {:ok, result} =
+             ResendAdapter.send(request, %{},
+               from: "noreply@example.com",
+               secret_client: SecretClientStub,
+               secret_client_opts: [request_timeout_ms: 1500],
+               http_client: http_client
+             )
+
+    assert_receive {:secret_fetch_scope, scope, secret_opts}
+    assert scope["user_id"] == 42
+    assert scope["integration_id"] == "resend.primary"
+    assert scope["run_id"] == "run_1"
+    assert scope["tool_call_id"] == "tool_1"
+    assert secret_opts == [request_timeout_ms: 1500]
+
+    assert_receive {:http_called, endpoint, api_key, payload, timeout_ms}
+    assert endpoint == "https://api.resend.com/emails"
+    assert api_key == "re_scoped_key"
+    assert timeout_ms == 10_000
+    assert payload["from"] == "noreply@example.com"
+    assert result["state"] == "sent"
+    assert result["message_id"] == "email_from_scoped_secret"
+  end
+
+  test "send/3 maps scoped secret fetch transport failures to provider error reason" do
+    request =
+      base_request()
+      |> Map.put("user_id", 42)
+      |> Map.put("run_id", "run_1")
+      |> Map.put("tool_call_id", "tool_1")
+
+    assert {:error, error} =
+             ResendAdapter.send(request, %{},
+               from: "noreply@example.com",
+               secret_client: SecretClientFailureStub
+             )
+
+    assert error["reason_code"] == "comms_failed.provider_error"
+    assert error["message"] == "runtime_secret_fetch_failed:transport_error"
   end
 
   test "send/3 maps 401/403 to explicit deny reason" do

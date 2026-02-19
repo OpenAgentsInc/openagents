@@ -27,6 +27,16 @@ config :logger, level: :warning
 config :phoenix, :plug_init_mode, :runtime
 
 config :openagents_runtime, :runtime_signature_secret, "test-runtime-signature-secret"
+
+config :openagents_runtime, :laravel_internal,
+  base_url: "http://laravel.test",
+  secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch",
+  shared_secret: "test-runtime-internal-shared-secret",
+  key_id: "runtime-internal-v1",
+  signature_ttl_seconds: 60,
+  request_timeout_ms: 500,
+  default_secret_cache_ttl_ms: 25
+
 config :openagents_runtime, :agent_process_idle_shutdown_ms, 100
 config :openagents_runtime, :janitor_scan_interval_ms, 60_000
 config :openagents_runtime, :janitor_recovery_cooldown_ms, 0

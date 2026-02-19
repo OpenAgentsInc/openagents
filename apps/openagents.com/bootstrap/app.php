@@ -1,9 +1,10 @@
 <?php
 
+use App\Http\Middleware\CapturePostHogPageview;
 use App\Http\Middleware\EnsureAdminEmail;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
-use App\Http\Middleware\CapturePostHogPageview;
+use App\Http\Middleware\VerifyRuntimeInternalRequest;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => EnsureAdminEmail::class,
+            'runtime.internal' => VerifyRuntimeInternalRequest::class,
         ]);
 
         $middleware->web(append: [

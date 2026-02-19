@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthRegisterController;
 use App\Http\Controllers\Api\AutopilotController;
 use App\Http\Controllers\Api\AutopilotStreamController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\Internal\RuntimeSecretController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\L402PaywallController;
 use App\Http\Controllers\Api\MeController;
@@ -21,6 +22,14 @@ Route::get('/shouts/zones', [ShoutsController::class, 'zones']);
 // Staging/automation bootstrap signup (disabled by default via config).
 Route::post('/auth/register', [AuthRegisterController::class, 'store'])
     ->middleware('throttle:30,1');
+
+$runtimeSecretFetchPath = ltrim((string) config('runtime.internal.secret_fetch_path', '/api/internal/runtime/integrations/secrets/fetch'), '/');
+if (str_starts_with($runtimeSecretFetchPath, 'api/')) {
+    $runtimeSecretFetchPath = substr($runtimeSecretFetchPath, 4);
+}
+
+Route::middleware('runtime.internal')
+    ->post($runtimeSecretFetchPath, [RuntimeSecretController::class, 'fetch']);
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [MeController::class, 'show']);
