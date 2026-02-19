@@ -277,4 +277,40 @@ defmodule OpenAgentsRuntimeWeb.RunControllerTest do
 
     assert %{"error" => %{"code" => "invalid_request"}} = json_response(conn, 400)
   end
+
+  test "stream emits session telemetry summary", %{conn: conn} do
+    handler_id = "stream-session-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:openagents_runtime, :stream, :session],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:stream_session, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert {:ok, _} = RunEvents.append_event("run_snapshot", "run.delta", %{"delta" => "hello"})
+
+    conn =
+      conn
+      |> put_internal_auth(run_id: "run_snapshot", thread_id: "thread_snapshot", user_id: 77)
+      |> get(
+        ~p"/internal/v1/runs/run_snapshot/stream?thread_id=thread_snapshot&cursor=0&tail_ms=75"
+      )
+
+    assert conn.status == 200
+
+    assert_receive {:stream_session, measurements, metadata}, 1_000
+    assert measurements.count == 1
+    assert measurements.duration_ms >= 0
+    assert measurements.emitted_events >= 1
+    assert measurements.emitted_chunks >= 1
+    assert metadata.run_id == "run_snapshot"
+    assert metadata.initial_cursor == 0
+    assert metadata.outcome in ["tail_timeout", "client_closed"]
+  end
 end

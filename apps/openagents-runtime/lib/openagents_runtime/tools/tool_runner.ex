@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.RunEvents
+  alias OpenAgentsRuntime.Telemetry.Events
   alias OpenAgentsRuntime.Telemetry.Tracing
   alias OpenAgentsRuntime.Tools.ToolTask
   alias OpenAgentsRuntime.Tools.ToolTasks
@@ -27,10 +28,11 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
   end
 
   def run(fun, opts) when is_function(fun) and is_list(opts) do
+    started_at = System.monotonic_time()
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
     run_id = Keyword.get(opts, :run_id)
     tool_call_id = Keyword.get(opts, :tool_call_id)
-    tool_name = Keyword.get(opts, :tool_name)
+    tool_name = Keyword.get(opts, :tool_name) || "unknown_tool"
     input = Keyword.get(opts, :input, %{})
     metadata = Keyword.get(opts, :metadata, %{})
     trace_context = Tracing.current()
@@ -39,7 +41,8 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
            maybe_prepare_task(run_id, tool_call_id, tool_name, input, metadata),
          {:ok, _persisted_task} <- maybe_mark_running(persisted_task),
          {:ok, _} <- maybe_append_tool_call_event(run_id, tool_call_id, tool_name, input) do
-      progress_callback = progress_callback(run_id, tool_call_id)
+      emit_tool_lifecycle(run_id, tool_call_id, tool_name, "run", "started", "running")
+      progress_callback = progress_callback(run_id, tool_call_id, tool_name)
 
       task =
         Task.Supervisor.async_nolink(OpenAgentsRuntime.Tools.TaskSupervisor, fn ->
@@ -58,18 +61,96 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
       case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
         {:ok, value} ->
           _ = maybe_mark_succeeded(run_id, tool_call_id, value)
+
+          emit_tool_lifecycle(
+            run_id,
+            tool_call_id,
+            tool_name,
+            "terminal",
+            "succeeded",
+            "succeeded",
+            duration_ms: elapsed_ms(started_at)
+          )
+
           {:ok, value}
 
         nil ->
           _ = maybe_mark_timed_out(run_id, tool_call_id)
+
+          emit_tool_lifecycle(
+            run_id,
+            tool_call_id,
+            tool_name,
+            "terminal",
+            "timeout",
+            "timed_out",
+            error_class: "timeout",
+            duration_ms: elapsed_ms(started_at)
+          )
+
           {:error, :timeout}
 
         {:exit, reason} ->
-          classify_exit(run_id, tool_call_id, reason)
+          case classify_exit(run_id, tool_call_id, reason) do
+            {:error, :canceled} = error ->
+              emit_tool_lifecycle(
+                run_id,
+                tool_call_id,
+                tool_name,
+                "terminal",
+                "canceled",
+                "canceled",
+                error_class: "canceled",
+                duration_ms: elapsed_ms(started_at)
+              )
+
+              error
+
+            {:error, {:failed, error_class}} = error ->
+              emit_tool_lifecycle(
+                run_id,
+                tool_call_id,
+                tool_name,
+                "terminal",
+                "failed",
+                "failed",
+                error_class: error_class,
+                duration_ms: elapsed_ms(started_at)
+              )
+
+              error
+          end
       end
     else
-      {:error, :already_terminal} -> {:error, :canceled}
-      {:error, reason} -> {:error, {:failed, normalize_error_class(reason)}}
+      {:error, :already_terminal} ->
+        emit_tool_lifecycle(
+          run_id,
+          tool_call_id,
+          tool_name,
+          "run",
+          "rejected",
+          "canceled",
+          error_class: "already_terminal",
+          duration_ms: elapsed_ms(started_at)
+        )
+
+        {:error, :canceled}
+
+      {:error, reason} ->
+        error_class = normalize_error_class(reason)
+
+        emit_tool_lifecycle(
+          run_id,
+          tool_call_id,
+          tool_name,
+          "run",
+          "failed",
+          "failed",
+          error_class: error_class,
+          duration_ms: elapsed_ms(started_at)
+        )
+
+        {:error, {:failed, error_class}}
     end
   end
 
@@ -246,7 +327,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
     RunEvents.append_event(run_id, "tool.result", payload)
   end
 
-  defp progress_callback(run_id, tool_call_id) do
+  defp progress_callback(run_id, tool_call_id, tool_name) do
     fn progress ->
       if is_binary(run_id) and is_binary(tool_call_id) do
         payload = normalize_payload(progress)
@@ -258,6 +339,15 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
             "tool_call_id" => tool_call_id,
             "progress" => payload
           })
+
+        emit_tool_lifecycle(
+          run_id,
+          tool_call_id,
+          tool_name,
+          "progress",
+          "emitted",
+          "streaming"
+        )
       end
 
       :ok
@@ -336,4 +426,29 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
   defp normalize_error_class(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp normalize_error_class(reason) when is_binary(reason), do: reason
   defp normalize_error_class(_), do: "tool_execution_failed"
+
+  defp emit_tool_lifecycle(run_id, tool_call_id, tool_name, phase, result, state, opts \\ []) do
+    error_class = Keyword.get(opts, :error_class, "none")
+    duration_ms = Keyword.get(opts, :duration_ms, 0)
+
+    Events.emit(
+      [:openagents_runtime, :tool, :lifecycle],
+      %{count: 1, duration_ms: duration_ms},
+      %{
+        run_id: run_id,
+        tool_call_id: tool_call_id,
+        tool_name: tool_name,
+        phase: phase,
+        result: result,
+        state: state,
+        error_class: error_class
+      }
+    )
+  end
+
+  defp elapsed_ms(started_at) when is_integer(started_at) do
+    (System.monotonic_time() - started_at)
+    |> System.convert_time_unit(:native, :millisecond)
+    |> max(0)
+  end
 end

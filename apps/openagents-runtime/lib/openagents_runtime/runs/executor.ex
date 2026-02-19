@@ -13,6 +13,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   alias OpenAgentsRuntime.Runs.RunEvent
   alias OpenAgentsRuntime.Runs.RunEvents
   alias OpenAgentsRuntime.Runs.RunFrame
+  alias OpenAgentsRuntime.Telemetry.Events
   alias OpenAgentsRuntime.Telemetry.Tracing
 
   @default_lease_ttl_seconds 30
@@ -36,20 +37,26 @@ defmodule OpenAgentsRuntime.Runs.Executor do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
     Tracing.with_phase_span(:infer, %{run_id: run_id, lease_owner: lease_owner}, fn ->
-      with %Run{} = run <- Repo.get(Run, run_id),
-           {:ok, _lease} <-
-             Leases.acquire(run_id, lease_owner,
-               now: now,
-               ttl_seconds: lease_ttl_seconds,
-               observed_progress_seq: run.latest_seq || 0
-             ),
-           {:ok, run} <- maybe_mark_started(run, lease_owner),
-           {:ok, result} <- loop(run, lease_owner, lease_ttl_seconds, 0) do
-        {:ok, result}
-      else
-        nil -> {:error, :run_not_found}
-        {:error, _reason} = error -> error
-      end
+      started_at = System.monotonic_time()
+
+      result =
+        with %Run{} = run <- Repo.get(Run, run_id),
+             {:ok, _lease} <-
+               Leases.acquire(run_id, lease_owner,
+                 now: now,
+                 ttl_seconds: lease_ttl_seconds,
+                 observed_progress_seq: run.latest_seq || 0
+               ),
+             {:ok, run} <- maybe_mark_started(run, lease_owner),
+             {:ok, result} <- loop(run, lease_owner, lease_ttl_seconds, 0) do
+          {:ok, result}
+        else
+          nil -> {:error, :run_not_found}
+          {:error, _reason} = error -> error
+        end
+
+      emit_run_once_telemetry(run_id, started_at, result)
+      result
     end)
   end
 
@@ -106,6 +113,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
     with {:ok, event} <- RunEvents.append_event(run.run_id, "run.started", %{}),
          {:ok, run} <- update_run(run, %{status: "running"}),
          {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, event.seq) do
+      emit_run_started_telemetry(run.run_id)
       {:ok, run}
     end
   end
@@ -321,7 +329,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   end
 
   defp emit_frame_telemetry(run_id, frame_type, duplicate?) do
-    :telemetry.execute(
+    Events.emit(
       [:openagents_runtime, :executor, :frame_processed],
       %{count: 1},
       %{run_id: run_id, frame_type: frame_type, duplicate: duplicate?}
@@ -329,12 +337,65 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   end
 
   defp emit_terminal_telemetry(run_id, status, reason_class) do
-    :telemetry.execute(
+    Events.emit(
       [:openagents_runtime, :executor, :terminal],
       %{count: 1},
-      %{run_id: run_id, status: status, reason_class: reason_class}
+      %{run_id: run_id, status: status, reason_class: reason_class || "none"}
     )
   end
+
+  defp emit_run_started_telemetry(run_id) do
+    Events.emit(
+      [:openagents_runtime, :executor, :run_started],
+      %{count: 1},
+      %{run_id: run_id, status: "running"}
+    )
+  end
+
+  defp emit_run_once_telemetry(run_id, started_at, result) do
+    duration_ms = elapsed_ms(started_at)
+
+    {status, reason_class, metadata} =
+      case result do
+        {:ok, run_result} ->
+          status = run_result.status || "unknown"
+          reason_class = run_result.terminal_reason_class || "none"
+          {"ok", reason_class, %{status: status}}
+
+        {:error, reason} ->
+          {"error", normalize_reason_class(reason), %{error_detail: inspect(reason)}}
+      end
+
+    metadata =
+      metadata
+      |> Map.put(:run_id, run_id)
+      |> Map.put(:result, status)
+      |> Map.put(:reason_class, reason_class)
+
+    Events.emit(
+      [:openagents_runtime, :executor, :run_once],
+      %{count: 1, duration_ms: duration_ms},
+      metadata
+    )
+  end
+
+  defp elapsed_ms(started_at) when is_integer(started_at) do
+    (System.monotonic_time() - started_at)
+    |> System.convert_time_unit(:native, :millisecond)
+    |> max(0)
+  end
+
+  defp normalize_reason_class(:run_not_found), do: "run_not_found"
+  defp normalize_reason_class(:lease_held), do: "lease_held"
+  defp normalize_reason_class(:lease_progressed), do: "lease_progressed"
+  defp normalize_reason_class(:not_owner), do: "not_owner"
+  defp normalize_reason_class(reason) when is_atom(reason), do: Atom.to_string(reason)
+
+  defp normalize_reason_class({:error, reason}), do: normalize_reason_class(reason)
+
+  defp normalize_reason_class({:unsupported_strategy, _}), do: "unsupported_strategy"
+  defp normalize_reason_class({:artifact_incompatible, _}), do: "artifact_incompatible"
+  defp normalize_reason_class(_), do: "executor_error"
 
   defp stringify_map(map) when is_map(map) do
     Map.new(map, fn

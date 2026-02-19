@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Runs.EventListener do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.EventNotifier
+  alias OpenAgentsRuntime.Telemetry.Events
 
   @all_events_topic "runtime:run_events"
 
@@ -49,7 +50,7 @@ defmodule OpenAgentsRuntime.Runs.EventListener do
         Phoenix.PubSub.broadcast(OpenAgentsRuntime.PubSub, @all_events_topic, message)
         Phoenix.PubSub.broadcast(OpenAgentsRuntime.PubSub, run_topic(run_id), message)
 
-        :telemetry.execute(
+        Events.emit(
           [:openagents_runtime, :run_events, :notify],
           %{count: 1},
           %{run_id: run_id, seq: seq}

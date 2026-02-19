@@ -92,6 +92,50 @@ defmodule OpenAgentsRuntime.Tools.ToolRunnerExecutionTest do
     assert %DateTime{} = task_record.canceled_at
   end
 
+  test "emits tool lifecycle telemetry for start and terminal outcomes" do
+    run_id = unique_run_id("tool_runner_metrics")
+    insert_run(run_id)
+    handler_id = "tool-runner-telemetry-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:openagents_runtime, :tool, :lifecycle],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:tool_lifecycle, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert {:ok, %{"result" => "ok"}} =
+             ToolRunner.run(
+               fn ->
+                 %{"result" => "ok"}
+               end,
+               run_id: run_id,
+               tool_call_id: "tool_call_metrics",
+               tool_name: "web.search",
+               timeout_ms: 1_000
+             )
+
+    assert_receive {:tool_lifecycle, _measurements, %{phase: "run", result: "started"}}, 1_000
+
+    assert_receive {:tool_lifecycle, measurements,
+                    %{
+                      phase: "terminal",
+                      result: "succeeded",
+                      state: "succeeded",
+                      run_id: ^run_id,
+                      tool_call_id: "tool_call_metrics"
+                    }},
+                   1_000
+
+    assert measurements.count == 1
+    assert measurements.duration_ms >= 0
+  end
+
   defp insert_run(run_id) do
     Repo.insert!(%Run{
       run_id: run_id,
