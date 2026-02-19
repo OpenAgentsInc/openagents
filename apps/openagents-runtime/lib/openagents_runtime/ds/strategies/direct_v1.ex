@@ -51,6 +51,58 @@ defmodule OpenAgentsRuntime.DS.Strategies.DirectV1 do
           "confidence" => 0.5
         }
 
+      "StructuredTask" ->
+        task = Map.get(input, "task", %{}) |> stringify_keys()
+        tools = Map.get(input, "tools", []) |> List.wrap()
+
+        context_keys =
+          case Map.get(input, "context", %{}) |> stringify_keys() do
+            %{} = context -> Map.keys(context) |> Enum.sort()
+            _ -> []
+          end
+
+        %{
+          "status" => "completed",
+          "result" => %{
+            "task_id" => task["id"] || "task_unknown",
+            "objective" => task["objective"] || "objective_unknown",
+            "context_keys" => context_keys
+          },
+          "next_actions" =>
+            tools
+            |> Enum.flat_map(fn
+              %{"name" => name} when is_binary(name) -> [name]
+              %{name: name} when is_binary(name) -> [name]
+              _ -> []
+            end)
+            |> Enum.uniq()
+            |> Enum.take(3),
+          "confidence" => 0.62
+        }
+
+      "TimelineMapItem" ->
+        item = Map.get(input, "item", %{}) |> stringify_keys()
+        item_index = Map.get(input, "item_index", 0)
+
+        %{
+          "item_index" => normalize_number(item_index),
+          "summary" => "Timeline item #{item_index}: #{item_digest(item)}",
+          "signals" => item |> Map.keys() |> Enum.sort() |> Enum.take(3),
+          "confidence" => 0.58
+        }
+
+      "TimelineMapReduce" ->
+        mapped_items = Map.get(input, "mapped_items", []) |> List.wrap()
+        highlights = mapped_items |> Enum.map(&extract_highlight/1) |> Enum.reject(&is_nil/1)
+
+        %{
+          "summary" =>
+            "Reduced #{length(mapped_items)} items for query #{Map.get(input, "query", "unknown")}",
+          "highlights" => Enum.take(highlights, 4),
+          "item_count" => length(mapped_items),
+          "confidence" => 0.64
+        }
+
       _ ->
         %{"result" => stringify_keys(input)}
     end
@@ -78,6 +130,31 @@ defmodule OpenAgentsRuntime.DS.Strategies.DirectV1 do
   end
 
   defp extract_message_lines(_messages), do: []
+
+  defp item_digest(item) when is_map(item) do
+    item
+    |> Enum.sort_by(fn {key, _value} -> to_string(key) end)
+    |> Enum.take(2)
+    |> Enum.map_join(", ", fn {key, value} -> "#{key}=#{inspect(value, limit: 4)}" end)
+  end
+
+  defp item_digest(_item), do: "no details"
+
+  defp extract_highlight(%{"summary" => summary}) when is_binary(summary), do: summary
+  defp extract_highlight(%{summary: summary}) when is_binary(summary), do: summary
+  defp extract_highlight(_), do: nil
+
+  defp normalize_number(value) when is_integer(value), do: value
+  defp normalize_number(value) when is_float(value), do: value
+
+  defp normalize_number(value) when is_binary(value) do
+    case Float.parse(String.trim(value)) do
+      {parsed, _rest} -> parsed
+      :error -> 0
+    end
+  end
+
+  defp normalize_number(_), do: 0
 
   defp stringify_keys(%{} = map) do
     Map.new(map, fn
