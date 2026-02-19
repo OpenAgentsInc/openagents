@@ -10,7 +10,10 @@ import Config
 config :openagents_runtime,
   namespace: OpenAgentsRuntime,
   ecto_repos: [OpenAgentsRuntime.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  janitor_scan_interval_ms: 5_000,
+  janitor_max_recovery_attempts: 3,
+  janitor_recovery_cooldown_ms: 30_000
 
 # Configures the endpoint
 config :openagents_runtime, OpenAgentsRuntimeWeb.Endpoint,
