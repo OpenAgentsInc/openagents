@@ -18,6 +18,7 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     run_events_notify: [],
     agent_process_stats: [:event],
     tool_lifecycle: [:phase, :result, :state, :error_class],
+    provider_breaker_state: [:provider, :state, :event],
     lease_operation: [:action, :result],
     janitor_cycle: [],
     janitor_resumed: [],
@@ -85,6 +86,9 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       ),
       counter("openagents_runtime.tool.lifecycle.count", tags: tags_for(:tool_lifecycle)),
       summary("openagents_runtime.tool.lifecycle.duration_ms", tags: tags_for(:tool_lifecycle)),
+      last_value("openagents_runtime.provider.breaker.state",
+        tags: tags_for(:provider_breaker_state)
+      ),
       counter("openagents_runtime.lease.operation.count", tags: tags_for(:lease_operation)),
       counter("openagents_runtime.janitor.cycle.count", tags: tags_for(:janitor_cycle)),
       summary("openagents_runtime.janitor.cycle.scanned", tags: tags_for(:janitor_cycle)),

@@ -8,6 +8,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
   alias OpenAgentsRuntime.DS.Receipts
   alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Tools.Comms.NoopAdapter
+  alias OpenAgentsRuntime.Tools.ProviderCircuitBreaker
   alias OpenAgentsRuntime.Tools.Extensions.CommsManifestValidator
 
   @required_request_fields ~w(integration_id recipient template_id variables)
@@ -96,64 +97,182 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
   end
 
   defp execute_provider_send(adapter, manifest, request, policy_eval, authorization_id, opts) do
-    case adapter.send(request, manifest, opts) do
+    provider = normalize_provider(manifest["provider"])
+
+    case call_provider(adapter, provider, request, manifest, opts) do
       {:ok, provider_result} when is_map(provider_result) ->
-        provider_result = normalize_map(provider_result)
-        state = provider_result["state"] || "sent"
-        message_id = provider_result["message_id"]
+        finalize_provider_outcome(
+          manifest,
+          request,
+          policy_eval,
+          authorization_id,
+          provider_result
+        )
 
-        reason_code =
-          provider_result["reason_code"] ||
-            if(MapSet.member?(@send_success_states, state),
-              do: "policy_allowed.default",
-              else: "comms_failed.provider_error"
+      {:error, failure_reason} ->
+        case maybe_execute_fallback(manifest, request, opts, failure_reason) do
+          {:ok, fallback_result} ->
+            finalize_provider_outcome(
+              manifest,
+              request,
+              policy_eval,
+              authorization_id,
+              fallback_result
             )
 
-        reason_code =
-          normalize_reason_code(
-            reason_code,
-            if(MapSet.member?(@send_success_states, state),
-              do: "policy_allowed.default",
-              else: "comms_failed.provider_error"
-            )
-          )
+          {:error, fallback_reason} ->
+            denied_reason_code =
+              case {failure_reason, fallback_reason} do
+                {_, :fallback_exhausted} -> "comms_failed.fallback_exhausted"
+                {:provider_circuit_open, _} -> "comms_failed.provider_circuit_open"
+                _ -> "comms_failed.provider_error"
+              end
 
-        decision = if(MapSet.member?(@send_success_states, state), do: "allowed", else: "denied")
+            policy_eval =
+              policy_eval
+              |> Map.put("decision", "denied")
+              |> Map.put("reason_code", denied_reason_code)
 
-        policy_eval =
-          policy_eval
-          |> Map.put("decision", decision)
-          |> Map.put("reason_code", reason_code)
-
-        {:ok,
-         build_outcome(
-           manifest,
-           request,
-           policy_eval,
-           state,
-           message_id,
-           authorization_id,
-           provider_result
-         )}
-
-      {:error, _provider_error} ->
-        policy_eval =
-          policy_eval
-          |> Map.put("decision", "denied")
-          |> Map.put("reason_code", "comms_failed.provider_error")
-
-        {:ok,
-         build_outcome(
-           manifest,
-           request,
-           policy_eval,
-           "failed",
-           nil,
-           authorization_id,
-           %{}
-         )}
+            {:ok,
+             build_outcome(
+               manifest,
+               request,
+               policy_eval,
+               "failed",
+               nil,
+               authorization_id,
+               %{
+                 "provider" => provider,
+                 "fallback_used" => false,
+                 "failure_reason" => to_string(failure_reason)
+               }
+             )}
+        end
     end
   end
+
+  defp finalize_provider_outcome(
+         manifest,
+         request,
+         policy_eval,
+         authorization_id,
+         provider_result
+       ) do
+    provider_result = normalize_map(provider_result)
+    state = provider_result["state"] || "sent"
+    message_id = provider_result["message_id"]
+
+    fallback =
+      if provider_result["fallback_used"] == true do
+        %{
+          "used" => true,
+          "provider" => provider_result["provider"],
+          "primary_provider" => provider_result["primary_provider"],
+          "reason" => provider_result["fallback_reason"]
+        }
+      else
+        nil
+      end
+
+    reason_code =
+      provider_result["reason_code"] ||
+        if(MapSet.member?(@send_success_states, state),
+          do: "policy_allowed.default",
+          else: "comms_failed.provider_error"
+        )
+
+    reason_code =
+      normalize_reason_code(
+        reason_code,
+        if(MapSet.member?(@send_success_states, state),
+          do: "policy_allowed.default",
+          else: "comms_failed.provider_error"
+        )
+      )
+
+    decision = if(MapSet.member?(@send_success_states, state), do: "allowed", else: "denied")
+
+    policy_eval =
+      policy_eval
+      |> Map.put("decision", decision)
+      |> Map.put("reason_code", reason_code)
+
+    {:ok,
+     build_outcome(
+       manifest,
+       request,
+       policy_eval,
+       state,
+       message_id,
+       authorization_id,
+       provider_result,
+       fallback: fallback
+     )}
+  end
+
+  defp call_provider(adapter, provider, request, manifest, opts) do
+    breaker_opts = breaker_opts(opts)
+
+    case ProviderCircuitBreaker.call(
+           provider,
+           fn -> adapter.send(request, manifest, opts) end,
+           breaker_opts
+         ) do
+      {:error, :circuit_open} ->
+        {:error, :provider_circuit_open}
+
+      {:ok, result} when is_map(result) ->
+        {:ok, Map.put(normalize_map(result), "provider", provider)}
+
+      {:error, _reason} ->
+        {:error, :provider_error}
+
+      _other ->
+        {:error, :provider_error}
+    end
+  end
+
+  defp maybe_execute_fallback(manifest, request, opts, failure_reason) do
+    allow_fallback = Keyword.get(opts, :allow_provider_fallback, false)
+    fallback_adapter = Keyword.get(opts, :fallback_adapter)
+
+    if allow_fallback and is_atom(fallback_adapter) do
+      fallback_provider = normalize_provider(Keyword.get(opts, :fallback_provider, "fallback"))
+
+      case call_provider(fallback_adapter, fallback_provider, request, manifest, opts) do
+        {:ok, provider_result} ->
+          {:ok,
+           provider_result
+           |> Map.put("fallback_used", true)
+           |> Map.put("fallback_provider", fallback_provider)
+           |> Map.put("primary_provider", normalize_provider(manifest["provider"]))
+           |> Map.put("fallback_reason", to_string(failure_reason))}
+
+        {:error, _reason} ->
+          {:error, :fallback_exhausted}
+      end
+    else
+      {:error, :no_fallback}
+    end
+  end
+
+  defp breaker_opts(opts) do
+    [
+      failure_threshold: Keyword.get(opts, :provider_failure_threshold, 3),
+      reset_timeout_ms: Keyword.get(opts, :provider_reset_timeout_ms, 30_000)
+    ]
+  end
+
+  defp normalize_provider(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> "unknown"
+      normalized -> normalized
+    end
+  end
+
+  defp normalize_provider(_), do: "unknown"
 
   defp evaluate_policy_gate(manifest, request, base_policy, budget, policy_context, opts) do
     cond do
@@ -275,10 +394,24 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
          state,
          message_id,
          authorization_id,
-         provider_result
+         provider_result,
+         opts \\ []
+       )
+
+  defp build_outcome(
+         manifest,
+         request,
+         policy_eval,
+         state,
+         message_id,
+         authorization_id,
+         provider_result,
+         opts
        ) do
     sanitized_request = Sanitizer.sanitize(request)
     sanitized_provider_result = Sanitizer.sanitize(provider_result)
+    fallback = Keyword.get(opts, :fallback)
+    provider = sanitized_provider_result["provider"] || manifest["provider"]
     reason_code = normalize_reason_code(policy_eval["reason_code"], "policy_denied.explicit_deny")
     decision = if(state in ["blocked", "failed"], do: "denied", else: "allowed")
 
@@ -299,7 +432,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
               24
             ),
         "integration_id" => manifest["integration_id"],
-        "provider" => manifest["provider"],
+        "provider" => provider,
         "recipient" => sanitized_request["recipient"],
         "template_id" => sanitized_request["template_id"],
         "state" => state,
@@ -309,6 +442,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
         "evaluation_hash" => policy_eval["evaluation_hash"]
       }
       |> maybe_put("message_id", message_id)
+      |> maybe_put("fallback", fallback)
 
     %{
       "state" => state,
@@ -319,6 +453,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
       "provider_result" => sanitized_provider_result,
       "receipt" => receipt
     }
+    |> maybe_put("fallback", fallback)
   end
 
   defp present_value?(value) when is_binary(value), do: String.trim(value) != ""

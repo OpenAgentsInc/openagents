@@ -21,7 +21,9 @@ defmodule OpenAgentsRuntime.DS.PolicyReasonCodes do
     "loop_detected.no_progress",
     "ssrf_block.private_address",
     "manifest_validation.invalid_schema",
-    "comms_failed.provider_error"
+    "comms_failed.provider_error",
+    "comms_failed.provider_circuit_open",
+    "comms_failed.fallback_exhausted"
   ]
 
   @spec version() :: String.t()
