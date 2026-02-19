@@ -36,6 +36,7 @@ Module-to-contract bindings:
 
 - Signature catalog + hashing: `apps/openagents-runtime/lib/openagents_runtime/ds/signatures/catalog.ex`
 - Predict orchestration: `apps/openagents-runtime/lib/openagents_runtime/ds/predict.ex`
+- Structured workflows (`llm_task` + timeline map/reduce): `apps/openagents-runtime/lib/openagents_runtime/ds/workflows/structured_tasks.ex`
 - Receipts: `apps/openagents-runtime/lib/openagents_runtime/ds/receipts.ex`
 - Policy evaluation and taxonomy: `apps/openagents-runtime/lib/openagents_runtime/ds/policy_evaluator.ex`, `apps/openagents-runtime/lib/openagents_runtime/ds/policy_reason_codes.ex`
 - Traces: `apps/openagents-runtime/lib/openagents_runtime/ds/traces.ex`
@@ -83,6 +84,18 @@ Supported strategies:
 
 - `direct.v1` (`OpenAgentsRuntime.DS.Strategies.DirectV1`)
 - `rlm_lite.v1` (`OpenAgentsRuntime.DS.Strategies.RlmLiteV1`)
+
+Structured workflow entrypoint:
+
+- `OpenAgentsRuntime.DS.Workflows.StructuredTasks.run/3`
+  - `llm_task.v1` (single-step structured task)
+  - `timeline_map_reduce.v1` (bounded map/reduce subflow)
+
+Workflow execution constraints:
+
+1. Typed input/output contracts are validated at each step.
+2. Step execution is budget bounded (`remaining_sats`, `max_steps`, `max_map_items`).
+3. Step receipts and trace refs are aggregated into a workflow-level replay hash.
 
 Required receipt fields (predict):
 
@@ -250,6 +263,7 @@ Primary contract coverage:
 
 - `apps/openagents-runtime/test/openagents_runtime/ds/signatures/catalog_test.exs`
 - `apps/openagents-runtime/test/openagents_runtime/ds/predict_test.exs`
+- `apps/openagents-runtime/test/openagents_runtime/ds/workflows/structured_tasks_test.exs`
 - `apps/openagents-runtime/test/openagents_runtime/ds/policy_registry_test.exs`
 - `apps/openagents-runtime/test/openagents_runtime/ds/policy_evaluator_test.exs`
 - `apps/openagents-runtime/test/openagents_runtime/ds/compile/dataset_exporter_test.exs`

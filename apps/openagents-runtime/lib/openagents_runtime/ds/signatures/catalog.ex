@@ -55,6 +55,64 @@ defmodule OpenAgentsRuntime.DS.Signatures.Catalog do
       },
       prompt_template: "Produce a bounded, citation-focused thread summary.",
       program_template: "rlm_lite.v1"
+    },
+    %{
+      namespace: "@openagents/autopilot/workflow",
+      name: "StructuredTask",
+      version: 1,
+      input_schema: %{
+        "task" => %{
+          "id" => "string",
+          "objective" => "string"
+        },
+        "context" => "map",
+        "tools" => [%{"name" => "string", "description" => "string"}]
+      },
+      output_schema: %{
+        "status" => "string",
+        "result" => "map",
+        "next_actions" => ["string"],
+        "confidence" => "number"
+      },
+      prompt_template:
+        "Execute a structured workflow task and return typed outputs with explicit next actions.",
+      program_template: "direct.v1"
+    },
+    %{
+      namespace: "@openagents/autopilot/workflow",
+      name: "TimelineMapItem",
+      version: 1,
+      input_schema: %{
+        "query" => "string",
+        "item" => "map",
+        "item_index" => "number"
+      },
+      output_schema: %{
+        "item_index" => "number",
+        "summary" => "string",
+        "signals" => ["string"],
+        "confidence" => "number"
+      },
+      prompt_template: "Map one timeline item into a compact typed summary.",
+      program_template: "direct.v1"
+    },
+    %{
+      namespace: "@openagents/autopilot/workflow",
+      name: "TimelineMapReduce",
+      version: 1,
+      input_schema: %{
+        "query" => "string",
+        "mapped_items" => ["map"]
+      },
+      output_schema: %{
+        "summary" => "string",
+        "highlights" => ["string"],
+        "item_count" => "number",
+        "confidence" => "number"
+      },
+      prompt_template:
+        "Reduce mapped timeline summaries into one bounded synthesis with highlights and confidence.",
+      program_template: "rlm_lite.v1"
     }
   ]
 
