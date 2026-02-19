@@ -50,3 +50,4 @@ Internal API docs:
 - Kubernetes network policy hardening: `docs/NETWORK_POLICY.md`
 - Deploy runbook (GCP/GKE): `docs/DEPLOY_GCP.md`
 - Runtime operations runbook: `docs/OPERATIONS.md`
+- Reprojection and drift-repair runbook: `docs/REPROJECTION.md`
