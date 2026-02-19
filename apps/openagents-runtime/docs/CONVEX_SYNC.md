@@ -28,6 +28,18 @@ Do not allow multiple writers (Laravel + runtime + clients) to mutate the same
 projection docs. All projection writes are deterministic transforms from runtime
 events.
 
+Current runtime writer modules:
+
+- `OpenAgentsRuntime.Convex.Projector`
+- `OpenAgentsRuntime.Convex.Sink` (behavior contract)
+- `OpenAgentsRuntime.Convex.NoopSink` (default)
+- `OpenAgentsRuntime.Convex.HttpSink` (Convex `/api/mutation` sink)
+
+Projector-owned document IDs:
+
+- `runtime/run_summary:<run_id>`
+- `runtime/codex_worker_summary:<worker_id>`
+
 ## Projection Contract
 
 Each projection document should include:
@@ -59,9 +71,9 @@ This mirrors runtime reprojection posture for Laravel-facing read models.
 
 ## Runtime Contract Status
 
-No `/internal/v1/*` endpoint is currently designated as the Convex projection
-ingest API. Projection publishing is an internal runtime concern and will be
-implemented as a runtime-owned writer path.
+No `/internal/v1/*` endpoint is designated as a Convex projection ingest API.
+Projection publishing is an internal runtime concern implemented by
+runtime-owned writer paths in `OpenAgentsRuntime.Convex.Projector`.
 
 For active rollout sequencing, see:
 
