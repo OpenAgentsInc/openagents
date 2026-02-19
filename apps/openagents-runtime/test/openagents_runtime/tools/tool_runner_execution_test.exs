@@ -4,6 +4,8 @@ defmodule OpenAgentsRuntime.Tools.ToolRunnerExecutionTest do
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.Run
   alias OpenAgentsRuntime.Runs.RunEvents
+  alias OpenAgentsRuntime.Spend.Authorizations
+  alias OpenAgentsRuntime.Spend.Reservations
   alias OpenAgentsRuntime.Tools.ToolRunner
   alias OpenAgentsRuntime.Tools.ToolTasks
 
@@ -136,6 +138,109 @@ defmodule OpenAgentsRuntime.Tools.ToolRunnerExecutionTest do
     assert measurements.duration_ms >= 0
   end
 
+  test "rejects settlement-boundary tools missing idempotency metadata" do
+    run_id = unique_run_id("tool_runner_settlement_missing_metadata")
+    insert_run(run_id)
+    authorization = insert_settlement_authorization!(run_id, 100)
+
+    assert {:error, {:failed, "settlement_metadata_missing"}} =
+             ToolRunner.run(
+               fn ->
+                 %{"provider_correlation_id" => "corr-missing", "result" => "ok"}
+               end,
+               run_id: run_id,
+               tool_call_id: "tool_call_settlement_missing",
+               tool_name: "payments.capture",
+               settlement_boundary: true,
+               authorization_id: authorization.authorization_id,
+               amount_sats: 25
+             )
+
+    assert is_nil(
+             Reservations.get(
+               authorization.authorization_id,
+               run_id,
+               "tool_call_settlement_missing"
+             )
+           )
+
+    task = ToolTasks.get_by_tool_call(run_id, "tool_call_settlement_missing")
+    assert task.state == "failed"
+    assert task.error_class == "settlement_metadata_missing"
+  end
+
+  test "commits settlement reservation with idempotency and correlation metadata" do
+    run_id = unique_run_id("tool_runner_settlement_commit")
+    insert_run(run_id)
+    authorization = insert_settlement_authorization!(run_id, 250)
+
+    assert {:ok, %{"provider_correlation_id" => "corr-commit-1", "result" => "ok"}} =
+             ToolRunner.run(
+               fn ->
+                 %{"provider_correlation_id" => "corr-commit-1", "result" => "ok"}
+               end,
+               run_id: run_id,
+               tool_call_id: "tool_call_settlement_commit",
+               tool_name: "payments.capture",
+               settlement_boundary: true,
+               authorization_id: authorization.authorization_id,
+               amount_sats: 40,
+               settlement_retry_class: "dedupe_reconcile_required",
+               provider_idempotency_key: "idem-commit-1"
+             )
+
+    reservation =
+      Reservations.get(authorization.authorization_id, run_id, "tool_call_settlement_commit")
+
+    assert reservation.state == "committed"
+    assert reservation.provider_idempotency_key == "idem-commit-1"
+    assert reservation.provider_correlation_id == "corr-commit-1"
+    assert %DateTime{} = reservation.committed_at
+  end
+
+  test "unknown settlement outcomes enforce dedupe_reconcile_required on retry" do
+    run_id = unique_run_id("tool_runner_settlement_reconcile")
+    insert_run(run_id)
+    authorization = insert_settlement_authorization!(run_id, 400)
+
+    assert {:error, :timeout} =
+             ToolRunner.run(
+               fn _report_progress ->
+                 Process.sleep(300)
+                 %{"provider_correlation_id" => "corr-late", "result" => "late"}
+               end,
+               run_id: run_id,
+               tool_call_id: "tool_call_settlement_reconcile",
+               tool_name: "payments.capture",
+               settlement_boundary: true,
+               authorization_id: authorization.authorization_id,
+               amount_sats: 50,
+               settlement_retry_class: "dedupe_reconcile_required",
+               provider_idempotency_key: "idem-reconcile-1",
+               timeout_ms: 50
+             )
+
+    reservation =
+      Reservations.get(authorization.authorization_id, run_id, "tool_call_settlement_reconcile")
+
+    assert reservation.state == "reconcile_required"
+
+    assert {:error, {:failed, "dedupe_reconcile_required"}} =
+             ToolRunner.run(
+               fn ->
+                 %{"provider_correlation_id" => "corr-retry", "result" => "retry"}
+               end,
+               run_id: run_id,
+               tool_call_id: "tool_call_settlement_reconcile",
+               tool_name: "payments.capture",
+               settlement_boundary: true,
+               authorization_id: authorization.authorization_id,
+               amount_sats: 50,
+               settlement_retry_class: "dedupe_reconcile_required",
+               provider_idempotency_key: "idem-reconcile-1"
+             )
+  end
+
   defp insert_run(run_id) do
     Repo.insert!(%Run{
       run_id: run_id,
@@ -149,5 +254,25 @@ defmodule OpenAgentsRuntime.Tools.ToolRunnerExecutionTest do
   defp unique_run_id(prefix) do
     suffix = System.unique_integer([:positive])
     "#{prefix}_#{suffix}"
+  end
+
+  defp insert_settlement_authorization!(run_id, max_total_sats) do
+    run = Repo.get!(Run, run_id)
+
+    payload = %{
+      owner_user_id: run.owner_user_id,
+      run_id: run_id,
+      mode: "delegated_budget",
+      max_total_sats: max_total_sats,
+      spent_sats: 0,
+      reserved_sats: 0,
+      constraints: %{},
+      metadata: %{}
+    }
+
+    case Authorizations.create(payload) do
+      {:ok, authorization} -> authorization
+      {:error, changeset} -> flunk("authorization insert failed: #{inspect(changeset.errors)}")
+    end
   end
 end

@@ -9,12 +9,14 @@ defmodule OpenAgentsRuntime.Spend.SpendReservation do
 
   @schema_prefix "runtime"
   @states ~w(reserved committed released reconcile_required)
+  @retry_classes ~w(safe_retry dedupe_reconcile_required)
   @required_fields ~w(
     authorization_id
     run_id
     tool_call_id
     amount_sats
     state
+    retry_class
     reserved_at
     metadata
   )a
@@ -25,6 +27,7 @@ defmodule OpenAgentsRuntime.Spend.SpendReservation do
     field :tool_call_id, :string
     field :amount_sats, :integer
     field :state, :string, default: "reserved"
+    field :retry_class, :string, default: "safe_retry"
     field :provider_correlation_id, :string
     field :provider_idempotency_key, :string
     field :failure_reason, :string
@@ -43,6 +46,7 @@ defmodule OpenAgentsRuntime.Spend.SpendReservation do
           tool_call_id: String.t(),
           amount_sats: integer(),
           state: String.t(),
+          retry_class: String.t(),
           provider_correlation_id: String.t() | nil,
           provider_idempotency_key: String.t() | nil,
           failure_reason: String.t() | nil,
@@ -56,12 +60,16 @@ defmodule OpenAgentsRuntime.Spend.SpendReservation do
   @spec states() :: [String.t()]
   def states, do: @states
 
+  @spec retry_classes() :: [String.t()]
+  def retry_classes, do: @retry_classes
+
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(reservation, attrs) do
     reservation
     |> cast(attrs, @required_fields ++ optional_fields())
     |> validate_required(@required_fields)
     |> validate_inclusion(:state, @states)
+    |> validate_inclusion(:retry_class, @retry_classes)
     |> validate_number(:amount_sats, greater_than: 0)
     |> validate_length(:tool_call_id, min: 1)
     |> foreign_key_constraint(:authorization_id, name: :spend_reservations_authorization_id_fkey)

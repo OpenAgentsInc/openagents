@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.RunEvents
+  alias OpenAgentsRuntime.Spend.Reservations
   alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Telemetry.Events
   alias OpenAgentsRuntime.Telemetry.Tracing
@@ -35,11 +36,14 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
     tool_call_id = Keyword.get(opts, :tool_call_id)
     tool_name = Keyword.get(opts, :tool_name) || "unknown_tool"
     input = Keyword.get(opts, :input, %{})
-    metadata = Keyword.get(opts, :metadata, %{})
+    settlement_opts = settlement_opts_from_run_opts(opts)
+    metadata = enrich_metadata_with_settlement(Keyword.get(opts, :metadata, %{}), settlement_opts)
     trace_context = Tracing.current()
 
     with {:ok, persisted_task} <-
            maybe_prepare_task(run_id, tool_call_id, tool_name, input, metadata),
+         {:ok, settlement_context} <-
+           maybe_prepare_settlement(run_id, tool_call_id, settlement_opts),
          {:ok, _persisted_task} <- maybe_mark_running(persisted_task),
          {:ok, _} <- maybe_append_tool_call_event(run_id, tool_call_id, tool_name, input) do
       emit_tool_lifecycle(run_id, tool_call_id, tool_name, "run", "started", "running")
@@ -61,21 +65,54 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
 
       case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
         {:ok, value} ->
-          _ = maybe_mark_succeeded(run_id, tool_call_id, value)
+          case maybe_finalize_settlement_success(settlement_context, run_id, tool_call_id, value) do
+            {:ok, value} ->
+              _ = maybe_mark_succeeded(run_id, tool_call_id, value)
 
-          emit_tool_lifecycle(
-            run_id,
-            tool_call_id,
-            tool_name,
-            "terminal",
-            "succeeded",
-            "succeeded",
-            duration_ms: elapsed_ms(started_at)
-          )
+              emit_tool_lifecycle(
+                run_id,
+                tool_call_id,
+                tool_name,
+                "terminal",
+                "succeeded",
+                "succeeded",
+                duration_ms: elapsed_ms(started_at)
+              )
 
-          {:ok, value}
+              {:ok, value}
+
+            {:error, error_class} ->
+              _ =
+                maybe_mark_failed(
+                  run_id,
+                  tool_call_id,
+                  error_class,
+                  sanitize("settlement finalize failed")
+                )
+
+              emit_tool_lifecycle(
+                run_id,
+                tool_call_id,
+                tool_name,
+                "terminal",
+                "failed",
+                "failed",
+                error_class: error_class,
+                duration_ms: elapsed_ms(started_at)
+              )
+
+              {:error, {:failed, error_class}}
+          end
 
         nil ->
+          _ =
+            maybe_finalize_settlement_failure(
+              settlement_context,
+              run_id,
+              tool_call_id,
+              "timeout"
+            )
+
           _ = maybe_mark_timed_out(run_id, tool_call_id)
 
           emit_tool_lifecycle(
@@ -94,6 +131,14 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
         {:exit, reason} ->
           case classify_exit(run_id, tool_call_id, reason) do
             {:error, :canceled} = error ->
+              _ =
+                maybe_finalize_settlement_failure(
+                  settlement_context,
+                  run_id,
+                  tool_call_id,
+                  "canceled"
+                )
+
               emit_tool_lifecycle(
                 run_id,
                 tool_call_id,
@@ -108,6 +153,14 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
               error
 
             {:error, {:failed, error_class}} = error ->
+              _ =
+                maybe_finalize_settlement_failure(
+                  settlement_context,
+                  run_id,
+                  tool_call_id,
+                  error_class
+                )
+
               emit_tool_lifecycle(
                 run_id,
                 tool_call_id,
@@ -137,8 +190,36 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
 
         {:error, :canceled}
 
+      {:error, reason}
+      when reason in [
+             :settlement_already_finalized,
+             :settlement_idempotency_conflict,
+             :settlement_metadata_missing,
+             :settlement_over_budget,
+             :settlement_reconcile_required
+           ] ->
+        error_class = settlement_error_class(reason)
+        error_message = settlement_error_message(reason)
+
+        _ = maybe_mark_failed(run_id, tool_call_id, error_class, error_message)
+
+        emit_tool_lifecycle(
+          run_id,
+          tool_call_id,
+          tool_name,
+          "run",
+          "failed",
+          "failed",
+          error_class: error_class,
+          duration_ms: elapsed_ms(started_at)
+        )
+
+        {:error, {:failed, error_class}}
+
       {:error, reason} ->
         error_class = normalize_error_class(reason)
+
+        _ = maybe_mark_failed(run_id, tool_call_id, error_class, sanitize(inspect(reason)))
 
         emit_tool_lifecycle(
           run_id,
@@ -198,6 +279,186 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
       {:ok, nil}
     end
   end
+
+  defp settlement_opts_from_run_opts(opts) do
+    %{
+      settlement_boundary: Keyword.get(opts, :settlement_boundary, false),
+      authorization_id: Keyword.get(opts, :authorization_id),
+      amount_sats: Keyword.get(opts, :amount_sats),
+      retry_class:
+        normalize_retry_class(Keyword.get(opts, :settlement_retry_class, "safe_retry")),
+      provider_idempotency_key: Keyword.get(opts, :provider_idempotency_key)
+    }
+  end
+
+  defp enrich_metadata_with_settlement(metadata, %{settlement_boundary: false}), do: metadata
+
+  defp enrich_metadata_with_settlement(metadata, settlement_opts) do
+    metadata
+    |> normalize_payload()
+    |> Map.put("settlement_boundary", true)
+    |> maybe_put("authorization_id", settlement_opts.authorization_id)
+    |> maybe_put("amount_sats", settlement_opts.amount_sats)
+    |> maybe_put("retry_class", settlement_opts.retry_class)
+    |> maybe_put("provider_idempotency_key", settlement_opts.provider_idempotency_key)
+  end
+
+  defp maybe_prepare_settlement(_run_id, _tool_call_id, %{settlement_boundary: false}),
+    do: {:ok, nil}
+
+  defp maybe_prepare_settlement(run_id, tool_call_id, settlement_opts) do
+    with :ok <- validate_settlement_preflight(run_id, tool_call_id, settlement_opts),
+         {:ok, result} <-
+           Reservations.reserve(
+             settlement_opts.authorization_id,
+             run_id,
+             tool_call_id,
+             settlement_opts.amount_sats,
+             retry_class: settlement_opts.retry_class,
+             provider_idempotency_key: settlement_opts.provider_idempotency_key,
+             metadata: %{
+               "settlement_boundary" => true,
+               "retry_class" => settlement_opts.retry_class
+             }
+           ) do
+      {:ok,
+       %{
+         authorization_id: settlement_opts.authorization_id,
+         retry_class: settlement_opts.retry_class,
+         provider_idempotency_key: settlement_opts.provider_idempotency_key,
+         reservation_id: result.reservation.id
+       }}
+    else
+      {:error, :already_finalized} -> {:error, :settlement_already_finalized}
+      {:error, :idempotency_conflict} -> {:error, :settlement_idempotency_conflict}
+      {:error, :over_budget} -> {:error, :settlement_over_budget}
+      {:error, :reconcile_required} -> {:error, :settlement_reconcile_required}
+      {:error, :invalid_retry_class} -> {:error, :settlement_metadata_missing}
+      {:error, :invalid_amount} -> {:error, :settlement_metadata_missing}
+      {:error, :authorization_not_found} -> {:error, :settlement_metadata_missing}
+      {:error, :invalid_transition} -> {:error, :settlement_reconcile_required}
+      :error -> {:error, :settlement_metadata_missing}
+    end
+  end
+
+  defp maybe_finalize_settlement_success(nil, _run_id, _tool_call_id, value), do: {:ok, value}
+
+  defp maybe_finalize_settlement_success(settlement_context, run_id, tool_call_id, value) do
+    case extract_provider_correlation_id(value) do
+      nil ->
+        _ =
+          Reservations.mark_reconcile_required(
+            settlement_context.authorization_id,
+            run_id,
+            tool_call_id,
+            failure_reason: "missing_provider_correlation_id"
+          )
+
+        {:error, "settlement_correlation_missing"}
+
+      provider_correlation_id ->
+        case Reservations.commit(
+               settlement_context.authorization_id,
+               run_id,
+               tool_call_id,
+               provider_correlation_id: provider_correlation_id,
+               provider_idempotency_key: settlement_context.provider_idempotency_key
+             ) do
+          {:ok, _result} -> {:ok, value}
+          {:error, :already_finalized} -> {:error, "settlement_already_finalized"}
+          {:error, :reservation_not_found} -> {:error, "settlement_not_reserved"}
+          {:error, :invalid_transition} -> {:error, "settlement_invalid_transition"}
+          {:error, :idempotency_conflict} -> {:error, "settlement_idempotency_conflict"}
+          {:error, _reason} -> {:error, "settlement_commit_failed"}
+        end
+    end
+  end
+
+  defp maybe_finalize_settlement_failure(nil, _run_id, _tool_call_id, _failure_reason), do: :ok
+
+  defp maybe_finalize_settlement_failure(settlement_context, run_id, tool_call_id, failure_reason) do
+    if settlement_context.retry_class == "dedupe_reconcile_required" do
+      _ =
+        Reservations.mark_reconcile_required(
+          settlement_context.authorization_id,
+          run_id,
+          tool_call_id,
+          failure_reason: failure_reason
+        )
+
+      :ok
+    else
+      _ =
+        Reservations.release(
+          settlement_context.authorization_id,
+          run_id,
+          tool_call_id,
+          failure_reason: failure_reason
+        )
+
+      :ok
+    end
+  end
+
+  defp validate_settlement_preflight(run_id, tool_call_id, settlement_opts) do
+    cond do
+      not is_binary(run_id) or String.trim(run_id) == "" ->
+        :error
+
+      not is_binary(tool_call_id) or String.trim(tool_call_id) == "" ->
+        :error
+
+      not is_binary(settlement_opts.authorization_id) or
+          String.trim(settlement_opts.authorization_id) == "" ->
+        :error
+
+      not is_integer(settlement_opts.amount_sats) or settlement_opts.amount_sats <= 0 ->
+        :error
+
+      not is_binary(settlement_opts.provider_idempotency_key) or
+          String.trim(settlement_opts.provider_idempotency_key) == "" ->
+        :error
+
+      true ->
+        :ok
+    end
+  end
+
+  defp extract_provider_correlation_id(%{} = value) do
+    normalized = normalize_payload(value)
+
+    normalized["provider_correlation_id"] || normalized["settlement_correlation_id"] ||
+      normalized["correlation_id"] || normalized["message_id"]
+  end
+
+  defp extract_provider_correlation_id(_), do: nil
+
+  defp settlement_error_class(:settlement_metadata_missing), do: "settlement_metadata_missing"
+  defp settlement_error_class(:settlement_over_budget), do: "settlement_budget_exhausted"
+  defp settlement_error_class(:settlement_reconcile_required), do: "dedupe_reconcile_required"
+  defp settlement_error_class(:settlement_already_finalized), do: "settlement_already_finalized"
+
+  defp settlement_error_class(:settlement_idempotency_conflict),
+    do: "settlement_idempotency_conflict"
+
+  defp settlement_error_class(_), do: "settlement_execution_failed"
+
+  defp settlement_error_message(:settlement_metadata_missing),
+    do: sanitize("settlement-boundary tool missing required metadata")
+
+  defp settlement_error_message(:settlement_over_budget),
+    do: sanitize("settlement-boundary reserve rejected: budget exhausted")
+
+  defp settlement_error_message(:settlement_reconcile_required),
+    do: sanitize("settlement-boundary retry blocked until reconciliation")
+
+  defp settlement_error_message(:settlement_already_finalized),
+    do: sanitize("settlement-boundary tool call already finalized")
+
+  defp settlement_error_message(:settlement_idempotency_conflict),
+    do: sanitize("settlement-boundary retry metadata conflicts with existing reservation")
+
+  defp settlement_error_message(_), do: sanitize("settlement-boundary execution failed")
 
   defp maybe_mark_running(nil), do: {:ok, nil}
 
@@ -431,6 +692,15 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
   defp normalize_error_class(_), do: "tool_execution_failed"
 
   defp sanitize(value), do: Sanitizer.sanitize(value)
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp normalize_retry_class(value) when is_atom(value),
+    do: value |> Atom.to_string() |> String.trim()
+
+  defp normalize_retry_class(value) when is_binary(value), do: String.trim(value)
+  defp normalize_retry_class(_), do: "safe_retry"
 
   defp emit_tool_lifecycle(run_id, tool_call_id, tool_name, phase, result, state, opts \\ []) do
     error_class = Keyword.get(opts, :error_class, "none")
