@@ -31,6 +31,25 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
     end
   end
 
+  defmodule LeakyAdapter do
+    @behaviour OpenAgentsRuntime.Tools.Comms.ProviderAdapter
+
+    @impl true
+    def send(_request, _manifest, _opts) do
+      {:ok,
+       %{
+         "message_id" => "msg_redacted_001",
+         "state" => "sent",
+         "authorization" => "Bearer abc.def.ghi",
+         "api_key" => "sk-live-secret-token",
+         "email" => "provider@example.com",
+         "nested" => %{
+           "client_secret" => "nested-secret"
+         }
+       }}
+    end
+  end
+
   setup do
     ProviderCircuitBreaker.reset(:all)
     :ok
@@ -149,6 +168,36 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
     assert outcome["fallback"]["primary_provider"] == "resend"
     assert outcome["receipt"]["provider"] == "resend.backup"
     assert outcome["reason_code"] == "policy_allowed.default"
+  end
+
+  test "execute_send/3 redacts secret material from provider and receipt output surfaces" do
+    request =
+      base_request()
+      |> Map.put("consent_granted", true)
+      |> Map.put("variables", %{
+        "api_key" => "sk-live-input-token",
+        "email" => "request@example.com",
+        "safe" => "ok"
+      })
+
+    assert {:ok, outcome} =
+             Kernel.execute_send(valid_manifest(), request,
+               authorization_id: "auth_123",
+               adapter: LeakyAdapter
+             )
+
+    assert outcome["state"] == "sent"
+    assert outcome["reason_code"] == "policy_allowed.default"
+    assert outcome["provider_result"]["authorization"] == "[REDACTED]"
+    assert outcome["provider_result"]["api_key"] == "[REDACTED]"
+    assert outcome["provider_result"]["email"] == "[REDACTED_EMAIL]"
+    assert outcome["provider_result"]["nested"]["client_secret"] == "[REDACTED]"
+    assert outcome["receipt"]["recipient"] == "[REDACTED_EMAIL]"
+
+    encoded = inspect(outcome)
+    refute String.contains?(encoded, "sk-live-secret-token")
+    refute String.contains?(encoded, "nested-secret")
+    refute String.contains?(encoded, "provider@example.com")
   end
 
   test "replay_decision/3 is deterministic and reason-coded" do
