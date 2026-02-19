@@ -83,6 +83,20 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
     assert outcome["receipt"]["reason_code"] == "policy_denied.consent_required"
   end
 
+  test "execute_send/3 returns machine-readable manifest validation errors for invalid manifests" do
+    invalid_manifest = Map.delete(valid_manifest(), "manifest_version")
+
+    assert {:error, {:invalid_manifest, errors}} =
+             Kernel.execute_send(invalid_manifest, base_request(),
+               authorization_id: "auth_123",
+               adapter: SuccessAdapter
+             )
+
+    assert is_list(errors)
+    assert Enum.all?(errors, &(&1["reason_code"] == "manifest_validation.invalid_schema"))
+    assert Enum.any?(errors, &(&1["path"] == "manifest_version"))
+  end
+
   test "execute_send/3 blocks suppressed recipients when suppression policy enforces" do
     request = Map.put(base_request(), "consent_granted", true)
 

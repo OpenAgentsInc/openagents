@@ -1,0 +1,78 @@
+{
+  "$id": "https://openagents.com/schemas/extensions/extension-manifest.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenAgents Extension Manifest v1",
+  "type": "object",
+  "required": [
+    "manifest_version",
+    "tool_pack",
+    "provider",
+    "status",
+    "capabilities"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extension_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9._:-]+$"
+    },
+    "integration_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9._:-]+$",
+      "description": "Legacy alias for extension_id. Runtime requires these values to match when both are provided."
+    },
+    "tool_pack": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "error"
+      ]
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "required": [
+            "extension_id"
+          ]
+        },
+        {
+          "required": [
+            "integration_id"
+          ]
+        }
+      ]
+    }
+  ],
+  "additionalProperties": true
+}
