@@ -1,0 +1,220 @@
+# OpenClaw Capability Ingestion Strategy for OpenAgents
+
+Date: 2026-02-19  
+Status: Active strategy  
+Owner: OpenAgents runtime + web control plane  
+Depends on:
+
+- `docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md`
+- `docs/plans/active/elixir-ds-runtime-integration-addendum.md`
+- `docs/plans/active/elixir-epics.md`
+
+## Purpose
+
+Define a repeatable system for pulling proven capabilities from `~/code/openclaw` into OpenAgents, including:
+
+1. where imported code should land,
+2. when to port to Elixir vs keep/adapt TypeScript/PHP,
+3. how to preserve provenance, safety, and runtime invariants,
+4. how to ship in small, verifiable increments.
+
+This replaces ad hoc copy/paste with an explicit intake pipeline.
+
+## Strategic Fit
+
+OpenAgents runtime direction is now clear:
+
+- Elixir runtime (`apps/openagents-runtime`) owns long-running execution, tools, durable event logs, policy, and replayability.
+- Laravel (`apps/openagents.com`) remains control plane + product surface.
+
+OpenClaw has a mature capability surface in exactly the areas OpenAgents needs next:
+
+- typed tool contracts and policy filtering,
+- optional plugin tooling with manifest/schema validation,
+- loop-detection guardrails,
+- hardened web/network tooling (SSRF + DNS pinning),
+- lifecycle hook model for policy/observability,
+- memory-provider slot patterns.
+
+## Non-Negotiable Guardrails
+
+Every imported capability must satisfy OpenAgents invariants:
+
+1. Verification first: no merge without relevant lint/test/build/integration harness.
+2. Typed contracts: request/response/tool schemas must be explicit and versioned.
+3. Replayability: behavior-impacting decisions must be receipt-visible and reconstructable.
+4. Security first: imported network/tooling paths must pass threat review before exposure.
+5. Provenance and license hygiene: preserve upstream source/commit attribution and Apache-2.0 compatibility notes.
+
+## Capability Inventory and Destination Mapping
+
+Prioritized mapping from OpenClaw to OpenAgents:
+
+| Capability cluster | OpenClaw references | OpenAgents destination | Decision |
+|---|---|---|---|
+| Tool policy pipeline (profiles, allow/deny, provider-specific filters, plugin groups) | `src/agents/tool-policy.ts`, `src/agents/tool-policy-pipeline.ts`, `src/agents/pi-tools.policy.ts` | `apps/openagents-runtime/lib/openagents_runtime/tools/policy/*` + Laravel admin/config controls | Port to Elixir core; Laravel as control-plane editor |
+| Optional tool gating + plugin tool metadata | `src/plugins/tools.ts`, `src/plugins/registry.ts` | Runtime tool registry + policy resolver | Port core logic; keep plugin loading model adapted |
+| Hook lifecycle (before/after tool call, prompt/model hooks, message hooks) | `src/plugins/types.ts`, `src/plugins/hooks.ts`, `src/plugins/hook-runner-global.ts` | `apps/openagents-runtime/lib/openagents_runtime/hooks/*` | Port as runtime extension seam, event-log integrated |
+| Loop detection and no-progress circuit breaker | `src/agents/tool-loop-detection.ts`, `src/agents/pi-tools.before-tool-call.ts` | Runtime execution guardrails in run executor/tool task state machine | Port now (high value for autonomous stability) |
+| Web/network safety guard (SSRF, DNS pinning, redirect controls) | `src/infra/net/fetch-guard.ts`, `src/infra/net/ssrf.ts`, `src/agents/tools/web-fetch.ts` | Runtime tool adapters for any outbound HTTP tooling | Port early before expanding external integrations |
+| Plugin manifest + schema validation | `docs/plugins/manifest.md`, `src/plugins/manifest.ts`, `src/plugins/manifest-registry.ts`, `src/plugins/schema-validator.ts` | OpenAgents integration manifest format + runtime validation + Laravel UI forms | Adapt model; preserve strict validation behavior |
+| Memory provider slot model (`memory-core` vs `memory-lancedb`) | `extensions/memory-core/index.ts`, `extensions/memory-lancedb/index.ts`, `docs/concepts/memory.md` | Runtime memory provider abstraction (`timeline`, compaction, recall adapters) | Adapt architecture; do not copy storage model 1:1 |
+| Structured workflow tool (`llm-task`/Lobster pattern) | `extensions/llm-task/src/llm-task-tool.ts`, `docs/tools/llm-task.md`, `docs/tools/lobster.md` | DS-Elixir strategy/tool orchestration boundary | Adapt as DS signature strategy, not a direct shell-style runtime dependency |
+| OTel diagnostics service plugin | `extensions/diagnostics-otel/src/service.ts` | Runtime telemetry emitters + ops dashboards | Reuse metric taxonomy ideas; implement natively in Elixir telemetry |
+
+Deprioritized for now:
+
+- channel-specific adapters and gateway/device stack (`extensions/slack`, `extensions/telegram`, etc.),
+- local-first WS gateway control plane semantics that do not map to OpenAgents web-first architecture.
+
+## Where Imported Code Goes
+
+### 1) Runtime canonical behavior (`apps/openagents-runtime`)
+
+Primary landing zone for imported logic:
+
+- `lib/openagents_runtime/tools/`
+- `lib/openagents_runtime/runs/`
+- `lib/openagents_runtime/integrations/`
+- `lib/openagents_runtime/ds/`
+
+Recommended new module seams:
+
+- `lib/openagents_runtime/tools/policy/` (allow/deny/profile/provider filters)
+- `lib/openagents_runtime/tools/extensions/` (manifest + registration + validation)
+- `lib/openagents_runtime/tools/network/` (SSRF-safe HTTP helpers)
+- `lib/openagents_runtime/hooks/` (lifecycle hook runner + typed hook contracts)
+- `lib/openagents_runtime/guards/loop_detection.ex` (or `runs/loop_detection.ex`)
+
+### 2) Laravel control plane (`apps/openagents.com`)
+
+Laravel owns authoring, display, and operator controls:
+
+- integration registry CRUD and validation UX,
+- tool policy configuration UI,
+- rollout/canary toggles,
+- debug/audit views for runtime receipts and policy decisions.
+
+Implementation points:
+
+- `app/AI/Runtime/*`
+- `app/AI/Tools/*` (during transition)
+- `resources/js/pages/*` (admin/settings)
+
+### 3) Contract source-of-truth (`docs` + runtime docs)
+
+Imported capabilities that cross language boundaries must publish versioned schemas:
+
+- `docs/protocol/*` and runtime contract docs,
+- OpenAPI + JSON schema artifacts consumed by both Elixir and Laravel.
+
+## Ingestion Operating Model
+
+For each candidate capability, run this pipeline:
+
+1. Intake record
+   - capture upstream path(s), commit SHA, license note, capability summary, risk class.
+2. Classification
+   - `adopt` (near-direct),
+   - `adapt` (same behavior, different architecture),
+   - `port` (language rewrite with parity tests),
+   - `defer`.
+3. Target decision
+   - runtime core vs Laravel control plane vs shared contract/doc.
+4. Parity harness design
+   - fixtures/golden tests defining expected behavior before port starts.
+5. Implementation
+   - smallest shippable slice behind feature flag.
+6. Verification
+   - unit/integration + contract checks + replay/receipt assertions.
+7. Rollout
+   - shadow/canary/default-on, with rollback path.
+
+## Porting Playbook (TypeScript/PHP -> Elixir)
+
+When behavior moves into runtime:
+
+1. Freeze behavior with fixtures
+   - extract canonical input/output pairs from upstream tests/docs.
+2. Port pure logic first
+   - policy evaluators, matchers, validators, loop detectors.
+3. Port side-effect boundaries second
+   - network calls, task execution, persistence integration.
+4. Preserve error taxonomy
+   - explicit, typed reason classes so Laravel and receipts remain stable.
+5. Add deterministic test coverage
+   - ExUnit unit tests + integration tests with frozen fixtures.
+6. Wire receipts/events
+   - decisions and failures must append durable events with machine-readable reason fields.
+
+## Governance and Provenance
+
+Each imported capability must include:
+
+- upstream repository and commit SHA,
+- source file list,
+- import date + owner,
+- adaptation notes,
+- security review checklist result.
+
+Recommended artifact format:
+
+- `docs/plans/active/openclaw-intake/<capability-id>.md`
+
+This keeps future syncs and audits tractable.
+
+## Security Review Gates (Required)
+
+Before enabling imported code in production:
+
+1. Network egress policy review (especially web fetch and external APIs).
+2. Input sanitization and schema validation review.
+3. Secret handling/redaction review.
+4. Idempotency and replay behavior review.
+5. Abuse/failure mode review (looping, retry storms, stuck reservations).
+
+No gate, no rollout.
+
+## 90-Day Execution Plan
+
+### Wave 1 (Weeks 1-3): Foundation
+
+1. Create intake template and populate first capability records.
+2. Implement runtime tool policy pipeline (profiles/allow/deny/provider).
+3. Add parity tests from OpenClaw policy fixtures.
+
+### Wave 2 (Weeks 4-6): Runtime safety
+
+1. Port loop-detection guardrails into runtime executor/tool task flow.
+2. Port SSRF-safe outbound HTTP helper seam for runtime tools.
+3. Emit receipt-visible policy/guard decisions.
+
+### Wave 3 (Weeks 7-9): Extension model
+
+1. Define OpenAgents integration manifest schema (OpenClaw-inspired).
+2. Implement runtime manifest validation and registration flow.
+3. Add Laravel control-plane UI for integration definitions and policy.
+
+### Wave 4 (Weeks 10-12): Memory + structured tasks
+
+1. Introduce memory-provider abstraction (slot model).
+2. Prototype DS-bound structured subtask capability (llm-task style) behind flags.
+3. Validate replay + spend policy compliance before broader rollout.
+
+## Exit Criteria
+
+This strategy is successful when:
+
+1. OpenAgents can ingest external capabilities through a documented, repeatable pipeline.
+2. At least three imported capability clusters are live with parity tests and rollback controls.
+3. Runtime retains core invariants (typed contracts, replayability, deterministic receipts).
+4. Laravel remains stable as control plane while runtime assumes canonical execution behavior.
+
+## Immediate Next Actions
+
+1. Approve this strategy doc as the canonical intake process.
+2. Open first implementation issues:
+   - tool policy pipeline port,
+   - loop detection port,
+   - SSRF-safe HTTP seam.
+3. Create initial intake records for those three capabilities with pinned OpenClaw SHAs.
