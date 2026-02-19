@@ -29,5 +29,4 @@ Examples:
 ## Where to Implement
 
 - DSE signatures/modules: `packages/dse/`
-- Autopilot-specific catalog wiring: `apps/autopilot-worker/src/dseCatalog.ts`
-
+- Runtime policy/catalog wiring: `apps/openagents-runtime/` and `apps/openagents.com/` (for user-facing orchestration)

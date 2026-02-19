@@ -1,6 +1,6 @@
 # openagents.com (Laravel)
 
-**Incoming core web app** for OpenAgents: Laravel 12 + Inertia + React (TypeScript), WorkOS auth, Laravel Boost. This app is the target replacement for the current Effuse/Cloudflare/Convex web stack.
+**Core web control-plane app** for OpenAgents: Laravel 12 + Inertia + React (TypeScript), WorkOS auth, Laravel Boost.
 
 - **Plan:** `docs/plans/active/laravel-rebuild.md` (from repo root: `../../docs/plans/active/laravel-rebuild.md`)
 - **Verification:** `composer test`, `composer lint`, `npm run build`

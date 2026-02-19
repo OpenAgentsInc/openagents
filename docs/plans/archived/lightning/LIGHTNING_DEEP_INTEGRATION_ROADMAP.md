@@ -1,5 +1,7 @@
 # OpenAgents Deep Lightning Integration Blueprint
 
+> Archived on 2026-02-19 after Laravel/runtime cutover. Scope and path references in this document target the retired `apps/web` + `apps/autopilot-worker` architecture.
+
 Status: Draft recommendations
 Date: 2026-02-11
 Scope: Web (`apps/web`), worker (`apps/autopilot-worker`), mobile (`apps/mobile`), desktop (`apps/desktop`), shared packages (`packages/*`)

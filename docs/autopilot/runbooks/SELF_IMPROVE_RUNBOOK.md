@@ -2,6 +2,7 @@
 
 - **Status:** Draft (operational runbook; intended to be executed by Codex/operators)
 - **Last updated:** 2026-02-10
+- **Legacy scope:** This runbook targets the former `apps/web` stack; treat command paths and endpoint references as historical unless mapped to current Laravel/runtime surfaces.
 - **Plan/spec refs:** `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md`, `docs/autopilot/dse/dse.md`
 - **How-to:** `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
 - **End-to-end roadmap:** `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`

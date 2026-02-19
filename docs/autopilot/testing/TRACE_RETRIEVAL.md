@@ -1,5 +1,8 @@
 # Autopilot Trace Retrieval (Convex + Worker Logs)
 
+> Legacy scope: this trace retrieval contract is for the former `apps/web` + Convex stack.
+> For current web/runtime trace workflows, see `apps/openagents.com/README.md` and runtime docs in `apps/openagents-runtime/docs/`.
+
 This document describes what trace data is persisted for a thread, what is **not** persisted in Convex, and how an agent can fetch traces programmatically.
 
 ## TL;DR

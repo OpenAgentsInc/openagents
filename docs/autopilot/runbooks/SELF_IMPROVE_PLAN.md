@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (historical plan + implementation notes; use the runbook for execution)
 - **Last updated:** 2026-02-10
+- **Legacy scope:** This plan captures the former `apps/web` + Convex execution architecture and remains as historical implementation context.
 - **Scope:** Effect-only (TypeScript + Effect) runtime + compiler loops; Convex-backed persistence for MVP
 - **If this doc conflicts with code behavior:** code wins
 

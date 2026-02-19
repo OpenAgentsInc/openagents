@@ -1,6 +1,9 @@
 # Production E2E Testing (Effuse Test Runner) + Auth Bypass
 
-This document describes the **production-targeting, Effect-native E2E testing** path for `apps/web`, including a **deterministic auth bypass** that does **not** depend on email magic-code flows.
+> Legacy scope: this document captures the former `apps/web` Cloudflare/Convex E2E flow.
+> For current Laravel web verification, start at `apps/openagents.com/README.md` and `docs/plans/active/laravel-rebuild.md`.
+
+This document describes the historical **production-targeting, Effect-native E2E testing** path for `apps/web`, including a **deterministic auth bypass** that does **not** depend on email magic-code flows.
 
 It exists so we can:
 

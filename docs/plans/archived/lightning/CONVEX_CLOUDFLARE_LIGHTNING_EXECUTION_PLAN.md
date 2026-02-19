@@ -1,5 +1,7 @@
 # Convex/Cloudflare-First Lightning Execution Plan
 
+> Archived on 2026-02-19 after Laravel/runtime cutover. This plan reflects the retired `apps/web` + Convex/Cloudflare control-plane topology.
+
 Status: Draft  
 Date: 2026-02-12  
 Owner: OpenAgents
