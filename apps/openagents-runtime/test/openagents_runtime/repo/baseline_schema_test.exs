@@ -12,5 +12,14 @@ defmodule OpenAgentsRuntime.Repo.BaselineSchemaTest do
 
     assert {:ok, %{rows: [["runtime.tool_tasks"]]}} =
              Repo.query("SELECT to_regclass('runtime.tool_tasks')::text")
+
+    assert {:ok, %{rows: [["runtime.timeline_events"]]}} =
+             Repo.query("SELECT to_regclass('runtime.timeline_events')::text")
+
+    assert {:ok, %{rows: [["runtime.memory_chunks"]]}} =
+             Repo.query("SELECT to_regclass('runtime.memory_chunks')::text")
+
+    assert {:ok, %{rows: [["runtime.memory_retention_policies"]]}} =
+             Repo.query("SELECT to_regclass('runtime.memory_retention_policies')::text")
   end
 end
