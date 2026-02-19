@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package openagents.protocol.v1;
+
+import "google/protobuf/struct.proto";
+import "openagents/protocol/v1/reasons.proto";
+
+message CommsSendIntent {
+  string org_id = 1;
+  string user_id = 2;
+  string channel = 3;
+  string provider = 4;
+  string template_id = 5;
+  string recipient = 6;
+  google.protobuf.Struct variables = 7;
+}
+
+message CommsSendResult {
+  string message_id = 1;
+  string state = 2;
+  ReasonCode reason_code = 3;
+  string reason_code_text = 4;
+  google.protobuf.Struct provider_metadata = 5;
+}

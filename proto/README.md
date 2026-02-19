@@ -1,0 +1,30 @@
+# OpenAgents Layer-0 Proto Contracts
+
+`proto/` is the canonical Layer-0 contract source for shared runtime/control-plane/client protocol semantics.
+
+## Versioning Policy
+
+- Additive-only changes in-place for v1 packages:
+  - add new messages, enums, fields, or enum values
+  - reserve field numbers/names when removing fields
+- Breaking changes require a package version bump (`v2` namespace).
+- Buf `breaking` check is required in CI against `main`.
+
+## Package Layout
+
+- `proto/openagents/protocol/v1/reasons.proto`
+- `proto/openagents/protocol/v1/events.proto`
+- `proto/openagents/protocol/v1/receipts.proto`
+- `proto/openagents/protocol/v1/comms.proto`
+
+## Codegen
+
+Initial generation targets configured in `buf.gen.yaml`:
+- TypeScript (`generated/ts`)
+- PHP (`generated/php`)
+
+Generation command:
+
+```bash
+buf generate
+```
