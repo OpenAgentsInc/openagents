@@ -10,6 +10,45 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RuntimeCodexWorkersController extends Controller
 {
+    public function index(Request $request, RuntimeCodexClient $client): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(401);
+        }
+
+        $validated = $request->validate([
+            'status' => ['nullable', 'in:starting,running,stopping,stopped,failed'],
+            'workspace_ref' => ['nullable', 'string', 'max:255'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
+        ]);
+
+        $path = (string) config('runtime.elixir.codex_workers_path', '/internal/v1/codex/workers');
+        $query = [];
+
+        if (array_key_exists('status', $validated) && is_string($validated['status'])) {
+            $query['status'] = $validated['status'];
+        }
+
+        if (array_key_exists('workspace_ref', $validated) && is_string($validated['workspace_ref'])) {
+            $query['workspace_ref'] = $validated['workspace_ref'];
+        }
+
+        if (array_key_exists('limit', $validated) && $validated['limit'] !== null) {
+            $query['limit'] = (int) $validated['limit'];
+        }
+
+        if ($query !== []) {
+            $path .= '?'.http_build_query($query);
+        }
+
+        $result = $client->request('GET', $path, null, [
+            'user_id' => (int) $user->getAuthIdentifier(),
+        ]);
+
+        return $this->fromRuntimeResult($result);
+    }
+
     public function create(Request $request, RuntimeCodexClient $client): JsonResponse
     {
         $user = $request->user();

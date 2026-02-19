@@ -264,6 +264,15 @@ Backlog:
 4. Ensure destructive/admin actions always route through runtime APIs.
 5. Add web E2E flows for create/request/stream/stop/reconnect.
 
+Implementation status (2026-02-19):
+
+- Laravel now exposes worker list/create/show/request/stream/stop at
+  `/api/runtime/codex/workers*`.
+- Admin UI in `apps/openagents.com/resources/js/pages/admin/index.tsx` now
+  supports worker list/detail/actions plus live stream log.
+- Worker cards include runtime-projected Convex status badges (`in_sync` /
+  `lagging`) sourced from runtime projection checkpoints.
+
 Verification:
 
 - Laravel API tests for worker endpoints and stream proxy

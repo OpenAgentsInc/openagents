@@ -22,6 +22,7 @@ defmodule OpenAgentsRuntimeWeb.Router do
     post "/skills/skill-specs", SkillRegistryController, :upsert_skill_spec
     post "/skills/skill-specs/:skill_id/:version/publish", SkillRegistryController, :publish_skill
     get "/skills/releases/:skill_id/:version", SkillRegistryController, :show_skill_release
+    get "/codex/workers", CodexWorkerController, :list
     post "/codex/workers", CodexWorkerController, :create
     get "/codex/workers/:worker_id/snapshot", CodexWorkerController, :snapshot
     post "/codex/workers/:worker_id/requests", CodexWorkerController, :request

@@ -55,6 +55,7 @@ Current adapter behavior is development-only `in_memory`.
 
 - Controller: `apps/openagents.com/app/Http/Controllers/Api/RuntimeCodexWorkersController.php`
 - Routes:
+  - `GET /api/runtime/codex/workers`
   - `POST /api/runtime/codex/workers`
   - `GET /api/runtime/codex/workers/{workerId}`
   - `GET /api/runtime/codex/workers/{workerId}/stream`
@@ -62,6 +63,7 @@ Current adapter behavior is development-only `in_memory`.
   - `POST /api/runtime/codex/workers/{workerId}/stop`
   - Defined in `apps/openagents.com/routes/api.php`
 - Contract tests: `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
+- Admin UI: `apps/openagents.com/resources/js/pages/admin/index.tsx`
 
 ### Rust desktop Codex executor exists (not runtime-synced yet)
 

@@ -11,6 +11,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   alias OpenAgentsRuntime.Codex.WorkerProcess
   alias OpenAgentsRuntime.Codex.WorkerSupervisor
   alias OpenAgentsRuntime.Convex.Projector
+  alias OpenAgentsRuntime.Convex.ProjectionCheckpoint
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Security.Sanitizer
 
@@ -81,6 +82,27 @@ defmodule OpenAgentsRuntime.Codex.Workers do
          "stopped_at" => maybe_iso8601(worker.stopped_at),
          "updated_at" => maybe_iso8601(worker.updated_at)
        }}
+    end
+  end
+
+  @spec list_workers(principal(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  def list_workers(principal, opts \\ []) when is_map(principal) and is_list(opts) do
+    with {:ok, principal} <- normalize_principal(principal) do
+      limit = normalize_limit(Keyword.get(opts, :limit, 50))
+      status = normalize_string(Keyword.get(opts, :status))
+      workspace_ref = normalize_string(Keyword.get(opts, :workspace_ref))
+
+      workers =
+        Worker
+        |> by_principal(principal)
+        |> maybe_filter_status(status)
+        |> maybe_filter_workspace_ref(workspace_ref)
+        |> order_by([worker], desc: worker.updated_at, desc: worker.worker_id)
+        |> limit(^limit)
+        |> Repo.all()
+
+      checkpoints = list_projection_checkpoints(workers)
+      {:ok, Enum.map(workers, &worker_list_item(&1, checkpoints))}
     end
   end
 
@@ -300,6 +322,81 @@ defmodule OpenAgentsRuntime.Codex.Workers do
     end
   end
 
+  defp by_principal(query, principal) do
+    cond do
+      is_integer(principal[:user_id]) ->
+        user_id = principal[:user_id]
+        from(worker in query, where: worker.owner_user_id == ^user_id)
+
+      is_binary(principal[:guest_scope]) ->
+        guest_scope = principal[:guest_scope]
+        from(worker in query, where: worker.owner_guest_scope == ^guest_scope)
+
+      true ->
+        from(worker in query, where: false)
+    end
+  end
+
+  defp maybe_filter_status(query, nil), do: query
+
+  defp maybe_filter_status(query, status) when is_binary(status) do
+    from(worker in query, where: worker.status == ^status)
+  end
+
+  defp maybe_filter_workspace_ref(query, nil), do: query
+
+  defp maybe_filter_workspace_ref(query, workspace_ref) when is_binary(workspace_ref) do
+    from(worker in query, where: worker.workspace_ref == ^workspace_ref)
+  end
+
+  defp list_projection_checkpoints([]), do: %{}
+
+  defp list_projection_checkpoints(workers) do
+    worker_ids = Enum.map(workers, & &1.worker_id)
+
+    from(checkpoint in ProjectionCheckpoint,
+      where:
+        checkpoint.projection_name == "codex_worker_summary" and
+          checkpoint.entity_id in ^worker_ids
+    )
+    |> Repo.all()
+    |> Map.new(&{&1.entity_id, &1})
+  end
+
+  defp worker_list_item(%Worker{} = worker, checkpoints) do
+    projection = Map.get(checkpoints, worker.worker_id)
+
+    %{
+      "worker_id" => worker.worker_id,
+      "status" => worker.status,
+      "latest_seq" => worker.latest_seq,
+      "workspace_ref" => worker.workspace_ref,
+      "codex_home_ref" => worker.codex_home_ref,
+      "adapter" => worker.adapter,
+      "metadata" => worker.metadata || %{},
+      "started_at" => maybe_iso8601(worker.started_at),
+      "stopped_at" => maybe_iso8601(worker.stopped_at),
+      "last_heartbeat_at" => maybe_iso8601(worker.last_heartbeat_at),
+      "updated_at" => maybe_iso8601(worker.updated_at),
+      "convex_projection" => projection_summary(worker, projection)
+    }
+  end
+
+  defp projection_summary(_worker, nil), do: nil
+
+  defp projection_summary(%Worker{} = worker, %ProjectionCheckpoint{} = checkpoint) do
+    lag_events = max(worker.latest_seq - checkpoint.last_runtime_seq, 0)
+
+    %{
+      "document_id" => checkpoint.document_id,
+      "last_runtime_seq" => checkpoint.last_runtime_seq,
+      "lag_events" => lag_events,
+      "status" => if(lag_events == 0, do: "in_sync", else: "lagging"),
+      "projection_version" => checkpoint.projection_version,
+      "last_projected_at" => maybe_iso8601(checkpoint.last_projected_at)
+    }
+  end
+
   defp owner_matches?(worker, principal) do
     cond do
       is_integer(principal[:user_id]) -> worker.owner_user_id == principal[:user_id]
@@ -349,6 +446,17 @@ defmodule OpenAgentsRuntime.Codex.Workers do
 
   defp maybe_iso8601(nil), do: nil
   defp maybe_iso8601(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
+
+  defp normalize_limit(value) when is_integer(value), do: value |> max(1) |> min(200)
+
+  defp normalize_limit(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} -> normalize_limit(parsed)
+      _ -> 50
+    end
+  end
+
+  defp normalize_limit(_), do: 50
 
   defp normalize_string(value) when is_binary(value) do
     value

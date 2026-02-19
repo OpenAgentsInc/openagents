@@ -100,5 +100,77 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     assert %{"error" => %{"code" => "forbidden"}} = json_response(forbidden_conn, 403)
   end
 
+  test "list returns principal-owned workers and projection checkpoint status", %{conn: conn} do
+    owner_id = 904
+    other_id = 905
+
+    owner_worker_running = unique_id("codexw")
+    owner_worker_stopped = unique_id("codexw")
+    other_worker = unique_id("codexw")
+
+    conn
+    |> put_internal_auth(user_id: owner_id)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => owner_worker_running})
+    |> json_response(202)
+
+    conn
+    |> recycle()
+    |> put_internal_auth(user_id: owner_id)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => owner_worker_stopped})
+    |> json_response(202)
+
+    conn
+    |> recycle()
+    |> put_internal_auth(user_id: owner_id)
+    |> post(~p"/internal/v1/codex/workers/#{owner_worker_stopped}/stop", %{"reason" => "done"})
+    |> json_response(202)
+
+    conn
+    |> recycle()
+    |> put_internal_auth(user_id: other_id)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => other_worker})
+    |> json_response(202)
+
+    response =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: owner_id)
+      |> get(~p"/internal/v1/codex/workers?status=running&limit=10")
+      |> json_response(200)
+
+    assert %{"data" => workers} = response
+    assert length(workers) == 1
+
+    assert [
+             %{
+               "worker_id" => ^owner_worker_running,
+               "status" => "running",
+               "convex_projection" => %{
+                 "document_id" => _document_id,
+                 "status" => convex_status
+               }
+             }
+           ] = workers
+
+    assert convex_status in ["in_sync", "lagging"]
+  end
+
+  test "list validates query parameters", %{conn: conn} do
+    invalid_limit_conn =
+      conn
+      |> put_internal_auth(user_id: 906)
+      |> get(~p"/internal/v1/codex/workers?limit=0")
+
+    assert %{"error" => %{"code" => "invalid_request"}} = json_response(invalid_limit_conn, 400)
+
+    invalid_status_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 906)
+      |> get(~p"/internal/v1/codex/workers?status=unknown")
+
+    assert %{"error" => %{"code" => "invalid_request"}} = json_response(invalid_status_conn, 400)
+  end
+
   defp unique_id(prefix), do: "#{prefix}_#{System.unique_integer([:positive])}"
 end
