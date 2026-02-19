@@ -1,13 +1,14 @@
 # OpenClaw Capability Ingestion Strategy for OpenAgents
 
 Date: 2026-02-19  
-Status: Active strategy  
+Status: Active strategy with first parity wave delivered  
 Owner: OpenAgents runtime + web control plane  
 Depends on:
 
 - `docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md`
 - `docs/plans/active/elixir-ds-runtime-integration-addendum.md`
 - `docs/plans/active/elixir-epics.md`
+- `docs/plans/active/openclaw-full-parity-roadmap.md`
 
 ## Purpose
 
@@ -35,6 +36,14 @@ OpenClaw has a mature capability surface in exactly the areas OpenAgents needs n
 - hardened web/network tooling (SSRF + DNS pinning),
 - lifecycle hook model for policy/observability,
 - memory-provider slot patterns.
+
+## Recent implementation reality
+
+This strategy has now been executed through a complete first delivery wave rather than remaining a theoretical intake process. The runtime team carried OpenClaw parity work through issues `#1740` to `#1746` in strict sequence, and each issue landed as an isolated commit with test and contract verification before moving to the next milestone. The result is that ingestion rules in this document have already been pressure-tested against real runtime code paths, including policy composition, loop detection, hook execution, network security boundaries, extension manifest governance, DS workflow orchestration, and parity telemetry classification. The practical value of that sequence is that every imported behavior was translated into a deterministic runtime contract instead of being treated as an opaque upstream copy.
+
+The specific pattern that worked was to freeze behavior with fixtures first, implement the kernel seam in Elixir with explicit reason codes and receipts, and then wire control-plane or protocol surfaces only after runtime behavior was reproducible. This was visible in policy parity where fixture capture and pipeline tests were expanded before claiming parity, in network guard rollout where a guarded seam was installed before broad provider expansion, and in manifest governance where activation was blocked by schema validation rather than runtime assumptions. This same pattern is now the expected standard for any new OpenClaw intake item, because it produced stable merges and made post-merge verification straightforward.
+
+The strategy also proved that duplication control matters in GitHub execution. The duplicate issue batch `#1734` through `#1739` was intentionally closed, and work proceeded through the single canonical chain to avoid split implementation drift. That incident should be treated as a process lesson: one capability, one active issue, one verification path, one closing commit, and one document update cycle.
 
 ## Platform Delineation and Routing
 
@@ -261,46 +270,16 @@ Before enabling imported code in production:
 
 No gate, no rollout.
 
-## 90-Day Execution Plan
+## Post-wave execution plan
 
-### Wave 1 (Weeks 1-3): Foundation
+The next ninety-day window should be treated as consolidation and expansion under the same ingestion discipline that already succeeded. The first part of that window should focus on provenance hardening and drift closure by replacing any pending or missing upstream pins with exact SHAs, refreshing parity fixtures where upstream changes materially affect behavior, and keeping strict drift gating enabled in CI so the parity surface cannot silently diverge. This is not administrative overhead; it is what keeps parity credible when upstream OpenClaw continues moving.
 
-1. Create intake template and populate first capability records.
-2. Implement runtime tool policy pipeline (profiles/allow/deny/provider).
-3. Add parity tests from OpenClaw policy fixtures.
+The second part should prioritize the remaining kernel-aligned gap in this strategy, which is memory-provider parity and ergonomics alignment. The implementation should begin from explicit fixture and behavior capture, then land deterministic runtime abstractions for provider slots and expansion semantics, and only then expose optional control-plane knobs in Laravel where operator visibility is required. If this order is reversed, the team will end up with UI-level configuration for behavior that has not yet been stabilized in the runtime, which is exactly what this strategy is meant to prevent.
 
-### Wave 2 (Weeks 4-6): Runtime safety
+The third part should continue DS-oriented workflow maturation as runtime-native contracts rather than ad hoc prompt chains. That means adding workflow families only when budgets, traceability, and replay semantics are explicit in receipts, and refusing scope that cannot meet those invariants yet. In parallel, control-plane integration should stay focused on inspection and governance surfaces that consume runtime outputs rather than attempting to duplicate runtime decision logic in PHP.
 
-1. Port loop-detection guardrails into runtime executor/tool task flow.
-2. Port SSRF-safe outbound HTTP helper seam for runtime tools.
-3. Emit receipt-visible policy/guard decisions.
+## How to use this strategy now
 
-### Wave 3 (Weeks 7-9): Extension model
+This document should now be used as an operational checklist for every OpenClaw intake proposal rather than as a one-time planning artifact. An engineer proposing a capability should start by creating or updating an intake record, defining the upstream source and SHA, and classifying the capability using the port, adapt, adopt, or defer rules before implementation begins. During implementation, the expectation is that parity harnesses and contract checks run alongside feature development, and merge approval depends on those results being green in the same pull request. After merge, drift reporting and issue tracking should be updated immediately so the provenance chain remains continuous.
 
-1. Define OpenAgents integration manifest schema (OpenClaw-inspired).
-2. Implement runtime manifest validation and registration flow.
-3. Add Laravel control-plane UI for integration definitions and policy.
-
-### Wave 4 (Weeks 10-12): Memory + structured tasks
-
-1. Introduce memory-provider abstraction (slot model).
-2. Prototype DS-bound structured subtask capability (llm-task style) behind flags.
-3. Validate replay + spend policy compliance before broader rollout.
-
-## Exit Criteria
-
-This strategy is successful when:
-
-1. OpenAgents can ingest external capabilities through a documented, repeatable pipeline.
-2. At least three imported capability clusters are live with parity tests and rollback controls.
-3. Runtime retains core invariants (typed contracts, replayability, deterministic receipts).
-4. Laravel remains stable as control plane while runtime assumes canonical execution behavior.
-
-## Immediate Next Actions
-
-1. Approve this strategy doc as the canonical intake process.
-2. Open first implementation issues:
-   - tool policy pipeline port,
-   - loop detection port,
-   - SSRF-safe HTTP seam.
-3. Create initial intake records for those three capabilities with pinned OpenClaw SHAs.
+Success for the current phase is not measured by the raw count of imported features; it is measured by whether imported features remain deterministic, replayable, and governable as the runtime and control plane evolve. If those properties hold while additional capabilities are onboarded, this strategy is working as intended.
