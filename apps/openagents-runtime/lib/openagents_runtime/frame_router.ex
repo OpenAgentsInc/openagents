@@ -5,8 +5,6 @@ defmodule OpenAgentsRuntime.FrameRouter do
 
   @spec route(String.t(), String.t()) :: :ok | {:error, term()}
   def route(run_id, frame_id) when is_binary(run_id) and is_binary(frame_id) do
-    OpenAgentsRuntime.AgentProcess.ingest_frame(run_id, frame_id)
-  rescue
-    _ -> {:error, :agent_not_running}
+    OpenAgentsRuntime.AgentSupervisor.route_frame(run_id, frame_id)
   end
 end

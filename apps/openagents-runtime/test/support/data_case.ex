@@ -37,7 +37,11 @@ defmodule OpenAgentsRuntime.DataCase do
   """
   def setup_sandbox(tags) do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(OpenAgentsRuntime.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+
+    on_exit(fn ->
+      shutdown_runtime_processes()
+      Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+    end)
   end
 
   @doc """
@@ -54,5 +58,21 @@ defmodule OpenAgentsRuntime.DataCase do
         opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
+  end
+
+  defp shutdown_runtime_processes do
+    if Process.whereis(OpenAgentsRuntime.AgentSupervisor) do
+      OpenAgentsRuntime.AgentSupervisor
+      |> DynamicSupervisor.which_children()
+      |> Enum.each(fn
+        {_id, child_pid, _type, _modules} when is_pid(child_pid) ->
+          Process.exit(child_pid, :shutdown)
+
+        _ ->
+          :ok
+      end)
+    end
+
+    Process.sleep(50)
   end
 end

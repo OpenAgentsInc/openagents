@@ -1,6 +1,7 @@
 defmodule OpenAgentsRuntimeWeb.RunController do
   use OpenAgentsRuntimeWeb, :controller
 
+  alias OpenAgentsRuntime.FrameRouter
   alias OpenAgentsRuntime.Runs.Frames
   alias OpenAgentsRuntime.Runs.OwnershipGuard
   alias OpenAgentsRuntime.Runs.RunEvents
@@ -46,6 +47,8 @@ defmodule OpenAgentsRuntimeWeb.RunController do
       with {:ok, principal} <- OwnershipGuard.normalize_principal(principal),
            :ok <- OwnershipGuard.authorize(run_id, thread_id, principal),
            {:ok, result} <- Frames.append_frame(run_id, params) do
+        :ok = FrameRouter.route(run_id, result.frame.frame_id)
+
         status = if result.idempotent_replay, do: 200, else: 202
 
         conn
