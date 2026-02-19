@@ -4,6 +4,7 @@ defmodule OpenAgentsRuntime.DS.Traces do
   """
 
   alias OpenAgentsRuntime.DS.Receipts
+  alias OpenAgentsRuntime.Security.Sanitizer
 
   @default_inline_bytes 3_500
   @default_uri_prefix "gcs://openagents-runtime-ds-traces"
@@ -22,6 +23,7 @@ defmodule OpenAgentsRuntime.DS.Traces do
       when is_binary(run_id) and is_binary(signature_id) and is_map(payload) do
     max_inline_bytes = Keyword.get(opts, :max_inline_bytes, @default_inline_bytes)
     uri_prefix = Keyword.get(opts, :uri_prefix, @default_uri_prefix)
+    payload = Sanitizer.sanitize(payload)
 
     trace_hash = Receipts.stable_hash(payload)
     trace_id = String.slice(trace_hash, 0, 20)

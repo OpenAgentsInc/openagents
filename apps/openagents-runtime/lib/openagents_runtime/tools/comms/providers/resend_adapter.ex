@@ -5,6 +5,8 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
 
   @behaviour OpenAgentsRuntime.Tools.Comms.ProviderAdapter
 
+  alias OpenAgentsRuntime.Security.Sanitizer
+
   @resend_endpoint "https://api.resend.com/emails"
   @default_timeout_ms 10_000
 
@@ -83,7 +85,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
   end
 
   defp map_response(status, response_body) when status >= 200 and status < 300 do
-    body = decode_json(response_body)
+    body = response_body |> decode_json() |> Sanitizer.sanitize()
     message_id = body["id"] || "resend_unknown"
 
     {:ok,
@@ -97,7 +99,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
   end
 
   defp map_response(status, response_body) do
-    body = decode_json(response_body)
+    body = response_body |> decode_json() |> Sanitizer.sanitize()
 
     reason_code =
       case status do
@@ -109,7 +111,8 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
         _ -> "comms_failed.provider_error"
       end
 
-    {:error, error_result(reason_code, status, extract_error_message(body))}
+    {:error,
+     error_result(reason_code, status, body |> extract_error_message() |> Sanitizer.sanitize())}
   end
 
   defp error_result(reason_code, provider_status, message) do

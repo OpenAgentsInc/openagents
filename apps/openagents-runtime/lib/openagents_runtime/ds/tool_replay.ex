@@ -4,23 +4,11 @@ defmodule OpenAgentsRuntime.DS.ToolReplay do
   """
 
   alias OpenAgentsRuntime.Tools.ToolTasks
+  alias OpenAgentsRuntime.Security.Sanitizer
 
   @default_max_items 20
   @default_max_item_chars 280
   @default_max_total_chars 3_500
-  @redacted "[REDACTED]"
-
-  @sensitive_key_fragments [
-    "authorization",
-    "cookie",
-    "token",
-    "secret",
-    "password",
-    "api_key",
-    "apikey",
-    "x-api-key",
-    "set-cookie"
-  ]
 
   @type replay_context :: %{
           String.t() => term()
@@ -161,35 +149,7 @@ defmodule OpenAgentsRuntime.DS.ToolReplay do
     |> truncate(max_chars)
   end
 
-  defp sanitize(%{} = map) do
-    map
-    |> Enum.map(fn {key, value} ->
-      key_string = to_string(key)
-
-      if sensitive_key?(key_string) do
-        {key_string, @redacted}
-      else
-        {key_string, sanitize(value)}
-      end
-    end)
-    |> Enum.into(%{})
-  end
-
-  defp sanitize(list) when is_list(list), do: Enum.map(list, &sanitize/1)
-
-  defp sanitize(value) when is_binary(value) do
-    value
-    |> String.replace(~r/Bearer\s+[A-Za-z0-9\-\._~\+\/=]+/i, "Bearer #{@redacted}")
-    |> String.replace(~r/sk-[A-Za-z0-9_\-]+/, @redacted)
-    |> String.replace(~r/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i, @redacted)
-  end
-
-  defp sanitize(value), do: value
-
-  defp sensitive_key?(key) do
-    normalized = key |> String.downcase() |> String.replace("-", "_")
-    Enum.any?(@sensitive_key_fragments, &String.contains?(normalized, &1))
-  end
+  defp sanitize(value), do: Sanitizer.sanitize(value)
 
   defp canonicalize(%{} = map) do
     map

@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.RunEvents
+  alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Telemetry.Events
   alias OpenAgentsRuntime.Telemetry.Tracing
   alias OpenAgentsRuntime.Tools.ToolTask
@@ -187,8 +188,8 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
              run_id: run_id,
              tool_call_id: tool_call_id,
              tool_name: tool_name,
-             input: input,
-             metadata: metadata
+             input: sanitize(input),
+             metadata: sanitize(metadata)
            }) do
         {:ok, %{task: task}} -> {:ok, task}
         {:error, reason} -> {:error, reason}
@@ -219,7 +220,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
       RunEvents.append_event(run_id, "tool.call", %{
         "tool_call_id" => tool_call_id,
         "tool_name" => tool_name,
-        "input" => normalize_payload(input)
+        "input" => input |> normalize_payload() |> sanitize()
       })
     else
       {:ok, :noop}
@@ -227,7 +228,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
   end
 
   defp maybe_mark_succeeded(run_id, tool_call_id, value) do
-    output = normalize_payload(value)
+    output = value |> normalize_payload() |> sanitize()
 
     if is_binary(run_id) and is_binary(tool_call_id) do
       with {:ok, _task} <-
@@ -248,7 +249,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
       with {:ok, _task} <-
              ToolTasks.transition(run_id, tool_call_id, "timed_out", %{
                error_class: "timeout",
-               error_message: "tool execution timed out"
+               error_message: sanitize("tool execution timed out")
              }),
            {:ok, _event} <-
              append_tool_result_event(run_id, tool_call_id, %{
@@ -275,7 +276,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
       {:error, :canceled}
     else
       error_class = normalize_error_class(reason)
-      error_message = inspect(reason)
+      error_message = inspect(reason) |> sanitize()
 
       _ = maybe_mark_failed(run_id, tool_call_id, error_class, error_message)
 
@@ -322,6 +323,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
     payload =
       attrs
       |> normalize_payload()
+      |> sanitize()
       |> Map.put("tool_call_id", tool_call_id)
 
     RunEvents.append_event(run_id, "tool.result", payload)
@@ -331,6 +333,7 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
     fn progress ->
       if is_binary(run_id) and is_binary(tool_call_id) do
         payload = normalize_payload(progress)
+        payload = sanitize(payload)
 
         _ = ToolTasks.transition(run_id, tool_call_id, "streaming", %{progress: payload})
 
@@ -426,6 +429,8 @@ defmodule OpenAgentsRuntime.Tools.ToolRunner do
   defp normalize_error_class(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp normalize_error_class(reason) when is_binary(reason), do: reason
   defp normalize_error_class(_), do: "tool_execution_failed"
+
+  defp sanitize(value), do: Sanitizer.sanitize(value)
 
   defp emit_tool_lifecycle(run_id, tool_call_id, tool_name, phase, result, state, opts \\ []) do
     error_class = Keyword.get(opts, :error_class, "none")

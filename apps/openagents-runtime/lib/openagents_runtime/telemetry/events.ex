@@ -3,6 +3,7 @@ defmodule OpenAgentsRuntime.Telemetry.Events do
   Telemetry emission helper that enriches events with trace/request context.
   """
 
+  alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Telemetry.Tracing
 
   @trace_metadata_key_map %{
@@ -10,6 +11,36 @@ defmodule OpenAgentsRuntime.Telemetry.Events do
     "tracestate" => :tracestate,
     "x-request-id" => :x_request_id
   }
+
+  @preserve_metadata_keys [
+    :run_id,
+    :thread_id,
+    :frame_id,
+    :tool_call_id,
+    :status,
+    :status_class,
+    :reason_class,
+    :result,
+    :decision,
+    :authorization_mode,
+    :settlement_boundary,
+    :outcome,
+    :action,
+    :phase,
+    :state,
+    :event,
+    :event_type,
+    :duplicate,
+    :cursor,
+    :initial_cursor,
+    :final_cursor,
+    :seq,
+    :component,
+    :span,
+    :traceparent,
+    :tracestate,
+    :x_request_id
+  ]
 
   @type event_name :: [atom()]
   @type measurements :: %{optional(atom()) => number()}
@@ -39,7 +70,9 @@ defmodule OpenAgentsRuntime.Telemetry.Events do
         end
       end)
 
-    Map.merge(metadata, trace_metadata)
+    metadata
+    |> Map.merge(trace_metadata)
+    |> Sanitizer.sanitize(preserve_keys: @preserve_metadata_keys)
   end
 
   defp normalize_measurements(measurements) do
