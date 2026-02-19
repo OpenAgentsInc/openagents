@@ -8,6 +8,7 @@ resources:
   - statefulset.yaml
   - pdb.yaml
   - hpa.yaml
+  - networkpolicy-ingress.yaml
 
 labels:
   - pairs:

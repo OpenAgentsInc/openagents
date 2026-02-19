@@ -5,6 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/name: openagents-runtime
     app.kubernetes.io/component: smoke-test
+    openagents.io/runtime-http-client: "true"
 spec:
   backoffLimit: 1
   ttlSecondsAfterFinished: 1800
@@ -12,6 +13,7 @@ spec:
     metadata:
       labels:
         app: openagents-runtime-smoke
+        openagents.io/runtime-http-client: "true"
     spec:
       restartPolicy: OnFailure
       serviceAccountName: openagents-runtime
