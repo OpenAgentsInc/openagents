@@ -9,7 +9,13 @@ defmodule OpenAgentsRuntime.DS.PolicyEvaluator do
   alias OpenAgentsRuntime.DS.PolicyReasonCodes
   alias OpenAgentsRuntime.DS.Receipts
 
-  @allowed_authorization_modes MapSet.new(["delegated_budget", "interactive", "system"])
+  @allowed_authorization_modes MapSet.new([
+                                 "delegated_budget",
+                                 "delegated_budget_with_threshold",
+                                 "interactive",
+                                 "deny",
+                                 "system"
+                               ])
 
   @spec evaluate(map(), map(), map()) :: map()
   def evaluate(policy, budget, context \\ %{})

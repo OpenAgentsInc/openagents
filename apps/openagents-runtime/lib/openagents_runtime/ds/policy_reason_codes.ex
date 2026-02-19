@@ -14,6 +14,8 @@ defmodule OpenAgentsRuntime.DS.PolicyReasonCodes do
     "policy_denied.consent_required",
     "policy_denied.suppressed_recipient",
     "policy_denied.authorization_missing",
+    "policy_denied.authorization_expired",
+    "policy_denied.authorization_revoked",
     "policy_denied.invalid_authorization_mode",
     "policy_denied.budget_exhausted",
     "loop_detected.no_progress",
