@@ -96,6 +96,7 @@ Start with:
 
 * **Web app**: [apps/openagents.com/](apps/openagents.com/)
 * **Mobile app**: [apps/mobile/](apps/mobile/)
+* **System architecture overview**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 * **Vision / architecture (north-star spec)**: [docs/SYNTHESIS.md](docs/SYNTHESIS.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
