@@ -119,6 +119,10 @@ This gives a clean split:
 - Pin backend/dashboard versions together.
 - Keep Convex backend and SQL in same GCP region.
 - Backup via `npx convex export`; prefer export before upgrade.
+- Deploy scripts/runbook for OpenAgents non-prod:
+  - `apps/openagents-runtime/deploy/convex/provision-nonprod-gcp.sh`
+  - `apps/openagents-runtime/deploy/convex/check-nonprod-health.sh`
+  - `apps/openagents-runtime/deploy/convex/README.md`
 
 ## Data Class Mapping
 
