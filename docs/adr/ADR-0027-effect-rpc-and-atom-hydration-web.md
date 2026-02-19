@@ -2,15 +2,26 @@
 
 ## Status
 
-Accepted
+Deprecated
 
 ## Date
 
 2026-02-06
 
+## Deprecated Date
+
+2026-02-19
+
+## Replacement
+
+- `apps/openagents.com/` (current Laravel + Inertia web app surface)
+- `docs/PROJECT_OVERVIEW.md` (current surface ownership)
+- `docs/plans/active/laravel-rebuild.md` (current web architecture plan)
+
 ## Context
 
-`apps/web` uses TanStack Start (SSR) and already runs Effect in loaders and client-side orchestration. We want:
+This ADR captured the former `apps/web` TanStack Start architecture.
+`apps/web` is no longer an active surface in this repository.
 
 - A typed, Effect-native request surface to call from React/Effect (without immediately replacing Convex/WorkOS/Autopilot worker backends).
 - SSR-safe, shared state that can be dehydrated on the server and hydrated on the client.
@@ -84,4 +95,3 @@ Backward compatibility expectations:
 - Atom hydration: `apps/web/src/effect/atoms/session.ts`, `apps/web/src/routes/__root.tsx`
 - Migration notes: `packages/effuse/docs/effect-migration-web.md`
 - RPC notes: `packages/effuse/docs/effect-rpc-web.md`
-

@@ -2,11 +2,21 @@
 
 ## Status
 
-Accepted
+Superseded
 
 ## Date
 
 2026-02-01
+
+## Superseded Date
+
+2026-02-19
+
+## Superseded By
+
+- `docs/PROJECT_OVERVIEW.md` (current control-plane/runtime ownership)
+- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md` (current internal runtime API)
+- `docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md` (current deployment architecture)
 
 ## Context
 
@@ -15,6 +25,9 @@ control-plane data (organizations, projects, repos, issues, API tokens). These
 entities are **not** covered by a Nostr NIP, so they must live in an internal
 state system. Convex already stores this data, but Convex HTTP endpoints are
 internal and should not be exposed directly.
+
+This ADR reflects a prior Cloudflare Worker + Convex control-plane topology that
+is no longer the active architecture in this repository.
 
 We also need a clean separation:
 

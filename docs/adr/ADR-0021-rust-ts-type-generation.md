@@ -2,22 +2,26 @@
 
 ## Status
 
-**Accepted**
+Deprecated
 
 ## Date
 
 2026-01-25
 
+## Deprecated Date
+
+2026-02-19
+
+## Replacement
+
+- `apps/autopilot-desktop/` current Rust-native desktop architecture
+- `crates/autopilot_app/src/lib.rs` and `crates/autopilot_ui/src/lib.rs` as current typed desktop event/action surfaces
+- `docs/codex/unified-runtime-desktop-plan.md` for current desktop/runtime integration direction
+
 ## Context
 
-Autopilot is a Tauri application with a Rust backend living in
-`apps/autopilot-desktop/src-tauri/src/` plus a TypeScript
-frontend that uses Effect. Frontend IPC calls previously routed through a generic
-`invokeEffect(command, payload)` wrapper, while backend commands in
-`apps/autopilot-desktop/src-tauri/src/codex.rs` and
-`apps/autopilot-desktop/src-tauri/src/agent/commands.rs` returned
-`serde_json::Value`. The IPC boundary had no compile-time contract between Rust
-and TypeScript, and drift was easy.
+This ADR captured a former Tauri-based desktop architecture
+(`apps/autopilot-desktop/src-tauri/`) that is no longer present in this repo.
 
 We need a lightweight, Tauri-friendly approach that provides:
 - Rust as the source of truth for DTOs used in `#[tauri::command]` inputs/outputs
