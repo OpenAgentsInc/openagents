@@ -31,19 +31,25 @@ run_proto_checks() {
   require_cmd buf
   require_cmd rg
 
+  local against_ref
+  against_ref=""
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet refs/heads/main; then
+    against_ref=".git#branch=main,subdir=proto"
+  elif git -C "$ROOT_DIR" show-ref --verify --quiet refs/remotes/origin/main; then
+    against_ref=".git#branch=origin/main,subdir=proto"
+  fi
+
+  if [[ -z "$against_ref" ]]; then
+    echo "buf breaking failed: could not find local 'main' or 'origin/main'." >&2
+    echo "Run: git fetch origin main" >&2
+    exit 1
+  fi
+
   (
     cd "$ROOT_DIR"
     buf lint
-
-    if git show-ref --verify --quiet refs/heads/main; then
-      if git ls-tree -r --name-only main -- proto | rg -q '\.proto$'; then
-        buf breaking --against '.git#branch=main,subdir=proto'
-      else
-        echo "buf breaking skipped: no proto files found on main"
-      fi
-    else
-      echo "buf breaking skipped: local 'main' branch not found"
-    fi
+    buf breaking --against "$against_ref"
 
     ./scripts/verify-proto-generate.sh
   )
