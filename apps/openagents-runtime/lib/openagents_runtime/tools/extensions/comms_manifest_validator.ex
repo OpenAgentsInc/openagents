@@ -3,6 +3,7 @@ defmodule OpenAgentsRuntime.Tools.Extensions.CommsManifestValidator do
   Validates comms integration manifests for the runtime tool-pack extension seam.
 
   Contract references:
+  - docs/protocol/extensions/extension-manifest.schema.v1.json
   - docs/protocol/comms/integration-manifest.schema.v1.json
   - docs/protocol/comms/tool-pack-contract.v1.json
   """

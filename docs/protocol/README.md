@@ -7,6 +7,7 @@ Entry points:
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json` (canonical runtime policy reason taxonomy)
 - `docs/protocol/LAYER0_PROTOBUF_MAPPING.md` (proto3 Layer-0 mapping guidance for JSON/SSE)
 - `proto/README.md` (proto package layout + generation verification policy)
+- `docs/protocol/extensions/` (base extension manifest contract + specialization links)
 - `docs/protocol/comms/` (comms tool-pack contracts and integration manifest schema)
 - `proto/` (canonical proto contracts for generated language bindings)
 - `crates/nostr/nips/` (draft NIPs: SA, AC — canonical location for links)

@@ -10,7 +10,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
   alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Tools.Comms.NoopAdapter
   alias OpenAgentsRuntime.Tools.ProviderCircuitBreaker
-  alias OpenAgentsRuntime.Tools.Extensions.CommsManifestValidator
+  alias OpenAgentsRuntime.Tools.Extensions.ManifestRegistry
 
   @required_request_fields ~w(integration_id recipient template_id variables)
   @send_success_states MapSet.new(["queued", "sent"])
@@ -21,10 +21,10 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
 
   @spec execute_send(map(), map(), keyword()) ::
           {:ok, send_outcome()}
-          | {:error, {:invalid_manifest, [String.t()]}}
+          | {:error, {:invalid_manifest, [map()]}}
           | {:error, {:invalid_request, [String.t()]}}
   def execute_send(manifest, request, opts \\ []) when is_map(manifest) and is_map(request) do
-    with {:ok, manifest} <- CommsManifestValidator.validate(manifest),
+    with {:ok, manifest} <- ManifestRegistry.validate_for_activation(manifest),
          {:ok, request} <- validate_request(request, manifest),
          {:ok, _intent} <- validate_comms_intent(manifest, request, opts) do
       adapter = Keyword.get(opts, :adapter, NoopAdapter)
@@ -72,10 +72,10 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
   """
   @spec replay_decision(map(), map(), keyword()) ::
           {:ok, map()}
-          | {:error, {:invalid_manifest, [String.t()]}}
+          | {:error, {:invalid_manifest, [map()]}}
           | {:error, {:invalid_request, [String.t()]}}
   def replay_decision(manifest, request, opts \\ []) when is_map(manifest) and is_map(request) do
-    with {:ok, manifest} <- CommsManifestValidator.validate(manifest),
+    with {:ok, manifest} <- ManifestRegistry.validate_for_activation(manifest),
          {:ok, request} <- validate_request(request, manifest) do
       policy_context = normalize_map(Keyword.get(opts, :policy_context, %{}))
       budget = normalize_map(Keyword.get(opts, :budget, %{}))
