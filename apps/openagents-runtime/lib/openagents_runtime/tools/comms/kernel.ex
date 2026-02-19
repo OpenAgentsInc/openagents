@@ -6,6 +6,7 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
   alias OpenAgentsRuntime.DS.PolicyEvaluator
   alias OpenAgentsRuntime.DS.PolicyReasonCodes
   alias OpenAgentsRuntime.DS.Receipts
+  alias OpenAgentsRuntime.Contracts.Layer0TypeAdapters
   alias OpenAgentsRuntime.Security.Sanitizer
   alias OpenAgentsRuntime.Tools.Comms.NoopAdapter
   alias OpenAgentsRuntime.Tools.ProviderCircuitBreaker
@@ -24,7 +25,8 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
           | {:error, {:invalid_request, [String.t()]}}
   def execute_send(manifest, request, opts \\ []) when is_map(manifest) and is_map(request) do
     with {:ok, manifest} <- CommsManifestValidator.validate(manifest),
-         {:ok, request} <- validate_request(request, manifest) do
+         {:ok, request} <- validate_request(request, manifest),
+         {:ok, _intent} <- validate_comms_intent(manifest, request, opts) do
       adapter = Keyword.get(opts, :adapter, NoopAdapter)
       policy_context = normalize_map(Keyword.get(opts, :policy_context, %{}))
       budget = normalize_map(Keyword.get(opts, :budget, %{}))
@@ -54,6 +56,12 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
             opts
           )
       end
+    else
+      {:error, {:invalid_comms_intent, errors}} ->
+        {:error, {:invalid_request, errors}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -444,16 +452,26 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
       |> maybe_put("message_id", message_id)
       |> maybe_put("fallback", fallback)
 
-    %{
-      "state" => state,
-      "message_id" => message_id,
-      "reason_code" => reason_code,
-      "decision" => decision,
-      "policy" => policy_eval,
-      "provider_result" => sanitized_provider_result,
-      "receipt" => receipt
-    }
-    |> maybe_put("fallback", fallback)
+    outcome =
+      %{
+        "state" => state,
+        "message_id" => message_id,
+        "reason_code" => reason_code,
+        "decision" => decision,
+        "policy" => policy_eval,
+        "provider_result" => sanitized_provider_result,
+        "receipt" => receipt
+      }
+      |> maybe_put("fallback", fallback)
+
+    case Layer0TypeAdapters.comms_send_result(outcome) do
+      {:ok, _result} ->
+        outcome
+
+      {:error, errors} ->
+        raise ArgumentError,
+              "layer0 comms_send_result adapter validation failed: #{Enum.join(errors, "; ")}"
+    end
   end
 
   defp present_value?(value) when is_binary(value), do: String.trim(value) != ""
@@ -484,4 +502,11 @@ defmodule OpenAgentsRuntime.Tools.Comms.Kernel do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp validate_comms_intent(manifest, request, opts) do
+    case Layer0TypeAdapters.comms_send_intent(manifest, request, opts) do
+      {:ok, _intent} -> {:ok, :validated}
+      {:error, errors} -> {:error, {:invalid_comms_intent, errors}}
+    end
+  end
 end

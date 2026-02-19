@@ -6,6 +6,11 @@ Proto3 definitions under `proto/openagents/protocol/v1/*` are canonical for shar
 
 - Proto source-of-truth defines field names and types.
 - Runtime and Laravel continue to emit/consume JSON over HTTP/SSE.
+- Runtime boundary adapters enforce proto-compatible shapes before payloads cross boundaries:
+  - `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.run_event/4`
+  - `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.predict_receipt/1`
+  - `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.comms_send_intent/3`
+  - `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.comms_send_result/1`
 - JSON payloads must follow protobuf JSON mapping conventions:
   - `snake_case` proto fields map to `camelCase` JSON keys.
   - enums map by string name where possible.

@@ -9,6 +9,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
   alias OpenAgentsRuntime.DS.Signatures.Catalog
   alias OpenAgentsRuntime.DS.Strategies.DirectV1
   alias OpenAgentsRuntime.DS.Strategies.RlmLiteV1
+  alias OpenAgentsRuntime.Contracts.Layer0TypeAdapters
   alias OpenAgentsRuntime.Telemetry.Events
 
   @default_run_id "runtime_predict"
@@ -39,6 +40,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
           | {:error, {:artifact_incompatible, term()}}
           | {:error, :invalid_iteration_budget}
           | {:error, :invalid_output}
+          | {:error, {:layer0_contract_violation, :predict_receipt, [String.t()]}}
   def run(signature_id, input, opts \\ []) when is_binary(signature_id) and is_map(input) do
     run_id = Keyword.get(opts, :run_id, @default_run_id)
 
@@ -92,23 +94,42 @@ defmodule OpenAgentsRuntime.DS.Predict do
         |> Map.merge(trace_receipt_attrs(execution))
         |> Receipts.build_predict()
 
-      result =
-        %{
-          signature_id: signature_id,
-          output: output,
-          receipt: receipt
-        }
-        |> maybe_put(:trace, execution[:trace])
-        |> maybe_put(:replay, execution[:replay])
+      with {:ok, _adapter_receipt} <- Layer0TypeAdapters.predict_receipt(receipt) do
+        result =
+          %{
+            signature_id: signature_id,
+            output: output,
+            receipt: receipt
+          }
+          |> maybe_put(:trace, execution[:trace])
+          |> maybe_put(:replay, execution[:replay])
 
-      {:ok, result}
+        {:ok, result}
+      else
+        {:error, errors} ->
+          {:error, {:layer0_contract_violation, :predict_receipt, errors}}
+      end
     else
-      {:error, :not_found} -> {:error, :signature_not_found}
-      {:error, {:unsupported_strategy, _strategy_id} = reason} -> {:error, reason}
-      {:error, {:artifact_incompatible, _reason} = reason} -> {:error, reason}
-      {:error, :invalid_iteration_budget} -> {:error, :invalid_iteration_budget}
-      {:error, :invalid_output} -> {:error, :invalid_output}
-      {:error, reason} -> {:error, reason}
+      {:error, :not_found} ->
+        {:error, :signature_not_found}
+
+      {:error, {:unsupported_strategy, _strategy_id} = reason} ->
+        {:error, reason}
+
+      {:error, {:artifact_incompatible, _reason} = reason} ->
+        {:error, reason}
+
+      {:error, :invalid_iteration_budget} ->
+        {:error, :invalid_iteration_budget}
+
+      {:error, :invalid_output} ->
+        {:error, :invalid_output}
+
+      {:error, {:layer0_contract_violation, :predict_receipt, _errors} = reason} ->
+        {:error, reason}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
