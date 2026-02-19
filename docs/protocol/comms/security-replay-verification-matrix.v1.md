@@ -2,10 +2,11 @@
 
 This matrix is the release gate for comms security, policy replayability, and cross-system behavior between Laravel and runtime.
 
-## CI Gate
+## Local CI Gate
 
-- Workflow: `.github/workflows/comms-security-replay-matrix.yml`
+- Entrypoint: `scripts/comms-security-replay-matrix.sh all`
 - Required lanes: `laravel`, `runtime`
+- Hook path: `.githooks/pre-push` via `scripts/local-ci.sh all`
 - Gate rule: all lanes must pass before merge/deploy.
 
 ## Verification Lanes

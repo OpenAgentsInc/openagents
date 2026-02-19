@@ -2,7 +2,7 @@
 
 This runbook defines the release gate for EP212 recording readiness on the Laravel stack (`apps/openagents.com`). The gate is mandatory before recording the demo. Recording is blocked until the deterministic matrix passes, live smoke passes, and UI checklist passes, with artifacts logged in the rehearsal status file.
 
-## 1) Deterministic Gate (Local + CI)
+## 1) Deterministic Gate (Local)
 
 The deterministic gate is implemented in `apps/openagents.com/tests/Feature/Ep212RehearsalGateTest.php` and is designed to run without external dependencies.
 
@@ -25,11 +25,11 @@ Artifact output from `composer test:ep212:junit` is written to:
 
 - `apps/openagents.com/output/ep212-rehearsal/ep212-deterministic-junit.xml`
 
-CI gate wiring:
+Local gate wiring:
 
-- `apps/openagents.com/.github/workflows/tests.yml`
-- Step: `EP212 deterministic rehearsal gate`
-- Artifact upload: `ep212-deterministic-junit-php<version>`
+- Install hooks: `./scripts/install-git-hooks.sh`
+- Changed-files gate: `./scripts/local-ci.sh changed`
+- Full pre-push gate: `./scripts/local-ci.sh all`
 
 ## 2) Production Live Smoke Checklist (API + Chat)
 

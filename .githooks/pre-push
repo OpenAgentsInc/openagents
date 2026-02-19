@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+
+if [[ "${OA_SKIP_LOCAL_CI:-0}" == "1" ]]; then
+  echo "Skipping local CI (OA_SKIP_LOCAL_CI=1)."
+  exit 0
+fi
+
+MODE="${OA_LOCAL_CI_PUSH_MODE:-changed}"
+"$ROOT_DIR/scripts/local-ci.sh" "$MODE"

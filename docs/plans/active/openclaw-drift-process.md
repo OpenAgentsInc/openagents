@@ -9,7 +9,7 @@ Track capability drift between pinned OpenClaw SHAs in intake/parity artifacts a
 
 ## Operational context after parity wave
 
-This process became mandatory during the `#1740` to `#1746` parity wave because parity work moved from design intent to production runtime behavior. Once policy, loop detection, hooks, network guards, manifests, workflows, and telemetry were all implemented as OpenClaw-aligned runtime contracts, an untracked upstream drift stopped being a documentation nuisance and became a correctness risk. For that reason the drift script and workflow were hardened so they now produce actionable summaries and can fail CI when unresolved drift rows remain. The goal is to keep parity honest by forcing each mismatch to have either a deliberate pin decision or a re-ingestion issue that explains how behavior will be reconciled.
+This process became mandatory during the `#1740` to `#1746` parity wave because parity work moved from design intent to production runtime behavior. Once policy, loop detection, hooks, network guards, manifests, workflows, and telemetry were all implemented as OpenClaw-aligned runtime contracts, an untracked upstream drift stopped being a documentation nuisance and became a correctness risk. For that reason the drift script and local CI gating were hardened so they now produce actionable summaries and can fail local gates when unresolved drift rows remain. The goal is to keep parity honest by forcing each mismatch to have either a deliberate pin decision or a re-ingestion issue that explains how behavior will be reconciled.
 
 When this process is used correctly, engineers do not wait for outages or parity regressions to discover that upstream semantics changed. They run the report, identify whether a capability is in sync or actionable, and then attach the follow-up decision to the intake chain before the next release cycle. That creates an auditable trail from upstream change to local fixture update, and it preserves confidence that runtime behavior still matches the parity contract we claim in the roadmap.
 
@@ -31,7 +31,7 @@ Optional override:
 OPENCLAW_UPSTREAM_URL=https://github.com/openclaw/openclaw.git scripts/openclaw-drift-report.sh
 ```
 
-Strict CI gate (fail when actionable rows exist):
+Strict local gate (fail when actionable rows exist):
 
 ```bash
 OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1 scripts/openclaw-drift-report.sh
@@ -55,8 +55,9 @@ Report summary includes:
 
 ## Cadence
 
-- Weekly scheduled CI run (`.github/workflows/openclaw-drift-report.yml`)
-- On-demand via workflow dispatch
+- Local pre-push gate via `scripts/local-ci.sh all`
+- On-demand via `scripts/openclaw-drift-report.sh`
+- Optional operator cron job in trusted infrastructure
 - On changes to intake records, parity fixtures, or drift script
 
 ## Response Policy
@@ -68,7 +69,7 @@ For each `upstream_head_mismatch` or `missing_pin` row:
 4. Confirm port/adapt/adopt decision and rollout risk.
 
 Enforcement:
-- CI workflow runs drift generation with `OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1`.
+- Local CI runs drift generation with `OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE=1`.
 - Any actionable row must be accompanied by an issue in-flight or an explicit pin refresh.
 
 ## How to use this process day to day

@@ -27,16 +27,13 @@ Artifact path:
 
 - `output/ep212-rehearsal/ep212-deterministic-junit.xml`
 
-## CI hook
+## Local CI hook
 
-Workflow gate is defined in:
+Gate is enforced through local hooks/scripts:
 
-- `apps/openagents.com/.github/workflows/tests.yml`
-
-Step names:
-
-- `EP212 deterministic rehearsal gate`
-- `Upload EP212 deterministic artifact`
+- Install hooks: `./scripts/install-git-hooks.sh`
+- Changed-files gate: `./scripts/local-ci.sh changed`
+- Full gate: `./scripts/local-ci.sh all`
 
 ## Recording rule
 
