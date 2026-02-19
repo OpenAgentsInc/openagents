@@ -4,6 +4,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
   """
 
   alias OpenAgentsRuntime.DS.PolicyRegistry
+  alias OpenAgentsRuntime.DS.PolicyEvaluator
   alias OpenAgentsRuntime.DS.Receipts
   alias OpenAgentsRuntime.DS.Signatures.Catalog
   alias OpenAgentsRuntime.DS.Strategies.DirectV1
@@ -19,6 +20,7 @@ defmodule OpenAgentsRuntime.DS.Predict do
           | {:compiled_id, String.t()}
           | {:artifact, map()}
           | {:policy, map()}
+          | {:policy_context, map()}
           | {:budget, map()}
           | {:started_at, DateTime.t()}
           | {:completed_at, DateTime.t()}
@@ -55,7 +57,14 @@ defmodule OpenAgentsRuntime.DS.Predict do
       params_hash = Receipts.stable_hash(input)
       output_hash = Receipts.stable_hash(output)
       budget = normalize_budget(input, output, Keyword.get(opts, :budget, %{}))
-      policy = normalize_policy(Keyword.get(opts, :policy, %{}), compiled)
+
+      policy =
+        Keyword.get(opts, :policy, %{})
+        |> normalize_policy(compiled)
+        |> apply_policy_evaluation(
+          budget,
+          Keyword.get(opts, :policy_context, %{})
+        )
 
       receipt =
         %{
@@ -218,6 +227,12 @@ defmodule OpenAgentsRuntime.DS.Predict do
       "authorization_mode" => "delegated_budget"
     }
     |> put_compiled_policy(compiled)
+  end
+
+  defp apply_policy_evaluation(policy, budget, policy_context)
+       when is_map(policy) and is_map(budget) and is_map(policy_context) do
+    policy
+    |> Map.merge(PolicyEvaluator.evaluate(policy, budget, policy_context))
   end
 
   defp normalize_budget(input, output, budget) when is_map(budget) do

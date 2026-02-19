@@ -2,6 +2,7 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
   use OpenAgentsRuntime.DataCase, async: false
 
   alias OpenAgentsRuntime.DS.Predict
+  alias OpenAgentsRuntime.DS.PolicyReasonCodes
   alias OpenAgentsRuntime.DS.Signatures.Catalog
 
   @signature_id "@openagents/autopilot/blueprint/SelectTool.v1"
@@ -48,6 +49,9 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
     assert receipt.policy["authorization_id"] == "auth_123"
     assert receipt.policy["authorization_mode"] == "delegated_budget"
     assert receipt.policy["decision"] == "allowed"
+    assert receipt.policy["reason_code"] == "policy_allowed.default"
+    assert receipt.policy["reason_codes_version"] == PolicyReasonCodes.version()
+    assert String.length(receipt.policy["evaluation_hash"]) == 64
 
     assert receipt.budget["spent_sats"] == 10
     assert receipt.budget["reserved_sats"] == 2
@@ -79,6 +83,31 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
 
   test "run/3 rejects invalid custom direct output" do
     assert {:error, :invalid_output} = Predict.run(@signature_id, %{}, output: 123)
+  end
+
+  test "run/3 emits deny reason codes when replay context indicates loop detection" do
+    input = %{
+      "messages" => [%{"role" => "user", "content" => "keep trying forever"}]
+    }
+
+    assert {:ok, result} =
+             Predict.run(
+               @signature_id,
+               input,
+               run_id: "run_ds_deny_001",
+               policy: %{
+                 policy_id: "policy_default",
+                 authorization_id: "auth_123",
+                 authorization_mode: "delegated_budget"
+               },
+               budget: %{remaining_sats: 120},
+               policy_context: %{loop_detected_reason: "loop_detected.no_progress"}
+             )
+
+    assert result.receipt.policy["decision"] == "denied"
+    assert result.receipt.policy["reason_code"] == "loop_detected.no_progress"
+    assert result.receipt.policy["reason_codes_version"] == PolicyReasonCodes.version()
+    assert String.length(result.receipt.policy["evaluation_hash"]) == 64
   end
 
   test "run/3 supports rlm_lite.v1 with trace linkage in receipt" do

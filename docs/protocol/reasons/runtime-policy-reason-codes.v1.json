@@ -1,0 +1,62 @@
+{
+  "id": "runtime-policy-reasons.v1",
+  "version": "2026-02-19",
+  "owner": "openagents-runtime",
+  "domains": [
+    "policy_allowed",
+    "policy_denied",
+    "loop_detected",
+    "ssrf_block",
+    "manifest_validation"
+  ],
+  "reason_codes": [
+    {
+      "code": "policy_allowed.default",
+      "domain": "policy_allowed",
+      "decision": "allowed",
+      "description": "Policy evaluation allowed execution with no deny condition triggered."
+    },
+    {
+      "code": "policy_denied.explicit_deny",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because policy input explicitly requested deny."
+    },
+    {
+      "code": "policy_denied.authorization_missing",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because authorization_id is missing."
+    },
+    {
+      "code": "policy_denied.invalid_authorization_mode",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because authorization_mode is invalid."
+    },
+    {
+      "code": "policy_denied.budget_exhausted",
+      "domain": "policy_denied",
+      "decision": "denied",
+      "description": "Execution denied because remaining budget is exhausted."
+    },
+    {
+      "code": "loop_detected.no_progress",
+      "domain": "loop_detected",
+      "decision": "denied",
+      "description": "Execution denied due to loop/no-progress guard."
+    },
+    {
+      "code": "ssrf_block.private_address",
+      "domain": "ssrf_block",
+      "decision": "denied",
+      "description": "Execution denied due to outbound network SSRF policy blocking private address targets."
+    },
+    {
+      "code": "manifest_validation.invalid_schema",
+      "domain": "manifest_validation",
+      "decision": "denied",
+      "description": "Execution denied due to invalid manifest schema."
+    }
+  ]
+}
