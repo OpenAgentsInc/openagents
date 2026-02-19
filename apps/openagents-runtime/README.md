@@ -47,3 +47,4 @@ Internal API docs:
 - Dashboards + alerts runbook: `docs/OPERATIONS_ALERTING.md`
 - Load/chaos validation suite: `docs/LOAD_TESTING.md`
 - Sanitization/redaction policy: `docs/SANITIZATION_POLICY.md`
+- Kubernetes network policy hardening: `docs/NETWORK_POLICY.md`

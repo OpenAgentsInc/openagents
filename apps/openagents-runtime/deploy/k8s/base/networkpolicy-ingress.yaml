@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openagents-runtime-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: openagents-runtime
+  policyTypes:
+    - Ingress
+  ingress:
+    # BEAM distribution and EPMD are restricted to runtime peers only.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: openagents-runtime
+      ports:
+        - protocol: TCP
+          port: 4369
+        - protocol: TCP
+          port: 9000
+    # Internal HTTP is restricted to explicitly trusted control-plane clients.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openagents-com
+        - namespaceSelector:
+            matchLabels:
+              openagents.io/control-plane: "true"
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openagents-com
+        - podSelector:
+            matchLabels:
+              openagents.io/runtime-http-client: "true"
+      ports:
+        - protocol: TCP
+          port: 4000
