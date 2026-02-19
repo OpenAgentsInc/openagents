@@ -100,6 +100,8 @@ bin/foundation-bridge
 swift/foundation-bridge/.build/
 
 openagents
+!proto/openagents/
+!proto/openagents/**
 
 
 openagents.d

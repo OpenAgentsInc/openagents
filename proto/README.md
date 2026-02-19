@@ -16,6 +16,10 @@
 - `proto/openagents/protocol/v1/events.proto`
 - `proto/openagents/protocol/v1/receipts.proto`
 - `proto/openagents/protocol/v1/comms.proto`
+- `proto/openagents/protocol/v1/codex_sandbox.proto`
+- `proto/openagents/protocol/v1/codex_events.proto`
+- `proto/openagents/protocol/v1/codex_workers.proto`
+- `proto/openagents/protocol/v1/codex_auth.proto`
 
 ## Codegen
 

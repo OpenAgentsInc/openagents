@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package openagents.protocol.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "openagents/protocol/v1/codex_sandbox.proto";
+import "openagents/protocol/v1/reasons.proto";
+
+message CodexProjectionEnvelope {
+  string runtime_source = 1;
+  string runtime_run_id = 2;
+  string runtime_worker_id = 3;
+  uint64 runtime_seq = 4;
+  uint64 runtime_seq_end = 5;
+  uint32 projection_version = 6;
+  google.protobuf.Timestamp projected_at = 7;
+}
+
+message CodexWorkerEvent {
+  string worker_id = 1;
+  uint64 seq = 2;
+  string event_type = 3;
+  uint32 event_version = 4;
+  google.protobuf.Timestamp emitted_at = 5;
+  CodexProjectionEnvelope projection = 6;
+
+  oneof payload {
+    CodexWorkerStartedPayload worker_started = 10;
+    CodexWorkerRequestReceivedPayload worker_request_received = 11;
+    CodexWorkerResponsePayload worker_response = 12;
+    CodexWorkerErrorPayload worker_error = 13;
+    CodexWorkerHeartbeatPayload worker_heartbeat = 14;
+    CodexWorkerStoppedPayload worker_stopped = 15;
+    CodexWorkerUnknownPayload unknown = 16;
+  }
+}
+
+message CodexWorkerStartedPayload {
+  string status = 1;
+  CodexSandboxBinding sandbox = 2;
+  google.protobuf.Struct metadata = 3;
+}
+
+message CodexWorkerRequestReceivedPayload {
+  string request_id = 1;
+  string method = 2;
+  string request_version = 3;
+}
+
+message CodexWorkerResponsePayload {
+  string request_id = 1;
+  bool ok = 2;
+  google.protobuf.Struct response = 3;
+}
+
+message CodexWorkerErrorPayload {
+  string request_id = 1;
+  string code = 2;
+  string message = 3;
+  ReasonCode reason_code = 4;
+  google.protobuf.Struct response = 5;
+}
+
+message CodexWorkerHeartbeatPayload {
+  string status = 1;
+  google.protobuf.Timestamp observed_at = 2;
+}
+
+message CodexWorkerStoppedPayload {
+  string status = 1;
+  string reason = 2;
+}
+
+message CodexWorkerUnknownPayload {
+  google.protobuf.Struct body = 1;
+}

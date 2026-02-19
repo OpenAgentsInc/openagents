@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package openagents.protocol.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "openagents/protocol/v1/codex_events.proto";
+
+enum CodexAuthHydrationStatus {
+  CODEX_AUTH_HYDRATION_STATUS_UNSPECIFIED = 0;
+  CODEX_AUTH_HYDRATION_STATUS_UNAUTHENTICATED = 1;
+  CODEX_AUTH_HYDRATION_STATUS_DEVICE_FLOW_PENDING = 2;
+  CODEX_AUTH_HYDRATION_STATUS_AUTHENTICATED = 3;
+  CODEX_AUTH_HYDRATION_STATUS_EXPIRED = 4;
+  CODEX_AUTH_HYDRATION_STATUS_ERROR = 5;
+}
+
+message CodexAuthTokenReference {
+  string token_ref = 1;
+  string provider = 2;
+  repeated string scopes = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  bool refreshable = 5;
+}
+
+message CodexDeviceFlowStatus {
+  string flow_id = 1;
+  string provider = 2;
+  string verification_uri = 3;
+  string user_code_ref = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  uint32 poll_interval_seconds = 6;
+  string status = 7;
+}
+
+message CodexAuthStateEnvelope {
+  string worker_id = 1;
+  CodexAuthHydrationStatus hydration_status = 2;
+  string provider = 3;
+
+  CodexAuthTokenReference token_reference = 4;
+  CodexDeviceFlowStatus device_flow = 5;
+
+  string status_reason = 6;
+  google.protobuf.Timestamp observed_at = 7;
+  google.protobuf.Struct metadata = 8;
+
+  CodexProjectionEnvelope projection = 20;
+}
