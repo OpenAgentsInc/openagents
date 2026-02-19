@@ -17,21 +17,22 @@ class CapturePostHogPageview
             return $response;
         }
 
-        $distinctId = $request->user()?->email;
-
-        if (! is_string($distinctId) || $distinctId === '') {
-            $sessionId = (string) $request->session()->getId();
-            $distinctId = $sessionId !== '' ? 'guest:'.$sessionId : 'guest:'.sha1((string) $request->ip());
+        // Only send server-side pageview for authenticated users. Unauthenticated
+        // traffic is counted by client-side posthog-js when a real browser loads
+        // the app, avoiding inflation from bots/crawlers (no session cookie, no JS).
+        $user = $request->user();
+        if ($user?->email === null || $user?->email === '') {
+            return $response;
         }
 
         /** @var PostHogService $posthog */
         $posthog = app(PostHogService::class);
-        $posthog->capture($distinctId, '$pageview', [
+        $posthog->capture($user->email, '$pageview', [
             '$current_url' => $request->fullUrl(),
             '$pathname' => '/'.ltrim((string) $request->path(), '/'),
             'host' => $request->getHost(),
             'source' => 'laravel_web_middleware',
-            'auth_state' => $request->user() ? 'authenticated' : 'guest',
+            'auth_state' => 'authenticated',
         ]);
 
         return $response;
