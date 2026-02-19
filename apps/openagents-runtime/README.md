@@ -44,3 +44,4 @@ Internal API docs:
 - Laravel SSE mapping: `docs/LARAVEL_SSE_MAPPING.md`
 - Observability + telemetry guardrails: `docs/OBSERVABILITY.md`
 - Dashboards + alerts runbook: `docs/OPERATIONS_ALERTING.md`
+- Load/chaos validation suite: `docs/LOAD_TESTING.md`
