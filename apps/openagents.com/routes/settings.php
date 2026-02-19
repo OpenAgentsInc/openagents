@@ -19,5 +19,8 @@ Route::middleware([
     Route::post('settings/integrations/resend', [IntegrationController::class, 'upsertResend'])->name('settings.integrations.resend.upsert');
     Route::delete('settings/integrations/resend', [IntegrationController::class, 'disconnectResend'])->name('settings.integrations.resend.disconnect');
     Route::post('settings/integrations/resend/test', [IntegrationController::class, 'testResend'])->name('settings.integrations.resend.test');
+    Route::get('settings/integrations/google/redirect', [IntegrationController::class, 'redirectGoogle'])->name('settings.integrations.google.redirect');
+    Route::get('settings/integrations/google/callback', [IntegrationController::class, 'callbackGoogle'])->name('settings.integrations.google.callback');
+    Route::delete('settings/integrations/google', [IntegrationController::class, 'disconnectGoogle'])->name('settings.integrations.google.disconnect');
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });

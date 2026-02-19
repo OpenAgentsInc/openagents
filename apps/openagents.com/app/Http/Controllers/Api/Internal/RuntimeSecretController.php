@@ -13,7 +13,7 @@ class RuntimeSecretController extends Controller
     {
         $validated = $request->validate([
             'user_id' => ['required', 'integer', 'min:1'],
-            'provider' => ['required', 'string', 'in:resend'],
+            'provider' => ['required', 'string', 'in:resend,google'],
             'integration_id' => ['required', 'string', 'max:160'],
             'run_id' => ['required', 'string', 'max:160'],
             'tool_call_id' => ['required', 'string', 'max:160'],

@@ -58,6 +58,54 @@ test('runtime internal secret fetch returns scoped secret for valid signed reque
         ->assertJsonPath('data.scope.org_id', 'org_abc');
 });
 
+test('runtime internal secret fetch supports google provider payloads', function () {
+    $user = User::factory()->create();
+
+    $googlePayload = json_encode([
+        'provider' => 'google',
+        'integration_id' => 'gmail.primary',
+        'refresh_token' => '1//refresh_google_1234',
+        'access_token' => 'ya29.google-access',
+    ], JSON_THROW_ON_ERROR);
+
+    UserIntegration::query()->create([
+        'user_id' => $user->id,
+        'provider' => 'google',
+        'status' => 'active',
+        'encrypted_secret' => $googlePayload,
+        'secret_fingerprint' => hash('sha256', '1//refresh_google_1234'),
+        'secret_last4' => '1234',
+        'connected_at' => now(),
+    ]);
+
+    $payload = [
+        'user_id' => $user->id,
+        'provider' => 'google',
+        'integration_id' => 'gmail.primary',
+        'run_id' => 'run_google_123',
+        'tool_call_id' => 'tool_google_123',
+    ];
+
+    $signed = runtime_internal_sign($payload);
+
+    $response = $this->call(
+        'POST',
+        (string) config('runtime.internal.secret_fetch_path'),
+        [],
+        [],
+        [],
+        runtime_internal_server_headers($signed['headers']),
+        $signed['body'],
+    );
+
+    $response
+        ->assertOk()
+        ->assertJsonPath('data.provider', 'google')
+        ->assertJsonPath('data.secret', $googlePayload)
+        ->assertJsonPath('data.scope.provider', 'google')
+        ->assertJsonPath('data.scope.integration_id', 'gmail.primary');
+});
+
 test('runtime internal secret fetch rejects invalid signature', function () {
     $user = User::factory()->create();
 
