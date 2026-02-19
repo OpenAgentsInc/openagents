@@ -36,6 +36,7 @@ Kubernetes manifests:
   - `kubectl apply -k deploy/k8s/overlays/dev`
   - `kubectl apply -k deploy/k8s/overlays/staging`
   - `kubectl apply -k deploy/k8s/overlays/prod`
+- Deploy-time migration/smoke jobs: `deploy/jobs/README.md`
 
 Internal API docs:
 
