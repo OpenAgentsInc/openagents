@@ -77,6 +77,11 @@ class User extends Authenticatable
         return $this->hasMany(UserIntegration::class);
     }
 
+    public function integrationAudits(): HasMany
+    {
+        return $this->hasMany(UserIntegrationAudit::class);
+    }
+
     public function shouts(): HasMany
     {
         return $this->hasMany(Shout::class);

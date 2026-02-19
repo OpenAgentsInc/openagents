@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class UserIntegration extends Model
 {
@@ -49,5 +50,10 @@ class UserIntegration extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function audits(): HasMany
+    {
+        return $this->hasMany(UserIntegrationAudit::class, 'user_integration_id');
     }
 }
