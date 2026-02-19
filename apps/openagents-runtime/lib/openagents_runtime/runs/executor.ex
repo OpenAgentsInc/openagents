@@ -5,6 +5,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
 
   import Ecto.Query
 
+  alias OpenAgentsRuntime.Hooks.Runner, as: HookRunner
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.Cancel
   alias OpenAgentsRuntime.Runs.Frames
@@ -23,6 +24,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   @type run_once_opt ::
           {:lease_owner, String.t()}
           | {:lease_ttl_seconds, pos_integer()}
+          | {:hooks, [map()]}
           | {:loop_detection, keyword() | map()}
           | {:now, DateTime.t()}
 
@@ -37,6 +39,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
     lease_owner = Keyword.get(opts, :lease_owner, default_lease_owner())
     lease_ttl_seconds = Keyword.get(opts, :lease_ttl_seconds, @default_lease_ttl_seconds)
     loop_detection_opts = normalize_loop_detection_opts(Keyword.get(opts, :loop_detection, []))
+    hooks = resolve_hooks(Keyword.get(opts, :hooks))
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
     Tracing.with_phase_span(:infer, %{run_id: run_id, lease_owner: lease_owner}, fn ->
@@ -52,7 +55,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
                ),
              {:ok, run} <- maybe_mark_started(run, lease_owner),
              {:ok, result} <-
-               loop(run, lease_owner, lease_ttl_seconds, loop_detection_opts, 0) do
+               loop(run, lease_owner, lease_ttl_seconds, loop_detection_opts, hooks, 0) do
           {:ok, result}
         else
           nil -> {:error, :run_not_found}
@@ -64,7 +67,14 @@ defmodule OpenAgentsRuntime.Runs.Executor do
     end)
   end
 
-  defp loop(%Run{} = run, lease_owner, lease_ttl_seconds, loop_detection_opts, processed_frames) do
+  defp loop(
+         %Run{} = run,
+         lease_owner,
+         lease_ttl_seconds,
+         loop_detection_opts,
+         hooks,
+         processed_frames
+       ) do
     cond do
       terminal_status?(run.status) ->
         {:ok,
@@ -98,7 +108,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
             with {:ok, _lease} <-
                    Leases.renew(run.run_id, lease_owner, ttl_seconds: lease_ttl_seconds),
                  {:ok, next_run, terminal?} <-
-                   process_frame(run, frame, lease_owner, loop_detection_opts) do
+                   process_frame(run, frame, lease_owner, loop_detection_opts, hooks) do
               if terminal? do
                 {:ok,
                  %{
@@ -112,6 +122,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
                   lease_owner,
                   lease_ttl_seconds,
                   loop_detection_opts,
+                  hooks,
                   processed_frames + 1
                 )
               end
@@ -131,7 +142,7 @@ defmodule OpenAgentsRuntime.Runs.Executor do
 
   defp maybe_mark_started(%Run{} = run, _lease_owner), do: {:ok, run}
 
-  defp process_frame(%Run{} = run, %RunFrame{} = frame, lease_owner, loop_detection_opts) do
+  defp process_frame(%Run{} = run, %RunFrame{} = frame, lease_owner, loop_detection_opts, hooks) do
     if frame_already_consumed?(run.run_id, frame.frame_id) do
       with {:ok, run} <- advance_cursor(run, frame.id) do
         emit_frame_telemetry(run.run_id, frame.frame_type, true)
@@ -140,38 +151,53 @@ defmodule OpenAgentsRuntime.Runs.Executor do
     else
       with {:ok, loop_detection} <- LoopDetection.detect(run.run_id, frame, loop_detection_opts) do
         if loop_detection do
-          handle_loop_detected(run, frame, lease_owner, loop_detection)
+          handle_loop_detected(run, frame, lease_owner, loop_detection, hooks)
         else
-          case classify_frame(frame) do
-            {:continue, event_type, payload} ->
-              with {:ok, event} <- RunEvents.append_event(run.run_id, event_type, payload),
-                   {:ok, run} <- advance_cursor(run, frame.id),
-                   {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, event.seq) do
-                emit_frame_telemetry(run.run_id, frame.frame_type, false)
-                {:ok, run, false}
-              end
+          with {:ok, frame, pre_hook_events} <- apply_pre_classification_hooks(run, frame, hooks),
+               classification <- classify_frame(frame) do
+            case classification do
+              {:continue, event_type, payload} ->
+                persisted_events =
+                  pre_hook_events ++
+                    apply_before_message_persist_hooks(
+                      run,
+                      frame,
+                      hooks,
+                      [{event_type, payload}]
+                    )
 
-            {:terminal, status, reason_class, reason, events} ->
-              with {:ok, last_seq} <- append_events(run.run_id, events),
-                   {:ok, run} <-
-                     persist_terminal(run, %{
-                       status: status,
-                       terminal_reason_class: reason_class,
-                       terminal_reason: reason,
-                       terminal_at: DateTime.utc_now(),
-                       last_processed_frame_id: frame.id
-                     }),
-                   {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
-                emit_terminal_telemetry(run.run_id, status, reason_class)
-                {:ok, run, true}
-              end
+                with {:ok, last_seq} <- append_events(run.run_id, persisted_events),
+                     {:ok, run} <- advance_cursor(run, frame.id),
+                     {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
+                  emit_frame_telemetry(run.run_id, frame.frame_type, false)
+                  {:ok, run, false}
+                end
+
+              {:terminal, status, reason_class, reason, events} ->
+                persisted_events =
+                  pre_hook_events ++ apply_before_message_persist_hooks(run, frame, hooks, events)
+
+                with {:ok, last_seq} <- append_events(run.run_id, persisted_events),
+                     {:ok, run} <-
+                       persist_terminal(run, %{
+                         status: status,
+                         terminal_reason_class: reason_class,
+                         terminal_reason: reason,
+                         terminal_at: DateTime.utc_now(),
+                         last_processed_frame_id: frame.id
+                       }),
+                     {:ok, _lease} <- Leases.mark_progress(run.run_id, lease_owner, last_seq) do
+                  emit_terminal_telemetry(run.run_id, status, reason_class)
+                  {:ok, run, true}
+                end
+            end
           end
         end
       end
     end
   end
 
-  defp handle_loop_detected(%Run{} = run, %RunFrame{} = frame, lease_owner, detection) do
+  defp handle_loop_detected(%Run{} = run, %RunFrame{} = frame, lease_owner, detection, hooks) do
     detector = detection.detector |> to_string()
 
     events = [
@@ -198,7 +224,9 @@ defmodule OpenAgentsRuntime.Runs.Executor do
        }}
     ]
 
-    with {:ok, last_seq} <- append_events(run.run_id, events),
+    persisted_events = apply_before_message_persist_hooks(run, frame, hooks, events)
+
+    with {:ok, last_seq} <- append_events(run.run_id, persisted_events),
          {:ok, run} <-
            persist_terminal(run, %{
              status: "failed",
@@ -281,6 +309,201 @@ defmodule OpenAgentsRuntime.Runs.Executor do
         end
     end
   end
+
+  defp apply_pre_classification_hooks(%Run{} = run, %RunFrame{} = frame, hooks) do
+    context = hook_context(run, frame)
+    event = hook_event(frame)
+
+    {frame, model_events} = maybe_apply_before_model_resolve(frame, hooks, event, context)
+    {frame, prompt_events} = maybe_apply_before_prompt_build(frame, hooks, event, context)
+    {frame, before_tool_events} = maybe_apply_before_tool_call(frame, hooks, event, context)
+    after_tool_events = maybe_apply_after_tool_call(frame, hooks, event, context)
+
+    {:ok, frame, model_events ++ prompt_events ++ before_tool_events ++ after_tool_events}
+  end
+
+  defp maybe_apply_before_model_resolve(frame, hooks, event, context) do
+    if frame.frame_type in ["user_message"] do
+      result =
+        HookRunner.run_modifying_hook(
+          hooks,
+          :before_model_resolve,
+          event,
+          context,
+          &HookRunner.merge_before_model_resolve/2
+        )
+
+      payload =
+        frame.payload
+        |> stringify_map()
+        |> maybe_put_string("model_override", result.result && result.result["model_override"])
+        |> maybe_put_string(
+          "provider_override",
+          result.result && result.result["provider_override"]
+        )
+
+      {%{frame | payload: payload}, result.events}
+    else
+      {frame, []}
+    end
+  end
+
+  defp maybe_apply_before_prompt_build(frame, hooks, event, context) do
+    if frame.frame_type in ["user_message"] do
+      result =
+        HookRunner.run_modifying_hook(
+          hooks,
+          :before_prompt_build,
+          event,
+          context,
+          &HookRunner.merge_before_prompt_build/2
+        )
+
+      payload =
+        frame.payload
+        |> stringify_map()
+        |> maybe_put_string("system_prompt", result.result && result.result["system_prompt"])
+        |> maybe_prepend_payload_text(result.result && result.result["prepend_context"])
+
+      {%{frame | payload: payload}, result.events}
+    else
+      {frame, []}
+    end
+  end
+
+  defp maybe_apply_before_tool_call(frame, hooks, event, context) do
+    if frame.frame_type in ["tool_call", "tool_request"] do
+      result =
+        HookRunner.run_modifying_hook(
+          hooks,
+          :before_tool_call,
+          event,
+          context,
+          fn acc, next -> Map.merge(acc, next) end
+        )
+
+      payload =
+        frame.payload
+        |> stringify_map()
+        |> maybe_merge_payload_patch(result.result)
+
+      {%{frame | payload: payload}, result.events}
+    else
+      {frame, []}
+    end
+  end
+
+  defp maybe_apply_after_tool_call(frame, hooks, event, context) do
+    if frame.frame_type in ["tool_result", "tool_output", "tool_status"] do
+      HookRunner.run_void_hook(hooks, :after_tool_call, event, context)
+    else
+      []
+    end
+  end
+
+  defp apply_before_message_persist_hooks(%Run{} = run, %RunFrame{} = frame, hooks, events) do
+    context = hook_context(run, frame)
+
+    Enum.flat_map(events, fn {event_type, payload} ->
+      event_payload = stringify_map(payload)
+
+      result =
+        HookRunner.run_modifying_hook(
+          hooks,
+          :before_message_persist,
+          %{
+            "event_type" => event_type,
+            "payload" => event_payload,
+            "frame_id" => frame.frame_id,
+            "frame_type" => frame.frame_type
+          },
+          context,
+          &HookRunner.merge_before_message_persist/2
+        )
+
+      next_event_type =
+        case result.result && result.result["event_type"] do
+          value when is_binary(value) and value != "" -> value
+          _ -> event_type
+        end
+
+      next_payload =
+        case result.result && result.result["payload"] do
+          patch when is_map(patch) -> Map.merge(event_payload, stringify_map(patch))
+          _ -> event_payload
+        end
+
+      result.events ++ [{next_event_type, next_payload}]
+    end)
+  end
+
+  defp hook_event(%RunFrame{} = frame) do
+    %{
+      "frame_id" => frame.frame_id,
+      "frame_type" => frame.frame_type,
+      "payload" => stringify_map(frame.payload)
+    }
+  end
+
+  defp hook_context(%Run{} = run, %RunFrame{} = frame) do
+    %{
+      "run_id" => run.run_id,
+      "thread_id" => run.thread_id,
+      "owner_user_id" => run.owner_user_id,
+      "run_status" => run.status,
+      "frame_id" => frame.frame_id,
+      "frame_type" => frame.frame_type
+    }
+  end
+
+  defp maybe_merge_payload_patch(payload, nil), do: payload
+
+  defp maybe_merge_payload_patch(payload, patch) when is_map(patch) do
+    patch = stringify_map(patch)
+
+    payload_patch =
+      case patch["payload"] do
+        nested when is_map(nested) -> stringify_map(nested)
+        _ -> %{}
+      end
+
+    patch_without_payload = Map.delete(patch, "payload")
+
+    payload
+    |> Map.merge(payload_patch)
+    |> Map.merge(patch_without_payload)
+  end
+
+  defp maybe_prepend_payload_text(payload, prepend_context) when is_binary(prepend_context) do
+    prepend_context = String.trim(prepend_context)
+
+    cond do
+      prepend_context == "" ->
+        payload
+
+      is_binary(payload["text"]) and payload["text"] != "" ->
+        Map.put(payload, "text", prepend_with_gap(prepend_context, payload["text"]))
+
+      is_binary(payload["delta"]) and payload["delta"] != "" ->
+        Map.put(payload, "delta", prepend_with_gap(prepend_context, payload["delta"]))
+
+      true ->
+        Map.put(payload, "prepend_context", prepend_context)
+    end
+  end
+
+  defp maybe_prepend_payload_text(payload, _prepend_context), do: payload
+
+  defp maybe_put_string(map, _key, nil), do: map
+  defp maybe_put_string(map, _key, ""), do: map
+
+  defp maybe_put_string(map, key, value) when is_binary(value) do
+    Map.put(map, key, value)
+  end
+
+  defp maybe_put_string(map, key, value), do: Map.put(map, key, to_string(value))
+
+  defp prepend_with_gap(prefix, value), do: "#{prefix}\n\n#{value}"
 
   defp append_events(run_id, events) do
     Enum.reduce_while(events, {:ok, 0}, fn {event_type, payload}, _acc ->
@@ -476,6 +699,14 @@ defmodule OpenAgentsRuntime.Runs.Executor do
   end
 
   defp normalize_loop_detection_opts(_opts), do: []
+
+  defp resolve_hooks(nil), do: []
+
+  defp resolve_hooks(hooks) when is_list(hooks) do
+    HookRunner.normalize_registry(hooks)
+  end
+
+  defp resolve_hooks(_hooks), do: []
 
   defp to_existing_atom_safely(key) when is_binary(key) do
     try do
