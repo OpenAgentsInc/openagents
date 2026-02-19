@@ -51,6 +51,7 @@ const config = {
     Demo: {
       screens: {
         Feed: "feed",
+        Codex: "codex",
         DemoShowroom: {
           path: "showroom/:queryIndex?/:itemIndex?",
         },

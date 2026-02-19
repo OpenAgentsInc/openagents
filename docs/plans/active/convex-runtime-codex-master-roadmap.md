@@ -334,6 +334,16 @@ Backlog:
 3. Reuse Laravel token mint and runtime proxy pathways.
 4. Add mobile resilience paths for token refresh and reconnect.
 
+Implementation status (2026-02-19):
+
+- Mobile now includes a runtime-backed Codex worker screen with:
+  - worker list + snapshot reads via Laravel runtime proxy APIs,
+  - long-poll stream parity using runtime SSE endpoint semantics (`cursor` + `tail_ms`),
+  - convex projection status visibility from runtime worker summaries.
+- Scoped admin actions (`request`, `stop`) use the same Laravel runtime endpoints and honor runtime policy responses (`403`/`409`) without client-side bypass.
+- Convex auth for mobile now uses Laravel token minting (`POST /api/convex/token`) with short-lived token caching and refresh.
+- Stream reconnect, list polling refresh, and auth-error fallback paths are implemented for mobile reconnect resilience.
+
 Verification:
 
 - mobile integration tests against staging runtime + Convex

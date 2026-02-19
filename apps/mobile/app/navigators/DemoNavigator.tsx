@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon"
 import { EpisodeProvider } from "@/context/EpisodeContext"
 import { translate } from "@/i18n/translate"
 import { DemoCommunityScreen } from "@/screens/DemoCommunityScreen"
+import { CodexWorkersScreen } from "@/screens/CodexWorkersScreen"
 import { DemoDebugScreen } from "@/screens/DemoDebugScreen"
 import { DemoPodcastListScreen } from "@/screens/DemoPodcastListScreen"
 import { DemoShowroomScreen } from "@/screens/DemoShowroomScreen/DemoShowroomScreen"
@@ -52,6 +53,17 @@ export function DemoNavigator() {
             tabBarLabel: translate("demoNavigator:feedTab"),
             tabBarIcon: ({ focused }) => (
               <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            ),
+          }}
+        />
+
+        <Tab.Screen
+          name="Codex"
+          component={CodexWorkersScreen}
+          options={{
+            tabBarLabel: "Codex",
+            tabBarIcon: ({ focused }) => (
+              <Icon icon="debug" color={focused ? colors.tint : colors.tintInactive} size={30} />
             ),
           }}
         />

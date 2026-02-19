@@ -255,6 +255,13 @@ Work:
 - Start read-only parity (snapshot + stream).
 - Add safe admin controls (stop, limited request actions) behind role/policy guards.
 - Reuse the same runtime worker IDs and event schema.
+- Reuse Laravel convex token minting for mobile Convex auth (`POST /api/convex/token`) with refresh-aware caching.
+
+Implementation status (2026-02-19):
+
+- Mobile now exposes a Codex worker tab backed by Laravel runtime APIs for list/snapshot/stream/admin actions.
+- Stream parity uses runtime cursor/tail semantics with reconnect-safe long polling.
+- Convex auth path on mobile now mints short-lived tokens via Laravel instead of reusing raw session token directly.
 
 ## Event Taxonomy Baseline
 
