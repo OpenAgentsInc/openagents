@@ -70,6 +70,10 @@ jobs:
           fi
         working-directory: .
 
+      - name: Buf generate verification (TS/PHP targets)
+        run: ./scripts/verify-proto-generate.sh
+        working-directory: .
+
       - name: Restore mix cache
         uses: actions/cache@v4
         with:
