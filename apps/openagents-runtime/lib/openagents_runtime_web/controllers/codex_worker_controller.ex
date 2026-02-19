@@ -82,6 +82,12 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerController do
       {:error, :invalid_request} ->
         error(conn, 400, "invalid_request", "request.method is required")
 
+      {:error, :worker_stopped} ->
+        error(conn, 409, "conflict", "worker is stopped; create or reattach to resume")
+
+      {:error, :worker_not_running} ->
+        error(conn, 409, "conflict", "worker is not running")
+
       {:error, :forbidden} ->
         error(conn, 403, "forbidden", "worker does not belong to principal")
 
@@ -108,6 +114,12 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerController do
 
       {:error, :invalid_event} ->
         error(conn, 400, "invalid_request", "event.event_type must start with worker.")
+
+      {:error, :worker_stopped} ->
+        error(conn, 409, "conflict", "worker is stopped; create or reattach to resume")
+
+      {:error, :worker_not_running} ->
+        error(conn, 409, "conflict", "worker is not running")
 
       {:error, :forbidden} ->
         error(conn, 403, "forbidden", "worker does not belong to principal")

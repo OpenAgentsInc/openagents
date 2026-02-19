@@ -74,6 +74,7 @@ Current adapter behavior is development-only `in_memory`.
 - Desktop now optionally mirrors worker lifecycle/events into runtime when runtime sync env vars are set (`OPENAGENTS_RUNTIME_SYNC_*`):
   - creates/reattaches worker on thread bootstrap/session start/resume,
   - posts async events to `POST /api/runtime/codex/workers/{workerId}/events`,
+  - runs periodic runtime heartbeat event sync (`worker.heartbeat`) for attached workers,
   - uses stable per-thread worker IDs for idempotent reattach.
 
 ### Local bridge protocol exists
@@ -128,8 +129,8 @@ Active implementation plan:
 
 ### Remaining Hardening
 
-1. Tighten runtime heartbeat semantics for desktop-attached workers (currently supported via event taxonomy; may gain dedicated endpoint later).
-2. Add explicit reconnect/resume integration tests across desktop restart scenarios.
+1. Add explicit end-to-end desktop restart simulation coverage in CI (runtime + desktop integration lane).
+2. Evaluate whether a dedicated heartbeat endpoint is needed beyond event-ingest semantics.
 
 Runtime event ingest is now live, so web/mobile can observe desktop-originated activity through runtime stream/snapshot APIs.
 
@@ -281,6 +282,7 @@ Current deterministic mapping (desktop + local bridge):
 | Source signal | Runtime `event_type` |
 |---|---|
 | `thread/started` | `worker.started` |
+| `thread/stopped` or `thread/completed` | `worker.stopped` |
 | `*/error` or `codex/error` | `worker.error` |
 | `*/heartbeat` | `worker.heartbeat` |
 | bridge request envelope | `worker.request.received` |
@@ -292,6 +294,12 @@ Baseline payload shape sent with each mapped event:
 - `method` (original notification/request method)
 - `params` (original params object; `{}` when missing)
 - `occurred_at` (desktop path) or `request_id` (bridge request path when present)
+
+Runtime snapshot/list heartbeat policy fields:
+
+- `heartbeat_state` (`fresh|stale|missing|stopped|failed`)
+- `heartbeat_age_ms`
+- `heartbeat_stale_after_ms`
 
 ## Identity and Ownership Rules
 

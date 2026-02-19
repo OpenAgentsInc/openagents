@@ -300,13 +300,15 @@ Backlog:
 
 Implementation status (2026-02-19):
 
-- Items 1-3 are implemented:
+- Items 1-4 are implemented:
   - Desktop session start/resume paths now ensure runtime worker create/reattach.
   - Runtime ingest endpoint is live at `POST /internal/v1/codex/workers/{worker_id}/events`.
   - Laravel proxy route is live at `POST /api/runtime/codex/workers/{workerId}/events`.
-  - Desktop and Pylon local bridge now emit normalized runtime taxonomy mappings (`worker.started`, `worker.error`, `worker.heartbeat`, `worker.event`, `worker.request.received`).
+  - Desktop and Pylon local bridge now emit normalized runtime taxonomy mappings (`worker.started`, `worker.stopped`, `worker.error`, `worker.heartbeat`, `worker.event`, `worker.request.received`).
+  - Runtime worker mutations now enforce terminal-state conflicts (`409`) until explicit reattach/resume, and worker snapshot/list include deterministic heartbeat-state policy fields (`heartbeat_state`, `heartbeat_age_ms`, `heartbeat_stale_after_ms`).
+- Item 6 now has runtime-level restart/reattach resilience coverage through stop/resume replay tests and deterministic same-worker-id reattach behavior.
 - Item 5 is live for status badges via runtime projection checkpoints in web admin.
-- Items 4 and 6 remain open hardening/test work (explicit heartbeat/restart-resume durability scenarios).
+- Remaining gap: add full desktop process restart E2E automation in CI.
 
 Verification:
 

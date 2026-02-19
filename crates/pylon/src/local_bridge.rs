@@ -723,6 +723,8 @@ fn emit_codex_error(state: &BridgeState, workspace_id: Option<&str>, message: &s
 fn runtime_event_type_for_notification(method: &str) -> &'static str {
     if method == "thread/started" {
         "worker.started"
+    } else if method == "thread/stopped" || method == "thread/completed" {
+        "worker.stopped"
     } else if method.ends_with("/error") || method == "codex/error" {
         "worker.error"
     } else if method.ends_with("/heartbeat") {

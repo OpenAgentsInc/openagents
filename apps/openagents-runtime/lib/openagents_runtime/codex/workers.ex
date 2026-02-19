@@ -16,6 +16,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   alias OpenAgentsRuntime.Security.Sanitizer
 
   @all_topic "runtime:codex_workers"
+  @default_heartbeat_stale_after_ms 120_000
 
   @type principal :: %{optional(:user_id) => integer(), optional(:guest_scope) => String.t()}
 
@@ -30,8 +31,9 @@ defmodule OpenAgentsRuntime.Codex.Workers do
       case Repo.get(Worker, worker_id) do
         %Worker{} = worker ->
           if owner_matches?(worker, principal) do
+            {worker, idempotent_replay} = maybe_reactivate_worker(worker)
             :ok = maybe_start_worker_process(worker, opts)
-            {:ok, %{worker: worker, idempotent_replay: true}}
+            {:ok, %{worker: worker, idempotent_replay: idempotent_replay}}
           else
             {:error, :forbidden}
           end
@@ -66,22 +68,26 @@ defmodule OpenAgentsRuntime.Codex.Workers do
     end
   end
 
-  @spec snapshot(String.t(), principal()) :: {:ok, map()} | {:error, term()}
-  def snapshot(worker_id, principal) when is_binary(worker_id) and is_map(principal) do
+  @spec snapshot(String.t(), principal(), keyword()) :: {:ok, map()} | {:error, term()}
+  def snapshot(worker_id, principal, opts \\ [])
+      when is_binary(worker_id) and is_map(principal) and is_list(opts) do
     with {:ok, worker} <- fetch_authorized_worker(worker_id, principal) do
-      {:ok,
-       %{
-         "worker_id" => worker.worker_id,
-         "status" => worker.status,
-         "latest_seq" => worker.latest_seq,
-         "workspace_ref" => worker.workspace_ref,
-         "codex_home_ref" => worker.codex_home_ref,
-         "adapter" => worker.adapter,
-         "metadata" => worker.metadata || %{},
-         "started_at" => maybe_iso8601(worker.started_at),
-         "stopped_at" => maybe_iso8601(worker.stopped_at),
-         "updated_at" => maybe_iso8601(worker.updated_at)
-       }}
+      snapshot =
+        %{
+          "worker_id" => worker.worker_id,
+          "status" => worker.status,
+          "latest_seq" => worker.latest_seq,
+          "workspace_ref" => worker.workspace_ref,
+          "codex_home_ref" => worker.codex_home_ref,
+          "adapter" => worker.adapter,
+          "metadata" => worker.metadata || %{},
+          "started_at" => maybe_iso8601(worker.started_at),
+          "stopped_at" => maybe_iso8601(worker.stopped_at),
+          "updated_at" => maybe_iso8601(worker.updated_at)
+        }
+        |> Map.merge(heartbeat_summary(worker, opts))
+
+      {:ok, snapshot}
     end
   end
 
@@ -102,7 +108,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
         |> Repo.all()
 
       checkpoints = list_projection_checkpoints(workers)
-      {:ok, Enum.map(workers, &worker_list_item(&1, checkpoints))}
+      {:ok, Enum.map(workers, &worker_list_item(&1, checkpoints, opts))}
     end
   end
 
@@ -111,6 +117,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   def submit_request(worker_id, principal, request, opts \\ [])
       when is_binary(worker_id) and is_map(principal) and is_map(request) do
     with {:ok, worker} <- fetch_authorized_worker(worker_id, principal),
+         :ok <- ensure_worker_accepts_mutations(worker),
          {:ok, request} <- validate_request(request),
          {:ok, _pid} <- ensure_worker_process(worker, opts),
          {:ok, _event} <-
@@ -155,9 +162,12 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   @spec ingest_event(String.t(), principal(), map()) :: {:ok, map()} | {:error, term()}
   def ingest_event(worker_id, principal, attrs)
       when is_binary(worker_id) and is_map(principal) and is_map(attrs) do
-    with {:ok, _worker} <- fetch_authorized_worker(worker_id, principal),
+    with {:ok, worker} <- fetch_authorized_worker(worker_id, principal),
          {:ok, event_type, payload} <- normalize_ingest_event(attrs),
+         :ok <- ensure_worker_accepts_mutations(worker, event_type),
          {:ok, event} <- append_event(worker_id, event_type, payload) do
+      _ = maybe_apply_worker_lifecycle_event(worker, event_type, payload)
+
       {:ok,
        %{
          "worker_id" => event.worker_id,
@@ -206,15 +216,17 @@ defmodule OpenAgentsRuntime.Codex.Workers do
     multi =
       Multi.new()
       |> Multi.run(:next_seq, fn repo, _changes ->
+        now = DateTime.utc_now()
+
         sql = """
         UPDATE runtime.codex_workers
         SET latest_seq = latest_seq + 1,
-            last_heartbeat_at = NOW()
+            last_heartbeat_at = $2
         WHERE worker_id = $1
         RETURNING latest_seq
         """
 
-        case repo.query(sql, [worker_id]) do
+        case repo.query(sql, [worker_id, now]) do
           {:ok, %{rows: [[next_seq]]}} when is_integer(next_seq) -> {:ok, next_seq}
           {:ok, %{rows: []}} -> {:error, :worker_not_found}
           {:error, reason} -> {:error, reason}
@@ -406,7 +418,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
     |> Map.new(&{&1.entity_id, &1})
   end
 
-  defp worker_list_item(%Worker{} = worker, checkpoints) do
+  defp worker_list_item(%Worker{} = worker, checkpoints, opts) do
     projection = Map.get(checkpoints, worker.worker_id)
 
     %{
@@ -419,10 +431,10 @@ defmodule OpenAgentsRuntime.Codex.Workers do
       "metadata" => worker.metadata || %{},
       "started_at" => maybe_iso8601(worker.started_at),
       "stopped_at" => maybe_iso8601(worker.stopped_at),
-      "last_heartbeat_at" => maybe_iso8601(worker.last_heartbeat_at),
       "updated_at" => maybe_iso8601(worker.updated_at),
       "convex_projection" => projection_summary(worker, projection)
     }
+    |> Map.merge(heartbeat_summary(worker, opts))
   end
 
   defp projection_summary(_worker, nil), do: nil
@@ -438,6 +450,119 @@ defmodule OpenAgentsRuntime.Codex.Workers do
       "projection_version" => checkpoint.projection_version,
       "last_projected_at" => maybe_iso8601(checkpoint.last_projected_at)
     }
+  end
+
+  defp maybe_reactivate_worker(%Worker{} = worker) do
+    if worker.status in ["stopped", "failed"] do
+      now = DateTime.utc_now()
+
+      worker =
+        worker
+        |> Ecto.Changeset.change(status: "running", stopped_at: nil, last_heartbeat_at: now)
+        |> Repo.update!()
+
+      _ =
+        append_event(worker.worker_id, "worker.started", %{
+          "status" => "running",
+          "reason" => "reattach"
+        })
+
+      {Repo.get!(Worker, worker.worker_id), false}
+    else
+      {worker, true}
+    end
+  end
+
+  defp ensure_worker_accepts_mutations(%Worker{} = worker, event_type \\ nil) do
+    cond do
+      worker.status == "running" ->
+        :ok
+
+      event_type == "worker.stopped" and worker.status == "stopped" ->
+        :ok
+
+      worker.status in ["stopped", "failed"] ->
+        {:error, :worker_stopped}
+
+      true ->
+        {:error, :worker_not_running}
+    end
+  end
+
+  defp maybe_apply_worker_lifecycle_event(%Worker{} = worker, "worker.stopped", payload) do
+    reason =
+      payload
+      |> Map.get("reason")
+      |> normalize_string()
+      |> Kernel.||("event_stop")
+
+    now = DateTime.utc_now()
+
+    worker
+    |> Ecto.Changeset.change(status: "stopped", stopped_at: now, last_heartbeat_at: now)
+    |> Repo.update!()
+
+    safe_stop(worker.worker_id, reason)
+  end
+
+  defp maybe_apply_worker_lifecycle_event(_worker, _event_type, _payload), do: :ok
+
+  defp heartbeat_summary(%Worker{} = worker, opts) do
+    stale_after_ms = heartbeat_stale_after_ms()
+    now = normalize_now(Keyword.get(opts, :now))
+    heartbeat_age_ms = heartbeat_age_ms(worker.last_heartbeat_at, now)
+
+    %{
+      "last_heartbeat_at" => maybe_iso8601(worker.last_heartbeat_at),
+      "heartbeat_age_ms" => heartbeat_age_ms,
+      "heartbeat_stale_after_ms" => stale_after_ms,
+      "heartbeat_state" => heartbeat_state(worker.status, heartbeat_age_ms, stale_after_ms)
+    }
+  end
+
+  defp heartbeat_state(status, _heartbeat_age_ms, _stale_after_ms)
+       when status in ["stopped", "failed"],
+       do: status
+
+  defp heartbeat_state(_status, nil, _stale_after_ms), do: "missing"
+
+  defp heartbeat_state(_status, heartbeat_age_ms, stale_after_ms)
+       when is_integer(heartbeat_age_ms) and is_integer(stale_after_ms) do
+    if heartbeat_age_ms > stale_after_ms do
+      "stale"
+    else
+      "fresh"
+    end
+  end
+
+  defp heartbeat_age_ms(nil, _now), do: nil
+
+  defp heartbeat_age_ms(%DateTime{} = last_heartbeat_at, %DateTime{} = now) do
+    DateTime.diff(now, last_heartbeat_at, :millisecond)
+    |> max(0)
+  end
+
+  defp normalize_now(%DateTime{} = now), do: now
+  defp normalize_now(_), do: DateTime.utc_now()
+
+  defp heartbeat_stale_after_ms do
+    case Application.get_env(
+           :openagents_runtime,
+           :codex_worker_heartbeat_stale_after_ms,
+           @default_heartbeat_stale_after_ms
+         ) do
+      value when is_integer(value) and value > 0 ->
+        value
+
+      value when is_binary(value) ->
+        case Integer.parse(value) do
+          {parsed, ""} when parsed > 0 -> parsed
+          _ -> @default_heartbeat_stale_after_ms
+        end
+
+      _ ->
+        @default_heartbeat_stale_after_ms
+    end
   end
 
   defp owner_matches?(worker, principal) do

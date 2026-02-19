@@ -109,6 +109,25 @@ test('runtime codex workers api proxies lifecycle endpoints', function () {
     });
 });
 
+test('runtime codex workers api passes through runtime conflict for stopped worker mutation', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_2/events' => Http::response([
+            'error' => ['code' => 'conflict', 'message' => 'worker is stopped; create or reattach to resume'],
+        ], 409),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_2/events', [
+        'event' => [
+            'event_type' => 'worker.event',
+            'payload' => ['source' => 'desktop', 'method' => 'turn/started'],
+        ],
+    ]);
+
+    $response->assertStatus(409)->assertJsonPath('error.code', 'conflict');
+});
+
 test('runtime codex workers api proxies stream endpoint with cursor and last-event-id semantics', function () {
     $user = User::factory()->create();
 

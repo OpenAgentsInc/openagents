@@ -7,7 +7,7 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use arboard::Clipboard;
@@ -90,6 +90,7 @@ const ENV_RUNTIME_SYNC_TOKEN: &str = "OPENAGENTS_RUNTIME_SYNC_TOKEN";
 const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_REF";
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
+const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
 
 #[derive(Clone)]
 struct RuntimeCodexSync {
@@ -99,6 +100,8 @@ struct RuntimeCodexSync {
     workspace_ref: String,
     codex_home_ref: Option<String>,
     worker_prefix: String,
+    heartbeat_interval_ms: u64,
+    heartbeat_started: Arc<AtomicBool>,
     synced_workers: Arc<tokio::sync::Mutex<HashSet<String>>>,
 }
 
@@ -133,6 +136,10 @@ impl RuntimeCodexSync {
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "desktopw".to_string());
 
+        let heartbeat_interval_ms = parse_positive_u64_env(ENV_RUNTIME_SYNC_HEARTBEAT_MS)
+            .unwrap_or(30_000)
+            .max(1_000);
+
         Some(Self {
             client: HttpClient::new(),
             base_url,
@@ -140,6 +147,8 @@ impl RuntimeCodexSync {
             workspace_ref,
             codex_home_ref,
             worker_prefix,
+            heartbeat_interval_ms,
+            heartbeat_started: Arc::new(AtomicBool::new(false)),
             synced_workers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
         })
     }
@@ -202,6 +211,44 @@ impl RuntimeCodexSync {
         Ok(worker_id)
     }
 
+    fn start_heartbeat_loop(&self) {
+        if self.heartbeat_started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
+        let sync = self.clone();
+        tokio::spawn(async move {
+            let mut ticker =
+                tokio::time::interval(Duration::from_millis(sync.heartbeat_interval_ms));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+            loop {
+                ticker.tick().await;
+                let worker_ids = {
+                    let guard = sync.synced_workers.lock().await;
+                    guard.iter().cloned().collect::<Vec<_>>()
+                };
+
+                for worker_id in worker_ids {
+                    let payload = json!({
+                        "source": "autopilot-desktop",
+                        "kind": "periodic",
+                        "occurred_at": Utc::now().to_rfc3339(),
+                    });
+
+                    if sync
+                        .ingest_worker_event(&worker_id, "worker.heartbeat", payload)
+                        .await
+                        .is_err()
+                    {
+                        let mut guard = sync.synced_workers.lock().await;
+                        guard.remove(&worker_id);
+                    }
+                }
+            }
+        });
+    }
+
     async fn ingest_notification(
         &self,
         thread_id: &str,
@@ -211,6 +258,16 @@ impl RuntimeCodexSync {
         let worker_id = self.ensure_worker_for_thread(thread_id, None).await?;
         let (event_type, payload) = runtime_event_from_notification(method, params);
 
+        self.ingest_worker_event(&worker_id, &event_type, payload)
+            .await
+    }
+
+    async fn ingest_worker_event(
+        &self,
+        worker_id: &str,
+        event_type: &str,
+        payload: Value,
+    ) -> Result<(), String> {
         let body = json!({
             "event": {
                 "event_type": event_type,
@@ -283,6 +340,16 @@ fn resolve_codex_home() -> Option<PathBuf> {
         .map(|home| Path::new(&home).join(".codex"))
 }
 
+fn parse_positive_u64_env(name: &str) -> Option<u64> {
+    let raw = env::var(name).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    trimmed.parse::<u64>().ok().filter(|value| *value > 0)
+}
+
 fn runtime_event_from_notification(method: &str, params: Option<&Value>) -> (String, Value) {
     let mut payload = Map::new();
     payload.insert("source".to_string(), json!("autopilot-desktop"));
@@ -296,6 +363,9 @@ fn runtime_event_from_notification(method: &str, params: Option<&Value>) -> (Str
     let event_type = if method == "thread/started" {
         payload.insert("status".to_string(), json!("running"));
         "worker.started"
+    } else if method == "thread/stopped" || method == "thread/completed" {
+        payload.insert("status".to_string(), json!("stopped"));
+        "worker.stopped"
     } else if method.ends_with("/error") || method == "codex/error" {
         "worker.error"
     } else if method.ends_with("/heartbeat") {
@@ -1034,6 +1104,9 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
             let workspace_id = workspace.workspace_id().to_string();
             let runtime_sync = Arc::new(RuntimeCodexSync::from_env(&cwd_string));
+            if let Some(sync) = runtime_sync.as_ref() {
+                sync.start_heartbeat_loop();
+            }
             let mut stream = workspace.events();
             let session_states = Arc::new(tokio::sync::Mutex::new(HashMap::<
                 SessionId,

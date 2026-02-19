@@ -74,13 +74,13 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       ]
     },
     {"/codex/workers/{worker_id}/requests", "post"} => %{
-      statuses: ~w(200 400 401 403 404),
+      statuses: ~w(200 400 401 403 404 409),
       required_params: [
         %{name: "worker_id", location: "path", required: true}
       ]
     },
     {"/codex/workers/{worker_id}/events", "post"} => %{
-      statuses: ~w(202 400 401 403 404),
+      statuses: ~w(202 400 401 403 404 409),
       required_params: [
         %{name: "worker_id", location: "path", required: true}
       ]
