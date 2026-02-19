@@ -36,5 +36,8 @@ defmodule OpenAgentsRuntime.Repo.BaselineSchemaTest do
 
     assert {:ok, %{rows: [["runtime.ds_eval_reports"]]}} =
              Repo.query("SELECT to_regclass('runtime.ds_eval_reports')::text")
+
+    assert {:ok, %{rows: [["runtime.ds_pointer_audits"]]}} =
+             Repo.query("SELECT to_regclass('runtime.ds_pointer_audits')::text")
   end
 end
