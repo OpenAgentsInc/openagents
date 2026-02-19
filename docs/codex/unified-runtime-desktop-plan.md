@@ -93,6 +93,22 @@ Gap: Laravel does not yet expose a Codex worker stream proxy endpoint.
 
 This gives one worker contract for all surfaces while keeping desktop-first execution.
 
+## Convex Sync Lane (Optional, Recommended for Multi-Client Reactivity)
+
+Convex is allowed as a reactive sync/read-model layer for Codex UI surfaces, but
+not as Codex lifecycle authority.
+
+Rules:
+
+1. Runtime/Postgres remains source-of-truth for Codex worker lifecycle/events.
+2. Convex stores derived worker summaries/notification state for subscriptions.
+3. Runtime is the single writer into Convex projection docs.
+4. Laravel remains auth/session authority and mints Convex auth tokens.
+
+Active implementation plan:
+
+- `docs/plans/active/convex-self-hosting-runtime-sync-plan.md`
+
 ## Required Contract Shape
 
 ### Keep (already implemented)
@@ -272,6 +288,11 @@ These should map deterministically into runtime event payloads so web/mobile can
 
 - `docs/codex/webapp-sandbox-and-codex-auth-plan.md` is the active hosted sandbox backend architecture companion (Cloudflare/Daytona/OpenAgents GCP).
 - `docs/plans/archived/codex/opencode-codex-auth.md` is archived historical auth deep-dive context.
+
+## ADR Alignment
+
+- `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md` defines the
+  Convex sync-layer boundary and Codex operational posture for Convex CLI/MCP.
 
 ## Change Control
 

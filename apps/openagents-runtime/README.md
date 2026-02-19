@@ -45,6 +45,7 @@ Internal API docs:
 - Laravel SSE mapping: `docs/LARAVEL_SSE_MAPPING.md`
 - DS-Elixir runtime contract: `docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
 - DS-Elixir operations runbook: `docs/DS_ELIXIR_OPERATIONS.md`
+- Convex sync-layer integration boundary: `docs/CONVEX_SYNC.md`
 - Observability + telemetry guardrails: `docs/OBSERVABILITY.md`
 - Dashboards + alerts runbook: `docs/OPERATIONS_ALERTING.md`
 - Load/chaos validation suite: `docs/LOAD_TESTING.md`

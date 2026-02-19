@@ -31,7 +31,9 @@ This document maps the active codebase.
 - Desktop execution is currently centered in `apps/autopilot-desktop/` and local bridge code in `crates/pylon/`.
 - Runtime exposes internal Codex worker lifecycle APIs in `apps/openagents-runtime` (`/internal/v1/codex/workers*`).
 - Laravel proxies user-scoped Codex worker APIs in `apps/openagents.com` (`/api/runtime/codex/workers*`).
+- Convex (if enabled) is projection/sync-only for reactive Codex read models; runtime remains source of truth and single writer for those projections.
 - Canonical Codex architecture plan: `docs/codex/unified-runtime-desktop-plan.md`.
+- Convex self-hosting/sync plan: `docs/plans/active/convex-self-hosting-runtime-sync-plan.md`.
 
 ## Shared Packages
 

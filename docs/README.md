@@ -23,6 +23,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 ## Codex Architecture
 
 - Canonical unified plan: `codex/unified-runtime-desktop-plan.md`
+- Convex sync-layer plan: `plans/active/convex-self-hosting-runtime-sync-plan.md`
 - Codex docs index: `codex/README.md`
 
 ## Contracts (Canonical Specs)
