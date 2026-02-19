@@ -7,6 +7,7 @@ defmodule OpenAgentsRuntime.Memory.TimelineStore do
 
   alias OpenAgentsRuntime.Memory.MemoryChunk
   alias OpenAgentsRuntime.Memory.MemoryCompaction
+  alias OpenAgentsRuntime.Memory.MemoryRollup
   alias OpenAgentsRuntime.Memory.RetentionPolicy
   alias OpenAgentsRuntime.Memory.TimelineEvent
   alias OpenAgentsRuntime.Repo
@@ -151,6 +152,17 @@ defmodule OpenAgentsRuntime.Memory.TimelineStore do
     Repo.all(query)
   end
 
+  @spec get_chunk(String.t(), String.t()) :: MemoryChunk.t() | nil
+  def get_chunk(run_id, chunk_id) when is_binary(run_id) and is_binary(chunk_id) do
+    query =
+      from(chunk in MemoryChunk,
+        where: chunk.run_id == ^run_id and chunk.chunk_id == ^chunk_id,
+        limit: 1
+      )
+
+    Repo.one(query)
+  end
+
   @spec upsert_retention_policy(String.t(), map()) ::
           {:ok, RetentionPolicy.t()} | {:error, term()}
   def upsert_retention_policy(event_class, attrs) when is_binary(event_class) and is_map(attrs) do
@@ -202,6 +214,34 @@ defmodule OpenAgentsRuntime.Memory.TimelineStore do
         order_by: [desc: compaction.inserted_at],
         limit: ^limit
       )
+
+    Repo.all(query)
+  end
+
+  @spec insert_rollup(map()) :: {:ok, MemoryRollup.t()} | {:error, term()}
+  def insert_rollup(attrs) when is_map(attrs) do
+    changeset = MemoryRollup.changeset(%MemoryRollup{}, attrs)
+    Repo.insert(changeset)
+  end
+
+  @spec list_rollups(String.t(), keyword()) :: [MemoryRollup.t()]
+  def list_rollups(run_id, opts \\ []) when is_binary(run_id) do
+    target_level = Keyword.get(opts, :target_level)
+    limit = Keyword.get(opts, :limit, 50)
+
+    query =
+      from(rollup in MemoryRollup,
+        where: rollup.run_id == ^run_id,
+        order_by: [desc: rollup.inserted_at],
+        limit: ^limit
+      )
+
+    query =
+      if is_integer(target_level) do
+        from(rollup in query, where: rollup.target_level == ^target_level)
+      else
+        query
+      end
 
     Repo.all(query)
   end
