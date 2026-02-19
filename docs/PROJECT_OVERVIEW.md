@@ -21,6 +21,7 @@ This document maps the active codebase after the Rust deprecation cleanup.
 - `apps/openagents.com` owns public APIs, user auth/session, UI, and operator-facing settings.
 - `apps/openagents-runtime` owns internal runtime correctness concerns: execution leases, durable run events, streaming, policy decisions, spend reservation state, and DS strategy execution.
 - Contributor rule: runtime correctness logic belongs in `apps/openagents-runtime`, not Laravel controllers/models.
+- Contract review ownership for runtime/proto surfaces is enforced in `.github/CODEOWNERS`.
 
 ## Shared Packages
 

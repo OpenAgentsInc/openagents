@@ -14,3 +14,15 @@ Entry points:
 Related:
 - `docs/adr/` (ADRs define architectural intent and compatibility rules)
 - `docs/GLOSSARY.md` (canonical terminology)
+
+## Governance and Ownership
+
+- Review ownership for proto and protocol surfaces is enforced by `.github/CODEOWNERS`.
+- Contract-governed paths include:
+  - `proto/**`
+  - `docs/protocol/**`
+  - `apps/openagents-runtime/docs/*CONTRACT*.md`
+  - `apps/openagents-runtime/lib/openagents_runtime/contracts/**`
+  - `apps/openagents-runtime/lib/mix/tasks/runtime.contract.check.ex`
+- Branch protection follow-up:
+  - Ensure required code-owner reviews are enabled for `main` in repository settings.

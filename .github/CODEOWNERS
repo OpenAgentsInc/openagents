@@ -1,0 +1,12 @@
+# Contract governance ownership
+
+# Layer-0 proto contracts
+proto/** @AtlantisPleb
+
+# Canonical protocol contracts and taxonomy docs
+docs/protocol/** @AtlantisPleb
+
+# Runtime contract docs/checkers
+apps/openagents-runtime/docs/*CONTRACT*.md @AtlantisPleb
+apps/openagents-runtime/lib/openagents_runtime/contracts/** @AtlantisPleb
+apps/openagents-runtime/lib/mix/tasks/runtime.contract.check.ex @AtlantisPleb
