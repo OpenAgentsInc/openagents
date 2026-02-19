@@ -33,7 +33,8 @@ We need a single rule so docs, providers, and clients don't rot.
 ### Canonical owner
 
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) is the canonical mapping reference.
-- `crates/protocol/` is the source of truth for envelope parsing and schema identifiers.
+- `proto/` is the canonical Layer-0 schema source (see ADR-0028).
+- `crates/protocol/` provides implementation helpers for envelope parsing and schema identifier handling.
 
 ## Scope
 
@@ -80,4 +81,5 @@ Backward compatibility:
 
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md)
 - [GLOSSARY.md](../GLOSSARY.md) — schema ID terminology
+- [ADR-0028](./ADR-0028-layer0-proto-canonical-schema.md)
 - `crates/protocol/src/*` — schema registry / envelope parsing
