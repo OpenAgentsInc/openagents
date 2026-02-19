@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Runtime\LegacyRuntimeClient;
 use App\AI\Runtime\RuntimeClient;
 use App\Models\User;
 use App\Services\GuestChatSessionService;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class ChatApiController extends Controller
 {
@@ -123,7 +125,20 @@ class ChatApiController extends Controller
         Log::info('Chat stream: starting', ['conversation_id' => $conversationId, 'prompt_length' => strlen($prompt)]);
 
         $runtimeClient = resolve(RuntimeClient::class);
-        $response = $runtimeClient->streamAutopilotRun($user, $conversationId, $prompt, $authenticatedSession);
+
+        try {
+            $response = $runtimeClient->streamAutopilotRun($user, $conversationId, $prompt, $authenticatedSession);
+        } catch (Throwable $runtimeFailure) {
+            Log::error('Chat stream runtime client failed; falling back to legacy runtime client', [
+                'conversation_id' => $conversationId,
+                'runtime_driver' => $runtimeClient->driverName(),
+                'error' => $runtimeFailure->getMessage(),
+            ]);
+
+            $legacyRuntimeClient = resolve(LegacyRuntimeClient::class);
+            $runtimeClient = $legacyRuntimeClient;
+            $response = $legacyRuntimeClient->streamAutopilotRun($user, $conversationId, $prompt, $authenticatedSession);
+        }
 
         Log::info('Chat stream: response created', [
             'conversation_id' => $conversationId,
