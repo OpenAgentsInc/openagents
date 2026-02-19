@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
 This directory tracks the active OpenAgents cross-platform stack.
-Current product surfaces: web — Laravel app (`apps/openagents.com/`); mobile (`apps/mobile`); desktop (`apps/desktop`, early implementation). See `plans/active/laravel-rebuild.md` for the web app plan.
+Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/openagents-runtime/`), mobile (`apps/mobile`), and desktop (`apps/desktop`, early implementation).
 
 ## Start Here
 
@@ -11,6 +11,14 @@ Current product surfaces: web — Laravel app (`apps/openagents.com/`); mobile (
 - Repository map (current): `PROJECT_OVERVIEW.md`
 - Current roadmap: `ROADMAP.md`
 - Agent contract and engineering rules: `../AGENTS.md`
+
+## Control-Plane and Runtime Docs
+
+- Runtime architecture plan: `plans/active/elixir-agent-runtime-gcp-implementation-plan.md`
+- Runtime internal API contract: `../apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- Runtime operations runbook: `../apps/openagents-runtime/docs/OPERATIONS.md`
+- DS-Elixir runtime contract: `../apps/openagents-runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
+- DS-Elixir operations runbook: `../apps/openagents-runtime/docs/DS_ELIXIR_OPERATIONS.md`
 
 ## Contracts (Canonical Specs)
 
@@ -34,7 +42,8 @@ Current product surfaces: web — Laravel app (`apps/openagents.com/`); mobile (
 
 ## Local Development
 
-- Laravel web (core): `../apps/openagents.com/` — see plan `plans/active/laravel-rebuild.md`; typically `cd apps/openagents.com && composer run dev`.
+- Laravel web (control plane): `../apps/openagents.com/` — see `plans/active/laravel-rebuild.md`; typically `cd apps/openagents.com && composer run dev`.
+- Elixir runtime (execution): `../apps/openagents-runtime/` — `cd apps/openagents-runtime && mix phx.server`.
 - Mobile local dev: `../apps/mobile/README.md`
 - Desktop local dev: `../apps/desktop/README.md`
 - Storybook and component docs: `STORYBOOK.md`
