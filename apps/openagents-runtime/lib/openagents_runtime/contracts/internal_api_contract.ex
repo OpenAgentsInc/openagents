@@ -79,6 +79,12 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
         %{name: "worker_id", location: "path", required: true}
       ]
     },
+    {"/codex/workers/{worker_id}/events", "post"} => %{
+      statuses: ~w(202 400 401 403 404),
+      required_params: [
+        %{name: "worker_id", location: "path", required: true}
+      ]
+    },
     {"/codex/workers/{worker_id}/stream", "get"} => %{
       statuses: ~w(200 400 401 403 404 410),
       required_params: [
@@ -392,6 +398,10 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       |> maybe_push(
         String.contains?(body, "POST /internal/v1/codex/workers/{worker_id}/requests"),
         "RUNTIME_CONTRACT.md missing codex worker request endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/codex/workers/{worker_id}/events"),
+        "RUNTIME_CONTRACT.md missing codex worker events endpoint section"
       )
       |> maybe_push(
         String.contains?(body, "GET /internal/v1/codex/workers/{worker_id}/stream"),

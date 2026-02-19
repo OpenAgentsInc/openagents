@@ -111,6 +111,29 @@ class RuntimeCodexWorkersController extends Controller
         return $this->fromRuntimeResult($result);
     }
 
+    public function events(string $workerId, Request $request, RuntimeCodexClient $client): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(401);
+        }
+
+        $validated = $request->validate([
+            'event' => ['required', 'array'],
+            'event.event_type' => ['required', 'string', 'max:160', 'starts_with:worker.'],
+            'event.payload' => ['nullable', 'array'],
+        ]);
+
+        $pathTemplate = (string) config('runtime.elixir.codex_worker_events_path_template', '/internal/v1/codex/workers/{worker_id}/events');
+        $path = str_replace('{worker_id}', $workerId, $pathTemplate);
+
+        $result = $client->request('POST', $path, $validated, [
+            'user_id' => (int) $user->getAuthIdentifier(),
+        ]);
+
+        return $this->fromRuntimeResult($result);
+    }
+
     public function stop(string $workerId, Request $request, RuntimeCodexClient $client): JsonResponse
     {
         $user = $request->user();

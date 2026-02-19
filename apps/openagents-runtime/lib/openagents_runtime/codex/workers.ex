@@ -152,6 +152,23 @@ defmodule OpenAgentsRuntime.Codex.Workers do
     end
   end
 
+  @spec ingest_event(String.t(), principal(), map()) :: {:ok, map()} | {:error, term()}
+  def ingest_event(worker_id, principal, attrs)
+      when is_binary(worker_id) and is_map(principal) and is_map(attrs) do
+    with {:ok, _worker} <- fetch_authorized_worker(worker_id, principal),
+         {:ok, event_type, payload} <- normalize_ingest_event(attrs),
+         {:ok, event} <- append_event(worker_id, event_type, payload) do
+      {:ok,
+       %{
+         "worker_id" => event.worker_id,
+         "seq" => event.seq,
+         "event_type" => event.event_type,
+         "payload" => event.payload,
+         "occurred_at" => maybe_iso8601(event.inserted_at)
+       }}
+    end
+  end
+
   @spec stop_worker(String.t(), principal(), keyword()) :: {:ok, map()} | {:error, term()}
   def stop_worker(worker_id, principal, opts \\ [])
       when is_binary(worker_id) and is_map(principal) do
@@ -303,6 +320,32 @@ defmodule OpenAgentsRuntime.Codex.Workers do
       true ->
         {:ok,
          %{"request_id" => request_id, "id" => request_id, "method" => method, "params" => params}}
+    end
+  end
+
+  defp normalize_ingest_event(attrs) when is_map(attrs) do
+    attrs = stringify_keys(attrs)
+    event = attrs["event"] |> stringify_keys() |> Map.merge(attrs)
+
+    event_type =
+      normalize_string(event["event_type"]) || normalize_string(event["type"]) ||
+        normalize_string(event["eventType"])
+
+    payload =
+      case event["payload"] do
+        payload when is_map(payload) -> stringify_keys(payload)
+        _ -> %{}
+      end
+
+    cond do
+      is_nil(event_type) ->
+        {:error, :invalid_event}
+
+      not String.starts_with?(event_type, "worker.") ->
+        {:error, :invalid_event}
+
+      true ->
+        {:ok, event_type, payload}
     end
   end
 

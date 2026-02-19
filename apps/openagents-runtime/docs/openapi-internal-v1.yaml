@@ -298,6 +298,33 @@ paths:
           $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
+  /codex/workers/{worker_id}/events:
+    post:
+      summary: Ingest desktop-side Codex notification into worker event stream
+      operationId: ingestCodexWorkerEvent
+      parameters:
+        - $ref: '#/components/parameters/WorkerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodexWorkerEventIngestRequest'
+      responses:
+        '202':
+          description: Worker event appended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerEventIngestResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
   /codex/workers/{worker_id}/stream:
     get:
       summary: Stream Codex worker events as SSE
@@ -897,6 +924,42 @@ components:
         data:
           type: object
           additionalProperties: true
+    CodexWorkerEventIngestRequest:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: object
+          required: [event_type]
+          properties:
+            event_type:
+              type: string
+              pattern: '^worker\\..+'
+            payload:
+              type: object
+              additionalProperties: true
+    CodexWorkerEventIngestResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [worker_id, seq, event_type]
+          properties:
+            worker_id:
+              type: string
+            seq:
+              type: integer
+              minimum: 0
+            event_type:
+              type: string
+            payload:
+              type: object
+              additionalProperties: true
+            occurred_at:
+              type: string
+              format: date-time
+              nullable: true
     CodexWorkerStopResponse:
       type: object
       required: [data]

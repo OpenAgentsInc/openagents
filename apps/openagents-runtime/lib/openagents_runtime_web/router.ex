@@ -26,6 +26,7 @@ defmodule OpenAgentsRuntimeWeb.Router do
     post "/codex/workers", CodexWorkerController, :create
     get "/codex/workers/:worker_id/snapshot", CodexWorkerController, :snapshot
     post "/codex/workers/:worker_id/requests", CodexWorkerController, :request
+    post "/codex/workers/:worker_id/events", CodexWorkerController, :events
     get "/codex/workers/:worker_id/stream", CodexWorkerController, :stream
     post "/codex/workers/:worker_id/stop", CodexWorkerController, :stop
     get "/runs/:run_id/snapshot", RunController, :snapshot

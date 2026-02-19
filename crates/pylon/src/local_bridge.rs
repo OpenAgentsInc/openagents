@@ -720,6 +720,26 @@ fn emit_codex_error(state: &BridgeState, workspace_id: Option<&str>, message: &s
     );
 }
 
+fn runtime_event_type_for_notification(method: &str) -> &'static str {
+    if method == "thread/started" {
+        "worker.started"
+    } else if method.ends_with("/error") || method == "codex/error" {
+        "worker.error"
+    } else if method.ends_with("/heartbeat") {
+        "worker.heartbeat"
+    } else {
+        "worker.event"
+    }
+}
+
+fn runtime_event_payload(method: &str, params: Option<Value>) -> Value {
+    serde_json::json!({
+        "source": "pylon-local-bridge",
+        "method": method,
+        "params": params.unwrap_or_else(|| serde_json::json!({})),
+    })
+}
+
 async fn handle_codex_connect(state: &BridgeState, payload: Value) -> Result<()> {
     let data = match parse_data_object(payload) {
         Some(data) => data,
@@ -975,6 +995,9 @@ async fn spawn_codex_session(
     let workspace_id_events = workspace_id.clone();
     tokio::spawn(async move {
         while let Some(notification) = notifications.recv().await {
+            let runtime_event_type = runtime_event_type_for_notification(&notification.method);
+            let runtime_event_payload =
+                runtime_event_payload(&notification.method, notification.params.clone());
             let message = serde_json::json!({
                 "method": notification.method,
                 "params": notification.params,
@@ -984,6 +1007,10 @@ async fn spawn_codex_session(
                 data: serde_json::json!({
                     "workspace_id": workspace_id_events,
                     "message": message,
+                    "runtime_event": {
+                        "event_type": runtime_event_type,
+                        "payload": runtime_event_payload,
+                    },
                 })
                 .to_string(),
                 channel: Some(CODEX_CHANNEL.to_string()),
@@ -997,6 +1024,12 @@ async fn spawn_codex_session(
     tokio::spawn(async move {
         while let Some(request) = requests.recv().await {
             let id_value = serde_json::to_value(&request.id).unwrap_or(Value::Null);
+            let runtime_event_payload = serde_json::json!({
+                "source": "pylon-local-bridge",
+                "method": request.method,
+                "request_id": id_value.clone(),
+                "params": request.params.clone(),
+            });
             let message = serde_json::json!({
                 "method": request.method,
                 "params": request.params,
@@ -1007,6 +1040,10 @@ async fn spawn_codex_session(
                 data: serde_json::json!({
                     "workspace_id": workspace_id_requests,
                     "message": message,
+                    "runtime_event": {
+                        "event_type": "worker.request.received",
+                        "payload": runtime_event_payload,
+                    },
                 })
                 .to_string(),
                 channel: Some(CODEX_CHANNEL.to_string()),

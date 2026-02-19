@@ -59,18 +59,22 @@ Current adapter behavior is development-only `in_memory`.
   - `POST /api/runtime/codex/workers`
   - `GET /api/runtime/codex/workers/{workerId}`
   - `GET /api/runtime/codex/workers/{workerId}/stream`
+  - `POST /api/runtime/codex/workers/{workerId}/events`
   - `POST /api/runtime/codex/workers/{workerId}/requests`
   - `POST /api/runtime/codex/workers/{workerId}/stop`
   - Defined in `apps/openagents.com/routes/api.php`
 - Contract tests: `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
 - Admin UI: `apps/openagents.com/resources/js/pages/admin/index.tsx`
 
-### Rust desktop Codex executor exists (not runtime-synced yet)
+### Rust desktop Codex executor with runtime sync baseline exists
 
 - App: `apps/autopilot-desktop/`
 - Main orchestration: `apps/autopilot-desktop/src/main.rs`
-- Desktop currently spawns/uses `AppServerClient` directly and handles local Codex lifecycle (`thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`) plus local notifications/events.
-- Desktop is not yet wiring those sessions/events into runtime Codex worker APIs.
+- Desktop still spawns/uses `AppServerClient` directly for local Codex execution (`thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`).
+- Desktop now optionally mirrors worker lifecycle/events into runtime when runtime sync env vars are set (`OPENAGENTS_RUNTIME_SYNC_*`):
+  - creates/reattaches worker on thread bootstrap/session start/resume,
+  - posts async events to `POST /api/runtime/codex/workers/{workerId}/events`,
+  - uses stable per-thread worker IDs for idempotent reattach.
 
 ### Local bridge protocol exists
 
@@ -84,6 +88,7 @@ Current adapter behavior is development-only `in_memory`.
   - `pylon.codex.event`
   - `pylon.codex.response`
   - `pylon.codex.status`
+- `pylon.codex.event` payload now includes normalized `runtime_event` metadata for downstream runtime taxonomy consumers.
 
 ## Canonical Target Architecture
 
@@ -116,17 +121,17 @@ Active implementation plan:
 
 - `POST /internal/v1/codex/workers`
 - `GET /internal/v1/codex/workers/{worker_id}/snapshot`
+- `POST /internal/v1/codex/workers/{worker_id}/events`
 - `POST /internal/v1/codex/workers/{worker_id}/requests`
 - `GET /internal/v1/codex/workers/{worker_id}/stream`
 - `POST /internal/v1/codex/workers/{worker_id}/stop`
 
-### Add (required for desktop sync)
+### Remaining Hardening
 
-1. Runtime event ingest endpoint for async desktop notifications:
-   - `POST /internal/v1/codex/workers/{worker_id}/events`
-2. Runtime heartbeat semantics for desktop-attached workers (via explicit event type or dedicated endpoint).
+1. Tighten runtime heartbeat semantics for desktop-attached workers (currently supported via event taxonomy; may gain dedicated endpoint later).
+2. Add explicit reconnect/resume integration tests across desktop restart scenarios.
 
-Without event ingest, web/mobile cannot see full local desktop Codex activity (only request/response envelopes).
+Runtime event ingest is now live, so web/mobile can observe desktop-originated activity through runtime stream/snapshot APIs.
 
 ## Layer-0 Schema Authority
 
@@ -270,6 +275,23 @@ Desktop notification methods currently seen in `apps/autopilot-desktop/src/main.
 - error projections like `codex/error`
 
 These should map deterministically into runtime event payloads so web/mobile can render a stable activity model.
+
+Current deterministic mapping (desktop + local bridge):
+
+| Source signal | Runtime `event_type` |
+|---|---|
+| `thread/started` | `worker.started` |
+| `*/error` or `codex/error` | `worker.error` |
+| `*/heartbeat` | `worker.heartbeat` |
+| bridge request envelope | `worker.request.received` |
+| all other `thread/*`, `turn/*`, `codex/*` notifications | `worker.event` |
+
+Baseline payload shape sent with each mapped event:
+
+- `source` (`autopilot-desktop` or `pylon-local-bridge`)
+- `method` (original notification/request method)
+- `params` (original params object; `{}` when missing)
+- `occurred_at` (desktop path) or `request_id` (bridge request path when present)
 
 ## Identity and Ownership Rules
 

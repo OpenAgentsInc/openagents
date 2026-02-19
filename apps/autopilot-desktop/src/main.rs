@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,7 @@ use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::{
     MinimalRoot, ShortcutBinding, ShortcutChord, ShortcutCommand, ShortcutRegistry, ShortcutScope,
 };
+use chrono::Utc;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, ReasoningEffort, SandboxMode,
     SandboxPolicy, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
@@ -36,9 +37,7 @@ use full_auto::{
     run_full_auto_decision,
 };
 use futures::StreamExt;
-use moltbook::{
-    CommentSort, CreateCommentRequest, MoltbookClient, MoltbookError, PostSort,
-};
+use moltbook::{CommentSort, CreateCommentRequest, MoltbookClient, MoltbookError, PostSort};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
 use openagents_runtime::UnifiedIdentity;
@@ -48,8 +47,9 @@ use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
 use reqwest::Client as HttpClient;
 use rusqlite::{Connection, params};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 use wgpui::renderer::Renderer;
 use wgpui::{
     Bounds, Component, Cursor, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext,
@@ -85,6 +85,231 @@ const ZOOM_STEP_WHEEL: f32 = 0.05;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const SHORTCUT_PRIORITY_APP: u8 = 100;
 const SHORTCUT_PRIORITY_GLOBAL: u8 = 50;
+const ENV_RUNTIME_SYNC_BASE_URL: &str = "OPENAGENTS_RUNTIME_SYNC_BASE_URL";
+const ENV_RUNTIME_SYNC_TOKEN: &str = "OPENAGENTS_RUNTIME_SYNC_TOKEN";
+const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_REF";
+const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
+const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
+
+#[derive(Clone)]
+struct RuntimeCodexSync {
+    client: HttpClient,
+    base_url: String,
+    token: String,
+    workspace_ref: String,
+    codex_home_ref: Option<String>,
+    worker_prefix: String,
+    synced_workers: Arc<tokio::sync::Mutex<HashSet<String>>>,
+}
+
+impl RuntimeCodexSync {
+    fn from_env(cwd: &str) -> Option<Self> {
+        let base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL).ok()?;
+        let token = env::var(ENV_RUNTIME_SYNC_TOKEN).ok()?;
+        let base_url = base_url.trim().trim_end_matches('/').to_string();
+        let token = token.trim().to_string();
+
+        if base_url.is_empty() || token.is_empty() {
+            return None;
+        }
+
+        let workspace_ref = env::var(ENV_RUNTIME_SYNC_WORKSPACE_REF)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("desktop://{}", cwd));
+
+        let codex_home_ref = env::var(ENV_RUNTIME_SYNC_CODEX_HOME_REF)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                resolve_codex_home().map(|path| format!("file://{}", path.to_string_lossy()))
+            });
+
+        let worker_prefix = env::var(ENV_RUNTIME_SYNC_WORKER_PREFIX)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "desktopw".to_string());
+
+        Some(Self {
+            client: HttpClient::new(),
+            base_url,
+            token,
+            workspace_ref,
+            codex_home_ref,
+            worker_prefix,
+            synced_workers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+        })
+    }
+
+    fn worker_id_for_thread(&self, thread_id: &str) -> String {
+        let safe_thread = sanitize_worker_component(thread_id);
+        let mut worker_id = format!("{}:{}", self.worker_prefix, safe_thread);
+
+        if worker_id.len() > 160 {
+            worker_id.truncate(160);
+        }
+
+        if worker_id.len() < 3 {
+            worker_id = format!("{}:{}", self.worker_prefix, Uuid::new_v4());
+        }
+
+        worker_id
+    }
+
+    async fn ensure_worker_for_thread(
+        &self,
+        thread_id: &str,
+        session_id: Option<SessionId>,
+    ) -> Result<String, String> {
+        let worker_id = self.worker_id_for_thread(thread_id);
+
+        {
+            let guard = self.synced_workers.lock().await;
+            if guard.contains(&worker_id) {
+                return Ok(worker_id);
+            }
+        }
+
+        let mut metadata = Map::new();
+        metadata.insert("source".to_string(), json!("autopilot-desktop"));
+        metadata.insert("sync_version".to_string(), json!("runtime_codex_v1"));
+        metadata.insert("thread_id".to_string(), json!(thread_id));
+        if let Some(session_id) = session_id {
+            metadata.insert("session_id".to_string(), json!(session_id.to_string()));
+        }
+
+        let mut payload = Map::new();
+        payload.insert("worker_id".to_string(), json!(worker_id));
+        payload.insert("workspace_ref".to_string(), json!(self.workspace_ref));
+        payload.insert("adapter".to_string(), json!("desktop_bridge"));
+        payload.insert("metadata".to_string(), Value::Object(metadata));
+
+        if let Some(codex_home_ref) = self.codex_home_ref.clone() {
+            payload.insert("codex_home_ref".to_string(), json!(codex_home_ref));
+        }
+
+        self.post_json("/api/runtime/codex/workers", Value::Object(payload))
+            .await?;
+
+        {
+            let mut guard = self.synced_workers.lock().await;
+            guard.insert(worker_id.clone());
+        }
+
+        Ok(worker_id)
+    }
+
+    async fn ingest_notification(
+        &self,
+        thread_id: &str,
+        method: &str,
+        params: Option<&Value>,
+    ) -> Result<(), String> {
+        let worker_id = self.ensure_worker_for_thread(thread_id, None).await?;
+        let (event_type, payload) = runtime_event_from_notification(method, params);
+
+        let body = json!({
+            "event": {
+                "event_type": event_type,
+                "payload": payload,
+            }
+        });
+        let path = format!("/api/runtime/codex/workers/{worker_id}/events");
+        self.post_json(&path, body).await.map(|_| ())
+    }
+
+    async fn post_json(&self, path: &str, body: Value) -> Result<Value, String> {
+        let response = self
+            .client
+            .post(format!("{}{}", self.base_url, path))
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| err.to_string())?;
+
+        let status = response.status();
+        let text = response.text().await.map_err(|err| err.to_string())?;
+        let parsed = serde_json::from_str::<Value>(&text).unwrap_or(Value::Null);
+
+        if !status.is_success() {
+            let message = parsed
+                .get("error")
+                .and_then(|error| error.get("message"))
+                .and_then(|message| message.as_str())
+                .map(|value| value.to_string())
+                .or_else(|| (!text.trim().is_empty()).then_some(text))
+                .unwrap_or_else(|| format!("runtime sync request failed ({status})"));
+
+            return Err(message);
+        }
+
+        Ok(parsed)
+    }
+}
+
+fn sanitize_worker_component(value: &str) -> String {
+    let mut out = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-' | ':') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+
+    if out.is_empty() {
+        out = "thread".to_string();
+    }
+
+    out
+}
+
+fn resolve_codex_home() -> Option<PathBuf> {
+    if let Ok(raw) = env::var("CODEX_HOME") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
+    }
+
+    env::var("HOME")
+        .ok()
+        .map(|home| Path::new(&home).join(".codex"))
+}
+
+fn runtime_event_from_notification(method: &str, params: Option<&Value>) -> (String, Value) {
+    let mut payload = Map::new();
+    payload.insert("source".to_string(), json!("autopilot-desktop"));
+    payload.insert("method".to_string(), json!(method));
+    payload.insert(
+        "params".to_string(),
+        params.cloned().unwrap_or_else(|| json!({})),
+    );
+    payload.insert("occurred_at".to_string(), json!(Utc::now().to_rfc3339()));
+
+    let event_type = if method == "thread/started" {
+        payload.insert("status".to_string(), json!("running"));
+        "worker.started"
+    } else if method.ends_with("/error") || method == "codex/error" {
+        "worker.error"
+    } else if method.ends_with("/heartbeat") {
+        "worker.heartbeat"
+    } else {
+        "worker.event"
+    };
+
+    (event_type.to_string(), Value::Object(payload))
+}
+
+fn should_sync_runtime_notification(method: &str) -> bool {
+    method.starts_with("thread/") || method.starts_with("turn/") || method.starts_with("codex/")
+}
 
 fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
     match value.trim().to_lowercase().as_str() {
@@ -808,6 +1033,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let cwd_string = cwd.to_string_lossy().to_string();
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
             let workspace_id = workspace.workspace_id().to_string();
+            let runtime_sync = Arc::new(RuntimeCodexSync::from_env(&cwd_string));
             let mut stream = workspace.events();
             let session_states = Arc::new(tokio::sync::Mutex::new(HashMap::<
                 SessionId,
@@ -894,6 +1120,22 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         let mut map = thread_to_session.lock().await;
                         map.insert(response.thread.id.clone(), bootstrap_id);
                     }
+                    if let Some(sync) = runtime_sync.as_ref() {
+                        if let Err(err) = sync
+                            .ensure_worker_for_thread(&response.thread.id, Some(bootstrap_id))
+                            .await
+                        {
+                            let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                message: json!({
+                                    "method": "codex/error",
+                                    "params": {
+                                        "message": format!("Runtime worker sync failed: {err}")
+                                    }
+                                })
+                                .to_string(),
+                            });
+                        }
+                    }
                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                         message: json!({
                             "method": "thread/started",
@@ -926,6 +1168,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let client_full_auto = client.clone();
             let cwd_full_auto = cwd_string.clone();
             let workspace_id_full_auto = workspace_id.clone();
+            let runtime_sync_notifications = runtime_sync.clone();
             let reply_targets_notifications = moltbook_reply_targets.clone();
             let proxy_reply = proxy.clone();
             let client_reply = client.clone();
@@ -935,6 +1178,32 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     let params = notification.params.as_ref();
                     let thread_id_value = extract_thread_id(params);
                     let turn_id_value = extract_turn_id(params);
+                    if should_sync_runtime_notification(&notification.method) {
+                        if let (Some(sync), Some(thread_id)) =
+                            (runtime_sync_notifications.as_ref(), thread_id_value.as_deref())
+                        {
+                            let sync = sync.clone();
+                            let thread_id = thread_id.to_string();
+                            let method = notification.method.clone();
+                            let params = notification.params.clone();
+                            let proxy_sync = proxy_notifications.clone();
+                            tokio::spawn(async move {
+                                if let Err(err) =
+                                    sync.ingest_notification(&thread_id, &method, params.as_ref()).await
+                                {
+                                    let _ = proxy_sync.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "codex/error",
+                                            "params": {
+                                                "message": format!("Runtime event sync failed: {err}")
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
+                                }
+                            });
+                        }
+                    }
                     if notification.method == "turn/started" {
                         if let Some(params) = notification.params.as_ref() {
                             let next_turn = params
@@ -1441,6 +1710,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let thread_to_session_for_actions = thread_to_session.clone();
             let proxy_actions = proxy.clone();
             let cwd_for_actions = cwd_string.clone();
+            let runtime_sync_actions = runtime_sync.clone();
             tokio::task::spawn_blocking(move || {
                 let mut pylon_runtime = InProcessPylon::new();
                 while let Ok(action) = action_rx.recv() {
@@ -1455,6 +1725,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let workspace_id = workspace_id.clone();
                             let session_states = session_states_for_actions.clone();
                             let thread_to_session = thread_to_session_for_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
                             let session_handle =
                                 workspace.start_session(Some("New chat".to_string()));
                             let session_id = session_handle.session_id();
@@ -1504,6 +1775,25 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         {
                                             let mut map = thread_to_session.lock().await;
                                             map.insert(response.thread.id.clone(), session_id);
+                                        }
+                                        if let Some(sync) = runtime_sync.as_ref() {
+                                            if let Err(err) = sync
+                                                .ensure_worker_for_thread(
+                                                    &response.thread.id,
+                                                    Some(session_id),
+                                                )
+                                                .await
+                                            {
+                                                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                                    message: json!({
+                                                        "method": "codex/error",
+                                                        "params": {
+                                                            "message": format!("Runtime worker sync failed: {err}")
+                                                        }
+                                                    })
+                                                    .to_string(),
+                                                });
+                                            }
                                         }
                                         let _ = proxy.send_event(AppEvent::AppServerEvent {
                                             message: json!({
@@ -1825,6 +2115,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let workspace = workspace_for_actions.clone();
                             let session_states = session_states_for_actions.clone();
                             let thread_to_session = thread_to_session_for_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
                             let session_handle =
                                 workspace.start_session(Some("Thread".to_string()));
                             let session_id = session_handle.session_id();
@@ -1855,6 +2146,25 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         {
                                             let mut map = thread_to_session.lock().await;
                                             map.insert(response.thread.id.clone(), session_id);
+                                        }
+                                        if let Some(sync) = runtime_sync.as_ref() {
+                                            if let Err(err) = sync
+                                                .ensure_worker_for_thread(
+                                                    &response.thread.id,
+                                                    Some(session_id),
+                                                )
+                                                .await
+                                            {
+                                                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                                    message: json!({
+                                                        "method": "codex/error",
+                                                        "params": {
+                                                            "message": format!("Runtime worker sync failed: {err}")
+                                                        }
+                                                    })
+                                                    .to_string(),
+                                                });
+                                            }
                                         }
                                         let thread = autopilot_app::ThreadSnapshot {
                                             id: response.thread.id,
@@ -2449,6 +2759,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let workspace = workspace_for_actions.clone();
                             let session_states = session_states_for_actions.clone();
                             let thread_to_session = thread_to_session_for_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
                             let reply_targets = moltbook_reply_targets.clone();
                             handle.spawn(async move {
                                 let session_handle =
@@ -2479,6 +2790,25 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         {
                                             let mut map = thread_to_session.lock().await;
                                             map.insert(response.thread.id.clone(), session_id);
+                                        }
+                                        if let Some(sync) = runtime_sync.as_ref() {
+                                            if let Err(err) = sync
+                                                .ensure_worker_for_thread(
+                                                    &response.thread.id,
+                                                    Some(session_id),
+                                                )
+                                                .await
+                                            {
+                                                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                                    message: json!({
+                                                        "method": "codex/error",
+                                                        "params": {
+                                                            "message": format!("Runtime worker sync failed: {err}")
+                                                        }
+                                                    })
+                                                    .to_string(),
+                                                });
+                                            }
                                         }
                                         let _ = proxy.send_event(AppEvent::AppServerEvent {
                                             message: json!({
@@ -2818,7 +3148,8 @@ fn ensure_moltbook_cache_column(conn: &Connection, name: &str, definition: &str)
         }
     }
     let ddl = format!("ALTER TABLE moltbook_posts ADD COLUMN {name} {definition}");
-    conn.execute(&ddl, []).context("alter moltbook cache schema")?;
+    conn.execute(&ddl, [])
+        .context("alter moltbook cache schema")?;
     Ok(())
 }
 
@@ -3129,13 +3460,9 @@ async fn post_moltbook_reply_comment(
         })
     }?;
 
-    let post_url = resolve_moltbook_post_url(
-        post_id,
-        proxy_client.as_ref(),
-        live_client.as_ref(),
-    )
-    .await
-    .unwrap_or_else(|| format!("https://www.moltbook.com/posts/{post_id}"));
+    let post_url = resolve_moltbook_post_url(post_id, proxy_client.as_ref(), live_client.as_ref())
+        .await
+        .unwrap_or_else(|| format!("https://www.moltbook.com/posts/{post_id}"));
 
     let _ = proxy.send_event(AppEvent::MoltbookLog {
         message: format!(
@@ -3251,7 +3578,10 @@ fn build_moltbook_reply_prompt(
         prompt.push_str("Comments:\n");
         for comment in comments {
             let author = comment.author_name.as_deref().unwrap_or("?");
-            let score = comment.score.map(|s| s.to_string()).unwrap_or_else(|| "—".to_string());
+            let score = comment
+                .score
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "—".to_string());
             let created = comment.created_at.as_deref().unwrap_or("");
             let content = comment.content.as_deref().unwrap_or("");
             let mut line = format!("- {author} · {score} ↑");
