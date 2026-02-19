@@ -45,6 +45,39 @@ Every imported capability must satisfy OpenAgents invariants:
 3. Replayability: behavior-impacting decisions must be receipt-visible and reconstructable.
 4. Security first: imported network/tooling paths must pass threat review before exposure.
 5. Provenance and license hygiene: preserve upstream source/commit attribution and Apache-2.0 compatibility notes.
+6. Runtime network purity: runtime-side outbound HTTP is only allowed through `tools/network/*` guard rails and must emit receipt-visible events.
+7. Deterministic extensibility: hooks cannot bypass policy/spend controls and must preserve deterministic, replayable behavior.
+
+## Port vs Adapt vs Adopt Decision Matrix
+
+Use this matrix at classification time; if multiple rules match, choose the highest-priority rule in this order: `port` -> `adapt` -> `adopt`.
+
+### `port` to Elixir runtime
+
+Required when the capability affects any of:
+
+- execution ordering,
+- spend authorization or cost exposure,
+- security boundaries,
+- event-log semantics, receipts, or replay.
+
+### `adapt` in Laravel control plane
+
+Use when behavior is control-plane centric and does not alter runtime canonical execution:
+
+- UI/CRUD/configuration flows,
+- policy authoring or audit displays,
+- integration management/operator workflows.
+
+### `adopt` directly (rare)
+
+Allowed only for low-risk assets that are runtime-agnostic and easy to verify:
+
+- fixtures and test vectors,
+- schemas/docs/examples,
+- pure algorithms with parity harness coverage and no hidden side effects.
+
+If a capability cannot satisfy the above safely in the current wave, classify as `defer`.
 
 ## Capability Inventory and Destination Mapping
 
@@ -86,6 +119,14 @@ Recommended new module seams:
 - `lib/openagents_runtime/hooks/` (lifecycle hook runner + typed hook contracts)
 - `lib/openagents_runtime/guards/loop_detection.ex` (or `runs/loop_detection.ex`)
 
+### Runtime Purity Boundary (Required)
+
+1. Runtime modules must not perform ad hoc outbound HTTP from arbitrary code paths.
+2. All runtime HTTP egress flows through `lib/openagents_runtime/tools/network/*`.
+3. Guard rails at this seam enforce allowlists, DNS pinning, and redirect policy.
+4. Every allow/deny/result outcome emits machine-readable receipt events.
+5. Bypassing this seam blocks rollout.
+
 ### 2) Laravel control plane (`apps/openagents.com`)
 
 Laravel owns authoring, display, and operator controls:
@@ -115,10 +156,8 @@ For each candidate capability, run this pipeline:
 1. Intake record
    - capture upstream path(s), commit SHA, license note, capability summary, risk class.
 2. Classification
-   - `adopt` (near-direct),
-   - `adapt` (same behavior, different architecture),
-   - `port` (language rewrite with parity tests),
-   - `defer`.
+   - apply the decision matrix in this order: `port`, `adapt`, `adopt`, `defer`,
+   - record the explicit rule(s) that triggered the classification decision.
 3. Target decision
    - runtime core vs Laravel control plane vs shared contract/doc.
 4. Parity harness design
@@ -147,6 +186,16 @@ When behavior moves into runtime:
 6. Wire receipts/events
    - decisions and failures must append durable events with machine-readable reason fields.
 
+## Hook Constraints (Determinism + Safety)
+
+Hooks are supported only under these constraints:
+
+1. Hooks are pure transforms of `(context, event)` -> `(context', events[])` unless explicitly modeled side effects are emitted as receipt events.
+2. Hook ordering is deterministic, versioned, and stable across replays.
+3. Hooks cannot bypass tool policy evaluation, spend authorization, or security guard rails.
+4. Hook-produced decisions that affect execution must emit reason-coded events.
+5. Non-deterministic behavior (time/random/network) is prohibited unless fully captured as replay inputs.
+
 ## Governance and Provenance
 
 Each imported capability must include:
@@ -156,6 +205,8 @@ Each imported capability must include:
 - import date + owner,
 - adaptation notes,
 - security review checklist result.
+- module-level attribution comment in ported code referencing upstream file path(s) + pinned commit SHA.
+- vendored-license preservation for any directly adopted source files.
 
 Recommended artifact format:
 
