@@ -16,6 +16,17 @@ defmodule OpenAgentsRuntimeWeb.Router do
     get "/health", HealthController, :show
     post "/comms/delivery-events", CommsController, :record_delivery_event
     post "/tools/execute", ToolsController, :execute
+    get "/skills/tool-specs", SkillRegistryController, :list_tool_specs
+    post "/skills/tool-specs", SkillRegistryController, :upsert_tool_spec
+    get "/skills/skill-specs", SkillRegistryController, :list_skill_specs
+    post "/skills/skill-specs", SkillRegistryController, :upsert_skill_spec
+    post "/skills/skill-specs/:skill_id/:version/publish", SkillRegistryController, :publish_skill
+    get "/skills/releases/:skill_id/:version", SkillRegistryController, :show_skill_release
+    post "/codex/workers", CodexWorkerController, :create
+    get "/codex/workers/:worker_id/snapshot", CodexWorkerController, :snapshot
+    post "/codex/workers/:worker_id/requests", CodexWorkerController, :request
+    get "/codex/workers/:worker_id/stream", CodexWorkerController, :stream
+    post "/codex/workers/:worker_id/stop", CodexWorkerController, :stop
     get "/runs/:run_id/snapshot", RunController, :snapshot
     get "/runs/:run_id/stream", RunController, :stream
     post "/runs/:run_id/frames", RunController, :append_frame

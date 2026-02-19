@@ -23,6 +23,14 @@ return [
         'base_url' => rtrim((string) env('OA_RUNTIME_ELIXIR_BASE_URL', 'http://openagents-runtime:4000'), '/'),
         'stream_path' => (string) env('OA_RUNTIME_ELIXIR_STREAM_PATH', '/internal/v1/runs/stream'),
         'tools_execute_path' => (string) env('OA_RUNTIME_ELIXIR_TOOLS_EXECUTE_PATH', '/internal/v1/tools/execute'),
+        'skills_tool_specs_path' => (string) env('OA_RUNTIME_ELIXIR_SKILLS_TOOL_SPECS_PATH', '/internal/v1/skills/tool-specs'),
+        'skills_skill_specs_path' => (string) env('OA_RUNTIME_ELIXIR_SKILLS_SKILL_SPECS_PATH', '/internal/v1/skills/skill-specs'),
+        'skills_publish_path_template' => (string) env('OA_RUNTIME_ELIXIR_SKILLS_PUBLISH_PATH_TEMPLATE', '/internal/v1/skills/skill-specs/{skill_id}/{version}/publish'),
+        'skills_release_path_template' => (string) env('OA_RUNTIME_ELIXIR_SKILLS_RELEASE_PATH_TEMPLATE', '/internal/v1/skills/releases/{skill_id}/{version}'),
+        'codex_workers_path' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKERS_PATH', '/internal/v1/codex/workers'),
+        'codex_worker_snapshot_path_template' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKER_SNAPSHOT_PATH_TEMPLATE', '/internal/v1/codex/workers/{worker_id}/snapshot'),
+        'codex_worker_requests_path_template' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKER_REQUESTS_PATH_TEMPLATE', '/internal/v1/codex/workers/{worker_id}/requests'),
+        'codex_worker_stop_path_template' => (string) env('OA_RUNTIME_ELIXIR_CODEX_WORKER_STOP_PATH_TEMPLATE', '/internal/v1/codex/workers/{worker_id}/stop'),
         'health_path' => (string) env('OA_RUNTIME_ELIXIR_HEALTH_PATH', '/healthz'),
 
         // Bounded retries for runtime request establishment.

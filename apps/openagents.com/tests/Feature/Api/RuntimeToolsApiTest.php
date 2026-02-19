@@ -120,6 +120,55 @@ test('runtime tools api returns runtime validation failures', function () {
         ->assertJsonPath('error.details.0', 'manifest_version is required');
 });
 
+test('runtime tools api accepts manifest_ref-only payloads', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/tools/execute' => Http::response([
+            'data' => ['state' => 'succeeded'],
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/tools/execute', [
+        'tool_pack' => 'coding.v1',
+        'manifest_ref' => ['integration_id' => 'github.primary'],
+        'request' => [
+            'integration_id' => 'github.primary',
+            'operation' => 'get_issue',
+            'repository' => 'OpenAgentsInc/openagents',
+            'issue_number' => 1747,
+        ],
+    ]);
+
+    $response->assertOk()->assertJsonPath('data.state', 'succeeded');
+
+    Http::assertSent(function (HttpRequest $request): bool {
+        return $request->url() === 'http://runtime.internal/internal/v1/tools/execute'
+            && $request['manifest_ref']['integration_id'] === 'github.primary'
+            && $request['manifest'] === [];
+    });
+});
+
+test('runtime tools api requires manifest or manifest_ref', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/tools/execute', [
+        'tool_pack' => 'coding.v1',
+        'request' => [
+            'integration_id' => 'github.primary',
+            'operation' => 'get_issue',
+            'repository' => 'OpenAgentsInc/openagents',
+            'issue_number' => 1747,
+        ],
+    ]);
+
+    $response
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'invalid_request');
+
+    Http::assertNothingSent();
+});
+
 /**
  * @return array<string, mixed>
  */
@@ -160,4 +209,3 @@ function decodeRuntimeTokenClaims(string $token): array
 
     return is_array($claims) ? $claims : [];
 }
-

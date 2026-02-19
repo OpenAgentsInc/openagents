@@ -135,11 +135,12 @@ Dispatches runtime tool-pack operations through a single internal endpoint. `cod
 Required fields:
 
 - `tool_pack`
-- `manifest`
 - `request`
 
 Optional fields:
 
+- `manifest` (direct integration manifest object)
+- `manifest_ref` (registry lookup reference with `tool_id` or `integration_id`)
 - `mode` (`execute` default, `replay`)
 - `policy` (authorization/budget/write approval context)
 - `run_id`
@@ -158,17 +159,8 @@ Request:
   "mode": "execute",
   "run_id": "run_123",
   "thread_id": "thread_abc",
-  "manifest": {
-    "manifest_version": "coding.integration.v1",
-    "integration_id": "github.primary",
-    "provider": "github",
-    "status": "active",
-    "tool_pack": "coding.v1",
-    "capabilities": ["get_issue", "get_pull_request", "add_issue_comment"],
-    "policy": {
-      "write_operations_mode": "enforce",
-      "default_repository": "OpenAgentsInc/openagents"
-    }
+  "manifest_ref": {
+    "integration_id": "github.primary"
   },
   "request": {
     "integration_id": "github.primary",
@@ -187,6 +179,13 @@ Request:
   }
 }
 ```
+
+`manifest_ref` resolution reads from the runtime skill/tool registry:
+
+- DB-published ToolSpec records
+- built-in catalog entries (`github.primary`, `resend.primary`)
+
+If both `manifest` and `manifest_ref` are provided, explicit `manifest` takes precedence.
 
 Success (`200`):
 
@@ -271,6 +270,168 @@ Success (`200`):
   "updatedAt": "2026-02-18T12:30:00Z"
 }
 ```
+
+### `GET /internal/v1/skills/tool-specs`
+
+Lists ToolSpec definitions from registry storage plus built-ins.
+
+Success (`200`):
+
+```json
+{
+  "data": [
+    {
+      "tool_id": "github.primary",
+      "version": 1,
+      "tool_pack": "coding.v1",
+      "state": "published"
+    }
+  ]
+}
+```
+
+### `POST /internal/v1/skills/tool-specs`
+
+Upserts a ToolSpec JSON definition.
+
+Required principal header:
+
+- `x-oa-user-id`
+
+Request:
+
+```json
+{
+  "state": "validated",
+  "tool_spec": {
+    "tool_id": "github.custom",
+    "version": 1,
+    "tool_pack": "coding.v1",
+    "name": "GitHub Custom",
+    "description": "Custom coding skill tool",
+    "execution_kind": "http",
+    "integration_manifest": {
+      "manifest_version": "coding.integration.v1",
+      "integration_id": "github.custom",
+      "provider": "github",
+      "status": "active",
+      "tool_pack": "coding.v1",
+      "capabilities": ["get_issue", "get_pull_request"],
+      "secrets_ref": {"provider": "laravel", "key_id": "intsec_github_custom"},
+      "policy": {"write_operations_mode": "enforce", "max_requests_per_minute": 120}
+    },
+    "commercial": {"pricing_model": "free", "currency": "BTC_SATS"}
+  }
+}
+```
+
+### `GET /internal/v1/skills/skill-specs`
+
+Lists SkillSpec definitions from registry storage plus built-ins.
+
+### `POST /internal/v1/skills/skill-specs`
+
+Upserts a SkillSpec JSON definition.
+
+Required principal header:
+
+- `x-oa-user-id`
+
+Request:
+
+```json
+{
+  "state": "validated",
+  "skill_spec": {
+    "skill_id": "github-coding-custom",
+    "version": 1,
+    "name": "GitHub Coding Custom",
+    "description": "Custom coding workflow skill",
+    "instructions_markdown": "Use coding tools for issue workflows.",
+    "allowed_tools": [{"tool_id": "github.custom", "version": 1}],
+    "compatibility": {"runtime": "openagents-runtime"},
+    "commercial": {"pricing_model": "free", "currency": "BTC_SATS"}
+  }
+}
+```
+
+### `POST /internal/v1/skills/skill-specs/{skill_id}/{version}/publish`
+
+Compiles SkillSpec into an immutable Agent Skills bundle artifact and publishes SkillRelease.
+
+Required principal header:
+
+- `x-oa-user-id`
+
+Success (`201`):
+
+```json
+{
+  "data": {
+    "release_id": "skillrel_abc123",
+    "skill_id": "github-coding-custom",
+    "version": 1,
+    "bundle_hash": "f6d7...",
+    "published_at": "2026-02-19T23:11:00Z"
+  }
+}
+```
+
+### `GET /internal/v1/skills/releases/{skill_id}/{version}`
+
+Fetches immutable SkillRelease artifact including compiled bundle and compatibility report.
+
+### `POST /internal/v1/codex/workers`
+
+Creates or reattaches a remote Codex worker session for the authenticated principal.
+
+Required principal header (at least one):
+
+- `x-oa-user-id`
+- `x-oa-guest-scope`
+
+Request (optional):
+
+```json
+{
+  "worker_id": "codexw_12345",
+  "workspace_ref": "gs://tenant-workspaces/u_42/project-a",
+  "codex_home_ref": "gs://tenant-codex-home/u_42",
+  "adapter": "in_memory",
+  "metadata": {"tenant_id": "u_42"}
+}
+```
+
+### `GET /internal/v1/codex/workers/{worker_id}/snapshot`
+
+Returns durable worker status and latest stream sequence.
+
+### `POST /internal/v1/codex/workers/{worker_id}/requests`
+
+Submits a JSON-RPC style request envelope to the worker process.
+
+Request:
+
+```json
+{
+  "request": {
+    "request_id": "req_001",
+    "method": "thread/start",
+    "params": {"prompt": "Audit this PR"}
+  }
+}
+```
+
+### `GET /internal/v1/codex/workers/{worker_id}/stream`
+
+Streams worker event log as SSE with the same cursor semantics as run streams.
+
+- Supports `cursor`, `Last-Event-ID`, and `tail_ms`.
+- SSE `id:` field equals worker event `seq`.
+
+### `POST /internal/v1/codex/workers/{worker_id}/stop`
+
+Requests graceful worker shutdown and appends a durable `worker.stopped` event.
 
 ### `POST /internal/v1/runs/{run_id}/frames`
 

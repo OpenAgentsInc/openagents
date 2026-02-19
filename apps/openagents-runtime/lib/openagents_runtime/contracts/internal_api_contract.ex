@@ -24,6 +24,69 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       statuses: ~w(200 400 401 403 422),
       required_params: []
     },
+    {"/skills/tool-specs", "get"} => %{
+      statuses: ~w(200 401),
+      required_params: []
+    },
+    {"/skills/tool-specs", "post"} => %{
+      statuses: ~w(201 400 401 422),
+      required_params: []
+    },
+    {"/skills/skill-specs", "get"} => %{
+      statuses: ~w(200 401),
+      required_params: []
+    },
+    {"/skills/skill-specs", "post"} => %{
+      statuses: ~w(201 400 401 422),
+      required_params: []
+    },
+    {"/skills/skill-specs/{skill_id}/{version}/publish", "post"} => %{
+      statuses: ~w(201 400 401 404 422),
+      required_params: [
+        %{name: "skill_id", location: "path", required: true},
+        %{name: "version", location: "path", required: true}
+      ]
+    },
+    {"/skills/releases/{skill_id}/{version}", "get"} => %{
+      statuses: ~w(200 400 401 404),
+      required_params: [
+        %{name: "skill_id", location: "path", required: true},
+        %{name: "version", location: "path", required: true}
+      ]
+    },
+    {"/codex/workers", "post"} => %{
+      statuses: ~w(200 202 400 401 403),
+      required_params: []
+    },
+    {"/codex/workers/{worker_id}/snapshot", "get"} => %{
+      statuses: ~w(200 400 401 403 404),
+      required_params: [
+        %{name: "worker_id", location: "path", required: true}
+      ]
+    },
+    {"/codex/workers/{worker_id}/requests", "post"} => %{
+      statuses: ~w(200 400 401 403 404),
+      required_params: [
+        %{name: "worker_id", location: "path", required: true}
+      ]
+    },
+    {"/codex/workers/{worker_id}/stream", "get"} => %{
+      statuses: ~w(200 400 401 403 404 410),
+      required_params: [
+        %{name: "worker_id", location: "path", required: true}
+      ],
+      optional_params: [
+        %{name: "cursor", location: "query", required: false},
+        %{name: "tail_ms", location: "query", required: false},
+        %{name: "Last-Event-ID", location: "header", required: false}
+      ]
+    },
+    {"/codex/workers/{worker_id}/stop", "post"} => %{
+      statuses: ~w(200 202 400 401 403 404),
+      required_params: [
+        %{name: "worker_id", location: "path", required: true}
+      ]
+    },
     {"/runs/{run_id}/snapshot", "get"} => %{
       statuses: ~w(200 400 401 403 404),
       required_params: [
@@ -285,6 +348,41 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
       |> maybe_push(
         String.contains?(body, "POST /internal/v1/tools/execute"),
         "RUNTIME_CONTRACT.md missing tools execute endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "GET /internal/v1/skills/tool-specs"),
+        "RUNTIME_CONTRACT.md missing skill registry tool-specs endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/skills/skill-specs"),
+        "RUNTIME_CONTRACT.md missing skill registry skill-specs endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(
+          body,
+          "POST /internal/v1/skills/skill-specs/{skill_id}/{version}/publish"
+        ),
+        "RUNTIME_CONTRACT.md missing skill publish endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "GET /internal/v1/skills/releases/{skill_id}/{version}"),
+        "RUNTIME_CONTRACT.md missing skill release endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/codex/workers"),
+        "RUNTIME_CONTRACT.md missing codex workers create endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/codex/workers/{worker_id}/requests"),
+        "RUNTIME_CONTRACT.md missing codex worker request endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "GET /internal/v1/codex/workers/{worker_id}/stream"),
+        "RUNTIME_CONTRACT.md missing codex worker stream endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "POST /internal/v1/codex/workers/{worker_id}/stop"),
+        "RUNTIME_CONTRACT.md missing codex worker stop endpoint section"
       )
       |> maybe_push(
         String.contains?(body, "GET /internal/v1/runs/{run_id}/snapshot"),

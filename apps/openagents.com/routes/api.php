@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\L402PaywallController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\RuntimeToolsController;
+use App\Http\Controllers\Api\RuntimeSkillRegistryController;
+use App\Http\Controllers\Api\RuntimeCodexWorkersController;
 use App\Http\Controllers\Api\ShoutsController;
 use App\Http\Controllers\Api\TokenController;
 use App\Http\Controllers\Api\Webhooks\ResendWebhookController;
@@ -54,6 +56,16 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/chats/{conversationId}/stream', [ChatController::class, 'stream']);
     Route::post('/chat/stream', [ChatController::class, 'stream']);
     Route::post('/runtime/tools/execute', [RuntimeToolsController::class, 'execute']);
+    Route::get('/runtime/skills/tool-specs', [RuntimeSkillRegistryController::class, 'listToolSpecs']);
+    Route::post('/runtime/skills/tool-specs', [RuntimeSkillRegistryController::class, 'storeToolSpec']);
+    Route::get('/runtime/skills/skill-specs', [RuntimeSkillRegistryController::class, 'listSkillSpecs']);
+    Route::post('/runtime/skills/skill-specs', [RuntimeSkillRegistryController::class, 'storeSkillSpec']);
+    Route::post('/runtime/skills/skill-specs/{skillId}/{version}/publish', [RuntimeSkillRegistryController::class, 'publishSkillSpec']);
+    Route::get('/runtime/skills/releases/{skillId}/{version}', [RuntimeSkillRegistryController::class, 'showSkillRelease']);
+    Route::post('/runtime/codex/workers', [RuntimeCodexWorkersController::class, 'create']);
+    Route::get('/runtime/codex/workers/{workerId}', [RuntimeCodexWorkersController::class, 'show']);
+    Route::post('/runtime/codex/workers/{workerId}/requests', [RuntimeCodexWorkersController::class, 'request']);
+    Route::post('/runtime/codex/workers/{workerId}/stop', [RuntimeCodexWorkersController::class, 'stop']);
 
     // Autopilot API (phase A skeleton).
     Route::get('/autopilots', [AutopilotController::class, 'index']);
