@@ -94,6 +94,66 @@
           "legendFormat": "policy deny ratio"
         }
       ]
+    },
+    {
+      "id": 8,
+      "title": "Convex Projection Writes/s",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_convex_projection_write_count[5m]))",
+          "legendFormat": "writes/s"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Convex Projection Lag p95 (events)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+      "targets": [
+        {
+          "expr": "quantile_over_time(0.95, openagents_runtime_convex_projection_lag_events{result=\"ok\"}[10m])",
+          "legendFormat": "lag p95"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Convex Projection Write Failure Ratio",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+      "targets": [
+        {
+          "expr": "sum(rate(openagents_runtime_convex_projection_write_failure_count[5m])) / clamp_min(sum(rate(openagents_runtime_convex_projection_write_count[5m])), 1)",
+          "legendFormat": "write failure ratio"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Convex Projection Drift Incidents (10m)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+      "targets": [
+        {
+          "expr": "sum(increase(openagents_runtime_convex_projection_drift_count[10m]))",
+          "legendFormat": "drift incidents"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Convex Projection Replay Errors (15m)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 48},
+      "targets": [
+        {
+          "expr": "sum(increase(openagents_runtime_convex_projection_replay_count{result=\"error\"}[15m]))",
+          "legendFormat": "replay errors"
+        }
+      ]
     }
   ]
 }

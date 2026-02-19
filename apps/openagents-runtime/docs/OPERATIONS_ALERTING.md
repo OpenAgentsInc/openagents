@@ -16,6 +16,13 @@ Prometheus rule artifact:
 
 ## Alert Matrix
 
+### Convex projection SLO budgets
+
+- Lag budget: p95 projection lag <= 25 runtime events over a 10m window.
+- Error budget: projection write failures <= 1% over a 10m window.
+- Drift budget: <= 3 drift incidents per 10m per service shard.
+- Replay budget: zero replay failures in a rolling 15m window.
+
 ### Executor latency
 
 - Alert: `OpenAgentsRuntimeExecutorLatencyP95High`
@@ -78,6 +85,42 @@ Prometheus rule artifact:
   1. Identify dominant denial reason (`budget_exhausted`, `denied_*`).
   2. Validate authorization envelope rollout and limits.
   3. Confirm no runaway loops consuming delegated budget.
+
+### Convex projection lag
+
+- Alert: `OpenAgentsRuntimeConvexProjectionLagP95High`
+- Threshold: p95 `convex.projection.lag_events > 25` for 10m
+- Action:
+  1. Inspect projector throughput vs runtime event ingest rate.
+  2. Check sink latency/errors and DB lock contention around projection checkpoints.
+  3. If lag remains elevated, trigger scoped replay after incident stabilizes.
+
+### Convex projection write failures
+
+- Alert: `OpenAgentsRuntimeConvexProjectionWriteFailureRatioHigh`
+- Threshold: write failure ratio > 1% for 10m
+- Action:
+  1. Inspect sink failure reason classes (`convex_error`, `sink_exception`, auth errors).
+  2. Validate Convex endpoint health and admin key availability.
+  3. Start replay plan (`mix runtime.convex.reproject`) once sink health recovers.
+
+### Convex projection drift incidents
+
+- Alert: `OpenAgentsRuntimeConvexProjectionDriftIncidentsHigh`
+- Threshold: drift incidents > 3 over 10m
+- Action:
+  1. Check drift reason classes (`summary_hash_mismatch`, `projection_version_changed`, `checkpoint_ahead`).
+  2. Validate deployment/version alignment across runtime and Convex schema.
+  3. Run targeted reproject for affected run/worker IDs and verify checkpoint convergence.
+
+### Convex projection replay failures
+
+- Alert: `OpenAgentsRuntimeConvexProjectionReplayFailures`
+- Threshold: any replay error in 15m
+- Action:
+  1. Inspect replay error reason and failing entity scope (`run` vs `codex_worker`).
+  2. Confirm checkpoint table health and sequence continuity.
+  3. Escalate before rollout expansion; replay failure blocks production promotion.
 
 ### Parity failure class spikes
 

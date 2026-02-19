@@ -23,7 +23,12 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "Lease Steal Rate",
       "Tool Terminal Failures",
       "Provider Circuit Breaker Open",
-      "Spend/Policy Denial Ratio"
+      "Spend/Policy Denial Ratio",
+      "Convex Projection Writes/s",
+      "Convex Projection Lag p95 (events)",
+      "Convex Projection Write Failure Ratio",
+      "Convex Projection Drift Incidents (10m)",
+      "Convex Projection Replay Errors (15m)"
     ]
 
     Enum.each(required_titles, fn title ->
@@ -58,7 +63,11 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "OpenAgentsRuntimeLeaseStealRateHigh",
       "OpenAgentsRuntimeToolFailureSpike",
       "OpenAgentsRuntimeCircuitBreakerOpen",
-      "OpenAgentsRuntimePolicyDenialAnomaly"
+      "OpenAgentsRuntimePolicyDenialAnomaly",
+      "OpenAgentsRuntimeConvexProjectionLagP95High",
+      "OpenAgentsRuntimeConvexProjectionWriteFailureRatioHigh",
+      "OpenAgentsRuntimeConvexProjectionDriftIncidentsHigh",
+      "OpenAgentsRuntimeConvexProjectionReplayFailures"
     ]
 
     Enum.each(required_alerts, fn alert ->
