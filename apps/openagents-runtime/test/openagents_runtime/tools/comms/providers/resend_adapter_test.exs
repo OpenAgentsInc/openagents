@@ -165,6 +165,34 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapterTest do
     assert error["provider_status"] == nil
   end
 
+  test "send/3 blocks private endpoint targets through guarded network seam" do
+    assert {:error, error} =
+             ResendAdapter.send(base_request(), %{},
+               api_key: "re_test_key",
+               from: "noreply@example.com",
+               endpoint: "http://127.0.0.1:4000/emails"
+             )
+
+    assert error["reason_code"] == "ssrf_block.private_address"
+    assert error["ssrf_block_reason"] == "ssrf_block.private_address"
+  end
+
+  test "send/3 blocks non-allowlisted endpoint hosts through guarded network seam" do
+    dns_resolver = fn "example.com" -> {:ok, [{8, 8, 8, 8}]} end
+
+    assert {:error, error} =
+             ResendAdapter.send(base_request(), %{},
+               api_key: "re_test_key",
+               from: "noreply@example.com",
+               endpoint: "https://example.com/emails",
+               dns_resolver: dns_resolver,
+               allowed_hosts: ["api.resend.com"]
+             )
+
+    assert error["reason_code"] == "ssrf_block.host_not_allowed"
+    assert error["ssrf_block_reason"] == "ssrf_block.host_not_allowed"
+  end
+
   test "send/3 rejects missing api key and invalid payloads" do
     assert {:error, error_missing_key} =
              ResendAdapter.send(base_request(), %{}, from: "noreply@example.com")

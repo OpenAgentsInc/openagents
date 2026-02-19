@@ -7,20 +7,25 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
 
   alias OpenAgentsRuntime.Integrations.LaravelSecretClient
   alias OpenAgentsRuntime.Security.Sanitizer
+  alias OpenAgentsRuntime.Tools.Network.GuardedHTTP
 
   @resend_endpoint "https://api.resend.com/emails"
   @default_timeout_ms 10_000
+  @default_max_redirects 2
+  @default_allowed_hosts ["api.resend.com"]
 
   @impl true
   def send(request, _manifest, opts) when is_map(request) and is_list(opts) do
     request = normalize_map(request)
     endpoint = Keyword.get(opts, :endpoint, @resend_endpoint)
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
-    http_client = Keyword.get(opts, :http_client, &default_http_post/4)
+    http_client = Keyword.get(opts, :http_client, &guarded_http_post/5)
+    guard_opts = network_guard_opts(request, endpoint, opts)
 
     with {:ok, api_key} <- fetch_api_key(request, opts),
          {:ok, payload} <- build_payload(request, opts),
-         {:ok, status, response_body} <- http_client.(endpoint, api_key, payload, timeout_ms) do
+         {:ok, status, response_body} <-
+           invoke_http_client(http_client, endpoint, api_key, payload, timeout_ms, guard_opts) do
       map_response(status, response_body)
     else
       {:error, :missing_api_key} ->
@@ -32,6 +37,11 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
 
       {:error, {:invalid_payload, message}} ->
         {:error, error_result("manifest_validation.invalid_schema", nil, message)}
+
+      {:error, {:blocked, reason_code, details}} ->
+        {:error,
+         error_result(reason_code, nil, details["message"] || "outbound request blocked")
+         |> maybe_put("ssrf_block_reason", reason_code)}
 
       {:error, {:transport, reason}} ->
         {:error, error_result("comms_failed.provider_error", nil, inspect(reason))}
@@ -184,27 +194,95 @@ defmodule OpenAgentsRuntime.Tools.Comms.Providers.ResendAdapter do
 
   defp decode_json(_), do: %{}
 
-  defp default_http_post(endpoint, api_key, payload, timeout_ms) do
-    :inets.start()
-    :ssl.start()
-
+  defp guarded_http_post(endpoint, api_key, payload, timeout_ms, guard_opts) do
     headers = [
-      {~c"authorization", to_charlist("Bearer #{api_key}")},
-      {~c"content-type", ~c"application/json"}
+      {"authorization", "Bearer #{api_key}"},
+      {"content-type", "application/json"}
     ]
 
-    body = Jason.encode!(payload) |> to_charlist()
-    request = {to_charlist(endpoint), headers, ~c"application/json", body}
-    http_opts = [timeout: timeout_ms, connect_timeout: timeout_ms]
+    GuardedHTTP.post_json(
+      endpoint,
+      headers,
+      payload,
+      Keyword.merge(guard_opts, timeout_ms: timeout_ms, connect_timeout_ms: timeout_ms)
+    )
+  end
 
-    case :httpc.request(:post, request, http_opts, body_format: :binary) do
-      {:ok, {{_http_version, status, _reason_phrase}, _response_headers, response_body}} ->
-        {:ok, status, response_body}
+  defp invoke_http_client(http_client, endpoint, api_key, payload, timeout_ms, guard_opts) do
+    cond do
+      is_function(http_client, 5) ->
+        http_client.(endpoint, api_key, payload, timeout_ms, guard_opts)
 
-      {:error, reason} ->
-        {:error, {:transport, reason}}
+      is_function(http_client, 4) ->
+        http_client.(endpoint, api_key, payload, timeout_ms)
+
+      true ->
+        {:error, {:transport, :invalid_http_client}}
     end
   end
+
+  defp network_guard_opts(request, endpoint, opts) do
+    endpoint_host = endpoint_host(endpoint)
+
+    allowed_hosts =
+      opts
+      |> Keyword.get(:allowed_hosts, @default_allowed_hosts)
+      |> normalize_allowlist(endpoint_host)
+
+    [
+      allowed_hosts: allowed_hosts,
+      max_redirects: Keyword.get(opts, :max_redirects, @default_max_redirects),
+      guard_enabled: Keyword.get(opts, :guard_enabled),
+      dns_resolver: Keyword.get(opts, :dns_resolver),
+      transport: Keyword.get(opts, :network_transport),
+      audit_metadata: %{
+        run_id: request["run_id"],
+        tool_call_id: request["tool_call_id"],
+        integration_id: request["integration_id"],
+        provider: "resend"
+      }
+    ]
+    |> Enum.reject(fn
+      {:guard_enabled, nil} -> true
+      {:dns_resolver, nil} -> true
+      {:transport, nil} -> true
+      _ -> false
+    end)
+  end
+
+  defp endpoint_host(endpoint) when is_binary(endpoint) do
+    endpoint
+    |> URI.parse()
+    |> Map.get(:host)
+    |> normalize_optional_string()
+  rescue
+    _ -> nil
+  end
+
+  defp normalize_allowlist(allowlist, endpoint_host) when is_list(allowlist) do
+    hosts =
+      allowlist
+      |> Enum.flat_map(fn
+        value when is_binary(value) ->
+          trimmed = String.trim(value)
+          if trimmed == "", do: [], else: [trimmed]
+
+        _ ->
+          []
+      end)
+
+    if hosts == [] and is_binary(endpoint_host) and endpoint_host != "" do
+      [endpoint_host]
+    else
+      hosts
+    end
+  end
+
+  defp normalize_allowlist(_allowlist, endpoint_host) when is_binary(endpoint_host) do
+    [endpoint_host]
+  end
+
+  defp normalize_allowlist(_allowlist, _endpoint_host), do: @default_allowed_hosts
 
   defp normalize_map(map) when is_map(map) do
     Map.new(map, fn

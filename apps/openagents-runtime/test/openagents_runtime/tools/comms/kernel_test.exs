@@ -50,6 +50,21 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
     end
   end
 
+  defmodule SSRFBlockedAdapter do
+    @behaviour OpenAgentsRuntime.Tools.Comms.ProviderAdapter
+
+    @impl true
+    def send(_request, _manifest, _opts) do
+      {:error,
+       %{
+         "state" => "failed",
+         "reason_code" => "ssrf_block.private_address",
+         "ssrf_block_reason" => "ssrf_block.private_address",
+         "message" => "outbound request blocked"
+       }}
+    end
+  end
+
   setup do
     ProviderCircuitBreaker.reset(:all)
     :ok
@@ -111,6 +126,22 @@ defmodule OpenAgentsRuntime.Tools.Comms.KernelTest do
     assert outcome["decision"] == "denied"
     assert outcome["reason_code"] == "comms_failed.provider_error"
     assert outcome["receipt"]["state"] == "failed"
+  end
+
+  test "execute_send/3 keeps ssrf block reason policy-visible for deterministic deny decisions" do
+    request = Map.put(base_request(), "consent_granted", true)
+
+    assert {:ok, outcome} =
+             Kernel.execute_send(valid_manifest(), request,
+               authorization_id: "auth_123",
+               adapter: SSRFBlockedAdapter
+             )
+
+    assert outcome["state"] == "failed"
+    assert outcome["decision"] == "denied"
+    assert outcome["reason_code"] == "ssrf_block.private_address"
+    assert outcome["provider_result"]["ssrf_block_reason"] == "ssrf_block.private_address"
+    assert outcome["policy"]["reason_code"] == "ssrf_block.private_address"
   end
 
   test "execute_send/3 returns circuit-open reason after breaker trips" do
