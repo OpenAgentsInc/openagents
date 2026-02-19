@@ -122,6 +122,20 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
     {:ok, _} = RunEvents.append_event(run_id, "run.delta", %{"delta" => "hello"})
     clear_checkpoint("run_summary", run_id)
 
+    telemetry_ref = "convex-projector-lag-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        telemetry_ref,
+        [:openagents_runtime, :convex, :projection, :write],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:projection_write_telemetry, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+
     assert {:ok, %{document_id: document_id, write: "applied"}} =
              Projector.project_run(run_id,
                sink: __MODULE__.CaptureSink,
@@ -131,6 +145,9 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
              )
 
     assert_receive {:run_summary_upserted, ^document_id, _summary}
+    assert_receive {:projection_write_telemetry, first_measurements, first_metadata}
+    assert first_measurements.lag_events == 2
+    assert first_metadata.result == "ok"
 
     assert {:ok, %{document_id: ^document_id, write: "skipped", reason: "idempotent"}} =
              Projector.project_run(run_id,
@@ -141,6 +158,9 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
              )
 
     refute_receive {:run_summary_upserted, ^document_id, _summary}
+    assert_receive {:projection_write_telemetry, second_measurements, second_metadata}
+    assert second_measurements.lag_events == 0
+    assert second_metadata.result == "skipped"
 
     checkpoint = checkpoint!("run_summary", run_id)
     assert checkpoint.last_runtime_seq == 2
@@ -223,6 +243,7 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
     clear_checkpoint("run_summary", run_id)
 
     telemetry_ref = "convex-projector-#{System.unique_integer([:positive])}"
+    failure_ref = "convex-projector-failure-#{System.unique_integer([:positive])}"
 
     :ok =
       :telemetry.attach(
@@ -234,7 +255,18 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
         self()
       )
 
+    :ok =
+      :telemetry.attach(
+        failure_ref,
+        [:openagents_runtime, :convex, :projection, :write_failure],
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:projection_write_failure_telemetry, measurements, metadata})
+        end,
+        self()
+      )
+
     on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+    on_exit(fn -> :telemetry.detach(failure_ref) end)
 
     log =
       capture_log(fn ->
@@ -251,9 +283,15 @@ defmodule OpenAgentsRuntime.Convex.ProjectorTest do
     assert_receive {:projection_write_telemetry, measurements, metadata}
     assert measurements.count == 1
     assert is_integer(measurements.duration_ms)
+    assert measurements.lag_events == 0
     assert metadata.projection == "run_summary"
     assert metadata.result == "error"
     assert metadata.reason_class == "simulated_sink_failure"
+
+    assert_receive {:projection_write_failure_telemetry, failure_measurements, failure_metadata}
+    assert failure_measurements.count == 1
+    assert failure_metadata.projection == "run_summary"
+    assert failure_metadata.reason_class == "simulated_sink_failure"
   end
 
   defp checkpoint!(projection_name, entity_id) do

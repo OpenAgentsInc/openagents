@@ -33,7 +33,9 @@ defmodule OpenAgentsRuntime.Telemetry.MetricsTest do
     assert Map.has_key?(allowlist, :policy_decision)
     assert Map.has_key?(allowlist, :parity_failure)
     assert Map.has_key?(allowlist, :convex_projection_write)
+    assert Map.has_key?(allowlist, :convex_projection_write_failure)
     assert Map.has_key?(allowlist, :convex_projection_drift)
+    assert Map.has_key?(allowlist, :convex_projection_replay)
   end
 
   test "parity failure metric is declared with bounded tags" do

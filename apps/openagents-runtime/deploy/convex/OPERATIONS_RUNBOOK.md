@@ -145,3 +145,31 @@ Data rollback (if required):
 2. Import with replace semantics:
    - `npx convex import --env-file /tmp/convex-nonprod-self-hosted.env --replace-all -y <SNAPSHOT_ZIP>`
 3. Re-run health checks and CLI smoke tests.
+
+## Runtime Projection Rebuild (Drop + Replay)
+
+When Convex summary projections drift from runtime truth, rebuild from runtime
+durable history.
+
+Run from `apps/openagents-runtime/`:
+
+```bash
+mix runtime.convex.reproject --run-id <run_id>
+mix runtime.convex.reproject --worker-id <worker_id>
+mix runtime.convex.reproject --all
+```
+
+Behavior:
+
+- rebuild drops runtime checkpoint state for the selected entity/scope
+- projector replays deterministic summary from runtime Postgres state/events
+- replay emits telemetry for observability:
+  - `openagents_runtime.convex.projection.replay.count`
+  - `openagents_runtime.convex.projection.replay.duration_ms`
+
+Projection health metrics to watch during/after rebuild:
+
+- `openagents_runtime.convex.projection.lag_events`
+- `openagents_runtime.convex.projection.write.count` (filter `result=error`)
+- `openagents_runtime.convex.projection.write_failure.count`
+- `openagents_runtime.convex.projection.drift.count`

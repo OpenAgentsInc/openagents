@@ -34,6 +34,7 @@ Current runtime writer modules:
 - `OpenAgentsRuntime.Convex.Sink` (behavior contract)
 - `OpenAgentsRuntime.Convex.NoopSink` (default)
 - `OpenAgentsRuntime.Convex.HttpSink` (Convex `/api/mutation` sink)
+- `OpenAgentsRuntime.Convex.Reprojection` (drop + replay rebuild)
 
 Projector-owned document IDs:
 
@@ -80,6 +81,12 @@ If projection drift is detected:
 3. replay projector from runtime event history
 
 This mirrors runtime reprojection posture for Laravel-facing read models.
+
+Operational entrypoint:
+
+- `mix runtime.convex.reproject --run-id <run_id>`
+- `mix runtime.convex.reproject --worker-id <worker_id>`
+- `mix runtime.convex.reproject --all`
 
 ## Auth Model
 

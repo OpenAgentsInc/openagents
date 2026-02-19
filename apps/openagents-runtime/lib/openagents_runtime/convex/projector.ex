@@ -22,6 +22,7 @@ defmodule OpenAgentsRuntime.Convex.Projector do
   alias OpenAgentsRuntime.Telemetry.Events
 
   @projection_write_event [:openagents_runtime, :convex, :projection, :write]
+  @projection_write_failure_event [:openagents_runtime, :convex, :projection, :write_failure]
   @projection_drift_event [:openagents_runtime, :convex, :projection, :drift]
   @default_projection_version "convex_summary_v1"
 
@@ -188,9 +189,9 @@ defmodule OpenAgentsRuntime.Convex.Projector do
     duration_ms = max(System.monotonic_time(:millisecond) - started_at, 0)
 
     case result do
-      {:ok, _summary_metadata, {:write, drift_reason}} ->
+      {:ok, _summary_metadata, {:write, drift_reason, lag_events}} ->
         maybe_emit_drift(projection_name, entity_id, document_id, drift_reason)
-        emit_projection_write(projection_name, "ok", duration_ms, document_id, nil)
+        emit_projection_write(projection_name, "ok", duration_ms, lag_events, document_id, nil)
 
         {:ok,
          %{
@@ -200,9 +201,17 @@ defmodule OpenAgentsRuntime.Convex.Projector do
            reason: drift_reason_label(drift_reason)
          }}
 
-      {:ok, _summary_metadata, {:skip, reason}} ->
+      {:ok, _summary_metadata, {:skip, reason, lag_events}} ->
         maybe_emit_drift(projection_name, entity_id, document_id, reason)
-        emit_projection_write(projection_name, "skipped", duration_ms, document_id, reason)
+
+        emit_projection_write(
+          projection_name,
+          "skipped",
+          duration_ms,
+          lag_events,
+          document_id,
+          reason
+        )
 
         {:ok,
          %{
@@ -213,7 +222,8 @@ defmodule OpenAgentsRuntime.Convex.Projector do
          }}
 
       {:error, {:sink_write_failed, reason}} ->
-        emit_projection_write(projection_name, "error", duration_ms, document_id, reason)
+        emit_projection_write(projection_name, "error", duration_ms, 0, document_id, reason)
+        emit_projection_write_failure(projection_name, document_id, reason)
 
         Logger.error("convex projection write failed",
           projection: projection_name_to_string(projection_name),
@@ -225,11 +235,11 @@ defmodule OpenAgentsRuntime.Convex.Projector do
         {:error, {:sink_write_failed, reason}}
 
       {:error, {:invalid_summary, reason}} ->
-        emit_projection_write(projection_name, "error", duration_ms, document_id, reason)
+        emit_projection_write(projection_name, "error", duration_ms, 0, document_id, reason)
         {:error, {:invalid_summary, reason}}
 
       {:error, reason} ->
-        emit_projection_write(projection_name, "error", duration_ms, document_id, reason)
+        emit_projection_write(projection_name, "error", duration_ms, 0, document_id, reason)
         {:error, reason}
     end
   end
@@ -249,10 +259,10 @@ defmodule OpenAgentsRuntime.Convex.Projector do
       checkpoint = lock_checkpoint(projection_name_text, entity_id)
 
       case projection_write_action(checkpoint, summary_metadata) do
-        {:skip, reason} ->
-          {:skip, reason}
+        {:skip, reason, lag_events} ->
+          {:skip, reason, lag_events}
 
-        {:write, drift_reason} ->
+        {:write, drift_reason, lag_events} ->
           case invoke_sink(sink, projection_name, document_id, summary, sink_opts) do
             :ok ->
               _ =
@@ -264,7 +274,7 @@ defmodule OpenAgentsRuntime.Convex.Projector do
                   summary_metadata
                 )
 
-              {:write, drift_reason}
+              {:write, drift_reason, lag_events}
 
             {:error, reason} ->
               Repo.rollback({:sink_write_failed, reason})
@@ -278,29 +288,32 @@ defmodule OpenAgentsRuntime.Convex.Projector do
     end
   end
 
-  defp projection_write_action(nil, _summary_metadata), do: {:write, nil}
+  defp projection_write_action(nil, summary_metadata),
+    do: {:write, nil, summary_metadata.runtime_seq}
 
   defp projection_write_action(%ProjectionCheckpoint{} = checkpoint, summary_metadata) do
+    lag_events = max(summary_metadata.runtime_seq - checkpoint.last_runtime_seq, 0)
+
     cond do
       checkpoint.last_runtime_seq > summary_metadata.runtime_seq ->
-        {:skip, :checkpoint_ahead}
+        {:skip, :checkpoint_ahead, 0}
 
       checkpoint.last_runtime_seq == summary_metadata.runtime_seq and
         checkpoint.projection_version == summary_metadata.projection_version and
           checkpoint.summary_hash == summary_metadata.summary_hash ->
-        {:skip, :idempotent}
+        {:skip, :idempotent, 0}
 
       checkpoint.last_runtime_seq == summary_metadata.runtime_seq and
         checkpoint.projection_version == summary_metadata.projection_version and
           checkpoint.summary_hash != summary_metadata.summary_hash ->
-        {:write, :summary_hash_mismatch}
+        {:write, :summary_hash_mismatch, lag_events}
 
       checkpoint.last_runtime_seq == summary_metadata.runtime_seq and
           checkpoint.projection_version != summary_metadata.projection_version ->
-        {:write, :projection_version_changed}
+        {:write, :projection_version_changed, lag_events}
 
       true ->
-        {:write, nil}
+        {:write, nil, lag_events}
     end
   end
 
@@ -434,13 +447,32 @@ defmodule OpenAgentsRuntime.Convex.Projector do
     end
   end
 
-  defp emit_projection_write(projection_name, result, duration_ms, document_id, reason) do
+  defp emit_projection_write(
+         projection_name,
+         result,
+         duration_ms,
+         lag_events,
+         document_id,
+         reason
+       ) do
     Events.emit(
       @projection_write_event,
-      %{count: 1, duration_ms: duration_ms},
+      %{count: 1, duration_ms: duration_ms, lag_events: lag_events},
       %{
         projection: projection_name_to_string(projection_name),
         result: result,
+        document_id: document_id,
+        reason_class: projection_reason_class(reason)
+      }
+    )
+  end
+
+  defp emit_projection_write_failure(projection_name, document_id, reason) do
+    Events.emit(
+      @projection_write_failure_event,
+      %{count: 1},
+      %{
+        projection: projection_name_to_string(projection_name),
         document_id: document_id,
         reason_class: projection_reason_class(reason)
       }
