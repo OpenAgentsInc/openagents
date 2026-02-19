@@ -15,7 +15,15 @@
 
     <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
-        <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+
+    <script>
+        window.__OA_POSTHOG__ = {
+            key: @json((string) config('posthog.api_key', '')),
+            host: @json((string) config('posthog.host', 'https://us.i.posthog.com')),
+            disabled: @json((bool) config('posthog.disabled', false)),
+        };
+    </script>
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700" rel="stylesheet" />
