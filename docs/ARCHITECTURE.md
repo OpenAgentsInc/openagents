@@ -4,7 +4,7 @@ This document gives a single architecture view of the full OpenAgents system acr
 
 Use this as an orientation layer; canonical invariants remain in ADRs and contracts.
 
-- Coverage includes all application surfaces called out in `README.md`: `apps/openagents.com/`, `apps/mobile/`, `apps/desktop/`, `apps/lightning-ops/`, `apps/lightning-wallet-executor/`, and `apps/openagents-runtime/` (plus current repo-active `apps/autopilot-desktop/`).
+- Coverage includes all application surfaces called out in `README.md`: `apps/openagents.com/`, `apps/mobile/`, `apps/autopilot-ios/`, `apps/desktop/`, `apps/lightning-ops/`, `apps/lightning-wallet-executor/`, and `apps/openagents-runtime/` (plus current repo-active `apps/autopilot-desktop/`).
 
 - ADR index: `docs/adr/INDEX.md`
 - Runtime API contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
@@ -17,6 +17,7 @@ flowchart LR
   subgraph clients["Client Surfaces"]
     web["apps/openagents.com<br/>Laravel + Inertia + React<br/>Web control plane and user APIs"]
     mobile["apps/mobile<br/>React Native / Expo<br/>Mobile surface"]
+    ios["apps/autopilot-ios<br/>Native iOS app (SwiftUI)<br/>Codex-first mobile lane"]
     rustDesktop["apps/autopilot-desktop<br/>Rust desktop Codex app"]
     electronDesktop["apps/desktop<br/>Electron desktop Lightning app"]
   end
@@ -43,6 +44,7 @@ flowchart LR
 
   web --> laravel
   mobile --> laravel
+  ios --> laravel
   rustDesktop --> laravel
   electronDesktop --> laravel
 
@@ -59,6 +61,7 @@ flowchart LR
   runtime --- proto
   laravel --- proto
   mobile --- proto
+  ios --- proto
   rustDesktop --- proto
   web --- packages
   mobile --- packages
@@ -75,6 +78,7 @@ flowchart LR
 | OpenAgents web app | `apps/openagents.com/` | User-facing control plane, auth/session authority, API gateway/proxy, Convex JWT minting | Laravel 12, Inertia, React, TypeScript | Alpha/live |
 | OpenAgents runtime | `apps/openagents-runtime/` | Execution authority for runs/events, policy/spend, Codex worker lifecycle, replay semantics | Elixir, Phoenix, Postgres | Active runtime plane |
 | Mobile app | `apps/mobile/` | Mobile user/admin surface over the same runtime and projection contracts | React Native, Expo | Prerelease |
+| iOS app | `apps/autopilot-ios/` | Native iOS Autopilot surface, codex-first worker admin/stream lane | SwiftUI, Xcode | Prerelease |
 | Rust desktop Codex app | `apps/autopilot-desktop/` | Desktop Codex UX and local execution loops synchronized with runtime contracts | Rust workspace crates | Prerelease/integration in progress |
 | Electron desktop Lightning app | `apps/desktop/` | Desktop shell for Lightning/payment workflows and local execution boundaries | Electron, TS/JS packages | Prerelease |
 
@@ -119,7 +123,7 @@ Primary references:
 
 ## End-to-End Data and Control Flows
 
-### Flow A: Codex worker lifecycle (web/mobile/desktop)
+### Flow A: Codex worker lifecycle (web/mobile/iOS/desktop)
 
 1. Client calls Laravel APIs (`/api/runtime/codex/workers*`).
 2. Laravel validates user session and forwards signed internal requests to runtime (`/internal/v1/codex/workers*`).
@@ -161,7 +165,7 @@ Primary references:
 2. `apps/openagents-runtime` is the execution plane with Postgres durability and stream/replay contracts.
 3. Convex is run self-hosted and/or cloud by environment, but always as non-authoritative projection infrastructure.
 4. Lightning services (`lightning-ops`, `lightning-wallet-executor`, Aperture, LND, bitcoind) run as a dedicated payment subsystem.
-5. Desktop/mobile clients consume the same runtime/proto contracts as web.
+5. Desktop/mobile/iOS clients consume the same runtime/proto contracts as web.
 
 ## Operational and Verification Expectations
 
