@@ -56,8 +56,8 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
   end
 
   test "run/3 rejects unsupported strategy ids" do
-    assert {:error, {:unsupported_strategy, "rlm_lite.v1"}} =
-             Predict.run(@signature_id, %{}, strategy_id: "rlm_lite.v1")
+    assert {:error, {:unsupported_strategy, "unknown.v9"}} =
+             Predict.run(@signature_id, %{}, strategy_id: "unknown.v9")
   end
 
   test "run/3 rejects unknown signatures" do
@@ -79,5 +79,34 @@ defmodule OpenAgentsRuntime.DS.PredictTest do
 
   test "run/3 rejects invalid custom direct output" do
     assert {:error, :invalid_output} = Predict.run(@signature_id, %{}, output: 123)
+  end
+
+  test "run/3 supports rlm_lite.v1 with trace linkage in receipt" do
+    signature_id = "@openagents/autopilot/rlm/SummarizeThread.v1"
+
+    input = %{
+      "timeline_window" => %{"from" => "2026-02-18T00:00:00Z", "to" => "2026-02-19T00:00:00Z"},
+      "tool_replay" => %{
+        "summary" => "tool_a|success|ok",
+        "trace_refs" => ["tool_task:tool_a"],
+        "window" => %{"included_items" => 1}
+      }
+    }
+
+    assert {:ok, result} =
+             Predict.run(
+               signature_id,
+               input,
+               run_id: "run_rlm_001",
+               strategy_id: "rlm_lite.v1",
+               max_iterations: 3
+             )
+
+    assert result.receipt.strategy_id == "rlm_lite.v1"
+    assert result.receipt.trace_ref =~ "trace:run_rlm_001:"
+    assert is_binary(result.receipt.trace_hash)
+    assert result.receipt.trace_storage in ["inline", "external"]
+    assert result.trace["trace_ref"] == result.receipt.trace_ref
+    assert result.output["confidence"] >= 0.45
   end
 end
