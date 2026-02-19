@@ -137,6 +137,12 @@ Backlog:
 7. Validate export/import backup posture in non-prod.
 8. Write operational runbook for upgrades and rollback.
 
+Implementation assets:
+
+- `apps/openagents-runtime/deploy/convex/provision-nonprod-gcp.sh`
+- `apps/openagents-runtime/deploy/convex/check-nonprod-health.sh`
+- `apps/openagents-runtime/deploy/convex/README.md`
+
 Verification:
 
 - `npx convex dev --once` with self-hosted deployment envs
