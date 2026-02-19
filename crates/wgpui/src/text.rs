@@ -82,11 +82,11 @@ impl TextSystem {
     pub fn new(scale_factor: f32) -> Self {
         let mut font_system = FontSystem::new();
 
-        let square721 = include_bytes!("../../../src/gui/assets/fonts/Square721StdRoman.ttf");
-        let regular = include_bytes!("../../../src/gui/assets/fonts/VeraMono.ttf");
-        let bold = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Bold.ttf");
-        let italic = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Italic.ttf");
-        let bold_italic = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Bold-Italic.ttf");
+        let square721 = include_bytes!("../assets/fonts/Square721StdRoman.ttf");
+        let regular = include_bytes!("../assets/fonts/VeraMono.ttf");
+        let bold = include_bytes!("../assets/fonts/VeraMono-Bold.ttf");
+        let italic = include_bytes!("../assets/fonts/VeraMono-Italic.ttf");
+        let bold_italic = include_bytes!("../assets/fonts/VeraMono-Bold-Italic.ttf");
 
         font_system.db_mut().load_font_data(square721.to_vec());
         font_system.db_mut().load_font_data(regular.to_vec());

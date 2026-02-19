@@ -329,7 +329,7 @@ Focus handling beyond storage is expected in a later phase.
 
 `TextSystem` is part of `Window` and defaults to Square721 Std Roman, with Vera
 Mono embedded for monospace use. Fonts are embedded from
-`src/gui/assets/fonts/Square721StdRoman.ttf` and `src/gui/assets/fonts/VeraMono*.ttf`
+`crates/wgpui/assets/fonts/Square721StdRoman.ttf` and `crates/wgpui/assets/fonts/VeraMono*.ttf`
 in `text.rs`.
 
 ## Styled DSL
