@@ -198,6 +198,211 @@ defmodule OpenAgentsRuntime.Runs.ExecutorTest do
     assert run.terminal_reason_class == "loop_detected"
   end
 
+  test "applies hook lifecycle in deterministic order and keeps effects receipt-visible" do
+    run_id = unique_run_id("exec_hooks")
+    insert_run(run_id)
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_1",
+               type: "user_message",
+               payload: %{"text" => "hello"}
+             })
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_2",
+               type: "complete",
+               payload: %{}
+             })
+
+    hooks = [
+      %{
+        id: "model_high",
+        hook: :before_model_resolve,
+        priority: 30,
+        handler: fn _event, _context ->
+          %{"model_override" => "claude-sonnet", "provider_override" => "anthropic"}
+        end
+      },
+      %{
+        id: "prompt_high",
+        hook: :before_prompt_build,
+        priority: 20,
+        handler: fn _event, _context ->
+          %{"system_prompt" => "high", "prepend_context" => "[high]"}
+        end
+      },
+      %{
+        id: "prompt_low",
+        hook: :before_prompt_build,
+        priority: 10,
+        handler: fn _event, _context ->
+          %{"system_prompt" => "low", "prepend_context" => "[low]"}
+        end
+      },
+      %{
+        id: "persist_marker",
+        hook: :before_message_persist,
+        priority: 10,
+        handler: fn _event, _context ->
+          %{"payload" => %{"hook_marker" => "persisted"}}
+        end
+      }
+    ]
+
+    assert {:ok, %{processed_frames: 2, status: "succeeded", terminal_reason_class: "completed"}} =
+             Executor.run_once(run_id, lease_owner: "worker-hooks", hooks: hooks)
+
+    events = RunEvents.list_after(run_id, 0)
+
+    assert Enum.map(events, & &1.event_type) == [
+             "run.started",
+             "run.hook_applied",
+             "run.hook_applied",
+             "run.hook_applied",
+             "run.hook_applied",
+             "run.delta",
+             "run.hook_applied",
+             "run.finished"
+           ]
+
+    before_prompt_applied =
+      events
+      |> Enum.filter(&(&1.event_type == "run.hook_applied"))
+      |> Enum.filter(&(&1.payload["hook_name"] == "before_prompt_build"))
+
+    assert Enum.map(before_prompt_applied, & &1.payload["hook_id"]) == [
+             "prompt_high",
+             "prompt_low"
+           ]
+
+    [delta_event] = Enum.filter(events, &(&1.event_type == "run.delta"))
+    assert delta_event.payload["delta"] == "[high]\n\n[low]\n\nhello"
+    assert delta_event.payload["hook_marker"] == "persisted"
+
+    [finish_event] = Enum.filter(events, &(&1.event_type == "run.finished"))
+    assert finish_event.payload["status"] == "succeeded"
+    assert finish_event.payload["hook_marker"] == "persisted"
+  end
+
+  test "hook failures are bounded and observable without breaking run safety" do
+    run_id = unique_run_id("exec_hook_fail")
+    insert_run(run_id)
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_1",
+               type: "user_message",
+               payload: %{"text" => "hello"}
+             })
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_2",
+               type: "complete",
+               payload: %{}
+             })
+
+    hooks = [
+      %{
+        id: "prompt_raise",
+        hook: :before_prompt_build,
+        priority: 20,
+        handler: fn _event, _context -> raise "hook exploded" end
+      },
+      %{
+        id: "persist_invalid",
+        hook: :before_message_persist,
+        priority: 10,
+        handler: fn _event, _context -> "invalid_result" end
+      }
+    ]
+
+    assert {:ok, %{processed_frames: 2, status: "succeeded", terminal_reason_class: "completed"}} =
+             Executor.run_once(run_id, lease_owner: "worker-hooks-fail", hooks: hooks)
+
+    events = RunEvents.list_after(run_id, 0)
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.hook_error" and &1.payload["hook_id"] == "prompt_raise")
+           )
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.hook_error" and &1.payload["hook_id"] == "persist_invalid")
+           )
+
+    assert Enum.any?(events, &(&1.event_type == "run.delta"))
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.finished" and &1.payload["status"] == "succeeded")
+           )
+  end
+
+  test "runs before_tool_call and after_tool_call hooks deterministically" do
+    run_id = unique_run_id("exec_tool_hooks")
+    insert_run(run_id)
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_1",
+               type: "tool_call",
+               payload: %{"tool" => "search_web"}
+             })
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_2",
+               type: "tool_result",
+               payload: %{"ok" => true}
+             })
+
+    assert {:ok, _} =
+             Frames.append_frame(run_id, %{
+               frame_id: "frame_3",
+               type: "complete",
+               payload: %{}
+             })
+
+    hooks = [
+      %{
+        id: "before_tool",
+        hook: :before_tool_call,
+        priority: 10,
+        handler: fn _event, _context -> %{"payload" => %{"text" => "tool call patched"}} end
+      },
+      %{
+        id: "after_tool",
+        hook: :after_tool_call,
+        priority: 10,
+        handler: fn _event, _context -> :ok end
+      }
+    ]
+
+    assert {:ok, %{processed_frames: 3, status: "succeeded", terminal_reason_class: "completed"}} =
+             Executor.run_once(run_id, lease_owner: "worker-tool-hooks", hooks: hooks)
+
+    events = RunEvents.list_after(run_id, 0)
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.hook_applied" and &1.payload["hook_id"] == "before_tool")
+           )
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.hook_applied" and &1.payload["hook_id"] == "after_tool")
+           )
+
+    assert Enum.any?(
+             events,
+             &(&1.event_type == "run.delta" and &1.payload["delta"] == "tool call patched")
+           )
+  end
+
   defp insert_run(run_id) do
     Repo.insert!(%Run{
       run_id: run_id,
