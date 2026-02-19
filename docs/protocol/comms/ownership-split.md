@@ -33,3 +33,4 @@
 - Manifest shape: `docs/protocol/comms/integration-manifest.schema.v1.json`
 - Tool pack contract: `docs/protocol/comms/tool-pack-contract.v1.json`
 - Reason taxonomy: `docs/protocol/reasons/runtime-policy-reason-codes.v1.json`
+- Security/replay verification matrix: `docs/protocol/comms/security-replay-verification-matrix.v1.md`
