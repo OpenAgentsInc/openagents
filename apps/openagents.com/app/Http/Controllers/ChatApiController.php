@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\AI\RunOrchestrator;
+use App\AI\Runtime\RuntimeClient;
 use App\Models\User;
 use App\Services\GuestChatSessionService;
 use App\Services\PostHogService;
@@ -122,10 +122,13 @@ class ChatApiController extends Controller
 
         Log::info('Chat stream: starting', ['conversation_id' => $conversationId, 'prompt_length' => strlen($prompt)]);
 
-        $orchestrator = resolve(RunOrchestrator::class);
-        $response = $orchestrator->streamAutopilotRun($user, $conversationId, $prompt, $authenticatedSession);
+        $runtimeClient = resolve(RuntimeClient::class);
+        $response = $runtimeClient->streamAutopilotRun($user, $conversationId, $prompt, $authenticatedSession);
 
-        Log::info('Chat stream: response created', ['conversation_id' => $conversationId]);
+        Log::info('Chat stream: response created', [
+            'conversation_id' => $conversationId,
+            'runtime_driver' => $runtimeClient->driverName(),
+        ]);
 
         return $response;
     }
@@ -261,7 +264,6 @@ class ChatApiController extends Controller
             ->exists();
     }
 
-
     /**
      * Resolve the authenticated user from the web guard or chat session fallback.
      */
@@ -368,6 +370,7 @@ class ChatApiController extends Controller
 
         return $normalized;
     }
+
     /**
      * @param  array<int, mixed>  $parts
      */
@@ -388,7 +391,6 @@ class ChatApiController extends Controller
 
         return implode('', $chunks);
     }
-
 
     private function requiresExplicitEmailTurn(string $prompt): bool
     {
