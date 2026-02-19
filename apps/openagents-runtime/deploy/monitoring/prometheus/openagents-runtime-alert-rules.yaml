@@ -85,3 +85,47 @@ spec:
             summary: Spend/policy denial ratio is above 5%
             description: Elevated denied or exhausted policy decisions detected.
             runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#policy-denial-ratio
+
+        - alert: OpenAgentsRuntimeConvexProjectionLagP95High
+          expr: quantile_over_time(0.95, openagents_runtime_convex_projection_lag_events{result="ok"}[10m]) > 25
+          for: 10m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Convex projection lag p95 exceeded 25 events
+            description: Runtime projector is falling behind recent runtime sequence progression.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-lag
+
+        - alert: OpenAgentsRuntimeConvexProjectionWriteFailureRatioHigh
+          expr: sum(rate(openagents_runtime_convex_projection_write_failure_count[5m])) / clamp_min(sum(rate(openagents_runtime_convex_projection_write_count[5m])), 1) > 0.01
+          for: 10m
+          labels:
+            severity: critical
+            service: openagents-runtime
+          annotations:
+            summary: Convex projection write failure ratio exceeded 1%
+            description: Runtime projection writes to Convex are failing above error budget.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-write-failures
+
+        - alert: OpenAgentsRuntimeConvexProjectionDriftIncidentsHigh
+          expr: sum(increase(openagents_runtime_convex_projection_drift_count[10m])) > 3
+          for: 5m
+          labels:
+            severity: warning
+            service: openagents-runtime
+          annotations:
+            summary: Convex projection drift incidents are elevated
+            description: Projection checkpoint drift signals exceeded expected tolerance.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-drift
+
+        - alert: OpenAgentsRuntimeConvexProjectionReplayFailures
+          expr: sum(increase(openagents_runtime_convex_projection_replay_count{result="error"}[15m])) > 0
+          for: 5m
+          labels:
+            severity: critical
+            service: openagents-runtime
+          annotations:
+            summary: Convex projection replay failure detected
+            description: Runtime replay/rebuild path for Convex projections is failing.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-replay

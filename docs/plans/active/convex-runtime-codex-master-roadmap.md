@@ -372,6 +372,23 @@ Backlog:
 5. Run rollback drill and measure recovery time.
 6. Finalize runbooks and on-call ownership map.
 
+Implementation status (2026-02-19):
+
+- Runtime + projector load/chaos suite expanded with Convex-specific cases:
+  - `apps/openagents-runtime/test/openagents_runtime/load/convex_projection_load_chaos_test.exs`
+  - sustained run-event burst lag checks,
+  - codex worker heartbeat burst checkpoint convergence,
+  - sink failure chaos with replay recovery validation.
+- Production threshold artifacts now include Convex lag/drift/error budgets:
+  - `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
+  - `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
+  - `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+- Load/chaos verification report is tracked at:
+  - `apps/openagents-runtime/docs/reports/2026-02-19-convex-runtime-projector-load-chaos-report.md`
+- Remaining Phase 8 scope:
+  - production-like backup/restore + rollback drills,
+  - staged cohort rollout execution.
+
 Verification:
 
 - load test reports and alerting validation
