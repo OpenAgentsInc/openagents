@@ -188,6 +188,40 @@ paths:
         '404':
           $ref: '#/components/responses/Error'
   /codex/workers:
+    get:
+      summary: List Codex workers for authenticated principal
+      operationId: listCodexWorkers
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [starting, running, stopping, stopped, failed]
+        - name: workspace_ref
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 255
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Worker list returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodexWorkerListResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
     post:
       summary: Create or reattach Codex worker session
       operationId: createCodexWorker
@@ -772,6 +806,83 @@ components:
         data:
           type: object
           additionalProperties: true
+    CodexWorkerListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodexWorkerSummary'
+    CodexWorkerSummary:
+      type: object
+      required: [worker_id, status, latest_seq]
+      properties:
+        worker_id:
+          type: string
+        status:
+          type: string
+          enum: [starting, running, stopping, stopped, failed]
+        latest_seq:
+          type: integer
+          minimum: 0
+        workspace_ref:
+          type: string
+          nullable: true
+        codex_home_ref:
+          type: string
+          nullable: true
+        adapter:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        stopped_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        convex_projection:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/CodexWorkerProjectionStatus'
+    CodexWorkerProjectionStatus:
+      type: object
+      required:
+        - document_id
+        - last_runtime_seq
+        - lag_events
+        - status
+        - projection_version
+      properties:
+        document_id:
+          type: string
+        last_runtime_seq:
+          type: integer
+          minimum: 0
+        lag_events:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [in_sync, lagging]
+        projection_version:
+          type: string
+        last_projected_at:
+          type: string
+          format: date-time
+          nullable: true
     CodexWorkerRequestEnvelope:
       type: object
       required: [request]

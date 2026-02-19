@@ -54,6 +54,15 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
         %{name: "version", location: "path", required: true}
       ]
     },
+    {"/codex/workers", "get"} => %{
+      statuses: ~w(200 400 401),
+      required_params: [],
+      optional_params: [
+        %{name: "status", location: "query", required: false},
+        %{name: "workspace_ref", location: "query", required: false},
+        %{name: "limit", location: "query", required: false}
+      ]
+    },
     {"/codex/workers", "post"} => %{
       statuses: ~w(200 202 400 401 403),
       required_params: []
@@ -369,8 +378,16 @@ defmodule OpenAgentsRuntime.Contracts.InternalAPIContract do
         "RUNTIME_CONTRACT.md missing skill release endpoint section"
       )
       |> maybe_push(
+        String.contains?(body, "GET /internal/v1/codex/workers"),
+        "RUNTIME_CONTRACT.md missing codex workers list endpoint section"
+      )
+      |> maybe_push(
         String.contains?(body, "POST /internal/v1/codex/workers"),
         "RUNTIME_CONTRACT.md missing codex workers create endpoint section"
+      )
+      |> maybe_push(
+        String.contains?(body, "workspace_ref"),
+        "RUNTIME_CONTRACT.md missing codex workers list query semantics"
       )
       |> maybe_push(
         String.contains?(body, "POST /internal/v1/codex/workers/{worker_id}/requests"),

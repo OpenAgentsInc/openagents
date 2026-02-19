@@ -251,6 +251,8 @@ Verification:
 
 - Mirror codex worker summary projections.
 - Keep detailed stream/control operations on runtime endpoints.
+- Web admin now includes runtime-backed worker list/detail/actions plus stream
+  event observability (`apps/openagents.com/resources/js/pages/admin/index.tsx`).
 
 Verification:
 

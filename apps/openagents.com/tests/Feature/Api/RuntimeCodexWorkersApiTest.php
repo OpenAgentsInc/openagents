@@ -18,6 +18,37 @@ beforeEach(function () {
     config()->set('runtime.elixir.codex_worker_stop_path_template', '/internal/v1/codex/workers/{worker_id}/stop');
 });
 
+test('runtime codex workers api lists principal-owned workers with filters', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers?status=running&limit=5' => Http::response([
+            'data' => [
+                [
+                    'worker_id' => 'codexw_1',
+                    'status' => 'running',
+                    'latest_seq' => 3,
+                    'convex_projection' => [
+                        'status' => 'in_sync',
+                        'lag_events' => 0,
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($user)->getJson('/api/runtime/codex/workers?status=running&limit=5');
+    $response
+        ->assertOk()
+        ->assertJsonPath('data.0.worker_id', 'codexw_1')
+        ->assertJsonPath('data.0.convex_projection.status', 'in_sync');
+
+    Http::assertSent(function (HttpRequest $request) use ($user): bool {
+        return $request->url() === 'http://runtime.internal/internal/v1/codex/workers?status=running&limit=5'
+            && ($request->header('X-OA-USER-ID')[0] ?? null) === (string) $user->id;
+    });
+});
+
 test('runtime codex workers api proxies lifecycle endpoints', function () {
     $user = User::factory()->create();
 

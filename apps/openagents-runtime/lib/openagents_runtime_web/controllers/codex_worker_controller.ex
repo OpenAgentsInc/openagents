@@ -1,8 +1,24 @@
 defmodule OpenAgentsRuntimeWeb.CodexWorkerController do
   use OpenAgentsRuntimeWeb, :controller
 
+  alias OpenAgentsRuntime.Codex.Worker
   alias OpenAgentsRuntime.Codex.WorkerStreamTailer
   alias OpenAgentsRuntime.Codex.Workers
+
+  @spec list(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def list(conn, params) do
+    with {:ok, principal} <- principal_from_headers(conn),
+         {:ok, opts} <- list_opts(params),
+         {:ok, workers} <- Workers.list_workers(principal, opts) do
+      json(conn, %{"data" => workers})
+    else
+      {:error, :invalid_principal} ->
+        error(conn, 401, "unauthorized", "missing or invalid principal headers")
+
+      {:error, {:invalid_request, message}} ->
+        error(conn, 400, "invalid_request", message)
+    end
+  end
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, params) do
@@ -234,6 +250,80 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerController do
         end
     end
   end
+
+  defp list_opts(params) do
+    with {:ok, limit} <- parse_limit(params),
+         {:ok, status} <- parse_status(params),
+         {:ok, workspace_ref} <- parse_workspace_ref(params) do
+      opts =
+        []
+        |> Keyword.put(:limit, limit)
+        |> maybe_put_opt(:status, status)
+        |> maybe_put_opt(:workspace_ref, workspace_ref)
+
+      {:ok, opts}
+    end
+  end
+
+  defp parse_limit(params) do
+    case Map.get(params, "limit") do
+      nil ->
+        {:ok, 50}
+
+      value when is_binary(value) ->
+        case Integer.parse(value) do
+          {parsed, ""} when parsed >= 1 and parsed <= 200 -> {:ok, parsed}
+          _ -> {:error, {:invalid_request, "limit must be an integer between 1 and 200"}}
+        end
+
+      _ ->
+        {:error, {:invalid_request, "limit must be an integer between 1 and 200"}}
+    end
+  end
+
+  defp parse_status(params) do
+    case trim_string(Map.get(params, "status")) do
+      nil ->
+        {:ok, nil}
+
+      status ->
+        if status in Worker.statuses() do
+          {:ok, status}
+        else
+          {:error,
+           {:invalid_request, "status must be one of: #{Enum.join(Worker.statuses(), ", ")}"}}
+        end
+    end
+  end
+
+  defp parse_workspace_ref(params) do
+    workspace_ref = trim_string(Map.get(params, "workspace_ref"))
+
+    case workspace_ref do
+      nil ->
+        {:ok, nil}
+
+      value when byte_size(value) <= 255 ->
+        {:ok, value}
+
+      _ ->
+        {:error, {:invalid_request, "workspace_ref must be <= 255 chars"}}
+    end
+  end
+
+  defp trim_string(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp trim_string(_), do: nil
+
+  defp maybe_put_opt(opts, _key, nil), do: opts
+  defp maybe_put_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp error(conn, status, code, message) do
     conn

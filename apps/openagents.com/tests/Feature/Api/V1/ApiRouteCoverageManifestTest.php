@@ -47,6 +47,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'GET api/l402/transactions/{eventId}',
         'GET api/l402/wallet',
         'GET api/me',
+        'GET api/runtime/codex/workers',
         'GET api/runtime/codex/workers/{workerId}',
         'GET api/runtime/codex/workers/{workerId}/stream',
         'GET api/runtime/skills/releases/{skillId}/{version}',

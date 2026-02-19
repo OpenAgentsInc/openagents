@@ -381,6 +381,42 @@ Success (`201`):
 
 Fetches immutable SkillRelease artifact including compiled bundle and compatibility report.
 
+### `GET /internal/v1/codex/workers`
+
+Lists principal-owned Codex workers for admin/observability surfaces.
+
+Required principal header (at least one):
+
+- `x-oa-user-id`
+- `x-oa-guest-scope`
+
+Optional query params:
+
+- `status` (`starting|running|stopping|stopped|failed`)
+- `workspace_ref` (exact match filter)
+- `limit` (`1..200`, default `50`)
+
+Success (`200`):
+
+```json
+{
+  "data": [
+    {
+      "worker_id": "codexw_12345",
+      "status": "running",
+      "latest_seq": 17,
+      "workspace_ref": "workspace://demo",
+      "convex_projection": {
+        "status": "in_sync",
+        "lag_events": 0,
+        "last_runtime_seq": 17,
+        "last_projected_at": "2026-02-19T22:11:00Z"
+      }
+    }
+  ]
+}
+```
+
 ### `POST /internal/v1/codex/workers`
 
 Creates or reattaches a remote Codex worker session for the authenticated principal.
