@@ -109,11 +109,11 @@ class EmailCodeAuthController extends Controller
             'redirect' => '/',
         ];
 
-        $clientName = $this->mobileClientName($request);
+        $clientName = $this->apiClientName($request);
         if ($clientName !== null) {
             $response['tokenType'] = 'Bearer';
             $response['token'] = $this->issueMobileApiToken($user, $clientName);
-            $response['tokenName'] = $this->mobileTokenName($clientName);
+            $response['tokenName'] = $this->apiTokenName($clientName);
         }
 
         return response()->json($response);
@@ -175,29 +175,33 @@ class EmailCodeAuthController extends Controller
         return $user;
     }
 
-    private function mobileClientName(Request $request): ?string
+    private function apiClientName(Request $request): ?string
     {
         $client = strtolower(trim((string) $request->header('x-client', '')));
         if ($client === '') {
             return null;
         }
 
-        return in_array($client, ['autopilot-ios', 'openagents-expo'], true)
+        return in_array($client, ['autopilot-ios', 'openagents-expo', 'autopilot-desktop', 'openagents-desktop'], true)
             ? $client
             : null;
     }
 
     private function issueMobileApiToken(User $user, string $clientName): string
     {
-        $tokenName = $this->mobileTokenName($clientName);
+        $tokenName = $this->apiTokenName($clientName);
 
         $user->tokens()->where('name', $tokenName)->delete();
 
         return $user->createToken($tokenName, ['*'])->plainTextToken;
     }
 
-    private function mobileTokenName(string $clientName): string
+    private function apiTokenName(string $clientName): string
     {
+        if (in_array($clientName, ['autopilot-desktop', 'openagents-desktop'], true)) {
+            return 'desktop:'.$clientName;
+        }
+
         return 'mobile:'.$clientName;
     }
 }

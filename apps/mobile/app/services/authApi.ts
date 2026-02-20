@@ -1,10 +1,11 @@
 import Config from "@/config"
 
 const base = () => Config.authApiUrl.replace(/\/$/, "")
+const AUTH_CLIENT_HEADER = "openagents-expo"
 
 export type AuthStartResult = { ok: true } | { ok: false; error: string }
 export type AuthVerifyResult =
-  | { ok: true; userId: string; token?: string }
+  | { ok: true; userId: string; token: string }
   | { ok: false; error: string }
 export type SsoAuthorizeUrlResult = { ok: true; url: string } | { ok: false; error: string }
 export type SsoExchangeResult =
@@ -17,9 +18,13 @@ export type SsoExchangeResult =
   | { ok: false; error: string }
 
 export async function authStart(email: string): Promise<AuthStartResult> {
-  const res = await fetch(`${base()}/api/auth/start`, {
+  const res = await fetch(`${base()}/api/auth/email`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      "X-Client": AUTH_CLIENT_HEADER,
+    },
     body: JSON.stringify({ email: email.trim().toLowerCase() }),
   })
   const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
@@ -32,9 +37,10 @@ export async function authStart(email: string): Promise<AuthStartResult> {
 export async function authVerify(email: string, code: string): Promise<AuthVerifyResult> {
   const res = await fetch(`${base()}/api/auth/verify`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "content-type": "application/json",
-      "X-Client": "openagents-expo",
+      "X-Client": AUTH_CLIENT_HEADER,
     },
     body: JSON.stringify({
       email: email.trim().toLowerCase(),
@@ -50,10 +56,21 @@ export async function authVerify(email: string, code: string): Promise<AuthVerif
   if (!res.ok || !data?.ok) {
     return { ok: false, error: typeof data?.error === "string" ? data.error : "verify_failed" }
   }
+
+  const token = typeof data.token === "string" ? data.token.trim() : ""
+  if (token.length === 0) {
+    return { ok: false, error: "token_missing" }
+  }
+
+  const userId = typeof data.userId === "string" ? data.userId.trim() : ""
+  if (userId.length === 0) {
+    return { ok: false, error: "user_missing" }
+  }
+
   return {
     ok: true,
-    userId: data.userId ?? "",
-    token: data.token,
+    userId,
+    token,
   }
 }
 
@@ -91,10 +108,16 @@ export async function ssoExchangeCode(code: string): Promise<SsoExchangeResult> 
   if (!res.ok || !data?.ok || !data?.userId || !data?.user) {
     return { ok: false, error: typeof data?.error === "string" ? data.error : "exchange_failed" }
   }
+
+  const token = typeof data.token === "string" ? data.token.trim() : ""
+  if (token.length === 0) {
+    return { ok: false, error: "token_missing" }
+  }
+
   return {
     ok: true,
     userId: data.userId,
     user: data.user,
-    token: data.token ?? "",
+    token,
   }
 }

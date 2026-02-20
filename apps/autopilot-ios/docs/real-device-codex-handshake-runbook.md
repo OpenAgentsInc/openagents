@@ -44,14 +44,14 @@ Desktop host:
 
 - `apps/autopilot-desktop/` is available and buildable.
 - Desktop has network access to the same OpenAgents environment as iOS.
-- Desktop launch includes runtime sync env vars.
+- Desktop has a valid WorkOS email-code login for runtime sync (`autopilot-desktop -- auth login`).
 
 iOS device:
 
 - Real device build installed from `apps/autopilot-ios/Autopilot/`.
 - iOS app defaults to `https://openagents.com` automatically (no manual base URL entry).
 - iOS user signs in in-app via email code (no manual bearer token paste).
-- iOS user and desktop sync token must both have access to the same worker owner scope.
+- iOS user and desktop user session must resolve to the same worker owner scope.
 
 Operator tools:
 
@@ -60,15 +60,11 @@ Operator tools:
 
 ## 2. Desktop Launch Configuration
 
-Set required runtime sync env vars before launching desktop:
+Authenticate desktop with the same WorkOS user scope as iOS:
 
 ```bash
-export OPENAGENTS_RUNTIME_SYNC_BASE_URL="https://openagents.com"
-export OPENAGENTS_RUNTIME_SYNC_TOKEN="<desktop-runtime-bearer-token>"
-export OPENAGENTS_RUNTIME_SYNC_WORKSPACE_REF="desktop://$(pwd)"
-export OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF="file://$HOME/.codex"
-export OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX="desktopw"
-export OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS="30000"
+cd /Users/christopherdavid/code/openagents
+cargo run -p autopilot-desktop -- auth login --email "<you@domain.com>"
 ```
 
 Launch desktop from repo root:
@@ -80,8 +76,19 @@ cargo run -p autopilot-desktop
 Expected:
 
 - Desktop starts normally.
-- Desktop creates/reattaches runtime worker IDs like `desktopw:<thread-id>`.
+- Desktop uses persisted WorkOS-issued runtime token and creates/reattaches runtime worker IDs like `desktopw:<thread-id>`.
 - Desktop begins runtime worker heartbeat and stream loops.
+
+Optional overrides (debug/local):
+
+```bash
+export OPENAGENTS_RUNTIME_SYNC_BASE_URL="https://openagents.com"
+export OPENAGENTS_RUNTIME_SYNC_TOKEN="<override-token>"
+export OPENAGENTS_RUNTIME_SYNC_WORKSPACE_REF="desktop://$(pwd)"
+export OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF="file://$HOME/.codex"
+export OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX="desktopw"
+export OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS="30000"
+```
 
 ## 3. iOS Device Configuration
 
@@ -231,7 +238,7 @@ Stream sequence correlation:
 ## 8. Release Validation Checklist (Pass/Fail)
 
 - [ ] Automated harness gate passed (`codex_worker_controller_test.exs`, desktop `runtime_codex_proto::tests`, iOS `AutopilotTests`).
-- [ ] Desktop launched with `OPENAGENTS_RUNTIME_SYNC_BASE_URL` and `OPENAGENTS_RUNTIME_SYNC_TOKEN`.
+- [ ] Desktop authenticated via `autopilot-desktop -- auth login` (or equivalent valid runtime sync token source).
 - [ ] iOS app can load workers and select target worker.
 - [ ] iOS stream enters `live` state before handshake attempt.
 - [ ] Sending handshake emits waiting state then success within 30s.

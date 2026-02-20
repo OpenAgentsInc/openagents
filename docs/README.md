@@ -52,6 +52,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Pane system docs: `autopilot/reference/EFFUSE_PANES.md`
 - Mobile app source: `../apps/mobile/`
 - Rust desktop Codex app source: `../apps/autopilot-desktop/`
+- Rust desktop Codex app local auth/run guide: `../apps/autopilot-desktop/README.md`
 - Electron desktop Lightning app source: `../apps/desktop/`
 - Onyx notes app source: `../apps/onyx/`
 

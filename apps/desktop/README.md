@@ -12,7 +12,8 @@ This app is the desktop execution boundary for Lightning flows in EP212.
 
 - Electron app shell with Effect service graph.
 - Renderer is fully Effuse-based and mounted in Effuse panes (same pane system family as web).
-- Auth linkage strategy: sign in with the same email used on `openagents.com` to map to the same OpenAgents user id.
+- Auth linkage strategy: WorkOS email-code via Laravel (`POST /api/auth/email` -> `POST /api/auth/verify` with `X-Client: openagents-desktop`) to map to the same OpenAgents user id.
+- Desktop marks auth as valid only when verify returns a bearer token; token-bearing auth is required for user-scoped runtime/sync lanes.
 - Connectivity probes for OpenAgents API and Khala sync lane.
 - Background executor loop consumes Lightning tasks and writes deterministic transitions/results.
 - L402 execution path uses `@openagentsinc/lightning-effect` + `@openagentsinc/lnd-effect`.
