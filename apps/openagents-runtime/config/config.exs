@@ -37,6 +37,11 @@ config :openagents_runtime, :convex_http_sink,
   codex_worker_summary_mutation_path: "runtime:upsertCodexWorkerSummary",
   request_timeout_ms: 2_500
 
+config :openagents_runtime, :convex_fanout_sink,
+  sinks: [OpenAgentsRuntime.Convex.NoopSink, OpenAgentsRuntime.Sync.ProjectorSink]
+
+config :openagents_runtime, :khala_sync, stream_payload_mode: :inline
+
 # Configures the endpoint
 config :openagents_runtime, OpenAgentsRuntimeWeb.Endpoint,
   url: [host: "localhost"],
