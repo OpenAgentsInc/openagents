@@ -22,40 +22,10 @@ private struct CodexChatView: View {
     @ObservedObject var model: CodexHandshakeViewModel
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                header
-                Divider()
-                transcript
-                Divider()
-                controls
+        transcript
+            .task {
+                await model.autoConnectOnLaunch()
             }
-            .navigationTitle("Codex")
-        }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("OpenAgents • \(model.environmentHost)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            Text("Auth: \(authDescription(model.authState))")
-                .font(.footnote)
-                .foregroundStyle(model.isAuthenticated ? Color.secondary : Color.orange)
-
-            if let workerID = model.selectedWorkerID {
-                Text("Worker: \(workerID)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .textSelection(.enabled)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground))
     }
 
     private var transcript: some View {
@@ -63,10 +33,23 @@ private struct CodexChatView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     if model.chatMessages.isEmpty {
+                        let emptyDescription: String = {
+                            if !model.isAuthenticated {
+                                return "Sign in on the Debug tab."
+                            }
+
+                            switch model.streamState {
+                            case .connecting, .reconnecting:
+                                return "Connecting to your desktop Codex stream..."
+                            default:
+                                return "Waiting for Codex events from desktop."
+                            }
+                        }()
+
                         ContentUnavailableView(
                             "No Codex Messages Yet",
                             systemImage: "message",
-                            description: Text("Start the worker stream to render Codex events as chat.")
+                            description: Text(emptyDescription)
                         )
                         .padding(.top, 60)
                     } else {
@@ -89,53 +72,6 @@ private struct CodexChatView: View {
                 }
             }
         }
-    }
-
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Button("Load Worker") {
-                    Task {
-                        await model.refreshWorkers()
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!model.isAuthenticated)
-
-                Button(model.streamState == .idle ? "Connect" : "Disconnect") {
-                    if model.streamState == .idle {
-                        model.connectStream()
-                    } else {
-                        model.disconnectStream()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.isAuthenticated)
-
-                Button("Handshake") {
-                    Task {
-                        await model.sendHandshake()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.isAuthenticated || model.selectedWorkerID == nil)
-            }
-
-            Text("Stream: \(streamDescription(model.streamState)) • Handshake: \(handshakeDescription(model.handshakeState))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-
-            if !model.isAuthenticated {
-                Text("Sign in on the Debug tab first.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground))
     }
 }
 
