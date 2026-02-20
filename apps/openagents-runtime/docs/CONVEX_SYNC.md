@@ -34,6 +34,8 @@ Current runtime writer modules:
 - `OpenAgentsRuntime.Convex.Sink` (behavior contract)
 - `OpenAgentsRuntime.Convex.NoopSink` (default)
 - `OpenAgentsRuntime.Convex.HttpSink` (Convex `/api/mutation` sink)
+- `OpenAgentsRuntime.Convex.FanoutSink` (dual-publish adapter)
+- `OpenAgentsRuntime.Sync.ProjectorSink` (Khala read-model + stream sink)
 - `OpenAgentsRuntime.Convex.Reprojection` (drop + replay rebuild)
 
 Projector-owned document IDs:
