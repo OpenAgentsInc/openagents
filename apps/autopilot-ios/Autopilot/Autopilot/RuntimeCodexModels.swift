@@ -307,13 +307,22 @@ enum RuntimeCodexProto {
             return id
         }
 
+        if let id = normalizedString(params["conversationId"]?.stringValue ?? params["conversation_id"]?.stringValue) {
+            return id
+        }
+
         if let thread = params["thread"]?.objectValue,
            let id = normalizedString(thread["id"]?.stringValue) {
             return id
         }
 
         if let msg = params["msg"]?.objectValue,
-           let id = normalizedString(msg["thread_id"]?.stringValue ?? msg["threadId"]?.stringValue) {
+           let id = normalizedString(
+               msg["thread_id"]?.stringValue
+                   ?? msg["threadId"]?.stringValue
+                   ?? msg["conversation_id"]?.stringValue
+                   ?? msg["conversationId"]?.stringValue
+           ) {
             return id
         }
 
@@ -332,6 +341,11 @@ enum RuntimeCodexProto {
 
         if let msg = params["msg"]?.objectValue,
            let id = normalizedString(msg["turn_id"]?.stringValue ?? msg["turnId"]?.stringValue) {
+            return id
+        }
+
+        // Legacy codex/event/user_message uses top-level `params.id` for turn id.
+        if let id = normalizedString(params["id"]?.stringValue) {
             return id
         }
 

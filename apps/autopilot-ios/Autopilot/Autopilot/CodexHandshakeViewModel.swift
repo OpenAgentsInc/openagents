@@ -31,7 +31,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var assistantMessageIndexByItemKey: [String: Int] = [:]
     private var reasoningMessageIndexByItemKey: [String: Int] = [:]
     private var toolMessageIndexByItemKey: [String: Int] = [:]
+    private var assistantDeltaSourceByItemKey: [String: AgentDeltaSource] = [:]
     private var seenUserMessageKeys: Set<String> = []
+    private var lastUserMessageNormalized: String?
     private var agentDeltaAliasSources: [String: AgentDeltaSource] = [:]
     private var processedCodexEventSeqs: Set<Int> = []
     private var processedCodexEventSeqOrder: [Int] = []
@@ -69,7 +71,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private enum AgentDeltaSource {
         case modern
-        case legacy
+        case legacyContent
     }
 
     let deviceID: String
@@ -387,12 +389,28 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         recentEvents = (events.reversed() + recentEvents).prefix(100).map { $0 }
-        for event in events {
+
+        let codexEvents = events.compactMap { event -> RuntimeCodexProto.CodexEventEnvelope? in
             guard let codexEvent = RuntimeCodexProto.decodeCodexEventEnvelope(from: event.payload),
                   codexEvent.source == RuntimeCodexProto.desktopSource,
                   shouldProcessCodexEvent(codexEvent) else {
-                continue
+                return nil
             }
+            return codexEvent
+        }
+
+        let orderedCodexEvents = codexEvents.sorted { lhs, rhs in
+            let lhsTime = timestampFromISO8601(lhs.occurredAt) ?? 0
+            let rhsTime = timestampFromISO8601(rhs.occurredAt) ?? 0
+            if lhsTime != rhsTime {
+                return lhsTime < rhsTime
+            }
+            let lhsSeq = lhs.seq ?? Int.max
+            let rhsSeq = rhs.seq ?? Int.max
+            return lhsSeq < rhsSeq
+        }
+
+        for codexEvent in orderedCodexEvents {
             applyCodexEvent(codexEvent)
         }
 
@@ -520,7 +538,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             appendAssistantDelta(
                 itemID: itemID,
                 delta: delta,
-                source: .legacy,
+                source: .legacyContent,
                 threadID: event.threadID,
                 turnID: event.turnID,
                 occurredAt: event.occurredAt
@@ -779,7 +797,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         let contentParts = extractTextFragments(from: item["content"])
-        let merged = contentParts.joined()
+        let merged = stitchTextFragments(contentParts)
         return merged.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : merged
     }
 
@@ -925,10 +943,17 @@ final class CodexHandshakeViewModel: ObservableObject {
         guard !trimmed.isEmpty else {
             return
         }
+        let normalized = trimmed
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+        if lastUserMessageNormalized == normalized {
+            return
+        }
         if seenUserMessageKeys.contains(dedupeKey) {
             return
         }
         seenUserMessageKeys.insert(dedupeKey)
+        lastUserMessageNormalized = normalized
 
         chatMessages.append(
             CodexChatMessage(
@@ -1025,6 +1050,30 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        ensureAssistantEntry(itemID: itemID, threadID: threadID, turnID: turnID, occurredAt: occurredAt)
+
+        if let preferred = assistantDeltaSourceByItemKey[key] {
+            if preferred != source {
+                if preferred == .modern, source == .legacyContent {
+                    assistantDeltaSourceByItemKey[key] = .legacyContent
+                    let aliasPrefix = "\(key)\u{1f}"
+                    agentDeltaAliasSources = agentDeltaAliasSources.filter { !$0.key.hasPrefix(aliasPrefix) }
+
+                    if let index = assistantMessageIndexByItemKey[key], chatMessages.indices.contains(index) {
+                        chatMessages[index].text = ""
+                    }
+                } else {
+                    return
+                }
+            }
+        } else {
+            assistantDeltaSourceByItemKey[key] = source
+        }
+
+        if assistantDeltaSourceByItemKey[key] != source {
+            return
+        }
+
         let aliasKey = "\(key)\u{1f}\(delta)"
         if let existing = agentDeltaAliasSources[aliasKey] {
             if existing != source {
@@ -1037,11 +1086,13 @@ final class CodexHandshakeViewModel: ObservableObject {
             agentDeltaAliasSources[aliasKey] = source
         }
 
-        ensureAssistantEntry(itemID: itemID, threadID: threadID, turnID: turnID, occurredAt: occurredAt)
         guard let index = assistantMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
             return
         }
-        chatMessages[index].text.append(delta)
+        chatMessages[index].text = appendAssistantChunk(
+            chatMessages[index].text,
+            delta: delta
+        )
         chatMessages[index].isStreaming = true
     }
 
@@ -1111,7 +1162,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         guard let index = reasoningMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
             return
         }
-        chatMessages[index].text.append(delta)
+        chatMessages[index].text = appendAssistantChunk(
+            chatMessages[index].text,
+            delta: delta
+        )
         chatMessages[index].isStreaming = true
     }
 
@@ -1228,12 +1282,63 @@ final class CodexHandshakeViewModel: ObservableObject {
         return itemID
     }
 
+    private func appendAssistantChunk(_ existing: String, delta: String) -> String {
+        guard !delta.isEmpty else {
+            return existing
+        }
+        guard !existing.isEmpty else {
+            return delta
+        }
+
+        if delta.hasPrefix("\n")
+            || delta.hasPrefix(" ")
+            || delta.hasPrefix("\t")
+            || delta.hasPrefix("/")
+            || delta.hasPrefix("'")
+            || delta.hasPrefix("’")
+            || delta.hasPrefix("-")
+            || delta.hasPrefix(")")
+            || delta.hasPrefix("]")
+            || delta.hasPrefix("}")
+            || delta.hasPrefix(",")
+            || delta.hasPrefix(".")
+            || delta.hasPrefix(":")
+            || delta.hasPrefix(";")
+            || delta.hasPrefix("!")
+            || delta.hasPrefix("?") {
+            return existing + delta
+        }
+
+        if let last = existing.last,
+           last.isWhitespace
+            || last == "\n"
+            || last == "/"
+            || last == "("
+            || last == "["
+            || last == "{"
+            || last == "\"" {
+            return existing + delta
+        }
+
+        return existing + " " + delta
+    }
+
+    private func stitchTextFragments(_ fragments: [String]) -> String {
+        var assembled = ""
+        for fragment in fragments {
+            assembled = appendAssistantChunk(assembled, delta: fragment)
+        }
+        return assembled
+    }
+
     private func resetChatTimeline() {
         chatMessages = []
         assistantMessageIndexByItemKey = [:]
         reasoningMessageIndexByItemKey = [:]
         toolMessageIndexByItemKey = [:]
+        assistantDeltaSourceByItemKey = [:]
         seenUserMessageKeys = []
+        lastUserMessageNormalized = nil
         agentDeltaAliasSources = [:]
         processedCodexEventSeqs = []
         processedCodexEventSeqOrder = []
