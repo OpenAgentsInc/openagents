@@ -72,7 +72,8 @@ export const DesktopAppLive = Layer.effect(
         ...current,
         connectivity: {
           openAgentsReachable: result.openAgentsReachable,
-          convexReachable: result.convexReachable,
+          syncReachable: result.syncReachable,
+          syncProvider: result.syncProvider,
           lastCheckedAtMs: result.checkedAtMs,
         },
       }));

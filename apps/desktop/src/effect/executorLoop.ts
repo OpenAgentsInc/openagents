@@ -187,7 +187,8 @@ export const ExecutorLoopLive = Layer.effect(
         ...current,
         connectivity: {
           openAgentsReachable: connectivityStatus.openAgentsReachable,
-          convexReachable: connectivityStatus.convexReachable,
+          syncReachable: connectivityStatus.syncReachable,
+          syncProvider: connectivityStatus.syncProvider,
           lastCheckedAtMs: connectivityStatus.checkedAtMs,
         },
       }));
