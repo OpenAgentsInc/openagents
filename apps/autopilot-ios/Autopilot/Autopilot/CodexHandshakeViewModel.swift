@@ -33,6 +33,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var toolMessageIndexByItemKey: [String: Int] = [:]
     private var seenUserMessageKeys: Set<String> = []
     private var agentDeltaAliasSources: [String: AgentDeltaSource] = [:]
+    private var hasAttemptedAutoConnect = false
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -102,6 +103,19 @@ final class CodexHandshakeViewModel: ObservableObject {
     deinit {
         streamTask?.cancel()
         handshakeTimeoutTask?.cancel()
+    }
+
+    func autoConnectOnLaunch() async {
+        guard !hasAttemptedAutoConnect else {
+            return
+        }
+        hasAttemptedAutoConnect = true
+
+        guard isAuthenticated else {
+            return
+        }
+
+        await refreshWorkers()
     }
 
     func sendEmailCode() async {
