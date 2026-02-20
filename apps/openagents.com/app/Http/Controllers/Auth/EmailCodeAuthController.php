@@ -61,6 +61,7 @@ class EmailCodeAuthController extends Controller
         ]);
 
         return response()->json([
+            'ok' => true,
             'status' => 'code-sent',
             'email' => $email,
         ]);
@@ -96,7 +97,9 @@ class EmailCodeAuthController extends Controller
         /** @var User $user */
         $user = $this->completeSignIn($request, $verified, $posthog);
 
-        return response()->json([
+        $response = [
+            'ok' => true,
+            'userId' => (string) $user->id,
             'status' => 'authenticated',
             'user' => [
                 'id' => $user->id,
@@ -104,7 +107,16 @@ class EmailCodeAuthController extends Controller
                 'email' => $user->email,
             ],
             'redirect' => '/',
-        ]);
+        ];
+
+        $clientName = $this->mobileClientName($request);
+        if ($clientName !== null) {
+            $response['tokenType'] = 'Bearer';
+            $response['token'] = $this->issueMobileApiToken($user, $clientName);
+            $response['tokenName'] = $this->mobileTokenName($clientName);
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -161,5 +173,31 @@ class EmailCodeAuthController extends Controller
         }
 
         return $user;
+    }
+
+    private function mobileClientName(Request $request): ?string
+    {
+        $client = strtolower(trim((string) $request->header('x-client', '')));
+        if ($client === '') {
+            return null;
+        }
+
+        return in_array($client, ['autopilot-ios', 'openagents-expo'], true)
+            ? $client
+            : null;
+    }
+
+    private function issueMobileApiToken(User $user, string $clientName): string
+    {
+        $tokenName = $this->mobileTokenName($clientName);
+
+        $user->tokens()->where('name', $tokenName)->delete();
+
+        return $user->createToken($tokenName, ['*'])->plainTextToken;
+    }
+
+    private function mobileTokenName(string $clientName): string
+    {
+        return 'mobile:'.$clientName;
     }
 }

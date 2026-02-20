@@ -113,6 +113,12 @@ struct RuntimeCodexStreamBatch {
     let nextCursor: Int
 }
 
+struct RuntimeCodexAuthSession: Equatable {
+    let userID: String?
+    let email: String?
+    let token: String
+}
+
 enum HandshakeState: Equatable {
     case idle
     case sending
@@ -127,6 +133,14 @@ enum StreamState: Equatable {
     case connecting
     case live
     case reconnecting
+}
+
+enum AuthState: Equatable {
+    case signedOut
+    case sendingCode
+    case codeSent(email: String)
+    case verifying
+    case authenticated(email: String?)
 }
 
 enum JSONValue: Codable, Equatable {

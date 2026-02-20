@@ -67,6 +67,7 @@ test('send code JSON endpoint supports in-chat onboarding flow', function () {
     ]);
 
     $response->assertOk()
+        ->assertJsonPath('ok', true)
         ->assertJsonPath('status', 'code-sent')
         ->assertJsonPath('email', 'chris@openagents.com');
 
@@ -188,6 +189,8 @@ test('verify code JSON endpoint signs in user for chat onboarding', function () 
         ]);
 
     $response->assertOk()
+        ->assertJsonPath('ok', true)
+        ->assertJsonStructure(['userId'])
         ->assertJsonPath('status', 'authenticated')
         ->assertJsonPath('redirect', '/')
         ->assertJsonPath('user.email', 'chris@openagents.com');
@@ -196,6 +199,58 @@ test('verify code JSON endpoint signs in user for chat onboarding', function () 
 
     $response->assertSessionHas('workos_access_token', 'access_token_123');
     $response->assertSessionHas('workos_refresh_token', 'refresh_token_123');
+});
+
+test('verify code JSON issues mobile api token when x-client is autopilot-ios', function () {
+    configureWorkosForTests();
+
+    $workosUser = (object) [
+        'id' => 'user_ios_123',
+        'email' => 'ios@openagents.com',
+        'firstName' => 'iOS',
+        'lastName' => 'User',
+        'profilePictureUrl' => 'https://example.com/avatar.png',
+    ];
+
+    $authResponse = (object) [
+        'user' => $workosUser,
+        'accessToken' => 'access_token_ios_123',
+        'refreshToken' => 'refresh_token_ios_123',
+    ];
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->with('client_test_123', '654321', 'user_ios_123', \Mockery::any(), \Mockery::any())
+        ->andReturn($authResponse);
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'ios@openagents.com',
+                'user_id' => 'user_ios_123',
+            ],
+        ])
+        ->withHeader('X-Client', 'autopilot-ios')
+        ->postJson('/api/auth/verify', [
+            'code' => '654321',
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('ok', true)
+        ->assertJsonPath('status', 'authenticated')
+        ->assertJsonPath('tokenType', 'Bearer')
+        ->assertJsonPath('tokenName', 'mobile:autopilot-ios');
+
+    $token = (string) $response->json('token');
+
+    expect($token)->not->toBe('');
+
+    $this->getJson('/api/me', [
+        'Authorization' => 'Bearer '.$token,
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.user.email', 'ios@openagents.com');
 });
 
 test('verify code auto provisions a spark wallet when executor is configured', function () {

@@ -17,6 +17,7 @@ This roadmap references working patterns from `~/code/inbox-autopilot/` (local A
 3. iOS talks to Laravel public APIs only (`/api/runtime/codex/workers*`).
 4. Transport/execution backend can vary (`desktop`, hosted sandbox, future direct bridge), but runtime contract stays fixed.
 5. First production lane should be runtime-mediated; direct iOS-to-local-Codex is optional and later.
+6. iOS UX should be zero-config by default: fixed `openagents.com` backend + in-app auth flow (no manual URL/token paste).
 
 ## Architecture Guardrails
 

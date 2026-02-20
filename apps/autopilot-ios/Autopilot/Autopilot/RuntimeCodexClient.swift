@@ -2,14 +2,14 @@ import Foundation
 
 final class RuntimeCodexClient {
     private let baseURL: URL
-    private let authToken: String
+    private let authToken: String?
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    init(baseURL: URL, authToken: String, session: URLSession = .shared) {
+    init(baseURL: URL, authToken: String? = nil, session: URLSession = .shared) {
         self.baseURL = baseURL
-        self.authToken = authToken
+        self.authToken = authToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.session = session
 
         let decoder = JSONDecoder()
@@ -17,6 +17,35 @@ final class RuntimeCodexClient {
 
         let encoder = JSONEncoder()
         self.encoder = encoder
+    }
+
+    func sendEmailCode(email: String) async throws {
+        let _: AuthSendCodeResponse = try await requestJSON(
+            path: "/api/auth/email",
+            method: "POST",
+            body: AuthSendCodeRequest(email: email),
+            headers: ["X-Client": "autopilot-ios"]
+        )
+    }
+
+    func verifyEmailCode(code: String) async throws -> RuntimeCodexAuthSession {
+        let response: AuthVerifyResponse = try await requestJSON(
+            path: "/api/auth/verify",
+            method: "POST",
+            body: AuthVerifyRequest(code: code),
+            headers: ["X-Client": "autopilot-ios"]
+        )
+
+        let normalizedToken = (response.token ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedToken.isEmpty else {
+            throw RuntimeCodexApiError(message: "auth_token_missing", code: .auth, status: 401)
+        }
+
+        return RuntimeCodexAuthSession(
+            userID: response.userID?.value ?? response.user?.id?.value,
+            email: response.user?.email,
+            token: normalizedToken
+        )
     }
 
     func listWorkers(status: String? = nil, limit: Int = 100) async throws -> [RuntimeCodexWorkerSummary] {
@@ -127,8 +156,8 @@ final class RuntimeCodexClient {
         return events
     }
 
-    private func requestText(path: String, queryItems: [URLQueryItem]) async throws -> String {
-        var request = try makeRequest(path: path, method: "GET", queryItems: queryItems)
+    private func requestText(path: String, queryItems: [URLQueryItem], headers: [String: String] = [:]) async throws -> String {
+        var request = try makeRequest(path: path, method: "GET", queryItems: queryItems, headers: headers)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
         do {
@@ -159,9 +188,10 @@ final class RuntimeCodexClient {
         path: String,
         method: String,
         queryItems: [URLQueryItem] = [],
-        body: Body?
+        body: Body?,
+        headers: [String: String] = [:]
     ) async throws -> Response {
-        var request = try makeRequest(path: path, method: method, queryItems: queryItems)
+        var request = try makeRequest(path: path, method: method, queryItems: queryItems, headers: headers)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         if let body {
@@ -224,17 +254,45 @@ final class RuntimeCodexClient {
 
     private func extractErrorMessage(from body: String) -> String? {
         guard let data = body.data(using: .utf8),
-              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = value["error"] as? [String: Any],
-              let message = error["message"] as? String,
-              !message.isEmpty else {
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
 
-        return message
+        if let error = value["error"] as? [String: Any],
+           let message = error["message"] as? String,
+           !message.isEmpty {
+            return message
+        }
+
+        if let message = value["message"] as? String,
+           !message.isEmpty {
+            return message
+        }
+
+        if let errors = value["errors"] as? [String: Any] {
+            for raw in errors.values {
+                if let messages = raw as? [String],
+                   let first = messages.first,
+                   !first.isEmpty {
+                    return first
+                }
+
+                if let single = raw as? String,
+                   !single.isEmpty {
+                    return single
+                }
+            }
+        }
+
+        return nil
     }
 
-    private func makeRequest(path: String, method: String, queryItems: [URLQueryItem]) throws -> URLRequest {
+    private func makeRequest(
+        path: String,
+        method: String,
+        queryItems: [URLQueryItem],
+        headers: [String: String]
+    ) throws -> URLRequest {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw RuntimeCodexApiError(message: "invalid_base_url", code: .invalid, status: nil)
         }
@@ -249,8 +307,14 @@ final class RuntimeCodexClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        if let authToken, !authToken.isEmpty {
+            request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue(Self.makeRequestID(), forHTTPHeaderField: "x-request-id")
+
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
 
         return request
     }
@@ -262,6 +326,65 @@ final class RuntimeCodexClient {
 
 private struct DataResponse<T: Decodable>: Decodable {
     let data: T?
+}
+
+private struct AuthSendCodeRequest: Encodable {
+    let email: String
+}
+
+private struct AuthSendCodeResponse: Decodable {
+    let ok: Bool?
+    let status: String?
+}
+
+private struct AuthVerifyRequest: Encodable {
+    let code: String
+}
+
+private struct AuthVerifyResponse: Decodable {
+    let ok: Bool?
+    let userID: LossyString?
+    let token: String?
+    let user: AuthVerifyUser?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case userID = "userId"
+        case token
+        case user
+    }
+}
+
+private struct AuthVerifyUser: Decodable {
+    let id: LossyString?
+    let email: String?
+}
+
+private struct LossyString: Decodable {
+    let value: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let stringValue = try? container.decode(String.self) {
+            value = stringValue
+            return
+        }
+
+        if let intValue = try? container.decode(Int.self) {
+            value = String(intValue)
+            return
+        }
+
+        if let doubleValue = try? container.decode(Double.self) {
+            value = String(Int(doubleValue))
+            return
+        }
+
+        throw DecodingError.typeMismatch(
+            String.self,
+            DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Value is not string-like")
+        )
+    }
 }
 
 private struct WorkerEventRequest: Encodable {
