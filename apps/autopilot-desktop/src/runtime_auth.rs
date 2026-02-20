@@ -10,7 +10,10 @@ use uuid::Uuid;
 
 pub const DEFAULT_AUTH_BASE_URL: &str = "https://openagents.com";
 const AUTH_STATE_FILE_NAME: &str = "autopilot-desktop-runtime-auth.json";
-const AUTH_CLIENT_HEADER: &str = "autopilot-desktop";
+// Production still mints API tokens for legacy mobile client ids.
+// Use the shared mobile client lane so desktop can complete auth end-to-end
+// until desktop-specific client ids are fully rolled out.
+const AUTH_CLIENT_HEADER: &str = "openagents-expo";
 const AUTH_USER_AGENT: &str = concat!("autopilot-desktop/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
