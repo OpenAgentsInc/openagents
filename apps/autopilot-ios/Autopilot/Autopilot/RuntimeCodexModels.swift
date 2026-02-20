@@ -175,6 +175,17 @@ enum RuntimeCodexProto {
         let handshakeID: String?
         let deviceID: String?
         let desktopSessionID: String?
+        let params: [String: JSONValue]?
+        let occurredAt: String?
+    }
+
+    struct CodexEventEnvelope {
+        let source: String?
+        let method: String
+        let params: [String: JSONValue]
+        let threadID: String?
+        let turnID: String?
+        let itemID: String?
         let occurredAt: String?
     }
 
@@ -213,6 +224,7 @@ enum RuntimeCodexProto {
             ),
             deviceID: normalizedString(workerPayload["device_id"]?.stringValue),
             desktopSessionID: normalizedString(workerPayload["desktop_session_id"]?.stringValue),
+            params: workerPayload["params"]?.objectValue,
             occurredAt: normalizedString(workerPayload["occurred_at"]?.stringValue)
         )
 
@@ -256,6 +268,29 @@ enum RuntimeCodexProto {
         return nil
     }
 
+    static func decodeCodexEventEnvelope(from payload: JSONValue) -> CodexEventEnvelope? {
+        guard let event = decodeWorkerEvent(from: payload),
+              event.eventType.hasPrefix("worker."),
+              let method = event.payload.method else {
+            return nil
+        }
+
+        let params = event.payload.params ?? [:]
+        let threadID = extractThreadID(from: params)
+        let turnID = extractTurnID(from: params)
+        let itemID = extractItemID(from: params)
+
+        return CodexEventEnvelope(
+            source: event.payload.source,
+            method: method,
+            params: params,
+            threadID: threadID,
+            turnID: turnID,
+            itemID: itemID,
+            occurredAt: event.payload.occurredAt
+        )
+    }
+
     private static func normalizedString(_ raw: String?) -> String? {
         guard let raw else {
             return nil
@@ -263,6 +298,66 @@ enum RuntimeCodexProto {
 
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func extractThreadID(from params: [String: JSONValue]) -> String? {
+        if let id = normalizedString(params["threadId"]?.stringValue ?? params["thread_id"]?.stringValue) {
+            return id
+        }
+
+        if let thread = params["thread"]?.objectValue,
+           let id = normalizedString(thread["id"]?.stringValue) {
+            return id
+        }
+
+        if let msg = params["msg"]?.objectValue,
+           let id = normalizedString(msg["thread_id"]?.stringValue ?? msg["threadId"]?.stringValue) {
+            return id
+        }
+
+        return nil
+    }
+
+    private static func extractTurnID(from params: [String: JSONValue]) -> String? {
+        if let id = normalizedString(params["turnId"]?.stringValue ?? params["turn_id"]?.stringValue) {
+            return id
+        }
+
+        if let turn = params["turn"]?.objectValue,
+           let id = normalizedString(turn["id"]?.stringValue) {
+            return id
+        }
+
+        if let msg = params["msg"]?.objectValue,
+           let id = normalizedString(msg["turn_id"]?.stringValue ?? msg["turnId"]?.stringValue) {
+            return id
+        }
+
+        return nil
+    }
+
+    private static func extractItemID(from params: [String: JSONValue]) -> String? {
+        if let id = normalizedString(params["itemId"]?.stringValue ?? params["item_id"]?.stringValue) {
+            return id
+        }
+
+        if let item = params["item"]?.objectValue,
+           let id = normalizedString(item["id"]?.stringValue) {
+            return id
+        }
+
+        if let msg = params["msg"]?.objectValue {
+            if let id = normalizedString(msg["item_id"]?.stringValue ?? msg["itemId"]?.stringValue) {
+                return id
+            }
+
+            if let item = msg["item"]?.objectValue,
+               let id = normalizedString(item["id"]?.stringValue) {
+                return id
+            }
+        }
+
+        return nil
     }
 }
 
@@ -286,6 +381,46 @@ enum StreamState: Equatable {
     case connecting
     case live
     case reconnecting
+}
+
+enum CodexChatRole: String, Equatable {
+    case user
+    case assistant
+    case reasoning
+    case tool
+    case system
+    case error
+}
+
+struct CodexChatMessage: Identifiable, Equatable {
+    let id: String
+    var role: CodexChatRole
+    var text: String
+    var isStreaming: Bool
+    let threadID: String?
+    let turnID: String?
+    let itemID: String?
+    let occurredAt: String?
+
+    init(
+        id: String = UUID().uuidString.lowercased(),
+        role: CodexChatRole,
+        text: String,
+        isStreaming: Bool = false,
+        threadID: String? = nil,
+        turnID: String? = nil,
+        itemID: String? = nil,
+        occurredAt: String? = nil
+    ) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.isStreaming = isStreaming
+        self.threadID = threadID
+        self.turnID = turnID
+        self.itemID = itemID
+        self.occurredAt = occurredAt
+    }
 }
 
 enum AuthState: Equatable {
@@ -377,6 +512,33 @@ enum JSONValue: Codable, Equatable {
         switch self {
         case .object(let value):
             return value
+        default:
+            return nil
+        }
+    }
+
+    var arrayValue: [JSONValue]? {
+        switch self {
+        case .array(let value):
+            return value
+        default:
+            return nil
+        }
+    }
+
+    var boolValue: Bool? {
+        switch self {
+        case .bool(let value):
+            return value
+        case .string(let value):
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true":
+                return true
+            case "false":
+                return false
+            default:
+                return nil
+            }
         default:
             return nil
         }

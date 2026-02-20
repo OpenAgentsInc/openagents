@@ -23,10 +23,16 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var latestSnapshot: RuntimeCodexWorkerSnapshot?
     @Published var recentEvents: [RuntimeCodexStreamEvent] = []
+    @Published var chatMessages: [CodexChatMessage] = []
 
     private var streamTask: Task<Void, Never>?
     private var handshakeTimeoutTask: Task<Void, Never>?
     private var streamCursor: Int = 0
+    private var assistantMessageIndexByItemKey: [String: Int] = [:]
+    private var reasoningMessageIndexByItemKey: [String: Int] = [:]
+    private var toolMessageIndexByItemKey: [String: Int] = [:]
+    private var seenUserMessageKeys: Set<String> = []
+    private var agentDeltaAliasSources: [String: AgentDeltaSource] = [:]
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -40,6 +46,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private static let streamTailMS = 4_000
     private static let streamIdleSleepNS: UInt64 = 250_000_000
     private static let streamReconnectSleepNS: UInt64 = 1_500_000_000
+    private static let aliasCacheLimit = 2_048
     private static let iso8601Parsers: [ISO8601DateFormatter] = {
         let withFractional = ISO8601DateFormatter()
         withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -54,6 +61,11 @@ final class CodexHandshakeViewModel: ObservableObject {
         didSet {
             isAuthenticated = !authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    private enum AgentDeltaSource {
+        case modern
+        case legacy
     }
 
     let deviceID: String
@@ -164,6 +176,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         selectedWorkerID = nil
         latestSnapshot = nil
         recentEvents = []
+        resetChatTimeline()
         streamState = .idle
         handshakeState = .idle
 
@@ -295,6 +308,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         if resetCursor {
             streamCursor = max(0, selectedWorkerLatestSeq(workerID: workerID) - 1)
             recentEvents = []
+            resetChatTimeline()
         }
 
         streamTask = Task { [weak self] in
@@ -356,6 +370,13 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         recentEvents = (events.reversed() + recentEvents).prefix(100).map { $0 }
+        for event in events {
+            guard let codexEvent = RuntimeCodexProto.decodeCodexEventEnvelope(from: event.payload),
+                  codexEvent.source == RuntimeCodexProto.desktopSource else {
+                continue
+            }
+            applyCodexEvent(codexEvent)
+        }
 
         let ackHandshakeIDs = Set(events.compactMap { CodexHandshakeMatcher.ackHandshakeID(from: $0) })
         guard !ackHandshakeIDs.isEmpty else {
@@ -386,6 +407,702 @@ final class CodexHandshakeViewModel: ObservableObject {
         default:
             break
         }
+    }
+
+    private func applyCodexEvent(_ event: RuntimeCodexProto.CodexEventEnvelope) {
+        switch event.method {
+        case "thread/started":
+            appendSystemMessage(
+                "Thread started.",
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "turn/started":
+            appendSystemMessage(
+                "Turn started.",
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "turn/completed", "turn/failed", "turn/aborted", "turn/interrupted":
+            let status = extractTurnStatus(from: event.params) ?? "completed"
+            appendSystemMessage(
+                "Turn \(status).",
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "error", "codex/error":
+            let message = extractErrorMessage(from: event.params) ?? "Codex error."
+            appendErrorMessage(
+                message,
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "item/started", "codex/event/item_started":
+            handleItemStarted(event)
+
+        case "item/completed", "codex/event/item_completed":
+            handleItemCompleted(event)
+
+        case "item/agentMessage/delta":
+            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue,
+                  let delta = event.params["delta"]?.stringValue else {
+                return
+            }
+            appendAssistantDelta(
+                itemID: itemID,
+                delta: delta,
+                source: .modern,
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "codex/event/agent_message_content_delta", "codex/event/agent_message_delta":
+            guard let msg = event.params["msg"]?.objectValue,
+                  let itemID = msg["item_id"]?.stringValue ?? msg["itemId"]?.stringValue,
+                  let delta = msg["delta"]?.stringValue else {
+                return
+            }
+            appendAssistantDelta(
+                itemID: itemID,
+                delta: delta,
+                source: .legacy,
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta", "item/reasoning/contentDelta":
+            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue,
+                  let delta = event.params["delta"]?.stringValue else {
+                return
+            }
+            appendReasoningDelta(
+                itemID: itemID,
+                delta: delta,
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "item/commandExecution/outputDelta", "item/fileChange/outputDelta":
+            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue,
+                  let delta = event.params["delta"]?.stringValue else {
+                return
+            }
+            appendToolDelta(
+                itemID: itemID,
+                delta: delta,
+                threadID: event.threadID,
+                turnID: event.turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "codex/event/user_message":
+            guard let msg = event.params["msg"]?.objectValue,
+                  let text = msg["message"]?.stringValue else {
+                return
+            }
+            appendUserMessage(
+                text,
+                dedupeKey: "legacy:\(event.threadID ?? ""):\(text)",
+                threadID: event.threadID,
+                turnID: event.turnID,
+                itemID: nil,
+                occurredAt: event.occurredAt
+            )
+
+        default:
+            break
+        }
+    }
+
+    private func handleItemStarted(_ event: RuntimeCodexProto.CodexEventEnvelope) {
+        guard let item = extractItem(from: event.params),
+              let itemType = item["type"]?.stringValue else {
+            return
+        }
+
+        let normalizedType = itemType.lowercased()
+        let threadID = event.threadID ?? item["threadId"]?.stringValue ?? item["thread_id"]?.stringValue
+        let turnID = event.turnID ?? item["turnId"]?.stringValue ?? item["turn_id"]?.stringValue
+        let itemID = item["id"]?.stringValue ?? event.itemID
+
+        switch normalizedType {
+        case "usermessage":
+            if let text = extractUserMessageText(from: item) {
+                appendUserMessage(
+                    text,
+                    dedupeKey: "item:\(itemID ?? text)",
+                    threadID: threadID,
+                    turnID: turnID,
+                    itemID: itemID,
+                    occurredAt: event.occurredAt
+                )
+            }
+
+        case "agentmessage", "assistantmessage":
+            guard let itemID else {
+                return
+            }
+            ensureAssistantEntry(
+                itemID: itemID,
+                threadID: threadID,
+                turnID: turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "reasoning":
+            guard let itemID else {
+                return
+            }
+            ensureReasoningEntry(
+                itemID: itemID,
+                threadID: threadID,
+                turnID: turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "commandexecution", "filechange", "mcptoolcall", "websearch":
+            guard let itemID else {
+                return
+            }
+            let summary = summarizeToolItem(item: item) ?? "Tool started (\(itemType))."
+            ensureToolEntry(
+                itemID: itemID,
+                initialText: summary,
+                threadID: threadID,
+                turnID: turnID,
+                occurredAt: event.occurredAt
+            )
+
+        default:
+            break
+        }
+    }
+
+    private func handleItemCompleted(_ event: RuntimeCodexProto.CodexEventEnvelope) {
+        guard let item = extractItem(from: event.params),
+              let itemType = item["type"]?.stringValue else {
+            return
+        }
+
+        let normalizedType = itemType.lowercased()
+        let threadID = event.threadID ?? item["threadId"]?.stringValue ?? item["thread_id"]?.stringValue
+        let turnID = event.turnID ?? item["turnId"]?.stringValue ?? item["turn_id"]?.stringValue
+        let itemID = item["id"]?.stringValue ?? event.itemID
+
+        switch normalizedType {
+        case "agentmessage", "assistantmessage":
+            guard let itemID else {
+                return
+            }
+            finishAssistantMessage(
+                itemID: itemID,
+                text: extractAgentMessageText(from: item),
+                threadID: threadID,
+                turnID: turnID,
+                occurredAt: event.occurredAt
+            )
+
+        case "reasoning":
+            guard let itemID else {
+                return
+            }
+            if let summary = extractReasoningText(from: item) {
+                finishReasoningMessage(
+                    itemID: itemID,
+                    text: summary,
+                    threadID: threadID,
+                    turnID: turnID,
+                    occurredAt: event.occurredAt
+                )
+            }
+
+        case "commandexecution", "filechange", "mcptoolcall", "websearch":
+            guard let itemID else {
+                return
+            }
+            let summary = summarizeToolItem(item: item) ?? "Tool completed (\(itemType))."
+            finishToolMessage(
+                itemID: itemID,
+                text: summary,
+                threadID: threadID,
+                turnID: turnID,
+                occurredAt: event.occurredAt
+            )
+
+        default:
+            break
+        }
+    }
+
+    private func extractItem(from params: [String: JSONValue]) -> [String: JSONValue]? {
+        if let item = params["item"]?.objectValue {
+            return item
+        }
+
+        if let msg = params["msg"]?.objectValue,
+           let item = msg["item"]?.objectValue {
+            return item
+        }
+
+        return nil
+    }
+
+    private func extractUserMessageText(from item: [String: JSONValue]) -> String? {
+        if let text = item["text"]?.stringValue, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+
+        let contentParts = (item["content"]?.arrayValue ?? []).compactMap { entry -> String? in
+            guard let object = entry.objectValue else {
+                return nil
+            }
+
+            let text = object["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let text, !text.isEmpty {
+                return text
+            }
+            return nil
+        }
+
+        if contentParts.isEmpty {
+            return nil
+        }
+
+        return contentParts.joined(separator: "\n")
+    }
+
+    private func extractAgentMessageText(from item: [String: JSONValue]) -> String? {
+        if let text = item["text"]?.stringValue,
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+
+        let contentParts = (item["content"]?.arrayValue ?? []).compactMap { entry -> String? in
+            guard let object = entry.objectValue else {
+                return nil
+            }
+            return object["text"]?.stringValue
+        }
+
+        let merged = contentParts.joined()
+        return merged.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : merged
+    }
+
+    private func extractReasoningText(from item: [String: JSONValue]) -> String? {
+        let summary = (item["summary"]?.arrayValue ?? []).compactMap(\.stringValue).joined(separator: "\n")
+        let content = (item["content"]?.arrayValue ?? []).compactMap(\.stringValue).joined(separator: "\n")
+        let merged = [summary, content]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        return merged.isEmpty ? nil : merged
+    }
+
+    private func summarizeToolItem(item: [String: JSONValue]) -> String? {
+        guard let type = item["type"]?.stringValue?.lowercased() else {
+            return nil
+        }
+
+        switch type {
+        case "commandexecution":
+            let command = item["command"]?.stringValue ?? "command"
+            let status = item["status"]?.stringValue ?? "unknown"
+            let output = item["aggregatedOutput"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let output, !output.isEmpty {
+                return "$ \(command)\n[\(status)]\n\(output)"
+            }
+            return "$ \(command)\n[\(status)]"
+
+        case "filechange":
+            let status = item["status"]?.stringValue ?? "unknown"
+            let paths = (item["changes"]?.arrayValue ?? [])
+                .compactMap { $0.objectValue?["path"]?.stringValue }
+            let pathSummary = paths.prefix(3).joined(separator: ", ")
+            if pathSummary.isEmpty {
+                return "File change [\(status)]"
+            }
+            return "File change [\(status)]\n\(pathSummary)"
+
+        case "mcptoolcall":
+            let server = item["server"]?.stringValue ?? "mcp"
+            let tool = item["tool"]?.stringValue ?? "tool"
+            let status = item["status"]?.stringValue ?? "unknown"
+            return "\(server).\(tool) [\(status)]"
+
+        case "websearch":
+            let query = item["query"]?.stringValue ?? "search"
+            return "Web search: \(query)"
+
+        default:
+            return nil
+        }
+    }
+
+    private func extractTurnStatus(from params: [String: JSONValue]) -> String? {
+        if let turn = params["turn"]?.objectValue,
+           let status = turn["status"]?.stringValue {
+            return status
+        }
+        return nil
+    }
+
+    private func extractErrorMessage(from params: [String: JSONValue]) -> String? {
+        if let error = params["error"]?.objectValue,
+           let message = error["message"]?.stringValue,
+           !message.isEmpty {
+            return message
+        }
+
+        if let turn = params["turn"]?.objectValue,
+           let error = turn["error"]?.objectValue,
+           let message = error["message"]?.stringValue,
+           !message.isEmpty {
+            return message
+        }
+
+        if let message = params["message"]?.stringValue,
+           !message.isEmpty {
+            return message
+        }
+
+        return nil
+    }
+
+    private func appendUserMessage(
+        _ text: String,
+        dedupeKey: String,
+        threadID: String?,
+        turnID: String?,
+        itemID: String?,
+        occurredAt: String?
+    ) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        if seenUserMessageKeys.contains(dedupeKey) {
+            return
+        }
+        seenUserMessageKeys.insert(dedupeKey)
+
+        chatMessages.append(
+            CodexChatMessage(
+                role: .user,
+                text: trimmed,
+                threadID: threadID,
+                turnID: turnID,
+                itemID: itemID,
+                occurredAt: occurredAt
+            )
+        )
+    }
+
+    private func appendSystemMessage(
+        _ text: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        chatMessages.append(
+            CodexChatMessage(
+                role: .system,
+                text: trimmed,
+                threadID: threadID,
+                turnID: turnID,
+                itemID: nil,
+                occurredAt: occurredAt
+            )
+        )
+    }
+
+    private func appendErrorMessage(
+        _ text: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        chatMessages.append(
+            CodexChatMessage(
+                role: .error,
+                text: trimmed,
+                threadID: threadID,
+                turnID: turnID,
+                itemID: nil,
+                occurredAt: occurredAt
+            )
+        )
+    }
+
+    private func ensureAssistantEntry(
+        itemID: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        guard assistantMessageIndexByItemKey[key] == nil else {
+            return
+        }
+
+        chatMessages.append(
+            CodexChatMessage(
+                id: "assistant:\(key)",
+                role: .assistant,
+                text: "",
+                isStreaming: true,
+                threadID: threadID,
+                turnID: turnID,
+                itemID: itemID,
+                occurredAt: occurredAt
+            )
+        )
+        assistantMessageIndexByItemKey[key] = chatMessages.count - 1
+    }
+
+    private func appendAssistantDelta(
+        itemID: String,
+        delta: String,
+        source: AgentDeltaSource,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        guard !delta.isEmpty else {
+            return
+        }
+
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        let aliasKey = "\(key)\u{1f}\(delta)"
+        if let existing = agentDeltaAliasSources[aliasKey] {
+            if existing != source {
+                return
+            }
+        } else {
+            if agentDeltaAliasSources.count >= Self.aliasCacheLimit {
+                agentDeltaAliasSources.removeAll(keepingCapacity: true)
+            }
+            agentDeltaAliasSources[aliasKey] = source
+        }
+
+        ensureAssistantEntry(itemID: itemID, threadID: threadID, turnID: turnID, occurredAt: occurredAt)
+        guard let index = assistantMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
+            return
+        }
+        chatMessages[index].text.append(delta)
+        chatMessages[index].isStreaming = true
+    }
+
+    private func finishAssistantMessage(
+        itemID: String,
+        text: String?,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        ensureAssistantEntry(itemID: itemID, threadID: threadID, turnID: turnID, occurredAt: occurredAt)
+
+        guard let index = assistantMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
+            return
+        }
+
+        if let text {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                if chatMessages[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    chatMessages[index].text = trimmed
+                }
+            }
+        }
+        chatMessages[index].isStreaming = false
+    }
+
+    private func ensureReasoningEntry(
+        itemID: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        guard reasoningMessageIndexByItemKey[key] == nil else {
+            return
+        }
+
+        chatMessages.append(
+            CodexChatMessage(
+                id: "reasoning:\(key)",
+                role: .reasoning,
+                text: "",
+                isStreaming: true,
+                threadID: threadID,
+                turnID: turnID,
+                itemID: itemID,
+                occurredAt: occurredAt
+            )
+        )
+        reasoningMessageIndexByItemKey[key] = chatMessages.count - 1
+    }
+
+    private func appendReasoningDelta(
+        itemID: String,
+        delta: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        guard !delta.isEmpty else {
+            return
+        }
+
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        ensureReasoningEntry(itemID: itemID, threadID: threadID, turnID: turnID, occurredAt: occurredAt)
+
+        guard let index = reasoningMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
+            return
+        }
+        chatMessages[index].text.append(delta)
+        chatMessages[index].isStreaming = true
+    }
+
+    private func finishReasoningMessage(
+        itemID: String,
+        text: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        ensureReasoningEntry(itemID: itemID, threadID: threadID, turnID: turnID, occurredAt: occurredAt)
+
+        guard let index = reasoningMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
+            return
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            chatMessages[index].text = trimmed
+        }
+        chatMessages[index].isStreaming = false
+    }
+
+    private func ensureToolEntry(
+        itemID: String,
+        initialText: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        guard toolMessageIndexByItemKey[key] == nil else {
+            return
+        }
+
+        chatMessages.append(
+            CodexChatMessage(
+                id: "tool:\(key)",
+                role: .tool,
+                text: initialText,
+                isStreaming: true,
+                threadID: threadID,
+                turnID: turnID,
+                itemID: itemID,
+                occurredAt: occurredAt
+            )
+        )
+        toolMessageIndexByItemKey[key] = chatMessages.count - 1
+    }
+
+    private func appendToolDelta(
+        itemID: String,
+        delta: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        guard !delta.isEmpty else {
+            return
+        }
+
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        ensureToolEntry(
+            itemID: itemID,
+            initialText: "",
+            threadID: threadID,
+            turnID: turnID,
+            occurredAt: occurredAt
+        )
+
+        guard let index = toolMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
+            return
+        }
+
+        if chatMessages[index].text.isEmpty {
+            chatMessages[index].text = delta
+        } else {
+            chatMessages[index].text.append(delta)
+        }
+        chatMessages[index].isStreaming = true
+    }
+
+    private func finishToolMessage(
+        itemID: String,
+        text: String,
+        threadID: String?,
+        turnID: String?,
+        occurredAt: String?
+    ) {
+        let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
+        ensureToolEntry(
+            itemID: itemID,
+            initialText: text,
+            threadID: threadID,
+            turnID: turnID,
+            occurredAt: occurredAt
+        )
+
+        guard let index = toolMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
+            return
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            chatMessages[index].text = trimmed
+        }
+        chatMessages[index].isStreaming = false
+    }
+
+    private func itemKey(threadID: String?, turnID: String?, itemID: String) -> String {
+        let thread = threadID ?? "_"
+        let turn = turnID ?? "_"
+        return "\(thread)|\(turn)|\(itemID)"
+    }
+
+    private func resetChatTimeline() {
+        chatMessages = []
+        assistantMessageIndexByItemKey = [:]
+        reasoningMessageIndexByItemKey = [:]
+        toolMessageIndexByItemKey = [:]
+        seenUserMessageKeys = []
+        agentDeltaAliasSources = [:]
     }
 
     private func scheduleHandshakeTimeout(handshakeID: String, seconds: Int) {
