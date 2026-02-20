@@ -3,43 +3,43 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { ApertureConfigCompilerLive } from "../src/compiler/apertureCompiler.js";
 import {
-  CONVEX_LIST_PAYWALLS_FN,
-  CONVEX_RECORD_DEPLOYMENT_FN,
-  ConvexControlPlaneLive,
-} from "../src/controlPlane/convex.js";
-import { makeConvexTransportTestLayer } from "../src/controlPlane/convexTransport.js";
+  CONTROL_PLANE_LIST_PAYWALLS_FN,
+  CONTROL_PLANE_RECORD_DEPLOYMENT_FN,
+  ControlPlaneLive,
+} from "../src/controlPlane/live.js";
+import { makeControlPlaneTransportTestLayer } from "../src/controlPlane/transport.js";
 import { compileAndPersistOnce } from "../src/programs/compileAndPersist.js";
 import { makeOpsRuntimeConfigTestLayer } from "../src/runtime/config.js";
 
 import { makePaywall } from "./fixtures.js";
 
-describe("lightning-ops convex pipeline", () => {
+describe("lightning-ops control-plane transport pipeline", () => {
   it.effect("fetches paywall state -> compiles -> writes deployment intent", () =>
     Effect.gen(function* () {
       const callsRef = yield* Ref.make<Array<{ kind: "query" | "mutation"; fn: string; args: Record<string, unknown> }>>([]);
 
-      const transportLayer = makeConvexTransportTestLayer({
+      const transportLayer = makeControlPlaneTransportTestLayer({
         query: (fn, args) =>
           Effect.gen(function* () {
             yield* Ref.update(callsRef, (calls) => [...calls, { kind: "query" as const, fn, args }]);
-            if (fn !== CONVEX_LIST_PAYWALLS_FN) {
+            if (fn !== CONTROL_PLANE_LIST_PAYWALLS_FN) {
               throw new Error(`unexpected query function ${fn}`);
             }
             return {
               ok: true,
-              paywalls: [makePaywall("from-convex", { priority: 7 })],
+              paywalls: [makePaywall("from-api", { priority: 7 })],
             };
           }),
         mutation: (fn, args) =>
           Effect.gen(function* () {
             yield* Ref.update(callsRef, (calls) => [...calls, { kind: "mutation" as const, fn, args }]);
-            if (fn !== CONVEX_RECORD_DEPLOYMENT_FN) {
+            if (fn !== CONTROL_PLANE_RECORD_DEPLOYMENT_FN) {
               throw new Error(`unexpected mutation function ${fn}`);
             }
             return {
               ok: true,
               deployment: {
-                deploymentId: "dep_from_convex_1",
+                deploymentId: "dep_from_api_1",
                 paywallId: undefined,
                 ownerId: undefined,
                 configHash: String(args.configHash),
@@ -57,11 +57,10 @@ describe("lightning-ops convex pipeline", () => {
 
       const summary = yield* compileAndPersistOnce({ requestId: "integration-1" }).pipe(
         Effect.provide(ApertureConfigCompilerLive),
-        Effect.provide(ConvexControlPlaneLive),
+        Effect.provide(ControlPlaneLive),
         Effect.provide(transportLayer),
         Effect.provide(
           makeOpsRuntimeConfigTestLayer({
-            convexUrl: "https://example.convex.cloud",
             opsSecret: "ops-secret",
           }),
         ),
@@ -74,8 +73,8 @@ describe("lightning-ops convex pipeline", () => {
       expect(summary.deploymentStatus).toBe("pending");
 
       expect(calls).toHaveLength(2);
-      expect(calls[0]).toMatchObject({ kind: "query", fn: CONVEX_LIST_PAYWALLS_FN });
-      expect(calls[1]).toMatchObject({ kind: "mutation", fn: CONVEX_RECORD_DEPLOYMENT_FN });
+      expect(calls[0]).toMatchObject({ kind: "query", fn: CONTROL_PLANE_LIST_PAYWALLS_FN });
+      expect(calls[1]).toMatchObject({ kind: "mutation", fn: CONTROL_PLANE_RECORD_DEPLOYMENT_FN });
       expect(calls[1]?.args?.configHash).toBe(summary.configHash);
       expect(calls[1]?.args?.status).toBe("pending");
     }),
@@ -85,7 +84,7 @@ describe("lightning-ops convex pipeline", () => {
     Effect.gen(function* () {
       const callsRef = yield* Ref.make<Array<{ kind: "query" | "mutation"; fn: string; args: Record<string, unknown> }>>([]);
 
-      const transportLayer = makeConvexTransportTestLayer({
+      const transportLayer = makeControlPlaneTransportTestLayer({
         query: (fn, args) =>
           Effect.gen(function* () {
             yield* Ref.update(callsRef, (calls) => [...calls, { kind: "query" as const, fn, args }]);
@@ -118,11 +117,10 @@ describe("lightning-ops convex pipeline", () => {
 
       const summary = yield* compileAndPersistOnce({ requestId: "integration-2" }).pipe(
         Effect.provide(ApertureConfigCompilerLive),
-        Effect.provide(ConvexControlPlaneLive),
+        Effect.provide(ControlPlaneLive),
         Effect.provide(transportLayer),
         Effect.provide(
           makeOpsRuntimeConfigTestLayer({
-            convexUrl: "https://example.convex.cloud",
             opsSecret: "ops-secret",
           }),
         ),

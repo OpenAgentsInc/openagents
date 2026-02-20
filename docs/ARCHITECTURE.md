@@ -55,11 +55,10 @@ flowchart LR
   runtime --> khala
   laravel --> khala
   runtime -.->|"dual publish during migration"| convex
-  laravel -.->|"legacy Convex token bridge + rollback lanes"| convex
+  laravel -.->|"legacy Convex token bridge + non-migrated lanes"| convex
 
   lops --> aperture
   lops --> laravel
-  lops -.->|"rollback transport"| convex
   aperture --> lnd
   lwe --> lnd
   lnd --> bitcoind
@@ -93,7 +92,7 @@ flowchart LR
 
 | App | Path | Primary role | Key stack | Delivery status (current) |
 |---|---|---|---|---|
-| Lightning ops compiler | `apps/lightning-ops/` | Compiles L402 route/policy intent into deterministic Aperture gateway config from Laravel control-plane APIs (Convex rollback lane still available) | Effect/TypeScript | Active service |
+| Lightning ops compiler | `apps/lightning-ops/` | Compiles L402 route/policy intent into deterministic Aperture gateway config from Laravel control-plane APIs | Effect/TypeScript | Active service |
 | Lightning wallet executor | `apps/lightning-wallet-executor/` | Executes agent-controlled Bolt11 payments under policy/limit constraints | HTTP service + Spark/LN integration | Active service |
 
 ## Platform Domains (Product-Level)
@@ -188,7 +187,7 @@ This section clarifies the practical meaning of "single authority database" in t
 
 ### Flow B: L402 policy and Lightning payment path
 
-1. Route/policy + settlement/security control-plane authority is now persisted in Postgres-backed Laravel tables via internal endpoints (`/api/internal/lightning-ops/control-plane/query|mutation`), with Convex rollback mode retained during migration.
+1. Route/policy + settlement/security control-plane authority is persisted in Postgres-backed Laravel tables via internal endpoints (`/api/internal/lightning-ops/control-plane/query|mutation`).
 2. `apps/lightning-ops/` compiles/validates deterministic Aperture config from that intent and records deployment/security/settlement parity events through the same control-plane API.
 3. Aperture enforces incoming paid routes via `lnd`.
 4. For outbound paid calls, `apps/lightning-wallet-executor/` pays Bolt11 invoices via Lightning wallet integrations and policy limits.
@@ -234,6 +233,7 @@ This section clarifies the practical meaning of "single authority database" in t
 8. Desktop status connectivity can run on Khala lane behind `OA_DESKTOP_KHALA_SYNC_ENABLED` without Convex URL/token configuration.
 9. Runtime parity auditor (`OpenAgentsRuntime.Sync.ParityAuditor`) tracks Convex-vs-Khala mismatch rate and lag drift during dual-publish windows.
 10. Lightning ops control-plane API is live in Laravel at `/api/internal/lightning-ops/control-plane/query|mutation`, backed by `l402_control_plane_*` Postgres tables.
+11. `apps/lightning-ops` now uses API/mock transport modes only; Convex transport has been removed from the Lightning lane.
 
 ### Current Cloud SQL guardrails
 

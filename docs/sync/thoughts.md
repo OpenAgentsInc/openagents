@@ -72,11 +72,11 @@ Gap:
 - Postgres-backed authority APIs now exist in Laravel:
   - `apps/openagents.com/app/Http/Controllers/Api/Internal/LightningOpsControlPlaneController.php`
   - `apps/openagents.com/app/Services/L402/L402OpsControlPlaneService.php`
-- `apps/lightning-ops` supports API-backed transport in addition to Convex rollback mode:
+- `apps/lightning-ops` now runs API/mock transport only for control-plane flows:
   - `apps/lightning-ops/src/controlPlane/apiTransport.ts`
-  - `apps/lightning-ops/src/controlPlane/convex.ts`
+  - `apps/lightning-ops/src/controlPlane/live.ts`
 
-Conclusion: runtime/Codex Khala lane is live behind flags; Lightning second-wave migration is underway with API parity scaffolding merged.
+Conclusion: runtime/Codex Khala lane is live behind flags; Lightning second-wave transport cutover is complete in `apps/lightning-ops`.
 
 ## WS-only transport decision
 
@@ -389,8 +389,8 @@ Fast win:
 ### Phase C: Lightning migration
 
 - move lightning control-plane authority from Convex to Postgres/runtime APIs,
-- replace `ConvexHttpClient` in lightning-ops,
-- decommission Convex by lane after rollback window.
+- replace `ConvexHttpClient` in lightning-ops with API transport,
+- decommission Convex transport/deps from lightning-ops after rollback window.
 
 ## What not to build
 

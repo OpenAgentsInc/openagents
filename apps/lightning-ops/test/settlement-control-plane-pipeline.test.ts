@@ -2,23 +2,23 @@ import { Effect, Ref } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  CONVEX_RECORD_INVOICE_LIFECYCLE_FN,
-  CONVEX_RECORD_SETTLEMENT_FN,
-  ConvexControlPlaneLive,
-} from "../src/controlPlane/convex.js";
-import { makeConvexTransportTestLayer } from "../src/controlPlane/convexTransport.js";
+  CONTROL_PLANE_RECORD_INVOICE_LIFECYCLE_FN,
+  CONTROL_PLANE_RECORD_SETTLEMENT_FN,
+  ControlPlaneLive,
+} from "../src/controlPlane/live.js";
+import { makeControlPlaneTransportTestLayer } from "../src/controlPlane/transport.js";
 import { ControlPlaneTransportError } from "../src/errors.js";
 import { ingestSettlementEvents, type SettlementIngestEvent } from "../src/programs/ingestSettlements.js";
 import { makeOpsRuntimeConfigTestLayer } from "../src/runtime/config.js";
 import { formatPaymentProofReference } from "../src/settlements/proof.js";
 
-describe("lightning-ops settlement convex pipeline", () => {
-  it.effect("maps lifecycle events to Convex settlement mutations with deterministic proof refs", () =>
+describe("lightning-ops settlement control-plane transport pipeline", () => {
+  it.effect("maps lifecycle events to settlement mutations with deterministic proof refs", () =>
     Effect.gen(function* () {
       const callsRef = yield* Ref.make<Array<{ fn: string; args: Record<string, unknown> }>>([]);
       const seenSettlementIds = yield* Ref.make<Set<string>>(new Set());
 
-      const transportLayer = makeConvexTransportTestLayer({
+      const transportLayer = makeControlPlaneTransportTestLayer({
         query: (functionName) =>
           Effect.fail(
             ControlPlaneTransportError.make({
@@ -30,7 +30,7 @@ describe("lightning-ops settlement convex pipeline", () => {
           Effect.gen(function* () {
             yield* Ref.update(callsRef, (calls) => [...calls, { fn: functionName, args }]);
 
-            if (functionName === CONVEX_RECORD_INVOICE_LIFECYCLE_FN) {
+            if (functionName === CONTROL_PLANE_RECORD_INVOICE_LIFECYCLE_FN) {
               return {
                 ok: true,
                 changed: true,
@@ -51,7 +51,7 @@ describe("lightning-ops settlement convex pipeline", () => {
               };
             }
 
-            if (functionName === CONVEX_RECORD_SETTLEMENT_FN) {
+            if (functionName === CONTROL_PLANE_RECORD_SETTLEMENT_FN) {
               const settlementId = String(args.settlementId);
               const preimage = String(args.paymentProofValue);
               const existed = yield* Ref.modify(seenSettlementIds, (seen) => {
@@ -144,11 +144,10 @@ describe("lightning-ops settlement convex pipeline", () => {
       ];
 
       const summary = yield* ingestSettlementEvents(events).pipe(
-        Effect.provide(ConvexControlPlaneLive),
+        Effect.provide(ControlPlaneLive),
         Effect.provide(transportLayer),
         Effect.provide(
           makeOpsRuntimeConfigTestLayer({
-            convexUrl: "https://example.convex.cloud",
             opsSecret: "ops-secret",
           }),
         ),
@@ -162,9 +161,9 @@ describe("lightning-ops settlement convex pipeline", () => {
 
       expect(calls).toHaveLength(3);
       expect(calls.map((call) => call.fn)).toEqual([
-        CONVEX_RECORD_INVOICE_LIFECYCLE_FN,
-        CONVEX_RECORD_SETTLEMENT_FN,
-        CONVEX_RECORD_SETTLEMENT_FN,
+        CONTROL_PLANE_RECORD_INVOICE_LIFECYCLE_FN,
+        CONTROL_PLANE_RECORD_SETTLEMENT_FN,
+        CONTROL_PLANE_RECORD_SETTLEMENT_FN,
       ]);
     }),
   );

@@ -3,8 +3,7 @@ import { Console, Effect, Layer } from "effect";
 import { ApertureConfigCompilerLive } from "./compiler/apertureCompiler.js";
 import { ApiTransportLive } from "./controlPlane/apiTransport.js";
 import { makeInMemoryControlPlaneHarness } from "./controlPlane/inMemory.js";
-import { ConvexControlPlaneLive } from "./controlPlane/convex.js";
-import { ConvexTransportLive } from "./controlPlane/convexTransport.js";
+import { ControlPlaneLive } from "./controlPlane/live.js";
 import { smokePaywalls } from "./fixtures/smokePaywalls.js";
 import { compileAndPersistOnce } from "./programs/compileAndPersist.js";
 import { runObservabilitySmoke, type ObservabilitySmokeMode } from "./programs/smokeObservability.js";
@@ -25,34 +24,32 @@ import {
 import { OpsRuntimeConfigLive } from "./runtime/config.js";
 
 const usage = `Usage:
-  tsx src/main.ts smoke:compile [--json] [--mode mock|convex|api]
-  tsx src/main.ts compile:convex [--json]
+  tsx src/main.ts smoke:compile [--json] [--mode mock|api]
   tsx src/main.ts compile:api [--json]
-  tsx src/main.ts reconcile:convex [--json]
   tsx src/main.ts reconcile:api [--json]
-  tsx src/main.ts smoke:security [--json] [--mode mock|convex|api]
-  tsx src/main.ts smoke:settlement [--json] [--mode mock|convex|api]
-  tsx src/main.ts smoke:staging [--json] [--mode mock|convex|api]
+  tsx src/main.ts smoke:security [--json] [--mode mock|api]
+  tsx src/main.ts smoke:settlement [--json] [--mode mock|api]
+  tsx src/main.ts smoke:staging [--json] [--mode mock|api]
   tsx src/main.ts smoke:ep212-routes [--json] [--mode mock|live]
   tsx src/main.ts smoke:ep212-full-flow [--json] [--mode mock|live] [--artifact-dir <path>]
-  tsx src/main.ts smoke:observability [--json] [--mode mock|convex|api]
-  tsx src/main.ts smoke:full-flow [--json] [--mode mock|convex|api] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
+  tsx src/main.ts smoke:observability [--json] [--mode mock|api]
+  tsx src/main.ts smoke:full-flow [--json] [--mode mock|api] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
 `;
 
-type HostedControlPlaneMode = "convex" | "api";
-type ControlPlaneSmokeMode = HostedControlPlaneMode | "mock";
+type HostedControlPlaneMode = "api";
+type ControlPlaneSmokeMode = "mock" | HostedControlPlaneMode;
 
 const resolveDefaultControlPlaneSmokeMode = (): ControlPlaneSmokeMode => {
   const value = process.env.OA_LIGHTNING_OPS_CONTROL_PLANE_MODE?.trim().toLowerCase();
-  if (value === "mock" || value === "convex" || value === "api") {
+  if (value === "mock" || value === "api") {
     return value;
   }
   return "api";
 };
 
-const hostedControlPlaneLayer = (mode: HostedControlPlaneMode) =>
-  ConvexControlPlaneLive.pipe(
-    Layer.provideMerge(mode === "api" ? ApiTransportLive : ConvexTransportLive),
+const hostedControlPlaneLayer = () =>
+  ControlPlaneLive.pipe(
+    Layer.provideMerge(ApiTransportLive),
     Layer.provideMerge(OpsRuntimeConfigLive),
   );
 
@@ -519,10 +516,9 @@ const printEp212FullFlowSummary = (
 
 const runHostedCompile = (
   jsonOutput: boolean,
-  mode: HostedControlPlaneMode,
   requestId: string,
 ) => {
-  const liveLayer = Layer.mergeAll(ApertureConfigCompilerLive, hostedControlPlaneLayer(mode));
+  const liveLayer = Layer.mergeAll(ApertureConfigCompilerLive, hostedControlPlaneLayer());
 
   return compileAndPersistOnce({ requestId }).pipe(
     Effect.provide(liveLayer),
@@ -540,21 +536,11 @@ const runSmokeCompile = (jsonOutput: boolean, mode: ControlPlaneSmokeMode) => {
     );
   }
 
-  return runHostedCompile(jsonOutput, mode, "smoke:compile");
-};
-
-const runConvexCompile = (jsonOutput: boolean) => {
-  return runHostedCompile(jsonOutput, "convex", "compile:convex");
+  return runHostedCompile(jsonOutput, "smoke:compile");
 };
 
 const runApiCompile = (jsonOutput: boolean) => {
-  return runHostedCompile(jsonOutput, "api", "compile:api");
-};
-
-const runConvexReconcile = (jsonOutput: boolean) => {
-  return runStagingSmoke({ mode: "convex", requestId: "reconcile:convex" }).pipe(
-    Effect.flatMap((summary) => printReconcileSummary(summary, jsonOutput)),
-  );
+  return runHostedCompile(jsonOutput, "compile:api");
 };
 
 const runApiReconcile = (jsonOutput: boolean) => {
@@ -649,20 +635,12 @@ const main = Effect.gen(function* () {
   if (command === "smoke:compile") {
     return yield* runSmokeCompile(
       jsonOutput,
-      parseMode(argv, ["mock", "convex", "api"], controlPlaneModeFallback),
+      parseMode(argv, ["mock", "api"], controlPlaneModeFallback),
     );
-  }
-
-  if (command === "compile:convex") {
-    return yield* runConvexCompile(jsonOutput);
   }
 
   if (command === "compile:api") {
     return yield* runApiCompile(jsonOutput);
-  }
-
-  if (command === "reconcile:convex") {
-    return yield* runConvexReconcile(jsonOutput);
   }
 
   if (command === "reconcile:api") {
@@ -672,23 +650,23 @@ const main = Effect.gen(function* () {
   if (command === "smoke:settlement") {
     return yield* runSmokeSettlement(
       jsonOutput,
-      parseMode(argv, ["mock", "convex", "api"], controlPlaneModeFallback),
+      parseMode(argv, ["mock", "api"], controlPlaneModeFallback),
     );
   }
 
   if (command === "smoke:security") {
     return yield* runSmokeSecurity(
       jsonOutput,
-      parseMode(argv, ["mock", "convex", "api"], controlPlaneModeFallback),
+      parseMode(argv, ["mock", "api"], controlPlaneModeFallback),
     );
   }
 
   if (command === "smoke:staging") {
-    return yield* runSmokeStaging(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
+    return yield* runSmokeStaging(jsonOutput, parseMode(argv, ["mock", "api"], "mock"));
   }
 
   if (command === "smoke:observability") {
-    return yield* runSmokeObservability(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
+    return yield* runSmokeObservability(jsonOutput, parseMode(argv, ["mock", "api"], "mock"));
   }
 
   if (command === "smoke:ep212-routes") {
@@ -709,7 +687,7 @@ const main = Effect.gen(function* () {
     const localArtifactPath = parseTextOption(argv, "--local-artifact");
     return yield* runSmokeFullFlow({
       jsonOutput,
-      mode: parseMode(argv, ["mock", "convex", "api"], "mock"),
+      mode: parseMode(argv, ["mock", "api"], "mock"),
       ...(artifactDir ? { artifactDir } : {}),
       ...(localArtifactPath ? { localArtifactPath } : {}),
       strictLocalParity: !argv.includes("--allow-missing-local-artifact"),

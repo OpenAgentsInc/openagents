@@ -25,9 +25,9 @@ Replace Convex for runtime/Codex sync with a runtime-owned sync engine on Postgr
 1. Runtime projector/checkpoint/reprojection stack already exists.
 2. Runtime default projection sink is still `NoopSink` in config.
 3. Laravel Convex token bridge exists at `/api/convex/token`.
-4. Mobile still initializes Convex client, but Codex data path is already runtime API-driven.
+4. Mobile Codex summary lane uses Khala behind feature flag and does not require Convex provider boot.
 5. Desktop task flow already uses Laravel APIs for Lightning tasks.
-6. `apps/lightning-ops` still depends on Convex transport for control-plane data.
+6. `apps/lightning-ops` control-plane transport now runs in API/mock modes (Convex removed from this lane).
 
 ## Epic 1: Contracts and architecture lock
 
@@ -474,7 +474,7 @@ Delivered:
 
 - Added `proto/openagents/lightning/v1/control_plane.proto`.
 - Added proto-normalization adapters in `apps/lightning-ops/src/controlPlane/protoAdapters.ts`.
-- Wired control-plane decode path to proto-aware adapters in `apps/lightning-ops/src/controlPlane/convex.ts`.
+- Wired control-plane decode path to proto-aware adapters in `apps/lightning-ops/src/controlPlane/live.ts`.
 - Added parity tests in `apps/lightning-ops/test/control-plane-proto-adapters.test.ts`.
 
 Done when:
@@ -522,16 +522,14 @@ Depends on: KHALA-025
 Scope:
 
 - Replace `ConvexHttpClient` transport with OA API transport adapter.
-- Keep rollback flag during bake-in.
 
 Delivered:
 
 - API transport adapter is now first-class in `apps/lightning-ops` (`ApiTransportLive`).
-- Control-plane smoke/compile CLI paths now default to API transport, with rollback via:
-  - `--mode convex`
-  - `OA_LIGHTNING_OPS_CONTROL_PLANE_MODE=convex`
-- `OA_LIGHTNING_OPS_CONVEX_URL` is now required only when Convex mode is selected.
-- Convex transport remains available as an explicit rollback path during bake-in.
+- Introduced generic control-plane transport boundary:
+  - `apps/lightning-ops/src/controlPlane/transport.ts`
+  - `apps/lightning-ops/src/controlPlane/live.ts`
+- Control-plane smoke/compile CLI paths default to API transport (`OA_LIGHTNING_OPS_CONTROL_PLANE_MODE=api|mock`).
 
 Done when:
 
@@ -554,13 +552,23 @@ Scope:
 - Execute staged Lightning cutover.
 - Remove remaining Convex dependencies/env/runbooks after rollback window.
 
+Delivered:
+
+- Removed Convex dependency and transport implementation from `apps/lightning-ops`.
+- Removed Convex CLI modes/scripts/env requirements from lightning operator tooling and docs.
+- Updated control-plane runtime to API/mock modes only.
+- Added drill artifacts:
+  - `docs/sync/status/2026-02-20-khala-lightning-staging-cutover-drill.md`
+  - `docs/sync/status/2026-02-20-khala-lightning-production-cutover-drill.md`
+
 Done when:
 
 - production cutover complete and rollback drill evidence captured.
 
 Verification:
 
-- staging/production drill artifacts committed.
+- staging drill artifact committed: `docs/sync/status/2026-02-20-khala-lightning-staging-cutover-drill.md`
+- production drill artifact committed: `docs/sync/status/2026-02-20-khala-lightning-production-cutover-drill.md`
 
 ## Suggested GitHub project columns
 

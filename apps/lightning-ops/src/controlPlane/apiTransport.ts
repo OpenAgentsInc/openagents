@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect";
 
 import { ControlPlaneTransportError } from "../errors.js";
 
-import { ConvexTransportService, type ConvexTransportApi } from "./convexTransport.js";
+import { ControlPlaneTransportService, type ControlPlaneTransportApi } from "./transport.js";
 
 const normalizeBaseUrl = (value: string): string => value.replace(/\/+$/, "");
 
@@ -94,7 +94,7 @@ const requestControlPlane = (
   );
 };
 
-export const ApiTransportLive = Layer.sync(ConvexTransportService, () => {
+export const ApiTransportLive = Layer.sync(ControlPlaneTransportService, () => {
   const baseUrl = process.env.OA_LIGHTNING_OPS_API_BASE_URL?.trim() ?? "";
   if (!baseUrl) {
     throw ControlPlaneTransportError.make({
@@ -106,16 +106,16 @@ export const ApiTransportLive = Layer.sync(ConvexTransportService, () => {
   const queryEndpoint = buildEndpoint(baseUrl, "query");
   const mutationEndpoint = buildEndpoint(baseUrl, "mutation");
 
-  const query: ConvexTransportApi["query"] = (functionName, args) =>
+  const query: ControlPlaneTransportApi["query"] = (functionName, args) =>
     requestControlPlane("query", queryEndpoint, functionName, args);
-  const mutation: ConvexTransportApi["mutation"] = (functionName, args) =>
+  const mutation: ControlPlaneTransportApi["mutation"] = (functionName, args) =>
     requestControlPlane("mutation", mutationEndpoint, functionName, args);
 
-  return ConvexTransportService.of({
+  return ControlPlaneTransportService.of({
     query,
     mutation,
   });
 });
 
-export const makeApiTransportTestLayer = (transport: ConvexTransportApi) =>
-  Layer.succeed(ConvexTransportService, transport);
+export const makeApiTransportTestLayer = (transport: ControlPlaneTransportApi) =>
+  Layer.succeed(ControlPlaneTransportService, transport);
