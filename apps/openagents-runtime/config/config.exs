@@ -25,7 +25,11 @@ config :openagents_runtime,
   khala_sync_retention_batch_size: 5_000,
   khala_sync_replay_batch_size: 200,
   khala_sync_heartbeat_interval_ms: 15_000,
-  khala_sync_heartbeat_timeout_ms: 60_000
+  khala_sync_heartbeat_timeout_ms: 60_000,
+  khala_sync_parity_enabled: false,
+  khala_sync_parity_interval_ms: 30_000,
+  khala_sync_parity_sample_size: 200,
+  khala_sync_parity_projection_names: ["run_summary", "codex_worker_summary"]
 
 config :openagents_runtime, :laravel_internal,
   base_url: "",

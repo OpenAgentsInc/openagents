@@ -399,6 +399,9 @@ defmodule OpenAgentsRuntime.Convex.Projector do
 
   defp summary_projected_at(_summary), do: {:error, :projected_at_missing}
 
+  @spec summary_hash_for_parity(map()) :: String.t()
+  def summary_hash_for_parity(summary) when is_map(summary), do: summary_hash(summary)
+
   defp summary_hash(summary) do
     canonical_summary =
       summary

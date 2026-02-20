@@ -415,6 +415,7 @@ Scope:
 Done when:
 
 - parity dashboard exists with mismatch rate tracking.
+- dashboard definition lives in `docs/sync/PARITY_DASHBOARD.md`.
 
 Verification:
 

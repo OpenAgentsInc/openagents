@@ -23,6 +23,7 @@ defmodule OpenAgentsRuntime.RuntimeSupervisor do
       OpenAgentsRuntime.Runs.EventListener,
       OpenAgentsRuntime.Memory.CompactionJob,
       OpenAgentsRuntime.Sync.RetentionJob,
+      OpenAgentsRuntime.Sync.ParityAuditor,
       OpenAgentsRuntime.Runs.Janitor
     ]
 
