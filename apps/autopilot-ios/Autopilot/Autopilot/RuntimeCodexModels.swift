@@ -180,6 +180,7 @@ enum RuntimeCodexProto {
     }
 
     struct CodexEventEnvelope {
+        let seq: Int?
         let source: String?
         let method: String
         let params: [String: JSONValue]
@@ -281,6 +282,7 @@ enum RuntimeCodexProto {
         let itemID = extractItemID(from: params)
 
         return CodexEventEnvelope(
+            seq: event.seq,
             source: event.payload.source,
             method: method,
             params: params,
