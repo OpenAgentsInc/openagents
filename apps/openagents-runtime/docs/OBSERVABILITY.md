@@ -51,6 +51,13 @@ High-cardinality keys explicitly prohibited from metric labels:
   - `:write_failure`
   - `:drift`
   - `:replay`
+- `[:openagents_runtime, :sync, :projection, :write]`
+  - Khala read-model projection sink write outcomes
+- `[:openagents_runtime, :sync, :stream, :append]`
+  - Khala stream journal append outcomes
+- `[:openagents_runtime, :sync, :retention, ...]`
+  - `:cycle` (deleted row counts per retention pass)
+  - `:topic` (oldest retained watermark visibility by topic)
 - `[:openagents_runtime, :run_events, :notify]`
   - LISTEN/NOTIFY wakeup path
 - `[:openagents_runtime, :agent_process, :stats]`
