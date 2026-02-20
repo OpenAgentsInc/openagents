@@ -6,6 +6,10 @@ export interface ConfigBaseProps {
   authApiUrl: string
   /** Convex deployment URL (dev vs prod). Override with EXPO_PUBLIC_CONVEX_URL. */
   convexUrl: string
+  /** Enable Khala sync lane for Codex summaries and skip Convex provider boot. */
+  khalaSyncEnabled: boolean
+  /** Optional override for Khala websocket endpoint. */
+  khalaSyncWsUrl: string
 }
 
 export type PersistNavigationConfig = ConfigBaseProps["persistNavigation"]
@@ -27,6 +31,8 @@ const BaseConfig: ConfigBaseProps = {
   authApiUrl: "https://openagents.com",
   // Set in config/index.ts from EXPO_PUBLIC_CONVEX_URL or dev/prod default
   convexUrl: "",
+  khalaSyncEnabled: false,
+  khalaSyncWsUrl: "",
 }
 
 export default BaseConfig
