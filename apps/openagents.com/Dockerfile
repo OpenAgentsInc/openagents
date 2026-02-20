@@ -36,7 +36,9 @@ COPY --from=node_runtime /usr/local /opt/node
 ENV PATH="/opt/node/bin:$PATH"
 
 COPY package.json package-lock.json ./
-RUN npm ci
+COPY packages/khala-sync /packages/khala-sync
+RUN rm -rf /packages/khala-sync/node_modules
+RUN npm ci || npm install
 
 COPY . ./
 COPY --from=php_deps /app/vendor ./vendor
