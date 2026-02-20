@@ -86,6 +86,19 @@ struct AutopilotTests {
         #expect(CodexHandshakeMatcher.ackHandshakeID(from: unrelatedEvent) == nil)
     }
 
+    @Test("handshake matcher falls back to raw payload frame when decode fails")
+    func handshakeMatcherFallsBackToRawPayloadFrame() {
+        let rawEvent = RuntimeCodexStreamEvent(
+            id: 90,
+            event: "codex.worker.event",
+            payload: .string("not-json"),
+            rawData: "{\"eventType\":\"worker.event\",\"payload\":{\"source\":\"autopilot-desktop\",\"method\":\"desktop/handshake_ack\",\"handshake_id\":\"hs-raw-123\",\"desktop_session_id\":\"session-42\",\"occurred_at\":\"2026-02-20T00:00:02Z\"}}"
+        )
+
+        #expect(CodexHandshakeMatcher.isMatchingAck(event: rawEvent, handshakeID: "hs-raw-123"))
+        #expect(!CodexHandshakeMatcher.isMatchingAck(event: rawEvent, handshakeID: "hs-other"))
+    }
+
     @Test("proto handshake decoder rejects incomplete desktop ack envelope")
     func protoHandshakeDecoderRejectsIncompleteAck() {
         let invalidAckEvent = RuntimeCodexStreamEvent(
