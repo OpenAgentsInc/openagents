@@ -31,6 +31,25 @@ struct AutopilotTests {
         #expect(events[1].event == "codex.worker.event")
     }
 
+    @Test("parseSSEEvents tolerates missing blank frame separators")
+    func parseSSEEventsToleratesMissingSeparators() {
+        let raw = [
+            "event: codex.worker.event",
+            "id: 41",
+            "data: {\"seq\":41,\"eventType\":\"worker.event\",\"payload\":{\"source\":\"autopilot-ios\",\"method\":\"ios/handshake\",\"handshake_id\":\"hs-xyz\",\"device_id\":\"ios-device\",\"occurred_at\":\"2026-02-20T00:00:00Z\"}}",
+            "event: codex.worker.event",
+            "id: 42",
+            "data: {\"seq\":42,\"eventType\":\"worker.event\",\"payload\":{\"source\":\"autopilot-desktop\",\"method\":\"desktop/handshake_ack\",\"handshake_id\":\"hs-xyz\",\"desktop_session_id\":\"session-42\",\"occurred_at\":\"2026-02-20T00:00:02Z\"}}",
+        ].joined(separator: "\n")
+
+        let events = RuntimeCodexClient.parseSSEEvents(raw: raw)
+
+        #expect(events.count == 2)
+        #expect(events[0].id == 41)
+        #expect(events[1].id == 42)
+        #expect(CodexHandshakeMatcher.isMatchingAck(event: events[1], handshakeID: "hs-xyz"))
+    }
+
     @Test("handshake ack matcher correlates by handshake_id")
     func handshakeMatcherCorrelatesHandshakeID() {
         let ackEvent = RuntimeCodexStreamEvent(

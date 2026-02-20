@@ -71,6 +71,7 @@ defmodule OpenAgentsRuntime.Codex.WorkerStreamTailer do
       "id: #{event.seq}",
       "event: codex.worker.event",
       "data: #{Jason.encode!(payload)}",
+      "",
       ""
     ]
     |> Enum.join("\n")

@@ -233,6 +233,7 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     assert stream_conn.resp_body =~ "\"method\":\"ios/handshake\""
     assert stream_conn.resp_body =~ "\"method\":\"desktop/handshake_ack\""
     assert stream_conn.resp_body =~ "\"handshake_id\":\"#{handshake_id}\""
+    assert stream_conn.resp_body =~ "\n\nid: #{ack_seq}\n"
   end
 
   test "handshake stream reconnect resumes from cursor and still delivers matching ack", %{
