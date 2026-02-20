@@ -49,34 +49,69 @@ struct ProtoWorkerHandshakePayload {
 pub fn parse_runtime_stream_events(raw: &str) -> Vec<RuntimeCodexStreamEvent> {
     let normalized = raw.replace("\r\n", "\n");
     let mut events = Vec::new();
+    let mut id: Option<u64> = None;
+    let mut data_lines: Vec<String> = Vec::new();
+    let mut saw_event_fields = false;
 
-    for chunk in normalized.split("\n\n") {
-        let chunk = chunk.trim();
-        if chunk.is_empty() {
+    for line in normalized.split('\n') {
+        if line.is_empty() {
+            flush_stream_event(&mut events, &mut id, &mut data_lines);
+            saw_event_fields = false;
             continue;
         }
 
-        let mut id: Option<u64> = None;
-        let mut data_lines: Vec<String> = Vec::new();
+        if let Some(value) = line.strip_prefix("id:") {
+            // Some upstream streams omit blank separators; treat a new `id:` as a frame boundary.
+            if !data_lines.is_empty() {
+                flush_stream_event(&mut events, &mut id, &mut data_lines);
+            }
+            id = value.trim().parse::<u64>().ok();
+            saw_event_fields = true;
+            continue;
+        }
 
-        for line in chunk.lines() {
-            if let Some(value) = line.strip_prefix("id:") {
-                id = value.trim().parse::<u64>().ok();
-            } else if let Some(value) = line.strip_prefix("data:") {
-                data_lines.push(value.trim().to_string());
+        if line.strip_prefix("event:").is_some() {
+            saw_event_fields = true;
+            continue;
+        }
+
+        if let Some(value) = line.strip_prefix("data:") {
+            data_lines.push(value.trim().to_string());
+            saw_event_fields = true;
+            continue;
+        }
+
+        // If a folded payload line arrives without `data:`, append it to the current data block.
+        if saw_event_fields {
+            if let Some(last) = data_lines.last_mut() {
+                last.push('\n');
+                last.push_str(line);
+            } else {
+                data_lines.push(line.to_string());
             }
         }
-
-        if data_lines.is_empty() {
-            continue;
-        }
-
-        let raw_data = data_lines.join("\n");
-        let payload = serde_json::from_str::<Value>(&raw_data).unwrap_or(Value::String(raw_data));
-        events.push(RuntimeCodexStreamEvent { id, payload });
     }
 
+    flush_stream_event(&mut events, &mut id, &mut data_lines);
     events
+}
+
+fn flush_stream_event(
+    events: &mut Vec<RuntimeCodexStreamEvent>,
+    id: &mut Option<u64>,
+    data_lines: &mut Vec<String>,
+) {
+    if data_lines.is_empty() {
+        *id = None;
+        return;
+    }
+
+    let raw_data = data_lines.join("\n");
+    let payload = serde_json::from_str::<Value>(&raw_data).unwrap_or(Value::String(raw_data));
+    events.push(RuntimeCodexStreamEvent { id: *id, payload });
+
+    *id = None;
+    data_lines.clear();
 }
 
 pub fn stream_event_seq(event: &RuntimeCodexStreamEvent) -> Option<u64> {
@@ -176,6 +211,17 @@ mod tests {
     fn parse_runtime_stream_events_parses_sse_frames() {
         let raw = "event: codex.worker.event\r\nid: 41\r\ndata: {\"seq\":41,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"ios/handshake\"}}\r\n\r\n\
 event: codex.worker.event\r\nid: 42\r\ndata: {\"seq\":42,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"desktop/handshake_ack\"}}\r\n\r\n";
+
+        let events = parse_runtime_stream_events(raw);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].id, Some(41));
+        assert_eq!(events[1].id, Some(42));
+    }
+
+    #[test]
+    fn parse_runtime_stream_events_tolerates_missing_blank_separators() {
+        let raw = "event: codex.worker.event\nid: 41\ndata: {\"seq\":41,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"ios/handshake\"}}\n\
+event: codex.worker.event\nid: 42\ndata: {\"seq\":42,\"eventType\":\"worker.event\",\"payload\":{\"method\":\"desktop/handshake_ack\"}}\n";
 
         let events = parse_runtime_stream_events(raw);
         assert_eq!(events.len(), 2);

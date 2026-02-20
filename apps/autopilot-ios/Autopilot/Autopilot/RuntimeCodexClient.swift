@@ -109,35 +109,24 @@ final class RuntimeCodexClient {
     }
 
     static func parseSSEEvents(raw: String) -> [RuntimeCodexStreamEvent] {
-        let chunks = raw
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
         var events: [RuntimeCodexStreamEvent] = []
         let jsonDecoder = JSONDecoder()
+        let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
+        var currentID: Int?
+        var currentEvent = "message"
+        var dataLines: [String] = []
+        var sawEventFields = false
 
-        for chunk in chunks {
-            let lines = chunk.split(separator: "\n", omittingEmptySubsequences: false)
-            var id: Int?
-            var event = "message"
-            var dataLines: [String] = []
-
-            for line in lines {
-                if line.hasPrefix("id:") {
-                    let rawID = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
-                    id = Int(rawID)
-                } else if line.hasPrefix("event:") {
-                    let rawEvent = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-                    event = rawEvent.isEmpty ? "message" : rawEvent
-                } else if line.hasPrefix("data:") {
-                    let rawData = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-                    dataLines.append(rawData)
-                }
+        func flushCurrentEvent() {
+            defer {
+                currentID = nil
+                currentEvent = "message"
+                dataLines = []
+                sawEventFields = false
             }
 
             guard !dataLines.isEmpty else {
-                continue
+                return
             }
 
             let dataRaw = dataLines.joined(separator: "\n")
@@ -150,9 +139,61 @@ final class RuntimeCodexClient {
                 payload = .string(dataRaw)
             }
 
-            events.append(RuntimeCodexStreamEvent(id: id, event: event, payload: payload, rawData: dataRaw))
+            events.append(
+                RuntimeCodexStreamEvent(
+                    id: currentID,
+                    event: currentEvent,
+                    payload: payload,
+                    rawData: dataRaw
+                )
+            )
         }
 
+        for rawLine in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine)
+
+            if line.isEmpty {
+                flushCurrentEvent()
+                continue
+            }
+
+            if line.hasPrefix("id:") {
+                // Some upstream streams omit blank separators; treat a new `id:` as a frame boundary.
+                if !dataLines.isEmpty {
+                    flushCurrentEvent()
+                }
+
+                let rawID = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
+                currentID = Int(rawID)
+                sawEventFields = true
+                continue
+            }
+
+            if line.hasPrefix("event:") {
+                let rawEvent = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                currentEvent = rawEvent.isEmpty ? "message" : rawEvent
+                sawEventFields = true
+                continue
+            }
+
+            if line.hasPrefix("data:") {
+                let rawData = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                dataLines.append(rawData)
+                sawEventFields = true
+                continue
+            }
+
+            // If upstream folds data lines without repeating `data:`, append to previous payload line.
+            if sawEventFields {
+                if let last = dataLines.indices.last {
+                    dataLines[last].append("\n" + line)
+                } else {
+                    dataLines.append(line)
+                }
+            }
+        }
+
+        flushCurrentEvent()
         return events
     }
 
