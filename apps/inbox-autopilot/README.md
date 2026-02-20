@@ -1,338 +1,235 @@
-# Inbox Autopilot (macOS Native) — MVP Plan
+# Inbox Autopilot (macOS + Local Daemon)
 
-## 1) Product Goal
+Inbox Autopilot is a macOS-native inbox operations product for teams that handle high-volume, repetitive email workflows. It ingests Gmail threads, learns reply style from historical sent mail, classifies inbound requests, creates draft replies, and keeps a human in control of what gets sent.
 
-A Mac-native “Inbox Autopilot” that:
+## What We Are Building
 
-* syncs Gmail locally
-* learns reply patterns from historical sent mail
-* classifies new inbound messages
-* generates high-quality draft replies
-* supports human approval + send
-* provides an audit timeline (“why this draft?”)
+### Core outcome
 
-**Privacy posture:** message corpus stays local by default. External LLM usage is opt-in and clearly surfaced.
+- Cut response time for repeatable inbox work without sacrificing quality.
+- Produce drafts that read like the operator wrote them.
+- Preserve human approval for risky or sensitive messages.
+- Keep a clear audit trail for every decision and send action.
 
----
+### Product principles
 
-## 2) High-level Architecture
+- Local-first: corpus, classification, policy, and drafting run locally by default.
+- Human-in-the-loop: MVP is draft + approval, not autonomous auto-send.
+- Explainability: every meaningful action emits events and can be audited.
+- Practical quality: optimize first for common categories (scheduling, report delivery).
 
-### 2.1 Two-process system
+## Implementation Status (as of February 20, 2026)
 
-**A) macOS App (Swift)**
+Implemented:
 
-* UI/UX, onboarding, settings
-* Gmail OAuth login
-* ChatGPT auth (for hybrid/cloud draft phrasing)
-* “Inbox” and “Thread” views
-* Approve/Send actions
-* Audit & spend screens
+- Native macOS app (SwiftUI) with Inbox, Approvals, Settings, and Audit sections.
+- Local Rust daemon with authenticated loopback IPC and SSE event stream.
+- Gmail OAuth flow (app gets code, daemon exchanges/stores tokens).
+- Optional ChatGPT/OpenAI API key connection for hybrid/cloud rewrite mode.
+- Backfill + incremental sync from Gmail into local SQLite.
+- Thread classification (category + risk + policy) and draft generation pipeline.
+- Approve-and-send via Gmail API with policy enforcement.
+- Event timeline, per-thread audit view, and JSON audit export.
+- Settings for privacy mode, sync cadence, templates/signature, allowlist, retention controls.
+- Local notifications, menu bar status controls, and optional app unlock.
 
-**B) Local Codex Daemon (Rust)**
+Open items:
 
-* Owns data + indexing + workflows
-* Gmail sync + watch processing
-* Local object model (EmailThread, Draft, Approval, Event)
-* Policy engine (draft-only / approval-required / blocked)
-* Tool execution & receipts
-* Optional model routing (local or cloud) with sanitization
+- Auto-update distribution pipeline (Sparkle or equivalent).
+- Quality tuning and measurement loop for the "minimal editing >= 60%" draft target.
 
-### 2.2 Communication (App ↔ Daemon)
+## Product Spec
 
-Use **local-only** IPC:
+### 1) User workflow
 
-* Prefer: **Unix domain socket** (best for local-only & avoids port collisions)
-* MVP acceptable: `http://127.0.0.1:<random-port>` bound to loopback only
+1. Connect Gmail in onboarding.
+2. Optionally connect OpenAI key for hybrid/cloud drafting.
+3. Choose privacy mode and backfill range.
+4. Run backfill (default 90 days) and load Inbox.
+5. Open a thread, generate/review draft, and approve send when safe.
+6. Review "why this draft" details and full event timeline in Audit.
 
-Streaming:
+### 2) Functional requirements
 
-* **SSE** (Server-Sent Events) for event timeline updates
-* Or WebSocket if you prefer bidirectional
+- FR-1 Gmail must be required for production use.
+- FR-2 Backfill must ingest enough history to infer style and common templates.
+- FR-3 New inbound threads should be classified into category + risk + policy.
+- FR-4 Draft generation must combine local retrieval/style signals with optional external rewrite.
+- FR-5 Send path must be policy-gated and approval-gated.
+- FR-6 Every step (sync, classify, policy, draft, approval, send, settings changes) must emit events.
+- FR-7 Operators must be able to delete local corpus or run full factory reset.
 
-Auth between them:
+### 3) Quality and policy targets
 
-* App obtains a short-lived session token from daemon (or vice versa)
-* All requests include token + nonce (replay protection)
+- Draft quality target: for scheduling/report-delivery categories, drafts should need minimal edits at least 60% of the time.
+- Timing target: draft available within 60 seconds after sync for new inbound mail.
+- Safety baseline:
+  - Legal/insurance content defaults to blocked one-click send.
+  - Complaint/dispute and pricing stay in draft-first workflows.
+  - Allowlist policy can block send based on configured domains.
 
----
+### 4) Privacy modes
 
-## 3) macOS App: UX Requirements (Premium)
+- `local_only`: no external LLM calls.
+- `hybrid`: local retrieval/composition plus optional OpenAI rewrite.
+- `cloud`: cloud rewrite path enabled, still policy-gated and audit-logged.
 
-### 3.1 UI Surfaces
+## Architecture
 
-1. **Onboarding**
+### macOS app (Swift)
 
-   * “Connect Gmail”
-   * “Connect ChatGPT” (optional; for Hybrid / Cloud mode)
-   * “Choose privacy mode” (Local-only / Hybrid / Cloud)
-   * “Select backfill range” (90d default; 12mo optional)
-2. **Inbox**
+Responsibilities:
 
-   * Focused queue: “Needs reply”
-   * Thread list with category + risk chips
-   * Search (client name, subject, address keywords)
-3. **Thread view**
+- Onboarding and auth initiation.
+- Inbox/thread/approvals/settings/audit UI.
+- Session bootstrap with daemon and nonce-authenticated requests.
+- Event-stream subscription for live status updates.
+- Local UX integrations (notifications, menu bar, optional unlock).
 
-   * Conversation timeline
-   * Suggested draft panel with:
+Important boundary:
 
-     * “Insert Draft”
-     * “Edit”
-     * “Approve & Send”
-     * “Mark Needs Human”
-   * “Why this draft?” drawer:
+- App never stores Gmail refresh token directly.
+- App forwards OAuth code to daemon for exchange.
 
-     * category, risk tier, policy decision
-     * similar past threads used
-     * whether external model used
-4. **Approvals queue**
+### Local daemon (Rust)
 
-   * All drafts awaiting approval
-5. **Settings**
+Responsibilities:
 
-   * Privacy mode & model routing
-   * Allowed recipient domains (optional)
-   * Signature and templates
-   * Backfill/sync controls
-6. **Audit**
+- OAuth exchange/refresh and Gmail API calls.
+- Sync pipeline (backfill + periodic incremental).
+- Local persistence and encryption.
+- Classification, policy evaluation, and draft generation.
+- Approve/send execution and event logging.
 
-   * event timeline per thread/run
-   * export logs (for support)
+Current transport:
 
-### 3.2 Native integrations (worth doing for premium feel)
+- HTTP on `127.0.0.1:8787` (local-only).
+- SSE endpoint for live events.
 
-* Store secrets in **Keychain**
-* Optional **Touch ID / Passcode** app unlock
-* **Notifications** for “Draft ready” or “Needs human”
-* Menu bar indicator for sync status
-* Great keyboard navigation
+## IPC Contract Summary
 
----
+Canonical contract: `docs/ipc-contract.md`
 
-## 4) Auth Flows
+### Session/auth
 
-### 4.1 Gmail (required)
+- `POST /session`
+- Required headers on authenticated routes:
+  - `x-session-token`
+  - `x-nonce` (single-use replay protection)
 
-Implementation:
+### Main route groups
 
-* Use **ASWebAuthenticationSession** for Google OAuth consent
-* Request scopes for:
+- Health: `/health`
+- Auth: `/auth/gmail/*`, `/auth/chatgpt/*`
+- Sync: `/sync/backfill`, `/sync/now`
+- Threads/drafts: `/threads/*`, `/drafts/*`
+- Audit/events: `/events`, `/events/stream`, `/threads/:id/audit`, `/threads/:id/export-audit`
+- Settings/lifecycle: `/settings`, `/settings/delete-corpus`, `/settings/factory-reset`
 
-  * read threads/messages
-  * create drafts
-  * send messages (optional; can delay until “send” is enabled)
-* App passes auth code to daemon
-* **Daemon exchanges code → tokens** and stores refresh token securely (Keychain access or encrypted local vault)
-* Daemon handles refresh and API calls
+### Event types emitted
 
-**Important:** app should never need long-lived Gmail refresh tokens in memory.
+- `daemon_started`
+- `auth_gmail_connected`
+- `auth_chatgpt_connected`
+- `sync_backfill_completed`
+- `sync_incremental_completed`
+- `sync_incremental_failed`
+- `classification_completed`
+- `policy_evaluated`
+- `draft_created`
+- `draft_marked_needs_human`
+- `approval_granted`
+- `email_sent`
+- `settings_updated`
+- `local_corpus_deleted`
+- `factory_reset_completed`
 
-### 4.2 ChatGPT (optional; for Hybrid / Cloud mode)
+## Data and Security
 
-When privacy mode is Hybrid or Cloud, the daemon may call an external LLM (e.g. OpenAI) for draft phrasing. User must connect a ChatGPT/OpenAI account or provide an API key.
+Canonical schema: `docs/db-schema.md`
 
-Implementation:
+- SQLite DB at `~/.inbox-autopilot/daemon.sqlite` by default.
+- OAuth secrets, message bodies, and draft bodies are encrypted before persistence.
+- Daemon vault uses AES-256-GCM with per-device master key material.
+- Master key is stored in macOS Keychain when available (fallback local key file).
+- App session token is stored in Keychain.
 
-* **Option A:** OAuth-style “Sign in with ChatGPT” via **ASWebAuthenticationSession** (if OpenAI supports it); app passes code or token to daemon; daemon stores and uses for API calls.
-* **Option B:** User pastes API key in Settings; app sends to daemon; daemon stores in encrypted vault and uses for OpenAI API. Simpler for MVP.
-* Daemon uses stored credential only when mode is Hybrid or Cloud; Local-only never calls external APIs.
+## Repo Layout
 
----
+- `Inbox Autopilot/Inbox Autopilot/`: macOS app source (SwiftUI).
+- `daemon/`: local service (Rust).
+- `docs/ipc-contract.md`: app-daemon protocol contract.
+- `docs/db-schema.md`: persistent storage schema.
+- `ROADMAP.md`: phased plan and implementation status.
 
-## 5) Local Storage & Encryption
+## Local Development
 
-### 5.1 Storage choices (MVP)
+### Prerequisites
 
-* Local SQLite for metadata + events + drafts
-* Local encrypted blob store for raw RFC822 or message bodies (optional v1)
-* Search index (can be SQLite FTS to start)
+- macOS with Xcode (for app build/run).
+- Rust toolchain (for daemon).
+- Google OAuth app credentials for Gmail integration.
 
-Encryption:
+### Run daemon
 
-* Per-device master key stored in Keychain
-* DB encrypted at rest (SQLCipher or app-level envelope encryption)
+```bash
+cd daemon
+cargo run
+```
 
-### 5.2 Data retention knobs
+Default bind: `127.0.0.1:8787`
 
-* backfill duration
-* attachment storage: none / metadata-only / full
-* delete local corpus button + “factory reset”
+### Required daemon env
 
----
+```bash
+export GOOGLE_OAUTH_CLIENT_ID=...
+export GOOGLE_OAUTH_CLIENT_SECRET=...
+```
 
-## 6) Runtime (Daemon) Responsibilities
+### Optional daemon env
 
-### 6.1 Gmail Sync
+```bash
+export INBOX_AUTOPILOT_BIND_ADDR=127.0.0.1:8787
+export INBOX_AUTOPILOT_DATA_DIR=$HOME/.inbox-autopilot
+export INBOX_AUTOPILOT_SESSION_TTL_SECONDS=300
+export GOOGLE_OAUTH_SCOPES="https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send"
+export OPENAI_BASE_URL=https://api.openai.com/v1
+export OPENAI_MODEL=gpt-4o-mini
+```
 
-* Backfill last N days/months
-* Incremental sync on schedule
-* Gmail “watch” support later; MVP can poll every X minutes
+### Run macOS app
 
-### 6.2 Classification & Risk
+- Open `Inbox Autopilot/Inbox Autopilot.xcodeproj` in Xcode.
+- Build and run the `Inbox Autopilot` scheme.
+- Ensure custom URL callback (`inboxautopilot://oauth/callback`) is configured in the app target.
 
-Classifier categories (v1):
+## Verification Entry Points
 
-* scheduling
-* report delivery
-* findings clarification
-* pricing
-* complaint/dispute
-* legal/insurance
-* other
+Daemon:
 
-Risk tiers:
+```bash
+cd daemon
+cargo test
+cargo fmt -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+```
 
-* low / medium / high
+App:
 
-### 6.3 Draft Generation (Local-first)
+- Run Xcode unit/UI tests for the `Inbox Autopilot` schemes.
+- Validate OAuth connect, backfill, draft generation, approve-send, and audit export on a real Gmail account.
 
-Draft algorithm (v1):
+## Near-Term Focus
 
-1. retrieve similar past threads + sent replies
-2. extract style signals (tone, formatting, sign-off)
-3. compose draft using:
+1. Add a robust auto-update channel for production distribution.
+2. Add an evaluation harness for draft quality by category.
+3. Improve classification/policy from keyword heuristics to stronger learned signals.
+4. Add clearer operational telemetry around sync latency and draft turnaround.
 
-   * templates + retrieval snippets
-   * optional external model for phrasing (hybrid mode)
+## Related Docs
 
-### 6.4 Policy gating
-
-Default:
-
-* `draft_only`
-
-Then:
-
-* `send_with_approval` (human required)
-* `auto_send_low_risk` (future)
-
-Hard blocks:
-
-* legal threats → never one-click send unless explicit override
-* unknown pricing → require template grounding
-
-### 6.5 Event log + receipts
-
-Every action produces an event (append-only), including:
-
-* ingest events
-* classification decision (+ reason codes)
-* policy decision (+ evaluation hash)
-* draft created (+ params/output hashes)
-* approval granted/denied
-* email sent (+ Gmail message id)
-
----
-
-## 7) Cloud usage modes (explicit UX)
-
-Mode A — **Local-only**
-
-* No external LLM calls
-* Draft quality may be lower; still strong for repetitive templated replies
-
-Mode B — **Hybrid (recommended default)**
-
-* Local retrieval + policy
-* External model only for rewriting/phrasing
-* Strict redaction before sending context
-* Audit shows exactly what was sent externally
-
-Mode C — **Cloud-first**
-
-* External model drafts from retrieved context
-* Still gated by policy + approval
-
----
-
-## 8) MVP Scope (What we ship first)
-
-### MUST ship
-
-* Mac app with Gmail connect
-* ChatGPT auth (for hybrid/cloud; can be API key in Settings for MVP)
-* Backfill (90 days default)
-* Inbox + thread view
-* Draft generation for at least:
-
-  * scheduling
-  * report delivery
-* Approve & Send (manual)
-* Audit “why this draft?”
-
-### NICE to have (if time)
-
-* Template mining UI (“we found 12 common replies—approve these”)
-* Domain allowlist
-* Touch ID lock
-
----
-
-## 9) Acceptance Criteria
-
-1. A user can install app, connect Gmail (and optionally ChatGPT for hybrid/cloud) in <10 minutes.
-2. App backfills 90 days and shows a searchable Inbox.
-3. For new inbound emails, a draft appears in <60 seconds after sync.
-4. Drafts for scheduling/report delivery require minimal editing at least 60% of the time (initial target).
-5. “Approve & Send” sends via Gmail and logs message id.
-6. Audit shows category/risk and sources used.
-
----
-
-## 10) Build Plan (Engineering)
-
-### Phase 0 (Day 0–1)
-
-* Rust daemon skeleton:
-
-  * local API
-  * event stream
-  * local storage
-* Swift app shell:
-
-  * navigation scaffolding
-  * daemon connectivity
-  * Gmail + ChatGPT auth scaffolding
-
-### Phase 1 (Day 1–3)
-
-* Gmail OAuth + token exchange
-* Backfill + thread list UI
-
-### Phase 2 (Day 3–5)
-
-* Classification + retrieval
-* Draft generation
-* Thread view with “insert draft”
-
-### Phase 3 (Day 5–7)
-
-* Approve & Send
-* Audit timeline UI
-* Hardening + polish
-
----
-
-## 11) Stack choices (explicit)
-
-### macOS App
-
-* **SwiftUI** for main UI
-* AppKit where needed (rich text editor, email-like composition, advanced text)
-* `ASWebAuthenticationSession` for OAuth
-* Keychain for secrets
-* Sparkle or equivalent for auto-updates (later if needed)
-
-### Local daemon
-
-* **Rust** (Codex)
-* SQLite (or Postgres local if you’re already there, but SQLite is simplest)
-* Local IPC: Unix socket + SSE
-
----
-
-If you want, I’ll also produce:
-
-* the **IPC API contract** (endpoints/events JSON)
-* the **local DB schema** (threads/messages/drafts/events)
-* and the **onboarding screens copy** so the first-run experience feels Apple-level.
+- `AGENTS.md`
+- `ROADMAP.md`
+- `docs/ipc-contract.md`
+- `docs/db-schema.md`
+- `daemon/README.md`
