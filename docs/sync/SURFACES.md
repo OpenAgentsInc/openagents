@@ -17,6 +17,8 @@ Purpose: define exactly how each app consumes Khala, which topics it subscribes 
 
 - `runtime.run_summaries`
 - `runtime.codex_worker_summaries`
+- `runtime.codex_worker_events`
+- `runtime.notifications`
 
 ## Surface Matrix
 
@@ -25,7 +27,7 @@ Purpose: define exactly how each app consumes Khala, which topics it subscribes 
 | Web Codex admin (`apps/openagents.com`) | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | `/api/runtime/codex/workers*` + sync hydration endpoints as they land | localStorage/IndexedDB | Feature-gated via `VITE_KHALA_SYNC_ENABLED` |
 | Mobile Codex workers (`apps/mobile`) | `runtime.codex_worker_summaries` | `/api/runtime/codex/workers*` + stale-cursor hydration endpoints | AsyncStorage/SQLite/MMKV-backed persistence | Feature-gated via `EXPO_PUBLIC_KHALA_SYNC_ENABLED` |
 | Desktop status surfaces (`apps/desktop`) | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | Laravel/runtime status APIs + sync hydration endpoints | SQLite | Feature-gated via `OA_DESKTOP_KHALA_SYNC_ENABLED` |
-| Autopilot iOS (`apps/autopilot-ios`) | none in v1 primary lane | runtime SSE + Laravel/runtime APIs | app-local | SSE remains primary live lane |
+| Autopilot iOS (`apps/autopilot-ios`) | `runtime.codex_worker_events` (live Codex event lane), optional `runtime.codex_worker_summaries` | `/api/runtime/codex/workers*`, `/api/runtime/codex/workers/{id}/events`, `/api/sync/token` | app-local (UserDefaults in v1) | Khala WS is primary live lane |
 | Inbox Autopilot (`apps/inbox-autopilot`) | none in v1 primary lane | local daemon + selected APIs | local daemon state | Local-first architecture; Khala not primary lane |
 | Lightning ops (`apps/lightning-ops`) | none for control-plane lane | `/api/internal/lightning-ops/control-plane/query|mutation` | N/A | API/mock transport; no Khala authority dependency |
 | Lightning wallet executor (`apps/lightning-wallet-executor`) | none | service-local + Lightning infra | N/A | Not a Khala consumer |

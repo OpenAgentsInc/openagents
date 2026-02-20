@@ -30,8 +30,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var chatMessages: [CodexChatMessage] = []
 
     private var streamTask: Task<Void, Never>?
+    private var activeKhalaSocket: URLSessionWebSocketTask?
     private var handshakeTimeoutTask: Task<Void, Never>?
-    private var streamCursor: Int = 0
+    private var khalaWorkerEventsWatermark: Int
     private var nextCodeSendAllowedAt: Date?
     private var assistantMessageIndexByItemKey: [String: Int] = [:]
     private var reasoningMessageIndexByItemKey: [String: Int] = [:]
@@ -43,6 +44,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var processedCodexEventSeqs: Set<Int> = []
     private var processedCodexEventSeqOrder: [Int] = []
     private var hasAttemptedAutoConnect = false
+    private var khalaRefCounter: Int = 0
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -51,12 +53,13 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let emailKey = "autopilot.ios.codex.email"
     private let selectedWorkerIDKey = "autopilot.ios.codex.selectedWorkerID"
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
+    private let khalaWorkerEventsWatermarkKey = "autopilot.ios.codex.khala.workerEventsWatermark"
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
-    // Keep stream polls short so message deltas render with low latency on mobile.
-    private static let streamTailMS = 200
-    private static let streamIdleSleepNS: UInt64 = 40_000_000
-    private static let streamReconnectSleepNS: UInt64 = 300_000_000
+    private static let khalaWorkerEventsTopic = "runtime.codex_worker_events"
+    private static let khalaChannelTopic = "sync:v1"
+    private static let khalaHeartbeatIntervalNS: UInt64 = 20_000_000_000
+    private static let streamReconnectSleepNS: UInt64 = 500_000_000
     private static let aliasCacheLimit = 2_048
     private static let seqCacheLimit = 8_192
     private static let iso8601Parsers: [ISO8601DateFormatter] = {
@@ -78,6 +81,14 @@ final class CodexHandshakeViewModel: ObservableObject {
     private enum AgentDeltaSource {
         case modern
         case legacyContent
+    }
+
+    private struct KhalaFrame {
+        let joinRef: String?
+        let ref: String?
+        let topic: String
+        let event: String
+        let payload: JSONValue
     }
 
     let deviceID: String
@@ -125,9 +136,11 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         let savedEmail = defaults.string(forKey: emailKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let savedToken = defaults.string(forKey: tokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let savedWorkerEventsWatermark = max(0, defaults.integer(forKey: khalaWorkerEventsWatermarkKey))
 
         self.email = savedEmail
         self.authToken = savedToken
+        self.khalaWorkerEventsWatermark = savedWorkerEventsWatermark
         self.isAuthenticated = !savedToken.isEmpty
         self.authState = savedToken.isEmpty
             ? .signedOut
@@ -253,11 +266,15 @@ final class CodexHandshakeViewModel: ObservableObject {
     func signOut() {
         streamTask?.cancel()
         streamTask = nil
+        activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
+        activeKhalaSocket = nil
         handshakeTimeoutTask?.cancel()
         handshakeTimeoutTask = nil
 
         authToken = ""
         defaults.removeObject(forKey: tokenKey)
+        khalaWorkerEventsWatermark = 0
+        defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
         RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
         isSendingCode = false
         isVerifyingCode = false
@@ -298,7 +315,6 @@ final class CodexHandshakeViewModel: ObservableObject {
             }
 
             selectedWorkerID = worker.workerID
-            streamCursor = max(0, worker.latestSeq - 1)
             latestSnapshot = try? await client.workerSnapshot(workerID: worker.workerID)
             statusMessage = "Loaded \(result.count) worker(s). Auto-selected \(shortWorkerID(worker.workerID))."
             restartStreamIfReady(resetCursor: true)
@@ -455,12 +471,16 @@ final class CodexHandshakeViewModel: ObservableObject {
     func disconnectStream() {
         streamTask?.cancel()
         streamTask = nil
+        activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
+        activeKhalaSocket = nil
         streamState = .idle
     }
 
     private func restartStreamIfReady(resetCursor: Bool) {
         streamTask?.cancel()
         streamTask = nil
+        activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
+        activeKhalaSocket = nil
 
         guard makeClient() != nil,
               let workerID = selectedWorkerID,
@@ -470,7 +490,6 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         if resetCursor {
-            streamCursor = max(0, selectedWorkerLatestSeq(workerID: workerID) - 1)
             recentEvents = []
             resetChatTimeline()
         }
@@ -487,34 +506,55 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         streamState = .connecting
-        statusMessage = "Connecting stream for \(shortWorkerID(workerID)) (long-poll can take a few seconds)..."
+        statusMessage = "Connecting stream for \(shortWorkerID(workerID)) over Khala WS..."
 
         while !Task.isCancelled {
             do {
-                let batch = try await client.streamWorker(
+                let syncToken = try await client.mintSyncToken(scopes: [Self.khalaWorkerEventsTopic])
+                let socketURL = try client.syncWebSocketURL(token: syncToken.token)
+                let session = URLSession(configuration: .default)
+                let socket = session.webSocketTask(with: socketURL)
+                socket.resume()
+                activeKhalaSocket = socket
+
+                let joinRef = try await khalaJoin(socket: socket, workerID: workerID)
+                try await khalaSubscribe(
+                    socket: socket,
+                    joinRef: joinRef,
                     workerID: workerID,
-                    cursor: streamCursor,
-                    tailMS: Self.streamTailMS
+                    resumeAfterWatermark: khalaWorkerEventsWatermark
                 )
-                if Task.isCancelled {
-                    return
-                }
 
                 streamState = .live
-                streamCursor = batch.nextCursor
-                handleIncoming(events: batch.events)
+                errorMessage = nil
+                statusMessage = "Stream live for \(shortWorkerID(workerID))."
 
-                if batch.events.isEmpty {
-                    statusMessage = "Stream live for \(shortWorkerID(workerID)). Waiting for new events..."
-                } else if case .waitingAck = handshakeState {
-                    // Keep waiting-ack status as-is while the matcher looks for desktop ack.
-                } else {
-                    statusMessage = "Stream live for \(shortWorkerID(workerID)). Received \(batch.events.count) event(s)."
+                let heartbeatTask = Task { [weak self] in
+                    await self?.runKhalaHeartbeatLoop(socket: socket, joinRef: joinRef)
                 }
 
-                if batch.events.isEmpty {
-                    try? await Task.sleep(nanoseconds: Self.streamIdleSleepNS)
+                defer {
+                    heartbeatTask.cancel()
+                    socket.cancel(with: .normalClosure, reason: nil)
+                    session.invalidateAndCancel()
+                    if activeKhalaSocket === socket {
+                        activeKhalaSocket = nil
+                    }
                 }
+
+                while !Task.isCancelled {
+                    guard let frame = try await receiveKhalaFrame(socket: socket) else {
+                        throw RuntimeCodexApiError(
+                            message: "khala_stream_closed",
+                            code: .network,
+                            status: nil
+                        )
+                    }
+
+                    try await handleKhalaFrame(frame, workerID: workerID)
+                }
+
+                return
             } catch {
                 if Task.isCancelled {
                     return
@@ -523,17 +563,402 @@ final class CodexHandshakeViewModel: ObservableObject {
                 if let runtimeError = error as? RuntimeCodexApiError,
                    runtimeError.code == .auth || runtimeError.status == 401 {
                     streamState = .idle
-                    errorMessage = "Runtime stream unauthorized. Stay signed in, then reload workers."
+                    errorMessage = "Khala stream unauthorized. Stay signed in, then reload workers."
                     statusMessage = nil
                     return
                 } else {
                     streamState = .reconnecting
                     errorMessage = formatError(error)
-                    statusMessage = "Stream reconnecting for \(shortWorkerID(workerID))..."
+                    statusMessage = "Khala stream reconnecting for \(shortWorkerID(workerID))..."
                     try? await Task.sleep(nanoseconds: Self.streamReconnectSleepNS)
                 }
             }
         }
+    }
+
+    private func khalaJoin(
+        socket: URLSessionWebSocketTask,
+        workerID: String
+    ) async throws -> String {
+        let joinRef = nextKhalaRef()
+
+        try await sendKhalaFrame(
+            socket: socket,
+            joinRef: nil,
+            ref: joinRef,
+            event: "phx_join",
+            payload: [:]
+        )
+
+        _ = try await awaitKhalaReply(
+            socket: socket,
+            expectedRef: joinRef,
+            workerID: workerID
+        )
+
+        return joinRef
+    }
+
+    private func khalaSubscribe(
+        socket: URLSessionWebSocketTask,
+        joinRef: String,
+        workerID: String,
+        resumeAfterWatermark: Int
+    ) async throws {
+        let subscribeRef = nextKhalaRef()
+        let payload: [String: Any] = [
+            "topics": [Self.khalaWorkerEventsTopic],
+            "resume_after": [
+                Self.khalaWorkerEventsTopic: max(0, resumeAfterWatermark),
+            ],
+            "replay_batch_size": 200,
+        ]
+
+        try await sendKhalaFrame(
+            socket: socket,
+            joinRef: joinRef,
+            ref: subscribeRef,
+            event: "sync:subscribe",
+            payload: payload
+        )
+
+        _ = try await awaitKhalaReply(
+            socket: socket,
+            expectedRef: subscribeRef,
+            workerID: workerID
+        )
+    }
+
+    private func runKhalaHeartbeatLoop(
+        socket: URLSessionWebSocketTask,
+        joinRef: String
+    ) async {
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: Self.khalaHeartbeatIntervalNS)
+
+            if Task.isCancelled {
+                return
+            }
+
+            let heartbeatRef = nextKhalaRef()
+            try? await sendKhalaFrame(
+                socket: socket,
+                joinRef: joinRef,
+                ref: heartbeatRef,
+                event: "sync:heartbeat",
+                payload: [:]
+            )
+        }
+    }
+
+    private func awaitKhalaReply(
+        socket: URLSessionWebSocketTask,
+        expectedRef: String,
+        workerID: String
+    ) async throws -> JSONValue {
+        while !Task.isCancelled {
+            guard let frame = try await receiveKhalaFrame(socket: socket) else {
+                continue
+            }
+
+            if frame.topic != Self.khalaChannelTopic {
+                continue
+            }
+
+            switch frame.event {
+            case "sync:update_batch":
+                processKhalaUpdateBatch(frame.payload, workerID: workerID)
+
+            case "sync:error":
+                throw khalaSyncError(from: frame.payload)
+
+            case "phx_reply":
+                guard frame.ref == expectedRef else {
+                    continue
+                }
+
+                guard let payloadObject = frame.payload.objectValue else {
+                    throw RuntimeCodexApiError(
+                        message: "khala_invalid_reply",
+                        code: .unknown,
+                        status: nil
+                    )
+                }
+
+                let status = payloadObject["status"]?.stringValue ?? "error"
+                if status == "ok" {
+                    return payloadObject["response"] ?? .object([:])
+                }
+
+                let response = payloadObject["response"]?.objectValue
+                let code = response?["code"]?.stringValue
+                let message =
+                    response?["message"]?.stringValue
+                    ?? payloadObject["status"]?.stringValue
+                    ?? "khala_request_failed"
+
+                switch code {
+                case "unauthorized":
+                    throw RuntimeCodexApiError(message: message, code: .auth, status: 401)
+                case "forbidden_topic":
+                    throw RuntimeCodexApiError(message: message, code: .forbidden, status: 403)
+                case "stale_cursor":
+                    khalaWorkerEventsWatermark = 0
+                    defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
+                    throw RuntimeCodexApiError(message: message, code: .conflict, status: 409)
+                default:
+                    throw RuntimeCodexApiError(message: message, code: .unknown, status: nil)
+                }
+
+            default:
+                continue
+            }
+        }
+
+        throw RuntimeCodexApiError(message: "khala_reply_cancelled", code: .network, status: nil)
+    }
+
+    private func handleKhalaFrame(
+        _ frame: KhalaFrame,
+        workerID: String
+    ) async throws {
+        guard frame.topic == Self.khalaChannelTopic else {
+            return
+        }
+
+        switch frame.event {
+        case "sync:update_batch":
+            processKhalaUpdateBatch(frame.payload, workerID: workerID)
+
+        case "sync:error":
+            throw khalaSyncError(from: frame.payload)
+
+        case "phx_error":
+            throw RuntimeCodexApiError(
+                message: "khala_channel_error",
+                code: .network,
+                status: nil
+            )
+
+        default:
+            break
+        }
+    }
+
+    private func processKhalaUpdateBatch(_ payload: JSONValue, workerID: String) {
+        guard let payloadObject = payload.objectValue else {
+            return
+        }
+
+        let updates = payloadObject["updates"]?.arrayValue ?? []
+        var matchedEvents: [RuntimeCodexStreamEvent] = []
+
+        for update in updates {
+            guard let updateObject = update.objectValue,
+                  updateObject["topic"]?.stringValue == Self.khalaWorkerEventsTopic else {
+                continue
+            }
+
+            if let watermark = updateObject["watermark"]?.intValue, watermark > khalaWorkerEventsWatermark {
+                khalaWorkerEventsWatermark = watermark
+                defaults.set(watermark, forKey: khalaWorkerEventsWatermarkKey)
+            }
+
+            guard let streamPayload = updateObject["payload"]?.objectValue else {
+                continue
+            }
+
+            let eventWorkerID =
+                streamPayload["workerId"]?.stringValue
+                ?? streamPayload["worker_id"]?.stringValue
+
+            guard eventWorkerID == workerID else {
+                continue
+            }
+
+            let eventValue = JSONValue.object(streamPayload)
+            let rawData = jsonString(from: eventValue) ?? "{}"
+            let seq = streamPayload["seq"]?.intValue
+
+            matchedEvents.append(
+                RuntimeCodexStreamEvent(
+                    id: seq,
+                    event: "codex.worker.event",
+                    payload: eventValue,
+                    rawData: rawData
+                )
+            )
+        }
+
+        guard !matchedEvents.isEmpty else {
+            return
+        }
+
+        let orderedEvents = matchedEvents.sorted { lhs, rhs in
+            (lhs.cursorHint ?? Int.min) < (rhs.cursorHint ?? Int.min)
+        }
+
+        handleIncoming(events: orderedEvents)
+
+        if case .waitingAck = handshakeState {
+            return
+        }
+
+        statusMessage = "Stream live for \(shortWorkerID(workerID)). Received \(orderedEvents.count) event(s)."
+    }
+
+    private func khalaSyncError(from payload: JSONValue) -> RuntimeCodexApiError {
+        guard let object = payload.objectValue else {
+            return RuntimeCodexApiError(
+                message: "khala_sync_error",
+                code: .unknown,
+                status: nil
+            )
+        }
+
+        let code = object["code"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "sync_error"
+        let message =
+            object["message"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? "khala_sync_error"
+
+        if code == "unauthorized" {
+            return RuntimeCodexApiError(message: message, code: .auth, status: 401)
+        }
+
+        if code == "forbidden_topic" {
+            return RuntimeCodexApiError(message: message, code: .forbidden, status: 403)
+        }
+
+        if code == "stale_cursor" {
+            khalaWorkerEventsWatermark = 0
+            defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
+            return RuntimeCodexApiError(message: message, code: .conflict, status: 409)
+        }
+
+        return RuntimeCodexApiError(message: message, code: .unknown, status: nil)
+    }
+
+    private func sendKhalaFrame(
+        socket: URLSessionWebSocketTask,
+        joinRef: String?,
+        ref: String?,
+        event: String,
+        payload: [String: Any]
+    ) async throws {
+        let frame: [Any] = [
+            joinRef ?? NSNull(),
+            ref ?? NSNull(),
+            Self.khalaChannelTopic,
+            event,
+            payload,
+        ]
+
+        let data = try JSONSerialization.data(withJSONObject: frame, options: [])
+        let text = String(data: data, encoding: .utf8) ?? "[]"
+        try await socket.send(.string(text))
+    }
+
+    private func receiveKhalaFrame(socket: URLSessionWebSocketTask) async throws -> KhalaFrame? {
+        let message = try await socket.receive()
+        let raw: String
+
+        switch message {
+        case .string(let text):
+            raw = text
+        case .data(let data):
+            raw = String(data: data, encoding: .utf8) ?? ""
+        @unknown default:
+            return nil
+        }
+
+        guard !raw.isEmpty else {
+            return nil
+        }
+
+        return parseKhalaFrame(raw: raw)
+    }
+
+    private func parseKhalaFrame(raw: String) -> KhalaFrame? {
+        guard let data = raw.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data, options: []),
+              let frameArray = parsed as? [Any],
+              frameArray.count == 5 else {
+            return nil
+        }
+
+        let joinRef = frameArray[0] as? String
+        let ref = frameArray[1] as? String
+
+        guard let topic = frameArray[2] as? String,
+              let event = frameArray[3] as? String,
+              let payload = jsonValue(from: frameArray[4]) else {
+            return nil
+        }
+
+        return KhalaFrame(joinRef: joinRef, ref: ref, topic: topic, event: event, payload: payload)
+    }
+
+    private func jsonValue(from any: Any) -> JSONValue? {
+        switch any {
+        case let string as String:
+            return .string(string)
+
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return .bool(number.boolValue)
+            }
+
+            let doubleValue = number.doubleValue
+            if floor(doubleValue) == doubleValue {
+                return .int(number.intValue)
+            }
+
+            return .double(doubleValue)
+
+        case let dictionary as [String: Any]:
+            var mapped: [String: JSONValue] = [:]
+            mapped.reserveCapacity(dictionary.count)
+
+            for (key, value) in dictionary {
+                guard let converted = jsonValue(from: value) else {
+                    return nil
+                }
+                mapped[key] = converted
+            }
+
+            return .object(mapped)
+
+        case let array as [Any]:
+            var mapped: [JSONValue] = []
+            mapped.reserveCapacity(array.count)
+
+            for value in array {
+                guard let converted = jsonValue(from: value) else {
+                    return nil
+                }
+                mapped.append(converted)
+            }
+
+            return .array(mapped)
+
+        case _ as NSNull:
+            return .null
+
+        default:
+            return nil
+        }
+    }
+
+    private func jsonString(from value: JSONValue) -> String? {
+        guard let data = try? JSONEncoder().encode(value) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func nextKhalaRef() -> String {
+        khalaRefCounter += 1
+        return String(khalaRefCounter)
     }
 
     private func handleIncoming(events: [RuntimeCodexStreamEvent]) {

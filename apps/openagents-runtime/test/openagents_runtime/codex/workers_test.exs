@@ -1,9 +1,12 @@
 defmodule OpenAgentsRuntime.Codex.WorkersTest do
   use OpenAgentsRuntime.DataCase, async: false
 
+  import Ecto.Query
+
   alias OpenAgentsRuntime.Codex.Worker
   alias OpenAgentsRuntime.Codex.Workers
   alias OpenAgentsRuntime.Repo
+  alias OpenAgentsRuntime.Sync.StreamEvent
 
   test "create_worker/3 submit_request/4 and stop_worker/3 lifecycle" do
     worker_id = unique_id("codexw")
@@ -44,6 +47,18 @@ defmodule OpenAgentsRuntime.Codex.WorkersTest do
     assert "worker.started" in event_types
     assert "worker.request.received" in event_types
     assert "worker.response" in event_types
+
+    sync_topic_events =
+      from(stream_event in StreamEvent,
+        where: stream_event.topic == "runtime.codex_worker_events",
+        select: {stream_event.doc_key, stream_event.doc_version, stream_event.payload}
+      )
+      |> Repo.all()
+
+    assert Enum.any?(sync_topic_events, fn {doc_key, _doc_version, payload} ->
+             String.contains?(doc_key, worker_id) and
+               payload["eventType"] == "worker.started"
+           end)
 
     assert {:ok, stop_result} = Workers.stop_worker(worker_id, %{user_id: 101}, reason: "done")
     assert stop_result["status"] == "stopped"

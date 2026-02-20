@@ -373,11 +373,11 @@ private func streamDescription(_ state: StreamState) -> String {
     case .idle:
         return "idle"
     case .connecting:
-        return "connecting (waiting for first poll)"
+        return "connecting (Khala websocket)"
     case .live:
         return "live"
     case .reconnecting:
-        return "reconnecting (retrying)"
+        return "reconnecting (Khala websocket)"
     }
 }
 

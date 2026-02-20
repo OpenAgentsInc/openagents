@@ -20,6 +20,7 @@ defmodule OpenAgentsRuntime.Sync.TopicSequenceSeedTest do
              MapSet.new([
                "runtime.run_summaries",
                "runtime.codex_worker_summaries",
+               "runtime.codex_worker_events",
                "runtime.notifications"
              ])
 

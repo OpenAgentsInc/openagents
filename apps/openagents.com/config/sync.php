@@ -7,7 +7,7 @@ $parseCsv = static function (string $value): array {
     ), static fn (string $item): bool => $item !== ''));
 };
 
-$defaultAllowedScopes = 'runtime.run_summaries,runtime.codex_worker_summaries,runtime.notifications';
+$defaultAllowedScopes = 'runtime.run_summaries,runtime.codex_worker_summaries,runtime.codex_worker_events,runtime.notifications';
 
 return [
     'token' => [

@@ -383,6 +383,30 @@ struct RuntimeCodexAuthSession: Equatable {
     let token: String
 }
 
+struct RuntimeCodexSyncToken: Decodable, Equatable {
+    let token: String
+    let tokenType: String?
+    let expiresIn: Int?
+    let expiresAt: String?
+    let issuer: String?
+    let audience: String?
+    let subject: String?
+    let orgID: String?
+    let scopes: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case token
+        case tokenType = "token_type"
+        case expiresIn = "expires_in"
+        case expiresAt = "expires_at"
+        case issuer
+        case audience
+        case subject
+        case orgID = "org_id"
+        case scopes
+    }
+}
+
 enum HandshakeState: Equatable {
     case idle
     case sending
