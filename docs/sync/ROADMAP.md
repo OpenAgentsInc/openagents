@@ -433,10 +433,12 @@ Scope:
 Done when:
 
 - runbook merged and exercised in staging.
+- runbook path: `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`.
 
 Verification:
 
 - staging drill report committed.
+- drill artifact path: `docs/sync/status/2026-02-20-khala-runtime-codex-staging-drill.md`.
 
 ## KHALA-023: Remove Convex client dependency from migrated surfaces
 

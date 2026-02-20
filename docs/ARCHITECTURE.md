@@ -254,6 +254,8 @@ This section clarifies the practical meaning of "single authority database" in t
 - Runtime ops: `apps/openagents-runtime/docs/OPERATIONS.md`
 - Khala sync spec: `docs/sync/thoughts.md`
 - Khala roadmap: `docs/sync/ROADMAP.md`
+- Khala parity dashboard: `docs/sync/PARITY_DASHBOARD.md`
+- Khala runtime/Codex cutover runbook: `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
 - Convex sync plan: `docs/plans/active/convex-self-hosting-runtime-sync-plan.md`
 - Convex roadmap: `docs/plans/active/convex-runtime-codex-master-roadmap.md`
 - Codex unified plan: `docs/codex/unified-runtime-desktop-plan.md`
