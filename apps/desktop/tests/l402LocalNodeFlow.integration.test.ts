@@ -609,7 +609,6 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
     const layer = makeDesktopLayer(
       {
         openAgentsBaseUrl: harness.openAgentsBaseUrl,
-        convexUrl: "https://convex.local",
         khalaSyncEnabled: true,
         khalaSyncUrl: "wss://khala.local/sync/socket/websocket",
         executorTickMs: 100,
@@ -746,7 +745,6 @@ describe("desktop local-node l402 full flow (deterministic harness)", () => {
     const layer = makeDesktopLayer(
       {
         openAgentsBaseUrl: harness.openAgentsBaseUrl,
-        convexUrl: "https://convex.local",
         khalaSyncEnabled: true,
         khalaSyncUrl: "wss://khala.local/sync/socket/websocket",
         executorTickMs: 100,

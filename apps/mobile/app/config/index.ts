@@ -23,12 +23,6 @@ if (__DEV__) {
   ExtraConfig = DevConfig
 }
 
-const convexUrl =
-  (typeof process !== "undefined" && (process as any).env?.EXPO_PUBLIC_CONVEX_URL) ||
-  (__DEV__
-    ? "https://quaint-leopard-209.convex.cloud"
-    : "https://aware-caterpillar-962.convex.cloud")
-
 const khalaSyncEnabled =
   typeof process !== "undefined" &&
   (process as any).env?.EXPO_PUBLIC_KHALA_SYNC_ENABLED === "true"
@@ -38,6 +32,6 @@ const khalaSyncWsUrl =
     (process as any).env?.EXPO_PUBLIC_KHALA_SYNC_WS_URL) ||
   ""
 
-const Config = { ...BaseConfig, ...ExtraConfig, convexUrl, khalaSyncEnabled, khalaSyncWsUrl }
+const Config = { ...BaseConfig, ...ExtraConfig, khalaSyncEnabled, khalaSyncWsUrl }
 
 export default Config

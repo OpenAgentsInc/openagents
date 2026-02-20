@@ -4,9 +4,7 @@ export interface ConfigBaseProps {
   exitRoutes: string[]
   /** Base URL for auth API (WorkOS magic + SSO). Same origin as web app. */
   authApiUrl: string
-  /** Convex deployment URL (dev vs prod). Override with EXPO_PUBLIC_CONVEX_URL. */
-  convexUrl: string
-  /** Enable Khala sync lane for Codex summaries and skip Convex provider boot. */
+  /** Enable Khala sync lane for Codex summary updates. */
   khalaSyncEnabled: boolean
   /** Optional override for Khala websocket endpoint. */
   khalaSyncWsUrl: string
@@ -29,8 +27,6 @@ const BaseConfig: ConfigBaseProps = {
    */
   exitRoutes: ["Welcome"],
   authApiUrl: "https://openagents.com",
-  // Set in config/index.ts from EXPO_PUBLIC_CONVEX_URL or dev/prod default
-  convexUrl: "",
   khalaSyncEnabled: false,
   khalaSyncWsUrl: "",
 }

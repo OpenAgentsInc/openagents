@@ -228,8 +228,8 @@ This section clarifies the practical meaning of "single authority database" in t
 4. Convex token bridge (`/api/convex/token`) remains active for migration; `/api/sync/token` is available for Khala clients.
 5. Khala sync socket auth validates JWT `kid` against runtime HS256 keyring (current + previous keys) for rotation-safe verification.
 6. Web Codex admin summary updates can run on Khala WS behind `VITE_KHALA_SYNC_ENABLED`; disabled mode keeps legacy polling lane behavior.
-7. Mobile Codex summary updates can run on Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED`; enabled mode skips Convex provider boot in app startup.
-8. Desktop status connectivity can run on Khala lane behind `OA_DESKTOP_KHALA_SYNC_ENABLED`, with fallback probe path preserved for Convex.
+7. Mobile Codex summary updates use Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED`; Convex provider boot was removed from mobile app startup.
+8. Desktop status connectivity can run on Khala lane behind `OA_DESKTOP_KHALA_SYNC_ENABLED` without Convex URL/token configuration.
 9. Runtime parity auditor (`OpenAgentsRuntime.Sync.ParityAuditor`) tracks Convex-vs-Khala mismatch rate and lag drift during dual-publish windows.
 
 ### Current Cloud SQL guardrails

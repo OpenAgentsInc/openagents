@@ -90,7 +90,6 @@ declare global {
     openAgentsDesktop?: {
       readonly config?: {
         readonly openAgentsBaseUrl?: string;
-        readonly convexUrl?: string;
         readonly khalaSyncEnabled?: boolean;
         readonly khalaSyncUrl?: string;
         readonly executorTickMs?: number;

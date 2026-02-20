@@ -67,13 +67,6 @@ export type RuntimeCodexStreamEvent = {
   payload: unknown
 }
 
-export type MobileConvexToken = {
-  token: string
-  token_type: string
-  expires_in: number
-  expires_at?: string
-}
-
 export type MobileSyncToken = {
   token: string
   token_type: string
@@ -369,23 +362,6 @@ export async function mintSyncToken(
 
   if (!response?.data || typeof response.data.token !== "string") {
     throw new RuntimeCodexApiError("sync_token_missing", "unknown")
-  }
-
-  return response.data
-}
-
-export async function mintConvexToken(token: string): Promise<MobileConvexToken> {
-  const response = await requestJson<{ data?: MobileConvexToken }>("/api/convex/token", {
-    method: "POST",
-    token,
-    body: {
-      scope: ["mobile", "codex.read", "codex.admin"],
-      role: "member",
-    },
-  })
-
-  if (!response?.data || typeof response.data.token !== "string") {
-    throw new RuntimeCodexApiError("convex_token_missing", "unknown")
   }
 
   return response.data

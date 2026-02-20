@@ -59,7 +59,7 @@ export type DesktopRuntimeState = Readonly<{
   readonly connectivity: {
     readonly openAgentsReachable: boolean;
     readonly syncReachable: boolean;
-    readonly syncProvider: "convex" | "khala";
+    readonly syncProvider: "khala" | "disabled";
     readonly lastCheckedAtMs: number | null;
   };
   readonly executor: {
@@ -135,7 +135,7 @@ export const initialDesktopRuntimeState = (): DesktopRuntimeState => ({
   connectivity: {
     openAgentsReachable: false,
     syncReachable: false,
-    syncProvider: "convex",
+    syncProvider: "disabled",
     lastCheckedAtMs: null,
   },
   executor: {

@@ -894,7 +894,7 @@ export default function AdminIndex() {
                     </h1>
                     <p className="mt-2 text-sm text-muted-foreground">
                         Runtime APIs remain authoritative for worker
-                        lifecycle/actions. Convex projection badges are
+                        lifecycle/actions. Sync projection badges are
                         read-model indicators only.
                     </p>
                 </div>
@@ -1017,7 +1017,7 @@ export default function AdminIndex() {
                                                         )}
                                                         variant="outline"
                                                     >
-                                                        convex{' '}
+                                                        projection{' '}
                                                         {
                                                             worker
                                                                 .convex_projection
@@ -1026,7 +1026,7 @@ export default function AdminIndex() {
                                                     </Badge>
                                                 ) : (
                                                     <Badge variant="outline">
-                                                        convex pending
+                                                        projection pending
                                                     </Badge>
                                                 )}
                                             </div>
@@ -1230,7 +1230,7 @@ export default function AdminIndex() {
                                         {selectedWorkerSummary?.convex_projection ? (
                                             <div className="rounded border border-sidebar-border/60 p-2 text-xs">
                                                 <div className="mb-1 tracking-wide text-muted-foreground uppercase">
-                                                    Convex projection summary
+                                                    Sync projection summary
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <Badge
@@ -1267,7 +1267,7 @@ export default function AdminIndex() {
                                             </div>
                                         ) : (
                                             <div className="rounded border border-sidebar-border/60 p-2 text-xs text-muted-foreground">
-                                                Convex projection pending.
+                                                Sync projection pending.
                                             </div>
                                         )}
 

@@ -5,7 +5,7 @@ import { DesktopConfigService } from "./config";
 export type ConnectivityProbeResult = Readonly<{
   readonly openAgentsReachable: boolean;
   readonly syncReachable: boolean;
-  readonly syncProvider: "convex" | "khala";
+  readonly syncProvider: "khala" | "disabled";
   readonly checkedAtMs: number;
 }>;
 
@@ -47,20 +47,23 @@ export const ConnectivityProbeLive = Layer.effect(
   ConnectivityProbeService,
   Effect.gen(function* () {
     const cfg = yield* DesktopConfigService;
-    const defaultSyncProvider: "convex" | "khala" = cfg.khalaSyncEnabled ? "khala" : "convex";
+    const defaultSyncProvider: "khala" | "disabled" = cfg.khalaSyncEnabled ? "khala" : "disabled";
     const probe = Effect.fn("Connectivity.probe")(function* () {
       const syncProvider = defaultSyncProvider;
-      const syncUrl = cfg.khalaSyncEnabled ? cfg.khalaSyncUrl : cfg.convexUrl;
+      const syncReachabilityEffect =
+        syncProvider === "khala"
+          ? requestReachable({
+              operation: "probe.khala_sync",
+              url: cfg.khalaSyncUrl,
+            })
+          : Effect.succeed(false);
 
       const [openAgentsReachable, syncReachable] = yield* Effect.all([
         requestReachable({
           operation: "probe.openagents",
           url: `${cfg.openAgentsBaseUrl}/api/auth/session`,
         }),
-        requestReachable({
-          operation: syncProvider === "khala" ? "probe.khala_sync" : "probe.convex",
-          url: syncUrl,
-        }),
+        syncReachabilityEffect,
       ]);
 
       return {

@@ -7,7 +7,6 @@ import { L402_CREDENTIAL_CACHE_CHANNELS } from "./main/l402CredentialCacheIpc";
 
 const config = {
   openAgentsBaseUrl: process.env.OA_DESKTOP_OPENAGENTS_BASE_URL,
-  convexUrl: process.env.OA_DESKTOP_CONVEX_URL,
   khalaSyncEnabled: process.env.OA_DESKTOP_KHALA_SYNC_ENABLED === "true",
   khalaSyncUrl: process.env.OA_DESKTOP_KHALA_SYNC_URL,
   executorTickMs: process.env.OA_DESKTOP_EXECUTOR_TICK_MS
