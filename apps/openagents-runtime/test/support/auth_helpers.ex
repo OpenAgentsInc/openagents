@@ -18,6 +18,9 @@ defmodule OpenAgentsRuntimeWeb.AuthHelpers do
       |> maybe_put_claim("thread_id", opts[:thread_id])
       |> maybe_put_claim("user_id", opts[:user_id])
       |> maybe_put_claim("guest_scope", opts[:guest_scope])
+      |> maybe_put_claim("oa_org_id", opts[:oa_org_id])
+      |> maybe_put_claim("oa_sync_scopes", opts[:oa_sync_scopes])
+      |> maybe_merge_claims(opts[:extra_claims])
 
     payload_segment = claims |> Jason.encode!() |> Base.url_encode64(padding: false)
     signature = :crypto.mac(:hmac, :sha256, secret, payload_segment)
@@ -38,6 +41,8 @@ defmodule OpenAgentsRuntimeWeb.AuthHelpers do
 
   defp maybe_put_claim(claims, _key, nil), do: claims
   defp maybe_put_claim(claims, key, value), do: Map.put(claims, key, value)
+  defp maybe_merge_claims(claims, extra) when is_map(extra), do: Map.merge(claims, extra)
+  defp maybe_merge_claims(claims, _extra), do: claims
 
   defp maybe_put_header(conn, _key, nil), do: conn
   defp maybe_put_header(conn, key, value), do: put_req_header(conn, key, to_string(value))
