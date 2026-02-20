@@ -4,7 +4,7 @@ This document gives a single architecture view of the full OpenAgents system acr
 
 Use this as an orientation layer; canonical invariants remain in ADRs and contracts.
 
-- Coverage includes all application surfaces called out in `README.md`: `apps/openagents.com/`, `apps/mobile/`, `apps/autopilot-ios/`, `apps/desktop/`, `apps/lightning-ops/`, `apps/lightning-wallet-executor/`, and `apps/openagents-runtime/` (plus current repo-active `apps/autopilot-desktop/`).
+- Coverage includes all application surfaces called out in `README.md`: `apps/openagents.com/`, `apps/mobile/`, `apps/autopilot-ios/`, `apps/inbox-autopilot/`, `apps/desktop/`, `apps/lightning-ops/`, `apps/lightning-wallet-executor/`, and `apps/openagents-runtime/` (plus current repo-active `apps/autopilot-desktop/`).
 
 - ADR index: `docs/adr/INDEX.md`
 - Runtime API contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
@@ -18,6 +18,7 @@ flowchart LR
     web["apps/openagents.com<br/>Laravel + Inertia + React<br/>Web control plane and user APIs"]
     mobile["apps/mobile<br/>React Native / Expo<br/>Mobile surface"]
     ios["apps/autopilot-ios<br/>Native iOS app (SwiftUI)<br/>Codex-first mobile lane"]
+    inboxAutopilot["apps/inbox-autopilot<br/>SwiftUI macOS + local Rust daemon<br/>Local-first inbox automation lane"]
     rustDesktop["apps/autopilot-desktop<br/>Rust desktop Codex app"]
     electronDesktop["apps/desktop<br/>Electron desktop Lightning app"]
   end
@@ -45,6 +46,7 @@ flowchart LR
   web --> laravel
   mobile --> laravel
   ios --> laravel
+  inboxAutopilot -.->|"standalone today / integration later"| laravel
   rustDesktop --> laravel
   electronDesktop --> laravel
 
@@ -79,6 +81,7 @@ flowchart LR
 | OpenAgents runtime | `apps/openagents-runtime/` | Execution authority for runs/events, policy/spend, Codex worker lifecycle, replay semantics | Elixir, Phoenix, Postgres | Active runtime plane |
 | Mobile app | `apps/mobile/` | Mobile user/admin surface over the same runtime and projection contracts | React Native, Expo | Prerelease |
 | iOS app | `apps/autopilot-ios/` | Native iOS Autopilot surface, codex-first worker admin/stream lane | SwiftUI, Xcode | Prerelease |
+| Inbox Autopilot app | `apps/inbox-autopilot/` | Local-first inbox automation app with SwiftUI macOS shell + Rust daemon (Gmail sync/classify/draft/audit) | SwiftUI, Rust | Prerelease/adjacent lane |
 | Rust desktop Codex app | `apps/autopilot-desktop/` | Desktop Codex UX and local execution loops synchronized with runtime contracts | Rust workspace crates | Prerelease/integration in progress |
 | Electron desktop Lightning app | `apps/desktop/` | Desktop shell for Lightning/payment workflows and local execution boundaries | Electron, TS/JS packages | Prerelease |
 
