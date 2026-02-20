@@ -94,16 +94,21 @@ Environment variables for API-backed operation:
 
 - `OA_LIGHTNING_OPS_API_BASE_URL` (for example `https://openagents.com`)
 - `OA_LIGHTNING_OPS_SECRET`
-- `OA_LIGHTNING_OPS_CONVEX_URL` (temporary shared-config requirement; set placeholder like `https://unused.invalid`)
 
 Laravel API-side requirement for API mode:
 
 - `apps/openagents.com` must set `OA_LIGHTNING_OPS_SECRET` (same value as `apps/lightning-ops`).
 
-Environment variables for hosted staging smoke (`--mode convex`). **Gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (in `staging-reconcile.sh` and in the smoke program). You only need to set:
+Control-plane mode selection (bake-in + rollback):
 
-- `OA_LIGHTNING_OPS_CONVEX_URL` (required for `--mode convex`)
+- `OA_LIGHTNING_OPS_CONTROL_PLANE_MODE=api|convex|mock` (default: `api` for control-plane smoke/compile commands)
+- Per-command override still works with `--mode ...` (for example `--mode convex` for rollback).
+
+Environment variables for hosted staging smoke (`--mode convex` or `--mode api`). **Gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (in `staging-reconcile.sh` and in the smoke program). You only need to set:
+
 - `OA_LIGHTNING_OPS_SECRET` (required for `--mode convex`)
+- `OA_LIGHTNING_OPS_CONVEX_URL` (required only for `--mode convex`)
+- `OA_LIGHTNING_OPS_API_BASE_URL` (required only for `--mode api`)
 
 Optional overrides:
 
