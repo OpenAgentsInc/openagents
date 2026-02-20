@@ -16,6 +16,10 @@ Included apps:
 - `apps/lightning-ops`
 - `apps/lightning-wallet-executor`
 
+Out-of-scope-but-relevant check requested during follow-up:
+
+- desktop-capable binaries still present under `crates/` were also reviewed for ownership clarity.
+
 ## Proto-First Definition Used Here
 
 An app is proto-first when shared cross-surface contracts are:
@@ -53,6 +57,10 @@ This follows:
    - `docs/protocol/OA_SYNC_WS_MAPPING.md`
    - `apps/openagents-runtime/lib/openagents_runtime_web/sync_channel.ex`
    - `packages/khala-sync/src/types.ts`
+5. `apps/autopilot-desktop` is confirmed WGPUI-based in active code and builds as such.
+   - `apps/autopilot-desktop/Cargo.toml`
+   - `apps/autopilot-desktop/src/main.rs`
+   - verified with `cargo check -p autopilot-desktop` on 2026-02-20
 
 ## Scorecard (All Apps)
 
@@ -196,6 +204,24 @@ Evidence:
 Status:
 
 - Not proto-first for OpenAgents proto surface contracts.
+
+## Desktop Binaries Still in `crates/` (Ownership Check)
+
+These are not part of `apps/`, but they are desktop-capable binaries today:
+
+- `crates/autopilot` (`[[bin]] autopilot`) with WGPUI + Winit deps:
+  - `crates/autopilot/Cargo.toml`
+  - `crates/autopilot/src/main.rs`
+- `crates/manatap` (`[[bin]] manatap`) with WGPUI + Winit deps:
+  - `crates/manatap/Cargo.toml`
+- `crates/onyx` (`[[bin]] onyx`) with WGPUI + Winit deps:
+  - `crates/onyx/Cargo.toml`
+
+Interpretation:
+
+- The canonical runtime/Codex desktop app is currently `apps/autopilot-desktop`.
+- There are still other desktop binaries in `crates/` for other product/dev surfaces.
+- `crates/autopilot` in particular can create ownership ambiguity with `apps/autopilot-desktop` and should be explicitly resolved by doctrine (keep-as-is, split responsibilities, or migrate).
 
 ## Clarification: “Retire Khala” Wording
 
