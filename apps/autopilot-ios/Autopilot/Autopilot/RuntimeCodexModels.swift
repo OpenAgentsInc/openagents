@@ -44,6 +44,9 @@ struct RuntimeCodexWorkerSummary: Decodable, Identifiable {
     let workspaceRef: String?
     let codexHomeRef: String?
     let adapter: String
+    let heartbeatState: String?
+    let lastHeartbeatAt: String?
+    let startedAt: String?
     let metadata: [String: JSONValue]?
     let khalaProjection: RuntimeCodexProjectionStatus?
 
@@ -56,6 +59,9 @@ struct RuntimeCodexWorkerSummary: Decodable, Identifiable {
         case workspaceRef = "workspace_ref"
         case codexHomeRef = "codex_home_ref"
         case adapter
+        case heartbeatState = "heartbeat_state"
+        case lastHeartbeatAt = "last_heartbeat_at"
+        case startedAt = "started_at"
         case metadata
         case khalaProjection = "khala_projection"
         case convexProjection = "convex_projection"
@@ -69,6 +75,9 @@ struct RuntimeCodexWorkerSummary: Decodable, Identifiable {
         workspaceRef = try container.decodeIfPresent(String.self, forKey: .workspaceRef)
         codexHomeRef = try container.decodeIfPresent(String.self, forKey: .codexHomeRef)
         adapter = try container.decode(String.self, forKey: .adapter)
+        heartbeatState = try container.decodeIfPresent(String.self, forKey: .heartbeatState)
+        lastHeartbeatAt = try container.decodeIfPresent(String.self, forKey: .lastHeartbeatAt)
+        startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
         metadata = container.decodeLenientMetadata(forKey: .metadata)
         khalaProjection =
             try container.decodeIfPresent(RuntimeCodexProjectionStatus.self, forKey: .khalaProjection)
