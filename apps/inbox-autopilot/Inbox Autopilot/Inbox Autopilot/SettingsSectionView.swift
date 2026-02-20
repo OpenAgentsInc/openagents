@@ -13,6 +13,7 @@ struct SettingsSectionView: View {
                 syncSection
                 policySection
                 templatesSection
+                updatesSection
                 dataRetentionSection
                 saveSection
             }
@@ -215,6 +216,58 @@ struct SettingsSectionView: View {
                     Button("Factory Reset", role: .destructive) {
                         showFactoryResetConfirm = true
                     }
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    private var updatesSection: some View {
+        GroupBox("Updates") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Current version: \(model.currentVersionDisplay)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check for Updates") {
+                        Task { await model.checkForUpdates() }
+                    }
+                    .disabled(model.isCheckingForUpdates)
+                }
+
+                if model.isCheckingForUpdates {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Checking for updates...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let checkedAt = model.lastUpdateCheckAt {
+                    Text("Last checked \(checkedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let update = model.availableUpdate {
+                    Text("Update \(update.version) is available.")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    if let publishedAt = update.publishedAt {
+                        Text("Published \(publishedAt.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 10) {
+                        Link("Download update", destination: update.downloadURL)
+                        if let notesURL = update.releaseNotesURL {
+                            Link("Release notes", destination: notesURL)
+                        }
+                    }
+                    .font(.caption)
                 }
             }
             .padding(.top, 6)

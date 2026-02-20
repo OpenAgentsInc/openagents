@@ -4,6 +4,7 @@ mod db;
 mod error;
 mod gmail;
 mod pipeline;
+mod quality;
 mod routes;
 mod types;
 mod vault;

@@ -39,6 +39,12 @@ struct Inbox_AutopilotApp: App {
                     Task { await appModel.syncNow() }
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Check for Updates") {
+                    Task { await appModel.checkForUpdates() }
+                }
             }
         }
 

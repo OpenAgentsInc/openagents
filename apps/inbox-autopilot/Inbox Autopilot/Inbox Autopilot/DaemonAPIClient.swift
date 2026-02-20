@@ -147,6 +147,16 @@ final class DaemonAPIClient {
         return response.suggestions
     }
 
+    func draftEditRate(limitPerCategory: Int = 200, threshold: Double = 0.35) async throws -> DraftQualityReport {
+        try await perform(
+            path: "/quality/draft-edit-rate",
+            queryItems: [
+                URLQueryItem(name: "limit_per_category", value: String(limitPerCategory)),
+                URLQueryItem(name: "threshold", value: String(threshold))
+            ]
+        )
+    }
+
     func events(limit: Int = 300, threadID: String? = nil) async throws -> [EventRecord] {
         var query = [URLQueryItem(name: "limit", value: String(limit))]
         if let threadID {
