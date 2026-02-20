@@ -6,6 +6,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Sync.Notifier
+  alias OpenAgentsRuntime.Sync.RetentionJob
   alias OpenAgentsRuntime.Sync.StreamEvent
   alias OpenAgentsRuntimeWeb.SyncChannel
   alias OpenAgentsRuntimeWeb.SyncSocket
@@ -211,7 +212,56 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     }
   end
 
-  defp insert_stream_event(topic, watermark, payload) do
+  test "subscribe returns stale_cursor after retention purge simulation" do
+    now = ~U[2026-02-20 12:00:00.000000Z]
+
+    insert_stream_event(@run_topic, 1, %{"value" => "old"}, DateTime.add(now, -7_200, :second))
+    insert_stream_event(@run_topic, 2, %{"value" => "fresh"}, DateTime.add(now, -60, :second))
+
+    summary = RetentionJob.run_once(now: now, horizon_seconds: 3_600, batch_size: 10)
+    assert summary.oldest_retained[@run_topic] == 2
+
+    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    ref =
+      push(socket, "sync:subscribe", %{
+        "topics" => [@run_topic],
+        "resume_after" => %{@run_topic => 0}
+      })
+
+    assert_push "sync:error", %{
+      "code" => "stale_cursor",
+      "full_resync_required" => true,
+      "stale_topics" => [
+        %{
+          "topic" => @run_topic,
+          "resume_after" => 0,
+          "retention_floor" => 1
+        }
+      ]
+    }
+
+    assert_reply ref, :error, %{
+      "code" => "stale_cursor",
+      "full_resync_required" => true,
+      "stale_topics" => [
+        %{
+          "topic" => @run_topic,
+          "resume_after" => 0,
+          "retention_floor" => 1
+        }
+      ]
+    }
+  end
+
+  defp insert_stream_event(
+         topic,
+         watermark,
+         payload,
+         inserted_at \\ DateTime.utc_now() |> DateTime.truncate(:microsecond)
+       ) do
     Repo.insert_all(StreamEvent, [
       %{
         topic: topic,
@@ -220,7 +270,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
         doc_version: watermark,
         payload: payload,
         payload_hash: :crypto.hash(:sha256, Jason.encode!(payload)),
-        inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
+        inserted_at: inserted_at
       }
     ])
   end
