@@ -45,7 +45,7 @@ use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, Wallet
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
-use reqwest::Client as HttpClient;
+use reqwest::{Client as HttpClient, Method};
 use rusqlite::{Connection, params};
 use serde_json::{Map, Value, json};
 use tracing_subscriber::EnvFilter;
@@ -91,6 +91,15 @@ const ENV_RUNTIME_SYNC_WORKSPACE_REF: &str = "OPENAGENTS_RUNTIME_SYNC_WORKSPACE_
 const ENV_RUNTIME_SYNC_CODEX_HOME_REF: &str = "OPENAGENTS_RUNTIME_SYNC_CODEX_HOME_REF";
 const ENV_RUNTIME_SYNC_WORKER_PREFIX: &str = "OPENAGENTS_RUNTIME_SYNC_WORKER_PREFIX";
 const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_MS";
+const RUNTIME_SYNC_STREAM_TAIL_MS: u64 = 15_000;
+const RUNTIME_SYNC_STREAM_EMPTY_SLEEP_MS: u64 = 250;
+const RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS: u64 = 2_000;
+
+#[derive(Debug)]
+struct RuntimeCodexStreamEvent {
+    id: Option<u64>,
+    payload: Value,
+}
 
 #[derive(Clone)]
 struct RuntimeCodexSync {
@@ -103,6 +112,9 @@ struct RuntimeCodexSync {
     heartbeat_interval_ms: u64,
     heartbeat_started: Arc<AtomicBool>,
     synced_workers: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    stream_workers: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    worker_sessions: Arc<tokio::sync::Mutex<HashMap<String, String>>>,
+    acked_handshakes: Arc<tokio::sync::Mutex<HashSet<String>>>,
 }
 
 impl RuntimeCodexSync {
@@ -150,6 +162,9 @@ impl RuntimeCodexSync {
             heartbeat_interval_ms,
             heartbeat_started: Arc::new(AtomicBool::new(false)),
             synced_workers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            stream_workers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            worker_sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            acked_handshakes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
         })
     }
 
@@ -174,20 +189,29 @@ impl RuntimeCodexSync {
         session_id: Option<SessionId>,
     ) -> Result<String, String> {
         let worker_id = self.worker_id_for_thread(thread_id);
+        let session_id_text = session_id.map(|value| value.to_string());
 
-        {
+        if let Some(session_id_text) = session_id_text.clone() {
+            self.set_worker_session_id(&worker_id, &session_id_text)
+                .await;
+        }
+
+        let already_synced = {
             let guard = self.synced_workers.lock().await;
-            if guard.contains(&worker_id) {
-                return Ok(worker_id);
-            }
+            guard.contains(&worker_id)
+        };
+
+        if already_synced {
+            self.ensure_worker_stream(&worker_id).await;
+            return Ok(worker_id);
         }
 
         let mut metadata = Map::new();
         metadata.insert("source".to_string(), json!("autopilot-desktop"));
         metadata.insert("sync_version".to_string(), json!("runtime_codex_v1"));
         metadata.insert("thread_id".to_string(), json!(thread_id));
-        if let Some(session_id) = session_id {
-            metadata.insert("session_id".to_string(), json!(session_id.to_string()));
+        if let Some(session_id_text) = session_id_text {
+            metadata.insert("session_id".to_string(), json!(session_id_text));
         }
 
         let mut payload = Map::new();
@@ -207,6 +231,8 @@ impl RuntimeCodexSync {
             let mut guard = self.synced_workers.lock().await;
             guard.insert(worker_id.clone());
         }
+
+        self.ensure_worker_stream(&worker_id).await;
 
         Ok(worker_id)
     }
@@ -241,12 +267,125 @@ impl RuntimeCodexSync {
                         .await
                         .is_err()
                     {
+                        tracing::warn!(
+                            worker_id = %worker_id,
+                            "runtime sync heartbeat failed; worker will be re-synced on next activity"
+                        );
                         let mut guard = sync.synced_workers.lock().await;
                         guard.remove(&worker_id);
                     }
                 }
             }
         });
+    }
+
+    async fn ensure_worker_stream(&self, worker_id: &str) {
+        let should_spawn = {
+            let mut guard = self.stream_workers.lock().await;
+            guard.insert(worker_id.to_string())
+        };
+
+        if !should_spawn {
+            return;
+        }
+
+        let sync = self.clone();
+        let worker_id = worker_id.to_string();
+        tokio::spawn(async move {
+            sync.run_worker_stream_loop(worker_id.clone()).await;
+            let mut guard = sync.stream_workers.lock().await;
+            guard.remove(&worker_id);
+        });
+    }
+
+    async fn run_worker_stream_loop(&self, worker_id: String) {
+        let mut cursor = match self.fetch_worker_latest_seq(&worker_id).await {
+            Ok(latest_seq) => latest_seq,
+            Err(error) => {
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    error = %error,
+                    "runtime sync stream bootstrap fallback to cursor=0"
+                );
+                0
+            }
+        };
+
+        tracing::info!(
+            worker_id = %worker_id,
+            cursor,
+            "runtime sync stream started"
+        );
+
+        loop {
+            match self
+                .stream_worker_events(&worker_id, cursor, RUNTIME_SYNC_STREAM_TAIL_MS)
+                .await
+            {
+                Ok(events) => {
+                    if events.is_empty() {
+                        tokio::time::sleep(Duration::from_millis(
+                            RUNTIME_SYNC_STREAM_EMPTY_SLEEP_MS,
+                        ))
+                        .await;
+                        continue;
+                    }
+
+                    let mut next_cursor = cursor;
+                    let mut retry_cursor: Option<u64> = None;
+
+                    for event in events {
+                        let seq = stream_event_seq(&event);
+                        if let Some(seq_value) = seq {
+                            next_cursor = next_cursor.max(seq_value);
+                        }
+
+                        if let Err(error) =
+                            self.handle_worker_stream_event(&worker_id, &event).await
+                        {
+                            tracing::warn!(
+                                worker_id = %worker_id,
+                                seq = ?seq,
+                                error = %error,
+                                "runtime sync stream event processing failed"
+                            );
+
+                            if let Some(seq_value) = seq {
+                                let replay_cursor = seq_value.saturating_sub(1);
+                                retry_cursor = Some(
+                                    retry_cursor
+                                        .map(|current| current.min(replay_cursor))
+                                        .unwrap_or(replay_cursor),
+                                );
+                            }
+                        }
+                    }
+
+                    if let Some(replay_cursor) = retry_cursor {
+                        tracing::info!(
+                            worker_id = %worker_id,
+                            cursor = replay_cursor,
+                            "runtime sync stream rewinding cursor to retry handshake processing"
+                        );
+                        cursor = replay_cursor;
+                    } else {
+                        cursor = next_cursor;
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        worker_id = %worker_id,
+                        cursor,
+                        error = %error,
+                        "runtime sync stream request failed; reconnecting"
+                    );
+                    tokio::time::sleep(Duration::from_millis(
+                        RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS,
+                    ))
+                    .await;
+                }
+            }
+        }
     }
 
     async fn ingest_notification(
@@ -260,6 +399,62 @@ impl RuntimeCodexSync {
 
         self.ingest_worker_event(&worker_id, &event_type, payload)
             .await
+    }
+
+    async fn handle_worker_stream_event(
+        &self,
+        worker_id: &str,
+        event: &RuntimeCodexStreamEvent,
+    ) -> Result<(), String> {
+        if let Some(handshake_id) = extract_desktop_handshake_ack_id(&event.payload) {
+            let inserted = self.mark_handshake_acked(worker_id, &handshake_id).await;
+            if inserted {
+                tracing::info!(
+                    worker_id = %worker_id,
+                    handshake_id = %handshake_id,
+                    "runtime sync observed desktop handshake ack"
+                );
+            }
+            return Ok(());
+        }
+
+        let Some(handshake_id) = extract_ios_handshake_id(&event.payload) else {
+            return Ok(());
+        };
+
+        if self.is_handshake_acked(worker_id, &handshake_id).await {
+            tracing::info!(
+                worker_id = %worker_id,
+                handshake_id = %handshake_id,
+                "runtime sync skipped duplicate handshake ack"
+            );
+            return Ok(());
+        }
+
+        let desktop_session_id = self
+            .desktop_session_id(worker_id)
+            .await
+            .unwrap_or_else(|| format!("worker:{worker_id}"));
+
+        let ack_payload = json!({
+            "source": "autopilot-desktop",
+            "method": "desktop/handshake_ack",
+            "handshake_id": handshake_id.clone(),
+            "desktop_session_id": desktop_session_id,
+            "occurred_at": Utc::now().to_rfc3339(),
+        });
+
+        self.ingest_worker_event(worker_id, "worker.event", ack_payload)
+            .await?;
+
+        self.mark_handshake_acked(worker_id, &handshake_id).await;
+        tracing::info!(
+            worker_id = %worker_id,
+            handshake_id = %handshake_id,
+            "runtime sync emitted desktop handshake ack"
+        );
+
+        Ok(())
     }
 
     async fn ingest_worker_event(
@@ -278,34 +473,222 @@ impl RuntimeCodexSync {
         self.post_json(&path, body).await.map(|_| ())
     }
 
-    async fn post_json(&self, path: &str, body: Value) -> Result<Value, String> {
+    async fn fetch_worker_latest_seq(&self, worker_id: &str) -> Result<u64, String> {
+        let path = format!("/api/runtime/codex/workers/{worker_id}");
+        let response = self.get_json(&path).await?;
+        response
+            .get("data")
+            .and_then(|data| data.get("latest_seq"))
+            .and_then(|latest_seq| latest_seq.as_u64())
+            .ok_or_else(|| "runtime sync worker snapshot missing latest_seq".to_string())
+    }
+
+    async fn stream_worker_events(
+        &self,
+        worker_id: &str,
+        cursor: u64,
+        tail_ms: u64,
+    ) -> Result<Vec<RuntimeCodexStreamEvent>, String> {
+        let path = format!(
+            "/api/runtime/codex/workers/{worker_id}/stream?cursor={cursor}&tail_ms={tail_ms}"
+        );
+
         let response = self
-            .client
-            .post(format!("{}{}", self.base_url, path))
-            .bearer_auth(&self.token)
-            .json(&body)
+            .request_builder(Method::GET, &path)
+            .header("accept", "text/event-stream")
+            .header("last-event-id", cursor.to_string())
             .send()
             .await
             .map_err(|err| err.to_string())?;
 
         let status = response.status();
         let text = response.text().await.map_err(|err| err.to_string())?;
-        let parsed = serde_json::from_str::<Value>(&text).unwrap_or(Value::Null);
 
         if !status.is_success() {
-            let message = parsed
-                .get("error")
-                .and_then(|error| error.get("message"))
-                .and_then(|message| message.as_str())
-                .map(|value| value.to_string())
-                .or_else(|| (!text.trim().is_empty()).then_some(text))
-                .unwrap_or_else(|| format!("runtime sync request failed ({status})"));
-
-            return Err(message);
+            return Err(runtime_sync_error_message(status, &text));
         }
 
-        Ok(parsed)
+        Ok(parse_runtime_stream_events(&text))
     }
+
+    async fn set_worker_session_id(&self, worker_id: &str, session_id: &str) {
+        let mut guard = self.worker_sessions.lock().await;
+        guard.insert(worker_id.to_string(), session_id.to_string());
+    }
+
+    async fn desktop_session_id(&self, worker_id: &str) -> Option<String> {
+        let guard = self.worker_sessions.lock().await;
+        guard.get(worker_id).cloned()
+    }
+
+    async fn is_handshake_acked(&self, worker_id: &str, handshake_id: &str) -> bool {
+        let key = handshake_dedupe_key(worker_id, handshake_id);
+        let guard = self.acked_handshakes.lock().await;
+        guard.contains(&key)
+    }
+
+    async fn mark_handshake_acked(&self, worker_id: &str, handshake_id: &str) -> bool {
+        let key = handshake_dedupe_key(worker_id, handshake_id);
+        let mut guard = self.acked_handshakes.lock().await;
+        guard.insert(key)
+    }
+
+    async fn get_json(&self, path: &str) -> Result<Value, String> {
+        let response = self
+            .request_builder(Method::GET, path)
+            .header("accept", "application/json")
+            .send()
+            .await
+            .map_err(|err| err.to_string())?;
+
+        self.decode_json_response(response).await
+    }
+
+    async fn post_json(&self, path: &str, body: Value) -> Result<Value, String> {
+        let response = self
+            .request_builder(Method::POST, path)
+            .header("accept", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| err.to_string())?;
+
+        self.decode_json_response(response).await
+    }
+
+    fn request_builder(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
+        self.client
+            .request(method, format!("{}{}", self.base_url, path))
+            .bearer_auth(&self.token)
+            .header("x-request-id", Self::request_id())
+    }
+
+    async fn decode_json_response(&self, response: reqwest::Response) -> Result<Value, String> {
+        let status = response.status();
+        let text = response.text().await.map_err(|err| err.to_string())?;
+
+        if !status.is_success() {
+            return Err(runtime_sync_error_message(status, &text));
+        }
+
+        Ok(serde_json::from_str::<Value>(&text).unwrap_or(Value::Null))
+    }
+
+    fn request_id() -> String {
+        format!("desktopreq-{}", Uuid::new_v4().to_string().to_lowercase())
+    }
+}
+
+fn runtime_sync_error_message(status: reqwest::StatusCode, raw_body: &str) -> String {
+    let parsed = serde_json::from_str::<Value>(raw_body).unwrap_or(Value::Null);
+    parsed
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(|message| message.as_str())
+        .map(|value| value.to_string())
+        .or_else(|| (!raw_body.trim().is_empty()).then_some(raw_body.to_string()))
+        .unwrap_or_else(|| format!("runtime sync request failed ({status})"))
+}
+
+fn parse_runtime_stream_events(raw: &str) -> Vec<RuntimeCodexStreamEvent> {
+    let normalized = raw.replace("\r\n", "\n");
+    let mut events = Vec::new();
+
+    for chunk in normalized.split("\n\n") {
+        let chunk = chunk.trim();
+        if chunk.is_empty() {
+            continue;
+        }
+
+        let mut id: Option<u64> = None;
+        let mut data_lines: Vec<String> = Vec::new();
+
+        for line in chunk.lines() {
+            if let Some(value) = line.strip_prefix("id:") {
+                id = value.trim().parse::<u64>().ok();
+            } else if let Some(value) = line.strip_prefix("data:") {
+                data_lines.push(value.trim().to_string());
+            }
+        }
+
+        if data_lines.is_empty() {
+            continue;
+        }
+
+        let raw_data = data_lines.join("\n");
+        let payload = serde_json::from_str::<Value>(&raw_data).unwrap_or(Value::String(raw_data));
+        events.push(RuntimeCodexStreamEvent { id, payload });
+    }
+
+    events
+}
+
+fn stream_event_seq(event: &RuntimeCodexStreamEvent) -> Option<u64> {
+    event
+        .id
+        .or_else(|| event.payload.get("seq").and_then(|value| value.as_u64()))
+}
+
+fn extract_ios_handshake_id(payload: &Value) -> Option<String> {
+    let (event_type, worker_payload) = extract_worker_event(payload)?;
+    if event_type != "worker.event" {
+        return None;
+    }
+
+    let source = worker_payload
+        .get("source")
+        .and_then(|value| value.as_str());
+    let method = worker_payload
+        .get("method")
+        .and_then(|value| value.as_str());
+    if source != Some("autopilot-ios") || method != Some("ios/handshake") {
+        return None;
+    }
+
+    extract_handshake_id(worker_payload)
+}
+
+fn extract_desktop_handshake_ack_id(payload: &Value) -> Option<String> {
+    let (event_type, worker_payload) = extract_worker_event(payload)?;
+    if event_type != "worker.event" {
+        return None;
+    }
+
+    let source = worker_payload
+        .get("source")
+        .and_then(|value| value.as_str());
+    let method = worker_payload
+        .get("method")
+        .and_then(|value| value.as_str());
+    if source != Some("autopilot-desktop") || method != Some("desktop/handshake_ack") {
+        return None;
+    }
+
+    extract_handshake_id(worker_payload)
+}
+
+fn extract_worker_event(payload: &Value) -> Option<(&str, &Map<String, Value>)> {
+    let payload_obj = payload.as_object()?;
+    let event_type = payload_obj
+        .get("eventType")
+        .or_else(|| payload_obj.get("event_type"))
+        .and_then(|value| value.as_str())?;
+    let worker_payload = payload_obj.get("payload")?.as_object()?;
+    Some((event_type, worker_payload))
+}
+
+fn extract_handshake_id(payload: &Map<String, Value>) -> Option<String> {
+    payload
+        .get("handshake_id")
+        .or_else(|| payload.get("handshakeId"))
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn handshake_dedupe_key(worker_id: &str, handshake_id: &str) -> String {
+    format!("{worker_id}::{handshake_id}")
 }
 
 fn sanitize_worker_component(value: &str) -> String {
