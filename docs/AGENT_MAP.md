@@ -26,6 +26,8 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `docs/sync/thoughts.md` — Khala sync engine architecture (runtime-owned WS sync target).
 - `docs/sync/ROADMAP.md` — Khala migration roadmap with issue-ready sequencing.
 - `docs/sync/SURFACES.md` — surface/topic/hydration contract for Khala clients.
+- `docs/sync/PARITY_DASHBOARD.md` — parity mismatch/lag dashboard contract for dual-publish windows.
+- `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md` — staged rollout + rollback runbook for runtime/Codex Khala cutover.
 - `docs/plans/active/convex-self-hosting-runtime-sync-plan.md` — Convex self-hosted sync-layer architecture plan.
 - `docs/plans/active/convex-runtime-codex-master-roadmap.md` — execution roadmap with delivery gates for runtime/Convex/Codex integration.
 
