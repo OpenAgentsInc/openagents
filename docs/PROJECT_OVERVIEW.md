@@ -19,6 +19,9 @@ This document maps the active codebase.
 - `apps/desktop/`
   Electron desktop surface for local execution boundaries (including Lightning executor workflows).
 
+- `apps/onyx/`
+  Rust local-first notes app (WGPUI + local vault storage).
+
 ## Control-Plane and Runtime Boundary
 
 - `apps/openagents.com` owns public APIs, user auth/session, UI, and operator-facing settings.

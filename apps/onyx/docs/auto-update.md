@@ -46,7 +46,7 @@ To create a new Onyx release:
 
 ```bash
 # Update version in Cargo.toml
-# crates/onyx/Cargo.toml -> version = "X.Y.Z"
+# apps/onyx/Cargo.toml -> version = "X.Y.Z"
 
 # Create and push the tag
 git tag onyx-vX.Y.Z
@@ -75,13 +75,13 @@ gh release upload onyx-vX.Y.Z \
 ### Module Location
 
 The update checker is implemented in:
-- `crates/onyx/src/update_checker.rs` - Core update checking logic
-- `crates/onyx/src/app.rs` - UI integration (Cmd+Shift+U handler)
+- `apps/onyx/src/update_checker.rs` - Core update checking logic
+- `apps/onyx/src/app.rs` - UI integration (Cmd+Shift+U handler)
 
 ### Dependencies
 
 ```toml
-# In crates/onyx/Cargo.toml
+# In apps/onyx/Cargo.toml
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 semver = "1"
 ```

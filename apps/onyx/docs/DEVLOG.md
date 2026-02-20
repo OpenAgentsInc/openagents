@@ -54,7 +54,7 @@ Created a full-featured multi-line text editor component:
    - Selection highlight per line
    - Configurable colors and sizing via `LiveEditorStyle`
 
-**Onyx test app (`crates/onyx/`)**
+**Onyx test app (`apps/onyx/`)**
 
 Created minimal desktop app to test the editor:
 
@@ -73,7 +73,7 @@ crates/wgpui/src/components/
     ├── mod.rs                # Main LiveEditor component (NEW)
     └── cursor.rs             # Cursor/Selection types (NEW)
 
-crates/onyx/
+apps/onyx/
 ├── Cargo.toml                # Updated dependencies
 ├── src/
 │   ├── main.rs               # Updated with winit loop

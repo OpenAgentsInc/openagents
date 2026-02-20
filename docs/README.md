@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
 This directory tracks the active OpenAgents cross-platform stack.
-Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/openagents-runtime/`), mobile (`apps/mobile`), Rust desktop Codex app (`apps/autopilot-desktop/`), and Electron desktop Lightning app (`apps/desktop/`).
+Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/openagents-runtime/`), mobile (`apps/mobile`), Rust desktop Codex app (`apps/autopilot-desktop/`), Electron desktop Lightning app (`apps/desktop/`), and Onyx local-first notes app (`apps/onyx/`).
 
 ## Start Here
 
@@ -52,6 +52,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Mobile app source: `../apps/mobile/`
 - Rust desktop Codex app source: `../apps/autopilot-desktop/`
 - Electron desktop Lightning app source: `../apps/desktop/`
+- Onyx notes app source: `../apps/onyx/`
 
 ## Local Development
 

@@ -5777,26 +5777,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "manatap"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dsrs",
- "glob",
- "gpt-oss",
- "pollster 0.4.0",
- "regex",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
- "walkdir",
- "wgpu",
- "wgpui",
- "winit",
-]
-
-[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

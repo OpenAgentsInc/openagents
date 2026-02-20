@@ -9,14 +9,14 @@ separate from shared platform, core, and UI code. The UI group should live under
 (not `crates/ux/`). The Nostr crates are already nested under `crates/nostr/`.
 
 Proposed grouping (adjust as needed):
-- `crates/products/`: autopilot, pylon, onyx
+- `crates/products/`: autopilot, pylon
 - `crates/app-core/`: autopilot_app, autopilot_ui
 - `crates/core/`: adjutant, autopilot-core, dsrs, dsrs-macros, rlm, frlm
 - `crates/platform/`: agent, protocol, runtime, relay, compute, gateway, lm-router,
   local-inference, nostr (core + client), issues, openagents-utils
 - `crates/ui/`: wgpui, editor, vim
 - `crates/integrations/`: gpt-oss, codex-client, codex-mcp, ai-server, spark, voice
-- `crates/tools/`: arrow, testing, ws-test, manatap
+- `crates/tools/`: arrow, testing, ws-test
 
 Proposed steps:
 1. Create the group folders under `crates/` and move the crate directories.
@@ -24,6 +24,8 @@ Proposed steps:
 3. Update all path dependencies in crate `Cargo.toml` files to the new locations.
 4. Refresh docs and tooling references (this file, any build scripts, CI paths).
 5. Run `cargo check` and fix any path or feature fallout.
+
+Note: Onyx is now an app surface at `apps/onyx/` (moved from `crates/onyx` on 2026-02-20).
 
 ## adjutant
 The adjutant crate is the autonomous task execution engine. It plans and routes work via DSPy
@@ -109,9 +111,6 @@ The local-inference crate defines the `LocalModelBackend` trait and shared reque
 for local inference engines, enabling OpenAgents to swap GPT-OSS, fm-bridge, or custom backends via
 a consistent API.
 
-## manatap
-The manatap crate is a minimal GPU window demo showcasing WGPUI and rendering primitives.
-
 ## nostr (core)
 The nostr core crate (`crates/nostr/core`) provides the foundational Nostr protocol types,
 serialization, and crypto helpers used across OpenAgents.
@@ -119,9 +118,6 @@ serialization, and crypto helpers used across OpenAgents.
 ## nostr-client
 The nostr-client crate (`crates/nostr/client`) provides relay client APIs built on top of the Nostr
 core crate.
-
-## onyx
-The onyx crate is a local-first Markdown note editor with live inline formatting.
 
 ## openagents-relay (relay)
 The relay crate defines the relay protocol message types shared by browser/worker/tunnel clients.
