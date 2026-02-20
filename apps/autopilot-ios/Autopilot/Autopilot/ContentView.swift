@@ -20,6 +20,7 @@ struct ContentView: View {
 
 private struct CodexChatView: View {
     @ObservedObject var model: CodexHandshakeViewModel
+    @FocusState private var isComposerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,6 +66,11 @@ private struct CodexChatView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                dismissKeyboard()
+            }
             .background(Color(.systemGroupedBackground))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: model.chatMessages.count) { _, _ in
@@ -85,6 +91,7 @@ private struct CodexChatView: View {
                 .textFieldStyle(.roundedBorder)
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
+                .focused($isComposerFocused)
                 .submitLabel(.send)
                 .onSubmit {
                     Task {
@@ -111,6 +118,10 @@ private struct CodexChatView: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .background(Color(.systemBackground))
+    }
+
+    private func dismissKeyboard() {
+        isComposerFocused = false
     }
 }
 
