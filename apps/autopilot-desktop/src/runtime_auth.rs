@@ -21,75 +21,79 @@ pub struct RuntimeSyncAuthState {
     pub issued_at: String,
 }
 
+#[derive(Clone)]
+pub struct RuntimeSyncAuthFlow {
+    client: HttpClient,
+    base_url: String,
+    pending_email: Option<String>,
+}
+
+impl RuntimeSyncAuthFlow {
+    pub fn new(base_url: &str) -> Result<Self, String> {
+        let normalized_base_url = normalize_base_url(base_url)?;
+        let client = HttpClient::builder()
+            .cookie_store(true)
+            .build()
+            .map_err(|err| format!("auth client init failed: {err}"))?;
+        Ok(Self {
+            client,
+            base_url: normalized_base_url,
+            pending_email: None,
+        })
+    }
+
+    pub async fn send_code(&mut self, email: &str) -> Result<String, String> {
+        let normalized_email = normalize_email(email)?;
+        post_json(
+            &self.client,
+            &self.base_url,
+            "/api/auth/email",
+            json!({ "email": normalized_email }),
+            Some((("x-client"), AUTH_CLIENT_HEADER)),
+        )
+        .await?;
+        self.pending_email = Some(normalized_email.clone());
+        Ok(normalized_email)
+    }
+
+    pub fn pending_email(&self) -> Option<&str> {
+        self.pending_email.as_deref()
+    }
+
+    pub async fn verify_code(&mut self, code: &str) -> Result<RuntimeSyncAuthState, String> {
+        let normalized_code = normalize_code(code)?;
+        let pending_email = self
+            .pending_email
+            .clone()
+            .ok_or_else(|| "no pending auth flow; send a verification code first".to_string())?;
+
+        let verify = post_json(
+            &self.client,
+            &self.base_url,
+            "/api/auth/verify",
+            json!({ "code": normalized_code }),
+            Some((("x-client"), AUTH_CLIENT_HEADER)),
+        )
+        .await?;
+
+        parse_auth_state(&self.base_url, &pending_email, &verify)
+    }
+}
+
 pub async fn login_with_email_code(
     base_url: &str,
     email: &str,
     code_override: Option<String>,
 ) -> Result<RuntimeSyncAuthState, String> {
-    let normalized_base_url = normalize_base_url(base_url)?;
-    let normalized_email = normalize_email(email)?;
-    let client = HttpClient::builder()
-        .cookie_store(true)
-        .build()
-        .map_err(|err| format!("auth client init failed: {err}"))?;
-
-    post_json(
-        &client,
-        &normalized_base_url,
-        "/api/auth/email",
-        json!({ "email": normalized_email }),
-        Some((("x-client"), AUTH_CLIENT_HEADER)),
-    )
-    .await?;
+    let mut flow = RuntimeSyncAuthFlow::new(base_url)?;
+    let normalized_email = flow.send_code(email).await?;
 
     let code = match code_override {
         Some(code) => normalize_code(&code)?,
         None => read_code_from_stdin()?,
     };
-
-    let verify = post_json(
-        &client,
-        &normalized_base_url,
-        "/api/auth/verify",
-        json!({ "code": code }),
-        Some((("x-client"), AUTH_CLIENT_HEADER)),
-    )
-    .await?;
-
-    let token = verify
-        .get("token")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "auth verify succeeded but token was missing".to_string())?
-        .to_string();
-
-    let user_id = verify
-        .get("userId")
-        .and_then(|value| {
-            value
-                .as_str()
-                .map(|raw| raw.trim().to_string())
-                .or_else(|| value.as_u64().map(|raw| raw.to_string()))
-        })
-        .filter(|value| !value.is_empty());
-
-    let response_email = verify
-        .get("user")
-        .and_then(Value::as_object)
-        .and_then(|user| user.get("email"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string());
-
-    Ok(RuntimeSyncAuthState {
-        base_url: normalized_base_url,
-        token,
-        user_id,
-        email: response_email.or_else(|| Some(normalized_email.to_string())),
-        issued_at: Utc::now().to_rfc3339(),
-    })
+    flow.pending_email = Some(normalized_email);
+    flow.verify_code(&code).await
 }
 
 pub fn load_runtime_auth_state() -> Option<RuntimeSyncAuthState> {
@@ -240,4 +244,45 @@ fn auth_error_message(status: u16, body: &str) -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| format!("auth request failed ({status})"))
+}
+
+fn parse_auth_state(
+    base_url: &str,
+    requested_email: &str,
+    verify: &Value,
+) -> Result<RuntimeSyncAuthState, String> {
+    let token = verify
+        .get("token")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "auth verify succeeded but token was missing".to_string())?
+        .to_string();
+
+    let user_id = verify
+        .get("userId")
+        .and_then(|value| {
+            value
+                .as_str()
+                .map(|raw| raw.trim().to_string())
+                .or_else(|| value.as_u64().map(|raw| raw.to_string()))
+        })
+        .filter(|value| !value.is_empty());
+
+    let response_email = verify
+        .get("user")
+        .and_then(Value::as_object)
+        .and_then(|user| user.get("email"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+
+    Ok(RuntimeSyncAuthState {
+        base_url: base_url.trim().trim_end_matches('/').to_string(),
+        token,
+        user_id,
+        email: response_email.or_else(|| Some(requested_email.to_string())),
+        issued_at: Utc::now().to_rfc3339(),
+    })
 }

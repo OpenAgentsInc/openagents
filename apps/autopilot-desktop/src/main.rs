@@ -13,8 +13,8 @@ use anyhow::{Context, Result};
 use arboard::Clipboard;
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
-    MoltbookCommentSummary, MoltbookPostSummary, MoltbookProfileSummary, PylonStatus, SessionId,
-    UserAction, WalletStatus,
+    MoltbookCommentSummary, MoltbookPostSummary, MoltbookProfileSummary, PylonStatus,
+    RuntimeAuthStateView, SessionId, UserAction, WalletStatus,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::{
@@ -67,8 +67,9 @@ mod runtime_auth;
 mod runtime_codex_proto;
 
 use runtime_auth::{
-    DEFAULT_AUTH_BASE_URL, clear_runtime_auth_state, load_runtime_auth_state,
-    login_with_email_code, persist_runtime_auth_state, runtime_auth_state_path,
+    DEFAULT_AUTH_BASE_URL, RuntimeSyncAuthFlow, RuntimeSyncAuthState, clear_runtime_auth_state,
+    load_runtime_auth_state, login_with_email_code, persist_runtime_auth_state,
+    runtime_auth_state_path,
 };
 use runtime_codex_proto::{
     RuntimeCodexStreamEvent, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
@@ -139,8 +140,10 @@ enum AuthCommand {
 #[derive(Clone)]
 struct RuntimeCodexSync {
     client: HttpClient,
-    base_url: String,
-    token: String,
+    base_url: Arc<tokio::sync::RwLock<String>>,
+    token: Arc<tokio::sync::RwLock<Option<String>>>,
+    base_url_locked_by_env: bool,
+    token_locked_by_env: bool,
     workspace_ref: String,
     codex_home_ref: Option<String>,
     worker_prefix: String,
@@ -155,34 +158,26 @@ struct RuntimeCodexSync {
 impl RuntimeCodexSync {
     fn from_env(cwd: &str) -> Option<Self> {
         let stored_auth = load_runtime_auth_state();
-        let base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL)
+        let env_base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL)
             .ok()
             .map(|value| value.trim().trim_end_matches('/').to_string())
-            .filter(|value| !value.is_empty())
-            .or_else(|| {
-                stored_auth
-                    .as_ref()
-                    .map(|value| value.base_url.trim().trim_end_matches('/').to_string())
-                    .filter(|value| !value.is_empty())
-            });
-        let token = env::var(ENV_RUNTIME_SYNC_TOKEN)
+            .filter(|value| !value.is_empty());
+        let base_url = env_base_url.clone().or_else(|| {
+            stored_auth
+                .as_ref()
+                .map(|value| value.base_url.trim().trim_end_matches('/').to_string())
+                .filter(|value| !value.is_empty())
+        });
+        let env_token = env::var(ENV_RUNTIME_SYNC_TOKEN)
             .ok()
             .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .or_else(|| {
-                stored_auth
-                    .as_ref()
-                    .map(|value| value.token.trim().to_string())
-                    .filter(|value| !value.is_empty())
-            });
-
-        let Some(base_url) = base_url else {
-            return None;
-        };
-
-        let Some(token) = token else {
-            return None;
-        };
+            .filter(|value| !value.is_empty());
+        let token = env_token.clone().or_else(|| {
+            stored_auth
+                .as_ref()
+                .map(|value| value.token.trim().to_string())
+                .filter(|value| !value.is_empty())
+        });
 
         let workspace_ref = env::var(ENV_RUNTIME_SYNC_WORKSPACE_REF)
             .ok()
@@ -210,8 +205,12 @@ impl RuntimeCodexSync {
 
         Some(Self {
             client: HttpClient::new(),
-            base_url,
-            token,
+            base_url: Arc::new(tokio::sync::RwLock::new(
+                base_url.unwrap_or_else(|| DEFAULT_AUTH_BASE_URL.to_string()),
+            )),
+            token: Arc::new(tokio::sync::RwLock::new(token)),
+            base_url_locked_by_env: env_base_url.is_some(),
+            token_locked_by_env: env_token.is_some(),
             workspace_ref,
             codex_home_ref,
             worker_prefix,
@@ -222,6 +221,64 @@ impl RuntimeCodexSync {
             worker_sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             acked_handshakes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
         })
+    }
+
+    async fn refresh_auth_from_disk(&self) {
+        if self.base_url_locked_by_env && self.token_locked_by_env {
+            return;
+        }
+
+        if let Some(state) = load_runtime_auth_state() {
+            self.apply_auth_state(&state).await;
+            return;
+        }
+
+        if !self.token_locked_by_env {
+            let mut token = self.token.write().await;
+            *token = None;
+        }
+    }
+
+    async fn auth_snapshot(&self) -> Result<(String, String), String> {
+        self.refresh_auth_from_disk().await;
+        let base_url = self.base_url.read().await.clone();
+        let token = self
+            .token
+            .read()
+            .await
+            .clone()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "runtime sync auth token missing; open Runtime Login pane (AU) and sign in"
+                    .to_string()
+            })?;
+
+        Ok((base_url, token))
+    }
+
+    async fn current_base_url(&self) -> String {
+        self.base_url.read().await.clone()
+    }
+
+    async fn apply_auth_state(&self, state: &RuntimeSyncAuthState) {
+        if !self.base_url_locked_by_env {
+            let mut base_url = self.base_url.write().await;
+            *base_url = state.base_url.trim().trim_end_matches('/').to_string();
+        }
+        if !self.token_locked_by_env {
+            let mut token = self.token.write().await;
+            *token = Some(state.token.trim().to_string());
+        }
+    }
+
+    async fn clear_auth_state(&self) {
+        if !self.token_locked_by_env {
+            let mut token = self.token.write().await;
+            *token = None;
+        }
+        let mut synced = self.synced_workers.lock().await;
+        synced.clear();
     }
 
     fn worker_id_for_thread(&self, thread_id: &str) -> String {
@@ -546,6 +603,7 @@ impl RuntimeCodexSync {
 
         let response = self
             .request_builder(Method::GET, &path)
+            .await?
             .header("accept", "text/event-stream")
             .header("last-event-id", cursor.to_string())
             .send()
@@ -587,6 +645,7 @@ impl RuntimeCodexSync {
     async fn get_json(&self, path: &str) -> Result<Value, String> {
         let response = self
             .request_builder(Method::GET, path)
+            .await?
             .header("accept", "application/json")
             .send()
             .await
@@ -598,6 +657,7 @@ impl RuntimeCodexSync {
     async fn post_json(&self, path: &str, body: Value) -> Result<Value, String> {
         let response = self
             .request_builder(Method::POST, path)
+            .await?
             .header("accept", "application/json")
             .json(&body)
             .send()
@@ -607,11 +667,17 @@ impl RuntimeCodexSync {
         self.decode_json_response(response).await
     }
 
-    fn request_builder(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
-        self.client
-            .request(method, format!("{}{}", self.base_url, path))
-            .bearer_auth(&self.token)
-            .header("x-request-id", Self::request_id())
+    async fn request_builder(
+        &self,
+        method: Method,
+        path: &str,
+    ) -> Result<reqwest::RequestBuilder, String> {
+        let (base_url, token) = self.auth_snapshot().await?;
+        Ok(self
+            .client
+            .request(method, format!("{base_url}{path}"))
+            .bearer_auth(token)
+            .header("x-request-id", Self::request_id()))
     }
 
     async fn decode_json_response(&self, response: reqwest::Response) -> Result<Value, String> {
@@ -712,6 +778,69 @@ fn runtime_event_from_notification(method: &str, params: Option<&Value>) -> (Str
 
 fn should_sync_runtime_notification(method: &str) -> bool {
     method.starts_with("thread/") || method.starts_with("turn/") || method.starts_with("codex/")
+}
+
+async fn runtime_auth_state_view(
+    runtime_sync: &Arc<Option<RuntimeCodexSync>>,
+    pending_auth_flow: &Arc<tokio::sync::Mutex<Option<RuntimeSyncAuthFlow>>>,
+    last_message: Option<String>,
+    last_error: Option<String>,
+) -> RuntimeAuthStateView {
+    let stored = load_runtime_auth_state();
+
+    let (base_url, token_present) = if let Some(sync) = runtime_sync.as_ref() {
+        sync.refresh_auth_from_disk().await;
+        let base_url = sync.current_base_url().await;
+        let token_present = sync
+            .token
+            .read()
+            .await
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false);
+        (Some(base_url), token_present)
+    } else {
+        let base_url = stored
+            .as_ref()
+            .map(|state| state.base_url.clone())
+            .or_else(|| Some(DEFAULT_AUTH_BASE_URL.to_string()));
+        let token_present = stored
+            .as_ref()
+            .map(|state| !state.token.trim().is_empty())
+            .unwrap_or(false);
+        (base_url, token_present)
+    };
+
+    let pending_email = {
+        let pending = pending_auth_flow.lock().await;
+        pending
+            .as_ref()
+            .and_then(|flow| flow.pending_email())
+            .map(|value| value.to_string())
+    };
+
+    RuntimeAuthStateView {
+        base_url,
+        email: stored.as_ref().and_then(|state| state.email.clone()),
+        user_id: stored.as_ref().and_then(|state| state.user_id.clone()),
+        token_present,
+        pending_email,
+        last_message,
+        last_error,
+        updated_at: Some(Utc::now().to_rfc3339()),
+    }
+}
+
+async fn emit_runtime_auth_state(
+    proxy: &EventLoopProxy<AppEvent>,
+    runtime_sync: &Arc<Option<RuntimeCodexSync>>,
+    pending_auth_flow: &Arc<tokio::sync::Mutex<Option<RuntimeSyncAuthFlow>>>,
+    last_message: Option<String>,
+    last_error: Option<String>,
+) {
+    let state =
+        runtime_auth_state_view(runtime_sync, pending_auth_flow, last_message, last_error).await;
+    let _ = proxy.send_event(AppEvent::RuntimeAuthState { state });
 }
 
 fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
@@ -1507,9 +1636,19 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
             let workspace_id = workspace.workspace_id().to_string();
             let runtime_sync = Arc::new(RuntimeCodexSync::from_env(&cwd_string));
+            let pending_runtime_auth_flow =
+                Arc::new(tokio::sync::Mutex::new(None::<RuntimeSyncAuthFlow>));
             if let Some(sync) = runtime_sync.as_ref() {
                 sync.start_heartbeat_loop();
             }
+            emit_runtime_auth_state(
+                &proxy,
+                &runtime_sync,
+                &pending_runtime_auth_flow,
+                None,
+                None,
+            )
+            .await;
             let mut stream = workspace.events();
             let session_states = Arc::new(tokio::sync::Mutex::new(HashMap::<
                 SessionId,
@@ -2187,6 +2326,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let proxy_actions = proxy.clone();
             let cwd_for_actions = cwd_string.clone();
             let runtime_sync_actions = runtime_sync.clone();
+            let pending_runtime_auth_flow_actions = pending_runtime_auth_flow.clone();
             tokio::task::spawn_blocking(move || {
                 let mut pylon_runtime = InProcessPylon::new();
                 while let Ok(action) = action_rx.recv() {
@@ -2295,6 +2435,195 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
+                        UserAction::RuntimeAuthSendCode { email } => {
+                            let proxy = proxy_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+                            let pending_runtime_auth_flow =
+                                pending_runtime_auth_flow_actions.clone();
+                            handle.spawn(async move {
+                                let base_url = if let Some(sync) = runtime_sync.as_ref() {
+                                    sync.current_base_url().await
+                                } else {
+                                    DEFAULT_AUTH_BASE_URL.to_string()
+                                };
+                                let mut flow = match RuntimeSyncAuthFlow::new(&base_url) {
+                                    Ok(flow) => flow,
+                                    Err(err) => {
+                                        emit_runtime_auth_state(
+                                            &proxy,
+                                            &runtime_sync,
+                                            &pending_runtime_auth_flow,
+                                            None,
+                                            Some(format!("Auth init failed: {err}")),
+                                        )
+                                        .await;
+                                        return;
+                                    }
+                                };
+
+                                match flow.send_code(&email).await {
+                                    Ok(normalized_email) => {
+                                        {
+                                            let mut pending = pending_runtime_auth_flow.lock().await;
+                                            *pending = Some(flow);
+                                        }
+                                        emit_runtime_auth_state(
+                                            &proxy,
+                                            &runtime_sync,
+                                            &pending_runtime_auth_flow,
+                                            Some(format!(
+                                                "Sent verification code to {}. Enter the code and click Verify.",
+                                                normalized_email
+                                            )),
+                                            None,
+                                        )
+                                        .await;
+                                    }
+                                    Err(err) => {
+                                        emit_runtime_auth_state(
+                                            &proxy,
+                                            &runtime_sync,
+                                            &pending_runtime_auth_flow,
+                                            None,
+                                            Some(format!("Failed to send verification code: {err}")),
+                                        )
+                                        .await;
+                                    }
+                                }
+                            });
+                        }
+                        UserAction::RuntimeAuthVerifyCode { code } => {
+                            let proxy = proxy_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+                            let pending_runtime_auth_flow =
+                                pending_runtime_auth_flow_actions.clone();
+                            handle.spawn(async move {
+                                let flow = {
+                                    let mut pending = pending_runtime_auth_flow.lock().await;
+                                    pending.take()
+                                };
+                                let Some(mut flow) = flow else {
+                                    emit_runtime_auth_state(
+                                        &proxy,
+                                        &runtime_sync,
+                                        &pending_runtime_auth_flow,
+                                        None,
+                                        Some(
+                                            "No pending verification. Send code first."
+                                                .to_string(),
+                                        ),
+                                    )
+                                    .await;
+                                    return;
+                                };
+
+                                match flow.verify_code(&code).await {
+                                    Ok(state) => {
+                                        if let Some(sync) = runtime_sync.as_ref() {
+                                            sync.apply_auth_state(&state).await;
+                                        }
+                                        match persist_runtime_auth_state(&state) {
+                                            Ok(path) => {
+                                                emit_runtime_auth_state(
+                                                    &proxy,
+                                                    &runtime_sync,
+                                                    &pending_runtime_auth_flow,
+                                                    Some(format!(
+                                                        "Signed in as {}. Runtime sync token saved at {}.",
+                                                        state
+                                                            .email
+                                                            .as_deref()
+                                                            .unwrap_or("<unknown>"),
+                                                        path.display()
+                                                    )),
+                                                    None,
+                                                )
+                                                .await;
+                                            }
+                                            Err(err) => {
+                                                emit_runtime_auth_state(
+                                                    &proxy,
+                                                    &runtime_sync,
+                                                    &pending_runtime_auth_flow,
+                                                    None,
+                                                    Some(format!(
+                                                        "Signed in but failed to persist auth state: {err}"
+                                                    )),
+                                                )
+                                                .await;
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        {
+                                            let mut pending = pending_runtime_auth_flow.lock().await;
+                                            *pending = Some(flow);
+                                        }
+                                        emit_runtime_auth_state(
+                                            &proxy,
+                                            &runtime_sync,
+                                            &pending_runtime_auth_flow,
+                                            None,
+                                            Some(format!("Code verification failed: {err}")),
+                                        )
+                                        .await;
+                                    }
+                                }
+                            });
+                        }
+                        UserAction::RuntimeAuthStatus => {
+                            let proxy = proxy_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+                            let pending_runtime_auth_flow =
+                                pending_runtime_auth_flow_actions.clone();
+                            handle.spawn(async move {
+                                emit_runtime_auth_state(
+                                    &proxy,
+                                    &runtime_sync,
+                                    &pending_runtime_auth_flow,
+                                    None,
+                                    None,
+                                )
+                                .await;
+                            });
+                        }
+                        UserAction::RuntimeAuthLogout => {
+                            let proxy = proxy_actions.clone();
+                            let runtime_sync = runtime_sync_actions.clone();
+                            let pending_runtime_auth_flow =
+                                pending_runtime_auth_flow_actions.clone();
+                            handle.spawn(async move {
+                                let clear_error = clear_runtime_auth_state().err();
+                                {
+                                    let mut pending = pending_runtime_auth_flow.lock().await;
+                                    *pending = None;
+                                }
+                                if let Some(sync) = runtime_sync.as_ref() {
+                                    sync.clear_auth_state().await;
+                                }
+                                if let Some(err) = clear_error {
+                                    emit_runtime_auth_state(
+                                        &proxy,
+                                        &runtime_sync,
+                                        &pending_runtime_auth_flow,
+                                        None,
+                                        Some(format!(
+                                            "Failed to clear runtime auth state: {err}"
+                                        )),
+                                    )
+                                    .await;
+                                } else {
+                                    emit_runtime_auth_state(
+                                        &proxy,
+                                        &runtime_sync,
+                                        &pending_runtime_auth_flow,
+                                        Some("Logged out. Runtime sync auth token cleared.".to_string()),
+                                        None,
+                                    )
+                                    .await;
+                                }
+                            });
+                        }
                         UserAction::Message {
                             session_id,
                             text,
@@ -2320,6 +2649,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     return;
                                 };
                                 let thread_id = session_state.thread_id.lock().await.clone();
+
                                 let Some(thread_id) = thread_id else {
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                                         message: json!({

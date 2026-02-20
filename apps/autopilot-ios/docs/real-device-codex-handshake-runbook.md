@@ -44,7 +44,7 @@ Desktop host:
 
 - `apps/autopilot-desktop/` is available and buildable.
 - Desktop has network access to the same OpenAgents environment as iOS.
-- Desktop has a valid WorkOS email-code login for runtime sync (`autopilot-desktop -- auth login`).
+- Desktop has a valid WorkOS email-code login for runtime sync (Runtime Login pane; CLI fallback available).
 
 iOS device:
 
@@ -64,13 +64,20 @@ Authenticate desktop with the same WorkOS user scope as iOS:
 
 ```bash
 cd /Users/christopherdavid/code/openagents
-cargo run -p autopilot-desktop -- auth login --email "<you@domain.com>"
+cargo run -p autopilot-desktop
 ```
 
-Launch desktop from repo root:
+In desktop UI:
+
+1. Open hotbar slot `AU` (`Auth`) to show Runtime Login pane.
+2. Enter your email, click `Send code`.
+3. Enter the verification code, click `Verify`.
+4. Confirm status in the pane (`Token: present`, user email shown).
+
+Optional CLI fallback (automation/headless):
 
 ```bash
-cargo run -p autopilot-desktop
+cargo run -p autopilot-desktop -- auth login --email "<you@domain.com>"
 ```
 
 Expected:
