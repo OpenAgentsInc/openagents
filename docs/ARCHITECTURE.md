@@ -170,7 +170,7 @@ This section clarifies the practical meaning of "single authority database" in t
 4. Runtime projector writes derived summaries to Khala (and optionally Convex during dual-publish migration windows).
 5. Clients consume:
    - authoritative control/status via Laravel<->runtime path
-   - low-latency projection badges/summaries via Khala WS subscriptions (`sync:v1`) or Convex until each surface migrates.
+   - low-latency projection badges/summaries via Khala WS subscriptions (`sync:v1`) with replay resume + heartbeat timeout semantics (or Convex until each surface migrates).
 
 ### Flow A1: iOS Codex handshake lane (current)
 

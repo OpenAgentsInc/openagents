@@ -18,6 +18,7 @@ Client -> server:
 
 - `sync:subscribe` (`Subscribe`)
 - `sync:unsubscribe` (topic list subset; no proto message in v1)
+- `sync:heartbeat` (keepalive; returns current topic watermarks)
 
 Server -> client:
 
@@ -43,6 +44,12 @@ Server -> client:
 | `sync:update_batch` | `UpdateBatch` | `updates[]`, `replay_complete`, `head_watermarks[]` |
 | `sync:heartbeat` | `Heartbeat` | `watermarks[]` |
 | `sync:error` | `Error` | `code`, `message`, optional `retry_after_ms`, optional `full_resync_required` |
+
+Server runtime behavior:
+
+1. Runtime emits periodic `sync:heartbeat` messages on subscribed channels.
+2. Client may send `sync:heartbeat` to refresh liveness and fetch current watermarks.
+3. Runtime can close idle channels after heartbeat timeout.
 
 ## Replay and Batch Limits (v1)
 
