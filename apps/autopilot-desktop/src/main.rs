@@ -73,7 +73,8 @@ use runtime_auth::{
 };
 use runtime_codex_proto::{
     RuntimeCodexStreamEvent, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
-    handshake_dedupe_key, merge_retry_cursor, parse_runtime_stream_events, stream_event_seq,
+    extract_ios_user_message, handshake_dedupe_key, merge_retry_cursor,
+    parse_runtime_stream_events, stream_event_seq,
 };
 
 const WINDOW_TITLE: &str = "Autopilot";
@@ -151,12 +152,14 @@ struct RuntimeCodexSync {
     heartbeat_started: Arc<AtomicBool>,
     synced_workers: Arc<tokio::sync::Mutex<HashSet<String>>>,
     stream_workers: Arc<tokio::sync::Mutex<HashSet<String>>>,
-    worker_sessions: Arc<tokio::sync::Mutex<HashMap<String, String>>>,
+    worker_sessions: Arc<tokio::sync::Mutex<HashMap<String, SessionId>>>,
     acked_handshakes: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    seen_ios_user_messages: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    action_tx: mpsc::Sender<UserAction>,
 }
 
 impl RuntimeCodexSync {
-    fn from_env(cwd: &str) -> Option<Self> {
+    fn from_env(cwd: &str, action_tx: mpsc::Sender<UserAction>) -> Option<Self> {
         let stored_auth = load_runtime_auth_state();
         let env_base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL)
             .ok()
@@ -220,6 +223,8 @@ impl RuntimeCodexSync {
             stream_workers: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             worker_sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             acked_handshakes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            seen_ios_user_messages: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            action_tx,
         })
     }
 
@@ -309,8 +314,8 @@ impl RuntimeCodexSync {
         let worker_id = self.worker_id_for_thread(thread_id);
         let session_id_text = session_id.map(|value| value.to_string());
 
-        if let Some(session_id_text) = session_id_text.clone() {
-            self.set_worker_session_id(&worker_id, &session_id_text)
+        if let Some(session_id) = session_id {
+            self.set_worker_session_id(&worker_id, session_id)
                 .await;
         }
 
@@ -531,6 +536,47 @@ impl RuntimeCodexSync {
             return Ok(());
         }
 
+        if let Some(incoming) = extract_ios_user_message(&event.payload) {
+            let dedupe_key = format!("{worker_id}::{}", incoming.message_id);
+            if self.is_ios_user_message_seen(&dedupe_key).await {
+                tracing::debug!(
+                    worker_id = %worker_id,
+                    message_id = %incoming.message_id,
+                    "runtime sync skipped duplicate ios user message"
+                );
+                return Ok(());
+            }
+
+            let Some(session_id) = self.resolve_worker_session_id(worker_id).await else {
+                return Err(format!(
+                    "runtime sync worker {worker_id} missing session mapping for ios message {}",
+                    incoming.message_id
+                ));
+            };
+
+            let action = UserAction::Message {
+                session_id,
+                text: incoming.text.clone(),
+                model: incoming.model.clone(),
+                reasoning: incoming.reasoning.clone(),
+            };
+
+            self.action_tx.send(action).map_err(|err| {
+                format!(
+                    "runtime sync failed to dispatch ios message {}: {}",
+                    incoming.message_id, err
+                )
+            })?;
+
+            self.mark_ios_user_message_seen(dedupe_key).await;
+            tracing::info!(
+                worker_id = %worker_id,
+                message_id = %incoming.message_id,
+                "runtime sync dispatched ios user message to desktop session"
+            );
+            return Ok(());
+        }
+
         let Some(handshake_id) = extract_ios_handshake_id(&event.payload) else {
             return Ok(());
         };
@@ -625,14 +671,14 @@ impl RuntimeCodexSync {
         Ok(parse_runtime_stream_events(&text))
     }
 
-    async fn set_worker_session_id(&self, worker_id: &str, session_id: &str) {
+    async fn set_worker_session_id(&self, worker_id: &str, session_id: SessionId) {
         let mut guard = self.worker_sessions.lock().await;
-        guard.insert(worker_id.to_string(), session_id.to_string());
+        guard.insert(worker_id.to_string(), session_id);
     }
 
     async fn desktop_session_id(&self, worker_id: &str) -> Option<String> {
         let guard = self.worker_sessions.lock().await;
-        guard.get(worker_id).cloned()
+        guard.get(worker_id).map(|value| value.to_string())
     }
 
     async fn is_handshake_acked(&self, worker_id: &str, handshake_id: &str) -> bool {
@@ -645,6 +691,38 @@ impl RuntimeCodexSync {
         let key = handshake_dedupe_key(worker_id, handshake_id);
         let mut guard = self.acked_handshakes.lock().await;
         guard.insert(key)
+    }
+
+    async fn is_ios_user_message_seen(&self, dedupe_key: &str) -> bool {
+        let guard = self.seen_ios_user_messages.lock().await;
+        guard.contains(dedupe_key)
+    }
+
+    async fn mark_ios_user_message_seen(&self, dedupe_key: String) {
+        let mut guard = self.seen_ios_user_messages.lock().await;
+        guard.insert(dedupe_key);
+    }
+
+    async fn resolve_worker_session_id(&self, worker_id: &str) -> Option<SessionId> {
+        if let Some(session_id) = self.session_id_from_map(worker_id).await {
+            return Some(session_id);
+        }
+
+        let path = format!("/api/runtime/codex/workers/{worker_id}");
+        let response = self.get_json(&path).await.ok()?;
+        let raw = response
+            .get("data")
+            .and_then(|data| data.get("metadata"))
+            .and_then(|metadata| metadata.get("session_id"))
+            .and_then(|value| value.as_str())?;
+        let session_id = parse_session_id(raw)?;
+        self.set_worker_session_id(worker_id, session_id).await;
+        Some(session_id)
+    }
+
+    async fn session_id_from_map(&self, worker_id: &str) -> Option<SessionId> {
+        let guard = self.worker_sessions.lock().await;
+        guard.get(worker_id).copied()
     }
 
     async fn get_json(&self, path: &str) -> Result<Value, String> {
@@ -729,6 +807,15 @@ fn sanitize_worker_component(value: &str) -> String {
     }
 
     out
+}
+
+fn parse_session_id(raw: &str) -> Option<SessionId> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    serde_json::from_value::<SessionId>(Value::String(trimmed.to_string())).ok()
 }
 
 fn resolve_codex_home() -> Option<PathBuf> {
@@ -1065,7 +1152,7 @@ fn main() -> Result<()> {
         .context("failed to create event loop")?;
     let proxy = event_loop.create_proxy();
     let (action_tx, action_rx) = mpsc::channel();
-    spawn_event_bridge(proxy, action_rx);
+    spawn_event_bridge(proxy, action_tx.clone(), action_rx);
     let mut app = App::new(action_tx);
     event_loop.run_app(&mut app).context("event loop failed")?;
     Ok(())
@@ -1612,7 +1699,11 @@ fn inset_bounds(bounds: Bounds, padding: f32) -> Bounds {
     )
 }
 
-fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver<UserAction>) {
+fn spawn_event_bridge(
+    proxy: EventLoopProxy<AppEvent>,
+    action_tx: mpsc::Sender<UserAction>,
+    action_rx: mpsc::Receiver<UserAction>,
+) {
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -1640,7 +1731,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let cwd_string = cwd.to_string_lossy().to_string();
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
             let workspace_id = workspace.workspace_id().to_string();
-            let runtime_sync = Arc::new(RuntimeCodexSync::from_env(&cwd_string));
+            let runtime_sync = Arc::new(RuntimeCodexSync::from_env(&cwd_string, action_tx.clone()));
             let pending_runtime_auth_flow =
                 Arc::new(tokio::sync::Mutex::new(None::<RuntimeSyncAuthFlow>));
             if let Some(sync) = runtime_sync.as_ref() {

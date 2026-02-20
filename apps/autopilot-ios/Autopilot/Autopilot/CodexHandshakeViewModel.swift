@@ -21,6 +21,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var handshakeState: HandshakeState = .idle
     @Published var statusMessage: String?
     @Published var errorMessage: String?
+    @Published private(set) var isSendingCode = false
+    @Published private(set) var isVerifyingCode = false
+    @Published var messageDraft: String = ""
+    @Published private(set) var isSendingMessage = false
     @Published var latestSnapshot: RuntimeCodexWorkerSnapshot?
     @Published var recentEvents: [RuntimeCodexStreamEvent] = []
     @Published var chatMessages: [CodexChatMessage] = []
@@ -28,13 +32,13 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var streamTask: Task<Void, Never>?
     private var handshakeTimeoutTask: Task<Void, Never>?
     private var streamCursor: Int = 0
+    private var nextCodeSendAllowedAt: Date?
     private var assistantMessageIndexByItemKey: [String: Int] = [:]
     private var reasoningMessageIndexByItemKey: [String: Int] = [:]
     private var toolMessageIndexByItemKey: [String: Int] = [:]
     private var assistantDeltaSourceByItemKey: [String: AgentDeltaSource] = [:]
     private var seenUserMessageKeys: Set<String> = []
     private var seenUserTurnIDs: Set<String> = []
-    private var lastUserMessageNormalized: String?
     private var agentDeltaAliasSources: [String: AgentDeltaSource] = [:]
     private var processedCodexEventSeqs: Set<Int> = []
     private var processedCodexEventSeqOrder: [Int] = []
@@ -49,9 +53,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
-    private static let streamTailMS = 1_000
-    private static let streamIdleSleepNS: UInt64 = 250_000_000
-    private static let streamReconnectSleepNS: UInt64 = 1_500_000_000
+    // Keep stream polls short so message deltas render with low latency on mobile.
+    private static let streamTailMS = 200
+    private static let streamIdleSleepNS: UInt64 = 40_000_000
+    private static let streamReconnectSleepNS: UInt64 = 300_000_000
     private static let aliasCacheLimit = 2_048
     private static let seqCacheLimit = 8_192
     private static let iso8601Parsers: [ISO8601DateFormatter] = {
@@ -79,6 +84,39 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     var environmentHost: String {
         Self.defaultBaseURL.host ?? "openagents.com"
+    }
+
+    var canSendMessage: Bool {
+        let trimmed = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return false
+        }
+        guard isAuthenticated else {
+            return false
+        }
+        guard !isSendingMessage else {
+            return false
+        }
+        return selectedWorkerID != nil || preferredWorker(from: workers) != nil
+    }
+
+    var canSendAuthCode: Bool {
+        let normalizedEmail = normalizeEmail(email)
+        guard isValidEmail(normalizedEmail) else {
+            return false
+        }
+        if let nextAllowed = nextCodeSendAllowedAt, now() < nextAllowed {
+            return false
+        }
+        return !isSendingCode && !isVerifyingCode
+    }
+
+    var canVerifyAuthCode: Bool {
+        let normalizedCode = verificationCode.replacingOccurrences(of: " ", with: "")
+        guard !normalizedCode.isEmpty else {
+            return false
+        }
+        return !isSendingCode && !isVerifyingCode
     }
 
     init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
@@ -125,15 +163,31 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     func sendEmailCode() async {
+        guard !isSendingCode, !isVerifyingCode else {
+            return
+        }
+
+        if let nextAllowed = nextCodeSendAllowedAt, now() < nextAllowed {
+            errorMessage = "Code already sent. Check your email or wait before requesting another."
+            return
+        }
+
         let normalizedEmail = normalizeEmail(email)
         guard isValidEmail(normalizedEmail) else {
             errorMessage = "Enter a valid email address first."
             return
         }
 
+        // Always start a fresh email-code session so server-side guest routes are not blocked by stale cookies.
+        RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
+
         authState = .sendingCode
+        isSendingCode = true
         errorMessage = nil
         statusMessage = "Sending sign-in code..."
+        defer {
+            isSendingCode = false
+        }
 
         do {
             try await makeAuthClient().sendEmailCode(email: normalizedEmail)
@@ -141,6 +195,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             defaults.set(normalizedEmail, forKey: emailKey)
             verificationCode = ""
             authState = .codeSent(email: normalizedEmail)
+            nextCodeSendAllowedAt = now().addingTimeInterval(30)
             statusMessage = "Code sent to \(normalizedEmail)."
         } catch {
             authState = .signedOut
@@ -150,6 +205,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     func verifyEmailCode() async {
+        guard !isSendingCode, !isVerifyingCode else {
+            return
+        }
+
         let normalizedCode = verificationCode.replacingOccurrences(of: " ", with: "")
         guard !normalizedCode.isEmpty else {
             errorMessage = "Enter your verification code first."
@@ -157,8 +216,12 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         authState = .verifying
+        isVerifyingCode = true
         errorMessage = nil
         statusMessage = "Verifying code..."
+        defer {
+            isVerifyingCode = false
+        }
 
         do {
             let session = try await makeAuthClient().verifyEmailCode(code: normalizedCode)
@@ -177,6 +240,10 @@ final class CodexHandshakeViewModel: ObservableObject {
 
             await refreshWorkers()
         } catch {
+            // If another verify request already succeeded, ignore late/stale failures.
+            if isAuthenticated {
+                return
+            }
             authState = .codeSent(email: email)
             errorMessage = formatError(error)
             statusMessage = nil
@@ -191,6 +258,11 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         authToken = ""
         defaults.removeObject(forKey: tokenKey)
+        RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
+        isSendingCode = false
+        isVerifyingCode = false
+        isSendingMessage = false
+        nextCodeSendAllowedAt = nil
 
         workers = []
         selectedWorkerID = nil
@@ -300,6 +372,78 @@ final class CodexHandshakeViewModel: ObservableObject {
         statusMessage = nil
     }
 
+    func sendUserMessage() async {
+        let trimmed = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        guard isAuthenticated else {
+            errorMessage = "Sign in first to send a message."
+            return
+        }
+
+        guard let client = makeClient() else {
+            errorMessage = "Sign in first to send a message."
+            return
+        }
+
+        if workers.isEmpty {
+            await refreshWorkers()
+        }
+
+        guard let worker = preferredWorker(from: workers) else {
+            errorMessage = "No active desktop worker found."
+            return
+        }
+
+        if selectedWorkerID != worker.workerID {
+            selectedWorkerID = worker.workerID
+        }
+
+        let workerID = worker.workerID
+        let messageID = "iosmsg-\(UUID().uuidString.lowercased())"
+        let occurredAt = iso8601(now())
+
+        messageDraft = ""
+        isSendingMessage = true
+        errorMessage = nil
+        defer {
+            isSendingMessage = false
+        }
+
+        // Optimistic local echo so mobile feels instant while runtime stream catches up.
+        appendUserMessage(
+            trimmed,
+            dedupeKey: "local:\(messageID)",
+            threadID: nil,
+            turnID: nil,
+            itemID: nil,
+            occurredAt: occurredAt
+        )
+
+        let payload: [String: JSONValue] = [
+            "source": .string("autopilot-ios"),
+            "method": .string("ios/user_message"),
+            "message_id": .string(messageID),
+            "occurred_at": .string(occurredAt),
+            "params": .object([
+                "message_id": .string(messageID),
+                "text": .string(trimmed),
+                "sent_from": .string("autopilot-ios"),
+            ]),
+        ]
+
+        do {
+            try await client.ingestWorkerEvent(workerID: workerID, eventType: "worker.event", payload: payload)
+            statusMessage = "Sent to \(shortWorkerID(workerID))."
+        } catch {
+            messageDraft = trimmed
+            errorMessage = formatError(error)
+            statusMessage = nil
+        }
+    }
+
     func connectStream() {
         if selectedWorkerID == nil, let worker = preferredWorker(from: workers) {
             selectedWorkerID = worker.workerID
@@ -376,10 +520,18 @@ final class CodexHandshakeViewModel: ObservableObject {
                     return
                 }
 
-                streamState = .reconnecting
-                errorMessage = formatError(error)
-                statusMessage = "Stream reconnecting for \(shortWorkerID(workerID))..."
-                try? await Task.sleep(nanoseconds: Self.streamReconnectSleepNS)
+                if let runtimeError = error as? RuntimeCodexApiError,
+                   runtimeError.code == .auth || runtimeError.status == 401 {
+                    streamState = .idle
+                    errorMessage = "Runtime stream unauthorized. Stay signed in, then reload workers."
+                    statusMessage = nil
+                    return
+                } else {
+                    streamState = .reconnecting
+                    errorMessage = formatError(error)
+                    statusMessage = "Stream reconnecting for \(shortWorkerID(workerID))..."
+                    try? await Task.sleep(nanoseconds: Self.streamReconnectSleepNS)
+                }
             }
         }
     }
@@ -941,17 +1093,10 @@ final class CodexHandshakeViewModel: ObservableObject {
                 return
             }
         }
-        let normalized = trimmed
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .lowercased()
-        if lastUserMessageNormalized == normalized {
-            return
-        }
         if seenUserMessageKeys.contains(dedupeKey) {
             return
         }
         seenUserMessageKeys.insert(dedupeKey)
-        lastUserMessageNormalized = normalized
         if let turnID {
             seenUserTurnIDs.insert(turnID)
         }
@@ -1375,7 +1520,6 @@ final class CodexHandshakeViewModel: ObservableObject {
         assistantDeltaSourceByItemKey = [:]
         seenUserMessageKeys = []
         seenUserTurnIDs = []
-        lastUserMessageNormalized = nil
         agentDeltaAliasSources = [:]
         processedCodexEventSeqs = []
         processedCodexEventSeqOrder = []

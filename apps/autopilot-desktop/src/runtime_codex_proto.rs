@@ -4,6 +4,7 @@ use serde_json::Value;
 const WORKER_EVENT_TYPE: &str = "worker.event";
 const IOS_HANDSHAKE_SOURCE: &str = "autopilot-ios";
 const IOS_HANDSHAKE_METHOD: &str = "ios/handshake";
+const IOS_USER_MESSAGE_METHOD: &str = "ios/user_message";
 const DESKTOP_ACK_SOURCE: &str = "autopilot-desktop";
 const DESKTOP_ACK_METHOD: &str = "desktop/handshake_ack";
 
@@ -11,6 +12,14 @@ const DESKTOP_ACK_METHOD: &str = "desktop/handshake_ack";
 pub struct RuntimeCodexStreamEvent {
     pub id: Option<u64>,
     pub payload: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IosUserMessage {
+    pub message_id: String,
+    pub text: String,
+    pub model: Option<String>,
+    pub reasoning: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,6 +147,55 @@ pub fn extract_desktop_handshake_ack_id(payload: &Value) -> Option<String> {
     }
 }
 
+pub fn extract_ios_user_message(payload: &Value) -> Option<IosUserMessage> {
+    let envelope = serde_json::from_value::<ProtoWorkerEventEnvelope>(payload.clone()).ok()?;
+    if envelope.event_type != WORKER_EVENT_TYPE {
+        return None;
+    }
+
+    let worker_payload = envelope.payload.as_object()?;
+    let source = non_empty(worker_payload.get("source")?.as_str()?)?;
+    let method = non_empty(worker_payload.get("method")?.as_str()?)?;
+    if source != IOS_HANDSHAKE_SOURCE || method != IOS_USER_MESSAGE_METHOD {
+        return None;
+    }
+
+    let params = worker_payload.get("params").and_then(|value| value.as_object());
+
+    let message_id = first_non_empty_string(&[
+        worker_payload.get("message_id"),
+        worker_payload.get("messageId"),
+        params.and_then(|value| value.get("message_id")),
+        params.and_then(|value| value.get("messageId")),
+    ])?;
+
+    let text = first_non_empty_string(&[
+        worker_payload.get("text"),
+        worker_payload.get("message"),
+        params.and_then(|value| value.get("text")),
+        params.and_then(|value| value.get("message")),
+    ])?;
+
+    let model = first_non_empty_string(&[
+        worker_payload.get("model"),
+        params.and_then(|value| value.get("model")),
+    ]);
+
+    let reasoning = first_non_empty_string(&[
+        worker_payload.get("reasoning"),
+        worker_payload.get("reasoning_effort"),
+        params.and_then(|value| value.get("reasoning")),
+        params.and_then(|value| value.get("reasoning_effort")),
+    ]);
+
+    Some(IosUserMessage {
+        message_id,
+        text,
+        model,
+        reasoning,
+    })
+}
+
 pub fn handshake_dedupe_key(worker_id: &str, handshake_id: &str) -> String {
     format!("{worker_id}::{handshake_id}")
 }
@@ -198,11 +256,21 @@ fn non_empty(raw: &str) -> Option<&str> {
     }
 }
 
+fn first_non_empty_string(values: &[Option<&Value>]) -> Option<String> {
+    values
+        .iter()
+        .filter_map(|value| value.and_then(|raw| raw.as_str()))
+        .filter_map(non_empty)
+        .map(|value| value.to_string())
+        .next()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         RuntimeCodexStreamEvent, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
-        handshake_dedupe_key, merge_retry_cursor, parse_runtime_stream_events, stream_event_seq,
+        extract_ios_user_message, handshake_dedupe_key, merge_retry_cursor,
+        parse_runtime_stream_events, stream_event_seq,
     };
     use serde_json::{Value, json};
     use std::collections::HashSet;
@@ -386,5 +454,54 @@ event: codex.worker.event\nid: 42\ndata: {\"seq\":42,\"eventType\":\"worker.even
             payload: json!({"seq": 77}),
         };
         assert_eq!(stream_event_seq(&event), Some(77));
+    }
+
+    #[test]
+    fn extract_ios_user_message_parses_worker_event_payload() {
+        let payload = json!({
+            "eventType": "worker.event",
+            "payload": {
+                "source": "autopilot-ios",
+                "method": "ios/user_message",
+                "message_id": "iosmsg-1",
+                "params": {
+                    "text": "hi from ios",
+                    "model": "gpt-5.2-codex",
+                    "reasoning": "low"
+                }
+            }
+        });
+
+        let message = extract_ios_user_message(&payload).expect("expected ios message");
+        assert_eq!(message.message_id, "iosmsg-1");
+        assert_eq!(message.text, "hi from ios");
+        assert_eq!(message.model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(message.reasoning.as_deref(), Some("low"));
+    }
+
+    #[test]
+    fn extract_ios_user_message_requires_non_empty_message_id_and_text() {
+        let missing_text = json!({
+            "eventType": "worker.event",
+            "payload": {
+                "source": "autopilot-ios",
+                "method": "ios/user_message",
+                "message_id": "iosmsg-2",
+                "params": {}
+            }
+        });
+        assert!(extract_ios_user_message(&missing_text).is_none());
+
+        let missing_id = json!({
+            "eventType": "worker.event",
+            "payload": {
+                "source": "autopilot-ios",
+                "method": "ios/user_message",
+                "params": {
+                    "text": "hello"
+                }
+            }
+        });
+        assert!(extract_ios_user_message(&missing_id).is_none());
     }
 }
