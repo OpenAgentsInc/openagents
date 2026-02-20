@@ -21,7 +21,7 @@ Purpose: lock which product surfaces consume Khala, which topics they subscribe 
 
 | Surface | Topic subscriptions | Initial hydration endpoints | Watermark storage | Status |
 |---|---|---|---|---|
-| Web Codex admin (`apps/openagents.com`) | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | Existing runtime-proxied endpoints in Laravel (`/api/runtime/codex/workers*`) + planned sync hydration endpoints (`/api/sync/v1/doc/:doc_key`, optional `/api/sync/v1/list/:collection`) | localStorage/IndexedDB | In progress: `@openagentsinc/khala-sync` wired behind `VITE_KHALA_SYNC_ENABLED` on admin surface |
+| Web Codex admin (`apps/openagents.com`) | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | Existing runtime-proxied endpoints in Laravel (`/api/runtime/codex/workers*`) + planned sync hydration endpoints (`/api/sync/v1/doc/:doc_key`, optional `/api/sync/v1/list/:collection`) | localStorage/IndexedDB | Implemented behind `VITE_KHALA_SYNC_ENABLED`; summary lane runs on Khala WS when enabled and retains legacy polling when disabled |
 | Mobile Codex workers (`apps/mobile`) | `runtime.codex_worker_summaries` | Existing runtime APIs used by screen today (`/api/runtime/codex/workers*`) + planned sync hydration endpoints for stale cursor recovery | AsyncStorage/SQLite | Planned; high-priority early migration |
 | Desktop status surfaces (`apps/desktop`) | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | Existing Laravel APIs for task and status retrieval + planned sync hydration endpoints | SQLite | Planned |
 | Lightning ops dashboards (`apps/lightning-ops`) | Not in Khala wave 1 | Convex-backed control-plane flows today; new Postgres-backed APIs in wave 2 | N/A in wave 1 | Deferred to Khala phase C |
