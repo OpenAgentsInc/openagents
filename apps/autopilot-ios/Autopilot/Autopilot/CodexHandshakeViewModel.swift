@@ -40,6 +40,15 @@ final class CodexHandshakeViewModel: ObservableObject {
     private static let streamTailMS = 4_000
     private static let streamIdleSleepNS: UInt64 = 250_000_000
     private static let streamReconnectSleepNS: UInt64 = 1_500_000_000
+    private static let iso8601Parsers: [ISO8601DateFormatter] = {
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let internetDateTime = ISO8601DateFormatter()
+        internetDateTime.formatOptions = [.withInternetDateTime]
+
+        return [withFractional, internetDateTime]
+    }()
 
     private var authToken: String {
         didSet {
@@ -411,6 +420,26 @@ final class CodexHandshakeViewModel: ObservableObject {
                 return lhsFresh > rhsFresh
             }
 
+            let lhsHeartbeat = timestampFromISO8601(lhs.lastHeartbeatAt)
+            let rhsHeartbeat = timestampFromISO8601(rhs.lastHeartbeatAt)
+            if lhsHeartbeat != rhsHeartbeat {
+                if let lhsHeartbeat, let rhsHeartbeat {
+                    return lhsHeartbeat > rhsHeartbeat
+                }
+
+                return lhsHeartbeat != nil
+            }
+
+            let lhsStarted = timestampFromISO8601(lhs.startedAt)
+            let rhsStarted = timestampFromISO8601(rhs.startedAt)
+            if lhsStarted != rhsStarted {
+                if let lhsStarted, let rhsStarted {
+                    return lhsStarted > rhsStarted
+                }
+
+                return lhsStarted != nil
+            }
+
             if lhs.latestSeq != rhs.latestSeq {
                 return lhs.latestSeq > rhs.latestSeq
             }
@@ -440,6 +469,20 @@ final class CodexHandshakeViewModel: ObservableObject {
         default:
             return 0
         }
+    }
+
+    private func timestampFromISO8601(_ raw: String?) -> TimeInterval? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+
+        for parser in Self.iso8601Parsers {
+            if let date = parser.date(from: raw) {
+                return date.timeIntervalSince1970
+            }
+        }
+
+        return nil
     }
 
     private func shortWorkerID(_ workerID: String) -> String {
