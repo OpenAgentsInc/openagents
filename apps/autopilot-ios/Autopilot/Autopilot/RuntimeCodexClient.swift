@@ -110,140 +110,59 @@ final class RuntimeCodexClient {
         )
     }
 
-    func streamWorker(workerID: String, cursor: Int, tailMS: Int = 200) async throws -> RuntimeCodexStreamBatch {
-        let normalizedCursor = max(0, cursor)
-        let normalizedTailMS = max(100, tailMS)
-        let body = try await requestText(
-            path: "/api/runtime/codex/workers/\(workerID.urlPathEncoded)/stream",
-            queryItems: [
-                URLQueryItem(name: "cursor", value: String(normalizedCursor)),
-                URLQueryItem(name: "tail_ms", value: String(normalizedTailMS)),
-            ]
+    func mintSyncToken(scopes: [String] = ["runtime.codex_worker_summaries"]) async throws -> RuntimeCodexSyncToken {
+        let normalizedScopes = Array(
+            Set(
+                scopes
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        ).sorted()
+
+        let response: DataResponse<RuntimeCodexSyncToken> = try await requestJSON(
+            path: "/api/sync/token",
+            method: "POST",
+            body: SyncTokenRequest(scopes: normalizedScopes),
+            headers: ["X-Client": "autopilot-ios"]
         )
 
-        let events = Self.parseSSEEvents(raw: body)
-        let nextCursor = events.reduce(normalizedCursor) { partial, event in
-            max(partial, event.cursorHint ?? partial)
+        guard let data = response.data else {
+            throw RuntimeCodexApiError(message: "sync_token_missing", code: .unknown, status: nil)
         }
 
-        return RuntimeCodexStreamBatch(events: events, nextCursor: nextCursor)
+        let token = data.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            throw RuntimeCodexApiError(message: "sync_token_missing", code: .unknown, status: nil)
+        }
+
+        return data
     }
 
-    static func parseSSEEvents(raw: String) -> [RuntimeCodexStreamEvent] {
-        var events: [RuntimeCodexStreamEvent] = []
-        let jsonDecoder = JSONDecoder()
-        let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
-        var currentID: Int?
-        var currentEvent = "message"
-        var dataLines: [String] = []
-        var sawEventFields = false
-
-        func flushCurrentEvent() {
-            defer {
-                currentID = nil
-                currentEvent = "message"
-                dataLines = []
-                sawEventFields = false
-            }
-
-            guard !dataLines.isEmpty else {
-                return
-            }
-
-            let dataRaw = dataLines.joined(separator: "\n")
-            let payload: JSONValue
-
-            if let data = dataRaw.data(using: .utf8),
-               let decoded = try? jsonDecoder.decode(JSONValue.self, from: data) {
-                payload = decoded
-            } else {
-                payload = .string(dataRaw)
-            }
-
-            events.append(
-                RuntimeCodexStreamEvent(
-                    id: currentID,
-                    event: currentEvent,
-                    payload: payload,
-                    rawData: dataRaw
-                )
-            )
+    func syncWebSocketURL(token: String) throws -> URL {
+        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RuntimeCodexApiError(message: "sync_token_missing", code: .invalid, status: nil)
         }
 
-        for rawLine in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(rawLine)
-
-            if line.isEmpty {
-                flushCurrentEvent()
-                continue
-            }
-
-            if line.hasPrefix("id:") {
-                // Some upstream streams omit blank separators; treat a new `id:` as a frame boundary.
-                if !dataLines.isEmpty {
-                    flushCurrentEvent()
-                }
-
-                let rawID = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
-                currentID = Int(rawID)
-                sawEventFields = true
-                continue
-            }
-
-            if line.hasPrefix("event:") {
-                let rawEvent = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-                currentEvent = rawEvent.isEmpty ? "message" : rawEvent
-                sawEventFields = true
-                continue
-            }
-
-            if line.hasPrefix("data:") {
-                let rawData = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-                dataLines.append(rawData)
-                sawEventFields = true
-                continue
-            }
-
-            // If upstream folds data lines without repeating `data:`, append to previous payload line.
-            if sawEventFields {
-                if let last = dataLines.indices.last {
-                    dataLines[last].append("\n" + line)
-                } else {
-                    dataLines.append(line)
-                }
-            }
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw RuntimeCodexApiError(message: "invalid_base_url", code: .invalid, status: nil)
         }
 
-        flushCurrentEvent()
-        return events
-    }
-
-    private func requestText(path: String, queryItems: [URLQueryItem], headers: [String: String] = [:]) async throws -> String {
-        var request = try makeRequest(path: path, method: "GET", queryItems: queryItems, headers: headers)
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                throw RuntimeCodexApiError(message: "non_http_response", code: .network, status: nil)
-            }
-
-            let text = String(data: data, encoding: .utf8) ?? ""
-
-            if !(200..<300).contains(http.statusCode) {
-                throw mapResponseError(status: http.statusCode, body: text)
-            }
-
-            return text
-        } catch let error as RuntimeCodexApiError {
-            throw error
-        } catch {
-            throw RuntimeCodexApiError(
-                message: "network_error: \(error.localizedDescription)",
-                code: .network,
-                status: nil
-            )
+        if components.scheme == "https" {
+            components.scheme = "wss"
+        } else {
+            components.scheme = "ws"
         }
+        components.path = "/sync/socket/websocket"
+        components.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "vsn", value: "2.0.0"),
+        ]
+
+        guard let url = components.url else {
+            throw RuntimeCodexApiError(message: "invalid_sync_websocket_url", code: .invalid, status: nil)
+        }
+
+        return url
     }
 
     private func requestJSON<Response: Decodable, Body: Encodable>(
@@ -432,6 +351,10 @@ private struct AuthVerifyResponse: Decodable {
 private struct AuthVerifyUser: Decodable {
     let id: LossyString?
     let email: String?
+}
+
+private struct SyncTokenRequest: Encodable {
+    let scopes: [String]
 }
 
 private struct LossyString: Decodable {

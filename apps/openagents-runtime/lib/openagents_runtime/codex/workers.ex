@@ -14,8 +14,13 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   alias OpenAgentsRuntime.Khala.ProjectionCheckpoint
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Security.Sanitizer
+  alias OpenAgentsRuntime.Sync.Notifier, as: SyncNotifier
+  alias OpenAgentsRuntime.Sync.PayloadHash
+  alias OpenAgentsRuntime.Sync.StreamEvent
+  alias OpenAgentsRuntime.Sync.WatermarkAllocator
 
   @all_topic "runtime:codex_workers"
+  @sync_worker_events_topic "runtime.codex_worker_events"
   @default_heartbeat_stale_after_ms 120_000
 
   @type principal :: %{optional(:user_id) => integer(), optional(:guest_scope) => String.t()}
@@ -240,10 +245,14 @@ defmodule OpenAgentsRuntime.Codex.Workers do
           payload: payload
         })
       end)
+      |> Multi.run(:sync_stream_event, fn repo, %{event: event} ->
+        append_sync_stream_event(repo, event)
+      end)
 
     case Repo.transaction(multi) do
-      {:ok, %{event: event}} ->
+      {:ok, %{event: event, sync_stream_event: sync_watermark}} ->
         broadcast_event(worker_id, event.seq)
+        _ = SyncNotifier.broadcast_stream_event(@sync_worker_events_topic, sync_watermark)
         _ = project_khala_summary(worker_id)
         {:ok, event}
 
@@ -256,6 +265,51 @@ defmodule OpenAgentsRuntime.Codex.Workers do
       {:error, _step, reason, _changes} ->
         {:error, reason}
     end
+  end
+
+  defp append_sync_stream_event(repo, %WorkerEvent{} = event) do
+    payload = sync_stream_payload(event)
+    payload_hash = :crypto.hash(:sha256, PayloadHash.canonical_json(payload))
+
+    with {:ok, watermark} <- WatermarkAllocator.next(@sync_worker_events_topic),
+         {:ok, _stream_event} <-
+           insert_sync_stream_event(repo, event, payload, payload_hash, watermark) do
+      {:ok, watermark}
+    end
+  end
+
+  defp insert_sync_stream_event(repo, event, payload, payload_hash, watermark) do
+    attrs = %{
+      topic: @sync_worker_events_topic,
+      watermark: watermark,
+      doc_key: sync_stream_doc_key(event.worker_id, event.seq),
+      doc_version: event.seq,
+      payload: payload,
+      payload_hash: payload_hash
+    }
+
+    case repo.insert(StreamEvent.changeset(%StreamEvent{}, attrs)) do
+      {:ok, stream_event} -> {:ok, stream_event}
+      {:error, reason} -> {:error, {:sync_stream_event_insert_failed, reason}}
+    end
+  end
+
+  defp sync_stream_doc_key(worker_id, seq),
+    do: "runtime/codex_worker_event:#{worker_id}:#{seq}"
+
+  defp sync_stream_payload(%WorkerEvent{} = event) do
+    occurred_at = maybe_iso8601(event.inserted_at)
+
+    %{
+      "workerId" => event.worker_id,
+      "worker_id" => event.worker_id,
+      "seq" => event.seq,
+      "eventType" => event.event_type,
+      "event_type" => event.event_type,
+      "payload" => event.payload || %{},
+      "occurredAt" => occurred_at,
+      "occurred_at" => occurred_at
+    }
   end
 
   @spec list_after(String.t(), non_neg_integer()) :: [WorkerEvent.t()]

@@ -12,6 +12,7 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
 
   @run_topic "runtime.run_summaries"
   @worker_topic "runtime.codex_worker_summaries"
+  @worker_events_topic "runtime.codex_worker_events"
 
   test "run_once prunes expired rows and emits retention telemetry" do
     now = ~U[2026-02-20 12:00:00.000000Z]
@@ -31,13 +32,21 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
     assert summary.deleted == 1
     assert summary.oldest_retained[@run_topic] == 2
     assert summary.oldest_retained[@worker_topic] == nil
+    assert summary.oldest_retained[@worker_events_topic] == nil
 
     assert_receive {:retention_cycle, measurements, metadata}
     assert measurements.deleted == 1
     assert metadata.component == "sync_retention_job"
 
     assert_receive {:retention_topic, topic_measurements, topic_metadata}
-    assert topic_metadata.event_type in [@run_topic, @worker_topic, "runtime.notifications"]
+
+    assert topic_metadata.event_type in [
+             @run_topic,
+             @worker_topic,
+             @worker_events_topic,
+             "runtime.notifications"
+           ]
+
     assert topic_measurements.count == 1
 
     remaining =
@@ -58,6 +67,7 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
     assert summary.deleted == 0
     assert summary.oldest_retained[@run_topic] == nil
     assert summary.oldest_retained[@worker_topic] == nil
+    assert summary.oldest_retained[@worker_events_topic] == nil
     assert summary.oldest_retained["runtime.notifications"] == nil
   end
 

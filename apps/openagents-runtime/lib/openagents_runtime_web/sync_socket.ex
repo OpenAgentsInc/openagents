@@ -10,6 +10,7 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
   @known_topics MapSet.new([
                   "runtime.run_summaries",
                   "runtime.codex_worker_summaries",
+                  "runtime.codex_worker_events",
                   "runtime.notifications"
                 ])
 

@@ -45,6 +45,7 @@ Projector-owned document keys:
 
 - `runtime/run_summary:<run_id>`
 - `runtime/codex_worker_summary:<worker_id>`
+- `runtime/codex_worker_event:<worker_id>:<seq>` (Codex event lane; streamed via `runtime.codex_worker_events`)
 
 ## Projection Contract
 

@@ -16,6 +16,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
 
   @run_topic "runtime.run_summaries"
   @worker_topic "runtime.codex_worker_summaries"
+  @worker_events_topic "runtime.codex_worker_events"
 
   @connection_event [:openagents_runtime, :sync, :socket, :connection]
   @heartbeat_event [:openagents_runtime, :sync, :socket, :heartbeat]
@@ -91,6 +92,27 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       "topics" => [@run_topic],
       "current_watermarks" => [
         %{"topic" => @run_topic, "watermark" => 0}
+      ]
+    }
+  end
+
+  test "authenticated client can subscribe to codex worker events topic" do
+    token =
+      valid_sync_jwt(
+        oa_org_id: "org_123",
+        oa_sync_scopes: [@worker_events_topic]
+      )
+
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+    assert reply["allowed_topics"] == [@worker_events_topic]
+
+    ref = push(socket, "sync:subscribe", %{"topics" => [@worker_events_topic]})
+
+    assert_reply ref, :ok, %{
+      "topics" => [@worker_events_topic],
+      "current_watermarks" => [
+        %{"topic" => @worker_events_topic, "watermark" => 0}
       ]
     }
   end

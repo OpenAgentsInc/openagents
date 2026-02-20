@@ -239,7 +239,7 @@ Detailed surface contract lives in `docs/sync/SURFACES.md`.
 High-level:
 
 - Web/mobile/desktop consume Khala for reactive runtime summaries behind flags.
-- iOS currently uses runtime SSE as primary live lane.
+- Autopilot iOS uses Khala WS as the primary live Codex event lane (`runtime.codex_worker_events`).
 - Lightning control-plane does not depend on Khala for authority operations.
 
 ## Laravel Postgres vs Runtime Postgres in Khala Context
