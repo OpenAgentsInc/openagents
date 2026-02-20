@@ -41,7 +41,8 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     with {:ok, normalized_topics} <- normalize_topics(Map.get(payload, "topics")),
          :ok <- ensure_known_topics(normalized_topics),
          :ok <- ensure_allowed_topics(normalized_topics, socket.assigns[:allowed_topics] || []),
-         {:ok, resume_after} <- parse_resume_after(Map.get(payload, "resume_after")) do
+         {:ok, resume_after} <- parse_resume_after(Map.get(payload, "resume_after")),
+         :ok <- ensure_fresh_resume(normalized_topics, resume_after) do
       replay_batch_size = replay_batch_size(payload)
 
       socket = subscribe_new_topics(socket, normalized_topics)
@@ -73,6 +74,11 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
             "code" => "forbidden_topic",
             "forbidden_topics" => forbidden_topics
           }}, socket}
+
+      {:error, {:stale_cursor, stale_topics}} ->
+        error_payload = stale_cursor_payload(stale_topics)
+        push(socket, "sync:error", error_payload)
+        {:reply, {:error, error_payload}, socket}
     end
   end
 
@@ -250,6 +256,33 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     if forbidden == [], do: :ok, else: {:error, {:forbidden_topic, forbidden}}
   end
 
+  defp ensure_fresh_resume(topics, resume_after) when is_map(resume_after) do
+    stale_topics =
+      topics
+      |> Enum.filter(&Map.has_key?(resume_after, &1))
+      |> Enum.reduce([], fn topic, acc ->
+        resume_watermark = Map.fetch!(resume_after, topic)
+        oldest_watermark = Replay.oldest_watermark(topic)
+        retention_floor = retention_floor(oldest_watermark)
+
+        if resume_watermark < retention_floor do
+          [
+            %{
+              "topic" => topic,
+              "resume_after" => resume_watermark,
+              "retention_floor" => retention_floor
+            }
+            | acc
+          ]
+        else
+          acc
+        end
+      end)
+      |> Enum.reverse()
+
+    if stale_topics == [], do: :ok, else: {:error, {:stale_cursor, stale_topics}}
+  end
+
   defp subscribe_new_topics(socket, topics) do
     current = socket.assigns[:subscribed_topics] || MapSet.new()
 
@@ -292,5 +325,19 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
 
   defp subscription_id(socket) do
     "sub_#{socket.id || System.unique_integer([:positive])}"
+  end
+
+  defp retention_floor(nil), do: 0
+
+  defp retention_floor(oldest_watermark) when is_integer(oldest_watermark),
+    do: max(oldest_watermark - 1, 0)
+
+  defp stale_cursor_payload(stale_topics) do
+    %{
+      "code" => "stale_cursor",
+      "message" => "cursor is older than retention floor",
+      "full_resync_required" => true,
+      "stale_topics" => stale_topics
+    }
   end
 end

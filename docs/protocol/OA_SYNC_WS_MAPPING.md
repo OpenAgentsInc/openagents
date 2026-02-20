@@ -84,6 +84,23 @@ Protocol remains unchanged between inline and pointer modes.
 
 `SYNC_ERROR_CODE_STALE_CURSOR` should set `full_resync_required=true`.
 
+Current runtime payload shape for stale cursor (`sync:error` event and subscribe error reply):
+
+```json
+{
+  "code": "stale_cursor",
+  "message": "cursor is older than retention floor",
+  "full_resync_required": true,
+  "stale_topics": [
+    {
+      "topic": "runtime.run_summaries",
+      "resume_after": 10,
+      "retention_floor": 42
+    }
+  ]
+}
+```
+
 ## Example: Subscribe
 
 ```json
