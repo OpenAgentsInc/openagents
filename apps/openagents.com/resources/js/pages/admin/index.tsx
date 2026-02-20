@@ -281,6 +281,53 @@ function workerSummaryFromSyncUpdate(
     };
 }
 
+function workerSummaryFromSyncPayload(
+    update: SyncUpdateBatch['updates'][number],
+): CodexWorkerSummary | null {
+    if (!isObjectRecord(update.payload)) {
+        return null;
+    }
+
+    const payload = update.payload;
+    const workerId = inferWorkerId(payload, update.doc_key);
+    const status = parseWorkerStatus(payload.status);
+
+    if (workerId === '' || !status) {
+        return null;
+    }
+
+    return {
+        worker_id: workerId,
+        status,
+        latest_seq:
+            typeof payload.latest_seq === 'number' && Number.isFinite(payload.latest_seq)
+                ? payload.latest_seq
+                : 0,
+        workspace_ref:
+            typeof payload.workspace_ref === 'string' ? payload.workspace_ref : null,
+        codex_home_ref:
+            typeof payload.codex_home_ref === 'string'
+                ? payload.codex_home_ref
+                : null,
+        adapter:
+            typeof payload.adapter === 'string' && payload.adapter.trim() !== ''
+                ? payload.adapter
+                : 'unknown',
+        metadata: isObjectRecord(payload.metadata) ? payload.metadata : {},
+        started_at:
+            typeof payload.started_at === 'string' ? payload.started_at : null,
+        stopped_at:
+            typeof payload.stopped_at === 'string' ? payload.stopped_at : null,
+        last_heartbeat_at:
+            typeof payload.last_heartbeat_at === 'string'
+                ? payload.last_heartbeat_at
+                : null,
+        updated_at:
+            typeof payload.updated_at === 'string' ? payload.updated_at : null,
+        convex_projection: null,
+    };
+}
+
 export default function AdminIndex() {
     const [workers, setWorkers] = useState<CodexWorkerSummary[]>([]);
     const [workersLoading, setWorkersLoading] = useState(false);
@@ -427,6 +474,10 @@ export default function AdminIndex() {
     }, [loadWorkers]);
 
     useEffect(() => {
+        if (khalaSyncEnabled) {
+            return;
+        }
+
         const timer = window.setInterval(() => {
             void loadWorkers();
         }, 5000);
@@ -470,29 +521,63 @@ export default function AdminIndex() {
                 return token;
             },
             onUpdateBatch: (batch) => {
+                const summaryUpdates = batch.updates.filter(
+                    (candidate) =>
+                        candidate.topic === 'runtime.codex_worker_summaries',
+                );
+
+                if (summaryUpdates.length === 0) {
+                    return;
+                }
+
+                if (
+                    summaryUpdates.some(
+                        (candidate) => !isObjectRecord(candidate.payload),
+                    )
+                ) {
+                    void loadWorkersRef.current();
+                    return;
+                }
+
                 setWorkers((previous) => {
-                    if (previous.length === 0) return previous;
+                    const updatesByWorkerId = new Map<
+                        string,
+                        SyncUpdateBatch['updates'][number]
+                    >();
+
+                    for (const update of summaryUpdates) {
+                        if (!isObjectRecord(update.payload)) {
+                            continue;
+                        }
+
+                        const workerId = inferWorkerId(
+                            update.payload,
+                            update.doc_key,
+                        );
+
+                        if (workerId === '') {
+                            continue;
+                        }
+
+                        const existing = updatesByWorkerId.get(workerId);
+                        if (
+                            !existing ||
+                            update.doc_version >= existing.doc_version
+                        ) {
+                            updatesByWorkerId.set(workerId, update);
+                        }
+                    }
+
+                    if (updatesByWorkerId.size === 0) {
+                        return previous;
+                    }
 
                     let changed = false;
+                    const seenWorkerIds = new Set<string>();
 
                     const next = previous.map((worker) => {
-                        const update = batch.updates.find((candidate) => {
-                            if (
-                                candidate.topic !==
-                                'runtime.codex_worker_summaries'
-                            ) {
-                                return false;
-                            }
-
-                            if (
-                                !isObjectRecord(candidate.payload) &&
-                                !candidate.doc_key.includes(worker.worker_id)
-                            ) {
-                                return false;
-                            }
-
-                            return true;
-                        });
+                        seenWorkerIds.add(worker.worker_id);
+                        const update = updatesByWorkerId.get(worker.worker_id);
 
                         if (!update) return worker;
 
@@ -502,6 +587,20 @@ export default function AdminIndex() {
                         changed = true;
                         return merged;
                     });
+
+                    for (const [workerId, update] of updatesByWorkerId) {
+                        if (seenWorkerIds.has(workerId)) {
+                            continue;
+                        }
+
+                        const created = workerSummaryFromSyncPayload(update);
+                        if (!created) {
+                            continue;
+                        }
+
+                        next.push(created);
+                        changed = true;
+                    }
 
                     return changed ? next : previous;
                 });

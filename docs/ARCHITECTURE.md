@@ -227,6 +227,7 @@ This section clarifies the practical meaning of "single authority database" in t
 3. Runtime stream endpoints are routed through an auth-only internal pipeline so SSE requests with `Accept: text/event-stream` are accepted.
 4. Convex token bridge (`/api/convex/token`) remains active for migration; `/api/sync/token` is available for Khala clients.
 5. Khala sync socket auth validates JWT `kid` against runtime HS256 keyring (current + previous keys) for rotation-safe verification.
+6. Web Codex admin summary updates can run on Khala WS behind `VITE_KHALA_SYNC_ENABLED`; disabled mode keeps legacy polling lane behavior.
 
 ### Current Cloud SQL guardrails
 
