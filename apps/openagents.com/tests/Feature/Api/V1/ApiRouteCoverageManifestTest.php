@@ -93,6 +93,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'POST api/runtime/skills/tool-specs',
         'POST api/runtime/tools/execute',
         'POST api/shouts',
+        'POST api/sync/token',
         'POST api/tokens',
         'POST api/webhooks/resend',
         'POST api/whispers',
