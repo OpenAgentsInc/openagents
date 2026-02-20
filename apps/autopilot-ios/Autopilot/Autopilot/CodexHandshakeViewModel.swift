@@ -414,6 +414,12 @@ final class CodexHandshakeViewModel: ObservableObject {
         let pool = desktopRunning.isEmpty ? (running.isEmpty ? workers : running) : desktopRunning
 
         return pool.sorted { lhs, rhs in
+            let lhsShared = sharedWorkerRank(lhs)
+            let rhsShared = sharedWorkerRank(rhs)
+            if lhsShared != rhsShared {
+                return lhsShared > rhsShared
+            }
+
             let lhsFresh = freshnessRank(lhs)
             let rhsFresh = freshnessRank(rhs)
             if lhsFresh != rhsFresh {
@@ -469,6 +475,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         default:
             return 0
         }
+    }
+
+    private func sharedWorkerRank(_ worker: RuntimeCodexWorkerSummary) -> Int {
+        worker.workerID.contains(":shared") ? 1 : 0
     }
 
     private func timestampFromISO8601(_ raw: String?) -> TimeInterval? {
