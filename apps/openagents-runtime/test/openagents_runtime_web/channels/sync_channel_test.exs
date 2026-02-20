@@ -5,6 +5,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
   import OpenAgentsRuntimeWeb.AuthHelpers
 
   alias OpenAgentsRuntime.Repo
+  alias OpenAgentsRuntime.Sync.ConnectionTracker
   alias OpenAgentsRuntime.Sync.Notifier
   alias OpenAgentsRuntime.Sync.RetentionJob
   alias OpenAgentsRuntime.Sync.StreamEvent
@@ -15,6 +16,18 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
 
   @run_topic "runtime.run_summaries"
   @worker_topic "runtime.codex_worker_summaries"
+
+  @connection_event [:openagents_runtime, :sync, :socket, :connection]
+  @heartbeat_event [:openagents_runtime, :sync, :socket, :heartbeat]
+  @reconnect_event [:openagents_runtime, :sync, :socket, :reconnect]
+  @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
+  @lag_event [:openagents_runtime, :sync, :replay, :lag]
+  @catchup_event [:openagents_runtime, :sync, :replay, :catchup]
+
+  setup do
+    ConnectionTracker.reset_for_tests()
+    :ok
+  end
 
   test "socket rejects missing token" do
     assert :error = connect(SyncSocket, %{})
@@ -256,6 +269,83 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     }
   end
 
+  test "subscribe emits reconnect/lag/catch-up telemetry" do
+    insert_stream_event(@run_topic, 1, %{"value" => "one"})
+    insert_stream_event(@run_topic, 2, %{"value" => "two"})
+    insert_stream_event(@run_topic, 3, %{"value" => "three"})
+
+    telemetry_refs = attach_sync_telemetry(self())
+
+    on_exit(fn ->
+      Enum.each(telemetry_refs, &:telemetry.detach/1)
+    end)
+
+    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    assert_receive {:sync_connection, connection_measurements, connection_metadata}
+    assert connection_measurements.active_connections >= 1
+    assert connection_metadata.action == "connect"
+
+    ref =
+      push(socket, "sync:subscribe", %{
+        "topics" => [@run_topic],
+        "resume_after" => %{@run_topic => 1}
+      })
+
+    assert_push "sync:update_batch", %{"updates" => updates}
+    assert Enum.map(updates, & &1["watermark"]) == [2, 3]
+
+    assert_reply ref, :ok, _reply
+
+    assert_receive {:sync_reconnect, %{count: 1}, %{status: "ok"}}
+    assert_receive {:sync_lag, lag_measurements, lag_metadata}
+    assert lag_measurements.lag_events >= 0
+    assert lag_metadata.event_type == @run_topic
+    assert_receive {:sync_catchup, catchup_measurements, %{status: "ok"}}
+    assert catchup_measurements.duration_ms >= 0
+  end
+
+  test "heartbeat roundtrip and timeout handling" do
+    old_interval = Application.get_env(:openagents_runtime, :khala_sync_heartbeat_interval_ms)
+    old_timeout = Application.get_env(:openagents_runtime, :khala_sync_heartbeat_timeout_ms)
+
+    Application.put_env(:openagents_runtime, :khala_sync_heartbeat_interval_ms, 10)
+    Application.put_env(:openagents_runtime, :khala_sync_heartbeat_timeout_ms, 20)
+
+    on_exit(fn ->
+      Application.put_env(:openagents_runtime, :khala_sync_heartbeat_interval_ms, old_interval)
+      Application.put_env(:openagents_runtime, :khala_sync_heartbeat_timeout_ms, old_timeout)
+    end)
+
+    telemetry_refs = attach_sync_telemetry(self())
+
+    on_exit(fn ->
+      Enum.each(telemetry_refs, &:telemetry.detach/1)
+    end)
+
+    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    ref = push(socket, "sync:subscribe", %{"topics" => [@run_topic]})
+    assert_reply ref, :ok, _reply
+
+    assert_push "sync:heartbeat", %{"watermarks" => _watermarks}
+    assert_receive {:sync_heartbeat, %{count: 1}, %{status: "server"}}
+
+    heartbeat_ref = push(socket, "sync:heartbeat", %{})
+
+    assert_push "sync:heartbeat", %{"watermarks" => _watermarks}
+    assert_reply heartbeat_ref, :ok, %{"watermarks" => _watermarks}
+    assert_receive {:sync_heartbeat, %{count: 1}, %{status: "client"}}
+
+    Process.sleep(45)
+
+    assert_receive {:sync_timeout, %{count: 1}, %{status: "timeout"}}, 200
+  end
+
   defp insert_stream_event(
          topic,
          watermark,
@@ -273,5 +363,31 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
         inserted_at: inserted_at
       }
     ])
+  end
+
+  defp attach_sync_telemetry(test_pid) do
+    events = [
+      {"sync-connection-#{System.unique_integer([:positive])}", @connection_event,
+       :sync_connection},
+      {"sync-heartbeat-#{System.unique_integer([:positive])}", @heartbeat_event, :sync_heartbeat},
+      {"sync-reconnect-#{System.unique_integer([:positive])}", @reconnect_event, :sync_reconnect},
+      {"sync-timeout-#{System.unique_integer([:positive])}", @timeout_event, :sync_timeout},
+      {"sync-lag-#{System.unique_integer([:positive])}", @lag_event, :sync_lag},
+      {"sync-catchup-#{System.unique_integer([:positive])}", @catchup_event, :sync_catchup}
+    ]
+
+    Enum.map(events, fn {handler_id, event_name, message_tag} ->
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          event_name,
+          fn _event, measurements, metadata, pid ->
+            send(pid, {message_tag, measurements, metadata})
+          end,
+          test_pid
+        )
+
+      handler_id
+    end)
   end
 end

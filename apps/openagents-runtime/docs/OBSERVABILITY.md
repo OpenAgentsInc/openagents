@@ -58,6 +58,14 @@ High-cardinality keys explicitly prohibited from metric labels:
 - `[:openagents_runtime, :sync, :retention, ...]`
   - `:cycle` (deleted row counts per retention pass)
   - `:topic` (oldest retained watermark visibility by topic)
+- `[:openagents_runtime, :sync, :socket, ...]`
+  - `:connection` (connect/disconnect counts + active connection gauge source)
+  - `:heartbeat` (server/client heartbeat traffic)
+  - `:reconnect` (resume reconnect count)
+  - `:timeout` (heartbeat timeout disconnect count)
+- `[:openagents_runtime, :sync, :replay, ...]`
+  - `:lag` (topic replay lag at catch-up/live boundaries)
+  - `:catchup` (replay catch-up duration distribution)
 - `[:openagents_runtime, :run_events, :notify]`
   - LISTEN/NOTIFY wakeup path
 - `[:openagents_runtime, :agent_process, :stats]`

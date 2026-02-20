@@ -5,9 +5,11 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
 
   use OpenAgentsRuntimeWeb, :channel
 
+  alias OpenAgentsRuntime.Sync.ConnectionTracker
   alias OpenAgentsRuntime.Sync.Notifier
   alias OpenAgentsRuntime.Sync.Replay
   alias OpenAgentsRuntime.Sync.StreamEvent
+  alias OpenAgentsRuntime.Telemetry.Events
 
   @known_topics MapSet.new([
                   "runtime.run_summaries",
@@ -16,10 +18,21 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
                 ])
 
   @default_replay_batch_size 200
+  @default_heartbeat_interval_ms 15_000
+  @default_heartbeat_timeout_ms 60_000
+
+  @connection_event [:openagents_runtime, :sync, :socket, :connection]
+  @heartbeat_event [:openagents_runtime, :sync, :socket, :heartbeat]
+  @reconnect_event [:openagents_runtime, :sync, :socket, :reconnect]
+  @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
+  @lag_event [:openagents_runtime, :sync, :replay, :lag]
+  @catchup_event [:openagents_runtime, :sync, :replay, :catchup]
 
   @impl true
   def join("sync:v1", _params, socket) do
+    now_ms = monotonic_ms()
     allowed_topics = socket.assigns[:allowed_topics] || []
+    active_connections = ConnectionTracker.increment()
 
     response = %{
       "subscription_id" => subscription_id(socket),
@@ -27,17 +40,24 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
       "current_watermarks" => []
     }
 
+    emit_connection("connect", active_connections, "ok")
+
     {:ok, response,
      socket
      |> assign(:subscription_id, response["subscription_id"])
      |> assign(:subscribed_topics, MapSet.new())
-     |> assign(:topic_watermarks, %{})}
+     |> assign(:topic_watermarks, %{})
+     |> assign(:connected_at_ms, now_ms)
+     |> assign(:last_client_heartbeat_ms, now_ms)
+     |> assign(:heartbeat_ref, schedule_heartbeat_tick(heartbeat_interval_ms()))}
   end
 
   def join(_topic, _params, _socket), do: {:error, %{"code" => "bad_topic"}}
 
   @impl true
   def handle_in("sync:subscribe", payload, socket) when is_map(payload) do
+    started_at_ms = monotonic_ms()
+
     with {:ok, normalized_topics} <- normalize_topics(Map.get(payload, "topics")),
          :ok <- ensure_known_topics(normalized_topics),
          :ok <- ensure_allowed_topics(normalized_topics, socket.assigns[:allowed_topics] || []),
@@ -59,10 +79,17 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
         "current_watermarks" => current_watermarks(normalized_topics, topic_watermarks)
       }
 
+      emit_catchup_duration(started_at_ms, "ok")
+
+      if reconnect?(resume_after) do
+        Events.emit(@reconnect_event, %{count: 1}, %{component: "sync_channel", status: "ok"})
+      end
+
       {:reply, {:ok, response},
        socket
        |> assign(:subscribed_topics, subscribed_topics)
-       |> assign(:topic_watermarks, topic_watermarks)}
+       |> assign(:topic_watermarks, topic_watermarks)
+       |> touch_client_heartbeat()}
     else
       {:error, :bad_subscription} ->
         {:reply, {:error, %{"code" => "bad_subscription"}}, socket}
@@ -76,6 +103,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
           }}, socket}
 
       {:error, {:stale_cursor, stale_topics}} ->
+        emit_catchup_duration(started_at_ms, "stale_cursor")
         error_payload = stale_cursor_payload(stale_topics)
         push(socket, "sync:error", error_payload)
         {:reply, {:error, error_payload}, socket}
@@ -113,7 +141,8 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
         }},
        socket
        |> assign(:subscribed_topics, next_topics)
-       |> assign(:topic_watermarks, next_watermarks)}
+       |> assign(:topic_watermarks, next_watermarks)
+       |> touch_client_heartbeat()}
     else
       {:error, :bad_subscription} ->
         {:reply, {:error, %{"code" => "bad_subscription"}}, socket}
@@ -122,6 +151,24 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
 
   def handle_in("sync:unsubscribe", _payload, socket) do
     {:reply, {:error, %{"code" => "bad_subscription"}}, socket}
+  end
+
+  @impl true
+  def handle_in("sync:heartbeat", _payload, socket) do
+    socket = touch_client_heartbeat(socket)
+    watermarks = current_watermarks_for_socket(socket)
+
+    Events.emit(@heartbeat_event, %{count: 1}, %{component: "sync_channel", status: "client"})
+
+    push(socket, "sync:heartbeat", %{"watermarks" => watermarks})
+    Events.emit(@heartbeat_event, %{count: 1}, %{component: "sync_channel", status: "server"})
+
+    {:reply,
+     {:ok,
+      %{
+        "subscription_id" => socket.assigns[:subscription_id],
+        "watermarks" => watermarks
+      }}, socket}
   end
 
   @impl true
@@ -136,7 +183,44 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     end
   end
 
+  @impl true
+  def handle_info(:heartbeat_tick, socket) do
+    now_ms = monotonic_ms()
+    last_heartbeat_ms = socket.assigns[:last_client_heartbeat_ms] || now_ms
+
+    if now_ms - last_heartbeat_ms > heartbeat_timeout_ms() do
+      Events.emit(@timeout_event, %{count: 1}, %{component: "sync_channel", status: "timeout"})
+      {:stop, :normal, socket}
+    else
+      push(socket, "sync:heartbeat", %{"watermarks" => current_watermarks_for_socket(socket)})
+      Events.emit(@heartbeat_event, %{count: 1}, %{component: "sync_channel", status: "server"})
+
+      {:noreply, assign(socket, :heartbeat_ref, schedule_heartbeat_tick(heartbeat_interval_ms()))}
+    end
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  @impl true
+  def terminate(reason, socket) do
+    active_connections = ConnectionTracker.decrement()
+
+    connected_duration_ms =
+      case socket.assigns[:connected_at_ms] do
+        value when is_integer(value) -> max(monotonic_ms() - value, 0)
+        _other -> 0
+      end
+
+    Events.emit(@connection_event, %{count: 1, active_connections: active_connections}, %{
+      component: "sync_channel",
+      action: "disconnect",
+      status: terminate_status(reason),
+      reason_class: terminate_status(reason),
+      duration_ms: connected_duration_ms
+    })
+
+    :ok
+  end
 
   defp replay_topics(socket, topics, resume_after, replay_batch_size) do
     topic_watermarks = socket.assigns[:topic_watermarks] || %{}
@@ -157,6 +241,13 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
       Replay.fetch_batch(topic, current_watermark, batch_size: replay_batch_size)
 
     replay_complete = next_watermark >= head_watermark
+    lag_events = max(head_watermark - next_watermark, 0)
+
+    Events.emit(@lag_event, %{count: 1, lag_events: lag_events}, %{
+      component: "sync_channel",
+      event_type: topic,
+      status: if(lag_events == 0, do: "caught_up", else: "lagging")
+    })
 
     if events != [] do
       push(socket, "sync:update_batch", %{
@@ -326,6 +417,71 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   defp subscription_id(socket) do
     "sub_#{socket.id || System.unique_integer([:positive])}"
   end
+
+  defp current_watermarks_for_socket(socket) do
+    topics = socket.assigns[:subscribed_topics] || MapSet.new()
+    topic_watermarks = socket.assigns[:topic_watermarks] || %{}
+    current_watermarks(MapSet.to_list(topics), topic_watermarks)
+  end
+
+  defp touch_client_heartbeat(socket) do
+    assign(socket, :last_client_heartbeat_ms, monotonic_ms())
+  end
+
+  defp reconnect?(resume_after) when is_map(resume_after) do
+    Enum.any?(resume_after, fn {_topic, watermark} ->
+      is_integer(watermark) and watermark > 0
+    end)
+  end
+
+  defp emit_connection(action, active_connections, status) do
+    Events.emit(@connection_event, %{count: 1, active_connections: active_connections}, %{
+      component: "sync_channel",
+      action: action,
+      status: status
+    })
+  end
+
+  defp emit_catchup_duration(started_at_ms, status) do
+    Events.emit(
+      @catchup_event,
+      %{count: 1, duration_ms: max(monotonic_ms() - started_at_ms, 0)},
+      %{
+        component: "sync_channel",
+        status: status
+      }
+    )
+  end
+
+  defp monotonic_ms, do: System.monotonic_time(:millisecond)
+
+  defp schedule_heartbeat_tick(interval_ms) when is_integer(interval_ms) and interval_ms > 0 do
+    Process.send_after(self(), :heartbeat_tick, interval_ms)
+  end
+
+  defp heartbeat_interval_ms do
+    read_positive_int_env(
+      :khala_sync_heartbeat_interval_ms,
+      @default_heartbeat_interval_ms
+    )
+  end
+
+  defp heartbeat_timeout_ms do
+    read_positive_int_env(
+      :khala_sync_heartbeat_timeout_ms,
+      @default_heartbeat_timeout_ms
+    )
+  end
+
+  defp read_positive_int_env(key, default) do
+    case Application.get_env(:openagents_runtime, key, default) do
+      value when is_integer(value) and value > 0 -> value
+      _other -> default
+    end
+  end
+
+  defp terminate_status(:normal), do: "normal"
+  defp terminate_status(_reason), do: "error"
 
   defp retention_floor(nil), do: 0
 

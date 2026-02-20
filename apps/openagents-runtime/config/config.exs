@@ -23,7 +23,9 @@ config :openagents_runtime,
   khala_sync_retention_interval_ms: 60_000,
   khala_sync_retention_horizon_seconds: 86_400,
   khala_sync_retention_batch_size: 5_000,
-  khala_sync_replay_batch_size: 200
+  khala_sync_replay_batch_size: 200,
+  khala_sync_heartbeat_interval_ms: 15_000,
+  khala_sync_heartbeat_timeout_ms: 60_000
 
 config :openagents_runtime, :laravel_internal,
   base_url: "",

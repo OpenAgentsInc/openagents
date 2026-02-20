@@ -28,7 +28,13 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     convex_projection_write: [:projection, :result],
     convex_projection_write_failure: [:projection, :reason_class],
     convex_projection_drift: [:projection, :reason_class],
-    convex_projection_replay: [:scope, :result]
+    convex_projection_replay: [:scope, :result],
+    sync_socket_connection: [:action, :status],
+    sync_socket_heartbeat: [:status],
+    sync_socket_reconnect: [:status],
+    sync_socket_timeout: [:status],
+    sync_replay_lag: [:event_type, :status],
+    sync_replay_catchup: [:status]
   }
 
   @high_cardinality_tags [
@@ -131,6 +137,27 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       ),
       summary("openagents_runtime.convex.projection.replay.duration_ms",
         tags: tags_for(:convex_projection_replay)
+      ),
+      counter("openagents_runtime.sync.socket.connection.count",
+        tags: tags_for(:sync_socket_connection)
+      ),
+      last_value("openagents_runtime.sync.socket.connection.active",
+        measurement: :active_connections,
+        tags: tags_for(:sync_socket_connection)
+      ),
+      counter("openagents_runtime.sync.socket.heartbeat.count",
+        tags: tags_for(:sync_socket_heartbeat)
+      ),
+      counter("openagents_runtime.sync.socket.reconnect.count",
+        tags: tags_for(:sync_socket_reconnect)
+      ),
+      counter("openagents_runtime.sync.socket.timeout.count",
+        tags: tags_for(:sync_socket_timeout)
+      ),
+      summary("openagents_runtime.sync.replay.lag_events", tags: tags_for(:sync_replay_lag)),
+      summary("openagents_runtime.sync.replay.catchup_duration_ms",
+        measurement: :duration_ms,
+        tags: tags_for(:sync_replay_catchup)
       )
     ]
   end
