@@ -10,6 +10,11 @@ defmodule OpenAgentsRuntimeWeb.Router do
     plug OpenAgentsRuntimeWeb.Plugs.InternalAuth
   end
 
+  # SSE endpoints should not be blocked by JSON-only content negotiation.
+  pipeline :internal_stream_api do
+    plug OpenAgentsRuntimeWeb.Plugs.InternalAuth
+  end
+
   scope "/internal/v1", OpenAgentsRuntimeWeb do
     pipe_through :internal_api
 
@@ -27,11 +32,16 @@ defmodule OpenAgentsRuntimeWeb.Router do
     get "/codex/workers/:worker_id/snapshot", CodexWorkerController, :snapshot
     post "/codex/workers/:worker_id/requests", CodexWorkerController, :request
     post "/codex/workers/:worker_id/events", CodexWorkerController, :events
-    get "/codex/workers/:worker_id/stream", CodexWorkerController, :stream
     post "/codex/workers/:worker_id/stop", CodexWorkerController, :stop
     get "/runs/:run_id/snapshot", RunController, :snapshot
-    get "/runs/:run_id/stream", RunController, :stream
     post "/runs/:run_id/frames", RunController, :append_frame
     post "/runs/:run_id/cancel", RunController, :cancel
+  end
+
+  scope "/internal/v1", OpenAgentsRuntimeWeb do
+    pipe_through :internal_stream_api
+
+    get "/codex/workers/:worker_id/stream", CodexWorkerController, :stream
+    get "/runs/:run_id/stream", RunController, :stream
   end
 end

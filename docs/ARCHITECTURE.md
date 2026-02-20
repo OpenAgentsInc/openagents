@@ -136,6 +136,19 @@ Primary references:
    - authoritative control/status via Laravel<->runtime path
    - low-latency projection badges/summaries via Convex subscriptions.
 
+### Flow A1: iOS Codex handshake lane (current)
+
+1. iOS signs in with email code via `POST /api/auth/email` and `POST /api/auth/verify`.
+2. iOS uses bearer token APIs:
+   - `GET /api/runtime/codex/workers`
+   - `POST /api/runtime/codex/workers`
+   - `GET /api/runtime/codex/workers/{workerId}`
+   - `POST /api/runtime/codex/workers/{workerId}/events`
+   - `GET /api/runtime/codex/workers/{workerId}/stream` (`Accept: text/event-stream`)
+3. Laravel proxies stream and control requests to runtime using signed internal headers.
+4. Runtime SSE stream emits worker events; iOS advances cursor from `id:` values.
+5. Desktop ack events are produced only when a desktop worker is actually connected/running.
+
 ### Flow B: L402 policy and Lightning payment path
 
 1. Route/policy intent is maintained in Convex for the L402 plane.
@@ -169,6 +182,19 @@ Primary references:
 3. Convex is run self-hosted and/or cloud by environment, but always as non-authoritative projection infrastructure.
 4. Lightning services (`lightning-ops`, `lightning-wallet-executor`, Aperture, LND, bitcoind) run as a dedicated payment subsystem.
 5. Desktop/mobile/iOS clients consume the same runtime/proto contracts as web.
+
+### Production wiring snapshot (2026-02-20)
+
+1. `openagents-web` (Cloud Run) proxies Codex worker APIs to `openagents-runtime` via `OA_RUNTIME_ELIXIR_BASE_URL`.
+2. Shared runtime signing secret is enforced on both sides (`OA_RUNTIME_SIGNING_KEY` in web, `RUNTIME_SIGNATURE_SECRET` in runtime).
+3. Runtime stream endpoints are routed through an auth-only internal pipeline so SSE requests with `Accept: text/event-stream` are accepted.
+
+### Current Cloud SQL guardrails
+
+1. Database instance is currently small (`db-f1-micro`), so connection pressure must be constrained.
+2. Runtime Cloud Run service is constrained to low DB fan-out (`POOL_SIZE=2`, `max-instances=1`).
+3. Web Cloud Run service is constrained to reduce burst DB pressure (`max-instances=1`, lower concurrency).
+4. If these constraints are raised, DB tier and connection budget must be scaled first.
 
 ## Operational and Verification Expectations
 
