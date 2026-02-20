@@ -48,5 +48,8 @@ defmodule OpenAgentsRuntime.Repo.BaselineSchemaTest do
 
     assert {:ok, %{rows: [["runtime.sync_codex_worker_summaries"]]}} =
              Repo.query("SELECT to_regclass('runtime.sync_codex_worker_summaries')::text")
+
+    assert {:ok, %{rows: [["runtime.sync_topic_sequences"]]}} =
+             Repo.query("SELECT to_regclass('runtime.sync_topic_sequences')::text")
   end
 end
