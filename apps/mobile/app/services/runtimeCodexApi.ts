@@ -74,6 +74,18 @@ export type MobileConvexToken = {
   expires_at?: string
 }
 
+export type MobileSyncToken = {
+  token: string
+  token_type: string
+  expires_in: number
+  expires_at?: string
+  issuer?: string
+  audience?: string
+  subject?: string
+  org_id?: string
+  scopes?: string[]
+}
+
 export class RuntimeCodexApiError extends Error {
   code: "auth" | "forbidden" | "conflict" | "invalid" | "network" | "unknown"
   status?: number
@@ -341,6 +353,25 @@ export function parseSseEvents(raw: string): RuntimeCodexStreamEvent[] {
   }
 
   return events
+}
+
+export async function mintSyncToken(
+  token: string,
+  scopes: string[] = ["runtime.codex_worker_summaries"],
+): Promise<MobileSyncToken> {
+  const response = await requestJson<{ data?: MobileSyncToken }>("/api/sync/token", {
+    method: "POST",
+    token,
+    body: {
+      scopes,
+    },
+  })
+
+  if (!response?.data || typeof response.data.token !== "string") {
+    throw new RuntimeCodexApiError("sync_token_missing", "unknown")
+  }
+
+  return response.data
 }
 
 export async function mintConvexToken(token: string): Promise<MobileConvexToken> {

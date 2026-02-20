@@ -138,21 +138,35 @@ export function App() {
     config,
   }
 
-  const convexUrl =
-    (typeof Config.convexUrl === "string" && Config.convexUrl) ||
-    (__DEV__
-      ? "https://quaint-leopard-209.convex.cloud"
-      : "https://aware-caterpillar-962.convex.cloud")
-  const convex = new ConvexReactClient(convexUrl, {
-    unsavedChangesWarning: false,
-    logger: false,
-  })
+  const shouldBootConvex = Config.khalaSyncEnabled !== true
+  const convexClient = shouldBootConvex
+    ? new ConvexReactClient(
+        (typeof Config.convexUrl === "string" && Config.convexUrl) ||
+          (__DEV__
+            ? "https://quaint-leopard-209.convex.cloud"
+            : "https://aware-caterpillar-962.convex.cloud"),
+        {
+          unsavedChangesWarning: false,
+          logger: false,
+        },
+      )
+    : null
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <KeyboardProvider>
         <AuthProvider>
-          <ConvexProviderWithAuth client={convex} useAuth={useConvexAuthFromContext}>
+          {convexClient ? (
+            <ConvexProviderWithAuth client={convexClient} useAuth={useConvexAuthFromContext}>
+              <ThemeProvider>
+                <AppNavigator
+                  linking={linking}
+                  initialState={initialNavigationState}
+                  onStateChange={onNavigationStateChange}
+                />
+              </ThemeProvider>
+            </ConvexProviderWithAuth>
+          ) : (
             <ThemeProvider>
               <AppNavigator
                 linking={linking}
@@ -160,7 +174,7 @@ export function App() {
                 onStateChange={onNavigationStateChange}
               />
             </ThemeProvider>
-          </ConvexProviderWithAuth>
+          )}
         </AuthProvider>
       </KeyboardProvider>
     </SafeAreaProvider>

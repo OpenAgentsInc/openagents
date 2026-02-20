@@ -1,12 +1,15 @@
-import { FC, useCallback, useEffect, useMemo, useState } from "react"
+import { KhalaSyncClient, type SyncUpdateBatch } from "@openagentsinc/khala-sync"
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FlatList, TextStyle, View, ViewStyle } from "react-native"
 
 import { Button } from "@/components/Button"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
 import { TextField } from "@/components/TextField"
+import Config from "@/config"
 import { useAuth } from "@/context/AuthContext"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
+import { MobileKhalaWatermarkStore } from "@/services/khalaWatermarkStore"
 import {
   RuntimeCodexApiError,
   RuntimeCodexStreamEvent,
@@ -15,6 +18,7 @@ import {
   RuntimeCodexWorkerSummary,
   getRuntimeCodexWorkerSnapshot,
   listRuntimeCodexWorkers,
+  mintSyncToken,
   requestRuntimeCodexWorker,
   stopRuntimeCodexWorker,
   streamRuntimeCodexWorker,
@@ -25,12 +29,211 @@ import type { ThemedStyle } from "@/theme/types"
 const STREAM_LIMIT = 80
 const LIST_REFRESH_MS = 12_000
 const STREAM_RETRY_MS = 2_000
+const KHALA_SUMMARY_TOPIC = "runtime.codex_worker_summaries"
 
 type WorkerFilter = "all" | RuntimeCodexWorkerStatus
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function parseWorkerStatus(value: unknown): RuntimeCodexWorkerStatus | null {
+  if (value === "starting") return "starting"
+  if (value === "running") return "running"
+  if (value === "stopping") return "stopping"
+  if (value === "stopped") return "stopped"
+  if (value === "failed") return "failed"
+  return null
+}
+
+function parseHeartbeatState(value: unknown): RuntimeCodexWorkerSummary["heartbeat_state"] | null {
+  if (value === "fresh") return "fresh"
+  if (value === "stale") return "stale"
+  if (value === "missing") return "missing"
+  if (value === "stopped") return "stopped"
+  if (value === "failed") return "failed"
+  return null
+}
+
+function inferWorkerId(payload: Record<string, unknown>, docKey: string): string {
+  const fromPayload =
+    typeof payload.worker_id === "string" && payload.worker_id.trim() !== ""
+      ? payload.worker_id.trim()
+      : ""
+
+  if (fromPayload !== "") return fromPayload
+
+  const prefix = "runtime/codex_worker_summary:"
+  if (docKey.startsWith(prefix)) {
+    return docKey.slice(prefix.length)
+  }
+
+  return ""
+}
+
+function workerSummaryFromSyncUpdate(
+  update: SyncUpdateBatch["updates"][number],
+  existing: RuntimeCodexWorkerSummary,
+): RuntimeCodexWorkerSummary | null {
+  if (!isObjectRecord(update.payload)) {
+    return null
+  }
+
+  const payload = update.payload
+  const workerId = inferWorkerId(payload, update.doc_key)
+  if (workerId === "" || workerId !== existing.worker_id) {
+    return null
+  }
+
+  const status = parseWorkerStatus(payload.status) ?? existing.status
+  const defaultHeartbeatState =
+    status === "stopped" ? "stopped" : status === "failed" ? "failed" : "missing"
+  const heartbeatState =
+    parseHeartbeatState(payload.heartbeat_state) ?? existing.heartbeat_state ?? defaultHeartbeatState
+
+  return {
+    ...existing,
+    worker_id: workerId,
+    status,
+    latest_seq:
+      typeof payload.latest_seq === "number" && Number.isFinite(payload.latest_seq)
+        ? payload.latest_seq
+        : existing.latest_seq,
+    workspace_ref:
+      typeof payload.workspace_ref === "string"
+        ? payload.workspace_ref
+        : payload.workspace_ref === null
+          ? null
+          : existing.workspace_ref,
+    codex_home_ref:
+      typeof payload.codex_home_ref === "string"
+        ? payload.codex_home_ref
+        : payload.codex_home_ref === null
+          ? null
+          : existing.codex_home_ref,
+    adapter:
+      typeof payload.adapter === "string" && payload.adapter.trim() !== ""
+        ? payload.adapter
+        : existing.adapter,
+    metadata: isObjectRecord(payload.metadata) ? payload.metadata : existing.metadata,
+    started_at:
+      typeof payload.started_at === "string"
+        ? payload.started_at
+        : payload.started_at === null
+          ? null
+          : existing.started_at,
+    stopped_at:
+      typeof payload.stopped_at === "string"
+        ? payload.stopped_at
+        : payload.stopped_at === null
+          ? null
+          : existing.stopped_at,
+    last_heartbeat_at:
+      typeof payload.last_heartbeat_at === "string"
+        ? payload.last_heartbeat_at
+        : payload.last_heartbeat_at === null
+          ? null
+          : existing.last_heartbeat_at,
+    heartbeat_age_ms:
+      typeof payload.heartbeat_age_ms === "number" && Number.isFinite(payload.heartbeat_age_ms)
+        ? payload.heartbeat_age_ms
+        : payload.heartbeat_age_ms === null
+          ? null
+          : existing.heartbeat_age_ms,
+    heartbeat_stale_after_ms:
+      typeof payload.heartbeat_stale_after_ms === "number" &&
+      Number.isFinite(payload.heartbeat_stale_after_ms)
+        ? payload.heartbeat_stale_after_ms
+        : existing.heartbeat_stale_after_ms,
+    heartbeat_state: heartbeatState,
+    updated_at:
+      typeof payload.updated_at === "string"
+        ? payload.updated_at
+        : payload.updated_at === null
+          ? null
+          : existing.updated_at,
+  }
+}
+
+function workerSummaryFromSyncPayload(
+  update: SyncUpdateBatch["updates"][number],
+): RuntimeCodexWorkerSummary | null {
+  if (!isObjectRecord(update.payload)) {
+    return null
+  }
+
+  const payload = update.payload
+  const workerId = inferWorkerId(payload, update.doc_key)
+  const status = parseWorkerStatus(payload.status)
+
+  if (workerId === "" || !status) {
+    return null
+  }
+
+  const heartbeatState =
+    parseHeartbeatState(payload.heartbeat_state) ??
+    (status === "stopped" ? "stopped" : status === "failed" ? "failed" : "missing")
+
+  return {
+    worker_id: workerId,
+    status,
+    latest_seq:
+      typeof payload.latest_seq === "number" && Number.isFinite(payload.latest_seq)
+        ? payload.latest_seq
+        : 0,
+    workspace_ref: typeof payload.workspace_ref === "string" ? payload.workspace_ref : null,
+    codex_home_ref: typeof payload.codex_home_ref === "string" ? payload.codex_home_ref : null,
+    adapter:
+      typeof payload.adapter === "string" && payload.adapter.trim() !== ""
+        ? payload.adapter
+        : "unknown",
+    metadata: isObjectRecord(payload.metadata) ? payload.metadata : {},
+    started_at: typeof payload.started_at === "string" ? payload.started_at : null,
+    stopped_at: typeof payload.stopped_at === "string" ? payload.stopped_at : null,
+    last_heartbeat_at:
+      typeof payload.last_heartbeat_at === "string" ? payload.last_heartbeat_at : null,
+    heartbeat_age_ms:
+      typeof payload.heartbeat_age_ms === "number" && Number.isFinite(payload.heartbeat_age_ms)
+        ? payload.heartbeat_age_ms
+        : null,
+    heartbeat_stale_after_ms:
+      typeof payload.heartbeat_stale_after_ms === "number" &&
+      Number.isFinite(payload.heartbeat_stale_after_ms)
+        ? payload.heartbeat_stale_after_ms
+        : 30_000,
+    heartbeat_state: heartbeatState,
+    updated_at: typeof payload.updated_at === "string" ? payload.updated_at : null,
+    convex_projection: null,
+  }
+}
+
+function resolveKhalaSyncWsUrl(): string {
+  const override = (Config.khalaSyncWsUrl ?? "").trim()
+  if (override !== "") {
+    return override
+  }
+
+  const base = (Config.authApiUrl ?? "").trim()
+  if (base === "") {
+    return ""
+  }
+
+  try {
+    const url = new URL(base)
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
+    url.pathname = "/sync/socket/websocket"
+    url.search = ""
+    url.hash = ""
+    return url.toString()
+  } catch {
+    return ""
+  }
+}
 
 export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function CodexWorkersScreen() {
   const { authToken, isAuthenticated } = useAuth()
   const { themed } = useAppTheme()
+  const khalaSyncEnabled = Config.khalaSyncEnabled === true
 
   const [filter, setFilter] = useState<WorkerFilter>("all")
   const [workers, setWorkers] = useState<RuntimeCodexWorkerSummary[]>([])
@@ -52,6 +255,7 @@ export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function Code
   const [stopBusy, setStopBusy] = useState(false)
   const [adminDenied, setAdminDenied] = useState(false)
   const [lastAction, setLastAction] = useState<string | null>(null)
+  const loadWorkersRef = useRef<(silent?: boolean) => Promise<void>>(async () => {})
 
   const selectedWorkerSummary = useMemo(
     () => workers.find((worker) => worker.worker_id === selectedWorkerId) ?? null,
@@ -103,6 +307,10 @@ export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function Code
   )
 
   useEffect(() => {
+    loadWorkersRef.current = loadWorkers
+  }, [loadWorkers])
+
+  useEffect(() => {
     if (!authToken) {
       setWorkers([])
       setSelectedWorkerId(null)
@@ -117,6 +325,128 @@ export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function Code
 
     void loadWorkers()
   }, [authToken, loadWorkers])
+
+  useEffect(() => {
+    if (!authToken || !khalaSyncEnabled) {
+      return
+    }
+
+    const wsUrl = resolveKhalaSyncWsUrl()
+    if (wsUrl === "") {
+      setWorkersError("Khala websocket URL is not configured.")
+      return
+    }
+
+    let cancelled = false
+    const client = new KhalaSyncClient({
+      url: wsUrl,
+      watermarkStore: new MobileKhalaWatermarkStore(),
+      tokenProvider: async () => {
+        const minted = await mintSyncToken(authToken, [KHALA_SUMMARY_TOPIC])
+        const token = String(minted.token ?? "").trim()
+
+        if (token.length === 0) {
+          throw new RuntimeCodexApiError("sync_token_missing", "unknown")
+        }
+
+        return token
+      },
+      onUpdateBatch: (batch) => {
+        const summaryUpdates = batch.updates.filter(
+          (candidate) => candidate.topic === KHALA_SUMMARY_TOPIC,
+        )
+
+        if (summaryUpdates.length === 0) {
+          return
+        }
+
+        if (summaryUpdates.some((candidate) => !isObjectRecord(candidate.payload))) {
+          void loadWorkersRef.current(true)
+          return
+        }
+
+        setWorkers((previous) => {
+          const updatesByWorkerId = new Map<string, SyncUpdateBatch["updates"][number]>()
+
+          for (const update of summaryUpdates) {
+            if (!isObjectRecord(update.payload)) {
+              continue
+            }
+
+            const workerId = inferWorkerId(update.payload, update.doc_key)
+            if (workerId === "") {
+              continue
+            }
+
+            const current = updatesByWorkerId.get(workerId)
+            if (!current || update.doc_version >= current.doc_version) {
+              updatesByWorkerId.set(workerId, update)
+            }
+          }
+
+          if (updatesByWorkerId.size === 0) {
+            return previous
+          }
+
+          let changed = false
+          const seenWorkerIds = new Set<string>()
+          const next = previous.map((worker) => {
+            seenWorkerIds.add(worker.worker_id)
+            const update = updatesByWorkerId.get(worker.worker_id)
+            if (!update) return worker
+
+            const merged = workerSummaryFromSyncUpdate(update, worker)
+            if (!merged) return worker
+
+            changed = true
+            return merged
+          })
+
+          for (const [workerId, update] of updatesByWorkerId) {
+            if (seenWorkerIds.has(workerId)) {
+              continue
+            }
+
+            const created = workerSummaryFromSyncPayload(update)
+            if (!created) {
+              continue
+            }
+
+            next.push(created)
+            changed = true
+          }
+
+          return changed ? next : previous
+        })
+      },
+      onStaleCursor: () => {
+        void loadWorkersRef.current(true)
+      },
+      onError: (error) => {
+        if (!cancelled) {
+          setWorkersError(error.message)
+        }
+      },
+    })
+
+    void (async () => {
+      try {
+        await client.connect()
+        await client.subscribe([KHALA_SUMMARY_TOPIC])
+      } catch (error) {
+        if (!cancelled) {
+          const message =
+            error instanceof Error ? error.message : "Failed to connect Khala sync client."
+          setWorkersError(message)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      void client.disconnect()
+    }
+  }, [authToken, khalaSyncEnabled])
 
   useEffect(() => {
     if (!authToken) return
@@ -262,7 +592,7 @@ export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function Code
   if (!authToken) {
     return (
       <Screen preset="fixed" safeAreaEdges={["top"]} contentContainerStyle={themed($container)}>
-        <Text text="Log out and sign in again to load runtime and Convex data." />
+        <Text text="Log out and sign in again to load runtime sync data." />
       </Screen>
     )
   }
@@ -271,7 +601,11 @@ export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function Code
     <Screen preset="scroll" safeAreaEdges={["top"]} contentContainerStyle={themed($container)}>
       <Text text="Codex Workers" preset="heading" style={themed($title)} />
       <Text
-        text="Runtime APIs are authoritative; convex projection badges come from worker summaries."
+        text={
+          khalaSyncEnabled
+            ? "Runtime APIs are authoritative; worker summaries are hydrated by Khala websocket updates."
+            : "Runtime APIs are authoritative; worker summaries are refreshed from runtime APIs."
+        }
         size="sm"
         style={themed($subtitle)}
       />
@@ -322,12 +656,12 @@ export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function Code
                   />
                   {item.convex_projection ? (
                     <Text
-                      text={`convex ${item.convex_projection.status} · lag ${item.convex_projection.lag_events}`}
+                      text={`projection ${item.convex_projection.status} · lag ${item.convex_projection.lag_events}`}
                       size="xs"
                       style={themed($muted)}
                     />
                   ) : (
-                    <Text text="convex pending" size="xs" style={themed($muted)} />
+                    <Text text="projection pending" size="xs" style={themed($muted)} />
                   )}
                 </View>
               )
