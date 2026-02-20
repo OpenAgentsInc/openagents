@@ -281,9 +281,14 @@ impl RuntimeCodexSync {
         synced.clear();
     }
 
-    fn worker_id_for_thread(&self, thread_id: &str) -> String {
-        let safe_thread = sanitize_worker_component(thread_id);
-        let mut worker_id = format!("{}:{}", self.worker_prefix, safe_thread);
+    fn worker_id_for_thread(&self, _thread_id: &str) -> String {
+        let scope = env::var("HOSTNAME")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "desktop".to_string());
+        let safe_scope = sanitize_worker_component(&scope);
+        let mut worker_id = format!("{}:{}:shared", self.worker_prefix, safe_scope);
 
         if worker_id.len() > 160 {
             worker_id.truncate(160);
@@ -777,7 +782,7 @@ fn runtime_event_from_notification(method: &str, params: Option<&Value>) -> (Str
 }
 
 fn should_sync_runtime_notification(method: &str) -> bool {
-    method.starts_with("thread/") || method.starts_with("turn/") || method.starts_with("codex/")
+    !method.trim().is_empty()
 }
 
 async fn runtime_auth_state_view(
@@ -1794,11 +1799,11 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     let thread_id_value = extract_thread_id(params);
                     let turn_id_value = extract_turn_id(params);
                     if should_sync_runtime_notification(&notification.method) {
-                        if let (Some(sync), Some(thread_id)) =
-                            (runtime_sync_notifications.as_ref(), thread_id_value.as_deref())
-                        {
+                        if let Some(sync) = runtime_sync_notifications.as_ref() {
                             let sync = sync.clone();
-                            let thread_id = thread_id.to_string();
+                            let thread_id = thread_id_value
+                                .clone()
+                                .unwrap_or_else(|| "shared".to_string());
                             let method = notification.method.clone();
                             let params = notification.params.clone();
                             let proxy_sync = proxy_notifications.clone();
