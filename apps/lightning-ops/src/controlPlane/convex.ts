@@ -1,15 +1,6 @@
 import { Effect, Layer } from "effect";
 
 import {
-  decodeControlPlaneSecurityStateResponse,
-  decodeInvoiceLifecycleWriteResponse,
-  decodeSecurityCredentialRoleWriteResponse,
-  decodeSecurityGlobalWriteResponse,
-  decodeSecurityOwnerControlWriteResponse,
-  decodeSettlementWriteResponse,
-  decodeControlPlaneSnapshotResponse,
-  decodeDeploymentIntentWriteResponse,
-  decodeGatewayEventWriteResponse,
   type CompileDiagnostic,
   type ControlPlaneCredentialRoleState,
   type ControlPlaneInvoiceRecord,
@@ -24,6 +15,17 @@ import { ControlPlaneDecodeError } from "../errors.js";
 import { OpsRuntimeConfigService } from "../runtime/config.js";
 
 import { ConvexTransportService } from "./convexTransport.js";
+import {
+  decodeControlPlaneSecurityStateResponseFromAny,
+  decodeControlPlaneSnapshotResponseFromAny,
+  decodeDeploymentIntentWriteResponseFromAny,
+  decodeGatewayEventWriteResponseFromAny,
+  decodeInvoiceLifecycleWriteResponseFromAny,
+  decodeSecurityCredentialRoleWriteResponseFromAny,
+  decodeSecurityGlobalWriteResponseFromAny,
+  decodeSecurityOwnerControlWriteResponseFromAny,
+  decodeSettlementWriteResponseFromAny,
+} from "./protoAdapters.js";
 import { ControlPlaneService, type RecordDeploymentIntentInput } from "./service.js";
 
 type ControlPlaneApi = Parameters<typeof ControlPlaneService.of>[0];
@@ -41,7 +43,7 @@ export const CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN = "lightning/security:activateCr
 export const CONVEX_REVOKE_CREDENTIAL_ROLE_FN = "lightning/security:revokeCredentialRole";
 
 const decodeSnapshot = (raw: unknown): Effect.Effect<ReadonlyArray<ControlPlanePaywall>, ControlPlaneDecodeError> =>
-  decodeControlPlaneSnapshotResponse(raw).pipe(
+  decodeControlPlaneSnapshotResponseFromAny(raw).pipe(
     Effect.map((decoded) => decoded.paywalls),
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({
@@ -52,7 +54,7 @@ const decodeSnapshot = (raw: unknown): Effect.Effect<ReadonlyArray<ControlPlaneP
   );
 
 const decodeDeploymentWrite = (raw: unknown): Effect.Effect<DeploymentIntentRecord, ControlPlaneDecodeError> =>
-  decodeDeploymentIntentWriteResponse(raw).pipe(
+  decodeDeploymentIntentWriteResponseFromAny(raw).pipe(
     Effect.map((decoded) => decoded.deployment),
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({
@@ -63,7 +65,7 @@ const decodeDeploymentWrite = (raw: unknown): Effect.Effect<DeploymentIntentReco
   );
 
 const decodeGatewayEventWrite = (raw: unknown): Effect.Effect<GatewayEventRecord, ControlPlaneDecodeError> =>
-  decodeGatewayEventWriteResponse(raw).pipe(
+  decodeGatewayEventWriteResponseFromAny(raw).pipe(
     Effect.map((decoded) => decoded.event),
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({
@@ -76,7 +78,7 @@ const decodeGatewayEventWrite = (raw: unknown): Effect.Effect<GatewayEventRecord
 const decodeInvoiceLifecycleWrite = (
   raw: unknown,
 ): Effect.Effect<ControlPlaneInvoiceRecord, ControlPlaneDecodeError> =>
-  decodeInvoiceLifecycleWriteResponse(raw).pipe(
+  decodeInvoiceLifecycleWriteResponseFromAny(raw).pipe(
     Effect.map((decoded) => decoded.invoice),
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({
@@ -93,7 +95,7 @@ const decodeSettlementWrite = (
   settlement: ControlPlaneSettlementRecord;
   invoice?: ControlPlaneInvoiceRecord;
 }, ControlPlaneDecodeError> =>
-  decodeSettlementWriteResponse(raw).pipe(
+  decodeSettlementWriteResponseFromAny(raw).pipe(
     Effect.map((decoded) => {
       const result = {
         existed: decoded.existed,
@@ -117,7 +119,7 @@ const decodeControlPlaneSecurityState = (
   ownerControls: ReadonlyArray<ControlPlaneOwnerSecurityControl>;
   credentialRoles: ReadonlyArray<ControlPlaneCredentialRoleState>;
 }, ControlPlaneDecodeError> =>
-  decodeControlPlaneSecurityStateResponse(raw).pipe(
+  decodeControlPlaneSecurityStateResponseFromAny(raw).pipe(
     Effect.map((decoded) => ({
       global: decoded.global,
       ownerControls: decoded.ownerControls,
@@ -134,7 +136,7 @@ const decodeControlPlaneSecurityState = (
 const decodeSecurityGlobalWrite = (
   raw: unknown,
 ): Effect.Effect<ControlPlaneSecurityGlobal, ControlPlaneDecodeError> =>
-  decodeSecurityGlobalWriteResponse(raw).pipe(
+  decodeSecurityGlobalWriteResponseFromAny(raw).pipe(
     Effect.map((decoded) => decoded.global),
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({
@@ -147,7 +149,7 @@ const decodeSecurityGlobalWrite = (
 const decodeOwnerControlWrite = (
   raw: unknown,
 ): Effect.Effect<ControlPlaneOwnerSecurityControl, ControlPlaneDecodeError> =>
-  decodeSecurityOwnerControlWriteResponse(raw).pipe(
+  decodeSecurityOwnerControlWriteResponseFromAny(raw).pipe(
     Effect.map((decoded) => decoded.ownerControl),
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({
@@ -160,7 +162,7 @@ const decodeOwnerControlWrite = (
 const decodeCredentialRoleWrite = (
   raw: unknown,
 ): Effect.Effect<ControlPlaneCredentialRoleState, ControlPlaneDecodeError> =>
-  decodeSecurityCredentialRoleWriteResponse(raw).pipe(
+  decodeSecurityCredentialRoleWriteResponseFromAny(raw).pipe(
     Effect.map((decoded) => decoded.role),
     Effect.mapError((error) =>
       ControlPlaneDecodeError.make({

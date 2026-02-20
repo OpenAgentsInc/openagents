@@ -1,0 +1,274 @@
+syntax = "proto3";
+
+package openagents.lightning.v1;
+
+import "google/protobuf/struct.proto";
+
+enum PaywallStatus {
+  PAYWALL_STATUS_UNSPECIFIED = 0;
+  PAYWALL_STATUS_ACTIVE = 1;
+  PAYWALL_STATUS_PAUSED = 2;
+  PAYWALL_STATUS_ARCHIVED = 3;
+}
+
+enum PricingMode {
+  PRICING_MODE_UNSPECIFIED = 0;
+  PRICING_MODE_FIXED = 1;
+}
+
+enum RouteProtocol {
+  ROUTE_PROTOCOL_UNSPECIFIED = 0;
+  ROUTE_PROTOCOL_HTTP = 1;
+  ROUTE_PROTOCOL_HTTPS = 2;
+}
+
+enum CompileDiagnosticCode {
+  COMPILE_DIAGNOSTIC_CODE_UNSPECIFIED = 0;
+  COMPILE_DIAGNOSTIC_CODE_INVALID_PRICING_MODE = 1;
+  COMPILE_DIAGNOSTIC_CODE_MISSING_PRICING = 2;
+  COMPILE_DIAGNOSTIC_CODE_INVALID_ROUTE_PATTERN = 3;
+  COMPILE_DIAGNOSTIC_CODE_INVALID_UPSTREAM_URL = 4;
+  COMPILE_DIAGNOSTIC_CODE_MISSING_ROUTE_PROTOCOL = 5;
+  COMPILE_DIAGNOSTIC_CODE_DUPLICATE_ROUTE = 6;
+  COMPILE_DIAGNOSTIC_CODE_AMBIGUOUS_ROUTE = 7;
+  COMPILE_DIAGNOSTIC_CODE_FIRST_MATCH_SHADOWED = 8;
+  COMPILE_DIAGNOSTIC_CODE_NO_COMPILABLE_ROUTES = 9;
+}
+
+enum CompileDiagnosticSeverity {
+  COMPILE_DIAGNOSTIC_SEVERITY_UNSPECIFIED = 0;
+  COMPILE_DIAGNOSTIC_SEVERITY_ERROR = 1;
+  COMPILE_DIAGNOSTIC_SEVERITY_WARN = 2;
+}
+
+enum DeploymentIntentStatus {
+  DEPLOYMENT_INTENT_STATUS_UNSPECIFIED = 0;
+  DEPLOYMENT_INTENT_STATUS_PENDING = 1;
+  DEPLOYMENT_INTENT_STATUS_APPLIED = 2;
+  DEPLOYMENT_INTENT_STATUS_FAILED = 3;
+  DEPLOYMENT_INTENT_STATUS_ROLLED_BACK = 4;
+}
+
+enum GatewayEventLevel {
+  GATEWAY_EVENT_LEVEL_UNSPECIFIED = 0;
+  GATEWAY_EVENT_LEVEL_INFO = 1;
+  GATEWAY_EVENT_LEVEL_WARN = 2;
+  GATEWAY_EVENT_LEVEL_ERROR = 3;
+}
+
+enum InvoiceLifecycleStatus {
+  INVOICE_LIFECYCLE_STATUS_UNSPECIFIED = 0;
+  INVOICE_LIFECYCLE_STATUS_OPEN = 1;
+  INVOICE_LIFECYCLE_STATUS_SETTLED = 2;
+  INVOICE_LIFECYCLE_STATUS_CANCELED = 3;
+  INVOICE_LIFECYCLE_STATUS_EXPIRED = 4;
+}
+
+enum PaymentProofType {
+  PAYMENT_PROOF_TYPE_UNSPECIFIED = 0;
+  PAYMENT_PROOF_TYPE_LIGHTNING_PREIMAGE = 1;
+}
+
+enum SecurityDenyReasonCode {
+  SECURITY_DENY_REASON_CODE_UNSPECIFIED = 0;
+  SECURITY_DENY_REASON_CODE_GLOBAL_PAUSE_ACTIVE = 1;
+  SECURITY_DENY_REASON_CODE_OWNER_KILL_SWITCH_ACTIVE = 2;
+}
+
+enum CredentialRole {
+  CREDENTIAL_ROLE_UNSPECIFIED = 0;
+  CREDENTIAL_ROLE_GATEWAY_INVOICE = 1;
+  CREDENTIAL_ROLE_SETTLEMENT_READ = 2;
+  CREDENTIAL_ROLE_OPERATOR_ADMIN = 3;
+}
+
+enum CredentialRoleStatus {
+  CREDENTIAL_ROLE_STATUS_UNSPECIFIED = 0;
+  CREDENTIAL_ROLE_STATUS_ACTIVE = 1;
+  CREDENTIAL_ROLE_STATUS_ROTATING = 2;
+  CREDENTIAL_ROLE_STATUS_REVOKED = 3;
+}
+
+message ControlPlanePaywallPolicy {
+  string paywall_id = 1;
+  string owner_id = 2;
+  PricingMode pricing_mode = 3;
+  int64 fixed_amount_msats = 4;
+  optional int64 max_per_request_msats = 5;
+  repeated string allowed_hosts = 6;
+  repeated string blocked_hosts = 7;
+  optional uint32 quota_per_minute = 8;
+  optional uint32 quota_per_day = 9;
+  bool kill_switch = 10;
+  int64 created_at_ms = 11;
+  int64 updated_at_ms = 12;
+}
+
+message ControlPlanePaywallRoute {
+  string route_id = 1;
+  string paywall_id = 2;
+  string owner_id = 3;
+  string host_pattern = 4;
+  string path_pattern = 5;
+  string upstream_url = 6;
+  RouteProtocol protocol = 7;
+  uint32 timeout_ms = 8;
+  uint32 priority = 9;
+  int64 created_at_ms = 10;
+  int64 updated_at_ms = 11;
+}
+
+message ControlPlanePaywall {
+  string paywall_id = 1;
+  string owner_id = 2;
+  string name = 3;
+  optional string description = 4;
+  PaywallStatus status = 5;
+  optional string request_id = 6;
+  optional google.protobuf.Value metadata = 7;
+  int64 created_at_ms = 8;
+  int64 updated_at_ms = 9;
+  ControlPlanePaywallPolicy policy = 10;
+  repeated ControlPlanePaywallRoute routes = 11;
+}
+
+message ControlPlaneSnapshotResponse {
+  bool ok = 1;
+  repeated ControlPlanePaywall paywalls = 2;
+}
+
+message CompileDiagnostic {
+  CompileDiagnosticCode code = 1;
+  CompileDiagnosticSeverity severity = 2;
+  string message = 3;
+  optional string paywall_id = 4;
+  optional string route_id = 5;
+  optional string related_route_id = 6;
+  optional google.protobuf.Value details = 7;
+}
+
+message DeploymentIntentRecord {
+  string deployment_id = 1;
+  optional string paywall_id = 2;
+  optional string owner_id = 3;
+  string config_hash = 4;
+  optional string image_digest = 5;
+  DeploymentIntentStatus status = 6;
+  optional google.protobuf.Value diagnostics = 7;
+  optional int64 applied_at_ms = 8;
+  optional string rolled_back_from = 9;
+  int64 created_at_ms = 10;
+  int64 updated_at_ms = 11;
+}
+
+message DeploymentIntentWriteResponse {
+  bool ok = 1;
+  DeploymentIntentRecord deployment = 2;
+}
+
+message GatewayEventRecord {
+  string event_id = 1;
+  string paywall_id = 2;
+  string owner_id = 3;
+  string event_type = 4;
+  GatewayEventLevel level = 5;
+  optional string request_id = 6;
+  optional google.protobuf.Value metadata = 7;
+  int64 created_at_ms = 8;
+}
+
+message GatewayEventWriteResponse {
+  bool ok = 1;
+  GatewayEventRecord event = 2;
+}
+
+message ControlPlaneInvoiceRecord {
+  string invoice_id = 1;
+  string paywall_id = 2;
+  string owner_id = 3;
+  int64 amount_msats = 4;
+  InvoiceLifecycleStatus status = 5;
+  optional string payment_hash = 6;
+  optional string payment_request = 7;
+  optional string payment_proof_ref = 8;
+  optional string request_id = 9;
+  int64 created_at_ms = 10;
+  int64 updated_at_ms = 11;
+  optional int64 settled_at_ms = 12;
+}
+
+message ControlPlaneSettlementRecord {
+  string settlement_id = 1;
+  string paywall_id = 2;
+  string owner_id = 3;
+  optional string invoice_id = 4;
+  int64 amount_msats = 5;
+  string payment_proof_ref = 6;
+  optional string request_id = 7;
+  optional google.protobuf.Value metadata = 8;
+  int64 created_at_ms = 9;
+}
+
+message InvoiceLifecycleWriteResponse {
+  bool ok = 1;
+  bool changed = 2;
+  ControlPlaneInvoiceRecord invoice = 3;
+}
+
+message SettlementWriteResponse {
+  bool ok = 1;
+  bool existed = 2;
+  ControlPlaneSettlementRecord settlement = 3;
+  optional ControlPlaneInvoiceRecord invoice = 4;
+}
+
+message ControlPlaneSecurityGlobal {
+  string state_id = 1;
+  bool global_pause = 2;
+  SecurityDenyReasonCode deny_reason_code = 3;
+  optional string deny_reason = 4;
+  optional string updated_by = 5;
+  int64 updated_at_ms = 6;
+}
+
+message ControlPlaneOwnerSecurityControl {
+  string owner_id = 1;
+  bool kill_switch = 2;
+  SecurityDenyReasonCode deny_reason_code = 3;
+  optional string deny_reason = 4;
+  optional string updated_by = 5;
+  int64 updated_at_ms = 6;
+}
+
+message ControlPlaneCredentialRoleState {
+  CredentialRole role = 1;
+  CredentialRoleStatus status = 2;
+  uint32 version = 3;
+  optional string fingerprint = 4;
+  optional string note = 5;
+  int64 updated_at_ms = 6;
+  optional int64 last_rotated_at_ms = 7;
+  optional int64 revoked_at_ms = 8;
+}
+
+message ControlPlaneSecurityStateResponse {
+  bool ok = 1;
+  ControlPlaneSecurityGlobal global = 2;
+  repeated ControlPlaneOwnerSecurityControl owner_controls = 3;
+  repeated ControlPlaneCredentialRoleState credential_roles = 4;
+}
+
+message SecurityGlobalWriteResponse {
+  bool ok = 1;
+  ControlPlaneSecurityGlobal global = 2;
+}
+
+message SecurityOwnerControlWriteResponse {
+  bool ok = 1;
+  ControlPlaneOwnerSecurityControl owner_control = 2;
+}
+
+message SecurityCredentialRoleWriteResponse {
+  bool ok = 1;
+  ControlPlaneCredentialRoleState role = 2;
+}

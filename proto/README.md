@@ -23,6 +23,7 @@
 - `proto/openagents/sync/v1/topics.proto`
 - `proto/openagents/sync/v1/errors.proto`
 - `proto/openagents/sync/v1/sync.proto`
+- `proto/openagents/lightning/v1/control_plane.proto`
 
 ## Codegen
 
