@@ -3,21 +3,21 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { ControlPlaneCredentialRoleState } from "../src/contracts.js";
 import {
-  CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN,
-  CONVEX_GET_SECURITY_STATE_FN,
-  CONVEX_REVOKE_CREDENTIAL_ROLE_FN,
-  CONVEX_ROTATE_CREDENTIAL_ROLE_FN,
-  CONVEX_SET_GLOBAL_PAUSE_FN,
-  CONVEX_SET_OWNER_KILL_SWITCH_FN,
-  ConvexControlPlaneLive,
-} from "../src/controlPlane/convex.js";
-import { makeConvexTransportTestLayer } from "../src/controlPlane/convexTransport.js";
+  CONTROL_PLANE_ACTIVATE_CREDENTIAL_ROLE_FN,
+  CONTROL_PLANE_GET_SECURITY_STATE_FN,
+  CONTROL_PLANE_REVOKE_CREDENTIAL_ROLE_FN,
+  CONTROL_PLANE_ROTATE_CREDENTIAL_ROLE_FN,
+  CONTROL_PLANE_SET_GLOBAL_PAUSE_FN,
+  CONTROL_PLANE_SET_OWNER_KILL_SWITCH_FN,
+  ControlPlaneLive,
+} from "../src/controlPlane/live.js";
+import { makeControlPlaneTransportTestLayer } from "../src/controlPlane/transport.js";
 import { ControlPlaneService } from "../src/controlPlane/service.js";
 import { ControlPlaneTransportError } from "../src/errors.js";
 import { makeOpsRuntimeConfigTestLayer } from "../src/runtime/config.js";
 
-describe("lightning-ops security convex pipeline", () => {
-  it.effect("maps security lifecycle operations to Convex control-plane functions", () =>
+describe("lightning-ops security control-plane transport pipeline", () => {
+  it.effect("maps security lifecycle operations to control-plane transport functions", () =>
     Effect.gen(function* () {
       const callsRef = yield* Ref.make<Array<{ fn: string; args: Record<string, unknown> }>>([]);
       const roleStateRef = yield* Ref.make<ControlPlaneCredentialRoleState>({
@@ -30,11 +30,11 @@ describe("lightning-ops security convex pipeline", () => {
       const globalPauseRef = yield* Ref.make(false);
       const ownerKillRef = yield* Ref.make(false);
 
-      const transportLayer = makeConvexTransportTestLayer({
+      const transportLayer = makeControlPlaneTransportTestLayer({
         query: (functionName, args) =>
           Effect.gen(function* () {
             yield* Ref.update(callsRef, (calls) => [...calls, { fn: functionName, args }]);
-            if (functionName !== CONVEX_GET_SECURITY_STATE_FN) {
+            if (functionName !== CONTROL_PLANE_GET_SECURITY_STATE_FN) {
               return yield* Effect.fail(
                 ControlPlaneTransportError.make({
                   operation: functionName,
@@ -77,7 +77,7 @@ describe("lightning-ops security convex pipeline", () => {
           Effect.gen(function* () {
             yield* Ref.update(callsRef, (calls) => [...calls, { fn: functionName, args }]);
 
-            if (functionName === CONVEX_SET_GLOBAL_PAUSE_FN) {
+            if (functionName === CONTROL_PLANE_SET_GLOBAL_PAUSE_FN) {
               const active = Boolean(args.active);
               yield* Ref.set(globalPauseRef, active);
               return {
@@ -96,7 +96,7 @@ describe("lightning-ops security convex pipeline", () => {
               };
             }
 
-            if (functionName === CONVEX_SET_OWNER_KILL_SWITCH_FN) {
+            if (functionName === CONTROL_PLANE_SET_OWNER_KILL_SWITCH_FN) {
               const active = Boolean(args.active);
               yield* Ref.set(ownerKillRef, active);
               return {
@@ -115,7 +115,7 @@ describe("lightning-ops security convex pipeline", () => {
               };
             }
 
-            if (functionName === CONVEX_ROTATE_CREDENTIAL_ROLE_FN) {
+            if (functionName === CONTROL_PLANE_ROTATE_CREDENTIAL_ROLE_FN) {
               const current = yield* Ref.get(roleStateRef);
               const next = {
                 ...current,
@@ -129,7 +129,7 @@ describe("lightning-ops security convex pipeline", () => {
               return { ok: true, role: next };
             }
 
-            if (functionName === CONVEX_REVOKE_CREDENTIAL_ROLE_FN) {
+            if (functionName === CONTROL_PLANE_REVOKE_CREDENTIAL_ROLE_FN) {
               const current = yield* Ref.get(roleStateRef);
               const next = {
                 ...current,
@@ -141,7 +141,7 @@ describe("lightning-ops security convex pipeline", () => {
               return { ok: true, role: next };
             }
 
-            if (functionName === CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN) {
+            if (functionName === CONTROL_PLANE_ACTIVATE_CREDENTIAL_ROLE_FN) {
               const current = yield* Ref.get(roleStateRef);
               const next = {
                 ...current,
@@ -192,11 +192,10 @@ describe("lightning-ops security convex pipeline", () => {
           recovered,
         };
       }).pipe(
-        Effect.provide(ConvexControlPlaneLive),
+        Effect.provide(ControlPlaneLive),
         Effect.provide(transportLayer),
         Effect.provide(
           makeOpsRuntimeConfigTestLayer({
-            convexUrl: "https://example.convex.cloud",
             opsSecret: "ops-secret",
           }),
         ),
@@ -210,11 +209,11 @@ describe("lightning-ops security convex pipeline", () => {
       expect(summary.activated.version).toBeGreaterThan(summary.rotated.version);
       expect(summary.recovered.global.globalPause).toBe(false);
       expect(summary.recovered.ownerControls).toHaveLength(0);
-      expect(calls.map((call) => call.fn)).toContain(CONVEX_SET_GLOBAL_PAUSE_FN);
-      expect(calls.map((call) => call.fn)).toContain(CONVEX_SET_OWNER_KILL_SWITCH_FN);
-      expect(calls.map((call) => call.fn)).toContain(CONVEX_ROTATE_CREDENTIAL_ROLE_FN);
-      expect(calls.map((call) => call.fn)).toContain(CONVEX_REVOKE_CREDENTIAL_ROLE_FN);
-      expect(calls.map((call) => call.fn)).toContain(CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN);
+      expect(calls.map((call) => call.fn)).toContain(CONTROL_PLANE_SET_GLOBAL_PAUSE_FN);
+      expect(calls.map((call) => call.fn)).toContain(CONTROL_PLANE_SET_OWNER_KILL_SWITCH_FN);
+      expect(calls.map((call) => call.fn)).toContain(CONTROL_PLANE_ROTATE_CREDENTIAL_ROLE_FN);
+      expect(calls.map((call) => call.fn)).toContain(CONTROL_PLANE_REVOKE_CREDENTIAL_ROLE_FN);
+      expect(calls.map((call) => call.fn)).toContain(CONTROL_PLANE_ACTIVATE_CREDENTIAL_ROLE_FN);
     }),
   );
 });

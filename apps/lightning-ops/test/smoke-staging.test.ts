@@ -19,7 +19,7 @@ describe("lightning-ops smoke:staging", () => {
     }),
   );
 
-  it.effect("convex mode requires staging gateway environment vars", () =>
+  it.effect("api mode requires staging gateway environment vars", () =>
     Effect.gen(function* () {
       const prevBase = process.env.OA_LIGHTNING_OPS_GATEWAY_BASE_URL;
       const prevChallenge = process.env.OA_LIGHTNING_OPS_CHALLENGE_URL;
@@ -30,7 +30,7 @@ describe("lightning-ops smoke:staging", () => {
       delete process.env.OA_LIGHTNING_OPS_PROXY_URL;
 
       try {
-        const attempted = yield* Effect.either(runStagingSmoke({ mode: "convex" }));
+        const attempted = yield* Effect.either(runStagingSmoke({ mode: "api" }));
         expect(attempted._tag).toBe("Left");
         if (attempted._tag === "Left") {
           expect(String(attempted.left)).toContain("ConfigError");

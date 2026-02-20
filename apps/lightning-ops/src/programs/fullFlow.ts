@@ -199,12 +199,6 @@ const fileExists = (path: string) =>
     catch: (error) => (error instanceof Error ? error : new Error(String(error))),
   }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
-const isHostedMode = (mode: FullFlowSmokeMode): mode is "convex" | "api" =>
-  mode === "convex" || mode === "api";
-
-const modeForStaging = (mode: FullFlowSmokeMode): StagingSmokeMode =>
-  isHostedMode(mode) ? mode : "mock";
-
 const toLocalObservabilityRecords = (
   artifact: LocalNodeFlowArtifact | null,
 ): ReadonlyArray<unknown> => {
@@ -276,7 +270,7 @@ export const runFullFlowSmoke = (input?: {
 
     const reconcileRequestId = `${requestId}:reconcile`;
     const staging = yield* runStagingSmoke({
-      mode: modeForStaging(mode),
+      mode,
       requestId: reconcileRequestId,
     });
 

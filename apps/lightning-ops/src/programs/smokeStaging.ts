@@ -4,8 +4,7 @@ import { ConfigError } from "../errors.js";
 
 import { ApertureConfigCompilerLive } from "../compiler/apertureCompiler.js";
 import { ApiTransportLive } from "../controlPlane/apiTransport.js";
-import { ConvexControlPlaneLive } from "../controlPlane/convex.js";
-import { ConvexTransportLive } from "../controlPlane/convexTransport.js";
+import { ControlPlaneLive } from "../controlPlane/live.js";
 import { makeInMemoryControlPlaneHarness } from "../controlPlane/inMemory.js";
 import { smokePaywalls } from "../fixtures/smokePaywalls.js";
 import { makeHttpGatewayLayer } from "../gateway/http.js";
@@ -13,7 +12,7 @@ import { makeInMemoryGatewayHarness } from "../gateway/inMemory.js";
 import { reconcileAndDeployOnce } from "./reconcileAndDeploy.js";
 import { OpsRuntimeConfigLive } from "../runtime/config.js";
 
-export type StagingSmokeMode = "mock" | "convex" | "api";
+export type StagingSmokeMode = "mock" | "api";
 
 const STAGING_GATEWAY_DEFAULTS: Record<string, string> = {
   OA_LIGHTNING_OPS_GATEWAY_BASE_URL: "https://l402.openagents.com",
@@ -79,27 +78,11 @@ const runMockSmoke = (requestId: string) => {
   );
 };
 
-const runConvexSmoke = (requestId: string) =>
-  Effect.gen(function* () {
-    const gatewayConfig = yield* loadHttpGatewayConfigFromEnv();
-
-    const controlPlaneLayer = ConvexControlPlaneLive.pipe(
-      Layer.provideMerge(ConvexTransportLive),
-      Layer.provideMerge(OpsRuntimeConfigLive),
-    );
-    const gatewayLayer = makeHttpGatewayLayer(gatewayConfig);
-
-    return yield* runReconcile(
-      Layer.mergeAll(controlPlaneLayer, gatewayLayer),
-      requestId,
-    );
-  });
-
 const runApiSmoke = (requestId: string) =>
   Effect.gen(function* () {
     const gatewayConfig = yield* loadHttpGatewayConfigFromEnv();
 
-    const controlPlaneLayer = ConvexControlPlaneLive.pipe(
+    const controlPlaneLayer = ControlPlaneLive.pipe(
       Layer.provideMerge(ApiTransportLive),
       Layer.provideMerge(OpsRuntimeConfigLive),
     );
@@ -118,7 +101,6 @@ export const runStagingSmoke = (input?: {
   const mode = input?.mode ?? "mock";
   const requestId = input?.requestId ?? "smoke:staging";
 
-  if (mode === "convex") return runConvexSmoke(requestId);
   if (mode === "api") return runApiSmoke(requestId);
   return runMockSmoke(requestId);
 };

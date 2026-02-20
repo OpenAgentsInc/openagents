@@ -10,7 +10,7 @@ import { runSecuritySmoke, type SecuritySmokeMode } from "./securityControls.js"
 import { runSettlementSmoke, type SettlementSmokeMode } from "./smokeSettlement.js";
 import { runStagingSmoke, type StagingSmokeMode } from "./smokeStaging.js";
 
-export type ObservabilitySmokeMode = "mock" | "convex" | "api";
+export type ObservabilitySmokeMode = "mock" | "api";
 
 export type ObservabilitySmokeSummary = Readonly<{
   requestId: string;

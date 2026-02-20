@@ -7,9 +7,9 @@ export * from "./compiler/apertureCompiler.js";
 
 export * from "./controlPlane/service.js";
 export * from "./controlPlane/inMemory.js";
-export * from "./controlPlane/convexTransport.js";
+export * from "./controlPlane/transport.js";
 export * from "./controlPlane/apiTransport.js";
-export * from "./controlPlane/convex.js";
+export * from "./controlPlane/live.js";
 export * from "./controlPlane/protoAdapters.js";
 
 export * from "./programs/compileAndPersist.js";

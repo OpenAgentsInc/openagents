@@ -14,7 +14,7 @@ import {
 import { ControlPlaneDecodeError } from "../errors.js";
 import { OpsRuntimeConfigService } from "../runtime/config.js";
 
-import { ConvexTransportService } from "./convexTransport.js";
+import { ControlPlaneTransportService } from "./transport.js";
 import {
   decodeControlPlaneSecurityStateResponseFromAny,
   decodeControlPlaneSnapshotResponseFromAny,
@@ -30,17 +30,17 @@ import { ControlPlaneService, type RecordDeploymentIntentInput } from "./service
 
 type ControlPlaneApi = Parameters<typeof ControlPlaneService.of>[0];
 
-export const CONVEX_LIST_PAYWALLS_FN = "lightning/ops:listPaywallControlPlaneState";
-export const CONVEX_RECORD_DEPLOYMENT_FN = "lightning/ops:recordGatewayCompileIntent";
-export const CONVEX_RECORD_GATEWAY_EVENT_FN = "lightning/ops:recordGatewayDeploymentEvent";
-export const CONVEX_RECORD_INVOICE_LIFECYCLE_FN = "lightning/settlements:ingestInvoiceLifecycle";
-export const CONVEX_RECORD_SETTLEMENT_FN = "lightning/settlements:ingestSettlement";
-export const CONVEX_GET_SECURITY_STATE_FN = "lightning/security:getControlPlaneSecurityState";
-export const CONVEX_SET_GLOBAL_PAUSE_FN = "lightning/security:setGlobalPause";
-export const CONVEX_SET_OWNER_KILL_SWITCH_FN = "lightning/security:setOwnerKillSwitch";
-export const CONVEX_ROTATE_CREDENTIAL_ROLE_FN = "lightning/security:rotateCredentialRole";
-export const CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN = "lightning/security:activateCredentialRole";
-export const CONVEX_REVOKE_CREDENTIAL_ROLE_FN = "lightning/security:revokeCredentialRole";
+export const CONTROL_PLANE_LIST_PAYWALLS_FN = "lightning/ops:listPaywallControlPlaneState";
+export const CONTROL_PLANE_RECORD_DEPLOYMENT_FN = "lightning/ops:recordGatewayCompileIntent";
+export const CONTROL_PLANE_RECORD_GATEWAY_EVENT_FN = "lightning/ops:recordGatewayDeploymentEvent";
+export const CONTROL_PLANE_RECORD_INVOICE_LIFECYCLE_FN = "lightning/settlements:ingestInvoiceLifecycle";
+export const CONTROL_PLANE_RECORD_SETTLEMENT_FN = "lightning/settlements:ingestSettlement";
+export const CONTROL_PLANE_GET_SECURITY_STATE_FN = "lightning/security:getControlPlaneSecurityState";
+export const CONTROL_PLANE_SET_GLOBAL_PAUSE_FN = "lightning/security:setGlobalPause";
+export const CONTROL_PLANE_SET_OWNER_KILL_SWITCH_FN = "lightning/security:setOwnerKillSwitch";
+export const CONTROL_PLANE_ROTATE_CREDENTIAL_ROLE_FN = "lightning/security:rotateCredentialRole";
+export const CONTROL_PLANE_ACTIVATE_CREDENTIAL_ROLE_FN = "lightning/security:activateCredentialRole";
+export const CONTROL_PLANE_REVOKE_CREDENTIAL_ROLE_FN = "lightning/security:revokeCredentialRole";
 
 const decodeSnapshot = (raw: unknown): Effect.Effect<ReadonlyArray<ControlPlanePaywall>, ControlPlaneDecodeError> =>
   decodeControlPlaneSnapshotResponseFromAny(raw).pipe(
@@ -314,15 +314,15 @@ const makeRevokeCredentialRoleArgs = (
   note: input.note,
 });
 
-export const ConvexControlPlaneLive = Layer.effect(
+export const ControlPlaneLive = Layer.effect(
   ControlPlaneService,
   Effect.gen(function* () {
     const config = yield* OpsRuntimeConfigService;
-    const transport = yield* ConvexTransportService;
+    const transport = yield* ControlPlaneTransportService;
 
     const listPaywallsForCompile = () =>
       transport
-        .query(CONVEX_LIST_PAYWALLS_FN, {
+        .query(CONTROL_PLANE_LIST_PAYWALLS_FN, {
           secret: config.opsSecret,
           statuses: ["active", "paused"],
         })
@@ -330,19 +330,19 @@ export const ConvexControlPlaneLive = Layer.effect(
 
     const getSecurityState: ControlPlaneApi["getSecurityState"] = () =>
       transport
-        .query(CONVEX_GET_SECURITY_STATE_FN, {
+        .query(CONTROL_PLANE_GET_SECURITY_STATE_FN, {
           secret: config.opsSecret,
         })
         .pipe(Effect.flatMap(decodeControlPlaneSecurityState));
 
     const recordDeploymentIntent = (input: RecordDeploymentIntentInput) =>
       transport
-        .mutation(CONVEX_RECORD_DEPLOYMENT_FN, makeRecordArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_RECORD_DEPLOYMENT_FN, makeRecordArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeDeploymentWrite));
 
     const recordGatewayEvent: ControlPlaneApi["recordGatewayEvent"] = (input) =>
       transport
-        .mutation(CONVEX_RECORD_GATEWAY_EVENT_FN, {
+        .mutation(CONTROL_PLANE_RECORD_GATEWAY_EVENT_FN, {
           secret: config.opsSecret,
           paywallId: input.paywallId,
           ownerId: input.ownerId,
@@ -358,37 +358,37 @@ export const ConvexControlPlaneLive = Layer.effect(
 
     const recordInvoiceLifecycle: ControlPlaneApi["recordInvoiceLifecycle"] = (input) =>
       transport
-        .mutation(CONVEX_RECORD_INVOICE_LIFECYCLE_FN, makeInvoiceLifecycleArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_RECORD_INVOICE_LIFECYCLE_FN, makeInvoiceLifecycleArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeInvoiceLifecycleWrite));
 
     const recordSettlement: ControlPlaneApi["recordSettlement"] = (input) =>
       transport
-        .mutation(CONVEX_RECORD_SETTLEMENT_FN, makeSettlementArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_RECORD_SETTLEMENT_FN, makeSettlementArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeSettlementWrite));
 
     const setGlobalPause: ControlPlaneApi["setGlobalPause"] = (input) =>
       transport
-        .mutation(CONVEX_SET_GLOBAL_PAUSE_FN, makeGlobalPauseArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_SET_GLOBAL_PAUSE_FN, makeGlobalPauseArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeSecurityGlobalWrite));
 
     const setOwnerKillSwitch: ControlPlaneApi["setOwnerKillSwitch"] = (input) =>
       transport
-        .mutation(CONVEX_SET_OWNER_KILL_SWITCH_FN, makeOwnerKillSwitchArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_SET_OWNER_KILL_SWITCH_FN, makeOwnerKillSwitchArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeOwnerControlWrite));
 
     const rotateCredentialRole: ControlPlaneApi["rotateCredentialRole"] = (input) =>
       transport
-        .mutation(CONVEX_ROTATE_CREDENTIAL_ROLE_FN, makeCredentialRoleArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_ROTATE_CREDENTIAL_ROLE_FN, makeCredentialRoleArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeCredentialRoleWrite));
 
     const activateCredentialRole: ControlPlaneApi["activateCredentialRole"] = (input) =>
       transport
-        .mutation(CONVEX_ACTIVATE_CREDENTIAL_ROLE_FN, makeCredentialRoleArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_ACTIVATE_CREDENTIAL_ROLE_FN, makeCredentialRoleArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeCredentialRoleWrite));
 
     const revokeCredentialRole: ControlPlaneApi["revokeCredentialRole"] = (input) =>
       transport
-        .mutation(CONVEX_REVOKE_CREDENTIAL_ROLE_FN, makeRevokeCredentialRoleArgs(config.opsSecret, input))
+        .mutation(CONTROL_PLANE_REVOKE_CREDENTIAL_ROLE_FN, makeRevokeCredentialRoleArgs(config.opsSecret, input))
         .pipe(Effect.flatMap(decodeCredentialRoleWrite));
 
     return ControlPlaneService.of({

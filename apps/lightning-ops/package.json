@@ -15,13 +15,11 @@
     "smoke:ep212-routes": "tsx src/main.ts smoke:ep212-routes",
     "smoke:ep212-full-flow": "tsx src/main.ts smoke:ep212-full-flow",
     "compile:api": "tsx src/main.ts compile:api --json",
-    "reconcile:convex": "tsx src/main.ts reconcile:convex --json",
     "reconcile:api": "tsx src/main.ts reconcile:api --json",
     "smoke:staging": "tsx src/main.ts smoke:staging"
   },
   "dependencies": {
     "@openagentsinc/lightning-effect": "file:../../packages/lightning-effect",
-    "convex": "^1.31.7",
     "effect": "^3.19.16"
   },
   "devDependencies": {
