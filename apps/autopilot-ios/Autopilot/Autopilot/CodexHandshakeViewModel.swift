@@ -37,6 +37,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
+    private static let streamTailMS = 4_000
+    private static let streamIdleSleepNS: UInt64 = 250_000_000
+    private static let streamReconnectSleepNS: UInt64 = 1_500_000_000
 
     private var authToken: String {
         didSet {
@@ -172,20 +175,24 @@ final class CodexHandshakeViewModel: ObservableObject {
         do {
             let result = try await client.listWorkers(status: nil, limit: 100)
             workers = result
-            statusMessage = "Loaded \(result.count) worker(s)."
-
-            if let selectedWorkerID, result.contains(where: { $0.workerID == selectedWorkerID }) {
-                // keep selection
-            } else {
-                selectedWorkerID = result.first?.workerID
+            guard let worker = preferredWorker(from: result) else {
+                selectedWorkerID = nil
+                latestSnapshot = nil
+                streamState = .idle
+                statusMessage = "No running desktop workers found."
+                return
             }
 
-            if let selectedWorkerID {
-                streamCursor = max(0, selectedWorkerLatestSeq(workerID: selectedWorkerID) - 1)
-                latestSnapshot = try? await client.workerSnapshot(workerID: selectedWorkerID)
-            }
-
+            selectedWorkerID = worker.workerID
+            streamCursor = max(0, worker.latestSeq - 1)
+            latestSnapshot = try? await client.workerSnapshot(workerID: worker.workerID)
+            statusMessage = "Loaded \(result.count) worker(s). Auto-selected \(shortWorkerID(worker.workerID))."
             restartStreamIfReady(resetCursor: true)
+
+            // Keep the iOS flow simple: selecting workers also kicks off a handshake.
+            Task { [weak self] in
+                await self?.sendHandshake()
+            }
         } catch {
             errorMessage = formatError(error)
             statusMessage = nil
@@ -193,8 +200,8 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     func sendHandshake() async {
-        guard let workerID = selectedWorkerID else {
-            errorMessage = "Select a worker first."
+        guard isAuthenticated else {
+            errorMessage = "Sign in first to send handshake."
             return
         }
 
@@ -203,10 +210,28 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
+        if workers.isEmpty {
+            await refreshWorkers()
+        }
+
+        guard let worker = preferredWorker(from: workers) else {
+            errorMessage = "No active desktop worker found."
+            return
+        }
+
+        if selectedWorkerID != worker.workerID {
+            selectedWorkerID = worker.workerID
+        }
+
+        let workerID = worker.workerID
+        if streamState == .idle {
+            restartStreamIfReady(resetCursor: false)
+        }
+
         let handshakeID = UUID().uuidString.lowercased()
         handshakeState = .sending
         errorMessage = nil
-        statusMessage = "Sending handshake..."
+        statusMessage = "Sending handshake to \(shortWorkerID(workerID))..."
 
         let payload: [String: JSONValue] = [
             "source": .string("autopilot-ios"),
@@ -219,7 +244,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         do {
             try await client.ingestWorkerEvent(workerID: workerID, eventType: "worker.event", payload: payload)
             handshakeState = .waitingAck(handshakeID: handshakeID)
-            statusMessage = "Handshake \(handshakeID) sent. Waiting for desktop ack..."
+            statusMessage = "Handshake sent to \(shortWorkerID(workerID)). Waiting for desktop ack..."
             scheduleHandshakeTimeout(handshakeID: handshakeID, seconds: 30)
         } catch {
             handshakeState = .failed(message: formatError(error))
@@ -234,6 +259,10 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     func connectStream() {
+        if selectedWorkerID == nil, let worker = preferredWorker(from: workers) {
+            selectedWorkerID = worker.workerID
+        }
+
         restartStreamIfReady(resetCursor: false)
     }
 
@@ -271,10 +300,15 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         streamState = .connecting
+        statusMessage = "Connecting stream for \(shortWorkerID(workerID)) (long-poll can take a few seconds)..."
 
         while !Task.isCancelled {
             do {
-                let batch = try await client.streamWorker(workerID: workerID, cursor: streamCursor, tailMS: 15_000)
+                let batch = try await client.streamWorker(
+                    workerID: workerID,
+                    cursor: streamCursor,
+                    tailMS: Self.streamTailMS
+                )
                 if Task.isCancelled {
                     return
                 }
@@ -284,7 +318,15 @@ final class CodexHandshakeViewModel: ObservableObject {
                 handleIncoming(events: batch.events)
 
                 if batch.events.isEmpty {
-                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    statusMessage = "Stream live for \(shortWorkerID(workerID)). Waiting for new events..."
+                } else if case .waitingAck = handshakeState {
+                    // Keep waiting-ack status as-is while the matcher looks for desktop ack.
+                } else {
+                    statusMessage = "Stream live for \(shortWorkerID(workerID)). Received \(batch.events.count) event(s)."
+                }
+
+                if batch.events.isEmpty {
+                    try? await Task.sleep(nanoseconds: Self.streamIdleSleepNS)
                 }
             } catch {
                 if Task.isCancelled {
@@ -293,7 +335,8 @@ final class CodexHandshakeViewModel: ObservableObject {
 
                 streamState = .reconnecting
                 errorMessage = formatError(error)
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                statusMessage = "Stream reconnecting for \(shortWorkerID(workerID))..."
+                try? await Task.sleep(nanoseconds: Self.streamReconnectSleepNS)
             }
         }
     }
@@ -350,6 +393,61 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private func selectedWorkerLatestSeq(workerID: String) -> Int {
         workers.first(where: { $0.workerID == workerID })?.latestSeq ?? 0
+    }
+
+    private func preferredWorker(from workers: [RuntimeCodexWorkerSummary]) -> RuntimeCodexWorkerSummary? {
+        guard !workers.isEmpty else {
+            return nil
+        }
+
+        let running = workers.filter { $0.status == "running" }
+        let desktopRunning = running.filter { isDesktopWorker($0) }
+        let pool = desktopRunning.isEmpty ? (running.isEmpty ? workers : running) : desktopRunning
+
+        return pool.sorted { lhs, rhs in
+            let lhsFresh = freshnessRank(lhs)
+            let rhsFresh = freshnessRank(rhs)
+            if lhsFresh != rhsFresh {
+                return lhsFresh > rhsFresh
+            }
+
+            if lhs.latestSeq != rhs.latestSeq {
+                return lhs.latestSeq > rhs.latestSeq
+            }
+
+            return lhs.workerID > rhs.workerID
+        }.first
+    }
+
+    private func isDesktopWorker(_ worker: RuntimeCodexWorkerSummary) -> Bool {
+        if worker.adapter == "desktop_bridge" {
+            return true
+        }
+
+        if worker.workerID.hasPrefix("desktopw:") {
+            return true
+        }
+
+        return worker.metadata?["source"]?.stringValue == "autopilot-desktop"
+    }
+
+    private func freshnessRank(_ worker: RuntimeCodexWorkerSummary) -> Int {
+        switch worker.heartbeatState?.lowercased() {
+        case "fresh":
+            return 2
+        case "stale":
+            return 1
+        default:
+            return 0
+        }
+    }
+
+    private func shortWorkerID(_ workerID: String) -> String {
+        if workerID.count <= 20 {
+            return workerID
+        }
+
+        return String(workerID.prefix(20)) + "..."
     }
 
     private func makeAuthClient() -> RuntimeCodexClient {

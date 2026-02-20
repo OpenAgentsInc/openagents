@@ -50,7 +50,7 @@ struct ContentView: View {
                 }
 
                 Section("Worker") {
-                    Button("Load Workers") {
+                    Button("Load Workers + Handshake") {
                         Task {
                             await model.refreshWorkers()
                         }
@@ -61,12 +61,20 @@ struct ContentView: View {
                         Text("No workers loaded")
                             .foregroundStyle(.secondary)
                     } else {
-                        Picker("Selected Worker", selection: $model.selectedWorkerID) {
-                            ForEach(model.workers) { worker in
-                                Text("\(worker.workerID) (\(worker.status))").tag(Optional(worker.workerID))
+                        if let selectedWorkerID = model.selectedWorkerID {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Active Worker")
+                                Text("\(selectedWorkerID) (\(model.latestSnapshot?.status ?? "unknown"))")
+                                    .foregroundStyle(.secondary)
+                                    .font(.footnote)
                             }
                         }
-                        .pickerStyle(.navigationLink)
+
+                        if model.workers.count > 1 {
+                            Text("Auto-selecting freshest running desktop worker (\(model.workers.count) candidates found).")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
 
                         if let snapshot = model.latestSnapshot {
                             VStack(alignment: .leading, spacing: 4) {
@@ -168,11 +176,11 @@ struct ContentView: View {
         case .idle:
             return "idle"
         case .connecting:
-            return "connecting"
+            return "connecting (waiting for first poll)"
         case .live:
             return "live"
         case .reconnecting:
-            return "reconnecting"
+            return "reconnecting (retrying)"
         }
     }
 
