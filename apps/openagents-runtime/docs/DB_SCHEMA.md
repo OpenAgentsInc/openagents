@@ -25,6 +25,8 @@ All runtime tables and sequences live under the `runtime` Postgres schema.
   - runtime-owned run summary read model keyed by `doc_key`
 - `runtime.sync_codex_worker_summaries`
   - runtime-owned codex worker summary read model keyed by `doc_key`
+- `runtime.sync_topic_sequences`
+  - per-topic monotonic watermark allocator state (`topic` primary key, `next_watermark`)
 
 ## Naming conventions
 
