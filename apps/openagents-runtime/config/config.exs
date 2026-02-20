@@ -48,6 +48,15 @@ config :openagents_runtime, :convex_fanout_sink,
 
 config :openagents_runtime, :khala_sync, stream_payload_mode: :inline
 
+config :openagents_runtime, :khala_sync_auth,
+  issuer: "https://openagents.test",
+  audience: "openagents-sync",
+  claims_version: "oa_sync_claims_v1",
+  allowed_algs: ["HS256"],
+  hs256_keys: %{
+    "sync-auth-v1" => "dev-sync-signing-key"
+  }
+
 # Configures the endpoint
 config :openagents_runtime, OpenAgentsRuntimeWeb.Endpoint,
   url: [host: "localhost"],

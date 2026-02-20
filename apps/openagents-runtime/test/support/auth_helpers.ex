@@ -29,6 +29,97 @@ defmodule OpenAgentsRuntimeWeb.AuthHelpers do
     "v1.#{payload_segment}.#{signature_segment}"
   end
 
+  @spec valid_sync_jwt(keyword()) :: String.t()
+  def valid_sync_jwt(opts \\ []) do
+    now = Keyword.get(opts, :now, System.system_time(:second))
+    ttl_seconds = Keyword.get(opts, :ttl_seconds, 300)
+
+    sync_auth_config = Application.get_env(:openagents_runtime, :khala_sync_auth, [])
+
+    kid =
+      Keyword.get(
+        opts,
+        :kid,
+        sync_auth_config
+        |> Keyword.get(:hs256_keys, %{})
+        |> Map.keys()
+        |> List.first() ||
+          "sync-auth-v1"
+      )
+
+    keyring =
+      Keyword.get(opts, :keyring) ||
+        sync_auth_config
+        |> Keyword.get(:hs256_keys, %{})
+
+    signing_key =
+      Keyword.get_lazy(opts, :key, fn ->
+        case keyring do
+          %{} -> Map.get(keyring, kid)
+          _other -> nil
+        end
+      end)
+
+    if not is_binary(signing_key) or signing_key == "" do
+      raise ArgumentError,
+            "valid_sync_jwt requires a signing key (via :key or :keyring/:khala_sync_auth)"
+    end
+
+    issuer =
+      Keyword.get(
+        opts,
+        :issuer,
+        sync_auth_config
+        |> Keyword.get(:issuer, "https://openagents.test")
+      )
+
+    audience =
+      Keyword.get(
+        opts,
+        :audience,
+        sync_auth_config
+        |> Keyword.get(:audience, "openagents-sync")
+      )
+
+    claims_version =
+      Keyword.get(
+        opts,
+        :claims_version,
+        sync_auth_config
+        |> Keyword.get(:claims_version, "oa_sync_claims_v1")
+      )
+
+    claims =
+      %{
+        "iss" => issuer,
+        "aud" => audience,
+        "sub" => "user:#{opts[:user_id] || 1}",
+        "iat" => now,
+        "nbf" => now,
+        "exp" => now + ttl_seconds,
+        "jti" => "jti-#{System.unique_integer([:positive])}",
+        "oa_user_id" => opts[:user_id] || 1,
+        "oa_org_id" => opts[:oa_org_id] || "org_123",
+        "oa_sync_scopes" => opts[:oa_sync_scopes] || [],
+        "oa_claims_version" => claims_version
+      }
+      |> maybe_merge_claims(opts[:extra_claims])
+
+    header = %{
+      "alg" => "HS256",
+      "typ" => "JWT",
+      "kid" => kid
+    }
+
+    header_segment = header |> Jason.encode!() |> Base.url_encode64(padding: false)
+    payload_segment = claims |> Jason.encode!() |> Base.url_encode64(padding: false)
+    signing_input = "#{header_segment}.#{payload_segment}"
+    signature = :crypto.mac(:hmac, :sha256, signing_key, signing_input)
+    signature_segment = Base.url_encode64(signature, padding: false)
+
+    "#{signing_input}.#{signature_segment}"
+  end
+
   @spec put_internal_auth(Plug.Conn.t(), keyword()) :: Plug.Conn.t()
   def put_internal_auth(conn, opts \\ []) do
     token = Keyword.get_lazy(opts, :token, fn -> valid_signature_token(opts) end)

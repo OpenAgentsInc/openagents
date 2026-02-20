@@ -5,7 +5,7 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
 
   use Phoenix.Socket
 
-  alias OpenAgentsRuntime.Integrations.AuthTokenVerifier
+  alias OpenAgentsRuntime.Sync.JwtVerifier
 
   @known_topics MapSet.new([
                   "runtime.run_summaries",
@@ -17,7 +17,7 @@ defmodule OpenAgentsRuntimeWeb.SyncSocket do
 
   @impl true
   def connect(%{"token" => token}, socket, _connect_info) when is_binary(token) do
-    case AuthTokenVerifier.verify_and_claims(token, []) do
+    case JwtVerifier.verify_and_claims(token, []) do
       {:ok, claims} ->
         allowed_topics = allowed_topics(claims)
 

@@ -67,6 +67,7 @@ if config_env() == :prod do
     end
 
   laravel_internal = Application.get_env(:openagents_runtime, :laravel_internal, [])
+  khala_sync_auth = Application.get_env(:openagents_runtime, :khala_sync_auth, [])
 
   laravel_internal_base_url =
     System.get_env("OA_RUNTIME_INTERNAL_LARAVEL_BASE_URL") ||
@@ -75,6 +76,38 @@ if config_env() == :prod do
   laravel_internal_shared_secret =
     System.get_env("OA_RUNTIME_INTERNAL_SHARED_SECRET") ||
       Keyword.get(laravel_internal, :shared_secret, "")
+
+  sync_allowed_algs =
+    case System.get_env("OA_SYNC_TOKEN_ALLOWED_ALGS") do
+      nil ->
+        Keyword.get(khala_sync_auth, :allowed_algs, ["HS256"])
+
+      value ->
+        value
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+    end
+
+  sync_hs256_keys =
+    %{}
+    |> then(fn keys ->
+      kid = String.trim(System.get_env("OA_SYNC_TOKEN_KEY_ID") || "")
+      key = String.trim(System.get_env("OA_SYNC_TOKEN_SIGNING_KEY") || "")
+      if kid != "" and key != "", do: Map.put(keys, kid, key), else: keys
+    end)
+    |> then(fn keys ->
+      kid = String.trim(System.get_env("OA_SYNC_TOKEN_PREVIOUS_KEY_ID") || "")
+      key = String.trim(System.get_env("OA_SYNC_TOKEN_PREVIOUS_SIGNING_KEY") || "")
+      if kid != "" and key != "", do: Map.put(keys, kid, key), else: keys
+    end)
+    |> case do
+      %{} = keys when map_size(keys) > 0 ->
+        keys
+
+      _other ->
+        Keyword.get(khala_sync_auth, :hs256_keys, %{})
+    end
 
   host = System.get_env("PHX_HOST") || "example.com"
   port = String.to_integer(System.get_env("PORT") || "4000")
@@ -124,6 +157,16 @@ if config_env() == :prod do
         System.get_env("OA_RUNTIME_INTERNAL_SECRET_CACHE_TTL_MS") ||
           Integer.to_string(Keyword.get(laravel_internal, :default_secret_cache_ttl_ms, 60_000))
       )
+
+  config :openagents_runtime, :khala_sync_auth,
+    issuer: System.get_env("OA_SYNC_TOKEN_ISSUER") || Keyword.get(khala_sync_auth, :issuer, ""),
+    audience:
+      System.get_env("OA_SYNC_TOKEN_AUDIENCE") || Keyword.get(khala_sync_auth, :audience, ""),
+    claims_version:
+      System.get_env("OA_SYNC_TOKEN_CLAIMS_VERSION") ||
+        Keyword.get(khala_sync_auth, :claims_version, "oa_sync_claims_v1"),
+    allowed_algs: sync_allowed_algs,
+    hs256_keys: sync_hs256_keys
 
   # ## SSL Support
   #

@@ -12,6 +12,13 @@ This document maps `proto/openagents/sync/v1/*.proto` messages to the Phoenix Ch
 - Channel topic for v1: `sync:v1`.
 - Existing SSE endpoints are not part of this protocol.
 
+## Auth (v1)
+
+- Clients present Laravel-minted JWT via socket `token` param.
+- Runtime validates `alg`, `kid`, signature, and required claims.
+- HS256 is active with `kid` keyring rotation (current + previous keys).
+- Claim checks include issuer/audience/claims_version and topic scopes (`oa_sync_scopes`).
+
 ## Event Names
 
 Client -> server:

@@ -226,6 +226,7 @@ This section clarifies the practical meaning of "single authority database" in t
 2. Shared runtime signing secret is enforced on both sides (`OA_RUNTIME_SIGNING_KEY` in web, `RUNTIME_SIGNATURE_SECRET` in runtime).
 3. Runtime stream endpoints are routed through an auth-only internal pipeline so SSE requests with `Accept: text/event-stream` are accepted.
 4. Convex token bridge (`/api/convex/token`) remains active for migration; `/api/sync/token` is available for Khala clients.
+5. Khala sync socket auth validates JWT `kid` against runtime HS256 keyring (current + previous keys) for rotation-safe verification.
 
 ### Current Cloud SQL guardrails
 
