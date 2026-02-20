@@ -6,15 +6,15 @@ This app is the desktop execution boundary for Lightning flows in EP212.
 
 - Desktop hosts wallet/payment execution boundaries.
 - `openagents.com` remains the chat/orchestration UI.
-- Convex is the command/result bus between web and desktop.
+- Khala is the runtime/Codex sync lane for migrated desktop status surfaces.
 
 ## Current Scope
 
 - Electron app shell with Effect service graph.
 - Renderer is fully Effuse-based and mounted in Effuse panes (same pane system family as web).
 - Auth linkage strategy: sign in with the same email used on `openagents.com` to map to the same OpenAgents user id.
-- Connectivity probes for OpenAgents API and Convex.
-- Background executor loop consumes Convex Lightning tasks and writes deterministic transitions/results.
+- Connectivity probes for OpenAgents API and Khala sync lane.
+- Background executor loop consumes Lightning tasks and writes deterministic transitions/results.
 - L402 execution path uses `@openagentsinc/lightning-effect` + `@openagentsinc/lnd-effect`.
 - Operational panes for node runtime/sync, wallet state + spend/balance availability, executor queue failure taxonomy, and payment/invoice history.
 
@@ -43,7 +43,8 @@ npm run test:l402-local-node-smoke -- --json
 Optional environment variables:
 
 - `OA_DESKTOP_OPENAGENTS_BASE_URL` (default: `https://openagents.com`)
-- `OA_DESKTOP_CONVEX_URL` (default: `https://aware-caterpillar-962.convex.cloud`)
+- `OA_DESKTOP_KHALA_SYNC_ENABLED` (default: `false`)
+- `OA_DESKTOP_KHALA_SYNC_URL` (default derived from `OA_DESKTOP_OPENAGENTS_BASE_URL`)
 - `OA_DESKTOP_EXECUTOR_TICK_MS` (default: `2000`)
 - `OA_DESKTOP_LND_TARGET` (optional override for bundled target, e.g. `darwin-arm64`)
 - `OA_DESKTOP_LND_DEV_BINARY_PATH` (optional local dev override binary path)

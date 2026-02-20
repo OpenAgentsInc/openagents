@@ -2,7 +2,6 @@ import { Context, Layer } from "effect";
 
 export type DesktopConfig = Readonly<{
   readonly openAgentsBaseUrl: string;
-  readonly convexUrl: string;
   readonly khalaSyncEnabled: boolean;
   readonly khalaSyncUrl: string;
   readonly executorTickMs: number;
@@ -14,7 +13,6 @@ export class DesktopConfigService extends Context.Tag("@openagents/desktop/Deskt
 >() {}
 
 const DEFAULT_OPENAGENTS_BASE_URL = "https://openagents.com";
-const DEFAULT_CONVEX_URL = "https://aware-caterpillar-962.convex.cloud";
 const DEFAULT_EXECUTOR_TICK_MS = 2_000;
 
 const deriveDefaultKhalaSyncUrl = (openAgentsBaseUrl: string): string => {
@@ -88,10 +86,6 @@ export const makeDesktopConfig = (override?: Partial<DesktopConfig>): DesktopCon
 
   return {
     openAgentsBaseUrl,
-    convexUrl: normalizeUrl(
-      override?.convexUrl ?? bridge.convexUrl ?? fromProcess?.OA_DESKTOP_CONVEX_URL,
-      DEFAULT_CONVEX_URL,
-    ),
     khalaSyncEnabled,
     khalaSyncUrl,
     executorTickMs: normalizeTickMs(

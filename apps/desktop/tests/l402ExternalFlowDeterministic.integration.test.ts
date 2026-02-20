@@ -430,7 +430,6 @@ describe("desktop EP212 deterministic L402 flow (mock seller)", () => {
         const desktopLayer = makeDesktopLayer(
           {
             openAgentsBaseUrl: "https://openagents.local",
-            convexUrl: "https://convex.local",
             khalaSyncEnabled: true,
             khalaSyncUrl: "wss://khala.local/sync/socket/websocket",
             executorTickMs: 25,

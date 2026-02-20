@@ -22,14 +22,11 @@ import { useEffect, useState } from "react"
 import { useFonts } from "expo-font"
 import * as Linking from "expo-linking"
 import * as SplashScreen from "expo-splash-screen"
-import { ConvexProviderWithAuth } from "convex/react"
-import { ConvexReactClient } from "convex/react"
 import { KeyboardProvider } from "react-native-keyboard-controller"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
 import Config from "./config"
 import { AuthProvider } from "./context/AuthContext"
-import { useConvexAuthFromContext } from "./convex/useConvexAuthFromContext"
 import { initI18n } from "./i18n"
 import { AppNavigator } from "./navigators/AppNavigator"
 import { useNavigationPersistence } from "./navigators/navigationUtilities"
@@ -138,43 +135,17 @@ export function App() {
     config,
   }
 
-  const shouldBootConvex = Config.khalaSyncEnabled !== true
-  const convexClient = shouldBootConvex
-    ? new ConvexReactClient(
-        (typeof Config.convexUrl === "string" && Config.convexUrl) ||
-          (__DEV__
-            ? "https://quaint-leopard-209.convex.cloud"
-            : "https://aware-caterpillar-962.convex.cloud"),
-        {
-          unsavedChangesWarning: false,
-          logger: false,
-        },
-      )
-    : null
-
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <KeyboardProvider>
         <AuthProvider>
-          {convexClient ? (
-            <ConvexProviderWithAuth client={convexClient} useAuth={useConvexAuthFromContext}>
-              <ThemeProvider>
-                <AppNavigator
-                  linking={linking}
-                  initialState={initialNavigationState}
-                  onStateChange={onNavigationStateChange}
-                />
-              </ThemeProvider>
-            </ConvexProviderWithAuth>
-          ) : (
-            <ThemeProvider>
-              <AppNavigator
-                linking={linking}
-                initialState={initialNavigationState}
-                onStateChange={onNavigationStateChange}
-              />
-            </ThemeProvider>
-          )}
+          <ThemeProvider>
+            <AppNavigator
+              linking={linking}
+              initialState={initialNavigationState}
+              onStateChange={onNavigationStateChange}
+            />
+          </ThemeProvider>
         </AuthProvider>
       </KeyboardProvider>
     </SafeAreaProvider>

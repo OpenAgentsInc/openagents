@@ -204,7 +204,6 @@ const makeTestLayer = () =>
   makeDesktopLayer(
     {
       openAgentsBaseUrl: "https://openagents.example",
-      convexUrl: "https://convex.example",
       khalaSyncEnabled: true,
       khalaSyncUrl: "wss://khala.example/sync/socket/websocket",
       executorTickMs: 500,

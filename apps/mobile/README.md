@@ -28,7 +28,7 @@ Mobile Codex administration lives in the `Codex` tab:
 
 - Reads worker list/snapshot/stream through Laravel runtime proxy APIs (`/api/runtime/codex/workers*`).
 - Uses the same auth guard/policy behavior as web (`auth:sanctum` + runtime ownership checks).
-- Uses Laravel Convex token minting (`POST /api/convex/token`) for short-lived Convex auth.
+- Uses Laravel sync token minting (`POST /api/sync/token`) for Khala websocket subscriptions.
 
 Default API base is configured in `app/config/config.base.ts` (`authApiUrl`).
 
