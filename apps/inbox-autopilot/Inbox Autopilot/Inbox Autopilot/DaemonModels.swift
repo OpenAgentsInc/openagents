@@ -401,6 +401,68 @@ struct TemplateMineResponse: Codable {
     let suggestions: [TemplateSuggestion]
 }
 
+struct DraftQualitySampleResult: Codable, Identifiable {
+    let threadID: String
+    let category: ThreadCategory
+    let editRatio: Double
+    let minimalEdit: Bool
+    let draftWordCount: Int
+    let sentWordCount: Int
+
+    var id: String { threadID }
+
+    enum CodingKeys: String, CodingKey {
+        case threadID = "thread_id"
+        case category
+        case editRatio = "edit_ratio"
+        case minimalEdit = "minimal_edit"
+        case draftWordCount = "draft_word_count"
+        case sentWordCount = "sent_word_count"
+    }
+}
+
+struct DraftQualityCategorySummary: Codable, Identifiable {
+    let category: ThreadCategory
+    let samples: Int
+    let minimalEditCount: Int
+    let minimalEditRate: Double
+    let averageEditRatio: Double
+
+    var id: String { category.rawValue }
+
+    enum CodingKeys: String, CodingKey {
+        case category
+        case samples
+        case minimalEditCount = "minimal_edit_count"
+        case minimalEditRate = "minimal_edit_rate"
+        case averageEditRatio = "average_edit_ratio"
+    }
+}
+
+struct DraftQualityReport: Codable {
+    let generatedAt: Date
+    let threshold: Double
+    let targetRate: Double
+    let totalSamples: Int
+    let totalMinimalEdit: Int
+    let totalMinimalEditRate: Double
+    let targetMet: Bool
+    let categories: [DraftQualityCategorySummary]
+    let samples: [DraftQualitySampleResult]
+
+    enum CodingKeys: String, CodingKey {
+        case generatedAt = "generated_at"
+        case threshold
+        case targetRate = "target_rate"
+        case totalSamples = "total_samples"
+        case totalMinimalEdit = "total_minimal_edit"
+        case totalMinimalEditRate = "total_minimal_edit_rate"
+        case targetMet = "target_met"
+        case categories
+        case samples
+    }
+}
+
 struct StringValue: Codable {
     let value: String
 

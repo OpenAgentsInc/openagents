@@ -24,6 +24,15 @@ struct AuditSectionView: View {
                     Task { await model.exportSelectedAudit() }
                 }
                 .disabled(model.selectedThreadID == nil)
+
+                Button("Evaluate Draft Quality") {
+                    Task { await model.refreshDraftQualityReport() }
+                }
+                .disabled(!model.daemonConnected)
+            }
+
+            if let report = model.draftQualityReport {
+                qualityReportView(report)
             }
 
             if let audit = model.threadAudit {
@@ -81,11 +90,54 @@ struct AuditSectionView: View {
         .padding(14)
     }
 
+    private func qualityReportView(_ report: DraftQualityReport) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Draft Quality")
+                    .font(.headline)
+                Spacer()
+                Text(report.generatedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                pill(
+                    report.targetMet ? "Target met" : "Target not met",
+                    color: report.targetMet ? .green : .orange
+                )
+                pill(
+                    "Minimal edit \(percentString(report.totalMinimalEditRate))",
+                    color: .mint
+                )
+                pill("Samples \(report.totalSamples)", color: .gray)
+            }
+
+            ForEach(report.categories) { category in
+                HStack {
+                    Text(category.category.title)
+                    Spacer()
+                    Text("\(category.minimalEditRate, format: .percent.precision(.fractionLength(0)))")
+                        .fontWeight(.semibold)
+                    Text("(\(category.minimalEditCount)/\(category.samples))")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+        }
+        .padding(10)
+        .background(Color.gray.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+    }
+
     private func pill(_ text: String, color: Color) -> some View {
         Text(text)
             .font(.caption)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(color.opacity(0.18), in: Capsule())
+    }
+
+    private func percentString(_ value: Double) -> String {
+        String(format: "%.0f%%", value * 100)
     }
 }

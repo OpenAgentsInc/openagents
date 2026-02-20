@@ -287,3 +287,35 @@ pub struct TemplateSuggestion {
 pub struct TemplateMineResponse {
     pub suggestions: Vec<TemplateSuggestion>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftQualitySampleResult {
+    pub thread_id: String,
+    pub category: ThreadCategory,
+    pub edit_ratio: f32,
+    pub minimal_edit: bool,
+    pub draft_word_count: usize,
+    pub sent_word_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftQualityCategorySummary {
+    pub category: ThreadCategory,
+    pub samples: usize,
+    pub minimal_edit_count: usize,
+    pub minimal_edit_rate: f32,
+    pub average_edit_ratio: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftQualityReport {
+    pub generated_at: DateTime<Utc>,
+    pub threshold: f32,
+    pub target_rate: f32,
+    pub total_samples: usize,
+    pub total_minimal_edit: usize,
+    pub total_minimal_edit_rate: f32,
+    pub target_met: bool,
+    pub categories: Vec<DraftQualityCategorySummary>,
+    pub samples: Vec<DraftQualitySampleResult>,
+}

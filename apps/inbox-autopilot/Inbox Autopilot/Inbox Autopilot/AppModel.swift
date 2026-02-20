@@ -17,6 +17,10 @@ final class AppModel: ObservableObject {
     @Published var pendingDrafts: [DraftRecord] = []
     @Published var events: [EventRecord] = []
     @Published var templateSuggestions: [TemplateSuggestion] = []
+    @Published var draftQualityReport: DraftQualityReport?
+    @Published var availableUpdate: AppReleaseInfo?
+    @Published var isCheckingForUpdates = false
+    @Published var lastUpdateCheckAt: Date?
 
     @Published var settings = SettingsResponse(
         privacyMode: .hybrid,
@@ -39,10 +43,18 @@ final class AppModel: ObservableObject {
 
     private let client = DaemonAPIClient()
     private let notifications = NotificationManager.shared
+    private let defaultUpdateFeedURL = URL(string: "https://api.github.com/repos/OpenAgentsInc/openagents/releases/latest")!
+    private let updateCheckCooldown: TimeInterval = 60 * 60 * 12
+    private let updateLastCheckedKey = "inboxautopilot.lastUpdateCheckAt"
+    private let updateFeedOverrideKey = "inboxautopilot.updateFeedURL"
     private var eventTask: Task<Void, Never>?
 
     func startup() async {
+        lastUpdateCheckAt = UserDefaults.standard.object(forKey: updateLastCheckedKey) as? Date
         await notifications.requestAuthorizationIfNeeded()
+        if shouldRunBackgroundUpdateCheck(now: Date()) {
+            await checkForUpdates(manual: false)
+        }
         await refreshHealth()
         guard daemonConnected else {
             return
@@ -351,6 +363,54 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshDraftQualityReport(limitPerCategory: Int = 200, threshold: Double = 0.35) async {
+        guard daemonConnected else { return }
+        do {
+            draftQualityReport = try await client.draftEditRate(
+                limitPerCategory: limitPerCategory,
+                threshold: threshold
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func checkForUpdates(manual: Bool = true) async {
+        if isCheckingForUpdates {
+            return
+        }
+
+        isCheckingForUpdates = true
+        defer { isCheckingForUpdates = false }
+
+        do {
+            let latest = try await fetchLatestRelease()
+            let current = AppVersion.current()
+
+            if latest.isNewer(than: current) {
+                availableUpdate = latest
+                if manual {
+                    notice = "Update \(latest.version) is available."
+                }
+            } else {
+                availableUpdate = nil
+                if manual {
+                    notice = "Inbox Autopilot is up to date (\(current.display))."
+                }
+            }
+
+            let now = Date()
+            lastUpdateCheckAt = now
+            UserDefaults.standard.set(now, forKey: updateLastCheckedKey)
+        } catch {
+            if manual {
+                errorMessage = "Update check failed: \(error.localizedDescription)"
+            } else {
+                print("background update check failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func deleteLocalCorpus() async {
         guard daemonConnected else { return }
         isBusy = true
@@ -366,6 +426,7 @@ final class AppModel: ObservableObject {
             threadAudit = nil
             selectedThreadID = nil
             templateSuggestions = []
+            draftQualityReport = nil
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -384,6 +445,7 @@ final class AppModel: ObservableObject {
             manualGmailCodeInput = ""
             chatGPTAPIKeyInput = ""
             templateSuggestions = []
+            draftQualityReport = nil
             await refreshEverything()
         } catch {
             errorMessage = error.localizedDescription
@@ -393,6 +455,76 @@ final class AppModel: ObservableObject {
     func clearMessages() {
         notice = nil
         errorMessage = nil
+    }
+
+    var currentVersionDisplay: String {
+        AppVersion.current().display
+    }
+
+    private func shouldRunBackgroundUpdateCheck(now: Date) -> Bool {
+        guard let lastUpdateCheckAt else {
+            return true
+        }
+        return now.timeIntervalSince(lastUpdateCheckAt) >= updateCheckCooldown
+    }
+
+    private func resolvedUpdateFeedURL() -> URL {
+        if let raw = UserDefaults.standard.string(forKey: updateFeedOverrideKey),
+           let customURL = URL(string: raw)
+        {
+            return customURL
+        }
+        return defaultUpdateFeedURL
+    }
+
+    private func fetchLatestRelease() async throws -> AppReleaseInfo {
+        var request = URLRequest(url: resolvedUpdateFeedURL())
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("InboxAutopilot/\(AppVersion.current().display)", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw UpdateCheckError.nonHTTPResponse
+        }
+        guard 200..<300 ~= http.statusCode else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw UpdateCheckError.httpStatus(http.statusCode, body)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        if let manifest = try? decoder.decode(UpdateFeedManifest.self, from: data) {
+            guard let downloadURL = URL(string: manifest.downloadURL) else {
+                throw UpdateCheckError.invalidPayload("update manifest is missing a valid download_url")
+            }
+            let releaseNotesURL = manifest.releaseNotesURL.flatMap(URL.init(string:))
+            return AppReleaseInfo(
+                version: manifest.version,
+                build: manifest.build,
+                downloadURL: downloadURL,
+                releaseNotesURL: releaseNotesURL,
+                notes: manifest.notes,
+                publishedAt: manifest.publishedAt
+            )
+        }
+
+        let githubRelease = try decoder.decode(GitHubReleasePayload.self, from: data)
+        let version = githubRelease.tagName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingPrefix("v")
+            .trimmingPrefix("V")
+        let downloadURL = githubRelease.assets.first?.browserDownloadURL ?? githubRelease.htmlURL
+
+        return AppReleaseInfo(
+            version: version,
+            build: nil,
+            downloadURL: downloadURL,
+            releaseNotesURL: githubRelease.htmlURL,
+            notes: githubRelease.body,
+            publishedAt: githubRelease.publishedAt
+        )
     }
 
     private func startEventStream() {
@@ -450,5 +582,148 @@ enum OAuthConnectError: LocalizedError {
         case .missingCode:
             return "OAuth callback did not include an auth code."
         }
+    }
+}
+
+struct AppReleaseInfo {
+    let version: String
+    let build: String?
+    let downloadURL: URL
+    let releaseNotesURL: URL?
+    let notes: String?
+    let publishedAt: Date?
+
+    func isNewer(than current: AppVersion) -> Bool {
+        switch AppVersion.compare(version, current.version) {
+        case .orderedDescending:
+            return true
+        case .orderedAscending:
+            return false
+        case .orderedSame:
+            guard
+                let newBuild = build.flatMap(Int.init),
+                let currentBuild = current.build.flatMap(Int.init)
+            else {
+                return false
+            }
+            return newBuild > currentBuild
+        }
+    }
+}
+
+struct AppVersion {
+    let version: String
+    let build: String?
+
+    static func current() -> Self {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return AppVersion(
+            version: version ?? "0.0.0",
+            build: build
+        )
+    }
+
+    var display: String {
+        if let build, !build.isEmpty {
+            return "\(version) (\(build))"
+        }
+        return version
+    }
+
+    static func compare(_ lhs: String, _ rhs: String) -> ComparisonResult {
+        let lhsComponents = normalizedVersionComponents(lhs)
+        let rhsComponents = normalizedVersionComponents(rhs)
+        let maxCount = max(lhsComponents.count, rhsComponents.count)
+
+        for index in 0..<maxCount {
+            let left = index < lhsComponents.count ? lhsComponents[index] : 0
+            let right = index < rhsComponents.count ? rhsComponents[index] : 0
+            if left < right {
+                return .orderedAscending
+            }
+            if left > right {
+                return .orderedDescending
+            }
+        }
+
+        return .orderedSame
+    }
+
+    private static func normalizedVersionComponents(_ raw: String) -> [Int] {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingPrefix("v")
+            .trimmingPrefix("V")
+            .split(separator: ".")
+            .map { component in
+                let digits = component.filter(\.isNumber)
+                return Int(digits) ?? 0
+            }
+    }
+}
+
+private struct UpdateFeedManifest: Decodable {
+    let version: String
+    let build: String?
+    let downloadURL: String
+    let releaseNotesURL: String?
+    let notes: String?
+    let publishedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case version
+        case build
+        case downloadURL = "download_url"
+        case releaseNotesURL = "release_notes_url"
+        case notes
+        case publishedAt = "published_at"
+    }
+}
+
+private struct GitHubReleasePayload: Decodable {
+    let tagName: String
+    let htmlURL: URL
+    let body: String?
+    let publishedAt: Date?
+    let assets: [GitHubAsset]
+
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case htmlURL = "html_url"
+        case body
+        case publishedAt = "published_at"
+        case assets
+    }
+}
+
+private struct GitHubAsset: Decodable {
+    let browserDownloadURL: URL
+
+    enum CodingKeys: String, CodingKey {
+        case browserDownloadURL = "browser_download_url"
+    }
+}
+
+private enum UpdateCheckError: LocalizedError {
+    case nonHTTPResponse
+    case httpStatus(Int, String)
+    case invalidPayload(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .nonHTTPResponse:
+            return "Update feed returned a non-HTTP response."
+        case .httpStatus(let status, let body):
+            return "Update feed returned status \(status): \(body)"
+        case .invalidPayload(let message):
+            return "Update feed payload is invalid: \(message)"
+        }
+    }
+}
+
+private extension String {
+    func trimmingPrefix(_ prefix: String) -> String {
+        guard hasPrefix(prefix) else { return self }
+        return String(dropFirst(prefix.count))
     }
 }

@@ -64,6 +64,14 @@ pub struct NewDraft {
     pub model_used: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DraftQualitySample {
+    pub thread_id: String,
+    pub category: ThreadCategory,
+    pub generated_draft: String,
+    pub sent_reply: String,
+}
+
 #[derive(Clone)]
 pub struct Database {
     conn: std::sync::Arc<Mutex<Connection>>,
@@ -799,6 +807,69 @@ impl Database {
         for row in rows {
             out.push(row?);
         }
+        Ok(out)
+    }
+
+    pub fn draft_quality_samples(
+        &self,
+        categories: &[ThreadCategory],
+        limit_per_category: usize,
+    ) -> Result<Vec<DraftQualitySample>> {
+        if categories.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let limit_per_category = limit_per_category.clamp(1, 500) as i64;
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "
+            SELECT
+                t.id,
+                d.body,
+                m.body
+            FROM threads t
+            JOIN drafts d ON d.id = (
+                SELECT d2.id
+                FROM drafts d2
+                WHERE d2.thread_id = t.id
+                ORDER BY d2.created_at DESC
+                LIMIT 1
+            )
+            JOIN messages m ON m.id = (
+                SELECT m2.id
+                FROM messages m2
+                WHERE m2.thread_id = t.id
+                  AND m2.inbound = 0
+                ORDER BY m2.sent_at DESC
+                LIMIT 1
+            )
+            WHERE t.category = ?1
+            ORDER BY t.last_message_at DESC
+            LIMIT ?2
+            ",
+        )?;
+
+        let mut out = Vec::new();
+        for category in categories {
+            let rows = stmt.query_map(params![category.as_str(), limit_per_category], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
+
+            for row in rows {
+                let (thread_id, draft_body, sent_body) = row?;
+                out.push(DraftQualitySample {
+                    thread_id,
+                    category: *category,
+                    generated_draft: self.decrypt_corpus_text(draft_body),
+                    sent_reply: self.decrypt_corpus_text(sent_body),
+                });
+            }
+        }
+
         Ok(out)
     }
 

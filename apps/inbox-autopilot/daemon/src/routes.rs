@@ -4,11 +4,13 @@ use crate::db::Database;
 use crate::error::ApiError;
 use crate::gmail::GmailClient;
 use crate::pipeline::DraftPipeline;
+use crate::quality::build_draft_quality_report;
 use crate::types::{
     ApproveSendResponse, AuthStatusResponse, BackfillRequest, ChatGptAuthRequest,
-    DraftListResponse, EventListResponse, ExportAuditResponse, GmailAuthRequest,
-    GmailAuthUrlResponse, HealthResponse, SessionCreateRequest, SettingsResponse, SyncNowResponse,
-    TemplateMineResponse, ThreadListResponse, UpdateSettingsRequest,
+    DraftListResponse, DraftQualityReport, EventListResponse, ExportAuditResponse,
+    GmailAuthRequest, GmailAuthUrlResponse, HealthResponse, SessionCreateRequest, SettingsResponse,
+    SyncNowResponse, TemplateMineResponse, ThreadCategory, ThreadListResponse,
+    UpdateSettingsRequest,
 };
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
@@ -114,6 +116,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drafts", get(list_drafts))
         .route("/drafts/:id/needs-human", post(mark_needs_human))
         .route("/templates/mine", get(mine_templates))
+        .route("/quality/draft-edit-rate", get(draft_edit_rate))
         .route("/events", get(list_events))
         .route("/events/stream", get(stream_events))
         .route("/settings", get(get_settings).put(update_settings))
@@ -571,6 +574,45 @@ async fn mine_templates(
         .mine_template_suggestions(query.limit.unwrap_or(12))
         .map_err(ApiError::internal)?;
     Ok(Json(TemplateMineResponse { suggestions }))
+}
+
+#[derive(Debug, Deserialize)]
+struct DraftQualityQuery {
+    limit_per_category: Option<usize>,
+    threshold: Option<f32>,
+}
+
+async fn draft_edit_rate(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<DraftQualityQuery>,
+) -> Result<Json<DraftQualityReport>, ApiError> {
+    require_auth(&state, &headers)?;
+
+    let threshold = query.threshold.unwrap_or(0.35).clamp(0.05, 1.0);
+    let limit_per_category = query.limit_per_category.unwrap_or(200).clamp(1, 1_000);
+    let categories = [ThreadCategory::Scheduling, ThreadCategory::ReportDelivery];
+    let samples = state
+        .db
+        .draft_quality_samples(&categories, limit_per_category)
+        .map_err(ApiError::internal)?;
+
+    let report = build_draft_quality_report(samples, threshold);
+
+    state.emit_event(
+        None,
+        "draft_quality_evaluated",
+        json!({
+            "threshold": report.threshold,
+            "target_rate": report.target_rate,
+            "total_samples": report.total_samples,
+            "total_minimal_edit": report.total_minimal_edit,
+            "total_minimal_edit_rate": report.total_minimal_edit_rate,
+            "target_met": report.target_met
+        }),
+    )?;
+
+    Ok(Json(report))
 }
 
 #[derive(Debug, Deserialize)]
