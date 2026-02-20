@@ -4,8 +4,10 @@ import SwiftUI
 
 @MainActor
 final class CodexHandshakeViewModel: ObservableObject {
-    @Published var apiBaseURL: String
-    @Published var authToken: String
+    @Published var email: String
+    @Published var verificationCode: String = ""
+    @Published private(set) var authState: AuthState
+    @Published private(set) var isAuthenticated: Bool
 
     @Published var workers: [RuntimeCodexWorkerSummary] = []
     @Published var selectedWorkerID: String? {
@@ -29,19 +31,39 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let defaults: UserDefaults
     private let now: () -> Date
 
-    private let baseURLKey = "autopilot.ios.codex.baseURL"
     private let tokenKey = "autopilot.ios.codex.authToken"
+    private let emailKey = "autopilot.ios.codex.email"
     private let selectedWorkerIDKey = "autopilot.ios.codex.selectedWorkerID"
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
 
+    private static let defaultBaseURL = URL(string: "https://openagents.com")!
+
+    private var authToken: String {
+        didSet {
+            isAuthenticated = !authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
     let deviceID: String
+
+    var environmentHost: String {
+        Self.defaultBaseURL.host ?? "openagents.com"
+    }
 
     init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
         self.defaults = defaults
         self.now = now
 
-        self.apiBaseURL = defaults.string(forKey: baseURLKey) ?? "https://openagents.com"
-        self.authToken = defaults.string(forKey: tokenKey) ?? ""
+        let savedEmail = defaults.string(forKey: emailKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let savedToken = defaults.string(forKey: tokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        self.email = savedEmail
+        self.authToken = savedToken
+        self.isAuthenticated = !savedToken.isEmpty
+        self.authState = savedToken.isEmpty
+            ? .signedOut
+            : .authenticated(email: savedEmail.isEmpty ? nil : savedEmail)
+
         self.selectedWorkerID = defaults.string(forKey: selectedWorkerIDKey)
 
         if let existingDeviceID = defaults.string(forKey: deviceIDKey), !existingDeviceID.isEmpty {
@@ -58,14 +80,89 @@ final class CodexHandshakeViewModel: ObservableObject {
         handshakeTimeoutTask?.cancel()
     }
 
-    func saveConfiguration() {
-        defaults.set(apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: baseURLKey)
-        defaults.set(authToken.trimmingCharacters(in: .whitespacesAndNewlines), forKey: tokenKey)
+    func sendEmailCode() async {
+        let normalizedEmail = normalizeEmail(email)
+        guard isValidEmail(normalizedEmail) else {
+            errorMessage = "Enter a valid email address first."
+            return
+        }
+
+        authState = .sendingCode
+        errorMessage = nil
+        statusMessage = "Sending sign-in code..."
+
+        do {
+            try await makeAuthClient().sendEmailCode(email: normalizedEmail)
+            email = normalizedEmail
+            defaults.set(normalizedEmail, forKey: emailKey)
+            verificationCode = ""
+            authState = .codeSent(email: normalizedEmail)
+            statusMessage = "Code sent to \(normalizedEmail)."
+        } catch {
+            authState = .signedOut
+            errorMessage = formatError(error)
+            statusMessage = nil
+        }
+    }
+
+    func verifyEmailCode() async {
+        let normalizedCode = verificationCode.replacingOccurrences(of: " ", with: "")
+        guard !normalizedCode.isEmpty else {
+            errorMessage = "Enter your verification code first."
+            return
+        }
+
+        authState = .verifying
+        errorMessage = nil
+        statusMessage = "Verifying code..."
+
+        do {
+            let session = try await makeAuthClient().verifyEmailCode(code: normalizedCode)
+            authToken = session.token
+            defaults.set(session.token, forKey: tokenKey)
+
+            if let sessionEmail = session.email?.trimmingCharacters(in: .whitespacesAndNewlines), !sessionEmail.isEmpty {
+                email = sessionEmail
+            }
+            defaults.set(email, forKey: emailKey)
+
+            verificationCode = ""
+            authState = .authenticated(email: email.isEmpty ? nil : email)
+            statusMessage = "Signed in to OpenAgents."
+            errorMessage = nil
+
+            await refreshWorkers()
+        } catch {
+            authState = .codeSent(email: email)
+            errorMessage = formatError(error)
+            statusMessage = nil
+        }
+    }
+
+    func signOut() {
+        streamTask?.cancel()
+        streamTask = nil
+        handshakeTimeoutTask?.cancel()
+        handshakeTimeoutTask = nil
+
+        authToken = ""
+        defaults.removeObject(forKey: tokenKey)
+
+        workers = []
+        selectedWorkerID = nil
+        latestSnapshot = nil
+        recentEvents = []
+        streamState = .idle
+        handshakeState = .idle
+
+        authState = .signedOut
+        statusMessage = "Signed out."
+        errorMessage = nil
     }
 
     func refreshWorkers() async {
         guard let client = makeClient() else {
-            errorMessage = "Set API base URL and auth token first."
+            errorMessage = "Sign in first to load workers."
             return
         }
 
@@ -102,7 +199,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         guard let client = makeClient() else {
-            errorMessage = "Set API base URL and auth token first."
+            errorMessage = "Sign in first to send handshake."
             return
         }
 
@@ -255,16 +352,27 @@ final class CodexHandshakeViewModel: ObservableObject {
         workers.first(where: { $0.workerID == workerID })?.latestSeq ?? 0
     }
 
+    private func makeAuthClient() -> RuntimeCodexClient {
+        RuntimeCodexClient(baseURL: Self.defaultBaseURL)
+    }
+
     private func makeClient() -> RuntimeCodexClient? {
-        let base = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let token = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !base.isEmpty, !token.isEmpty,
-              let url = URL(string: base) else {
+        guard !token.isEmpty else {
             return nil
         }
 
-        return RuntimeCodexClient(baseURL: url, authToken: token)
+        return RuntimeCodexClient(baseURL: Self.defaultBaseURL, authToken: token)
+    }
+
+    private func normalizeEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func isValidEmail(_ value: String) -> Bool {
+        let regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        return value.wholeMatch(of: regex) != nil
     }
 
     private func iso8601(_ date: Date) -> String {

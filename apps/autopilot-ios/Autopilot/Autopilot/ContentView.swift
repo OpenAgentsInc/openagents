@@ -6,32 +6,57 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Connection") {
-                    TextField("API base URL", text: $model.apiBaseURL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                        .keyboardType(.URL)
-
-                    SecureField("Auth token", text: $model.authToken)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-
+                Section("OpenAgents") {
                     HStack {
-                        Button("Save") {
-                            model.saveConfiguration()
-                            model.clearMessages()
-                        }
+                        Text("Environment")
+                        Spacer()
+                        Text(model.environmentHost)
+                            .foregroundStyle(.secondary)
+                    }
 
-                        Button("Load Workers") {
-                            Task {
-                                model.saveConfiguration()
-                                await model.refreshWorkers()
+                    Text("Auth: \(authDescription(model.authState))")
+                        .font(.footnote)
+
+                    if model.isAuthenticated {
+                        Button("Sign Out") {
+                            model.signOut()
+                        }
+                    } else {
+                        TextField("Email", text: $model.email)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .keyboardType(.emailAddress)
+
+                        TextField("Verification Code", text: $model.verificationCode)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .keyboardType(.numberPad)
+
+                        HStack {
+                            Button("Send Code") {
+                                Task {
+                                    await model.sendEmailCode()
+                                }
                             }
+
+                            Button("Verify") {
+                                Task {
+                                    await model.verifyEmailCode()
+                                }
+                            }
+                            .disabled(model.verificationCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
                 }
 
                 Section("Worker") {
+                    Button("Load Workers") {
+                        Task {
+                            await model.refreshWorkers()
+                        }
+                    }
+                    .disabled(!model.isAuthenticated)
+
                     if model.workers.isEmpty {
                         Text("No workers loaded")
                             .foregroundStyle(.secondary)
@@ -70,6 +95,8 @@ struct ContentView: View {
                         Button("Connect Stream") {
                             model.connectStream()
                         }
+                        .disabled(!model.isAuthenticated)
+
                         Button("Disconnect") {
                             model.disconnectStream()
                         }
@@ -80,7 +107,7 @@ struct ContentView: View {
                             await model.sendHandshake()
                         }
                     }
-                    .disabled(model.selectedWorkerID == nil)
+                    .disabled(!model.isAuthenticated || model.selectedWorkerID == nil)
                 }
 
                 Section("Recent Events") {
@@ -115,6 +142,24 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Codex Handshake")
+        }
+    }
+
+    private func authDescription(_ state: AuthState) -> String {
+        switch state {
+        case .signedOut:
+            return "signed out"
+        case .sendingCode:
+            return "sending code"
+        case .codeSent(let email):
+            return "code sent to \(email)"
+        case .verifying:
+            return "verifying"
+        case .authenticated(let email):
+            if let email, !email.isEmpty {
+                return "signed in as \(email)"
+            }
+            return "signed in"
         }
     }
 

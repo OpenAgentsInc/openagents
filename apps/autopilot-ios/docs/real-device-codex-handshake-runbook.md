@@ -28,7 +28,8 @@ Desktop host:
 iOS device:
 
 - Real device build installed from `apps/autopilot-ios/Autopilot/`.
-- iOS app has a valid API base URL and auth token.
+- iOS app defaults to `https://openagents.com` automatically (no manual base URL entry).
+- iOS user signs in in-app via email code (no manual bearer token paste).
 - iOS user and desktop sync token must both have access to the same worker owner scope.
 
 Operator tools:
@@ -65,12 +66,11 @@ Expected:
 
 In the iOS Codex handshake screen:
 
-1. Set `API base URL` to the same host as desktop sync (example: `https://openagents.com`).
-2. Set `Auth token` to a valid bearer token for the same user scope.
-3. Tap `Save`.
-4. Tap `Load Workers`.
-5. Select the target worker.
-6. Tap `Connect Stream`.
+1. Enter your email address and tap `Send Code`.
+2. Enter the verification code and tap `Verify`.
+3. Tap `Load Workers`.
+4. Select the target worker.
+5. Tap `Connect Stream`.
 
 Expected:
 
