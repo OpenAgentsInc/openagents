@@ -37,13 +37,27 @@ defmodule OpenAgentsRuntime.Integrations.AuthTokenVerifier do
   def verify(token, _opts) when not is_binary(token), do: {:error, :invalid_token_format}
 
   def verify(token, opts) when is_binary(token) do
+    case verify_and_claims(token, opts) do
+      {:ok, _claims} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec verify_and_claims(binary() | nil, [verify_opt()]) ::
+          {:ok, map()} | {:error, verify_error()}
+  def verify_and_claims(nil, _opts), do: {:error, :missing_token}
+
+  def verify_and_claims(token, _opts) when not is_binary(token),
+    do: {:error, :invalid_token_format}
+
+  def verify_and_claims(token, opts) when is_binary(token) do
     with {:ok, %{payload_segment: payload_segment, payload: claims, signature: signature}} <-
            decode_token(token),
          :ok <- validate_signature(payload_segment, signature, opts),
          :ok <- validate_claims(claims, opts),
          :ok <- validate_expected_claims(claims, opts),
          :ok <- guard_replay(claims, opts[:now] || System.system_time(:second)) do
-      :ok
+      {:ok, claims}
     end
   end
 
