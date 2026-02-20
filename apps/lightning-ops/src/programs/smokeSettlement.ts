@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 
+import { ApiTransportLive } from "../controlPlane/apiTransport.js";
 import { ConvexControlPlaneLive } from "../controlPlane/convex.js";
 import { ConvexTransportLive } from "../controlPlane/convexTransport.js";
 import { makeInMemoryControlPlaneHarness } from "../controlPlane/inMemory.js";
@@ -8,7 +9,7 @@ import { OpsRuntimeConfigLive } from "../runtime/config.js";
 
 import { ingestSettlementEvents, type SettlementIngestEvent } from "./ingestSettlements.js";
 
-export type SettlementSmokeMode = "mock" | "convex";
+export type SettlementSmokeMode = "mock" | "convex" | "api";
 
 const smokeSettlementEvents: ReadonlyArray<SettlementIngestEvent> = [
   {
@@ -93,9 +94,19 @@ const runConvexSmoke = () => {
   return runWithLayer(controlPlaneLayer);
 };
 
+const runApiSmoke = () => {
+  const controlPlaneLayer = ConvexControlPlaneLive.pipe(
+    Layer.provideMerge(ApiTransportLive),
+    Layer.provideMerge(OpsRuntimeConfigLive),
+  );
+  return runWithLayer(controlPlaneLayer);
+};
+
 export const runSettlementSmoke = (input?: {
   readonly mode?: SettlementSmokeMode;
 }) => {
   const mode = input?.mode ?? "mock";
-  return mode === "convex" ? runConvexSmoke() : runMockSmoke();
+  if (mode === "convex") return runConvexSmoke();
+  if (mode === "api") return runApiSmoke();
+  return runMockSmoke();
 };

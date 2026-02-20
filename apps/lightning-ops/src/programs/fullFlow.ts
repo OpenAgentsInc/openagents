@@ -199,10 +199,11 @@ const fileExists = (path: string) =>
     catch: (error) => (error instanceof Error ? error : new Error(String(error))),
   }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
-const isHostedMode = (mode: FullFlowSmokeMode): mode is "convex" => mode === "convex";
+const isHostedMode = (mode: FullFlowSmokeMode): mode is "convex" | "api" =>
+  mode === "convex" || mode === "api";
 
 const modeForStaging = (mode: FullFlowSmokeMode): StagingSmokeMode =>
-  isHostedMode(mode) ? "convex" : "mock";
+  isHostedMode(mode) ? mode : "mock";
 
 const toLocalObservabilityRecords = (
   artifact: LocalNodeFlowArtifact | null,

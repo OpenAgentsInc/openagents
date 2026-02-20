@@ -6,6 +6,7 @@ import type {
   ControlPlaneSecurityGlobal,
   SecurityDenyReasonCode,
 } from "../contracts.js";
+import { ApiTransportLive } from "../controlPlane/apiTransport.js";
 import { ConvexControlPlaneLive } from "../controlPlane/convex.js";
 import { ConvexTransportLive } from "../controlPlane/convexTransport.js";
 import { makeInMemoryControlPlaneHarness } from "../controlPlane/inMemory.js";
@@ -13,7 +14,7 @@ import { ControlPlaneService, type ControlPlaneSecurityState } from "../controlP
 import { OpsRuntimeConfigLive } from "../runtime/config.js";
 import { validateCredentialRoleMap } from "../runtime/credentials.js";
 
-export type SecuritySmokeMode = "mock" | "convex";
+export type SecuritySmokeMode = "mock" | "convex" | "api";
 
 export type SecuritySmokeSummary = Readonly<{
   executionPath: "hosted-node";
@@ -214,9 +215,19 @@ const runConvexSecuritySmoke = () => {
   return runSecurityFlow.pipe(Effect.provide(controlPlaneLayer));
 };
 
+const runApiSecuritySmoke = () => {
+  const controlPlaneLayer = ConvexControlPlaneLive.pipe(
+    Layer.provideMerge(ApiTransportLive),
+    Layer.provideMerge(OpsRuntimeConfigLive),
+  );
+  return runSecurityFlow.pipe(Effect.provide(controlPlaneLayer));
+};
+
 export const runSecuritySmoke = (input?: {
   readonly mode?: SecuritySmokeMode;
 }) => {
   const mode = input?.mode ?? "mock";
-  return mode === "convex" ? runConvexSecuritySmoke() : runMockSecuritySmoke();
+  if (mode === "convex") return runConvexSecuritySmoke();
+  if (mode === "api") return runApiSecuritySmoke();
+  return runMockSecuritySmoke();
 };
