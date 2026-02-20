@@ -54,6 +54,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 
 - `docs/autopilot/testing/PROD_E2E_TESTING.md` — production-safe validation flow.
 - `docs/autopilot/testing/TRACE_RETRIEVAL.md` — trace/debug retrieval workflow.
+- `apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md` — canonical real-app iOS↔desktop handshake gate (runtime-mediated).
 - `docs/autopilot/runbooks/` — operational runbooks.
 - `docs/lightning/runbooks/` — Lightning-specific operational procedures.
 - `docs/audits/README.md` — audit index and follow-up targets.
