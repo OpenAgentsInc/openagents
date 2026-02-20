@@ -28,6 +28,33 @@ Runtime SSE events map to `RunEvent` oneofs in `events.proto`:
 - `run.finished` -> `run_finished`
 - unknown payloads -> `unknown`
 
+## Codex Worker Stream Mapping
+
+Codex worker SSE payloads are proto-compatible projections of `openagents.protocol.v1.CodexWorkerEvent`
+from `proto/openagents/protocol/v1/codex_events.proto`.
+
+Envelope mapping:
+
+- `seq` (JSON number) -> `CodexWorkerEvent.seq`
+- `eventType` or `event_type` (JSON string) -> `CodexWorkerEvent.event_type`
+- `payload` (JSON object) -> `CodexWorkerUnknownPayload.body` in proto terms when method-specific
+  desktop/iOS payloads are emitted through worker events.
+
+Handshake envelope mapping (runtime-mediated desktop/iOS flow):
+
+- `event_type == "worker.event"` is required.
+- `payload.source == "autopilot-ios"` + `payload.method == "ios/handshake"`:
+  - required: `handshake_id`, `device_id`, `occurred_at`
+- `payload.source == "autopilot-desktop"` + `payload.method == "desktop/handshake_ack"`:
+  - required: `handshake_id`, `desktop_session_id`, `occurred_at`
+
+Proto-first boundary rule for clients:
+
+- Desktop and iOS stream consumers must decode through proto-derived envelope adapters before
+  handshake correlation/dedupe logic.
+- Missing required handshake fields are treated as invalid envelope payloads (ignored for ack
+  matching and not eligible for handshake success state transitions).
+
 ## Receipt Mapping
 
 `PredictReceipt` in `receipts.proto` is the canonical receipt contract for DS predict outputs. Runtime receipt maps should include both:
