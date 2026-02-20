@@ -1,4 +1,5 @@
 import { Head } from '@inertiajs/react';
+import { KhalaSyncClient, MemoryWatermarkStore, type SyncUpdateBatch } from '@openagentsinc/khala-sync';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -94,6 +95,12 @@ type WorkerStopResponse = {
 };
 
 type StreamState = 'idle' | 'connecting' | 'open' | 'error';
+type SyncTokenResponse = { data: { token: string } };
+
+const khalaSyncEnabled = import.meta.env.VITE_KHALA_SYNC_ENABLED === 'true';
+const khalaSyncWsUrl =
+    (import.meta.env.VITE_KHALA_SYNC_WS_URL as string | undefined)?.trim() ||
+    '';
 
 function safeJsonParse(value: string): unknown {
     try {
@@ -180,6 +187,100 @@ function parseJsonObject(
     return parsed;
 }
 
+function parseWorkerStatus(value: unknown): WorkerStatus | null {
+    if (value === 'starting') return 'starting';
+    if (value === 'running') return 'running';
+    if (value === 'stopping') return 'stopping';
+    if (value === 'stopped') return 'stopped';
+    if (value === 'failed') return 'failed';
+    return null;
+}
+
+function inferWorkerId(payload: Record<string, unknown>, docKey: string): string {
+    const fromPayload =
+        typeof payload.worker_id === 'string' && payload.worker_id.trim() !== ''
+            ? payload.worker_id.trim()
+            : '';
+
+    if (fromPayload !== '') return fromPayload;
+
+    const prefix = 'runtime/codex_worker_summary:';
+    if (docKey.startsWith(prefix)) {
+        return docKey.slice(prefix.length);
+    }
+
+    return '';
+}
+
+function workerSummaryFromSyncUpdate(
+    update: SyncUpdateBatch['updates'][number],
+    existing: CodexWorkerSummary,
+): CodexWorkerSummary | null {
+    if (!isObjectRecord(update.payload)) {
+        return null;
+    }
+
+    const payload = update.payload;
+    const workerId = inferWorkerId(payload, update.doc_key);
+    if (workerId === '' || workerId !== existing.worker_id) {
+        return null;
+    }
+
+    const nextStatus = parseWorkerStatus(payload.status) ?? existing.status;
+    const nextLatestSeq =
+        typeof payload.latest_seq === 'number' && Number.isFinite(payload.latest_seq)
+            ? payload.latest_seq
+            : existing.latest_seq;
+
+    return {
+        ...existing,
+        worker_id: workerId,
+        status: nextStatus,
+        latest_seq: nextLatestSeq,
+        workspace_ref:
+            typeof payload.workspace_ref === 'string'
+                ? payload.workspace_ref
+                : payload.workspace_ref === null
+                  ? null
+                  : existing.workspace_ref,
+        codex_home_ref:
+            typeof payload.codex_home_ref === 'string'
+                ? payload.codex_home_ref
+                : payload.codex_home_ref === null
+                  ? null
+                  : existing.codex_home_ref,
+        adapter:
+            typeof payload.adapter === 'string' && payload.adapter.trim() !== ''
+                ? payload.adapter
+                : existing.adapter,
+        metadata: isObjectRecord(payload.metadata) ? payload.metadata : existing.metadata,
+        started_at:
+            typeof payload.started_at === 'string'
+                ? payload.started_at
+                : payload.started_at === null
+                  ? null
+                  : existing.started_at,
+        stopped_at:
+            typeof payload.stopped_at === 'string'
+                ? payload.stopped_at
+                : payload.stopped_at === null
+                  ? null
+                  : existing.stopped_at,
+        last_heartbeat_at:
+            typeof payload.last_heartbeat_at === 'string'
+                ? payload.last_heartbeat_at
+                : payload.last_heartbeat_at === null
+                  ? null
+                  : existing.last_heartbeat_at,
+        updated_at:
+            typeof payload.updated_at === 'string'
+                ? payload.updated_at
+                : payload.updated_at === null
+                  ? null
+                  : existing.updated_at,
+    };
+}
+
 export default function AdminIndex() {
     const [workers, setWorkers] = useState<CodexWorkerSummary[]>([]);
     const [workersLoading, setWorkersLoading] = useState(false);
@@ -224,6 +325,8 @@ export default function AdminIndex() {
 
     const refreshAtRef = useRef(0);
     const streamCursorRef = useRef(0);
+    const loadWorkersRef = useRef<() => Promise<void>>(async () => {});
+    const khalaClientRef = useRef<KhalaSyncClient | null>(null);
 
     const selectedWorkerSummary = useMemo(
         () =>
@@ -316,6 +419,10 @@ export default function AdminIndex() {
     );
 
     useEffect(() => {
+        loadWorkersRef.current = loadWorkers;
+    }, [loadWorkers]);
+
+    useEffect(() => {
         void loadWorkers();
     }, [loadWorkers]);
 
@@ -328,6 +435,110 @@ export default function AdminIndex() {
             window.clearInterval(timer);
         };
     }, [loadWorkers]);
+
+    useEffect(() => {
+        if (!khalaSyncEnabled) {
+            return;
+        }
+
+        const wsUrl =
+            khalaSyncWsUrl !== ''
+                ? khalaSyncWsUrl
+                : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/sync/socket/websocket`;
+
+        let cancelled = false;
+
+        const client = new KhalaSyncClient({
+            url: wsUrl,
+            watermarkStore: new MemoryWatermarkStore(),
+            tokenProvider: async () => {
+                const response = await apiRequest<SyncTokenResponse>(
+                    '/api/sync/token',
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            scopes: ['runtime.codex_worker_summaries'],
+                        }),
+                    },
+                );
+
+                const token = String(response.data?.token ?? '').trim();
+                if (token === '') {
+                    throw new Error('Sync token response missing token');
+                }
+
+                return token;
+            },
+            onUpdateBatch: (batch) => {
+                setWorkers((previous) => {
+                    if (previous.length === 0) return previous;
+
+                    let changed = false;
+
+                    const next = previous.map((worker) => {
+                        const update = batch.updates.find((candidate) => {
+                            if (
+                                candidate.topic !==
+                                'runtime.codex_worker_summaries'
+                            ) {
+                                return false;
+                            }
+
+                            if (
+                                !isObjectRecord(candidate.payload) &&
+                                !candidate.doc_key.includes(worker.worker_id)
+                            ) {
+                                return false;
+                            }
+
+                            return true;
+                        });
+
+                        if (!update) return worker;
+
+                        const merged = workerSummaryFromSyncUpdate(update, worker);
+                        if (!merged) return worker;
+
+                        changed = true;
+                        return merged;
+                    });
+
+                    return changed ? next : previous;
+                });
+            },
+            onStaleCursor: () => {
+                void loadWorkersRef.current();
+            },
+            onError: (error) => {
+                if (!cancelled) {
+                    setWorkersError(error.message);
+                }
+            },
+        });
+
+        khalaClientRef.current = client;
+
+        void (async () => {
+            try {
+                await client.connect();
+                await client.subscribe(['runtime.codex_worker_summaries']);
+            } catch (error) {
+                if (!cancelled) {
+                    const message =
+                        error instanceof Error
+                            ? error.message
+                            : 'Failed to connect Khala sync client';
+                    setWorkersError(message);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            khalaClientRef.current = null;
+            void client.disconnect();
+        };
+    }, []);
 
     useEffect(() => {
         if (!selectedWorkerId) {
