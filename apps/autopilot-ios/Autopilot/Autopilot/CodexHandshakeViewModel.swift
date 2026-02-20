@@ -12,6 +12,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     @Published var workers: [RuntimeCodexWorkerSummary] = []
     @Published var selectedWorkerID: String? {
         didSet {
+            guard selectedWorkerID != oldValue else {
+                return
+            }
             storeSelection()
             restartStreamIfReady(resetCursor: true)
         }
@@ -31,16 +34,17 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private var streamTask: Task<Void, Never>?
     private var activeKhalaSocket: URLSessionWebSocketTask?
+    private var activeStreamWorkerID: String?
     private var handshakeTimeoutTask: Task<Void, Never>?
     private var khalaWorkerEventsWatermark: Int
     private var nextCodeSendAllowedAt: Date?
     private var assistantMessageIndexByItemKey: [String: Int] = [:]
     private var reasoningMessageIndexByItemKey: [String: Int] = [:]
     private var toolMessageIndexByItemKey: [String: Int] = [:]
-    private var assistantDeltaSourceByItemKey: [String: AgentDeltaSource] = [:]
+    private var assistantDeltaSourceByItemKey: [String: CodexAssistantDeltaSource] = [:]
     private var seenUserMessageKeys: Set<String> = []
     private var seenUserTurnIDs: Set<String> = []
-    private var agentDeltaAliasSources: [String: AgentDeltaSource] = [:]
+    private var seenSystemMessageKeys: Set<String> = []
     private var processedCodexEventSeqs: Set<Int> = []
     private var processedCodexEventSeqOrder: [Int] = []
     private var hasAttemptedAutoConnect = false
@@ -60,7 +64,6 @@ final class CodexHandshakeViewModel: ObservableObject {
     private static let khalaChannelTopic = "sync:v1"
     private static let khalaHeartbeatIntervalNS: UInt64 = 20_000_000_000
     private static let streamReconnectSleepNS: UInt64 = 500_000_000
-    private static let aliasCacheLimit = 2_048
     private static let seqCacheLimit = 8_192
     private static let iso8601Parsers: [ISO8601DateFormatter] = {
         let withFractional = ISO8601DateFormatter()
@@ -76,11 +79,6 @@ final class CodexHandshakeViewModel: ObservableObject {
         didSet {
             isAuthenticated = !authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-    }
-
-    private enum AgentDeltaSource {
-        case modern
-        case legacyContent
     }
 
     private struct KhalaFrame {
@@ -268,6 +266,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
         activeKhalaSocket = nil
+        activeStreamWorkerID = nil
         handshakeTimeoutTask?.cancel()
         handshakeTimeoutTask = nil
 
@@ -310,14 +309,21 @@ final class CodexHandshakeViewModel: ObservableObject {
                 selectedWorkerID = nil
                 latestSnapshot = nil
                 streamState = .idle
+                activeStreamWorkerID = nil
                 statusMessage = "No running desktop workers found."
                 return
             }
 
+            let previousWorkerID = selectedWorkerID
             selectedWorkerID = worker.workerID
             latestSnapshot = try? await client.workerSnapshot(workerID: worker.workerID)
             statusMessage = "Loaded \(result.count) worker(s). Auto-selected \(shortWorkerID(worker.workerID))."
-            restartStreamIfReady(resetCursor: true)
+
+            // If selection did not change, ensure stream still starts once without forcing restart churn.
+            if previousWorkerID == worker.workerID,
+               streamTask == nil || streamState == .idle {
+                restartStreamIfReady(resetCursor: true)
+            }
 
             // Keep the iOS flow simple: selecting workers also kicks off a handshake.
             Task { [weak self] in
@@ -473,25 +479,42 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
         activeKhalaSocket = nil
+        activeStreamWorkerID = nil
         streamState = .idle
     }
 
     private func restartStreamIfReady(resetCursor: Bool) {
-        streamTask?.cancel()
-        streamTask = nil
-        activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
-        activeKhalaSocket = nil
-
         guard makeClient() != nil,
               let workerID = selectedWorkerID,
               !workerID.isEmpty else {
+            streamTask?.cancel()
+            streamTask = nil
+            activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
+            activeKhalaSocket = nil
+            activeStreamWorkerID = nil
             streamState = .idle
             return
         }
 
+        let isSameWorkerStream =
+            activeStreamWorkerID == workerID
+            && streamTask != nil
+            && (streamState == .connecting || streamState == .live || streamState == .reconnecting)
+
+        if isSameWorkerStream && !resetCursor {
+            return
+        }
+
+        streamTask?.cancel()
+        streamTask = nil
+        activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
+        activeKhalaSocket = nil
+        activeStreamWorkerID = workerID
+
         if resetCursor {
             recentEvents = []
             resetChatTimeline()
+            fastForwardKhalaWatermarkIfPossible(for: workerID)
         }
 
         streamTask = Task { [weak self] in
@@ -502,6 +525,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private func runStreamLoop(workerID: String) async {
         guard let client = makeClient() else {
             streamState = .idle
+            activeStreamWorkerID = nil
             return
         }
 
@@ -563,6 +587,7 @@ final class CodexHandshakeViewModel: ObservableObject {
                 if let runtimeError = error as? RuntimeCodexApiError,
                    runtimeError.code == .auth || runtimeError.status == 401 {
                     streamState = .idle
+                    activeStreamWorkerID = nil
                     errorMessage = "Khala stream unauthorized. Stay signed in, then reload workers."
                     statusMessage = nil
                     return
@@ -803,8 +828,6 @@ final class CodexHandshakeViewModel: ObservableObject {
         if case .waitingAck = handshakeState {
             return
         }
-
-        statusMessage = "Stream live for \(shortWorkerID(workerID)). Received \(orderedEvents.count) event(s)."
     }
 
     private func khalaSyncError(from payload: JSONValue) -> RuntimeCodexApiError {
@@ -977,18 +1000,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             return codexEvent
         }
 
-        let orderedCodexEvents = codexEvents.sorted { lhs, rhs in
-            let lhsTime = timestampFromISO8601(lhs.occurredAt) ?? 0
-            let rhsTime = timestampFromISO8601(rhs.occurredAt) ?? 0
-            if lhsTime != rhsTime {
-                return lhsTime < rhsTime
-            }
-            let lhsSeq = lhs.seq ?? Int.max
-            let rhsSeq = rhs.seq ?? Int.max
-            return lhsSeq < rhsSeq
-        }
-
-        for codexEvent in orderedCodexEvents {
+        for codexEvent in codexEvents {
             applyCodexEvent(codexEvent)
         }
 
@@ -1048,12 +1060,14 @@ final class CodexHandshakeViewModel: ObservableObject {
     private func applyCodexEvent(_ event: RuntimeCodexProto.CodexEventEnvelope) {
         switch event.method {
         case "thread/started":
-            appendSystemMessage(
-                "Thread started.",
-                threadID: event.threadID,
-                turnID: event.turnID,
-                occurredAt: event.occurredAt
-            )
+            if CodexChatEventDisplayPolicy.shouldDisplaySystemMethod(event.method) {
+                appendSystemMessage(
+                    "Thread started.",
+                    threadID: event.threadID,
+                    turnID: event.turnID,
+                    occurredAt: event.occurredAt
+                )
+            }
 
         case "turn/started":
             appendSystemMessage(
@@ -1548,6 +1562,20 @@ final class CodexHandshakeViewModel: ObservableObject {
         guard !trimmed.isEmpty else {
             return
         }
+
+        if let last = chatMessages.last,
+           last.role == .system,
+           last.text == trimmed {
+            return
+        }
+
+        if let dedupeKey = systemMessageDedupeKey(text: trimmed, threadID: threadID, turnID: turnID) {
+            if seenSystemMessageKeys.contains(dedupeKey) {
+                return
+            }
+            seenSystemMessageKeys.insert(dedupeKey)
+        }
+
         chatMessages.append(
             CodexChatMessage(
                 role: .system,
@@ -1558,6 +1586,14 @@ final class CodexHandshakeViewModel: ObservableObject {
                 occurredAt: occurredAt
             )
         )
+    }
+
+    private func systemMessageDedupeKey(text: String, threadID: String?, turnID: String?) -> String? {
+        guard threadID != nil || turnID != nil else {
+            return nil
+        }
+
+        return "system:\(threadID ?? "_"):\(turnID ?? "_"):\(text)"
     }
 
     private func appendErrorMessage(
@@ -1611,7 +1647,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private func appendAssistantDelta(
         itemID: String,
         delta: String,
-        source: AgentDeltaSource,
+        source: CodexAssistantDeltaSource,
         threadID: String?,
         turnID: String?,
         occurredAt: String?
@@ -1623,38 +1659,20 @@ final class CodexHandshakeViewModel: ObservableObject {
         let key = itemKey(threadID: threadID, turnID: turnID, itemID: itemID)
         ensureAssistantEntry(itemID: itemID, threadID: threadID, turnID: turnID, occurredAt: occurredAt)
 
-        if let preferred = assistantDeltaSourceByItemKey[key] {
-            if preferred != source {
-                if preferred == .modern, source == .legacyContent {
-                    assistantDeltaSourceByItemKey[key] = .legacyContent
-                    let aliasPrefix = "\(key)\u{1f}"
-                    agentDeltaAliasSources = agentDeltaAliasSources.filter { !$0.key.hasPrefix(aliasPrefix) }
+        let decision = CodexAssistantDeltaPolicy.decide(
+            current: assistantDeltaSourceByItemKey[key],
+            incoming: source
+        )
+        assistantDeltaSourceByItemKey[key] = decision.selectedSource
 
-                    if let index = assistantMessageIndexByItemKey[key], chatMessages.indices.contains(index) {
-                        chatMessages[index].text = ""
-                    }
-                } else {
-                    return
-                }
-            }
-        } else {
-            assistantDeltaSourceByItemKey[key] = source
-        }
-
-        if assistantDeltaSourceByItemKey[key] != source {
+        guard decision.shouldAccept else {
             return
         }
 
-        let aliasKey = "\(key)\u{1f}\(delta)"
-        if let existing = agentDeltaAliasSources[aliasKey] {
-            if existing != source {
-                return
-            }
-        } else {
-            if agentDeltaAliasSources.count >= Self.aliasCacheLimit {
-                agentDeltaAliasSources.removeAll(keepingCapacity: true)
-            }
-            agentDeltaAliasSources[aliasKey] = source
+        if decision.shouldReset,
+           let index = assistantMessageIndexByItemKey[key],
+           chatMessages.indices.contains(index) {
+            chatMessages[index].text = ""
         }
 
         guard let index = assistantMessageIndexByItemKey[key], chatMessages.indices.contains(index) else {
@@ -1865,44 +1883,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     private func appendAssistantChunk(_ existing: String, delta: String) -> String {
-        guard !delta.isEmpty else {
-            return existing
-        }
-        guard !existing.isEmpty else {
-            return delta
-        }
-
-        if delta.hasPrefix("\n")
-            || delta.hasPrefix(" ")
-            || delta.hasPrefix("\t")
-            || delta.hasPrefix("/")
-            || delta.hasPrefix("'")
-            || delta.hasPrefix("’")
-            || delta.hasPrefix("-")
-            || delta.hasPrefix(")")
-            || delta.hasPrefix("]")
-            || delta.hasPrefix("}")
-            || delta.hasPrefix(",")
-            || delta.hasPrefix(".")
-            || delta.hasPrefix(":")
-            || delta.hasPrefix(";")
-            || delta.hasPrefix("!")
-            || delta.hasPrefix("?") {
-            return existing + delta
-        }
-
-        if let last = existing.last,
-           last.isWhitespace
-            || last == "\n"
-            || last == "/"
-            || last == "("
-            || last == "["
-            || last == "{"
-            || last == "\"" {
-            return existing + delta
-        }
-
-        return existing + " " + delta
+        CodexStreamingTextAssembler.append(existing: existing, delta: delta)
     }
 
     private func stitchTextFragments(_ fragments: [String]) -> String {
@@ -1945,7 +1926,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         assistantDeltaSourceByItemKey = [:]
         seenUserMessageKeys = []
         seenUserTurnIDs = []
-        agentDeltaAliasSources = [:]
+        seenSystemMessageKeys = []
         processedCodexEventSeqs = []
         processedCodexEventSeqOrder = []
     }
@@ -1972,6 +1953,20 @@ final class CodexHandshakeViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func fastForwardKhalaWatermarkIfPossible(for workerID: String) {
+        guard let worker = workers.first(where: { $0.workerID == workerID }) else {
+            return
+        }
+
+        let projectionSeq = worker.khalaProjection?.lastRuntimeSeq ?? 0
+        guard projectionSeq > khalaWorkerEventsWatermark else {
+            return
+        }
+
+        khalaWorkerEventsWatermark = projectionSeq
+        defaults.set(projectionSeq, forKey: khalaWorkerEventsWatermarkKey)
     }
 
     private func storeSelection() {

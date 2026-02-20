@@ -432,6 +432,98 @@ enum CodexChatRole: String, Equatable {
     case error
 }
 
+enum CodexChatEventDisplayPolicy {
+    static func shouldDisplaySystemMethod(_ method: String) -> Bool {
+        method != "thread/started"
+    }
+}
+
+enum CodexStreamingTextAssembler {
+    static func append(existing: String, delta: String) -> String {
+        guard !delta.isEmpty else {
+            return existing
+        }
+        guard !existing.isEmpty else {
+            return delta
+        }
+
+        if existing.hasSuffix(delta) {
+            return existing
+        }
+
+        let overlap = overlapLength(existing: existing, delta: delta)
+        guard overlap > 0 else {
+            return existing + delta
+        }
+
+        return existing + delta.dropFirst(overlap)
+    }
+
+    private static func overlapLength(existing: String, delta: String) -> Int {
+        let maxOverlap = min(existing.count, delta.count)
+        guard maxOverlap > 0 else {
+            return 0
+        }
+
+        for length in stride(from: maxOverlap, through: 1, by: -1) {
+            if existing.hasSuffix(delta.prefix(length)) {
+                return length
+            }
+        }
+
+        return 0
+    }
+}
+
+enum CodexAssistantDeltaSource: Equatable {
+    case modern
+    case legacyContent
+}
+
+struct CodexAssistantDeltaDecision: Equatable {
+    let selectedSource: CodexAssistantDeltaSource
+    let shouldAccept: Bool
+    let shouldReset: Bool
+}
+
+enum CodexAssistantDeltaPolicy {
+    static func decide(
+        current: CodexAssistantDeltaSource?,
+        incoming: CodexAssistantDeltaSource
+    ) -> CodexAssistantDeltaDecision {
+        guard let current else {
+            return CodexAssistantDeltaDecision(
+                selectedSource: incoming,
+                shouldAccept: true,
+                shouldReset: false
+            )
+        }
+
+        switch (current, incoming) {
+        case (.modern, .modern), (.legacyContent, .legacyContent):
+            return CodexAssistantDeltaDecision(
+                selectedSource: current,
+                shouldAccept: true,
+                shouldReset: false
+            )
+
+        case (.modern, .legacyContent):
+            return CodexAssistantDeltaDecision(
+                selectedSource: .legacyContent,
+                shouldAccept: true,
+                shouldReset: true
+            )
+
+        case (.legacyContent, .modern):
+            return CodexAssistantDeltaDecision(
+                selectedSource: .legacyContent,
+                shouldAccept: false,
+                shouldReset: false
+            )
+        }
+    }
+}
+
 struct CodexChatMessage: Identifiable, Equatable {
     let id: String
     var role: CodexChatRole
