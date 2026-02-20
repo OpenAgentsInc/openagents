@@ -194,6 +194,14 @@ pub enum UserAction {
         session_id: SessionId,
         model: Option<String>,
     },
+    RuntimeAuthSendCode {
+        email: String,
+    },
+    RuntimeAuthVerifyCode {
+        code: String,
+    },
+    RuntimeAuthStatus,
+    RuntimeAuthLogout,
     PylonInit,
     PylonStart,
     PylonStop,
@@ -324,6 +332,18 @@ pub struct DvmHistorySnapshot {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct RuntimeAuthStateView {
+    pub base_url: Option<String>,
+    pub email: Option<String>,
+    pub user_id: Option<String>,
+    pub token_present: bool,
+    pub pending_email: Option<String>,
+    pub last_message: Option<String>,
+    pub last_error: Option<String>,
+    pub updated_at: Option<String>,
+}
+
 /// Summary of a Moltbook post for the UI feed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MoltbookPostSummary {
@@ -410,6 +430,9 @@ pub enum AppEvent {
     },
     DvmHistory {
         snapshot: DvmHistorySnapshot,
+    },
+    RuntimeAuthState {
+        state: RuntimeAuthStateView,
     },
     Nip90Log {
         message: String,

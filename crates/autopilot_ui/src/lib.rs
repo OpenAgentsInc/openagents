@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
-    AppEvent, MoltbookCommentSummary, MoltbookPostSummary, MoltbookProfileSummary, SessionId,
-    ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId,
+    AppEvent, MoltbookCommentSummary, MoltbookPostSummary, MoltbookProfileSummary,
+    RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId,
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
@@ -102,6 +102,8 @@ const HISTORY_PANE_WIDTH: f32 = 640.0;
 const HISTORY_PANE_HEIGHT: f32 = 500.0;
 const NIP90_PANE_WIDTH: f32 = 640.0;
 const NIP90_PANE_HEIGHT: f32 = 520.0;
+const AUTH_PANE_WIDTH: f32 = 620.0;
+const AUTH_PANE_HEIGHT: f32 = 500.0;
 const MOLTBOOK_PANE_WIDTH: f32 = 560.0;
 const MOLTBOOK_PANE_HEIGHT: f32 = 520.0;
 const MOLTBOOK_POST_PANE_WIDTH: f32 = 640.0;
@@ -117,6 +119,7 @@ const HOTBAR_SLOT_IDENTITY: u8 = 2;
 const HOTBAR_SLOT_WALLET: u8 = 3;
 const HOTBAR_SLOT_THREADS: u8 = 4;
 const HOTBAR_SLOT_MOLTBOOK: u8 = 5;
+const HOTBAR_SLOT_AUTH: u8 = 6;
 const HOTBAR_CHAT_SLOT_START: u8 = 7;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const GRID_DOT_DISTANCE: f32 = 32.0;
@@ -182,6 +185,7 @@ impl AppViewModel {
             AppEvent::WalletStatus { .. } => {}
             AppEvent::DvmProviderStatus { .. } => {}
             AppEvent::DvmHistory { .. } => {}
+            AppEvent::RuntimeAuthState { .. } => {}
             AppEvent::Nip90Log { .. } => {}
             AppEvent::MoltbookFeedUpdated { .. } => {}
             AppEvent::MoltbookCommentsLoaded { .. } => {}
@@ -431,6 +435,7 @@ enum PaneKind {
     Events,
     Threads,
     FileEditor,
+    Auth,
     Identity,
     Pylon,
     Wallet,
@@ -448,6 +453,7 @@ enum HotbarAction {
     ToggleEvents,
     ToggleThreads,
     ToggleFileEditor,
+    ToggleAuth,
     ToggleIdentity,
     TogglePylon,
     ToggleWallet,
@@ -713,6 +719,23 @@ pub struct MinimalRoot {
     thread_entries: Vec<ThreadEntryView>,
     pending_thread_open: Rc<RefCell<Option<String>>>,
     file_editor: FileEditorPaneState,
+    runtime_auth: RuntimeAuthStateView,
+    runtime_auth_email_input: TextInput,
+    runtime_auth_email_bounds: Bounds,
+    runtime_auth_code_input: TextInput,
+    runtime_auth_code_bounds: Bounds,
+    runtime_auth_send_button: Button,
+    runtime_auth_send_bounds: Bounds,
+    runtime_auth_verify_button: Button,
+    runtime_auth_verify_bounds: Bounds,
+    runtime_auth_status_button: Button,
+    runtime_auth_status_bounds: Bounds,
+    runtime_auth_logout_button: Button,
+    runtime_auth_logout_bounds: Bounds,
+    pending_runtime_auth_send: Rc<RefCell<bool>>,
+    pending_runtime_auth_verify: Rc<RefCell<bool>>,
+    pending_runtime_auth_status: Rc<RefCell<bool>>,
+    pending_runtime_auth_logout: Rc<RefCell<bool>>,
     keygen_button: Button,
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
@@ -2559,6 +2582,74 @@ impl MinimalRoot {
         let pending_thread_open = Rc::new(RefCell::new(None));
         let file_editor = FileEditorPaneState::new();
 
+        let pending_runtime_auth_send = Rc::new(RefCell::new(false));
+        let pending_runtime_auth_send_submit = pending_runtime_auth_send.clone();
+        let runtime_auth_email_input = TextInput::new()
+            .placeholder("you@domain.com")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_runtime_auth_send_submit.borrow_mut() = true;
+            });
+
+        let pending_runtime_auth_verify = Rc::new(RefCell::new(false));
+        let pending_runtime_auth_verify_submit = pending_runtime_auth_verify.clone();
+        let runtime_auth_code_input = TextInput::new()
+            .placeholder("verification code")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_runtime_auth_verify_submit.borrow_mut() = true;
+            });
+
+        let pending_runtime_auth_send_click = pending_runtime_auth_send.clone();
+        let runtime_auth_send_button = Button::new("Send code")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 8.0)
+            .corner_radius(8.0)
+            .on_click(move || {
+                *pending_runtime_auth_send_click.borrow_mut() = true;
+            });
+
+        let pending_runtime_auth_verify_click = pending_runtime_auth_verify.clone();
+        let runtime_auth_verify_button = Button::new("Verify")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 8.0)
+            .corner_radius(8.0)
+            .on_click(move || {
+                *pending_runtime_auth_verify_click.borrow_mut() = true;
+            });
+
+        let pending_runtime_auth_status = Rc::new(RefCell::new(false));
+        let pending_runtime_auth_status_click = pending_runtime_auth_status.clone();
+        let runtime_auth_status_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 8.0)
+            .corner_radius(8.0)
+            .on_click(move || {
+                *pending_runtime_auth_status_click.borrow_mut() = true;
+            });
+
+        let pending_runtime_auth_logout = Rc::new(RefCell::new(false));
+        let pending_runtime_auth_logout_click = pending_runtime_auth_logout.clone();
+        let runtime_auth_logout_button = Button::new("Logout")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 8.0)
+            .corner_radius(8.0)
+            .on_click(move || {
+                *pending_runtime_auth_logout_click.borrow_mut() = true;
+            });
+
         let pending_keygen = Rc::new(RefCell::new(false));
         let pending_keygen_click = pending_keygen.clone();
         let keygen_button = Button::new("Generate keys")
@@ -2786,6 +2877,23 @@ impl MinimalRoot {
             thread_entries: Vec::new(),
             pending_thread_open,
             file_editor,
+            runtime_auth: RuntimeAuthStateView::default(),
+            runtime_auth_email_input,
+            runtime_auth_email_bounds: Bounds::ZERO,
+            runtime_auth_code_input,
+            runtime_auth_code_bounds: Bounds::ZERO,
+            runtime_auth_send_button,
+            runtime_auth_send_bounds: Bounds::ZERO,
+            runtime_auth_verify_button,
+            runtime_auth_verify_bounds: Bounds::ZERO,
+            runtime_auth_status_button,
+            runtime_auth_status_bounds: Bounds::ZERO,
+            runtime_auth_logout_button,
+            runtime_auth_logout_bounds: Bounds::ZERO,
+            pending_runtime_auth_send,
+            pending_runtime_auth_verify,
+            pending_runtime_auth_status,
+            pending_runtime_auth_logout,
             keygen_button,
             keygen_bounds: Bounds::ZERO,
             pending_keygen,
@@ -2860,7 +2968,7 @@ impl MinimalRoot {
         };
 
         let screen = Size::new(1280.0, 720.0);
-        root.toggle_moltbook_pane(screen);
+        root.toggle_auth_pane(screen);
         root
     }
 
@@ -2878,7 +2986,9 @@ impl MinimalRoot {
 
     pub fn shortcut_context(&self) -> ShortcutContext {
         let text_input_focused = self.chat_panes.values().any(|chat| chat.input.is_focused())
-            || self.file_editor.path_input.is_focused();
+            || self.file_editor.path_input.is_focused()
+            || self.runtime_auth_email_input.is_focused()
+            || self.runtime_auth_code_input.is_focused();
         ShortcutContext { text_input_focused }
     }
 
@@ -2969,6 +3079,17 @@ impl MinimalRoot {
                         .collect(),
                     last_error: snapshot.last_error,
                 };
+            }
+            AppEvent::RuntimeAuthState { state } => {
+                if !self.runtime_auth_email_input.is_focused() {
+                    if let Some(email) = state.pending_email.as_deref().or(state.email.as_deref()) {
+                        self.runtime_auth_email_input.set_value(email.to_string());
+                    }
+                }
+                if state.token_present && state.pending_email.is_none() {
+                    self.runtime_auth_code_input.set_value(String::new());
+                }
+                self.runtime_auth = state;
             }
             AppEvent::Nip90Log { message } => {
                 self.nip90_log.push(message);
@@ -3350,6 +3471,36 @@ impl MinimalRoot {
             });
     }
 
+    fn toggle_auth_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("auth", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        AUTH_PANE_WIDTH,
+                        AUTH_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "auth".to_string(),
+                kind: PaneKind::Auth,
+                title: "Runtime Login".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+
+        if self.pane_store.is_active("auth") {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::RuntimeAuthStatus);
+            }
+        }
+    }
+
     fn toggle_identity_pane(&mut self, screen: Size) {
         let last_position = self.pane_store.last_pane_position;
         self.pane_store.toggle_pane("identity", screen, |snapshot| {
@@ -3582,8 +3733,7 @@ impl MinimalRoot {
             dismissable: true,
         };
         self.pane_store.add_pane(pane);
-        let pane_state =
-            MoltbookPostPane::new(&post, title, self.pending_moltbook_replies.clone());
+        let pane_state = MoltbookPostPane::new(&post, title, self.pending_moltbook_replies.clone());
         self.moltbook_post_panes.insert(pane_id, pane_state);
         if let Some(handler) = self.send_handler.as_mut() {
             handler(UserAction::MoltbookLoadComments {
@@ -3736,6 +3886,10 @@ impl MinimalRoot {
             }
             HotbarAction::ToggleFileEditor => {
                 self.toggle_file_editor_pane(screen);
+                true
+            }
+            HotbarAction::ToggleAuth => {
+                self.toggle_auth_pane(screen);
                 true
             }
             HotbarAction::ToggleIdentity => {
@@ -4453,6 +4607,62 @@ impl MinimalRoot {
                                 || save_shortcut_handled
                                 || editor_handled;
                         }
+                        PaneKind::Auth => {
+                            let email_handled = matches!(
+                                self.runtime_auth_email_input.event(
+                                    event,
+                                    self.runtime_auth_email_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let code_handled = matches!(
+                                self.runtime_auth_code_input.event(
+                                    event,
+                                    self.runtime_auth_code_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let send_handled = matches!(
+                                self.runtime_auth_send_button.event(
+                                    event,
+                                    self.runtime_auth_send_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let verify_handled = matches!(
+                                self.runtime_auth_verify_button.event(
+                                    event,
+                                    self.runtime_auth_verify_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let status_handled = matches!(
+                                self.runtime_auth_status_button.event(
+                                    event,
+                                    self.runtime_auth_status_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let logout_handled = matches!(
+                                self.runtime_auth_logout_button.event(
+                                    event,
+                                    self.runtime_auth_logout_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= email_handled
+                                || code_handled
+                                || send_handled
+                                || verify_handled
+                                || status_handled
+                                || logout_handled;
+                        }
                         PaneKind::Identity => {
                             let keygen_handled = matches!(
                                 self.keygen_button.event(
@@ -4601,9 +4811,7 @@ impl MinimalRoot {
                                     if let Some(index) =
                                         self.moltbook_card_index_at(self.cursor_position)
                                     {
-                                        if let Some(post) =
-                                            self.moltbook_feed.get(index).cloned()
-                                        {
+                                        if let Some(post) = self.moltbook_feed.get(index).cloned() {
                                             self.open_moltbook_post_pane(post);
                                             opened = true;
                                         }
@@ -4622,21 +4830,78 @@ impl MinimalRoot {
                                     ),
                                     EventResult::Handled
                                 );
-                                let scroll_handled = post_pane.scroll_bounds.contains(
-                                    self.cursor_position,
-                                ) && matches!(
-                                    post_pane.scroll.event(
-                                        event,
-                                        post_pane.scroll_bounds,
-                                        &mut self.event_context
-                                    ),
-                                    EventResult::Handled
-                                );
+                                let scroll_handled =
+                                    post_pane.scroll_bounds.contains(self.cursor_position)
+                                        && matches!(
+                                            post_pane.scroll.event(
+                                                event,
+                                                post_pane.scroll_bounds,
+                                                &mut self.event_context
+                                            ),
+                                            EventResult::Handled
+                                        );
                                 handled |= reply_handled || scroll_handled;
                             }
                         }
                     }
                 }
+            }
+        }
+
+        let should_runtime_auth_send = {
+            let mut pending = self.pending_runtime_auth_send.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_runtime_auth_send {
+            let email = self.runtime_auth_email_input.get_value().trim().to_string();
+            if email.is_empty() {
+                self.runtime_auth.last_error = Some("Enter an email address first.".to_string());
+                self.runtime_auth.last_message = None;
+            } else if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::RuntimeAuthSendCode { email });
+            }
+        }
+
+        let should_runtime_auth_verify = {
+            let mut pending = self.pending_runtime_auth_verify.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_runtime_auth_verify {
+            let code = self.runtime_auth_code_input.get_value().trim().to_string();
+            if code.is_empty() {
+                self.runtime_auth.last_error =
+                    Some("Enter the verification code first.".to_string());
+                self.runtime_auth.last_message = None;
+            } else if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::RuntimeAuthVerifyCode { code });
+            }
+        }
+
+        let should_runtime_auth_status = {
+            let mut pending = self.pending_runtime_auth_status.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_runtime_auth_status {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::RuntimeAuthStatus);
+            }
+        }
+
+        let should_runtime_auth_logout = {
+            let mut pending = self.pending_runtime_auth_logout.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_runtime_auth_logout {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::RuntimeAuthLogout);
             }
         }
 
@@ -5136,6 +5401,14 @@ impl MinimalRoot {
             .any(|entry| entry.open_button.is_hovered())
         {
             Cursor::Pointer
+        } else if (self.runtime_auth_send_button.is_hovered()
+            && !self.runtime_auth_send_button.is_disabled())
+            || (self.runtime_auth_verify_button.is_hovered()
+                && !self.runtime_auth_verify_button.is_disabled())
+            || self.runtime_auth_status_button.is_hovered()
+            || self.runtime_auth_logout_button.is_hovered()
+        {
+            Cursor::Pointer
         } else if (self.file_editor.open_button.is_hovered()
             && !self.file_editor.open_button.is_disabled())
             || (self.file_editor.reload_button.is_hovered()
@@ -5168,6 +5441,14 @@ impl MinimalRoot {
             cursor
         } else if self.file_editor.path_bounds.contains(self.cursor_position)
             || self.file_editor.path_input.is_focused()
+        {
+            Cursor::Text
+        } else if self
+            .runtime_auth_email_bounds
+            .contains(self.cursor_position)
+            || self.runtime_auth_code_bounds.contains(self.cursor_position)
+            || self.runtime_auth_email_input.is_focused()
+            || self.runtime_auth_code_input.is_focused()
         {
             Cursor::Text
         } else if self.nip90_kind_bounds.contains(self.cursor_position)
@@ -5233,6 +5514,12 @@ impl Component for MinimalRoot {
         self.file_editor.tree_bounds = Bounds::ZERO;
         self.file_editor.tree_header_bounds = Bounds::ZERO;
         self.file_editor.tree_refresh_bounds = Bounds::ZERO;
+        self.runtime_auth_email_bounds = Bounds::ZERO;
+        self.runtime_auth_code_bounds = Bounds::ZERO;
+        self.runtime_auth_send_bounds = Bounds::ZERO;
+        self.runtime_auth_verify_bounds = Bounds::ZERO;
+        self.runtime_auth_status_bounds = Bounds::ZERO;
+        self.runtime_auth_logout_bounds = Bounds::ZERO;
 
         self.pane_bounds.clear();
 
@@ -5274,7 +5561,11 @@ impl Component for MinimalRoot {
                 frame.set_dismissable(pane.dismissable);
                 frame.set_title_height(PANE_TITLE_HEIGHT);
                 frame.paint(pane_bounds, cx);
-                (frame.title_bounds(), frame.close_bounds(), frame.content_bounds())
+                (
+                    frame.title_bounds(),
+                    frame.close_bounds(),
+                    frame.content_bounds(),
+                )
             };
 
             if let PaneKind::Moltbook = pane.kind {
@@ -5292,6 +5583,7 @@ impl Component for MinimalRoot {
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
                 PaneKind::Threads => paint_threads_pane(self, content_bounds, cx),
                 PaneKind::FileEditor => paint_file_editor_pane(self, content_bounds, cx),
+                PaneKind::Auth => paint_auth_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
                 PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
                 PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
@@ -5299,7 +5591,9 @@ impl Component for MinimalRoot {
                 PaneKind::DvmHistory => paint_dvm_history_pane(self, content_bounds, cx),
                 PaneKind::Nip90 => paint_nip90_pane(self, content_bounds, cx),
                 PaneKind::Moltbook => paint_moltbook_pane(self, content_bounds, cx),
-                PaneKind::MoltbookPost => paint_moltbook_post_pane(self, &pane.id, content_bounds, cx),
+                PaneKind::MoltbookPost => {
+                    paint_moltbook_post_pane(self, &pane.id, content_bounds, cx)
+                }
             }
             cx.scene.pop_clip();
         }
@@ -5366,6 +5660,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_MOLTBOOK, HotbarAction::ToggleMoltbook);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_AUTH, "AU", "Auth")
+                .active(self.pane_store.is_active("auth")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_AUTH, HotbarAction::ToggleAuth);
 
         // DVM History + NIP-90 panes disabled for now (keep code around).
         // items.push(
@@ -5799,6 +6100,174 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
         chat.stop_button.paint(stop_bounds, cx);
     }
     chat.submit_button.paint(submit_bounds, cx);
+}
+
+fn paint_auth_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let input_height = 30.0;
+    let row_height = 32.0;
+    let label_height = 16.0;
+    let text_size = theme::font_size::XS;
+    let gap = 8.0;
+
+    let mut content_width = (bounds.size.width * 0.86).min(760.0).max(340.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+
+    root.runtime_auth_send_button
+        .set_disabled(root.runtime_auth_email_input.get_value().trim().is_empty());
+    root.runtime_auth_verify_button
+        .set_disabled(root.runtime_auth_code_input.get_value().trim().is_empty());
+
+    root.runtime_auth_email_bounds = Bounds::ZERO;
+    root.runtime_auth_code_bounds = Bounds::ZERO;
+    root.runtime_auth_send_bounds = Bounds::ZERO;
+    root.runtime_auth_verify_bounds = Bounds::ZERO;
+    root.runtime_auth_status_bounds = Bounds::ZERO;
+    root.runtime_auth_logout_bounds = Bounds::ZERO;
+
+    enum AuthStep {
+        Label(String),
+        InputEmail,
+        InputCode,
+        Spacer(f32),
+        ButtonRow,
+        Heading(String),
+        Line(String, wgpui::color::Hsla, f32),
+    }
+
+    let mut steps = vec![
+        AuthStep::Label("Email".to_string()),
+        AuthStep::Spacer(4.0),
+        AuthStep::InputEmail,
+        AuthStep::Spacer(gap),
+        AuthStep::Label("Verification code".to_string()),
+        AuthStep::Spacer(4.0),
+        AuthStep::InputCode,
+        AuthStep::Spacer(10.0),
+        AuthStep::ButtonRow,
+        AuthStep::Spacer(12.0),
+        AuthStep::Heading("Status".to_string()),
+        AuthStep::Spacer(6.0),
+    ];
+
+    let mut push_wrapped_line = |text: String, color: wgpui::color::Hsla| {
+        let mut line = Text::new(text.as_str()).font_size(text_size);
+        let (_, measured_height) = line.size_hint_with_width(content_width);
+        let height = measured_height.unwrap_or(label_height).max(label_height);
+        steps.push(AuthStep::Line(text, color, height));
+        steps.push(AuthStep::Spacer(6.0));
+    };
+
+    let token_line = if root.runtime_auth.token_present {
+        "Token: present".to_string()
+    } else {
+        "Token: missing".to_string()
+    };
+    push_wrapped_line(token_line, theme::text::PRIMARY);
+    push_wrapped_line(
+        format!(
+            "Base URL: {}",
+            root.runtime_auth
+                .base_url
+                .as_deref()
+                .unwrap_or("<not configured>")
+        ),
+        theme::text::MUTED,
+    );
+    if let Some(email) = root.runtime_auth.email.as_deref() {
+        push_wrapped_line(format!("Email: {}", email), theme::text::MUTED);
+    }
+    if let Some(user_id) = root.runtime_auth.user_id.as_deref() {
+        push_wrapped_line(format!("User ID: {}", user_id), theme::text::MUTED);
+    }
+    if let Some(pending_email) = root.runtime_auth.pending_email.as_deref() {
+        push_wrapped_line(
+            format!("Pending verification: {}", pending_email),
+            theme::text::MUTED,
+        );
+    }
+    if let Some(updated_at) = root.runtime_auth.updated_at.as_deref() {
+        push_wrapped_line(format!("Updated: {}", updated_at), theme::text::MUTED);
+    }
+    if let Some(message) = root.runtime_auth.last_message.as_deref() {
+        push_wrapped_line(message.to_string(), theme::text::PRIMARY);
+    }
+    if let Some(error) = root.runtime_auth.last_error.as_deref() {
+        push_wrapped_line(error.to_string(), theme::accent::RED);
+    }
+
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            AuthStep::Label(_) => ColumnItem::Fixed(label_height),
+            AuthStep::InputEmail | AuthStep::InputCode => ColumnItem::Fixed(input_height),
+            AuthStep::Spacer(height) => ColumnItem::Fixed(*height),
+            AuthStep::ButtonRow => ColumnItem::Fixed(row_height),
+            AuthStep::Heading(_) => ColumnItem::Fixed(label_height),
+            AuthStep::Line(_, _, height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            AuthStep::Label(text) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(theme::text::MUTED)
+                    .paint(bounds, cx);
+            }
+            AuthStep::InputEmail => {
+                root.runtime_auth_email_bounds = bounds;
+                root.runtime_auth_email_input.paint(bounds, cx);
+            }
+            AuthStep::InputCode => {
+                root.runtime_auth_code_bounds = bounds;
+                root.runtime_auth_code_input.paint(bounds, cx);
+            }
+            AuthStep::ButtonRow => {
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    row_height,
+                    &[
+                        wgpui::RowItem::fixed(108.0),
+                        wgpui::RowItem::fixed(90.0),
+                        wgpui::RowItem::fixed(96.0),
+                        wgpui::RowItem::fixed(92.0),
+                    ],
+                    8.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                let send_bounds = *row_bounds.get(0).unwrap_or(&bounds);
+                let verify_bounds = *row_bounds.get(1).unwrap_or(&bounds);
+                let status_bounds = *row_bounds.get(2).unwrap_or(&bounds);
+                let logout_bounds = *row_bounds.get(3).unwrap_or(&bounds);
+                root.runtime_auth_send_bounds = send_bounds;
+                root.runtime_auth_verify_bounds = verify_bounds;
+                root.runtime_auth_status_bounds = status_bounds;
+                root.runtime_auth_logout_bounds = logout_bounds;
+                root.runtime_auth_send_button.paint(send_bounds, cx);
+                root.runtime_auth_verify_button.paint(verify_bounds, cx);
+                root.runtime_auth_status_button.paint(status_bounds, cx);
+                root.runtime_auth_logout_button.paint(logout_bounds, cx);
+            }
+            AuthStep::Heading(text) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(theme::text::PRIMARY)
+                    .paint(bounds, cx);
+            }
+            AuthStep::Line(text, color, _) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(color)
+                    .paint(bounds, cx);
+            }
+            AuthStep::Spacer(_) => {}
+        }
+    }
 }
 
 fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -6976,11 +7445,7 @@ impl Component for MoltbookPostView {
                 comment_header_text.paint(header_bounds, cx);
                 y += header_h + comment_header_gap;
 
-                let doc = self
-                    .comment_docs
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_default();
+                let doc = self.comment_docs.get(index).cloned().unwrap_or_default();
                 let comment_size = renderer.measure(&doc, inner_width, &mut cx.text);
                 let comment_bounds = Bounds::new(inner_x, y, inner_width, comment_size.height);
                 cx.scene.push_clip(comment_bounds);
@@ -7228,11 +7693,11 @@ fn paint_moltbook_header(
 
     let refresh_padding_x = 8.0;
     let refresh_label = root.moltbook_refresh_button.label();
-    let refresh_width = (cx
-        .text
-        .measure_styled_mono(refresh_label, text_size, FontStyle::default())
-        + refresh_padding_x * 2.0)
-        .max(64.0);
+    let refresh_width =
+        (cx.text
+            .measure_styled_mono(refresh_label, text_size, FontStyle::default())
+            + refresh_padding_x * 2.0)
+            .max(64.0);
 
     let row_items = [
         wgpui::RowItem::flex(1.0),
@@ -7325,9 +7790,9 @@ fn paint_moltbook_post_header(
     let label = if is_pending { "[Queued]" } else { "[+Reply]" };
     post_pane.reply_button.set_label(label);
     post_pane.reply_button.set_disabled(is_pending);
-    let text_width =
-        cx.text
-            .measure_styled_mono(label, text_size, FontStyle::default());
+    let text_width = cx
+        .text
+        .measure_styled_mono(label, text_size, FontStyle::default());
     let button_width = (text_width + 16.0).max(64.0);
     let button_height = (title_bounds.size.height - 6.0).max(18.0);
     let x = (right - button_width).max(title_bounds.origin.x + padding);
@@ -9637,6 +10102,12 @@ fn format_event(event: &AppEvent) -> String {
                     "NewChat".to_string()
                 }
             }
+            UserAction::RuntimeAuthSendCode { email } => {
+                format!("RuntimeAuthSendCode ({email})")
+            }
+            UserAction::RuntimeAuthVerifyCode { .. } => "RuntimeAuthVerifyCode".to_string(),
+            UserAction::RuntimeAuthStatus => "RuntimeAuthStatus".to_string(),
+            UserAction::RuntimeAuthLogout => "RuntimeAuthLogout".to_string(),
             UserAction::PylonInit => "PylonInit".to_string(),
             UserAction::PylonStart => "PylonStart".to_string(),
             UserAction::PylonStop => "PylonStop".to_string(),
@@ -9694,12 +10165,24 @@ fn format_event(event: &AppEvent) -> String {
         AppEvent::DvmHistory { snapshot } => {
             format!("DvmHistory ({} jobs)", snapshot.summary.job_count)
         }
+        AppEvent::RuntimeAuthState { state } => {
+            let token = if state.token_present {
+                "present"
+            } else {
+                "missing"
+            };
+            let email = state.email.as_deref().unwrap_or("<none>");
+            format!("RuntimeAuthState ({token}, {email})")
+        }
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
         AppEvent::MoltbookFeedUpdated { posts } => {
             format!("MoltbookFeedUpdated ({} posts)", posts.len())
         }
         AppEvent::MoltbookCommentsLoaded { post_id, comments } => {
-            format!("MoltbookCommentsLoaded ({post_id}, {} comments)", comments.len())
+            format!(
+                "MoltbookCommentsLoaded ({post_id}, {} comments)",
+                comments.len()
+            )
         }
         AppEvent::MoltbookLog { message } => format!("MoltbookLog ({message})"),
         AppEvent::MoltbookProfileLoaded { profile } => {
