@@ -18,6 +18,13 @@ All runtime tables and sequences live under the `runtime` Postgres schema.
   - sequencing field: `latest_seq`
 - `runtime.global_event_id_seq`
   - global sequence reserved for runtime append flows and projection watermarks.
+- `runtime.sync_stream_events`
+  - durable topic/watermark-ordered replay journal for Khala subscriptions
+  - unique key: `(topic, watermark)`
+- `runtime.sync_run_summaries`
+  - runtime-owned run summary read model keyed by `doc_key`
+- `runtime.sync_codex_worker_summaries`
+  - runtime-owned codex worker summary read model keyed by `doc_key`
 
 ## Naming conventions
 
@@ -34,3 +41,4 @@ All runtime tables and sequences live under the `runtime` Postgres schema.
 - Projection jobs must maintain monotonic watermarks in dedicated tables.
 - Convex projector state is tracked in `runtime.convex_projection_checkpoints`
   keyed by `(projection_name, entity_id)` for idempotent replay + drift checks.
+- Khala replay scans are keyed by `(topic, watermark)` and retention deletes by `inserted_at`.
