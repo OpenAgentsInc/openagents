@@ -27,3 +27,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2"
 urlencoding = "2"
 uuid = { version = "1.15", features = ["v4", "serde"] }
+wgpui = { path = "../../../crates/wgpui", default-features = false, features = ["desktop"] }
+wgpu = "24.0"
+winit = "0.30"
+pollster = "0.4"
+
+[workspace]
