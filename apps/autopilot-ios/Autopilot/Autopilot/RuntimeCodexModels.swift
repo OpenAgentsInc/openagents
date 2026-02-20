@@ -58,6 +58,21 @@ struct RuntimeCodexWorkerSummary: Decodable, Identifiable {
         case adapter
         case metadata
         case khalaProjection = "khala_projection"
+        case convexProjection = "convex_projection"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        workerID = try container.decode(String.self, forKey: .workerID)
+        status = try container.decode(String.self, forKey: .status)
+        latestSeq = try container.decode(Int.self, forKey: .latestSeq)
+        workspaceRef = try container.decodeIfPresent(String.self, forKey: .workspaceRef)
+        codexHomeRef = try container.decodeIfPresent(String.self, forKey: .codexHomeRef)
+        adapter = try container.decode(String.self, forKey: .adapter)
+        metadata = container.decodeLenientMetadata(forKey: .metadata)
+        khalaProjection =
+            try container.decodeIfPresent(RuntimeCodexProjectionStatus.self, forKey: .khalaProjection)
+            ?? container.decodeIfPresent(RuntimeCodexProjectionStatus.self, forKey: .convexProjection)
     }
 }
 
@@ -78,6 +93,32 @@ struct RuntimeCodexWorkerSnapshot: Decodable {
         case codexHomeRef = "codex_home_ref"
         case adapter
         case metadata
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        workerID = try container.decode(String.self, forKey: .workerID)
+        status = try container.decode(String.self, forKey: .status)
+        latestSeq = try container.decode(Int.self, forKey: .latestSeq)
+        workspaceRef = try container.decodeIfPresent(String.self, forKey: .workspaceRef)
+        codexHomeRef = try container.decodeIfPresent(String.self, forKey: .codexHomeRef)
+        adapter = try container.decode(String.self, forKey: .adapter)
+        metadata = container.decodeLenientMetadata(forKey: .metadata)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeLenientMetadata(forKey key: Key) -> [String: JSONValue]? {
+        if let object = try? decodeIfPresent([String: JSONValue].self, forKey: key) {
+            return object
+        }
+
+        // Some workers still emit `metadata: []`; treat that as missing metadata.
+        if (try? decodeIfPresent([JSONValue].self, forKey: key)) != nil {
+            return nil
+        }
+
+        return nil
     }
 }
 
