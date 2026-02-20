@@ -357,14 +357,34 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         recentEvents = (events.reversed() + recentEvents).prefix(100).map { $0 }
 
-        if case .waitingAck(let expectedHandshakeID) = handshakeState {
-            if events.contains(where: { CodexHandshakeMatcher.isMatchingAck(event: $0, handshakeID: expectedHandshakeID) }) {
-                handshakeTimeoutTask?.cancel()
-                handshakeTimeoutTask = nil
-                handshakeState = .success(handshakeID: expectedHandshakeID)
-                statusMessage = "Handshake succeeded. Desktop ack received."
+        let ackHandshakeIDs = Set(events.compactMap { CodexHandshakeMatcher.ackHandshakeID(from: $0) })
+        guard !ackHandshakeIDs.isEmpty else {
+            return
+        }
+
+        switch handshakeState {
+        case .waitingAck(let expectedHandshakeID) where ackHandshakeIDs.contains(expectedHandshakeID):
+            handshakeTimeoutTask?.cancel()
+            handshakeTimeoutTask = nil
+            handshakeState = .success(handshakeID: expectedHandshakeID)
+            statusMessage = "Handshake succeeded. Desktop ack received."
+            errorMessage = nil
+
+        case .timedOut(let expectedHandshakeID) where ackHandshakeIDs.contains(expectedHandshakeID):
+            handshakeTimeoutTask?.cancel()
+            handshakeTimeoutTask = nil
+            handshakeState = .success(handshakeID: expectedHandshakeID)
+            statusMessage = "Handshake ack arrived after timeout. Connected."
+            errorMessage = nil
+
+        case .success(let handshakeID):
+            if errorMessage?.contains("Handshake timed out") == true,
+               ackHandshakeIDs.contains(handshakeID) {
                 errorMessage = nil
             }
+
+        default:
+            break
         }
     }
 

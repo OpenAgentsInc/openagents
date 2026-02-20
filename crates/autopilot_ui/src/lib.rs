@@ -52,7 +52,7 @@ const COMPOSER_HEIGHT: f32 = 56.0;
 const STATUS_LINE_HEIGHT: f32 = 22.0;
 const STATUS_SECTION_GAP: f32 = 10.0;
 const ACCENT_BAR_WIDTH: f32 = 3.0;
-const DEFAULT_THREAD_MODEL: &str = "gpt-5.2";
+const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
 const BOTTOM_BAR_MIN_HEIGHT: f32 = 64.0;
 const INPUT_MIN_LINES: usize = 1;
 const INPUT_MAX_LINES: Option<usize> = None;
@@ -278,6 +278,60 @@ fn item_string(item: &Value, key: &str) -> Option<String> {
     item.get(key)
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
+}
+
+fn non_empty_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn extract_session_hint(params: Option<&Value>) -> Option<String> {
+    let params = params?;
+    non_empty_string(params.get("sessionId").or_else(|| params.get("session_id")))
+}
+
+fn extract_thread_hint(params: Option<&Value>) -> Option<String> {
+    let params = params?;
+
+    non_empty_string(params.get("threadId").or_else(|| params.get("thread_id")))
+        .or_else(|| {
+            non_empty_string(
+                params
+                    .get("conversationId")
+                    .or_else(|| params.get("conversation_id")),
+            )
+        })
+        .or_else(|| {
+            params
+                .get("thread")
+                .and_then(|thread| non_empty_string(thread.get("id")))
+        })
+        .or_else(|| {
+            let msg = params.get("msg")?;
+            non_empty_string(msg.get("thread_id").or_else(|| msg.get("threadId")))
+                .or_else(|| {
+                    non_empty_string(
+                        msg.get("conversationId")
+                            .or_else(|| msg.get("conversation_id")),
+                    )
+                })
+                .or_else(|| {
+                    msg.get("thread")
+                        .and_then(|thread| non_empty_string(thread.get("id")))
+                })
+        })
+        .or_else(|| {
+            let item = params.get("item")?;
+            non_empty_string(item.get("thread_id").or_else(|| item.get("threadId"))).or_else(|| {
+                non_empty_string(
+                    item.get("conversationId")
+                        .or_else(|| item.get("conversation_id")),
+                )
+            })
+        })
 }
 
 fn value_to_command_string(value: &Value) -> Option<String> {
@@ -1379,13 +1433,14 @@ impl ChatPaneState {
                 if let Some(item) = value.get("params").and_then(|p| p.get("item")) {
                     if let Some(item_type) = item.get("type").and_then(|t| t.as_str()) {
                         match item_type {
-                            "agentMessage" => {
+                            "AgentMessage" | "agentMessage" => {
                                 let text = extract_message_text(item);
                                 if let Some(item_id) = item_id(item) {
                                     self.finish_agent_message(&item_id, text.as_deref());
                                 } else if let Some(text) = text {
                                     self.append_agent_text(&text);
                                 }
+                                self.queued_in_flight = false;
                             }
                             "reasoning" | "Reasoning" => {
                                 if let Some(item_id) = item_id(item) {
@@ -1445,6 +1500,94 @@ impl ChatPaneState {
                     }
                 }
             }
+            "codex/event/item_started" => {
+                if let Some(item) = value
+                    .get("params")
+                    .and_then(|params| params.get("msg"))
+                    .and_then(|msg| msg.get("item"))
+                    && let Some(item_type) = item.get("type").and_then(|t| t.as_str())
+                {
+                    match item_type {
+                        "userMessage" | "UserMessage" => {
+                            if let Some(text) = extract_message_text(item) {
+                                self.append_user_message(&text);
+                            }
+                        }
+                        "AgentMessage" | "agentMessage" => {
+                            if let Some(item_id) = item_id(item) {
+                                self.ensure_agent_entry(&item_id);
+                            }
+                        }
+                        "reasoning" | "Reasoning" => {
+                            if let Some(item_id) = item_id(item) {
+                                self.ensure_reasoning_entry(&item_id);
+                            }
+                        }
+                        "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" => {
+                            self.start_tool_entry(item_type, item);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "codex/event/item_completed" => {
+                if let Some(item) = value
+                    .get("params")
+                    .and_then(|params| params.get("msg"))
+                    .and_then(|msg| msg.get("item"))
+                    && let Some(item_type) = item.get("type").and_then(|t| t.as_str())
+                {
+                    match item_type {
+                        "AgentMessage" | "agentMessage" => {
+                            let text = extract_message_text(item);
+                            if let Some(item_id) = item_id(item) {
+                                self.finish_agent_message(&item_id, text.as_deref());
+                            } else if let Some(text) = text {
+                                self.append_agent_text(&text);
+                            }
+                            self.queued_in_flight = false;
+                        }
+                        "reasoning" | "Reasoning" => {
+                            if let Some(item_id) = item_id(item) {
+                                let summary_text = item
+                                    .get("summary")
+                                    .or_else(|| item.get("summary_text"))
+                                    .and_then(|value| value.as_array())
+                                    .map(|parts| {
+                                        parts
+                                            .iter()
+                                            .filter_map(|part| part.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                    })
+                                    .unwrap_or_default();
+                                let content_text = item
+                                    .get("content")
+                                    .or_else(|| item.get("raw_content"))
+                                    .and_then(|value| value.as_array())
+                                    .map(|parts| {
+                                        parts
+                                            .iter()
+                                            .filter_map(|part| part.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                    })
+                                    .unwrap_or_default();
+                                if !summary_text.is_empty() {
+                                    self.append_reasoning_summary_delta(&item_id, &summary_text);
+                                }
+                                if !content_text.is_empty() {
+                                    self.append_reasoning_content_delta(&item_id, &content_text);
+                                }
+                            }
+                        }
+                        "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" => {
+                            self.complete_tool_entry(item_type, item);
+                        }
+                        _ => {}
+                    }
+                }
+            }
             "item/agentMessage/delta" => {
                 if let Some(params) = value.get("params")
                     && let Some(delta) = params.get("delta").and_then(|d| d.as_str())
@@ -1452,6 +1595,19 @@ impl ChatPaneState {
                     let item_id = params
                         .get("itemId")
                         .or_else(|| params.get("item_id"))
+                        .and_then(|id| id.as_str());
+                    if let Some(item_id) = item_id {
+                        self.append_agent_delta(item_id, delta);
+                    }
+                }
+            }
+            "codex/event/agent_message_content_delta" | "codex/event/agent_message_delta" => {
+                if let Some(msg) = value.get("params").and_then(|params| params.get("msg"))
+                    && let Some(delta) = msg.get("delta").and_then(|d| d.as_str())
+                {
+                    let item_id = msg
+                        .get("item_id")
+                        .or_else(|| msg.get("itemId"))
                         .and_then(|id| id.as_str());
                     if let Some(item_id) = item_id {
                         self.append_agent_delta(item_id, delta);
@@ -1502,6 +1658,10 @@ impl ChatPaneState {
                 {
                     self.append_user_message(text);
                 }
+            }
+            "codex/event/agent_message" => {
+                self.queued_in_flight = false;
+                self.clear_working_indicator();
             }
             "guidance/step" => {
                 if let Some(params) = value.get("params") {
@@ -3165,31 +3325,30 @@ impl MinimalRoot {
                 if let Ok(value) = serde_json::from_str::<Value>(&message) {
                     let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
                     let params = value.get("params");
-                    let session_hint = params
-                        .and_then(|p| p.get("sessionId").or_else(|| p.get("session_id")))
-                        .and_then(|id| id.as_str());
-                    let thread_hint = params
-                        .and_then(|p| p.get("threadId").or_else(|| p.get("thread_id")))
-                        .and_then(|id| id.as_str())
-                        .or_else(|| {
-                            params
-                                .and_then(|p| p.get("thread"))
-                                .and_then(|thread| thread.get("id"))
-                                .and_then(|id| id.as_str())
-                        });
+                    let session_hint = extract_session_hint(params);
+                    let thread_hint = extract_thread_hint(params);
 
                     let pane_id = session_hint
+                        .as_deref()
                         .and_then(|session_id| self.pane_for_session_id(session_id))
                         .or_else(|| {
                             thread_hint
+                                .as_deref()
                                 .and_then(|thread_id| self.thread_to_pane.get(thread_id).cloned())
+                        })
+                        .or_else(|| self.pane_with_active_turn())
+                        .or_else(|| {
+                            self.pane_store
+                                .active_pane_id
+                                .clone()
+                                .filter(|pane_id| self.chat_panes.contains_key(pane_id))
                         })
                         .or_else(|| self.first_chat_without_thread());
 
                     if let Some(pane_id) = pane_id {
                         if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
                             if method == "thread/started" {
-                                if let Some(thread_id) = thread_hint {
+                                if let Some(thread_id) = thread_hint.as_deref() {
                                     chat.thread_id = Some(thread_id.to_string());
                                     self.thread_to_pane
                                         .insert(thread_id.to_string(), pane_id.clone());
@@ -3987,6 +4146,20 @@ impl MinimalRoot {
             .iter()
             .find(|(_, chat)| chat.thread_id.is_none())
             .map(|(id, _)| id.clone())
+    }
+
+    fn pane_with_active_turn(&self) -> Option<String> {
+        for pane in self.pane_store.panes().iter().rev() {
+            if self
+                .chat_panes
+                .get(&pane.id)
+                .map(|chat| chat.active_turn_id.is_some() || chat.queued_in_flight)
+                .unwrap_or(false)
+            {
+                return Some(pane.id.clone());
+            }
+        }
+        None
     }
 
     fn pane_at(&self, point: Point) -> Option<String> {
@@ -10517,6 +10690,48 @@ mod tests {
         assert!(
             layout.left_header_bounds.origin.x
                 >= layout.left_panel_bounds.origin.x + PANEL_PADDING - 0.5
+        );
+    }
+
+    #[test]
+    fn extract_thread_hint_prefers_thread_id_fields() {
+        let params = serde_json::json!({
+            "threadId": "thread-primary",
+            "conversationId": "thread-fallback",
+            "msg": {
+                "thread_id": "thread-nested"
+            }
+        });
+
+        assert_eq!(
+            extract_thread_hint(Some(&params)).as_deref(),
+            Some("thread-primary")
+        );
+    }
+
+    #[test]
+    fn extract_thread_hint_supports_codex_event_conversation_fields() {
+        let params = serde_json::json!({
+            "conversationId": "conv-root"
+        });
+
+        assert_eq!(
+            extract_thread_hint(Some(&params)).as_deref(),
+            Some("conv-root")
+        );
+    }
+
+    #[test]
+    fn extract_thread_hint_supports_nested_codex_msg_thread_fields() {
+        let params = serde_json::json!({
+            "msg": {
+                "thread_id": "thread-nested"
+            }
+        });
+
+        assert_eq!(
+            extract_thread_hint(Some(&params)).as_deref(),
+            Some("thread-nested")
         );
     }
 }
