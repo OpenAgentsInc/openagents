@@ -70,6 +70,7 @@ If token is expired/invalid, daemon responds `401`; app should call `POST /sessi
 - `GET /events?thread_id=<optional>&limit=<optional>`
 - `GET /events/stream` (SSE)
 - `GET /templates/mine?limit=<optional>`
+- `GET /quality/draft-edit-rate?limit_per_category=<optional>&threshold=<optional>`
 - `GET /settings`
 - `PUT /settings`
 - `POST /settings/delete-corpus`
@@ -208,6 +209,41 @@ Response:
 }
 ```
 
+### `GET /quality/draft-edit-rate?limit_per_category=200&threshold=0.35`
+
+Response:
+
+```json
+{
+  "generated_at": "2026-02-20T22:00:00Z",
+  "threshold": 0.35,
+  "target_rate": 0.6,
+  "total_samples": 24,
+  "total_minimal_edit": 15,
+  "total_minimal_edit_rate": 0.625,
+  "target_met": true,
+  "categories": [
+    {
+      "category": "scheduling",
+      "samples": 12,
+      "minimal_edit_count": 8,
+      "minimal_edit_rate": 0.6667,
+      "average_edit_ratio": 0.31
+    }
+  ],
+  "samples": [
+    {
+      "thread_id": "...",
+      "category": "scheduling",
+      "edit_ratio": 0.24,
+      "minimal_edit": true,
+      "draft_word_count": 56,
+      "sent_word_count": 59
+    }
+  ]
+}
+```
+
 ### `GET /settings`
 
 Response:
@@ -268,6 +304,7 @@ Event types currently emitted:
 - `sync_incremental_failed`
 - `local_corpus_deleted`
 - `factory_reset_completed`
+- `draft_quality_evaluated`
 
 ## Error format
 

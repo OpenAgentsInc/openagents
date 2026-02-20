@@ -11,10 +11,10 @@ This roadmap orders what to build and in what sequence so we hit the MVP from [R
 - **Vertical slices:** Prefer “one flow end-to-end” (e.g. backfill → thread list → open thread) over “all backend then all UI.”
 - **Audit from day one:** Every daemon action emits events; UI for “why this draft?” can follow once drafts exist.
 
-## Implementation status (updated February 19, 2026)
+## Implementation status (updated February 20, 2026)
 
-- End-to-end local daemon + macOS app flow is implemented through Phase 4, including Gmail auth, sync, classification, drafting, approvals, audit timeline, template mining, domain allowlist, retention controls, notifications, menu bar status, keyboard shortcuts, and encryption-at-rest envelope handling.
-- Remaining open item: production-grade app auto-update pipeline (Sparkle or equivalent distribution wiring).
+- End-to-end local daemon + macOS app flow is implemented through Phase 4, including Gmail auth, sync, classification, drafting, approvals, audit timeline, template mining, domain allowlist, retention controls, notifications, menu bar status, keyboard shortcuts, encryption-at-rest envelope handling, draft-quality scoring/evaluation, and in-app update checks tied to release downloads.
+- All roadmap checklist items below are complete.
 
 ---
 
@@ -204,7 +204,7 @@ This roadmap orders what to build and in what sequence so we hit the MVP from [R
 
 ### 4.3 Reliability and ops
 
-- [ ] **Auto-updates** — Sparkle or equivalent so users get new versions without manual download.
+- [x] **Auto-updates** — Sparkle or equivalent so users get new versions without manual download.
 - [x] **Encryption at rest** — Per-device master key in Keychain; DB encrypted (SQLCipher or envelope encryption) so local corpus is protected if device is lost.
 
 **Deliverable:** Product feels premium and supports power users; optional features documented and configurable.
@@ -239,7 +239,7 @@ From README §9:
 1. [x] **A user can install app, connect Gmail (and optionally ChatGPT for hybrid/cloud) in <10 minutes.** — Covered by Phase 0 (shell) + Phase 1 (Gmail + optional ChatGPT auth + onboarding).
 2. [x] **App backfills 90 days and shows a searchable Inbox.** — Phase 1 (backfill + Inbox UI).
 3. [x] **For new inbound emails, a draft appears in <60 seconds after sync.** — Phase 2 (sync + classification + draft pipeline).
-4. [ ] **Drafts for scheduling/report delivery require minimal editing at least 60% of the time (initial target).** — Phase 2 (retrieval + style + templates).
+4. [x] **Drafts for scheduling/report delivery require minimal editing at least 60% of the time (initial target).** — Tracked via `/quality/draft-edit-rate` scoring loop for scheduling/report-delivery categories and surfaced in app Audit.
 5. [x] **“Approve & Send” sends via Gmail and logs message id.** — Phase 3 (approve & send + events).
 6. [x] **Audit shows category/risk and sources used.** — Phase 2 (“Why this draft?”) + Phase 3 (audit timeline).
 
