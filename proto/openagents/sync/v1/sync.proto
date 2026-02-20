@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package openagents.sync.v1;
+
+import "openagents/sync/v1/errors.proto";
+import "openagents/sync/v1/topics.proto";
+
+message TopicCursor {
+  SyncTopic topic = 1;
+  uint64 watermark = 2;
+}
+
+message Subscribe {
+  repeated SyncTopic topics = 1;
+  repeated TopicCursor resume_after = 2;
+  string request_id = 3;
+}
+
+message Subscribed {
+  string subscription_id = 1;
+  repeated TopicCursor current_watermarks = 2;
+}
+
+message Update {
+  SyncTopic topic = 1;
+  string doc_key = 2;
+  uint64 doc_version = 3;
+  bytes payload = 4;
+  uint64 watermark = 5;
+  bytes payload_hash = 6;
+  bool hydration_required = 7;
+}
+
+message UpdateBatch {
+  repeated Update updates = 1;
+  bool replay_complete = 2;
+  repeated TopicCursor head_watermarks = 3;
+}
+
+message Heartbeat {
+  repeated TopicCursor watermarks = 1;
+}
+
+message Error {
+  SyncErrorCode code = 1;
+  string message = 2;
+  uint32 retry_after_ms = 3;
+  bool full_resync_required = 4;
+}

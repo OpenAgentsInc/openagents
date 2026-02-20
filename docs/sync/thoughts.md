@@ -451,7 +451,7 @@ Load/chaos:
 
 ## Recommended next artifacts
 
-1. `docs/adr/ADR-00XX-khala-sync.md`
+1. `docs/adr/ADR-0030-khala-sync-runtime-owned-ws-proto-first.md`
 2. `proto/openagents/sync/v1/*.proto`
 3. `docs/protocol/OA_SYNC_WS_MAPPING.md`
 4. `docs/sync/SURFACES.md`

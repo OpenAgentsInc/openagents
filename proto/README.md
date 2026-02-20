@@ -20,6 +20,9 @@
 - `proto/openagents/protocol/v1/codex_events.proto`
 - `proto/openagents/protocol/v1/codex_workers.proto`
 - `proto/openagents/protocol/v1/codex_auth.proto`
+- `proto/openagents/sync/v1/topics.proto`
+- `proto/openagents/sync/v1/errors.proto`
+- `proto/openagents/sync/v1/sync.proto`
 
 ## Codegen
 

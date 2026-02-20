@@ -15,6 +15,7 @@ OpenAgents relies on hashes for:
 - Replay events (linkability + audit)
 - Job envelopes (`job_hash`)
 - Artifact integrity (receipt ↔ replay ↔ verification)
+- Khala sync payload parity and replay validation (`payload_hash`)
 
 We need a canonical hashing approach to ensure receipts and replay logs are verifiable across crates, languages, and time.
 
@@ -54,6 +55,14 @@ This ADR defines **cross-system invariants** and forbids divergent "local" hashi
    - Floats are allowed if covered by the canonical JSON rules in `crates/protocol`.
    - Note: `step_utility` is a float but is not necessarily part of hashed payloads unless a schema explicitly includes it.
 
+5. **Khala sync payload hashing (v1 extension)**
+   - `openagents.sync.v1.Update.payload_hash` MUST use SHA-256 over canonical payload bytes.
+   - If the payload is proto bytes, hash those bytes directly.
+   - If the payload is JSON, hash canonical JSON text bytes using the rules above.
+   - Shared fixtures for cross-language compatibility are maintained in:
+     - `docs/protocol/testdata/khala_payload_hash_vectors.v1.json`
+   - At minimum, TS and Elixir implementations MUST pass the same fixture vectors.
+
 ## Scope
 
 What this ADR covers:
@@ -77,6 +86,7 @@ What this ADR does NOT cover:
 | Tool output hash | Stable: computed on full output (never preview) |
 | Job hash | Stable: computed on canonical JSON job payload |
 | Canonicalization | Stable: key-sorted objects, ordered arrays |
+| Khala payload hash | Stable: proto bytes OR canonical JSON bytes, per payload type |
 
 Backward compatibility:
 - Adding new optional fields is allowed (hash inputs change only if included in hashed structure by spec).
@@ -93,6 +103,7 @@ Backward compatibility:
 
 **Neutral:**
 - May require adding test vectors and cross-impl tests (Rust/TS) to enforce invariants
+- Adds ongoing fixture maintenance for Khala payload hash compatibility checks
 
 ## Alternatives Considered
 
@@ -105,5 +116,6 @@ Backward compatibility:
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — hashing rules
 - [docs/execution/REPLAY.md](../execution/REPLAY.md) — replay hashing invariants
 - [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — receipt hashing invariants
+- [docs/protocol/testdata/khala_payload_hash_vectors.v1.json](../protocol/testdata/khala_payload_hash_vectors.v1.json) — Khala payload hash vectors
 - [ADR-0028](./ADR-0028-layer0-proto-canonical-schema.md) — Layer-0 authority
 - `crates/protocol/src/*` — canonical hashing helpers (source of truth)

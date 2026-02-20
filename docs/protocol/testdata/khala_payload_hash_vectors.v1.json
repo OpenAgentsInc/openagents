@@ -1,0 +1,77 @@
+{
+  "version": "khala.payload_hash.v1",
+  "algorithm": "sha256",
+  "vectors": [
+    {
+      "name": "sorted-flat-object",
+      "payload": {
+        "b": 2,
+        "a": 1
+      },
+      "canonical_json": "{\"a\":1,\"b\":2}",
+      "sha256": "sha256:43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777"
+    },
+    {
+      "name": "nested-sync-payload",
+      "payload": {
+        "topic": "runtime.codex_worker_summaries",
+        "payload": {
+          "status": "running",
+          "metadata": {
+            "region": "us-central1",
+            "flags": [
+              "a",
+              "b",
+              "c"
+            ]
+          },
+          "seq": 99
+        },
+        "doc_key": "org_123:worker_456"
+      },
+      "canonical_json": "{\"doc_key\":\"org_123:worker_456\",\"payload\":{\"metadata\":{\"flags\":[\"a\",\"b\",\"c\"],\"region\":\"us-central1\"},\"seq\":99,\"status\":\"running\"},\"topic\":\"runtime.codex_worker_summaries\"}",
+      "sha256": "sha256:bf367b161129295cb3fab72a7eae88f8602207d4fc8fcf4510c4d5fa0bcb5317"
+    },
+    {
+      "name": "bool-null-array",
+      "payload": {
+        "tags": [
+          "z",
+          "a"
+        ],
+        "active": true,
+        "deleted": null,
+        "retry_after_ms": 1500
+      },
+      "canonical_json": "{\"active\":true,\"deleted\":null,\"retry_after_ms\":1500,\"tags\":[\"z\",\"a\"]}",
+      "sha256": "sha256:b5ef670c5e47639c44a0ed4ba6901df6b0e7f59e41e4102bb26e76fb1f4af946"
+    },
+    {
+      "name": "string-escaping",
+      "payload": {
+        "message": "line\\nbreak",
+        "quote": "\"khala\"",
+        "path": "docs/sync/thoughts.md"
+      },
+      "canonical_json": "{\"message\":\"line\\\\nbreak\",\"path\":\"docs/sync/thoughts.md\",\"quote\":\"\\\"khala\\\"\"}",
+      "sha256": "sha256:5da82c8c6bf15cceb33ae20ba89c0adb33d030c5d65824d138936fae7a1ab3d8"
+    },
+    {
+      "name": "array-of-objects",
+      "payload": {
+        "events": [
+          {
+            "watermark": 2,
+            "topic": "runtime.run_summaries"
+          },
+          {
+            "topic": "runtime.run_summaries",
+            "watermark": 3
+          }
+        ]
+      },
+      "canonical_json": "{\"events\":[{\"topic\":\"runtime.run_summaries\",\"watermark\":2},{\"topic\":\"runtime.run_summaries\",\"watermark\":3}]}",
+      "sha256": "sha256:700bae9e6bc89b1810ee4cc08c459cc2a02ccb13fcde1949b10adfa031e8212d"
+    }
+  ]
+}

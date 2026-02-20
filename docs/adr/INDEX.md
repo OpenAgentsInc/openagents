@@ -2,7 +2,7 @@
 
 Architecture Decision Records for the OpenAgents project.
 
-**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0030**
+**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0031**
 
 ---
 
@@ -37,6 +37,7 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0027](./ADR-0027-effect-rpc-and-atom-hydration-web.md) | Effect RPC + Atom Hydration in apps/web | Deprecated | 2026-02-06 | UX | — | autopilot | 2026-02-19 |
 | [ADR-0028](./ADR-0028-layer0-proto-canonical-schema.md) | Layer-0 Proto Contracts Are Canonical in `proto/` | Accepted | 2026-02-19 | Protocol | — | protocol | 2026-02-19 |
 | [ADR-0029](./ADR-0029-convex-sync-layer-and-codex-agent-mode.md) | Convex Is a Sync Layer, Runtime Is Authority; Codex Uses Constrained Agent Mode | Accepted | 2026-02-19 | Execution | — | runtime | 2026-02-19 |
+| [ADR-0030](./ADR-0030-khala-sync-runtime-owned-ws-proto-first.md) | Khala Sync Is Runtime-Owned, WS-Only, and Proto-First | Accepted | 2026-02-20 | Execution | — | runtime | 2026-02-20 |
 
 ---
 
@@ -50,6 +51,7 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0017](./ADR-0017-telemetry-trace-contract.md) — Telemetry and Trace Contract
 - [ADR-0018](./ADR-0018-forge-adapter-contract.md) — Forge Adapter Contract
 - [ADR-0029](./ADR-0029-convex-sync-layer-and-codex-agent-mode.md) — Convex Is a Sync Layer, Runtime Is Authority; Codex Uses Constrained Agent Mode
+- [ADR-0030](./ADR-0030-khala-sync-runtime-owned-ws-proto-first.md) — Khala Sync Is Runtime-Owned, WS-Only, and Proto-First
 
 ### Compiler (policy bundles, signatures, metrics)
 - [ADR-0005](./ADR-0005-step-utility-semantics.md) — Step Utility Semantics
@@ -92,7 +94,7 @@ Architecture Decision Records for the OpenAgents project.
 ## By Status
 
 ### Accepted
-- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0023, ADR-0028, ADR-0029
+- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0023, ADR-0028, ADR-0029, ADR-0030
 
 ### Proposed
 - (none)

@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package openagents.sync.v1;
+
+enum SyncTopic {
+  SYNC_TOPIC_UNSPECIFIED = 0;
+  SYNC_TOPIC_RUNTIME_RUN_SUMMARIES = 1;
+  SYNC_TOPIC_RUNTIME_CODEX_WORKER_SUMMARIES = 2;
+  SYNC_TOPIC_RUNTIME_NOTIFICATIONS = 3;
+}
