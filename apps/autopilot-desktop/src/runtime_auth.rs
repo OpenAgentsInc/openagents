@@ -215,11 +215,30 @@ fn normalize_email(raw: &str) -> Result<String, String> {
 }
 
 fn normalize_code(raw: &str) -> Result<String, String> {
-    let code = raw.split_whitespace().collect::<String>();
-    if code.is_empty() {
+    let collapsed = raw.split_whitespace().collect::<String>();
+    if collapsed.is_empty() {
         return Err("verification code must not be empty".to_string());
     }
-    Ok(code)
+
+    // Users often paste the full email snippet ("Code: 123456.") into the field.
+    // Prefer a strict 6-digit extraction when available.
+    let digits_only = collapsed
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if digits_only.len() == 6 {
+        return Ok(digits_only);
+    }
+
+    let alnum = collapsed
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>();
+    if alnum.is_empty() {
+        return Err("verification code must contain letters or digits".to_string());
+    }
+
+    Ok(alnum)
 }
 
 fn read_code_from_stdin() -> Result<String, String> {
