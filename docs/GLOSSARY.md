@@ -118,6 +118,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | Term | Definition |
 |------|------------|
 | **Execution Runtime** | The layer that validates tool params, enforces retries, and runs tools. Distinct from adapters. |
+| **Khala** | Codename for the runtime-owned sync engine: Postgres-backed projection delivery over WebSockets. Non-authoritative by design; runtime/Postgres remain the source of truth. |
 | **Lane** | Named routing bucket for inference/execution. Standard *classes* are **Local** (free, on-device), **Cloud** (hosted API), **Swarm** (NIP-90 marketplace). Implementations may expose additional lane names (e.g., `cheap`, `fast`, `premium`) that map onto these classes. Note: "Datacenter" in supply class docs refers to Cloud lanes. |
 | **Dispatcher** | Component that sends NIP-90 jobs to the swarm (e.g., SwarmDispatcher). |
 | **DelegationTarget** | Where to route a task. Canonical enum: `local_tools` (simple edits), `rlm` (recursive analysis), `codex` (complex multi-file), `swarm_fanout` (parallel provider queries), `objective_job` (sandboxed verifiable jobs like tests/builds). |
@@ -264,6 +265,7 @@ ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
 |-----------|------------|
 | `step_utility` vs `step_utility_norm` | Canonical `step_utility` is **-1.0..+1.0** from `ToolResultSignature`. `ToolStepUtilitySignature` outputs `step_utility_norm` in range **0.0..1.0** (the `_norm` suffix distinguishes it). |
 | `policy_version` vs `policy_bundle_id` | Canonical is **policy_bundle_id**. `policy_version` may be used as display metadata derived from bundle. |
+| `OA Sync` vs `Khala` | Canonical codename is **Khala**. `OA Sync` may appear in historical docs and should be treated as legacy naming for the same sync initiative. |
 | `RLM` (Recursive Language Models) vs `rlm` (reward-signal evaluation crate in external runtimes) | In OpenAgents docs, `RLM` means **Recursive Language Models** (long-context execution). If referencing a reward-signal evaluator crate named `rlm` (e.g., in Horizons), call it **reward-signal evaluation (`rlm` crate)** to avoid acronym collision. |
 | `rlog` vs `trajectory` vs `REPLAY.jsonl` | `rlog` and `trajectory` are conceptual terms for session logs. `ReplayBundle` is current implementation. `REPLAY.jsonl v1` is target interoperable format. |
 

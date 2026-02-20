@@ -1,4 +1,6 @@
-Below is a **drop-in rewrite** of your doc with the extra decisions + clarifications fully spelled out, plus a tightened roadmap addendum. I kept your structure and tone, but “locked” the parts that would otherwise turn into ambiguity later.
+> Status: historical draft. Canonical Khala docs are `docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, and `docs/sync/SURFACES.md`.
+
+Below is a **drop-in rewrite** draft with extra decisions + clarifications and a roadmap addendum.
 
 ---
 

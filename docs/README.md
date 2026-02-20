@@ -24,6 +24,9 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 ## Codex Architecture
 
 - Canonical unified plan: `codex/unified-runtime-desktop-plan.md`
+- Khala sync spec (runtime-owned WS sync engine): `sync/thoughts.md`
+- Khala delivery roadmap: `sync/ROADMAP.md`
+- Khala surface contract: `sync/SURFACES.md`
 - Convex sync-layer plan: `plans/active/convex-self-hosting-runtime-sync-plan.md`
 - Master execution roadmap: `plans/active/convex-runtime-codex-master-roadmap.md`
 - Codex docs index: `codex/README.md`

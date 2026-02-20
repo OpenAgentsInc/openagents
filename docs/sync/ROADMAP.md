@@ -1,40 +1,45 @@
-# OA Sync Roadmap (WS-Only)
+# Khala Sync Roadmap (WS-Only)
 
 Date: 2026-02-20
 Status: Proposed
 Owner lanes: Runtime, Web, Mobile, Desktop, Lightning, Infra
 
+Khala is the codename for the OpenAgents sync engine.
+
 ## Goal
 
-Replace Convex for runtime/Codex sync with an OpenAgents-owned sync engine on Postgres + WebSockets, while avoiding a big-bang cutover for Lightning.
+Replace Convex for runtime/Codex sync with a runtime-owned sync engine on Postgres + WebSockets, while avoiding a big-bang Lightning cutover.
 
 ## Constraints
 
 1. Runtime/Postgres remain authority.
-2. OA Sync is projection + delivery only.
-3. New sync transport is WebSocket only (Phoenix Channels), not SSE.
+2. Khala is projection + delivery only.
+3. New sync transport is WS only (Phoenix Channels), not SSE.
 4. Proto definitions are schema authority.
 5. Runtime/Codex migrates first; Lightning migrates second.
+6. Watermarks are DB-backed per-topic sequences.
+7. Stream journal supports pointer mode payload delivery.
 
-## Current status baseline (factored into this plan)
+## Current baseline (factored into this plan)
 
 1. Runtime projector/checkpoint/reprojection stack already exists.
-2. Runtime default sink is still `NoopSink` in repo config.
+2. Runtime default projection sink is still `NoopSink` in config.
 3. Laravel Convex token bridge exists at `/api/convex/token`.
-4. Mobile still initializes Convex client, but Codex data path already uses runtime APIs.
-5. Desktop task flow already uses Laravel APIs for lightning tasks.
-6. Lightning ops remains directly dependent on Convex function transport.
+4. Mobile still initializes Convex client, but Codex data path is already runtime API-driven.
+5. Desktop task flow already uses Laravel APIs for Lightning tasks.
+6. `apps/lightning-ops` still depends on Convex transport for control-plane data.
 
-## Epic 1: Contracts and Architecture Lock
+## Epic 1: Contracts and architecture lock
 
-## Issue OA-SYNC-001: Add OA Sync ADR
+## KHALA-001: Add Khala ADR
 
 Depends on: none
 
 Scope:
 
-- Add ADR defining OA Sync boundaries, WS-only decision, and migration lanes.
-- Reference existing ADR-0028 and ADR-0029.
+- Add ADR locking Khala boundaries, WS-only decision, migration lanes.
+- Lock DB-backed per-topic watermark allocator and pointer-mode requirement.
+- Reference ADR-0028 and ADR-0029.
 
 Done when:
 
@@ -42,11 +47,11 @@ Done when:
 
 Verification:
 
-- docs lint/check links.
+- docs link checks.
 
-## Issue OA-SYNC-002: Create proto package `openagents.sync.v1`
+## KHALA-002: Create proto package `openagents.sync.v1`
 
-Depends on: OA-SYNC-001
+Depends on: KHALA-001
 
 Scope:
 
@@ -54,7 +59,8 @@ Scope:
   - subscribe/subscribed
   - update/heartbeat/error
   - topic and error enums
-- Define watermark and doc-version fields explicitly.
+  - watermark/doc-version fields
+- Include `stale_cursor` and `payload_too_large` error codes.
 
 Done when:
 
@@ -66,132 +72,183 @@ Verification:
 - `buf breaking --against '.git#branch=main,subdir=proto'`
 - `./scripts/verify-proto-generate.sh`
 
-## Issue OA-SYNC-003: Add protocol mapping doc for WS wire format
+## KHALA-003: Add WS mapping doc for proto-to-wire format
 
-Depends on: OA-SYNC-002
+Depends on: KHALA-002
 
 Scope:
 
-- Add `docs/protocol/OA_SYNC_WS_MAPPING.md` with proto-to-JSON (or binary) mapping.
-- Define channel event names and payload shape.
+- Add `docs/protocol/OA_SYNC_WS_MAPPING.md` with:
+  - channel names,
+  - event names,
+  - payload mapping,
+  - replay batch limits,
+  - pointer-mode behavior,
+  - error taxonomy + retry guidance.
 
 Done when:
 
-- Mapping doc merged and cross-linked from `docs/sync/thoughts.md`.
+- Mapping doc merged and cross-linked from sync docs.
 
 Verification:
 
 - docs link checks.
 
-## Epic 2: Runtime Data Model and Sink
+## KHALA-004: Define canonical payload hashing rules
 
-## Issue OA-SYNC-004: Add sync stream event tables and indexes
-
-Depends on: OA-SYNC-001
+Depends on: KHALA-002
 
 Scope:
 
-- Add migration(s) for:
+- Extend ADR-0006 or add a focused ADR for canonical JSON hashing rules.
+- Add fixtures proving stable hashes across TS + Elixir.
+
+Done when:
+
+- Hash fixtures are committed and language-level tests pass.
+
+Verification:
+
+- runtime + TS fixture tests green.
+
+## KHALA-005: Add `docs/sync/SURFACES.md`
+
+Depends on: KHALA-001
+
+Scope:
+
+- Document surface-to-topic mapping and required initial hydration endpoints.
+
+Done when:
+
+- Surfaces mapping merged and linked by roadmap.
+
+Verification:
+
+- docs link checks.
+
+## Epic 2: Runtime data model and sink
+
+## KHALA-006: Add sync stream/read-model tables and indexes
+
+Depends on: KHALA-001
+
+Scope:
+
+- Add migrations for:
   - `runtime.sync_stream_events`
   - `runtime.sync_run_summaries`
   - `runtime.sync_codex_worker_summaries`
-- Add indexes for `(topic, watermark)` and replay scans.
+- Add replay and retention indexes.
 
 Done when:
 
 - Migrations apply cleanly in dev/test.
-- Schema documented in `apps/openagents-runtime/docs/DB_SCHEMA.md`.
+- Schema is documented.
 
 Verification:
 
 - `cd apps/openagents-runtime && mix ecto.migrate`
 - `cd apps/openagents-runtime && mix test`
 
-## Issue OA-SYNC-005: Implement watermark allocator
+## KHALA-007: Add per-topic sequence table
 
-Depends on: OA-SYNC-004
+Depends on: KHALA-006
 
 Scope:
 
-- Add monotonic per-topic watermark allocator with transaction safety.
+- Add migration for `runtime.sync_topic_sequences`.
+- Seed known topics for v1.
 
 Done when:
 
-- Unit tests prove monotonicity and no duplicates under concurrency.
+- Table is live and concurrency test fixtures exist.
+
+Verification:
+
+- `cd apps/openagents-runtime && mix test --only sync_watermarks`
+
+## KHALA-008: Implement DB-native watermark allocator
+
+Depends on: KHALA-007
+
+Scope:
+
+- Implement allocator using `UPDATE ... RETURNING` on `sync_topic_sequences` in transaction.
+
+Done when:
+
+- Tests prove monotonicity and no duplicates under concurrency.
 
 Verification:
 
 - `cd apps/openagents-runtime && mix test --only sync`
 
-## Issue OA-SYNC-006: Implement `OA.Sync.ProjectorSink`
+## KHALA-009: Implement `OpenAgentsRuntime.Sync.ProjectorSink`
 
-Depends on: OA-SYNC-004, OA-SYNC-005
+Depends on: KHALA-006, KHALA-008
 
 Scope:
 
-- Add runtime sink that:
-  - upserts sync read-model rows,
-  - appends stream event with watermark,
-  - emits telemetry.
-- Keep existing convex sink path available during dual publish.
+- Upsert read-model rows.
+- Append stream event with watermark.
+- Emit telemetry.
+- Keep Convex sink available during dual publish.
+- Support pointer mode (payload optional in stream rows).
 
 Done when:
 
-- Sink can be configured in runtime env and produces durable stream rows.
+- Sink is configurable and durable stream rows are produced.
 
 Verification:
 
-- runtime integration tests with deterministic fixture events.
+- runtime integration tests with deterministic fixtures.
 - `mix runtime.contract.check` remains green.
 
-## Issue OA-SYNC-007: Add retention policy job for stream events
+## KHALA-010: Add stream retention job + stale boundary metrics
 
-Depends on: OA-SYNC-004
+Depends on: KHALA-006
 
 Scope:
 
-- Periodic deletion by retention horizon.
-- Config knobs by env.
+- Add retention horizon deletion job.
+- Track oldest retained watermark per topic.
 
 Done when:
 
-- Retention job tested and observable via telemetry/logs.
+- Retention behavior is tested and observable.
 
 Verification:
 
-- runtime tests for stale cursor boundary.
+- runtime stale-cursor boundary tests.
 
-## Epic 3: WebSocket Service (Phoenix Channels)
+## Epic 3: WebSocket delivery service (Phoenix)
 
-## Issue OA-SYNC-008: Add `sync:v1` channel + authenticated join
+## KHALA-011: Add `sync:v1` channel with authenticated join
 
-Depends on: OA-SYNC-002, OA-SYNC-006
+Depends on: KHALA-002, KHALA-009
 
 Scope:
 
-- Add Channel module with:
-  - socket auth
-  - topic entitlement checks
-  - subscribe command
+- Add channel with socket auth, entitlement checks, subscribe command.
 
 Done when:
 
-- Authenticated client can subscribe to allowed topics only.
+- Authenticated clients can subscribe only to allowed topics.
 
 Verification:
 
 - channel authorization tests.
 
-## Issue OA-SYNC-009: Implement replay-on-subscribe with watermark resume
+## KHALA-012: Implement replay-on-subscribe with watermark resume
 
-Depends on: OA-SYNC-008
+Depends on: KHALA-011
 
 Scope:
 
-- On subscribe:
-  - read stream rows after supplied watermark,
-  - send catch-up updates,
-  - begin live push mode.
+- Read events after supplied watermark.
+- Page replay in bounded batches.
+- Enter live mode after catch-up.
 
 Done when:
 
@@ -199,33 +256,33 @@ Done when:
 
 Verification:
 
-- integration tests with forced socket drop.
+- integration tests with forced socket drops.
 
-## Issue OA-SYNC-010: Implement stale cursor handling
+## KHALA-013: Implement stale cursor handling
 
-Depends on: OA-SYNC-009, OA-SYNC-007
+Depends on: KHALA-010, KHALA-012
 
 Scope:
 
-- Detect resume watermark older than retained window.
-- Return explicit error code requiring full resync.
+- Detect resume watermark older than retention horizon.
+- Return deterministic `stale_cursor` response.
 
 Done when:
 
-- stale cursor test passes.
+- stale cursor tests pass.
 
 Verification:
 
 - integration tests with retention purge simulation.
 
-## Issue OA-SYNC-011: Add heartbeat and connection health telemetry
+## KHALA-014: Add heartbeat + connection health telemetry
 
-Depends on: OA-SYNC-008
+Depends on: KHALA-011
 
 Scope:
 
-- heartbeat events and server-side timeout handling.
-- metrics for connection count, reconnect count, lag.
+- Add heartbeat events + timeout handling.
+- Add metrics for connections, reconnects, lag, catch-up duration.
 
 Done when:
 
@@ -233,128 +290,127 @@ Done when:
 
 Verification:
 
-- runtime telemetry tests + metrics docs update.
+- telemetry tests + metrics docs update.
 
-## Epic 4: Auth Bridge (Laravel -> OA Sync)
+## Epic 4: Auth bridge (Laravel -> runtime/Khala)
 
-## Issue OA-SYNC-012: Add `/api/sync/token` token issuer
+## KHALA-015: Add `/api/sync/token` token issuer
 
-Depends on: OA-SYNC-001
+Depends on: KHALA-001
 
 Scope:
 
-- Add Laravel endpoint to mint OA Sync JWT claims.
-- Keep `/api/convex/token` unchanged during migration.
+- Add Laravel endpoint minting sync JWT claims with `kid` header.
+- Keep `/api/convex/token` for migration period.
 
 Done when:
 
-- endpoint covered by feature tests for success/failure/expiry.
+- endpoint is feature-tested for success/failure/expiry.
 
 Verification:
 
 - `cd apps/openagents.com && php artisan test --filter=SyncToken`
 
-## Issue OA-SYNC-013: Add runtime socket JWT verification
+## KHALA-016: Add runtime socket JWT verification + key rotation path
 
-Depends on: OA-SYNC-012, OA-SYNC-008
+Depends on: KHALA-011, KHALA-015
 
 Scope:
 
 - Verify token signature and required claims.
-- Enforce topic scopes at join/subscription time.
+- Enforce topic scopes and doc ownership.
+- Support key-id (`kid`) based rotation path (HS256 now, RS256/JWKS-ready).
 
 Done when:
 
-- unauthorized scopes are denied with deterministic errors.
+- unauthorized scopes fail deterministically and rotation path is tested.
 
 Verification:
 
 - runtime socket auth tests.
 
-## Epic 5: Client SDK and Surface Integrations
+## Epic 5: Client SDK and surface integrations
 
-## Issue OA-SYNC-014: Create TS OA Sync client package (web/mobile/desktop)
+## KHALA-017: Create TS Khala client package (web/mobile/desktop)
 
-Depends on: OA-SYNC-002, OA-SYNC-009
+Depends on: KHALA-002, KHALA-012
 
 Scope:
 
-- Implement minimal client:
-  - connect/auth
-  - subscribe
-  - watermark persistence
-  - auto-resume
-  - stale-cursor callback for full fetch
+- Implement client with connect/auth/subscribe.
+- Persist watermarks and auto-resume.
+- Expose stale-cursor callback.
+- Maintain doc cache keyed by `doc_key` with monotonic `doc_version` application.
 
 Done when:
 
-- package consumed by one internal test harness and one product surface.
+- package is used by one harness and one product surface.
 
 Verification:
 
-- package unit tests + runtime integration harness.
+- package tests + integration harness.
 
-## Issue OA-SYNC-015: Integrate web Codex admin with OA Sync behind flag
+## KHALA-018: Integrate web Codex admin behind feature flag
 
-Depends on: OA-SYNC-014
+Depends on: KHALA-017
 
 Scope:
 
-- Replace Convex summary badges in web admin page with OA Sync topic updates.
-- Keep existing runtime API actions unchanged.
+- Replace Convex summary subscription with Khala on selected screens.
+- Keep runtime action APIs unchanged.
 
 Done when:
 
-- feature flag can switch web admin summary lane between old/new.
+- web flag switches between legacy and Khala subscription lanes.
 
 Verification:
 
-- web integration tests + manual staging smoke.
+- web integration tests + staging smoke.
 
-## Issue OA-SYNC-016: Integrate mobile Codex worker screen with OA Sync behind flag
+## KHALA-019: Integrate mobile Codex worker screen behind feature flag
 
-Depends on: OA-SYNC-014
+Depends on: KHALA-017
 
 Scope:
 
-- Use OA Sync for summary updates.
-- Keep runtime API control paths unchanged.
+- Use Khala for summary updates.
+- Remove Convex provider boot for flagged users once needed reactive data is covered.
 
 Done when:
 
-- mobile screen receives live summary updates without Convex client for flagged users.
+- mobile receives live summaries without Convex client for flagged users.
 
 Verification:
 
 - `cd apps/mobile && bun run compile && bun run test`
 
-## Issue OA-SYNC-017: Integrate desktop status surfaces with OA Sync behind flag
+## KHALA-020: Integrate desktop status surfaces behind feature flag
 
-Depends on: OA-SYNC-014
+Depends on: KHALA-017
 
 Scope:
 
-- Replace Convex reachability/dependency in desktop sync surfaces where applicable.
-- Keep lightning task APIs unchanged.
+- Remove Convex reachability dependency in desktop sync surfaces where applicable.
+- Keep Lightning task APIs unchanged.
 
 Done when:
 
-- desktop runs without requiring Convex URL for sync lane.
+- desktop sync lane runs without Convex URL/token requirement.
 
 Verification:
 
 - `cd apps/desktop && npm run typecheck && npm test`
 
-## Epic 6: Dual Publish, Parity, and Cutover
+## Epic 6: Dual publish, parity, and runtime/Codex cutover
 
-## Issue OA-SYNC-018: Implement dual-publish parity auditor
+## KHALA-021: Implement dual-publish parity auditor
 
-Depends on: OA-SYNC-006, OA-SYNC-015
+Depends on: KHALA-004, KHALA-009, KHALA-018
 
 Scope:
 
-- Compare Convex summary payload hash vs OA Sync payload hash for sampled entities.
-- Emit mismatch metrics and logs.
+- Compare Convex and Khala payload hashes for sampled entities.
+- Emit mismatch metrics/logs and lag drift metrics.
 
 Done when:
 
@@ -364,17 +420,14 @@ Verification:
 
 - runtime load/chaos tests include parity checks.
 
-## Issue OA-SYNC-019: Runtime/Codex cutover runbook
+## KHALA-022: Create runtime/Codex cutover runbook
 
-Depends on: OA-SYNC-018
+Depends on: KHALA-021
 
 Scope:
 
-- Document staged rollout:
-  - internal users
-  - limited cohort
-  - full cohort
-- Include rollback switch and expected SLOs.
+- Document staged rollout (internal, cohort, full).
+- Include rollback switch, SLOs, and drill checklist.
 
 Done when:
 
@@ -382,16 +435,16 @@ Done when:
 
 Verification:
 
-- staging drill report artifact committed.
+- staging drill report committed.
 
-## Issue OA-SYNC-020: Remove Convex client dependency from migrated surfaces
+## KHALA-023: Remove Convex client dependency from migrated surfaces
 
-Depends on: OA-SYNC-019
+Depends on: KHALA-022
 
 Scope:
 
-- Remove Convex providers/config from migrated web/mobile/desktop sync paths.
-- Keep backward compatibility only where still required by non-migrated lanes.
+- Remove Convex providers/config from migrated web/mobile/desktop paths.
+- Keep compatibility only for non-migrated lanes.
 
 Done when:
 
@@ -401,78 +454,78 @@ Verification:
 
 - surface-specific CI checks all green.
 
-## Epic 7: Lightning Control Plane Migration (Second Wave)
+## Epic 7: Lightning control-plane migration (second wave)
 
-## Issue OA-SYNC-021: Define proto contracts for lightning control-plane read/write models
+## KHALA-024: Define proto contracts for Lightning control-plane models
 
-Depends on: OA-SYNC-002
+Depends on: KHALA-002
 
 Scope:
 
-- Move lightning control-plane schema authority from TS-only contracts to proto.
-- Add mappings/adapters in `apps/lightning-ops`.
+- Move lightning control-plane schema authority from TS-only to proto.
+- Add adapters in `apps/lightning-ops`.
 
 Done when:
 
-- proto contracts and adapters merged, backward-compatible with current behavior.
+- proto contracts and adapters merged with behavior parity.
 
 Verification:
 
 - proto checks + lightning typecheck/tests.
 
-## Issue OA-SYNC-022: Build runtime/Laravel APIs backing lightning control-plane state in Postgres
+## KHALA-025: Build runtime/Laravel APIs for Lightning control-plane state
 
-Depends on: OA-SYNC-021
-
-Scope:
-
-- Add authoritative tables/APIs for paywall policy, security controls, settlements.
-
-Done when:
-
-- API endpoints provide parity with current Convex-backed flows.
-
-Verification:
-
-- lightning smoke suites pass in API-backed mode.
-
-## Issue OA-SYNC-023: Replace `ConvexHttpClient` transport in lightning-ops
-
-Depends on: OA-SYNC-022
+Depends on: KHALA-024
 
 Scope:
 
-- Implement transport adapter from lightning-ops to OA APIs.
-- Keep mode flag for rollback to Convex path during bake-in.
+- Add Postgres-backed authority tables/APIs for paywall policy, security controls, settlements.
 
 Done when:
 
-- `apps/lightning-ops` runs all reconcile/smoke flows in API mode.
+- API parity with current Convex-backed flows is validated.
 
 Verification:
 
-- `npm test`
-- `npm run smoke:compile -- --json`
-- `npm run smoke:security -- --json`
-- `npm run smoke:settlement -- --json`
-- `npm run smoke:full-flow -- --json`
+- Lightning smoke suites pass in API-backed mode.
 
-## Issue OA-SYNC-024: Lightning migration cutover + Convex decommission checklist
+## KHALA-026: Replace Convex transport in `apps/lightning-ops`
 
-Depends on: OA-SYNC-023
+Depends on: KHALA-025
 
 Scope:
 
-- Execute staged cutover of lightning control plane.
-- Remove remaining Convex runtime dependencies/envs/runbooks after rollback window.
+- Replace `ConvexHttpClient` transport with OA API transport adapter.
+- Keep rollback flag during bake-in.
 
 Done when:
 
-- production cutover complete, rollback drill evidence captured, decommission checklist signed.
+- lightning-ops reconcile/smoke flows pass in API mode.
 
 Verification:
 
-- production/staging drill reports committed.
+- `cd apps/lightning-ops && npm test`
+- `cd apps/lightning-ops && npm run smoke:compile -- --json`
+- `cd apps/lightning-ops && npm run smoke:security -- --json`
+- `cd apps/lightning-ops && npm run smoke:settlement -- --json`
+- `cd apps/lightning-ops && npm run smoke:full-flow -- --json`
+
+## KHALA-027: Lightning cutover and Convex decommission
+
+Depends on: KHALA-026
+
+Scope:
+
+- Execute staged Lightning cutover.
+- Remove remaining Convex dependencies/env/runbooks after rollback window.
+
+Done when:
+
+- production cutover complete and rollback drill evidence captured.
+
+Verification:
+
+- staging/production drill artifacts committed.
 
 ## Suggested GitHub project columns
 
@@ -485,22 +538,22 @@ Verification:
 
 ## Suggested labels
 
-- `oa-sync`
-- `oa-sync-runtime`
-- `oa-sync-web`
-- `oa-sync-mobile`
-- `oa-sync-desktop`
-- `oa-sync-lightning`
-- `oa-sync-proto`
-- `oa-sync-infra`
+- `khala-sync`
+- `khala-runtime`
+- `khala-web`
+- `khala-mobile`
+- `khala-desktop`
+- `khala-lightning`
+- `khala-proto`
+- `khala-infra`
 - `migration-risk-high`
 - `migration-risk-medium`
 - `migration-risk-low`
 
 ## Immediate next 5 issues to open
 
-1. OA-SYNC-001 (ADR lock)
-2. OA-SYNC-002 (proto package)
-3. OA-SYNC-004 (DB schema)
-4. OA-SYNC-006 (projector sink)
-5. OA-SYNC-008 (WS channel)
+1. KHALA-001 (ADR lock)
+2. KHALA-002 (proto package)
+3. KHALA-006 (DB schema)
+4. KHALA-007 (topic sequence table)
+5. KHALA-009 (projector sink)

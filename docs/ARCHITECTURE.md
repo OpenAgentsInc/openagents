@@ -25,8 +25,9 @@ flowchart LR
 
   subgraph control["Control + Execution Planes"]
     runtime["apps/openagents-runtime<br/>Elixir runtime<br/>Execution authority"]
-    convex["Convex (self-hosted or cloud)<br/>Projection/read-model sync layer"]
-    laravel["Laravel auth/session + API proxy<br/>Convex JWT minting"]
+    khala["Khala sync engine (runtime-owned)<br/>Postgres + WS projection/read-model sync (target)"]
+    convex["Convex (self-hosted or cloud)<br/>Projection/read-model sync layer (migration/legacy lanes)"]
+    laravel["Laravel auth/session + API proxy<br/>Sync token minting (/api/sync/token target, /api/convex/token legacy)"]
   end
 
   subgraph lightning["Lightning and Payment Services"]
@@ -51,8 +52,10 @@ flowchart LR
   electronDesktop --> laravel
 
   laravel --> runtime
-  runtime --> convex
-  laravel --> convex
+  runtime --> khala
+  laravel --> khala
+  runtime -.->|"dual publish during migration"| convex
+  laravel -.->|"legacy Convex token + Lightning lanes"| convex
 
   lops --> aperture
   lops --> convex
@@ -77,7 +80,7 @@ flowchart LR
 
 | App | Path | Primary role | Key stack | Delivery status (current) |
 |---|---|---|---|---|
-| OpenAgents web app | `apps/openagents.com/` | User-facing control plane, auth/session authority, API gateway/proxy, Convex JWT minting | Laravel 12, Inertia, React, TypeScript | Alpha/live |
+| OpenAgents web app | `apps/openagents.com/` | User-facing control plane, auth/session authority, API gateway/proxy, sync token minting (`/api/sync/token` target; Convex token bridge during migration) | Laravel 12, Inertia, React, TypeScript | Alpha/live |
 | OpenAgents runtime | `apps/openagents-runtime/` | Execution authority for runs/events, policy/spend, Codex worker lifecycle, replay semantics | Elixir, Phoenix, Postgres | Active runtime plane |
 | Mobile app | `apps/mobile/` | Mobile user/admin surface over the same runtime and projection contracts | React Native, Expo | Prerelease |
 | iOS app | `apps/autopilot-ios/` | Native iOS Autopilot surface, codex-first worker admin/stream lane | SwiftUI, Xcode | Prerelease |
@@ -107,22 +110,55 @@ flowchart LR
 | `bitcoind` | Bitcoin Core full node backing Lightning infrastructure |
 | `lnd` | Lightning node used by gateway/payment flows |
 | Aperture | L402 gateway enforcing paid-route policy |
-| Convex | Reactive projection/read-model layer for low-latency client sync |
+| Khala | Runtime-owned Postgres + WS projection/read-model sync engine (target lane) |
+| Convex | Reactive projection/read-model layer for migration and non-migrated lanes |
 
 ## Authority Boundaries (Critical)
 
 These are non-negotiable system boundaries.
 
 1. Runtime + Postgres are the source of truth for run events, Codex worker lifecycle, policy/spend, and replay artifacts.
-2. Convex is projection-only for client sync/read models.
-3. Runtime is the single writer to Convex projection documents.
-4. Laravel remains auth/session authority and mints short-lived Convex client JWTs.
-5. Proto definitions under `proto/` are the shared Layer-0 schema authority.
+2. Khala is projection/delivery only (runtime-owned subsystem in `apps/openagents-runtime` for v1).
+3. Convex remains projection-only where still enabled during migration; it is never authority.
+4. Runtime is the single writer to projection documents (Khala and Convex during dual-publish windows).
+5. Laravel remains auth/session authority and mints short-lived sync tokens (`/api/sync/token` target; `/api/convex/token` during migration).
+6. Proto definitions under `proto/` are the shared Layer-0 schema authority.
 
 Primary references:
 - `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md`
 - `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`
 - `apps/openagents-runtime/docs/CONVEX_SYNC.md`
+- `docs/sync/thoughts.md`
+- `docs/sync/ROADMAP.md`
+
+## Database Topology (Clarified)
+
+This section clarifies the practical meaning of "single authority database" in this architecture.
+
+### Current state (2026-02-20)
+
+1. Runtime authority lane:
+   - Runtime authority data (runs/workers/events/projections) is Postgres-backed.
+   - In current Cloud Run wiring, `openagents-runtime` and `openagents-web` both connect to Cloud SQL instance `l402-aperture-db`, with runtime currently using database `openagents_web`.
+2. Convex lane:
+   - Self-hosted Convex non-prod uses a separate Cloud SQL instance (`oa-convex-nonprod-pg`, database `convex_nonprod`).
+3. Lightning lane:
+   - Aperture uses Postgres in `l402-aperture-db` (database `aperture`).
+4. Non-authority stores still in use:
+   - Redis for Laravel cache/queue/session.
+   - Local SQLite stores in desktop/mobile/local daemons where applicable.
+   - Service-local storage for specific components (for example wallet executor internals).
+
+### Target state (Khala fully implemented)
+
+1. Runtime-owned Postgres is the single authority data plane for runtime/Codex state (and Lightning control-plane state after second-wave migration).
+2. Khala delivers derived read-model updates from that authority plane to clients over WS.
+3. Clients continue to do initial HTTP hydration + incremental Khala updates.
+4. Convex is removed from migrated lanes and eventually decommissioned by lane.
+
+### Important qualifier
+
+"Single database" in this architecture means a single authority data plane for agent/runtime domain correctness. It does **not** mean every subsystem in OpenAgents must share one physical database or drop caches/local stores.
 
 ## End-to-End Data and Control Flows
 
@@ -131,10 +167,10 @@ Primary references:
 1. Client calls Laravel APIs (`/api/runtime/codex/workers*`).
 2. Laravel validates user session and forwards signed internal requests to runtime (`/internal/v1/codex/workers*`).
 3. Runtime executes lifecycle operations, records durable events in Postgres, applies policy/spend controls, and emits stream/replay-safe artifacts.
-4. Runtime projector writes derived summaries to Convex.
+4. Runtime projector writes derived summaries to Khala (and optionally Convex during dual-publish migration windows).
 5. Clients consume:
    - authoritative control/status via Laravel<->runtime path
-   - low-latency projection badges/summaries via Convex subscriptions.
+   - low-latency projection badges/summaries via Khala WS subscriptions (`sync:v1`) or Convex until each surface migrates.
 
 ### Flow A1: iOS Codex handshake lane (current)
 
@@ -151,7 +187,7 @@ Primary references:
 
 ### Flow B: L402 policy and Lightning payment path
 
-1. Route/policy intent is maintained in Convex for the L402 plane.
+1. Route/policy intent is currently maintained in Convex for the L402 plane (migrating to runtime/Postgres authority in the Khala second wave).
 2. `apps/lightning-ops/` compiles/validates deterministic Aperture config from that intent.
 3. Aperture enforces incoming paid routes via `lnd`.
 4. For outbound paid calls, `apps/lightning-wallet-executor/` pays Bolt11 invoices via Lightning wallet integrations and policy limits.
@@ -179,15 +215,17 @@ Primary references:
 
 1. `apps/openagents.com` deploys as the web control plane (Cloud Run-centric operations).
 2. `apps/openagents-runtime` is the execution plane with Postgres durability and stream/replay contracts.
-3. Convex is run self-hosted and/or cloud by environment, but always as non-authoritative projection infrastructure.
-4. Lightning services (`lightning-ops`, `lightning-wallet-executor`, Aperture, LND, bitcoind) run as a dedicated payment subsystem.
-5. Desktop/mobile/iOS clients consume the same runtime/proto contracts as web.
+3. Khala v1 ships inside `apps/openagents-runtime` and shares Postgres for transactional projection+delivery correctness.
+4. Convex remains non-authoritative projection infrastructure only for migration and non-migrated lanes.
+5. Lightning services (`lightning-ops`, `lightning-wallet-executor`, Aperture, LND, bitcoind) run as a dedicated payment subsystem.
+6. Desktop/mobile/iOS clients consume the same runtime/proto contracts as web.
 
 ### Production wiring snapshot (2026-02-20)
 
 1. `openagents-web` (Cloud Run) proxies Codex worker APIs to `openagents-runtime` via `OA_RUNTIME_ELIXIR_BASE_URL`.
 2. Shared runtime signing secret is enforced on both sides (`OA_RUNTIME_SIGNING_KEY` in web, `RUNTIME_SIGNATURE_SECRET` in runtime).
 3. Runtime stream endpoints are routed through an auth-only internal pipeline so SSE requests with `Accept: text/event-stream` are accepted.
+4. Convex token bridge (`/api/convex/token`) is active; `/api/sync/token` is planned as Khala rollout begins.
 
 ### Current Cloud SQL guardrails
 
@@ -209,6 +247,8 @@ Primary references:
 - Documentation index: `docs/README.md`
 - Runtime contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
 - Runtime ops: `apps/openagents-runtime/docs/OPERATIONS.md`
+- Khala sync spec: `docs/sync/thoughts.md`
+- Khala roadmap: `docs/sync/ROADMAP.md`
 - Convex sync plan: `docs/plans/active/convex-self-hosting-runtime-sync-plan.md`
 - Convex roadmap: `docs/plans/active/convex-runtime-codex-master-roadmap.md`
 - Codex unified plan: `docs/codex/unified-runtime-desktop-plan.md`
