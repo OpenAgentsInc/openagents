@@ -165,17 +165,22 @@ export const DesktopAppLive = Layer.effect(
       );
 
       const nextToken = session.token ?? existingSession.token;
+      const hasSessionIdentity =
+        typeof session.userId === "string" &&
+        session.userId.length > 0 &&
+        typeof nextToken === "string" &&
+        nextToken.trim().length > 0;
       yield* sessionStore.set({
-        userId: session.userId,
-        token: nextToken,
+        userId: hasSessionIdentity ? session.userId : null,
+        token: hasSessionIdentity ? nextToken : null,
       });
       yield* state.update((current) => ({
         ...current,
         auth: {
-          status: session.userId ? "signed_in" : "signed_out",
-          userId: session.userId,
-          email: session.user?.email ?? null,
-          tokenPresent: Boolean(nextToken),
+          status: hasSessionIdentity ? "signed_in" : "signed_out",
+          userId: hasSessionIdentity ? session.userId : null,
+          email: hasSessionIdentity ? session.user?.email ?? null : null,
+          tokenPresent: hasSessionIdentity,
           lastError: null,
         },
       }));

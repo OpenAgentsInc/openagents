@@ -253,6 +253,162 @@ test('verify code JSON issues mobile api token when x-client is autopilot-ios', 
         ->assertJsonPath('data.user.email', 'ios@openagents.com');
 });
 
+test('verify code JSON issues desktop api token when x-client is autopilot-desktop', function () {
+    configureWorkosForTests();
+
+    $workosUser = (object) [
+        'id' => 'user_desktop_123',
+        'email' => 'desktop@openagents.com',
+        'firstName' => 'Desktop',
+        'lastName' => 'User',
+        'profilePictureUrl' => 'https://example.com/avatar.png',
+    ];
+
+    $authResponse = (object) [
+        'user' => $workosUser,
+        'accessToken' => 'access_token_desktop_123',
+        'refreshToken' => 'refresh_token_desktop_123',
+    ];
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->with('client_test_123', '222222', 'user_desktop_123', \Mockery::any(), \Mockery::any())
+        ->andReturn($authResponse);
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'desktop@openagents.com',
+                'user_id' => 'user_desktop_123',
+            ],
+        ])
+        ->withHeader('X-Client', 'autopilot-desktop')
+        ->postJson('/api/auth/verify', [
+            'code' => '222222',
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('ok', true)
+        ->assertJsonPath('status', 'authenticated')
+        ->assertJsonPath('tokenType', 'Bearer')
+        ->assertJsonPath('tokenName', 'desktop:autopilot-desktop');
+
+    $token = (string) $response->json('token');
+
+    expect($token)->not->toBe('');
+
+    $this->getJson('/api/me', [
+        'Authorization' => 'Bearer '.$token,
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.user.email', 'desktop@openagents.com');
+});
+
+test('verify code JSON issues mobile api token when x-client is openagents-expo', function () {
+    configureWorkosForTests();
+
+    $workosUser = (object) [
+        'id' => 'user_expo_123',
+        'email' => 'expo@openagents.com',
+        'firstName' => 'Expo',
+        'lastName' => 'User',
+        'profilePictureUrl' => 'https://example.com/avatar.png',
+    ];
+
+    $authResponse = (object) [
+        'user' => $workosUser,
+        'accessToken' => 'access_token_expo_123',
+        'refreshToken' => 'refresh_token_expo_123',
+    ];
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->with('client_test_123', '333333', 'user_expo_123', \Mockery::any(), \Mockery::any())
+        ->andReturn($authResponse);
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'expo@openagents.com',
+                'user_id' => 'user_expo_123',
+            ],
+        ])
+        ->withHeader('X-Client', 'openagents-expo')
+        ->postJson('/api/auth/verify', [
+            'code' => '333333',
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('ok', true)
+        ->assertJsonPath('status', 'authenticated')
+        ->assertJsonPath('tokenType', 'Bearer')
+        ->assertJsonPath('tokenName', 'mobile:openagents-expo');
+
+    $token = (string) $response->json('token');
+
+    expect($token)->not->toBe('');
+
+    $this->getJson('/api/me', [
+        'Authorization' => 'Bearer '.$token,
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.user.email', 'expo@openagents.com');
+});
+
+test('verify code JSON issues desktop api token when x-client is openagents-desktop', function () {
+    configureWorkosForTests();
+
+    $workosUser = (object) [
+        'id' => 'user_openagents_desktop_123',
+        'email' => 'desktop-shell@openagents.com',
+        'firstName' => 'Desktop',
+        'lastName' => 'Shell',
+        'profilePictureUrl' => 'https://example.com/avatar.png',
+    ];
+
+    $authResponse = (object) [
+        'user' => $workosUser,
+        'accessToken' => 'access_token_openagents_desktop_123',
+        'refreshToken' => 'refresh_token_openagents_desktop_123',
+    ];
+
+    $workos = \Mockery::mock('overload:WorkOS\\UserManagement');
+    $workos->shouldReceive('authenticateWithMagicAuth')
+        ->once()
+        ->with('client_test_123', '444444', 'user_openagents_desktop_123', \Mockery::any(), \Mockery::any())
+        ->andReturn($authResponse);
+
+    $response = $this
+        ->withSession([
+            'auth.magic_auth' => [
+                'email' => 'desktop-shell@openagents.com',
+                'user_id' => 'user_openagents_desktop_123',
+            ],
+        ])
+        ->withHeader('X-Client', 'openagents-desktop')
+        ->postJson('/api/auth/verify', [
+            'code' => '444444',
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('ok', true)
+        ->assertJsonPath('status', 'authenticated')
+        ->assertJsonPath('tokenType', 'Bearer')
+        ->assertJsonPath('tokenName', 'desktop:openagents-desktop');
+
+    $token = (string) $response->json('token');
+
+    expect($token)->not->toBe('');
+
+    $this->getJson('/api/me', [
+        'Authorization' => 'Bearer '.$token,
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.user.email', 'desktop-shell@openagents.com');
+});
+
 test('verify code auto provisions a spark wallet when executor is configured', function () {
     configureWorkosForTests();
 

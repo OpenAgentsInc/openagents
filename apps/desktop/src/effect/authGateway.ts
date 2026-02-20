@@ -11,7 +11,7 @@ type AuthUser = Readonly<{
 
 export type VerifyResult = Readonly<{
   readonly userId: string;
-  readonly token: string | null;
+  readonly token: string;
   readonly user: AuthUser | null;
 }>;
 
@@ -62,16 +62,21 @@ const requestJson = Effect.fn("AuthGateway.requestJson")(function* (input: {
   readonly method: "GET" | "POST";
   readonly body?: unknown;
   readonly token?: string | null;
+  readonly headers?: Readonly<Record<string, string>>;
 }) {
   const headers = new Headers({ accept: "application/json" });
   if (input.body !== undefined) headers.set("content-type", "application/json");
   if (input.token) headers.set("authorization", `Bearer ${input.token}`);
+  for (const [key, value] of Object.entries(input.headers ?? {})) {
+    headers.set(key, value);
+  }
 
   const response = yield* Effect.tryPromise({
     try: () => {
       const init: RequestInit = {
         method: input.method,
         headers,
+        credentials: "include",
         cache: "no-store",
       };
       if (input.body !== undefined) init.body = JSON.stringify(input.body);
@@ -117,8 +122,9 @@ export const AuthGatewayLive = Layer.effect(
       const { response, json } = yield* requestJson({
         operation: "startMagicCode",
         method: "POST",
-        url: `${cfg.openAgentsBaseUrl}/api/auth/start`,
+        url: `${cfg.openAgentsBaseUrl}/api/auth/email`,
         body: { email },
+        headers: { "x-client": "openagents-desktop" },
       });
       if (!response.ok) return yield* failOnHttp("startMagicCode", response.status, json);
 
@@ -142,6 +148,7 @@ export const AuthGatewayLive = Layer.effect(
         method: "POST",
         url: `${cfg.openAgentsBaseUrl}/api/auth/verify`,
         body: input,
+        headers: { "x-client": "openagents-desktop" },
       });
       if (!response.ok) return yield* failOnHttp("verifyMagicCode", response.status, json);
 
@@ -155,9 +162,19 @@ export const AuthGatewayLive = Layer.effect(
         );
       }
 
+      const token = typeof rec.token === "string" ? rec.token.trim() : "";
+      if (token.length === 0) {
+        return yield* Effect.fail(
+          AuthGatewayApiError.make({
+            operation: "verifyMagicCode",
+            error: "token_missing",
+          }),
+        );
+      }
+
       return {
         userId: rec.userId,
-        token: typeof rec.token === "string" ? rec.token : null,
+        token,
         user: normalizeUser(rec.user),
       } satisfies VerifyResult;
     });

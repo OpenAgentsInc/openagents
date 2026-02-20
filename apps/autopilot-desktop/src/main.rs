@@ -21,6 +21,7 @@ use autopilot_ui::{
     MinimalRoot, ShortcutBinding, ShortcutChord, ShortcutCommand, ShortcutRegistry, ShortcutScope,
 };
 use chrono::Utc;
+use clap::{Parser, Subcommand};
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, ReasoningEffort, SandboxMode,
     SandboxPolicy, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
@@ -62,8 +63,13 @@ use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey
 use winit::window::{CursorIcon, Window, WindowId};
 
 mod full_auto;
+mod runtime_auth;
 mod runtime_codex_proto;
 
+use runtime_auth::{
+    DEFAULT_AUTH_BASE_URL, clear_runtime_auth_state, load_runtime_auth_state,
+    login_with_email_code, persist_runtime_auth_state, runtime_auth_state_path,
+};
 use runtime_codex_proto::{
     RuntimeCodexStreamEvent, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
     handshake_dedupe_key, merge_retry_cursor, parse_runtime_stream_events, stream_event_seq,
@@ -101,6 +107,35 @@ const RUNTIME_SYNC_STREAM_TAIL_MS: u64 = 15_000;
 const RUNTIME_SYNC_STREAM_EMPTY_SLEEP_MS: u64 = 250;
 const RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS: u64 = 2_000;
 
+#[derive(Parser, Debug)]
+#[command(name = "autopilot-desktop", about = "Autopilot desktop app")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<CliCommand>,
+}
+
+#[derive(Subcommand, Debug)]
+enum CliCommand {
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AuthCommand {
+    Login {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        code: Option<String>,
+        #[arg(long, default_value = DEFAULT_AUTH_BASE_URL)]
+        base_url: String,
+    },
+    Logout,
+    Status,
+}
+
 #[derive(Clone)]
 struct RuntimeCodexSync {
     client: HttpClient,
@@ -119,14 +154,35 @@ struct RuntimeCodexSync {
 
 impl RuntimeCodexSync {
     fn from_env(cwd: &str) -> Option<Self> {
-        let base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL).ok()?;
-        let token = env::var(ENV_RUNTIME_SYNC_TOKEN).ok()?;
-        let base_url = base_url.trim().trim_end_matches('/').to_string();
-        let token = token.trim().to_string();
+        let stored_auth = load_runtime_auth_state();
+        let base_url = env::var(ENV_RUNTIME_SYNC_BASE_URL)
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                stored_auth
+                    .as_ref()
+                    .map(|value| value.base_url.trim().trim_end_matches('/').to_string())
+                    .filter(|value| !value.is_empty())
+            });
+        let token = env::var(ENV_RUNTIME_SYNC_TOKEN)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                stored_auth
+                    .as_ref()
+                    .map(|value| value.token.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            });
 
-        if base_url.is_empty() || token.is_empty() {
+        let Some(base_url) = base_url else {
             return None;
-        }
+        };
+
+        let Some(token) = token else {
+            return None;
+        };
 
         let workspace_ref = env::var(ENV_RUNTIME_SYNC_WORKSPACE_REF)
             .ok()
@@ -859,11 +915,16 @@ impl InProcessPylon {
 }
 
 fn main() -> Result<()> {
+    let cli = Cli::parse();
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .with_target(false)
         .init();
     let _ = rustls::crypto::ring::default_provider().install_default();
+
+    if let Some(command) = cli.command {
+        return run_cli_command(command);
+    }
 
     let event_loop = EventLoop::<AppEvent>::with_user_event()
         .build()
@@ -874,6 +935,71 @@ fn main() -> Result<()> {
     let mut app = App::new(action_tx);
     event_loop.run_app(&mut app).context("event loop failed")?;
     Ok(())
+}
+
+fn run_cli_command(command: CliCommand) -> Result<()> {
+    match command {
+        CliCommand::Auth { command } => run_auth_command(command),
+    }
+}
+
+fn run_auth_command(command: AuthCommand) -> Result<()> {
+    match command {
+        AuthCommand::Login {
+            email,
+            code,
+            base_url,
+        } => {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context("failed to start auth runtime")?;
+
+            let auth_state = runtime
+                .block_on(login_with_email_code(&base_url, &email, code))
+                .map_err(|err| anyhow::anyhow!(err))
+                .context("desktop auth login failed")?;
+
+            let path = persist_runtime_auth_state(&auth_state)
+                .map_err(|err| anyhow::anyhow!(err))
+                .context("failed to persist desktop auth token")?;
+
+            println!(
+                "Desktop auth login succeeded for {}. Token saved at {}",
+                auth_state.email.as_deref().unwrap_or("<unknown>"),
+                path.display()
+            );
+            println!("Runtime sync will now authenticate as this user by default.");
+            Ok(())
+        }
+        AuthCommand::Logout => {
+            clear_runtime_auth_state()
+                .map_err(|err| anyhow::anyhow!(err))
+                .context("failed to clear desktop auth token")?;
+            println!("Desktop auth token cleared.");
+            Ok(())
+        }
+        AuthCommand::Status => {
+            if let Some(state) = load_runtime_auth_state() {
+                let path = runtime_auth_state_path()
+                    .map(|value| value.display().to_string())
+                    .unwrap_or_else(|| "<unknown>".to_string());
+                println!(
+                    "Desktop auth is configured.\n  base_url: {}\n  email: {}\n  user_id: {}\n  issued_at: {}\n  state_path: {}",
+                    state.base_url,
+                    state.email.unwrap_or_else(|| "<unknown>".to_string()),
+                    state.user_id.unwrap_or_else(|| "<unknown>".to_string()),
+                    state.issued_at,
+                    path
+                );
+            } else {
+                println!(
+                    "Desktop auth is not configured. Run `autopilot-desktop auth login --email <you@domain>`."
+                );
+            }
+            Ok(())
+        }
+    }
 }
 
 struct App {

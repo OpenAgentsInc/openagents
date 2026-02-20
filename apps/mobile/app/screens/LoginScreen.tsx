@@ -73,7 +73,6 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
     const result = await authVerify(email, normalizedCode)
     setIsBusy(false)
     if (result.ok) {
-      console.log("[LoginScreen] verify ok, token present:", !!result.token)
       setSession({
         userId: result.userId,
         email,
@@ -84,6 +83,8 @@ export const LoginScreen: FC<LoginScreenProps> = () => {
       setError(
         result.error === "invalid_code"
           ? "Invalid code. Please try again."
+          : result.error === "token_missing" || result.error === "user_missing"
+            ? "Sign-in is incomplete. Please retry."
           : "Verification failed. Try again.",
       )
     }

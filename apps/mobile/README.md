@@ -28,6 +28,7 @@ Mobile Codex administration lives in the `Codex` tab:
 
 - Reads worker list/snapshot/stream through Laravel runtime proxy APIs (`/api/runtime/codex/workers*`).
 - Uses the same auth guard/policy behavior as web (`auth:sanctum` + runtime ownership checks).
+- Login uses WorkOS email-code (`POST /api/auth/email` -> `POST /api/auth/verify` with `X-Client: openagents-expo`) and requires a bearer token before runtime/sync lanes are enabled.
 - Uses Laravel sync token minting (`POST /api/sync/token`) for Khala websocket subscriptions.
 
 Default API base is configured in `app/config/config.base.ts` (`authApiUrl`).

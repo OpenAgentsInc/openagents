@@ -74,7 +74,7 @@ export const AuthProvider: FC<PropsWithChildren<AuthProviderProps>> = ({ childre
   }, [authEmail])
 
   const value = {
-    isAuthenticated: !!(authToken || authUserId),
+    isAuthenticated: typeof authToken === "string" && authToken.trim().length > 0,
     authToken,
     authEmail,
     authUserId: authUserId ?? undefined,
