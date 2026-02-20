@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub const DEFAULT_AUTH_BASE_URL: &str = "https://openagents.com";
 const AUTH_STATE_FILE_NAME: &str = "autopilot-desktop-runtime-auth.json";
 const AUTH_CLIENT_HEADER: &str = "autopilot-desktop";
+const AUTH_USER_AGENT: &str = concat!("autopilot-desktop/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSyncAuthState {
@@ -71,7 +72,10 @@ impl RuntimeSyncAuthFlow {
             &self.client,
             &self.base_url,
             "/api/auth/verify",
-            json!({ "code": normalized_code }),
+            json!({
+                "email": pending_email,
+                "code": normalized_code
+            }),
             Some((("x-client"), AUTH_CLIENT_HEADER)),
         )
         .await?;
@@ -174,7 +178,8 @@ async fn post_json(
         .request(Method::POST, format!("{base_url}{path}"))
         .header("accept", "application/json")
         .header("content-type", "application/json")
-        .header("x-request-id", request_id)
+        .header("user-agent", AUTH_USER_AGENT)
+        .header("x-request-id", request_id.clone())
         .json(&body);
 
     if let Some((key, value)) = header {
@@ -184,15 +189,20 @@ async fn post_json(
     let response = request
         .send()
         .await
-        .map_err(|err| format!("auth request failed: {err}"))?;
+        .map_err(|err| format!("auth request failed ({request_id}): {err}"))?;
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|err| format!("auth response read failed: {err}"))?;
+        .map_err(|err| format!("auth response read failed ({request_id}): {err}"))?;
 
     if !status.is_success() {
-        return Err(auth_error_message(status.as_u16(), &text));
+        return Err(format!(
+            "{} (status {}, request_id {})",
+            auth_error_message(status.as_u16(), &text),
+            status.as_u16(),
+            request_id
+        ));
     }
 
     Ok(serde_json::from_str::<Value>(&text).unwrap_or(Value::Null))
