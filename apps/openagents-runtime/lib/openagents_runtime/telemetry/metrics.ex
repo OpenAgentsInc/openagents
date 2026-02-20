@@ -34,7 +34,9 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     sync_socket_reconnect: [:status],
     sync_socket_timeout: [:status],
     sync_replay_lag: [:event_type, :status],
-    sync_replay_catchup: [:status]
+    sync_replay_catchup: [:status],
+    sync_parity_cycle: [:status],
+    sync_parity_entity: [:status, :reason_class, :event_type]
   }
 
   @high_cardinality_tags [
@@ -158,6 +160,36 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       summary("openagents_runtime.sync.replay.catchup_duration_ms",
         measurement: :duration_ms,
         tags: tags_for(:sync_replay_catchup)
+      ),
+      counter("openagents_runtime.sync.parity.cycle.count",
+        tags: tags_for(:sync_parity_cycle)
+      ),
+      summary("openagents_runtime.sync.parity.cycle.sampled",
+        measurement: :sampled,
+        tags: tags_for(:sync_parity_cycle)
+      ),
+      summary("openagents_runtime.sync.parity.cycle.mismatches",
+        measurement: :mismatches,
+        tags: tags_for(:sync_parity_cycle)
+      ),
+      summary("openagents_runtime.sync.parity.cycle.mismatch_rate",
+        measurement: :mismatch_rate,
+        tags: tags_for(:sync_parity_cycle)
+      ),
+      summary("openagents_runtime.sync.parity.cycle.max_abs_lag_drift",
+        measurement: :max_abs_lag_drift,
+        tags: tags_for(:sync_parity_cycle)
+      ),
+      summary("openagents_runtime.sync.parity.cycle.avg_abs_lag_drift",
+        measurement: :avg_abs_lag_drift,
+        tags: tags_for(:sync_parity_cycle)
+      ),
+      counter("openagents_runtime.sync.parity.entity.count",
+        tags: tags_for(:sync_parity_entity)
+      ),
+      summary("openagents_runtime.sync.parity.entity.abs_lag_drift",
+        measurement: :abs_lag_drift,
+        tags: tags_for(:sync_parity_entity)
       )
     ]
   end

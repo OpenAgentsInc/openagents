@@ -230,6 +230,7 @@ This section clarifies the practical meaning of "single authority database" in t
 6. Web Codex admin summary updates can run on Khala WS behind `VITE_KHALA_SYNC_ENABLED`; disabled mode keeps legacy polling lane behavior.
 7. Mobile Codex summary updates can run on Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED`; enabled mode skips Convex provider boot in app startup.
 8. Desktop status connectivity can run on Khala lane behind `OA_DESKTOP_KHALA_SYNC_ENABLED`, with fallback probe path preserved for Convex.
+9. Runtime parity auditor (`OpenAgentsRuntime.Sync.ParityAuditor`) tracks Convex-vs-Khala mismatch rate and lag drift during dual-publish windows.
 
 ### Current Cloud SQL guardrails
 
