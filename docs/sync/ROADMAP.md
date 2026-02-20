@@ -524,6 +524,15 @@ Scope:
 - Replace `ConvexHttpClient` transport with OA API transport adapter.
 - Keep rollback flag during bake-in.
 
+Delivered:
+
+- API transport adapter is now first-class in `apps/lightning-ops` (`ApiTransportLive`).
+- Control-plane smoke/compile CLI paths now default to API transport, with rollback via:
+  - `--mode convex`
+  - `OA_LIGHTNING_OPS_CONTROL_PLANE_MODE=convex`
+- `OA_LIGHTNING_OPS_CONVEX_URL` is now required only when Convex mode is selected.
+- Convex transport remains available as an explicit rollback path during bake-in.
+
 Done when:
 
 - lightning-ops reconcile/smoke flows pass in API mode.

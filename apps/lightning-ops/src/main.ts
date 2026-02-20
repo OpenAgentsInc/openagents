@@ -25,7 +25,7 @@ import {
 import { OpsRuntimeConfigLive } from "./runtime/config.js";
 
 const usage = `Usage:
-  tsx src/main.ts smoke:compile [--json]
+  tsx src/main.ts smoke:compile [--json] [--mode mock|convex|api]
   tsx src/main.ts compile:convex [--json]
   tsx src/main.ts compile:api [--json]
   tsx src/main.ts reconcile:convex [--json]
@@ -38,6 +38,23 @@ const usage = `Usage:
   tsx src/main.ts smoke:observability [--json] [--mode mock|convex|api]
   tsx src/main.ts smoke:full-flow [--json] [--mode mock|convex|api] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
 `;
+
+type HostedControlPlaneMode = "convex" | "api";
+type ControlPlaneSmokeMode = HostedControlPlaneMode | "mock";
+
+const resolveDefaultControlPlaneSmokeMode = (): ControlPlaneSmokeMode => {
+  const value = process.env.OA_LIGHTNING_OPS_CONTROL_PLANE_MODE?.trim().toLowerCase();
+  if (value === "mock" || value === "convex" || value === "api") {
+    return value;
+  }
+  return "api";
+};
+
+const hostedControlPlaneLayer = (mode: HostedControlPlaneMode) =>
+  ConvexControlPlaneLive.pipe(
+    Layer.provideMerge(mode === "api" ? ApiTransportLive : ConvexTransportLive),
+    Layer.provideMerge(OpsRuntimeConfigLive),
+  );
 
 const toCompileSummaryJson = (summary: {
   readonly configHash: string;
@@ -500,39 +517,38 @@ const printEp212FullFlowSummary = (
         ].join("\n"),
       );
 
-const runSmokeCompile = (jsonOutput: boolean) => {
-  const harness = makeInMemoryControlPlaneHarness({ paywalls: smokePaywalls });
-  return compileAndPersistOnce({ requestId: "smoke:compile" }).pipe(
-    Effect.provide(harness.layer),
-    Effect.provide(ApertureConfigCompilerLive),
+const runHostedCompile = (
+  jsonOutput: boolean,
+  mode: HostedControlPlaneMode,
+  requestId: string,
+) => {
+  const liveLayer = Layer.mergeAll(ApertureConfigCompilerLive, hostedControlPlaneLayer(mode));
+
+  return compileAndPersistOnce({ requestId }).pipe(
+    Effect.provide(liveLayer),
     Effect.flatMap((summary) => printCompileSummary(summary, jsonOutput)),
   );
+};
+
+const runSmokeCompile = (jsonOutput: boolean, mode: ControlPlaneSmokeMode) => {
+  if (mode === "mock") {
+    const harness = makeInMemoryControlPlaneHarness({ paywalls: smokePaywalls });
+    return compileAndPersistOnce({ requestId: "smoke:compile" }).pipe(
+      Effect.provide(harness.layer),
+      Effect.provide(ApertureConfigCompilerLive),
+      Effect.flatMap((summary) => printCompileSummary(summary, jsonOutput)),
+    );
+  }
+
+  return runHostedCompile(jsonOutput, mode, "smoke:compile");
 };
 
 const runConvexCompile = (jsonOutput: boolean) => {
-  const controlPlaneLayer = ConvexControlPlaneLive.pipe(
-    Layer.provideMerge(ConvexTransportLive),
-    Layer.provideMerge(OpsRuntimeConfigLive),
-  );
-  const liveLayer = Layer.mergeAll(ApertureConfigCompilerLive, controlPlaneLayer);
-
-  return compileAndPersistOnce({ requestId: "compile:convex" }).pipe(
-    Effect.provide(liveLayer),
-    Effect.flatMap((summary) => printCompileSummary(summary, jsonOutput)),
-  );
+  return runHostedCompile(jsonOutput, "convex", "compile:convex");
 };
 
 const runApiCompile = (jsonOutput: boolean) => {
-  const controlPlaneLayer = ConvexControlPlaneLive.pipe(
-    Layer.provideMerge(ApiTransportLive),
-    Layer.provideMerge(OpsRuntimeConfigLive),
-  );
-  const liveLayer = Layer.mergeAll(ApertureConfigCompilerLive, controlPlaneLayer);
-
-  return compileAndPersistOnce({ requestId: "compile:api" }).pipe(
-    Effect.provide(liveLayer),
-    Effect.flatMap((summary) => printCompileSummary(summary, jsonOutput)),
-  );
+  return runHostedCompile(jsonOutput, "api", "compile:api");
 };
 
 const runConvexReconcile = (jsonOutput: boolean) => {
@@ -628,9 +644,13 @@ const main = Effect.gen(function* () {
   const argv = process.argv.slice(2);
   const command = argv[0] ?? "";
   const jsonOutput = argv.includes("--json");
+  const controlPlaneModeFallback = resolveDefaultControlPlaneSmokeMode();
 
   if (command === "smoke:compile") {
-    return yield* runSmokeCompile(jsonOutput);
+    return yield* runSmokeCompile(
+      jsonOutput,
+      parseMode(argv, ["mock", "convex", "api"], controlPlaneModeFallback),
+    );
   }
 
   if (command === "compile:convex") {
@@ -650,11 +670,17 @@ const main = Effect.gen(function* () {
   }
 
   if (command === "smoke:settlement") {
-    return yield* runSmokeSettlement(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
+    return yield* runSmokeSettlement(
+      jsonOutput,
+      parseMode(argv, ["mock", "convex", "api"], controlPlaneModeFallback),
+    );
   }
 
   if (command === "smoke:security") {
-    return yield* runSmokeSecurity(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
+    return yield* runSmokeSecurity(
+      jsonOutput,
+      parseMode(argv, ["mock", "convex", "api"], controlPlaneModeFallback),
+    );
   }
 
   if (command === "smoke:staging") {

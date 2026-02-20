@@ -21,7 +21,16 @@ export const ConvexTransportLive = Layer.effect(
   ConvexTransportService,
   Effect.gen(function* () {
     const config = yield* OpsRuntimeConfigService;
-    const client = new ConvexHttpClient(config.convexUrl, { logger: false });
+    const convexUrl = config.convexUrl?.trim() ?? "";
+
+    if (!convexUrl) {
+      return yield* ControlPlaneTransportError.make({
+        operation: "config:OA_LIGHTNING_OPS_CONVEX_URL",
+        reason: "missing required environment variable for convex control-plane mode",
+      });
+    }
+
+    const client = new ConvexHttpClient(convexUrl, { logger: false });
 
     const query: ConvexTransportApi["query"] = (functionName, args) =>
       Effect.tryPromise({
