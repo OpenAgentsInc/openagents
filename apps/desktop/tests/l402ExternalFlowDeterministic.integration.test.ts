@@ -157,7 +157,8 @@ const connectivityTestLayer = Layer.succeed(
     probe: () =>
       Effect.succeed({
         openAgentsReachable: true,
-        convexReachable: true,
+        syncReachable: true,
+        syncProvider: "khala",
         checkedAtMs: now(),
       }),
   }),
@@ -430,6 +431,8 @@ describe("desktop EP212 deterministic L402 flow (mock seller)", () => {
           {
             openAgentsBaseUrl: "https://openagents.local",
             convexUrl: "https://convex.local",
+            khalaSyncEnabled: true,
+            khalaSyncUrl: "wss://khala.local/sync/socket/websocket",
             executorTickMs: 25,
           },
           {

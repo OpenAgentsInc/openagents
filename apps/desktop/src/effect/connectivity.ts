@@ -4,7 +4,8 @@ import { DesktopConfigService } from "./config";
 
 export type ConnectivityProbeResult = Readonly<{
   readonly openAgentsReachable: boolean;
-  readonly convexReachable: boolean;
+  readonly syncReachable: boolean;
+  readonly syncProvider: "convex" | "khala";
   readonly checkedAtMs: number;
 }>;
 
@@ -46,29 +47,42 @@ export const ConnectivityProbeLive = Layer.effect(
   ConnectivityProbeService,
   Effect.gen(function* () {
     const cfg = yield* DesktopConfigService;
+    const defaultSyncProvider: "convex" | "khala" = cfg.khalaSyncEnabled ? "khala" : "convex";
     const probe = Effect.fn("Connectivity.probe")(function* () {
-      const [openAgentsReachable, convexReachable] = yield* Effect.all([
+      const syncProvider = defaultSyncProvider;
+      const syncUrl = cfg.khalaSyncEnabled ? cfg.khalaSyncUrl : cfg.convexUrl;
+
+      const [openAgentsReachable, syncReachable] = yield* Effect.all([
         requestReachable({
           operation: "probe.openagents",
           url: `${cfg.openAgentsBaseUrl}/api/auth/session`,
         }),
         requestReachable({
-          operation: "probe.convex",
-          url: cfg.convexUrl,
+          operation: syncProvider === "khala" ? "probe.khala_sync" : "probe.convex",
+          url: syncUrl,
         }),
       ]);
 
       return {
         openAgentsReachable,
-        convexReachable,
+        syncReachable,
+        syncProvider,
         checkedAtMs: Date.now(),
       } satisfies ConnectivityProbeResult;
     });
 
-    return ConnectivityProbeService.of({ probe: () => probe().pipe(Effect.catchAll(() => Effect.succeed({
-      openAgentsReachable: false,
-      convexReachable: false,
-      checkedAtMs: Date.now(),
-    }))) });
+    return ConnectivityProbeService.of({
+      probe: () =>
+        probe().pipe(
+          Effect.catchAll(() =>
+            Effect.succeed({
+              openAgentsReachable: false,
+              syncReachable: false,
+              syncProvider: defaultSyncProvider,
+              checkedAtMs: Date.now(),
+            }),
+          ),
+        ),
+    });
   }),
 );

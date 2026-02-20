@@ -39,7 +39,8 @@ const connectivityTestLayer = Layer.succeed(
     probe: () =>
       Effect.succeed({
         openAgentsReachable: true,
-        convexReachable: true,
+        syncReachable: true,
+        syncProvider: "khala",
         checkedAtMs: Date.now(),
       }),
   }),
@@ -204,6 +205,8 @@ const makeTestLayer = () =>
     {
       openAgentsBaseUrl: "https://openagents.example",
       convexUrl: "https://convex.example",
+      khalaSyncEnabled: true,
+      khalaSyncUrl: "wss://khala.example/sync/socket/websocket",
       executorTickMs: 500,
     },
     {

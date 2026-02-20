@@ -162,8 +162,11 @@ const overviewTemplate = (input: {
       <dl class="oa-grid">
         <dt>OpenAgents API</dt>
         <dd>${statusBadge(input.snapshot.connectivity.openAgentsReachable)}</dd>
-        <dt>Convex</dt>
-        <dd>${statusBadge(input.snapshot.connectivity.convexReachable)}</dd>
+        <dt>Sync lane</dt>
+        <dd>
+          <span class="oa-chip">${input.snapshot.connectivity.syncProvider}</span>
+          ${statusBadge(input.snapshot.connectivity.syncReachable)}
+        </dd>
         <dt>Last check</dt>
         <dd>${formatTs(input.snapshot.connectivity.lastCheckedAtMs)}</dd>
         <dt>Node sync</dt>
