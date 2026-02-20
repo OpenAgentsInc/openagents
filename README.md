@@ -1,121 +1,143 @@
 # OpenAgents
 
-OpenAgents is the **operating system for the AI agent economy**. We ship **web** at [openagents.com](https://openagents.com) (**`apps/openagents.com/`**), **mobile** in **`apps/mobile/`**, **desktop** in progress, a native **iOS** app in **`apps/autopilot-ios/`**, and a local-first **Inbox Autopilot** app in **`apps/inbox-autopilot/`**. Beneath that is the platform: **runtime** (identity, transport, payments, treasury on permissionless protocols), **reputation** (trajectory logging, proofs), and a **marketplace** for skills and compute.
+OpenAgents is a multi-surface agent platform with two authority planes and one runtime-owned sync plane:
 
-**Release quality:** Web is **alpha** (live at [openagents.com](https://openagents.com), Laravel app in **`apps/openagents.com/`**). Mobile, desktop, iOS, and inbox-autopilot are **prerelease**.
+- `apps/openagents-runtime/`: execution authority (runs, worker lifecycle, receipts, replay).
+- `apps/openagents.com/`: identity/session/control-plane authority and public API gateway.
+- **Khala**: runtime-owned WebSocket sync + replay lane for read-model delivery.
 
-If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./docs/MANIFESTO.md)**.
+## Product Surfaces
 
-## What’s possible with Autopilot (evolving agent)
+- `apps/openagents.com/`: Laravel web/control-plane app.
+- `apps/openagents-runtime/`: Elixir runtime service.
+- `apps/mobile/`: React Native + Expo app.
+- `apps/desktop/`: Electron app.
+- `apps/autopilot-ios/`: Swift/iOS app.
+- `apps/inbox-autopilot/`: local-first inbox automation app.
+- `apps/lightning-ops/`: operator tooling for L402 control-plane reconcile.
+- `apps/lightning-wallet-executor/`: Bolt11 payment execution service.
 
-Autopilot is an agent you can chat with in plain language. Right now you can sign in on the web, start a conversation, and use it for the capabilities we’ve shipped today (e.g. analyzing code you paste, suggesting refactors, generating configs). What it can do is not fixed: **the system is built to evolve**.
-
-New behaviors are added as **signatures**—versioned, measurable steps with clear inputs and outputs—and can be compiled, tested, and rolled out like software. Over time, the Autopilot "network" will grow through a **marketplace** of signatures and tools: as we and others add capabilities (new tools, new skills), those become available to your Autopilot. So if you ask for something it can't do yet, the answer is "not yet"—we're building toward a world where user demand and new signatures continuously expand what's possible.
-
-**To try it now:** go to [openagents.com](https://openagents.com), sign in, and start chatting. Your Autopilot will remember your preferences and the thread; you can use it for coding help, Blueprint updates, and whatever we've enabled so far—with more coming as the ecosystem grows.
-
-## Apps architecture
+## Architecture Snapshot
 
 ```mermaid
 flowchart LR
-  subgraph user["User-facing"]
-    web["openagents.com<br/>(Laravel + Inertia + React)<br/>Web UI, chat, API, control plane"]
-    mobile["mobile<br/>React Native / Expo<br/>Prerelease"]
-    ios["autopilot-ios<br/>Native iOS app (SwiftUI)<br/>Prerelease"]
-    inboxAutopilot["inbox-autopilot<br/>SwiftUI macOS + local Rust daemon<br/>Prerelease"]
-    desktop["desktop<br/>Electron + Effuse<br/>Lightning wallet execution, L402"]
+  subgraph clients["Client Apps"]
+    web["openagents.com\nWeb"]
+    mobile["mobile\nRN/Expo"]
+    desktop["desktop\nElectron"]
+    ios["autopilot-ios\nSwiftUI"]
+    inbox["inbox-autopilot\nLocal-first"]
   end
 
-  subgraph platform["Platform services"]
-    ops["lightning-ops<br/>L402 gateway ops, Convex, aperture"]
-    executor["lightning-wallet-executor<br/>Spark wallet HTTP (pay-bolt11)"]
+  subgraph control["Control + Runtime"]
+    laravel["Laravel\nAuth/session + API gateway"]
+    runtime["OpenAgents Runtime\nExecution authority"]
+    khala["Khala\nRuntime-owned WS sync + replay"]
   end
 
-  subgraph infra["Bitcoin / Lightning nodes"]
-    bitcoind["bitcoind<br/>Bitcoin Core full node<br/>GCP VM"]
-    lnd["lnd<br/>Lightning node · chain = bitcoind<br/>GCP VM"]
+  subgraph data["Authority Data Planes (Postgres)"]
+    laravelDb["Laravel Postgres\nusers/sessions/l402 control-plane"]
+    runtimeDb["Runtime Postgres\nruns/events/read-models/sync journal"]
   end
 
-  subgraph planned["Planned"]
-    runtime["openagents-runtime<br/>Elixir/BEAM agent runtime<br/>GCP GKE · stream-from-log · DS-Elixir"]
+  subgraph lightning["Lightning Subsystem"]
+    lops["lightning-ops"]
+    lwe["wallet-executor"]
+    aperture["Aperture"]
+    lnd["LND"]
+    bitcoind["bitcoind"]
   end
 
-  web <--> desktop
-  web <--> ios
-  web -.->|"adjacent local-first app"| inboxAutopilot
-  web --> ops
-  desktop --> executor
-  ops --> lnd
+  web --> laravel
+  mobile --> laravel
+  desktop --> laravel
+  ios --> laravel
+  inbox -.-> laravel
+
+  laravel --> runtime
+  laravel --> khala
+  runtime --> khala
+
+  laravel --> laravelDb
+  runtime --> runtimeDb
+  khala --> runtimeDb
+
+  lops --> laravel
+  lops --> aperture
+  lwe --> lnd
+  aperture --> lnd
   lnd --> bitcoind
-  web -.->|"orchestration (future)"| runtime
-
-  style runtime stroke-dasharray: 5 5
-  style planned stroke-dasharray: 5 5
-  style mobile stroke-dasharray: 5 5
-  style ios stroke-dasharray: 5 5
-  style inboxAutopilot stroke-dasharray: 5 5
-  style desktop stroke-dasharray: 5 5
 ```
 
-- **openagents.com** (`apps/openagents.com/`): Core web app — Laravel 12, Inertia, React; chat, auth, API; production deploy to Cloud Run.
-- **mobile** (`apps/mobile/`): React Native (Ignite/Expo) mobile surface — prerelease.
-- **autopilot-ios** (`apps/autopilot-ios/`): Native iOS Autopilot app surface — prerelease.
-- **inbox-autopilot** (`apps/inbox-autopilot/`): Local-first macOS app + Rust daemon for inbox automation workflows — prerelease.
-- **desktop** (`apps/desktop/`): Electron shell for Lightning (EP212); wallet/payment execution; Convex + OpenAgents API.
-- **lightning-ops** (`apps/lightning-ops/`): Effect service that turns “what we sell and at what price” into the config that powers our L402 paywall. It reads route and policy state from Convex, compiles deterministic Aperture config (used by the gateway at l402.openagents.com), validates routes and security, and writes deployment intent back to Convex. So: for the L402 route/policy plane, Convex is the source of truth and lightning-ops is the compiler/validator that keeps the live gateway in sync.
-- **lightning-wallet-executor** (`apps/lightning-wallet-executor/`): HTTP service that pays Lightning invoices on behalf of agents. When Autopilot or another service needs to pay a bolt (e.g. to call a paid API like sats4ai or our own L402 route), this service holds the sats (via Breez Spark wallet) and exposes `POST /pay-bolt11`: you send an invoice and limits, it pays within policy (allowed hosts, max amount). So: the “agent-owned” wallet in the cloud that enables buyer-side L402 and paid tool calls.
-- **Bitcoin / Lightning nodes**: Our own full Bitcoin node (`bitcoind`) and Lightning node (`lnd`) on GCP VMs. LND uses bitcoind as its chain backend. The L402 gateway (Aperture) uses LND to verify incoming payments; desktop and other flows can use LND for outbound payments. Setup and ops: [docs/plans/active/lightning/GCP_BITCOIND_LND_2VM_PLAN.md](docs/plans/active/lightning/GCP_BITCOIND_LND_2VM_PLAN.md); see also [docs/lightning/README.md](docs/lightning/README.md).
-- **openagents-runtime** (planned): Elixir agent runtime; see [docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md](docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md).
+## Authority Model
 
-## Runtime + Convex boundary (current direction)
+- Runtime + runtime Postgres are authority for execution correctness.
+- Laravel + Laravel Postgres are authority for identity/session/profile plus Lightning control-plane intent.
+- Khala is delivery infrastructure (subscriptions, watermarks, replay), not an authority write path.
+- Clients hydrate via HTTP first, then subscribe to Khala for incremental updates.
 
-For Codex and cross-client reactive state:
+## Laravel Postgres vs Runtime Postgres
 
-- Runtime + Postgres remain kernel source of truth (runs/events, worker lifecycle, policy/spend, receipts/replay).
-- Convex is projection/sync-only for web/mobile/desktop live read models.
-- Runtime is the single writer into Convex projection docs.
-- Laravel remains auth/session authority and mints Convex client JWTs.
+The boundary is defined by **ownership and write authority**, not by whether infra is one DB instance or multiple.
 
-See:
+| Plane | Owner | Authority Data | Direct Writers |
+|---|---|---|---|
+| Laravel Postgres | `apps/openagents.com` | users/sessions/profile, API tokens, `l402_control_plane_*` tables, admin/control-plane persistence | Laravel services/controllers only |
+| Runtime Postgres | `apps/openagents-runtime` | run events, worker events, replay artifacts, runtime read models, Khala tables (`runtime.sync_*`) | Runtime services/projectors/sync components only |
 
-- [docs/plans/active/convex-self-hosting-runtime-sync-plan.md](docs/plans/active/convex-self-hosting-runtime-sync-plan.md)
-- [apps/openagents-runtime/docs/CONVEX_SYNC.md](apps/openagents-runtime/docs/CONVEX_SYNC.md)
-- [docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md](docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md)
+Allowed cross-plane interaction:
 
-**Vision and architecture:** [docs/SYNTHESIS.md](docs/SYNTHESIS.md) (“OpenAgents: The Agentic OS”) is the north-star spec: what OpenAgents is (the OS for the AI agent economy), core primitives (identity, transport, payments, treasury, FX), the wedge→platform path (Autopilot → trajectory/issue moat → Neobank → skills/compute marketplace → Exchange), and a status-tagged stack. It defers to [SYNTHESIS_EXECUTION.md](docs/SYNTHESIS_EXECUTION.md) for what’s wired today and to [GLOSSARY.md](docs/GLOSSARY.md) and [PROTOCOL_SURFACE.md](docs/protocol/PROTOCOL_SURFACE.md) for terminology and protocol details.
+1. Laravel calls runtime APIs for runtime-owned data and actions.
+2. Runtime never back-writes Laravel authority tables directly.
+3. Khala reads runtime-owned sync/read-model data; it does not mutate Laravel authority state.
+
+Deployment topology:
+
+- Supported: one Cloud SQL instance with logical DB/schema separation.
+- Supported: separate Cloud SQL instances.
+- Invariant: ownership boundaries above stay unchanged in either topology.
+
+## How Each App Consumes Khala
+
+| Surface | Khala Usage | Bootstrap Path | Authority Writes |
+|---|---|---|---|
+| `apps/openagents.com` | Khala WS behind `VITE_KHALA_SYNC_ENABLED` for reactive Codex summaries | Laravel/runtime HTTP + `POST /api/sync/token` | Laravel APIs + runtime APIs |
+| `apps/mobile` | Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED` for worker summaries | Runtime APIs + `POST /api/sync/token` | Laravel/runtime APIs |
+| `apps/desktop` | Khala WS behind `OA_DESKTOP_KHALA_SYNC_ENABLED` for status lanes | Laravel/runtime HTTP + sync token endpoint | Laravel/runtime APIs |
+| `apps/autopilot-ios` | Not primary today (runtime SSE lane remains) | Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
+| `apps/inbox-autopilot` | Not primary today (local-first architecture) | Local daemon + selected APIs | Local daemon + selected APIs |
+| `apps/lightning-ops` | No Khala dependency for control-plane (API/mock transport modes) | Internal Laravel control-plane APIs | Laravel internal control-plane APIs |
+| `apps/lightning-wallet-executor` | No Khala dependency | Service-local + Lightning infra | Service-local + Lightning infra |
+
+## Khala Delivery Lifecycle
+
+1. Runtime writes canonical authority event in runtime Postgres.
+2. Runtime projector updates runtime read-model row.
+3. Khala sync sink allocates per-topic watermark and appends stream event.
+4. Khala WS channel replays from client watermark and then streams live updates.
+5. Clients persist watermark locally and apply updates idempotently by `doc_key` + `doc_version`.
+
+## Primary References
+
+- `docs/ARCHITECTURE.md`
+- `docs/sync/thoughts.md`
+- `docs/sync/ROADMAP.md`
+- `docs/sync/SURFACES.md`
+- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/openagents-runtime/docs/KHALA_SYNC.md`
 
 ## Quick Start (Web)
 
 ```bash
 cd apps/openagents.com
-composer install && npm install
+composer install
+npm install
 composer run dev
 ```
 
-See [apps/openagents.com/README.md](apps/openagents.com/README.md) for full dev and deploy instructions.
+More:
 
-## Mobile
-
-The mobile app lives in **`apps/mobile/`**.
-
-## iOS
-
-The native iOS app lives in **`apps/autopilot-ios/`**.
-
-## Inbox Autopilot
-
-The local-first Inbox Autopilot app (SwiftUI macOS + Rust daemon) lives in **`apps/inbox-autopilot/`**.
-
-## Documentation
-
-Start with:
-
-* **Web app**: [apps/openagents.com/](apps/openagents.com/)
-* **Mobile app**: [apps/mobile/](apps/mobile/)
-* **iOS app**: [apps/autopilot-ios/](apps/autopilot-ios/)
-* **Inbox Autopilot app**: [apps/inbox-autopilot/](apps/inbox-autopilot/)
-* **System architecture overview**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-* **Vision / architecture (north-star spec)**: [docs/SYNTHESIS.md](docs/SYNTHESIS.md)
-* **Docs index (everything else)**: [docs/README.md](docs/README.md)
-* **Repo map / ownership**: [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
-* **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)
+- `apps/openagents.com/README.md`
+- `docs/README.md`
+- `docs/PROJECT_OVERVIEW.md`
+- `AGENTS.md`

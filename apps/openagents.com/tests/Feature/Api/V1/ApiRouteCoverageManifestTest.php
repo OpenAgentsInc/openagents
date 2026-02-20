@@ -78,7 +78,7 @@ it('has endpoint coverage manifest for all API routes', function () {
         'POST api/chat/stream',
         'POST api/chats',
         'POST api/chats/{conversationId}/stream',
-        'POST api/convex/token',
+        'POST api/khala/token',
         'POST api/internal/lightning-ops/control-plane/mutation',
         'POST api/internal/lightning-ops/control-plane/query',
         'POST api/internal/runtime/integrations/secrets/fetch',

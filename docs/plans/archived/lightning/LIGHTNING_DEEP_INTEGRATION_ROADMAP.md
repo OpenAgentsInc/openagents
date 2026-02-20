@@ -35,9 +35,9 @@ This blueprint is based on:
 
 - `docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md`
 - `docs/lightning/status/SETUP_LOG.md`
-- `apps/web/` architecture (Worker host + Convex + Effect services)
+- `apps/web/` architecture (Worker host + Khala + Effect services)
 - `apps/autopilot-worker/` architecture (tool contracts, DSE signatures, AI receipts)
-- `apps/mobile/` architecture (React Native app with auth + Convex client)
+- `apps/mobile/` architecture (React Native app with auth + Khala client)
 - `packages/dse`, `packages/effuse`, `packages/effuse-test`, and related shared package boundaries
 - `docs/GLOSSARY.md`, `docs/PROJECT_OVERVIEW.md`, `docs/ROADMAP.md`
 - `docs/adr/ADR-0007-tool-execution-contract.md`
@@ -51,12 +51,12 @@ This blueprint is based on:
 - Initial Lightning integration planning exists in `docs/lightning/reference/LIGHTNING_AGENT_TOOLS.md`.
 - Practical setup/ops findings exist in `docs/lightning/status/SETUP_LOG.md`.
 - Receipt semantics already support `payment_proof.type = "lightning_preimage"` (ADR-0013).
-- Web and worker code already have durable receipt infrastructure (Convex `receipts` table + worker AI receipts).
+- Web and worker code already have durable receipt infrastructure (Khala `receipts` table + worker AI receipts).
 - Tool contracts are centralized and schema-driven (`apps/autopilot-worker/src/tools.ts`).
 
 ## 3.2 What does not exist yet
 
-- No seller paywall control plane (`l402Paywalls` / route + pricing lifecycle) in Convex yet.
+- No seller paywall control plane (`l402Paywalls` / route + pricing lifecycle) in Khala yet.
 - No OpenAgents-hosted Aperture deployment/reconciliation path wired into app runtime yet.
 - No full wallet send/receive product UX in web routes/pages yet (current web state is L402 task orchestration + observability panes).
 - No Lightning UX in `apps/mobile` (mobile app is currently mostly auth/demo shell).
@@ -87,7 +87,7 @@ This avoids rework and allows enterprise-grade and consumer-grade usage from one
 Control plane:
 
 - Policy, budgets, auth, telemetry, receipts, and routing decisions.
-- Lives in `apps/web` Worker + Convex + shared Effect packages.
+- Lives in `apps/web` Worker + Khala + shared Effect packages.
 
 Payment execution plane:
 
@@ -123,7 +123,7 @@ Never couple business logic to one transport.
 2. `apps/web` additions
    - Worker endpoints for Lightning control APIs.
    - Effect services for wallet, L402 fetch, pricing preview, policy.
-   - Convex tables for wallets, payments, credentials, limits, audit trails.
+   - Khala tables for wallets, payments, credentials, limits, audit trails.
 
 3. `apps/mobile` additions
    - Wallet views and actions using the same API contracts.
@@ -259,12 +259,12 @@ Enforce at multiple layers:
 
 - No macaroons or private keys in browser local storage.
 - No signer credentials in mobile bundles.
-- Worker and Convex only hold minimum required secrets for managed mode.
+- Worker and Khala only hold minimum required secrets for managed mode.
 - Desktop secrets stored in OS keychain/secure enclave-backed storage where available.
 
-## 8. Data Model Recommendations (Convex + Receipts)
+## 8. Data Model Recommendations (Khala + Receipts)
 
-## 8.1 Extend Convex schema
+## 8.1 Extend Khala schema
 
 Add tables (suggested names):
 
@@ -283,7 +283,7 @@ Add tables (suggested names):
 
 ## 8.2 Extend receipts usage
 
-Current `receipts.kind` values in `apps/web/convex/schema.ts` are:
+Current `receipts.kind` values in `apps/web/khala/schema.ts` are:
 
 - `model`
 - `tool`
@@ -666,7 +666,7 @@ P0:
 1. Add Lightning integration ADR for current TS/Effect stack.
 2. Define shared payment schemas and receipt contract mappings.
 3. Expand `packages/lightning-effect` from buyer-only contracts into seller-side service interfaces.
-4. Implement seller paywall control-plane records in Convex schema and APIs.
+4. Implement seller paywall control-plane records in Khala schema and APIs.
 5. Add paywall/settlement UI surfaces in web alongside current L402 wallet/transactions panes.
 
 P1:
@@ -703,7 +703,7 @@ Mitigation: default-deny policy, hard caps, and approval thresholds for higher r
 
 1. Create an ADR: "Lightning integration architecture for web/mobile/desktop TS stack."
 2. Extend `packages/lightning-effect` with seller-side schema/service drafts and test fixtures.
-3. Add Convex schema draft tables for paywalls/routes/pricing/settlements (feature-gated).
+3. Add Khala schema draft tables for paywalls/routes/pricing/settlements (feature-gated).
 4. Add paywall CRUD + status API placeholders in web worker host.
 5. Add one end-to-end staging runbook for Voltage + Aperture + OpenAgents control-plane integration.
 6. Add desktop-to-web account-linking protocol notes for the existing `apps/desktop` app.

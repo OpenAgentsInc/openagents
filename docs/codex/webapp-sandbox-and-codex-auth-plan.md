@@ -3,7 +3,7 @@
 Status: Active (backend architecture companion)
 Date: 2026-02-19
 Primary companion: `docs/codex/unified-runtime-desktop-plan.md`
-Related ADR: `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md`
+Related ADR: `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
 
 ## Why this document exists
 
@@ -66,21 +66,21 @@ Runtime Codex worker contract remains authoritative:
 
 Backend-specific behavior must be hidden behind runtime adapter boundaries.
 
-## Convex Self-Hosted Sync Boundary
+## Khala Self-Hosted Sync Boundary
 
-If Convex is used for cross-client reactive sync, it sits beside this control
+If Khala is used for cross-client reactive sync, it sits beside this control
 path as a projection layer:
 
-`runtime event log -> runtime projector -> Convex read models -> web/mobile/desktop subscriptions`
+`runtime event log -> runtime projector -> Khala read models -> web/mobile/desktop subscriptions`
 
 Normative rules:
 
 1. Runtime/Postgres is authoritative for worker lifecycle and stream history.
-2. Convex stores derived read models only (summaries, status, notifications).
-3. Runtime is the single writer for Convex projection docs.
-4. Laravel is auth authority and mints Convex auth JWTs for clients.
+2. Khala stores derived read models only (summaries, status, notifications).
+3. Runtime is the single writer for Khala projection docs.
+4. Laravel is auth authority and mints Khala auth JWTs for clients.
 
-See `docs/plans/active/convex-self-hosting-runtime-sync-plan.md`.
+See `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`.
 
 ## Layer-0 Schema Authority
 
@@ -239,17 +239,17 @@ Durability requirements:
 - Rehydrate auth state on sandbox start.
 - Keep auth data encrypted at rest and scoped to worker ownership.
 
-## Codex + Convex MCP Operational Posture
+## Codex + Khala MCP Operational Posture
 
 For cloud coding-agent workflows (Codex/Jules/Devin/Cursor cloud agents) that
-interact with Convex projects:
+interact with Khala projects:
 
 1. Default CLI mode is anonymous local agent mode:
-   - `CONVEX_AGENT_MODE=anonymous npx convex dev --once`
+   - `KHALA_AGENT_MODE=anonymous npx khala dev --once`
 2. MCP production access stays disabled by default.
 3. If production access is required, it must be explicitly enabled and scoped.
 4. For self-hosted deployments, MCP should be configured with explicit env file
-   (`CONVEX_SELF_HOSTED_URL`, `CONVEX_SELF_HOSTED_ADMIN_KEY`).
+   (`KHALA_SELF_HOSTED_URL`, `KHALA_SELF_HOSTED_ADMIN_KEY`).
 
 This keeps Codex automation useful for iteration while reducing accidental
 production mutation risk.

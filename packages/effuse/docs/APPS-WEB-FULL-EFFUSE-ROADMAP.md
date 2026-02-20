@@ -21,7 +21,7 @@ Effuse already renders most user-facing UI in `apps/web`:
 React is still used for:
 
 - TanStack Start/Router integration (SSR + routing, loaders)
-- providers (WorkOS/Convex)
+- providers (WorkOS/Khala)
 - HUD backgrounds (`@openagentsinc/hud/react`)
 - stateful chrome (sidebar, blueprint panel, control panels)
 - event wiring for Effuse DOM (`onRendered` and DOM queries)

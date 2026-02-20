@@ -13,7 +13,7 @@ Relevant means production user workflows for:
 - payment artifacts/observability,
 - admin access controls for operational pages.
 
-It does **not** include legacy Effuse-specific implementation internals (pane runtime engine, Convex-specific workers, DSE admin ops pages) that are architectural details from the old stack rather than user product requirements.
+It does **not** include legacy Effuse-specific implementation internals (pane runtime engine, Khala-specific workers, DSE admin ops pages) that are architectural details from the old stack rather than user product requirements.
 
 ## Implemented parity
 

@@ -4,9 +4,9 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSinkTest do
   import Ecto.Query
 
   alias OpenAgentsRuntime.Codex.Workers
-  alias OpenAgentsRuntime.Convex.FanoutSink
-  alias OpenAgentsRuntime.Convex.ProjectionCheckpoint
-  alias OpenAgentsRuntime.Convex.Projector
+  alias OpenAgentsRuntime.Khala.FanoutSink
+  alias OpenAgentsRuntime.Khala.ProjectionCheckpoint
+  alias OpenAgentsRuntime.Khala.Projector
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Runs.Run
   alias OpenAgentsRuntime.Runs.RunEvents
@@ -39,7 +39,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSinkTest do
              Projector.project_run(run_id,
                sink: ProjectorSink,
                now: @fixed_now,
-               projection_version: "convex_summary_v1"
+               projection_version: "khala_summary_v1"
              )
 
     assert %RunSummary{} = read_model = Repo.get!(RunSummary, document_id)
@@ -81,7 +81,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSinkTest do
                sink: ProjectorSink,
                sink_opts: [stream_payload_mode: :pointer],
                now: @fixed_now,
-               projection_version: "convex_summary_v1"
+               projection_version: "khala_summary_v1"
              )
 
     assert %RunSummary{} = read_model = Repo.get!(RunSummary, document_id)
@@ -124,7 +124,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSinkTest do
              Projector.project_codex_worker(worker_id,
                sink: ProjectorSink,
                now: @fixed_now,
-               projection_version: "convex_summary_v1"
+               projection_version: "khala_summary_v1"
              )
 
     assert %CodexWorkerSummary{} = read_model = Repo.get!(CodexWorkerSummary, document_id)
@@ -164,7 +164,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSinkTest do
                  test_pid: self()
                ],
                now: @fixed_now,
-               projection_version: "convex_summary_v1"
+               projection_version: "khala_summary_v1"
              )
 
     assert_receive {:capture_sink_upserted, ^document_id}
@@ -181,7 +181,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSinkTest do
   defp unique_id(prefix), do: "#{prefix}_#{System.unique_integer([:positive])}"
 
   defmodule CaptureSink do
-    @behaviour OpenAgentsRuntime.Convex.Sink
+    @behaviour OpenAgentsRuntime.Khala.Sink
 
     @impl true
     def upsert_run_summary(document_id, _summary, opts) do

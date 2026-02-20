@@ -32,7 +32,7 @@ Highest-impact improvement:
   - `apps/web/src/effect/atoms/dseViz.ts` (36)
   - `apps/web/src/effuse-host/dseAdmin.ts` (22)
   - `apps/web/src/effect/chatWire.ts` (19)
-  - `apps/web/src/effect/convex.ts` (14)
+  - `apps/web/src/effect/khala.ts` (14)
 - `Runtime.runFork` usage in core libraries: **3**
   - `packages/effuse/src/router/router.ts:613`
   - `packages/effuse/src/router/router.ts:732`
@@ -63,7 +63,7 @@ Evidence:
 
 - `apps/web/src/effect/atoms/dseViz.ts`
 - `apps/web/src/effect/chatWire.ts`
-- `apps/web/src/effect/convex.ts`
+- `apps/web/src/effect/khala.ts`
 - `apps/web/src/effect/autopilotStore.ts`
 - `apps/web/src/effuse-host/dseAdmin.ts`
 
@@ -86,7 +86,7 @@ Evidence:
 
 - `apps/web/src/effect/auth.ts:39`
 - `apps/web/src/effect/chat.ts:39`
-- `apps/web/src/effect/convex.ts:18`
+- `apps/web/src/effect/khala.ts:18`
 - `apps/web/src/effect/contracts.ts:40`
 - `apps/web/src/effect/homeApi.ts:68`
 
@@ -153,7 +153,7 @@ Evidence:
 
 - Runtime singleton state: `apps/web/src/effect/runtime.ts`
 - Auth cache globals: `apps/web/src/effect/auth.ts`
-- Convex debug globals: `apps/web/src/effect/convex.ts`
+- Khala debug globals: `apps/web/src/effect/khala.ts`
 
 Why it matters:
 
@@ -226,7 +226,7 @@ Recommended upgrade:
 ## Concrete Upgrade Plan
 
 1. **Boundary Typing Sweep**
-   - Target files first: `dseViz.ts`, `chatWire.ts`, `convex.ts`, `autopilotStore.ts`.
+   - Target files first: `dseViz.ts`, `chatWire.ts`, `khala.ts`, `autopilotStore.ts`.
    - Goal: remove >80% casts in those files with schema decoders.
 
 2. **Service Contract Normalization**

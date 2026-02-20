@@ -86,57 +86,57 @@ spec:
             description: Elevated denied or exhausted policy decisions detected.
             runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#policy-denial-ratio
 
-        - alert: OpenAgentsRuntimeConvexProjectionLagP95High
-          expr: quantile_over_time(0.95, openagents_runtime_convex_projection_lag_events{result="ok"}[10m]) > 25
+        - alert: OpenAgentsRuntimeKhalaProjectionLagP95High
+          expr: quantile_over_time(0.95, openagents_runtime_khala_projection_lag_events{result="ok"}[10m]) > 25
           for: 10m
           labels:
             severity: warning
             service: openagents-runtime
           annotations:
-            summary: Convex projection lag p95 exceeded 25 events
+            summary: Khala projection lag p95 exceeded 25 events
             description: Runtime projector is falling behind recent runtime sequence progression.
-            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-lag
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#khala-projection-lag
 
-        - alert: OpenAgentsRuntimeConvexProjectionWriteFailureRatioHigh
-          expr: sum(rate(openagents_runtime_convex_projection_write_failure_count[5m])) / clamp_min(sum(rate(openagents_runtime_convex_projection_write_count[5m])), 1) > 0.01
+        - alert: OpenAgentsRuntimeKhalaProjectionWriteFailureRatioHigh
+          expr: sum(rate(openagents_runtime_khala_projection_write_failure_count[5m])) / clamp_min(sum(rate(openagents_runtime_khala_projection_write_count[5m])), 1) > 0.01
           for: 10m
           labels:
             severity: critical
             service: openagents-runtime
           annotations:
-            summary: Convex projection write failure ratio exceeded 1%
-            description: Runtime projection writes to Convex are failing above error budget.
-            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-write-failures
+            summary: Khala projection write failure ratio exceeded 1%
+            description: Runtime projection writes to Khala are failing above error budget.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#khala-projection-write-failures
 
-        - alert: OpenAgentsRuntimeConvexProjectionDriftIncidentsHigh
-          expr: sum(increase(openagents_runtime_convex_projection_drift_count[10m])) > 3
+        - alert: OpenAgentsRuntimeKhalaProjectionDriftIncidentsHigh
+          expr: sum(increase(openagents_runtime_khala_projection_drift_count[10m])) > 3
           for: 5m
           labels:
             severity: warning
             service: openagents-runtime
           annotations:
-            summary: Convex projection drift incidents are elevated
+            summary: Khala projection drift incidents are elevated
             description: Projection checkpoint drift signals exceeded expected tolerance.
-            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-drift
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#khala-projection-drift
 
-        - alert: OpenAgentsRuntimeConvexProjectionReplayFailures
-          expr: sum(increase(openagents_runtime_convex_projection_replay_count{result="error"}[15m])) > 0
+        - alert: OpenAgentsRuntimeKhalaProjectionReplayFailures
+          expr: sum(increase(openagents_runtime_khala_projection_replay_count{result="error"}[15m])) > 0
           for: 5m
           labels:
             severity: critical
             service: openagents-runtime
           annotations:
-            summary: Convex projection replay failure detected
-            description: Runtime replay/rebuild path for Convex projections is failing.
-            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-projection-replay
+            summary: Khala projection replay failure detected
+            description: Runtime replay/rebuild path for Khala projections is failing.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#khala-projection-replay
 
-        - alert: OpenAgentsConvexTokenMintFailureRatioHigh
-          expr: ((sum(rate(openagents_laravel_convex_token_mint_total{result="error"}[10m])) or vector(0)) / clamp_min((sum(rate(openagents_laravel_convex_token_mint_total[10m])) or vector(0)), 1)) > 0.01
+        - alert: OpenAgentsKhalaTokenMintFailureRatioHigh
+          expr: ((sum(rate(openagents_laravel_khala_token_mint_total{result="error"}[10m])) or vector(0)) / clamp_min((sum(rate(openagents_laravel_khala_token_mint_total[10m])) or vector(0)), 1)) > 0.01
           for: 15m
           labels:
             severity: warning
             service: openagents-runtime
           annotations:
-            summary: Convex token mint failure ratio exceeded 1%
-            description: Laravel token bridge is failing to issue Convex auth tokens above budget.
-            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#convex-token-mint-failures
+            summary: Khala token mint failure ratio exceeded 1%
+            description: Laravel token bridge is failing to issue Khala auth tokens above budget.
+            runbook: apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#khala-token-mint-failures

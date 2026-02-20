@@ -11,7 +11,7 @@
 - **EP212 demo routes:** Aperture config includes:
 - `https://l402.openagents.com/ep212/premium-signal` (`price: 10`, under-cap success route)
   - `https://l402.openagents.com/ep212/expensive-signal` (`price: 250`, over-cap quote route)
-- **Script defaults:** `apps/lightning-ops/scripts/staging-reconcile.sh` sets `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, and `OA_LIGHTNING_OPS_PROXY_URL` to the canonical URL and `/staging` when unset. You only need to set `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET` to run staging reconcile.
+- **Script defaults:** `apps/lightning-ops/scripts/staging-reconcile.sh` sets `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, and `OA_LIGHTNING_OPS_PROXY_URL` to the canonical URL and `/staging` when unset. You only need to set `OA_LIGHTNING_OPS_KHALA_URL` and `OA_LIGHTNING_OPS_SECRET` to run staging reconcile.
 - **Config deployed:** Secret `l402-aperture-config` (latest) is live; Cloud Run revision uses it. To change routes or config, see §6.
 
 ### Backend note (important)
@@ -92,7 +92,7 @@ Target backend for the gateway:
 | `docs/lightning/deploy/cloudbuild-aperture.yaml` | Cloud Build config to build and push the Aperture image to Artifact Registry (optional; can build locally with Docker). |
 | `docs/lightning/reference/VOLTAGE_TO_L402_CONNECT.md` | How Voltage fits into L402, what you need from Voltage, and how to connect it to Aperture. |
 | `docs/lightning/runbooks/STAGING_GATEWAY_RECONCILE_RUNBOOK.md` | Staging reconcile and env vars for lightning-ops. |
-| `apps/lightning-ops/` | Compiler that produces route config from Convex paywall state; output can be merged into Aperture config. |
+| `apps/lightning-ops/` | Compiler that produces route config from Khala paywall state; output can be merged into Aperture config. |
 
 **Gitignore:** `output/`, `output/voltage-node/`, and repo root `.env.local` are ignored so that TLS certs, macaroons, and API keys are never committed.
 
@@ -357,4 +357,4 @@ gcloud logging read 'resource.labels.revision_name="l402-aperture-REVISION_NAME"
 
 **Single reference for all operator steps:** `docs/lightning/status/20260212-0753-status.md` **§12) Operator checklist: what you need to do now.**
 
-Summary: run staging reconcile with only `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET`; gateway URLs default to `https://l402.openagents.com` and `/staging`. For CI, product/EP212 wiring, and changing Aperture routes, see the status doc §12.
+Summary: run staging reconcile with only `OA_LIGHTNING_OPS_KHALA_URL` and `OA_LIGHTNING_OPS_SECRET`; gateway URLs default to `https://l402.openagents.com` and `/staging`. For CI, product/EP212 wiring, and changing Aperture routes, see the status doc §12.

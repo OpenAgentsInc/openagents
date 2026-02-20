@@ -203,7 +203,7 @@ function workerSummaryFromSyncPayload(
         : 30_000,
     heartbeat_state: heartbeatState,
     updated_at: typeof payload.updated_at === "string" ? payload.updated_at : null,
-    convex_projection: null,
+    khala_projection: null,
   }
 }
 
@@ -654,9 +654,9 @@ export const CodexWorkersScreen: FC<DemoTabScreenProps<"Codex">> = function Code
                     size="xs"
                     style={themed($muted)}
                   />
-                  {item.convex_projection ? (
+                  {item.khala_projection ? (
                     <Text
-                      text={`projection ${item.convex_projection.status} · lag ${item.convex_projection.lag_events}`}
+                      text={`projection ${item.khala_projection.status} · lag ${item.khala_projection.lag_events}`}
                       size="xs"
                       style={themed($muted)}
                     />

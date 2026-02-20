@@ -13,7 +13,7 @@ Related:
 
 ## Blueprint Storage
 
-Bootstrap state is persisted in the thread's **Blueprint** record (Convex-first MVP) and/or Durable Object storage (alternate execution plane).
+Bootstrap state is persisted in the thread's **Blueprint** record (Khala-first MVP) and/or Durable Object storage (alternate execution plane).
 
 Canonical requirement:
 - Bootstrap behavior is driven from **persisted state** (`bootstrapState`), not inferred from recent messages.
@@ -67,7 +67,7 @@ Entry condition:
 
 ## Implementation Notes
 
-Convex-first (web):
+Khala-first (web):
 - Extract handle via DSE signature (`ExtractUserHandle`) and persist via mutation (e.g. `applyBootstrapUserHandle`).
 
 Durable Object execution plane (worker):

@@ -74,7 +74,7 @@ Typed server: **HttpApi** / **HttpApiGroup** with typed endpoints; OpenAPI gener
 
 **Synergy:**
 - Define API surface as types/groups; generate OpenAPI; derive client. We could use **@typed/server** for a BFF or internal API, or mirror its patterns with Effect Platform’s HttpApi in our own code.
-- **Mocks:** Typed uses `@effect/schema` + fast-check for mock server/client. We can do the same for our Convex/Worker APIs when writing tests.
+- **Mocks:** Typed uses `@effect/schema` + fast-check for mock server/client. We can do the same for our Khala/Worker APIs when writing tests.
 
 **Learning:** “Single source of truth for API shape → OpenAPI → type-safe client” is a pattern we want; Typed and Effect Platform already implement it.
 
@@ -92,7 +92,7 @@ We use **TanStack Router** (file-based, loaders, search params). No need to swit
 
 ### 3.4 Context and layers
 
-Typed uses **Context** and **Layer** for all services (DOM, RenderTemplate, RenderContext, Navigation, Router, etc.). We do the same in Effect code (runtime, tools, Convex, etc.).
+Typed uses **Context** and **Layer** for all services (DOM, RenderTemplate, RenderContext, Navigation, Router, etc.). We do the same in Effect code (runtime, tools, Khala, etc.).
 
 **Synergy:** No conflict. We can align naming and layering (e.g. “template render context” vs “Effuse mount context”) when we document our own layers. Typed’s **@typed/context** (context-aware Queue, Cache, etc.) is a reminder to use Effect’s data structures with our services where it helps.
 
@@ -102,7 +102,7 @@ Typed provides **@typed/template/Test** (HTML, DOM, hydration) and **@typed/temp
 
 **Synergy:**
 - Add a small test helper that renders an Effuse template to a string or to a mounted div and asserts on structure or text. Same idea as Typed’s Test: isolate template behavior without full app.
-- Use **Effect + Vitest** (e.g. `@effect/vitest`) in our test setup where we run Effect programs (e.g. Convex or API layers).
+- Use **Effect + Vitest** (e.g. `@effect/vitest`) in our test setup where we run Effect programs (e.g. Khala or API layers).
 
 **Learning:** “Render template in test env, assert” is a shared goal; we can keep it minimal and still benefit.
 

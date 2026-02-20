@@ -8,7 +8,7 @@ Scope: KHALA-027 staging evidence for API-only lightning-ops control-plane trans
 
 - Laravel control-plane API endpoints available at `/api/internal/lightning-ops/control-plane/query|mutation`.
 - `OA_LIGHTNING_OPS_SECRET` set on both `apps/openagents.com` and `apps/lightning-ops`.
-- `apps/lightning-ops` Convex dependency removed; API/mock modes only.
+- `apps/lightning-ops` Khala dependency removed; API/mock modes only.
 
 ## Verification commands
 
@@ -33,8 +33,8 @@ npm run smoke:full-flow -- --json
 
 ## Cutover assertions
 
-- Convex package removed from `apps/lightning-ops/package.json` and lockfile.
-- Convex transport implementation removed (`src/controlPlane/convexTransport.ts`).
+- Khala package removed from `apps/lightning-ops/package.json` and lockfile.
+- Khala transport implementation removed (`src/controlPlane/khalaTransport.ts`).
 - CLI and program modes accept only `api|mock` for control-plane smokes.
 - Staging reconcile helper now targets API mode (`scripts/staging-reconcile.sh`).
 

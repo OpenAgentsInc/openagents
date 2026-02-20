@@ -12,7 +12,7 @@ Use this skill when you need to see what is happening inside the deployed Worker
 - Debugging 401/500 from openagents.com or openagents.com/api.
 - Verifying that a Worker receives the expected headers (e.g. X-OA-Internal-Key) and why it might return "unauthorized".
 - Seeing console.log / console_error! output from the Rust API or the web app.
-- Correlating with Convex logs (Convex calls the API worker; tail the API worker while reproducing).
+- Correlating with Khala logs (Khala calls the API worker; tail the API worker while reproducing).
 
 ## Workers in this repo
 
@@ -72,11 +72,11 @@ npx wrangler tail
 
 ### Two workers, two terminals
 
-To see both the site and the API when debugging a flow (e.g. Hatchery calling Convex, Convex calling API):
+To see both the site and the API when debugging a flow (e.g. Hatchery calling Khala, Khala calling API):
 
 1. Terminal 1: `cd apps/api && npx wrangler tail --format pretty`
 2. Terminal 2: `cd apps/web && npx wrangler tail --format pretty`
-3. Optional: Convex logs in a third terminal: `cd apps/web && npx convex logs --prod --success`
+3. Optional: Khala logs in a third terminal: `cd apps/web && npx khala logs --prod --success`
 
 Then reproduce; watch for the request to the API worker and any `console.log` / diagnostic output.
 
@@ -91,8 +91,8 @@ Then reproduce; watch for the request to the API worker and any `console.log` / 
 
 For openclaw auth, the API worker logs:
 
-- **`openclaw auth: no internal key header path=...`** — request reached the worker but the `X-OA-Internal-Key` header was missing (e.g. stripped or not sent by Convex).
+- **`openclaw auth: no internal key header path=...`** — request reached the worker but the `X-OA-Internal-Key` header was missing (e.g. stripped or not sent by Khala).
 - **`openclaw auth 401: path=... provided_len=... expected_len=...`** — header was present but value didn’t match the worker secret (compare lengths; if equal, values differ).
 - **`openclaw auth ok path=... key_len=...`** — internal key matched; request was authorized.
 
-Use `wrangler tail` from `apps/api` while reproducing 401 to see which line appears. Convex actions log `[openclawApi <label>] fetch key_len=<n> url=...` before each request; correlate with worker logs to confirm what Convex sent vs what the worker received.
+Use `wrangler tail` from `apps/api` while reproducing 401 to see which line appears. Khala actions log `[openclawApi <label>] fetch key_len=<n> url=...` before each request; correlate with worker logs to confirm what Khala sent vs what the worker received.

@@ -1,6 +1,6 @@
 # Effect Migration Notes (apps/web)
 
-This repo’s **`apps/web`** app is built on **TanStack Start** (Vite plugin + file-based routing), with **Convex** and **WorkOS AuthKit** integrated.
+This repo’s **`apps/web`** app is built on **TanStack Start** (Vite plugin + file-based routing), with **Khala** and **WorkOS AuthKit** integrated.
 
 If you want to “convert basically EVERYTHING to Effect”, you’ll have the best results if you **start at the composition roots** (where global dependencies are created/wired) and then migrate inward (services → loaders/serverFns → components).
 
@@ -9,7 +9,7 @@ If you want to “convert basically EVERYTHING to Effect”, you’ll have the b
 ## Current State (2026-02-06)
 
 - Effect scaffold exists in `apps/web/src/effect/*`:
-  - `AppConfigService` (reads `VITE_CONVEX_URL`)
+  - `AppConfigService` (reads `VITE_KHALA_URL`)
   - `TelemetryService` (console sink)
   - `AgentApiService` (typed Effect boundary for `/agents/*` endpoints)
   - `AgentRpcClientService` (typed `@effect/rpc` client for `/api/rpc`)
@@ -41,7 +41,7 @@ In *this* codebase, the earliest “entry” surfaces you own are:
 
 - `apps/web/src/router.tsx`
   - `getRouter()` builds and returns the TanStack Router instance
-  - Creates **Convex client**, **ConvexQueryClient**, and **React Query QueryClient**
+  - Creates **Khala client**, **KhalaQueryClient**, and **React Query QueryClient**
   - Injects these into router `context`
   - This is the **primary composition root** (best first place to introduce Effect Layers/Services)
 
@@ -50,7 +50,7 @@ In *this* codebase, the earliest “entry” surfaces you own are:
   - Owns important cross-cutting wiring:
     - SSR/client boundary logic via `beforeLoad`
     - WorkOS server call via `createServerFn` + `getAuth()`
-    - “set Convex auth token for SSR HTTP client” behavior
+    - “set Khala auth token for SSR HTTP client” behavior
   - This is the **SSR/auth + provider seam**
 
 Generated-but-informative:
@@ -64,13 +64,13 @@ Generated-but-informative:
 
 ### Start in `apps/web/src/router.tsx`
 
-This file is already the place where the app constructs “global” dependencies (Convex + query clients) and pushes them into router context.
+This file is already the place where the app constructs “global” dependencies (Khala + query clients) and pushes them into router context.
 
 **Effect-first goal**: define an `AppLayer` (or similar) that provides:
 
-- Configuration (`VITE_CONVEX_URL`, etc.)
-- `ConvexReactClient`
-- `ConvexQueryClient`
+- Configuration (`VITE_KHALA_URL`, etc.)
+- `KhalaReactClient`
+- `KhalaQueryClient`
 - `QueryClient`
 - Any logging/telemetry service you want everywhere
 
@@ -87,7 +87,7 @@ This is where auth and SSR boundaries are currently handled. Once you have an Ef
 
 - `createServerFn` handlers (server-side effects)
 - `beforeLoad` logic (route “loader” effects)
-- auth/token plumbing for Convex SSR HTTP client
+- auth/token plumbing for Khala SSR HTTP client
 
 Effect provides a consistent way to model:
 
@@ -109,7 +109,7 @@ If/when you want request-scoped context (trace IDs, per-request logging, cookie/
 
 2. **Service boundaries**
    - Wrap external boundaries behind services first:
-     - Convex client
+     - Khala client
      - WorkOS auth (server: `getAuth`, client: hooks)
      - Environment/config (`import.meta.env`)
      - Telemetry/logging (see effect-telemetry-service in repo docs if present)
@@ -128,7 +128,7 @@ If/when you want request-scoped context (trace IDs, per-request logging, cookie/
 
 - No route/module constructs “global” singletons ad hoc; everything is composed in one place (Layer).
 - SSR/client behavior is explicit (separate Layers if needed).
-- Auth/Convex/query wiring is not scattered; it’s services with small adapters.
+- Auth/Khala/query wiring is not scattered; it’s services with small adapters.
 
 ---
 

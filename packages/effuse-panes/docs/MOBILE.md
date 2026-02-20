@@ -224,7 +224,7 @@ Concrete integration ideas:
 
 1. Should "multi-pane" be available at all on phones?
 2. Is the hotbar a product concept on web, or only a debug/operator affordance?
-3. Do we want persistence of pane layout on mobile? If so, where (LocalStorage vs Convex)?
+3. Do we want persistence of pane layout on mobile? If so, where (LocalStorage vs Khala)?
 
 ## Next Steps
 

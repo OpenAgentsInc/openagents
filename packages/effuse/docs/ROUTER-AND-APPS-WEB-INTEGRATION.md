@@ -81,7 +81,7 @@ Routes like `/autopilot`, `/modules`, `/tools` are direct children of `__root__`
 - **Endpoint:** `POST /api/rpc` (TanStack Start route in `api.rpc.tsx`).
 - **Definition:** RPC group `AgentRpcs` in `apps/web/src/effect/api/agentRpc.ts`; handlers in `agentRpcHandlers.ts` (wrap legacy `AgentApiService` + telemetry).
 - **Client:** `AgentRpcClientService` in `agentRpcClient.ts`, wired in `layer.ts`; available via `context.effectRuntime` in any component/loader.
-- **Why:** Single typed contract, Effect-native server and client, shared server resources (MemoMap), additive migration without replacing Convex/WorkOS/autopilot backends.
+- **Why:** Single typed contract, Effect-native server and client, shared server resources (MemoMap), additive migration without replacing Khala/WorkOS/autopilot backends.
 
 Details: [effect-rpc-web.md](./effect-rpc-web.md).
 
@@ -112,7 +112,7 @@ Details: [effect-migration-web.md](./effect-migration-web.md), [ADR-0027 (copy)]
 | Surface | Role |
 |--------|------|
 | **`apps/web/src/start.ts`** | Start instance, request middleware (e.g. WorkOS authkit), requestId/telemetry. |
-| **`apps/web/src/router.tsx`** | `getRouter()` builds router, Convex + Query clients, **effectRuntime**; injects them into router context. Primary composition root. |
+| **`apps/web/src/router.tsx`** | `getRouter()` builds router, Khala + Query clients, **effectRuntime**; injects them into router context. Primary composition root. |
 | **`apps/web/src/routes/__root.tsx`** | Root route, app shell (providers), **beforeLoad** (auth + client auth cache), server fn `fetchWorkosAuth`, HydrationBoundary. |
 | **`apps/web/src/routes/api.rpc.tsx`** | POST handler for `/api/rpc`; builds RPC web handler with shared MemoMap and app layer. |
 
@@ -121,7 +121,7 @@ Details: [effect-migration-web.md](./effect-migration-web.md), [ADR-0027 (copy)]
 ## 8. Effuse’s place in the stack
 
 - **Effuse** renders most user-facing UI (marketing header, home, login, modules/signatures/tools catalogs, autopilot chat column). Data is loaded in React/Effect and passed into Effuse as payloads; Effuse is pure view.
-- **React** keeps: route loaders, auth, Convex, HUD backgrounds, `EffuseMount`, and a few stateful panels (sidebar, Blueprint, controls).
+- **React** keeps: route loaders, auth, Khala, HUD backgrounds, `EffuseMount`, and a few stateful panels (sidebar, Blueprint, controls).
 
 See [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md) and [INDEX.md](./INDEX.md).
 

@@ -29,7 +29,7 @@ test('runtime codex workers api lists principal-owned workers with filters', fun
                     'worker_id' => 'codexw_1',
                     'status' => 'running',
                     'latest_seq' => 3,
-                    'convex_projection' => [
+                    'khala_projection' => [
                         'status' => 'in_sync',
                         'lag_events' => 0,
                     ],
@@ -42,7 +42,7 @@ test('runtime codex workers api lists principal-owned workers with filters', fun
     $response
         ->assertOk()
         ->assertJsonPath('data.0.worker_id', 'codexw_1')
-        ->assertJsonPath('data.0.convex_projection.status', 'in_sync');
+        ->assertJsonPath('data.0.khala_projection.status', 'in_sync');
 
     Http::assertSent(function (HttpRequest $request) use ($user): bool {
         return $request->url() === 'http://runtime.internal/internal/v1/codex/workers?status=running&limit=5'

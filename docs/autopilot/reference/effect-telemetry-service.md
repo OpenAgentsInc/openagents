@@ -54,7 +54,7 @@ Every emission should include a `namespace` string. Convention examples:
 - `app.start`
 - `router`
 - `auth.workos`
-- `db.convex`
+- `db.khala`
 - `ui.chat`
 
 The control plane keys off `namespace` prefixes (so you can disable an entire subtree).
@@ -195,7 +195,7 @@ After that, *every other service* should depend on Telemetry rather than calling
 ## Privacy & hygiene rules
 
 - **Never log secrets**: tokens, cookies, auth headers, private keys.
-- **Prefer stable non-PII IDs**: WorkOS user id, Convex user doc id, thread id.
+- **Prefer stable non-PII IDs**: WorkOS user id, Khala user doc id, thread id.
 - **PostHog properties**:
   - Avoid raw email unless explicitly approved and necessary.
   - Add a small allowlist/denylist if needed once the event surface grows.

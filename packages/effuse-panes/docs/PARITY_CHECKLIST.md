@@ -86,7 +86,7 @@ Status: INTENTIONALLY OUT OF SCOPE for this package.
 WGPUI currently stores "closed pane positions" in memory only (no long-term storage).
 
 If the web wants to persist layouts between sessions, we need a host-level mechanism
-(LocalStorage, Convex, etc).
+(LocalStorage, Khala, etc).
 
 Status: NOT PROVIDED (by design).
 

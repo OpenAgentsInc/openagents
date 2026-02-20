@@ -10,8 +10,8 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   alias OpenAgentsRuntime.Codex.WorkerEvent
   alias OpenAgentsRuntime.Codex.WorkerProcess
   alias OpenAgentsRuntime.Codex.WorkerSupervisor
-  alias OpenAgentsRuntime.Convex.Projector
-  alias OpenAgentsRuntime.Convex.ProjectionCheckpoint
+  alias OpenAgentsRuntime.Khala.Projector
+  alias OpenAgentsRuntime.Khala.ProjectionCheckpoint
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Security.Sanitizer
 
@@ -244,7 +244,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
     case Repo.transaction(multi) do
       {:ok, %{event: event}} ->
         broadcast_event(worker_id, event.seq)
-        _ = project_convex_summary(worker_id)
+        _ = project_khala_summary(worker_id)
         {:ok, event}
 
       {:error, :next_seq, :worker_not_found, _changes} ->
@@ -432,7 +432,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
       "started_at" => maybe_iso8601(worker.started_at),
       "stopped_at" => maybe_iso8601(worker.stopped_at),
       "updated_at" => maybe_iso8601(worker.updated_at),
-      "convex_projection" => projection_summary(worker, projection)
+      "khala_projection" => projection_summary(worker, projection)
     }
     |> Map.merge(heartbeat_summary(worker, opts))
   end
@@ -649,7 +649,7 @@ defmodule OpenAgentsRuntime.Codex.Workers do
   defp maybe_put_opt(opts, _key, nil), do: opts
   defp maybe_put_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
-  defp project_convex_summary(worker_id) do
+  defp project_khala_summary(worker_id) do
     case Projector.project_codex_worker(worker_id) do
       {:ok, _result} -> :ok
       {:error, _reason} -> :ok

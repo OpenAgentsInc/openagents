@@ -12,8 +12,8 @@ config :openagents_runtime,
   ecto_repos: [OpenAgentsRuntime.Repo],
   generators: [timestamp_type: :utc_datetime],
   guarded_outbound_http_enabled: true,
-  convex_projection_sink: OpenAgentsRuntime.Convex.NoopSink,
-  convex_projection_version: "convex_summary_v1",
+  khala_projection_sink: OpenAgentsRuntime.Khala.NoopSink,
+  khala_projection_version: "khala_summary_v1",
   janitor_scan_interval_ms: 5_000,
   janitor_max_recovery_attempts: 3,
   janitor_recovery_cooldown_ms: 30_000,
@@ -40,15 +40,15 @@ config :openagents_runtime, :laravel_internal,
   request_timeout_ms: 2_500,
   default_secret_cache_ttl_ms: 60_000
 
-config :openagents_runtime, :convex_http_sink,
+config :openagents_runtime, :khala_http_sink,
   base_url: "",
   admin_key: "",
   run_summary_mutation_path: "runtime:upsertRunSummary",
   codex_worker_summary_mutation_path: "runtime:upsertCodexWorkerSummary",
   request_timeout_ms: 2_500
 
-config :openagents_runtime, :convex_fanout_sink,
-  sinks: [OpenAgentsRuntime.Convex.NoopSink, OpenAgentsRuntime.Sync.ProjectorSink]
+config :openagents_runtime, :khala_fanout_sink,
+  sinks: [OpenAgentsRuntime.Khala.NoopSink, OpenAgentsRuntime.Sync.ProjectorSink]
 
 config :openagents_runtime, :khala_sync, stream_payload_mode: :inline
 

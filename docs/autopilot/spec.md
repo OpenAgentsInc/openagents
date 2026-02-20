@@ -1,6 +1,6 @@
 # Autopilot (Simplified Spec)
 
-Autopilot is a **single, persistent chat agent** hosted on a **single Cloudflare Worker**, with **Convex as the canonical product DB and realtime stream**.
+Autopilot is a **single, persistent chat agent** hosted on a **single Cloudflare Worker**, with **Khala as the canonical product DB and realtime stream**.
 
 Hard constraint: **no containers**. No sandboxes. No local executors.
 
@@ -29,12 +29,12 @@ If the visitor is already authenticated, `/` may redirect them into chat.
 2. Visitor clicks **Start for free** (sign up) or **Log in**.
 3. Visitor arrives at `/autopilot` (single-thread chat UI).
    - `/autopilot` MUST work for **unauthed** users.
-4. `/autopilot` connects to Convex (WebSocket) and subscribes to:
+4. `/autopilot` connects to Khala (WebSocket) and subscribes to:
    - the thread’s messages
    - the assistant message’s incremental `messageParts` (chunked deltas)
 5. On user message:
-   - Convex mutation writes the user message
-   - Worker endpoint starts inference and writes assistant `messageParts` into Convex in batches (~250–500ms or N chars)
+   - Khala mutation writes the user message
+   - Worker endpoint starts inference and writes assistant `messageParts` into Khala in batches (~250–500ms or N chars)
 6. On auth (when it happens), the existing anon thread is migrated to an owned thread (see below).
 
 There is no "Spawn" UI and no multi-thread UX in the MVP.
@@ -43,12 +43,12 @@ There is no "Spawn" UI and no multi-thread UX in the MVP.
 
 ## Data Model (MVP)
 
-- Convex is canonical for:
+- Khala is canonical for:
   - threads
   - messages
   - message parts (chunked streaming deltas)
   - receipts/budgets/tool calls (bounded; large payloads are `BlobRef`s)
-- Anon threads exist as real Convex threads.
+- Anon threads exist as real Khala threads.
 - **Anon -> owned migration is REQUIRED**:
   - on auth, the anon thread’s transcript MUST remain available to the user
   - preferred: claim/transfer ownership in-place (no copying)
@@ -61,7 +61,7 @@ There is no "Spawn" UI and no multi-thread UX in the MVP.
   - serves SSR + static assets
   - exposes `/api/*` endpoints for secret-bearing operations (model calls, tool execution)
   - enforces budgets, emits receipts
-- Convex:
+- Khala:
   - DB + auth + realtime subscriptions (browser connects directly via WS)
   - optional presence/participants for multiplayer
 
@@ -74,7 +74,7 @@ Explicitly out of scope for MVP:
 
 Post-MVP (optional):
 
-- reintroduce DO/DO-SQLite as an execution-plane optimization, while keeping Convex as the product DB + multiplayer surface.
+- reintroduce DO/DO-SQLite as an execution-plane optimization, while keeping Khala as the product DB + multiplayer surface.
 
 ---
 
@@ -92,7 +92,7 @@ Post-MVP (optional):
 - Autopilot controller: `apps/web/src/effuse-app/controllers/autopilotController.ts`
 - Autopilot page templates: `apps/web/src/effuse-pages/autopilot.ts`
 - Master plan (Effuse stack): `packages/effuse/docs/MASTER-PLAN-EFFECT-EFFUSE-COMPLETE.md`
-- Execution plane decision (Convex-first MVP): `docs/autopilot/reference/anon-chat-execution-plane.md`
+- Execution plane decision (Khala-first MVP): `docs/autopilot/reference/anon-chat-execution-plane.md`
 
 ---
 

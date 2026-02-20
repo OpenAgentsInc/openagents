@@ -38,9 +38,9 @@ should_skip() {
     worker-configuration.d.ts) return 0 ;;  # Cloudflare generated, ~400KB
     esac
 
-  # Convex generated (regeneratable)
+  # Khala generated (regeneratable)
   case "$rel" in
-    *"/convex/_generated/"*) return 0 ;;
+    *"/khala/_generated/"*) return 0 ;;
     esac
 
   # Dirs we don't need for "understand and advise"

@@ -4,7 +4,7 @@ Date: 2026-02-15
 
 ## Goal
 
-Rebuild OpenAgents' current Effuse/Cloudflare/Convex web stack into **Laravel 12 + Inertia + React (TypeScript)** and use **Laravel AI SDK (`laravel/ai`)** as the primary model/tooling interface.
+Rebuild OpenAgents' current Effuse/Cloudflare/Khala web stack into **Laravel 12 + Inertia + React (TypeScript)** and use **Laravel AI SDK (`laravel/ai`)** as the primary model/tooling interface.
 
 Near-term objective: migrate **basic tools** (starting with **L402 buying**) into the Laravel app so we can run an EP212-style L402 demo and then expand from there.
 

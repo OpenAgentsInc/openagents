@@ -6,10 +6,10 @@ It also compares our flow to the Vercel AI SDK (`/Users/christopherdavid/code/ai
 
 ## Executive Summary
 
-- Autopilot chat state is stored durably in Convex as:
+- Autopilot chat state is stored durably in Khala as:
   - `messages` (durable user/assistant rows) and
   - `messageParts` (append-only streaming parts, tool parts, DSE parts).
-  - See: `apps/web/convex/autopilot/messages.ts`.
+  - See: `apps/web/khala/autopilot/messages.ts`.
 
 - The model prompt is still built from `messages.text` history (plus a system prompt and bootstrap additions):
   - `apps/web/src/effuse-host/autopilot.ts:1170-1210` (`concatTextFromPromptMessages`)
@@ -19,25 +19,25 @@ It also compares our flow to the Vercel AI SDK (`/Users/christopherdavid/code/ai
   - Worker queries `getRunPartsHead` for recent runIds in-context.
   - Worker extracts + redacts recent `dse.tool` parts, then injects them into the system prompt as `extraSystem`.
   - Code:
-    - Convex query: `apps/web/convex/autopilot/messages.ts` (`getRunPartsHead`)
+    - Khala query: `apps/web/khala/autopilot/messages.ts` (`getRunPartsHead`)
     - Worker injection: `apps/web/src/effuse-host/autopilot.ts` (tool replay block in `runAutopilotStream`)
     - Redaction + rendering: `apps/web/src/effuse-host/toolReplay.ts`
 
 - This is a pragmatic approximation of the Vercel AI SDK approach (where tool call/results are first-class message parts passed each turn), while keeping:
   - context bounded,
   - secrets scrubbed,
-  - and Convex as the source of truth.
+  - and Khala as the source of truth.
 
 ## Scope
 
-- In scope: `openagents.com` web chat runtime in `apps/web` (Cloudflare Worker + Convex).
+- In scope: `openagents.com` web chat runtime in `apps/web` (Cloudflare Worker + Khala).
 - Out of scope: `apps/autopilot-worker` DO runtime (separate tool host). This audit focuses on what’s running for the public web app chat.
 
 ## Terminology / Data Model
 
-### Convex tables involved
+### Khala tables involved
 
-All of this lives under `apps/web/convex/autopilot/messages.ts`:
+All of this lives under `apps/web/khala/autopilot/messages.ts`:
 
 - `messages` (durable): one row per user/assistant message.
   - Contains: `messageId`, `role`, `status`, and (critically) `text`.
@@ -47,10 +47,10 @@ All of this lives under `apps/web/convex/autopilot/messages.ts`:
   - Contains: `threadId`, `runId`, `messageId`, `seq`, `part`.
 
 Code reference:
-- Snapshot schema + queries: `apps/web/convex/autopilot/messages.ts:17-96`
-- Run creation: `apps/web/convex/autopilot/messages.ts:98-165`
-- Parts append: `apps/web/convex/autopilot/messages.ts:221-297`
-- Run finalization: `apps/web/convex/autopilot/messages.ts:299-371`
+- Snapshot schema + queries: `apps/web/khala/autopilot/messages.ts:17-96`
+- Run creation: `apps/web/khala/autopilot/messages.ts:98-165`
+- Parts append: `apps/web/khala/autopilot/messages.ts:221-297`
+- Run finalization: `apps/web/khala/autopilot/messages.ts:299-371`
 
 ### “Message parts” are where tool calls/results live
 
@@ -69,7 +69,7 @@ Client-side `ChatService.send` performs an HTTP POST to `/api/autopilot/send` wi
 
 - `apps/web/src/effect/chat.ts:488-545`
 
-Key point: the browser does **not** call the model directly. The Worker runs the model and streams state through Convex.
+Key point: the browser does **not** call the model directly. The Worker runs the model and streams state through Khala.
 
 ### 2) Worker creates the run + placeholder assistant message
 
@@ -77,14 +77,14 @@ Worker handler for `/api/autopilot/send`:
 
 - `apps/web/src/effuse-host/autopilot.ts:3969-4042`
 
-It calls Convex `createRun`, which inserts:
+It calls Khala `createRun`, which inserts:
 
 - a final user `messages` row (with `text`)
 - a streaming assistant `messages` row (empty `text`, but `runId` set)
 - a streaming `runs` row
 
 See:
-- `apps/web/convex/autopilot/messages.ts:98-150`
+- `apps/web/khala/autopilot/messages.ts:98-150`
 
 ### 3) Worker starts the streaming job
 
@@ -92,7 +92,7 @@ The Worker uses `ctx.waitUntil(runAutopilotStream(...))`:
 
 - `apps/web/src/effuse-host/autopilot.ts:4026-4036`
 
-Implication: streaming is best-effort (Cloudflare isolates can be evicted). Convex has a stale-run guard that can finalize stuck runs.
+Implication: streaming is best-effort (Cloudflare isolates can be evicted). Khala has a stale-run guard that can finalize stuck runs.
 
 ### 4) Worker loads prompt context
 
@@ -109,13 +109,13 @@ To behave more like a normal tool-calling chat app, we replay recent tool calls/
 Mechanics:
 
 1. Worker extracts the in-context runIds from the last `MAX_CONTEXT_MESSAGES` assistant messages.
-2. Worker queries Convex `getRunPartsHead` (by runId, ordered by seq) to fetch only the **head** of each run’s parts.
+2. Worker queries Khala `getRunPartsHead` (by runId, ordered by seq) to fetch only the **head** of each run’s parts.
    - Why head: tool parts are emitted early in the run, and we do not want to pull the full token stream history.
 3. Worker filters to `dse.tool` parts, redacts sensitive keys (invoice/macaroon/preimage/auth/cookies/seeds/etc.), clamps previews, and renders a bounded summary string.
 4. Worker injects that summary into the system prompt via `extraSystem` so the model sees tool outcomes.
 
 Code:
-- Convex query: `apps/web/convex/autopilot/messages.ts` (`getRunPartsHead`)
+- Khala query: `apps/web/khala/autopilot/messages.ts` (`getRunPartsHead`)
 - Worker injection: `apps/web/src/effuse-host/autopilot.ts` (tool replay block)
 - Renderer/redactor: `apps/web/src/effuse-host/toolReplay.ts` (`renderToolReplaySystemContext`)
 
@@ -134,7 +134,7 @@ The Worker maps message rows to `(role, text)` and builds the prompt:
 - One `system` message: hardcoded “You are Autopilot …” + bootstrap additions + optional `extraSystem` (including tool replay).
 - Then each prior message as `user`/`assistant`, with `content: [{ type: "text", text: ... }]`.
 
-### 7) Worker writes streaming parts to Convex
+### 7) Worker writes streaming parts to Khala
 
 During model streaming (and also during deterministic tool routing), the Worker appends `messageParts` via:
 
@@ -145,13 +145,13 @@ During model streaming (and also during deterministic tool routing), the Worker 
 At end-of-run, the Worker finalizes the run and writes `messages.text`:
 
 - Worker: `apps/web/src/effuse-host/autopilot.ts` (finalize in `runAutopilotStream`)
-- Convex: `apps/web/convex/autopilot/messages.ts:299-371`
+- Khala: `apps/web/khala/autopilot/messages.ts:299-371`
 
 Even with tool replay, `messages.text` remains the canonical durable transcript.
 
 ### 9) UI subscribes to both messages and messageParts
 
-The UI is not streamed directly from the model; it is rebuilt deterministically from Convex.
+The UI is not streamed directly from the model; it is rebuilt deterministically from Khala.
 
 - Snapshot subscription: `apps/web/src/effect/chat.ts:253` (subscribeQuery)
 - Deterministic rebuild: `apps/web/src/effect/chat.ts` (apply wire parts to reconstruct message state)
@@ -196,7 +196,7 @@ without relying on the assistant having re-stated the tool result in plain text.
 
 ### How OpenAgents differs (and what we mirrored)
 
-- We do not use Vercel AI SDK transport today in `apps/web`; we use `@effect/ai` for inference and Convex for state.
+- We do not use Vercel AI SDK transport today in `apps/web`; we use `@effect/ai` for inference and Khala for state.
 - Our client POST body is `{ threadId, text }`:
   - `apps/web/src/effect/chat.ts:502-511`
 - Historically, our Worker prompt context was built from `messages.text` only.
@@ -205,7 +205,7 @@ What we mirrored:
 
 - We now replay tool calls/results into model context each turn.
 - Instead of sending full `UIMessage[]` from the browser, we:
-  - treat Convex as the canonical history store
+  - treat Khala as the canonical history store
   - query a bounded subset of run head parts
   - inject a redacted summary into the system prompt
 
@@ -225,4 +225,4 @@ This gives the model the “memory” it needs, without pulling full token delta
 
 - Convert tool replay from a system-block string into a more structured “tool message” representation (closer to AI SDK), while keeping redaction.
 - Add per-tool summary renderers for additional tools beyond Lightning (today, Lightning is the main specialized renderer).
-- If we adopt the Vercel AI SDK client transport later, we can still keep Convex as canonical store; but it would be a larger architecture shift.
+- If we adopt the Vercel AI SDK client transport later, we can still keep Khala as canonical store; but it would be a larger architecture shift.

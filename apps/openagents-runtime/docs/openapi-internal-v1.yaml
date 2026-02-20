@@ -894,7 +894,7 @@ components:
           type: string
           format: date-time
           nullable: true
-        convex_projection:
+        khala_projection:
           oneOf:
             - type: 'null'
             - $ref: '#/components/schemas/CodexWorkerProjectionStatus'

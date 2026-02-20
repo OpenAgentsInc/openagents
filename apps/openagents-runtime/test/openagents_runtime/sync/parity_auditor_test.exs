@@ -1,8 +1,8 @@
 defmodule OpenAgentsRuntime.Sync.ParityAuditorTest do
   use OpenAgentsRuntime.DataCase, async: false
 
-  alias OpenAgentsRuntime.Convex.ProjectionCheckpoint
-  alias OpenAgentsRuntime.Convex.Projector
+  alias OpenAgentsRuntime.Khala.ProjectionCheckpoint
+  alias OpenAgentsRuntime.Khala.Projector
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Sync.CodexWorkerSummary
   alias OpenAgentsRuntime.Sync.ParityAuditor
@@ -103,7 +103,7 @@ defmodule OpenAgentsRuntime.Sync.ParityAuditorTest do
       entity_id: entity_id,
       document_id: document_id,
       last_runtime_seq: seq,
-      projection_version: "convex_summary_v1",
+      projection_version: "khala_summary_v1",
       summary_hash: Projector.summary_hash_for_parity(payload),
       last_projected_at: @projected_at
     })
@@ -135,7 +135,7 @@ defmodule OpenAgentsRuntime.Sync.ParityAuditorTest do
         "run_id" => run_id,
         "seq" => seq
       },
-      "projection_version" => "convex_summary_v1",
+      "projection_version" => "khala_summary_v1",
       "projected_at" => DateTime.to_iso8601(@projected_at)
     }
   end
@@ -151,7 +151,7 @@ defmodule OpenAgentsRuntime.Sync.ParityAuditorTest do
         "worker_id" => worker_id,
         "seq" => seq
       },
-      "projection_version" => "convex_summary_v1",
+      "projection_version" => "khala_summary_v1",
       "projected_at" => DateTime.to_iso8601(@projected_at)
     }
   end

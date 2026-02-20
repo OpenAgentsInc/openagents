@@ -4,7 +4,7 @@ This is the contract for what the Autopilot MVP must do end-to-end.
 
 Hard constraints:
 - Single Cloudflare Worker host (SSR + `/api/*`)
-- Convex is the canonical product DB + realtime stream
+- Khala is the canonical product DB + realtime stream
 - Anonymous-first flow must work (no auth required to chat)
 - No containers / no sandboxes / no local executors
 
@@ -105,9 +105,9 @@ Acceptance:
 Test coverage:
 - `apps/web/tests/worker/routes.test.ts`
 
-## MVP-008: Convex Canonical Thread Exists For Anonymous Users
+## MVP-008: Khala Canonical Thread Exists For Anonymous Users
 
-As an anonymous user, my thread exists in Convex and is seeded with a welcome message and a Blueprint row.
+As an anonymous user, my thread exists in Khala and is seeded with a welcome message and a Blueprint row.
 
 Acceptance:
 - `ensureAnonThread` creates:
@@ -118,7 +118,7 @@ Acceptance:
 - A mismatched `anonKey` is forbidden
 
 Test coverage:
-- `apps/web/tests/convex/autopilot-mvp.test.ts` (`ensureAnonThreadImpl`)
+- `apps/web/tests/khala/autopilot-mvp.test.ts` (`ensureAnonThreadImpl`)
 
 ## MVP-009: Authed Thread Exists (Default Thread Per User)
 
@@ -130,7 +130,7 @@ Acceptance:
 - Forbidden if the stored `defaultThreadId` points at a thread owned by someone else
 
 Test coverage:
-- `apps/web/tests/convex/autopilot-mvp.test.ts` (`ensureOwnedThreadImpl`)
+- `apps/web/tests/khala/autopilot-mvp.test.ts` (`ensureOwnedThreadImpl`)
 
 ## MVP-010: Anon To Owned Migration (Claim Thread On Auth)
 
@@ -145,11 +145,11 @@ Acceptance:
 - Forbidden for other users
 
 Test coverage:
-- `apps/web/tests/convex/autopilot-mvp.test.ts` (`claimAnonThreadImpl`)
+- `apps/web/tests/khala/autopilot-mvp.test.ts` (`claimAnonThreadImpl`)
 
 ## MVP-011: Worker Streaming Endpoint Writes Chunked Deltas
 
-As a user, sending a message streams assistant output and persists it in Convex in bounded batches.
+As a user, sending a message streams assistant output and persists it in Khala in bounded batches.
 
 Acceptance:
 - `POST /api/autopilot/send` returns `200` and a `runId`
@@ -157,7 +157,7 @@ Acceptance:
 - Worker finalizes the run with a terminal status
 
 Test coverage:
-- `apps/web/tests/worker/chat-streaming-convex.test.ts`
+- `apps/web/tests/worker/chat-streaming-khala.test.ts`
 
 ## MVP-012: Canceling A Run Works (Best Effort)
 
@@ -165,12 +165,12 @@ As a user, I can cancel an in-flight run and the cancellation is persisted.
 
 Acceptance:
 - `POST /api/autopilot/cancel` returns `200`
-- Convex run state reflects cancel requested
+- Khala run state reflects cancel requested
 - Worker finalizes as `canceled` when cancel requested mid-stream
 
 Test coverage:
-- `apps/web/tests/worker/chat-streaming-convex.test.ts`
-- `apps/web/tests/convex/autopilot-mvp.test.ts` (`requestCancelImpl`, `isCancelRequestedImpl`)
+- `apps/web/tests/worker/chat-streaming-khala.test.ts`
+- `apps/web/tests/khala/autopilot-mvp.test.ts` (`requestCancelImpl`, `isCancelRequestedImpl`)
 
 ## MVP-013: Reset Clears The Thread (And Reseeds Welcome + Blueprint)
 
@@ -182,5 +182,5 @@ Acceptance:
 - Reset re-seeds the welcome assistant message
 
 Test coverage:
-- `apps/web/tests/convex/autopilot-mvp.test.ts` (`resetThreadImpl`)
+- `apps/web/tests/khala/autopilot-mvp.test.ts` (`resetThreadImpl`)
 

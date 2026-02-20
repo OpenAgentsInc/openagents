@@ -22,14 +22,14 @@ This roadmap references working patterns from `~/code/inbox-autopilot/` (local A
 ## Architecture Guardrails
 
 1. Runtime + Postgres are authoritative for worker lifecycle/events.
-2. Convex is read-model projection only.
+2. Khala is read-model projection only.
 3. Laravel is auth/session authority and public API facade.
 4. iOS never calls runtime internal `/internal/v1/*` directly.
 5. Proto definitions under `proto/` remain schema authority.
 
 References:
 
-- `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md`
+- `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
 - `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `proto/README.md`
@@ -312,7 +312,7 @@ Exit criteria:
 
 1. iOS app behavior remains contract-stable while backend varies.
 
-### Phase 5: Convex Read-Model Enhancements (Optional)
+### Phase 5: Khala Read-Model Enhancements (Optional)
 
 Goal:
 
@@ -320,14 +320,14 @@ Improve responsiveness for summaries while preserving runtime authority.
 
 Work:
 
-1. mint Convex token via Laravel (`POST /api/convex/token`).
+1. mint Khala token via Laravel (`POST /api/khala/token`).
 2. subscribe to worker summary projections for fast list/status updates.
 3. continue using runtime/Laravel APIs for all control actions.
 
 Exit criteria:
 
 1. projection lag/status visible in iOS.
-2. no control-path authority moved to Convex.
+2. no control-path authority moved to Khala.
 
 ## Security and Trust Model
 

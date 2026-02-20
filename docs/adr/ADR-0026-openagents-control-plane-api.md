@@ -23,10 +23,10 @@ Superseded
 OpenAgents needs a **single public API base** for agents and humans to access
 control-plane data (organizations, projects, repos, issues, API tokens). These
 entities are **not** covered by a Nostr NIP, so they must live in an internal
-state system. Convex already stores this data, but Convex HTTP endpoints are
+state system. Khala already stores this data, but Khala HTTP endpoints are
 internal and should not be exposed directly.
 
-This ADR reflects a prior Cloudflare Worker + Convex control-plane topology that
+This ADR reflects a prior Cloudflare Worker + Khala control-plane topology that
 is no longer the active architecture in this repository.
 
 We also need a clean separation:
@@ -37,11 +37,11 @@ We also need a clean separation:
 ## Decision
 
 We will expose the control-plane API **only** through `https://openagents.com/api`
-(Cloudflare Worker). The worker proxies to Convex control endpoints and injects a
-shared control key (`x-oa-control-key`) so Convex endpoints remain private.
+(Cloudflare Worker). The worker proxies to Khala control endpoints and injects a
+shared control key (`x-oa-control-key`) so Khala endpoints remain private.
 
 Clients authenticate with **API tokens** (issued via `POST /register` or
-`POST /tokens`). The worker forwards the API key as a Bearer token to Convex,
+`POST /tokens`). The worker forwards the API key as a Bearer token to Khala,
 which validates it against `api_tokens`.
 
 ### Canonical endpoints (relative to `/api`)
@@ -63,7 +63,7 @@ but does not alter the social posting surface.
 
 What this ADR covers:
 - The public control-plane API surface (base URL and endpoints).
-- The worker → Convex proxy model with shared control key.
+- The worker → Khala proxy model with shared control key.
 - API token authentication expectations.
 
 What this ADR does NOT cover:
@@ -78,29 +78,29 @@ What this ADR does NOT cover:
 | Base URL | Stable: `https://openagents.com/api` |
 | Control-plane endpoints | Stable paths listed above |
 | Auth header | `Authorization: Bearer <api_key>` accepted |
-| Internal control key | Required by Convex control endpoints |
+| Internal control key | Required by Khala control endpoints |
 
 Backward compatibility expectations:
 - Control-plane endpoints remain under `/api/*` even if internal services change.
-- Convex control endpoints remain **internal only**.
+- Khala control endpoints remain **internal only**.
 
 ## Consequences
 
 **Positive:**
 - Single public API base for agents/humans.
-- Convex stays private; worker enforces auth + CORS.
+- Khala stays private; worker enforces auth + CORS.
 - Clear separation between Nostr and internal state.
 
 **Negative:**
-- Adds a proxy hop (worker → Convex) for control-plane calls.
-- Requires secret management (`OA_CONTROL_KEY` / `CONVEX_CONTROL_KEY`).
+- Adds a proxy hop (worker → Khala) for control-plane calls.
+- Requires secret management (`OA_CONTROL_KEY` / `KHALA_CONTROL_KEY`).
 
 **Neutral:**
-- Convex remains the source of truth for control-plane data.
+- Khala remains the source of truth for control-plane data.
 
 ## Alternatives Considered
 
-1. **Expose Convex HTTP endpoints directly** — rejected (leaks control-plane
+1. **Expose Khala HTTP endpoints directly** — rejected (leaks control-plane
    surface, weaker auth boundary).
 2. **Multiple public API bases** (e.g., separate control-plane domain) — rejected
    (fragments integrations; violates “single API base” requirement).
@@ -111,6 +111,6 @@ Backward compatibility expectations:
 
 - `docs/api/OPENAGENTS_API_CONTROL_PLANE.md`
 - `apps/api/src/lib.rs`
-- `apps/web/convex/control_http.ts`
-- `apps/web/convex/http.ts`
+- `apps/web/khala/control_http.ts`
+- `apps/web/khala/http.ts`
 - `GLOSSARY.md`

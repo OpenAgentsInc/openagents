@@ -14,7 +14,7 @@ Implement a pre-Voltage local-node track where the desktop app runs LND in Neutr
 This plan is intentionally synchronized with the current repo reality:
 
 - Desktop app exists but still runs a demo task provider (`apps/desktop/src/effect/taskProvider.ts`).
-- Web/Convex already has a typed Lightning task state machine (`apps/web/convex/lightning/tasks.ts`).
+- Web/Khala already has a typed Lightning task state machine (`apps/web/khala/lightning/tasks.ts`).
 - Buyer-side L402 library exists (`packages/lightning-effect`) and now includes seller contracts for hosted work.
 - Hosted infra issues (#1597-#1604) are open and should be sequenced around this local-node track, not ignored.
 
@@ -43,7 +43,7 @@ Completed synchronization phase:
 ### Control/orchestration
 
 - `openagents.com` web app and Worker remain orchestration and policy surfaces.
-- Convex remains the source of truth for task lifecycle and payment metadata.
+- Khala remains the source of truth for task lifecycle and payment metadata.
 
 ### Execution boundary
 
@@ -101,7 +101,7 @@ Primary touchpoints: `apps/desktop/src/effect/*` (new main-process services), `a
 
 Implement wallet lifecycle flows (init wallet, unlock wallet, detect locked state) through `lnd-effect`, with passphrase and sensitive material stored via OS keychain/secure storage abstractions. Ensure no secret-bearing values are sent to renderer or web layers.
 
-Include explicit recovery paths (seed backup acknowledgement, restore flow state) and deterministic failure taxonomy surfaced to desktop state and Convex task results.
+Include explicit recovery paths (seed backup acknowledgement, restore flow state) and deterministic failure taxonomy surfaced to desktop state and Khala task results.
 
 Primary touchpoints: `apps/desktop/src/effect/*`, `apps/desktop/src/preload.ts`, `apps/desktop/src/renderer.ts`, `packages/lnd-effect/src/services/*`.
 
@@ -113,13 +113,13 @@ This issue should keep adapters composable so later hosted/Voltage executors can
 
 Primary touchpoints: `packages/lightning-effect/src/adapters/*`, `packages/lightning-effect/src/layers/*`, `packages/lightning-effect/test/*`, `packages/lnd-effect/*`.
 
-## Issue Phase N7: Replace desktop demo task provider with Convex-backed real executor
+## Issue Phase N7: Replace desktop demo task provider with Khala-backed real executor
 
-Replace the in-memory demo queue in `apps/desktop/src/effect/taskProvider.ts` with a real provider that consumes the existing Convex task lifecycle (`queued/approved/running/paid/cached/blocked/failed/completed`) for the same signed-in user. Execute real L402 tasks through `lightning-effect` + `lnd-effect` and write deterministic task transitions/results back.
+Replace the in-memory demo queue in `apps/desktop/src/effect/taskProvider.ts` with a real provider that consumes the existing Khala task lifecycle (`queued/approved/running/paid/cached/blocked/failed/completed`) for the same signed-in user. Execute real L402 tasks through `lightning-effect` + `lnd-effect` and write deterministic task transitions/results back.
 
 This issue closes the runtime loop from `openagents.com` to local node payment execution and is the core product milestone for local agent payments.
 
-Primary touchpoints: `apps/desktop/src/effect/taskProvider.ts`, `apps/desktop/src/effect/executorLoop.ts`, `apps/web/convex/lightning/tasks.ts` (as needed), `apps/web/src/effect/lightning.ts` (status alignment).
+Primary touchpoints: `apps/desktop/src/effect/taskProvider.ts`, `apps/desktop/src/effect/executorLoop.ts`, `apps/web/khala/lightning/tasks.ts` (as needed), `apps/web/src/effect/lightning.ts` (status alignment).
 
 ## Issue Phase N8: Add/upgrade panes for node, wallet, transactions, and executor state
 
@@ -131,7 +131,7 @@ Primary touchpoints: `apps/desktop/src/renderer.ts`, `apps/desktop/src/index.css
 
 ## Issue Phase N9: Programmatic full-flow testing and CI-safe smoke harness
 
-Add non-interactive tests that verify the full path: web task creation -> Convex orchestration -> desktop executor -> local LND payment flow -> task/result projection. Include deterministic test adapters and a smoke harness for real local-node runs.
+Add non-interactive tests that verify the full path: web task creation -> Khala orchestration -> desktop executor -> local LND payment flow -> task/result projection. Include deterministic test adapters and a smoke harness for real local-node runs.
 
 This issue must add clear machine-runnable commands for agents and contributors. It should include CI-safe deterministic tests plus an opt-in local Neutrino smoke command for real-device validation.
 

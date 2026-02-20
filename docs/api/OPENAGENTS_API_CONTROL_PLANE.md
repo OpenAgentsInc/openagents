@@ -10,7 +10,7 @@ Canonical ADR:
 ## Goals
 
 - Provide a single public API base for control-plane entities (orgs/projects/repos/issues/tokens).
-- Keep Convex internal; expose only via the Cloudflare Worker boundary.
+- Keep Khala internal; expose only via the Cloudflare Worker boundary.
 - Use API tokens (`Authorization: Bearer <token>`) for authentication.
 
 ## Endpoints (Relative To `/api`)
@@ -32,7 +32,7 @@ Nostr helper endpoints:
 ## Auth
 
 - Client: `Authorization: Bearer <api_token>`
-- Worker injects internal control key when proxying to Convex control endpoints.
+- Worker injects internal control key when proxying to Khala control endpoints.
 
 ## Compatibility
 

@@ -63,7 +63,7 @@ Seller / paywall:
 Buyer:
 
 - If we want OpenAgents to pay external L402 endpoints, we can implement payment execution in:
-  - Convex/Worker-backed service (if keys can safely live there), or
+  - Khala/Worker-backed service (if keys can safely live there), or
   - a dedicated "wallet executor" service in Cloud Run/GCE with strict secret boundaries.
 - This doc focuses on the node foundation. The buyer executor is layered on top (see existing `docs/plans/active/lightning/*`).
 

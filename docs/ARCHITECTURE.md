@@ -1,264 +1,199 @@
-# OpenAgents Architecture Overview
+# OpenAgents Architecture
 
-This document gives a single architecture view of the full OpenAgents system across web, runtime, desktop, mobile, Lightning infrastructure, shared packages, Rust crates, and protocol contracts.
+This document defines the current architecture with **Khala** as the runtime-owned sync and replay plane.
 
-Use this as an orientation layer; canonical invariants remain in ADRs and contracts.
+## Scope
 
-- Coverage includes all application surfaces called out in `README.md`: `apps/openagents.com/`, `apps/mobile/`, `apps/autopilot-ios/`, `apps/inbox-autopilot/`, `apps/desktop/`, `apps/lightning-ops/`, `apps/lightning-wallet-executor/`, and `apps/openagents-runtime/` (plus current repo-active `apps/autopilot-desktop/`).
+Covered surfaces:
 
-- ADR index: `docs/adr/INDEX.md`
-- Runtime API contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- Proto authority: `proto/README.md`
+- `apps/openagents.com/`
+- `apps/openagents-runtime/`
+- `apps/mobile/`
+- `apps/desktop/`
+- `apps/autopilot-ios/`
+- `apps/inbox-autopilot/`
+- `apps/lightning-ops/`
+- `apps/lightning-wallet-executor/`
+- shared contracts under `proto/` and shared packages
 
-## System Topology
+Core references:
+
+- `docs/adr/INDEX.md`
+- `docs/sync/thoughts.md`
+- `docs/sync/ROADMAP.md`
+- `docs/sync/SURFACES.md`
+- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/openagents-runtime/docs/KHALA_SYNC.md`
+- `proto/README.md`
+
+## Topology
 
 ```mermaid
 flowchart LR
   subgraph clients["Client Surfaces"]
-    web["apps/openagents.com<br/>Laravel + Inertia + React<br/>Web control plane and user APIs"]
-    mobile["apps/mobile<br/>React Native / Expo<br/>Mobile surface"]
-    ios["apps/autopilot-ios<br/>Native iOS app (SwiftUI)<br/>Codex-first mobile lane"]
-    inboxAutopilot["apps/inbox-autopilot<br/>SwiftUI macOS + local Rust daemon<br/>Local-first inbox automation lane"]
-    rustDesktop["apps/autopilot-desktop<br/>Rust desktop Codex app"]
-    electronDesktop["apps/desktop<br/>Electron desktop Lightning app"]
+    web["openagents.com\nLaravel + Inertia + React"]
+    mobile["mobile\nReact Native / Expo"]
+    desktop["desktop\nElectron"]
+    ios["autopilot-ios\nSwiftUI"]
+    inbox["inbox-autopilot\nSwiftUI + local daemon"]
   end
 
-  subgraph control["Control + Execution Planes"]
-    runtime["apps/openagents-runtime<br/>Elixir runtime<br/>Execution authority"]
-    khala["Khala sync engine (runtime-owned)<br/>Postgres + WS projection/read-model sync (target)"]
-    convex["Convex (self-hosted or cloud)<br/>Projection/read-model sync layer (migration/legacy lanes)"]
-    laravel["Laravel auth/session + API proxy<br/>Sync token minting (/api/sync/token target, /api/convex/token legacy)"]
+  subgraph core["Control + Runtime"]
+    laravel["Laravel app\nAuth/session authority\nAPI gateway"]
+    runtime["OpenAgents Runtime\nExecution authority"]
+    khala["Khala\nRuntime-owned WS sync + replay"]
   end
 
-  subgraph lightning["Lightning and Payment Services"]
-    lops["apps/lightning-ops<br/>L402 policy compiler/validator"]
-    lwe["apps/lightning-wallet-executor<br/>Bolt11 payment executor"]
-    lnd["LND node"]
-    bitcoind["Bitcoin Core node"]
-    aperture["Aperture L402 gateway"]
+  subgraph db["Postgres Planes"]
+    laravelDb["Laravel authority plane\naccounts/sessions/l402 control"]
+    runtimeDb["Runtime authority plane\nruns/events/read-models/sync"]
   end
 
-  subgraph contracts["Shared Contracts and Libraries"]
-    proto["proto/<br/>Layer-0 schema authority"]
-    packages["packages/*<br/>TS shared libraries"]
-    crates["crates/*<br/>Rust workspace crates"]
+  subgraph lightning["Lightning Subsystem"]
+    lops["lightning-ops\npolicy compile/reconcile"]
+    lwe["wallet-executor\nbolt11 payer"]
+    aperture["Aperture"]
+    lnd["LND"]
+    bitcoind["bitcoind"]
   end
 
   web --> laravel
   mobile --> laravel
+  desktop --> laravel
   ios --> laravel
-  inboxAutopilot -.->|"standalone today / integration later"| laravel
-  rustDesktop --> laravel
-  electronDesktop --> laravel
+  inbox -.->|integration lane| laravel
 
   laravel --> runtime
-  runtime --> khala
   laravel --> khala
-  runtime -.->|"dual publish during migration"| convex
-  laravel -.->|"legacy Convex token bridge + non-migrated lanes"| convex
+  runtime --> khala
 
-  lops --> aperture
+  laravel --> laravelDb
+  runtime --> runtimeDb
+  khala --> runtimeDb
+
   lops --> laravel
-  aperture --> lnd
+  lops --> aperture
   lwe --> lnd
+  aperture --> lnd
   lnd --> bitcoind
-
-  runtime --- proto
-  laravel --- proto
-  mobile --- proto
-  ios --- proto
-  rustDesktop --- proto
-  web --- packages
-  mobile --- packages
-  electronDesktop --- packages
-  rustDesktop --- crates
 ```
 
-## Application Surfaces
+## Non-Negotiable Boundaries
 
-### Core product apps
+1. Runtime + runtime Postgres are authority for execution-domain state.
+2. Laravel + Laravel Postgres are authority for identity/session/control-plane state.
+3. Khala is projection delivery infrastructure, never an authority write path.
+4. Client apps do not write authority data through Khala.
+5. Shared schema contracts are proto-first under `proto/`.
 
-| App | Path | Primary role | Key stack | Delivery status (current) |
-|---|---|---|---|---|
-| OpenAgents web app | `apps/openagents.com/` | User-facing control plane, auth/session authority, API gateway/proxy, sync token minting (`/api/sync/token` target; Convex token bridge during migration) | Laravel 12, Inertia, React, TypeScript | Alpha/live |
-| OpenAgents runtime | `apps/openagents-runtime/` | Execution authority for runs/events, policy/spend, Codex worker lifecycle, replay semantics | Elixir, Phoenix, Postgres | Active runtime plane |
-| Mobile app | `apps/mobile/` | Mobile user/admin surface over the same runtime and projection contracts | React Native, Expo | Prerelease |
-| iOS app | `apps/autopilot-ios/` | Native iOS Autopilot surface, codex-first worker admin/stream lane | SwiftUI, Xcode | Prerelease |
-| Inbox Autopilot app | `apps/inbox-autopilot/` | Local-first inbox automation app with SwiftUI macOS shell + Rust daemon (Gmail sync/classify/draft/audit) | SwiftUI, Rust | Prerelease/adjacent lane |
-| Rust desktop Codex app | `apps/autopilot-desktop/` | Desktop Codex UX and local execution loops synchronized with runtime contracts | Rust workspace crates | Prerelease/integration in progress |
-| Electron desktop Lightning app | `apps/desktop/` | Desktop shell for Lightning/payment workflows and local execution boundaries | Electron, TS/JS packages | Prerelease |
+## Laravel Postgres vs Runtime Postgres
 
-### Service apps from `README.md`
+The architecture is based on ownership boundaries, not instance count.
 
-| App | Path | Primary role | Key stack | Delivery status (current) |
-|---|---|---|---|---|
-| Lightning ops compiler | `apps/lightning-ops/` | Compiles L402 route/policy intent into deterministic Aperture gateway config from Laravel control-plane APIs | Effect/TypeScript | Active service |
-| Lightning wallet executor | `apps/lightning-wallet-executor/` | Executes agent-controlled Bolt11 payments under policy/limit constraints | HTTP service + Spark/LN integration | Active service |
+### Laravel authority plane
 
-## Platform Domains (Product-Level)
+Owner:
 
-`README.md` describes OpenAgents as a platform made of runtime, reputation, and marketplace primitives. Current code mapping:
+- `apps/openagents.com` controllers/services/migrations.
 
-1. Runtime domain: implemented primarily in `apps/openagents-runtime/` with control-plane/API mediation in `apps/openagents.com/`.
-2. Reputation domain: implemented as durable execution artifacts/receipts/traces and replay evidence (`docs/execution/`, runtime events, observability artifacts), not as a standalone app.
-3. Marketplace domain: represented in roadmap and protocol surfaces; delivered incrementally via signatures/tools/protocol contracts rather than a single isolated app today.
+Authority includes:
 
-### External infrastructure operated by OpenAgents
+- users, sessions, profiles, tokens,
+- web control-plane state,
+- Lightning control-plane intent/state (`l402_control_plane_*`),
+- admin/API operational records.
 
-| Component | Role |
-|---|---|
-| `bitcoind` | Bitcoin Core full node backing Lightning infrastructure |
-| `lnd` | Lightning node used by gateway/payment flows |
-| Aperture | L402 gateway enforcing paid-route policy |
-| Khala | Runtime-owned Postgres + WS projection/read-model sync engine (target lane) |
-| Convex | Reactive projection/read-model layer for migration and non-migrated lanes |
+### Runtime authority plane
 
-## Authority Boundaries (Critical)
+Owner:
 
-These are non-negotiable system boundaries.
+- `apps/openagents-runtime` services/projectors/migrations.
 
-1. Runtime + Postgres are the source of truth for run events, Codex worker lifecycle, policy/spend, and replay artifacts.
-2. Khala is projection/delivery only (runtime-owned subsystem in `apps/openagents-runtime` for v1).
-3. Convex remains projection-only where still enabled during migration; it is never authority.
-4. Runtime is the single writer to projection documents (Khala and Convex during dual-publish windows).
-5. Laravel remains auth/session authority and mints short-lived sync tokens (`/api/sync/token` target; `/api/convex/token` during migration).
-6. Proto definitions under `proto/` are the shared Layer-0 schema authority.
+Authority includes:
 
-Primary references:
-- `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md`
-- `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`
-- `apps/openagents-runtime/docs/CONVEX_SYNC.md`
-- `docs/sync/thoughts.md`
-- `docs/sync/ROADMAP.md`
+- run/worker/event durability,
+- replay receipts/artifacts,
+- runtime read models,
+- Khala tables (`runtime.sync_*`), including watermarks and replay journal.
 
-## Database Topology (Clarified)
+### Deployment relationship
 
-This section clarifies the practical meaning of "single authority database" in this architecture.
+Supported deployment patterns:
 
-### Current state (2026-02-20)
+- one Cloud SQL instance with separate logical DB/schema ownership,
+- separate Cloud SQL instances for Laravel and runtime.
 
-1. Runtime authority lane:
-   - Runtime authority data (runs/workers/events/projections) is Postgres-backed.
-   - In current Cloud Run wiring, `openagents-runtime` and `openagents-web` both connect to Cloud SQL instance `l402-aperture-db`, with runtime currently using database `openagents_web`.
-2. Convex lane:
-   - Self-hosted Convex non-prod uses a separate Cloud SQL instance (`oa-convex-nonprod-pg`, database `convex_nonprod`).
-3. Lightning lane:
-   - Aperture uses Postgres in `l402-aperture-db` (database `aperture`).
-4. Non-authority stores still in use:
-   - Redis for Laravel cache/queue/session.
-   - Local SQLite stores in desktop/mobile/local daemons where applicable.
-   - Service-local storage for specific components (for example wallet executor internals).
+In either pattern:
 
-### Target state (Khala fully implemented)
+- cross-plane writes are not allowed,
+- cross-plane reads/actions happen only through explicit APIs,
+- ownership remains with the app that owns migrations for that plane.
 
-1. Runtime-owned Postgres is the single authority data plane for runtime/Codex state (and Lightning control-plane state after second-wave migration).
-2. Khala delivers derived read-model updates from that authority plane to clients over WS.
-3. Clients continue to do initial HTTP hydration + incremental Khala updates.
-4. Convex is removed from migrated lanes and eventually decommissioned by lane.
+## Khala (Runtime-Owned Sync Plane)
 
-### Important qualifier
+Khala v1 ships inside `apps/openagents-runtime` and shares runtime Postgres for transactional correctness.
 
-"Single database" in this architecture means a single authority data plane for agent/runtime domain correctness. It does **not** mean every subsystem in OpenAgents must share one physical database or drop caches/local stores.
+Khala responsibilities:
 
-## End-to-End Data and Control Flows
+- authenticated WebSocket subscriptions,
+- per-topic durable watermarks,
+- replay-on-resume and stale-cursor handling,
+- bounded catch-up and live fanout for runtime read models.
 
-### Flow A: Codex worker lifecycle (web/mobile/iOS/desktop)
+Khala storage model:
 
-1. Client calls Laravel APIs (`/api/runtime/codex/workers*`).
-2. Laravel validates user session and forwards signed internal requests to runtime (`/internal/v1/codex/workers*`).
-3. Runtime executes lifecycle operations, records durable events in Postgres, applies policy/spend controls, and emits stream/replay-safe artifacts.
-4. Runtime projector writes derived summaries to Khala (and optionally Convex during dual-publish migration windows).
-5. Clients consume:
-   - authoritative control/status via Laravel<->runtime path
-   - low-latency projection badges/summaries via Khala WS subscriptions (`sync:v1`) with replay resume + heartbeat timeout semantics (or Convex until each surface migrates).
+- `runtime.sync_stream_events`: ordered replay journal by topic/watermark,
+- `runtime.sync_topic_sequences`: DB-native per-topic watermark allocation,
+- `runtime.sync_*_summaries`: runtime-owned read-model payload tables.
 
-### Flow A1: iOS Codex handshake lane (current)
+Khala protocol model:
 
-1. iOS signs in with email code via `POST /api/auth/email` and `POST /api/auth/verify`.
-2. iOS uses bearer token APIs:
-   - `GET /api/runtime/codex/workers`
-   - `POST /api/runtime/codex/workers`
-   - `GET /api/runtime/codex/workers/{workerId}`
-   - `POST /api/runtime/codex/workers/{workerId}/events`
-   - `GET /api/runtime/codex/workers/{workerId}/stream` (`Accept: text/event-stream`)
-3. Laravel proxies stream and control requests to runtime using signed internal headers.
-4. Runtime SSE stream emits worker events; iOS advances cursor from `id:` values.
-5. Desktop ack events are produced only when a desktop worker is actually connected/running.
+- proto-first contracts under `proto/openagents/sync/v1/`,
+- WS-only live transport (no new SSE lane for Khala),
+- client-side watermark persistence and idempotent doc-version apply.
 
-### Flow B: L402 policy and Lightning payment path
+## App Consumption Matrix
 
-1. Route/policy + settlement/security control-plane authority is persisted in Postgres-backed Laravel tables via internal endpoints (`/api/internal/lightning-ops/control-plane/query|mutation`).
-2. `apps/lightning-ops/` compiles/validates deterministic Aperture config from that intent and records deployment/security/settlement parity events through the same control-plane API.
-3. Aperture enforces incoming paid routes via `lnd`.
-4. For outbound paid calls, `apps/lightning-wallet-executor/` pays Bolt11 invoices via Lightning wallet integrations and policy limits.
-5. Node infrastructure is anchored by `lnd` + `bitcoind`.
+| App | Khala usage | Bootstrap + auth | Authority writes |
+|---|---|---|---|
+| `apps/openagents.com` | feature-gated Khala WS for Codex summaries | runtime/Laravel HTTP + `POST /api/sync/token` | Laravel APIs + runtime APIs |
+| `apps/mobile` | feature-gated Khala WS for worker summaries | runtime HTTP + `POST /api/sync/token` | Laravel/runtime APIs |
+| `apps/desktop` | feature-gated Khala WS for status summaries | Laravel/runtime HTTP + sync token | Laravel/runtime APIs |
+| `apps/autopilot-ios` | runtime SSE remains primary lane | Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
+| `apps/inbox-autopilot` | local-first primary, Khala not primary | local daemon + selected APIs | local daemon + selected APIs |
+| `apps/lightning-ops` | no Khala dependency for control-plane lane | internal Laravel control-plane APIs | Laravel internal control-plane APIs |
+| `apps/lightning-wallet-executor` | no Khala dependency | service-local config + Lightning infra | service-local + Lightning infra |
+| `apps/openagents-runtime` | produces and serves Khala stream/read models | runtime Postgres direct | runtime Postgres direct |
 
-## Shared Contract and Library Layers
+## Canonical Data Flows
 
-### `proto/` (Layer-0 universal schema)
+### Runtime/Codex sync flow
 
-- Canonical shared protocol contracts (`codex_workers`, `codex_events`, `codex_auth`, receipts, events, reasons, comms).
-- Lightning control-plane schema authority now lives in `proto/openagents/lightning/v1/control_plane.proto`.
-- Additive evolution policy with Buf breaking checks.
-- Code generation verification lives in `scripts/verify-proto-generate.sh`.
+1. Client calls Laravel/runtime HTTP API for baseline state.
+2. Runtime commits authority event to runtime Postgres.
+3. Runtime projector updates read model and appends Khala stream journal event with topic watermark.
+4. Client subscribes via Khala WS and resumes from its persisted watermark.
+5. Khala replays missed events then streams live updates.
 
-### `packages/` (shared TS libraries)
+### Lightning control-plane flow
 
-- Shared orchestration/UI/runtime helper libraries used by web/mobile/desktop/service apps.
-- Includes Effect-oriented libraries and Lightning-related shared modules.
+1. Operator actions hit Laravel control-plane APIs.
+2. Laravel persists control-plane state in Laravel Postgres.
+3. `lightning-ops` reads intent via internal API and compiles/reconciles gateway state.
+4. Gateway/payment infrastructure executes policy and settlement lifecycle.
 
-### `crates/` (shared Rust workspace)
+## Contracts and Observability
 
-- Shared Rust crates used by the Rust desktop Codex app and supporting runtime/client integrations.
-- Consolidates desktop runtime abstractions, protocol clients, and UI integration crates.
+- Protocol/schema authority: `proto/`.
+- Runtime contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`.
+- Sync architecture and rollout docs: `docs/sync/*`.
+- Runtime operations and telemetry docs: `apps/openagents-runtime/docs/*`.
+- Lightning operations runbooks: `docs/lightning/runbooks/*`.
 
-## Deployment Shape (Current Direction)
+## Change Control
 
-1. `apps/openagents.com` deploys as the web control plane (Cloud Run-centric operations).
-2. `apps/openagents-runtime` is the execution plane with Postgres durability and stream/replay contracts.
-3. Khala v1 ships inside `apps/openagents-runtime` and shares Postgres for transactional projection+delivery correctness.
-4. Convex remains non-authoritative projection infrastructure only for migration and non-migrated lanes.
-5. Lightning services (`lightning-ops`, `lightning-wallet-executor`, Aperture, LND, bitcoind) run as a dedicated payment subsystem.
-6. Desktop/mobile/iOS clients consume the same runtime/proto contracts as web.
+Architecture-affecting changes must update:
 
-### Production wiring snapshot (2026-02-20)
-
-1. `openagents-web` (Cloud Run) proxies Codex worker APIs to `openagents-runtime` via `OA_RUNTIME_ELIXIR_BASE_URL`.
-2. Shared runtime signing secret is enforced on both sides (`OA_RUNTIME_SIGNING_KEY` in web, `RUNTIME_SIGNATURE_SECRET` in runtime).
-3. Runtime stream endpoints are routed through an auth-only internal pipeline so SSE requests with `Accept: text/event-stream` are accepted.
-4. Convex token bridge (`/api/convex/token`) remains active for migration; `/api/sync/token` is available for Khala clients.
-5. Khala sync socket auth validates JWT `kid` against runtime HS256 keyring (current + previous keys) for rotation-safe verification.
-6. Web Codex admin summary updates can run on Khala WS behind `VITE_KHALA_SYNC_ENABLED`; disabled mode keeps legacy polling lane behavior.
-7. Mobile Codex summary updates use Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED`; Convex provider boot was removed from mobile app startup.
-8. Desktop status connectivity can run on Khala lane behind `OA_DESKTOP_KHALA_SYNC_ENABLED` without Convex URL/token configuration.
-9. Runtime parity auditor (`OpenAgentsRuntime.Sync.ParityAuditor`) tracks Convex-vs-Khala mismatch rate and lag drift during dual-publish windows.
-10. Lightning ops control-plane API is live in Laravel at `/api/internal/lightning-ops/control-plane/query|mutation`, backed by `l402_control_plane_*` Postgres tables.
-11. `apps/lightning-ops` now uses API/mock transport modes only; Convex transport has been removed from the Lightning lane.
-
-### Current Cloud SQL guardrails
-
-1. Database instance is currently small (`db-f1-micro`), so connection pressure must be constrained.
-2. Runtime Cloud Run service is constrained to low DB fan-out (`POOL_SIZE=2`, `max-instances=1`).
-3. Web Cloud Run service is constrained to reduce burst DB pressure (`max-instances=1`, lower concurrency).
-4. If these constraints are raised, DB tier and connection budget must be scaled first.
-
-## Operational and Verification Expectations
-
-1. Architecture changes should be captured in ADRs before or with implementation.
-2. Runtime correctness cannot be moved into Laravel controllers/models.
-3. Projection drift must be recoverable by runtime replay/reprojection.
-4. Claims of completion require relevant build/test harness evidence per surface.
-
-## Related Docs
-
-- Repository map: `docs/PROJECT_OVERVIEW.md`
-- Documentation index: `docs/README.md`
-- Runtime contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- Runtime ops: `apps/openagents-runtime/docs/OPERATIONS.md`
-- Khala sync spec: `docs/sync/thoughts.md`
-- Khala roadmap: `docs/sync/ROADMAP.md`
-- Khala parity dashboard: `docs/sync/PARITY_DASHBOARD.md`
-- Khala runtime/Codex cutover runbook: `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
-- Convex sync plan: `docs/plans/active/convex-self-hosting-runtime-sync-plan.md`
-- Convex roadmap: `docs/plans/active/convex-runtime-codex-master-roadmap.md`
-- Codex unified plan: `docs/codex/unified-runtime-desktop-plan.md`
+1. `docs/ARCHITECTURE.md`,
+2. relevant ADRs in `docs/adr/`,
+3. sync docs under `docs/sync/` when Khala behavior/surfaces change.

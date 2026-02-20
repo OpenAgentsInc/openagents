@@ -5,7 +5,7 @@ use App\Http\Controllers\Api\AuthRegisterController;
 use App\Http\Controllers\Api\AutopilotController;
 use App\Http\Controllers\Api\AutopilotStreamController;
 use App\Http\Controllers\Api\ChatController;
-use App\Http\Controllers\Api\ConvexTokenController;
+use App\Http\Controllers\Api\KhalaTokenController;
 use App\Http\Controllers\Api\Internal\LightningOpsControlPlaneController;
 use App\Http\Controllers\Api\Internal\RuntimeSecretController;
 use App\Http\Controllers\Api\L402Controller;
@@ -54,7 +54,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('/tokens/{tokenId}', [TokenController::class, 'destroy'])
         ->whereNumber('tokenId');
     Route::delete('/tokens', [TokenController::class, 'destroyAll']);
-    Route::post('/convex/token', [ConvexTokenController::class, 'store']);
+    Route::post('/khala/token', [KhalaTokenController::class, 'store']);
     Route::post('/sync/token', [SyncTokenController::class, 'store']);
 
     Route::get('/chats', [ChatController::class, 'index']);

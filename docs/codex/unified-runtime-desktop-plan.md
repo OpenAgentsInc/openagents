@@ -100,21 +100,21 @@ Current adapter behavior is development-only `in_memory`.
 
 This gives one worker contract for all surfaces while keeping desktop-first execution.
 
-## Convex Sync Lane (Optional, Recommended for Multi-Client Reactivity)
+## Khala Sync Lane (Optional, Recommended for Multi-Client Reactivity)
 
-Convex is allowed as a reactive sync/read-model layer for Codex UI surfaces, but
+Khala is allowed as a reactive sync/read-model layer for Codex UI surfaces, but
 not as Codex lifecycle authority.
 
 Rules:
 
 1. Runtime/Postgres remains source-of-truth for Codex worker lifecycle/events.
-2. Convex stores derived worker summaries/notification state for subscriptions.
-3. Runtime is the single writer into Convex projection docs.
-4. Laravel remains auth/session authority and mints Convex auth tokens.
+2. Khala stores derived worker summaries/notification state for subscriptions.
+3. Runtime is the single writer into Khala projection docs.
+4. Laravel remains auth/session authority and mints Khala auth tokens.
 
 Active implementation plan:
 
-- `docs/plans/active/convex-self-hosting-runtime-sync-plan.md`
+- `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`
 
 ## Required Contract Shape
 
@@ -255,13 +255,13 @@ Work:
 - Start read-only parity (snapshot + stream).
 - Add safe admin controls (stop, limited request actions) behind role/policy guards.
 - Reuse the same runtime worker IDs and event schema.
-- Reuse Laravel convex token minting for mobile Convex auth (`POST /api/convex/token`) with refresh-aware caching.
+- Reuse Laravel khala token minting for mobile Khala auth (`POST /api/khala/token`) with refresh-aware caching.
 
 Implementation status (2026-02-19):
 
 - Mobile now exposes a Codex worker tab backed by Laravel runtime APIs for list/snapshot/stream/admin actions.
 - Stream parity uses runtime cursor/tail semantics with reconnect-safe long polling.
-- Convex auth path on mobile now mints short-lived tokens via Laravel instead of reusing raw session token directly.
+- Khala auth path on mobile now mints short-lived tokens via Laravel instead of reusing raw session token directly.
 
 ## Event Taxonomy Baseline
 
@@ -327,8 +327,8 @@ Runtime snapshot/list heartbeat policy fields:
 
 ## ADR Alignment
 
-- `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md` defines the
-  Convex sync-layer boundary and Codex operational posture for Convex CLI/MCP.
+- `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md` defines the
+  Khala sync-layer boundary and Codex operational posture for Khala CLI/MCP.
 
 ## Change Control
 

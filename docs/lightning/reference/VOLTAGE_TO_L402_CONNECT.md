@@ -74,16 +74,16 @@ From `L402_AGENT_PAYWALL_INFRA_PLAN.md` (archived) and `STAGING_GATEWAY_RECONCIL
    - Front it with an HTTPS load balancer; that’s your paywall URL.
 
 3. **lightning-ops**
-   - Set Convex + ops secret env vars (see `apps/lightning-ops/README.md`).
-   - For staging reconcile, **gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (set by `staging-reconcile.sh` and by the smoke program when unset). You only need `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET`.
+   - Set Khala + ops secret env vars (see `apps/lightning-ops/README.md`).
+   - For staging reconcile, **gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (set by `staging-reconcile.sh` and by the smoke program when unset). You only need `OA_LIGHTNING_OPS_KHALA_URL` and `OA_LIGHTNING_OPS_SECRET`.
    - Run:
      - `./scripts/staging-reconcile.sh`
      or
-     - `npm run smoke:staging -- --json --mode convex`
+     - `npm run smoke:staging -- --json --mode khala`
    - Reconcile verifies 402 issuance and authenticated proxy; it does not configure Voltage. Voltage is configured only in the Aperture deployment (authenticator + secrets).
 
 4. **Settlement ingestion**
-   - The plan includes a settlement ingest pipeline from LND (Voltage) to Convex. That’s separate from “connecting Voltage to L402”: first get Aperture talking to Voltage for challenges; then wire invoice/settlement events from Voltage into Convex per the Phase 3A/ingest design.
+   - The plan includes a settlement ingest pipeline from LND (Voltage) to Khala. That’s separate from “connecting Voltage to L402”: first get Aperture talking to Voltage for challenges; then wire invoice/settlement events from Voltage into Khala per the Phase 3A/ingest design.
 
 ---
 
@@ -92,9 +92,9 @@ From `L402_AGENT_PAYWALL_INFRA_PLAN.md` (archived) and `STAGING_GATEWAY_RECONCIL
 - [ ] Voltage node created; you have gRPC host and port (e.g. `:10009`).
 - [ ] TLS cert and (scoped) invoice macaroon obtained; stored in Secret Manager (or equivalent).
 - [ ] Base Aperture config (or deploy template) includes `authenticator` with `lndhost`, `tlspath`, `macdir` pointing at Voltage and the mounted secrets.
-- [ ] `apps/lightning-ops` compiles routes from Convex paywall state; deploy merges or injects that into Aperture’s config.
+- [ ] `apps/lightning-ops` compiles routes from Khala paywall state; deploy merges or injects that into Aperture’s config.
 - [ ] Aperture deployed (e.g. Cloud Run) with secrets mounted and config that has both Voltage auth and OpenAgents routes.
-- [ ] Staging reconcile and smoke tests pass (gateway URLs default to `https://l402.openagents.com/staging`; set only `OA_LIGHTNING_OPS_CONVEX_URL` and `OA_LIGHTNING_OPS_SECRET`).
+- [ ] Staging reconcile and smoke tests pass (gateway URLs default to `https://l402.openagents.com/staging`; set only `OA_LIGHTNING_OPS_KHALA_URL` and `OA_LIGHTNING_OPS_SECRET`).
 
 ---
 
@@ -169,7 +169,7 @@ Recommended (matches repo plan): run Aperture as a **single service on GCP Cloud
    - Use upstream [lightninglabs/aperture](https://github.com/lightninglabs/aperture) (pin a git SHA). Build with Docker/Cloud Build and push to Artifact Registry (or use an official image if Lightning Labs publish one).
 2. **Config**
    - Base config with `authenticator` pointing at `openagents.m.voltageapp.io:10009`, `tlspath` and `macdir` set to paths inside the container.
-   - Merge in or mount the **routes** YAML produced by `apps/lightning-ops` (compile from Convex paywall state). Our compiler emits a custom `version: 1` / `routes:` format; confirm Aperture’s current schema supports it or add a small transform in the deploy pipeline.
+   - Merge in or mount the **routes** YAML produced by `apps/lightning-ops` (compile from Khala paywall state). Our compiler emits a custom `version: 1` / `routes:` format; confirm Aperture’s current schema supports it or add a small transform in the deploy pipeline.
 3. **Secrets**
    - GCP Secret Manager: store `tls.cert` and invoice macaroon. Use Cloud Run “secret as volume” (or env) so the container sees e.g. `/secrets/tls.cert` and `/secrets/invoice.macaroon`; set `tlspath` and `macdir` to those.
 4. **Database**

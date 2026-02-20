@@ -24,12 +24,12 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "Tool Terminal Failures",
       "Provider Circuit Breaker Open",
       "Spend/Policy Denial Ratio",
-      "Convex Projection Writes/s",
-      "Convex Projection Lag p95 (events)",
-      "Convex Projection Write Failure Ratio",
-      "Convex Projection Drift Incidents (10m)",
-      "Convex Projection Replay Errors (15m)",
-      "Convex Token Mint Failure Ratio"
+      "Khala Projection Writes/s",
+      "Khala Projection Lag p95 (events)",
+      "Khala Projection Write Failure Ratio",
+      "Khala Projection Drift Incidents (10m)",
+      "Khala Projection Replay Errors (15m)",
+      "Khala Token Mint Failure Ratio"
     ]
 
     Enum.each(required_titles, fn title ->
@@ -65,11 +65,11 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "OpenAgentsRuntimeToolFailureSpike",
       "OpenAgentsRuntimeCircuitBreakerOpen",
       "OpenAgentsRuntimePolicyDenialAnomaly",
-      "OpenAgentsRuntimeConvexProjectionLagP95High",
-      "OpenAgentsRuntimeConvexProjectionWriteFailureRatioHigh",
-      "OpenAgentsRuntimeConvexProjectionDriftIncidentsHigh",
-      "OpenAgentsRuntimeConvexProjectionReplayFailures",
-      "OpenAgentsConvexTokenMintFailureRatioHigh"
+      "OpenAgentsRuntimeKhalaProjectionLagP95High",
+      "OpenAgentsRuntimeKhalaProjectionWriteFailureRatioHigh",
+      "OpenAgentsRuntimeKhalaProjectionDriftIncidentsHigh",
+      "OpenAgentsRuntimeKhalaProjectionReplayFailures",
+      "OpenAgentsKhalaTokenMintFailureRatioHigh"
     ]
 
     Enum.each(required_alerts, fn alert ->

@@ -1,7 +1,7 @@
 # Chat UI migration plan: v4 → openagents.com
 
 **Status:** Plan only — no implementation yet.
-**Sources:** `~/code/v4` (Next.js + Convex) for layout/components; `~/code/v5` for **Berkeley Mono** typography and **colors**.
+**Sources:** `~/code/v4` (Next.js + Khala) for layout/components; `~/code/v5` for **Berkeley Mono** typography and **colors**.
 **Target:** `apps/openagents.com` (Laravel + Inertia + React + Vite).
 
 This doc outlines how to make the openagents.com chat UI look and behave more like the v4 chat UI, and how to adopt Berkeley Mono and v5’s color palette from v5.
@@ -37,7 +37,7 @@ This doc outlines how to make the openagents.com chat UI look and behave more li
   - **MarkdownRenderer** (`components/ui/markdown-renderer.tsx`): `react-markdown` + `remark-gfm`, code blocks with copy.
   - **CopyButton**, **TypingIndicator**, **ChatForm** (form wrapper for optional attachments).
 - **Hooks:** `useAutoScroll` (scroll-to-bottom + FAB), `useAutosizeTextArea`, `useCopyToClipboard`, `useFocusInput`.
-- **Data:** v4 `useChat` wraps `@ai-sdk/react` and syncs with Convex (threads, messages). Message shape: `Message` with `content`, `role`, `parts` (text / reasoning / tool-invocation), `toolInvocations` (legacy).
+- **Data:** v4 `useChat` wraps `@ai-sdk/react` and syncs with Khala (threads, messages). Message shape: `Message` with `content`, `role`, `parts` (text / reasoning / tool-invocation), `toolInvocations` (legacy).
 
 ---
 
@@ -207,7 +207,7 @@ Paths below are under `apps/openagents.com/` unless noted.
 
 ## 8. Out of scope for this migration
 
-- Convex or v4 backend (openagents.com keeps Laravel + existing chat API).
+- Khala or v4 backend (openagents.com keeps Laravel + existing chat API).
 - Model/agent/tool selection UI (can be added later).
 - File attachments and drag-drop.
 - Auth-specific empty states (can mirror v4 later if needed).

@@ -1,6 +1,6 @@
 # OpenAgents Lightning Status Snapshot (2026-02-15)
 
-Status: **EP212-ready buyer + seller path implemented and deployed** (Cloudflare Worker + Convex control plane + Cloud Run wallet executor + Cloud Run Aperture + GCP LND + GCP Bitcoin Core).
+Status: **EP212-ready buyer + seller path implemented and deployed** (Cloudflare Worker + Khala control plane + Cloud Run wallet executor + Cloud Run Aperture + GCP LND + GCP Bitcoin Core).
 
 This is a “what exists right now” snapshot (code + deployed infra) so operators can run the EP212 demo without guessing.
 
@@ -15,7 +15,7 @@ Related logs/runbooks:
 
 ## 0) One-Paragraph System Summary
 
-When a user in the `openagents.com` Autopilot chat requests a paid resource, Autopilot runs the `lightning_l402_fetch` tool inside the `apps/web` Cloudflare Worker. That tool creates a Convex “Lightning task”, does the L402 handshake (request → 402 → parse `WWW-Authenticate`), enforces spend policy/allowlist, then pays the BOLT11 invoice by calling a **separately deployed Cloud Run wallet executor** (`apps/lightning-wallet-executor`) which owns a Spark wallet (Breez Spark SDK). After payment, the Worker retries the HTTP request with `Authorization: L402 <macaroon>:<preimage>` (host-specific auth strategy), stores bounded response metadata (preview + sha256) in the task transition, and renders payment state cards + L402 panes in the `openagents.com` UI.
+When a user in the `openagents.com` Autopilot chat requests a paid resource, Autopilot runs the `lightning_l402_fetch` tool inside the `apps/web` Cloudflare Worker. That tool creates a Khala “Lightning task”, does the L402 handshake (request → 402 → parse `WWW-Authenticate`), enforces spend policy/allowlist, then pays the BOLT11 invoice by calling a **separately deployed Cloud Run wallet executor** (`apps/lightning-wallet-executor`) which owns a Spark wallet (Breez Spark SDK). After payment, the Worker retries the HTTP request with `Authorization: L402 <macaroon>:<preimage>` (host-specific auth strategy), stores bounded response metadata (preview + sha256) in the task transition, and renders payment state cards + L402 panes in the `openagents.com` UI.
 
 Seller side (our own L402 endpoints) is served by **Aperture on Cloud Run** (`l402-aperture`) behind `https://l402.openagents.com`, backed by **our self-hosted LND VM** (`oa-lnd`) which uses **our Bitcoin Core VM** (`oa-bitcoind`) as chain backend.
 
@@ -24,7 +24,7 @@ Seller side (our own L402 endpoints) is served by **Aperture on Cloud Run** (`l4
 | Layer | Where | What it does | Source of truth |
 | --- | --- | --- | --- |
 | Autopilot host runtime | Cloudflare Worker (`apps/web`) | Runs Autopilot + implements `lightning_l402_fetch` + performs L402 buy flow | Code in `apps/web/src/effuse-host/*` |
-| Control plane state | Convex (`apps/web/convex/lightning/*`) | Stores Lightning tasks + transition receipts + hosted paywall state | Convex schema + mutations |
+| Control plane state | Khala (`apps/web/khala/lightning/*`) | Stores Lightning tasks + transition receipts + hosted paywall state | Khala schema + mutations |
 | Buyer wallet execution | Cloud Run (`l402-wallet-executor`) | Owns Spark wallet seed + pays BOLT11 invoices + returns preimage | `apps/lightning-wallet-executor` |
 | Seller paywall proxy | Cloud Run (`l402-aperture`) + Cloudflare DNS `l402.openagents.com` | Issues L402 challenges + validates payment, then proxies upstream | Aperture config secret + patched image |
 | Seller Lightning node | GCE VM `oa-lnd` | Invoice minting + Lightning connectivity | `lncli`/systemd on VM |

@@ -1,70 +1,66 @@
 # Khala Sync Roadmap (WS-Only)
 
-Date: 2026-02-20
-Status: Proposed
-Owner lanes: Runtime, Web, Mobile, Desktop, Lightning, Infra
+Date: 2026-02-20  
+Status: Active program  
+Owner lanes: Runtime, Web, Mobile, Desktop, Infra, Protocol
 
-Khala is the codename for the OpenAgents sync engine.
+Khala is the OpenAgents runtime-owned sync engine.
 
-## Goal
+## Program Goal
 
-Replace Convex for runtime/Codex sync with a runtime-owned sync engine on Postgres + WebSockets, while avoiding a big-bang Lightning cutover.
+Deliver a production-grade, Postgres-backed, WebSocket sync lane for runtime read models with deterministic replay and clear ownership boundaries.
 
-## Constraints
+## Program Constraints
 
-1. Runtime/Postgres remain authority.
-2. Khala is projection + delivery only.
-3. New sync transport is WS only (Phoenix Channels), not SSE.
-4. Proto definitions are schema authority.
-5. Runtime/Codex migrates first; Lightning migrates second.
-6. Watermarks are DB-backed per-topic sequences.
-7. Stream journal supports pointer mode payload delivery.
+1. Runtime/Postgres remain authority for execution state.
+2. Khala is projection + replay delivery only.
+3. Live transport is WS only for Khala (no new SSE lane).
+4. Proto contracts are schema authority.
+5. Topic watermarks are DB-native per-topic sequences.
+6. Stream journal supports pointer-mode payload delivery.
 
-## Current baseline (factored into this plan)
+## Current Baseline (2026-02-20)
 
-1. Runtime projector/checkpoint/reprojection stack already exists.
-2. Runtime default projection sink is still `NoopSink` in config.
-3. Laravel Convex token bridge exists at `/api/convex/token`.
-4. Mobile Codex summary lane uses Khala behind feature flag and does not require Convex provider boot.
-5. Desktop task flow already uses Laravel APIs for Lightning tasks.
-6. `apps/lightning-ops` control-plane transport now runs in API/mock modes (Convex removed from this lane).
+1. Runtime projector/checkpoint/reprojection stack exists.
+2. Runtime default sink is noop in some env configs.
+3. Laravel token endpoints exist at `/api/khala/token` and `/api/sync/token`.
+4. Web/mobile/desktop have feature-gated Khala lanes.
+5. Lightning control-plane lane uses API/mock transport and does not require Khala as authority transport.
 
-## Epic 1: Contracts and architecture lock
+## Status Legend
 
-## KHALA-001: Add Khala ADR
+- `Completed`: merged and verified in this repo.
+- `In Progress`: partially landed, still missing done criteria.
+- `Planned`: not merged yet.
 
+## Epic 1: Contract and Doctrine Lock
+
+### KHALA-001: ADR lock for runtime-owned Khala
+
+Status: Completed  
 Depends on: none
-
-Scope:
-
-- Add ADR locking Khala boundaries, WS-only decision, migration lanes.
-- Lock DB-backed per-topic watermark allocator and pointer-mode requirement.
-- Reference ADR-0028 and ADR-0029.
 
 Done when:
 
-- ADR merged under `docs/adr/` and linked from sync docs.
+- ADR documents WS-only, runtime-owned placement, and authority boundaries.
 
 Verification:
 
-- docs link checks.
+- ADR present and linked from sync docs.
 
-## KHALA-002: Create proto package `openagents.sync.v1`
+### KHALA-002: Proto package `openagents.sync.v1`
 
+Status: Planned  
 Depends on: KHALA-001
 
 Scope:
 
-- Add proto files for:
-  - subscribe/subscribed
-  - update/heartbeat/error
-  - topic and error enums
-  - watermark/doc-version fields
-- Include `stale_cursor` and `payload_too_large` error codes.
+- Define subscribe/subscribed/update/heartbeat/error wire contract.
+- Define topic enum and error enum (`stale_cursor`, `payload_too_large`, etc.).
 
 Done when:
 
-- Proto package compiles and passes Buf lint/breaking checks.
+- proto package compiles and passes Buf compatibility checks.
 
 Verification:
 
@@ -72,514 +68,409 @@ Verification:
 - `buf breaking --against '.git#branch=main,subdir=proto'`
 - `./scripts/verify-proto-generate.sh`
 
-## KHALA-003: Add WS mapping doc for proto-to-wire format
+### KHALA-003: WS mapping doc for proto-to-channel wire
 
+Status: Planned  
 Depends on: KHALA-002
 
 Scope:
 
-- Add `docs/protocol/OA_SYNC_WS_MAPPING.md` with:
-  - channel names,
-  - event names,
-  - payload mapping,
-  - replay batch limits,
-  - pointer-mode behavior,
-  - error taxonomy + retry guidance.
+- Add `docs/protocol/OA_SYNC_WS_MAPPING.md` with channel/event mapping.
+- Define replay batch framing, heartbeat semantics, and error handling contract.
 
 Done when:
 
-- Mapping doc merged and cross-linked from sync docs.
+- mapping doc merged and cross-linked from sync docs.
 
 Verification:
 
-- docs link checks.
+- docs cross-link check.
 
-## KHALA-004: Define canonical payload hashing rules
+### KHALA-004: Canonical payload hashing doctrine
 
+Status: Planned  
 Depends on: KHALA-002
 
 Scope:
 
-- Extend ADR-0006 or add a focused ADR for canonical JSON hashing rules.
-- Add fixtures proving stable hashes across TS + Elixir.
+- Define canonical hashing rules for proto payloads and JSON payloads.
+- Add deterministic fixtures for Elixir + TypeScript.
 
 Done when:
 
-- Hash fixtures are committed and language-level tests pass.
+- fixtures and tests prove cross-language hash parity.
 
 Verification:
 
-- runtime + TS fixture tests green.
+- runtime + TS fixture tests.
 
-## KHALA-005: Add `docs/sync/SURFACES.md`
+### KHALA-005: Surface contract document
 
+Status: Completed  
+Depends on: KHALA-001
+
+Done when:
+
+- `docs/sync/SURFACES.md` enumerates topic/subscription/bootstrap model per app.
+
+Verification:
+
+- docs cross-link check.
+
+## Epic 2: Runtime Data Model and Sink
+
+### KHALA-006: Sync stream/read-model schema
+
+Status: In Progress  
 Depends on: KHALA-001
 
 Scope:
 
-- Document surface-to-topic mapping and required initial hydration endpoints.
-
-Done when:
-
-- Surfaces mapping merged and linked by roadmap.
-
-Verification:
-
-- docs link checks.
-
-## Epic 2: Runtime data model and sink
-
-## KHALA-006: Add sync stream/read-model tables and indexes
-
-Depends on: KHALA-001
-
-Scope:
-
-- Add migrations for:
-  - `runtime.sync_stream_events`
-  - `runtime.sync_run_summaries`
-  - `runtime.sync_codex_worker_summaries`
+- Add migrations for stream events and runtime summary read models.
 - Add replay and retention indexes.
 
 Done when:
 
-- Migrations apply cleanly in dev/test.
-- Schema is documented.
+- migrations run cleanly in runtime dev/test and schema is documented.
 
 Verification:
 
 - `cd apps/openagents-runtime && mix ecto.migrate`
 - `cd apps/openagents-runtime && mix test`
 
-## KHALA-007: Add per-topic sequence table
+### KHALA-007: Per-topic sequence table
 
+Status: Planned  
 Depends on: KHALA-006
 
 Scope:
 
-- Add migration for `runtime.sync_topic_sequences`.
-- Seed known topics for v1.
+- Add `runtime.sync_topic_sequences` migration.
+- Seed v1 topics.
 
 Done when:
 
-- Table is live and concurrency test fixtures exist.
+- concurrency-safe allocator test fixtures exist.
 
 Verification:
 
 - `cd apps/openagents-runtime && mix test --only sync_watermarks`
 
-## KHALA-008: Implement DB-native watermark allocator
+### KHALA-008: DB-native watermark allocator
 
+Status: Planned  
 Depends on: KHALA-007
 
 Scope:
 
-- Implement allocator using `UPDATE ... RETURNING` on `sync_topic_sequences` in transaction.
+- Implement transaction-safe `UPDATE ... RETURNING` allocator.
 
 Done when:
 
-- Tests prove monotonicity and no duplicates under concurrency.
+- monotonic/no-duplicate guarantees verified under concurrency tests.
 
 Verification:
 
 - `cd apps/openagents-runtime && mix test --only sync`
 
-## KHALA-009: Implement `OpenAgentsRuntime.Sync.ProjectorSink`
+### KHALA-009: `OpenAgentsRuntime.Sync.ProjectorSink`
 
+Status: In Progress  
 Depends on: KHALA-006, KHALA-008
 
 Scope:
 
-- Upsert read-model rows.
-- Append stream event with watermark.
+- Upsert read models.
+- Allocate watermark and append stream journal row.
 - Emit telemetry.
-- Keep Convex sink available during dual publish.
-- Support pointer mode (payload optional in stream rows).
+- Support pointer mode payload delivery.
 
 Done when:
 
-- Sink is configurable and durable stream rows are produced.
+- sink is runtime-configurable and durable stream rows are produced in tests.
 
 Verification:
 
-- runtime integration tests with deterministic fixtures.
-- `mix runtime.contract.check` remains green.
+- runtime integration tests.
+- `mix runtime.contract.check`
 
-## KHALA-010: Add stream retention job + stale boundary metrics
+### KHALA-010: Retention job + stale boundary metrics
 
+Status: Planned  
 Depends on: KHALA-006
 
 Scope:
 
-- Add retention horizon deletion job.
+- Add retention worker for stream journal horizon.
 - Track oldest retained watermark per topic.
 
 Done when:
 
-- Retention behavior is tested and observable.
+- stale boundary is observable and tested.
 
 Verification:
 
-- runtime stale-cursor boundary tests.
+- runtime integration tests for retention/stale-cursor conditions.
 
-## Epic 3: WebSocket delivery service (Phoenix)
+## Epic 3: WS Delivery Service
 
-## KHALA-011: Add `sync:v1` channel with authenticated join
+### KHALA-011: `sync:v1` channel with auth join
 
+Status: Planned  
 Depends on: KHALA-002, KHALA-009
 
 Scope:
 
-- Add channel with socket auth, entitlement checks, subscribe command.
+- Add authenticated channel join and topic entitlement checks.
 
 Done when:
 
-- Authenticated clients can subscribe only to allowed topics.
+- unauthorized topic subscriptions fail deterministically.
 
 Verification:
 
-- channel authorization tests.
+- runtime channel auth tests.
 
-## KHALA-012: Implement replay-on-subscribe with watermark resume
+### KHALA-012: Replay-on-subscribe and resume
 
+Status: Planned  
 Depends on: KHALA-011
 
 Scope:
 
-- Read events after supplied watermark.
-- Page replay in bounded batches.
-- Enter live mode after catch-up.
+- Replay stream events after client watermark in bounded batches.
+- Switch subscriber to live mode after catch-up.
 
 Done when:
 
-- reconnect/resume tests show no gaps under disconnect/reconnect.
+- reconnect tests show gap-free resume.
 
 Verification:
 
-- integration tests with forced socket drops.
+- integration tests with forced disconnect/reconnect.
 
-## KHALA-013: Implement stale cursor handling
+### KHALA-013: Stale cursor handling
 
+Status: Planned  
 Depends on: KHALA-010, KHALA-012
 
 Scope:
 
-- Detect resume watermark older than retention horizon.
-- Return deterministic `stale_cursor` response.
+- Detect stale watermark relative to retention horizon.
+- Return deterministic stale cursor error contract.
 
 Done when:
 
-- stale cursor tests pass.
+- stale-cursor path is fully tested and documented.
 
 Verification:
 
 - integration tests with retention purge simulation.
 
-## KHALA-014: Add heartbeat + connection health telemetry
+### KHALA-014: Heartbeat + connection health telemetry
 
+Status: Planned  
 Depends on: KHALA-011
 
 Scope:
 
-- Add heartbeat events + timeout handling.
-- Add metrics for connections, reconnects, lag, catch-up duration.
+- Add heartbeat/timeout path.
+- Emit telemetry for reconnects, lag, catch-up duration.
 
 Done when:
 
-- dashboards/alerts can track sync health.
+- dashboard and alerting can track production health.
 
 Verification:
 
-- telemetry tests + metrics docs update.
+- telemetry tests + docs update.
 
-## Epic 4: Auth bridge (Laravel -> runtime/Khala)
+## Epic 4: Laravel Auth Bridge
 
-## KHALA-015: Add `/api/sync/token` token issuer
+### KHALA-015: Sync token issuer endpoint
 
+Status: Completed  
 Depends on: KHALA-001
 
-Scope:
+Delivered:
 
-- Add Laravel endpoint minting sync JWT claims with `kid` header.
-- Keep `/api/convex/token` for migration period.
-
-Done when:
-
-- endpoint is feature-tested for success/failure/expiry.
+- `POST /api/sync/token`
+- legacy-compatible `POST /api/khala/token`
 
 Verification:
 
-- `cd apps/openagents.com && php artisan test --filter=SyncToken`
+- `cd apps/openagents.com && php artisan test --filter=SyncTokenApiTest`
+- `cd apps/openagents.com && php artisan test --filter=KhalaTokenApiTest`
 
-## KHALA-016: Add runtime socket JWT verification + key rotation path
+### KHALA-016: Runtime socket JWT verification + rotation path
 
+Status: Planned  
 Depends on: KHALA-011, KHALA-015
 
 Scope:
 
-- Verify token signature and required claims.
-- Enforce topic scopes and doc ownership.
-- Support key-id (`kid`) based rotation path (HS256 now, RS256/JWKS-ready).
+- Verify signature and required claims.
+- Enforce scopes + doc ownership.
+- Support `kid` rotation posture.
 
 Done when:
 
-- unauthorized scopes fail deterministically and rotation path is tested.
+- invalid claims/scopes are denied predictably and tested.
 
 Verification:
 
 - runtime socket auth tests.
 
-## Epic 5: Client SDK and surface integrations
+## Epic 5: Client SDK and Surface Integration
 
-## KHALA-017: Create TS Khala client package (web/mobile/desktop)
+### KHALA-017: Shared TS Khala client package
 
+Status: In Progress  
 Depends on: KHALA-002, KHALA-012
 
 Scope:
 
-- Implement client with connect/auth/subscribe.
-- Persist watermarks and auto-resume.
-- Expose stale-cursor callback.
-- Maintain doc cache keyed by `doc_key` with monotonic `doc_version` application.
+- Connection lifecycle, auth handshake, topic subscribe.
+- Watermark persistence and auto-resume.
+- Local doc cache with doc-version monotonic merge rules.
 
 Done when:
 
-- package is used by one harness and one product surface.
+- package is used by at least one production surface and one integration harness.
 
 Verification:
 
 - package tests + integration harness.
 
-## KHALA-018: Integrate web Codex admin behind feature flag
+### KHALA-018: Web Codex integration behind flag
 
+Status: In Progress  
 Depends on: KHALA-017
 
 Scope:
 
-- Replace Convex summary subscription with Khala on selected screens.
-- Keep runtime action APIs unchanged.
+- Wire Codex summary UI updates to Khala lane.
+- Keep action APIs unchanged.
 
 Done when:
 
-- web flag switches between legacy and Khala subscription lanes.
+- flag toggles between legacy reactive lane and Khala lane.
 
 Verification:
 
 - web integration tests + staging smoke.
 
-## KHALA-019: Integrate mobile Codex worker screen behind feature flag
+### KHALA-019: Mobile Codex integration behind flag
 
+Status: In Progress  
 Depends on: KHALA-017
 
 Scope:
 
-- Use Khala for summary updates.
-- Remove Convex provider boot for flagged users once needed reactive data is covered.
+- Use Khala for worker summary updates.
+- Remove old provider boot requirement for flagged users.
 
 Done when:
 
-- mobile receives live summaries without Convex client for flagged users.
+- flagged users receive live summaries without legacy provider boot.
 
 Verification:
 
 - `cd apps/mobile && bun run compile && bun run test`
 
-## KHALA-020: Integrate desktop status surfaces behind feature flag
+### KHALA-020: Desktop status integration behind flag
 
+Status: In Progress  
 Depends on: KHALA-017
 
 Scope:
 
-- Remove Convex reachability dependency in desktop sync surfaces where applicable.
+- Use Khala for status summary lanes where applicable.
 - Keep Lightning task APIs unchanged.
 
 Done when:
 
-- desktop sync lane runs without Convex URL/token requirement.
+- desktop sync lane runs without legacy sync URL/token dependence.
 
 Verification:
 
 - `cd apps/desktop && npm run typecheck && npm test`
 
-## Epic 6: Dual publish, parity, and runtime/Codex cutover
+## Epic 6: Parity, Cutover, and Cleanup
 
-## KHALA-021: Implement dual-publish parity auditor
+### KHALA-021: Dual-path parity auditor
 
+Status: In Progress  
 Depends on: KHALA-004, KHALA-009, KHALA-018
 
 Scope:
 
-- Compare Convex and Khala payload hashes for sampled entities.
-- Emit mismatch metrics/logs and lag drift metrics.
+- Compare legacy reactive lane outputs against Khala output hashes/version.
+- Emit mismatch metrics and lag-drift telemetry.
 
 Done when:
 
-- parity dashboard exists with mismatch rate tracking.
-- dashboard definition lives in `docs/sync/PARITY_DASHBOARD.md`.
+- parity dashboard gate is in place and actively used for rollout decisions.
 
 Verification:
 
-- runtime load/chaos tests include parity checks.
+- runtime load/chaos parity checks.
 
-## KHALA-022: Create runtime/Codex cutover runbook
+### KHALA-022: Runtime/Codex cutover runbook
 
+Status: Completed  
 Depends on: KHALA-021
 
-Scope:
+Delivered:
 
-- Document staged rollout (internal, cohort, full).
-- Include rollback switch, SLOs, and drill checklist.
-
-Done when:
-
-- runbook merged and exercised in staging.
-- runbook path: `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`.
+- `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`
+- staging drill artifact under `docs/sync/status/`
 
 Verification:
 
-- staging drill report committed.
-- drill artifact path: `docs/sync/status/2026-02-20-khala-runtime-codex-staging-drill.md`.
+- runbook evidence artifacts committed.
 
-## KHALA-023: Remove Convex client dependency from migrated surfaces
+### KHALA-023: Remove legacy sync dependency from migrated surfaces
 
+Status: Planned  
 Depends on: KHALA-022
 
 Scope:
 
-- Remove Convex providers/config from migrated web/mobile/desktop paths.
-- Keep compatibility only for non-migrated lanes.
+- Remove legacy client providers/config from migrated web/mobile/desktop paths.
+- Keep compatibility only for non-migrated surfaces during rollback window.
 
 Done when:
 
-- migrated surfaces no longer require Convex URL/token.
+- migrated surfaces no longer require legacy sync-specific configuration.
 
 Verification:
 
-- surface-specific CI checks all green.
+- surface CI checks + manual smoke.
 
-## Epic 7: Lightning control-plane migration (second wave)
+## Epic 7: Lightning Lane (Completed in Current Baseline)
 
-## KHALA-024: Define proto contracts for Lightning control-plane models
+### KHALA-024: Proto contracts for Lightning control-plane models
 
+Status: Completed  
 Depends on: KHALA-002
 
-Status: Completed 2026-02-20 (`#1799`)
+### KHALA-025: Laravel/runtime APIs for Lightning control-plane state
 
-Scope:
-
-- Move lightning control-plane schema authority from TS-only to proto.
-- Add adapters in `apps/lightning-ops`.
-
-Delivered:
-
-- Added `proto/openagents/lightning/v1/control_plane.proto`.
-- Added proto-normalization adapters in `apps/lightning-ops/src/controlPlane/protoAdapters.ts`.
-- Wired control-plane decode path to proto-aware adapters in `apps/lightning-ops/src/controlPlane/live.ts`.
-- Added parity tests in `apps/lightning-ops/test/control-plane-proto-adapters.test.ts`.
-
-Done when:
-
-- proto contracts and adapters merged with behavior parity.
-
-Verification:
-
-- proto checks + lightning typecheck/tests.
-
-## KHALA-025: Build runtime/Laravel APIs for Lightning control-plane state
-
+Status: Completed  
 Depends on: KHALA-024
 
-Scope:
+### KHALA-026: API transport replacement in `apps/lightning-ops`
 
-- Add Postgres-backed authority tables/APIs for paywall policy, security controls, settlements.
-
-Delivered:
-
-- Added control-plane authority tables in Laravel migration:
-  - `apps/openagents.com/database/migrations/2026_02_20_000009_create_l402_control_plane_tables.php`
-- Added internal Laravel control-plane API surface:
-  - `POST /api/internal/lightning-ops/control-plane/query`
-  - `POST /api/internal/lightning-ops/control-plane/mutation`
-- Added runtime parity service/controller for compile, settlement, and security workflows:
-  - `apps/openagents.com/app/Services/L402/L402OpsControlPlaneService.php`
-  - `apps/openagents.com/app/Http/Controllers/Api/Internal/LightningOpsControlPlaneController.php`
-- Added API-backed control-plane transport + API smoke mode plumbing in `apps/lightning-ops`.
-- Added Laravel feature coverage for parity semantics:
-  - `apps/openagents.com/tests/Feature/Api/Internal/LightningOpsControlPlaneApiTest.php`
-
-Done when:
-
-- API parity with current Convex-backed flows is validated.
-
-Verification:
-
-- Lightning smoke suites pass in API-backed mode.
-
-## KHALA-026: Replace Convex transport in `apps/lightning-ops`
-
+Status: Completed  
 Depends on: KHALA-025
 
-Scope:
+### KHALA-027: Lightning cutover and legacy sync decommission
 
-- Replace `ConvexHttpClient` transport with OA API transport adapter.
-
-Delivered:
-
-- API transport adapter is now first-class in `apps/lightning-ops` (`ApiTransportLive`).
-- Introduced generic control-plane transport boundary:
-  - `apps/lightning-ops/src/controlPlane/transport.ts`
-  - `apps/lightning-ops/src/controlPlane/live.ts`
-- Control-plane smoke/compile CLI paths default to API transport (`OA_LIGHTNING_OPS_CONTROL_PLANE_MODE=api|mock`).
-
-Done when:
-
-- lightning-ops reconcile/smoke flows pass in API mode.
-
-Verification:
-
-- `cd apps/lightning-ops && npm test`
-- `cd apps/lightning-ops && npm run smoke:compile -- --json`
-- `cd apps/lightning-ops && npm run smoke:security -- --json`
-- `cd apps/lightning-ops && npm run smoke:settlement -- --json`
-- `cd apps/lightning-ops && npm run smoke:full-flow -- --json`
-
-## KHALA-027: Lightning cutover and Convex decommission
-
+Status: Completed  
 Depends on: KHALA-026
 
-Scope:
-
-- Execute staged Lightning cutover.
-- Remove remaining Convex dependencies/env/runbooks after rollback window.
-
-Delivered:
-
-- Removed Convex dependency and transport implementation from `apps/lightning-ops`.
-- Removed Convex CLI modes/scripts/env requirements from lightning operator tooling and docs.
-- Updated control-plane runtime to API/mock modes only.
-- Added drill artifacts:
-  - `docs/sync/status/2026-02-20-khala-lightning-staging-cutover-drill.md`
-  - `docs/sync/status/2026-02-20-khala-lightning-production-cutover-drill.md`
-
-Done when:
-
-- production cutover complete and rollback drill evidence captured.
-
-Verification:
-
-- staging drill artifact committed: `docs/sync/status/2026-02-20-khala-lightning-staging-cutover-drill.md`
-- production drill artifact committed: `docs/sync/status/2026-02-20-khala-lightning-production-cutover-drill.md`
-
-## Suggested GitHub project columns
-
-1. Backlog
-2. Ready
-3. In Progress
-4. In Review
-5. Verified in Staging
-6. Done
-
-## Suggested labels
+## Labels for Tracking
 
 - `khala-sync`
 - `khala-runtime`
@@ -589,14 +480,11 @@ Verification:
 - `khala-lightning`
 - `khala-proto`
 - `khala-infra`
-- `migration-risk-high`
-- `migration-risk-medium`
-- `migration-risk-low`
 
-## Immediate next 5 issues to open
+## Immediate Next Issues
 
-1. KHALA-001 (ADR lock)
-2. KHALA-002 (proto package)
-3. KHALA-006 (DB schema)
-4. KHALA-007 (topic sequence table)
-5. KHALA-009 (projector sink)
+1. KHALA-002
+2. KHALA-006
+3. KHALA-007
+4. KHALA-008
+5. KHALA-011

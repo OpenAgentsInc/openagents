@@ -41,6 +41,6 @@ All runtime tables and sequences live under the `runtime` Postgres schema.
 - Append and replay paths must index by `(run_id, seq)`.
 - Thread-facing reads should index `(thread_id, created_at/updated_at)`.
 - Projection jobs must maintain monotonic watermarks in dedicated tables.
-- Convex projector state is tracked in `runtime.convex_projection_checkpoints`
+- Khala projector state is tracked in `runtime.khala_projection_checkpoints`
   keyed by `(projection_name, entity_id)` for idempotent replay + drift checks.
 - Khala replay scans are keyed by `(topic, watermark)` and retention deletes by `inserted_at`.

@@ -999,7 +999,7 @@ Backends to support (incrementally):
 
 - Autopilot worker: Durable Object SQLite (natural fit; co-located with thread state)
 - shared/global: KV/R2 (optional)
-- UI surfacing: Convex mirror (optional; not canonical)
+- UI surfacing: Khala mirror (optional; not canonical)
 
 ### 10.2 Runtime receipt integration
 

@@ -1,12 +1,12 @@
-# Overnight Self Improvement Plan (Agent-Run, Convex-First, Prod-Verified)
+# Overnight Self Improvement Plan (Agent-Run, Khala-First, Prod-Verified)
 
 - **Status:** Implemented (Phases 1–9 shipped in code; this doc is the runbook/checklist)
 - **Last updated:** 2026-02-10
-- **Legacy scope:** This runbook documents the former `apps/web` Worker + Convex loop and is retained for historical/operator context.
+- **Legacy scope:** This runbook documents the former `apps/web` Worker + Khala loop and is retained for historical/operator context.
 - **Priority:** programmatic loop first; UI is read-only later
 - **Primary refs (do not duplicate):**
   - Operator workflow + current endpoints: `docs/autopilot/runbooks/DSE_PLAYBOOK.md`
-  - System plan + Convex-first constraints: `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md`
+  - System plan + Khala-first constraints: `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md`
   - RLM program + phases: `docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
   - Prod E2E harness: `docs/autopilot/testing/PROD_E2E_TESTING.md`
   - UI determinism posture: `docs/autopilot/testing/STREAM_TESTING.md`
@@ -16,7 +16,7 @@
 This is the single overnight plan to make Autopilot *actually* self-improve in a loop in production:
 
 - **Agents (Codex and others) can run it programmatically** (no clicking required).
-- **All evidence is stored in Convex** for later visualization (read-only pages).
+- **All evidence is stored in Khala** for later visualization (read-only pages).
 - **Prod is verified** (E2E + request-id correlation), and changes ship behind canary/promotion gates.
 
 ## Non-Goals (Overnight)
@@ -28,14 +28,14 @@ This is the single overnight plan to make Autopilot *actually* self-improve in a
 
 We consider “overnight self-improve” successful when, for at least one target signature:
 
-- We have a real dataset in Convex (`dseExamples`) with a holdout split.
+- We have a real dataset in Khala (`dseExamples`) with a holdout split.
 - We ran compile in prod and stored:
   - `dseCompileReports` (jobHash + datasetHash)
   - `dseArtifacts` (compiled artifact)
 - We ran either:
   - a canary rollout (stored in `dseCanaries` + `dseCanaryHistory`), or
   - a promotion (stored in `dseActiveArtifacts` + `dseActiveArtifactHistory`).
-- We have an **ops run record** in Convex (new) that links everything (commit sha, signature ids, compile report ids, promoted ids, E2E summary).
+- We have an **ops run record** in Khala (new) that links everything (commit sha, signature ids, compile report ids, promoted ids, E2E summary).
 - Prod E2E passes Autopilot + DSE observability:
   - `apps-web.prod.autopilot.dse-canary-recap-shows-debug-card-and-trace` in `packages/effuse-test/src/suites/apps-web.ts`.
 
@@ -55,9 +55,9 @@ We run two tracks, but only one needs to “ship” overnight.
   - Source: `apps/autopilot-worker/src/dseCatalog.ts`
   - Why: ensures `rlm_lite.v1` remains visible + debuggable in prod (receipts + trace blobs).
 
-## Convex: What Must Be Stored (Source Of Truth)
+## Khala: What Must Be Stored (Source Of Truth)
 
-Already implemented tables (see `apps/web/convex/schema.ts`):
+Already implemented tables (see `apps/web/khala/schema.ts`):
 
 - Datasets: `dseExamples`
 - Compile outputs: `dseArtifacts`, `dseCompileReports`
@@ -75,7 +75,7 @@ Why: later visualization should not require scraping local logs or `output/effus
 Worker secrets that must be present in the deployed Worker environment:
 
 - `OA_DSE_ADMIN_SECRET` (authorizes DSE ops endpoints via `Authorization: Bearer ...`)
-- `OA_E2E_JWT_PRIVATE_JWK` (used by the Worker to mint an ops-admin JWT for Convex access)
+- `OA_E2E_JWT_PRIVATE_JWK` (used by the Worker to mint an ops-admin JWT for Khala access)
 - (prod E2E only) `OA_E2E_BYPASS_SECRET` (enables deterministic login via `/api/auth/e2e/*`)
   - Runner-side env `EFFUSE_TEST_E2E_BYPASS_SECRET` must match this secret
 - `OPENROUTER_API_KEY` (required for some compile/eval paths; RLM-lite trigger is gated without it)
@@ -101,7 +101,7 @@ Suggested secret bootstrap (run from `apps/web`):
 # 1) Headless DSE ops admin bearer secret (any random string is fine)
 node -e 'console.log(`oa_dse_${require(\"crypto\").randomUUID()}`)' | npx wrangler secret put OA_DSE_ADMIN_SECRET
 
-# 2) E2E JWT signing key (RSA private JWK, used for ops-admin Convex JWT minting too)
+# 2) E2E JWT signing key (RSA private JWK, used for ops-admin Khala JWT minting too)
 node --input-type=module -e 'import { generateKeyPair, exportJWK } from \"jose\"; const { privateKey } = await generateKeyPair(\"RS256\", { extractable: true }); console.log(JSON.stringify(await exportJWK(privateKey)));' | npx wrangler secret put OA_E2E_JWT_PRIVATE_JWK
 
 # 3) E2E bypass secret (must match runner-side EFFUSE_TEST_E2E_BYPASS_SECRET)
@@ -110,7 +110,7 @@ node -e 'console.log(`oa_e2e_${require(\"crypto\").randomUUID()}`)' | npx wrangl
 
 Notes:
 
-- Rotating `OA_E2E_JWT_PRIVATE_JWK` changes the public keys served at `/api/auth/e2e/jwks`; Convex verifies E2E/ops-admin JWTs against that JWKS URL (see `apps/web/convex/auth.config.ts`).
+- Rotating `OA_E2E_JWT_PRIVATE_JWK` changes the public keys served at `/api/auth/e2e/jwks`; Khala verifies E2E/ops-admin JWTs against that JWKS URL (see `apps/web/khala/auth.config.ts`).
 - After rotating secrets, deploy the Worker (`cd apps/web && npm run deploy:worker`) before running the overnight loop.
 
 Local prerequisites (run once per session, in a separate terminal):
@@ -126,8 +126,8 @@ Local notes:
   - `OA_DSE_ADMIN_SECRET`
   - `OA_E2E_JWT_PRIVATE_JWK`
 - The overnight runner uses `OA_DSE_ADMIN_SECRET`; it must match the Worker value.
-- `OA_E2E_JWT_PRIVATE_JWK` must correspond to the public key served at `https://openagents.com/api/auth/e2e/jwks` (see `apps/web/convex/auth.config.ts`).
-  - You cannot generate a random key for local ops-admin mode: Convex will reject admin JWTs with `InvalidAuthHeader` (kid/JWKS mismatch).
+- `OA_E2E_JWT_PRIVATE_JWK` must correspond to the public key served at `https://openagents.com/api/auth/e2e/jwks` (see `apps/web/khala/auth.config.ts`).
+  - You cannot generate a random key for local ops-admin mode: Khala will reject admin JWTs with `InvalidAuthHeader` (kid/JWKS mismatch).
 
 Recommended local dev pattern (do not commit secrets):
 
@@ -161,7 +161,7 @@ EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
   bun run apps/web/scripts/dse-overnight.ts --base-url https://openagents.com --e2e-grep "apps-web\\.prod\\.autopilot"
 ```
 
-Where to look for results (read-only pages backed by Convex):
+Where to look for results (read-only pages backed by Khala):
 
 - `/dse` (ops run list)
 - `/dse/ops/:runId` (timeline + links)
@@ -173,22 +173,22 @@ Note: the CLI `apps/web/scripts/dse-overnight.ts` auto-sets its working director
 
 This plan is **9 phases**.
 
-- Phases 1–6 make the loop agent-runnable and Convex-backed (plus read-only visualization).
+- Phases 1–6 make the loop agent-runnable and Khala-backed (plus read-only visualization).
 - Phases 7–9 extend rewards/eval/trace-mining/knobs so we can self-improve non-discrete long-context signatures.
 
-### Phase 1: Programmatic Ops Auth + Run Recording (Convex)
+### Phase 1: Programmatic Ops Auth + Run Recording (Khala)
 
-Objective: agents can operate `/api/dse/*` without a browser session, and every overnight run is recorded in Convex.
+Objective: agents can operate `/api/dse/*` without a browser session, and every overnight run is recorded in Khala.
 
 Deliverables:
 
 - Worker secrets:
   - `OA_DSE_ADMIN_SECRET`
-  - `OA_E2E_JWT_PRIVATE_JWK` (mint ops-admin JWT for Convex)
+  - `OA_E2E_JWT_PRIVATE_JWK` (mint ops-admin JWT for Khala)
 - Admin auth mode for DSE endpoints:
   - accept `Authorization: Bearer <OA_DSE_ADMIN_SECRET>` as an alternative to WorkOS session cookies
   - applies to: compile/promote/canary/trace-export + new ops endpoints
-- Convex tables:
+- Khala tables:
   - `dseOpsRuns`: `{ runId, startedAtMs, endedAtMs?, commitSha, baseUrl, actor, status, signatureIds, notes?, links... }`
   - `dseOpsRunEvents`: `{ runId, tsMs, phase, level, message, json? }`
 - Worker endpoints (admin-secret gated):
@@ -198,11 +198,11 @@ Deliverables:
 
 Exit criteria:
 
-- A headless script can start a run, append events, and finish a run, and the data is visible in Convex.
+- A headless script can start a run, append events, and finish a run, and the data is visible in Khala.
 
 ### Phase 2: Programmatic Runner (One Command) + Baseline Checks
 
-Objective: one command runs the overnight loop steps deterministically and logs everything to Convex.
+Objective: one command runs the overnight loop steps deterministically and logs everything to Khala.
 
 Deliverables:
 
@@ -226,9 +226,9 @@ Exit criteria:
 
 - `bun run apps/web/scripts/dse-overnight.ts --base-url ...` creates a `dseOpsRuns` record and emits events.
 
-### Phase 3: Dataset Ingestion (Convex) For SelectTool
+### Phase 3: Dataset Ingestion (Khala) For SelectTool
 
-Objective: agents can seed/update a real dataset in Convex without manual UI.
+Objective: agents can seed/update a real dataset in Khala without manual UI.
 
 Deliverables:
 
@@ -237,7 +237,7 @@ Deliverables:
   - Each row includes: `exampleId`, `inputJson`, `expectedJson`, `split`, `tags`
 - A programmatic import path:
   - Option A (preferred): a Worker endpoint `POST /api/dse/examples/import` (admin-secret gated) that upserts into `dseExamples`.
-  - Option B: the overnight script calls Convex directly with a privileged token (harder in prod).
+  - Option B: the overnight script calls Khala directly with a privileged token (harder in prod).
 - Dataset rules:
   - at least ~30 examples
   - at least 10 holdout examples (`split="holdout"`)
@@ -246,7 +246,7 @@ Deliverables:
 Exit criteria:
 
 - Re-running the import is idempotent (upsert by `signatureId+exampleId`).
-- `POST /api/dse/compile` against prod uses the Convex dataset.
+- `POST /api/dse/compile` against prod uses the Khala dataset.
 
 ### Phase 4: Make Compile Non-Trivial + Single Source Of Truth Job Spec
 
@@ -272,7 +272,7 @@ Exit criteria:
 
 ### Phase 5: Fully Automated Prod Run (Compile -> Canary -> Promote/Rollback) + Prod E2E
 
-Objective: agents can run the full loop in prod, safely, with all outcomes recorded in Convex.
+Objective: agents can run the full loop in prod, safely, with all outcomes recorded in Khala.
 
 Deliverables:
 
@@ -282,7 +282,7 @@ Deliverables:
   3. generate traffic to reach `minSamples` quickly:
      - run `packages/effuse-test` prod tests that exercise `/autopilot` messages
      - optionally add a dedicated “signature exerciser” endpoint for SelectTool to generate samples deterministically
-  4. monitor canary counters via Convex queries (`dseCanaries`) until:
+  4. monitor canary counters via Khala queries (`dseCanaries`) until:
      - minSamples reached and errorRate OK, OR
      - auto-stop triggers, OR
      - timeout
@@ -296,20 +296,20 @@ EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
   npm run test:e2e -- --base-url https://openagents.com --tag prod --grep "apps-web\\.prod\\.autopilot"
 ```
 
-- Store E2E summary in Convex (`dseOpsRuns` + events):
+- Store E2E summary in Khala (`dseOpsRuns` + events):
   - pass/fail
   - failing test ids
   - request ids (`x-oa-request-id`) when available
 
 Exit criteria:
 
-- By morning, Convex contains:
+- By morning, Khala contains:
   - dataset rows, compile report, artifact, canary history, and either promotion or rollback history
   - plus a single `dseOpsRuns` record linking them all.
 
 ### Phase 6: Read-Only Visualization
 
-Objective: display the Convex-stored loop evidence on web pages, without control surfaces.
+Objective: display the Khala-stored loop evidence on web pages, without control surfaces.
 
 Deliverables:
 
@@ -319,7 +319,7 @@ Deliverables:
   - datasets + example diffs
   - links to receipts + traces
 
-Implemented pages (Effuse, Convex-backed):
+Implemented pages (Effuse, Khala-backed):
 
 - `/dse` ops runs list (`apps/web/src/effuse-pages/dseOpsRuns.ts`)
 - `/dse/ops/:runId` ops run detail + events timeline (`apps/web/src/effuse-pages/dseOpsRunDetail.ts`)
@@ -329,7 +329,7 @@ Implemented pages (Effuse, Convex-backed):
 
 Exit criteria:
 
-- A non-operator can answer “what improved last night?” by reading web pages backed by Convex.
+- A non-operator can answer “what improved last night?” by reading web pages backed by Khala.
 
 ### Phase 7: Judge Rewards For Non-Discrete Outputs
 
@@ -345,14 +345,14 @@ Deliverables:
   - applied to:
     - `@openagents/autopilot/canary/RecapThread.v1`
     - `@openagents/autopilot/rlm/SummarizeThread.v1`
-- Store eval reports in Convex:
+- Store eval reports in Khala:
   - table: `dseEvalReports`
   - endpoint: `POST /api/dse/eval`
   - read-only pages for report inspection
 
 Exit criteria:
 
-- Recap/summarization compile/eval is possible with a pinned judge and a Convex-stored report that can be audited later.
+- Recap/summarization compile/eval is possible with a pinned judge and a Khala-stored report that can be audited later.
 
 ### Phase 8: Trace Mining Scale-Up (Headless)
 
@@ -419,17 +419,17 @@ Current endpoints and storage:
 - Most admin endpoints live in `apps/web/src/effuse-host/dseAdmin.ts` and are auth-gated by either:
   - browser session cookies (WorkOS), or
   - `Authorization: Bearer <OA_DSE_ADMIN_SECRET>` (headless ops mode).
-- Convex DSE tables/functions: `apps/web/convex/dse/*`
+- Khala DSE tables/functions: `apps/web/khala/dse/*`
 - Target signatures: `apps/autopilot-worker/src/dseCatalog.ts`
 - Prod E2E suite: `packages/effuse-test/src/suites/apps-web.ts`
 
 ## Implementation Log
 
-- 2026-02-10T08:19:24Z Phase 1: programmatic DSE ops auth + Convex ops run recording.
+- 2026-02-10T08:19:24Z Phase 1: programmatic DSE ops auth + Khala ops run recording.
 - Added Worker env typing + admin-secret auth helper:
   - `OA_DSE_ADMIN_SECRET` support (`Authorization: Bearer <OA_DSE_ADMIN_SECRET>`)
-  - Worker-minted admin JWT (subject=`user_dse_admin`) via `OA_E2E_JWT_PRIVATE_JWK` for headless Convex access.
-- Added Convex ops persistence:
+  - Worker-minted admin JWT (subject=`user_dse_admin`) via `OA_E2E_JWT_PRIVATE_JWK` for headless Khala access.
+- Added Khala ops persistence:
   - tables: `dseOpsRuns`, `dseOpsRunEvents`
   - mutations: `startRun`, `appendEvent`, `finishRun` (admin-only).
 - Added Worker ops endpoints (admin-secret gated):
@@ -440,13 +440,13 @@ Current endpoints and storage:
   - `POST /api/dse/compile`
   - `POST /api/dse/promote`
   - `POST /api/dse/canary/start`, `POST /api/dse/canary/stop`
-  - `POST /api/dse/trace/export` (includes admin-only Convex reads for receipt/blob).
+  - `POST /api/dse/trace/export` (includes admin-only Khala reads for receipt/blob).
 - Tests / verification:
-  - `cd apps/web && npx convex codegen` (ok)
+  - `cd apps/web && npx khala codegen` (ok)
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
-- 2026-02-10T04:54:49Z Phase 7: judge-based rewards for recap/summarization + Convex-stored eval reports.
+- 2026-02-10T04:54:49Z Phase 7: judge-based rewards for recap/summarization + Khala-stored eval reports.
 - Added judge signature:
   - `@openagents/autopilot/judge/ThreadSummaryQuality.v1` in `apps/autopilot-worker/src/dseCatalog.ts`
 - Added pinned judge artifact (compiled + hashed):
@@ -461,19 +461,19 @@ Current endpoints and storage:
   - added optional `meta` field to `dseExamples` (for blob texts to seed `BlobStore`)
   - helper: `apps/web/src/effuse-host/dseDatasetBlobs.ts`
   - compile + baseline eval paths now seed `BlobStore` from example metadata when present
-- Added Convex eval reports:
-  - table: `dseEvalReports` in `apps/web/convex/schema.ts`
-  - queries/mutations: `apps/web/convex/dse/evalReports.ts`
-  - tests: `apps/web/tests/convex/dse-eval-reports.test.ts`
+- Added Khala eval reports:
+  - table: `dseEvalReports` in `apps/web/khala/schema.ts`
+  - queries/mutations: `apps/web/khala/dse/evalReports.ts`
+  - tests: `apps/web/tests/khala/dse-eval-reports.test.ts`
 - Added Worker endpoint:
-  - `POST /api/dse/eval` (stores a stable `evalHash` + full JSON report into Convex)
+  - `POST /api/dse/eval` (stores a stable `evalHash` + full JSON report into Khala)
   - test: `apps/web/tests/worker/dse-eval-endpoint.test.ts` asserts judge pin info is present in stored report JSON
 - Added read-only visualization for eval reports:
   - signature page now lists eval reports
   - new `/dse/eval-report/:evalHash/:signatureId` detail page
   - test: `apps/web/tests/worker/routes.test.ts`
 - Tests / verification:
-  - `cd apps/web && npx convex codegen` (ok)
+  - `cd apps/web && npx khala codegen` (ok)
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
@@ -508,7 +508,7 @@ Current endpoints and storage:
   - `cd apps/web && npm test` (ok)
 
 - 2026-02-10T09:25:39Z Phase 5: automated prod loop wiring (compile -> canary -> traffic -> monitor -> promote/stop) + endpoints.
-- Extended the canonical overnight runner to perform the Phase 5 loop and log every step to Convex:
+- Extended the canonical overnight runner to perform the Phase 5 loop and log every step to Khala:
   - `apps/web/scripts/dse-overnight-lib.ts`
 - Added admin-secret gated “monitor/exercise” endpoints (Workers):
   - `GET /api/dse/canary/status?signatureId=...` (poll `dseCanaries` counters)
@@ -521,13 +521,13 @@ Current endpoints and storage:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
-- 2026-02-10T10:13:11Z Phase 6: read-only visualization pages (Effuse) backed by Convex.
+- 2026-02-10T10:13:11Z Phase 6: read-only visualization pages (Effuse) backed by Khala.
 - Added admin-only `/dse/*` pages (read-only):
   - `/dse` ops runs list
   - `/dse/ops/:runId` ops run detail + events timeline
   - `/dse/signature/:signatureId` per-signature view (active pointer/history, canary status/history, compile reports, dataset examples, receipts)
   - `/dse/compile-report/:jobHash/:datasetHash/:signatureId` compile report JSON view
-- Added Convex read queries needed for the pages:
+- Added Khala read queries needed for the pages:
   - `dse.opsRuns.listRuns`, `dse.opsRuns.getRun`, `dse.opsRuns.listRunEvents` (admin-only)
   - `dse.active.listActiveHistory`
   - `dse.canary.listCanaryHistory`
@@ -537,7 +537,7 @@ Current endpoints and storage:
   - `/api/dse/blob/:receiptId/:blobId` uses admin query + `getTextAdmin` when session subject is `user_dse_admin`
 - Fixed Worker asset routing false-positives for dotted signature ids (e.g. `SelectTool.v1`) so `/dse/signature/...` reaches SSR.
 - Tests / verification:
-  - `cd apps/web && npx convex codegen` (ok)
+  - `cd apps/web && npx khala codegen` (ok)
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
@@ -581,12 +581,12 @@ Current endpoints and storage:
   - `OA_DSE_ADMIN_SECRET` (Cloudflare Worker `autopilot-web`)
 - Deployed to production:
   - `cd apps/web && npm run deploy:worker`
-  - `cd apps/web && npm run deploy:convex` (required because Convex prod was missing `dse/opsRuns:*` functions)
+  - `cd apps/web && npm run deploy:khala` (required because Khala prod was missing `dse/opsRuns:*` functions)
 - Verified:
   - created + finished a smoke ops run in prod: `opsrun_smoke_e9780d37b613406cbc113f92f6b7f2ee`
 
 - 2026-02-10T12:48:56Z Ops: ran a local headless ops-admin smoke attempt and confirmed a concrete failure mode:
-  - Convex rejects ops-admin JWTs with `InvalidAuthHeader` when `OA_E2E_JWT_PRIVATE_JWK` does not match the JWKS Convex trusts (`apps/web/convex/auth.config.ts` -> `https://openagents.com/api/auth/e2e/jwks`).
+  - Khala rejects ops-admin JWTs with `InvalidAuthHeader` when `OA_E2E_JWT_PRIVATE_JWK` does not match the JWKS Khala trusts (`apps/web/khala/auth.config.ts` -> `https://openagents.com/api/auth/e2e/jwks`).
 - Hardened the overnight runner: if `/api/dse/ops/run/start` fails, the CLI now still emits a machine-readable JSON summary (previously it threw and emitted no summary).
 - Updated:
   - `apps/web/scripts/dse-overnight-lib.ts`
@@ -626,7 +626,7 @@ Current endpoints and storage:
 - Updated plan status to reflect Phases 1–9 are implemented in code.
 - Updated secrets guidance for admin-secret ops mode:
   - `OA_DSE_ADMIN_SECRET` (client-side Bearer authorization)
-  - `OA_E2E_JWT_PRIVATE_JWK` (Worker-side minting for Convex ops-admin JWT)
+  - `OA_E2E_JWT_PRIVATE_JWK` (Worker-side minting for Khala ops-admin JWT)
 - Clarified prod E2E bypass secrets:
   - Worker secret: `OA_E2E_BYPASS_SECRET`
   - Runner env: `EFFUSE_TEST_E2E_BYPASS_SECRET` (must match)
@@ -664,7 +664,7 @@ Current endpoints and storage:
 - Updated:
   - `apps/web/scripts/dse-overnight-lib.ts`
   - `apps/web/tests/scripts/dse-overnight.test.ts`
-- 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Convex-stored compile reports (`2941dfa0c`).
+- 2026-02-10T11:22:35Z Phase 9: compiler-visible knobs for RLM-lite compilation (controller/chunking/roles/budgets) with Khala-stored compile reports (`2941dfa0c`).
 - Extended recap/summarization compile jobs to use Phase G knob search spaces:
   - controller instruction variants (`rlmControllerInstructionVariants`)
   - chunking policy variants (`rlmChunkingPolicyVariants`)
@@ -680,8 +680,8 @@ Current endpoints and storage:
   - `cd apps/web && npm run lint` (ok)
   - `cd apps/web && npm test` (ok)
 
-- 2026-02-10T14:03:37Z Ops: hardened the overnight runner so failures are actionable from CLI output (not just Convex).
-- Fixed `runOvernight` to include the `phase5` object in stdout JSON (it was only stored in Convex via `/ops/run/finish` previously).
+- 2026-02-10T14:03:37Z Ops: hardened the overnight runner so failures are actionable from CLI output (not just Khala).
+- Fixed `runOvernight` to include the `phase5` object in stdout JSON (it was only stored in Khala via `/ops/run/finish` previously).
 - Wrapped fetch failures in the overnight runner with path + timeout context:
   - e.g. `dse_admin_fetch_failed path=/api/dse/compile timeoutMs=... err=...`
 - Added tests:

@@ -16,7 +16,7 @@ Prometheus rule artifact:
 
 ## Alert Matrix
 
-### Convex projection SLO budgets
+### Khala projection SLO budgets
 
 - Lag budget: p95 projection lag <= 25 runtime events over a 10m window.
 - Error budget: projection write failures <= 1% over a 10m window.
@@ -86,55 +86,55 @@ Prometheus rule artifact:
   2. Validate authorization envelope rollout and limits.
   3. Confirm no runaway loops consuming delegated budget.
 
-### Convex projection lag
+### Khala projection lag
 
-- Alert: `OpenAgentsRuntimeConvexProjectionLagP95High`
-- Threshold: p95 `convex.projection.lag_events > 25` for 10m
+- Alert: `OpenAgentsRuntimeKhalaProjectionLagP95High`
+- Threshold: p95 `khala.projection.lag_events > 25` for 10m
 - Action:
   1. Inspect projector throughput vs runtime event ingest rate.
   2. Check sink latency/errors and DB lock contention around projection checkpoints.
   3. If lag remains elevated, trigger scoped replay after incident stabilizes.
 
-### Convex projection write failures
+### Khala projection write failures
 
-- Alert: `OpenAgentsRuntimeConvexProjectionWriteFailureRatioHigh`
+- Alert: `OpenAgentsRuntimeKhalaProjectionWriteFailureRatioHigh`
 - Threshold: write failure ratio > 1% for 10m
 - Action:
-  1. Inspect sink failure reason classes (`convex_error`, `sink_exception`, auth errors).
-  2. Validate Convex endpoint health and admin key availability.
-  3. Start replay plan (`mix runtime.convex.reproject`) once sink health recovers.
+  1. Inspect sink failure reason classes (`khala_error`, `sink_exception`, auth errors).
+  2. Validate Khala endpoint health and admin key availability.
+  3. Start replay plan (`mix runtime.khala.reproject`) once sink health recovers.
 
-### Convex projection drift incidents
+### Khala projection drift incidents
 
-- Alert: `OpenAgentsRuntimeConvexProjectionDriftIncidentsHigh`
+- Alert: `OpenAgentsRuntimeKhalaProjectionDriftIncidentsHigh`
 - Threshold: drift incidents > 3 over 10m
 - Action:
   1. Check drift reason classes (`summary_hash_mismatch`, `projection_version_changed`, `checkpoint_ahead`).
-  2. Validate deployment/version alignment across runtime and Convex schema.
+  2. Validate deployment/version alignment across runtime and Khala schema.
   3. Run targeted reproject for affected run/worker IDs and verify checkpoint convergence.
 
-### Convex projection replay failures
+### Khala projection replay failures
 
-- Alert: `OpenAgentsRuntimeConvexProjectionReplayFailures`
+- Alert: `OpenAgentsRuntimeKhalaProjectionReplayFailures`
 - Threshold: any replay error in 15m
 - Action:
   1. Inspect replay error reason and failing entity scope (`run` vs `codex_worker`).
   2. Confirm checkpoint table health and sequence continuity.
   3. Escalate before rollout expansion; replay failure blocks production promotion.
 
-### Convex token mint failures
+### Khala token mint failures
 
-- Alert: `OpenAgentsConvexTokenMintFailureRatioHigh`
+- Alert: `OpenAgentsKhalaTokenMintFailureRatioHigh`
 - Threshold: token mint failure ratio > 1% for 15m
 - Action:
-  1. Check Laravel token mint endpoint health (`POST /api/convex/token`) and auth/session middleware failures.
+  1. Check Laravel token mint endpoint health (`POST /api/khala/token`) and auth/session middleware failures.
   2. Split failures by class (`authz_denied`, `signing_error`, `upstream_unavailable`) in Laravel logs.
-  3. Validate Convex auth key rotation state and runtime bridge config alignment.
+  3. Validate Khala auth key rotation state and runtime bridge config alignment.
   4. If failure ratio stays elevated, pause rollout of new subscription clients and use runtime fallback polling paths.
 
 ### End-to-end request correlation walkthrough
 
-Use this flow to trace one worker action across browser -> Laravel -> runtime -> Convex projection telemetry.
+Use this flow to trace one worker action across browser -> Laravel -> runtime -> Khala projection telemetry.
 
 1. Capture the request identifiers from the client call.
    - Required headers: `traceparent`, `tracestate`, `x-request-id`.
@@ -143,7 +143,7 @@ Use this flow to trace one worker action across browser -> Laravel -> runtime ->
 3. Confirm runtime response carries an `x-request-id` for runtime-side log correlation.
    - Internal API contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`.
 4. Locate runtime telemetry for projector writes and verify metadata carries forwarded correlation IDs.
-   - Event family: `[:openagents_runtime, :convex, :projection, :write]`.
+   - Event family: `[:openagents_runtime, :khala, :projection, :write]`.
    - Correlation contract: `apps/openagents-runtime/docs/OBSERVABILITY.md`.
 5. Validate project health in Grafana/Prometheus while tracing the same time window.
    - Dashboard: `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`.

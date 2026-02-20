@@ -45,7 +45,7 @@ struct RuntimeCodexWorkerSummary: Decodable, Identifiable {
     let codexHomeRef: String?
     let adapter: String
     let metadata: [String: JSONValue]?
-    let convexProjection: RuntimeCodexProjectionStatus?
+    let khalaProjection: RuntimeCodexProjectionStatus?
 
     var id: String { workerID }
 
@@ -57,7 +57,7 @@ struct RuntimeCodexWorkerSummary: Decodable, Identifiable {
         case codexHomeRef = "codex_home_ref"
         case adapter
         case metadata
-        case convexProjection = "convex_projection"
+        case khalaProjection = "khala_projection"
     }
 }
 

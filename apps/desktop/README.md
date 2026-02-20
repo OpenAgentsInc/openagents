@@ -30,7 +30,7 @@ npm run smoke:lnd-binary -- --json
 npm run smoke:lnd-runtime -- --json
 npm run smoke:lnd-runtime-real -- --json
 npm run smoke:lnd-wallet -- --json
-npm run smoke:l402-convex-executor -- --json
+npm run smoke:l402-khala-executor -- --json
 npm run smoke:l402-panes -- --json
 npm run test:l402-local-node-smoke -- --json
 ```

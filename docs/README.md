@@ -27,8 +27,8 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Khala sync spec (runtime-owned WS sync engine): `sync/thoughts.md`
 - Khala delivery roadmap: `sync/ROADMAP.md`
 - Khala surface contract: `sync/SURFACES.md`
-- Convex sync-layer plan: `plans/active/convex-self-hosting-runtime-sync-plan.md`
-- Master execution roadmap: `plans/active/convex-runtime-codex-master-roadmap.md`
+- Khala sync-layer plan: `plans/active/khala-self-hosting-runtime-sync-plan.md`
+- Master execution roadmap: `plans/active/khala-runtime-codex-master-roadmap.md`
 - Codex docs index: `codex/README.md`
 
 ## Contracts (Canonical Specs)

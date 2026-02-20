@@ -9,7 +9,7 @@ Owner: OpenAgents
 
 This plan now targets the Laravel app at `apps/openagents.com`.
 
-Old EP212 references to the former web app, Convex orchestration, and desktop payer/executor are deprecated for current implementation planning.
+Old EP212 references to the former web app, Khala orchestration, and desktop payer/executor are deprecated for current implementation planning.
 
 For full implementation audit details, see:
 

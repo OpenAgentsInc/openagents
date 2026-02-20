@@ -3,7 +3,7 @@
 use App\Lightning\L402\InvoicePayer;
 use App\Lightning\L402\InvoicePayers\FakeInvoicePayer;
 use App\Lightning\L402\L402Client;
-use App\Support\ConvexImport\ConvexChatImportService;
+use App\Support\KhalaImport\KhalaChatImportService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
@@ -82,17 +82,17 @@ Artisan::command('demo:l402 {--preset=fake : Endpoint preset name (fake|sats4ai)
     return ($out['status'] ?? '') === 'failed' ? 1 : 0;
 })->purpose('Run a deterministic L402 buying demo (no browser required).');
 
-Artisan::command('convex:import-chat {source : Path to Convex export ZIP or directory} {--replace : Truncate target chat tables before import} {--dry-run : Parse and map without writing} {--resolve-workos-users : Resolve missing user emails via WorkOS User Management API} {--skip-blueprints : Skip blueprint-to-autopilot migration}', function () {
+Artisan::command('khala:import-chat {source : Path to Khala export ZIP or directory} {--replace : Truncate target chat tables before import} {--dry-run : Parse and map without writing} {--resolve-workos-users : Resolve missing user emails via WorkOS User Management API} {--skip-blueprints : Skip blueprint-to-autopilot migration}', function () {
     $source = (string) $this->argument('source');
     $replace = (bool) $this->option('replace');
     $dryRun = (bool) $this->option('dry-run');
     $resolveWorkosUsers = (bool) $this->option('resolve-workos-users');
     $skipBlueprints = (bool) $this->option('skip-blueprints');
 
-    /** @var ConvexChatImportService $service */
-    $service = resolve(ConvexChatImportService::class);
+    /** @var KhalaChatImportService $service */
+    $service = resolve(KhalaChatImportService::class);
 
-    $this->info('Convex chat import starting...');
+    $this->info('Khala chat import starting...');
     $this->line('  source: '.$source);
     $this->line('  mode: '.($dryRun ? 'dry-run' : 'write'));
     $this->line('  replace: '.($replace ? 'yes' : 'no'));
@@ -109,7 +109,7 @@ Artisan::command('convex:import-chat {source : Path to Convex export ZIP or dire
     );
 
     $this->newLine();
-    $this->info('Convex chat import summary:');
+    $this->info('Khala chat import summary:');
 
     foreach ($stats as $key => $value) {
         $this->line(sprintf('  %-32s %d', $key.':', $value));
@@ -122,7 +122,7 @@ Artisan::command('convex:import-chat {source : Path to Convex export ZIP or dire
     }
 
     return 0;
-})->purpose('Import Convex users/threads/runs/messages/receipts + optional blueprints into Laravel chat/autopilot tables.');
+})->purpose('Import Khala users/threads/runs/messages/receipts + optional blueprints into Laravel chat/autopilot tables.');
 
 Artisan::command('ops:test-login-link {email : Allowlisted email to log in as} {--minutes=30 : Signed URL expiry in minutes} {--name= : Optional display name override} {--base-url= : Optional base URL override}', function () {
     $email = strtolower(trim((string) $this->argument('email')));

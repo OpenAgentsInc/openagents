@@ -7,8 +7,8 @@ defmodule OpenAgentsRuntime.Security.SanitizerTest do
     input = %{
       "authorization" => "Bearer abc.def.ghi",
       "api_key" => "sk-live-secret",
-      "admin_key" => "convex-admin-secret",
-      "convex_self_hosted_admin_key" => "convex-admin-secret-2",
+      "admin_key" => "khala-admin-secret",
+      "khala_self_hosted_admin_key" => "khala-admin-secret-2",
       "email" => "user@example.com",
       "phone" => "+1 (555) 123-4567",
       "nested" => %{
@@ -22,7 +22,7 @@ defmodule OpenAgentsRuntime.Security.SanitizerTest do
     assert sanitized["authorization"] == "[REDACTED]"
     assert sanitized["api_key"] == "[REDACTED]"
     assert sanitized["admin_key"] == "[REDACTED]"
-    assert sanitized["convex_self_hosted_admin_key"] == "[REDACTED]"
+    assert sanitized["khala_self_hosted_admin_key"] == "[REDACTED]"
     assert sanitized["email"] == "[REDACTED_EMAIL]"
     assert sanitized["phone"] == "[REDACTED_PHONE]"
     assert sanitized["nested"]["refresh_token"] == "[REDACTED]"

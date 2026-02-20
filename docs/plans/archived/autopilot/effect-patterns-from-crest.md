@@ -1,10 +1,10 @@
-# Notes from `~/code/crest`: Effect + Convex patterns to adopt
+# Notes from `~/code/crest`: Effect + Khala patterns to adopt
 
 > Archived on 2026-02-19 after Laravel/runtime cutover. This document targets the retired `apps/web` migration track.
 
-This doc summarizes concrete patterns from the `crest` repo (Next.js + Effect + Convex) that are directly applicable to how we should migrate `openagents/apps/web` toward Effect.
+This doc summarizes concrete patterns from the `crest` repo (Next.js + Effect + Khala) that are directly applicable to how we should migrate `openagents/apps/web` toward Effect.
 
-The goal is not to copy Next.js abstractions verbatim, but to adopt the **architecture moves**: a single composed runtime, middleware-style cross-cutting concerns, and Effect-friendly adapters at boundaries (Convex, PostHog, WorkOS, etc.).
+The goal is not to copy Next.js abstractions verbatim, but to adopt the **architecture moves**: a single composed runtime, middleware-style cross-cutting concerns, and Effect-friendly adapters at boundaries (Khala, PostHog, WorkOS, etc.).
 
 ---
 
@@ -96,12 +96,12 @@ Patterns worth copying:
 
 ---
 
-## 5) Convex boundary: Effect adapters around Convex contexts
+## 5) Khala boundary: Effect adapters around Khala contexts
 
-`crest` has an Effect-friendly wrapper layer for Convex runtime contexts:
+`crest` has an Effect-friendly wrapper layer for Khala runtime contexts:
 
-- `~/code/crest/convex/effect/ctx.ts`
-- Helper to wrap Promises: `~/code/crest/convex/effect/tryPromise.ts`
+- `~/code/crest/khala/effect/ctx.ts`
+- Helper to wrap Promises: `~/code/crest/khala/effect/tryPromise.ts`
 
 Key idea:
 
@@ -112,8 +112,8 @@ Key idea:
 
 **Adopt for `openagents`:**
 
-- If we migrate Convex functions (in `apps/web/convex/`) toward Effect, create a small `convex/effect/*` adapter module modeled after `crest`.
-- For the web client side (`ConvexReactClient` + `ConvexQueryClient` + React Query), create an Effect service that owns those clients and exposes typed “call” helpers (even if internally it’s still React Query).
+- If we migrate Khala functions (in `apps/web/khala/`) toward Effect, create a small `khala/effect/*` adapter module modeled after `crest`.
+- For the web client side (`KhalaReactClient` + `KhalaQueryClient` + React Query), create an Effect service that owns those clients and exposes typed “call” helpers (even if internally it’s still React Query).
 
 ---
 
