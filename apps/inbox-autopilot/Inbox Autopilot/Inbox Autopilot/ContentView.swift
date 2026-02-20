@@ -1,6 +1,8 @@
+import Foundation
 import SwiftUI
 
 private enum AppSection: String, CaseIterable, Identifiable {
+    case home
     case inbox
     case approvals
     case settings
@@ -10,6 +12,8 @@ private enum AppSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .home:
+            return "Home"
         case .inbox:
             return "Inbox"
         case .approvals:
@@ -23,6 +27,8 @@ private enum AppSection: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .home:
+            return "sparkles.rectangle.stack"
         case .inbox:
             return "tray.full"
         case .approvals:
@@ -37,7 +43,7 @@ private enum AppSection: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var selectedSection: AppSection? = .inbox
+    @State private var selectedSection: AppSection? = .home
 
     var body: some View {
         NavigationSplitView {
@@ -63,6 +69,8 @@ struct ContentView: View {
 
                 Group {
                     switch selectedSection {
+                    case .home:
+                        HomeSectionView(onOpenInbox: { selectedSection = .inbox })
                     case .inbox:
                         InboxSectionView(
                             onOpenApprovals: { selectedSection = .approvals },
@@ -139,6 +147,126 @@ struct ContentView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Color.gray.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct HomeSectionView: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var demoRunning = false
+    @State private var attemptedAutoLaunch = false
+
+    let onOpenInbox: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Inbox Autopilot")
+                    .font(.largeTitle)
+                    .fontWeight(.semibold)
+
+                Text("WGPUI canvas spike: launch a Rust-rendered window with the same dark dotted background style used in Autopilot desktop.")
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    Button(demoRunning ? "WGPUI Demo Running" : "Launch WGPUI Canvas Demo") {
+                        do {
+                            try WGPUIDemoLauncher.shared.launch()
+                            demoRunning = true
+                            model.notice = "Launched WGPUI demo window."
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("Stop Demo") {
+                        WGPUIDemoLauncher.shared.stop()
+                        demoRunning = false
+                        model.notice = "Stopped WGPUI demo."
+                    }
+                    .disabled(!demoRunning)
+
+                    Button("Open Classic Inbox UI") {
+                        onOpenInbox()
+                    }
+                }
+
+                GroupBox("What this does") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Runs `cargo run --bin wgpui_background_demo` from `apps/inbox-autopilot/daemon`.")
+                        Text("This is a sidecar spike so the existing SwiftUI app remains fully intact.")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 2)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: 900, alignment: .leading)
+        }
+        .onAppear {
+            demoRunning = WGPUIDemoLauncher.shared.isRunning
+            if !attemptedAutoLaunch {
+                attemptedAutoLaunch = true
+                if !demoRunning {
+                    do {
+                        try WGPUIDemoLauncher.shared.launch()
+                        demoRunning = true
+                        model.notice = "Launched WGPUI demo window."
+                    } catch {
+                        model.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+        }
+    }
+}
+
+@MainActor
+private final class WGPUIDemoLauncher {
+    static let shared = WGPUIDemoLauncher()
+
+    private var process: Process?
+    var isRunning: Bool { process?.isRunning == true }
+
+    private init() {}
+
+    func launch() throws {
+        if process?.isRunning == true {
+            return
+        }
+
+        let daemonDir = try Self.resolveDaemonDirectory()
+        let process = Process()
+        process.currentDirectoryURL = daemonDir
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["cargo", "run", "--bin", "wgpui_background_demo"]
+
+        try process.run()
+        self.process = process
+    }
+
+    func stop() {
+        process?.terminate()
+        process = nil
+    }
+
+    private static func resolveDaemonDirectory() throws -> URL {
+        let source = URL(fileURLWithPath: #filePath)
+        let appRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let daemon = appRoot.appendingPathComponent("daemon", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: daemon.path) else {
+            throw NSError(
+                domain: "InboxAutopilot.WGPUI",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Could not find daemon directory at \(daemon.path)"]
+            )
+        }
+        return daemon
     }
 }
 
