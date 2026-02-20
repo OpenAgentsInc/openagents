@@ -158,6 +158,83 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     assert latest_seq >= seq
   end
 
+  test "ingests handshake envelopes and exposes them on worker stream", %{conn: conn} do
+    worker_id = unique_id("codexw")
+    handshake_id = "hs_#{System.unique_integer([:positive])}"
+
+    conn
+    |> put_internal_auth(user_id: 910)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+    |> json_response(202)
+
+    ios_ingest_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 910)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/events", %{
+        "event" => %{
+          "event_type" => "worker.event",
+          "payload" => %{
+            "source" => "autopilot-ios",
+            "method" => "ios/handshake",
+            "handshake_id" => handshake_id,
+            "device_id" => "device_test",
+            "occurred_at" => "2026-02-20T00:00:00Z"
+          }
+        }
+      })
+
+    assert %{
+             "data" => %{
+               "worker_id" => ^worker_id,
+               "event_type" => "worker.event",
+               "seq" => ios_seq
+             }
+           } = json_response(ios_ingest_conn, 202)
+
+    ack_ingest_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 910)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/events", %{
+        "event" => %{
+          "event_type" => "worker.event",
+          "payload" => %{
+            "source" => "autopilot-desktop",
+            "method" => "desktop/handshake_ack",
+            "handshake_id" => handshake_id,
+            "desktop_session_id" => "session_42",
+            "occurred_at" => "2026-02-20T00:00:02Z"
+          }
+        }
+      })
+
+    assert %{
+             "data" => %{
+               "worker_id" => ^worker_id,
+               "event_type" => "worker.event",
+               "seq" => ack_seq
+             }
+           } = json_response(ack_ingest_conn, 202)
+
+    assert ack_seq > ios_seq
+
+    stream_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 910)
+      |> get(~p"/internal/v1/codex/workers/#{worker_id}/stream", %{
+        "cursor" => max(ios_seq - 1, 0),
+        "tail_ms" => 50
+      })
+
+    assert stream_conn.status == 200
+    assert List.first(get_resp_header(stream_conn, "content-type")) =~ "text/event-stream"
+    assert stream_conn.resp_body =~ "\"method\":\"ios/handshake\""
+    assert stream_conn.resp_body =~ "\"method\":\"desktop/handshake_ack\""
+    assert stream_conn.resp_body =~ "\"handshake_id\":\"#{handshake_id}\""
+  end
+
   test "events endpoint returns conflict when worker is stopped", %{conn: conn} do
     worker_id = unique_id("codexw")
 
@@ -251,6 +328,23 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
       |> get(~p"/internal/v1/codex/workers/#{worker_id}/snapshot")
 
     assert %{"error" => %{"code" => "forbidden"}} = json_response(forbidden_conn, 403)
+  end
+
+  test "worker stream enforces ownership", %{conn: conn} do
+    worker_id = unique_id("codexw")
+
+    conn
+    |> put_internal_auth(user_id: 912)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+    |> json_response(202)
+
+    forbidden_stream_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 913)
+      |> get(~p"/internal/v1/codex/workers/#{worker_id}/stream", %{"cursor" => 0, "tail_ms" => 10})
+
+    assert %{"error" => %{"code" => "forbidden"}} = json_response(forbidden_stream_conn, 403)
   end
 
   test "list returns principal-owned workers and projection checkpoint status", %{conn: conn} do

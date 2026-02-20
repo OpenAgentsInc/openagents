@@ -165,6 +165,96 @@ test('runtime codex workers api passes through runtime conflict for stopped work
     $response->assertStatus(409)->assertJsonPath('error.code', 'conflict');
 });
 
+test('runtime codex workers api proxies ios handshake ingest payload shape', function () {
+    $user = User::factory()->create();
+    $handshakeId = 'hs_'.random_int(1000, 9999);
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_hs/events' => Http::response([
+            'data' => ['worker_id' => 'codexw_hs', 'seq' => 8, 'event_type' => 'worker.event'],
+        ], 202),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_hs/events', [
+        'event' => [
+            'event_type' => 'worker.event',
+            'payload' => [
+                'source' => 'autopilot-ios',
+                'method' => 'ios/handshake',
+                'handshake_id' => $handshakeId,
+                'device_id' => 'device_test',
+                'occurred_at' => '2026-02-20T00:00:00Z',
+            ],
+        ],
+    ]);
+
+    $response
+        ->assertStatus(202)
+        ->assertJsonPath('data.worker_id', 'codexw_hs')
+        ->assertJsonPath('data.seq', 8);
+
+    Http::assertSent(function (HttpRequest $request) use ($user, $handshakeId): bool {
+        $data = $request->data();
+
+        return $request->url() === 'http://runtime.internal/internal/v1/codex/workers/codexw_hs/events'
+            && ($request->header('X-OA-USER-ID')[0] ?? null) === (string) $user->id
+            && ($data['event']['event_type'] ?? null) === 'worker.event'
+            && ($data['event']['payload']['source'] ?? null) === 'autopilot-ios'
+            && ($data['event']['payload']['method'] ?? null) === 'ios/handshake'
+            && ($data['event']['payload']['handshake_id'] ?? null) === $handshakeId
+            && ($data['event']['payload']['device_id'] ?? null) === 'device_test'
+            && ($data['event']['payload']['occurred_at'] ?? null) === '2026-02-20T00:00:00Z';
+    });
+});
+
+test('runtime codex workers api rejects unauthenticated handshake ingest', function () {
+    Http::fake();
+
+    $response = $this->postJson('/api/runtime/codex/workers/codexw_auth/events', [
+        'event' => [
+            'event_type' => 'worker.event',
+            'payload' => [
+                'source' => 'autopilot-ios',
+                'method' => 'ios/handshake',
+                'handshake_id' => 'hs_unauth',
+                'device_id' => 'device_test',
+                'occurred_at' => '2026-02-20T00:00:00Z',
+            ],
+        ],
+    ]);
+
+    $response->assertUnauthorized();
+    Http::assertNothingSent();
+});
+
+test('runtime codex workers api passes through handshake ingest conflict errors', function () {
+    $user = User::factory()->create();
+
+    Http::fake([
+        'http://runtime.internal/internal/v1/codex/workers/codexw_hs_conflict/events' => Http::response([
+            'error' => ['code' => 'conflict', 'message' => 'handshake already acknowledged'],
+        ], 409),
+    ]);
+
+    $response = $this->actingAs($user)->postJson('/api/runtime/codex/workers/codexw_hs_conflict/events', [
+        'event' => [
+            'event_type' => 'worker.event',
+            'payload' => [
+                'source' => 'autopilot-ios',
+                'method' => 'ios/handshake',
+                'handshake_id' => 'hs_conflict',
+                'device_id' => 'device_test',
+                'occurred_at' => '2026-02-20T00:00:00Z',
+            ],
+        ],
+    ]);
+
+    $response
+        ->assertStatus(409)
+        ->assertJsonPath('error.code', 'conflict')
+        ->assertJsonPath('error.message', 'handshake already acknowledged');
+});
+
 test('runtime codex workers api proxies stream endpoint with cursor and last-event-id semantics', function () {
     $user = User::factory()->create();
 
