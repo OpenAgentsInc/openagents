@@ -19,7 +19,10 @@ config :openagents_runtime,
   janitor_recovery_cooldown_ms: 30_000,
   l1_compaction_interval_ms: 60_000,
   l1_compaction_batch_size: 3,
-  l1_compaction_min_events: 30
+  l1_compaction_min_events: 30,
+  khala_sync_retention_interval_ms: 60_000,
+  khala_sync_retention_horizon_seconds: 86_400,
+  khala_sync_retention_batch_size: 5_000
 
 config :openagents_runtime, :laravel_internal,
   base_url: "",

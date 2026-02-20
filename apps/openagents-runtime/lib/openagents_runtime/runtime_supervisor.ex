@@ -22,6 +22,7 @@ defmodule OpenAgentsRuntime.RuntimeSupervisor do
       {Task.Supervisor, name: OpenAgentsRuntime.Tools.TaskSupervisor},
       OpenAgentsRuntime.Runs.EventListener,
       OpenAgentsRuntime.Memory.CompactionJob,
+      OpenAgentsRuntime.Sync.RetentionJob,
       OpenAgentsRuntime.Runs.Janitor
     ]
 
