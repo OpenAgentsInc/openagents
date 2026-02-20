@@ -500,6 +500,54 @@ Validation:
 - `event.event_type` must start with `worker.`.
 - `event.payload` is optional map data.
 
+Handshake envelope contract (MVP):
+
+- Applies when `event.event_type == "worker.event"` and payload `method` is:
+  - `ios/handshake`
+  - `desktop/handshake_ack`
+- Required payload fields:
+  - `source`
+  - `method`
+  - `handshake_id`
+  - `occurred_at` (RFC3339 timestamp)
+- Additional method-specific required fields:
+  - `ios/handshake`: `device_id`
+  - `desktop/handshake_ack`: `desktop_session_id`
+
+iOS handshake request example:
+
+```json
+{
+  "event": {
+    "event_type": "worker.event",
+    "payload": {
+      "source": "autopilot-ios",
+      "method": "ios/handshake",
+      "handshake_id": "hs_123",
+      "device_id": "device_abc",
+      "occurred_at": "2026-02-20T00:00:00Z"
+    }
+  }
+}
+```
+
+Desktop handshake ack example:
+
+```json
+{
+  "event": {
+    "event_type": "worker.event",
+    "payload": {
+      "source": "autopilot-desktop",
+      "method": "desktop/handshake_ack",
+      "handshake_id": "hs_123",
+      "desktop_session_id": "session_42",
+      "occurred_at": "2026-02-20T00:00:02Z"
+    }
+  }
+}
+```
+
 Conflict behavior:
 
 - Returns `409` when worker is stopped or not currently runnable.
@@ -511,6 +559,8 @@ Streams worker event log as SSE with the same cursor semantics as run streams.
 
 - Supports `cursor`, `Last-Event-ID`, and `tail_ms`.
 - SSE `id:` field equals worker event `seq`.
+- Handshake envelopes are streamed/replayed without payload mutation so consumers can correlate by
+  `handshake_id`.
 
 ### `POST /internal/v1/codex/workers/{worker_id}/stop`
 
