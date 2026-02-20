@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\RuntimeCodexWorkersController;
 use App\Http\Controllers\Api\RuntimeSkillRegistryController;
 use App\Http\Controllers\Api\RuntimeToolsController;
 use App\Http\Controllers\Api\ShoutsController;
+use App\Http\Controllers\Api\SyncTokenController;
 use App\Http\Controllers\Api\TokenController;
 use App\Http\Controllers\Api\Webhooks\ResendWebhookController;
 use App\Http\Controllers\Api\WhispersController;
@@ -48,6 +49,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         ->whereNumber('tokenId');
     Route::delete('/tokens', [TokenController::class, 'destroyAll']);
     Route::post('/convex/token', [ConvexTokenController::class, 'store']);
+    Route::post('/sync/token', [SyncTokenController::class, 'store']);
 
     Route::get('/chats', [ChatController::class, 'index']);
     Route::post('/chats', [ChatController::class, 'store']);
