@@ -1,61 +1,154 @@
-//
-//  ContentView.swift
-//  Autopilot
-//
-//  Created by Christopher David on 2/19/26.
-//
-
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @StateObject private var model = CodexHandshakeViewModel()
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        NavigationStack {
+            Form {
+                Section("Connection") {
+                    TextField("API base URL", text: $model.apiBaseURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                        .keyboardType(.URL)
+
+                    SecureField("Auth token", text: $model.authToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+
+                    HStack {
+                        Button("Save") {
+                            model.saveConfiguration()
+                            model.clearMessages()
+                        }
+
+                        Button("Load Workers") {
+                            Task {
+                                model.saveConfiguration()
+                                await model.refreshWorkers()
+                            }
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+
+                Section("Worker") {
+                    if model.workers.isEmpty {
+                        Text("No workers loaded")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Selected Worker", selection: $model.selectedWorkerID) {
+                            ForEach(model.workers) { worker in
+                                Text("\(worker.workerID) (\(worker.status))").tag(Optional(worker.workerID))
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+
+                        if let snapshot = model.latestSnapshot {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Snapshot: \(snapshot.status)")
+                                Text("Latest seq: \(snapshot.latestSeq)")
+                                    .foregroundStyle(.secondary)
+                                    .font(.footnote)
+                            }
+                        }
+                    }
                 }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+
+                Section("Handshake") {
+                    Text("Device ID: \(model.deviceID)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+
+                    Text("Stream: \(streamDescription(model.streamState))")
+                        .font(.footnote)
+
+                    Text("Handshake: \(handshakeDescription(model.handshakeState))")
+                        .font(.footnote)
+
+                    HStack {
+                        Button("Connect Stream") {
+                            model.connectStream()
+                        }
+                        Button("Disconnect") {
+                            model.disconnectStream()
+                        }
+                    }
+
+                    Button("Send Handshake") {
+                        Task {
+                            await model.sendHandshake()
+                        }
+                    }
+                    .disabled(model.selectedWorkerID == nil)
+                }
+
+                Section("Recent Events") {
+                    if model.recentEvents.isEmpty {
+                        Text("No events yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(model.recentEvents.enumerated()), id: \.offset) { _, event in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(event.event)
+                                    .font(.caption)
+                                Text(event.rawData)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
+                        }
+                    }
+                }
+
+                if let status = model.statusMessage {
+                    Section("Status") {
+                        Text(status)
+                    }
+                }
+
+                if let error = model.errorMessage {
+                    Section("Error") {
+                        Text(error)
+                            .foregroundStyle(.red)
                     }
                 }
             }
-        } detail: {
-            Text("Select an item")
+            .navigationTitle("Codex Handshake")
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+    private func streamDescription(_ state: StreamState) -> String {
+        switch state {
+        case .idle:
+            return "idle"
+        case .connecting:
+            return "connecting"
+        case .live:
+            return "live"
+        case .reconnecting:
+            return "reconnecting"
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+    private func handshakeDescription(_ state: HandshakeState) -> String {
+        switch state {
+        case .idle:
+            return "idle"
+        case .sending:
+            return "sending"
+        case .waitingAck(let handshakeID):
+            return "waiting ack (\(handshakeID))"
+        case .success(let handshakeID):
+            return "success (\(handshakeID))"
+        case .timedOut(let handshakeID):
+            return "timed out (\(handshakeID))"
+        case .failed(let message):
+            return "failed (\(message))"
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }
