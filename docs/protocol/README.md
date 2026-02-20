@@ -7,6 +7,7 @@ Entry points:
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json` (canonical runtime policy reason taxonomy)
 - `docs/protocol/LAYER0_PROTOBUF_MAPPING.md` (proto3 Layer-0 mapping guidance for JSON/SSE)
 - `docs/protocol/OA_SYNC_WS_MAPPING.md` (Khala sync proto-to-WS mapping)
+- `proto/openagents/lightning/v1/control_plane.proto` (Lightning control-plane schema authority)
 - `proto/README.md` (proto package layout + generation verification policy)
 - `docs/protocol/extensions/` (base extension manifest contract + specialization links)
 - `docs/protocol/comms/` (comms tool-pack contracts and integration manifest schema)

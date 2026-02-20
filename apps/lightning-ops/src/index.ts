@@ -9,6 +9,7 @@ export * from "./controlPlane/service.js";
 export * from "./controlPlane/inMemory.js";
 export * from "./controlPlane/convexTransport.js";
 export * from "./controlPlane/convex.js";
+export * from "./controlPlane/protoAdapters.js";
 
 export * from "./programs/compileAndPersist.js";
 export * from "./programs/ingestSettlements.js";

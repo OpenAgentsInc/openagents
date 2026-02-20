@@ -198,6 +198,7 @@ This section clarifies the practical meaning of "single authority database" in t
 ### `proto/` (Layer-0 universal schema)
 
 - Canonical shared protocol contracts (`codex_workers`, `codex_events`, `codex_auth`, receipts, events, reasons, comms).
+- Lightning control-plane schema authority now lives in `proto/openagents/lightning/v1/control_plane.proto`.
 - Additive evolution policy with Buf breaking checks.
 - Code generation verification lives in `scripts/verify-proto-generate.sh`.
 

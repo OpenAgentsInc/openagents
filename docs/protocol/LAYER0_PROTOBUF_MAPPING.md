@@ -11,6 +11,7 @@ Proto3 definitions under `proto/openagents/protocol/v1/*` are canonical for shar
   - `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.predict_receipt/1`
   - `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.comms_send_intent/3`
   - `OpenAgentsRuntime.Contracts.Layer0TypeAdapters.comms_send_result/1`
+  - `apps/lightning-ops/src/controlPlane/protoAdapters.ts`
 - JSON payloads must follow protobuf JSON mapping conventions:
   - `snake_case` proto fields map to `camelCase` JSON keys.
   - enums map by string name where possible.

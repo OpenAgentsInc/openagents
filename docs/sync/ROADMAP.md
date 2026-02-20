@@ -463,10 +463,19 @@ Verification:
 
 Depends on: KHALA-002
 
+Status: Completed 2026-02-20 (`#1799`)
+
 Scope:
 
 - Move lightning control-plane schema authority from TS-only to proto.
 - Add adapters in `apps/lightning-ops`.
+
+Delivered:
+
+- Added `proto/openagents/lightning/v1/control_plane.proto`.
+- Added proto-normalization adapters in `apps/lightning-ops/src/controlPlane/protoAdapters.ts`.
+- Wired control-plane decode path to proto-aware adapters in `apps/lightning-ops/src/controlPlane/convex.ts`.
+- Added parity tests in `apps/lightning-ops/test/control-plane-proto-adapters.test.ts`.
 
 Done when:
 
