@@ -2472,7 +2472,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             &runtime_sync,
                                             &pending_runtime_auth_flow,
                                             Some(format!(
-                                                "Sent verification code to {}. Enter the code and click Verify.",
+                                                "Sent verification code to {}. Enter the newest code from your inbox and click Verify.",
                                                 normalized_email
                                             )),
                                             None,

@@ -2598,7 +2598,7 @@ impl MinimalRoot {
         let pending_runtime_auth_verify = Rc::new(RefCell::new(false));
         let pending_runtime_auth_verify_submit = pending_runtime_auth_verify.clone();
         let runtime_auth_code_input = TextInput::new()
-            .placeholder("verification code")
+            .placeholder("6-digit code (from email)")
             .background(theme::bg::APP)
             .border_color(theme::border::DEFAULT)
             .border_color_focused(theme::border::FOCUS)
