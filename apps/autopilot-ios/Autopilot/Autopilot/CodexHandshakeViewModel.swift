@@ -33,6 +33,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var toolMessageIndexByItemKey: [String: Int] = [:]
     private var assistantDeltaSourceByItemKey: [String: AgentDeltaSource] = [:]
     private var seenUserMessageKeys: Set<String> = []
+    private var seenUserTurnIDs: Set<String> = []
     private var lastUserMessageNormalized: String?
     private var agentDeltaAliasSources: [String: AgentDeltaSource] = [:]
     private var processedCodexEventSeqs: Set<Int> = []
@@ -48,7 +49,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
-    private static let streamTailMS = 4_000
+    private static let streamTailMS = 1_000
     private static let streamIdleSleepNS: UInt64 = 250_000_000
     private static let streamReconnectSleepNS: UInt64 = 1_500_000_000
     private static let aliasCacheLimit = 2_048
@@ -627,15 +628,9 @@ final class CodexHandshakeViewModel: ObservableObject {
             )
 
         case "reasoning":
-            guard let itemID else {
-                return
-            }
-            ensureReasoningEntry(
-                itemID: itemID,
-                threadID: threadID,
-                turnID: turnID,
-                occurredAt: event.occurredAt
-            )
+            // Don't render an empty reasoning placeholder bubble on start.
+            // A bubble is created only when we get reasoning text.
+            _ = itemID
 
         case "commandexecution", "filechange", "mcptoolcall", "websearch":
             guard let itemID else {
@@ -683,15 +678,13 @@ final class CodexHandshakeViewModel: ObservableObject {
             guard let itemID else {
                 return
             }
-            if let summary = extractReasoningText(from: item) {
-                finishReasoningMessage(
-                    itemID: itemID,
-                    text: summary,
-                    threadID: threadID,
-                    turnID: turnID,
-                    occurredAt: event.occurredAt
-                )
-            }
+            finishReasoningMessage(
+                itemID: itemID,
+                text: extractReasoningText(from: item),
+                threadID: threadID,
+                turnID: turnID,
+                occurredAt: event.occurredAt
+            )
 
         case "commandexecution", "filechange", "mcptoolcall", "websearch":
             guard let itemID else {
@@ -943,6 +936,11 @@ final class CodexHandshakeViewModel: ObservableObject {
         guard !trimmed.isEmpty else {
             return
         }
+        if let turnID {
+            if seenUserTurnIDs.contains(turnID) {
+                return
+            }
+        }
         let normalized = trimmed
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .lowercased()
@@ -954,6 +952,9 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
         seenUserMessageKeys.insert(dedupeKey)
         lastUserMessageNormalized = normalized
+        if let turnID {
+            seenUserTurnIDs.insert(turnID)
+        }
 
         chatMessages.append(
             CodexChatMessage(
@@ -1171,7 +1172,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     private func finishReasoningMessage(
         itemID: String,
-        text: String,
+        text: String?,
         threadID: String?,
         turnID: String?,
         occurredAt: String?
@@ -1183,10 +1184,21 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            chatMessages[index].text = trimmed
+        if let text {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                chatMessages[index].text = trimmed
+            }
         }
+
+        let normalized = chatMessages[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.isEmpty || normalized == "..." || normalized == "…" {
+            chatMessages.remove(at: index)
+            reasoningMessageIndexByItemKey[key] = nil
+            reindexMessageDictionaries()
+            return
+        }
+
         chatMessages[index].isStreaming = false
     }
 
@@ -1331,6 +1343,30 @@ final class CodexHandshakeViewModel: ObservableObject {
         return assembled
     }
 
+    private func reindexMessageDictionaries() {
+        assistantMessageIndexByItemKey = [:]
+        reasoningMessageIndexByItemKey = [:]
+        toolMessageIndexByItemKey = [:]
+
+        for (index, message) in chatMessages.enumerated() {
+            guard let itemID = message.itemID else {
+                continue
+            }
+
+            let key = itemKey(threadID: message.threadID, turnID: message.turnID, itemID: itemID)
+            switch message.role {
+            case .assistant:
+                assistantMessageIndexByItemKey[key] = index
+            case .reasoning:
+                reasoningMessageIndexByItemKey[key] = index
+            case .tool:
+                toolMessageIndexByItemKey[key] = index
+            default:
+                continue
+            }
+        }
+    }
+
     private func resetChatTimeline() {
         chatMessages = []
         assistantMessageIndexByItemKey = [:]
@@ -1338,6 +1374,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         toolMessageIndexByItemKey = [:]
         assistantDeltaSourceByItemKey = [:]
         seenUserMessageKeys = []
+        seenUserTurnIDs = []
         lastUserMessageNormalized = nil
         agentDeltaAliasSources = [:]
         processedCodexEventSeqs = []
