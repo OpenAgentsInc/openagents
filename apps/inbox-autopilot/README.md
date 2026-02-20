@@ -30,13 +30,14 @@ Implemented:
 - Thread classification (category + risk + policy) and draft generation pipeline.
 - Approve-and-send via Gmail API with policy enforcement.
 - Event timeline, per-thread audit view, and JSON audit export.
+- Draft-quality evaluation API and UI (minimal-edit scoring for scheduling/report-delivery).
 - Settings for privacy mode, sync cadence, templates/signature, allowlist, retention controls.
 - Local notifications, menu bar status controls, and optional app unlock.
+- In-app update checks with release download/release-notes links (Sparkle-equivalent update path).
 
 Open items:
 
-- Auto-update distribution pipeline (Sparkle or equivalent).
-- Quality tuning and measurement loop for the "minimal editing >= 60%" draft target.
+- Roadmap deliverables are complete; remaining work is ongoing model/policy quality tuning and ops hardening.
 
 ## Product Spec
 
@@ -124,6 +125,7 @@ Canonical contract: `docs/ipc-contract.md`
 - Sync: `/sync/backfill`, `/sync/now`
 - Threads/drafts: `/threads/*`, `/drafts/*`
 - Audit/events: `/events`, `/events/stream`, `/threads/:id/audit`, `/threads/:id/export-audit`
+- Quality: `/quality/draft-edit-rate`
 - Settings/lifecycle: `/settings`, `/settings/delete-corpus`, `/settings/factory-reset`
 
 ### Event types emitted
@@ -143,6 +145,7 @@ Canonical contract: `docs/ipc-contract.md`
 - `settings_updated`
 - `local_corpus_deleted`
 - `factory_reset_completed`
+- `draft_quality_evaluated`
 
 ## Data and Security
 

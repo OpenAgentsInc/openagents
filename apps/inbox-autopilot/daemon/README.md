@@ -29,3 +29,11 @@ Optional:
 
 - IPC contract: `docs/ipc-contract.md`
 - DB schema: `docs/db-schema.md`
+
+## Draft quality evaluation
+
+The daemon exposes a quality scoring endpoint used by the app Audit screen:
+
+- `GET /quality/draft-edit-rate?limit_per_category=<optional>&threshold=<optional>`
+
+It evaluates scheduling/report-delivery threads by comparing generated drafts against sent replies and reports minimal-edit rate vs the MVP target (`60%`).
