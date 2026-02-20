@@ -339,12 +339,12 @@ Verification gates:
 - p95 update latency and drop-rate SLOs,
 - production shadow reads across clients.
 
-## Phase 2: Migrate Lightning ops off Khala
+## Phase 2: Migrate Lightning ops off legacy sync dependency
 
 1. Move paywall/security/settlement state authority to Postgres-owned control-plane tables.
 2. Expose signed runtime/internal APIs for lightning-ops reads/writes.
-3. Replace `KhalaHttpClient` transport in lightning-ops with OA API transport.
-4. Keep khala path as rollback toggle until parity is proven.
+3. Replace legacy sync transport in lightning-ops with OA API transport.
+4. Keep legacy path as rollback toggle until parity is proven.
 
 Verification gates:
 
@@ -352,11 +352,11 @@ Verification gates:
 - deterministic `configHash` parity,
 - rollback drills with old/new backends.
 
-## Phase 3: Decommission Khala per lane
+## Phase 3: Decommission legacy sync dependency per lane
 
-1. Remove Khala token mint bridge once no client requires Khala auth.
+1. Remove legacy sync token mint bridge once no client requires legacy auth.
 2. Archive import/export-only tooling if no longer needed.
-3. Remove Khala envs and deploy runbooks once fully unused.
+3. Remove legacy envs and deploy runbooks once fully unused.
 
 ## Additional Findings and Gaps
 
@@ -371,6 +371,11 @@ Proceed with Option B (hybrid migration).
 
 - Short term: keep Khala where it is currently critical (Lightning ops), and continue using it as optional projection transport for runtime while runtime-owned Khala is hardened.
 - Medium term: make proto the sole schema authority for sync/control-plane contracts and transition clients to Khala WebSockets on Postgres read models.
-- Long term: retire Khala once Lightning ops and all client sync lanes have parity evidence and rollback confidence.
+- Long term: retire legacy reactive/sync dependencies once Lightning ops and all client sync lanes have parity evidence and rollback confidence; keep runtime-owned Khala as the steady-state sync plane.
+
+Clarification:
+
+- Older wording that said “retire Khala” was a terminology regression from earlier drafts.
+- The intended target for retirement is the legacy lane Khala replaced (the prior vendor-managed sync dependency), not Khala itself.
 
 This path satisfies the core goal (proto-first, Postgres-backed sync engine, no manual TS schema authority) with the lowest realistic risk.
