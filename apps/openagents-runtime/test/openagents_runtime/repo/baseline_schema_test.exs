@@ -39,5 +39,14 @@ defmodule OpenAgentsRuntime.Repo.BaselineSchemaTest do
 
     assert {:ok, %{rows: [["runtime.ds_pointer_audits"]]}} =
              Repo.query("SELECT to_regclass('runtime.ds_pointer_audits')::text")
+
+    assert {:ok, %{rows: [["runtime.sync_stream_events"]]}} =
+             Repo.query("SELECT to_regclass('runtime.sync_stream_events')::text")
+
+    assert {:ok, %{rows: [["runtime.sync_run_summaries"]]}} =
+             Repo.query("SELECT to_regclass('runtime.sync_run_summaries')::text")
+
+    assert {:ok, %{rows: [["runtime.sync_codex_worker_summaries"]]}} =
+             Repo.query("SELECT to_regclass('runtime.sync_codex_worker_summaries')::text")
   end
 end
