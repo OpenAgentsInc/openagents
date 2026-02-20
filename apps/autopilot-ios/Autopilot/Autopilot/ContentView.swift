@@ -4,17 +4,23 @@ struct ContentView: View {
     @StateObject private var model = CodexHandshakeViewModel()
 
     var body: some View {
-        TabView {
-            CodexChatView(model: model)
-                .tabItem {
-                    Label("Chat", systemImage: "message.fill")
-                }
+        ZStack {
+            OATheme.background.ignoresSafeArea()
 
-            CodexDebugView(model: model)
-                .tabItem {
-                    Label("Debug", systemImage: "ladybug.fill")
-                }
+            TabView {
+                CodexChatView(model: model)
+                    .tabItem {
+                        Label("Chat", systemImage: "message.fill")
+                    }
+
+                CodexDebugView(model: model)
+                    .tabItem {
+                        Label("Debug", systemImage: "ladybug.fill")
+                    }
+            }
         }
+        .tint(OATheme.ring)
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -71,7 +77,7 @@ private struct CodexChatView: View {
             .onTapGesture {
                 dismissKeyboard()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(OATheme.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: model.chatMessages.count) { _, _ in
                 guard let last = model.chatMessages.last else {
@@ -88,11 +94,22 @@ private struct CodexChatView: View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField("Message Codex", text: $model.messageDraft, axis: .vertical)
                 .lineLimit(1...5)
-                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
                 .focused($isComposerFocused)
                 .submitLabel(.send)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(OATheme.input)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(OATheme.border, lineWidth: 1)
+                )
+                .foregroundStyle(OATheme.foreground)
+                .tint(OATheme.ring)
                 .onSubmit {
                     Task {
                         await model.sendUserMessage()
@@ -112,12 +129,13 @@ private struct CodexChatView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .tint(OATheme.primary)
             .disabled(!model.canSendMessage)
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .background(Color(.systemBackground))
+        .background(OATheme.background)
     }
 
     private func dismissKeyboard() {
@@ -138,7 +156,7 @@ private struct CodexMessageBubble: View {
                 if showRoleLabel {
                     Text(roleLabel(for: message.role))
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(OATheme.mutedForeground)
                         .textCase(.uppercase)
                 }
 
@@ -149,7 +167,7 @@ private struct CodexMessageBubble: View {
                 if message.isStreaming {
                     Text("streaming")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(OATheme.mutedForeground)
                 }
             }
             .padding(.horizontal, 12)
@@ -180,17 +198,17 @@ private struct CodexMessageBubble: View {
     private var bubbleBackground: Color {
         switch message.role {
         case .user:
-            return .blue
+            return OATheme.primary
         case .assistant:
-            return Color(.secondarySystemBackground)
+            return OATheme.card
         case .reasoning:
-            return Color(.tertiarySystemBackground)
+            return OATheme.muted
         case .tool:
-            return Color(.systemGray5)
+            return OATheme.accent
         case .system:
-            return Color(.secondarySystemBackground)
+            return OATheme.card
         case .error:
-            return Color.red.opacity(0.2)
+            return OATheme.destructive.opacity(0.25)
         }
     }
 
@@ -199,9 +217,9 @@ private struct CodexMessageBubble: View {
         case .user:
             return .white
         case .error:
-            return .red
+            return OATheme.destructive
         default:
-            return .primary
+            return OATheme.foreground
         }
     }
 }
@@ -217,7 +235,7 @@ private struct CodexDebugView: View {
                         Text("Environment")
                         Spacer()
                         Text(model.environmentHost)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(OATheme.mutedForeground)
                     }
 
                     Text("Auth: \(authDescription(model.authState))")
@@ -266,13 +284,13 @@ private struct CodexDebugView: View {
 
                     if model.workers.isEmpty {
                         Text("No workers loaded")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(OATheme.mutedForeground)
                     } else {
                         if let selectedWorkerID = model.selectedWorkerID {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Active Worker")
                                 Text("\(selectedWorkerID) (\(model.latestSnapshot?.status ?? "unknown"))")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(OATheme.mutedForeground)
                                     .font(.footnote)
                             }
                         }
@@ -280,14 +298,14 @@ private struct CodexDebugView: View {
                         if model.workers.count > 1 {
                             Text("Auto-selecting freshest running desktop worker (\(model.workers.count) candidates found).")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(OATheme.mutedForeground)
                         }
 
                         if let snapshot = model.latestSnapshot {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Snapshot: \(snapshot.status)")
                                 Text("Latest seq: \(snapshot.latestSeq)")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(OATheme.mutedForeground)
                                     .font(.footnote)
                             }
                         }
@@ -297,7 +315,7 @@ private struct CodexDebugView: View {
                 Section("Handshake") {
                     Text("Device ID: \(model.deviceID)")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(OATheme.mutedForeground)
                         .textSelection(.enabled)
 
                     Text("Stream: \(streamDescription(model.streamState))")
@@ -328,7 +346,7 @@ private struct CodexDebugView: View {
                 Section("Recent Events") {
                     if model.recentEvents.isEmpty {
                         Text("No events yet")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(OATheme.mutedForeground)
                     } else {
                         ForEach(Array(model.recentEvents.enumerated()), id: \.offset) { _, event in
                             VStack(alignment: .leading, spacing: 4) {
@@ -336,7 +354,7 @@ private struct CodexDebugView: View {
                                     .font(.caption)
                                 Text(event.rawData)
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(OATheme.mutedForeground)
                                     .lineLimit(3)
                             }
                         }
@@ -352,12 +370,16 @@ private struct CodexDebugView: View {
                 if let error = model.errorMessage {
                     Section("Error") {
                         Text(error)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(OATheme.destructive)
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(OATheme.background)
+            .tint(OATheme.ring)
             .navigationTitle("Codex Debug")
         }
+        .foregroundStyle(OATheme.foreground)
     }
 }
 
@@ -428,4 +450,18 @@ private func roleLabel(for role: CodexChatRole) -> String {
 
 #Preview {
     ContentView()
+}
+
+private enum OATheme {
+    static let background = Color(red: 16 / 255, green: 16 / 255, blue: 17 / 255)
+    static let foreground = Color(red: 216 / 255, green: 222 / 255, blue: 233 / 255)
+    static let card = Color(red: 26 / 255, green: 26 / 255, blue: 26 / 255)
+    static let muted = Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255)
+    static let mutedForeground = Color(red: 153 / 255, green: 153 / 255, blue: 153 / 255)
+    static let accent = Color(red: 80 / 255, green: 80 / 255, blue: 80 / 255)
+    static let primary = Color(red: 79 / 255, green: 79 / 255, blue: 85 / 255)
+    static let destructive = Color(red: 191 / 255, green: 97 / 255, blue: 106 / 255)
+    static let border = Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255)
+    static let input = Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255)
+    static let ring = Color(red: 136 / 255, green: 192 / 255, blue: 208 / 255)
 }
