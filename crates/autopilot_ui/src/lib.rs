@@ -118,6 +118,7 @@ const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
 const HOTBAR_SLOT_IDENTITY: u8 = 2;
 const HOTBAR_SLOT_WALLET: u8 = 3;
 const HOTBAR_SLOT_THREADS: u8 = 4;
+const AGENT_DELTA_ALIAS_CACHE_LIMIT: usize = 2048;
 const HOTBAR_SLOT_MOLTBOOK: u8 = 5;
 const HOTBAR_SLOT_AUTH: u8 = 6;
 const HOTBAR_CHAT_SLOT_START: u8 = 7;
@@ -880,6 +881,12 @@ struct ReasoningEntry {
     entry_index: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentDeltaSource {
+    Modern,
+    Legacy,
+}
+
 struct ChatPaneState {
     session_id: Option<SessionId>,
     thread_id: Option<String>,
@@ -903,6 +910,7 @@ struct ChatPaneState {
     formatted_thread_bounds: Bounds,
     formatted_message_streams: HashMap<String, StreamingMarkdown>,
     formatted_message_entries: HashMap<String, usize>,
+    agent_delta_aliases: HashMap<String, AgentDeltaSource>,
     reasoning_entries: HashMap<String, ReasoningEntry>,
     tool_entries: HashMap<String, ToolEntry>,
     last_user_message: Option<String>,
@@ -1127,6 +1135,7 @@ impl ChatPaneState {
             formatted_thread_bounds: Bounds::ZERO,
             formatted_message_streams: HashMap::new(),
             formatted_message_entries: HashMap::new(),
+            agent_delta_aliases: HashMap::new(),
             reasoning_entries: HashMap::new(),
             tool_entries: HashMap::new(),
             last_user_message: None,
@@ -1155,6 +1164,7 @@ impl ChatPaneState {
         self.formatted_thread.clear();
         self.formatted_message_streams.clear();
         self.formatted_message_entries.clear();
+        self.agent_delta_aliases.clear();
         self.reasoning_entries.clear();
         self.tool_entries.clear();
         self.last_user_message = None;
@@ -1176,6 +1186,7 @@ impl ChatPaneState {
         self.formatted_thread.clear();
         self.formatted_message_streams.clear();
         self.formatted_message_entries.clear();
+        self.agent_delta_aliases.clear();
         self.reasoning_entries.clear();
         self.tool_entries.clear();
         self.last_user_message = None;
@@ -1597,7 +1608,7 @@ impl ChatPaneState {
                         .or_else(|| params.get("item_id"))
                         .and_then(|id| id.as_str());
                     if let Some(item_id) = item_id {
-                        self.append_agent_delta(item_id, delta);
+                        self.append_agent_delta_from_source(AgentDeltaSource::Modern, item_id, delta);
                     }
                 }
             }
@@ -1610,7 +1621,7 @@ impl ChatPaneState {
                         .or_else(|| msg.get("itemId"))
                         .and_then(|id| id.as_str());
                     if let Some(item_id) = item_id {
-                        self.append_agent_delta(item_id, delta);
+                        self.append_agent_delta_from_source(AgentDeltaSource::Legacy, item_id, delta);
                     }
                 }
             }
@@ -1802,6 +1813,30 @@ impl ChatPaneState {
             }
             entry.set_content(message_markdown_view(document));
         }
+    }
+
+    fn append_agent_delta_from_source(
+        &mut self,
+        source: AgentDeltaSource,
+        item_id: &str,
+        delta: &str,
+    ) {
+        if delta.is_empty() {
+            return;
+        }
+        let dedupe_key = format!("{item_id}\x1f{delta}");
+        if let Some(previous) = self.agent_delta_aliases.get(&dedupe_key).copied() {
+            if previous != source {
+                return;
+            }
+        } else {
+            if self.agent_delta_aliases.len() >= AGENT_DELTA_ALIAS_CACHE_LIMIT {
+                self.agent_delta_aliases.clear();
+            }
+            self.agent_delta_aliases.insert(dedupe_key, source);
+        }
+
+        self.append_agent_delta(item_id, delta);
     }
 
     fn finish_agent_message(&mut self, item_id: &str, text: Option<&str>) {
@@ -10733,5 +10768,86 @@ mod tests {
             extract_thread_hint(Some(&params)).as_deref(),
             Some("thread-nested")
         );
+    }
+
+    #[test]
+    fn agent_delta_aliases_do_not_double_append_modern_then_legacy() {
+        let mut chat = ChatPaneState::new(DEFAULT_THREAD_MODEL);
+        let modern = serde_json::json!({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "itemId": "msg-1",
+                "delta": "Hi "
+            }
+        });
+        let legacy = serde_json::json!({
+            "method": "codex/event/agent_message_content_delta",
+            "params": {
+                "msg": {
+                    "item_id": "msg-1",
+                    "delta": "Hi "
+                }
+            }
+        });
+
+        chat.apply_formatted_event(&modern);
+        chat.apply_formatted_event(&legacy);
+
+        let stream = chat
+            .formatted_message_streams
+            .get("msg-1")
+            .expect("agent stream should exist");
+        assert_eq!(stream.source(), "Hi ");
+    }
+
+    #[test]
+    fn agent_delta_aliases_do_not_double_append_legacy_then_modern() {
+        let mut chat = ChatPaneState::new(DEFAULT_THREAD_MODEL);
+        let modern = serde_json::json!({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "itemId": "msg-1",
+                "delta": "Hi "
+            }
+        });
+        let legacy = serde_json::json!({
+            "method": "codex/event/agent_message_content_delta",
+            "params": {
+                "msg": {
+                    "item_id": "msg-1",
+                    "delta": "Hi "
+                }
+            }
+        });
+
+        chat.apply_formatted_event(&legacy);
+        chat.apply_formatted_event(&modern);
+
+        let stream = chat
+            .formatted_message_streams
+            .get("msg-1")
+            .expect("agent stream should exist");
+        assert_eq!(stream.source(), "Hi ");
+    }
+
+    #[test]
+    fn repeated_modern_agent_deltas_still_append() {
+        let mut chat = ChatPaneState::new(DEFAULT_THREAD_MODEL);
+        let modern = serde_json::json!({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "itemId": "msg-1",
+                "delta": "go "
+            }
+        });
+
+        chat.apply_formatted_event(&modern);
+        chat.apply_formatted_event(&modern);
+
+        let stream = chat
+            .formatted_message_streams
+            .get("msg-1")
+            .expect("agent stream should exist");
+        assert_eq!(stream.source(), "go go ");
     }
 }
