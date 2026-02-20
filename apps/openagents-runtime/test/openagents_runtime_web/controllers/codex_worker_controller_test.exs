@@ -347,6 +347,25 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     assert %{"error" => %{"code" => "forbidden"}} = json_response(forbidden_stream_conn, 403)
   end
 
+  test "worker stream accepts text/event-stream requests", %{conn: conn} do
+    worker_id = unique_id("codexw")
+
+    conn
+    |> put_internal_auth(user_id: 914)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+    |> json_response(202)
+
+    stream_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 914)
+      |> put_req_header("accept", "text/event-stream")
+      |> get(~p"/internal/v1/codex/workers/#{worker_id}/stream", %{"cursor" => 0, "tail_ms" => 10})
+
+    assert stream_conn.status == 200
+    assert List.first(get_resp_header(stream_conn, "content-type")) =~ "text/event-stream"
+  end
+
   test "list returns principal-owned workers and projection checkpoint status", %{conn: conn} do
     owner_id = 904
     other_id = 905
