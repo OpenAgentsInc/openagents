@@ -22,7 +22,8 @@ config :openagents_runtime,
   l1_compaction_min_events: 30,
   khala_sync_retention_interval_ms: 60_000,
   khala_sync_retention_horizon_seconds: 86_400,
-  khala_sync_retention_batch_size: 5_000
+  khala_sync_retention_batch_size: 5_000,
+  khala_sync_replay_batch_size: 200
 
 config :openagents_runtime, :laravel_internal,
   base_url: "",

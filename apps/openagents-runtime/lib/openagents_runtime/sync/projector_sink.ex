@@ -12,6 +12,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSink do
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Sync.CodexWorkerSummary
+  alias OpenAgentsRuntime.Sync.Notifier
   alias OpenAgentsRuntime.Sync.PayloadHash
   alias OpenAgentsRuntime.Sync.RunSummary
   alias OpenAgentsRuntime.Sync.StreamEvent
@@ -121,6 +122,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSink do
 
     case Repo.insert(changeset) do
       {:ok, _stream_event} ->
+        _ = Notifier.broadcast_stream_event(topic, watermark)
         emit_stream_append(mode, "ok")
         :ok
 
