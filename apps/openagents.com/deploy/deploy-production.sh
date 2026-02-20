@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${APP_DIR}" rev-parse --show-toplevel)"
 
 PROJECT="${PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-us-central1}"
@@ -19,13 +20,26 @@ fi
 echo "[deploy] ensuring package-lock.json is in sync (npm install)"
 (cd "${APP_DIR}" && npm install --no-audit --no-fund)
 
+BUILD_CONTEXT="$(mktemp -d)"
+trap 'rm -rf "${BUILD_CONTEXT}"' EXIT
+
+echo "[deploy] preparing isolated build context with khala-sync package"
+rsync -a \
+  --exclude node_modules \
+  --exclude vendor \
+  "${APP_DIR}/" "${BUILD_CONTEXT}/"
+mkdir -p "${BUILD_CONTEXT}/packages/khala-sync"
+rsync -a \
+  --exclude node_modules \
+  "${REPO_ROOT}/packages/khala-sync/" "${BUILD_CONTEXT}/packages/khala-sync/"
+
 echo "[deploy] project=${PROJECT} region=${REGION} service=${SERVICE} tag=${TAG}"
 echo "[deploy] building image via Cloud Build (Dockerfile runs npm run build)"
 gcloud builds submit \
   --project "${PROJECT}" \
   --config "${APP_DIR}/deploy/cloudbuild.yaml" \
   --substitutions "_TAG=${TAG}" \
-  "${APP_DIR}"
+  "${BUILD_CONTEXT}"
 
 echo "[deploy] deploying image=${IMAGE}"
 gcloud run deploy "${SERVICE}" \
