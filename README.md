@@ -13,6 +13,7 @@ OpenAgents is a multi-surface agent platform with two authority planes and one r
 - `apps/mobile/`: React Native + Expo app.
 - `apps/desktop/`: Electron app.
 - `apps/autopilot-ios/`: Swift/iOS app.
+- `apps/onyx/`: Rust local-first notes app.
 - `apps/inbox-autopilot/`: local-first inbox automation app.
 - `apps/lightning-ops/`: operator tooling for L402 control-plane reconcile.
 - `apps/lightning-wallet-executor/`: Bolt11 payment execution service.
@@ -105,6 +106,7 @@ Deployment topology:
 | `apps/mobile` | Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED` for worker summaries | Runtime APIs + `POST /api/sync/token` | Laravel/runtime APIs |
 | `apps/desktop` | Khala WS behind `OA_DESKTOP_KHALA_SYNC_ENABLED` for status lanes | Laravel/runtime HTTP + sync token endpoint | Laravel/runtime APIs |
 | `apps/autopilot-ios` | Not primary today (runtime SSE lane remains) | Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
+| `apps/onyx` | No Khala dependency (local-first storage) | Local vault bootstrap | Local-only data writes |
 | `apps/inbox-autopilot` | Not primary today (local-first architecture) | Local daemon + selected APIs | Local daemon + selected APIs |
 | `apps/lightning-ops` | No Khala dependency for control-plane (API/mock transport modes) | Internal Laravel control-plane APIs | Laravel internal control-plane APIs |
 | `apps/lightning-wallet-executor` | No Khala dependency | Service-local + Lightning infra | Service-local + Lightning infra |

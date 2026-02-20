@@ -70,7 +70,7 @@ PRIORITY_5=(
     "$ROOT_DIR/crates/issues/docs/README.md"
     "$ROOT_DIR/crates/gateway/docs/README.md"
     "$ROOT_DIR/crates/spark/docs/README.md"
-    "$ROOT_DIR/crates/onyx/docs/README.md"
+    "$ROOT_DIR/apps/onyx/docs/README.md"
     "$ROOT_DIR/crates/agent/docs/README.md"
 )
 

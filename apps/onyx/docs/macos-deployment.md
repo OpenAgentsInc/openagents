@@ -21,7 +21,7 @@ The deployment workflow involves:
 ## Directory Structure
 
 ```
-crates/onyx/
+apps/onyx/
 ├── Cargo.toml              # Bundle metadata goes here
 ├── resources/
 │   ├── app-icon.png        # 512x512 app icon
@@ -44,19 +44,19 @@ Create PNG icons at these sizes:
 **Quick placeholder icon generation:**
 ```bash
 # Create resources directory
-mkdir -p crates/onyx/resources
+mkdir -p apps/onyx/resources
 
 # Generate a simple placeholder icon (requires ImageMagick)
 convert -size 1024x1024 xc:'#1a1a1a' -fill '#00ff88' \
   -gravity center -pointsize 400 -annotate 0 'O' \
-  crates/onyx/resources/app-icon@2x.png
-convert crates/onyx/resources/app-icon@2x.png -resize 512x512 \
-  crates/onyx/resources/app-icon.png
+  apps/onyx/resources/app-icon@2x.png
+convert apps/onyx/resources/app-icon@2x.png -resize 512x512 \
+  apps/onyx/resources/app-icon.png
 ```
 
 ## Step 2: Configure Cargo.toml for Bundling
 
-Add this to `crates/onyx/Cargo.toml`:
+Add this to `apps/onyx/Cargo.toml`:
 
 ```toml
 [package.metadata.bundle]
@@ -77,7 +77,7 @@ osx_url_schemes = ["onyx"]
 
 ## Step 3: Create Entitlements File
 
-Create `crates/onyx/resources/onyx.entitlements`:
+Create `apps/onyx/resources/onyx.entitlements`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -147,7 +147,7 @@ echo "Bundle created at: $APP_PATH"
 # Code sign (optional, for local use ad-hoc signing works)
 if [ "$SIGN_APP" = true ]; then
     echo "Code signing..."
-    ENTITLEMENTS="crates/onyx/resources/onyx.entitlements"
+    ENTITLEMENTS="apps/onyx/resources/onyx.entitlements"
 
     if [ -f "$ENTITLEMENTS" ]; then
         /usr/bin/codesign --force --deep --timestamp --options runtime \
@@ -283,7 +283,7 @@ security find-identity -v -p codesigning
 # Sign with your Developer ID
 IDENTITY="Developer ID Application: Your Name (TEAM_ID)"
 /usr/bin/codesign --force --deep --timestamp --options runtime \
-    --entitlements crates/onyx/resources/onyx.entitlements \
+    --entitlements apps/onyx/resources/onyx.entitlements \
     --sign "$IDENTITY" \
     target/release/bundle/osx/Onyx.app
 ```

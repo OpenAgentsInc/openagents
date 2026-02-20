@@ -175,7 +175,7 @@ Create the document management crate.
 Open and manage a folder of notes.
 
 **Files:**
-- `crates/onyx/src/vault.rs`
+- `apps/onyx/src/vault.rs`
 
 **Tasks:**
 - [ ] Open folder dialog

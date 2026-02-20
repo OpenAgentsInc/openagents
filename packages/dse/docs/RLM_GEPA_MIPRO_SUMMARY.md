@@ -361,13 +361,12 @@ Each entry lists:
   - Oldest: [e30475cdb4](https://github.com/OpenAgentsInc/openagents/commit/e30475cdb4c93f5b336b3a58f567d5681dbdae59) 2026-01-08
   - Latest: [b0468e0f2a](https://github.com/OpenAgentsInc/openagents/commit/b0468e0f2aefc06dc3bdde705dbad60ccb23aeec) 2026-01-16
 
-### crates/manatap/
+### crates/manatap/ (historical)
 
-- [crates/manatap/docs/CHAIN_VISUALIZER_SPEC.md](https://github.com/OpenAgentsInc/openagents/blob/main/crates/manatap/docs/CHAIN_VISUALIZER_SPEC.md)
-  - Title: Mana Tap: DSPy Chain Visualizer Spec
-  - Matches: `GEPA`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/crates/manatap/docs/CHAIN_VISUALIZER_SPEC.md#L627), `MIPRO`: [1 lines](https://github.com/OpenAgentsInc/openagents/blob/main/crates/manatap/docs/CHAIN_VISUALIZER_SPEC.md#L627)
-  - Oldest: [664ed0f578](https://github.com/OpenAgentsInc/openagents/commit/664ed0f57800e0cfe66ca663f2597dc0afd38819) 2026-01-12
-  - Latest: [664ed0f578](https://github.com/OpenAgentsInc/openagents/commit/664ed0f57800e0cfe66ca663f2597dc0afd38819) 2026-01-12
+- `crates/manatap` was removed from the workspace on 2026-02-20.
+- Historical reference:
+  - [crates/manatap/docs/CHAIN_VISUALIZER_SPEC.md](https://github.com/OpenAgentsInc/openagents/blob/main/crates/manatap/docs/CHAIN_VISUALIZER_SPEC.md)
+  - Oldest/Latest mention commit: [664ed0f578](https://github.com/OpenAgentsInc/openagents/commit/664ed0f57800e0cfe66ca663f2597dc0afd38819) on 2026-01-12
 
 ### crates/nostr/
 

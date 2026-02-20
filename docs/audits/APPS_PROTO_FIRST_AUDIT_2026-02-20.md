@@ -15,6 +15,7 @@ Included apps:
 - `apps/inbox-autopilot`
 - `apps/lightning-ops`
 - `apps/lightning-wallet-executor`
+- `apps/onyx`
 
 Out-of-scope-but-relevant check requested during follow-up:
 
@@ -75,6 +76,7 @@ This follows:
 | `apps/autopilot-desktop` | `P0` | Runtime sync path is manual JSON + SSE parsing, no proto contract binding |
 | `apps/inbox-autopilot` | `P0` | Local daemon/app architecture with no OpenAgents proto contract integration |
 | `apps/lightning-wallet-executor` | `P0` | Uses Effect contracts; no OpenAgents proto contract consumption in app code |
+| `apps/onyx` | `P0` | Local-first notes app with no OpenAgents proto schema consumption |
 
 ## Per-App Analysis
 
@@ -205,6 +207,19 @@ Status:
 
 - Not proto-first for OpenAgents proto surface contracts.
 
+## 10) `apps/onyx` (`P0`)
+
+Evidence:
+
+- Desktop note editor with local-first vault/data model and no runtime proto surface integration:
+  - `apps/onyx/src/app.rs`
+  - `apps/onyx/src/vault.rs`
+  - `apps/onyx/docs/ARCHITECTURE.md`
+
+Status:
+
+- No OpenAgents proto contract usage in current app code.
+
 ## Desktop Binaries Still in `crates/` (Ownership Check)
 
 These are not part of `apps/`, but they are desktop-capable binaries today:
@@ -212,15 +227,12 @@ These are not part of `apps/`, but they are desktop-capable binaries today:
 - `crates/autopilot` (`[[bin]] autopilot`) with WGPUI + Winit deps:
   - `crates/autopilot/Cargo.toml`
   - `crates/autopilot/src/main.rs`
-- `crates/manatap` (`[[bin]] manatap`) with WGPUI + Winit deps:
-  - `crates/manatap/Cargo.toml`
-- `crates/onyx` (`[[bin]] onyx`) with WGPUI + Winit deps:
-  - `crates/onyx/Cargo.toml`
 
 Interpretation:
 
 - The canonical runtime/Codex desktop app is currently `apps/autopilot-desktop`.
-- There are still other desktop binaries in `crates/` for other product/dev surfaces.
+- `apps/onyx` was moved from `crates/onyx` to `apps/onyx` on 2026-02-20.
+- `crates/manatap` was removed on 2026-02-20 after confirming it was a standalone prototype/demo.
 - `crates/autopilot` in particular can create ownership ambiguity with `apps/autopilot-desktop` and should be explicitly resolved by doctrine (keep-as-is, split responsibilities, or migrate).
 
 ## Clarification: “Retire Khala” Wording

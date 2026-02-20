@@ -19,10 +19,10 @@ test = false
 
 [dependencies]
 # OpenAgents crates
-wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
-editor = { path = "../editor" }
+wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }
+editor = { path = "../../crates/editor" }
 openagents-utils = { workspace = true }
-# document = { path = "../document" }  # TODO: Add when document crate is created (Milestone 3)
+# document = { path = "../../crates/document" }  # TODO: Add when document crate is created (Milestone 3)
 
 # GPU
 wgpu = { workspace = true }
@@ -68,7 +68,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 semver = "1"
 
 # Voice transcription
-voice = { path = "../voice" }
+voice = { path = "../../crates/voice" }
 
 [package.metadata.bundle]
 name = "Onyx"

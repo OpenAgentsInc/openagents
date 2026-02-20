@@ -31,6 +31,7 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 - Runtime: `apps/openagents-runtime/`
 - Mobile app: `apps/mobile/`
 - Desktop app: `apps/desktop/`
+- Onyx app: `apps/onyx/`
 - Shared packages: `packages/`
 
 ### Operations, testing, and audits
@@ -86,6 +87,7 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 - **Core web app:** `apps/openagents.com/` — Laravel 12 + Inertia + React (TypeScript). See `docs/plans/active/laravel-rebuild.md`.
 - Mobile surface: `apps/mobile/`
 - Desktop surface: `apps/desktop/`
+- Onyx surface: `apps/onyx/`
 - Shared packages: `packages/*`
 - Canonical docs/contracts: `docs/` (start with `docs/README.md`)
 
