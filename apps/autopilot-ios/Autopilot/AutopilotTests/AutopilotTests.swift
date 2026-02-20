@@ -143,4 +143,41 @@ struct AutopilotTests {
         #expect(replayEvents.count == 1)
         #expect(CodexHandshakeMatcher.isMatchingAck(event: replayEvents[0], handshakeID: "hs-xyz"))
     }
+
+    @Test("system event display policy suppresses noisy thread started events")
+    func systemEventDisplayPolicySuppressesThreadStarted() {
+        #expect(!CodexChatEventDisplayPolicy.shouldDisplaySystemMethod("thread/started"))
+        #expect(CodexChatEventDisplayPolicy.shouldDisplaySystemMethod("turn/started"))
+        #expect(CodexChatEventDisplayPolicy.shouldDisplaySystemMethod("turn/completed"))
+    }
+
+    @Test("streaming text assembler preserves token order and removes overlap duplication")
+    func streamingTextAssemblerPreservesOrderAndOverlap() {
+        let noInjectedSpace = CodexStreamingTextAssembler.append(existing: "I'm Cod", delta: "ex,")
+        #expect(noInjectedSpace == "I'm Codex,")
+
+        let overlapMerged = CodexStreamingTextAssembler.append(existing: "Hello wor", delta: "world")
+        #expect(overlapMerged == "Hello world")
+
+        let duplicateSkipped = CodexStreamingTextAssembler.append(existing: "Hello", delta: "Hello")
+        #expect(duplicateSkipped == "Hello")
+    }
+
+    @Test("assistant delta source policy prefers legacy stream when both feeds are present")
+    func assistantDeltaPolicyPrefersLegacy() {
+        let firstLegacy = CodexAssistantDeltaPolicy.decide(current: nil, incoming: .legacyContent)
+        #expect(firstLegacy.selectedSource == .legacyContent)
+        #expect(firstLegacy.shouldAccept)
+        #expect(!firstLegacy.shouldReset)
+
+        let switchFromModernToLegacy = CodexAssistantDeltaPolicy.decide(current: .modern, incoming: .legacyContent)
+        #expect(switchFromModernToLegacy.selectedSource == .legacyContent)
+        #expect(switchFromModernToLegacy.shouldAccept)
+        #expect(switchFromModernToLegacy.shouldReset)
+
+        let ignoreModernAfterLegacy = CodexAssistantDeltaPolicy.decide(current: .legacyContent, incoming: .modern)
+        #expect(ignoreModernAfterLegacy.selectedSource == .legacyContent)
+        #expect(!ignoreModernAfterLegacy.shouldAccept)
+        #expect(!ignoreModernAfterLegacy.shouldReset)
+    }
 }
