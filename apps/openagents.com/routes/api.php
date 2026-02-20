@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AutopilotController;
 use App\Http\Controllers\Api\AutopilotStreamController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ConvexTokenController;
+use App\Http\Controllers\Api\Internal\LightningOpsControlPlaneController;
 use App\Http\Controllers\Api\Internal\RuntimeSecretController;
 use App\Http\Controllers\Api\L402Controller;
 use App\Http\Controllers\Api\L402PaywallController;
@@ -38,6 +39,11 @@ if (str_starts_with($runtimeSecretFetchPath, 'api/')) {
 
 Route::middleware('runtime.internal')
     ->post($runtimeSecretFetchPath, [RuntimeSecretController::class, 'fetch']);
+
+Route::prefix('/internal/lightning-ops/control-plane')->group(function () {
+    Route::post('/query', [LightningOpsControlPlaneController::class, 'query']);
+    Route::post('/mutation', [LightningOpsControlPlaneController::class, 'mutation']);
+});
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/me', [MeController::class, 'show']);

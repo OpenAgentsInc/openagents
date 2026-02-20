@@ -55,6 +55,9 @@ return [
         'aperture_config_path' => (string) env('L402_APERTURE_CONFIG_PATH', storage_path('app/l402/aperture-paywalls.json')),
         'aperture_reconcile_command' => env('L402_APERTURE_RECONCILE_COMMAND'),
         'aperture_reconcile_timeout_seconds' => (int) env('L402_APERTURE_RECONCILE_TIMEOUT_SECONDS', 120),
+        'ops_secret' => (string) env('OA_LIGHTNING_OPS_SECRET', ''),
+        'control_plane_default_timeout_ms' => (int) env('OA_LIGHTNING_OPS_CONTROL_PLANE_TIMEOUT_MS', 6000),
+        'control_plane_default_priority' => (int) env('OA_LIGHTNING_OPS_CONTROL_PLANE_PRIORITY', 10),
     ],
 
     // Demo presets (EP212). Keep endpoints here so demos are reproducible.

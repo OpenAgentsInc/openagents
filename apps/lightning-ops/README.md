@@ -4,10 +4,10 @@ Effect-native operational service for hosted L402 gateway workflows.
 
 ## Scope in Phase 2A
 
-- Pull hosted paywall control-plane state from Convex.
+- Pull hosted paywall control-plane state from Convex or Laravel internal API.
 - Compile deterministic `aperture.yaml` artifacts + stable `configHash`.
 - Validate route/policy state and emit typed diagnostics.
-- Persist compile/deployment intent records back to Convex.
+- Persist compile/deployment intent records to the selected control-plane backend.
 
 ## Commands
 
@@ -18,6 +18,8 @@ npm run smoke:compile -- --json
 npm run smoke:security -- --json
 npm run smoke:settlement -- --json
 npm run smoke:full-flow -- --json
+npm run compile:api
+npm run reconcile:api
 npm run reconcile:convex
 npm run smoke:staging -- --json
 npm run smoke:ep212-routes -- --json --mode mock
@@ -87,6 +89,16 @@ Environment variables for Convex-backed operation:
 
 - `OA_LIGHTNING_OPS_CONVEX_URL`
 - `OA_LIGHTNING_OPS_SECRET`
+
+Environment variables for API-backed operation:
+
+- `OA_LIGHTNING_OPS_API_BASE_URL` (for example `https://openagents.com`)
+- `OA_LIGHTNING_OPS_SECRET`
+- `OA_LIGHTNING_OPS_CONVEX_URL` (temporary shared-config requirement; set placeholder like `https://unused.invalid`)
+
+Laravel API-side requirement for API mode:
+
+- `apps/openagents.com` must set `OA_LIGHTNING_OPS_SECRET` (same value as `apps/lightning-ops`).
 
 Environment variables for hosted staging smoke (`--mode convex`). **Gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (in `staging-reconcile.sh` and in the smoke program). You only need to set:
 

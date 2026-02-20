@@ -1,6 +1,7 @@
 import { Console, Effect, Layer } from "effect";
 
 import { ApertureConfigCompilerLive } from "./compiler/apertureCompiler.js";
+import { ApiTransportLive } from "./controlPlane/apiTransport.js";
 import { makeInMemoryControlPlaneHarness } from "./controlPlane/inMemory.js";
 import { ConvexControlPlaneLive } from "./controlPlane/convex.js";
 import { ConvexTransportLive } from "./controlPlane/convexTransport.js";
@@ -26,14 +27,16 @@ import { OpsRuntimeConfigLive } from "./runtime/config.js";
 const usage = `Usage:
   tsx src/main.ts smoke:compile [--json]
   tsx src/main.ts compile:convex [--json]
+  tsx src/main.ts compile:api [--json]
   tsx src/main.ts reconcile:convex [--json]
-  tsx src/main.ts smoke:security [--json] [--mode mock|convex]
-  tsx src/main.ts smoke:settlement [--json] [--mode mock|convex]
-  tsx src/main.ts smoke:staging [--json] [--mode mock|convex]
+  tsx src/main.ts reconcile:api [--json]
+  tsx src/main.ts smoke:security [--json] [--mode mock|convex|api]
+  tsx src/main.ts smoke:settlement [--json] [--mode mock|convex|api]
+  tsx src/main.ts smoke:staging [--json] [--mode mock|convex|api]
   tsx src/main.ts smoke:ep212-routes [--json] [--mode mock|live]
   tsx src/main.ts smoke:ep212-full-flow [--json] [--mode mock|live] [--artifact-dir <path>]
-  tsx src/main.ts smoke:observability [--json] [--mode mock|convex]
-  tsx src/main.ts smoke:full-flow [--json] [--mode mock|convex] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
+  tsx src/main.ts smoke:observability [--json] [--mode mock|convex|api]
+  tsx src/main.ts smoke:full-flow [--json] [--mode mock|convex|api] [--artifact-dir <path>] [--local-artifact <path>] [--allow-missing-local-artifact]
 `;
 
 const toCompileSummaryJson = (summary: {
@@ -519,8 +522,27 @@ const runConvexCompile = (jsonOutput: boolean) => {
   );
 };
 
+const runApiCompile = (jsonOutput: boolean) => {
+  const controlPlaneLayer = ConvexControlPlaneLive.pipe(
+    Layer.provideMerge(ApiTransportLive),
+    Layer.provideMerge(OpsRuntimeConfigLive),
+  );
+  const liveLayer = Layer.mergeAll(ApertureConfigCompilerLive, controlPlaneLayer);
+
+  return compileAndPersistOnce({ requestId: "compile:api" }).pipe(
+    Effect.provide(liveLayer),
+    Effect.flatMap((summary) => printCompileSummary(summary, jsonOutput)),
+  );
+};
+
 const runConvexReconcile = (jsonOutput: boolean) => {
   return runStagingSmoke({ mode: "convex", requestId: "reconcile:convex" }).pipe(
+    Effect.flatMap((summary) => printReconcileSummary(summary, jsonOutput)),
+  );
+};
+
+const runApiReconcile = (jsonOutput: boolean) => {
+  return runStagingSmoke({ mode: "api", requestId: "reconcile:api" }).pipe(
     Effect.flatMap((summary) => printReconcileSummary(summary, jsonOutput)),
   );
 };
@@ -615,24 +637,32 @@ const main = Effect.gen(function* () {
     return yield* runConvexCompile(jsonOutput);
   }
 
+  if (command === "compile:api") {
+    return yield* runApiCompile(jsonOutput);
+  }
+
   if (command === "reconcile:convex") {
     return yield* runConvexReconcile(jsonOutput);
   }
 
+  if (command === "reconcile:api") {
+    return yield* runApiReconcile(jsonOutput);
+  }
+
   if (command === "smoke:settlement") {
-    return yield* runSmokeSettlement(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+    return yield* runSmokeSettlement(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
   }
 
   if (command === "smoke:security") {
-    return yield* runSmokeSecurity(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+    return yield* runSmokeSecurity(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
   }
 
   if (command === "smoke:staging") {
-    return yield* runSmokeStaging(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+    return yield* runSmokeStaging(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
   }
 
   if (command === "smoke:observability") {
-    return yield* runSmokeObservability(jsonOutput, parseMode(argv, ["mock", "convex"], "mock"));
+    return yield* runSmokeObservability(jsonOutput, parseMode(argv, ["mock", "convex", "api"], "mock"));
   }
 
   if (command === "smoke:ep212-routes") {
@@ -653,7 +683,7 @@ const main = Effect.gen(function* () {
     const localArtifactPath = parseTextOption(argv, "--local-artifact");
     return yield* runSmokeFullFlow({
       jsonOutput,
-      mode: parseMode(argv, ["mock", "convex"], "mock"),
+      mode: parseMode(argv, ["mock", "convex", "api"], "mock"),
       ...(artifactDir ? { artifactDir } : {}),
       ...(localArtifactPath ? { localArtifactPath } : {}),
       strictLocalParity: !argv.includes("--allow-missing-local-artifact"),

@@ -493,6 +493,20 @@ Scope:
 
 - Add Postgres-backed authority tables/APIs for paywall policy, security controls, settlements.
 
+Delivered:
+
+- Added control-plane authority tables in Laravel migration:
+  - `apps/openagents.com/database/migrations/2026_02_20_000009_create_l402_control_plane_tables.php`
+- Added internal Laravel control-plane API surface:
+  - `POST /api/internal/lightning-ops/control-plane/query`
+  - `POST /api/internal/lightning-ops/control-plane/mutation`
+- Added runtime parity service/controller for compile, settlement, and security workflows:
+  - `apps/openagents.com/app/Services/L402/L402OpsControlPlaneService.php`
+  - `apps/openagents.com/app/Http/Controllers/Api/Internal/LightningOpsControlPlaneController.php`
+- Added API-backed control-plane transport + API smoke mode plumbing in `apps/lightning-ops`.
+- Added Laravel feature coverage for parity semantics:
+  - `apps/openagents.com/tests/Feature/Api/Internal/LightningOpsControlPlaneApiTest.php`
+
 Done when:
 
 - API parity with current Convex-backed flows is validated.

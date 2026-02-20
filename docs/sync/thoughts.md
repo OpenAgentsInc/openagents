@@ -56,20 +56,27 @@ Gap:
 
 - Laravel mints Convex token bridge via `/api/convex/token`:
   - `apps/openagents.com/app/Support/Convex/ConvexTokenIssuer.php`
-- Mobile still boots Convex client/provider:
+- Mobile Khala lane is implemented behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED` and Convex provider boot was removed:
   - `apps/mobile/app/app.tsx`
 - Mobile Codex admin data plane is already runtime API-driven:
   - `apps/mobile/app/screens/CodexWorkersScreen.tsx`
 - Desktop runtime task flow is already Laravel API-driven:
   - `apps/desktop/src/effect/taskProvider.ts`
+- Desktop Khala lane can run without Convex URL/token:
+  - `apps/desktop/src/lib/khalaConfig.ts`
 
 ### Lightning lane
 
-- `apps/lightning-ops` still depends directly on Convex transport:
-  - `apps/lightning-ops/src/controlPlane/convexTransport.ts`
+- Lightning control-plane schema authority is now proto-first:
+  - `proto/openagents/lightning/v1/control_plane.proto`
+- Postgres-backed authority APIs now exist in Laravel:
+  - `apps/openagents.com/app/Http/Controllers/Api/Internal/LightningOpsControlPlaneController.php`
+  - `apps/openagents.com/app/Services/L402/L402OpsControlPlaneService.php`
+- `apps/lightning-ops` supports API-backed transport in addition to Convex rollback mode:
+  - `apps/lightning-ops/src/controlPlane/apiTransport.ts`
   - `apps/lightning-ops/src/controlPlane/convex.ts`
 
-Conclusion: runtime/Codex is ready for Khala first; Lightning migrates second.
+Conclusion: runtime/Codex Khala lane is live behind flags; Lightning second-wave migration is underway with API parity scaffolding merged.
 
 ## WS-only transport decision
 

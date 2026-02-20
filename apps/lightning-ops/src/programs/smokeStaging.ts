@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 import { ConfigError } from "../errors.js";
 
 import { ApertureConfigCompilerLive } from "../compiler/apertureCompiler.js";
+import { ApiTransportLive } from "../controlPlane/apiTransport.js";
 import { ConvexControlPlaneLive } from "../controlPlane/convex.js";
 import { ConvexTransportLive } from "../controlPlane/convexTransport.js";
 import { makeInMemoryControlPlaneHarness } from "../controlPlane/inMemory.js";
@@ -12,7 +13,7 @@ import { makeInMemoryGatewayHarness } from "../gateway/inMemory.js";
 import { reconcileAndDeployOnce } from "./reconcileAndDeploy.js";
 import { OpsRuntimeConfigLive } from "../runtime/config.js";
 
-export type StagingSmokeMode = "mock" | "convex";
+export type StagingSmokeMode = "mock" | "convex" | "api";
 
 const STAGING_GATEWAY_DEFAULTS: Record<string, string> = {
   OA_LIGHTNING_OPS_GATEWAY_BASE_URL: "https://l402.openagents.com",
@@ -94,6 +95,22 @@ const runConvexSmoke = (requestId: string) =>
     );
   });
 
+const runApiSmoke = (requestId: string) =>
+  Effect.gen(function* () {
+    const gatewayConfig = yield* loadHttpGatewayConfigFromEnv();
+
+    const controlPlaneLayer = ConvexControlPlaneLive.pipe(
+      Layer.provideMerge(ApiTransportLive),
+      Layer.provideMerge(OpsRuntimeConfigLive),
+    );
+    const gatewayLayer = makeHttpGatewayLayer(gatewayConfig);
+
+    return yield* runReconcile(
+      Layer.mergeAll(controlPlaneLayer, gatewayLayer),
+      requestId,
+    );
+  });
+
 export const runStagingSmoke = (input?: {
   readonly mode?: StagingSmokeMode;
   readonly requestId?: string;
@@ -101,5 +118,7 @@ export const runStagingSmoke = (input?: {
   const mode = input?.mode ?? "mock";
   const requestId = input?.requestId ?? "smoke:staging";
 
-  return mode === "convex" ? runConvexSmoke(requestId) : runMockSmoke(requestId);
+  if (mode === "convex") return runConvexSmoke(requestId);
+  if (mode === "api") return runApiSmoke(requestId);
+  return runMockSmoke(requestId);
 };
