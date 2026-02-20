@@ -62,6 +62,12 @@ use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey
 use winit::window::{CursorIcon, Window, WindowId};
 
 mod full_auto;
+mod runtime_codex_proto;
+
+use runtime_codex_proto::{
+    RuntimeCodexStreamEvent, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
+    handshake_dedupe_key, merge_retry_cursor, parse_runtime_stream_events, stream_event_seq,
+};
 
 const WINDOW_TITLE: &str = "Autopilot";
 const WINDOW_WIDTH: f64 = 1280.0;
@@ -94,12 +100,6 @@ const ENV_RUNTIME_SYNC_HEARTBEAT_MS: &str = "OPENAGENTS_RUNTIME_SYNC_HEARTBEAT_M
 const RUNTIME_SYNC_STREAM_TAIL_MS: u64 = 15_000;
 const RUNTIME_SYNC_STREAM_EMPTY_SLEEP_MS: u64 = 250;
 const RUNTIME_SYNC_STREAM_RECONNECT_SLEEP_MS: u64 = 2_000;
-
-#[derive(Debug)]
-struct RuntimeCodexStreamEvent {
-    id: Option<u64>,
-    payload: Value,
-}
 
 #[derive(Clone)]
 struct RuntimeCodexSync {
@@ -351,12 +351,7 @@ impl RuntimeCodexSync {
                             );
 
                             if let Some(seq_value) = seq {
-                                let replay_cursor = seq_value.saturating_sub(1);
-                                retry_cursor = Some(
-                                    retry_cursor
-                                        .map(|current| current.min(replay_cursor))
-                                        .unwrap_or(replay_cursor),
-                                );
+                                retry_cursor = Some(merge_retry_cursor(retry_cursor, seq_value));
                             }
                         }
                     }
@@ -588,107 +583,6 @@ fn runtime_sync_error_message(status: reqwest::StatusCode, raw_body: &str) -> St
         .map(|value| value.to_string())
         .or_else(|| (!raw_body.trim().is_empty()).then_some(raw_body.to_string()))
         .unwrap_or_else(|| format!("runtime sync request failed ({status})"))
-}
-
-fn parse_runtime_stream_events(raw: &str) -> Vec<RuntimeCodexStreamEvent> {
-    let normalized = raw.replace("\r\n", "\n");
-    let mut events = Vec::new();
-
-    for chunk in normalized.split("\n\n") {
-        let chunk = chunk.trim();
-        if chunk.is_empty() {
-            continue;
-        }
-
-        let mut id: Option<u64> = None;
-        let mut data_lines: Vec<String> = Vec::new();
-
-        for line in chunk.lines() {
-            if let Some(value) = line.strip_prefix("id:") {
-                id = value.trim().parse::<u64>().ok();
-            } else if let Some(value) = line.strip_prefix("data:") {
-                data_lines.push(value.trim().to_string());
-            }
-        }
-
-        if data_lines.is_empty() {
-            continue;
-        }
-
-        let raw_data = data_lines.join("\n");
-        let payload = serde_json::from_str::<Value>(&raw_data).unwrap_or(Value::String(raw_data));
-        events.push(RuntimeCodexStreamEvent { id, payload });
-    }
-
-    events
-}
-
-fn stream_event_seq(event: &RuntimeCodexStreamEvent) -> Option<u64> {
-    event
-        .id
-        .or_else(|| event.payload.get("seq").and_then(|value| value.as_u64()))
-}
-
-fn extract_ios_handshake_id(payload: &Value) -> Option<String> {
-    let (event_type, worker_payload) = extract_worker_event(payload)?;
-    if event_type != "worker.event" {
-        return None;
-    }
-
-    let source = worker_payload
-        .get("source")
-        .and_then(|value| value.as_str());
-    let method = worker_payload
-        .get("method")
-        .and_then(|value| value.as_str());
-    if source != Some("autopilot-ios") || method != Some("ios/handshake") {
-        return None;
-    }
-
-    extract_handshake_id(worker_payload)
-}
-
-fn extract_desktop_handshake_ack_id(payload: &Value) -> Option<String> {
-    let (event_type, worker_payload) = extract_worker_event(payload)?;
-    if event_type != "worker.event" {
-        return None;
-    }
-
-    let source = worker_payload
-        .get("source")
-        .and_then(|value| value.as_str());
-    let method = worker_payload
-        .get("method")
-        .and_then(|value| value.as_str());
-    if source != Some("autopilot-desktop") || method != Some("desktop/handshake_ack") {
-        return None;
-    }
-
-    extract_handshake_id(worker_payload)
-}
-
-fn extract_worker_event(payload: &Value) -> Option<(&str, &Map<String, Value>)> {
-    let payload_obj = payload.as_object()?;
-    let event_type = payload_obj
-        .get("eventType")
-        .or_else(|| payload_obj.get("event_type"))
-        .and_then(|value| value.as_str())?;
-    let worker_payload = payload_obj.get("payload")?.as_object()?;
-    Some((event_type, worker_payload))
-}
-
-fn extract_handshake_id(payload: &Map<String, Value>) -> Option<String> {
-    payload
-        .get("handshake_id")
-        .or_else(|| payload.get("handshakeId"))
-        .and_then(|value| value.as_str())
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_string())
-}
-
-fn handshake_dedupe_key(worker_id: &str, handshake_id: &str) -> String {
-    format!("{worker_id}::{handshake_id}")
 }
 
 fn sanitize_worker_component(value: &str) -> String {

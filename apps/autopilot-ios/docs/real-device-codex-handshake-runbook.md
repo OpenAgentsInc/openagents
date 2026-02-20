@@ -17,6 +17,27 @@ This runbook is for the public Laravel runtime APIs:
 - `GET /api/runtime/codex/workers/{workerId}/stream`
 - `POST /api/runtime/codex/workers/{workerId}/events`
 
+## Automated Acceptance Harness (Canonical Gate)
+
+Before manual device validation, run the automated harness suite:
+
+```bash
+# Runtime handshake stream + cursor continuity acceptance coverage
+cd apps/openagents-runtime
+mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs
+
+# Desktop proto-first stream parsing + handshake retry/cursor harness
+cd /Users/christopherdavid/code/openagents
+cargo test -p autopilot-desktop runtime_codex_proto::tests
+
+# iOS proto-first handshake decode + ack correlation tests
+# Run `AutopilotTests` in Xcode for apps/autopilot-ios/Autopilot/Autopilot.xcodeproj
+```
+
+Gate rule:
+
+- Manual runbook execution is only valid if this automated harness passes first.
+
 ## 1. Prerequisites
 
 Desktop host:
@@ -209,6 +230,7 @@ Stream sequence correlation:
 
 ## 8. Release Validation Checklist (Pass/Fail)
 
+- [ ] Automated harness gate passed (`codex_worker_controller_test.exs`, desktop `runtime_codex_proto::tests`, iOS `AutopilotTests`).
 - [ ] Desktop launched with `OPENAGENTS_RUNTIME_SYNC_BASE_URL` and `OPENAGENTS_RUNTIME_SYNC_TOKEN`.
 - [ ] iOS app can load workers and select target worker.
 - [ ] iOS stream enters `live` state before handshake attempt.

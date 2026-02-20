@@ -235,6 +235,92 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     assert stream_conn.resp_body =~ "\"handshake_id\":\"#{handshake_id}\""
   end
 
+  test "handshake stream reconnect resumes from cursor and still delivers matching ack", %{
+    conn: conn
+  } do
+    worker_id = unique_id("codexw")
+    handshake_id = "hs_#{System.unique_integer([:positive])}"
+
+    conn
+    |> put_internal_auth(user_id: 916)
+    |> post(~p"/internal/v1/codex/workers", %{"worker_id" => worker_id})
+    |> json_response(202)
+
+    ios_ingest_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 916)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/events", %{
+        "event" => %{
+          "event_type" => "worker.event",
+          "payload" => %{
+            "source" => "autopilot-ios",
+            "method" => "ios/handshake",
+            "handshake_id" => handshake_id,
+            "device_id" => "device_test",
+            "occurred_at" => "2026-02-20T00:00:00Z"
+          }
+        }
+      })
+
+    assert %{"data" => %{"seq" => ios_seq}} = json_response(ios_ingest_conn, 202)
+
+    ack_ingest_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 916)
+      |> post(~p"/internal/v1/codex/workers/#{worker_id}/events", %{
+        "event" => %{
+          "event_type" => "worker.event",
+          "payload" => %{
+            "source" => "autopilot-desktop",
+            "method" => "desktop/handshake_ack",
+            "handshake_id" => handshake_id,
+            "desktop_session_id" => "session_42",
+            "occurred_at" => "2026-02-20T00:00:02Z"
+          }
+        }
+      })
+
+    assert %{"data" => %{"seq" => ack_seq}} = json_response(ack_ingest_conn, 202)
+    assert ack_seq > ios_seq
+
+    # Initial catch-up stream from before iOS handshake includes both request and ack envelopes.
+    first_stream_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 916)
+      |> get(~p"/internal/v1/codex/workers/#{worker_id}/stream", %{
+        "cursor" => max(ios_seq - 1, 0),
+        "tail_ms" => 50
+      })
+
+    assert first_stream_conn.status == 200
+    assert first_stream_conn.resp_body =~ "\"method\":\"ios/handshake\""
+    assert first_stream_conn.resp_body =~ "\"method\":\"desktop/handshake_ack\""
+    assert first_stream_conn.resp_body =~ "\"handshake_id\":\"#{handshake_id}\""
+
+    # Reconnect from iOS handshake cursor should still deliver the matching ack (without replaying
+    # the original handshake request at the same seq).
+    reconnect_stream_conn =
+      conn
+      |> recycle()
+      |> put_internal_auth(user_id: 916)
+      |> get(~p"/internal/v1/codex/workers/#{worker_id}/stream", %{
+        "cursor" => ios_seq,
+        "tail_ms" => 50
+      })
+
+    assert reconnect_stream_conn.status == 200
+    refute reconnect_stream_conn.resp_body =~ "\"method\":\"ios/handshake\""
+    assert reconnect_stream_conn.resp_body =~ "\"method\":\"desktop/handshake_ack\""
+    assert reconnect_stream_conn.resp_body =~ "\"handshake_id\":\"#{handshake_id}\""
+
+    reconnect_ids = sse_ids(reconnect_stream_conn.resp_body)
+    assert Enum.member?(reconnect_ids, ack_seq)
+    assert Enum.all?(reconnect_ids, &(&1 > ios_seq))
+  end
+
   test "events endpoint returns conflict when worker is stopped", %{conn: conn} do
     worker_id = unique_id("codexw")
 
@@ -439,4 +525,20 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
   end
 
   defp unique_id(prefix), do: "#{prefix}_#{System.unique_integer([:positive])}"
+
+  defp sse_ids(resp_body) do
+    resp_body
+    |> String.split("\n", trim: true)
+    |> Enum.filter(&String.starts_with?(&1, "id:"))
+    |> Enum.map(fn line ->
+      line
+      |> String.trim_leading("id:")
+      |> String.trim()
+      |> Integer.parse()
+    end)
+    |> Enum.flat_map(fn
+      {value, ""} -> [value]
+      _ -> []
+    end)
+  end
 end

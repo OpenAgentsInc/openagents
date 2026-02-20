@@ -92,15 +92,8 @@ struct RuntimeCodexStreamEvent {
             return id
         }
 
-        guard let payloadObject = payload.objectValue else {
-            return nil
-        }
-
-        if let seq = payloadObject["seq"]?.intValue {
-            return seq
-        }
-
-        if let seq = payloadObject["latest_seq"]?.intValue {
+        if let envelope = RuntimeCodexProto.decodeWorkerEvent(from: payload),
+           let seq = envelope.seq {
             return seq
         }
 
@@ -111,6 +104,116 @@ struct RuntimeCodexStreamEvent {
 struct RuntimeCodexStreamBatch {
     let events: [RuntimeCodexStreamEvent]
     let nextCursor: Int
+}
+
+enum RuntimeCodexProto {
+    static let workerEventType = "worker.event"
+    static let iosHandshakeMethod = "ios/handshake"
+    static let desktopHandshakeAckMethod = "desktop/handshake_ack"
+    static let iosSource = "autopilot-ios"
+    static let desktopSource = "autopilot-desktop"
+
+    struct WorkerEventEnvelope {
+        let seq: Int?
+        let eventType: String
+        let payload: WorkerPayload
+    }
+
+    struct WorkerPayload {
+        let source: String?
+        let method: String?
+        let handshakeID: String?
+        let deviceID: String?
+        let desktopSessionID: String?
+        let occurredAt: String?
+    }
+
+    enum HandshakeKind: Equatable {
+        case iosHandshake
+        case desktopHandshakeAck
+    }
+
+    struct HandshakeEnvelope: Equatable {
+        let kind: HandshakeKind
+        let handshakeID: String
+    }
+
+    static func decodeWorkerEvent(from payload: JSONValue) -> WorkerEventEnvelope? {
+        guard let object = payload.objectValue else {
+            return nil
+        }
+
+        let eventType = normalizedString(
+            object["eventType"]?.stringValue ?? object["event_type"]?.stringValue
+        )
+
+        guard let eventType else {
+            return nil
+        }
+
+        guard let workerPayload = object["payload"]?.objectValue else {
+            return nil
+        }
+
+        let payloadEnvelope = WorkerPayload(
+            source: normalizedString(workerPayload["source"]?.stringValue),
+            method: normalizedString(workerPayload["method"]?.stringValue),
+            handshakeID: normalizedString(
+                workerPayload["handshake_id"]?.stringValue ?? workerPayload["handshakeId"]?.stringValue
+            ),
+            deviceID: normalizedString(workerPayload["device_id"]?.stringValue),
+            desktopSessionID: normalizedString(workerPayload["desktop_session_id"]?.stringValue),
+            occurredAt: normalizedString(workerPayload["occurred_at"]?.stringValue)
+        )
+
+        return WorkerEventEnvelope(
+            seq: object["seq"]?.intValue ?? object["latest_seq"]?.intValue,
+            eventType: eventType,
+            payload: payloadEnvelope
+        )
+    }
+
+    static func decodeHandshakeEnvelope(from payload: JSONValue) -> HandshakeEnvelope? {
+        guard let event = decodeWorkerEvent(from: payload),
+              event.eventType == workerEventType else {
+            return nil
+        }
+
+        guard let source = event.payload.source,
+              let method = event.payload.method,
+              let handshakeID = event.payload.handshakeID else {
+            return nil
+        }
+
+        if source == iosSource && method == iosHandshakeMethod {
+            guard normalizedString(event.payload.deviceID) != nil,
+                  normalizedString(event.payload.occurredAt) != nil else {
+                return nil
+            }
+
+            return HandshakeEnvelope(kind: .iosHandshake, handshakeID: handshakeID)
+        }
+
+        if source == desktopSource && method == desktopHandshakeAckMethod {
+            guard normalizedString(event.payload.desktopSessionID) != nil,
+                  normalizedString(event.payload.occurredAt) != nil else {
+                return nil
+            }
+
+            return HandshakeEnvelope(kind: .desktopHandshakeAck, handshakeID: handshakeID)
+        }
+
+        return nil
+    }
+
+    private static func normalizedString(_ raw: String?) -> String? {
+        guard let raw else {
+            return nil
+        }
+
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 struct RuntimeCodexAuthSession: Equatable {
