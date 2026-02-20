@@ -28,6 +28,15 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :openagents_runtime, :runtime_signature_secret, "test-runtime-signature-secret"
 
+config :openagents_runtime, :khala_sync_auth,
+  issuer: "https://openagents.test",
+  audience: "openagents-sync-test",
+  claims_version: "oa_sync_claims_v1",
+  allowed_algs: ["HS256"],
+  hs256_keys: %{
+    "sync-auth-test-v1" => "sync-test-signing-key"
+  }
+
 config :openagents_runtime, :laravel_internal,
   base_url: "http://laravel.test",
   secret_fetch_path: "/api/internal/runtime/integrations/secrets/fetch",

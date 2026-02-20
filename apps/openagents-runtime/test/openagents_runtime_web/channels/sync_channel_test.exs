@@ -33,9 +33,49 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert :error = connect(SyncSocket, %{})
   end
 
+  test "socket accepts sync jwt signed by rotated kid" do
+    previous_sync_auth = Application.get_env(:openagents_runtime, :khala_sync_auth, [])
+
+    Application.put_env(:openagents_runtime, :khala_sync_auth,
+      issuer: "https://openagents.test",
+      audience: "openagents-sync-test",
+      claims_version: "oa_sync_claims_v1",
+      allowed_algs: ["HS256"],
+      hs256_keys: %{
+        "sync-auth-test-v1" => "sync-test-signing-key",
+        "sync-auth-rotated-v2" => "sync-rotated-signing-key"
+      }
+    )
+
+    on_exit(fn ->
+      Application.put_env(:openagents_runtime, :khala_sync_auth, previous_sync_auth)
+    end)
+
+    token =
+      valid_sync_jwt(
+        kid: "sync-auth-rotated-v2",
+        key: "sync-rotated-signing-key",
+        oa_sync_scopes: [@run_topic]
+      )
+
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, _socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+  end
+
+  test "socket rejects sync jwt with unknown kid" do
+    token =
+      valid_sync_jwt(
+        kid: "sync-auth-unknown-v3",
+        key: "sync-unknown-signing-key",
+        oa_sync_scopes: [@run_topic]
+      )
+
+    assert :error = connect(SyncSocket, %{"token" => token})
+  end
+
   test "authenticated client can join and subscribe to allowed topics" do
     token =
-      valid_signature_token(
+      valid_sync_jwt(
         oa_org_id: "org_123",
         oa_sync_scopes: [@run_topic]
       )
@@ -57,7 +97,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
 
   test "subscribe rejects unauthorized topics" do
     token =
-      valid_signature_token(
+      valid_sync_jwt(
         oa_org_id: "org_123",
         oa_sync_scopes: [@run_topic]
       )
@@ -74,7 +114,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
   end
 
   test "subscribe validates malformed payload" do
-    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
 
     assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
     assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
@@ -88,7 +128,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     insert_stream_event(@run_topic, 2, %{"value" => "two"})
     insert_stream_event(@run_topic, 3, %{"value" => "three"})
 
-    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
 
     assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
     assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
@@ -134,7 +174,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     insert_stream_event(@run_topic, 2, %{"value" => "two"})
     insert_stream_event(@run_topic, 3, %{"value" => "three"})
 
-    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
     assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
     assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
 
@@ -151,7 +191,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     insert_stream_event(@run_topic, 4, %{"value" => "four"})
     insert_stream_event(@run_topic, 5, %{"value" => "five"})
 
-    reconnect_token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    reconnect_token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
     assert {:ok, reconnect_socket} = connect(SyncSocket, %{"token" => reconnect_token})
 
     assert {:ok, _reply, reconnect_socket} =
@@ -180,7 +220,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     insert_stream_event(@run_topic, 2, %{"value" => "two"})
     insert_stream_event(@run_topic, 3, %{"value" => "three"})
 
-    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
     assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
     assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
 
@@ -201,7 +241,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     insert_stream_event(@run_topic, 5, %{"value" => "five"})
     insert_stream_event(@run_topic, 6, %{"value" => "six"})
 
-    reconnect_token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    reconnect_token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
     assert {:ok, reconnect_socket} = connect(SyncSocket, %{"token" => reconnect_token})
 
     assert {:ok, _reply, reconnect_socket} =
@@ -234,7 +274,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     summary = RetentionJob.run_once(now: now, horizon_seconds: 3_600, batch_size: 10)
     assert summary.oldest_retained[@run_topic] == 2
 
-    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
     assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
     assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
 
@@ -280,7 +320,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       Enum.each(telemetry_refs, &:telemetry.detach/1)
     end)
 
-    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
     assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
     assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
 
@@ -325,7 +365,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       Enum.each(telemetry_refs, &:telemetry.detach/1)
     end)
 
-    token = valid_signature_token(oa_sync_scopes: [@run_topic])
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
     assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
     assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
 
