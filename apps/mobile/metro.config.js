@@ -8,7 +8,7 @@ const config = getDefaultConfig(__dirname)
 
 config.watchFolders = [path.resolve(__dirname)]
 config.resolver.extraNodeModules = {
-  convex: path.resolve(__dirname, "node_modules", "convex"),
+  khala: path.resolve(__dirname, "node_modules", "khala"),
 }
 
 config.transformer.getTransformOptions = async () => ({

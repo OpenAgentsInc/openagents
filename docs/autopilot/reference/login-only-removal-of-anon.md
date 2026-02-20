@@ -2,7 +2,7 @@
 
 This document describes the change from **anonymous + authenticated** chat to **login-only**: all autopilot threads are owned by an authenticated user; anonymous threads and `anonKey` are no longer used in the product flow. Another agent (or human) can use this to verify the work.
 
-**Related:** [anon-chat-execution-plane.md](./anon-chat-execution-plane.md) described the original Convex-first MVP with anon + authed; that design is superseded for the **product path** by this login-only behavior.
+**Related:** [anon-chat-execution-plane.md](./anon-chat-execution-plane.md) described the original Khala-first MVP with anon + authed; that design is superseded for the **product path** by this login-only behavior.
 
 ---
 
@@ -15,20 +15,20 @@ This document describes the change from **anonymous + authenticated** chat to **
 
 ## 2. Files and Changes (Checklist for Verification)
 
-### 2.1 Convex: Access (Owner-Only)
+### 2.1 Khala: Access (Owner-Only)
 
-**File:** `apps/web/convex/autopilot/access.ts`
+**File:** `apps/web/khala/autopilot/access.ts`
 
-- **`assertThreadAccess`:** Allows access only when the Convex identity subject matches `thread.ownerId`. No branch for `anonKey`. Unauthenticated or wrong user → `forbidden`.
+- **`assertThreadAccess`:** Allows access only when the Khala identity subject matches `thread.ownerId`. No branch for `anonKey`. Unauthenticated or wrong user → `forbidden`.
 - **`AutopilotAccessInput`:** Still has optional `anonKey` for type compatibility with legacy callers; it is **not used** in the access check (see `@deprecated` in code).
 
 **Verification:** Grep for `thread.ownerId === subject` and confirm there is no `input.anonKey` branch in `assertThreadAccess`.
 
 ---
 
-### 2.2 Convex: Threads
+### 2.2 Khala: Threads
 
-**File:** `apps/web/convex/autopilot/threads.ts`
+**File:** `apps/web/khala/autopilot/threads.ts`
 
 - **`claimAnonThreadImpl`:** Made no-op on failure (always returns `{ ok: true, threadId }`) so any legacy caller does not throw. Production flow no longer calls it.
 - **`ensureAnonThread` / anon helpers:** Still present for tests; production client and Worker do **not** call them.
@@ -44,11 +44,11 @@ This document describes the change from **anonymous + authenticated** chat to **
 | Location | Change |
 |----------|--------|
 | **Types** | `SendBody` and `CancelBody`: removed `anonKey`. Request bodies no longer accept or parse `anonKey`. |
-| **POST /api/autopilot/send** | No longer reads `body.anonKey`. Calls `convex.mutation(api.autopilot.messages.createRun, { threadId, text })` only (no anonKey). |
+| **POST /api/autopilot/send** | No longer reads `body.anonKey`. Calls `khala.mutation(api.autopilot.messages.createRun, { threadId, text })` only (no anonKey). |
 | **`runAutopilotStream`** | Input type has no `anonKey`. All calls pass only `threadId`, `runId`, `assistantMessageId`, `controller`, `env`, `request`. |
-| **`isCancelRequested`** | Called with `{ convex, threadId, runId }` only (no anonKey). |
+| **`isCancelRequested`** | Called with `{ khala, threadId, runId }` only (no anonKey). |
 | **`layerDsePredictEnvForAutopilotRun`** | Called with `{ threadId, runId, onReceipt }` only (no anonKey). |
-| **`flushPartsToConvex`** (and error path) | Called with `threadId`, `runId`, `messageId`, `parts` only (no anonKey). |
+| **`flushPartsToKhala`** (and error path) | Called with `threadId`, `runId`, `messageId`, `parts` only (no anonKey). |
 | **`runAutopilotStream` call site** | Single call passes no `anonKey` (removed `anonKey: null`). |
 
 **Verification:**
@@ -62,7 +62,7 @@ This document describes the change from **anonymous + authenticated** chat to **
 
 **File:** `apps/web/src/effuse-host/dse.ts`
 
-- **`layerDseReceiptRecorderFromConvex`** and **`layerDsePredictEnvForAutopilotRun`:** No longer take or pass `anonKey`. Convex receipt/record calls (if any) use only `threadId` and `runId` as needed.
+- **`layerDseReceiptRecorderFromKhala`** and **`layerDsePredictEnvForAutopilotRun`:** No longer take or pass `anonKey`. Khala receipt/record calls (if any) use only `threadId` and `runId` as needed.
 
 **Verification:** Grep for `anonKey` in `apps/web/src/effuse-host/dse.ts` → should find **zero** matches.
 
@@ -72,10 +72,10 @@ This document describes the change from **anonymous + authenticated** chat to **
 
 **File:** `apps/web/src/effect/chat.ts`
 
-- **Removed:** `getOrCreateAnonThreadId`, `getOrCreateAnonKey`, anon storage keys, and any `anonKey` in request bodies or Convex calls.
+- **Removed:** `getOrCreateAnonThreadId`, `getOrCreateAnonKey`, anon storage keys, and any `anonKey` in request bodies or Khala calls.
 - **Added:** `getOwnedThreadId()` — calls `api.autopilot.threads.ensureOwnedThread` and returns the owned `threadId`.
 - **`open(threadId)`:** No anon creation or claim; subscribes via `getThreadSnapshot({ threadId })` only.
-- **`send` / `stop` / `clearHistory`:** Request bodies and Convex usage use only `threadId` (no anonKey).
+- **`send` / `stop` / `clearHistory`:** Request bodies and Khala usage use only `threadId` (no anonKey).
 
 **Verification:** Grep for `anonKey` or `ensureAnonThread` or `claimAnonThread` in `apps/web/src/effect/chat.ts` → should find **zero** matches. `getOwnedThreadId` should be present and used.
 
@@ -99,7 +99,7 @@ This document describes the change from **anonymous + authenticated** chat to **
 - **Removed:** Anon storage, `getOrCreateAnonChatId`, `getOrCreateAnonChatKey`, and any `claimAnonThread` call (e.g. after magic-code verify).
 - **Chat id source:** `chatId` is derived from `OwnedThreadIdAtom`. When `SessionAtom` has a user, the controller ensures an owned thread via `getOwnedThreadId()` and sets `OwnedThreadIdAtom`; that value is used as `chatId` for subscriptions and send/stop/clear.
 - **Subscriptions:** When `OwnedThreadIdAtom` is set, the UI subscribes to `ChatSnapshotAtom(chatId)` and `AutopilotChatIsAtBottomAtom(chatId)`. On signOut, `OwnedThreadIdAtom` is cleared and subscriptions are cleaned up.
-- **Send/stop/clear:** All Convex/store calls use only `threadId` (no anonKey). Unused `api` import from Convex removed.
+- **Send/stop/clear:** All Khala/store calls use only `threadId` (no anonKey). Unused `api` import from Khala removed.
 
 **Verification:** No references to anon storage keys, anon thread id, or `claimAnonThread`. `OwnedThreadIdAtom` is the single source of truth for the active chat thread when logged in.
 
@@ -136,8 +136,8 @@ This document describes the change from **anonymous + authenticated** chat to **
 
 ## 3. What Still Exists (Intentional)
 
-- **Convex schema:** `threads.anonKey` remains optional in the schema for backward compatibility and tests. New product flow does not set or use it.
-- **Convex mutations/queries:** Many Convex autopilot functions still accept optional `anonKey` in their args (e.g. messages, blueprint, DSE receipts). Callers in the **product path** do not pass it; owner is derived from Convex auth.
+- **Khala schema:** `threads.anonKey` remains optional in the schema for backward compatibility and tests. New product flow does not set or use it.
+- **Khala mutations/queries:** Many Khala autopilot functions still accept optional `anonKey` in their args (e.g. messages, blueprint, DSE receipts). Callers in the **product path** do not pass it; owner is derived from Khala auth.
 - **Tests:** Some tests in `apps/web/tests/` still use anon threads and `anonKey` (e.g. `ensureAnonThreadImpl`, `createRunImpl` with anonKey) for unit/integration coverage. Those are test-only; production flow is login-only.
 
 ---
@@ -159,7 +159,7 @@ rg -n 'anonKey|ensureAnonThread|claimAnonThread|getOrCreateAnon' apps/web/src/ef
 # Expected: no matches
 
 # Access is owner-only
-rg -A 2 'assertThreadAccess' apps/web/convex/autopilot/access.ts
+rg -A 2 'assertThreadAccess' apps/web/khala/autopilot/access.ts
 # Expect: only subject && thread.ownerId === subject; no anonKey branch
 ```
 
@@ -178,9 +178,9 @@ rg -A 2 'assertThreadAccess' apps/web/convex/autopilot/access.ts
 
 | Layer        | Anon removed / Login-only behavior |
 |-------------|-------------------------------------|
-| Convex access | `assertThreadAccess`: owner-only; no anonKey branch. |
-| Convex threads | `claimAnonThread` no-op on failure; production does not use ensureAnonThread/claimAnonThread. |
-| Worker send/stream/cancel | No anonKey in types, body parsing, or Convex calls. |
+| Khala access | `assertThreadAccess`: owner-only; no anonKey branch. |
+| Khala threads | `claimAnonThread` no-op on failure; production does not use ensureAnonThread/claimAnonThread. |
+| Worker send/stream/cancel | No anonKey in types, body parsing, or Khala calls. |
 | Worker DSE | No anonKey in layer or env. |
 | Client chat | `getOwnedThreadId()` + owned thread only; no anon helpers. |
 | Client atoms | `OwnedThreadIdAtom`; no anon thread id atom. |

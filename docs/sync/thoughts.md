@@ -1,238 +1,110 @@
-# Khala Sync Thoughts (WS-First, Proto-First)
+# Khala Sync Thoughts (WS-Only, Proto-First)
 
-Date: 2026-02-20
-Status: Proposed (ready to ADR)
-Scope: Replace Convex for runtime/Codex projection delivery first; migrate Lightning second.
+Date: 2026-02-20  
+Status: Proposed (doctrine lock)  
+Scope: Runtime/Codex sync first, then remaining reactive surfaces.
 
 Khala is the codename for the OpenAgents sync engine: shared consciousness / collective signal.
 
 ## TL;DR
 
-Build Khala as a Postgres-backed, WebSocket-delivered sync plane owned by runtime.
+Khala is a runtime-owned sync subsystem that runs on runtime Postgres and delivers read-model updates over WebSockets.
 
-Non-negotiables:
+Locked v1 decisions:
 
-1. Runtime + Postgres remain authority.
-2. Khala is projection + delivery only (no second authority store).
-3. New sync transport is WS only (Phoenix Channels), not SSE.
-4. Contracts are proto-first; no hand-authored TypeScript schema authority.
-5. Do not clone Convex protocol compatibility.
-6. Khala v1 ships inside `apps/openagents-runtime` and shares its Postgres.
-7. Khala uses durable DB-backed resume (watermarks + replay).
-8. Stream journal is ordering-first; payload authority lives in read models (pointer mode supported).
+1. Runtime + runtime Postgres remain authority for execution state.
+2. Khala is delivery/replay infrastructure only, not an authority write path.
+3. Khala transport is WS-only for live updates (no new SSE lane).
+4. Contracts are proto-first under `proto/openagents/sync/v1/`.
+5. Khala v1 ships inside `apps/openagents-runtime` (same deployable, same DB plane).
+6. Watermarks are DB-native, monotonic per topic, allocated transactionally.
+7. Stream journal is ordering-first; payload authority lives in read-model tables.
+8. Pointer mode is mandatory: stream rows may omit full payload without protocol change.
+9. Topics are coarse (model-class topics), not per-tenant topics.
+10. Clients must persist per-topic watermark and apply doc updates idempotently.
 
-## Why this exists
+## Why Khala Exists
 
-Convex currently covers multiple concerns. Khala splits them cleanly:
+We explicitly separate four concerns:
 
-1. Authority: runtime event log + policy/spend state in Postgres.
-2. Projection: deterministic read models derived from authority.
-3. Delivery: resumable push updates to clients.
-4. Query: explicit read-model fetch/list endpoints (no arbitrary server-side functions).
+1. Authority writes: runtime event/state writes in runtime Postgres.
+2. Projection: deterministic read models generated from authority events.
+3. Delivery: resumable subscription transport for UI reactivity.
+4. Query bootstrap: explicit HTTP endpoints for initial hydration and stale-cursor recovery.
 
-This aligns with `docs/ARCHITECTURE.md`, `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md`, and `apps/openagents-runtime/docs/CONVEX_SYNC.md`.
+This avoids coupling UI freshness to authority writes and avoids turning sync transport into an ad-hoc database API.
 
-## Current status snapshot (codebase as of 2026-02-20)
+## Current Codebase Status (2026-02-20)
 
 ### Runtime lane
 
-Implemented and strong:
+Implemented:
 
-- Projector/checkpoint/replay stack exists:
-  - `apps/openagents-runtime/lib/openagents_runtime/convex/projector.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/convex/reprojection.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/convex/projection_checkpoint.ex`
-  - `apps/openagents-runtime/priv/repo/migrations/20260219101000_create_runtime_convex_projection_checkpoints.exs`
-- Projection triggers are integrated into run and worker event writes:
+- Runtime projector/checkpoint/reprojection modules exist:
+  - `apps/openagents-runtime/lib/openagents_runtime/khala/projector.ex`
+  - `apps/openagents-runtime/lib/openagents_runtime/khala/reprojection.ex`
+  - `apps/openagents-runtime/lib/openagents_runtime/khala/projection_checkpoint.ex`
+- Projection checkpoints migration exists:
+  - `apps/openagents-runtime/priv/repo/migrations/20260219101000_create_runtime_khala_projection_checkpoints.exs`
+- Runtime event writes already trigger projection integration:
   - `apps/openagents-runtime/lib/openagents_runtime/runs/run_events.ex`
   - `apps/openagents-runtime/lib/openagents_runtime/codex/workers.ex`
-- Runtime/Convex boundary is documented as projection-only.
 
 Gap:
 
-- Default projection sink is still `OpenAgentsRuntime.Convex.NoopSink` in `apps/openagents-runtime/config/config.exs`.
+- Default sink in config remains noop for some environments:
+  - `apps/openagents-runtime/config/config.exs`
 
 ### Web/mobile/desktop lanes
 
-- Laravel mints Convex token bridge via `/api/convex/token`:
-  - `apps/openagents.com/app/Support/Convex/ConvexTokenIssuer.php`
-- Mobile Khala lane is implemented behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED` and Convex provider boot was removed:
-  - `apps/mobile/app/app.tsx`
-- Mobile Codex admin data plane is already runtime API-driven:
-  - `apps/mobile/app/screens/CodexWorkersScreen.tsx`
-- Desktop runtime task flow is already Laravel API-driven:
-  - `apps/desktop/src/effect/taskProvider.ts`
-- Desktop Khala lane can run without Convex URL/token:
-  - `apps/desktop/src/lib/khalaConfig.ts`
+Implemented:
 
-### Lightning lane
+- Sync token endpoints exist in Laravel:
+  - `POST /api/khala/token` (legacy-compatible)
+  - `POST /api/sync/token` (primary)
+- Token issuers/controllers:
+  - `apps/openagents.com/app/Http/Controllers/Api/KhalaTokenController.php`
+  - `apps/openagents.com/app/Http/Controllers/Api/SyncTokenController.php`
+- Mobile/desktop/web have feature-gated Khala lanes.
 
-- Lightning control-plane schema authority is now proto-first:
-  - `proto/openagents/lightning/v1/control_plane.proto`
-- Postgres-backed authority APIs now exist in Laravel:
-  - `apps/openagents.com/app/Http/Controllers/Api/Internal/LightningOpsControlPlaneController.php`
-  - `apps/openagents.com/app/Services/L402/L402OpsControlPlaneService.php`
-- `apps/lightning-ops` now runs API/mock transport only for control-plane flows:
-  - `apps/lightning-ops/src/controlPlane/apiTransport.ts`
-  - `apps/lightning-ops/src/controlPlane/live.ts`
+### Lightning control-plane lane
 
-Conclusion: runtime/Codex Khala lane is live behind flags; Lightning second-wave transport cutover is complete in `apps/lightning-ops`.
+Current posture:
 
-## WS-only transport decision
+- Lightning control-plane authority is API + Postgres in Laravel.
+- `apps/lightning-ops` control-plane transport is API/mock oriented.
+- Khala is not the primary transport for Lightning control-plane operations.
 
-Decision:
+## Runtime-Owned Khala Architecture
 
-- Khala uses WebSockets only for live subscriptions (Phoenix Channels).
-- No new SSE endpoints are added for Khala.
-- Existing SSE endpoints remain for existing runtime APIs until clients migrate.
+### Subsystem placement
+
+Khala v1 runs inside `apps/openagents-runtime`.
 
 Reason:
 
-- multi-topic multiplexing,
-- cleaner resume protocol over stateful sockets,
-- native fit for BEAM/Phoenix,
-- avoids carrying two new live transports.
+- keeps projector write + stream append in one transactional boundary,
+- avoids cross-service compensators for projection-vs-delivery divergence,
+- preserves deterministic replay and simpler incident handling.
 
-## Target architecture
+### Core runtime components
 
-### Authority plane (unchanged)
+1. `OpenAgentsRuntime.Sync.ProjectorSink`
+2. `OpenAgentsRuntime.Sync.WatermarkAllocator`
+3. `OpenAgentsRuntime.Sync.Channel`
+4. `OpenAgentsRuntime.Sync.Replay`
+5. `OpenAgentsRuntime.Sync.RetentionJob`
 
-- Runtime writes canonical events/state in Postgres.
+## Data Model (Runtime Postgres)
 
-### Projection plane (runtime-owned)
-
-- Runtime projector derives read models from authority events.
-- Read models persist in runtime-owned Postgres tables.
-
-### Delivery plane (Khala, runtime-owned)
-
-- Runtime emits projection update journal entries with topic watermarks.
-- Khala WS service pushes updates to subscribers.
-- Resume uses durable watermark replay from Postgres, not in-memory-only signaling.
-
-## Protocol shape (proto-first)
-
-Define proto package:
-
-- `proto/openagents/sync/v1/*.proto`
-
-Core messages (minimal v1):
-
-1. `Subscribe`
-- `topics[]`
-- `resume_after` map (topic -> watermark)
-
-2. `Subscribed`
-- `subscription_id`
-- `current_watermarks` map
-
-3. `Update`
-- `topic`
-- `doc_key`
-- `doc_version`
-- `payload` (proto bytes or canonical JSON bytes)
-- `watermark`
-
-4. `Heartbeat`
-- `watermarks` map
-
-5. `Error`
-- `code`
-- `message`
-- `retry_after_ms`
-
-### Topic strategy (locked for v1)
-
-Topics are coarse, per model class:
-
-- `runtime.run_summaries`
-- `runtime.codex_worker_summaries`
-- optional later: `runtime.notifications`
-
-No per-tenant topics in v1.
-
-Tenant scoping is enforced via:
-
-- JWT topic scopes + org membership,
-- doc-level access filtering (`doc_key` ownership constraints).
-
-### Query strategy (locked for v1)
-
-Khala does not expose arbitrary query execution.
-
-Client fetch patterns are explicit:
-
-- `GET /sync/v1/doc/:doc_key` for initial hydration.
-- optional `GET /sync/v1/list/:collection?...` for bounded lists.
-
-## Data model for resume correctness
-
-### Durable sync stream journal
-
-Table: `runtime.sync_stream_events`
-
-Purpose:
-
-- ordering journal for replay,
-- durable resume across WS disconnects/restarts.
-
-Columns:
-
-- `topic` text
-- `watermark` bigint
-- `doc_key` text
-- `doc_version` bigint
-- `payload` jsonb or bytea (optional inline mode)
-- `payload_hash` bytea (recommended)
-- `inserted_at` timestamptz
-
-Indexes:
-
-- unique `(topic, watermark)`
-- index `(topic, watermark)` for replay scans
-- index `(topic, doc_key, watermark desc)`
-- index `(inserted_at)` for retention
-
-### Read-model tables
-
-- `runtime.sync_run_summaries`
-- `runtime.sync_codex_worker_summaries`
-
-Each row keeps at least:
-
-- `doc_key` primary key
-- `doc_version` bigint
-- `payload` jsonb or bytea
-- `payload_hash` bytea (recommended)
-- `updated_at` timestamptz
-
-### Pointer mode (locked requirement)
-
-Stream events are ordering-first. Payload authority lives in read-model tables.
-
-- v1 may inline payload in `sync_stream_events.payload` for simplicity.
-- Khala must support pointer mode where stream rows do not store full payload and delivery resolves from read-model tables.
-- WS protocol does not change between inline and pointer modes.
-
-### Retention rule
-
-- Keep bounded history in `sync_stream_events` (24h-7d by env).
-- If resume watermark is older than retained window:
-  - return deterministic `stale_cursor`,
-  - require full resync fetch + watermark reset.
-
-## Watermark allocation (locked, DB-native)
-
-Khala uses monotonic per-topic sequences in Postgres with single-row update.
+### Topic sequence table
 
 Table: `runtime.sync_topic_sequences`
 
-Columns:
+- `topic text primary key`
+- `next_watermark bigint not null`
 
-- `topic` text primary key
-- `next_watermark` bigint
-
-Allocation algorithm (transactional):
+Allocation:
 
 ```sql
 UPDATE runtime.sync_topic_sequences
@@ -241,225 +113,208 @@ WHERE topic = $1
 RETURNING next_watermark;
 ```
 
-Properties:
+### Stream journal table
 
-- monotonic per topic,
-- no duplicates under concurrency,
-- no node-local allocator state.
+Table: `runtime.sync_stream_events`
 
-## Server design (runtime-owned)
+- `topic text`
+- `watermark bigint`
+- `doc_key text`
+- `doc_version bigint`
+- `payload jsonb/bytea` (optional inline)
+- `payload_hash bytea` (recommended)
+- `inserted_at timestamptz`
 
-Khala v1 ships inside `apps/openagents-runtime` for transactional correctness.
+Required indexes:
 
-Components:
+- unique `(topic, watermark)`
+- replay scan index `(topic, watermark)`
+- per-doc trace index `(topic, doc_key, watermark desc)`
+- retention index `(inserted_at)`
 
-1. `OpenAgentsRuntime.Sync.ProjectorSink`
-- upserts read-model rows,
-- allocates watermark,
-- appends stream event,
-- emits telemetry,
-- publishes wakeup via PubSub (optimization only).
+### Read-model tables
 
-2. `OpenAgentsRuntime.Sync.WatermarkAllocator`
-- DB-backed allocator using `runtime.sync_topic_sequences`.
+- `runtime.sync_run_summaries`
+- `runtime.sync_codex_worker_summaries`
 
-3. `OpenAgentsRuntime.Sync.Channel`
-- authenticated socket join,
-- subscribe/unsubscribe handling,
-- replay catch-up then live updates.
+Minimum row fields:
 
-4. `OpenAgentsRuntime.Sync.Replay`
-- reads rows `> watermark` per topic,
-- paginates bounded batches,
-- supports pointer-mode payload resolution.
+- `doc_key` primary key
+- `doc_version`
+- `payload`
+- `payload_hash`
+- `updated_at`
 
-5. `OpenAgentsRuntime.Sync.RetentionJob`
-- deletes expired stream rows,
-- tracks oldest retained watermark per topic.
+### Retention and stale cursor
 
-### Replay batching limits (locked for v1)
+- Retain bounded journal window (env-specific horizon).
+- If resume watermark is older than retained window, return `stale_cursor`.
+- Client then performs full HTTP rehydrate and resets watermark.
 
-- max updates per batch: `200`
-- max payload bytes per update: `256KB` (configurable)
-- max total batch payload: `2MB` (configurable)
+## Protocol Shape (Proto-First)
+
+Package:
+
+- `proto/openagents/sync/v1/*.proto`
+
+Core messages:
+
+1. `Subscribe(topics[], resume_after)`
+2. `Subscribed(subscription_id, current_watermarks)`
+3. `Update(topic, doc_key, doc_version, payload, watermark)`
+4. `Heartbeat(watermarks)`
+5. `Error(code, message, retry_after_ms)`
+
+## Topic Strategy (v1)
+
+Coarse topics only:
+
+- `runtime.run_summaries`
+- `runtime.codex_worker_summaries`
+
+Tenant scoping is enforced by token scopes and doc ownership checks at delivery time.
+
+## Replay and Delivery Limits
+
+Locked defaults (configurable):
+
+- max updates per replay batch: `200`
+- max payload per update: `256KB`
+- max total payload per batch: `2MB`
 
 Behavior:
 
-- replay in bounded batches until head watermark, then live mode,
-- deterministic handling for oversize payloads (`payload_too_large` or fetch-required fallback).
+- replay from watermark to head, then switch to live mode,
+- use deterministic error/fallback for oversize payloads.
 
-## Delivery flow
+## Auth Model (Laravel -> Khala)
 
-1. Runtime writes authority event.
-2. Runtime projector computes summary/doc update.
-3. Khala sink upserts read-model row + allocates watermark + appends stream event + emits telemetry.
-4. Khala broadcasts wakeup (optimization).
-5. Channel replays from subscriber watermark to head, then streams live updates.
+Laravel remains auth/session authority and mints short-lived sync JWTs.
 
-## Failure model
+Required claims/header shape:
 
-- DB write succeeds, WS push fails: safe; replay catches up.
-- WS node restart: safe; resume by watermark.
-- PubSub loss/drop: safe; DB replay remains delivery authority.
-- Duplicate delivery can happen across reconnects; client must apply idempotently by `(topic, watermark)` or `(doc_key, doc_version)`.
+- claims: `sub`, `exp`, `jti`, `oa_claims_version`, scoped org/topic claims
+- header: `kid` for key rotation
 
-## Auth model (Laravel -> Khala)
+Crypto posture:
 
-Laravel remains auth/session authority and mints Khala tokens.
+- HS256 acceptable for MVP where operationally constrained,
+- retain non-breaking path to RS256 + JWKS.
 
-JWT claims (v1):
+## Canonical Hashing
 
-- `sub`
-- `oa_org_id`
-- `oa_sync_scopes`
-- `exp` (short TTL)
-- `jti`
-- `oa_claims_version`
+Khala parity and integrity checks rely on deterministic hashing.
 
-JWT header (required):
+Rules:
 
-- `kid`
+1. Proto payloads: hash canonical proto bytes.
+2. JSON payloads: hash canonical JSON representation (single cross-language rule).
 
-Verification:
+Hashes are used for:
 
-- MVP may use HS256,
-- path to RS256 + JWKS must remain non-breaking,
-- enforce signature + claims + topic scope + doc ownership.
+- stream row integrity,
+- read-model parity checks,
+- cutover drift detection.
 
-## Canonical hashing and parity
+## Client Responsibilities
 
-Khala should attach deterministic `payload_hash` for:
+Every Khala client must:
 
-- read-model payloads,
-- stream payloads when inlined,
-- parity checks against Convex during dual publish.
+1. Authenticate and subscribe to explicit topics.
+2. Persist per-topic watermark.
+3. Keep a local cache keyed by `doc_key`.
+4. Apply updates idempotently using `doc_version` monotonicity.
+5. Trigger full fetch + watermark reset on `stale_cursor`.
 
-Hashing rules:
+Persistence by surface:
 
-- proto payloads: hash proto bytes,
-- JSON payloads: hash canonical JSON encoding (single shared rule across languages, via ADR extension).
-
-## Client model
-
-### Client responsibilities
-
-1. Open WS and authenticate.
-2. Subscribe to explicit topics.
-3. Maintain per-topic high watermark.
-4. Persist watermark locally.
-5. Maintain in-memory doc cache keyed by `doc_key`.
-6. Apply updates idempotently:
-- ignore out-of-order `doc_version` regressions,
-- accept monotonic `doc_version` increases.
-7. On `stale_cursor`, full-fetch and reset watermark.
-
-### Watermark persistence per surface
-
-- Web: localStorage/IndexedDB
-- Mobile: AsyncStorage/SQLite
+- Web: localStorage or IndexedDB
+- Mobile: AsyncStorage/SQLite/MMKV-backed persistence
 - Desktop: SQLite
 
-## Initial surfaces
+## Surfaces and Consumption
 
-1. Web Codex admin summary views.
-2. Mobile Codex workers.
-3. Desktop status surfaces still needing reactive summaries.
+Detailed surface contract lives in `docs/sync/SURFACES.md`.
 
-Note: control/action APIs remain HTTP; Khala is read-sync transport.
+High-level:
 
-## Migration strategy
+- Web/mobile/desktop consume Khala for reactive runtime summaries behind flags.
+- iOS currently uses runtime SSE as primary live lane.
+- Lightning control-plane does not depend on Khala for authority operations.
 
-### Phase A: dual publish (runtime/Codex)
+## Laravel Postgres vs Runtime Postgres in Khala Context
 
-- keep Convex projection path where enabled,
-- add Khala sink in parallel,
-- run parity checks (payload hash/version/lag),
-- gate by feature flags.
+Khala only reads/writes runtime-owned sync/read-model tables in runtime Postgres.
 
-### Phase B: client cutover to Khala WS
+- Laravel Postgres remains identity/control-plane authority.
+- Runtime Postgres remains execution/sync authority.
+- Cross-plane behavior happens through HTTP/internal API contracts, not direct cross-writes.
 
-- web/mobile/desktop switch subscription lane,
-- keep action/control APIs unchanged,
-- remove Convex client deps after stability window.
+## Migration Strategy
 
-Fast win:
+### Phase A: Runtime dual path (stabilization)
 
-- remove mobile Convex provider initialization for flagged users as soon as Khala covers needed reactive data.
+- keep legacy reactive lane available,
+- enable runtime Khala sink path,
+- run parity and lag comparison metrics.
 
-### Phase C: Lightning migration
+### Phase B: Client cutover
 
-- move lightning control-plane authority from Convex to Postgres/runtime APIs,
-- replace `ConvexHttpClient` in lightning-ops with API transport,
-- decommission Convex transport/deps from lightning-ops after rollback window.
+- flip web/mobile/desktop sync flags by staged cohorts,
+- keep control/action APIs unchanged,
+- hold rollback switches during bake window.
 
-## What not to build
+### Phase C: Cleanup and hardening
 
-1. No arbitrary function execution in sync plane.
-2. No generic reactive query language.
-3. No Convex wire-compat emulation.
-4. No second authority store.
-5. No per-tenant topic explosion in v1.
+- remove legacy client-side sync wiring from migrated surfaces,
+- tighten alert thresholds and retention policy,
+- archive migration-specific runbooks once steady state is proven.
 
-## Operational requirements
+## Operational Requirements
 
-Metrics:
+Key metrics:
 
 - per-topic lag,
-- replay batch duration p50/p95,
+- replay duration p50/p95,
 - reconnect rate,
 - stale cursor rate,
-- dropped/retried pushes,
 - catch-up duration p95,
-- stream event table size per topic + oldest retained watermark.
+- stream table size and oldest retained watermark per topic.
 
-Alerts:
+Key alerts:
 
 - lag SLO breach,
 - replay error spikes,
 - watermark allocation failures,
-- retention job failures/retention stall.
+- retention job failures.
 
-Runbooks:
+## Verification Matrix
 
-- full resync procedure,
-- retention tuning,
-- reprojection + re-emit,
-- Postgres failover behavior.
+Unit tests:
 
-## Verification matrix
-
-Unit:
-
-- watermark monotonic allocation,
-- stale cursor behavior,
-- auth checks,
+- watermark monotonicity,
+- auth/entitlement checks,
+- stale-cursor handling,
 - hashing determinism.
 
-Integration:
+Integration tests:
 
-- disconnect/reconnect without gaps,
-- dual publish parity (Convex vs Khala),
-- retention purge + stale cursor recovery,
-- duplicate delivery idempotency.
+- reconnect without event gaps,
+- replay batching correctness,
+- duplicate delivery idempotency,
+- pointer-mode payload resolution.
 
-Load/chaos:
+Load/chaos tests:
 
-- burst throughput,
-- WS node restart mid-stream,
-- Postgres failover/retry,
-- replay under backpressure bounded memory.
+- socket restart during catch-up,
+- burst update throughput,
+- Postgres failover/retry behavior,
+- bounded-memory replay under backpressure.
 
-## Open questions to settle early
+## References
 
-1. Topic partitioning is locked for v1: per model class only.
-2. Watermark source is locked for v1: per-topic DB sequence rows.
-3. Payload storage is locked requirement: pointer mode supported, inline optional.
-4. Token endpoint path recommendation: add `/api/sync/token`; keep `/api/convex/token` during migration.
-
-## Recommended next artifacts
-
-1. `docs/adr/ADR-0030-khala-sync-runtime-owned-ws-proto-first.md`
-2. `proto/openagents/sync/v1/*.proto`
-3. `docs/protocol/OA_SYNC_WS_MAPPING.md`
-4. `docs/sync/SURFACES.md`
-5. `docs/sync/ROADMAP.md`
+- `docs/ARCHITECTURE.md`
+- `docs/sync/ROADMAP.md`
+- `docs/sync/SURFACES.md`
+- `apps/openagents-runtime/docs/KHALA_SYNC.md`
+- `docs/adr/ADR-0030-khala-sync-runtime-owned-ws-proto-first.md`

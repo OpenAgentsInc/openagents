@@ -25,10 +25,10 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     janitor_failed: [:reason_class],
     policy_decision: [:decision, :authorization_mode, :settlement_boundary],
     parity_failure: [:class, :reason_class, :component, :outcome],
-    convex_projection_write: [:projection, :result],
-    convex_projection_write_failure: [:projection, :reason_class],
-    convex_projection_drift: [:projection, :reason_class],
-    convex_projection_replay: [:scope, :result],
+    khala_projection_write: [:projection, :result],
+    khala_projection_write_failure: [:projection, :reason_class],
+    khala_projection_drift: [:projection, :reason_class],
+    khala_projection_replay: [:scope, :result],
     sync_socket_connection: [:action, :status],
     sync_socket_heartbeat: [:status],
     sync_socket_reconnect: [:status],
@@ -119,26 +119,26 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
         tags: tags_for(:policy_decision)
       ),
       counter("openagents_runtime.parity.failure.count", tags: tags_for(:parity_failure)),
-      counter("openagents_runtime.convex.projection.write.count",
-        tags: tags_for(:convex_projection_write)
+      counter("openagents_runtime.khala.projection.write.count",
+        tags: tags_for(:khala_projection_write)
       ),
-      summary("openagents_runtime.convex.projection.write.duration_ms",
-        tags: tags_for(:convex_projection_write)
+      summary("openagents_runtime.khala.projection.write.duration_ms",
+        tags: tags_for(:khala_projection_write)
       ),
-      summary("openagents_runtime.convex.projection.lag_events",
-        tags: tags_for(:convex_projection_write)
+      summary("openagents_runtime.khala.projection.lag_events",
+        tags: tags_for(:khala_projection_write)
       ),
-      counter("openagents_runtime.convex.projection.write_failure.count",
-        tags: tags_for(:convex_projection_write_failure)
+      counter("openagents_runtime.khala.projection.write_failure.count",
+        tags: tags_for(:khala_projection_write_failure)
       ),
-      counter("openagents_runtime.convex.projection.drift.count",
-        tags: tags_for(:convex_projection_drift)
+      counter("openagents_runtime.khala.projection.drift.count",
+        tags: tags_for(:khala_projection_drift)
       ),
-      counter("openagents_runtime.convex.projection.replay.count",
-        tags: tags_for(:convex_projection_replay)
+      counter("openagents_runtime.khala.projection.replay.count",
+        tags: tags_for(:khala_projection_replay)
       ),
-      summary("openagents_runtime.convex.projection.replay.duration_ms",
-        tags: tags_for(:convex_projection_replay)
+      summary("openagents_runtime.khala.projection.replay.duration_ms",
+        tags: tags_for(:khala_projection_replay)
       ),
       counter("openagents_runtime.sync.socket.connection.count",
         tags: tags_for(:sync_socket_connection)

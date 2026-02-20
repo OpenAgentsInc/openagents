@@ -95,7 +95,7 @@ Our **DSE compile:** Signatures + compile job (dataset, metric, search space, op
 
 We have one Autopilot thread per user; transcript in the Durable Object. We don’t yet have “long-term memory” (episodic, semantic) beyond the transcript.
 
-**Synergy:** If we add memory (e.g. for RAG, or for “remember this” across sessions), we could adopt Voyager’s **concepts**: scope by user/agent, append-only, retrieval by embedding + recency, optional summarization. Implementation could be our own (Convex, vector store) or we could call a Voyager-backed service. The **trait** (append, retrieve, optional summarize) is what we’d align to.
+**Synergy:** If we add memory (e.g. for RAG, or for “remember this” across sessions), we could adopt Voyager’s **concepts**: scope by user/agent, append-only, retrieval by embedding + recency, optional summarization. Implementation could be our own (Khala, vector store) or we could call a Voyager-backed service. The **trait** (append, retrieve, optional summarize) is what we’d align to.
 
 **Learning:** Scope + append-only + retrievable by embedding + optional summarization is a good minimal memory model. We can implement it in TS/Effect without depending on Voyager.
 

@@ -78,7 +78,7 @@ Runtime correctness bindings (from main runtime plan):
 
 ## Data model mapping
 
-Convex-era DSE collections map to Postgres runtime schema:
+Khala-era DSE collections map to Postgres runtime schema:
 
 - `dse.active` -> `runtime.ds_active_policies`
 - `dse.artifacts` -> `runtime.ds_compiled_artifacts`

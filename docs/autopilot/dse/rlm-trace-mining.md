@@ -121,7 +121,7 @@ Use DSE eval/compile to compare:
 
 Promote only if the distilled behavior is measurably better on holdout (quality and/or cost/latency).
 
-### 3.6 Export candidates from traces into `dseExamples` (Convex-first)
+### 3.6 Export candidates from traces into `dseExamples` (Khala-first)
 
 Goal: turn one good exploratory run (receipt + RLM trace) into a candidate labeled example row:
 

@@ -30,7 +30,7 @@ It intentionally consolidates the intent already spread across:
 
 From `docs/autopilot/spec.md` / `docs/autopilot/reference/anon-chat-execution-plane.md`:
 
-- **Convex-first** canonical state for MVP (threads/messages/messageParts + DSE registries).
+- **Khala-first** canonical state for MVP (threads/messages/messageParts + DSE registries).
 - **Cloudflare Worker** hosts execution; **no containers**; small built-in tool surface.
 - **Everything must be auditable**: schema validation, budgets, receipts, replayable traces.
 
@@ -126,7 +126,7 @@ Deliverables:
 
 - Add `VarSpace` service:
   - values are small JSON or BlobRefs
-  - scoped per thread/run (MVP: Convex-backed)
+  - scoped per thread/run (MVP: Khala-backed)
 - Add `RlmKernel` that executes a **structured JSON action DSL**:
   - `preview`, `search`, `load`, `chunk`, `write_var`
   - `extract_over_chunks` (kernel-driven fanout; symbolic recursion helper)
@@ -156,7 +156,7 @@ Deliverables:
   - trigger on high context pressure, “thrash without new evidence”, or explicit “long-context” task types.
   - gate on model capability (avoid sending weak controller models into RLM loops).
 - Persist RLM state appropriately:
-  - VarSpace + blobs in Convex (MVP).
+  - VarSpace + blobs in Khala (MVP).
 - UI: RLM activity must be visible:
   - show strategy id, budgets, iterations, and evidence handles in chat cards (aligned with `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` surfaces).
 
@@ -326,16 +326,16 @@ It is ordered by phase (A..H) so it can be read as a build log.
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
 
-### 2026-02-10: Phase D (Autopilot integration: routing + UI + Convex persistence) — implemented in `apps/web` (`1f6f4dd8b`)
+### 2026-02-10: Phase D (Autopilot integration: routing + UI + Khala persistence) — implemented in `apps/web` (`1f6f4dd8b`)
 
-- Added Convex-backed persistence for RLM state (scoped by `threadId` + `runId`):
+- Added Khala-backed persistence for RLM state (scoped by `threadId` + `runId`):
   - new tables: `dseBlobs`, `dseVarSpace`
-  - schema: `apps/web/convex/schema.ts`
+  - schema: `apps/web/khala/schema.ts`
   - functions:
-    - `apps/web/convex/dse/blobs.ts` (`putText`, `getText`)
-    - `apps/web/convex/dse/varSpace.ts` (`getVar`, `putJson`, `putBlob`, `del`, `list`)
-- Worker-side DSE environment now provides Convex-backed `BlobStore` + `VarSpace` for Autopilot runs:
-  - new layers: `layerDseBlobStoreFromConvex`, `layerDseVarSpaceFromConvex`
+    - `apps/web/khala/dse/blobs.ts` (`putText`, `getText`)
+    - `apps/web/khala/dse/varSpace.ts` (`getVar`, `putJson`, `putBlob`, `del`, `list`)
+- Worker-side DSE environment now provides Khala-backed `BlobStore` + `VarSpace` for Autopilot runs:
+  - new layers: `layerDseBlobStoreFromKhala`, `layerDseVarSpaceFromKhala`
   - updated: `layerDsePredictEnvForAutopilotRun`
   - implementation: `apps/web/src/effuse-host/dse.ts`
 - Added an RLM-lite summarization signature (strategy pinned in params):
@@ -354,7 +354,7 @@ It is ordered by phase (A..H) so it can be read as a build log.
 - Fixed Autopilot Worker DSE env typing by providing `VarSpace`:
   - `apps/autopilot-worker/src/dseServices.ts`
 - Verified (TypeScript):
-  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npx khala codegen`
   - `cd packages/dse && bun test && bun run typecheck`
   - `cd apps/autopilot-worker && npm run typecheck`
   - `cd apps/web && npm test && npm run lint`
@@ -416,8 +416,8 @@ It is ordered by phase (A..H) so it can be read as a build log.
   - extracts `inputJson` from the trace `Input` event and `expectedJson` from the trace `Final.output`
   - implementation: `packages/dse/src/traceMining/exportExamples.ts`, `packages/dse/src/traceMining/rlmTrace.ts`
   - test: `packages/dse/test/traceExport.test.ts`
-- Added a Convex-first trace export pipeline for operators:
-  - Convex query to fetch a DSE predict receipt by `receiptId`: `apps/web/convex/dse/receipts.ts`
+- Added a Khala-first trace export pipeline for operators:
+  - Khala query to fetch a DSE predict receipt by `receiptId`: `apps/web/khala/dse/receipts.ts`
   - Worker admin endpoint `POST /api/dse/trace/export` writes/upserts the candidate into `dseExamples`: `apps/web/src/effuse-host/dseAdmin.ts`
   - Worker test: `apps/web/tests/worker/dse-trace-export.test.ts`
 - Implemented and evaluated one distilled “tactic” as a pinned predict strategy:
@@ -429,7 +429,7 @@ It is ordered by phase (A..H) so it can be read as a build log.
   - `docs/autopilot/dse/rlm-trace-mining.md`
 - Verified (TypeScript):
   - `cd packages/dse && bun test && bun run typecheck`
-  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npx khala codegen`
   - `cd apps/web && npm test && npm run lint`
 
 ### 2026-02-10: Phase G (Compile knobs for RLM and distilled pipelines) — implemented in DSE (`e923a820f`)

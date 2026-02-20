@@ -169,7 +169,7 @@ Each entry lists:
   - Oldest: [a8ddecf4bd](https://github.com/OpenAgentsInc/openagents/commit/a8ddecf4bd2812588eea8e8991571b22ed52c9fa) 2026-02-07
   - Latest: [a8ddecf4bd](https://github.com/OpenAgentsInc/openagents/commit/a8ddecf4bd2812588eea8e8991571b22ed52c9fa) 2026-02-07
 - [docs/autopilot/reference/anon-chat-execution-plane.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/anon-chat-execution-plane.md)
-  - Title: Autopilot Chat Execution Plane (Convex-First MVP)
+  - Title: Autopilot Chat Execution Plane (Khala-First MVP)
   - Matches: `GEPA`: [4 lines](https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot/reference/anon-chat-execution-plane.md#L50)
   - Oldest: [0af4699162](https://github.com/OpenAgentsInc/openagents/commit/0af4699162a1e972f5f5f7cea65a996aaeb292d6) 2026-02-07
   - Latest: [e91451e0ea](https://github.com/OpenAgentsInc/openagents/commit/e91451e0eac4413dfef896ba2a5d92a758d6f8ed) 2026-02-07
@@ -449,7 +449,7 @@ These are commits selected by `git log -S<TERM> -- '*.md' '*.mdx'` (string count
 
 Total commits: 116
 
-- [9a49407bd4](https://github.com/OpenAgentsInc/openagents/commit/9a49407bd4b4f5b981a31346247cecf5034fa9d8) 2026-02-07 docs: Convex-first MVP for Autopilot chat
+- [9a49407bd4](https://github.com/OpenAgentsInc/openagents/commit/9a49407bd4b4f5b981a31346247cecf5034fa9d8) 2026-02-07 docs: Khala-first MVP for Autopilot chat
 - [f962acff8c](https://github.com/OpenAgentsInc/openagents/commit/f962acff8c6895d66a988a9b47068b14e6acd706) 2026-02-06 docs: add RLM synergies and Effuse master plan
 - [2e2ae422a7](https://github.com/OpenAgentsInc/openagents/commit/2e2ae422a766d83a40823426dc004443bf86462f) 2026-02-06 docs(autopilot): add microcode synergies
 - [412fe7793f](https://github.com/OpenAgentsInc/openagents/commit/412fe7793ff79d717a5c9c5eb986af7ff0accfa3) 2026-02-06 docs(autopilot): add unified DSE optimization roadmap

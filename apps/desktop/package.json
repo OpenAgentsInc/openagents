@@ -20,7 +20,7 @@
     "smoke:lnd-runtime": "node ./scripts/smoke-lnd-runtime.mjs",
     "smoke:lnd-runtime-real": "node ./scripts/smoke-lnd-runtime-real.mjs",
     "smoke:lnd-wallet": "node ./scripts/smoke-lnd-wallet.mjs",
-    "smoke:l402-convex-executor": "node ./scripts/smoke-l402-convex-executor.mjs",
+    "smoke:l402-khala-executor": "node ./scripts/smoke-l402-khala-executor.mjs",
     "smoke:l402-panes": "node ./scripts/smoke-l402-panes.mjs",
     "test:l402-local-node-smoke": "node ./scripts/test-l402-local-node-smoke.mjs",
     "prepackage": "npm run lnd:prepare",

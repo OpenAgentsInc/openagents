@@ -18,9 +18,9 @@ Validated staged rollout controls, parity gating, and rollback switches for runt
    - `VITE_KHALA_SYNC_ENABLED` path implemented and linted.
    - Web summary lane fallback behavior preserved when flag is disabled.
 
-3. Mobile Khala lane without Convex boot: PASS
+3. Mobile Khala lane without Khala boot: PASS
    - `EXPO_PUBLIC_KHALA_SYNC_ENABLED` path implemented.
-   - Convex provider boot bypass confirmed in app startup code when flag enabled.
+   - Khala provider boot bypass confirmed in app startup code when flag enabled.
 
 4. Desktop Khala connectivity lane flag behavior: PASS
    - `OA_DESKTOP_KHALA_SYNC_ENABLED` path implemented.
@@ -29,7 +29,7 @@ Validated staged rollout controls, parity gating, and rollback switches for runt
 5. Rollback switch rehearsal (code/config level): PASS
    - Runbook rollback toggles documented and validated in code paths:
      - web/mobile/desktop flag-off fallback behavior
-     - runtime sink path remains configurable for Convex-only fallback
+     - runtime sink path remains configurable for Khala-only fallback
 
 ## Evidence
 
@@ -66,4 +66,4 @@ Web lane checks:
 ## Residual Risks
 
 1. Full production rollout still requires live non-local dashboard confirmation for mismatch and lag thresholds.
-2. Remaining Convex-dependent lanes (notably Lightning control-plane) are still outside this drill scope.
+2. Remaining Khala-dependent lanes (notably Lightning control-plane) are still outside this drill scope.

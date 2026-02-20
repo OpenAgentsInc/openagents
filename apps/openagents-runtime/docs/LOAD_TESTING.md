@@ -5,7 +5,7 @@ This suite validates production-shaped runtime behavior for concurrency, streami
 ## Test Suite
 
 - `apps/openagents-runtime/test/openagents_runtime/load/runtime_shape_load_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/load/convex_projection_load_chaos_test.exs`
+- `apps/openagents-runtime/test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
 
 Scenarios covered:
 
@@ -13,16 +13,16 @@ Scenarios covered:
 2. Burst frame ingestion with contiguous event sequencing.
 3. Cancel storms with idempotent terminal cancellation.
 4. Executor-loss recovery (pod-kill equivalent) via janitor + stream cursor resume continuity.
-5. Sustained runtime event bursts with bounded Convex projection lag.
+5. Sustained runtime event bursts with bounded Khala projection lag.
 6. Codex worker heartbeat bursts with projection checkpoint convergence.
-7. Convex sink failure chaos with replay-based projection recovery.
+7. Khala sink failure chaos with replay-based projection recovery.
 
 ## Run Commands
 
 From `apps/openagents-runtime/`:
 
 - `mix test test/openagents_runtime/load/runtime_shape_load_test.exs`
-- `mix test test/openagents_runtime/load/convex_projection_load_chaos_test.exs`
+- `mix test test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
 - `mix test --include load`
 
 ## What to inspect
@@ -31,21 +31,21 @@ From `apps/openagents-runtime/`:
 - Event log continuity (`seq` monotonic with no gaps).
 - Stream cursor behavior (`cursor` resumes to strict `seq > cursor`).
 - Janitor recovery behavior after stale lease detection.
-- Convex projection checkpoint convergence (`last_runtime_seq` tracks runtime `latest_seq`).
-- Convex failure-mode posture (runtime writes remain durable when sink fails; replay restores projections).
+- Khala projection checkpoint convergence (`last_runtime_seq` tracks runtime `latest_seq`).
+- Khala failure-mode posture (runtime writes remain durable when sink fails; replay restores projections).
 
 ## Pass/Fail Criteria
 
 - Pass: runtime event append/worker ingest operations remain successful under load and chaos.
-- Pass: Convex projection checkpoints converge to runtime latest sequence after replay.
+- Pass: Khala projection checkpoints converge to runtime latest sequence after replay.
 - Pass: projection lag/write failure/drift/replay alerts and dashboard panels exist in monitoring assets.
 - Fail: runtime write path blocks on projection sink failures.
 - Fail: replay cannot restore projection checkpoint state to runtime truth.
-- Fail: monitoring assets are missing Convex hardening signals.
+- Fail: monitoring assets are missing Khala hardening signals.
 
 ## Latest Report
 
-- `apps/openagents-runtime/docs/reports/2026-02-19-convex-runtime-projector-load-chaos-report.md`
+- `apps/openagents-runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
 
 ## Relationship to Operations
 

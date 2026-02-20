@@ -1,6 +1,6 @@
 # Production E2E Testing (Effuse Test Runner) + Auth Bypass
 
-> Legacy scope: this document captures the former `apps/web` Cloudflare/Convex E2E flow.
+> Legacy scope: this document captures the former `apps/web` Cloudflare/Khala E2E flow.
 > For current Laravel web verification, start at `apps/openagents.com/README.md` and `docs/plans/active/laravel-rebuild.md`.
 
 This document describes the historical **production-targeting, Effect-native E2E testing** path for `apps/web`, including a **deterministic auth bypass** that does **not** depend on email magic-code flows.
@@ -40,7 +40,7 @@ On the homepage, **“Start for free”** opens a **floating chat pane on the sa
   - `packages/effuse-test/src/cli.ts`
   - `packages/effuse-test/src/runner/runner.ts`
   - `packages/effuse-test/src/suites/apps-web.ts`
-- Overnight runner (headless, Convex-first logs):
+- Overnight runner (headless, Khala-first logs):
   - `apps/web/scripts/dse-overnight.ts`
   - Runbook: `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
 - Worker auth endpoints:
@@ -48,8 +48,8 @@ On the homepage, **“Start for free”** opens a **floating chat pane on the sa
   - `apps/web/src/auth/e2eAuth.ts`
 - Effect auth integration:
   - `apps/web/src/effect/auth.ts`
-- Convex auth:
-  - `apps/web/convex/auth.config.ts`
+- Khala auth:
+  - `apps/web/khala/auth.config.ts`
 - UX fix to prevent silent stall:
   - `apps/web/src/effuse-app/controllers/autopilotController.ts`
 
@@ -62,7 +62,7 @@ Constraints:
 - Production auth still uses WorkOS for real users.
 - E2E bypass must be:
   - gated by a secret (Cloudflare Worker env secret),
-  - verifiable by Convex (no forged tokens),
+  - verifiable by Khala (no forged tokens),
   - isolated from the WorkOS cookie/session model (WorkOS `withAuth()` validation/refresh must not be involved).
 
 Solution:
@@ -72,7 +72,7 @@ Solution:
 - Teach the Worker session endpoint (`/api/auth/session`) and the server-side `AuthService` to **accept either**:
   - WorkOS session (primary), or
   - E2E JWT cookie (fallback).
-- Configure Convex to trust the E2E issuer via a **JWKS endpoint** served by the Worker.
+- Configure Khala to trust the E2E issuer via a **JWKS endpoint** served by the Worker.
 
 ## How It Works End-to-End
 
@@ -89,7 +89,7 @@ The Worker:
 - derives a stable user id from `seed` (or generates one),
 - mints a JWT signed with `OA_E2E_JWT_PRIVATE_JWK`,
 - sets cookies:
-  - `oa-e2e=<jwt>` (auth token for Convex + server session)
+  - `oa-e2e=<jwt>` (auth token for Khala + server session)
   - `prelaunch_bypass=1` (so prod prelaunch mode doesn’t block `/autopilot`)
 
 ### 2) App session sees the user as authed
@@ -103,15 +103,15 @@ Client-side `AuthService` uses `/api/auth/session` to cache a `{ userId, token }
 
 Server-side `AuthService` uses `oa-e2e` cookie directly (SSR/Worker calls).
 
-### 3) Convex accepts the E2E token
+### 3) Khala accepts the E2E token
 
-Convex is configured with a custom JWT provider:
+Khala is configured with a custom JWT provider:
 
 - issuer: `https://openagents.com/e2e`
 - jwks: `https://openagents.com/api/auth/e2e/jwks`
 - alg: `RS256`
 
-So Convex can verify the E2E JWT and `ctx.auth.getUserIdentity()` resolves to the test user.
+So Khala can verify the E2E JWT and `ctx.auth.getUserIdentity()` resolves to the test user.
 
 ### 4) Chat send cannot silently stall anymore
 
@@ -153,7 +153,7 @@ Response:
 
 Purpose:
 
-- publish the public key for Convex JWT verification
+- publish the public key for Khala JWT verification
 
 Response:
 
@@ -201,7 +201,7 @@ NODE
 After rotating secrets:
 
 - Deploy the Worker: `cd apps/web && npm run deploy:worker`
-- Convex auth config will continue to work because it pulls the public key from the Worker JWKS endpoint.
+- Khala auth config will continue to work because it pulls the public key from the Worker JWKS endpoint.
 
 ## Running Prod E2E
 
@@ -271,15 +271,15 @@ cd apps/web
 npx wrangler tail autopilot-web --format pretty --search "oa_req=<PASTE_ID>"
 ```
 
-Convex errors typically contain their own request id:
+Khala errors typically contain their own request id:
 
 ```bash
 cd apps/web
-npx convex logs --prod --jsonl | rg "<CONVEX_REQUEST_ID>"
+npx khala logs --prod --jsonl | rg "<KHALA_REQUEST_ID>"
 ```
 
 ## Notes / Gotchas
 
 - The E2E bypass cookie is **not** a WorkOS session. It exists to make prod smoke tests deterministic without relying on inboxes.
-- Convex must accept the E2E token (it does via `apps/web/convex/auth.config.ts`), otherwise `ctx.auth.getUserIdentity()` will be empty and everything becomes “forbidden”.
+- Khala must accept the E2E token (it does via `apps/web/khala/auth.config.ts`), otherwise `ctx.auth.getUserIdentity()` will be empty and everything becomes “forbidden”.
 - Prelaunch mode: prod deploy runs with `VITE_PRELAUNCH=1`; `POST /api/auth/e2e/login` sets `prelaunch_bypass=1` so tests can reach `/autopilot`.

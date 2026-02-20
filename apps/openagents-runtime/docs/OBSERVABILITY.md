@@ -46,7 +46,7 @@ High-cardinality keys explicitly prohibited from metric labels:
   - DS policy/spend decision and budget counters
 - `[:openagents_runtime, :parity, :failure]`
   - parity failure-class envelope across policy/loop/network/manifest/workflow
-- `[:openagents_runtime, :convex, :projection, ...]`
+- `[:openagents_runtime, :khala, :projection, ...]`
   - `:write` (result + lag_events)
   - `:write_failure`
   - `:drift`

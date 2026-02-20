@@ -1,15 +1,15 @@
-# Autopilot Self-Improve Plan (Convex-First MVP)
+# Autopilot Self-Improve Plan (Khala-First MVP)
 
 - **Status:** Implemented (historical plan + implementation notes; use the runbook for execution)
 - **Last updated:** 2026-02-10
-- **Legacy scope:** This plan captures the former `apps/web` + Convex execution architecture and remains as historical implementation context.
-- **Scope:** Effect-only (TypeScript + Effect) runtime + compiler loops; Convex-backed persistence for MVP
+- **Legacy scope:** This plan captures the former `apps/web` + Khala execution architecture and remains as historical implementation context.
+- **Scope:** Effect-only (TypeScript + Effect) runtime + compiler loops; Khala-backed persistence for MVP
 - **If this doc conflicts with code behavior:** code wins
 
 This doc answers two questions for the current Autopilot MVP:
 
 1. **Can the agent improve in a loop today?**
-2. **What’s missing to make that loop real in production (Convex-first)?**
+2. **What’s missing to make that loop real in production (Khala-first)?**
 
 It is intentionally concrete: code pointers, required data models, and a step-by-step roadmap with testable increments.
 
@@ -31,7 +31,7 @@ OA_DSE_ADMIN_SECRET="..." \
 Required Worker secrets for headless ops mode:
 
 - `OA_DSE_ADMIN_SECRET`
-- `OA_E2E_JWT_PRIVATE_JWK` (Worker-minted ops-admin JWT for Convex)
+- `OA_E2E_JWT_PRIVATE_JWK` (Worker-minted ops-admin JWT for Khala)
 - (prod E2E only) `OA_E2E_BYPASS_SECRET` + runner env `EFFUSE_TEST_E2E_BYPASS_SECRET`
 - `OPENROUTER_API_KEY` (required for some compile/eval paths)
 
@@ -41,12 +41,12 @@ Where to view results:
 - `/dse/ops/:runId` (ops run detail)
 - `/dse/signature/:signatureId` (per-signature view)
 
-## Convex-First MVP Constraint (Non-Negotiable)
+## Khala-First MVP Constraint (Non-Negotiable)
 
 For the MVP execution plane:
 
 - **No per-user Durable Objects / DO-SQLite** for chat or “user space.”
-- Cloudflare Worker runs inference/compute and writes bounded, chunked state into **Convex**.
+- Cloudflare Worker runs inference/compute and writes bounded, chunked state into **Khala**.
 
 References:
 
@@ -76,13 +76,13 @@ This means: given a dataset + metric + search space, we can **select better para
 
 The live MVP execution plane in `apps/web/` currently runs chat using `@effect/ai` directly:
 
-- Worker inference + chunked streaming to Convex: `apps/web/src/effuse-host/autopilot.ts`
-- Canonical state in Convex: `apps/web/convex/autopilot/*` and schema `apps/web/convex/schema.ts`
+- Worker inference + chunked streaming to Khala: `apps/web/src/effuse-host/autopilot.ts`
+- Canonical state in Khala: `apps/web/khala/autopilot/*` and schema `apps/web/khala/schema.ts`
 
 Concretely, the Worker builds a plain chat prompt from recent messages and calls:
 
 - `AiLanguageModel.streamText(...)` with `toolChoice: "none"` (tools disabled)
-- flushes chunked `@effect/ai` stream parts into Convex `messageParts`
+- flushes chunked `@effect/ai` stream parts into Khala `messageParts`
 
 UI rendering then reconstructs the assistant message by replaying `messageParts`:
 
@@ -93,7 +93,7 @@ So: we do **not** yet have the “closed loop” where production runs are:
 
 - executed as DSE `Predict(signature)` calls
 - recorded as DSE receipts keyed by `signatureId` + `compiled_id`
-- compiled into new artifacts and promoted/rolled back inside Convex-backed registries
+- compiled into new artifacts and promoted/rolled back inside Khala-backed registries
 
 ## Frontend Integration Requirement (DSE Must Be Visible)
 
@@ -107,7 +107,7 @@ This mirrors the existing posture where tool calls/results are rendered as chat 
 
 ### Proposed approach: DSE events as chat parts
 
-Today the chat “wire” is Convex `messageParts.part` objects (currently `@effect/ai/Response` stream parts).
+Today the chat “wire” is Khala `messageParts.part` objects (currently `@effect/ai/Response` stream parts).
 
 We should treat the `part` field as a union:
 
@@ -125,7 +125,7 @@ Rules:
 - `part.type` MUST start with `dse.` (namespaced).
 - `part.v` MUST be a number (start at `1`).
 - `part.id` MUST be stable for the lifetime of the action so the UI can update an existing card (same rule as tool cards update by `toolCallId` today).
-- Parts MUST stay bounded. Any large payloads should be persisted separately (Convex table row or `BlobRef`) and referenced by id.
+- Parts MUST stay bounded. Any large payloads should be persisted separately (Khala table row or `BlobRef`) and referenced by id.
 
 Minimal common shape:
 
@@ -168,7 +168,7 @@ Tool action part (example):
   "id": "dsepart_01HT...",
   "state": "error",
   "tsMs": 1760212346000,
-  "toolName": "convex.mutation",
+  "toolName": "khala.mutation",
   "toolCallId": "toolcall_01HT...",
   "errorText": "Timeout after 2000ms"
 }
@@ -277,7 +277,7 @@ At a minimum, a self-improvement loop has this shape:
 
 In DSE terms this is: `Signature` + `Dataset` + `RewardBundle` + `CompileJob` + `ArtifactRegistry`.
 
-## What’s Missing For A Real Loop In The Convex-First MVP
+## What’s Missing For A Real Loop In The Khala-First MVP
 
 This is the delta between “library can compile” and “Autopilot self-improves in prod.”
 
@@ -292,11 +292,11 @@ Good first targets (small IO, easy labeling):
 
 These should be executed from `apps/web` (Worker) using `@openagentsinc/dse` `Predict.make(...)`, not only exist as contract exports.
 
-### 2) Convex-backed Policy Registry + Artifact Store (MVP)
+### 2) Khala-backed Policy Registry + Artifact Store (MVP)
 
 The DSE runtime expects a `PolicyRegistryService` (get active compiled id, load artifact).
 
-MVP needs Convex tables + functions roughly equivalent to the DO-SQLite reference integration:
+MVP needs Khala tables + functions roughly equivalent to the DO-SQLite reference integration:
 
 - `dseArtifacts`: `{ signatureId, compiled_id, json, createdAtMs, hashes... }`
 - `dseActiveArtifacts`: `{ signatureId, compiled_id, updatedAtMs }`
@@ -316,10 +316,10 @@ DSE predict receipts already include hashes + budgets and can include errors:
 - receipt format: `packages/dse/src/runtime/receipt.ts`
 - predictor writes receipts on both Ok and Error now: `packages/dse/src/runtime/predict.ts`
 
-MVP needs a Convex persistence story for DSE receipts (separate from chat message parts):
+MVP needs a Khala persistence story for DSE receipts (separate from chat message parts):
 
 - simplest: store DSE receipts as `receipts.json` with a new `kind` discriminator (or a new `dseReceipts` table)
-- store large payloads via `BlobRef` (R2 or equivalent) and keep Convex rows bounded
+- store large payloads via `BlobRef` (R2 or equivalent) and keep Khala rows bounded
 
 ### 4) A labeling mechanism (otherwise “compile” has no target)
 
@@ -335,8 +335,8 @@ Without labels, you can’t justify promotion.
 
 We need a place to run compile jobs that can call the LM, evaluate candidates, and write artifacts:
 
-- Worker-triggered compile job that writes into Convex (preferred for keeping secrets in Worker)
-- or Convex action that calls an external inference API (acceptable if secrets posture is correct)
+- Worker-triggered compile job that writes into Khala (preferred for keeping secrets in Worker)
+- or Khala action that calls an external inference API (acceptable if secrets posture is correct)
 - or offline/dev-only compile (good for the very first “prove it works” iteration)
 
 Regardless of runner, compile must be:
@@ -353,7 +353,7 @@ We need explicit APIs to:
 - promote: set active pointer
 - rollback: set pointer to prior value
 
-All of this should be Convex-backed for MVP.
+All of this should be Khala-backed for MVP.
 
 ### 7) Frontend DSE surfaces (chat components + inspector pages)
 
@@ -378,7 +378,7 @@ The goal is a smallest end-to-end vertical slice: **one signature improves on a 
 ### Stage 0: Baseline Green (already)
 
 - DSE unit tests: `cd packages/dse && bun test && bun run typecheck`
-- Web worker + Convex tests: `cd apps/web && npm test && npm run lint`
+- Web worker + Khala tests: `cd apps/web && npm test && npm run lint`
 
 Implementation log:
 
@@ -393,9 +393,9 @@ Implementation log:
 
 - 2026-02-08: Re-verified budget enforcement and receipt budget snapshots by running `cd packages/dse && bun test` (includes `test/budget.test.ts`).
 
-### Stage 2: Convex-backed DSE stores (artifacts + active pointer + receipts) (done)
+### Stage 2: Khala-backed DSE stores (artifacts + active pointer + receipts) (done)
 
-Add Convex tables + functions for:
+Add Khala tables + functions for:
 
 - artifact store (`putArtifact`, `getArtifact`, `listArtifacts`)
 - active pointer (`getActive`, `setActive`, `clearActive`) + history
@@ -403,20 +403,20 @@ Add Convex tables + functions for:
 
 Testable outcomes:
 
-- worker test proves “store → promote → rollback” works in Convex (analogous to `apps/autopilot-worker/tests/index.test.ts`, but in `apps/web/tests/worker/`)
+- worker test proves “store → promote → rollback” works in Khala (analogous to `apps/autopilot-worker/tests/index.test.ts`, but in `apps/web/tests/worker/`)
 
 Implementation log:
 
-- 2026-02-08: Added Convex schema + functions for DSE artifact storage and active-pointer registry:
-  - tables: `apps/web/convex/schema.ts` (`dseArtifacts`, `dseActiveArtifacts`, `dseActiveArtifactHistory`)
-  - functions: `apps/web/convex/dse/artifacts.ts`, `apps/web/convex/dse/active.ts`
-- 2026-02-08: Added a Convex mutation for DSE predict receipt recording (thread-scoped, anon allowed via `anonKey`):
-  - function: `apps/web/convex/dse/receipts.ts`
+- 2026-02-08: Added Khala schema + functions for DSE artifact storage and active-pointer registry:
+  - tables: `apps/web/khala/schema.ts` (`dseArtifacts`, `dseActiveArtifacts`, `dseActiveArtifactHistory`)
+  - functions: `apps/web/khala/dse/artifacts.ts`, `apps/web/khala/dse/active.ts`
+- 2026-02-08: Added a Khala mutation for DSE predict receipt recording (thread-scoped, anon allowed via `anonKey`):
+  - function: `apps/web/khala/dse/receipts.ts`
   - schema: extended `receipts.kind` to include `dse.predict` and added optional metadata fields for indexing (`receiptId`, `signatureId`, `compiled_id`).
-- 2026-02-08: Added contract tests proving “store → promote → rollback” and “recordPredictReceipt” work end-to-end against the in-process Convex implementations:
-  - `apps/web/tests/convex/dse-store.test.ts`
-- 2026-02-08: Regenerated Convex bindings so `api.dse.*` is available:
-  - `cd apps/web && npx convex codegen`
+- 2026-02-08: Added contract tests proving “store → promote → rollback” and “recordPredictReceipt” work end-to-end against the in-process Khala implementations:
+  - `apps/web/tests/khala/dse-store.test.ts`
+- 2026-02-08: Regenerated Khala bindings so `api.dse.*` is available:
+  - `cd apps/web && npx khala codegen`
 - 2026-02-08: Verified:
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
@@ -431,7 +431,7 @@ Add a DSE “action part” protocol and render it in chat.
 
 Implementation sketch:
 
-- Extend the Convex `messageParts.part` union to allow custom DSE parts (no schema change required since it is `v.any()`, but we should standardize a versioned shape).
+- Extend the Khala `messageParts.part` union to allow custom DSE parts (no schema change required since it is `v.any()`, but we should standardize a versioned shape).
 - Update `apps/web/src/effect/chat.ts` to recognize `type: "dse.*"` parts and convert them into typed `ChatPart`s.
 - Update `apps/web/src/effuse-app/controllers/autopilotController.ts` + `apps/web/src/effuse-pages/autopilot.ts` to render:
   - signature cards
@@ -473,8 +473,8 @@ Implementation log:
 Pick one signature (recommended: `@openagents/autopilot/blueprint/SelectTool.v1`) and execute it inside the `apps/web` Worker:
 
 - provide `LmClientService` backed by the existing Workers AI binding
-- provide `PolicyRegistryService` backed by Convex
-- provide `ReceiptRecorderService` backed by Convex
+- provide `PolicyRegistryService` backed by Khala
+- provide `ReceiptRecorderService` backed by Khala
 - keep budgets on (`ExecutionBudgetService`)
 
 Testable outcomes:
@@ -486,7 +486,7 @@ Testable outcomes:
 
 Implementation log:
 
-- 2026-02-08: Added Worker-side DSE runtime wiring (Workers AI LM client; Convex-backed policy registry + receipt recorder; in-memory budget + blob store layers):
+- 2026-02-08: Added Worker-side DSE runtime wiring (Workers AI LM client; Khala-backed policy registry + receipt recorder; in-memory budget + blob store layers):
   - `apps/web/src/effuse-host/dse.ts`
 - 2026-02-08: Wired a best-effort DSE signature call into the `apps/web` autopilot streaming hot path and emitted `dse.signature` chat parts:
   - `apps/web/src/effuse-host/autopilot.ts`
@@ -496,9 +496,9 @@ Implementation log:
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
 
-### Stage 4: Create a labeled dataset in Convex
+### Stage 4: Create a labeled dataset in Khala
 
-Add `dseExamples` in Convex:
+Add `dseExamples` in Khala:
 
 - `{ signatureId, exampleId, inputJson, expectedJson, split?, tags?, createdAtMs, source }`
 
@@ -509,16 +509,16 @@ Seed examples via:
 
 Testable outcomes:
 
-- convex query returns dataset deterministically sorted by `exampleId`
+- khala query returns dataset deterministically sorted by `exampleId`
 
 Implementation log:
 
-- 2026-02-08: Added `dseExamples` Convex table + indexes (Convex-first labeled dataset storage):
-  - `apps/web/convex/schema.ts`
-- 2026-02-08: Added Convex functions to upsert and list examples (deterministic by `exampleId`, split filtering):
-  - `apps/web/convex/dse/examples.ts`
+- 2026-02-08: Added `dseExamples` Khala table + indexes (Khala-first labeled dataset storage):
+  - `apps/web/khala/schema.ts`
+- 2026-02-08: Added Khala functions to upsert and list examples (deterministic by `exampleId`, split filtering):
+  - `apps/web/khala/dse/examples.ts`
 - 2026-02-08: Added tests proving deterministic ordering + split filtering + upsert behavior:
-  - `apps/web/tests/convex/dse-examples.test.ts`
+  - `apps/web/tests/khala/dse-examples.test.ts`
 - 2026-02-08: Verified:
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
@@ -574,22 +574,22 @@ Testable outcomes:
 
 Implementation log:
 
-- 2026-02-08: Added Convex storage for compile run reports (immutable, keyed by jobHash+datasetHash):
-  - table: `apps/web/convex/schema.ts` (`dseCompileReports`)
-  - functions: `apps/web/convex/dse/compileReports.ts`
-- 2026-02-08: Added Worker endpoint to run `Compile.compile(...)` using Workers AI + Convex `dseExamples` dataset, then persist artifact + compile report (manual promotion, no `setActive`):
+- 2026-02-08: Added Khala storage for compile run reports (immutable, keyed by jobHash+datasetHash):
+  - table: `apps/web/khala/schema.ts` (`dseCompileReports`)
+  - functions: `apps/web/khala/dse/compileReports.ts`
+- 2026-02-08: Added Worker endpoint to run `Compile.compile(...)` using Workers AI + Khala `dseExamples` dataset, then persist artifact + compile report (manual promotion, no `setActive`):
   - route: `POST /api/dse/compile`
   - handler: `apps/web/src/effuse-host/dseCompile.ts`
   - wiring: `apps/web/src/effuse-host/worker.ts`
 - 2026-02-08: Added tests proving compile writes artifact+report and is idempotent by (jobHash, datasetHash):
-  - Convex store tests: `apps/web/tests/convex/dse-compile-reports.test.ts`
+  - Khala store tests: `apps/web/tests/khala/dse-compile-reports.test.ts`
   - Worker endpoint test: `apps/web/tests/worker/dse-compile-endpoint.test.ts`
 - 2026-02-10: Made SelectTool compile non-trivial and centralized job spec so compile + gating cannot diverge:
   - shared job spec: `apps/web/src/effuse-host/dseJobs.ts`
   - deterministic search space for `@openagents/autopilot/blueprint/SelectTool.v1`: instruction variants (`instruction_grid.v1`)
   - gating tests: `apps/web/tests/worker/dse-admin-jobhash-gating.test.ts`
 - 2026-02-08: Verified:
-  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npx khala codegen`
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
 
@@ -604,16 +604,16 @@ Add:
 
 Implementation log:
 
-- 2026-02-08: Added holdout split support to the Convex examples dataset (kept legacy `"dev"` for backwards compatibility):
-  - `apps/web/convex/schema.ts` (`dseExamples.split`)
-  - `apps/web/convex/dse/examples.ts`
-- 2026-02-08: Added Convex canary config storage + history:
-  - tables: `apps/web/convex/schema.ts` (`dseCanaries`, `dseCanaryHistory`)
-  - functions: `apps/web/convex/dse/canary.ts` (`getCanary`, `startCanary`, `stopCanary`)
+- 2026-02-08: Added holdout split support to the Khala examples dataset (kept legacy `"dev"` for backwards compatibility):
+  - `apps/web/khala/schema.ts` (`dseExamples.split`)
+  - `apps/web/khala/dse/examples.ts`
+- 2026-02-08: Added Khala canary config storage + history:
+  - tables: `apps/web/khala/schema.ts` (`dseCanaries`, `dseCanaryHistory`)
+  - functions: `apps/web/khala/dse/canary.ts` (`getCanary`, `startCanary`, `stopCanary`)
 - 2026-02-08: Implemented Worker runtime selection beyond “single active pointer”:
   - deterministic per-thread canary bucketing in `PolicyRegistryService.getActive` (stable hash of `salt:threadId:signatureId`)
   - implementation: `apps/web/src/effuse-host/dse.ts`
-- 2026-02-08: Implemented admin-only Worker endpoints for gated promotion + canary control (Convex-first, Effect-only):
+- 2026-02-08: Implemented admin-only Worker endpoints for gated promotion + canary control (Khala-first, Effect-only):
   - `POST /api/dse/promote` (holdout delta gate, then `setActive`)
   - `POST /api/dse/canary/start` (holdout delta gate, then `startCanary`)
   - `POST /api/dse/canary/stop`
@@ -622,15 +622,15 @@ Implementation log:
 - 2026-02-08: Added MVP auto-stop behavior (“rollback” = disable canary config) driven by predict receipts:
   - increments `okCount/errorCount` when the receipt’s `compiled_id` matches the current canary compiled id
   - auto-stops canary when `total >= minSamples` and `errorRate > maxErrorRate`
-  - implementation: `apps/web/convex/dse/receipts.ts`
+  - implementation: `apps/web/khala/dse/receipts.ts`
 - 2026-02-08: Hardened write paths for global DSE state to require auth (so anon chat traffic cannot mutate artifacts/actives):
-  - `apps/web/convex/dse/artifacts.ts` (`putArtifact`)
-  - `apps/web/convex/dse/active.ts` (`setActive`, `clearActive`, `rollbackActive`)
+  - `apps/web/khala/dse/artifacts.ts` (`putArtifact`)
+  - `apps/web/khala/dse/active.ts` (`setActive`, `clearActive`, `rollbackActive`)
 - 2026-02-08: Added/updated tests:
-  - Convex canary storage + auto-stop: `apps/web/tests/convex/dse-canary.test.ts`
+  - Khala canary storage + auto-stop: `apps/web/tests/khala/dse-canary.test.ts`
   - Worker hot-path canary selection: `apps/web/tests/worker/dse-signature-hot-path.test.ts`
 - 2026-02-08: Verified:
-  - `cd apps/web && npx convex codegen`
+  - `cd apps/web && npx khala codegen`
   - `cd apps/web && npm test && npm run lint`
   - `cd packages/dse && bun test && bun run typecheck`
 
@@ -653,8 +653,8 @@ Headless ops note:
 
 - DSE spec (contract + compile posture): `docs/autopilot/dse/dse.md`
 - Autopilot optimization phases: `docs/autopilot/reference/AUTOPILOT_OPTIMIZATION_PLAN.md`
-- Convex-first execution plane: `docs/autopilot/reference/anon-chat-execution-plane.md`
+- Khala-first execution plane: `docs/autopilot/reference/anon-chat-execution-plane.md`
 - Stream testing posture + wire transcript fixtures: `docs/autopilot/testing/STREAM_TESTING.md`
 - Overnight self-improvement runbook (headless): `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`
-- RLM/GEPA/MIPRO plan (Effect-only, Convex-first aligned): `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
+- RLM/GEPA/MIPRO plan (Effect-only, Khala-first aligned): `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 - DSE vs Rust reference optimizers review: `packages/dse/docs/RLM_GEPA_MIPRO_DSE_REVIEW_AND_ROADMAP.md`

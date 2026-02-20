@@ -6,7 +6,7 @@ Scope: KHALA-027 production drill checklist + evidence contract for API-only lig
 
 ## Objective
 
-Validate that production lightning-ops runs without Convex transport/dependencies and that rollback is no longer required for the control-plane lane.
+Validate that production lightning-ops runs without Khala transport/dependencies and that rollback is no longer required for the control-plane lane.
 
 ## Required production inputs
 
@@ -33,12 +33,12 @@ OA_LIGHTNING_OPS_API_BASE_URL=<prod-api-origin> OA_LIGHTNING_OPS_SECRET=<prod-op
 
 - Command outputs (JSON where applicable) attached to deployment ticket.
 - Reconcile output includes `configHash`, `deploymentStatus`, `challengeOk`, `proxyOk`, `healthOk`.
-- Confirmation that no Convex env vars are required by lightning-ops runtime.
-- Confirmation that `apps/lightning-ops/package-lock.json` contains no `convex` dependency.
+- Confirmation that no Khala env vars are required by lightning-ops runtime.
+- Confirmation that `apps/lightning-ops/package-lock.json` contains no `khala` dependency.
 
 ## Rollback stance
 
-- Control-plane rollback to Convex is removed in this wave.
+- Control-plane rollback to Khala is removed in this wave.
 - Operational rollback is now API-only:
   - revert to previous `apps/lightning-ops` image/tag,
   - keep Laravel authority tables/API unchanged,

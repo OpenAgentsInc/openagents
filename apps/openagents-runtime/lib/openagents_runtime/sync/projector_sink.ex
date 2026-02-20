@@ -1,6 +1,6 @@
 defmodule OpenAgentsRuntime.Sync.ProjectorSink do
   @moduledoc """
-  Convex projector-compatible sink that writes Khala read models and ordered stream events.
+  Khala projector-compatible sink that writes Khala read models and ordered stream events.
 
   This sink supports two stream payload modes:
 
@@ -8,7 +8,7 @@ defmodule OpenAgentsRuntime.Sync.ProjectorSink do
   - `:pointer`: stream rows omit payload and rely on read-model hydration
   """
 
-  @behaviour OpenAgentsRuntime.Convex.Sink
+  @behaviour OpenAgentsRuntime.Khala.Sink
 
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Sync.CodexWorkerSummary

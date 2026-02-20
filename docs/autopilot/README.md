@@ -2,7 +2,7 @@
 
 - **Main spec:** [spec.md](./spec.md) — product behavior and constraints
 - **iOS codex docs:** [../../apps/autopilot-ios/docs/README.md](../../apps/autopilot-ios/docs/README.md) — Codex-first structure and iOS-to-Codex connection roadmap
-- **Legacy note:** Some runbooks in this folder capture historical `apps/web` + Convex workflows. Treat those as reference-only unless explicitly mapped to current `apps/openagents.com` and `apps/openagents-runtime` flows.
+- **Legacy note:** Some runbooks in this folder capture historical `apps/web` + Khala workflows. Treat those as reference-only unless explicitly mapped to current `apps/openagents.com` and `apps/openagents-runtime` flows.
 
 ## Structure
 

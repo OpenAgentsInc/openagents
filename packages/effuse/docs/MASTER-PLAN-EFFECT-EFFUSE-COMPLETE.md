@@ -52,12 +52,12 @@ This section is a “how do I not accidentally violate the spec” cheat sheet. 
   - Component-local/high-frequency state: `StateCell` (ephemeral, not SSR/hydration, not a cross-route cache).
 - If you need interactivity: prefer EZ (`data-ez-*`) for localized actions; use component loops only for streaming/subscriptions.
 - If you are adding a tool: schema-first params/outputs, bounded outputs + `BlobRef` for large payloads, and always emit receipts (toolName/toolCallId correlation).
-- If you are touching Convex: do not use React bindings; use the Effect-first `ConvexService` and standard wrappers in `apps/web/convex/effect/*`.
+- If you are touching Khala: do not use React bindings; use the Effect-first `KhalaService` and standard wrappers in `apps/web/khala/effect/*`.
 - If you are touching AI: do not introduce new provider SDKs in app code; treat AI as `@effect/ai` (`LanguageModel` + `Response` parts) and keep WebSocket streaming as the canonical transport.
 
 ## 1. Non-Goals (For This Master Plan)
 
-- Replacing *every backend* immediately (Convex / WorkOS / Autopilot worker) is not required for removing React/TanStack. They must be wrapped behind Effect services so they can remain during migration.
+- Replacing *every backend* immediately (Khala / WorkOS / Autopilot worker) is not required for removing React/TanStack. They must be wrapped behind Effect services so they can remain during migration.
 - Replacing the build tool is not required. Vite (or an equivalent bundler) can remain as an implementation detail.
 
 ## 2. Baseline (What Exists Today)
@@ -79,9 +79,9 @@ Effuse core (see `README.md`, `ARCHITECTURE.md`, `SPEC.md`, `DOM.md`, `EZ.md`):
 - Shared Effuse UI primitives live in `@openagentsinc/effuse-ui` (Tailwind-first helpers).
 - Autopilot chat is Effect-first (`ChatService`) and the UI is driven by atoms (not React hooks).
 - Key routes are SSR-rendered as Effuse HTML and hydrated without DOM teardown (via mount-level `ssrHtml`), even before TanStack is removed.
-- **MVP direction (resolved, implemented 2026-02-08):** Autopilot chat is **Convex-first**:
-  - the `apps/web` Worker runs inference (Cloudflare `AI` binding) and writes chunked `messageParts` to Convex
-  - the browser subscribes to Convex for realtime updates (Convex WS)
+- **MVP direction (resolved, implemented 2026-02-08):** Autopilot chat is **Khala-first**:
+  - the `apps/web` Worker runs inference (Cloudflare `AI` binding) and writes chunked `messageParts` to Khala
+  - the browser subscribes to Khala for realtime updates (Khala WS)
   - the legacy Agents SDK + `/agents/*` Durable Object transport is removed from `apps/web`
   - per-user Cloudflare execution planes (DO/DO SQLite) are deferred to post-MVP optimizations.
 
@@ -105,7 +105,7 @@ Define one canonical Layer bundle, with server/client specializations.
 - `TelemetryService` (namespaced, best-effort sinks, request correlation)
 - `HttpClient` (`@effect/platform`), plus `Fetch` implementation per environment
 - `AuthService` (WorkOS session, sign-in/out; server cookie parsing)
-- `ConvexService` (Effect-first wrapper over Convex HTTP + WS clients; no React bindings)
+- `KhalaService` (Effect-first wrapper over Khala HTTP + WS clients; no React bindings)
 - `AgentRpcClientService` (or successor)
 - `LanguageModel` (`@effect/ai/LanguageModel`) (Effect-native LLM interface; provider-backed)
 - `Tokenizer` (`@effect/ai/Tokenizer`) (prompt token counting + truncation for budget enforcement)
@@ -238,16 +238,16 @@ Hard requirements for the host surface:
 
 Initial planned backend: **Cloudflare Workers**, using a **single Worker** fetch handler for SSR + static + API, plus relevant Cloudflare infra:
 
-- **R2** (or Convex file storage) for large blob storage (`BlobStore`) and any large tool/LLM artifacts.
+- **R2** (or Khala file storage) for large blob storage (`BlobStore`) and any large tool/LLM artifacts.
 - **KV** for small global caches/flags/pointers where appropriate (not canonical state).
 - **Queues** for background or deferred work (e.g. compile jobs, log flushing) when needed.
 - **D1** only if/when we need a global relational store (optional).
 
-Post-MVP (optional): add **Durable Objects + DO SQLite** as an execution/workspace plane (cheaper true streaming, strong per-user consistency) while keeping Convex as the product DB and subscription surface.
+Post-MVP (optional): add **Durable Objects + DO SQLite** as an execution/workspace plane (cheaper true streaming, strong per-user consistency) while keeping Khala as the product DB and subscription surface.
 
 Additional backend used by the product (not Cloudflare infra):
 
-- **Convex** is the product database and realtime subscription backbone. The browser MUST be able to connect to Convex via WebSockets for live updates (see §3.5.5).
+- **Khala** is the product database and realtime subscription backbone. The browser MUST be able to connect to Khala via WebSockets for live updates (see §3.5.5).
 
 Secondary backend (later, optional): Node/Bun adapter for local dev or alternative deployment, but the plan in this doc should assume Cloudflare’s constraints and primitives.
 
@@ -333,8 +333,8 @@ Remove React state and TanStack Query by standardizing on Effect primitives and 
 
 Autopilot-specific “bootstrap” (Identity/User/Character/Tools/Heartbeat/Memory) should be treated as **durable, typed records** (Effect `Schema`), not a pile of markdown files:
 
-- MVP canonical store: **Convex** (product DB + realtime backbone)
-- post-MVP (optional): move selected state into a DO/DO SQLite execution plane and project summaries into Convex for realtime UI
+- MVP canonical store: **Khala** (product DB + realtime backbone)
+- post-MVP (optional): move selected state into a DO/DO SQLite execution plane and project summaries into Khala for realtime UI
 - export/import: a single versioned JSON “Blueprint” format, validated at boundaries
 - prompt injection: rendered “context file” view is derived; canonical representation remains structured
 - memory visibility: enforce `main_only` vs `all` mechanically (not by convention)
@@ -373,59 +373,59 @@ We reviewed `~/code/typed`. It does **not** use `@effect-atom/atom`, but it heav
 
 Effuse state ergonomics (Phase 7) should ensure these capabilities exist for atoms (or as a tiny wrapper layer) so implementers don’t reinvent batching/dedupe per screen.
 
-### 3.5.4 Convex (Effect-First, No React)
+### 3.5.4 Khala (Effect-First, No React)
 
-Convex remains an allowed backend during the React/TanStack removal, but it MUST be wrapped behind Effect services so:
+Khala remains an allowed backend during the React/TanStack removal, but it MUST be wrapped behind Effect services so:
 
-- UI code never depends on `convex/react` or React Query.
+- UI code never depends on `khala/react` or React Query.
 - SSR and client behavior are consistent and testable.
 - auth token handling is centralized (WorkOS session or API token) and observable.
 - caching/dedupe/cancellation rules are standardized (no “React Query by accident”).
 
 We reviewed `~/code/confect`, `~/code/crest`, and our prior Effevex take (in `~/code/oapreclean/src/effevex/*`) for patterns. We will **not** depend on Confect directly, but we will copy the architecture moves:
 
-- treat Convex as an adapter boundary (Promises -> Effects, nullables -> Option where appropriate)
+- treat Khala as an adapter boundary (Promises -> Effects, nullables -> Option where appropriate)
 - use Schema encode/decode at request boundaries (like Confect’s React bindings, but without React)
-- provide request-scoped Convex HTTP clients on the server (like Crest’s `ConvexService`)
-- optionally write Convex functions as Effect programs (like Crest’s `convex/effect/*` bridge and Effevex’s `query/mutation/action` wrappers)
+- provide request-scoped Khala HTTP clients on the server (like Crest’s `KhalaService`)
+- optionally write Khala functions as Effect programs (like Crest’s `khala/effect/*` bridge and Effevex’s `query/mutation/action` wrappers)
 
 #### 3.5.4.1 Service Surface (App-Side)
 
-Define a single `ConvexService` used everywhere (routes/loaders/EZ handlers/components/services).
+Define a single `KhalaService` used everywhere (routes/loaders/EZ handlers/components/services).
 
 Illustrative shape:
 
 ```ts
-import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server"
+import type { FunctionArgs, FunctionReference, FunctionReturnType } from "khala/server"
 import { Effect, Option, Stream } from "effect"
 
-export type ConvexCallError =
+export type KhalaCallError =
   | { readonly _tag: "Unauthorized" }
   | { readonly _tag: "UdfFailed"; readonly message: string }
   | { readonly _tag: "Transport"; readonly error: unknown }
 
-export interface ConvexService {
+export interface KhalaService {
   // One-shot calls (HTTP on server; WS or HTTP on client).
   readonly query: <Q extends FunctionReference<"query">>(
     query: Q,
     args: FunctionArgs<Q>,
-  ) => Effect.Effect<Awaited<FunctionReturnType<Q>>, ConvexCallError>
+  ) => Effect.Effect<Awaited<FunctionReturnType<Q>>, KhalaCallError>
 
   readonly mutation: <M extends FunctionReference<"mutation">>(
     mutation: M,
     args: FunctionArgs<M>,
-  ) => Effect.Effect<Awaited<FunctionReturnType<M>>, ConvexCallError>
+  ) => Effect.Effect<Awaited<FunctionReturnType<M>>, KhalaCallError>
 
   readonly action: <A extends FunctionReference<"action">>(
     action: A,
     args: FunctionArgs<A>,
-  ) => Effect.Effect<Awaited<FunctionReturnType<A>>, ConvexCallError>
+  ) => Effect.Effect<Awaited<FunctionReturnType<A>>, KhalaCallError>
 
   // Live queries (client only). Useful for realtime UIs; integrates with atoms.
   readonly subscribeQuery: <Q extends FunctionReference<"query">>(
     query: Q,
     args: FunctionArgs<Q>,
-  ) => Stream.Stream<Awaited<FunctionReturnType<Q>>, ConvexCallError>
+  ) => Stream.Stream<Awaited<FunctionReturnType<Q>>, KhalaCallError>
 
   // Optional: expose connection status in the browser.
   readonly connectionState?: Stream.Stream<unknown, never>
@@ -440,75 +440,75 @@ Typed boundary upgrades (recommended):
 
 #### 3.5.4.2 Server Implementation (Cloudflare Workers)
 
-Server-side Convex calls MUST use `convex/browser` `ConvexHttpClient`:
+Server-side Khala calls MUST use `khala/browser` `KhalaHttpClient`:
 
-- `ConvexHttpClient` is **stateful** (auth + queued mutations) so treat it as **request-scoped**.
+- `KhalaHttpClient` is **stateful** (auth + queued mutations) so treat it as **request-scoped**.
 - Auth token comes from `AuthService` (WorkOS session, API token exchange, etc.) and is applied via `client.setAuth(token)` before the first call.
 - Provide a Worker-safe `fetch` into the client (if needed) and enforce timeouts/budgets in the Effect wrapper.
 
-This gives SSR-safe loaders and RPC handlers a consistent Convex access path without React.
+This gives SSR-safe loaders and RPC handlers a consistent Khala access path without React.
 
 #### 3.5.4.3 Client Implementation (No React)
 
-Client-side live queries MUST use `convex/browser` `ConvexClient` (WebSocket), wrapped in Effect. **Realtime is non-negotiable** and we do not proxy subscriptions through the Worker.
+Client-side live queries MUST use `khala/browser` `KhalaClient` (WebSocket), wrapped in Effect. **Realtime is non-negotiable** and we do not proxy subscriptions through the Worker.
 
-- Create one long-lived `ConvexClient` (singleton in the browser runtime Layer).
+- Create one long-lived `KhalaClient` (singleton in the browser runtime Layer).
 - Set auth via `client.setAuth(fetchToken)` where `fetchToken` delegates to `AuthService`:
   - must support refresh (`forceRefreshToken`) and return `null` when unauthenticated.
 - Wrap `client.onUpdate(...)` into `Stream.async` (unsubscribe in the stream finalizer).
-- Wrap `client.query/mutation/action` Promises with `Effect.tryPromise` and map errors to `ConvexCallError`.
+- Wrap `client.query/mutation/action` Promises with `Effect.tryPromise` and map errors to `KhalaCallError`.
 
 #### 3.5.4.4 Caching + Dedupe + Cancellation
 
 Rules:
 
-- Route-level caching is owned by `RouterService` (§3.4.1). Convex calls inside loaders MUST respect loader cancellation.
+- Route-level caching is owned by `RouterService` (§3.4.1). Khala calls inside loaders MUST respect loader cancellation.
 - For non-route usage, standardize on Effect `Request` + `Cache`:
-  - `ConvexQueryRequest` keyed by `(functionPath, encodedArgs, sessionScopeKey)`
+  - `KhalaQueryRequest` keyed by `(functionPath, encodedArgs, sessionScopeKey)`
   - supports in-flight dedupe and equivalence-based dedupe for derived atoms
 
 No new “query library” is allowed; the combination of `RouterService` rules + Effect cache primitives is the query system.
 
-#### 3.5.4.5 Optional: Convex Functions Written as Effect Programs
+#### 3.5.4.5 Optional: Khala Functions Written as Effect Programs
 
-If/when we invest in making Convex backend code Effect-native, follow Crest’s lightweight `convex/effect/*` pattern:
+If/when we invest in making Khala backend code Effect-native, follow Crest’s lightweight `khala/effect/*` pattern:
 
-- `convex/effect/ctx.ts`: wrap Convex `QueryCtx/MutationCtx/ActionCtx` into Effect-friendly contexts (db/auth/storage/scheduler).
-- `convex/effect/functions.ts`: `effectQuery/effectMutation/effectAction` wrappers that run Effect handlers in Convex function definitions.
-- `convex/effect/validators.ts`: table-derived document validators for consistent return typing.
+- `khala/effect/ctx.ts`: wrap Khala `QueryCtx/MutationCtx/ActionCtx` into Effect-friendly contexts (db/auth/storage/scheduler).
+- `khala/effect/functions.ts`: `effectQuery/effectMutation/effectAction` wrappers that run Effect handlers in Khala function definitions.
+- `khala/effect/validators.ts`: table-derived document validators for consistent return typing.
 
 Effevex adds two additional ideas that are worth adopting when we do this:
 
-- **Typed errors in the Effect error channel** (mapped to thrown errors only at the Convex boundary).
+- **Typed errors in the Effect error channel** (mapped to thrown errors only at the Khala boundary).
 - **DB/auth/storage wrappers** that eliminate `null` and push normalization to the boundary (e.g. `Option` for nullable returns).
 
 If we want schema-driven args/returns validators derived from Effect `Schema`, adopt Confect’s idea later (compile Schema -> `v.*` validators), but keep it as an internal build step or helper library, not a runtime dependency.
 
-### 3.5.5 Data Residency and Sync (Convex vs Cloudflare)
+### 3.5.5 Data Residency and Sync (Khala vs Cloudflare)
 
-MVP choice (resolved): **Convex-first**.
+MVP choice (resolved): **Khala-first**.
 
-For the MVP we intentionally avoid a second per-user persistence plane (DO/DO-SQLite). Convex is the canonical durable system for product *and* chat/execution history, and the Cloudflare Worker is the host + compute enforcement layer.
+For the MVP we intentionally avoid a second per-user persistence plane (DO/DO-SQLite). Khala is the canonical durable system for product *and* chat/execution history, and the Cloudflare Worker is the host + compute enforcement layer.
 
 ### 3.5.5.1 MVP Rules (Single Canonical Store)
 
-- **Convex is canonical** for:
+- **Khala is canonical** for:
   - threads, messages, and **message parts** (chunked streaming deltas)
   - receipts/budgets/tool calls (bounded; large payloads are `BlobRef`s)
   - bootstrap/blueprint state and user profile/ownership/membership
   - any state the UI must observe in realtime (multiplayer, observers, presence)
-- The **browser always connects to Convex via WebSockets** for realtime subscriptions (no subscription proxying through the Worker).
+- The **browser always connects to Khala via WebSockets** for realtime subscriptions (no subscription proxying through the Worker).
 - The **Worker is the enforcement point**:
   - validates access to a target thread (owner or valid anon key)
   - runs inference/tools with budgets
-  - writes chunked deltas and receipts back into Convex
+  - writes chunked deltas and receipts back into Khala
 - Large payload discipline:
-  - large content is stored once in blob storage (Cloudflare R2 or Convex file storage)
-  - Convex stores only `BlobRef`s + metadata (never inline megabytes)
+  - large content is stored once in blob storage (Cloudflare R2 or Khala file storage)
+  - Khala stores only `BlobRef`s + metadata (never inline megabytes)
 
-### 3.5.5.2 MVP Chat Streaming Contract (Convex)
+### 3.5.5.2 MVP Chat Streaming Contract (Khala)
 
-We model “streaming” as realtime Convex updates.
+We model “streaming” as realtime Khala updates.
 
 Rules:
 
@@ -528,13 +528,13 @@ Anon continuity (required):
 
 ### 3.5.5.3 Post-MVP (Optional): Dual-Plane Execution + Projection
 
-If/when we want cheaper “true streaming” and stronger per-user consistency, we MAY introduce a Cloudflare execution/workspace plane (DO/DO SQLite) and project normalized state into Convex for subscriptions.
+If/when we want cheaper “true streaming” and stronger per-user consistency, we MAY introduce a Cloudflare execution/workspace plane (DO/DO SQLite) and project normalized state into Khala for subscriptions.
 
 If introduced, mirroring MUST be event-sourced and idempotent:
 
 - execution plane maintains an append-only event log with monotonic `seq` and stable `eventId` (ULID)
-- Convex projection uses idempotent upserts keyed by `eventId`
-- large payloads remain blobs (`BlobRef`s), not inline Convex fields
+- Khala projection uses idempotent upserts keyed by `eventId`
+- large payloads remain blobs (`BlobRef`s), not inline Khala fields
 
 ### 3.5.6 AI Inference (Effect-Native, `@effect/ai`)
 
@@ -559,7 +559,7 @@ Provider posture:
 Current implementation in this repo (as of 2026-02-08):
 
 - Inference runs in the **single `apps/web` Cloudflare Worker host** using `@effect/ai/LanguageModel` with the Cloudflare Workers AI `env.AI` binding (model id: `@cf/openai/gpt-oss-120b`).
-- Streaming is implemented as **chunked writes into Convex** (`messageParts`), and the UI streams by subscribing over Convex WebSockets.
+- Streaming is implemented as **chunked writes into Khala** (`messageParts`), and the UI streams by subscribing over Khala WebSockets.
 - The Worker exposes:
   - `POST /api/autopilot/send` (create run + start background stream)
   - `POST /api/autopilot/cancel` (best-effort cancel + persisted cancelRequested flag)
@@ -573,13 +573,13 @@ Legacy implementation (kept for reference / post-MVP):
 Inference placement (MVP, implemented):
 
 - Inference runs in the **single Cloudflare Worker host** (Effect `LanguageModel.streamText`, tool execution as needed, budgets/receipts enforcement as we harden).
-- Streaming is **Convex-first**: chunked parts written into Convex; browser subscribes via Convex WS.
+- Streaming is **Khala-first**: chunked parts written into Khala; browser subscribes via Khala WS.
 
 Integration requirements (Effuse-side):
 
 - Standardize the streaming/message part shape on `@effect/ai/Response` parts (`text-*`, `tool-*`, `finish`, `error`) and adapt any legacy stream formats into this shape at the boundary.
 - WebSockets are the canonical transport for streaming AI parts (no SSE dependency in the end state):
-  - MVP: Convex WebSockets (subscriptions over `messageParts`)
+  - MVP: Khala WebSockets (subscriptions over `messageParts`)
   - post-MVP: optional direct Worker/DO WebSockets if/when we add an execution plane
 - Tool call resolution must emit **tool call receipts** and renderable UI parts:
   - `Response.ToolCallPart` (toolName + toolCallId + params)
@@ -589,7 +589,7 @@ Integration requirements (Effuse-side):
   - token estimates via `Tokenizer` gate max prompt size
   - `finish` part usage is recorded (input/output tokens, cached tokens, reasoning tokens when available)
 
-Optional (later): use `@effect/ai/Chat.Persistence` with a DO SQLite-backed `BackingPersistence` store to persist chat histories in the user-space plane while still projecting key events into Convex for realtime UI.
+Optional (later): use `@effect/ai/Chat.Persistence` with a DO SQLite-backed `BackingPersistence` store to persist chat histories in the user-space plane while still projecting key events into Khala for realtime UI.
 
 ### 3.6 UI Interaction Model (Effuse-First)
 
@@ -789,16 +789,16 @@ DoD:
 
 - Both SSR code and client router code import the same route table and can execute `guard/loader/view/head` without branching on env beyond `RouteContext`.
 
-### Phase 3: Effect-First Auth + Convex + AI Services (Remove React Providers as a Dependency)
+### Phase 3: Effect-First Auth + Khala + AI Services (Remove React Providers as a Dependency)
 
-**Goal:** make auth/session and Convex access available everywhere via Effect services, so we can delete React providers later without losing behavior.
+**Goal:** make auth/session and Khala access available everywhere via Effect services, so we can delete React providers later without losing behavior.
 
 Work log:
 - 2026-02-07: added `RequestContextService` tag + helpers in `apps/web/src/effect/requestContext.ts` and wired it into the app Layer (`apps/web/src/effect/layer.ts`).
 - 2026-02-07: implemented `AuthService` in `apps/web/src/effect/auth.ts` with a client cache and SSR-only WorkOS AuthKit parsing; added `GET /api/auth/session` in `apps/web/src/routes/api.auth.session.tsx`.
-- 2026-02-07: implemented `ConvexService` in `apps/web/src/effect/convex.ts` (SSR uses `ConvexHttpClient` request-scoped via `FiberRef`; client uses `ConvexClient` (WS) + `Stream` wrapper for `onUpdate`).
+- 2026-02-07: implemented `KhalaService` in `apps/web/src/effect/khala.ts` (SSR uses `KhalaHttpClient` request-scoped via `FiberRef`; client uses `KhalaClient` (WS) + `Stream` wrapper for `onUpdate`).
 - 2026-02-07: refactored `apps/web/src/effect/chat.ts` to remove `@ai-sdk/react` and stream directly over the Agents WebSocket protocol.
-- 2026-02-07: added Convex Effect wrapper helpers under `apps/web/convex/effect/*` and migrated `apps/web/convex/myFunctions.ts` to the wrappers.
+- 2026-02-07: added Khala Effect wrapper helpers under `apps/web/khala/effect/*` and migrated `apps/web/khala/myFunctions.ts` to the wrappers.
 - 2026-02-07: migrated `apps/autopilot-worker` chat DO to `@effect/ai` (`LanguageModel` + toolkit + wire-level streaming on `@effect/ai/Response` parts), and updated `apps/web` chat client to consume those parts directly (removed `ai` + `@cloudflare/ai-chat` types; new `apps/web/src/effect/chatProtocol.ts`).
 
 Add/Change (apps/web Effect runtime):
@@ -806,23 +806,23 @@ Add/Change (apps/web Effect runtime):
 - new: `apps/web/src/effect/auth.ts` (`AuthService`):
   - `getSession()` (server: parse cookie; client: cached atom or RPC)
   - `sessionScopeKey()` (`anon` | `user:<id>` | `session:<id>`)
-  - `getAccessToken({ forceRefreshToken })` (used by Convex and any authenticated HTTP)
-- new: `apps/web/src/effect/convex.ts` (`ConvexService`):
-  - server impl wraps `ConvexHttpClient` (request-scoped, `setAuth(token)` per request)
-  - client impl wraps `ConvexClient` + `onUpdate` into `Stream` subscriptions
-- change: `apps/web/src/effect/layer.ts` include `AuthServiceLive` + `ConvexServiceLive*`
-- change: `apps/web/src/effect/config.ts` becomes the single source of `convexUrl` and any Convex auth config
+  - `getAccessToken({ forceRefreshToken })` (used by Khala and any authenticated HTTP)
+- new: `apps/web/src/effect/khala.ts` (`KhalaService`):
+  - server impl wraps `KhalaHttpClient` (request-scoped, `setAuth(token)` per request)
+  - client impl wraps `KhalaClient` + `onUpdate` into `Stream` subscriptions
+- change: `apps/web/src/effect/layer.ts` include `AuthServiceLive` + `KhalaServiceLive*`
+- change: `apps/web/src/effect/config.ts` becomes the single source of `khalaUrl` and any Khala auth config
 
-Add/Change (apps/web Convex backend code, REQUIRED standard):
+Add/Change (apps/web Khala backend code, REQUIRED standard):
 
-- new: `apps/web/convex/effect/ctx.ts` (Effect-friendly `QueryCtx/MutationCtx/ActionCtx` tags)
-- new: `apps/web/convex/effect/auth.ts` (nullable identity -> `Option`)
-- new: `apps/web/convex/effect/storage.ts` (storage APIs as Effects)
-- new: `apps/web/convex/effect/scheduler.ts` (scheduler APIs as Effects)
-- new: `apps/web/convex/effect/functions.ts` (`effectQuery/effectMutation/effectAction` wrappers)
-- new: `apps/web/convex/effect/validators.ts` (schema-derived doc validators, like Crest)
-- new: `apps/web/convex/effect/tryPromise.ts` (central Promise -> Effect error mapping)
-- change: `apps/web/convex/myFunctions.ts` migrate to the wrappers as a sanity check (keeps behavior the same, but enforces the pattern)
+- new: `apps/web/khala/effect/ctx.ts` (Effect-friendly `QueryCtx/MutationCtx/ActionCtx` tags)
+- new: `apps/web/khala/effect/auth.ts` (nullable identity -> `Option`)
+- new: `apps/web/khala/effect/storage.ts` (storage APIs as Effects)
+- new: `apps/web/khala/effect/scheduler.ts` (scheduler APIs as Effects)
+- new: `apps/web/khala/effect/functions.ts` (`effectQuery/effectMutation/effectAction` wrappers)
+- new: `apps/web/khala/effect/validators.ts` (schema-derived doc validators, like Crest)
+- new: `apps/web/khala/effect/tryPromise.ts` (central Promise -> Effect error mapping)
+- change: `apps/web/khala/myFunctions.ts` migrate to the wrappers as a sanity check (keeps behavior the same, but enforces the pattern)
 
 Add/Change (agent plane AI inference wiring, `@effect/ai`):
 
@@ -837,12 +837,12 @@ Add/Change (apps/web client, end-state cleanup):
 
 Refactor targets (transitional, while TanStack still hosts):
 
-- `apps/web/src/routes/__root.tsx`: plan to remove `ConvexProviderWithAuth` and `@effect-atom/atom-react` over time; until then, ensure `beforeLoad` and `fetchWorkosAuth` are thin shims that call `AuthService`.
-- `apps/web/src/router.tsx`: stop constructing `ConvexReactClient`/`ConvexQueryClient` for “app logic”; those become host-only legacy until deleted.
+- `apps/web/src/routes/__root.tsx`: plan to remove `KhalaProviderWithAuth` and `@effect-atom/atom-react` over time; until then, ensure `beforeLoad` and `fetchWorkosAuth` are thin shims that call `AuthService`.
+- `apps/web/src/router.tsx`: stop constructing `KhalaReactClient`/`KhalaQueryClient` for “app logic”; those become host-only legacy until deleted.
 
 DoD:
 
-- Any Effect program can call Convex without React (`ConvexService`), can get a stable auth scope (`AuthService.sessionScopeKey`), and can call the LLM through `LanguageModel` (provider-agnostic, with receipts + token usage).
+- Any Effect program can call Khala without React (`KhalaService`), can get a stable auth scope (`AuthService.sessionScopeKey`), and can call the LLM through `LanguageModel` (provider-agnostic, with receipts + token usage).
 
 ### Phase 4: Implement `RouterService` (Effuse-Owned Navigation + Loader Pipeline)
 
@@ -881,12 +881,12 @@ DoD:
 Work log:
 - 2026-02-07: added parallel Effuse Worker host entry + SSR + API mounts in `apps/web/src/effuse-host/*` and config `apps/web/wrangler.effuse.jsonc`.
 - 2026-02-07: added a dedicated Effuse-only client bootstrap entry (`apps/web/src/effuse-app/client.ts`) and build config (`apps/web/vite.effuse.config.ts`) to produce stable `effuse-client.{js,css}` assets.
-- 2026-02-08: implemented **Convex-first Autopilot** execution plane in `apps/web` (MVP):
+- 2026-02-08: implemented **Khala-first Autopilot** execution plane in `apps/web` (MVP):
   - removed legacy Durable Object + Agents SDK transport (`/agents/*`) from `apps/web`
   - removed DO bindings from Wrangler configs
-  - added Convex schema + functions for threads/messages/parts/runs/blueprints/receipts
+  - added Khala schema + functions for threads/messages/parts/runs/blueprints/receipts
   - added Worker endpoints: `POST /api/autopilot/send`, `POST /api/autopilot/cancel`, `GET /api/contracts/*`
-  - refactored client `ChatService` to subscribe to Convex and call the Worker HTTP endpoints (no browser WebSocket transport)
+  - refactored client `ChatService` to subscribe to Khala and call the Worker HTTP endpoints (no browser WebSocket transport)
   - removed the `agents` dependency from `apps/web`
 
 Add/Change (apps/web host):
@@ -896,16 +896,16 @@ Add/Change (apps/web host):
 - new: `apps/web/src/effuse-host/assets.ts` (static asset serving strategy; stable asset names in v1, manifest integration later)
 - new: `apps/web/src/effuse-host/auth.ts` mounts existing WorkOS endpoints using:
   - `apps/web/src/auth/workosAuth.ts` (already exists)
-- new: `apps/web/src/effuse-host/autopilot.ts` (Convex-first run creation + chunked streaming -> Convex)
+- new: `apps/web/src/effuse-host/autopilot.ts` (Khala-first run creation + chunked streaming -> Khala)
 - new: `apps/web/src/effuse-host/contracts.ts` (serves tool/signature/module contracts to the UI)
 - new: `apps/web/src/effuse-app/client.ts` (Effuse-only client entry)
 - new: `apps/web/vite.effuse.config.ts` (builds stable `effuse-client.{js,css}`)
 
-Add/Change (Convex-first Autopilot storage + APIs):
+Add/Change (Khala-first Autopilot storage + APIs):
 
-- change: `apps/web/convex/schema.ts` now includes canonical tables for MVP chat + blueprint state:
+- change: `apps/web/khala/schema.ts` now includes canonical tables for MVP chat + blueprint state:
   - `threads`, `messages`, `messageParts`, `runs`, `blueprints`, `receipts`
-- new: `apps/web/convex/autopilot/*`:
+- new: `apps/web/khala/autopilot/*`:
   - thread creation + anon-to-owned claim (`threads.ts`)
   - message snapshots + run lifecycle + chunked part append (`messages.ts`)
   - blueprint get/set/reset (`blueprint.ts`)
@@ -947,7 +947,7 @@ DoD:
 
 ### Phase 7: Remove React + TanStack + React Query (No TSX Anywhere)
 
-**Goal:** no runtime React, no TanStack Router/Start, no Convex React bindings.
+**Goal:** no runtime React, no TanStack Router/Start, no Khala React bindings.
 
 Work log:
 - 2026-02-07: removed all React/TanStack TSX substrate from `apps/web` (deleted `src/routes/*`, `src/components/*`, `src/router.tsx`, `src/start.ts`, `src/routeTree.gen.ts`, `src/useAuthFromWorkOS.tsx`), replaced WorkOS `/callback` handler with native `@workos/authkit-session`, and moved “controller” logic into Effuse boot + non-React route controllers (`src/effuse-app/controllers/*`). Added Atom registry hydration from SSR dehydrate payload, ported PostHog loading to a non-React boot helper, and updated `apps/web` scripts + ESLint config to typecheck/lint/build without React/TanStack.
@@ -963,7 +963,7 @@ Remove/Replace (apps/web):
 - remove dependencies from `apps/web/package.json`:
   - `react`, `react-dom`
   - `@tanstack/react-start`, `@tanstack/react-router`, `@tanstack/react-router-ssr-query`, `@tanstack/react-query`
-  - `convex/react`, `@convex-dev/react-query`
+  - `khala/react`, `@khala-dev/react-query`
   - `@ai-sdk/react`
   - `@effect-atom/atom-react`
   - `@workos/authkit-tanstack-react-start` (replaced by `@workos/authkit-session`)
@@ -1058,9 +1058,9 @@ These must be decided explicitly to finish the React/TanStack removal:
 
 - **Hosting target (resolved):** single Cloudflare Worker (not Pages Functions). Portability remains an explicit adapter boundary for an optional Node/Bun host.
 - **Auth integration:** how WorkOS AuthKit middleware maps into the `EffuseWebHost` request pipeline (cookie/session parsing, redirect flows, CSRF).
-- **Autopilot unauthenticated mode (resolved):** `/autopilot` (and anything it depends on, notably Convex WebSocket subscriptions and the Worker inference endpoints) MUST work for unauthed users. Auth is used to unlock user identity and ownership, but the core chat experience must not require a WorkOS session.
-- **Convex usage (resolved):** browser connects directly to Convex via WebSockets (`ConvexClient`) for realtime subscriptions; Convex MUST still be accessed through the Effect-first `ConvexService` (no `convex/react`, no React Query).
-- **Workspace plane (resolved for MVP):** Convex is canonical for user-space/chat state and receipts. A DO/DO SQLite execution plane is deferred to post-MVP; if introduced, it must follow the projection/mirroring rules in §3.5.5.3.
+- **Autopilot unauthenticated mode (resolved):** `/autopilot` (and anything it depends on, notably Khala WebSocket subscriptions and the Worker inference endpoints) MUST work for unauthed users. Auth is used to unlock user identity and ownership, but the core chat experience must not require a WorkOS session.
+- **Khala usage (resolved):** browser connects directly to Khala via WebSockets (`KhalaClient`) for realtime subscriptions; Khala MUST still be accessed through the Effect-first `KhalaService` (no `khala/react`, no React Query).
+- **Workspace plane (resolved for MVP):** Khala is canonical for user-space/chat state and receipts. A DO/DO SQLite execution plane is deferred to post-MVP; if introduced, it must follow the projection/mirroring rules in §3.5.5.3.
 - **Hydration mode policy:** `strict` is the default; which routes (if any) are allowed to use `soft` or `client-only`, and whether we add a dev-only SSR hash mismatch detector.
 - **Route code-splitting:** whether to support lazy route modules (dynamic import) and how to represent that in the route table.
 - **Telemetry sinks:** console-only vs PostHog client-only vs server-side sinks; buffering vs drop when PostHog isn’t loaded yet.
@@ -1112,7 +1112,7 @@ These must be decided explicitly to finish the React/TanStack removal:
 Effuse replaces *framework-owned correctness guarantees* (React reconciliation, TanStack data consistency) with **explicit contracts** enforced by:
 
 - a conformance suite (no-swap strict hydration, shell/outlet invariants, router cache/dedupe/cancel semantics)
-- Worker/DO integration tests (SSR, API surfaces, DO SQLite invariants, Convex replication)
+- Worker/DO integration tests (SSR, API surfaces, DO SQLite invariants, Khala replication)
 - browser E2E tests (what users actually experience)
 
 Effect is the test harness and DI system: tests run Effects with Layers to inject fakes and deterministic services. “Newing up” SDK clients directly in tests is treated as a smell.
@@ -1148,7 +1148,7 @@ Levels and what they cover:
 - **L4: Durable Object integration tests (DO + DO SQLite)**
   - DO SQLite schema invariants
   - append-only event logs (seq monotonic, idempotent eventId)
-  - Convex projection adapter semantics (idempotent upsert, BlobRef discipline)
+  - Khala projection adapter semantics (idempotent upsert, BlobRef discipline)
   - `ctx.waitUntil` replication is best-effort and non-blocking
 - **L5: Browser E2E tests (real browser, Effuse Test Runner)**
   - SSR -> strict hydration “attach only” (no initial swap)
@@ -1156,7 +1156,7 @@ Levels and what they cover:
   - focus/caret preservation across swaps (Blueprint-like flows)
   - tool part rendering (tool-error always visible; “view full” uses BlobRef)
   - websocket chat streaming (Response parts)
-  - Convex realtime rendering (when feasible in local test env)
+  - Khala realtime rendering (when feasible in local test env)
 - **L6: Production smoke tests (optional / nightly)**
   - deployed Worker endpoints sanity checks (non-blocking, best-effort)
   - not a merge gate, but a “we didn’t break prod” early warning
@@ -1172,14 +1172,14 @@ Required harness services/patterns:
 - `TestTelemetrySink` (capture spans/events by `requestId` for assertions)
 - `TestBlobStore` (supports `BlobRef` put/get; asserts bounding/truncation rules)
 - `TestLanguageModel` (scripted `@effect/ai/Response` parts; deterministic tool-call flows)
-- `TestConvexService`
+- `TestKhalaService`
   - stubbed request/response for query/mutation/action
   - stream-based live query events (push updates into `Stream`)
 - `TestAuthService` (explicit `sessionScopeKey` variations: `anon` vs `user:<id>`)
 
 Hard rule:
 
-- Tests SHOULD NOT directly instantiate provider SDK clients (WorkOS/Convex/AI) except inside adapter modules under test.
+- Tests SHOULD NOT directly instantiate provider SDK clients (WorkOS/Khala/AI) except inside adapter modules under test.
 - Tests MUST prefer `Layer.provide(...)` of fakes rather than ad hoc mocking.
 
 Suggested harness file layout (v1):
@@ -1195,7 +1195,7 @@ apps/web/tests/harness/
   telemetry.ts
   blobStore.ts
   auth.ts
-  convex.ts
+  khala.ts
   ai.ts
 
 apps/autopilot-worker/tests/harness/
@@ -1304,8 +1304,8 @@ Implemented suites (2026-02-08):
 - `apps/web/tests/worker/assets.test.ts`
   - `ASSETS` binding serves `/effuse-client.css` + `/effuse-client.js`
   - asset requests never fall through to SSR
-- `apps/web/tests/worker/chat-streaming-convex.test.ts` (2026-02-08)
-  - Worker starts a run and writes `messageParts` into Convex in **chunked** batches (no per-token writes)
+- `apps/web/tests/worker/chat-streaming-khala.test.ts` (2026-02-08)
+  - Worker starts a run and writes `messageParts` into Khala in **chunked** batches (no per-token writes)
   - terminal behavior: `finish.usage` is written; canceled runs finalize predictably
 
 Harness:
@@ -1313,28 +1313,28 @@ Harness:
 - runs under a Workers runtime pool (`@cloudflare/vitest-pool-workers`) via `apps/web/vitest.config.ts` + `apps/web/wrangler.jsonc`
 - configured with `singleWorker: true` to avoid flaky isolated-runtime startup on localhost module fallback ports
 - uses `cloudflare:test` `env` bindings (`ASSETS`, `AI`) from Wrangler config (no DO namespaces required for MVP)
-- external services are stubbed/blocked by default in tests (WorkOS paths mocked; AI provider stubbed; Convex calls stubbed or routed to a local test deployment)
+- external services are stubbed/blocked by default in tests (WorkOS paths mocked; AI provider stubbed; Khala calls stubbed or routed to a local test deployment)
 - run: `cd apps/web && npm test`
 
 ### 9.3 `apps/web`: Durable Objects + DO SQLite Integration (Post-MVP, L4)
 
-Goal (post-MVP): verify DO SQLite invariants and Convex projection semantics *without* a browser.
+Goal (post-MVP): verify DO SQLite invariants and Khala projection semantics *without* a browser.
 
 Status (2026-02-08):
 
-- DO/DO-SQLite suites are intentionally **deferred** for the Convex-first MVP, and the legacy DO code/tests were removed from `apps/web`.
+- DO/DO-SQLite suites are intentionally **deferred** for the Khala-first MVP, and the legacy DO code/tests were removed from `apps/web`.
 - When we reintroduce a DO execution/workspace plane post-MVP, we should add this suite back with:
   - DO SQLite event log invariants (seq monotonic, idempotent apply by `eventId`)
-  - replication/projection invariants into Convex (idempotent, bounded payloads via BlobRefs)
+  - replication/projection invariants into Khala (idempotent, bounded payloads via BlobRefs)
 
-### 9.4 Chat Streaming + AI Receipts Integration (MVP: Convex, Post-MVP: DO) (L4/L5 boundary)
+### 9.4 Chat Streaming + AI Receipts Integration (MVP: Khala, Post-MVP: DO) (L4/L5 boundary)
 
 Goal: verify the chat execution plane produces **user-visible tool parts** and **replayable receipts**.
 
 MVP target:
 
-- Chat streaming is via Convex `messageParts` (chunked), and receipts are stored in Convex (bounded + BlobRefs).
-- The primary regression gates are the Worker+Convex integration tests described in §9.2 and the browser E2E scenarios in §9.5.
+- Chat streaming is via Khala `messageParts` (chunked), and receipts are stored in Khala (bounded + BlobRefs).
+- The primary regression gates are the Worker+Khala integration tests described in §9.2 and the browser E2E scenarios in §9.5.
 
 Legacy / post-MVP coverage (DO + Agents SDK):
 
@@ -1409,7 +1409,7 @@ Minimum assertions (expand from here):
 5. **Tool part visibility**
    - force a tool-error: ensure `{status, toolName, toolCallId, summary}` renders
    - “view full” uses BlobRef fetch/swap (no huge inline DOM)
-6. **Convex chat streaming (WebSocket subscriptions)**
+6. **Khala chat streaming (WebSocket subscriptions)**
    - assistant text streams incrementally from `messageParts`
    - tool parts correlate (toolCallId stable)
 
@@ -1439,7 +1439,7 @@ Planned expansion:
 - add `apps/web` Worker/DO integration suites (L3/L4) as CI gates
 - add Effuse Test Runner browser E2E (L5) as a CI gate
   - headless, deterministic fakes, screenshots/videos on failure
-  - no external network calls by default (stub WorkOS/Convex/AI)
+  - no external network calls by default (stub WorkOS/Khala/AI)
 
 ## 10. Stress + Property Tests (Recommended)
 
@@ -1610,7 +1610,7 @@ Artifacts:
 Determinism guidelines:
 
 - Prefer explicit waits (`waitForFunction`) over sleeps.
-- External services MUST be stubbed by default (WorkOS/Convex/AI), unless the test is explicitly tagged as integration.
+- External services MUST be stubbed by default (WorkOS/Khala/AI), unless the test is explicitly tagged as integration.
 
 ### 11.10 CLI Spec
 
@@ -1672,19 +1672,19 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - SHOULD: `StateCell` is component-local and ephemeral; it MUST NOT be used as a cross-route cache or as an SSR-hydration mechanism.
 - SHOULD: loaders MAY read atoms, but SHOULD NOT write atoms as their primary output mechanism; route data MUST flow through `RouteOutcome` to preserve cache semantics and SSR/client parity.
 
-**Convex**
-- MUST: the end state MUST NOT depend on `convex/react`, `@convex-dev/react-query`, or React Query.
-- MUST: all Convex interactions happen through `ConvexService` and are represented as Effects (Promises do not escape the boundary).
-- MUST: server-side Convex calls use `ConvexHttpClient` and are request-scoped (auth is applied per request).
-- MUST: the browser connects directly to Convex via WebSockets for realtime subscriptions (no subscription proxying through the Worker).
-- MUST: client-side live queries use `ConvexClient` subscriptions wrapped as `Stream` with correct finalizers (unsubscribe on scope close).
-- MUST: new `apps/web/convex/*` functions are implemented using the Effect wrappers in `apps/web/convex/effect/*` (centralized normalization, typed errors, and Promise->Effect discipline).
-- SHOULD: Convex call args/returns are Schema-encoded/decoded (or otherwise validated) at the boundary for determinism and SSR/client parity.
+**Khala**
+- MUST: the end state MUST NOT depend on `khala/react`, `@khala-dev/react-query`, or React Query.
+- MUST: all Khala interactions happen through `KhalaService` and are represented as Effects (Promises do not escape the boundary).
+- MUST: server-side Khala calls use `KhalaHttpClient` and are request-scoped (auth is applied per request).
+- MUST: the browser connects directly to Khala via WebSockets for realtime subscriptions (no subscription proxying through the Worker).
+- MUST: client-side live queries use `KhalaClient` subscriptions wrapped as `Stream` with correct finalizers (unsubscribe on scope close).
+- MUST: new `apps/web/khala/*` functions are implemented using the Effect wrappers in `apps/web/khala/effect/*` (centralized normalization, typed errors, and Promise->Effect discipline).
+- SHOULD: Khala call args/returns are Schema-encoded/decoded (or otherwise validated) at the boundary for determinism and SSR/client parity.
 
 **Data Residency**
-- MUST (MVP): Convex is canonical for user-space/chat state (threads/messages/messageParts), receipts/budgets/tool calls, bootstrap/blueprints, and user identity/ownership/membership.
-- SHOULD: large payloads are stored once as blobs (R2 or Convex file storage) and referenced by `BlobRef` in Convex records (never inline megabytes).
-- MAY (post-MVP): introduce a DO/DO SQLite execution plane; if introduced, execution plane -> Convex mirroring MUST be event-sourced and idempotent (stable `eventId`, monotonic `seq`), with append-only semantics.
+- MUST (MVP): Khala is canonical for user-space/chat state (threads/messages/messageParts), receipts/budgets/tool calls, bootstrap/blueprints, and user identity/ownership/membership.
+- SHOULD: large payloads are stored once as blobs (R2 or Khala file storage) and referenced by `BlobRef` in Khala records (never inline megabytes).
+- MAY (post-MVP): introduce a DO/DO SQLite execution plane; if introduced, execution plane -> Khala mirroring MUST be event-sourced and idempotent (stable `eventId`, monotonic `seq`), with append-only semantics.
 
 **Hydration**
 - MUST: default hydration mode is `strict`.
@@ -1705,8 +1705,8 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: tool resolution uses `Toolkit` handlers and emits `tool-call` / `tool-result` / `error` parts so the Tool Parts contract can render them.
 - MUST: prompt budgeting uses `Tokenizer` and enforces token caps before provider calls.
 - SHOULD: GenAI telemetry spans are emitted with `@effect/ai/Telemetry` (and provider telemetry when available) and are linked to receipts.
-- MUST (MVP): chat transcripts/parts are persisted in Convex.
-- MAY (post-MVP): add `Chat.Persistence` backed by DO SQLite and project key events into Convex for realtime UI.
+- MUST (MVP): chat transcripts/parts are persisted in Khala.
+- MAY (post-MVP): add `Chat.Persistence` backed by DO SQLite and project key events into Khala for realtime UI.
 
 **Cloudflare Host**
 - MUST: v1 targets **a single Cloudflare Worker** (not Pages Functions) and relevant Cloudflare infra (R2, KV, Queues as needed).
@@ -1727,6 +1727,6 @@ This appendix is the “don’t bikeshed it” spec layer. If something conflict
 - MUST: browser E2E exists and asserts strict hydration performs no initial swap (attach-only boot).
 - MUST: Worker integration tests assert SSR abort handling and max HTML byte cap enforcement.
 - MUST: AI/tool receipt tests assert `finish.usage` is recorded and large prompt/output payloads are BlobRefs (never inline).
-- MUST (MVP): Convex streaming tests assert idempotency (`runId`, monotonic `seq`) and that chunking rules are enforced (no per-token writes).
-- MAY (post-MVP): DO replication tests assert idempotency (`eventId`) and no large payloads are mirrored into Convex without BlobRefs.
-- MUST: test suites do not rely on React/TanStack, and do not call real external services by default (WorkOS/Convex/AI); provider SDKs must be stubbed behind Effect Layers.
+- MUST (MVP): Khala streaming tests assert idempotency (`runId`, monotonic `seq`) and that chunking rules are enforced (no per-token writes).
+- MAY (post-MVP): DO replication tests assert idempotency (`eventId`) and no large payloads are mirrored into Khala without BlobRefs.
+- MUST: test suites do not rely on React/TanStack, and do not call real external services by default (WorkOS/Khala/AI); provider SDKs must be stubbed behind Effect Layers.

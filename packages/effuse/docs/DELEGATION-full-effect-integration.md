@@ -72,9 +72,9 @@ Implement the following. Prefer small, reviewable steps (e.g. one deliverable pe
 ## 3. Constraints and non-goals
 
 - **Do not remove or revert the Effuse conversion.** Effuse remains the primary UI renderer for the routes described in [effuse-conversion-apps-web.md](./effuse-conversion-apps-web.md). The integration may feed data into Effuse via existing payloads (e.g. from atoms or RPC) or via loader data that components pass into `EffuseMount`.
-- **Do not break** existing auth (WorkOS), Convex, or Autopilot worker usage. RPC/atoms are additive; migrate call sites only when the new path is ready and tested.
+- **Do not break** existing auth (WorkOS), Khala, or Autopilot worker usage. RPC/atoms are additive; migrate call sites only when the new path is ready and tested.
 - **Preserve** AGENTS.md rules: no stubs in production paths, verification (build + tests) before claiming done, doc updates for new contracts (ADRs, GLOSSARY if terminology changes).
-- **Non-goal:** Reimplementing the entire backend in Effect. Convex and the Autopilot worker stay; the integration adds an Effect RPC/API surface and Effect-backed state/hydration **alongside** them.
+- **Non-goal:** Reimplementing the entire backend in Effect. Khala and the Autopilot worker stay; the integration adds an Effect RPC/API surface and Effect-backed state/hydration **alongside** them.
 
 ---
 
@@ -94,7 +94,7 @@ When the integration is done, the following should be true and documented:
 - [ ] Effect RPC (and optionally HTTP API) is defined, implemented, and mounted under a route; client is configured and used from at least one call site (or documented as “ready for migration”).
 - [ ] A shared Managed Runtime with MemoMap is used by both the API handler and loaders; where it is created and how it is passed is documented.
 - [ ] At least one @effect-atom is serializable and used with dehydrate (loader) and HydrationBoundary (client); data flow from SSR to Effuse or React is documented.
-- [ ] Existing Effuse UI and auth/Convex/worker flows still work; build and tests pass.
+- [ ] Existing Effuse UI and auth/Khala/worker flows still work; build and tests pass.
 - [ ] Any patches (Nitro/SRVX) are minimal, documented, and justified, or limitations are documented.
 - [ ] [effect-migration-web.md](./effect-migration-web.md) and, if needed, [tanstack-start-effect-comparison.md](./tanstack-start-effect-comparison.md) or a new ADR are updated to reflect the full integration.
 

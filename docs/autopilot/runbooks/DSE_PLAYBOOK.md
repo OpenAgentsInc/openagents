@@ -204,7 +204,7 @@ Prereqs:
 - Some endpoints require model access (`env.AI` binding and `OPENROUTER_API_KEY`) because they run eval/compile.
 - Headless ops auth requires Worker secrets to be configured:
   - `OA_DSE_ADMIN_SECRET` (authorizes requests)
-  - `OA_E2E_JWT_PRIVATE_JWK` (Worker-minted JWT for privileged Convex reads/writes)
+  - `OA_E2E_JWT_PRIVATE_JWK` (Worker-minted JWT for privileged Khala reads/writes)
 
 ### 6.1 Export a labeled example from an RLM trace
 
@@ -232,7 +232,7 @@ This derives:
 - `inputJson` from the trace `Input` event
 - `expectedJson` from the trace `Final.output`
 
-and upserts it into Convex `dseExamples`.
+and upserts it into Khala `dseExamples`.
 
 ### 6.1.1 Headless (many receipts): trace review -> export -> tagging
 
@@ -372,7 +372,7 @@ EFFUSE_TEST_E2E_BYPASS_SECRET="..." \
   bun run apps/web/scripts/dse-overnight.ts --base-url https://openagents.com
 ```
 
-The runner writes a single ops run record + event timeline into Convex (so we can build read-only pages later without scraping logs).
+The runner writes a single ops run record + event timeline into Khala (so we can build read-only pages later without scraping logs).
 
 ## 7) Developer Workflow: When To Use direct vs RLM-lite
 

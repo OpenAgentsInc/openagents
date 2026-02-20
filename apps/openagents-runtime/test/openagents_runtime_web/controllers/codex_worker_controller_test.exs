@@ -276,7 +276,7 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
     :ok =
       :telemetry.attach(
         telemetry_ref,
-        [:openagents_runtime, :convex, :projection, :write],
+        [:openagents_runtime, :khala, :projection, :write],
         fn _event_name, measurements, metadata, test_pid ->
           send(test_pid, {:projection_write_telemetry, measurements, metadata})
         end,
@@ -411,14 +411,14 @@ defmodule OpenAgentsRuntimeWeb.CodexWorkerControllerTest do
              %{
                "worker_id" => ^owner_worker_running,
                "status" => "running",
-               "convex_projection" => %{
+               "khala_projection" => %{
                  "document_id" => _document_id,
-                 "status" => convex_status
+                 "status" => khala_status
                }
              }
            ] = workers
 
-    assert convex_status in ["in_sync", "lagging"]
+    assert khala_status in ["in_sync", "lagging"]
   end
 
   test "list validates query parameters", %{conn: conn} do

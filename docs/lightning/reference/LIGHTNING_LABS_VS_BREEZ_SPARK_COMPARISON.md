@@ -29,7 +29,7 @@ If we sequence this correctly, we get faster product velocity and avoid a forced
   - `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
 - Active worker/web/mobile/desktop code has early Lightning foundations:
   - `apps/autopilot-worker/src/tools.ts` includes `lightning_l402_fetch` for typed buyer-side L402 fetch orchestration.
-  - `apps/web/src/effect/lightning.ts` and `apps/web/convex/lightning/tasks.ts` provide a typed L402 task control plane.
+  - `apps/web/src/effect/lightning.ts` and `apps/web/khala/lightning/tasks.ts` provide a typed L402 task control plane.
   - `apps/web` includes L402 wallet/transaction panes in the home chat surface.
   - `apps/mobile` still has no active Lightning wallet implementation.
 

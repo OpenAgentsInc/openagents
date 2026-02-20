@@ -16,12 +16,12 @@ This directory contains baseline dashboards and alert rules for `openagents-runt
 - Tool terminal failure spikes
 - Provider circuit breaker open state
 - Spend/policy denial anomalies
-- Convex projection writes throughput
-- Convex projection lag p95 (`lag_events`)
-- Convex projection write failure ratio
-- Convex projection drift incidents
-- Convex projection replay failure visibility
-- Convex token mint failure ratio (Laravel bridge)
+- Khala projection writes throughput
+- Khala projection lag p95 (`lag_events`)
+- Khala projection write failure ratio
+- Khala projection drift incidents
+- Khala projection replay failure visibility
+- Khala token mint failure ratio (Laravel bridge)
 
 ## Runbook
 

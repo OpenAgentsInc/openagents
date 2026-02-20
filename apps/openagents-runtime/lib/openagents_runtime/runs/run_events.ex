@@ -7,7 +7,7 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
 
   alias Ecto.Multi
   alias OpenAgentsRuntime.Repo
-  alias OpenAgentsRuntime.Convex.Projector
+  alias OpenAgentsRuntime.Khala.Projector
   alias OpenAgentsRuntime.Runs.EventHashChain
   alias OpenAgentsRuntime.Runs.EventNotifier
   alias OpenAgentsRuntime.Runs.Run
@@ -73,7 +73,7 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
 
     case Repo.transaction(multi) do
       {:ok, %{event: event}} ->
-        _ = project_convex_summary(event.run_id)
+        _ = project_khala_summary(event.run_id)
         {:ok, event}
 
       {:error, :next_seq, :run_not_found, _changes} ->
@@ -146,7 +146,7 @@ defmodule OpenAgentsRuntime.Runs.RunEvents do
     end
   end
 
-  defp project_convex_summary(run_id) do
+  defp project_khala_summary(run_id) do
     case Projector.project_run(run_id) do
       {:ok, _result} -> :ok
       {:error, _reason} -> :ok

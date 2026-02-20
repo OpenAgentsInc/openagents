@@ -10,7 +10,7 @@
 
 ## Context
 
-OpenAgents currently uses Convex as a projection/read-model sync layer while runtime + Postgres hold execution authority. We need a first-party sync path that preserves authority boundaries, replay correctness, and shared schema authority across all clients.
+OpenAgents currently uses Khala as a projection/read-model sync layer while runtime + Postgres hold execution authority. We need a first-party sync path that preserves authority boundaries, replay correctness, and shared schema authority across all clients.
 
 The migration must avoid a big-bang cutover, keep current surfaces functional, and avoid introducing a second source of truth.
 
@@ -27,7 +27,7 @@ Normative constraints:
 3. New Khala live transport is WS only (no new SSE endpoints for Khala).
 4. Topic watermarks are allocated in Postgres via per-topic sequence rows.
 5. Stream journal semantics are ordering-first; payload authority is read-model tables.
-6. Convex remains non-authoritative and migration-scoped only.
+6. Khala remains non-authoritative and migration-scoped only.
 
 ### Schema / Spec Authority
 
@@ -44,7 +44,7 @@ What this ADR covers:
 - WS-only transport decision for Khala
 - Proto package authority for sync contracts
 - Watermark and replay invariants needed for resumable delivery
-- Convex coexistence rules during migration
+- Khala coexistence rules during migration
 
 What this ADR does NOT cover:
 
@@ -62,12 +62,12 @@ What this ADR does NOT cover:
 | Watermark scope | Monotonic per-topic sequence in Postgres |
 | Replay correctness | Resume from durable journal by topic/watermark |
 | Schema authority | Proto-first contracts in `proto/openagents/sync/v1` |
-| Convex role | Projection-only and migration-scoped |
+| Khala role | Projection-only and migration-scoped |
 
 Backward compatibility expectations:
 
 - Existing SSE endpoints remain available for current runtime APIs.
-- Existing Convex lanes may remain until each surface is migrated.
+- Existing Khala lanes may remain until each surface is migrated.
 - Khala protocol changes follow additive protobuf evolution rules.
 
 ## Consequences
@@ -85,25 +85,25 @@ Backward compatibility expectations:
 
 **Neutral:**
 
-- Convex remains in use for non-migrated lanes until phased cutover completes
+- Khala remains in use for non-migrated lanes until phased cutover completes
 
 ## Alternatives Considered
 
-1. **Keep Convex as permanent sync layer** — rejected; does not meet first-party control and proto-first schema goals.
+1. **Keep Khala as permanent sync layer** — rejected; does not meet first-party control and proto-first schema goals.
 2. **Extract Khala as a separate service immediately** — rejected for v1; introduces cross-service transaction gaps before semantics are proven.
 3. **Support SSE + WS for new Khala lane** — rejected; increases transport complexity with no correctness benefit for v1 goals.
 
 ## Migration Plan
 
-1. Runtime/Codex dual-publish: Khala + Convex projection outputs run in parallel.
+1. Runtime/Codex dual-publish: Khala + Khala projection outputs run in parallel.
 2. Surface cutovers: web/mobile/desktop move subscriptions to Khala behind flags.
-3. Lightning second wave: move control-plane authority from Convex to runtime/Postgres APIs.
-4. Decommission: remove remaining Convex dependencies after rollback windows.
+3. Lightning second wave: move control-plane authority from Khala to runtime/Postgres APIs.
+4. Decommission: remove remaining Khala dependencies after rollback windows.
 
 ## References
 
 - [ADR-0028](./ADR-0028-layer0-proto-canonical-schema.md)
-- [ADR-0029](./ADR-0029-convex-sync-layer-and-codex-agent-mode.md)
+- [ADR-0029](./ADR-0029-khala-sync-layer-and-codex-agent-mode.md)
 - [docs/sync/ROADMAP.md](../sync/ROADMAP.md)
 - [docs/sync/SURFACES.md](../sync/SURFACES.md)
 - [docs/GLOSSARY.md](../GLOSSARY.md)

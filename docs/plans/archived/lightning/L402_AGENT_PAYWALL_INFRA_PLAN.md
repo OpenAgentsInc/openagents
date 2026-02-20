@@ -16,7 +16,7 @@ Core decisions:
 2. **Voltage-hosted LND is the initial Lightning backend** for fast production delivery.
 3. **All OpenAgents custom logic remains TypeScript + Effect** in this repo; only upstream Go components (Aperture and optional pricer/controller) run as isolated infra services.
 4. **Any Go-hosted workloads run on Google Cloud**.
-5. **Control plane authority remains in `apps/web` + Convex**, with typed contracts and replayable receipts enforced by existing runtime standards.
+5. **Control plane authority remains in `apps/web` + Khala**, with typed contracts and replayable receipts enforced by existing runtime standards.
 
 This is sequencing and architecture guidance for full implementation, not marketing copy.
 
@@ -46,7 +46,7 @@ Sequencing implication:
 Hosted-L402 implementation phases tracked under this epic are complete:
 
 1. `#1596` closed: hosted paywall contracts/services (`packages/lightning-effect`)
-2. `#1597` closed: control-plane schema + lifecycle APIs (`apps/web` + Convex)
+2. `#1597` closed: control-plane schema + lifecycle APIs (`apps/web` + Khala)
 3. `#1598` closed: deterministic Aperture config compiler (`apps/lightning-ops`)
 4. `#1599` closed: staging deploy/reconcile workflow (Aperture + Voltage)
 5. `#1600` closed: settlement ingestion + proof correlation
@@ -77,11 +77,11 @@ The plan is grounded in the current codebase, not a greenfield architecture.
 
 ### Existing components we should reuse
 
-1. `apps/web/convex/lightning/tasks.ts`
+1. `apps/web/khala/lightning/tasks.ts`
    - Already provides a typed Lightning task queue lifecycle (`queued/approved/running/paid/cached/blocked/failed/completed`) with transition controls and event logs.
    - This is a strong base for control-plane operations and deterministic task traces.
 2. `apps/web/src/effect/lightning.ts`
-   - Already provides Effect-based Lightning API client wiring from web runtime to Convex functions.
+   - Already provides Effect-based Lightning API client wiring from web runtime to Khala functions.
 3. `apps/autopilot-worker/src/tools.ts`
    - Already includes `lightning_l402_fetch` schema contracts and output semantics for buyer-side L402 fetch orchestration.
 4. `packages/lightning-effect`
@@ -99,7 +99,7 @@ The plan is grounded in the current codebase, not a greenfield architecture.
 
 ### Gaps we must close
 
-1. No seller-side paywall resource model in Convex.
+1. No seller-side paywall resource model in Khala.
 2. No OpenAgents-managed Aperture deployment + config compiler.
 3. No settlement ingestion pipeline mapped to paywall ownership/revenue.
 4. No agent tool contract set for paywall CRUD.
@@ -119,7 +119,7 @@ Any agent can create an OpenAgents paywall and receive a stable endpoint (or rou
 
 ### 4.1 Planes and responsibilities
 
-### A) Control plane (`apps/web` + Convex + Worker APIs)
+### A) Control plane (`apps/web` + Khala + Worker APIs)
 
 Responsibilities:
 
@@ -174,7 +174,7 @@ Responsibilities:
 
 [OpenAgents Control Plane]
   - apps/web Worker API routes
-  - Convex models/functions
+  - Khala models/functions
   - apps/lightning-ops (new, TS+Effect service on Cloud Run)
       |
       +--> compile/deploy aperture config
@@ -277,7 +277,7 @@ Recommended baseline: Cloud Run + Cloud SQL (Postgres).
 
 Aperture config is declarative and ordered. We should treat it as compiled output.
 
-1. Control plane stores canonical paywall policies in Convex.
+1. Control plane stores canonical paywall policies in Khala.
 2. `apps/lightning-ops` compiles that state to deterministic `aperture.yaml`.
 3. Compiler emits:
    - config hash
@@ -306,7 +306,7 @@ If/when dynamic pricing is needed:
 
 ## 7) Data Model and API Expansion in `apps/web`
 
-### 7.1 Convex schema additions (proposed)
+### 7.1 Khala schema additions (proposed)
 
 Add tables with explicit ownership and replay anchors:
 
@@ -361,7 +361,7 @@ Rules:
 
 ### 7.3 Reuse of existing task/event model
 
-Extend (do not replace) existing patterns in `apps/web/convex/lightning/tasks.ts`:
+Extend (do not replace) existing patterns in `apps/web/khala/lightning/tasks.ts`:
 
 1. Keep status transition discipline for action workflows.
 2. Emit typed events for paywall lifecycle transitions similar to current L402 fetch transitions.
@@ -379,7 +379,7 @@ Introduce a dedicated service for long-running operational jobs that are not a f
 
 ### 8.2 Responsibilities
 
-1. Poll/control paywall desired state from Convex.
+1. Poll/control paywall desired state from Khala.
 2. Compile Aperture config deterministically.
 3. Apply and verify gateway deployments.
 4. Subscribe to invoice updates and write settlement records.
@@ -478,7 +478,7 @@ Add panes for:
    - current gateway config hash
    - last deploy status and rollback action
 
-Data should come from new Worker/Convex read APIs with request correlation IDs.
+Data should come from new Worker/Khala read APIs with request correlation IDs.
 
 ## 12) End-to-End Flows
 
@@ -486,7 +486,7 @@ Data should come from new Worker/Convex read APIs with request correlation IDs.
 
 1. Agent/user calls `lightning_paywall_create`.
 2. Control plane validates ownership and policy bounds.
-3. Convex writes paywall + route + policy (initially paused or active per policy).
+3. Khala writes paywall + route + policy (initially paused or active per policy).
 4. `apps/lightning-ops` compiles and deploys new Aperture config.
 5. Deployment event stored with config hash.
 6. UI reflects active paywall endpoint and health status.
@@ -520,7 +520,7 @@ Data should come from new Worker/Convex read APIs with request correlation IDs.
    - contract and adapter tests for LND RPC integration used by local executor path
    - typed error mapping and deterministic transport behavior
 3. `apps/web`
-   - Convex mutation/query tests for paywall lifecycle
+   - Khala mutation/query tests for paywall lifecycle
    - API authorization and ownership tests
 4. `apps/autopilot-worker`
    - tool schema tests
@@ -556,7 +556,7 @@ Data should come from new Worker/Convex read APIs with request correlation IDs.
 5. `cd apps/autopilot-worker && npm run typecheck && npm test`
 6. `cd apps/web && npm run lint && npm test`
 
-Use app deploy scripts for production deploy operations (avoid raw `npx convex deploy` path).
+Use app deploy scripts for production deploy operations (avoid raw `npx khala deploy` path).
 
 ## 14) Operations, Security, and Runbooks
 
@@ -598,7 +598,7 @@ Each class needs:
 This is the recommended sequence for full implementation.
 
 1. Confirm ADR updates for hosted paywall topology + authority boundaries.
-2. Add Convex schema and Worker API stubs for paywall resources.
+2. Add Khala schema and Worker API stubs for paywall resources.
 3. Create `apps/lightning-ops` skeleton (Effect runtime, config, telemetry).
 4. Implement deterministic Aperture config compiler in `packages/lightning-effect`.
 5. Wire `apps/lightning-ops` to read paywall state and produce config artifacts.
@@ -606,7 +606,7 @@ This is the recommended sequence for full implementation.
 7. Provision staging Voltage node and scoped macaroons.
 8. Deploy Aperture staging with compiled static config.
 9. Add deploy/reconcile loop from `apps/lightning-ops` to staging Aperture.
-10. Add settlement ingest pipeline from Voltage to Convex.
+10. Add settlement ingest pipeline from Voltage to Khala.
 11. Expand Autopilot tool contracts for paywall CRUD/status.
 12. Add web seller panes and status views in existing pane system.
 13. Run full staging E2E challenge/pay/settle tests.
@@ -656,6 +656,6 @@ This is the recommended sequence for full implementation.
 
 ## 18) Recommendation
 
-Proceed with an Aperture-first gateway on Google Cloud, backed by Voltage-hosted LND, while keeping all OpenAgents policy/orchestration code in TypeScript + Effect and rooted in existing `apps/web` + Convex models.
+Proceed with an Aperture-first gateway on Google Cloud, backed by Voltage-hosted LND, while keeping all OpenAgents policy/orchestration code in TypeScript + Effect and rooted in existing `apps/web` + Khala models.
 
 This path delivers a practical production rollout for agent-owned paywalls without blocking on full node sovereignty, while preserving a clean migration path to later remote-signer/self-hosted node topologies.

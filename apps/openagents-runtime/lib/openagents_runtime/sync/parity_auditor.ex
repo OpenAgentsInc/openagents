@@ -1,6 +1,6 @@
 defmodule OpenAgentsRuntime.Sync.ParityAuditor do
   @moduledoc """
-  Dual-publish parity auditor for Convex checkpoints versus Khala read models.
+  Dual-publish parity auditor for Khala checkpoints versus Khala read models.
 
   This auditor samples projected entities, compares normalized summary hashes and
   runtime sequence drift, then emits telemetry for mismatch rate tracking.
@@ -10,8 +10,8 @@ defmodule OpenAgentsRuntime.Sync.ParityAuditor do
 
   import Ecto.Query
 
-  alias OpenAgentsRuntime.Convex.ProjectionCheckpoint
-  alias OpenAgentsRuntime.Convex.Projector
+  alias OpenAgentsRuntime.Khala.ProjectionCheckpoint
+  alias OpenAgentsRuntime.Khala.Projector
   alias OpenAgentsRuntime.Repo
   alias OpenAgentsRuntime.Sync.CodexWorkerSummary
   alias OpenAgentsRuntime.Sync.RunSummary

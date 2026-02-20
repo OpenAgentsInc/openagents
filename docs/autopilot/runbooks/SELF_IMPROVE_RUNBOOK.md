@@ -27,7 +27,7 @@ This repo has multiple complementary test layers. The self-improve loop uses all
 
 - **DSE library tests (runtime/compiler contracts):**
   - `cd packages/dse && bun test && bun run typecheck`
-- **Web worker + Convex MVP tests (contract + integration):**
+- **Web worker + Khala MVP tests (contract + integration):**
   - `cd apps/web && npm test`
 - **Web typecheck/lint (must be green for ship):**
   - `cd apps/web && npm run lint`
@@ -60,7 +60,7 @@ This is the operational loop DSE is designed for:
    - Prefer trace/receipt export paths when possible (they preserve the real input/output contracts).
    - Keep a real holdout split. Don’t tune on holdout.
    - Headless scale-up:
-     - `apps/web/scripts/dse-trace-mine.ts` mines many receipts and exports/tag examples into Convex.
+     - `apps/web/scripts/dse-trace-mine.ts` mines many receipts and exports/tag examples into Khala.
      - Reference: `docs/autopilot/dse/rlm-trace-mining.md`.
 
 3. **Evaluate**
@@ -86,7 +86,7 @@ This is the operational loop DSE is designed for:
 7. **Lock it in**
    - Add/adjust tests and fixtures so the improvement cannot silently regress.
 
-For the fully programmatic overnight loop (compile -> canary -> promote/rollback) with all logs stored in Convex,
+For the fully programmatic overnight loop (compile -> canary -> promote/rollback) with all logs stored in Khala,
 use `apps/web/scripts/dse-overnight.ts` and follow `docs/autopilot/runbooks/OVERNIGHT_SELF_IMPROVEMENT_PLAN.md`.
 
 ## 3) How I’ll Apply This To RLM-lite Specifically

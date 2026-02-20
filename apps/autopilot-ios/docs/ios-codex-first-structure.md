@@ -19,13 +19,13 @@ Codex-first means iOS starts with worker visibility/admin and thread activity fl
 
 1. Runtime + Postgres remain source of truth for worker lifecycle/events/policy.
 2. iOS calls Laravel public APIs only (never runtime internal `/internal/v1/*` directly).
-3. Convex remains projection/read-model only; no authority moved to client.
+3. Khala remains projection/read-model only; no authority moved to client.
 4. Worker ownership and policy checks stay server-side.
 5. Proto definitions in `proto/` remain contract authority; iOS models should track proto-compatible envelopes.
 
 References:
 
-- `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md`
+- `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
 - `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `proto/README.md`
@@ -64,8 +64,8 @@ apps/autopilot-ios/
         RuntimeCodexClient.swift
         SSEStreamClient.swift
         RuntimeCodexModels.swift
-      Convex/
-        ConvexTokenClient.swift
+      Khala/
+        KhalaTokenClient.swift
       Observability/
         RequestCorrelation.swift
         Logger.swift
@@ -136,11 +136,11 @@ State model:
 3. Send auth token only to Laravel API base.
 4. Enforce server-side ownership checks as authoritative.
 
-## Convex Lane (Optional After Codex Core)
+## Khala Lane (Optional After Codex Core)
 
 After Codex worker admin path is stable:
 
-1. integrate `POST /api/convex/token` for short-lived token minting,
+1. integrate `POST /api/khala/token` for short-lived token minting,
 2. subscribe to projection read models as UX enhancement only,
 3. keep control actions routed through Laravel runtime APIs.
 
@@ -168,7 +168,7 @@ After Codex worker admin path is stable:
 2. Structured logging and trace correlation surfaces.
 3. End-to-end fixtures and reliability tests.
 
-### Phase E: Convex Enhancement
+### Phase E: Khala Enhancement
 
 1. Token mint + subscription read models.
 2. Projection badges and lag visibility.

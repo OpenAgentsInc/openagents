@@ -2,24 +2,24 @@
 
 - **Status:** Implemented (v1 fixtures + renderer tests; more E2E-style transcript tests can be added)
 - **Last updated:** 2026-02-10
-- **Scope:** Legacy `apps/web` Convex-first MVP streaming + future DSE action parts
+- **Scope:** Legacy `apps/web` Khala-first MVP streaming + future DSE action parts
 - **If this doc conflicts with code behavior:** code wins
 
 This document defines a test posture where you can run a local test and get:
 
-1. A deterministic **wire transcript** of what the Worker appends to Convex `messageParts`
+1. A deterministic **wire transcript** of what the Worker appends to Khala `messageParts`
 2. The same transcript rendered by the **same UI code path** used in `/autopilot`
 3. A raw JSON dump of every streamed event (text deltas, tool calls, DSE signature/tool/compile/promote events)
 
 ## What We Have Today (Reality Check)
 
-Autopilot MVP streaming is already tested at the Worker/Convex boundary. We also have deterministic UI rendering tests
+Autopilot MVP streaming is already tested at the Worker/Khala boundary. We also have deterministic UI rendering tests
 that consume the same wire transcript fixtures the docs describe.
 
 - Worker streaming test (writes chunked parts, cancel behavior):
-  - `apps/web/tests/worker/chat-streaming-convex.test.ts`
-- Convex canonical-state tests (idempotent parts, transcript persistence):
-  - `apps/web/tests/convex/autopilot-mvp.test.ts`
+  - `apps/web/tests/worker/chat-streaming-khala.test.ts`
+- Khala canonical-state tests (idempotent parts, transcript persistence):
+  - `apps/web/tests/khala/autopilot-mvp.test.ts`
 - Wire transcript UI rendering (fixtures -> `messageParts` -> chat template):
   - `apps/web/tests/worker/dse-chat-parts-rendering.test.ts`
 - UI template determinism + visual regression harness:
@@ -34,13 +34,13 @@ So the “Gmail review” example below is a **target transcript fixture** for t
 
 ## Contract: Wire Transcript V1
 
-Autopilot’s UI wire is Convex `messageParts` records (see `apps/web/convex/autopilot/messages.ts`).
+Autopilot’s UI wire is Khala `messageParts` records (see `apps/web/khala/autopilot/messages.ts`).
 
 Transcript rules:
 
 - Each transcript event corresponds to a single `appendParts` item:
   - `{ seq: number, part: unknown }`
-- `seq` MUST be monotonic integers (Convex floors and de-dupes by `(runId, seq)`).
+- `seq` MUST be monotonic integers (Khala floors and de-dupes by `(runId, seq)`).
 - `part` is a union:
   - `@effect/ai` stream parts (`text-start`, `text-delta`, `text-end`, `finish`, and eventually `tool-call`/`tool-result`)
   - DSE action parts (`type: "dse.*"`) as specified in `docs/autopilot/runbooks/SELF_IMPROVE_PLAN.md` (“DSE chat-part schema”)
@@ -79,8 +79,8 @@ cat docs/autopilot/testing/fixtures/autopilot-gmail-review.stream.v1.jsonl | jq 
 
 We already have three complementary testing surfaces in this repo:
 
-1. **Worker tests (Vitest + Cloudflare pool)** validate what gets written to Convex (`messageParts` batching, cancellation, etc.).
-2. **Convex impl tests** validate canonical transcript persistence and invariants (idempotency, access rules).
+1. **Worker tests (Vitest + Cloudflare pool)** validate what gets written to Khala (`messageParts` batching, cancellation, etc.).
+2. **Khala impl tests** validate canonical transcript persistence and invariants (idempotency, access rules).
 3. **Storybook + visual regression** validates UI rendering deterministically.
 
 The missing piece is a single, repeatable “wire transcript test” that ties (1) and (3) together.
@@ -127,7 +127,7 @@ Even before DSE/tool-loop integration lands, these validate the current streamin
 
 ```bash
 cd apps/web
-npm test -- chat-streaming-convex
+npm test -- chat-streaming-khala
 ```
 
 ```bash

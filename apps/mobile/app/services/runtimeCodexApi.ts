@@ -28,7 +28,7 @@ export type RuntimeCodexWorkerSummary = {
   heartbeat_stale_after_ms: number
   heartbeat_state: "fresh" | "stale" | "missing" | "stopped" | "failed"
   updated_at: string | null
-  convex_projection: RuntimeCodexProjectionStatus | null
+  khala_projection: RuntimeCodexProjectionStatus | null
 }
 
 export type RuntimeCodexWorkerSnapshot = {

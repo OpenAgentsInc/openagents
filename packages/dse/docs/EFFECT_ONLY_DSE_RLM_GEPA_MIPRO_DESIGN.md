@@ -10,7 +10,7 @@ This doc proposes an **Effect-only** (TypeScript + Effect) architecture for:
 
 Constraints assumed:
 
-- Autopilot MVP is **Convex-first** in `apps/web` (no per-user Durable Objects / DO-SQLite execution plane; DO classes are deprecated shims).
+- Autopilot MVP is **Khala-first** in `apps/web` (no per-user Durable Objects / DO-SQLite execution plane; DO classes are deprecated shims).
 - `apps/autopilot-worker` is a DO-SQLite-based reference integration (non-MVP).
 - DSE runtime and compiler loops must be **TypeScript/Effect-native**.
 - Rust implementations in `crates/*` are **reference only** (do not depend on them at runtime).
@@ -44,7 +44,7 @@ Think in three layers:
 3. **Compilation** (Effect programs): candidate generation + evaluation + selection + artifact emission + promotion.
 
 `packages/dse/` owns (1), plus default implementations for (2) that are portable (in-memory, noop).
-Apps (Workers) own production implementations of (2) for the MVP, typically backed by **Convex** (canonical state) and blob storage (R2 or equivalent). Durable Objects / DO-SQLite can be reintroduced post-MVP as an execution-plane optimization, but are not assumed.
+Apps (Workers) own production implementations of (2) for the MVP, typically backed by **Khala** (canonical state) and blob storage (R2 or equivalent). Durable Objects / DO-SQLite can be reintroduced post-MVP as an execution-plane optimization, but are not assumed.
 
 ## Effect Services (Runtime)
 
@@ -145,7 +145,7 @@ Represent variable space as a service:
 - `VarSpace`: `get(varName)`, `put(varName, valueRef)`, `list()`.
 - Values should be references, not copies. Prefer `BlobRef` plus small JSON values.
 
-VarSpace should be per-thread (Convex thread in the MVP execution plane), keyed by `{ threadId, runId }` or `{ threadId }` depending on retention needs.
+VarSpace should be per-thread (Khala thread in the MVP execution plane), keyed by `{ threadId, runId }` or `{ threadId }` depending on retention needs.
 
 ### RLM-lite action DSL (no arbitrary code)
 
@@ -256,11 +256,11 @@ Multi-objective support:
 ### Promotion and rollback
 
 Promotion should remain pointer-only via `PolicyRegistry.setActive(signatureId, compiledId)`.
-Rollback should remain history-based (append-only “active artifact history”), but in the MVP execution plane this history should live in **Convex**. (`apps/autopilot-worker/src/dseServices.ts` shows the same pattern in DO-SQLite, but that’s non-MVP.)
+Rollback should remain history-based (append-only “active artifact history”), but in the MVP execution plane this history should live in **Khala**. (`apps/autopilot-worker/src/dseServices.ts` shows the same pattern in DO-SQLite, but that’s non-MVP.)
 
-## Storage (Convex-first MVP)
+## Storage (Khala-first MVP)
 
-Minimum Convex tables/services needed for the Effect-only end-state (names illustrative):
+Minimum Khala tables/services needed for the Effect-only end-state (names illustrative):
 
 - `dseArtifacts`: immutable compiled artifacts keyed by `{ signatureId, compiled_id }`
 - `dseActiveArtifacts`: pointer to active `compiled_id` per `signatureId`
@@ -288,15 +288,15 @@ Unit tests (package-level):
 
 Integration tests (worker-level):
 
-- Existing Convex-first Worker + Convex tests in `apps/web/tests/worker/` (for example `apps/web/tests/worker/chat-streaming-convex.test.ts`).
-- Add a DSE/RLM “smoke test” once Convex-backed VarSpace/trace endpoints exist: verify iteration receipts are recorded and budgets are enforced.
+- Existing Khala-first Worker + Khala tests in `apps/web/tests/worker/` (for example `apps/web/tests/worker/chat-streaming-khala.test.ts`).
+- Add a DSE/RLM “smoke test” once Khala-backed VarSpace/trace endpoints exist: verify iteration receipts are recorded and budgets are enforced.
 
 ## Implementation Roadmap (Effect-only, Testable Steps)
 
 Each step should land with:
 
 - One or more tests that fail before the change and pass after.
-- A clear verification command set (`packages/dse` unit tests, plus `apps/web` worker/Convex tests for MVP wiring changes).
+- A clear verification command set (`packages/dse` unit tests, plus `apps/web` worker/Khala tests for MVP wiring changes).
 
 ### Step 0: Keep The Baseline Green (already true today)
 
@@ -365,10 +365,10 @@ Each step should land with:
 - Tests: add a fake `LmClient` that distinguishes calls (main vs sub) and assert the right routing/budget counters.
 - Verification: `cd packages/dse && bun test && bun run typecheck`
 
-### Step 8: Convex Storage For VarSpace And Trace Events
+### Step 8: Khala Storage For VarSpace And Trace Events
 
-- Goal: make RLM durable per-thread in the **Convex-first MVP** execution plane.
-- Code: extend Convex schema + functions in `apps/web/convex/` to persist `VarSpace` and `TraceRecorder` (bounded, append-only).
+- Goal: make RLM durable per-thread in the **Khala-first MVP** execution plane.
+- Code: extend Khala schema + functions in `apps/web/khala/` to persist `VarSpace` and `TraceRecorder` (bounded, append-only).
 - Code: add minimal Worker endpoints under `apps/web/src/effuse-host/` for reading trace events/varspace keys (bounded, debug-only).
 - Tests: add a worker integration test under `apps/web/tests/worker/` that runs a tiny RLM loop and asserts trace events are persisted and budget failures return structured errors.
 - Verification: `cd apps/web && npm test && npm run lint`

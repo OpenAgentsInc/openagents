@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 type WorkerStatus = 'starting' | 'running' | 'stopping' | 'stopped' | 'failed';
 
-type ConvexProjection = {
+type KhalaProjection = {
     document_id: string;
     last_runtime_seq: number;
     lag_events: number;
@@ -29,7 +29,7 @@ type CodexWorkerSummary = {
     stopped_at: string | null;
     last_heartbeat_at: string | null;
     updated_at: string | null;
-    convex_projection: ConvexProjection | null;
+    khala_projection: KhalaProjection | null;
 };
 
 type CodexWorkerSnapshot = {
@@ -156,7 +156,7 @@ function statusClass(status: WorkerStatus): string {
     return 'border-rose-500/30 bg-rose-500/10 text-rose-300';
 }
 
-function projectionClass(status: ConvexProjection['status']): string {
+function projectionClass(status: KhalaProjection['status']): string {
     if (status === 'in_sync')
         return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300';
 
@@ -324,7 +324,7 @@ function workerSummaryFromSyncPayload(
                 : null,
         updated_at:
             typeof payload.updated_at === 'string' ? payload.updated_at : null,
-        convex_projection: null,
+        khala_projection: null,
     };
 }
 
@@ -1008,11 +1008,11 @@ export default function AdminIndex() {
                                                 <span>
                                                     seq {worker.latest_seq}
                                                 </span>
-                                                {worker.convex_projection ? (
+                                                {worker.khala_projection ? (
                                                     <Badge
                                                         className={projectionClass(
                                                             worker
-                                                                .convex_projection
+                                                                .khala_projection
                                                                 .status,
                                                         )}
                                                         variant="outline"
@@ -1020,7 +1020,7 @@ export default function AdminIndex() {
                                                         projection{' '}
                                                         {
                                                             worker
-                                                                .convex_projection
+                                                                .khala_projection
                                                                 .status
                                                         }
                                                     </Badge>
@@ -1227,7 +1227,7 @@ export default function AdminIndex() {
                                             )}
                                         </div>
 
-                                        {selectedWorkerSummary?.convex_projection ? (
+                                        {selectedWorkerSummary?.khala_projection ? (
                                             <div className="rounded border border-sidebar-border/60 p-2 text-xs">
                                                 <div className="mb-1 tracking-wide text-muted-foreground uppercase">
                                                     Sync projection summary
@@ -1237,13 +1237,13 @@ export default function AdminIndex() {
                                                         variant="outline"
                                                         className={projectionClass(
                                                             selectedWorkerSummary
-                                                                .convex_projection
+                                                                .khala_projection
                                                                 .status,
                                                         )}
                                                     >
                                                         {
                                                             selectedWorkerSummary
-                                                                .convex_projection
+                                                                .khala_projection
                                                                 .status
                                                         }
                                                     </Badge>
@@ -1251,7 +1251,7 @@ export default function AdminIndex() {
                                                         lag{' '}
                                                         {
                                                             selectedWorkerSummary
-                                                                .convex_projection
+                                                                .khala_projection
                                                                 .lag_events
                                                         }
                                                     </span>
@@ -1260,7 +1260,7 @@ export default function AdminIndex() {
                                                     projected at{' '}
                                                     {formatTimestamp(
                                                         selectedWorkerSummary
-                                                            .convex_projection
+                                                            .khala_projection
                                                             .last_projected_at,
                                                     )}
                                                 </div>

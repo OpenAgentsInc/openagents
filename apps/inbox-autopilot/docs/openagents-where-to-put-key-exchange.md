@@ -20,7 +20,7 @@ This doc looks at the [OpenAgents](https://github.com/OpenAgentsInc/openagents) 
   - **Lifecycle:** `IntegrationSecretLifecycleService` — `upsertResend()`, `revokeResend()`, audit. Resend: user pastes API key → encrypted and stored.
   - **Settings UI:** `settings/integrations` — IntegrationController, Inertia page; connect/disconnect/test Resend.
   - **Runtime secret fetch:** `POST /api/internal/runtime/integrations/secrets/fetch` (middleware: `runtime.internal` — HMAC-signed, nonce + body hash). Request: `user_id`, `provider`, `integration_id`, `run_id`, `tool_call_id`. Response: `secret` (decrypted), `scope`, `cache_ttl_ms`. **Allowed `provider` today: `resend` only** (validated in `RuntimeSecretController`).
-- **Convex:** Laravel is the auth authority; `ConvexTokenController` mints Convex JWTs for the authenticated user (no third-party OAuth).
+- **Khala:** Laravel is the auth authority; `KhalaTokenController` mints Khala JWTs for the authenticated user (no third-party OAuth).
 
 ### 2. Other apps in the monorepo
 

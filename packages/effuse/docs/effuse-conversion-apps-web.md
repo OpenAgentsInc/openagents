@@ -9,7 +9,7 @@ This document describes the conversion of the OpenAgents web app (`apps/web`) to
 ## Goals of the conversion
 
 - **Unify UI rendering** on a single, Effect-native abstraction so future desktop or other runtimes can share the same “page” logic.
-- **Keep the web app working** with existing stack: TanStack Start, Convex, WorkOS AuthKit, Effect runtime, HUD (DotsBackground).
+- **Keep the web app working** with existing stack: TanStack Start, Khala, WorkOS AuthKit, Effect runtime, HUD (DotsBackground).
 - **Minimize risk**: Data loading and side effects stay in React/Effect; Effuse is used only for turning data into DOM.
 
 ---
@@ -19,7 +19,7 @@ This document describes the conversion of the OpenAgents web app (`apps/web`) to
 React is still responsible for:
 
 - **Route loaders** – Auth checks, redirects, loader data (e.g. `signInUrl` for `/login`).
-- **Convex / WorkOS** – Providers and hooks.
+- **Khala / WorkOS** – Providers and hooks.
 - **HUD backgrounds** – `DotsGridBackground` and gradient overlays from `@openagentsinc/hud/react`; no Effuse equivalent, so they remain React.
 - **EffuseMount** – A small React component that mounts a div, runs an Effect program to fill it, and optionally runs an `onRendered` callback for event delegation.
 - **Autopilot chrome** – Sidebar (nav + user menu), Blueprint panel (edit/save/export), and the bottom-right control panel (Export Blueprint, Clear messages, Reset agent). These are stateful and tightly coupled to auth/Effect; they stayed React.

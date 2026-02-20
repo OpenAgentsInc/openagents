@@ -6,19 +6,19 @@ This doc connects:
 
 - The repo-wide docs index: `packages/dse/docs/RLM_GEPA_MIPRO_SUMMARY.md`
 - What is actually implemented today in TypeScript/Effect DSE (`packages/dse/`)
-- How that relates to the current **Convex-first Autopilot MVP** execution plane (`apps/web/`) vs the legacy DO-SQLite integration (`apps/autopilot-worker/`)
+- How that relates to the current **Khala-first Autopilot MVP** execution plane (`apps/web/`) vs the legacy DO-SQLite integration (`apps/autopilot-worker/`)
 - What is actually implemented today in the Rust DSPy stack (`crates/dsrs/`, plus `crates/rlm/` + `crates/frlm/`)
 
 If anything here conflicts with code behavior, code wins.
 
 See also: `packages/dse/docs/EFFECT_ONLY_DSE_RLM_GEPA_MIPRO_DESIGN.md`
 
-## MVP Execution Plane Note (Convex-First)
+## MVP Execution Plane Note (Khala-First)
 
-Autopilot MVP is **Convex-first**:
+Autopilot MVP is **Khala-first**:
 
 - No per-user Durable Objects / DO-SQLite for chat/user space in the MVP execution plane.
-- Cloudflare Worker runs inference and enforces budgets/receipts, while Convex is the canonical state store.
+- Cloudflare Worker runs inference and enforces budgets/receipts, while Khala is the canonical state store.
 
 References:
 
@@ -94,9 +94,9 @@ Legacy Autopilot Worker integration (Durable Object SQLite):
 - Tool contract to `@effect/ai` tool conversion: `apps/autopilot-worker/src/effect/ai/toolkit.ts`
 - End-to-end tests covering DSE introspection + artifact store/promote/rollback: `apps/autopilot-worker/tests/index.test.ts`
 
-Autopilot MVP (`apps/web`, Convex-first):
+Autopilot MVP (`apps/web`, Khala-first):
 
-- Execution plane: `apps/web/src/effuse-host/autopilot.ts` + `apps/web/convex/autopilot/*` (today this uses `@effect/ai` directly; DSE runtime integration is future work).
+- Execution plane: `apps/web/src/effuse-host/autopilot.ts` + `apps/web/khala/autopilot/*` (today this uses `@effect/ai` directly; DSE runtime integration is future work).
 - Contract endpoints for UI introspection (exports DSE catalogs): `apps/web/src/effuse-host/contracts.ts`
 
 ## Where MIPRO/GEPA/RLM Are Implemented Today (Rust Reference Only)
@@ -195,7 +195,7 @@ Suggested shape:
 
 Minimum viable DSE RLM should follow `docs/autopilot/rlm-synergies.md`:
 
-- Add a `VarSpace` service (Convex-backed for the MVP execution plane; optional DO-backed later) that stores named variables pointing to `BlobRef`s (large inputs) and derived small JSON/text values.
+- Add a `VarSpace` service (Khala-backed for the MVP execution plane; optional DO-backed later) that stores named variables pointing to `BlobRef`s (large inputs) and derived small JSON/text values.
 - Add an RLM kernel with a *structured action DSL* (no arbitrary code at first).
 - Action: `preview(blob, start, end)`.
 - Action: `search(blob, query)` (regex/keyword).
@@ -207,7 +207,7 @@ Minimum viable DSE RLM should follow `docs/autopilot/rlm-synergies.md`:
 Where this likely lands:
 
 - DSE core: new runtime modules and receipt formats in `packages/dse/src/runtime/`.
-- MVP Autopilot (`apps/web`): Convex tables/services for VarSpace + trace/iteration receipts (see `docs/autopilot/anon-chat-execution-plane.md` for the “Convex-first” posture).
+- MVP Autopilot (`apps/web`): Khala tables/services for VarSpace + trace/iteration receipts (see `docs/autopilot/anon-chat-execution-plane.md` for the “Khala-first” posture).
 
 ### 3) Promote “MIPROv2-like” optimizers in DSE compile
 

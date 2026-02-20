@@ -10,7 +10,7 @@ The OpenAgents web app (`apps/web`) uses Effuse for almost all user-facing UI:
 - **Catalog routes** – `/modules`, `/signatures`, `/tools` are rendered by Effuse (`effuse-pages/modules.ts`, `signatures.ts`, `tools.ts`). Data is loaded in React (Effect + AgentApiService) and passed into the Effuse program; Effuse renders the list and details.
 - **Autopilot** – The chat column (header, message list, tool cards, input form) is Effuse (`effuse-pages/autopilot.ts`). The sidebar, Blueprint panel, and control buttons remain React; form submit and button actions are delegated from React via `EffuseMount`’s `onRendered` callback.
 
-React is still used for: route loaders, auth, Convex, HUD backgrounds (DotsBackground), `EffuseMount` (run Effuse in a div and optionally `onRendered` for event delegation), and the Autopilot sidebar/blueprint/controls.
+React is still used for: route loaders, auth, Khala, HUD backgrounds (DotsBackground), `EffuseMount` (run Effuse in a div and optionally `onRendered` for event delegation), and the Autopilot sidebar/blueprint/controls.
 
 **Important integration detail:** Effuse templates use normal anchors (`<a href="/...">`). `EffuseMount` intercepts internal (same-origin) anchor clicks and calls TanStack Router navigation so links stay SPA (no full page refresh). Opt out with `data-router-ignore`.
 

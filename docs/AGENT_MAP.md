@@ -28,8 +28,8 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `docs/sync/SURFACES.md` — surface/topic/hydration contract for Khala clients.
 - `docs/sync/PARITY_DASHBOARD.md` — parity mismatch/lag dashboard contract for dual-publish windows.
 - `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md` — staged rollout + rollback runbook for runtime/Codex Khala cutover.
-- `docs/plans/active/convex-self-hosting-runtime-sync-plan.md` — Convex self-hosted sync-layer architecture plan.
-- `docs/plans/active/convex-runtime-codex-master-roadmap.md` — execution roadmap with delivery gates for runtime/Convex/Codex integration.
+- `docs/plans/active/khala-self-hosting-runtime-sync-plan.md` — Khala self-hosted sync-layer architecture plan.
+- `docs/plans/active/khala-runtime-codex-master-roadmap.md` — execution roadmap with delivery gates for runtime/Khala/Codex integration.
 
 ### 3) Product and runtime code surfaces
 
@@ -70,6 +70,6 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - If you are changing runtime execution behavior: start at `apps/openagents-runtime/` plus `docs/execution/REPLAY.md`.
 - If you are changing web behavior/UI/integrations: start at `apps/openagents.com/` plus `docs/plans/active/laravel-rebuild.md`.
 - If you are changing Codex runtime/desktop integration: start at `docs/codex/unified-runtime-desktop-plan.md`.
-- If you are changing Khala sync integration: start at `docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, `docs/sync/SURFACES.md`, and `apps/openagents-runtime/docs/CONVEX_SYNC.md` (for current boundary/migration context).
+- If you are changing Khala sync integration: start at `docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, `docs/sync/SURFACES.md`, and `apps/openagents-runtime/docs/KHALA_SYNC.md` (for current boundary/migration context).
 - If you are changing terminology or naming: update `docs/GLOSSARY.md` first.
 - If you are changing architecture invariants: author/update an ADR in `docs/adr/`.

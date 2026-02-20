@@ -23,7 +23,7 @@ Deprecated
 This ADR captured the former `apps/web` TanStack Start architecture.
 `apps/web` is no longer an active surface in this repository.
 
-- A typed, Effect-native request surface to call from React/Effect (without immediately replacing Convex/WorkOS/Autopilot worker backends).
+- A typed, Effect-native request surface to call from React/Effect (without immediately replacing Khala/WorkOS/Autopilot worker backends).
 - SSR-safe, shared state that can be dehydrated on the server and hydrated on the client.
 - One shared server composition root so API handlers and loader/serverFn execution use the same memoized Effect layer resources.
 
@@ -45,7 +45,7 @@ What this ADR covers:
 
 What this ADR does NOT cover (non-goals):
 
-- Replacing Convex, WorkOS, or the Autopilot worker backend with an Effect HTTP API surface.
+- Replacing Khala, WorkOS, or the Autopilot worker backend with an Effect HTTP API surface.
 - Migrating all React state to atoms.
 - Implementing Nitro/SRVX patches unless required by concrete lifecycle bugs.
 

@@ -10,7 +10,7 @@ This doc compares how we integrated Effect (and Effuse) into **apps/web** with t
 |--------|----------------------|-----------------------------------|
 | **Effect in loaders** | Yes: `createServerFn` → `serverRuntime.runPromiseExit` → return dehydrated result | Yes: loaders use `context.effectRuntime.runPromise` (auth, telemetry, redirects) |
 | **RPC** | Yes: `@effect/rpc` — RPC server in catch-all `/api` route, RPC client on frontend, HTTP protocol, `disableFatalDefects: true` | Yes: `@effect/rpc` mounted at `POST /api/rpc` (`apps/web/src/routes/api.rpc.tsx`) + client service (`AgentRpcClientService`) |
-| **HTTP API** | Yes: `HttpApiGroup`, `HttpApi.make`, `HttpLayerRouter`, served via `toWebHandler` | No: no Effect-defined HTTP API surface; backend is Convex + Cloudflare Worker |
+| **HTTP API** | Yes: `HttpApiGroup`, `HttpApi.make`, `HttpLayerRouter`, served via `toWebHandler` | No: no Effect-defined HTTP API surface; backend is Khala + Cloudflare Worker |
 | **State management** | `@effect-atom`: atoms marked serializable, dehydrate in loader, `HydrationBoundary` on client | Mixed: React state for most UI + `@effect-atom` for `SessionAtom` with SSR dehydration/hydration in `__root.tsx` |
 | **SSR data** | Loader returns dehydrated atom state; client hydrates into same atoms | Root server fn returns plain auth data plus `atomState` for hydration; other routes still fetch more data in `useEffect` |
 | **Shared runtime** | Managed Runtime + **MemoMap** so API handler and loaders share the same service instance | **ManagedRuntime + MemoMap** (created in `makeAppRuntime`) and the same `MemoMap` is passed to `RpcServer.toWebHandler` |
@@ -43,7 +43,7 @@ The app defines the backend in Effect: RPC group + HTTP API group. The RPC serve
 **Us:**
 We **do** introduce a small Effect RPC layer, mounted at `POST /api/rpc`, but we **don’t** (yet) define an Effect HTTP API surface. Backend is still:
 
-- Convex (DB, serverless functions)
+- Khala (DB, serverless functions)
 - WorkOS (auth)
 - Autopilot worker (`/agents/*` — WebSocket + REST)
 
@@ -55,7 +55,7 @@ The current RPC procedures primarily wrap existing `AgentApiService` calls to `/
 State lives in **@effect-atom**. Loader runs Effect, gets data, and returns a **dehydrated** value (special encoding so atom state can cross the SSR boundary). The client wraps the app in **HydrationBoundary** and rehydrates into the same atoms. So one Effect-backed state tree from server to client.
 
 **Us:**
-State is still mostly **React state** (and Convex/React Query where used), but we now have a minimal `@effect-atom` slice:
+State is still mostly **React state** (and Khala/React Query where used), but we now have a minimal `@effect-atom` slice:
 
 - `SessionAtom` is marked serializable (`apps/web/src/effect/atoms/session.ts`)
 - root server fn returns dehydrated `atomState`, and the app hydrates it via `RegistryProvider` + `HydrationBoundary` (`apps/web/src/routes/__root.tsx`)

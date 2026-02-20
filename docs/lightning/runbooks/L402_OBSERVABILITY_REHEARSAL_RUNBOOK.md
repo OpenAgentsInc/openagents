@@ -65,7 +65,7 @@ Local dry run:
 1. Worker request correlation:
    - read `x-oa-request-id` from response headers
    - tail Worker logs by `oa_req=<id>` (see `docs/autopilot/testing/PROD_E2E_TESTING.md`)
-2. Convex correlation:
+2. Khala correlation:
    - correlate by `requestId`, `taskId`, and `paywallId` in task/settlement records
 3. Settlement proof correlation:
    - join on `paymentProofRef`

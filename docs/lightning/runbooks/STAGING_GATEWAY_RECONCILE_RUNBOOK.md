@@ -4,15 +4,15 @@ This runbook describes the non-interactive deploy/reconcile loop for hosted L402
 
 - Aperture on GCP (Cloud Run)
 - Voltage-backed LND for challenge/invoice flow
-- OpenAgents control plane in Convex
+- OpenAgents control plane in Khala
 - `apps/lightning-ops` reconcile pipeline
 
 ## 1. Required environment
 
-Set these variables before running reconcile from `apps/lightning-ops`. **Gateway URLs default** to the canonical staging route; you only need to set Convex URL and secret for Convex-backed runs:
+Set these variables before running reconcile from `apps/lightning-ops`. **Gateway URLs default** to the canonical staging route; you only need to set Khala URL and secret for Khala-backed runs:
 
 ```bash
-export OA_LIGHTNING_OPS_CONVEX_URL="https://<deployment>.convex.cloud"
+export OA_LIGHTNING_OPS_KHALA_URL="https://<deployment>.khala.cloud"
 export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
 # Optional (defaults set by staging-reconcile.sh):
 # OA_LIGHTNING_OPS_GATEWAY_BASE_URL="https://l402.openagents.com"
@@ -30,8 +30,8 @@ export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
 
 ```bash
 cd apps/lightning-ops
-# Set only CONVEX_URL and SECRET; gateway URLs are defaulted
-export OA_LIGHTNING_OPS_CONVEX_URL="https://<deployment>.convex.cloud"
+# Set only KHALA_URL and SECRET; gateway URLs are defaulted
+export OA_LIGHTNING_OPS_KHALA_URL="https://<deployment>.khala.cloud"
 export OA_LIGHTNING_OPS_SECRET="<ops-secret>"
 ./scripts/staging-reconcile.sh
 ```
@@ -45,7 +45,7 @@ Expected JSON output includes:
 
 ## 3. What gets persisted
 
-`apps/lightning-ops` writes deterministic records to Convex:
+`apps/lightning-ops` writes deterministic records to Khala:
 
 1. `l402GatewayDeployments`
 - `configHash`
