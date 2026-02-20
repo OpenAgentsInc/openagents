@@ -22,7 +22,10 @@ private struct CodexChatView: View {
     @ObservedObject var model: CodexHandshakeViewModel
 
     var body: some View {
-        transcript
+        VStack(spacing: 0) {
+            transcript
+            composer
+        }
             .task {
                 await model.autoConnectOnLaunch()
             }
@@ -63,6 +66,7 @@ private struct CodexChatView: View {
                 .padding(.vertical, 10)
             }
             .background(Color(.systemGroupedBackground))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: model.chatMessages.count) { _, _ in
                 guard let last = model.chatMessages.last else {
                     return
@@ -72,6 +76,41 @@ private struct CodexChatView: View {
                 }
             }
         }
+    }
+
+    private var composer: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField("Message Codex", text: $model.messageDraft, axis: .vertical)
+                .lineLimit(1...5)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.sentences)
+                .autocorrectionDisabled(false)
+                .submitLabel(.send)
+                .onSubmit {
+                    Task {
+                        await model.sendUserMessage()
+                    }
+                }
+
+            Button {
+                Task {
+                    await model.sendUserMessage()
+                }
+            } label: {
+                if model.isSendingMessage {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                } else {
+                    Text("Send")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!model.canSendMessage)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .background(Color(.systemBackground))
     }
 }
 
@@ -189,18 +228,19 @@ private struct CodexDebugView: View {
                             .keyboardType(.numberPad)
 
                         HStack {
-                            Button("Send Code") {
+                            Button(model.isSendingCode ? "Sending..." : "Send Code") {
                                 Task {
                                     await model.sendEmailCode()
                                 }
                             }
+                            .disabled(!model.canSendAuthCode)
 
-                            Button("Verify") {
+                            Button(model.isVerifyingCode ? "Verifying..." : "Verify") {
                                 Task {
                                     await model.verifyEmailCode()
                                 }
                             }
-                            .disabled(model.verificationCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(!model.canVerifyAuthCode)
                         }
                     }
                 }

@@ -19,6 +19,27 @@ final class RuntimeCodexClient {
         self.encoder = encoder
     }
 
+    static func clearSessionCookies(baseURL: URL) {
+        guard let host = baseURL.host?.trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased(),
+              !host.isEmpty else {
+            return
+        }
+
+        let storage = HTTPCookieStorage.shared
+        for cookie in storage.cookies ?? [] {
+            let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased()
+            guard !domain.isEmpty else {
+                continue
+            }
+
+            if host == domain || host.hasSuffix(".\(domain)") {
+                storage.deleteCookie(cookie)
+            }
+        }
+
+        URLCache.shared.removeAllCachedResponses()
+    }
+
     func sendEmailCode(email: String) async throws {
         let _: AuthSendCodeResponse = try await requestJSON(
             path: "/api/auth/email",
@@ -89,9 +110,9 @@ final class RuntimeCodexClient {
         )
     }
 
-    func streamWorker(workerID: String, cursor: Int, tailMS: Int = 8_000) async throws -> RuntimeCodexStreamBatch {
+    func streamWorker(workerID: String, cursor: Int, tailMS: Int = 200) async throws -> RuntimeCodexStreamBatch {
         let normalizedCursor = max(0, cursor)
-        let normalizedTailMS = max(1_000, tailMS)
+        let normalizedTailMS = max(100, tailMS)
         let body = try await requestText(
             path: "/api/runtime/codex/workers/\(workerID.urlPathEncoded)/stream",
             queryItems: [
@@ -254,6 +275,18 @@ final class RuntimeCodexClient {
 
             if data.isEmpty {
                 throw RuntimeCodexApiError(message: "empty_response", code: .unknown, status: http.statusCode)
+            }
+
+            let contentType = (http.value(forHTTPHeaderField: "content-type") ?? "").lowercased()
+            if !contentType.contains("application/json") {
+                let preview = bodyText
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let limitedPreview = String(preview.prefix(160))
+                let message = limitedPreview.isEmpty
+                    ? "unexpected_non_json_response_\(http.statusCode)"
+                    : "unexpected_non_json_response_\(http.statusCode): \(limitedPreview)"
+                throw RuntimeCodexApiError(message: message, code: .unknown, status: http.statusCode)
             }
 
             do {
