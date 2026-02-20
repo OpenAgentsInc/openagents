@@ -76,6 +76,7 @@ class EmailCodeAuthController extends Controller
             pendingUserId: (string) $pending['user_id'],
             ipAddress: (string) $request->ip(),
             userAgent: (string) $request->userAgent(),
+            pendingEmail: (string) $pending['email'],
         );
 
         $this->completeSignIn($request, $verified, $posthog);
@@ -92,6 +93,7 @@ class EmailCodeAuthController extends Controller
             pendingUserId: (string) $pending['user_id'],
             ipAddress: (string) $request->ip(),
             userAgent: (string) $request->userAgent(),
+            pendingEmail: (string) $pending['email'],
         );
 
         /** @var User $user */
