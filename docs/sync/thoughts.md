@@ -1,325 +1,336 @@
-You’re thinking about this exactly the right way: **don’t clone Convex**, don’t chase protocol compatibility, and don’t big-bang cutover Lightning. Build **your own sync plane** that matches your authority doctrine and your product shape.
+# OA Sync Thoughts (WS-First, Proto-First)
 
-Below is a BEAM-centric design that can replace Convex for the **runtime/Codex projection lane first**, while keeping the door open to migrate Lightning later.
+Date: 2026-02-20
 
----
+## TL;DR
 
-# OpenAgents Sync Engine (OA Sync) — BEAM-first design
+Build OpenAgents Sync (OA Sync) as a Postgres-backed, WebSocket-delivered sync plane owned by runtime.
 
-## 0) First principle: what “sync” means in OpenAgents
+Non-negotiables:
 
-Convex bundled multiple things. You want to unbundle:
+1. Runtime + Postgres remain authority.
+2. OA Sync is projection + delivery only.
+3. New sync transport is WS only (Phoenix Channels), not SSE.
+4. Contracts are proto-first; no hand-authored TypeScript schema authority.
+5. Do not clone Convex protocol compatibility.
 
-1. **Authority (truth):** runtime event log in Postgres
-2. **Projection (read models):** derived documents/tables from events
-3. **Subscription delivery:** push updates to clients with resume semantics
-4. **Query execution:** read models served efficiently (not arbitrary serverless functions)
+## Why this exists
 
-Your replacement engine is basically:
+Convex currently covers multiple concerns. OA Sync should split them cleanly:
 
-> **Projection tables + a subscription bus + a resumable client protocol**, all owned by you.
+1. Authority: runtime event log + policy/spend state in Postgres.
+2. Projection: deterministic read models.
+3. Delivery: resumable push updates to clients.
+4. Query: explicit read-model fetch/list endpoints.
 
----
+This matches OpenAgents doctrine from `docs/ARCHITECTURE.md`, `docs/adr/ADR-0029-convex-sync-layer-and-codex-agent-mode.md`, and `apps/openagents-runtime/docs/CONVEX_SYNC.md`.
 
-## 1) Target topology
+## Current status snapshot (codebase as of 2026-02-20)
 
-### Runtime (already exists)
+### Runtime lane
 
-* Event log append-only
-* Checkpoints & reproject tooling
-* Deterministic projector
+Implemented and strong:
 
-### New component: OA Sync Service (BEAM)
+- Projector/checkpoint/replay stack exists:
+  - `apps/openagents-runtime/lib/openagents_runtime/convex/projector.ex`
+  - `apps/openagents-runtime/lib/openagents_runtime/convex/reprojection.ex`
+  - `apps/openagents-runtime/lib/openagents_runtime/convex/projection_checkpoint.ex`
+  - `apps/openagents-runtime/priv/repo/migrations/20260219101000_create_runtime_convex_projection_checkpoints.exs`
+- Projection triggers are integrated into run and worker event writes:
+  - `apps/openagents-runtime/lib/openagents_runtime/runs/run_events.ex`
+  - `apps/openagents-runtime/lib/openagents_runtime/codex/workers.ex`
+- Runtime/Convex boundary is documented as projection-only.
 
-Runs near runtime (could be inside runtime app or separate app):
+Gap:
 
-* Consumes projection updates from runtime projector
-* Writes to Postgres read tables (or receives that they were written)
-* Broadcasts updates to subscribers over WebSockets (Phoenix Channels)
-* Maintains per-subscription cursor / watermark for resume
+- Default projection sink remains `NoopSink` in `apps/openagents-runtime/config/config.exs`.
 
-**Important:** OA Sync is not a second source of truth. It is **delivery + query** over read models.
+### Web/mobile/desktop lanes
 
----
+- Laravel mints Convex token bridge via `/api/convex/token`:
+  - `apps/openagents.com/app/Support/Convex/ConvexTokenIssuer.php`
+- Mobile still boots Convex client/provider:
+  - `apps/mobile/app/app.tsx`
+- Mobile Codex admin data plane is already runtime API-driven (list/snapshot/stream/request/stop), not Convex queries:
+  - `apps/mobile/app/screens/CodexWorkersScreen.tsx`
+- Desktop runtime task flow is already Laravel API-driven:
+  - `apps/desktop/src/effect/taskProvider.ts`
 
-## 2) Protocol design (proto-first, minimal semantics)
+### Lightning lane
 
-### 2.1 Core idea: “documents + versions + watermarks”
+- `apps/lightning-ops` remains directly Convex-dependent for control-plane reads/writes:
+  - `apps/lightning-ops/src/controlPlane/convexTransport.ts`
+  - `apps/lightning-ops/src/controlPlane/convex.ts`
 
-Convex gives reactive queries. For your current needs, you can get 80% of value with:
+Conclusion: runtime/Codex is ready for OA Sync first; Lightning migrates second.
 
-* A set of named read models (documents) like:
+## WS-only transport decision
 
-  * `runtime.run_summary:<run_id>`
-  * `runtime.codex_worker_summary:<worker_id>`
-* A **monotonic version** per document (or per collection)
-* A **watermark** for stream resume
+Decision:
 
-### 2.2 Envelope types (proto)
+- OA Sync uses WebSockets only for live subscriptions (Phoenix Channels).
+- No new SSE endpoints are added for OA Sync.
+- Existing SSE endpoints remain for existing runtime APIs until clients migrate.
 
-You already listed these; I’d lock a small v1:
+Reason:
 
-* `Subscribe { topics[], resume_after? }`
-* `Subscribed { subscription_id, current_watermark }`
-* `Update { topic, doc_key, doc_version, payload_bytes, watermark }`
-* `Heartbeat { watermark }`
-* `Error { code, message, retry_after_ms }`
+- multi-topic multiplexing,
+- cleaner resume protocol over a stateful socket,
+- native fit for BEAM/Phoenix,
+- avoids carrying two live transports for the new sync plane.
 
-Where:
+## Target architecture
 
-* `topic` is a logical stream (e.g. `runtime/run_summaries`, `runtime/worker_summaries`)
-* `doc_key` is stable (`run_summary:<id>`)
-* `doc_version` increments on change
-* `watermark` is a monotonic “stream position” (more below)
+## Authority plane (unchanged)
 
-Payload format:
+- Runtime writes canonical events and state in Postgres.
 
-* Start with **JSON** for speed, but shape must be proto-defined.
-* Upgrade to binary proto later without changing semantics.
+## Projection plane (owned by runtime)
 
----
+- Runtime projector derives read models from authority events.
+- Read models are persisted in Postgres sync tables.
 
-## 3) Watermarks and resume semantics (the hard part)
+## Delivery plane (new OA Sync)
 
-You need one thing Convex nails: reconnect and “don’t miss updates.”
+- Runtime emits projection events with topic watermarks.
+- OA Sync WS service pushes updates to subscribers.
+- Resume uses durable watermark replay from Postgres.
 
-### 3.1 Choose a watermark source
+## Protocol shape (proto-first)
 
-Options:
+Define new proto package (suggestion):
 
-1. **Global stream seq** (best): runtime already has monotonic `seq` per run; you want something similar for each “topic stream.”
-2. **DB transaction LSN** (tempting, don’t): ties you to PG internals and makes portability ugly.
-3. **Updated_at timestamps** (no): not safe.
+- `proto/openagents/sync/v1/*.proto`
 
-**Recommendation:** create a **per-topic monotonic sequence** maintained by your sync service or by DB.
+Core messages (minimal v1):
 
-### 3.2 Minimal schema to support it
+1. `Subscribe`:
+- `topics[]`
+- `resume_after` map (topic -> watermark)
 
-A durable table:
+2. `Subscribed`:
+- `subscription_id`
+- `current_watermarks`
 
-* `sync_stream_events`
+3. `Update`:
+- `topic`
+- `doc_key`
+- `doc_version`
+- `payload` (proto bytes or proto-compatible JSON bytes)
+- `watermark`
 
-  * `topic` (text)
-  * `watermark` (bigint, monotonic per topic)
-  * `doc_key` (text)
-  * `doc_version` (bigint)
-  * `payload` (jsonb or bytea) *optional*
-  * `inserted_at`
+4. `Heartbeat`:
+- `watermarks`
 
-Two ways to use it:
+5. `Error`:
+- `code`
+- `message`
+- `retry_after_ms`
 
-**Mode A (simple, durable):**
+Topic strategy:
 
-* projector writes doc to read table
-* projector (or sync service) appends a `sync_stream_events` row with the new watermark
-* websocket service streams from this table
-* resume = “give me events after watermark”
+- `runtime.run_summaries`
+- `runtime.codex_worker_summaries`
+- optional later: `runtime.notifications`
 
-**Mode B (lower storage, more ephemeral):**
+Do not expose arbitrary query execution in the sync protocol.
 
-* don’t persist event rows, only persist `doc_version`
-* on reconnect, client calls “since watermark” => server computes diffs from doc versions
-* this is harder and eventually you reinvent persisted stream events
+## Data model for resume correctness
 
-**Start with Mode A.** It gives you correct resume with low complexity.
+Add durable sync event journal in Postgres:
 
-### 3.3 Retention and stale cursor
+Table: `runtime.sync_stream_events`
 
-Keep N hours/days of `sync_stream_events` per topic.
-If client resumes before earliest retained watermark → return:
+Columns:
 
-* `410 stale_cursor` equivalent → client must full resync.
+- `topic` text
+- `watermark` bigint
+- `doc_key` text
+- `doc_version` bigint
+- `payload` jsonb (or bytea)
+- `inserted_at` timestamptz
 
-You already have the semantics in runtime streams; mirror them.
+Indexes:
 
----
+- unique `(topic, watermark)`
+- index `(topic, doc_key, watermark desc)`
+- index `(inserted_at)` for retention jobs
 
-## 4) BEAM implementation choices
+Read-model tables (runtime-owned):
 
-### 4.1 Phoenix Channels over raw WS
+- `runtime.sync_run_summaries`
+- `runtime.sync_codex_worker_summaries`
 
-Use Phoenix Channels:
+Each row keeps at least:
 
-* solid reconnect/backoff patterns
-* multiplex topics
-* fits your stack
+- `doc_key`
+- `doc_version`
+- `payload`
+- `updated_at`
 
-### 4.2 Broadcasting
+Retention rule:
 
-Avoid relying purely on `Phoenix.PubSub` for durability; use PubSub for “live push,” but keep DB stream for resume.
+- Keep bounded history in `sync_stream_events` (for example 24h to 7d by env).
+- If client resume watermark is older than retained window, return `stale_cursor` and require full resync fetch.
 
-Pattern:
+## Server design (BEAM)
 
-* On update: write `sync_stream_events` row, then broadcast `{topic, watermark}` via PubSub.
-* Subscribers wake, read rows > last sent watermark, push them.
+## Components
 
-This avoids message loss issues if the WS node restarts.
+1. `OA.Sync.ProjectorSink` (runtime integration point)
+- Called on projection updates.
+- Upserts read-model table.
+- Appends `sync_stream_events` row with next watermark.
+- Broadcasts lightweight wakeup via PubSub.
 
-### 4.3 Scaling
+2. `OA.Sync.WatermarkAllocator`
+- Monotonic per-topic sequence allocation.
+- Backed by Postgres transaction.
 
-* Stateless WS nodes are fine because resume is DB-backed.
-* Use Postgres indexes `(topic, watermark)`.
+3. `OA.Sync.Channel` (Phoenix)
+- Authenticated socket join.
+- Handles subscribe/unsubscribe.
+- Delivers historical catch-up from `sync_stream_events` then live updates.
 
----
+4. `OA.Sync.Replay`
+- Reads events `> watermark` per topic.
+- Paginates and pushes bounded batches.
 
-## 5) Query model (replace Convex queries)
+5. `OA.Sync.RetentionJob`
+- Deletes expired sync stream rows by retention policy.
 
-Convex is basically “reactive queries.” You can implement a constrained alternative:
+## Delivery flow
 
-### v1: “document fetch + list endpoints”
+1. Runtime writes authority event.
+2. Runtime projector computes summary/doc update.
+3. OA Sync sink writes read-model + stream event + watermark.
+4. OA Sync broadcasts topic wakeup.
+5. Channel processes replay from subscriber watermark and pushes updates.
 
-* `GET /sync/v1/doc/:doc_key`
-* `GET /sync/v1/list/:collection?cursor=...` (optional)
-* Subscriptions push doc updates
+## Failure model
 
-This matches your actual usage today (run/worker summaries).
+- DB write succeeds, WS push fails: safe; client catches up by watermark replay.
+- WS node restart: safe; subscriptions recover by resume watermark.
+- PubSub drop/loss: safe; replay loop is DB-sourced.
 
-### Later: “parameterized views”
+## Auth model
 
-If you need “list workers for org,” build explicit read tables + indexed queries:
+Use Laravel as auth/session authority, but mint OA Sync tokens, not Convex tokens.
 
-* `codex_worker_summaries` keyed by `org_id`
-* `run_summaries` keyed by `org_id`
+JWT claims (v1):
 
-Keep query shapes **explicit** and proto-governed. Don’t build arbitrary query execution; that’s how you become a database product.
+- `sub` (user principal)
+- `oa_org_id` (or equivalent tenant/workspace scope)
+- `oa_sync_scopes` (allowed topics)
+- `exp` (short TTL)
+- `jti`
+- `oa_claims_version`
 
----
+Verification:
 
-## 6) Auth model (Laravel still front door)
-
-You can keep your current pattern:
-
-* openagents.com mints short-lived JWTs
-
-But you should stop using “Convex-specific claims” and use “OA Sync claims”:
-
-JWT includes:
-
-* `sub` user id
-* `org_id`
-* `scopes` (read topics)
-* `exp` short TTL
-* `session_id` for revocation
-* maybe `device_id`
-
-OA Sync verifies JWT (HS256 for MVP ok; move to JWKS/RS256 later).
+- MVP can be HS256 for fast path.
+- Target RS256/JWKS for key rotation and multi-service trust.
 
 Channel join checks:
 
-* topic allowlist derived from org entitlements
+- validate topic entitlement per token scope and ownership constraints.
 
----
+## Client model
 
-## 7) Schema authority: proto-first, generated clients
+## Client responsibilities
 
-### Clients you need (v1)
+1. Open WS and authenticate.
+2. Subscribe to explicit topics.
+3. Maintain per-topic high watermark.
+4. Persist watermark locally for reconnect.
+5. On `stale_cursor`, perform full fetch and reset watermark.
 
-* TypeScript (web + desktop)
-* Swift (iOS + macOS)
-* Rust (desktop codex)
-* Elixir (sync service)
-* PHP (optional, control plane helpers)
+## Initial surfaces
 
-Generate:
+1. Web admin Codex views.
+2. Mobile Codex workers.
+3. Desktop status surfaces that still rely on reactive summaries.
 
-* message types
-* enums (error codes, topics)
-* validators where possible
+Note: existing runtime control/action APIs remain HTTP endpoints; OA Sync is read-sync transport.
 
-Key: **no hand-authored TS schemas** in product logic.
+## Migration strategy (hybrid)
 
----
+## Phase A: Runtime/Codex dual publish
 
-## 8) Migration plan (matches your audit’s hybrid recommendation)
+- Keep current Convex projection path.
+- Add OA Sync sink alongside existing sink path.
+- Run parity checks for doc payload/version/watermark lag.
+- Gate by feature flags in clients.
 
-### Phase 1 (runtime/Codex lane): dual publish
+## Phase B: Client cutover to OA Sync WS
 
-* Keep runtime projector as-is, but add OA Sync sink alongside Convex sink.
-* Dual-write read models:
+- Web/mobile/desktop switch subscription lane to OA Sync.
+- Keep runtime action/control APIs unchanged.
+- Remove Convex client deps after stability window.
 
-  * to Convex (as now, if it’s actually enabled)
-  * to OA Sync tables + stream events
+## Phase C: Lightning control plane migration
 
-Run shadow clients:
+- Move lightning control-plane authority data from Convex to Postgres/runtime-owned APIs.
+- Replace `ConvexHttpClient` in lightning-ops with OA API transport.
+- Decommission Convex usage by lane after rollback window.
 
-* Web/mobile subscribes to OA Sync in a feature flag
-* Compare parity: counts, lag, drift
+## What not to build
 
-### Phase 2: cut clients over
+1. No arbitrary server-side function execution in sync plane.
+2. No generic reactive query language.
+3. No attempt to emulate Convex sync protocol byte-for-byte.
+4. No second authority store.
 
-* Remove Convex client dependencies from web/mobile/desktop
-* Remove `/api/convex/token` and replace with `/api/sync/token` (or reuse endpoint name but change semantics)
+## Operational requirements
 
-### Phase 3: Lightning ops
+1. Metrics:
+- per-topic lag
+- replay batch duration
+- ws reconnect rate
+- stale cursor rate
+- dropped/retried pushes
 
-* Later, migrate lightning control-plane state into Postgres tables + OA Sync topics
-* lightning-ops becomes an HTTP client to openagents APIs or directly to OA Sync where appropriate
+2. Alerts:
+- lag SLO breaches
+- replay error spikes
+- watermark allocation failures
 
----
+3. Runbooks:
+- full-resync response procedure
+- retention tuning
+- backfill/reprojection with OA Sync enabled
 
-## 9) Concrete “v1 topics” for OA Sync
+## Verification matrix (minimum)
 
-Start tiny:
+1. Unit:
+- watermark monotonic allocation
+- stale cursor behavior
+- authorization join checks
 
-* `runtime.run_summaries` (doc updates for run summary keys)
-* `runtime.codex_worker_summaries`
-* `runtime.notifications` (optional small feed)
+2. Integration:
+- disconnect/reconnect with no gaps
+- dual-publish parity (Convex vs OA Sync payload hash)
+- retention purge + stale cursor recovery
 
-If you later do Enclave:
+3. Load/chaos:
+- burst update throughput
+- ws node restart mid-stream
+- Postgres failover/retry behavior
 
-* `enclave.thread_summaries`
-* `enclave.approvals`
-* `enclave.spend_ledger`
+## Open questions to settle early
 
----
+1. Topic partitioning granularity:
+- one topic per model class, or per tenant + model.
 
-## 10) Critical design constraints (to avoid rebuilding Convex)
+2. Watermark source:
+- per-topic sequences only, or global sequence + topic filters.
 
-* No arbitrary server-side functions in the sync layer.
-* No generic reactive query language.
-* Only explicit read models and explicit subscription topics.
-* DB-backed resume semantics, always.
+3. Payload storage:
+- store full payload in stream events vs compact delta references.
 
-That’s how you get 90% of Convex value for your use case without becoming a database company.
+4. Token endpoint shape:
+- new `/api/sync/token` vs evolving `/api/convex/token` into generic sync token.
 
----
+## Recommended next artifact
 
-# A BEAM-shaped “MVP spec” for OA Sync (what to build first)
-
-### Server (Elixir)
-
-1. `sync_stream_events` table + indexes
-2. `sync_docs` read tables for run_summary / worker_summary (or reuse existing projection tables)
-3. `OA.Sync.ProjectorSink` that appends stream events
-4. Phoenix Channel `sync:v1`
-
-   * `subscribe(topics, resume_after)`
-   * push updates
-   * heartbeat
-   * stale cursor handling
-5. `GET /sync/v1/doc/:key` for initial fetch
-
-### Client (TS)
-
-1. WS client with:
-
-   * connect + auth
-   * subscribe
-   * resume with watermark
-2. cache docs by `doc_key`
-3. hook to React to update views
-
-### Verification
-
-* reconnect/resume tests (drop WS mid-stream; ensure no gaps)
-* stale cursor test (purge events; ensure client full resync)
-* throughput test (burst 10k updates; ensure bounded memory)
-
----
-
-If you want, next I can turn this into two concrete artifacts:
-
-1. A `proto/openagents/sync/v1/*.proto` set (topics, envelopes, errors).
-2. An Elixir implementation outline with the actual tables, indices, channel join checks, and the broadcast/replay loop pattern.
-
-And we can explicitly decide: **SSE vs WebSocket**. If you want BEAM-first and multi-topic multiplexing, WS/Channels is the most natural.
+- `docs/sync/ROADMAP.md` as issue-ready implementation plan, sequenced by dependency and current repo state.
