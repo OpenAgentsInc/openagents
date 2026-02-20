@@ -33,6 +33,8 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var toolMessageIndexByItemKey: [String: Int] = [:]
     private var seenUserMessageKeys: Set<String> = []
     private var agentDeltaAliasSources: [String: AgentDeltaSource] = [:]
+    private var processedCodexEventSeqs: Set<Int> = []
+    private var processedCodexEventSeqOrder: [Int] = []
     private var hasAttemptedAutoConnect = false
 
     private let defaults: UserDefaults
@@ -48,6 +50,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private static let streamIdleSleepNS: UInt64 = 250_000_000
     private static let streamReconnectSleepNS: UInt64 = 1_500_000_000
     private static let aliasCacheLimit = 2_048
+    private static let seqCacheLimit = 8_192
     private static let iso8601Parsers: [ISO8601DateFormatter] = {
         let withFractional = ISO8601DateFormatter()
         withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -386,7 +389,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         recentEvents = (events.reversed() + recentEvents).prefix(100).map { $0 }
         for event in events {
             guard let codexEvent = RuntimeCodexProto.decodeCodexEventEnvelope(from: event.payload),
-                  codexEvent.source == RuntimeCodexProto.desktopSource else {
+                  codexEvent.source == RuntimeCodexProto.desktopSource,
+                  shouldProcessCodexEvent(codexEvent) else {
                 continue
             }
             applyCodexEvent(codexEvent)
@@ -421,6 +425,28 @@ final class CodexHandshakeViewModel: ObservableObject {
         default:
             break
         }
+    }
+
+    private func shouldProcessCodexEvent(_ event: RuntimeCodexProto.CodexEventEnvelope) -> Bool {
+        guard let seq = event.seq else {
+            return true
+        }
+
+        if processedCodexEventSeqs.contains(seq) {
+            return false
+        }
+
+        processedCodexEventSeqs.insert(seq)
+        processedCodexEventSeqOrder.append(seq)
+        if processedCodexEventSeqOrder.count > Self.seqCacheLimit {
+            let overflow = processedCodexEventSeqOrder.count - Self.seqCacheLimit
+            for _ in 0..<overflow {
+                let dropped = processedCodexEventSeqOrder.removeFirst()
+                processedCodexEventSeqs.remove(dropped)
+            }
+        }
+
+        return true
     }
 
     private func applyCodexEvent(_ event: RuntimeCodexProto.CodexEventEnvelope) {
@@ -465,8 +491,14 @@ final class CodexHandshakeViewModel: ObservableObject {
         case "item/completed", "codex/event/item_completed":
             handleItemCompleted(event)
 
+        case "item/agentMessage/started", "item/assistantMessage/started":
+            handleStandaloneAgentMessageStarted(event)
+
+        case "item/agentMessage/completed", "item/assistantMessage/completed":
+            handleStandaloneAgentMessageCompleted(event)
+
         case "item/agentMessage/delta":
-            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue,
+            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue ?? event.itemID,
                   let delta = event.params["delta"]?.stringValue else {
                 return
             }
@@ -481,7 +513,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         case "codex/event/agent_message_content_delta", "codex/event/agent_message_delta":
             guard let msg = event.params["msg"]?.objectValue,
-                  let itemID = msg["item_id"]?.stringValue ?? msg["itemId"]?.stringValue,
+                  let itemID = msg["item_id"]?.stringValue ?? msg["itemId"]?.stringValue ?? event.itemID,
                   let delta = msg["delta"]?.stringValue else {
                 return
             }
@@ -495,7 +527,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             )
 
         case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta", "item/reasoning/contentDelta":
-            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue,
+            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue ?? event.itemID,
                   let delta = event.params["delta"]?.stringValue else {
                 return
             }
@@ -508,7 +540,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             )
 
         case "item/commandExecution/outputDelta", "item/fileChange/outputDelta":
-            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue,
+            guard let itemID = event.params["itemId"]?.stringValue ?? event.params["item_id"]?.stringValue ?? event.itemID,
                   let delta = event.params["delta"]?.stringValue else {
                 return
             }
@@ -525,9 +557,10 @@ final class CodexHandshakeViewModel: ObservableObject {
                   let text = msg["message"]?.stringValue else {
                 return
             }
+            let dedupeKey = userMessageDedupeKey(text: text, threadID: event.threadID, turnID: event.turnID)
             appendUserMessage(
                 text,
-                dedupeKey: "legacy:\(event.threadID ?? ""):\(text)",
+                dedupeKey: dedupeKey,
                 threadID: event.threadID,
                 turnID: event.turnID,
                 itemID: nil,
@@ -545,7 +578,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
-        let normalizedType = itemType.lowercased()
+        let normalizedType = normalizedItemType(itemType)
         let threadID = event.threadID ?? item["threadId"]?.stringValue ?? item["thread_id"]?.stringValue
         let turnID = event.turnID ?? item["turnId"]?.stringValue ?? item["turn_id"]?.stringValue
         let itemID = item["id"]?.stringValue ?? event.itemID
@@ -553,9 +586,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         switch normalizedType {
         case "usermessage":
             if let text = extractUserMessageText(from: item) {
+                let dedupeKey = userMessageDedupeKey(text: text, threadID: threadID, turnID: turnID)
                 appendUserMessage(
                     text,
-                    dedupeKey: "item:\(itemID ?? text)",
+                    dedupeKey: dedupeKey,
                     threadID: threadID,
                     turnID: turnID,
                     itemID: itemID,
@@ -609,7 +643,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
-        let normalizedType = itemType.lowercased()
+        let normalizedType = normalizedItemType(itemType)
         let threadID = event.threadID ?? item["threadId"]?.stringValue ?? item["thread_id"]?.stringValue
         let turnID = event.turnID ?? item["turnId"]?.stringValue ?? item["turn_id"]?.stringValue
         let itemID = item["id"]?.stringValue ?? event.itemID
@@ -659,6 +693,39 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
     }
 
+    private func handleStandaloneAgentMessageStarted(_ event: RuntimeCodexProto.CodexEventEnvelope) {
+        guard let itemID = event.params["itemId"]?.stringValue
+                ?? event.params["item_id"]?.stringValue
+                ?? event.itemID else {
+            return
+        }
+        ensureAssistantEntry(
+            itemID: itemID,
+            threadID: event.threadID,
+            turnID: event.turnID,
+            occurredAt: event.occurredAt
+        )
+    }
+
+    private func handleStandaloneAgentMessageCompleted(_ event: RuntimeCodexProto.CodexEventEnvelope) {
+        guard let itemID = event.params["itemId"]?.stringValue
+                ?? event.params["item_id"]?.stringValue
+                ?? event.params["message"]?.objectValue?["id"]?.stringValue
+                ?? event.params["item"]?.objectValue?["id"]?.stringValue
+                ?? event.itemID else {
+            return
+        }
+
+        let text = extractStandaloneAgentMessageText(from: event.params)
+        finishAssistantMessage(
+            itemID: itemID,
+            text: text,
+            threadID: event.threadID,
+            turnID: event.turnID,
+            occurredAt: event.occurredAt
+        )
+    }
+
     private func extractItem(from params: [String: JSONValue]) -> [String: JSONValue]? {
         if let item = params["item"]?.objectValue {
             return item
@@ -672,55 +739,108 @@ final class CodexHandshakeViewModel: ObservableObject {
         return nil
     }
 
+    private func normalizedItemType(_ raw: String) -> String {
+        raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: " ", with: "")
+    }
+
+    private func userMessageDedupeKey(text: String, threadID: String?, turnID: String?) -> String {
+        let normalizedText = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return "user:\(threadID ?? "_"):\(turnID ?? "_"):\(normalizedText)"
+    }
+
     private func extractUserMessageText(from item: [String: JSONValue]) -> String? {
         if let text = item["text"]?.stringValue, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return text
         }
 
-        let contentParts = (item["content"]?.arrayValue ?? []).compactMap { entry -> String? in
-            guard let object = entry.objectValue else {
-                return nil
-            }
-
-            let text = object["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let text, !text.isEmpty {
-                return text
-            }
+        let parts = extractTextFragments(from: item["content"])
+        guard !parts.isEmpty else {
             return nil
         }
-
-        if contentParts.isEmpty {
-            return nil
-        }
-
-        return contentParts.joined(separator: "\n")
+        return parts.joined(separator: "\n")
     }
 
     private func extractAgentMessageText(from item: [String: JSONValue]) -> String? {
+        if let content = item["content"]?.stringValue,
+           !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return content
+        }
+
         if let text = item["text"]?.stringValue,
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return text
         }
 
-        let contentParts = (item["content"]?.arrayValue ?? []).compactMap { entry -> String? in
-            guard let object = entry.objectValue else {
-                return nil
-            }
-            return object["text"]?.stringValue
-        }
-
+        let contentParts = extractTextFragments(from: item["content"])
         let merged = contentParts.joined()
         return merged.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : merged
     }
 
     private func extractReasoningText(from item: [String: JSONValue]) -> String? {
-        let summary = (item["summary"]?.arrayValue ?? []).compactMap(\.stringValue).joined(separator: "\n")
-        let content = (item["content"]?.arrayValue ?? []).compactMap(\.stringValue).joined(separator: "\n")
+        let summary = extractTextFragments(from: item["summary"]).joined(separator: "\n")
+        let content = extractTextFragments(from: item["content"]).joined(separator: "\n")
         let merged = [summary, content]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
         return merged.isEmpty ? nil : merged
+    }
+
+    private func extractStandaloneAgentMessageText(from params: [String: JSONValue]) -> String? {
+        if let message = params["message"]?.objectValue,
+           let text = extractAgentMessageText(from: message) {
+            return text
+        }
+
+        if let item = params["item"]?.objectValue,
+           let text = extractAgentMessageText(from: item) {
+            return text
+        }
+
+        if let text = params["text"]?.stringValue,
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+
+        return nil
+    }
+
+    private func extractTextFragments(from value: JSONValue?) -> [String] {
+        guard let value else {
+            return []
+        }
+
+        if let text = value.stringValue {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? [] : [text]
+        }
+
+        guard let array = value.arrayValue else {
+            return []
+        }
+
+        var parts: [String] = []
+        for entry in array {
+            if let text = entry.stringValue, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parts.append(text)
+                continue
+            }
+
+            if let object = entry.objectValue,
+               let text = object["text"]?.stringValue,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parts.append(text)
+            }
+        }
+
+        return parts
     }
 
     private func summarizeToolItem(item: [String: JSONValue]) -> String? {
@@ -942,9 +1062,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         if let text {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                if chatMessages[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    chatMessages[index].text = trimmed
-                }
+                chatMessages[index].text = trimmed
             }
         }
         chatMessages[index].isStreaming = false
@@ -1105,9 +1223,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     private func itemKey(threadID: String?, turnID: String?, itemID: String) -> String {
-        let thread = threadID ?? "_"
-        let turn = turnID ?? "_"
-        return "\(thread)|\(turn)|\(itemID)"
+        _ = threadID
+        _ = turnID
+        return itemID
     }
 
     private func resetChatTimeline() {
@@ -1117,6 +1235,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         toolMessageIndexByItemKey = [:]
         seenUserMessageKeys = []
         agentDeltaAliasSources = [:]
+        processedCodexEventSeqs = []
+        processedCodexEventSeqOrder = []
     }
 
     private func scheduleHandshakeTimeout(handshakeID: String, seconds: Int) {
