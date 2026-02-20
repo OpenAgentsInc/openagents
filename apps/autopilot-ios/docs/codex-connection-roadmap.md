@@ -193,6 +193,10 @@ Handshake is successful when all of the following happen:
 4. Runtime/Laravel contract docs + tests: `#1773`
 5. Real-device runbook + checklist: `#1774`
 
+Operator runbook:
+
+- `apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md`
+
 ## Roadmap Phases
 
 ### Phase 0: iOS Foundation and Contracts
