@@ -8,3 +8,5 @@ Architecture and technical audits.
 - `docs/audits/KHALA_USAGE_AND_PROTO_SYNC_ENGINE_AUDIT_2026-02-20.md`
 - `docs/audits/APPS_PROTO_FIRST_AUDIT_2026-02-20.md`
 - `docs/audits/OA-RUST-053-DESKTOP-LEGACY-CAPABILITY-AUDIT-2026-02-21.md`
+- `docs/audits/OA-RUST-073-ENDSTATE-READINESS-REVIEW-2026-02-21.md`
+- `docs/audits/OA-RUST-073-GO-NO-GO-DECISION-2026-02-21.md`
