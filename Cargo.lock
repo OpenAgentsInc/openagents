@@ -6984,6 +6984,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-runtime-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tower 0.5.2",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "openagents-spark"
 version = "0.1.0"
 dependencies = [
