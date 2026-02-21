@@ -3,6 +3,11 @@ version: v2
 managed:
   enabled: false
 
-# Rust proto generation is build-driven in crates/openagents-proto.
-# No non-Rust language plugins are configured.
-plugins: []
+clean: true
+
+# Rust-only codegen template.
+# Output is verification output under target/; runtime consumption remains
+# build-driven via crates/openagents-proto/build.rs.
+plugins:
+  - remote: buf.build/community/neoeinstein-prost
+    out: target/buf/rust

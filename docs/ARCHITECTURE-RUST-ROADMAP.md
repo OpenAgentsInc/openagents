@@ -449,7 +449,8 @@ Rust migration release gate: `./scripts/local-ci.sh workspace-compile` must pass
 Dependencies: OA-RUST-033, OA-RUST-049, OA-RUST-054.
 
 ### OA-RUST-098 — [Proto] Enforce Rust codegen in buf templates and verification scripts
-Description: Update `buf.gen.yaml` and proto verification scripts to generate and validate Rust outputs in addition to existing targets, then wire that into local CI gates.
+Description: Enforce Rust-only proto generation through Buf template output plus build-driven crate generation checks, and wire both into local CI proto gates.
+Enforcement artifacts: `buf.gen.yaml`, `scripts/verify-proto-generate.sh`, `scripts/verify-rust-proto-crate.sh`, `proto/README.md`, `crates/openagents-proto/README.md`
 Acceptance criteria: Rust proto outputs generate deterministically; proto verification fails when Rust generation breaks; docs/runbooks reflect Rust codegen as mandatory.
 Dependencies: OA-RUST-012, OA-RUST-013, OA-RUST-075.
 
