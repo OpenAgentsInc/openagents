@@ -9,6 +9,7 @@ This is the canonical production deploy flow for the Cloud Run runtime stack:
 - DB role isolation tooling: `apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh`, `apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh`
 - Script index: `apps/runtime/deploy/cloudrun/README.md`
 - Zero-downtime schema evolution policy: `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`
+- Control + Khala shadow parity harness: `apps/runtime/docs/CONTROL_KHALA_SHADOW_PARITY.md`
 
 ## Why this exists
 
@@ -28,6 +29,7 @@ Never run the migrate job directly without first syncing the job image.
 ## Deploy sequence
 
 0. Confirm this rollout follows the expand/migrate/contract policy and mixed-version gates in `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`.
+0.1. For staged cutovers, run control/Khala shadow parity harness and archive the parity report artifact before promotion.
 
 1. Build and push runtime image.
 

@@ -4,6 +4,10 @@ Status: Added in OA-RUST-039.
 
 This runbook defines the Rust runtime shadow-mode parity harness used to gate authority cutover.
 
+For control-service + Khala parity gates (OA-RUST-091), use:
+
+- `apps/runtime/docs/CONTROL_KHALA_SHADOW_PARITY.md`
+
 ## Purpose
 
 1. Compare legacy and Rust runtime outputs for the same run scenario.
