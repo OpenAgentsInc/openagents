@@ -23,6 +23,10 @@ Rust/WASM bootstrap entrypoint for the OpenAgents web surface.
    - replay resume from persisted topic watermarks
    - stale-cursor reset + reconnect behavior
    - idempotent duplicate/out-of-order watermark handling.
+10. Persists sync state (`openagents.web.sync.v1`) with schema-versioned migration:
+   - topic watermarks + subscribed topic metadata
+   - deterministic resume-after map generation
+   - corruption reset safety path (invalid payload is cleared, boot continues)
 
 ## Build (WASM)
 

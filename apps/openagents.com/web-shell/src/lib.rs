@@ -2,11 +2,14 @@
 
 #[cfg(any(target_arch = "wasm32", test))]
 mod khala_protocol;
+#[cfg(any(target_arch = "wasm32", test))]
+mod sync_persistence;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use std::cell::{Cell, RefCell};
-    use std::time::{Duration, Instant};
+    use std::collections::BTreeMap;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use futures_util::{FutureExt, SinkExt, StreamExt, pin_mut, select};
     use gloo_net::http::Request;
@@ -30,6 +33,10 @@ mod wasm {
         KhalaEventPayload, SyncErrorPayload, TopicWatermark, WatermarkDecision, apply_watermark,
         build_phoenix_frame, decode_khala_payload, parse_phoenix_frame,
     };
+    use crate::sync_persistence::{
+        PersistedSyncState, decode_sync_state, encode_sync_state, normalized_topics,
+        resume_after_map,
+    };
 
     thread_local! {
         static APP: RefCell<Option<WebShellApp>> = const { RefCell::new(None) };
@@ -39,9 +46,12 @@ mod wasm {
         static KHALA_STREAM_ENABLED: Cell<bool> = const { Cell::new(false) };
         static KHALA_STREAM_RUNNING: Cell<bool> = const { Cell::new(false) };
         static KHALA_REF_COUNTER: Cell<u64> = const { Cell::new(1) };
+        static SYNC_RUNTIME_STATE: RefCell<SyncRuntimeState> = RefCell::new(SyncRuntimeState::default());
+        static SYNC_LAST_PERSIST_AT_MS: Cell<u64> = const { Cell::new(0) };
     }
 
     const AUTH_STORAGE_KEY: &str = "openagents.web.auth.v1";
+    const SYNC_STATE_STORAGE_KEY: &str = "openagents.web.sync.v1";
     const KHALA_CHANNEL_TOPIC: &str = "sync:v1";
     const KHALA_WS_VSN: &str = "2.0.0";
     const KHALA_DEFAULT_TOPIC: &str = "runtime.codex_worker_events";
@@ -49,6 +59,12 @@ mod wasm {
     const KHALA_POLL_INTERVAL: Duration = Duration::from_secs(4);
     const KHALA_RECONNECT_BASE_DELAY_MS: u64 = 750;
     const KHALA_RECONNECT_MAX_DELAY_MS: u64 = 8_000;
+    const SYNC_PERSIST_MIN_INTERVAL_MS: u64 = 800;
+
+    #[derive(Debug, Clone, Default)]
+    struct SyncRuntimeState {
+        subscribed_topics: Vec<String>,
+    }
 
     #[derive(Debug, Clone, Serialize)]
     struct BootDiagnostics {
@@ -358,6 +374,7 @@ mod wasm {
         let canvas = ensure_shell_dom()?;
 
         let current_path = current_pathname();
+        let persisted_sync_state = restore_persisted_sync_state();
         APP_STATE.with(|state| {
             let mut state = state.borrow_mut();
             let _ = apply_action(
@@ -366,6 +383,9 @@ mod wasm {
                     path: current_path.clone(),
                 },
             );
+            if let Some(persisted_sync_state) = persisted_sync_state.as_ref() {
+                hydrate_stream_state(&mut state, persisted_sync_state);
+            }
             let _ = apply_action(
                 &mut state,
                 AppAction::QueueIntent {
@@ -614,6 +634,8 @@ mod wasm {
                 }
                 Err(refresh_error) => {
                     clear_persisted_tokens();
+                    clear_persisted_sync_state();
+                    clear_runtime_sync_state();
                     apply_auth_action(AppAction::AuthReauthRequired {
                         message: "Reauthentication required.".to_string(),
                     });
@@ -665,6 +687,8 @@ mod wasm {
                         }
                         Err(refresh_error) => {
                             clear_persisted_tokens();
+                            clear_persisted_sync_state();
+                            clear_runtime_sync_state();
                             apply_auth_action(AppAction::AuthReauthRequired {
                                 message: "Session expired. Sign in again.".to_string(),
                             });
@@ -721,6 +745,8 @@ mod wasm {
         }
 
         clear_persisted_tokens();
+        clear_persisted_sync_state();
+        clear_runtime_sync_state();
         stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
         Ok(())
@@ -851,7 +877,7 @@ mod wasm {
     }
 
     async fn run_khala_session() -> Result<(), ControlApiError> {
-        let sync_token = mint_sync_token(vec![KHALA_DEFAULT_TOPIC.to_string()]).await?;
+        let sync_token = mint_sync_token(desired_sync_topics()).await?;
         let socket_url = build_sync_websocket_url(&sync_token.token)?;
         let mut socket = WebSocket::open(&socket_url).map_err(map_websocket_error)?;
 
@@ -867,6 +893,8 @@ mod wasm {
         let _join_response = await_khala_reply(&mut socket, &join_ref).await?;
 
         let topics = resolve_khala_topics(&sync_token);
+        set_subscribed_topics(topics.clone());
+        persist_sync_state_snapshot_nonfatal();
         let subscribe_ref = next_khala_ref();
         let resume_after = current_resume_after(&topics);
         send_khala_frame(
@@ -1032,13 +1060,7 @@ mod wasm {
                         })
                         .unwrap_or_default();
                     if !topics.is_empty() {
-                        APP_STATE.with(|state| {
-                            let mut state = state.borrow_mut();
-                            let _ = apply_action(
-                                &mut state,
-                                AppAction::TopicWatermarksReset { topics },
-                            );
-                        });
+                        apply_topic_watermarks_reset(topics);
                     }
                 }
                 let classified = classify_http_error(409, code.as_deref(), message);
@@ -1085,16 +1107,7 @@ mod wasm {
                     let current = current_watermark(&update.topic);
                     match apply_watermark(current, update.watermark) {
                         WatermarkDecision::Advanced { next } => {
-                            APP_STATE.with(|state| {
-                                let mut state = state.borrow_mut();
-                                let _ = apply_action(
-                                    &mut state,
-                                    AppAction::TopicWatermarkUpdated {
-                                        topic: update.topic.clone(),
-                                        watermark: next,
-                                    },
-                                );
-                            });
+                            apply_topic_watermark_update(update.topic.clone(), next);
                         }
                         WatermarkDecision::Duplicate | WatermarkDecision::OutOfOrder { .. } => {}
                     }
@@ -1116,16 +1129,7 @@ mod wasm {
             if let WatermarkDecision::Advanced { next } =
                 apply_watermark(current, watermark.watermark)
             {
-                APP_STATE.with(|state| {
-                    let mut state = state.borrow_mut();
-                    let _ = apply_action(
-                        &mut state,
-                        AppAction::TopicWatermarkUpdated {
-                            topic: watermark.topic.clone(),
-                            watermark: next,
-                        },
-                    );
-                });
+                apply_topic_watermark_update(watermark.topic.clone(), next);
             }
         }
     }
@@ -1138,10 +1142,7 @@ mod wasm {
                 .map(|topic| topic.topic.clone())
                 .collect();
             if !topics.is_empty() {
-                APP_STATE.with(|state| {
-                    let mut state = state.borrow_mut();
-                    let _ = apply_action(&mut state, AppAction::TopicWatermarksReset { topics });
-                });
+                apply_topic_watermarks_reset(topics);
             }
 
             return Err(ControlApiError {
@@ -1185,19 +1186,191 @@ mod wasm {
     fn current_resume_after(topics: &[String]) -> serde_json::Map<String, serde_json::Value> {
         APP_STATE.with(|state| {
             let state = state.borrow();
-            topics
-                .iter()
-                .map(|topic| {
-                    let watermark = state
-                        .stream
-                        .topic_watermarks
-                        .get(topic)
-                        .copied()
-                        .unwrap_or(0);
-                    (topic.clone(), serde_json::Value::Number(watermark.into()))
-                })
+            resume_after_map(topics, &state.stream.topic_watermarks)
+                .into_iter()
+                .map(|(topic, watermark)| (topic, serde_json::Value::Number(watermark.into())))
                 .collect()
         })
+    }
+
+    fn desired_sync_topics() -> Vec<String> {
+        let topics = subscribed_topics();
+        if topics.is_empty() {
+            vec![KHALA_DEFAULT_TOPIC.to_string()]
+        } else {
+            topics
+        }
+    }
+
+    fn apply_topic_watermark_update(topic: String, watermark: u64) {
+        APP_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            let _ = apply_action(
+                &mut state,
+                AppAction::TopicWatermarkUpdated { topic, watermark },
+            );
+        });
+        persist_sync_state_snapshot_nonfatal();
+    }
+
+    fn apply_topic_watermarks_reset(topics: Vec<String>) {
+        APP_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            let _ = apply_action(&mut state, AppAction::TopicWatermarksReset { topics });
+        });
+        persist_sync_state_snapshot_nonfatal_force();
+    }
+
+    fn hydrate_stream_state(state: &mut AppState, persisted_sync_state: &PersistedSyncState) {
+        state.stream.topic_watermarks = persisted_sync_state.topic_watermarks.clone();
+        state.stream.last_seq = state.stream.topic_watermarks.values().copied().max();
+        set_subscribed_topics(persisted_sync_state.subscribed_topics.clone());
+    }
+
+    fn restore_persisted_sync_state() -> Option<PersistedSyncState> {
+        match load_persisted_sync_state() {
+            Ok(Some((state, migrated))) => {
+                set_subscribed_topics(state.subscribed_topics.clone());
+                if migrated {
+                    if let Err(error) = persist_sync_state_snapshot_from(&state, true) {
+                        DIAGNOSTICS
+                            .with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
+                    }
+                }
+                Some(state)
+            }
+            Ok(None) => None,
+            Err(error) => {
+                clear_persisted_sync_state();
+                clear_runtime_sync_state();
+                set_boot_phase(
+                    "booting",
+                    &format!("resetting invalid sync persistence payload: {error}"),
+                );
+                None
+            }
+        }
+    }
+
+    fn load_persisted_sync_state() -> Result<Option<(PersistedSyncState, bool)>, String> {
+        let Some(window) = web_sys::window() else {
+            return Ok(None);
+        };
+        let storage = window
+            .local_storage()
+            .map_err(|_| "failed to access local storage for sync state".to_string())?;
+        let Some(storage) = storage else {
+            return Ok(None);
+        };
+        let raw = storage
+            .get_item(SYNC_STATE_STORAGE_KEY)
+            .map_err(|_| "failed to read sync state from local storage".to_string())?;
+        let Some(raw) = raw else {
+            return Ok(None);
+        };
+        decode_sync_state(&raw)
+            .map(Some)
+            .map_err(|error| format!("failed to decode persisted sync state: {error}"))
+    }
+
+    fn persist_sync_state_snapshot_nonfatal() {
+        if let Err(error) = persist_sync_state_snapshot(false) {
+            DIAGNOSTICS.with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
+        }
+    }
+
+    fn persist_sync_state_snapshot_nonfatal_force() {
+        if let Err(error) = persist_sync_state_snapshot(true) {
+            DIAGNOSTICS.with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
+        }
+    }
+
+    fn persist_sync_state_snapshot(force: bool) -> Result<(), String> {
+        let snapshot = PersistedSyncState {
+            topic_watermarks: stream_topic_watermarks(),
+            subscribed_topics: subscribed_topics(),
+            updated_at_unix_ms: current_unix_ms(),
+            ..PersistedSyncState::default()
+        };
+        persist_sync_state_snapshot_from(&snapshot, force)
+    }
+
+    fn persist_sync_state_snapshot_from(
+        snapshot: &PersistedSyncState,
+        force: bool,
+    ) -> Result<(), String> {
+        let now = current_unix_ms();
+        if !force {
+            let persisted_recently = SYNC_LAST_PERSIST_AT_MS
+                .with(|last| now.saturating_sub(last.get()) < SYNC_PERSIST_MIN_INTERVAL_MS);
+            if persisted_recently {
+                return Ok(());
+            }
+        }
+
+        persist_sync_state(snapshot)?;
+        SYNC_LAST_PERSIST_AT_MS.with(|last| last.set(now));
+        Ok(())
+    }
+
+    fn persist_sync_state(snapshot: &PersistedSyncState) -> Result<(), String> {
+        let Some(window) = web_sys::window() else {
+            return Err("window is unavailable for sync persistence".to_string());
+        };
+        let storage = window
+            .local_storage()
+            .map_err(|_| "failed to access local storage for sync persistence".to_string())?
+            .ok_or_else(|| "local storage is unavailable for sync persistence".to_string())?;
+        let encoded = encode_sync_state(snapshot)
+            .map_err(|error| format!("failed to encode sync persistence payload: {error}"))?;
+        storage
+            .set_item(SYNC_STATE_STORAGE_KEY, &encoded)
+            .map_err(|_| "failed to persist sync state".to_string())
+    }
+
+    fn clear_persisted_sync_state() {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Ok(storage) = window.local_storage() else {
+            return;
+        };
+        let Some(storage) = storage else {
+            return;
+        };
+        let _ = storage.remove_item(SYNC_STATE_STORAGE_KEY);
+        SYNC_LAST_PERSIST_AT_MS.with(|last| last.set(0));
+    }
+
+    fn stream_topic_watermarks() -> BTreeMap<String, u64> {
+        APP_STATE.with(|state| state.borrow().stream.topic_watermarks.clone())
+    }
+
+    fn subscribed_topics() -> Vec<String> {
+        SYNC_RUNTIME_STATE.with(|state| state.borrow().subscribed_topics.clone())
+    }
+
+    fn set_subscribed_topics(topics: Vec<String>) {
+        let topics = normalized_topics(topics);
+        SYNC_RUNTIME_STATE.with(|state| state.borrow_mut().subscribed_topics = topics);
+    }
+
+    fn clear_runtime_sync_state() {
+        set_subscribed_topics(Vec::new());
+        APP_STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.stream.topic_watermarks.clear();
+            state.stream.last_seq = None;
+            state.stream.active_worker_id = None;
+            state.stream.status = StreamStatus::Disconnected;
+        });
+    }
+
+    fn current_unix_ms() -> u64 {
+        let elapsed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0));
+        u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
     }
 
     async fn mint_sync_token(scopes: Vec<String>) -> Result<SyncTokenData, ControlApiError> {
