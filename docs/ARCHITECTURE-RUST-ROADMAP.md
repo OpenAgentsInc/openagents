@@ -328,6 +328,7 @@ ADR artifact: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md` (`Accepted`)
 
 ### OA-RUST-077 — [ADR] Author ADR-0004 Rivet harvest posture and adoption boundaries
 Description: Capture exactly which Rivet patterns are adopted and which platform-level semantics are explicitly rejected.
+ADR artifact: `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md` (`Accepted`)
 
 ## Phase 11: Critical Hardening and Edge Cases
 

@@ -10,7 +10,7 @@ Last updated: 2026-02-21
 3. Active ADR records live only in `docs/adr/`.
 4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0004**
+Next available ADR: **ADR-0005**
 
 ## Lifecycle Statuses
 
@@ -37,6 +37,11 @@ Next available ADR: **ADR-0004**
    - Date: 2026-02-21  
    - File: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`  
    - Source issue: `OA-RUST-076` (`#1891`)
+4. `ADR-0004` — Rivet harvest posture and adoption boundaries  
+   - Status: `Accepted`  
+   - Date: 2026-02-21  
+   - File: `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md`  
+   - Source issue: `OA-RUST-077` (`#1892`)
 
 ## Legacy Archive
 
