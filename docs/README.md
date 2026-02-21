@@ -63,6 +63,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 
 - Web app runbooks: `autopilot/`
 - Rust web shell source/build: `../apps/openagents.com/web-shell/`
+- Rust web shell JS boundary policy: `../apps/openagents.com/web-shell/HOST_SHIM_BOUNDARY.md`
 - Web production E2E testing: `autopilot/testing/PROD_E2E_TESTING.md`
 - Web stream testing: `autopilot/testing/STREAM_TESTING.md`
 - Web trace retrieval and debugging: `autopilot/testing/TRACE_RETRIEVAL.md`

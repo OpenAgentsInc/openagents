@@ -140,6 +140,7 @@ Bootstrap artifacts: `apps/openagents.com/web-shell/Cargo.toml`, `apps/openagent
 
 ### OA-RUST-024 — [WGPUI Web] Implement minimal JS host shim boundary
 Description: Restrict JavaScript to host concerns (bootstrapping/platform API bridges) and enforce no product logic outside Rust.
+Boundary artifacts: `apps/openagents.com/web-shell/host/host-shim.js`, `apps/openagents.com/web-shell/HOST_SHIM_BOUNDARY.md`, `apps/openagents.com/web-shell/check-host-shim.sh`
 
 ### OA-RUST-025 — [WGPUI Web] Build shared UI core crate for cross-surface components
 Description: Create shared WGPUI component/theme primitives used by web, desktop, and iOS to prevent UI divergence.

@@ -29,6 +29,19 @@ This writes:
 - `apps/openagents.com/web-shell/dist/manifest.json`
 - `apps/openagents.com/web-shell/dist/assets/openagents_web_shell.js`
 - `apps/openagents.com/web-shell/dist/assets/openagents_web_shell_bg.wasm`
+- `apps/openagents.com/web-shell/dist/assets/host-shim.js`
+
+## JS Host Boundary
+
+Boundary policy:
+
+- `apps/openagents.com/web-shell/HOST_SHIM_BOUNDARY.md`
+
+Enforcement check:
+
+```bash
+apps/openagents.com/web-shell/check-host-shim.sh
+```
 
 ## Browser smoke test
 

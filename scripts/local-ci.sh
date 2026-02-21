@@ -8,6 +8,7 @@ PROTO_TRIGGER_PATTERN='^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-
 RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
 COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
 OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
+WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
 
 require_cmd() {
   local cmd="$1"
@@ -140,6 +141,9 @@ run_trigger_tests() {
   assert_trigger "openclaw" "$OPENCLAW_TRIGGER_PATTERN" "scripts/openclaw-drift-report.sh" "true"
   assert_trigger "openclaw" "$OPENCLAW_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
 
+  assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/web-shell/src/lib.rs" "true"
+  assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
+
   echo "local-ci trigger tests passed"
 }
 
@@ -170,6 +174,14 @@ run_openclaw_drift() {
   )
 }
 
+run_web_shell_checks() {
+  echo "==> web-shell host boundary checks"
+  (
+    cd "$ROOT_DIR"
+    ./apps/openagents.com/web-shell/check-host-shim.sh
+  )
+}
+
 has_match() {
   local pattern="$1"
   local files="$2"
@@ -184,6 +196,7 @@ run_all() {
   run_runtime_checks
   run_comms_matrix
   run_openclaw_drift
+  run_web_shell_checks
 }
 
 run_changed() {
@@ -210,6 +223,10 @@ run_changed() {
   if has_match "$OPENCLAW_TRIGGER_PATTERN" "$changed_files"; then
     run_openclaw_drift
   fi
+
+  if has_match "$WEB_SHELL_TRIGGER_PATTERN" "$changed_files"; then
+    run_web_shell_checks
+  fi
 }
 
 case "$MODE" in
@@ -228,6 +245,9 @@ case "$MODE" in
   openclaw)
     run_openclaw_drift
     ;;
+  web-shell)
+    run_web_shell_checks
+    ;;
   test-triggers)
     run_trigger_tests
     ;;
@@ -238,7 +258,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|docs|proto|runtime|comms|openclaw|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|docs|proto|runtime|comms|openclaw|web-shell|test-triggers]" >&2
     exit 2
     ;;
 esac
