@@ -382,7 +382,7 @@ Dependencies: OA-RUST-038, OA-RUST-043.
 
 ### OA-RUST-086 — [Khala] Define topic QoS tiers, replay budgets, and stale-cursor policy
 Description: Introduce topic QoS tiers (hot/cold), replay budget controls, and deterministic stale-cursor trigger conditions.
-Enforcement artifacts: `apps/runtime/lib/openagents_runtime/sync/topic_policy.ex`, `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/lib/openagents_runtime/telemetry/metrics.ex`, `apps/runtime/config/config.exs`, `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`, `apps/runtime/test/openagents_runtime/sync/topic_policy_test.exs`, `apps/runtime/test/openagents_runtime_web/channels/sync_channel_test.exs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`
+Enforcement artifacts: `apps/runtime/src/config.rs`, `apps/runtime/src/fanout.rs`, `apps/runtime/src/server.rs`, `apps/runtime/docs/KHALA_SYNC.md`, `apps/runtime/docs/RUST_RUNTIME_SERVICE_FOUNDATION.md`, `docs/protocol/OA_SYNC_WS_MAPPING.md`
 Acceptance criteria: Each topic is assigned a tier and replay budget; stale-cursor reasons are explicit and surfaced to clients; operator dashboards expose budget pressure.
 Dependencies: OA-RUST-085.
 

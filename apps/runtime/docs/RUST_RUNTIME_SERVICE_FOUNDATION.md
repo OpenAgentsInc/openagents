@@ -62,12 +62,13 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 10. Authority cutover is controlled by `RUNTIME_AUTHORITY_WRITE_MODE`; legacy write freeze is controlled by `LEGACY_RUNTIME_WRITE_FREEZE`.
 11. Khala live delivery path is wired through an internal fanout seam (`FanoutDriver`) with bounded in-memory adapter and external-driver hooks.
 12. Khala topic polling enforces strict `stale_cursor` semantics (`410` with deterministic replay-floor metadata) and successful poll responses expose replay bootstrap metadata (`oldest_available_cursor`, `head_cursor`, `next_cursor`, `replay_complete`).
-13. Khala topic polling enforces sync token auth, topic scope ACL matrix, worker ownership checks, and deterministic denied-path reason codes.
-14. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
-15. Workflow history compatibility fixtures (`apps/runtime/fixtures/history_compat/run_workflow_histories_v1.json`) are replayed by `history_compat` tests to gate deterministic upgrade safety for runtime orchestration behavior.
-16. Khala polling applies bounded backpressure policy: capped poll limits, minimum poll interval guard, slow-consumer strike/eviction policy, and deterministic reconnect jitter hints.
-17. Delivery telemetry includes queue depth, dropped-message counts, poll throttle counters, and recent disconnect causes for operational triage.
-18. Khala publish paths enforce topic-class publish-rate and payload-size limits with deterministic violation reason codes.
+13. Stale-cursor payloads include deterministic reason metadata (`reason_codes`, `qos_tier`, `replay_budget_events`, `replay_lag`) so clients can distinguish retention-floor vs replay-budget failures.
+14. Khala topic polling enforces sync token auth, topic scope ACL matrix, worker ownership checks, and deterministic denied-path reason codes.
+15. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+16. Workflow history compatibility fixtures (`apps/runtime/fixtures/history_compat/run_workflow_histories_v1.json`) are replayed by `history_compat` tests to gate deterministic upgrade safety for runtime orchestration behavior.
+17. Khala polling applies bounded backpressure policy: capped poll limits, minimum poll interval guard, slow-consumer strike/eviction policy, and deterministic reconnect jitter hints.
+18. Delivery telemetry includes queue depth, dropped-message counts, poll throttle counters, and recent disconnect causes for operational triage.
+19. Khala publish paths enforce topic-class publish-rate and payload-size limits with deterministic violation reason codes.
 
 ## Khala backpressure policy defaults
 
@@ -85,6 +86,10 @@ Runtime config variables controlling Khala delivery policy:
 - `RUNTIME_KHALA_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND` (default `180`)
 - `RUNTIME_KHALA_CODEX_WORKER_EVENTS_PUBLISH_RATE_PER_SECOND` (default `240`)
 - `RUNTIME_KHALA_FALLBACK_PUBLISH_RATE_PER_SECOND` (default `90`)
+- `RUNTIME_KHALA_RUN_EVENTS_REPLAY_BUDGET_EVENTS` (default `20000`)
+- `RUNTIME_KHALA_WORKER_LIFECYCLE_REPLAY_BUDGET_EVENTS` (default `10000`)
+- `RUNTIME_KHALA_CODEX_WORKER_EVENTS_REPLAY_BUDGET_EVENTS` (default `3000`)
+- `RUNTIME_KHALA_FALLBACK_REPLAY_BUDGET_EVENTS` (default `500`)
 - `RUNTIME_KHALA_RUN_EVENTS_MAX_PAYLOAD_BYTES` (default `262144`)
 - `RUNTIME_KHALA_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES` (default `65536`)
 - `RUNTIME_KHALA_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES` (default `131072`)

@@ -29,6 +29,8 @@ pub struct ExternalFanoutHook {
 pub struct FanoutTopicWindow {
     pub topic: String,
     pub topic_class: String,
+    pub qos_tier: String,
+    pub replay_budget_events: u64,
     pub oldest_sequence: u64,
     pub head_sequence: u64,
     pub queue_depth: usize,
@@ -37,11 +39,32 @@ pub struct FanoutTopicWindow {
     pub max_payload_bytes: usize,
     pub publish_rate_limited_count: u64,
     pub frame_size_rejected_count: u64,
+    pub stale_cursor_budget_exceeded_count: u64,
+    pub stale_cursor_retention_floor_count: u64,
     pub last_violation_reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QosTier {
+    Hot,
+    Warm,
+    Cold,
+}
+
+impl QosTier {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Hot => "hot",
+            Self::Warm => "warm",
+            Self::Cold => "cold",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct FanoutTierLimits {
+    pub qos_tier: QosTier,
+    pub replay_budget_events: u64,
     pub max_publish_per_second: u32,
     pub max_payload_bytes: usize,
 }
@@ -50,6 +73,8 @@ impl FanoutTierLimits {
     #[must_use]
     pub fn normalized(&self) -> Self {
         Self {
+            qos_tier: self.qos_tier,
+            replay_budget_events: self.replay_budget_events.max(1),
             max_publish_per_second: self.max_publish_per_second.max(1),
             max_payload_bytes: self.max_payload_bytes.max(1),
         }
@@ -68,18 +93,26 @@ impl Default for FanoutLimitConfig {
     fn default() -> Self {
         Self {
             run_events: FanoutTierLimits {
+                qos_tier: QosTier::Warm,
+                replay_budget_events: 20_000,
                 max_publish_per_second: 240,
                 max_payload_bytes: 256 * 1024,
             },
             worker_lifecycle: FanoutTierLimits {
+                qos_tier: QosTier::Warm,
+                replay_budget_events: 10_000,
                 max_publish_per_second: 180,
                 max_payload_bytes: 64 * 1024,
             },
             codex_worker_events: FanoutTierLimits {
+                qos_tier: QosTier::Hot,
+                replay_budget_events: 3_000,
                 max_publish_per_second: 240,
                 max_payload_bytes: 128 * 1024,
             },
             fallback: FanoutTierLimits {
+                qos_tier: QosTier::Cold,
+                replay_budget_events: 500,
                 max_publish_per_second: 90,
                 max_payload_bytes: 64 * 1024,
             },
@@ -165,6 +198,10 @@ pub enum FanoutError {
         requested_cursor: u64,
         oldest_available_cursor: u64,
         head_cursor: u64,
+        reason_codes: Vec<String>,
+        replay_lag: u64,
+        replay_budget_events: u64,
+        qos_tier: String,
     },
 }
 
@@ -246,12 +283,16 @@ struct TopicQueue {
     messages: VecDeque<FanoutMessage>,
     dropped_messages: u64,
     topic_class: TopicClass,
+    qos_tier: QosTier,
+    replay_budget_events: u64,
     max_publish_per_second: u32,
     max_payload_bytes: usize,
     publish_window_start: Instant,
     publish_window_count: u32,
     publish_rate_limited_count: u64,
     frame_size_rejected_count: u64,
+    stale_cursor_budget_exceeded_count: u64,
+    stale_cursor_retention_floor_count: u64,
     last_violation_reason: Option<String>,
 }
 
@@ -280,12 +321,16 @@ impl FanoutDriver for MemoryFanoutDriver {
                 messages: VecDeque::new(),
                 dropped_messages: 0,
                 topic_class,
+                qos_tier: limits.qos_tier,
+                replay_budget_events: limits.replay_budget_events,
                 max_publish_per_second: limits.max_publish_per_second,
                 max_payload_bytes: limits.max_payload_bytes,
                 publish_window_start: Instant::now(),
                 publish_window_count: 0,
                 publish_rate_limited_count: 0,
                 frame_size_rejected_count: 0,
+                stale_cursor_budget_exceeded_count: 0,
+                stale_cursor_retention_floor_count: 0,
                 last_violation_reason: None,
             }
         });
@@ -346,12 +391,43 @@ impl FanoutDriver for MemoryFanoutDriver {
             return Ok(Vec::new());
         };
         if let Some((oldest_sequence, head_sequence)) = queue_seq_bounds(queue) {
-            if after_sequence < oldest_sequence.saturating_sub(1) {
+            let oldest_available_cursor = oldest_sequence.saturating_sub(1);
+            let replay_lag = head_sequence.saturating_sub(after_sequence);
+            let replay_budget_events = queue.replay_budget_events;
+            let qos_tier = queue.qos_tier.as_str().to_string();
+            let mut reason_codes = Vec::new();
+            if after_sequence < oldest_available_cursor {
+                reason_codes.push("retention_floor_breach".to_string());
+            }
+            if after_sequence < head_sequence && replay_lag > replay_budget_events {
+                reason_codes.push("replay_budget_exceeded".to_string());
+            }
+            if !reason_codes.is_empty() {
+                drop(topics);
+                let mut topics = self.topics.write().await;
+                if let Some(queue_mut) = topics.get_mut(normalized) {
+                    for code in &reason_codes {
+                        if code == "retention_floor_breach" {
+                            queue_mut.stale_cursor_retention_floor_count = queue_mut
+                                .stale_cursor_retention_floor_count
+                                .saturating_add(1);
+                        } else if code == "replay_budget_exceeded" {
+                            queue_mut.stale_cursor_budget_exceeded_count = queue_mut
+                                .stale_cursor_budget_exceeded_count
+                                .saturating_add(1);
+                        }
+                    }
+                    queue_mut.last_violation_reason = reason_codes.last().cloned();
+                }
                 return Err(FanoutError::StaleCursor {
                     topic: normalized.to_string(),
                     requested_cursor: after_sequence,
-                    oldest_available_cursor: oldest_sequence.saturating_sub(1),
+                    oldest_available_cursor,
                     head_cursor: head_sequence,
+                    reason_codes,
+                    replay_lag,
+                    replay_budget_events,
+                    qos_tier,
                 });
             }
             if after_sequence > head_sequence {
@@ -387,6 +463,8 @@ impl FanoutDriver for MemoryFanoutDriver {
         Ok(Some(FanoutTopicWindow {
             topic: normalized.to_string(),
             topic_class: queue.topic_class.as_str().to_string(),
+            qos_tier: queue.qos_tier.as_str().to_string(),
+            replay_budget_events: queue.replay_budget_events,
             oldest_sequence,
             head_sequence,
             queue_depth: queue.messages.len(),
@@ -395,6 +473,8 @@ impl FanoutDriver for MemoryFanoutDriver {
             max_payload_bytes: queue.max_payload_bytes,
             publish_rate_limited_count: queue.publish_rate_limited_count,
             frame_size_rejected_count: queue.frame_size_rejected_count,
+            stale_cursor_budget_exceeded_count: queue.stale_cursor_budget_exceeded_count,
+            stale_cursor_retention_floor_count: queue.stale_cursor_retention_floor_count,
             last_violation_reason: queue.last_violation_reason.clone(),
         }))
     }
@@ -409,6 +489,8 @@ impl FanoutDriver for MemoryFanoutDriver {
                 Some(FanoutTopicWindow {
                     topic: topic.clone(),
                     topic_class: queue.topic_class.as_str().to_string(),
+                    qos_tier: queue.qos_tier.as_str().to_string(),
+                    replay_budget_events: queue.replay_budget_events,
                     oldest_sequence,
                     head_sequence,
                     queue_depth: queue.messages.len(),
@@ -417,6 +499,8 @@ impl FanoutDriver for MemoryFanoutDriver {
                     max_payload_bytes: queue.max_payload_bytes,
                     publish_rate_limited_count: queue.publish_rate_limited_count,
                     frame_size_rejected_count: queue.frame_size_rejected_count,
+                    stale_cursor_budget_exceeded_count: queue.stale_cursor_budget_exceeded_count,
+                    stale_cursor_retention_floor_count: queue.stale_cursor_retention_floor_count,
                     last_violation_reason: queue.last_violation_reason.clone(),
                 })
             })
@@ -472,7 +556,22 @@ mod tests {
     use anyhow::{Result, anyhow};
     use serde_json::json;
 
-    use super::{FanoutError, FanoutHub, FanoutLimitConfig, FanoutMessage, FanoutTierLimits};
+    use super::{
+        FanoutError, FanoutHub, FanoutLimitConfig, FanoutMessage, FanoutTierLimits, QosTier,
+    };
+
+    fn tier_limits(
+        max_publish_per_second: u32,
+        max_payload_bytes: usize,
+        replay_budget_events: u64,
+    ) -> FanoutTierLimits {
+        FanoutTierLimits {
+            qos_tier: QosTier::Warm,
+            replay_budget_events,
+            max_publish_per_second,
+            max_payload_bytes,
+        }
+    }
 
     #[tokio::test]
     async fn memory_fanout_preserves_order() -> Result<()> {
@@ -562,10 +661,16 @@ mod tests {
             Err(FanoutError::StaleCursor {
                 requested_cursor,
                 oldest_available_cursor,
+                reason_codes,
+                replay_budget_events,
+                qos_tier,
                 ..
             }) => {
                 assert_eq!(requested_cursor, 0);
                 assert_eq!(oldest_available_cursor, 2);
+                assert!(reason_codes.contains(&"retention_floor_breach".to_string()));
+                assert_eq!(replay_budget_events, 20_000);
+                assert_eq!(qos_tier, "warm");
             }
             other => return Err(anyhow!("expected stale cursor error, got {:?}", other)),
         }
@@ -611,6 +716,8 @@ mod tests {
         assert_eq!(window.head_sequence, 5);
         assert_eq!(window.queue_depth, 3);
         assert_eq!(window.dropped_messages, 2);
+        assert_eq!(window.qos_tier, "warm");
+        assert_eq!(window.replay_budget_events, 20_000);
 
         Ok(())
     }
@@ -661,22 +768,10 @@ mod tests {
         let fanout = FanoutHub::memory_with_limits(
             8,
             FanoutLimitConfig {
-                run_events: FanoutTierLimits {
-                    max_publish_per_second: 1,
-                    max_payload_bytes: 1024,
-                },
-                worker_lifecycle: FanoutTierLimits {
-                    max_publish_per_second: 1,
-                    max_payload_bytes: 1024,
-                },
-                codex_worker_events: FanoutTierLimits {
-                    max_publish_per_second: 1,
-                    max_payload_bytes: 1024,
-                },
-                fallback: FanoutTierLimits {
-                    max_publish_per_second: 1,
-                    max_payload_bytes: 1024,
-                },
+                run_events: tier_limits(1, 1024, 100),
+                worker_lifecycle: tier_limits(1, 1024, 100),
+                codex_worker_events: tier_limits(1, 1024, 100),
+                fallback: tier_limits(1, 1024, 100),
             },
         );
         fanout
@@ -735,22 +830,10 @@ mod tests {
         let fanout = FanoutHub::memory_with_limits(
             8,
             FanoutLimitConfig {
-                run_events: FanoutTierLimits {
-                    max_publish_per_second: 10,
-                    max_payload_bytes: 32,
-                },
-                worker_lifecycle: FanoutTierLimits {
-                    max_publish_per_second: 10,
-                    max_payload_bytes: 32,
-                },
-                codex_worker_events: FanoutTierLimits {
-                    max_publish_per_second: 10,
-                    max_payload_bytes: 32,
-                },
-                fallback: FanoutTierLimits {
-                    max_publish_per_second: 10,
-                    max_payload_bytes: 32,
-                },
+                run_events: tier_limits(10, 32, 100),
+                worker_lifecycle: tier_limits(10, 32, 100),
+                codex_worker_events: tier_limits(10, 32, 100),
+                fallback: tier_limits(10, 32, 100),
             },
         );
         fanout
@@ -835,6 +918,71 @@ mod tests {
             .ok_or_else(|| anyhow!("missing topic window"))?;
         assert_eq!(window.oldest_sequence, 1);
         assert_eq!(window.head_sequence, 3);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_fanout_rejects_cursor_when_replay_budget_is_exceeded() -> Result<()> {
+        let fanout = FanoutHub::memory_with_limits(
+            64,
+            FanoutLimitConfig {
+                run_events: FanoutTierLimits {
+                    qos_tier: QosTier::Hot,
+                    replay_budget_events: 5,
+                    max_publish_per_second: 500,
+                    max_payload_bytes: 1024,
+                },
+                worker_lifecycle: tier_limits(500, 1024, 100),
+                codex_worker_events: tier_limits(500, 1024, 100),
+                fallback: tier_limits(500, 1024, 100),
+            },
+        );
+        for seq in 1..=25_u64 {
+            fanout
+                .publish(
+                    "run:budget:events",
+                    FanoutMessage {
+                        topic: String::new(),
+                        sequence: seq,
+                        kind: "run.step".to_string(),
+                        payload: json!({"seq": seq}),
+                        published_at: chrono::Utc::now(),
+                    },
+                )
+                .await?;
+        }
+
+        let stale = fanout.poll("run:budget:events", 10, 10).await;
+        match stale {
+            Err(FanoutError::StaleCursor {
+                reason_codes,
+                replay_lag,
+                replay_budget_events,
+                qos_tier,
+                ..
+            }) => {
+                assert!(reason_codes.contains(&"replay_budget_exceeded".to_string()));
+                assert_eq!(replay_lag, 15);
+                assert_eq!(replay_budget_events, 5);
+                assert_eq!(qos_tier, "hot");
+            }
+            other => {
+                return Err(anyhow!(
+                    "expected replay budget stale cursor error, got {other:?}"
+                ));
+            }
+        }
+
+        let window = fanout
+            .topic_window("run:budget:events")
+            .await?
+            .ok_or_else(|| anyhow!("expected window after replay budget stale"))?;
+        assert_eq!(window.stale_cursor_budget_exceeded_count, 1);
+        assert_eq!(
+            window.last_violation_reason.as_deref(),
+            Some("replay_budget_exceeded")
+        );
 
         Ok(())
     }

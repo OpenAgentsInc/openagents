@@ -916,6 +916,10 @@ enum ApiError {
         requested_cursor: u64,
         oldest_available_cursor: u64,
         head_cursor: u64,
+        reason_codes: Vec<String>,
+        replay_lag: u64,
+        replay_budget_events: u64,
+        qos_tier: String,
     },
     WritePathFrozen(String),
     InvalidRequest(String),
@@ -973,11 +977,19 @@ impl ApiError {
                 requested_cursor,
                 oldest_available_cursor,
                 head_cursor,
+                reason_codes,
+                replay_lag,
+                replay_budget_events,
+                qos_tier,
             } => Self::StaleCursor {
                 topic,
                 requested_cursor,
                 oldest_available_cursor,
                 head_cursor,
+                reason_codes,
+                replay_lag,
+                replay_budget_events,
+                qos_tier,
             },
             FanoutError::PublishRateLimited {
                 topic,
@@ -1289,16 +1301,24 @@ impl IntoResponse for ApiError {
                 requested_cursor,
                 oldest_available_cursor,
                 head_cursor,
+                reason_codes,
+                replay_lag,
+                replay_budget_events,
+                qos_tier,
             } => (
                 StatusCode::GONE,
                 Json(serde_json::json!({
                     "error": "stale_cursor",
-                    "message": "cursor is older than retained stream window",
+                    "message": "cursor cannot be resumed from retained stream window",
                     "details": {
                         "topic": topic,
                         "requested_cursor": requested_cursor,
                         "oldest_available_cursor": oldest_available_cursor,
                         "head_cursor": head_cursor,
+                        "reason_codes": reason_codes,
+                        "replay_lag": replay_lag,
+                        "replay_budget_events": replay_budget_events,
+                        "qos_tier": qos_tier,
                         "recovery": "reset_local_watermark_and_replay_bootstrap"
                     },
                 })),
@@ -1399,6 +1419,10 @@ mod tests {
             khala_worker_lifecycle_publish_rate_per_second: 180,
             khala_codex_worker_events_publish_rate_per_second: 240,
             khala_fallback_publish_rate_per_second: 90,
+            khala_run_events_replay_budget_events: 20_000,
+            khala_worker_lifecycle_replay_budget_events: 10_000,
+            khala_codex_worker_events_replay_budget_events: 3_000,
+            khala_fallback_replay_budget_events: 500,
             khala_run_events_max_payload_bytes: 256 * 1024,
             khala_worker_lifecycle_max_payload_bytes: 64 * 1024,
             khala_codex_worker_events_max_payload_bytes: 128 * 1024,
@@ -2410,6 +2434,128 @@ mod tests {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or(""),
             "reset_local_watermark_and_replay_bootstrap"
+        );
+        assert_eq!(
+            stale_json
+                .pointer("/details/qos_tier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "warm"
+        );
+        assert_eq!(
+            stale_json
+                .pointer("/details/replay_budget_events")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            20_000
+        );
+        let reason_codes = stale_json
+            .pointer("/details/reason_codes")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| anyhow!("missing stale reason_codes"))?;
+        let has_retention_reason = reason_codes.iter().any(|value| {
+            value
+                .as_str()
+                .map(|reason| reason == "retention_floor_breach")
+                .unwrap_or(false)
+        });
+        assert!(has_retention_reason, "expected retention_floor_breach");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_topic_messages_returns_stale_cursor_when_replay_budget_is_exceeded() -> Result<()>
+    {
+        let app = build_test_router_with_config(
+            AuthorityWriteMode::RustActive,
+            HashSet::new(),
+            |config| {
+                config.fanout_queue_capacity = 256;
+                config.khala_run_events_replay_budget_events = 3;
+            },
+        );
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "stale-budget",
+            300,
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:stale-budget-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        for index in 2..=12 {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/internal/v1/runs/{run_id}/events"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                            "event_type": "run.step",
+                            "payload": {"step": index},
+                            "expected_previous_seq": index - 1
+                        }))?))?,
+                )
+                .await?;
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+        }
+
+        let stale_response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=1&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stale_response.status(), axum::http::StatusCode::GONE);
+        let stale_json = response_json(stale_response).await?;
+        let reason_codes = stale_json
+            .pointer("/details/reason_codes")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| anyhow!("missing stale reason_codes"))?;
+        let has_budget_reason = reason_codes.iter().any(|value| {
+            value
+                .as_str()
+                .map(|reason| reason == "replay_budget_exceeded")
+                .unwrap_or(false)
+        });
+        assert!(has_budget_reason, "expected replay_budget_exceeded");
+        assert_eq!(
+            stale_json
+                .pointer("/details/replay_budget_events")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            3
+        );
+        assert_eq!(
+            stale_json
+                .pointer("/details/qos_tier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "warm"
         );
 
         Ok(())

@@ -93,7 +93,7 @@ These tables are runtime-owned and are not Laravel authority tables.
 - Compaction mode is tail-prune for replay journal rows in `runtime.sync_stream_events`.
 - Summary topics provide snapshot bootstrap metadata (`openagents.sync.snapshot.v1`) in stale-cursor responses.
 - Event-only topics remain tail-only replay (no snapshot bootstrap source).
-- Live delivery fairness is enforced with per-connection queue bounds + topic-slice drain scheduling; slow consumers are throttled/disconnected deterministically.
+- Runtime stale-cursor responses carry deterministic `reason_codes` (`retention_floor_breach`, `replay_budget_exceeded`) plus `qos_tier` and `replay_budget_events`.
 
 ## Publish and Frame Limits (OA-RUST-088)
 
@@ -112,6 +112,10 @@ Environment controls:
 - `RUNTIME_KHALA_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND`
 - `RUNTIME_KHALA_CODEX_WORKER_EVENTS_PUBLISH_RATE_PER_SECOND`
 - `RUNTIME_KHALA_FALLBACK_PUBLISH_RATE_PER_SECOND`
+- `RUNTIME_KHALA_RUN_EVENTS_REPLAY_BUDGET_EVENTS`
+- `RUNTIME_KHALA_WORKER_LIFECYCLE_REPLAY_BUDGET_EVENTS`
+- `RUNTIME_KHALA_CODEX_WORKER_EVENTS_REPLAY_BUDGET_EVENTS`
+- `RUNTIME_KHALA_FALLBACK_REPLAY_BUDGET_EVENTS`
 - `RUNTIME_KHALA_RUN_EVENTS_MAX_PAYLOAD_BYTES`
 - `RUNTIME_KHALA_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES`
 - `RUNTIME_KHALA_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES`
@@ -125,6 +129,7 @@ Deterministic violation reason codes:
 Operator visibility:
 
 - Per-topic violation counters and last reason are exposed in Khala fanout topic windows (`/internal/v1/khala/fanout/hooks` and `/internal/v1/khala/fanout/metrics`).
+- Topic windows include `qos_tier`, `replay_budget_events`, `stale_cursor_budget_exceeded_count`, and `stale_cursor_retention_floor_count`.
 
 ## Rebuild Posture
 
