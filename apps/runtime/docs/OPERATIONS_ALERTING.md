@@ -113,6 +113,16 @@ Prometheus rule artifact:
   2. Validate deployment/version alignment across runtime and Khala schema.
   3. Run targeted reproject for affected run/worker IDs and verify checkpoint convergence.
 
+### Khala projection hash mismatch
+
+- Alert: `OpenAgentsRuntimeKhalaProjectionHashMismatchDetected`
+- Threshold: any `summary_hash_mismatch` or `hash_and_lag_drift` incident in 10m
+- Action:
+  1. Treat as critical replay determinism signal; pause rollout expansion.
+  2. Inspect drift reason metadata and affected projection scope (`run`/`codex_worker`).
+  3. Run targeted replay/reproject for affected entities and confirm hash convergence.
+  4. If mismatch persists after replay, escalate as schema/projection compatibility incident.
+
 ### Khala projection replay failures
 
 - Alert: `OpenAgentsRuntimeKhalaProjectionReplayFailures`

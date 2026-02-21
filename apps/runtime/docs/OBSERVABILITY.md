@@ -49,7 +49,7 @@ High-cardinality keys explicitly prohibited from metric labels:
 - `[:openagents_runtime, :khala, :projection, ...]`
   - `:write` (result + lag_events)
   - `:write_failure`
-  - `:drift`
+  - `:drift` (reason classes include `summary_hash_mismatch`, `hash_and_lag_drift`, `projection_version_changed`, `checkpoint_ahead`)
   - `:replay`
 - `[:openagents_runtime, :sync, :projection, :write]`
   - Khala read-model projection sink write outcomes

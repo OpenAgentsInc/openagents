@@ -119,6 +119,17 @@ spec:
             description: Projection checkpoint drift signals exceeded expected tolerance.
             runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-drift
 
+        - alert: OpenAgentsRuntimeKhalaProjectionHashMismatchDetected
+          expr: sum(increase(openagents_runtime_khala_projection_drift_count{reason_class=~"summary_hash_mismatch|hash_and_lag_drift"}[10m])) > 0
+          for: 5m
+          labels:
+            severity: critical
+            service: runtime
+          annotations:
+            summary: Khala projection hash mismatch detected
+            description: Projection hash mismatch reasons indicate replay determinism or projection parity drift.
+            runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-hash-mismatch
+
         - alert: OpenAgentsRuntimeKhalaProjectionReplayFailures
           expr: sum(increase(openagents_runtime_khala_projection_replay_count{result="error"}[15m])) > 0
           for: 5m
