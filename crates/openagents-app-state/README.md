@@ -1,6 +1,6 @@
 # openagents-app-state (OA-RUST-026)
 
-Shared route graph, reducer, and command-intent state core for web/desktop/iOS.
+Shared route graph, reducer, command-intent state core, and command planning layer for web/desktop/iOS.
 
 ## Modules
 
@@ -8,6 +8,7 @@ Shared route graph, reducer, and command-intent state core for web/desktop/iOS.
 2. `intent`: typed command-intent queue model.
 3. `state`: deterministic app/auth/stream state model.
 4. `reducer`: reducer actions + transition application.
+5. `command_bus`: typed intent-to-HTTP adapter mapping, deterministic error taxonomy, retry baseline, and latency metric contract.
 
 ## Determinism
 

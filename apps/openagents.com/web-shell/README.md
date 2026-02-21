@@ -16,6 +16,7 @@ Rust/WASM bootstrap entrypoint for the OpenAgents web surface.
 5. Exposes diagnostics/state helpers (`boot_diagnostics_json`, `app_state_json`, `auth_state_json`) and an explicit startup error boundary.
 6. Supports forced startup error simulation with `?oa_boot_fail=1`.
 7. Uses `crates/openagents-ui-core` shared tokens/primitives for shell backdrop/card rendering.
+8. Uses shared command-bus planning from `crates/openagents-app-state::command_bus` for typed intent -> HTTP adapter mapping and deterministic error/retry classification.
 
 ## Build (WASM)
 

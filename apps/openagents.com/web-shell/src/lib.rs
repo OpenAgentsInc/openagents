@@ -3,11 +3,13 @@
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use std::cell::{Cell, RefCell};
+    use std::time::Instant;
 
     use gloo_net::http::Request;
     use openagents_app_state::{
-        AppAction, AppState, AuthUser, CommandIntent, SessionLifecycleStatus, SessionSnapshot,
-        apply_action,
+        AppAction, AppState, AuthRequirement, AuthUser, CommandError, CommandErrorKind,
+        CommandIntent, HttpCommandRequest, HttpMethod, SessionLifecycleStatus, SessionSnapshot,
+        apply_action, classify_http_error, command_latency_metric, map_intent_to_http,
     };
     use openagents_ui_core::{ShellCardSpec, draw_shell_backdrop, draw_shell_card};
     use serde::{Deserialize, Serialize};
@@ -33,6 +35,11 @@ mod wasm {
         frames_rendered: u64,
         route_path: String,
         pending_intents: usize,
+        command_total: u64,
+        command_failures: u64,
+        last_command: Option<String>,
+        last_command_latency_ms: Option<u64>,
+        last_command_error_kind: Option<String>,
         last_error: Option<String>,
     }
 
@@ -44,6 +51,11 @@ mod wasm {
                 frames_rendered: 0,
                 route_path: "/".to_string(),
                 pending_intents: 0,
+                command_total: 0,
+                command_failures: 0,
+                last_command: None,
+                last_command_latency_ms: None,
+                last_command_error_kind: None,
                 last_error: None,
             }
         }
@@ -61,6 +73,8 @@ mod wasm {
         status_code: u16,
         code: Option<String>,
         message: String,
+        kind: CommandErrorKind,
+        retryable: bool,
     }
 
     impl ControlApiError {
@@ -69,20 +83,48 @@ mod wasm {
                 status_code: 401,
                 code: Some("unauthorized".to_string()),
                 message: message.into(),
+                kind: CommandErrorKind::Unauthorized,
+                retryable: false,
             }
         }
 
         fn is_unauthorized(&self) -> bool {
             self.status_code == 401
         }
+
+        fn from_command_error(error: CommandError) -> Self {
+            Self {
+                status_code: 0,
+                code: Some(command_error_code(&error.kind).to_string()),
+                message: error.message,
+                kind: error.kind,
+                retryable: error.retryable,
+            }
+        }
+
+        fn to_command_error(&self) -> CommandError {
+            CommandError {
+                kind: self.kind.clone(),
+                message: self.message.clone(),
+                retryable: self.retryable,
+            }
+        }
     }
 
     impl std::fmt::Display for ControlApiError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             if let Some(code) = &self.code {
-                write!(f, "{} ({code}, status={})", self.message, self.status_code)
+                write!(
+                    f,
+                    "{} ({code}, status={}, kind={:?}, retryable={})",
+                    self.message, self.status_code, self.kind, self.retryable
+                )
             } else {
-                write!(f, "{} (status={})", self.message, self.status_code)
+                write!(
+                    f,
+                    "{} (status={}, kind={:?}, retryable={})",
+                    self.message, self.status_code, self.kind, self.retryable
+                )
             }
         }
     }
@@ -364,7 +406,20 @@ mod wasm {
                 }
 
                 for queued_intent in intents {
-                    let outcome = handle_intent(queued_intent.intent).await;
+                    let intent = queued_intent.intent;
+                    let started_at = Instant::now();
+                    let outcome = handle_intent(intent.clone()).await;
+                    let latency_ms =
+                        u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    let metric = match &outcome {
+                        Ok(()) => command_latency_metric(&intent, latency_ms, Ok(())),
+                        Err(error) => {
+                            let command_error = error.to_command_error();
+                            command_latency_metric(&intent, latency_ms, Err(&command_error))
+                        }
+                    };
+                    record_command_metric(metric);
+
                     APP_STATE.with(|state| {
                         let mut state = state.borrow_mut();
                         match outcome {
@@ -376,15 +431,20 @@ mod wasm {
                                     },
                                 );
                             }
-                            Err(message) => {
+                            Err(error) => {
                                 let _ = apply_action(
                                     &mut state,
                                     AppAction::IntentFailed {
                                         id: queued_intent.id,
-                                        message: message.clone(),
+                                        message: error.to_string(),
                                     },
                                 );
-                                let _ = apply_action(&mut state, AppAction::AuthFailed { message });
+                                let _ = apply_action(
+                                    &mut state,
+                                    AppAction::AuthFailed {
+                                        message: error.message.clone(),
+                                    },
+                                );
                             }
                         }
                         update_diagnostics_from_state(
@@ -404,16 +464,30 @@ mod wasm {
         });
     }
 
-    async fn handle_intent(intent: CommandIntent) -> Result<(), String> {
+    fn record_command_metric(metric: openagents_app_state::CommandLatencyMetric) {
+        DIAGNOSTICS.with(|diagnostics| {
+            let mut diagnostics = diagnostics.borrow_mut();
+            diagnostics.command_total = diagnostics.command_total.saturating_add(1);
+            diagnostics.last_command = Some(metric.intent.clone());
+            diagnostics.last_command_latency_ms = Some(metric.latency_ms);
+            diagnostics.last_command_error_kind = metric
+                .error_kind
+                .as_ref()
+                .map(|kind| command_error_code(kind).to_string());
+            if !metric.success {
+                diagnostics.command_failures = diagnostics.command_failures.saturating_add(1);
+            }
+        });
+    }
+
+    async fn handle_intent(intent: CommandIntent) -> Result<(), ControlApiError> {
         match intent {
             CommandIntent::Bootstrap => Ok(()),
             CommandIntent::StartAuthChallenge { email } => {
                 apply_auth_action(AppAction::AuthChallengeRequested {
                     email: email.clone(),
                 });
-                let response = post_send_code(&email)
-                    .await
-                    .map_err(|error| format!("auth challenge failed: {error}"))?;
+                let response = post_send_code(&email).await?;
                 apply_auth_action(AppAction::AuthChallengeAccepted {
                     email: response.email,
                     challenge_id: response.challenge_id,
@@ -442,11 +516,9 @@ mod wasm {
         }
     }
 
-    async fn verify_code_flow(code: String) -> Result<(), String> {
+    async fn verify_code_flow(code: String) -> Result<(), ControlApiError> {
         let challenge_id = APP_STATE.with(|state| state.borrow().auth.challenge_id.clone());
-        let verified = post_verify_code(&code, challenge_id.as_deref())
-            .await
-            .map_err(|error| format!("auth verify failed: {error}"))?;
+        let verified = post_verify_code(&code, challenge_id.as_deref()).await?;
 
         let tokens = StoredAuthTokens {
             token_type: verified.token_type.clone(),
@@ -454,7 +526,7 @@ mod wasm {
             refresh_token: verified.refresh_token.clone(),
         };
 
-        persist_tokens(&tokens)?;
+        persist_tokens(&tokens).map_err(storage_error)?;
 
         match get_current_session(&tokens.access_token).await {
             Ok(hydrated) => {
@@ -483,30 +555,28 @@ mod wasm {
                     apply_auth_action(AppAction::AuthReauthRequired {
                         message: "Reauthentication required.".to_string(),
                     });
-                    Err(format!("session hydrate failed: {refresh_error}"))
+                    Err(refresh_error)
                 }
             },
-            Err(error) => Err(format!("session hydrate failed: {error}")),
+            Err(error) => Err(error),
         }
     }
 
-    async fn restore_session_flow() -> Result<(), String> {
+    async fn restore_session_flow() -> Result<(), ControlApiError> {
         apply_auth_action(AppAction::AuthSessionRestoreRequested);
 
-        let tokens = load_tokens()
-            .or_else(auth_tokens_from_state)
-            .ok_or_else(|| {
-                apply_auth_action(AppAction::AuthSignedOut);
-                "no stored session".to_string()
-            })?;
+        let Some(tokens) = load_tokens().or_else(auth_tokens_from_state) else {
+            apply_auth_action(AppAction::AuthSignedOut);
+            return Ok(());
+        };
 
         hydrate_or_refresh(tokens).await
     }
 
-    async fn hydrate_or_refresh(tokens: StoredAuthTokens) -> Result<(), String> {
+    async fn hydrate_or_refresh(tokens: StoredAuthTokens) -> Result<(), ControlApiError> {
         match get_current_session(&tokens.access_token).await {
             Ok(snapshot) => {
-                persist_tokens(&tokens)?;
+                persist_tokens(&tokens).map_err(storage_error)?;
                 apply_auth_action(AppAction::AuthSessionEstablished {
                     user: snapshot.user,
                     session: snapshot.session,
@@ -534,26 +604,28 @@ mod wasm {
                             apply_auth_action(AppAction::AuthReauthRequired {
                                 message: "Session expired. Sign in again.".to_string(),
                             });
-                            Err(format!("session restore failed: {refresh_error}"))
+                            Err(refresh_error)
                         }
                     }
                 } else {
-                    Err(format!("session restore failed: {error}"))
+                    Err(error)
                 }
             }
         }
     }
 
-    async fn refresh_session_flow() -> Result<(), String> {
+    async fn refresh_session_flow() -> Result<(), ControlApiError> {
         apply_auth_action(AppAction::AuthSessionRefreshRequested);
 
         let tokens = load_tokens()
             .or_else(auth_tokens_from_state)
-            .ok_or_else(|| "refresh token is unavailable".to_string())?;
+            .ok_or_else(|| {
+                ControlApiError::from_command_error(CommandError::missing_credential(
+                    "refresh token is unavailable",
+                ))
+            })?;
 
-        let refreshed = post_refresh_session(&tokens.refresh_token)
-            .await
-            .map_err(|error| format!("session refresh failed: {error}"))?;
+        let refreshed = post_refresh_session(&tokens.refresh_token).await?;
 
         let next_tokens = StoredAuthTokens {
             token_type: refreshed.token_type,
@@ -561,10 +633,8 @@ mod wasm {
             refresh_token: refreshed.refresh_token,
         };
 
-        persist_tokens(&next_tokens)?;
-        let hydrated = get_current_session(&next_tokens.access_token)
-            .await
-            .map_err(|error| format!("session refresh hydrate failed: {error}"))?;
+        persist_tokens(&next_tokens).map_err(storage_error)?;
+        let hydrated = get_current_session(&next_tokens.access_token).await?;
 
         apply_auth_action(AppAction::AuthSessionEstablished {
             user: hydrated.user,
@@ -576,15 +646,13 @@ mod wasm {
         Ok(())
     }
 
-    async fn logout_flow() -> Result<(), String> {
+    async fn logout_flow() -> Result<(), ControlApiError> {
         let access_token = APP_STATE
             .with(|state| state.borrow().auth.access_token.clone())
             .unwrap_or_default();
 
         if !access_token.is_empty() {
-            post_logout(&access_token)
-                .await
-                .map_err(|error| format!("logout failed: {error}"))?;
+            post_logout(&access_token).await?;
         }
 
         clear_persisted_tokens();
@@ -609,11 +677,7 @@ mod wasm {
             access_token: refreshed.token,
             refresh_token: refreshed.refresh_token,
         };
-        persist_tokens(&next_tokens).map_err(|message| ControlApiError {
-            status_code: 500,
-            code: Some("storage_error".to_string()),
-            message,
-        })?;
+        persist_tokens(&next_tokens).map_err(storage_error)?;
         let hydrated = get_current_session(&next_tokens.access_token).await?;
         Ok(HydratedSessionWithTokens {
             user: hydrated.user,
@@ -634,43 +698,51 @@ mod wasm {
     }
 
     async fn post_send_code(email: &str) -> Result<SendCodeResponse, ControlApiError> {
-        let body = serde_json::json!({ "email": email });
-        send_json("/api/auth/email", Some(body.to_string()), None).await
+        let state = snapshot_state();
+        let intent = CommandIntent::StartAuthChallenge {
+            email: email.to_string(),
+        };
+        let request = plan_http_request(&intent, &state)?;
+        send_json_request(&request, &state).await
     }
 
     async fn post_verify_code(
         code: &str,
         challenge_id: Option<&str>,
     ) -> Result<VerifyCodeResponse, ControlApiError> {
-        let mut payload = serde_json::json!({ "code": code });
-        if let Some(challenge_id) = challenge_id {
-            payload["challenge_id"] = serde_json::Value::String(challenge_id.to_string());
-        }
-        send_json(
-            "/api/auth/verify",
-            Some(payload.to_string()),
-            Some(("x-client", "openagents-web-shell")),
-        )
-        .await
+        let mut state = snapshot_state();
+        state.auth.challenge_id = challenge_id.map(ToString::to_string);
+        let intent = CommandIntent::VerifyAuthCode {
+            code: code.to_string(),
+        };
+        let request = plan_http_request(&intent, &state)?;
+        send_json_request(&request, &state).await
     }
 
     async fn post_refresh_session(refresh_token: &str) -> Result<RefreshResponse, ControlApiError> {
-        let payload = serde_json::json!({
-            "refresh_token": refresh_token,
-            "rotate_refresh_token": true,
-        });
-        send_json("/api/auth/refresh", Some(payload.to_string()), None).await
+        let mut state = snapshot_state();
+        state.auth.refresh_token = Some(refresh_token.to_string());
+        let intent = CommandIntent::RefreshSession;
+        let request = plan_http_request(&intent, &state)?;
+        send_json_request(&request, &state).await
     }
 
     async fn post_logout(access_token: &str) -> Result<serde_json::Value, ControlApiError> {
-        send_json_with_auth("/api/auth/logout", None, access_token).await
+        let mut state = snapshot_state();
+        state.auth.access_token = Some(access_token.to_string());
+        let intent = CommandIntent::LogoutSession;
+        let request = plan_http_request(&intent, &state)?;
+        send_json_request(&request, &state).await
     }
 
     async fn get_current_session(
         access_token: &str,
     ) -> Result<SessionSnapshotWithUser, ControlApiError> {
-        let response: SessionResponse =
-            send_json_with_auth("/api/auth/session", None, access_token).await?;
+        let mut state = snapshot_state();
+        state.auth.access_token = Some(access_token.to_string());
+        let intent = CommandIntent::RestoreSession;
+        let request = plan_http_request(&intent, &state)?;
+        let response: SessionResponse = send_json_request(&request, &state).await?;
         let session_status = map_session_status(&response.data.session.status);
         let session = SessionSnapshot {
             session_id: response.data.session.session_id.clone(),
@@ -698,23 +770,52 @@ mod wasm {
         Ok(SessionSnapshotWithUser { session, user })
     }
 
-    async fn send_json<T: for<'de> Deserialize<'de>>(
-        path: &str,
-        body: Option<String>,
-        header: Option<(&str, &str)>,
+    fn snapshot_state() -> AppState {
+        APP_STATE.with(|state| state.borrow().clone())
+    }
+
+    fn plan_http_request(
+        intent: &CommandIntent,
+        state: &AppState,
+    ) -> Result<HttpCommandRequest, ControlApiError> {
+        map_intent_to_http(intent, state).map_err(ControlApiError::from_command_error)
+    }
+
+    async fn send_json_request<T: for<'de> Deserialize<'de>>(
+        request: &HttpCommandRequest,
+        state: &AppState,
     ) -> Result<T, ControlApiError> {
-        let mut request_builder = Request::post(path).header("content-type", "application/json");
-        if let Some((header_name, header_value)) = header {
+        let mut request_builder = match request.method {
+            HttpMethod::Get => Request::get(&request.path),
+            HttpMethod::Post => {
+                Request::post(&request.path).header("content-type", "application/json")
+            }
+        };
+
+        for (header_name, header_value) in &request.headers {
             request_builder = request_builder.header(header_name, header_value);
         }
 
-        let response = if let Some(body) = body {
+        if let Some(token) = resolve_bearer_token(&request.auth, state) {
+            request_builder = request_builder.header("authorization", &format!("Bearer {token}"));
+        }
+
+        let response = if let Some(body) = request.body.as_ref() {
+            let body = serde_json::to_string(body).map_err(|error| ControlApiError {
+                status_code: 500,
+                code: Some("request_body_serialize_failed".to_string()),
+                message: format!("failed to serialize request body: {error}"),
+                kind: CommandErrorKind::Decode,
+                retryable: false,
+            })?;
             let request = request_builder
                 .body(body)
                 .map_err(|error| ControlApiError {
                     status_code: 500,
                     code: Some("request_build_failed".to_string()),
                     message: format!("failed to build request body: {error}"),
+                    kind: CommandErrorKind::Unknown,
+                    retryable: false,
                 })?;
             request.send().await.map_err(map_network_error)?
         } else {
@@ -724,39 +825,22 @@ mod wasm {
         decode_json_response(response).await
     }
 
-    async fn send_json_with_auth<T: for<'de> Deserialize<'de>>(
-        path: &str,
-        body: Option<String>,
-        access_token: &str,
-    ) -> Result<T, ControlApiError> {
-        let mut request_builder = Request::post(path)
-            .header("content-type", "application/json")
-            .header("authorization", &format!("Bearer {access_token}"));
-        if path.ends_with("/session") {
-            request_builder =
-                Request::get(path).header("authorization", &format!("Bearer {access_token}"));
+    fn resolve_bearer_token(auth: &AuthRequirement, state: &AppState) -> Option<String> {
+        match auth {
+            AuthRequirement::None => None,
+            AuthRequirement::AccessToken => state.auth.access_token.clone(),
+            AuthRequirement::RefreshToken => state.auth.refresh_token.clone(),
         }
-
-        let response = if let Some(body) = body {
-            let request = request_builder
-                .body(body)
-                .map_err(|error| ControlApiError {
-                    status_code: 500,
-                    code: Some("request_build_failed".to_string()),
-                    message: format!("failed to build request body: {error}"),
-                })?;
-            request.send().await.map_err(map_network_error)?
-        } else {
-            request_builder.send().await.map_err(map_network_error)?
-        };
-        decode_json_response(response).await
     }
 
     fn map_network_error(error: gloo_net::Error) -> ControlApiError {
+        let classified = classify_http_error(0, Some("network_error"), error.to_string());
         ControlApiError {
             status_code: 0,
             code: Some("network_error".to_string()),
-            message: error.to_string(),
+            message: classified.message,
+            kind: classified.kind,
+            retryable: classified.retryable,
         }
     }
 
@@ -768,6 +852,8 @@ mod wasm {
             status_code: status,
             code: Some("response_read_failed".to_string()),
             message: error.to_string(),
+            kind: CommandErrorKind::Unknown,
+            retryable: false,
         })?;
 
         if !(200..=299).contains(&status) {
@@ -786,18 +872,56 @@ mod wasm {
                         .and_then(|detail| detail.message.clone())
                 })
                 .unwrap_or_else(|| format!("request failed with status {status}"));
+            let classified = classify_http_error(status, code.as_deref(), message);
             return Err(ControlApiError {
                 status_code: status,
                 code,
-                message,
+                message: classified.message,
+                kind: classified.kind,
+                retryable: classified.retryable,
             });
         }
 
-        serde_json::from_str(&raw).map_err(|error| ControlApiError {
-            status_code: status,
-            code: Some("decode_failed".to_string()),
-            message: format!("failed to decode response: {error}"),
+        serde_json::from_str(&raw).map_err(|error| {
+            let code = Some("decode_failed".to_string());
+            let classified = classify_http_error(
+                status,
+                code.as_deref(),
+                format!("failed to decode response: {error}"),
+            );
+            ControlApiError {
+                status_code: status,
+                code,
+                message: classified.message,
+                kind: classified.kind,
+                retryable: classified.retryable,
+            }
         })
+    }
+
+    fn storage_error(message: String) -> ControlApiError {
+        ControlApiError {
+            status_code: 500,
+            code: Some("storage_error".to_string()),
+            message,
+            kind: CommandErrorKind::Unknown,
+            retryable: false,
+        }
+    }
+
+    fn command_error_code(kind: &CommandErrorKind) -> &'static str {
+        match kind {
+            CommandErrorKind::MissingCredential => "missing_credential",
+            CommandErrorKind::Unauthorized => "unauthorized",
+            CommandErrorKind::Forbidden => "forbidden",
+            CommandErrorKind::Validation => "validation",
+            CommandErrorKind::ServiceUnavailable => "service_unavailable",
+            CommandErrorKind::RateLimited => "rate_limited",
+            CommandErrorKind::Network => "network",
+            CommandErrorKind::Decode => "decode",
+            CommandErrorKind::Unsupported => "unsupported",
+            CommandErrorKind::Unknown => "unknown",
+        }
     }
 
     fn map_session_status(raw: &str) -> SessionLifecycleStatus {
