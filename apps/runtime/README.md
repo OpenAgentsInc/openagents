@@ -26,6 +26,12 @@ Environment:
 - `RUNTIME_SYNC_TOKEN_ISSUER` (default `https://openagents.com`)
 - `RUNTIME_SYNC_TOKEN_AUDIENCE` (default `openagents-sync`)
 - `RUNTIME_SYNC_REVOKED_JTIS` (comma-separated revoked token IDs)
+- `OA_COMPAT_KHALA_ENFORCED` (`true|false`, default: `false`)
+- `OA_COMPAT_KHALA_PROTOCOL_VERSION` (default: `khala.ws.v1`)
+- `OA_COMPAT_KHALA_MIN_CLIENT_BUILD_ID` (default: `00000000T000000Z`)
+- `OA_COMPAT_KHALA_MAX_CLIENT_BUILD_ID` (optional upper support window)
+- `OA_COMPAT_KHALA_MIN_SCHEMA_VERSION` (default: `1`)
+- `OA_COMPAT_KHALA_MAX_SCHEMA_VERSION` (default: `1`)
 
 Baseline endpoints:
 
@@ -108,6 +114,15 @@ Khala websocket revocation semantics:
 - Sync sockets are bound to `oa_session_id` + `oa_device_id` claims.
 - Runtime tracks revoked sessions/devices and denies reconnect with `reauth_required`.
 - Revocation signals from control-plane disconnect matching live sockets immediately.
+
+Khala websocket compatibility semantics:
+
+- When `OA_COMPAT_KHALA_ENFORCED=true`, channel join requires:
+  - `client_build_id`
+  - `protocol_version`
+  - `schema_version`
+- Unsupported clients are denied with deterministic upgrade payloads (`upgrade_required`, supported build/schema/protocol window).
+- Compatibility auth rejections emit telemetry/audit metadata tagged by surface (`khala_websocket`) and `client_build_id`.
 
 ## Local development
 

@@ -106,6 +106,18 @@ Operational entrypoint:
 - Runtime/Khala validates issuer, audience, expiry, and scoped entitlements.
 - Operator secrets are never issued to end-user clients.
 
+## Compatibility Gate Model
+
+- Khala can enforce compatibility windows during socket join (`compat_enforced` in `:khala_sync_auth` config).
+- Required join metadata when enforced:
+  - `client_build_id`
+  - `protocol_version`
+  - `schema_version`
+- Rejection payloads are deterministic and include:
+  - failure `code` (`invalid_client_build`, `unsupported_protocol_version`, `unsupported_schema_version`, `upgrade_required`, `unsupported_client_build`)
+  - active support window (`min_client_build_id`, `max_client_build_id`, schema min/max, `protocol_version`)
+- Rejections emit sync auth telemetry with `surface=khala_websocket` and client/build identifiers.
+
 ## Runtime Contract Status
 
 No `/internal/v1/*` endpoint is designated as a projection ingest API.

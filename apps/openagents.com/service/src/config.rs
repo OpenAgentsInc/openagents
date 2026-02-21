@@ -29,6 +29,11 @@ const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 100;
 const DEFAULT_ROUTE_SPLIT_SALT: &str = "openagents-route-split-v1";
 const DEFAULT_RUNTIME_SYNC_REVOKE_PATH: &str = "/internal/v1/sync/sessions/revoke";
 const DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS: u64 = 60;
+const DEFAULT_COMPAT_CONTROL_ENFORCED: bool = false;
+const DEFAULT_COMPAT_CONTROL_PROTOCOL_VERSION: &str = "openagents.control.v1";
+const DEFAULT_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID: &str = "00000000T000000Z";
+const DEFAULT_COMPAT_CONTROL_MIN_SCHEMA_VERSION: u32 = 1;
+const DEFAULT_COMPAT_CONTROL_MAX_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -65,6 +70,12 @@ pub struct Config {
     pub runtime_sync_revoke_path: String,
     pub runtime_signature_secret: Option<String>,
     pub runtime_signature_ttl_seconds: u64,
+    pub compat_control_enforced: bool,
+    pub compat_control_protocol_version: String,
+    pub compat_control_min_client_build_id: String,
+    pub compat_control_max_client_build_id: Option<String>,
+    pub compat_control_min_schema_version: u32,
+    pub compat_control_max_schema_version: u32,
 }
 
 #[derive(Debug, Error)]
@@ -261,6 +272,37 @@ impl Config {
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS);
 
+        let compat_control_enforced = env::var("OA_COMPAT_CONTROL_ENFORCED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_COMPAT_CONTROL_ENFORCED);
+
+        let compat_control_protocol_version = env::var("OA_COMPAT_CONTROL_PROTOCOL_VERSION")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_COMPAT_CONTROL_PROTOCOL_VERSION.to_string());
+
+        let compat_control_min_client_build_id = env::var("OA_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID.to_string());
+
+        let compat_control_max_client_build_id = env::var("OA_COMPAT_CONTROL_MAX_CLIENT_BUILD_ID")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let compat_control_min_schema_version = env::var("OA_COMPAT_CONTROL_MIN_SCHEMA_VERSION")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_COMPAT_CONTROL_MIN_SCHEMA_VERSION);
+
+        let compat_control_max_schema_version = env::var("OA_COMPAT_CONTROL_MAX_SCHEMA_VERSION")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(DEFAULT_COMPAT_CONTROL_MAX_SCHEMA_VERSION)
+            .max(compat_control_min_schema_version);
+
         Ok(Self {
             bind_addr,
             log_filter,
@@ -295,6 +337,12 @@ impl Config {
             runtime_sync_revoke_path,
             runtime_signature_secret,
             runtime_signature_ttl_seconds,
+            compat_control_enforced,
+            compat_control_protocol_version,
+            compat_control_min_client_build_id,
+            compat_control_max_client_build_id,
+            compat_control_min_schema_version,
+            compat_control_max_schema_version,
         })
     }
 }

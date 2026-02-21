@@ -115,6 +115,101 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert_receive {:sync_auth, %{count: 1}, %{status: "error", reason_class: "missing_token"}}
   end
 
+  test "khala compatibility gate rejects unsupported client build at join" do
+    previous_sync_auth = Application.get_env(:openagents_runtime, :khala_sync_auth, [])
+
+    Application.put_env(
+      :openagents_runtime,
+      :khala_sync_auth,
+      Keyword.merge(previous_sync_auth,
+        compat_enforced: true,
+        compat_protocol_version: "khala.ws.v1",
+        compat_min_client_build_id: "20260221T120000Z",
+        compat_max_client_build_id: "20260221T180000Z",
+        compat_min_schema_version: 1,
+        compat_max_schema_version: 1
+      )
+    )
+
+    auth_ref = "sync-auth-compat-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        auth_ref,
+        @auth_event,
+        fn _event_name, measurements, metadata, test_pid ->
+          send(test_pid, {:sync_auth, measurements, metadata})
+        end,
+        self()
+      )
+
+    on_exit(fn ->
+      :telemetry.detach(auth_ref)
+      Application.put_env(:openagents_runtime, :khala_sync_auth, previous_sync_auth)
+    end)
+
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
+
+    assert {:ok, socket} =
+             connect(SyncSocket, %{
+               "token" => token,
+               "client" => "autopilot-ios",
+               "client_build_id" => "20260221T110000Z",
+               "protocol_version" => "khala.ws.v1",
+               "schema_version" => "1"
+             })
+
+    assert_receive {:sync_auth, %{count: 1},
+                    %{
+                      status: "error",
+                      reason_class: "upgrade_required",
+                      surface: "khala_websocket",
+                      client: "autopilot-ios",
+                      client_build_id: "20260221T110000Z"
+                    }}
+
+    assert {:error,
+            %{
+              "code" => "upgrade_required",
+              "upgrade_required" => true,
+              "surface" => "khala_websocket",
+              "min_client_build_id" => "20260221T120000Z"
+            }} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+  end
+
+  test "khala compatibility gate allows supported client metadata" do
+    previous_sync_auth = Application.get_env(:openagents_runtime, :khala_sync_auth, [])
+
+    Application.put_env(
+      :openagents_runtime,
+      :khala_sync_auth,
+      Keyword.merge(previous_sync_auth,
+        compat_enforced: true,
+        compat_protocol_version: "khala.ws.v1",
+        compat_min_client_build_id: "20260221T120000Z",
+        compat_max_client_build_id: "20260221T180000Z",
+        compat_min_schema_version: 1,
+        compat_max_schema_version: 1
+      )
+    )
+
+    on_exit(fn ->
+      Application.put_env(:openagents_runtime, :khala_sync_auth, previous_sync_auth)
+    end)
+
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic])
+
+    assert {:ok, socket} =
+             connect(SyncSocket, %{
+               "token" => token,
+               "client_build_id" => "20260221T130000Z",
+               "protocol_version" => "khala.ws.v1",
+               "schema_version" => "1"
+             })
+
+    assert {:ok, _reply, _socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+  end
+
   test "authenticated client can join and subscribe to allowed topics" do
     token =
       valid_sync_jwt(

@@ -109,6 +109,66 @@ if config_env() == :prod do
         Keyword.get(khala_sync_auth, :hs256_keys, %{})
     end
 
+  khala_sync_compat_enforced =
+    case System.get_env("OA_COMPAT_KHALA_ENFORCED") do
+      nil ->
+        Keyword.get(khala_sync_auth, :compat_enforced, false)
+
+      value ->
+        String.downcase(String.trim(value)) in ["1", "true", "yes", "on"]
+    end
+
+  khala_sync_compat_protocol_version =
+    System.get_env("OA_COMPAT_KHALA_PROTOCOL_VERSION") ||
+      Keyword.get(khala_sync_auth, :compat_protocol_version, "khala.ws.v1")
+
+  khala_sync_compat_min_client_build_id =
+    System.get_env("OA_COMPAT_KHALA_MIN_CLIENT_BUILD_ID") ||
+      Keyword.get(khala_sync_auth, :compat_min_client_build_id, "00000000T000000Z")
+
+  khala_sync_compat_max_client_build_id =
+    case System.get_env("OA_COMPAT_KHALA_MAX_CLIENT_BUILD_ID") do
+      nil ->
+        Keyword.get(khala_sync_auth, :compat_max_client_build_id, nil)
+
+      value ->
+        case String.trim(value) do
+          "" -> nil
+          trimmed -> trimmed
+        end
+    end
+
+  khala_sync_compat_min_schema_version =
+    case System.get_env("OA_COMPAT_KHALA_MIN_SCHEMA_VERSION") do
+      nil ->
+        Keyword.get(khala_sync_auth, :compat_min_schema_version, 1)
+
+      value ->
+        case Integer.parse(String.trim(value)) do
+          {parsed, ""} when parsed > 0 ->
+            parsed
+
+          _other ->
+            Keyword.get(khala_sync_auth, :compat_min_schema_version, 1)
+        end
+    end
+
+  khala_sync_compat_max_schema_version =
+    case System.get_env("OA_COMPAT_KHALA_MAX_SCHEMA_VERSION") do
+      nil ->
+        Keyword.get(khala_sync_auth, :compat_max_schema_version, 1)
+
+      value ->
+        case Integer.parse(String.trim(value)) do
+          {parsed, ""} when parsed > 0 ->
+            parsed
+
+          _other ->
+            Keyword.get(khala_sync_auth, :compat_max_schema_version, 1)
+        end
+    end
+    |> max(khala_sync_compat_min_schema_version)
+
   host = System.get_env("PHX_HOST") || "example.com"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
@@ -165,6 +225,12 @@ if config_env() == :prod do
     claims_version:
       System.get_env("OA_SYNC_TOKEN_CLAIMS_VERSION") ||
         Keyword.get(khala_sync_auth, :claims_version, "oa_sync_claims_v1"),
+    compat_enforced: khala_sync_compat_enforced,
+    compat_protocol_version: khala_sync_compat_protocol_version,
+    compat_min_client_build_id: khala_sync_compat_min_client_build_id,
+    compat_max_client_build_id: khala_sync_compat_max_client_build_id,
+    compat_min_schema_version: khala_sync_compat_min_schema_version,
+    compat_max_schema_version: khala_sync_compat_max_schema_version,
     allowed_algs: sync_allowed_algs,
     hs256_keys: sync_hs256_keys
 

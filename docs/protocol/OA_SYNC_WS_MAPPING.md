@@ -18,6 +18,11 @@ This document maps `proto/openagents/sync/v1/*.proto` messages to the Phoenix Ch
 - Runtime validates `alg`, `kid`, signature, and required claims.
 - HS256 is active with `kid` keyring rotation (current + previous keys).
 - Claim checks include issuer/audience/claims_version and topic scopes (`oa_sync_scopes`).
+- Compatibility metadata is sent in socket params:
+  - `client` (for telemetry/audit surface labeling)
+  - `client_build_id`
+  - `protocol_version`
+  - `schema_version`
 
 ## Compatibility Negotiation (v1)
 
@@ -32,6 +37,8 @@ Required client metadata for negotiation:
 2. `protocol_version`
 3. `schema_version`
 
+When compatibility enforcement is enabled, missing or unsupported metadata is rejected at channel join with deterministic payloads.
+
 Deterministic compatibility failure codes:
 
 - `invalid_client_build`
@@ -41,6 +48,23 @@ Deterministic compatibility failure codes:
 - `unsupported_client_build`
 
 Failure payloads must include active support-window metadata (`min_client_build_id`, `max_client_build_id`, schema min/max, protocol version) so clients can deterministically block reconnect loops and prompt upgrade.
+
+Example join rejection payload:
+
+```json
+{
+  "code": "upgrade_required",
+  "message": "client build '20260221T110000Z' is older than minimum supported '20260221T120000Z'",
+  "retryable": false,
+  "upgrade_required": true,
+  "surface": "khala_websocket",
+  "min_client_build_id": "20260221T120000Z",
+  "max_client_build_id": "20260221T180000Z",
+  "min_schema_version": 1,
+  "max_schema_version": 1,
+  "protocol_version": "khala.ws.v1"
+}
+```
 
 ## Event Names
 

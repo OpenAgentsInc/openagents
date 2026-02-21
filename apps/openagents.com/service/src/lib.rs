@@ -4,16 +4,21 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Redirect};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{SecondsFormat, Utc};
 use hmac::{Hmac, Mac};
+use openagents_client_core::compatibility::{
+    ClientCompatibilityHandshake, CompatibilityFailure, CompatibilitySurface, CompatibilityWindow,
+    negotiate_compatibility,
+};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use tower::ServiceBuilder;
@@ -40,6 +45,9 @@ const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
 const CACHE_IMMUTABLE_ONE_YEAR: &str = "public, max-age=31536000, immutable";
 const CACHE_SHORT_LIVED: &str = "public, max-age=60";
 const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
+const HEADER_OA_CLIENT_BUILD_ID: &str = "x-oa-client-build-id";
+const HEADER_OA_PROTOCOL_VERSION: &str = "x-oa-protocol-version";
+const HEADER_OA_SCHEMA_VERSION: &str = "x-oa-schema-version";
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
@@ -102,6 +110,19 @@ struct ApiErrorResponse {
     error: ApiErrorDetail,
     #[serde(skip_serializing_if = "Option::is_none")]
     errors: Option<HashMap<String, Vec<String>>>,
+}
+
+#[derive(Debug, Serialize)]
+struct CompatibilityErrorDetail {
+    code: String,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CompatibilityErrorResponse {
+    message: String,
+    error: CompatibilityErrorDetail,
+    compatibility: CompatibilityFailure,
 }
 
 #[derive(Debug, Deserialize)]
@@ -210,6 +231,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         runtime_revocation_client,
         started_at: SystemTime::now(),
     };
+    let compatibility_state = state.clone();
 
     Router::new()
         .route("/", get(root))
@@ -253,6 +275,10 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/assets/*path", get(static_asset))
         .route("/*path", get(web_shell_entry))
         .with_state(state)
+        .layer(middleware::from_fn_with_state(
+            compatibility_state,
+            control_compatibility_gate,
+        ))
         .layer(
             ServiceBuilder::new()
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
@@ -382,6 +408,91 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             static_dir,
         }),
     )
+}
+
+async fn control_compatibility_gate(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path().to_string();
+    if !path.starts_with("/api/") || !state.config.compat_control_enforced {
+        return next.run(request).await;
+    }
+
+    let header_snapshot = request.headers().clone();
+    let request_id = request_id(&header_snapshot);
+
+    match validate_control_compatibility(&state.config, &header_snapshot) {
+        Ok(()) => next.run(request).await,
+        Err(failure) => {
+            let client_name = header_string(&header_snapshot, "x-client")
+                .unwrap_or_else(|| "unknown".to_string());
+            let client_build_id = header_string(&header_snapshot, HEADER_OA_CLIENT_BUILD_ID)
+                .unwrap_or_else(|| "missing".to_string());
+
+            state
+                .observability
+                .increment_counter("compatibility.rejected.control", &request_id);
+            state.observability.increment_counter(
+                &format!("compatibility.rejected.control.{}", failure.code),
+                &request_id,
+            );
+            state.observability.audit(
+                AuditEvent::new("compatibility.rejected", request_id.clone())
+                    .with_outcome("rejected")
+                    .with_attribute("surface", "control_api")
+                    .with_attribute("path", path)
+                    .with_attribute("client", client_name)
+                    .with_attribute("client_build_id", client_build_id)
+                    .with_attribute("code", failure.code.clone())
+                    .with_attribute("protocol_version", failure.protocol_version.clone()),
+            );
+
+            compatibility_failure_response(failure)
+        }
+    }
+}
+
+fn validate_control_compatibility(
+    config: &Config,
+    headers: &HeaderMap,
+) -> Result<(), CompatibilityFailure> {
+    let schema_version = header_string(headers, HEADER_OA_SCHEMA_VERSION)
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    let handshake = ClientCompatibilityHandshake {
+        client_build_id: header_string(headers, HEADER_OA_CLIENT_BUILD_ID).unwrap_or_default(),
+        protocol_version: header_string(headers, HEADER_OA_PROTOCOL_VERSION).unwrap_or_default(),
+        schema_version,
+    };
+
+    let window = CompatibilityWindow {
+        protocol_version: config.compat_control_protocol_version.clone(),
+        min_client_build_id: config.compat_control_min_client_build_id.clone(),
+        max_client_build_id: config.compat_control_max_client_build_id.clone(),
+        min_schema_version: config.compat_control_min_schema_version,
+        max_schema_version: config.compat_control_max_schema_version,
+    };
+
+    negotiate_compatibility(CompatibilitySurface::ControlApi, &handshake, &window)
+}
+
+fn compatibility_failure_response(failure: CompatibilityFailure) -> Response {
+    let message = failure.message.clone();
+    (
+        StatusCode::UPGRADE_REQUIRED,
+        Json(CompatibilityErrorResponse {
+            message: message.clone(),
+            error: CompatibilityErrorDetail {
+                code: failure.code.clone(),
+                message,
+            },
+            compatibility: failure,
+        }),
+    )
+        .into_response()
 }
 
 async fn static_manifest(
@@ -1792,6 +1903,12 @@ mod tests {
             runtime_sync_revoke_path: "/internal/v1/sync/sessions/revoke".to_string(),
             runtime_signature_secret: None,
             runtime_signature_ttl_seconds: 60,
+            compat_control_enforced: false,
+            compat_control_protocol_version: "openagents.control.v1".to_string(),
+            compat_control_min_client_build_id: "00000000T000000Z".to_string(),
+            compat_control_max_client_build_id: None,
+            compat_control_min_schema_version: 1,
+            compat_control_max_schema_version: 1,
         }
     }
 
@@ -1800,6 +1917,17 @@ mod tests {
         config.auth_provider_mode = "workos".to_string();
         config.workos_client_id = None;
         config.workos_api_key = None;
+        config
+    }
+
+    fn compat_enforced_config(static_dir: PathBuf) -> Config {
+        let mut config = test_config(static_dir);
+        config.compat_control_enforced = true;
+        config.compat_control_protocol_version = "openagents.control.v1".to_string();
+        config.compat_control_min_client_build_id = "20260221T120000Z".to_string();
+        config.compat_control_max_client_build_id = Some("20260221T180000Z".to_string());
+        config.compat_control_min_schema_version = 1;
+        config.compat_control_max_schema_version = 1;
         config
     }
 
@@ -1994,6 +2122,108 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = read_json(response).await?;
         assert_eq!(body["error"]["code"], "not_found");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_rejects_missing_client_version_headers() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/api/v1/control/status")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "invalid_client_build");
+        assert_eq!(body["compatibility"]["upgrade_required"], true);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_rejects_client_below_minimum_build() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/api/v1/control/status")
+            .header("x-oa-client-build-id", "20260221T110000Z")
+            .header("x-oa-protocol-version", "openagents.control.v1")
+            .header("x-oa-schema-version", "1")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "upgrade_required");
+        assert_eq!(
+            body["compatibility"]["min_client_build_id"],
+            "20260221T120000Z"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_gate_allows_supported_client_version() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(compat_enforced_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/api/v1/control/status")
+            .header("x-oa-client-build-id", "20260221T130000Z")
+            .header("x-oa-protocol-version", "openagents.control.v1")
+            .header("x-oa-schema-version", "1")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compatibility_rejections_emit_audit_with_surface_and_build() -> Result<()> {
+        let static_dir = tempdir()?;
+        let sink = RecordingAuditSink::default();
+        let app = build_router_with_observability(
+            compat_enforced_config(static_dir.path().to_path_buf()),
+            Observability::new(Arc::new(sink.clone())),
+        );
+
+        let request = Request::builder()
+            .uri("/api/v1/control/status")
+            .header("x-client", "autopilot-ios")
+            .header("x-oa-client-build-id", "20260221T110000Z")
+            .header("x-oa-protocol-version", "openagents.control.v1")
+            .header("x-oa-schema-version", "1")
+            .body(Body::empty())?;
+
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+
+        let events = sink.events();
+        let compat_event = events
+            .iter()
+            .find(|event| event.event_name == "compatibility.rejected")
+            .expect("missing compatibility rejection audit event");
+
+        assert_eq!(
+            compat_event.attributes.get("surface").map(String::as_str),
+            Some("control_api")
+        );
+        assert_eq!(
+            compat_event.attributes.get("client").map(String::as_str),
+            Some("autopilot-ios")
+        );
+        assert_eq!(
+            compat_event
+                .attributes
+                .get("client_build_id")
+                .map(String::as_str),
+            Some("20260221T110000Z")
+        );
+
         Ok(())
     }
 
