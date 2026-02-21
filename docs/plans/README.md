@@ -14,3 +14,4 @@ Conventions:
 - Prefer linking to ADRs and canonical specs instead of duplicating them.
 - Layer-0 shared schemas are canonical in `proto/` (see `proto/README.md` and ADR-0028).
 - Codex cross-surface architecture planning is canonical in `docs/codex/unified-runtime-desktop-plan.md`; avoid creating competing Codex plan docs here.
+- Rust migration KPI governance is canonical in `docs/plans/active/rust-migration-kpi-dashboard.md`.
