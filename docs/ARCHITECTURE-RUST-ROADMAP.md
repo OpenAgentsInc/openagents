@@ -498,6 +498,7 @@ Dependencies: OA-RUST-052, OA-RUST-053, OA-RUST-058, OA-RUST-072.
 
 ### OA-RUST-106 — [Sync Docs] Align Khala surface contracts with Rust-era client set
 Description: Update `docs/sync/*` to remove legacy mobile/desktop/inbox assumptions and define the authoritative Rust-era consumer matrix (`openagents.com` wasm shell, autopilot-desktop, autopilot-ios, onyx integration scope).
+Enforcement artifacts: `docs/sync/SURFACES.md`, `docs/sync/ROADMAP.md`, `docs/sync/RUNTIME_CODEX_CUTOVER_RUNBOOK.md`, `docs/sync/thoughts.md`, `docs/sync/README.md`
 Acceptance criteria: Sync docs and runbooks match active client architecture; old lane references are archived; release drills use Rust-era surfaces only.
 Dependencies: OA-RUST-048, OA-RUST-058, OA-RUST-062, OA-RUST-072.
 

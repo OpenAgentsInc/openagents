@@ -1,18 +1,20 @@
-# Khala Surface Contract (v1)
+# Khala Surface Contract (Rust-Era v1)
 
-Date: 2026-02-20  
-Status: Active
+Date: 2026-02-21  
+Status: Active  
 Authority ADRs: `docs/adr/ADR-0003-khala-ws-only-replay-transport.md`, `docs/adr/ADR-0002-proto-first-contract-governance.md`
 
-Purpose: define exactly how each app consumes Khala, which topics it subscribes to, and what HTTP paths are used for bootstrap and recovery.
+Purpose: define authoritative Khala consumers, topic scope expectations, bootstrap paths, and resume/replay behavior.
 
 ## Global Rules
 
-1. Topics are coarse per model class.
-2. Auth tokens are minted by Laravel (`/api/sync/token`, with `/api/khala/token` retained for compatibility).
-3. Initial hydration is HTTP; Khala only carries incremental updates.
-4. Each client persists per-topic watermark and maintains a `doc_key` cache.
-5. Clients must apply updates idempotently with doc-version monotonic checks.
+1. Khala live transport is WebSocket-only for all active consumers.
+2. Commands/mutations are HTTP-only and never travel through Khala topics.
+3. Sync tokens are minted by the Rust control service via `POST /api/sync/token`.
+4. HTTP bootstrap is required before WS subscribe/resume.
+5. Clients persist per-topic watermarks and apply frames idempotently by `(topic, seq)`.
+6. Clients must discard duplicates where `seq <= last_applied`.
+7. `stale_cursor` requires snapshot/bootstrap recovery before resuming live tail.
 
 ## Topic Catalog (v1)
 
@@ -21,21 +23,37 @@ Purpose: define exactly how each app consumes Khala, which topics it subscribes 
 - `runtime.codex_worker_events`
 - `runtime.notifications`
 
-## Surface Matrix
+## Authoritative Consumer Matrix
 
-| Surface | Khala Subscription Topics | Bootstrap + Recovery HTTP | Local Watermark Storage | Current Status |
+| Surface | Primary Khala Topics | Bootstrap + Recovery HTTP | Local Watermark Storage | Integration Scope |
 |---|---|---|---|---|
-| Web Codex admin (`apps/openagents.com`) | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | `/api/runtime/codex/workers*` + sync hydration endpoints as they land | localStorage/IndexedDB | Feature-gated via `VITE_KHALA_SYNC_ENABLED` |
-| Autopilot desktop (`apps/autopilot-desktop`) | `runtime.codex_worker_events` (primary), optional `runtime.codex_worker_summaries`; inbox lane is desktop-local projection (no Khala topic) | Laravel/runtime worker APIs + desktop auth flow + sync token minting where enabled | desktop-local state | Active Rust desktop shell (legacy Electron desktop removed) |
-| Autopilot iOS (`apps/autopilot-ios`) | `runtime.codex_worker_events` (live Codex event lane), optional `runtime.codex_worker_summaries` | `/api/runtime/codex/workers*`, `/api/runtime/codex/workers/{id}/events`, `/api/sync/token` | app-local (UserDefaults in v1) | Khala WS is primary live lane |
-| Lightning ops (`apps/lightning-ops`) | none for control-plane lane | `/api/internal/lightning-ops/control-plane/query|mutation` | N/A | API/mock transport; no Khala authority dependency |
-| Lightning wallet executor (`apps/lightning-wallet-executor`) | none | service-local + Lightning infra | N/A | Not a Khala consumer |
+| `apps/openagents.com/web-shell` | `runtime.codex_worker_summaries`, optional `runtime.run_summaries` | Control/runtime API hydration endpoints + `POST /api/sync/token` | browser local storage + IndexedDB cache | Default web administration lane |
+| `apps/autopilot-desktop` | `runtime.codex_worker_events` (primary), optional `runtime.codex_worker_summaries` | runtime worker APIs + `POST /api/sync/token` | desktop-local persistence | Primary operator lane for Codex event administration |
+| `apps/autopilot-ios` | `runtime.codex_worker_events` (primary), optional `runtime.codex_worker_summaries` | runtime worker APIs + `POST /api/sync/token` | app-local persistence | Mobile follow/monitor lane for Codex/runtime state |
+| `apps/onyx` | optional `runtime.run_summaries` only (no worker-event subscription in v1) | selected control/runtime read APIs + `POST /api/sync/token` when enabled | app-local vault metadata | Explicitly limited integration scope; not a full Codex admin surface |
 
-## Out of Scope for v1
+## Command vs Subscription Semantics
 
-- Per-tenant topics.
-- Arbitrary query subscriptions.
-- Authority writes through sync transport.
+1. HTTP command path:
+   - UI action -> authenticated HTTP API call -> authority write (`control.*` or `runtime.*`) -> response
+2. WS subscription path:
+   - topic subscribe/resume -> replay gap fill -> live tail frames
+3. Prohibited:
+   - RPC-style commands over Khala topics
+   - authority mutation over WebSocket frames
+
+## Out of Scope (v1)
+
+- Per-tenant dynamic topic creation.
+- Arbitrary ad hoc query subscriptions.
+- Lightning service (`apps/lightning-ops`, `apps/lightning-wallet-executor`) as Khala consumers.
+
+## Historical Notes
+
+Removed legacy surfaces are non-canonical and not part of this matrix:
+- `apps/mobile/` (removed)
+- `apps/desktop/` (removed)
+- `apps/inbox-autopilot/` (removed)
 
 ## Change Control
 
