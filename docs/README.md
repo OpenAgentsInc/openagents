@@ -70,6 +70,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Web production E2E testing: `autopilot/testing/PROD_E2E_TESTING.md`
 - Web stream testing: `autopilot/testing/STREAM_TESTING.md`
 - Web trace retrieval and debugging: `autopilot/testing/TRACE_RETRIEVAL.md`
+- Cross-surface contract harness (web/desktop/iOS): `autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS.md`
 - iOS/desktop runtime handshake runbook: `../apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md`
 - Pane system docs: `autopilot/reference/EFFUSE_PANES.md`
 - iOS app source: `../apps/autopilot-ios/`

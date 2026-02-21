@@ -63,6 +63,7 @@ crates/opencode-sdk/openapi.json
 .worktrees/
 
 docs/scratchpad/
+docs/autopilot/testing/reports/
 
 *.log
 !docs/logs/runs/*.log

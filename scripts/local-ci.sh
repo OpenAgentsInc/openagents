@@ -11,6 +11,7 @@ RUNTIME_HISTORY_TRIGGER_PATTERN='^(apps/runtime/src/|apps/runtime/fixtures/histo
 COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
 OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
 WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
+CROSS_SURFACE_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
 
 is_truthy() {
   local value="${1:-}"
@@ -166,6 +167,10 @@ run_trigger_tests() {
   assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/web-shell/src/lib.rs" "true"
   assert_trigger "web-shell" "$WEB_SHELL_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
 
+  assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-ios/Autopilot/AutopilotTests/AutopilotTests.swift" "true"
+  assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
+  assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
+
   echo "local-ci trigger tests passed"
 }
 
@@ -209,6 +214,14 @@ run_web_shell_checks() {
   (
     cd "$ROOT_DIR"
     ./apps/openagents.com/web-shell/check-host-shim.sh
+  )
+}
+
+run_cross_surface_harness() {
+  echo "==> cross-surface contract harness"
+  (
+    cd "$ROOT_DIR"
+    ./scripts/run-cross-surface-contract-harness.sh
   )
 }
 
@@ -281,6 +294,14 @@ run_changed() {
     run_web_shell_checks
   fi
 
+  if has_match "$CROSS_SURFACE_TRIGGER_PATTERN" "$changed_files"; then
+    if is_truthy "${OA_LOCAL_CI_ENABLE_CROSS_SURFACE:-0}"; then
+      run_cross_surface_harness
+    else
+      echo "==> cross-surface-triggered paths detected; harness skipped (set OA_LOCAL_CI_ENABLE_CROSS_SURFACE=1 to enable)"
+    fi
+  fi
+
   if [[ "$legacy_lanes_detected" -eq 1 ]]; then
     echo "==> legacy-triggered paths detected; legacy lanes skipped (set OA_LOCAL_CI_ENABLE_LEGACY=1 to enable)"
   fi
@@ -308,6 +329,9 @@ case "$MODE" in
   web-shell)
     run_web_shell_checks
     ;;
+  cross-surface)
+    run_cross_surface_harness
+    ;;
   test-triggers)
     run_trigger_tests
     ;;
@@ -323,7 +347,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|comms|openclaw|web-shell|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|comms|openclaw|web-shell|cross-surface|test-triggers]" >&2
     exit 2
     ;;
 esac
