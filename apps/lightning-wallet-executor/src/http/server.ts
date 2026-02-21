@@ -86,6 +86,14 @@ const bearerTokenFromRequest = (request: IncomingMessage): string | null => {
   return token.length > 0 ? token : null
 }
 
+const bearerTokenMatches = (expected: string, actual: string | null): boolean => {
+  if (!actual) return false
+  const expectedBytes = Buffer.from(expected, "utf8")
+  const actualBytes = Buffer.from(actual, "utf8")
+  if (expectedBytes.length !== actualBytes.length) return false
+  return crypto.timingSafeEqual(expectedBytes, actualBytes)
+}
+
 const routeRequest = (
   request: IncomingMessage,
   response: ServerResponse,
@@ -104,7 +112,7 @@ const routeRequest = (
 
     if (config.authToken) {
       const bearerToken = bearerTokenFromRequest(request)
-      if (!bearerToken || bearerToken !== config.authToken) {
+      if (!bearerTokenMatches(config.authToken, bearerToken)) {
         response.setHeader("www-authenticate", 'Bearer realm="wallet-executor"')
         json(401, { ok: false, error: toErrorResponse(requestId, "unauthorized", "missing or invalid bearer token") }, response, requestId)
         return
@@ -167,10 +175,13 @@ const routeRequest = (
     if (method === "POST" && path === "/pay-bolt11") {
       const parsed = yield* readRequestBody(request).pipe(
         Effect.flatMap(decodeJsonBody),
-        Effect.flatMap((body) => decodePayBolt11HttpRequest(body)),
-        Effect.catchTag("ParseError", (error) =>
-          HttpRequestDecodeError.make({
-            message: error.message,
+        Effect.flatMap((body) =>
+          Effect.try({
+            try: () => decodePayBolt11HttpRequest(body),
+            catch: (error) =>
+              HttpRequestDecodeError.make({
+                message: error instanceof Error ? error.message : String(error),
+              }),
           }),
         ),
       )
@@ -221,6 +232,7 @@ const routeRequest = (
             payment: outcome.right.payment,
             quotedAmountMsats: outcome.right.quotedAmountMsats,
             windowSpendMsatsAfterPayment: outcome.right.windowSpendMsatsAfterPayment,
+            receipt: outcome.right.receipt,
           },
         },
         response,

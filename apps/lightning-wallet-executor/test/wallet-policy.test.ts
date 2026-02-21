@@ -57,6 +57,9 @@ describe("wallet executor policy", () => {
         host: "sats4ai.com",
       })
       expect(first.payment.amountMsats).toBeGreaterThan(0)
+      expect(first.receipt.receiptVersion).toBe("openagents.lightning.wallet_receipt.v1")
+      expect(first.receipt.receiptId).toMatch(/^lwr_[0-9a-f]{24}$/)
+      expect(first.receipt.canonicalJsonSha256).toMatch(/^[0-9a-f]{64}$/)
 
       const second = yield* Effect.either(
         wallet.payBolt11({

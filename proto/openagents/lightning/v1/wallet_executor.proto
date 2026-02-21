@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package openagents.lightning.v1;
+
+enum WalletExecutorAuthMode {
+  WALLET_EXECUTOR_AUTH_MODE_UNSPECIFIED = 0;
+  WALLET_EXECUTOR_AUTH_MODE_DISABLED = 1;
+  WALLET_EXECUTOR_AUTH_MODE_BEARER_STATIC = 2;
+}
+
+message WalletExecutorAuthAssertion {
+  string wallet_id = 1;
+  WalletExecutorAuthMode auth_mode = 2;
+  bool auth_enforced = 3;
+  uint32 auth_token_version = 4;
+  string token_fingerprint = 5;
+  int64 asserted_at_ms = 6;
+}
+
+message WalletExecutionReceipt {
+  string receipt_version = 1;
+  string receipt_id = 2;
+  string request_id = 3;
+  string wallet_id = 4;
+  string host = 5;
+  string payment_id = 6;
+  string invoice_hash = 7;
+  uint64 quoted_amount_msats = 8;
+  uint64 settled_amount_msats = 9;
+  string preimage_sha256 = 10;
+  int64 paid_at_ms = 11;
+  string rail = 12;
+  string asset_id = 13;
+  string canonical_json_sha256 = 14;
+}
+

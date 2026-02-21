@@ -22,9 +22,20 @@ describe("wallet executor http server", () => {
       const statusJson = (yield* Effect.tryPromise({
         try: async () => await statusResponse.json(),
         catch: (error) => new Error(String(error)),
-      })) as { ok: boolean; status: { walletId: string } }
+      })) as {
+        ok: boolean
+        status: {
+          walletId: string
+          authMode: "disabled" | "bearer_static"
+          authEnforced: boolean
+          authTokenVersion: number
+        }
+      }
       expect(statusJson.ok).toBe(true)
       expect(statusJson.status.walletId).toBe("test-wallet")
+      expect(statusJson.status.authMode).toBe("disabled")
+      expect(statusJson.status.authEnforced).toBe(false)
+      expect(statusJson.status.authTokenVersion).toBe(1)
 
       const payResponse = yield* Effect.tryPromise({
         try: async () =>
@@ -53,12 +64,22 @@ describe("wallet executor http server", () => {
         ok: boolean
         result: {
           payment: { paymentId: string; preimageHex: string }
+          receipt: {
+            receiptVersion: string
+            receiptId: string
+            canonicalJsonSha256: string
+            preimageSha256: string
+          }
         }
       }
 
       expect(payJson.ok).toBe(true)
       expect(payJson.result.payment.paymentId).toMatch(/^mock-pay-/)
       expect(payJson.result.payment.preimageHex).toHaveLength(64)
+      expect(payJson.result.receipt.receiptVersion).toBe("openagents.lightning.wallet_receipt.v1")
+      expect(payJson.result.receipt.receiptId).toMatch(/^lwr_[0-9a-f]{24}$/)
+      expect(payJson.result.receipt.canonicalJsonSha256).toMatch(/^[0-9a-f]{64}$/)
+      expect(payJson.result.receipt.preimageSha256).toMatch(/^[0-9a-f]{64}$/)
     }),
   )
 
@@ -170,6 +191,21 @@ describe("wallet executor http server", () => {
         catch: (error) => new Error(String(error)),
       })
       expect(authorizedResponse.status).toBe(200)
+      const authorizedPayload = (yield* Effect.tryPromise({
+        try: async () => await authorizedResponse.json(),
+        catch: (error) => new Error(String(error)),
+      })) as {
+        ok: boolean
+        status: {
+          authMode: "disabled" | "bearer_static"
+          authEnforced: boolean
+          authTokenVersion: number
+        }
+      }
+      expect(authorizedPayload.ok).toBe(true)
+      expect(authorizedPayload.status.authMode).toBe("bearer_static")
+      expect(authorizedPayload.status.authEnforced).toBe(true)
+      expect(authorizedPayload.status.authTokenVersion).toBe(1)
     }),
   )
 

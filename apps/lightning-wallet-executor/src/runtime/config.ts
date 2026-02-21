@@ -8,6 +8,7 @@ export type WalletExecutorConfig = Readonly<{
   port: number
   walletId: string
   authToken: string | null
+  authTokenVersion: number
   mode: ExecutorMode
   network: SparkNetwork
   sparkApiKey: string | null
@@ -84,6 +85,11 @@ export const loadWalletExecutorConfig = (
       "openagents-ep212",
     )
     const authToken = env.OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN?.trim() || null
+    const authTokenVersion = yield* parseIntBounded(
+      "OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN_VERSION",
+      env.OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN_VERSION,
+      { fallback: 1, min: 1, max: 1_000_000 },
+    )
 
     const mode = parseMode(env.OA_LIGHTNING_WALLET_EXECUTOR_MODE)
     const network = parseSparkNetwork(env.OA_LIGHTNING_SPARK_NETWORK)
@@ -124,6 +130,12 @@ export const loadWalletExecutorConfig = (
           "required when OA_LIGHTNING_WALLET_EXECUTOR_MODE=spark",
         )
       }
+      if (!authToken) {
+        return yield* toConfigError(
+          "OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN",
+          "required when OA_LIGHTNING_WALLET_EXECUTOR_MODE=spark",
+        )
+      }
       if (mnemonicProvider === "gcp" && !mnemonicSecretVersion) {
         return yield* toConfigError(
           "OA_LIGHTNING_WALLET_MNEMONIC_SECRET_VERSION",
@@ -143,6 +155,7 @@ export const loadWalletExecutorConfig = (
       port,
       walletId,
       authToken,
+      authTokenVersion,
       mode,
       network,
       sparkApiKey,
@@ -170,6 +183,7 @@ export const defaultWalletExecutorConfig = (): WalletExecutorConfig => ({
   port: 8788,
   walletId: "openagents-ep212",
   authToken: null,
+  authTokenVersion: 1,
   mode: "mock",
   network: "regtest",
   sparkApiKey: null,
