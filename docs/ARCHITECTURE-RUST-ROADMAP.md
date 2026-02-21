@@ -73,6 +73,7 @@ KPI artifacts: `docs/plans/active/rust-migration-kpi-dashboard.md`, `docs/plans/
 
 ### OA-RUST-007 — [Proto] Publish Rust-era package map for control/runtime/sync domains
 Description: Finalize proto package ownership and namespace boundaries for `control`, `runtime`, `sync/khala`, and Codex surfaces so contract growth is structured.
+Package map artifact: `proto/PACKAGE_MAP.md`
 
 ### OA-RUST-008 — [Proto] Add Khala frame envelope contract
 Description: Define/lock `KhalaFrame` envelope fields (`topic`, `seq`, `kind`, `payload_bytes`, `schema_version`) and publish compatibility rules.

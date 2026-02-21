@@ -9,6 +9,7 @@ Entry points:
 - `docs/protocol/OA_SYNC_WS_MAPPING.md` (Khala sync proto-to-WS mapping)
 - `proto/openagents/lightning/v1/control_plane.proto` (Lightning control-plane schema authority)
 - `proto/README.md` (proto package layout + generation verification policy)
+- `proto/PACKAGE_MAP.md` (Rust-era proto package ownership + placement rules)
 - `docs/protocol/extensions/` (base extension manifest contract + specialization links)
 - `docs/protocol/comms/` (comms tool-pack contracts and integration manifest schema)
 - `docs/protocol/coding/` (coding tool-pack contracts and GitHub integration manifest schema)

@@ -33,6 +33,12 @@ Khala-specific requirement:
 
 ## Package Layout
 
+Rust-era package ownership and placement rules are defined in:
+
+- `proto/PACKAGE_MAP.md`
+
+Current files:
+
 - `proto/openagents/protocol/v1/reasons.proto`
 - `proto/openagents/protocol/v1/events.proto`
 - `proto/openagents/protocol/v1/receipts.proto`
@@ -45,6 +51,8 @@ Khala-specific requirement:
 - `proto/openagents/sync/v1/errors.proto`
 - `proto/openagents/sync/v1/sync.proto`
 - `proto/openagents/lightning/v1/control_plane.proto`
+
+`openagents.protocol.v1` is transitional legacy namespace only. New contracts must be placed using `proto/PACKAGE_MAP.md`.
 
 ## Codegen
 
