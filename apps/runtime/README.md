@@ -64,6 +64,12 @@ Projection checkpoint semantics:
 - Duplicate reprocessing is idempotent (`seq <= last_seq` is ignored).
 - Sequence gaps register drift reports accessible through `/internal/v1/projectors/drift`.
 
+Shadow parity harness:
+
+- Run: `cargo run -p openagents-runtime-service --bin runtime-shadow-harness -- --legacy-manifest <path> --rust-manifest <path> --output <path>`
+- Runbook: `apps/runtime/docs/SHADOW_MODE_PARITY.md`
+- Harness exits non-zero when gate policy blocks cutover.
+
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
 
 ## Local development
