@@ -20,6 +20,7 @@ scripts/release/backup-laravel-db.sh
 ## Backup artifacts
 
 - `gs://openagentsgemini_cloudbuild/backups/laravel/openagents_web-20260221T212513Z.sql.gz`
+- `gs://openagentsgemini_cloudbuild/backups/laravel/openagents_web-20260221T214135Z.sql.gz` (additional verification export)
 - `gs://openagentsgemini_cloudbuild/backups/laravel/openagents_web_staging-20260221T212513Z.sql.gz`
 - `gs://openagentsgemini_cloudbuild/backups/laravel/openagents_web_staging-20260221T213651Z.sql.gz` (script validation run)
 
@@ -29,11 +30,15 @@ scripts/release/backup-laravel-db.sh
 - size: `442883` bytes
 - created: `2026-02-21T21:28:10Z`
 
-2. `openagents_web_staging-20260221T212513Z.sql.gz`
+2. `openagents_web-20260221T214135Z.sql.gz`
+- size: `445573` bytes
+- created: `2026-02-21T21:44:46Z`
+
+3. `openagents_web_staging-20260221T212513Z.sql.gz`
 - size: `193315` bytes
 - created: `2026-02-21T21:31:36Z`
 
-3. `openagents_web_staging-20260221T213651Z.sql.gz`
+4. `openagents_web_staging-20260221T213651Z.sql.gz`
 - size: `193322` bytes
 - created: `2026-02-21T21:39:52Z`
 
