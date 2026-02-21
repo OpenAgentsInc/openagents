@@ -6,7 +6,7 @@ MODE="${1:-changed}"
 
 PROTO_TRIGGER_PATTERN='^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-generate\.sh$|scripts/verify-rust-proto-crate\.sh$|crates/openagents-proto/)'
 RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
-COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
+COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
 OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
 
 require_cmd() {
@@ -132,7 +132,8 @@ run_trigger_tests() {
   assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "apps/runtime/lib/foo.ex" "true"
   assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "false"
 
-  assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/src/routes.tsx" "true"
+  assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/routes/web.php" "true"
+  assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
   assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "docs/protocol/comms/README.md" "true"
   assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "proto/openagents/sync/v1/sync.proto" "false"
 

@@ -43,6 +43,11 @@ Examples:
 ./scripts/local-ci.sh all
 ```
 
+Changed-mode trigger note:
+
+- `comms` lane auto-runs for legacy Laravel/openagents.com surface paths, `apps/runtime/`, comms protocol docs, and comms matrix script changes.
+- Rust control-service path `apps/openagents.com/service/` is intentionally excluded from automatic `comms` lane triggering to keep Rust migration iteration fast.
+
 ## Push Policy (Current)
 
 Pre-push checks are intentionally disabled.
