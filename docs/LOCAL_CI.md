@@ -33,6 +33,7 @@ Supported lanes:
 - `runtime`
 - `comms`
 - `openclaw`
+- `web-shell`
 - `test-triggers`
 
 Examples:
@@ -40,6 +41,7 @@ Examples:
 ```bash
 ./scripts/local-ci.sh runtime
 ./scripts/local-ci.sh comms
+./scripts/local-ci.sh web-shell
 ./scripts/local-ci.sh all
 ```
 
@@ -47,6 +49,7 @@ Changed-mode trigger note:
 
 - `comms` lane auto-runs for legacy Laravel/openagents.com surface paths, `apps/runtime/`, comms protocol docs, and comms matrix script changes.
 - Rust control-service path `apps/openagents.com/service/` is intentionally excluded from automatic `comms` lane triggering to keep Rust migration iteration fast.
+- `web-shell` lane auto-runs for `apps/openagents.com/web-shell/**` changes and enforces JS host shim boundary rules.
 
 ## Push Policy (Current)
 
