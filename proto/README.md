@@ -45,6 +45,10 @@ Current files:
 - `proto/openagents/protocol/v1/events.proto`
 - `proto/openagents/protocol/v1/receipts.proto`
 - `proto/openagents/protocol/v1/comms.proto`
+- `proto/openagents/codex/v1/sandbox.proto`
+- `proto/openagents/codex/v1/events.proto`
+- `proto/openagents/codex/v1/workers.proto`
+- `proto/openagents/codex/v1/auth.proto`
 - `proto/openagents/protocol/v1/codex_sandbox.proto`
 - `proto/openagents/protocol/v1/codex_events.proto`
 - `proto/openagents/protocol/v1/codex_workers.proto`

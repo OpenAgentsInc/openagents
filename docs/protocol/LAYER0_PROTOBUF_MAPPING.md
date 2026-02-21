@@ -1,6 +1,6 @@
 # Layer-0 Protobuf Mapping (Proto -> JSON/SSE)
 
-Proto3 definitions under `proto/openagents/protocol/v1/*` are canonical for shared contracts. Existing HTTP/SSE wire format can remain JSON-first while mapping to these schemas.
+Proto3 definitions under `proto/openagents/*/v1/*` are canonical for shared contracts. Existing HTTP/SSE wire format can remain JSON-first while mapping to these schemas.
 
 ## Mapping Rules
 
@@ -30,14 +30,14 @@ Runtime SSE events map to `RunEvent` oneofs in `events.proto`:
 
 ## Codex Worker Stream Mapping
 
-Codex worker SSE payloads are proto-compatible projections of `openagents.protocol.v1.CodexWorkerEvent`
-from `proto/openagents/protocol/v1/codex_events.proto`.
+Codex worker stream payloads are proto-compatible projections of `openagents.codex.v1.CodexWorkerEvent`
+from `proto/openagents/codex/v1/events.proto`.
 
 Envelope mapping:
 
 - `seq` (JSON number) -> `CodexWorkerEvent.seq`
 - `eventType` or `event_type` (JSON string) -> `CodexWorkerEvent.event_type`
-- `payload` (JSON object) -> `CodexWorkerUnknownPayload.body` in proto terms when method-specific
+- `payload` (JSON object) -> `CodexWorkerUnknownPayload.body` fallback when method-specific
   desktop/iOS payloads are emitted through worker events.
 
 Handshake envelope mapping (runtime-mediated desktop/iOS flow):

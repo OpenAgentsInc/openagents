@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package openagents.codex.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "openagents/codex/v1/events.proto";
+import "openagents/codex/v1/sandbox.proto";
+
+message CodexProjectionStatus {
+  string document_id = 1;
+  uint64 last_runtime_seq = 2;
+  uint64 lag_events = 3;
+  string status = 4;
+  string projection_version = 5;
+  google.protobuf.Timestamp last_projected_at = 6;
+}
+
+message CodexWorker {
+  string worker_id = 1;
+  string status = 2;
+  uint64 latest_seq = 3;
+
+  string adapter = 4;
+  string owner_user_ref = 5;
+  string owner_guest_scope = 6;
+
+  CodexSandboxBinding sandbox = 7;
+  google.protobuf.Struct metadata = 8;
+
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp stopped_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  google.protobuf.Timestamp last_heartbeat_at = 12;
+}
+
+message CodexWorkerSummary {
+  string worker_id = 1;
+  string status = 2;
+  uint64 latest_seq = 3;
+
+  string workspace_ref = 4;
+  string codex_home_ref = 5;
+  string adapter = 6;
+
+  string heartbeat_state = 7;
+  google.protobuf.Timestamp last_heartbeat_at = 8;
+  google.protobuf.Timestamp started_at = 9;
+
+  google.protobuf.Struct metadata = 10;
+  CodexProjectionStatus khala_projection = 11;
+}
+
+message CodexWorkerCreateRequest {
+  string worker_id = 1;
+  string workspace_ref = 2;
+  string codex_home_ref = 3;
+  string adapter = 4;
+  CodexSandboxBinding sandbox = 5;
+  google.protobuf.Struct metadata = 6;
+}
+
+message CodexWorkerCreateResponse {
+  CodexWorker worker = 1;
+  bool idempotent_replay = 2;
+  CodexProjectionEnvelope projection = 3;
+}
+
+message CodexWorkerSnapshot {
+  CodexWorker worker = 1;
+  CodexProjectionEnvelope projection = 2;
+}
+
+message CodexWorkerRequestEnvelope {
+  string request_id = 1;
+  string method = 2;
+  google.protobuf.Struct request = 3;
+  string request_version = 4;
+}
+
+message CodexWorkerRequestResponse {
+  string worker_id = 1;
+  string request_id = 2;
+  bool ok = 3;
+  google.protobuf.Struct response = 4;
+  CodexProjectionEnvelope projection = 5;
+}
+
+message CodexWorkerStopRequest {
+  string reason = 1;
+}
+
+message CodexWorkerStopResponse {
+  string worker_id = 1;
+  string status = 2;
+  bool idempotent_replay = 3;
+  CodexProjectionEnvelope projection = 4;
+}

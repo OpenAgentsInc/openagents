@@ -1,0 +1,418 @@
+{
+  "worker_summary": {
+    "worker_id": "desktopw:desktop:shared",
+    "status": "running",
+    "latest_seq": 307,
+    "workspace_ref": "openagents:/workspace",
+    "codex_home_ref": "openagents:/codex-home",
+    "adapter": "desktop",
+    "heartbeat_state": "healthy",
+    "last_heartbeat_at": "2026-02-21T07:44:11Z",
+    "started_at": "2026-02-21T07:30:00Z",
+    "metadata": {
+      "owner_surface": "autopilot-desktop",
+      "runtime_source": "runtime"
+    },
+    "khala_projection": {
+      "document_id": "runtime:codex_worker:desktopw:desktop:shared",
+      "last_runtime_seq": 307,
+      "lag_events": 0,
+      "status": "running",
+      "projection_version": "khala.v1",
+      "last_projected_at": "2026-02-21T07:44:11Z"
+    }
+  },
+  "worker_snapshot": {
+    "worker": {
+      "worker_id": "desktopw:desktop:shared",
+      "status": "running",
+      "latest_seq": 307,
+      "adapter": "desktop",
+      "owner_user_ref": "user:1",
+      "owner_guest_scope": "",
+      "sandbox": {
+        "execution_mode": "CODEX_EXECUTION_MODE_DESKTOP",
+        "sandbox_backend": "CODEX_SANDBOX_BACKEND_UNSPECIFIED",
+        "workspace_ref": "openagents:/workspace",
+        "codex_home_ref": "openagents:/codex-home",
+        "sandbox_session_ref": "",
+        "region": "us-central1",
+        "provider_project_ref": "openagentsgemini",
+        "placement_ref": "desktop-local",
+        "adapter": "desktop",
+        "metadata": {
+          "surface": "autopilot-desktop"
+        }
+      },
+      "metadata": {
+        "owner_surface": "autopilot-desktop"
+      },
+      "started_at": "2026-02-21T07:30:00Z",
+      "updated_at": "2026-02-21T07:44:11Z",
+      "last_heartbeat_at": "2026-02-21T07:44:11Z"
+    },
+    "projection": {
+      "runtime_source": "runtime",
+      "runtime_run_id": "run_01HZZEXAMPLE",
+      "runtime_worker_id": "desktopw:desktop:shared",
+      "runtime_seq": 307,
+      "runtime_seq_end": 307,
+      "projection_version": 1,
+      "projected_at": "2026-02-21T07:44:11Z"
+    }
+  },
+  "worker_create_response": {
+    "worker": {
+      "worker_id": "desktopw:desktop:new",
+      "status": "running",
+      "latest_seq": 1,
+      "adapter": "desktop"
+    },
+    "idempotent_replay": false,
+    "projection": {
+      "runtime_source": "runtime",
+      "runtime_run_id": "run_01HZZCREATE",
+      "runtime_worker_id": "desktopw:desktop:new",
+      "runtime_seq": 1,
+      "runtime_seq_end": 1,
+      "projection_version": 1,
+      "projected_at": "2026-02-21T07:45:00Z"
+    }
+  },
+  "worker_request_response": {
+    "worker_id": "desktopw:desktop:shared",
+    "request_id": "req_01HZZREQ",
+    "ok": true,
+    "response": {
+      "status": "accepted",
+      "method": "turn/start"
+    },
+    "projection": {
+      "runtime_source": "runtime",
+      "runtime_run_id": "run_01HZZREQ",
+      "runtime_worker_id": "desktopw:desktop:shared",
+      "runtime_seq": 308,
+      "runtime_seq_end": 308,
+      "projection_version": 1,
+      "projected_at": "2026-02-21T07:45:11Z"
+    }
+  },
+  "auth_states": {
+    "authenticated": {
+      "worker_id": "desktopw:desktop:shared",
+      "hydration_status": "CODEX_AUTH_HYDRATION_STATUS_AUTHENTICATED",
+      "provider": "workos",
+      "token_reference": {
+        "token_ref": "tokref_01HZZAUTH",
+        "provider": "workos",
+        "scopes": [
+          "runtime.codex_worker_events"
+        ],
+        "expires_at": "2026-02-21T08:00:00Z",
+        "refreshable": true
+      },
+      "status_reason": "authenticated",
+      "observed_at": "2026-02-21T07:45:20Z",
+      "metadata": {
+        "identity_provider": "workos"
+      },
+      "projection": {
+        "runtime_source": "runtime",
+        "runtime_run_id": "run_01HZZAUTH",
+        "runtime_worker_id": "desktopw:desktop:shared",
+        "runtime_seq": 309,
+        "runtime_seq_end": 309,
+        "projection_version": 1,
+        "projected_at": "2026-02-21T07:45:20Z"
+      }
+    },
+    "device_flow_pending": {
+      "worker_id": "desktopw:desktop:shared",
+      "hydration_status": "CODEX_AUTH_HYDRATION_STATUS_DEVICE_FLOW_PENDING",
+      "provider": "workos",
+      "device_flow": {
+        "flow_id": "flow_01HZZFLOW",
+        "provider": "workos",
+        "verification_uri": "https://openagents.com/device",
+        "user_code_ref": "code_ref_01HZZFLOW",
+        "expires_at": "2026-02-21T07:55:00Z",
+        "poll_interval_seconds": 5,
+        "status": "pending"
+      },
+      "status_reason": "device_code_sent",
+      "observed_at": "2026-02-21T07:45:00Z",
+      "projection": {
+        "runtime_source": "runtime",
+        "runtime_run_id": "run_01HZZFLOW",
+        "runtime_worker_id": "desktopw:desktop:shared",
+        "runtime_seq": 305,
+        "runtime_seq_end": 305,
+        "projection_version": 1,
+        "projected_at": "2026-02-21T07:45:00Z"
+      }
+    }
+  },
+  "notification_events": [
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 301,
+      "method": "CODEX_NOTIFICATION_METHOD_THREAD_STARTED",
+      "method_text": "thread/started",
+      "occurred_at": "2026-02-21T07:44:01Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 301,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": true
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "thread/started",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD"
+        }
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 302,
+      "method": "CODEX_NOTIFICATION_METHOD_TURN_STARTED",
+      "method_text": "turn/started",
+      "occurred_at": "2026-02-21T07:44:02Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 302,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": true
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "turn/started",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD",
+          "turn_id": "turn_01HZZTURN",
+          "model": "gpt-5.2-codex",
+          "reasoning_effort": "low"
+        }
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 303,
+      "method": "CODEX_NOTIFICATION_METHOD_ITEM_STARTED",
+      "method_text": "item/started",
+      "occurred_at": "2026-02-21T07:44:03Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 303,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "item/started",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD",
+          "turn_id": "turn_01HZZTURN",
+          "item_id": "item_01HZZITEM",
+          "item_kind": "agent_message"
+        }
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 304,
+      "method": "CODEX_NOTIFICATION_METHOD_ITEM_AGENT_MESSAGE_DELTA",
+      "method_text": "item/agentMessage/delta",
+      "occurred_at": "2026-02-21T07:44:04Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 304,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "item/agentMessage/delta",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD",
+          "turn_id": "turn_01HZZTURN",
+          "item_id": "item_01HZZITEM",
+          "delta": "Doing well."
+        }
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 305,
+      "method": "CODEX_NOTIFICATION_METHOD_ITEM_REASONING_DELTA",
+      "method_text": "item/reasoning/summaryTextDelta",
+      "occurred_at": "2026-02-21T07:44:05Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 305,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "item/reasoning/summaryTextDelta",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD",
+          "turn_id": "turn_01HZZTURN",
+          "item_id": "item_01HZZITEM",
+          "delta": "Thinking..."
+        }
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 306,
+      "method": "CODEX_NOTIFICATION_METHOD_ITEM_COMPLETED",
+      "method_text": "item/completed",
+      "occurred_at": "2026-02-21T07:44:06Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 306,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "item/completed",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD",
+          "turn_id": "turn_01HZZTURN",
+          "item_id": "item_01HZZITEM",
+          "item_kind": "agent_message",
+          "item_status": "completed"
+        }
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 307,
+      "method": "CODEX_NOTIFICATION_METHOD_TURN_COMPLETED",
+      "method_text": "turn/completed",
+      "occurred_at": "2026-02-21T07:44:07Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 307,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "turn/completed",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD",
+          "turn_id": "turn_01HZZTURN",
+          "status": "completed",
+          "token_usage": {
+            "input_tokens": 31,
+            "cached_input_tokens": 0,
+            "output_tokens": 24,
+            "reasoning_output_tokens": 10
+          }
+        }
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 308,
+      "method": "CODEX_NOTIFICATION_METHOD_IOS_HANDSHAKE",
+      "method_text": "ios/handshake",
+      "occurred_at": "2026-02-21T07:44:08Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 308,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-ios",
+        "method": "ios/handshake",
+        "handshake_id": "hs_01HZZHS",
+        "device_id": "ios:23b77335-eb34-473e-b038-01d7356bcb50",
+        "occurred_at": "2026-02-21T07:44:08Z"
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 309,
+      "method": "CODEX_NOTIFICATION_METHOD_DESKTOP_HANDSHAKE_ACK",
+      "method_text": "desktop/handshake_ack",
+      "occurred_at": "2026-02-21T07:44:09Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 309,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-desktop",
+        "method": "desktop/handshake_ack",
+        "handshake_id": "hs_01HZZHS",
+        "desktop_session_id": "session_01HZZSESSION",
+        "occurred_at": "2026-02-21T07:44:09Z"
+      }
+    },
+    {
+      "worker_id": "desktopw:desktop:shared",
+      "seq": 310,
+      "method": "CODEX_NOTIFICATION_METHOD_USER_MESSAGE",
+      "method_text": "ios/user_message",
+      "occurred_at": "2026-02-21T07:44:10Z",
+      "replay": {
+        "topic": "runtime.codex_worker_events",
+        "seq": 310,
+        "resume_after": 300,
+        "retention_floor": 250,
+        "replayed": false
+      },
+      "payload": {
+        "source": "autopilot-ios",
+        "method": "ios/user_message",
+        "message_id": "iosmsg_01HZZMSG",
+        "params": {
+          "thread_id": "thr_01HZZTHREAD",
+          "turn_id": "turn_01HZZTURN",
+          "text": "who are you?",
+          "model": "gpt-5.2-codex",
+          "reasoning": "low"
+        }
+      }
+    }
+  ],
+  "stream_errors": {
+    "stale_cursor": {
+      "code": "CODEX_STREAM_ERROR_CODE_STALE_CURSOR",
+      "message": "cursor older than retention floor",
+      "retry_after_ms": 0,
+      "full_resync_required": true,
+      "reauth_required": false,
+      "topic": "runtime.codex_worker_events",
+      "resume_after": 309,
+      "retention_floor": 310
+    },
+    "reauth_required": {
+      "code": "CODEX_STREAM_ERROR_CODE_REAUTH_REQUIRED",
+      "message": "session revoked; reauthenticate",
+      "retry_after_ms": 0,
+      "full_resync_required": false,
+      "reauth_required": true,
+      "topic": "runtime.codex_worker_events",
+      "resume_after": 0,
+      "retention_floor": 0
+    }
+  }
+}

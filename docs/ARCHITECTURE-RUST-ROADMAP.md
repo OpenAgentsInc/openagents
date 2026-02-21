@@ -88,6 +88,7 @@ Contract artifacts: `proto/openagents/control/v1/auth.proto`, `docs/protocol/fix
 
 ### OA-RUST-011 — [Proto] Finalize Codex worker/event contracts for all surfaces
 Description: Lock Codex worker event envelopes, turn status updates, and replay metadata contracts so web/desktop/iOS consume the same wire protocol.
+Contract artifacts: `proto/openagents/codex/v1/events.proto`, `proto/openagents/codex/v1/workers.proto`, `proto/openagents/codex/v1/auth.proto`, `docs/protocol/fixtures/codex-worker-events-v1.json`, `docs/protocol/codex-worker-events-v1.md`
 
 ### OA-RUST-012 — [Proto] Stand up Rust codegen workspace crate(s)
 Description: Create shared generated Rust crates and enforce deterministic generation output across services and clients.

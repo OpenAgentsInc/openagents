@@ -40,10 +40,14 @@ Scope: cross-process and client/server contracts only
 | --- | --- | --- | --- | --- |
 | `proto/openagents/control/v1/auth.proto` | `openagents.control.v1` | `openagents.control.v1` | `owner:openagents.com` | OA-RUST-010 |
 | `proto/openagents/runtime/v1/orchestration.proto` | `openagents.runtime.v1` | `openagents.runtime.v1` | `owner:runtime` | OA-RUST-009 |
-| `proto/openagents/protocol/v1/codex_auth.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
-| `proto/openagents/protocol/v1/codex_events.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
-| `proto/openagents/protocol/v1/codex_workers.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
-| `proto/openagents/protocol/v1/codex_sandbox.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
+| `proto/openagents/codex/v1/sandbox.proto` | `openagents.codex.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
+| `proto/openagents/codex/v1/events.proto` | `openagents.codex.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
+| `proto/openagents/codex/v1/workers.proto` | `openagents.codex.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
+| `proto/openagents/codex/v1/auth.proto` | `openagents.codex.v1` | `openagents.codex.v1` | `owner:runtime` | OA-RUST-011 |
+| `proto/openagents/protocol/v1/codex_sandbox.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:contracts-docs` | transitional legacy shim; retire after codex.v1 cutover |
+| `proto/openagents/protocol/v1/codex_events.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:contracts-docs` | transitional legacy shim; retire after codex.v1 cutover |
+| `proto/openagents/protocol/v1/codex_workers.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:contracts-docs` | transitional legacy shim; retire after codex.v1 cutover |
+| `proto/openagents/protocol/v1/codex_auth.proto` | `openagents.protocol.v1` | `openagents.codex.v1` | `owner:contracts-docs` | transitional legacy shim; retire after codex.v1 cutover |
 | `proto/openagents/protocol/v1/events.proto` | `openagents.protocol.v1` | `openagents.runtime.v1` | `owner:runtime` | transitional legacy; retire after runtime.v1 consumer cutover |
 | `proto/openagents/protocol/v1/receipts.proto` | `openagents.protocol.v1` | `openagents.runtime.v1` | `owner:runtime` | transitional legacy; retire after runtime.v1 consumer cutover |
 | `proto/openagents/protocol/v1/comms.proto` | `openagents.protocol.v1` | `openagents.control.v1` | `owner:openagents.com` | transitional legacy; retire after control.v1 cutover |
