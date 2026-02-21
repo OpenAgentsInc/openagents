@@ -15,7 +15,7 @@ use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
     config::Config,
-    fanout::{ExternalFanoutHook, FanoutHub, FanoutMessage},
+    fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     types::{
         AppendRunEventRequest, ProjectionCheckpoint, ProjectionDriftReport, RegisterWorkerRequest,
@@ -125,6 +125,10 @@ struct FanoutPollResponse {
     topic: String,
     driver: String,
     messages: Vec<FanoutMessage>,
+    oldest_available_cursor: Option<u64>,
+    head_cursor: Option<u64>,
+    next_cursor: u64,
+    replay_complete: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -343,15 +347,29 @@ async fn get_khala_topic_messages(
     }
     let after_seq = query.after_seq.unwrap_or(0);
     let limit = query.limit.unwrap_or(100);
+    let window = state
+        .fanout
+        .topic_window(&topic)
+        .await
+        .map_err(ApiError::from_fanout)?;
     let messages = state
         .fanout
         .poll(&topic, after_seq, limit)
         .await
-        .map_err(|error| ApiError::Internal(error.to_string()))?;
+        .map_err(ApiError::from_fanout)?;
+    let (oldest_available_cursor, head_cursor) = fanout_window_cursors(window.as_ref());
+    let next_cursor = messages
+        .last()
+        .map_or(after_seq, |message| message.sequence);
+    let replay_complete = head_cursor.map_or(true, |head| next_cursor >= head);
     Ok(Json(FanoutPollResponse {
         topic,
         driver: state.fanout.driver_name().to_string(),
         messages,
+        oldest_available_cursor,
+        head_cursor,
+        next_cursor,
+        replay_complete,
     }))
 }
 
@@ -512,6 +530,12 @@ enum ApiError {
     NotFound,
     Forbidden(String),
     Conflict(String),
+    StaleCursor {
+        topic: String,
+        requested_cursor: u64,
+        oldest_available_cursor: u64,
+        head_cursor: u64,
+    },
     WritePathFrozen(String),
     InvalidRequest(String),
     Internal(String),
@@ -557,6 +581,25 @@ impl ApiError {
     fn from_artifacts(error: ArtifactError) -> Self {
         Self::Internal(error.to_string())
     }
+
+    fn from_fanout(error: FanoutError) -> Self {
+        match error {
+            FanoutError::InvalidTopic => {
+                Self::InvalidRequest("topic is required for khala fanout polling".to_string())
+            }
+            FanoutError::StaleCursor {
+                topic,
+                requested_cursor,
+                oldest_available_cursor,
+                head_cursor,
+            } => Self::StaleCursor {
+                topic,
+                requested_cursor,
+                oldest_available_cursor,
+                head_cursor,
+            },
+        }
+    }
 }
 
 fn owner_from_parts(
@@ -573,6 +616,16 @@ fn owner_from_parts(
         Err(ApiError::InvalidRequest(
             "owner_user_id or owner_guest_scope must be provided (but not both)".to_string(),
         ))
+    }
+}
+
+fn fanout_window_cursors(window: Option<&FanoutTopicWindow>) -> (Option<u64>, Option<u64>) {
+    match window {
+        Some(window) => (
+            Some(window.oldest_sequence.saturating_sub(1)),
+            Some(window.head_sequence),
+        ),
+        None => (None, None),
     }
 }
 
@@ -657,6 +710,26 @@ impl IntoResponse for ApiError {
                 Json(serde_json::json!({
                     "error": "conflict",
                     "message": message,
+                })),
+            )
+                .into_response(),
+            Self::StaleCursor {
+                topic,
+                requested_cursor,
+                oldest_available_cursor,
+                head_cursor,
+            } => (
+                StatusCode::GONE,
+                Json(serde_json::json!({
+                    "error": "stale_cursor",
+                    "message": "cursor is older than retained stream window",
+                    "details": {
+                        "topic": topic,
+                        "requested_cursor": requested_cursor,
+                        "oldest_available_cursor": oldest_available_cursor,
+                        "head_cursor": head_cursor,
+                        "recovery": "reset_local_watermark_and_replay_bootstrap"
+                    },
                 })),
             )
                 .into_response(),
@@ -1142,6 +1215,34 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .unwrap_or("");
         assert_eq!(first_kind, "run.started");
+        assert_eq!(
+            messages_json
+                .pointer("/oldest_available_cursor")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            0
+        );
+        assert_eq!(
+            messages_json
+                .pointer("/head_cursor")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            1
+        );
+        assert_eq!(
+            messages_json
+                .pointer("/next_cursor")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            1
+        );
+        assert_eq!(
+            messages_json
+                .pointer("/replay_complete")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            true
+        );
 
         let hooks_response = app
             .oneshot(
@@ -1157,6 +1258,76 @@ mod tests {
             .and_then(serde_json::Value::as_array)
             .map_or(0, std::vec::Vec::len);
         assert_eq!(hook_count, 3);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_topic_messages_returns_stale_cursor_when_replay_floor_is_missed() -> Result<()> {
+        let app = test_router();
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:stale-cursor-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        for index in 2..=80 {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/internal/v1/runs/{run_id}/events"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                            "event_type": "run.step",
+                            "payload": {"step": index},
+                            "expected_previous_seq": index - 1
+                        }))?))?,
+                )
+                .await?;
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+        }
+
+        let stale_response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stale_response.status(), axum::http::StatusCode::GONE);
+        let stale_json = response_json(stale_response).await?;
+        assert_eq!(
+            stale_json
+                .pointer("/error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "stale_cursor"
+        );
+        assert_eq!(
+            stale_json
+                .pointer("/details/recovery")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "reset_local_watermark_and_replay_bootstrap"
+        );
 
         Ok(())
     }

@@ -675,6 +675,12 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamLifecycleEvents.append(stamped)
     }
 
+    private func resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: String) {
+        khalaWorkerEventsWatermark = 0
+        defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
+        recordLifecycleEvent("stale_cursor_reset reason=\(reason)")
+    }
+
     private func khalaJoin(
         socket: URLSessionWebSocketTask,
         workerID: String
@@ -802,8 +808,7 @@ final class CodexHandshakeViewModel: ObservableObject {
                 case "forbidden_topic":
                     throw RuntimeCodexApiError(message: message, code: .forbidden, status: 403)
                 case "stale_cursor":
-                    khalaWorkerEventsWatermark = 0
-                    defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
+                    resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: "server_reply")
                     throw RuntimeCodexApiError(message: message, code: .conflict, status: 409)
                 default:
                     throw RuntimeCodexApiError(message: message, code: .unknown, status: nil)
@@ -927,8 +932,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         if code == "stale_cursor" {
-            khalaWorkerEventsWatermark = 0
-            defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
+            resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: "sync_error_payload")
             return RuntimeCodexApiError(message: message, code: .conflict, status: 409)
         }
 

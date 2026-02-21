@@ -24,10 +24,26 @@ pub struct ExternalFanoutHook {
     pub note: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FanoutTopicWindow {
+    pub topic: String,
+    pub oldest_sequence: u64,
+    pub head_sequence: u64,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum FanoutError {
     #[error("invalid fanout topic")]
     InvalidTopic,
+    #[error(
+        "stale cursor for topic {topic}: requested={requested_cursor} oldest={oldest_available_cursor} head={head_cursor}"
+    )]
+    StaleCursor {
+        topic: String,
+        requested_cursor: u64,
+        oldest_available_cursor: u64,
+        head_cursor: u64,
+    },
 }
 
 #[async_trait]
@@ -39,6 +55,7 @@ pub trait FanoutDriver: Send + Sync {
         after_sequence: u64,
         limit: usize,
     ) -> Result<Vec<FanoutMessage>, FanoutError>;
+    async fn topic_window(&self, topic: &str) -> Result<Option<FanoutTopicWindow>, FanoutError>;
     fn driver_name(&self) -> &'static str;
     fn external_hooks(&self) -> Vec<ExternalFanoutHook>;
 }
@@ -67,6 +84,13 @@ impl FanoutHub {
         limit: usize,
     ) -> Result<Vec<FanoutMessage>, FanoutError> {
         self.driver.poll(topic, after_sequence, limit).await
+    }
+
+    pub async fn topic_window(
+        &self,
+        topic: &str,
+    ) -> Result<Option<FanoutTopicWindow>, FanoutError> {
+        self.driver.topic_window(topic).await
     }
 
     #[must_use]
@@ -131,16 +155,50 @@ impl FanoutDriver for MemoryFanoutDriver {
         }
         let effective_limit = limit.max(1).min(500);
         let topics = self.topics.read().await;
-        let messages = topics.get(normalized).map_or_else(Vec::new, |queue| {
-            queue
-                .messages
-                .iter()
-                .filter(|message| message.sequence > after_sequence)
-                .take(effective_limit)
-                .cloned()
-                .collect()
-        });
+        let Some(queue) = topics.get(normalized) else {
+            return Ok(Vec::new());
+        };
+        if let (Some(oldest), Some(head)) = (queue.messages.front(), queue.messages.back()) {
+            if after_sequence < oldest.sequence.saturating_sub(1) {
+                return Err(FanoutError::StaleCursor {
+                    topic: normalized.to_string(),
+                    requested_cursor: after_sequence,
+                    oldest_available_cursor: oldest.sequence.saturating_sub(1),
+                    head_cursor: head.sequence,
+                });
+            }
+            if after_sequence > head.sequence {
+                return Ok(Vec::new());
+            }
+        }
+        let messages = queue
+            .messages
+            .iter()
+            .filter(|message| message.sequence > after_sequence)
+            .take(effective_limit)
+            .cloned()
+            .collect();
         Ok(messages)
+    }
+
+    async fn topic_window(&self, topic: &str) -> Result<Option<FanoutTopicWindow>, FanoutError> {
+        let normalized = topic.trim();
+        if normalized.is_empty() {
+            return Err(FanoutError::InvalidTopic);
+        }
+
+        let topics = self.topics.read().await;
+        let Some(queue) = topics.get(normalized) else {
+            return Ok(None);
+        };
+        let (Some(oldest), Some(head)) = (queue.messages.front(), queue.messages.back()) else {
+            return Ok(None);
+        };
+        Ok(Some(FanoutTopicWindow {
+            topic: normalized.to_string(),
+            oldest_sequence: oldest.sequence,
+            head_sequence: head.sequence,
+        }))
     }
 
     fn driver_name(&self) -> &'static str {
@@ -173,7 +231,7 @@ mod tests {
     use anyhow::{Result, anyhow};
     use serde_json::json;
 
-    use super::{FanoutHub, FanoutMessage};
+    use super::{FanoutError, FanoutHub, FanoutMessage};
 
     #[tokio::test]
     async fn memory_fanout_preserves_order() -> Result<()> {
@@ -222,7 +280,7 @@ mod tests {
                 .await?;
         }
 
-        let messages = fanout.poll("run:2:events", 0, 10).await?;
+        let messages = fanout.poll("run:2:events", 1, 10).await?;
         let observed = messages
             .iter()
             .map(|message| message.sequence)
@@ -238,5 +296,79 @@ mod tests {
         let fanout = FanoutHub::memory(4);
         let hooks = fanout.external_hooks();
         assert_eq!(hooks.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn memory_fanout_rejects_stale_cursor() -> Result<()> {
+        let fanout = FanoutHub::memory(2);
+        for seq in 1..=4 {
+            fanout
+                .publish(
+                    "run:stale:events",
+                    FanoutMessage {
+                        topic: String::new(),
+                        sequence: seq,
+                        kind: "run.step".to_string(),
+                        payload: json!({"seq": seq}),
+                        published_at: chrono::Utc::now(),
+                    },
+                )
+                .await?;
+        }
+
+        let stale = fanout.poll("run:stale:events", 0, 10).await;
+        match stale {
+            Err(FanoutError::StaleCursor {
+                requested_cursor,
+                oldest_available_cursor,
+                ..
+            }) => {
+                assert_eq!(requested_cursor, 0);
+                assert_eq!(oldest_available_cursor, 2);
+            }
+            other => return Err(anyhow!("expected stale cursor error, got {:?}", other)),
+        }
+
+        let boundary = fanout.poll("run:stale:events", 2, 10).await?;
+        let observed = boundary
+            .iter()
+            .map(|message| message.sequence)
+            .collect::<Vec<_>>();
+        if observed != vec![3, 4] {
+            return Err(anyhow!(
+                "unexpected replay boundary behavior: {:?}",
+                observed
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_fanout_reports_topic_window() -> Result<()> {
+        let fanout = FanoutHub::memory(3);
+        for seq in 1..=5 {
+            fanout
+                .publish(
+                    "run:window:events",
+                    FanoutMessage {
+                        topic: String::new(),
+                        sequence: seq,
+                        kind: "run.step".to_string(),
+                        payload: json!({"seq": seq}),
+                        published_at: chrono::Utc::now(),
+                    },
+                )
+                .await?;
+        }
+
+        let window = fanout
+            .topic_window("run:window:events")
+            .await?
+            .ok_or_else(|| anyhow!("expected topic window"))?;
+        assert_eq!(window.oldest_sequence, 3);
+        assert_eq!(window.head_sequence, 5);
+
+        Ok(())
     }
 }
