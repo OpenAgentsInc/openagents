@@ -30,7 +30,7 @@ Highest-impact structural gaps (agent-first):
 
 - `AGENTS.md` size: **353 lines**
 - Tracked docs under `docs/`: **113 files**
-- ADR count: **25** (`docs/adr/ADR-*.md`)
+- ADR count: **25** (`docs/plans/archived/adr-legacy-2026-02-21/ADR-*.md`)
 - App surfaces: **6** (`apps/*`)
 - Shared packages: **9** (`packages/*`)
 - Missing-but-referenced canonical specs:

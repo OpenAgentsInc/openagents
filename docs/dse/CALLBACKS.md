@@ -7,7 +7,7 @@ They are distinct from replay logs:
 - REPLAY.jsonl: session recording (Layer B) and exportable publication format (Layer C).
 
 See:
-- `docs/adr/ADR-0017-telemetry-trace-contract.md` (Layer A/B/C separation)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0017-telemetry-trace-contract.md` (Layer A/B/C separation)
 - `docs/execution/REPLAY.md` (replay event format)
 
 ## Requirements (Normative)

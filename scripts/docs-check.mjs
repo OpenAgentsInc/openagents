@@ -41,7 +41,9 @@ const tracked = gitLsFiles()
 
 // Scope: repository knowledge base (docs/) + top-level entry points.
 const mdFiles = tracked.filter(
-  (f) => f === "README.md" || f === "AGENTS.md" || f.startsWith("docs/") && f.endsWith(".md"),
+  (f) =>
+    (f === "README.md" || f === "AGENTS.md" || f.startsWith("docs/") && f.endsWith(".md")) &&
+    !f.startsWith("docs/plans/archived/"),
 )
 
 /** @type {Array<{file: string, message: string}>} */

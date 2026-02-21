@@ -5,7 +5,7 @@ This document describes the intended public control-plane API exposed under:
 - `https://openagents.com/api`
 
 Canonical ADR:
-- `docs/adr/ADR-0026-openagents-control-plane-api.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0026-openagents-control-plane-api.md`
 
 ## Goals
 

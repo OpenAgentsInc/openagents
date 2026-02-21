@@ -32,7 +32,7 @@ An app is proto-first when shared cross-surface contracts are:
 
 This follows:
 
-- `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0028-layer0-proto-canonical-schema.md`
 - `proto/README.md`
 
 ## Maturity Scale
@@ -46,7 +46,7 @@ This follows:
 ## Repo-Wide Findings
 
 1. Proto doctrine is established and accepted.
-   - `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`
+   - `docs/plans/archived/adr-legacy-2026-02-21/ADR-0028-layer0-proto-canonical-schema.md`
    - `proto/README.md`
 2. Proto generation is verified, but generated artifacts are not committed and currently not consumed by apps as a primary contract source.
    - `scripts/verify-proto-generate.sh`

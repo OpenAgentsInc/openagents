@@ -94,8 +94,8 @@ The plan is grounded in the current codebase, not a greenfield architecture.
    - Wallet + transaction L402 panes already exist.
    - We should extend these for seller/paywall operations rather than inventing a new UI framework.
 7. ADR contract/receipt standards:
-   - `docs/adr/ADR-0007-tool-execution-contract.md`
-   - `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
+   - `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md`
+   - `docs/plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md`
 
 ### Gaps we must close
 

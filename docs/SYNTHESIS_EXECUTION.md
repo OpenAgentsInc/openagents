@@ -16,9 +16,9 @@ Authority note:
 Some contracts are **Accepted** by ADR, but may be partially implemented.
 
 Canonical contracts:
-- Verified Patch Bundle: `docs/adr/ADR-0002-verified-patch-bundle.md`
-- Replay format target: `docs/adr/ADR-0003-replay-formats.md`
-- Tool execution contract: `docs/adr/ADR-0007-tool-execution-contract.md`
+- Verified Patch Bundle: `docs/plans/archived/adr-legacy-2026-02-21/ADR-0002-verified-patch-bundle.md`
+- Replay format target: `docs/plans/archived/adr-legacy-2026-02-21/ADR-0003-replay-formats.md`
+- Tool execution contract: `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md`
 
 Canonical specs:
 - `docs/execution/ARTIFACTS.md`

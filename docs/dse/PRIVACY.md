@@ -1,10 +1,10 @@
 # Privacy Presets (Swarm Dispatch Defaults)
 
-This document defines the canonical privacy policy presets referenced by `docs/adr/ADR-0016-privacy-defaults-swarm-dispatch.md`.
+This document defines the canonical privacy policy presets referenced by `docs/plans/archived/adr-legacy-2026-02-21/ADR-0016-privacy-defaults-swarm-dispatch.md`.
 
 Terminology:
 - `PrivacyPolicy`, redaction modes, and trust tiers are described at the ADR level.
-- Protocol-level receipt/publication redaction rules are covered by `docs/adr/ADR-0017-telemetry-trace-contract.md`.
+- Protocol-level receipt/publication redaction rules are covered by `docs/plans/archived/adr-legacy-2026-02-21/ADR-0017-telemetry-trace-contract.md`.
 
 ## Presets (Canonical Names)
 

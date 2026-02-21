@@ -8,9 +8,9 @@ REPLAY is a **newline-delimited JSON** event stream. It is designed to be:
 - and exportable (can be redacted for publication).
 
 See:
-- `docs/adr/ADR-0003-replay-formats.md`
-- `docs/adr/ADR-0006-deterministic-hashing.md`
-- `docs/adr/ADR-0017-telemetry-trace-contract.md` (Layer A/B/C privacy)
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0003-replay-formats.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0017-telemetry-trace-contract.md` (Layer A/B/C privacy)
 
 ## File Structure
 
@@ -88,8 +88,8 @@ Required:
 - `params_hash` (string)
 
 Normative:
-- Tool params MUST validate against the tool JSON schema before execution (`docs/adr/ADR-0007-tool-execution-contract.md`).
-- `params_hash` MUST be computed deterministically (`docs/adr/ADR-0006-deterministic-hashing.md`).
+- Tool params MUST validate against the tool JSON schema before execution (`docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md`).
+- `params_hash` MUST be computed deterministically (`docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`).
 
 ## ToolResult
 
@@ -120,7 +120,7 @@ Optional:
 - `step_utility` (number, -1.0..+1.0; see `docs/GLOSSARY.md`)
 
 Normative:
-- `output_hash` MUST be computed deterministically over canonicalized output (`docs/adr/ADR-0006-deterministic-hashing.md`).
+- `output_hash` MUST be computed deterministically over canonicalized output (`docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`).
 
 ## Verification
 
@@ -180,4 +180,4 @@ Layer C (published/external) MUST:
 - keep only hashes (`params_hash`, `output_hash`),
 - apply privacy policy redaction rules.
 
-See `docs/adr/ADR-0017-telemetry-trace-contract.md` and `docs/adr/ADR-0016-privacy-defaults-swarm-dispatch.md`.
+See `docs/plans/archived/adr-legacy-2026-02-21/ADR-0017-telemetry-trace-contract.md` and `docs/plans/archived/adr-legacy-2026-02-21/ADR-0016-privacy-defaults-swarm-dispatch.md`.

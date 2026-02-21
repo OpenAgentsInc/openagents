@@ -42,7 +42,7 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 ### Payment Rails and Receipts
 
 - OpenAgents already treats **Lightning** as a rail (see [GLOSSARY.md](../../GLOSSARY.md): Rail, AssetId, payment proofs).
-- [ADR-0013](../../adr/ADR-0013-receipt-schema-payment-proofs.md) defines `payment_proof` with type `lightning_preimage`. L402 payments produce exactly that: pay invoice → get preimage → use for auth. Session receipts can record L402 spends as payment receipt entries with `rail`, `asset_id`, `amount_msats`, and `payment_proof: { type: "lightning_preimage", value: "..." }`.
+- [ADR-0013](../../plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md) defines `payment_proof` with type `lightning_preimage`. L402 payments produce exactly that: pay invoice -> get preimage -> use for auth. Session receipts can record L402 spends as payment receipt entries with `rail`, `asset_id`, `amount_msats`, and `payment_proof: { type: "lightning_preimage", value: "..." }`.
 - **No change to receipt schema** is required; L402 fits the existing Lightning proof type.
 
 ### Lanes and Providers
@@ -101,6 +101,6 @@ Lightning Labs open-sourced a set of tools that let AI agents use the Lightning 
 - [Lightning Labs – The Agents Are Here and They Want to Transact](https://lightning.engineering/posts/2026-02-11-ln-agent-tools/) (2026-02-11)
 - [lightning-agent-tools repo](https://github.com/lightninglabs/lightning-agent-tools)
 - [GLOSSARY.md](../../GLOSSARY.md) — Rail, AssetId, payment proofs
-- [ADR-0013: Receipt schema, payment proofs](../../adr/ADR-0013-receipt-schema-payment-proofs.md)
-- [ADR-0007: Tool execution contract](../../adr/ADR-0007-tool-execution-contract.md)
+- [ADR-0013: Receipt schema, payment proofs](../../plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md)
+- [ADR-0007: Tool execution contract](../../plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md)
 - [PROJECT_OVERVIEW.md](../../PROJECT_OVERVIEW.md) — Active codebase (web-first)

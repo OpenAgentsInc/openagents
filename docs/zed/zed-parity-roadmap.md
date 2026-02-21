@@ -13,7 +13,7 @@ Status:
 - Save file deterministically via a typed UI ↔ host contract.
 
 Related contract:
-- `docs/adr/ADR-0023-file-editor-open-save-events.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0023-file-editor-open-save-events.md`
 
 ## Phase 2 (Workspace UX)
 

@@ -128,4 +128,4 @@ Backward compatibility expectations:
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `docs/codex/webapp-sandbox-and-codex-auth-plan.md`
 - `apps/runtime/docs/RUNTIME_CONTRACT.md`
-- `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0028-layer0-proto-canonical-schema.md`

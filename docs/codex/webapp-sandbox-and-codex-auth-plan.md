@@ -3,7 +3,7 @@
 Status: Active (backend architecture companion)
 Date: 2026-02-19
 Primary companion: `docs/codex/unified-runtime-desktop-plan.md`
-Related ADR: `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
+Related ADR: `docs/plans/archived/adr-legacy-2026-02-21/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
 
 ## Why this document exists
 

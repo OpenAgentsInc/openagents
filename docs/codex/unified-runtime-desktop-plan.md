@@ -80,7 +80,7 @@ Current adapter behavior is development-only `in_memory`.
 ### Local bridge protocol exists
 
 - Bridge implementation: `crates/pylon/src/local_bridge.rs`
-- ADR: `docs/adr/ADR-0020-pylon-local-ui-bridge.md`
+- ADR: `docs/plans/archived/adr-legacy-2026-02-21/ADR-0020-pylon-local-ui-bridge.md`
 - Codex channels/events:
   - `client-codex.connect`
   - `client-codex.request`
@@ -327,7 +327,7 @@ Runtime snapshot/list heartbeat policy fields:
 
 ## ADR Alignment
 
-- `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md` defines the
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0029-khala-sync-layer-and-codex-agent-mode.md` defines the
   Khala sync-layer boundary and Codex operational posture for Khala CLI/MCP.
 
 ## Change Control

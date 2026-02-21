@@ -7,13 +7,13 @@ This document is the **canonical** specification for the **Verified Patch Bundle
 - `REPLAY.jsonl` (replay log; see `docs/execution/REPLAY.md`)
 
 See:
-- `docs/adr/ADR-0002-verified-patch-bundle.md`
-- `docs/adr/ADR-0006-deterministic-hashing.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0002-verified-patch-bundle.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`
 - `docs/protocol/PROTOCOL_SURFACE.md` (receipt/payment proof semantics)
 
 ## Bundle Layout
 
-Per `docs/adr/ADR-0008-session-storage-layout.md`, a session directory contains:
+Per `docs/plans/archived/adr-legacy-2026-02-21/ADR-0008-session-storage-layout.md`, a session directory contains:
 
 ```text
 {session_dir}/
@@ -77,8 +77,8 @@ Optional:
   - `stack` (string, optional)
 
 Normative:
-- `params_hash` and `output_hash` hashing rules are defined by `docs/adr/ADR-0006-deterministic-hashing.md`.
-- Tool params MUST be schema-validated before execution (see `docs/adr/ADR-0007-tool-execution-contract.md`).
+- `params_hash` and `output_hash` hashing rules are defined by `docs/plans/archived/adr-legacy-2026-02-21/ADR-0006-deterministic-hashing.md`.
+- Tool params MUST be schema-validated before execution (see `docs/plans/archived/adr-legacy-2026-02-21/ADR-0007-tool-execution-contract.md`).
 
 ### VerificationReceipt
 
@@ -98,7 +98,7 @@ Optional (recommended):
 
 Payment receipt entries MUST use protocol-level fields (rail + asset_id + amount_msats + payment_proof) per:
 - `docs/protocol/PROTOCOL_SURFACE.md`
-- `docs/adr/ADR-0013-receipt-schema-payment-proofs.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0013-receipt-schema-payment-proofs.md`
 
 ## Forward Compatibility
 

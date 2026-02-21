@@ -120,6 +120,6 @@ The canonical output of an autonomous run is the **Verified Patch Bundle**:
 - `REPLAY.jsonl`
 
 See:
-- `docs/adr/ADR-0002-verified-patch-bundle.md`
+- `docs/plans/archived/adr-legacy-2026-02-21/ADR-0002-verified-patch-bundle.md`
 - `docs/execution/ARTIFACTS.md`
 - `docs/execution/REPLAY.md`
