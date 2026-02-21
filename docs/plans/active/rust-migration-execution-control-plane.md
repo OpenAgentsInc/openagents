@@ -138,10 +138,11 @@ When dedicated owners are assigned, update this map and keep `owner:*` labels al
 
 ## Reporting Conventions
 
-1. Weekly migration report snapshots:
-   - total by `Migration Status`,
-   - blocked list (`Migration Status=Blocked`),
-   - high/critical risk items due in current phase.
+1. Weekly migration KPI report (required):
+   - publish in `docs/plans/active/rust-migration-reports/` using
+     `docs/plans/active/rust-migration-kpi-report-template.md`,
+   - include KPI values from `docs/plans/active/rust-migration-kpi-dashboard.md`,
+   - include total by `Migration Status`, blocked list, and high/critical risk items.
 2. Daily execution updates for active lane:
    - issues moved to `In Progress`,
    - issues moved to `Verification`,

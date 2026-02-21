@@ -67,6 +67,7 @@ Rust-era ADR process docs: `docs/adr/INDEX.md`, `docs/adr/README.md`, `docs/adr/
 
 ### OA-RUST-006 — [Rust Endstate] Define migration KPIs and reporting dashboard
 Description: Define measurable migration KPIs (route parity, runtime parity, WS reliability, latency, regression count) and publish a recurring status artifact.
+KPI artifacts: `docs/plans/active/rust-migration-kpi-dashboard.md`, `docs/plans/active/rust-migration-kpi-report-template.md`, `docs/plans/active/rust-migration-reports/`
 
 ## Phase 1: Proto and Contract Foundation
 
