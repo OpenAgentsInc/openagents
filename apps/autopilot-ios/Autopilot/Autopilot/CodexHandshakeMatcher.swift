@@ -4,6 +4,10 @@ enum CodexHandshakeMatcher {
     private static let ackMethodToken = "\"method\":\"desktop/handshake_ack\""
 
     static func ackHandshakeID(from event: RuntimeCodexStreamEvent) -> String? {
+        if let handshakeID = RustClientCoreBridge.extractDesktopHandshakeAckID(payloadJSON: event.rawData) {
+            return handshakeID
+        }
+
         guard let envelope = RuntimeCodexProto.decodeHandshakeEnvelope(from: event.payload),
               envelope.kind == .desktopHandshakeAck else {
             return nil

@@ -7,6 +7,9 @@ license.workspace = true
 publish.workspace = true
 description = "Shared Rust client core for auth, command transport, and Khala sync"
 
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
 [dependencies]
 async-trait = { workspace = true }
 base64 = { workspace = true }

@@ -1,6 +1,9 @@
 use serde::Deserialize;
 use serde_json::Value;
 
+pub use openagents_client_core::codex_worker::{
+    extract_desktop_handshake_ack_id, extract_ios_handshake_id,
+};
 pub use openagents_client_core::khala_protocol::{
     RuntimeStreamEvent as RuntimeCodexStreamEvent, build_phoenix_frame as build_khala_frame,
     extract_runtime_stream_events as extract_runtime_events_from_khala_update, merge_retry_cursor,
@@ -10,10 +13,7 @@ pub use openagents_client_core::khala_protocol::{
 
 const WORKER_EVENT_TYPE: &str = "worker.event";
 const IOS_HANDSHAKE_SOURCE: &str = "autopilot-ios";
-const IOS_HANDSHAKE_METHOD: &str = "ios/handshake";
 const IOS_USER_MESSAGE_METHOD: &str = "ios/user_message";
-const DESKTOP_ACK_SOURCE: &str = "autopilot-desktop";
-const DESKTOP_ACK_METHOD: &str = "desktop/handshake_ack";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IosUserMessage {
@@ -23,55 +23,11 @@ pub struct IosUserMessage {
     pub reasoning: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProtoHandshakeKind {
-    IosHandshake,
-    DesktopHandshakeAck,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ProtoHandshakeEnvelope {
-    kind: ProtoHandshakeKind,
-    handshake_id: String,
-}
-
 #[derive(Debug, Deserialize)]
 struct ProtoWorkerEventEnvelope {
     #[serde(rename = "eventType", alias = "event_type")]
     event_type: String,
     payload: Value,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProtoWorkerHandshakePayload {
-    source: String,
-    method: String,
-    #[serde(rename = "handshake_id", alias = "handshakeId")]
-    handshake_id: String,
-    #[serde(default)]
-    device_id: Option<String>,
-    #[serde(default)]
-    desktop_session_id: Option<String>,
-    #[serde(default)]
-    occurred_at: Option<String>,
-}
-
-pub fn extract_ios_handshake_id(payload: &Value) -> Option<String> {
-    let envelope = extract_proto_handshake_envelope(payload)?;
-    if envelope.kind == ProtoHandshakeKind::IosHandshake {
-        Some(envelope.handshake_id)
-    } else {
-        None
-    }
-}
-
-pub fn extract_desktop_handshake_ack_id(payload: &Value) -> Option<String> {
-    let envelope = extract_proto_handshake_envelope(payload)?;
-    if envelope.kind == ProtoHandshakeKind::DesktopHandshakeAck {
-        Some(envelope.handshake_id)
-    } else {
-        None
-    }
 }
 
 pub fn extract_ios_user_message(payload: &Value) -> Option<IosUserMessage> {
@@ -127,46 +83,6 @@ pub fn extract_ios_user_message(payload: &Value) -> Option<IosUserMessage> {
 
 pub fn handshake_dedupe_key(worker_id: &str, handshake_id: &str) -> String {
     format!("{worker_id}::{handshake_id}")
-}
-
-fn extract_proto_handshake_envelope(payload: &Value) -> Option<ProtoHandshakeEnvelope> {
-    let envelope = serde_json::from_value::<ProtoWorkerEventEnvelope>(payload.clone()).ok()?;
-    if envelope.event_type != WORKER_EVENT_TYPE {
-        return None;
-    }
-
-    let worker_payload =
-        serde_json::from_value::<ProtoWorkerHandshakePayload>(envelope.payload).ok()?;
-    let handshake_id = non_empty(worker_payload.handshake_id.as_str())?.to_string();
-
-    match (
-        worker_payload.source.as_str(),
-        worker_payload.method.as_str(),
-    ) {
-        (IOS_HANDSHAKE_SOURCE, IOS_HANDSHAKE_METHOD)
-            if required_value(worker_payload.device_id.as_deref())
-                && required_value(worker_payload.occurred_at.as_deref()) =>
-        {
-            Some(ProtoHandshakeEnvelope {
-                kind: ProtoHandshakeKind::IosHandshake,
-                handshake_id,
-            })
-        }
-        (DESKTOP_ACK_SOURCE, DESKTOP_ACK_METHOD)
-            if required_value(worker_payload.desktop_session_id.as_deref())
-                && required_value(worker_payload.occurred_at.as_deref()) =>
-        {
-            Some(ProtoHandshakeEnvelope {
-                kind: ProtoHandshakeKind::DesktopHandshakeAck,
-                handshake_id,
-            })
-        }
-        _ => None,
-    }
-}
-
-fn required_value(raw: Option<&str>) -> bool {
-    non_empty(raw.unwrap_or_default()).is_some()
 }
 
 fn non_empty(raw: &str) -> Option<&str> {
