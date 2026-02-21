@@ -340,6 +340,7 @@ Dependencies: OA-RUST-010, OA-RUST-015, OA-RUST-016.
 
 ### OA-RUST-079 — [Auth] Implement refresh-token rotation and device session model
 Description: Add strict refresh token rotation, revocation list behavior, and stable per-install `device_id` semantics used by auth/session/sync.
+Enforcement artifacts: `apps/openagents.com/service/src/auth.rs`, `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/README.md`
 Acceptance criteria: Rotated refresh tokens are single-use; per-device revoke and global revoke are supported; device-scoped session queries are auditable.
 Dependencies: OA-RUST-016, OA-RUST-018.
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -27,6 +27,8 @@ struct AuthState {
     sessions: HashMap<String, SessionRecord>,
     access_index: HashMap<String, String>,
     refresh_index: HashMap<String, String>,
+    revoked_refresh_tokens: HashMap<String, RevokedRefreshTokenRecord>,
+    revoked_refresh_token_ids: HashMap<String, RevokedRefreshTokenRecord>,
     users_by_id: HashMap<String, UserRecord>,
     users_by_email: HashMap<String, String>,
     users_by_workos_id: HashMap<String, String>,
@@ -55,6 +57,19 @@ struct SessionRecord {
     refresh_expires_at: DateTime<Utc>,
     status: SessionStatus,
     reauth_required: bool,
+    last_refreshed_at: Option<DateTime<Utc>>,
+    revoked_at: Option<DateTime<Utc>>,
+    revoked_reason: Option<SessionRevocationReason>,
+}
+
+#[derive(Debug, Clone)]
+struct RevokedRefreshTokenRecord {
+    refresh_token_id: String,
+    session_id: String,
+    user_id: String,
+    device_id: String,
+    revoked_at: DateTime<Utc>,
+    reason: RefreshTokenRevocationReason,
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +88,24 @@ pub enum SessionStatus {
     ReauthRequired,
     Expired,
     Revoked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionRevocationReason {
+    UserRequested,
+    AdminRevoked,
+    TokenReplay,
+    DeviceReplaced,
+    SecurityPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefreshTokenRevocationReason {
+    Rotated,
+    SessionRevoked,
+    ReplayDetected,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +168,9 @@ pub struct SessionView {
     pub refresh_expires_at: DateTime<Utc>,
     pub reauth_required: bool,
     pub active_org_id: String,
+    pub last_refreshed_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub revoked_reason: Option<SessionRevocationReason>,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +179,38 @@ pub struct AuthUser {
     pub email: String,
     pub name: String,
     pub workos_user_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionRevocationRequest {
+    pub target: SessionRevocationTarget,
+    pub include_current: bool,
+    pub reason: SessionRevocationReason,
+}
+
+#[derive(Debug, Clone)]
+pub enum SessionRevocationTarget {
+    SessionId(String),
+    DeviceId(String),
+    AllSessions,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionAuditView {
+    pub session_id: String,
+    pub user_id: String,
+    pub email: String,
+    pub device_id: String,
+    pub token_name: String,
+    pub status: SessionStatus,
+    pub issued_at: DateTime<Utc>,
+    pub access_expires_at: DateTime<Utc>,
+    pub refresh_expires_at: DateTime<Utc>,
+    pub active_org_id: String,
+    pub reauth_required: bool,
+    pub last_refreshed_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub revoked_reason: Option<SessionRevocationReason>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -156,6 +224,8 @@ pub enum AuthError {
     Unauthorized { message: String },
     #[error("{message}")]
     Forbidden { message: String },
+    #[error("{message}")]
+    Conflict { message: String },
     #[error("{message}")]
     Provider { message: String },
 }
@@ -258,6 +328,7 @@ impl AuthService {
         challenge_id: &str,
         code: String,
         client_name: Option<&str>,
+        requested_device_id: Option<&str>,
         ip_address: &str,
         user_agent: &str,
     ) -> Result<VerifyResult, AuthError> {
@@ -301,6 +372,7 @@ impl AuthService {
             .await?;
 
         let token_name = token_name_for_client(client_name);
+        let device_id = normalize_device_id(requested_device_id, &token_name)?;
         let now = Utc::now();
 
         let mut state = self.state.write().await;
@@ -318,7 +390,13 @@ impl AuthService {
             })
             .unwrap_or_else(|| format!("user:{}", user.id));
 
-        revoke_existing_sessions_for_token_name(&mut state, &user.id, &token_name);
+        revoke_existing_sessions_for_device(
+            &mut state,
+            &user.id,
+            &device_id,
+            SessionRevocationReason::DeviceReplaced,
+            now,
+        );
 
         let session_id = format!("sess_{}", Uuid::new_v4().simple());
         let access_token = format!("oa_at_{}", Uuid::new_v4().simple());
@@ -329,7 +407,7 @@ impl AuthService {
             session_id: session_id.clone(),
             user_id: user.id.clone(),
             email: user.email.clone(),
-            device_id: token_name.clone(),
+            device_id: device_id.clone(),
             token_name: token_name.clone(),
             active_org_id,
             access_token: access_token.clone(),
@@ -340,6 +418,9 @@ impl AuthService {
             refresh_expires_at: now + self.refresh_ttl,
             status: SessionStatus::Active,
             reauth_required: false,
+            last_refreshed_at: None,
+            revoked_at: None,
+            revoked_reason: None,
         };
 
         state
@@ -389,9 +470,18 @@ impl AuthService {
             }
         };
 
-        if session.status != SessionStatus::Active || session.access_expires_at <= Utc::now() {
+        if session.status != SessionStatus::Active {
+            state.access_index.remove(access_token);
+            return Err(AuthError::Unauthorized {
+                message: auth_denied_message(session.status),
+            });
+        }
+
+        if session.access_expires_at <= Utc::now() {
             if let Some(stale_session) = state.sessions.get_mut(&session_id) {
                 stale_session.status = SessionStatus::Expired;
+                stale_session.revoked_reason = None;
+                stale_session.revoked_at = None;
             }
             state.access_index.remove(access_token);
             return Err(AuthError::Unauthorized {
@@ -423,9 +513,50 @@ impl AuthService {
     pub async fn refresh_session(
         &self,
         refresh_token: &str,
+        requested_device_id: Option<&str>,
         rotate_refresh_token: bool,
     ) -> Result<RefreshResult, AuthError> {
+        if !rotate_refresh_token {
+            return Err(AuthError::Validation {
+                field: "rotate_refresh_token",
+                message: "Refresh token rotation is required.".to_string(),
+            });
+        }
+
         let mut state = self.state.write().await;
+
+        if let Some(revoked) = state.revoked_refresh_tokens.get(refresh_token).cloned() {
+            let replay_detected_at = revoked.revoked_at;
+            let replay_reason = revoked.reason;
+            if let Some(replayed_session) = state.sessions.get(&revoked.session_id).cloned() {
+                if replayed_session.status == SessionStatus::Active {
+                    revoke_session(
+                        &mut state,
+                        &replayed_session.session_id,
+                        SessionRevocationReason::TokenReplay,
+                        replay_detected_at,
+                    );
+                }
+            }
+
+            if replay_reason != RefreshTokenRevocationReason::ReplayDetected {
+                record_revoked_refresh_token(
+                    &mut state,
+                    revoked.session_id,
+                    revoked.user_id,
+                    revoked.device_id,
+                    revoked.refresh_token_id,
+                    refresh_token.to_string(),
+                    Utc::now(),
+                    RefreshTokenRevocationReason::ReplayDetected,
+                );
+            }
+
+            return Err(AuthError::Unauthorized {
+                message: "Refresh token was already rotated or revoked.".to_string(),
+            });
+        }
+
         let session_id = match state.refresh_index.get(refresh_token) {
             Some(value) => value.clone(),
             None => {
@@ -435,7 +566,7 @@ impl AuthService {
             }
         };
 
-        let existing = match state.sessions.get(&session_id) {
+        let mut existing = match state.sessions.get(&session_id) {
             Some(value) => value.clone(),
             None => {
                 return Err(AuthError::Unauthorized {
@@ -444,9 +575,27 @@ impl AuthService {
             }
         };
 
-        if existing.status != SessionStatus::Active || existing.refresh_expires_at <= Utc::now() {
+        if let Some(device_id) = requested_device_id {
+            let normalized_device_id = normalize_device_id(Some(device_id), &existing.token_name)?;
+            if normalized_device_id != existing.device_id {
+                return Err(AuthError::Forbidden {
+                    message: "Refresh token does not belong to the requested device.".to_string(),
+                });
+            }
+        }
+
+        if existing.status != SessionStatus::Active {
+            state.refresh_index.remove(refresh_token);
+            return Err(AuthError::Unauthorized {
+                message: auth_denied_message(existing.status),
+            });
+        }
+
+        if existing.refresh_expires_at <= Utc::now() {
             if let Some(stale_session) = state.sessions.get_mut(&session_id) {
                 stale_session.status = SessionStatus::Expired;
+                stale_session.revoked_reason = None;
+                stale_session.revoked_at = None;
             }
             state.refresh_index.remove(refresh_token);
             return Err(AuthError::Unauthorized {
@@ -459,42 +608,48 @@ impl AuthService {
         let old_refresh_token_id = existing.refresh_token_id.clone();
 
         let new_access = format!("oa_at_{}", Uuid::new_v4().simple());
-        let mut updated = existing;
-        updated.access_token = new_access.clone();
-        updated.access_expires_at = Utc::now() + self.access_ttl;
+        existing.access_token = new_access.clone();
+        existing.access_expires_at = Utc::now() + self.access_ttl;
+        existing.last_refreshed_at = Some(Utc::now());
 
         state.access_index.remove(&old_access);
         state
             .access_index
             .insert(new_access.clone(), session_id.clone());
 
-        let replaced_refresh_token_id = if rotate_refresh_token {
-            let new_refresh = format!("oa_rt_{}", Uuid::new_v4().simple());
-            let new_refresh_token_id = format!("rtid_{}", Uuid::new_v4().simple());
-            state.refresh_index.remove(&old_refresh);
-            state
-                .refresh_index
-                .insert(new_refresh.clone(), session_id.clone());
-            updated.refresh_token = new_refresh;
-            updated.refresh_token_id = new_refresh_token_id;
-            updated.refresh_expires_at = Utc::now() + self.refresh_ttl;
-            Some(old_refresh_token_id)
-        } else {
-            None
-        };
+        let new_refresh = format!("oa_rt_{}", Uuid::new_v4().simple());
+        let new_refresh_token_id = format!("rtid_{}", Uuid::new_v4().simple());
+        state.refresh_index.remove(&old_refresh);
+        state
+            .refresh_index
+            .insert(new_refresh.clone(), session_id.clone());
+        existing.refresh_token = new_refresh;
+        existing.refresh_token_id = new_refresh_token_id;
+        existing.refresh_expires_at = Utc::now() + self.refresh_ttl;
 
-        let access_token_out = updated.access_token.clone();
-        let refresh_token_out = updated.refresh_token.clone();
-        let refresh_token_id_out = updated.refresh_token_id.clone();
-        let updated_view = SessionView::from_session(&updated);
-        state.sessions.insert(session_id, updated);
+        record_revoked_refresh_token(
+            &mut state,
+            existing.session_id.clone(),
+            existing.user_id.clone(),
+            existing.device_id.clone(),
+            old_refresh_token_id.clone(),
+            old_refresh,
+            Utc::now(),
+            RefreshTokenRevocationReason::Rotated,
+        );
+
+        let access_token_out = existing.access_token.clone();
+        let refresh_token_out = existing.refresh_token.clone();
+        let refresh_token_id_out = existing.refresh_token_id.clone();
+        let updated_view = SessionView::from_session(&existing);
+        state.sessions.insert(session_id, existing);
 
         Ok(RefreshResult {
             token_type: "Bearer",
             access_token: access_token_out,
             refresh_token: refresh_token_out,
             refresh_token_id: refresh_token_id_out,
-            replaced_refresh_token_id,
+            replaced_refresh_token_id: Some(old_refresh_token_id),
             session: updated_view,
         })
     }
@@ -513,29 +668,122 @@ impl AuthService {
             }
         };
 
-        let existing = match state.sessions.get(&session_id) {
-            Some(value) => value.clone(),
-            None => {
-                return Err(AuthError::Unauthorized {
-                    message: "Unauthenticated.".to_string(),
-                });
-            }
-        };
-
-        state.access_index.remove(&existing.access_token);
-        state.refresh_index.remove(&existing.refresh_token);
-
-        let Some(session) = state.sessions.get_mut(&session_id) else {
+        if !state.sessions.contains_key(&session_id) {
             return Err(AuthError::Unauthorized {
                 message: "Unauthenticated.".to_string(),
             });
         };
 
-        session.status = SessionStatus::Revoked;
-
+        let revoked_at = Utc::now();
+        let _ = revoke_session(
+            &mut state,
+            &session_id,
+            SessionRevocationReason::UserRequested,
+            revoked_at,
+        );
         Ok(RevocationResult {
             session_id,
-            revoked_at: Utc::now(),
+            revoked_at,
+        })
+    }
+
+    pub async fn list_user_sessions(
+        &self,
+        user_id: &str,
+        device_id_filter: Option<&str>,
+    ) -> Result<Vec<SessionAuditView>, AuthError> {
+        let normalized_filter = if let Some(value) = device_id_filter {
+            Some(normalize_device_id(Some(value), DEFAULT_DEVICE_ID)?)
+        } else {
+            None
+        };
+
+        let state = self.state.read().await;
+        let mut sessions: Vec<SessionAuditView> = state
+            .sessions
+            .values()
+            .filter(|session| session.user_id == user_id)
+            .filter(|session| {
+                normalized_filter
+                    .as_ref()
+                    .map(|filter| session.device_id == *filter)
+                    .unwrap_or(true)
+            })
+            .map(SessionAuditView::from_session)
+            .collect();
+        sessions.sort_by(|left, right| right.issued_at.cmp(&left.issued_at));
+        Ok(sessions)
+    }
+
+    pub async fn revoke_user_sessions(
+        &self,
+        user_id: &str,
+        current_session_id: &str,
+        request: SessionRevocationRequest,
+    ) -> Result<SessionBatchRevocationResult, AuthError> {
+        let mut state = self.state.write().await;
+        let mut candidate_ids: HashSet<String> = match request.target {
+            SessionRevocationTarget::SessionId(session_id) => {
+                let session =
+                    state
+                        .sessions
+                        .get(&session_id)
+                        .ok_or_else(|| AuthError::Validation {
+                            field: "session_id",
+                            message: "Requested session does not exist.".to_string(),
+                        })?;
+                if session.user_id != user_id {
+                    return Err(AuthError::Forbidden {
+                        message: "Requested session is not owned by current user.".to_string(),
+                    });
+                }
+                HashSet::from([session_id])
+            }
+            SessionRevocationTarget::DeviceId(device_id) => {
+                let normalized_device =
+                    normalize_device_id(Some(device_id.as_str()), DEFAULT_DEVICE_ID)?;
+                state
+                    .sessions
+                    .values()
+                    .filter(|session| {
+                        session.user_id == user_id && session.device_id == normalized_device
+                    })
+                    .map(|session| session.session_id.clone())
+                    .collect()
+            }
+            SessionRevocationTarget::AllSessions => state
+                .sessions
+                .values()
+                .filter(|session| session.user_id == user_id)
+                .map(|session| session.session_id.clone())
+                .collect(),
+        };
+
+        if !request.include_current {
+            candidate_ids.remove(current_session_id);
+        }
+
+        let revoked_at = Utc::now();
+        let mut revoked_session_ids = Vec::new();
+        let mut revoked_refresh_token_ids = Vec::new();
+
+        for session_id in candidate_ids {
+            if let Some(revoked) =
+                revoke_session(&mut state, &session_id, request.reason, revoked_at)
+            {
+                revoked_session_ids.push(revoked.session_id);
+                revoked_refresh_token_ids.push(revoked.refresh_token_id);
+            }
+        }
+
+        revoked_session_ids.sort();
+        revoked_refresh_token_ids.sort();
+
+        Ok(SessionBatchRevocationResult {
+            revoked_session_ids,
+            revoked_refresh_token_ids,
+            reason: request.reason,
+            revoked_at,
         })
     }
 
@@ -563,7 +811,13 @@ impl AuthService {
             }
         };
 
-        if existing.status != SessionStatus::Active || existing.access_expires_at <= Utc::now() {
+        if existing.status != SessionStatus::Active {
+            return Err(AuthError::Unauthorized {
+                message: auth_denied_message(existing.status),
+            });
+        }
+
+        if existing.access_expires_at <= Utc::now() {
             return Err(AuthError::Unauthorized {
                 message: "Unauthenticated.".to_string(),
             });
@@ -678,6 +932,20 @@ pub struct RevocationResult {
 }
 
 #[derive(Debug, Clone)]
+struct SessionRevocationOutcome {
+    session_id: String,
+    refresh_token_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionBatchRevocationResult {
+    pub revoked_session_ids: Vec<String>,
+    pub revoked_refresh_token_ids: Vec<String>,
+    pub reason: SessionRevocationReason,
+    pub revoked_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
 pub struct PolicyCheckRequest {
     pub org_id: Option<String>,
     pub required_scopes: Vec<String>,
@@ -706,6 +974,30 @@ impl SessionView {
             refresh_expires_at: session.refresh_expires_at,
             reauth_required: session.reauth_required,
             active_org_id: session.active_org_id.clone(),
+            last_refreshed_at: session.last_refreshed_at,
+            revoked_at: session.revoked_at,
+            revoked_reason: session.revoked_reason,
+        }
+    }
+}
+
+impl SessionAuditView {
+    fn from_session(session: &SessionRecord) -> Self {
+        Self {
+            session_id: session.session_id.clone(),
+            user_id: session.user_id.clone(),
+            email: session.email.clone(),
+            device_id: session.device_id.clone(),
+            token_name: session.token_name.clone(),
+            status: session.status,
+            issued_at: session.issued_at,
+            access_expires_at: session.access_expires_at,
+            refresh_expires_at: session.refresh_expires_at,
+            active_org_id: session.active_org_id.clone(),
+            reauth_required: session.reauth_required,
+            last_refreshed_at: session.last_refreshed_at,
+            revoked_at: session.revoked_at,
+            revoked_reason: session.revoked_reason,
         }
     }
 }
@@ -824,21 +1116,121 @@ fn upsert_user(
     Ok((new_user, true))
 }
 
-fn revoke_existing_sessions_for_token_name(state: &mut AuthState, user_id: &str, token_name: &str) {
+fn revoke_existing_sessions_for_device(
+    state: &mut AuthState,
+    user_id: &str,
+    device_id: &str,
+    reason: SessionRevocationReason,
+    revoked_at: DateTime<Utc>,
+) {
     let session_ids: Vec<String> = state
         .sessions
         .values()
-        .filter(|session| session.user_id == user_id && session.token_name == token_name)
+        .filter(|session| session.user_id == user_id && session.device_id == device_id)
         .map(|session| session.session_id.clone())
         .collect();
 
     for session_id in session_ids {
-        if let Some(session) = state.sessions.get_mut(&session_id) {
-            session.status = SessionStatus::Revoked;
-            state.access_index.remove(&session.access_token);
-            state.refresh_index.remove(&session.refresh_token);
-        }
+        let _ = revoke_session(state, &session_id, reason, revoked_at);
     }
+}
+
+fn revoke_session(
+    state: &mut AuthState,
+    session_id: &str,
+    reason: SessionRevocationReason,
+    revoked_at: DateTime<Utc>,
+) -> Option<SessionRevocationOutcome> {
+    let existing = state.sessions.get(session_id)?.clone();
+
+    if matches!(
+        existing.status,
+        SessionStatus::Revoked | SessionStatus::Expired
+    ) {
+        return None;
+    }
+
+    state.access_index.remove(&existing.access_token);
+    state.refresh_index.remove(&existing.refresh_token);
+    record_revoked_refresh_token(
+        state,
+        existing.session_id.clone(),
+        existing.user_id.clone(),
+        existing.device_id.clone(),
+        existing.refresh_token_id.clone(),
+        existing.refresh_token.clone(),
+        revoked_at,
+        RefreshTokenRevocationReason::SessionRevoked,
+    );
+
+    let reauth_required = matches!(
+        reason,
+        SessionRevocationReason::TokenReplay | SessionRevocationReason::SecurityPolicy
+    );
+
+    if let Some(session) = state.sessions.get_mut(session_id) {
+        session.status = SessionStatus::Revoked;
+        session.reauth_required = reauth_required;
+        session.revoked_at = Some(revoked_at);
+        session.revoked_reason = Some(reason);
+    }
+
+    Some(SessionRevocationOutcome {
+        session_id: existing.session_id,
+        refresh_token_id: existing.refresh_token_id,
+    })
+}
+
+fn record_revoked_refresh_token(
+    state: &mut AuthState,
+    session_id: String,
+    user_id: String,
+    device_id: String,
+    refresh_token_id: String,
+    refresh_token: String,
+    revoked_at: DateTime<Utc>,
+    reason: RefreshTokenRevocationReason,
+) {
+    let record = RevokedRefreshTokenRecord {
+        refresh_token_id: refresh_token_id.clone(),
+        session_id,
+        user_id,
+        device_id,
+        revoked_at,
+        reason,
+    };
+    state
+        .revoked_refresh_token_ids
+        .insert(refresh_token_id, record.clone());
+    state.revoked_refresh_tokens.insert(refresh_token, record);
+}
+
+fn normalize_device_id(
+    requested_device_id: Option<&str>,
+    fallback: &str,
+) -> Result<String, AuthError> {
+    let candidate = requested_device_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback);
+
+    if candidate.len() > 160 {
+        return Err(AuthError::Validation {
+            field: "device_id",
+            message: "Device id exceeds maximum length.".to_string(),
+        });
+    }
+
+    if !candidate.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, ':' | '-' | '_' | '.')
+    }) {
+        return Err(AuthError::Validation {
+            field: "device_id",
+            message: "Device id contains unsupported characters.".to_string(),
+        });
+    }
+
+    Ok(candidate.to_lowercase())
 }
 
 fn derived_name(email: &str, first_name: Option<&str>, last_name: Option<&str>) -> String {
@@ -956,6 +1348,15 @@ fn non_empty(value: String) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+fn auth_denied_message(status: SessionStatus) -> String {
+    match status {
+        SessionStatus::Active => "Unauthenticated.".to_string(),
+        SessionStatus::ReauthRequired => "Session requires reauthentication.".to_string(),
+        SessionStatus::Expired => "Refresh session expired.".to_string(),
+        SessionStatus::Revoked => "Session was revoked.".to_string(),
     }
 }
 

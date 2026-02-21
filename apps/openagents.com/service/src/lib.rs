@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect};
@@ -22,7 +22,10 @@ pub mod observability;
 pub mod route_split;
 pub mod sync_token;
 
-use crate::auth::{AuthError, AuthService, PolicyCheckRequest, SessionBundle};
+use crate::auth::{
+    AuthError, AuthService, PolicyCheckRequest, SessionBundle, SessionRevocationReason,
+    SessionRevocationRequest, SessionRevocationTarget,
+};
 use crate::config::Config;
 use crate::observability::{AuditEvent, Observability};
 use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
@@ -90,6 +93,8 @@ struct VerifyEmailCodeRequest {
     code: String,
     #[serde(default)]
     challenge_id: Option<String>,
+    #[serde(default, alias = "deviceId")]
+    device_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -98,6 +103,28 @@ struct RefreshSessionRequest {
     refresh_token: Option<String>,
     #[serde(default)]
     rotate_refresh_token: Option<bool>,
+    #[serde(default)]
+    device_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListSessionsRequest {
+    #[serde(default)]
+    device_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RevokeSessionsRequest {
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    device_id: Option<String>,
+    #[serde(default)]
+    revoke_all_sessions: Option<bool>,
+    #[serde(default)]
+    include_current: Option<bool>,
+    #[serde(default)]
+    reason: Option<SessionRevocationReason>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,6 +195,8 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/api/auth/email", post(send_email_code))
         .route("/api/auth/verify", post(verify_email_code))
         .route("/api/auth/session", get(current_session))
+        .route("/api/auth/sessions", get(list_sessions))
+        .route("/api/auth/sessions/revoke", post(revoke_sessions))
         .route("/api/auth/refresh", post(refresh_session))
         .route("/api/auth/logout", post(logout_session))
         .route("/api/me", get(me))
@@ -180,6 +209,8 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             post(send_thread_message),
         )
         .route("/api/v1/auth/session", get(current_session))
+        .route("/api/v1/auth/sessions", get(list_sessions))
+        .route("/api/v1/auth/sessions/revoke", post(revoke_sessions))
         .route("/api/v1/control/status", get(control_status))
         .route(
             "/api/v1/control/route-split/status",
@@ -619,6 +650,9 @@ async fn verify_email_code(
     };
 
     let client_name = header_string(&headers, "x-client");
+    let device_id = payload
+        .device_id
+        .or_else(|| header_string(&headers, "x-device-id"));
     let ip_address = header_string(&headers, "x-forwarded-for").unwrap_or_default();
     let user_agent = header_string(&headers, "user-agent").unwrap_or_default();
 
@@ -628,6 +662,7 @@ async fn verify_email_code(
             &challenge_id,
             payload.code,
             client_name.as_deref(),
+            device_id.as_deref(),
             &ip_address,
             &user_agent,
         )
@@ -688,6 +723,117 @@ async fn current_session(
         .map_err(map_auth_error)?;
 
     Ok((StatusCode::OK, Json(session_payload(bundle))))
+}
+
+async fn list_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ListSessionsRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let sessions = state
+        .auth
+        .list_user_sessions(&bundle.user.id, query.device_id.as_deref())
+        .await
+        .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.sessions.listed", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("session_count", sessions.len().to_string()),
+    );
+    state
+        .observability
+        .increment_counter("auth.sessions.listed", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "data": {
+                "currentSessionId": bundle.session.session_id,
+                "sessions": sessions,
+            }
+        })),
+    ))
+}
+
+async fn revoke_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RevokeSessionsRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let target = resolve_session_revocation_target(&payload)?;
+    let reason = payload
+        .reason
+        .unwrap_or(SessionRevocationReason::UserRequested);
+    let include_current = payload.include_current.unwrap_or(false);
+
+    let result = state
+        .auth
+        .revoke_user_sessions(
+            &bundle.user.id,
+            &bundle.session.session_id,
+            SessionRevocationRequest {
+                target,
+                include_current,
+                reason,
+            },
+        )
+        .await
+        .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.sessions.revoked", request_id.clone())
+            .with_user_id(bundle.user.id)
+            .with_session_id(bundle.session.session_id)
+            .with_org_id(bundle.session.active_org_id)
+            .with_device_id(bundle.session.device_id)
+            .with_attribute("reason", revocation_reason_label(reason).to_string())
+            .with_attribute(
+                "revoked_session_count",
+                result.revoked_session_ids.len().to_string(),
+            )
+            .with_attribute(
+                "revoked_refresh_token_count",
+                result.revoked_refresh_token_ids.len().to_string(),
+            ),
+    );
+    state
+        .observability
+        .increment_counter("auth.sessions.revoked", &request_id);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "ok": true,
+            "revokedSessionIds": result.revoked_session_ids,
+            "revokedRefreshTokenIds": result.revoked_refresh_token_ids,
+            "reason": reason,
+            "revokedAt": timestamp(result.revoked_at),
+        })),
+    ))
 }
 
 async fn me(
@@ -961,12 +1107,16 @@ async fn refresh_session(
         .and_then(non_empty)
         .or_else(|| bearer_token(&headers))
         .ok_or_else(|| unauthorized_error("Invalid refresh token."))?;
+    let requested_device_id = payload
+        .device_id
+        .and_then(non_empty)
+        .or_else(|| header_string(&headers, "x-device-id"));
 
     let rotate = payload.rotate_refresh_token.unwrap_or(true);
 
     let refreshed = state
         .auth
-        .refresh_session(&token, rotate)
+        .refresh_session(&token, requested_device_id.as_deref(), rotate)
         .await
         .map_err(map_auth_error)?;
 
@@ -1071,6 +1221,17 @@ fn map_auth_error(error: AuthError) -> (StatusCode, Json<ApiErrorResponse>) {
         AuthError::Validation { field, message } => validation_error(field, &message),
         AuthError::Unauthorized { message } => unauthorized_error(&message),
         AuthError::Forbidden { message } => forbidden_error(&message),
+        AuthError::Conflict { message } => (
+            StatusCode::CONFLICT,
+            Json(ApiErrorResponse {
+                message: message.clone(),
+                error: ApiErrorDetail {
+                    code: "conflict",
+                    message,
+                },
+                errors: None,
+            }),
+        ),
         AuthError::Provider { message } => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ApiErrorResponse {
@@ -1183,6 +1344,9 @@ fn session_payload(bundle: SessionBundle) -> serde_json::Value {
                 "refreshExpiresAt": timestamp(bundle.session.refresh_expires_at),
                 "activeOrgId": bundle.session.active_org_id,
                 "reauthRequired": bundle.session.reauth_required,
+                "lastRefreshedAt": bundle.session.last_refreshed_at.map(timestamp),
+                "revokedAt": bundle.session.revoked_at.map(timestamp),
+                "revokedReason": bundle.session.revoked_reason,
             },
             "user": {
                 "id": bundle.user.id,
@@ -1298,6 +1462,51 @@ fn non_empty(value: String) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+fn resolve_session_revocation_target(
+    payload: &RevokeSessionsRequest,
+) -> Result<SessionRevocationTarget, (StatusCode, Json<ApiErrorResponse>)> {
+    let session_id = payload.session_id.clone().and_then(non_empty);
+    let device_id = payload.device_id.clone().and_then(non_empty);
+    let revoke_all = payload.revoke_all_sessions.unwrap_or(false);
+
+    let mut count = 0u8;
+    if session_id.is_some() {
+        count += 1;
+    }
+    if device_id.is_some() {
+        count += 1;
+    }
+    if revoke_all {
+        count += 1;
+    }
+
+    if count != 1 {
+        return Err(validation_error(
+            "target",
+            "Provide exactly one revocation target: session_id, device_id, or revoke_all_sessions=true.",
+        ));
+    }
+
+    if let Some(value) = session_id {
+        return Ok(SessionRevocationTarget::SessionId(value));
+    }
+    if let Some(value) = device_id {
+        return Ok(SessionRevocationTarget::DeviceId(value));
+    }
+
+    Ok(SessionRevocationTarget::AllSessions)
+}
+
+fn revocation_reason_label(reason: SessionRevocationReason) -> &'static str {
+    match reason {
+        SessionRevocationReason::UserRequested => "user_requested",
+        SessionRevocationReason::AdminRevoked => "admin_revoked",
+        SessionRevocationReason::TokenReplay => "token_replay",
+        SessionRevocationReason::DeviceReplaced => "device_replaced",
+        SessionRevocationReason::SecurityPolicy => "security_policy",
     }
 }
 
@@ -1677,6 +1886,267 @@ mod tests {
             .body(Body::empty())?;
         let old_session_response = app.oneshot(old_session_request).await?;
         assert_eq!(old_session_response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn refresh_token_is_single_use_and_replay_revokes_session() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"refresh-replay@example.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-replay-device")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        assert_eq!(verify_response.status(), StatusCode::OK);
+        let verify_body = read_json(verify_response).await?;
+        let refresh_token = verify_body["refreshToken"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let rotate_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/refresh")
+            .header("content-type", "application/json")
+            .header("x-device-id", "ios-replay-device")
+            .body(Body::from(format!(
+                r#"{{"refresh_token":"{refresh_token}","rotate_refresh_token":true,"device_id":"ios-replay-device"}}"#
+            )))?;
+        let rotate_response = app.clone().oneshot(rotate_request).await?;
+        assert_eq!(rotate_response.status(), StatusCode::OK);
+        let rotate_body = read_json(rotate_response).await?;
+        let rotated_access_token = rotate_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let replay_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/refresh")
+            .header("content-type", "application/json")
+            .header("x-device-id", "ios-replay-device")
+            .body(Body::from(format!(
+                r#"{{"refresh_token":"{refresh_token}","rotate_refresh_token":true,"device_id":"ios-replay-device"}}"#
+            )))?;
+        let replay_response = app.clone().oneshot(replay_request).await?;
+        assert_eq!(replay_response.status(), StatusCode::UNAUTHORIZED);
+
+        let session_after_replay = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {rotated_access_token}"))
+            .body(Body::empty())?;
+        let session_after_replay_response = app.oneshot(session_after_replay).await?;
+        assert_eq!(
+            session_after_replay_response.status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn session_listing_and_device_revocation_are_supported() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_a = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"device-revoke@example.com"}"#))?;
+        let send_a_response = app.clone().oneshot(send_a).await?;
+        let cookie_a = cookie_value(&send_a_response).unwrap_or_default();
+
+        let verify_a = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-device-a")
+            .header("cookie", cookie_a)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_a_response = app.clone().oneshot(verify_a).await?;
+        let verify_a_body = read_json(verify_a_response).await?;
+        let token_a = verify_a_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let send_b = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"device-revoke@example.com"}"#))?;
+        let send_b_response = app.clone().oneshot(send_b).await?;
+        let cookie_b = cookie_value(&send_b_response).unwrap_or_default();
+
+        let verify_b = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-device-b")
+            .header("cookie", cookie_b)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_b_response = app.clone().oneshot(verify_b).await?;
+        let verify_b_body = read_json(verify_b_response).await?;
+        let token_b = verify_b_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let list_request = Request::builder()
+            .uri("/api/auth/sessions")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::empty())?;
+        let list_response = app.clone().oneshot(list_request).await?;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list_body = read_json(list_response).await?;
+        let sessions = list_body["data"]["sessions"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(sessions.len(), 2);
+
+        let revoke_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sessions/revoke")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::from(
+                r#"{"device_id":"ios-device-b","reason":"user_requested","include_current":false}"#,
+            ))?;
+        let revoke_response = app.clone().oneshot(revoke_request).await?;
+        assert_eq!(revoke_response.status(), StatusCode::OK);
+        let revoke_body = read_json(revoke_response).await?;
+        let revoked_sessions = revoke_body["revokedSessionIds"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(revoked_sessions.len(), 1);
+
+        let current_a = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::empty())?;
+        let current_a_response = app.clone().oneshot(current_a).await?;
+        assert_eq!(current_a_response.status(), StatusCode::OK);
+
+        let current_b = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token_b}"))
+            .body(Body::empty())?;
+        let current_b_response = app.oneshot(current_b).await?;
+        assert_eq!(current_b_response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn global_revocation_supports_include_current_toggle() -> Result<()> {
+        let app = build_router(test_config(std::env::temp_dir()));
+
+        let send_a = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"global-revoke@example.com"}"#))?;
+        let send_a_response = app.clone().oneshot(send_a).await?;
+        let cookie_a = cookie_value(&send_a_response).unwrap_or_default();
+
+        let verify_a = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-global-a")
+            .header("cookie", cookie_a)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_a_response = app.clone().oneshot(verify_a).await?;
+        let verify_a_body = read_json(verify_a_response).await?;
+        let token_a = verify_a_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let send_b = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"global-revoke@example.com"}"#))?;
+        let send_b_response = app.clone().oneshot(send_b).await?;
+        let cookie_b = cookie_value(&send_b_response).unwrap_or_default();
+
+        let verify_b = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("x-device-id", "ios-global-b")
+            .header("cookie", cookie_b)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_b_response = app.clone().oneshot(verify_b).await?;
+        let verify_b_body = read_json(verify_b_response).await?;
+        let token_b = verify_b_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let revoke_others_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sessions/revoke")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::from(
+                r#"{"revoke_all_sessions":true,"include_current":false,"reason":"user_requested"}"#,
+            ))?;
+        let revoke_others_response = app.clone().oneshot(revoke_others_request).await?;
+        assert_eq!(revoke_others_response.status(), StatusCode::OK);
+
+        let current_a = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::empty())?;
+        let current_a_response = app.clone().oneshot(current_a).await?;
+        assert_eq!(current_a_response.status(), StatusCode::OK);
+
+        let current_b = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token_b}"))
+            .body(Body::empty())?;
+        let current_b_response = app.clone().oneshot(current_b).await?;
+        assert_eq!(current_b_response.status(), StatusCode::UNAUTHORIZED);
+
+        let revoke_all_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/sessions/revoke")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::from(
+                r#"{"revoke_all_sessions":true,"include_current":true,"reason":"user_requested"}"#,
+            ))?;
+        let revoke_all_response = app.clone().oneshot(revoke_all_request).await?;
+        assert_eq!(revoke_all_response.status(), StatusCode::OK);
+
+        let current_a_after = Request::builder()
+            .uri("/api/auth/session")
+            .header("authorization", format!("Bearer {token_a}"))
+            .body(Body::empty())?;
+        let current_a_after_response = app.oneshot(current_a_after).await?;
+        assert_eq!(current_a_after_response.status(), StatusCode::UNAUTHORIZED);
 
         Ok(())
     }

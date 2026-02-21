@@ -11,6 +11,8 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/auth/email`
   - `POST /api/auth/verify`
   - `GET /api/auth/session`
+  - `GET /api/auth/sessions`
+  - `POST /api/auth/sessions/revoke`
   - `POST /api/auth/refresh`
   - `POST /api/auth/logout`
   - `GET /api/me`
@@ -18,6 +20,8 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/orgs/active`
   - `POST /api/policy/authorize`
   - `GET /api/v1/auth/session`
+  - `GET /api/v1/auth/sessions`
+  - `POST /api/v1/auth/sessions/revoke`
   - `GET /api/v1/control/status`
   - `GET /api/v1/control/route-split/status`
   - `POST /api/v1/control/route-split/override`
@@ -120,8 +124,15 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 ## Observability baseline
 
 - Request correlation IDs are propagated via `x-request-id` middleware and emitted in structured logs.
-- Audit events are emitted for sensitive control actions (`auth.challenge.requested`, `auth.verify.completed`, `auth.refresh.completed`, `auth.logout.completed`, `auth.active_org.updated`, `sync.token.issued`).
+- Audit events are emitted for sensitive control actions (`auth.challenge.requested`, `auth.verify.completed`, `auth.refresh.completed`, `auth.logout.completed`, `auth.active_org.updated`, `auth.sessions.listed`, `auth.sessions.revoked`, `sync.token.issued`).
 - Service emits JSON logs by default (`OA_CONTROL_LOG_FORMAT=json`) for machine parsing.
+
+## Session model guarantees
+
+- Refresh token rotation is mandatory (`rotate_refresh_token=false` is rejected).
+- Refresh tokens are single-use. Reuse of a revoked/rotated refresh token triggers replay defense and revokes the active session.
+- Session records are device-scoped (`x-device-id` / `device_id`) and auditable via `GET /api/auth/sessions`.
+- Device-scoped and global revocation are supported via `POST /api/auth/sessions/revoke`.
 
 ## Route split and rollback
 
