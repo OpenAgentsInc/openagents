@@ -9,8 +9,6 @@ For Cloud Run production deploys, use `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`.
 - You have `gcloud` + `kubectl` authenticated to the target project/cluster.
 - Runtime secrets exist in target namespace as `runtime-secrets` with keys:
   - `DATABASE_URL`
-  - `SECRET_KEY_BASE`
-  - `RUNTIME_SIGNATURE_SECRET`
 - Namespace and cluster context are selected.
 
 ```bash
@@ -30,7 +28,7 @@ From repo root:
 gcloud builds submit \
   --config apps/runtime/deploy/cloudbuild.yaml \
   --substitutions _TAG="$(git rev-parse --short HEAD)" \
-  apps/runtime
+  .
 ```
 
 Expected outcome:
@@ -68,12 +66,12 @@ apps/runtime/deploy/jobs/run-postdeploy-gate.sh
 ```
 
 What it does:
-1. Runs `runtime-migrate` job (`OpenAgentsRuntime.Release.migrate/0`).
-2. Runs `runtime-smoke` job (`OpenAgentsRuntime.Deploy.Smoke.run!/1`).
+1. Runs `runtime-migrate` job (`runtime-migrate` binary).
+2. Runs `runtime-smoke` job (`runtime-smoke` binary).
 
 Expected outcome:
 - Both jobs complete successfully.
-- Smoke logs show health + stream + tool path checks passing.
+- Smoke logs show health + authority-path checks passing.
 
 ## 5. Post-deploy verification
 
@@ -96,19 +94,7 @@ kubectl -n <NAMESPACE> rollout undo statefulset/runtime
 kubectl -n <NAMESPACE> rollout status statefulset/runtime --timeout=600s
 ```
 
-If schema rollback is required (manual, high-risk):
-
-```bash
-kubectl -n <NAMESPACE> run runtime-rollback \
-  --image=us-central1-docker.pkg.dev/<PROJECT_ID>/runtime/runtime:<PREVIOUS_TAG> \
-  --restart=Never \
-  --env=DATABASE_URL=... \
-  --env=SECRET_KEY_BASE=... \
-  --env=RUNTIME_SIGNATURE_SECRET=... \
-  --command -- bin/openagents_runtime eval 'OpenAgentsRuntime.Release.rollback(OpenAgentsRuntime.Repo, <MIGRATION_VERSION>)'
-```
-
-Only run schema rollback when backward compatibility is broken and restore-forward is not viable.
+Schema rollback is not an automated runtime command in Rust scaffolding; use restore-forward or database backup restoration runbooks.
 
 ## 7. Network policy check
 
@@ -117,12 +103,9 @@ kubectl -n <NAMESPACE> get networkpolicy runtime-ingress -o yaml
 ```
 
 Expected outcome:
-- BEAM ports (`4369`, `9000`) only allow runtime peers.
-- HTTP port (`4000`) only allows trusted control-plane clients.
+- Runtime HTTP port (`4100`) only allows trusted control-plane clients.
 
 ## 8. Reference docs
 
-- `apps/runtime/docs/OPERATIONS.md`
-- `apps/runtime/docs/OPERATIONS_ALERTING.md`
 - `apps/runtime/docs/NETWORK_POLICY.md`
 - `apps/runtime/deploy/jobs/README.md`

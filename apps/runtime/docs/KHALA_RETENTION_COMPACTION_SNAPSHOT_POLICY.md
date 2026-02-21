@@ -1,118 +1,45 @@
-# Khala Retention, Compaction, Snapshot, and QoS Budget Policy (OA-RUST-085/OA-RUST-086)
+# Khala Retention, Compaction, and Snapshot Policy (Rust Runtime)
 
-Status: Active  
-Owner: Runtime/Khala  
-Last updated: 2026-02-21
+Policy authority: `apps/runtime/src/fanout.rs` and `apps/runtime/src/config.rs`.
 
-## Purpose
+## Guarantees
 
-Define and enforce bounded replay behavior for Khala topics so storage and replay cost remain controlled while deterministic recovery stays available.
+1. Runtime is the ordering authority for Khala topic streams via per-topic `seq`.
+2. Replay is bounded by topic-class replay budgets.
+3. Stale cursor outcomes are deterministic and machine-readable.
 
-## Invariants
+## Topic Classes
 
-1. Runtime remains authority; Khala replay journal is delivery-only.
-2. Retention is applied per topic class, not as one global horizon.
-3. Compaction is tail-prune only for `runtime.sync_stream_events`; authority and read-model tables are not compacted by this job.
-4. Stale cursor responses are deterministic and include snapshot bootstrap metadata when snapshot-capable topics are affected.
+Configured in Rust runtime fanout limits:
 
-## Topic Classes, QoS Tiers, and Replay Budgets
+1. `run_events` (`run:{run_id}:events`)
+2. `worker_lifecycle` (`worker:{worker_id}:lifecycle`)
+3. `codex_worker_events` (`runtime.codex_worker_events`)
+4. `fallback` (all other topics)
 
-Source of truth in code: `apps/runtime/lib/openagents_runtime/sync/topic_policy.ex` and `apps/runtime/config/config.exs`.
+## Stale Cursor Policy
 
-| Topic | Class | QoS Tier | Replay Budget (events) | Retention (seconds) | Retention (human) | Compaction Mode | Snapshot |
-|---|---|---:|---|---|---|
-| `runtime.run_summaries` | `durable_summary` | `warm` | `20000` | `604800` | 7 days | `tail_prune_with_snapshot_rehydrate` | Enabled (`runtime.sync_run_summaries`) |
-| `runtime.codex_worker_summaries` | `durable_summary` | `warm` | `10000` | `259200` | 3 days | `tail_prune_with_snapshot_rehydrate` | Enabled (`runtime.sync_codex_worker_summaries`) |
-| `runtime.codex_worker_events` | `high_churn_events` | `hot` | `3000` | `86400` | 1 day | `tail_prune_without_snapshot` | Disabled |
-| `runtime.notifications` | `ephemeral_notifications` | `cold` | `500` | `43200` | 12 hours | `tail_prune_without_snapshot` | Disabled |
+Runtime returns deterministic stale cursor reasons:
 
-Fallback for unknown topics: `86400` seconds.
-Fallback QoS tier: `warm`.
-Fallback replay budget: `10000` events.
+1. `retention_floor_breach`
+2. `replay_budget_exceeded`
 
-## Snapshot Contract (`openagents.sync.snapshot.v1`)
+Clients must reset local watermarks and replay bootstrap when stale cursor is returned.
 
-Snapshot metadata is attached to stale-cursor responses under `snapshot_plan.topics[].snapshot`.
+## Operator Controls
 
-Required fields:
+Environment knobs:
 
-- `topic`
-- `format` (`openagents.sync.snapshot.v1`)
-- `schema_version` (currently `1`)
-- `cadence_seconds`
-- `source_table`
+- `RUNTIME_KHALA_*_REPLAY_BUDGET_EVENTS`
+- `RUNTIME_KHALA_*_PUBLISH_RATE_PER_SECOND`
+- `RUNTIME_KHALA_*_MAX_PAYLOAD_BYTES`
 
-Example:
-
-```json
-{
-  "topic": "runtime.run_summaries",
-  "format": "openagents.sync.snapshot.v1",
-  "schema_version": 1,
-  "cadence_seconds": 300,
-  "source_table": "runtime.sync_run_summaries"
-}
-```
-
-## Runtime Enforcement
-
-Retention implementation:
-
-- `OpenAgentsRuntime.Sync.RetentionJob` now computes per-topic cutoffs from topic policy.
-- Pruning is executed by topic in bounded batches.
-- `run_once/1` returns `topic_stats` including deletion counts, class, compaction mode, retention seconds, head/oldest watermarks, and stale-risk measurements.
-
-Stale cursor behavior:
-
-- `OpenAgentsRuntimeWeb.SyncChannel` returns:
-  - `code=stale_cursor`
-  - `full_resync_required=true`
-  - `reason_codes[]` with deterministic values:
-    - `retention_floor_breach`
-    - `replay_budget_exceeded`
-  - `stale_topics[]`
-  - `snapshot_plan` (format + per-topic snapshot metadata for snapshot-capable topics)
-
-Fairness and slow-consumer behavior:
-
-- Live fanout uses a bounded per-connection pending-topic queue.
-- Drain scheduler processes a capped number of topics per tick (`khala_sync_fair_drain_topics_per_tick`) to avoid hot-topic starvation.
-- Queue overflow triggers deterministic `slow_consumer` policy:
-  - first phase: throttle/drop signal
-  - terminal phase (after strike threshold): disconnect with reconnect guidance
-
-## Observability
-
-New telemetry metric families in `OpenAgentsRuntime.Telemetry.Metrics`:
-
-- `openagents_runtime.sync.retention.cycle.*`
-- `openagents_runtime.sync.retention.topic.*`
-- `openagents_runtime.sync.replay.budget.*`
-- `openagents_runtime.sync.socket.queue.*`
-- `openagents_runtime.sync.socket.slow_consumer.*`
-
-Topic-level telemetry tags:
-
-- `event_type`
-- `status`
-- `topic_class`
-- `qos_tier`
-- `snapshot`
+See `apps/runtime/src/config.rs` for the full matrix.
 
 ## Verification
 
-Primary tests:
+Core Rust tests:
 
-- `apps/runtime/test/openagents_runtime/sync/retention_job_test.exs`
-- `apps/runtime/test/openagents_runtime/sync/topic_policy_test.exs`
-- `apps/runtime/test/openagents_runtime_web/channels/sync_channel_test.exs` (stale cursor snapshot plan)
-
-Run:
-
-```bash
-cd apps/runtime
-mix test test/openagents_runtime/sync/retention_job_test.exs \
-  test/openagents_runtime/sync/topic_policy_test.exs \
-  test/openagents_runtime_web/channels/sync_channel_test.exs \
-  test/openagents_runtime/telemetry/metrics_test.exs
-```
+- `cargo test --manifest-path apps/runtime/Cargo.toml memory_fanout_rejects_stale_cursor`
+- `cargo test --manifest-path apps/runtime/Cargo.toml memory_fanout_rejects_cursor_when_replay_budget_is_exceeded`
+- `cargo test --manifest-path apps/runtime/Cargo.toml khala_topic_messages_returns_stale_cursor_when_replay_floor_is_missed`

@@ -14,7 +14,7 @@ apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 This command chains:
 
 1. `gcloud run deploy` for runtime service.
-2. `run-migrate-job.sh` migration execution (with image lock and helper fallback logic).
+2. `run-migrate-job.sh` migration execution (`runtime-migrate` command with image lock).
 3. `check-migration-drift.sh` validation (service/job image alignment + latest execution success).
 
 Optional role isolation verification runs during migration when `DB_URL`/`DATABASE_URL` is provided.

@@ -152,10 +152,10 @@ run_trigger_tests() {
   assert_trigger "proto" "$PROTO_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
   assert_trigger "proto" "$PROTO_TRIGGER_PATTERN" "docs/README.md" "false"
 
-  assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "apps/runtime/lib/foo.ex" "true"
+  assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "true"
   assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "false"
   assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/src/history_compat.rs" "true"
-  assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/lib/openagents_runtime/codex/workers.ex" "false"
+  assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/docs/DEPLOY_GCP.md" "false"
 
   assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/routes/web.php" "true"
   assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
@@ -182,11 +182,10 @@ run_trigger_tests() {
 run_runtime_checks() {
   echo "==> runtime checks"
   (
-    cd "$ROOT_DIR/apps/runtime"
-    mix format --check-formatted
-    mix compile --warnings-as-errors
-    mix runtime.contract.check
-    mix test --warnings-as-errors
+    cd "$ROOT_DIR"
+    cargo fmt --manifest-path apps/runtime/Cargo.toml -- --check
+    cargo check --manifest-path apps/runtime/Cargo.toml
+    cargo test --manifest-path apps/runtime/Cargo.toml
   )
 }
 

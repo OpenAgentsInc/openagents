@@ -20,24 +20,10 @@ spec:
           image: runtime:latest
           imagePullPolicy: IfNotPresent
           command:
-            - bin/openagents_runtime
-            - eval
-            - OpenAgentsRuntime.Release.migrate_and_verify!()
+            - runtime-migrate
           env:
-            - name: RELEASE_DISTRIBUTION
-              value: none
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: runtime-secrets
                   key: DATABASE_URL
-            - name: SECRET_KEY_BASE
-              valueFrom:
-                secretKeyRef:
-                  name: runtime-secrets
-                  key: SECRET_KEY_BASE
-            - name: RUNTIME_SIGNATURE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: runtime-secrets
-                  key: RUNTIME_SIGNATURE_SECRET

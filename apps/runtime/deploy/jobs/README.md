@@ -5,9 +5,9 @@ This directory provides deploy-time database migration and post-deploy smoke-tes
 ## Files
 
 - `migration-job.yaml`
-  - Runs release migrations with `OpenAgentsRuntime.Release.migrate_and_verify!/0`.
+  - Runs Rust SQL migrations with `runtime-migrate`.
 - `smoke-job.yaml`
-  - Runs HTTP + runtime-path smoke checks with `OpenAgentsRuntime.Deploy.Smoke.run!/1`.
+  - Runs Rust HTTP smoke checks with `runtime-smoke`.
 - `run-postdeploy-gate.sh`
   - Orchestrates migration job then smoke job and fails fast on error.
 
@@ -25,14 +25,12 @@ apps/runtime/deploy/jobs/run-postdeploy-gate.sh
 
 The smoke job validates:
 
-1. `GET /internal/v1/health` returns healthy response.
-2. Stream path emits delta + `[DONE]` for a seeded run.
-3. Tool execution path persists task lifecycle and `tool.call` / `tool.result` events.
+1. `GET /healthz` returns healthy response.
+2. `GET /readyz` returns ready response.
+3. Runtime authority path creates a run, appends an event, and fetches run state.
 
 ## Required Secrets
 
 - `DATABASE_URL`
-- `SECRET_KEY_BASE`
-- `RUNTIME_SIGNATURE_SECRET`
 
-All jobs read these from `runtime-secrets` in the target namespace.
+Migration job reads `DATABASE_URL` from `runtime-secrets` in the target namespace.

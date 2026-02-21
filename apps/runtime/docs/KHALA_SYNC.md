@@ -143,9 +143,11 @@ If projection drift is detected:
 
 Operational entrypoint:
 
-- `mix runtime.khala.reproject --run-id <run_id>`
-- `mix runtime.khala.reproject --worker-id <worker_id>`
-- `mix runtime.khala.reproject --all`
+- Apply schema migrations before replay-sensitive operations:
+  - `DB_URL=postgres://... cargo run --manifest-path apps/runtime/Cargo.toml --bin runtime-migrate`
+- Runtime replay verification is exercised through Rust projector/sync tests:
+  - `cargo test --manifest-path apps/runtime/Cargo.toml projectors::tests::projector_persists_and_recovers_checkpoint_state`
+  - `cargo test --manifest-path apps/runtime/Cargo.toml fanout::tests::memory_fanout_returns_logical_seq_order_when_transport_order_is_mixed`
 
 ## Auth Model
 
@@ -157,7 +159,7 @@ Operational entrypoint:
 
 ## Compatibility Gate Model
 
-- Khala can enforce compatibility windows during socket join (`compat_enforced` in `:khala_sync_auth` config).
+- Khala can enforce compatibility windows during socket join (`OA_COMPAT_KHALA_ENFORCED=true`).
 - Required join metadata when enforced:
   - `client_build_id`
   - `protocol_version`

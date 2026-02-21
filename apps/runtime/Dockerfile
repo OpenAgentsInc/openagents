@@ -1,35 +1,29 @@
 # syntax=docker/dockerfile:1.7
 
-ARG ELIXIR_IMAGE=elixir:1.19.5-otp-28
+FROM rust:bookworm AS builder
 
-FROM ${ELIXIR_IMAGE} AS builder
+WORKDIR /workspace
 
-ENV MIX_ENV=prod
+COPY Cargo.toml Cargo.lock ./
+COPY apps/runtime apps/runtime
+COPY proto proto
+
+RUN cargo build --release \
+  --manifest-path apps/runtime/Cargo.toml \
+  --bin openagents-runtime-service \
+  --bin runtime-migrate \
+  --bin runtime-smoke
+
+FROM debian:bookworm-slim AS runtime
+
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
-RUN mix local.hex --force && mix local.rebar --force
+COPY --from=builder /workspace/target/release/openagents-runtime-service /usr/local/bin/openagents-runtime-service
+COPY --from=builder /workspace/target/release/runtime-migrate /usr/local/bin/runtime-migrate
+COPY --from=builder /workspace/target/release/runtime-smoke /usr/local/bin/runtime-smoke
 
-COPY mix.exs mix.lock ./
-COPY config config
-RUN mix deps.get --only prod
-RUN mix deps.compile
+EXPOSE 4100
 
-COPY lib lib
-COPY priv priv
-RUN mix compile
-RUN mix release
-
-FROM ${ELIXIR_IMAGE} AS runner
-
-ENV MIX_ENV=prod
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl libstdc++6 && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /app/_build/prod/rel/openagents_runtime ./
-
-EXPOSE 4000
-
-CMD ["bin/openagents_runtime", "start"]
+ENTRYPOINT ["/usr/local/bin/openagents-runtime-service"]
