@@ -128,3 +128,7 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
   - `POST /api/v1/control/route-split/override` with body `{"target":"legacy"}` forces legacy immediately.
   - `POST /api/v1/control/route-split/override` with body `{"target":"clear"}` returns to configured mode.
 - Route split decisions emit auditable events as `route.split.decision`.
+
+## Canary Runbook
+
+- Full staged canary + rollback SOP: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
