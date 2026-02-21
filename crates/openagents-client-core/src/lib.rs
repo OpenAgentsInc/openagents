@@ -1,5 +1,8 @@
 //! Shared OpenAgents client-core building blocks reused across web/desktop/iOS surfaces.
 
+#[cfg(target_os = "ios")]
+pub use wgpui::IosBackgroundState;
+
 pub mod auth;
 pub mod codex_worker;
 pub mod command;

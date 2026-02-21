@@ -23,10 +23,19 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXBuildFile section */
+		2C56378C2F47D7D8009A098C /* OpenAgentsClientCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2C56378B2F47D7D8009A098B /* OpenAgentsClientCore.xcframework */; };
+		2C56378E2F47D7D8009A098E /* libopenagents_client_core_sim.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2C56378F2F47D7D8009A098F /* libopenagents_client_core_sim.a */; platformFilters = ( "ios-simulator" ); };
+		2C5637902F47D7D8009A0990 /* libopenagents_client_core.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2C5637912F47D7D8009A0991 /* libopenagents_client_core.a */; platformFilters = ( "ios" ); };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		2C56375F2F47D7D5009A098D /* Autopilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Autopilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C56376E2F47D7D8009A098D /* AutopilotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AutopilotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C5637782F47D7D8009A098D /* AutopilotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AutopilotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2C56378B2F47D7D8009A098B /* OpenAgentsClientCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = OpenAgentsClientCore.xcframework; sourceTree = "<group>"; };
+		2C56378F2F47D7D8009A098F /* libopenagents_client_core_sim.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libopenagents_client_core_sim.a; sourceTree = "<group>"; };
+		2C5637912F47D7D8009A0991 /* libopenagents_client_core.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libopenagents_client_core.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +61,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2C56378C2F47D7D8009A098C /* OpenAgentsClientCore.xcframework in Frameworks */,
+				2C56378E2F47D7D8009A098E /* libopenagents_client_core_sim.a in Frameworks */,
+				2C5637902F47D7D8009A0990 /* libopenagents_client_core.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -76,10 +88,37 @@
 			isa = PBXGroup;
 			children = (
 				2C5637612F47D7D5009A098D /* Autopilot */,
+				2C56378D2F47D7D8009A098D /* RustCore */,
 				2C5637712F47D7D8009A098D /* AutopilotTests */,
 				2C56377B2F47D7D8009A098D /* AutopilotUITests */,
 				2C5637602F47D7D5009A098D /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		2C56378D2F47D7D8009A098D /* RustCore */ = {
+			isa = PBXGroup;
+			children = (
+				2C56378B2F47D7D8009A098B /* OpenAgentsClientCore.xcframework */,
+				2C5637922F47D7D8009A0992 /* Simulator */,
+				2C5637932F47D7D8009A0993 /* Device */,
+			);
+			path = "RustCore/current";
+			sourceTree = "<group>";
+		};
+		2C5637922F47D7D8009A0992 /* Simulator */ = {
+			isa = PBXGroup;
+			children = (
+				2C56378F2F47D7D8009A098F /* libopenagents_client_core_sim.a */,
+			);
+			path = "OpenAgentsClientCore.xcframework/ios-arm64_x86_64-simulator";
+			sourceTree = "<group>";
+		};
+		2C5637932F47D7D8009A0993 /* Device */ = {
+			isa = PBXGroup;
+			children = (
+				2C5637912F47D7D8009A0991 /* libopenagents_client_core.a */,
+			);
+			path = "OpenAgentsClientCore.xcframework/ios-arm64";
 			sourceTree = "<group>";
 		};
 		2C5637602F47D7D5009A098D /* Products */ = {
@@ -407,11 +446,27 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/RustCore/current/OpenAgentsClientCore.xcframework/ios-arm64_x86_64-simulator",
+					"$(PROJECT_DIR)/RustCore/current/OpenAgentsClientCore.xcframework/ios-arm64",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.0.1;
+				OTHER_LDFLAGS = (
+					"-Xlinker",
+					"-u",
+					"-Xlinker",
+					"_wgpui_ios_background_create",
+					"-lopenagents_client_core_sim",
+					"-lopenagents_client_core",
+					"-Xlinker",
+					"-force_load",
+					"-Xlinker",
+					"$(PROJECT_DIR)/RustCore/current/OpenAgentsClientCore.xcframework/ios-arm64_x86_64-simulator/libopenagents_client_core_sim.a",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.Autopilot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -441,11 +496,27 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/RustCore/current/OpenAgentsClientCore.xcframework/ios-arm64_x86_64-simulator",
+					"$(PROJECT_DIR)/RustCore/current/OpenAgentsClientCore.xcframework/ios-arm64",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.0.1;
+				OTHER_LDFLAGS = (
+					"-Xlinker",
+					"-u",
+					"-Xlinker",
+					"_wgpui_ios_background_create",
+					"-lopenagents_client_core_sim",
+					"-lopenagents_client_core",
+					"-Xlinker",
+					"-force_load",
+					"-Xlinker",
+					"$(PROJECT_DIR)/RustCore/current/OpenAgentsClientCore.xcframework/ios-arm64_x86_64-simulator/libopenagents_client_core_sim.a",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.Autopilot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

@@ -5,26 +5,10 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ZStack {
-            WgpuiBackgroundView()
-
-            TabView {
-                CodexChatView(model: model)
-                    .tabItem {
-                        Label("Chat", systemImage: "message.fill")
-                    }
-
-                CodexDebugView(model: model)
-                    .tabItem {
-                        Label("Debug", systemImage: "ladybug.fill")
-                    }
-            }
-        }
-        .tint(OATheme.ring)
-        .preferredColorScheme(.dark)
-        .onChange(of: scenePhase) { _, phase in
-            model.handleScenePhaseChange(phase)
-        }
+        // WGPUI-only: dots grid full screen, no Codex UI on top.
+        WgpuiBackgroundView()
+            .ignoresSafeArea()
+            .preferredColorScheme(.dark)
     }
 }
 

@@ -694,12 +694,20 @@ pub mod ios {
         height: u32,
         scale: f32,
     ) -> *mut IosBackgroundState {
+        eprintln!("[WGPUI Rust] wgpui_ios_background_create called width={} height={} scale={}", width, height, scale);
         if layer_ptr.is_null() {
+            eprintln!("[WGPUI Rust] create: layer_ptr is null");
             return std::ptr::null_mut();
         }
         match unsafe { IosBackgroundState::new(layer_ptr, width, height, scale) } {
-            Ok(state) => Box::into_raw(state),
-            Err(_) => std::ptr::null_mut(),
+            Ok(state) => {
+                eprintln!("[WGPUI Rust] create: OK");
+                Box::into_raw(state)
+            }
+            Err(e) => {
+                eprintln!("[WGPUI Rust] create FAILED: {}", e);
+                std::ptr::null_mut()
+            }
         }
     }
 
@@ -712,7 +720,10 @@ pub mod ios {
         let state = unsafe { &mut *state };
         match state.render() {
             Ok(()) => 1,
-            Err(_) => 0,
+            Err(e) => {
+                eprintln!("[WGPUI Rust] render FAILED: {}", e);
+                0
+            }
         }
     }
 
