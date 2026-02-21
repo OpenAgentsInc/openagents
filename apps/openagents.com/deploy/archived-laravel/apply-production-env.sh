@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=./phase-b-freeze-guard.sh
+source "${SCRIPT_DIR}/phase-b-freeze-guard.sh"
+
 ENV_FILE="${1:-${APP_DIR}/.env.production}"
 GCP_PROJECT="${GCP_PROJECT:-openagentsgemini}"
 GCP_REGION="${GCP_REGION:-us-central1}"

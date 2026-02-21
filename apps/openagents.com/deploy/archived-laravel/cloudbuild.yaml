@@ -3,15 +3,36 @@
 # IMPORTANT: submit the build with context limited to the Laravel app directory,
 # otherwise Cloud Build will upload the entire monorepo.
 #
+# This lane is frozen by OA-RUST-111 Phase B and requires explicit unfreeze
+# substitutions for rollback/cutover-only use.
+#
 # Run from repo root:
 #   gcloud builds submit \
 #     --config apps/openagents.com/deploy/cloudbuild.yaml \
-#     --substitutions _TAG="$(git rev-parse --short HEAD)" \
+#     --substitutions _TAG="$(git rev-parse --short HEAD)",_OA_LEGACY_LARAVEL_UNFREEZE=1,_OA_LEGACY_LARAVEL_CHANGE_TICKET=<approved-ticket-id> \
 #     apps/openagents.com
 substitutions:
   _TAG: ${SHORT_SHA}
+  _OA_LEGACY_LARAVEL_UNFREEZE: "0"
+  _OA_LEGACY_LARAVEL_CHANGE_TICKET: ""
 
 steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [[ "${_OA_LEGACY_LARAVEL_UNFREEZE}" != "1" ]]; then
+          echo "error: legacy Laravel Cloud Build lane is frozen (OA-RUST-111 Phase B)." >&2
+          echo "error: set _OA_LEGACY_LARAVEL_UNFREEZE=1 and _OA_LEGACY_LARAVEL_CHANGE_TICKET=<approved-ticket-id> only for rollback/cutover windows." >&2
+          exit 78
+        fi
+        if [[ -z "${_OA_LEGACY_LARAVEL_CHANGE_TICKET}" ]]; then
+          echo "error: _OA_LEGACY_LARAVEL_CHANGE_TICKET is required when unfreezing legacy lane." >&2
+          exit 78
+        fi
+        echo "[legacy-unfreeze] approved ticket: ${_OA_LEGACY_LARAVEL_CHANGE_TICKET}"
+
   - name: gcr.io/cloud-builders/docker
     args:
       - build

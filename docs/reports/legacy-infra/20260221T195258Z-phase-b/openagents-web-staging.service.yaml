@@ -1,0 +1,195 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/client-name: gcloud
+    run.googleapis.com/client-version: 556.0.0
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/maxScale: '20'
+    run.googleapis.com/operation-id: 83b3d3ef-435e-4540-b584-f53e40087690
+    run.googleapis.com/urls: '["https://openagents-web-staging-157437760789.us-central1.run.app","https://openagents-web-staging-ezxz4mgdsq-uc.a.run.app"]'
+    serving.knative.dev/creator: chris@openagents.com
+    serving.knative.dev/lastModifier: chris@openagents.com
+  creationTimestamp: '2026-02-17T07:38:37.866568Z'
+  generation: 37
+  labels:
+    cloud.googleapis.com/location: us-central1
+  name: openagents-web-staging
+  namespace: '157437760789'
+  resourceVersion: AAZLGnnogmI
+  selfLink: /apis/serving.knative.dev/v1/namespaces/157437760789/services/openagents-web-staging
+  uid: ab49a161-2fc4-4ea7-9790-785bea66c6aa
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '2'
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/client-version: 556.0.0
+        run.googleapis.com/cloudsql-instances: openagentsgemini:us-central1:l402-aperture-db
+        run.googleapis.com/network-interfaces: '[{"network":"oa-lightning","subnetwork":"oa-lightning-us-central1"}]'
+        run.googleapis.com/startup-cpu-boost: 'true'
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+      labels:
+        client.knative.dev/nonce: aivxmakzcf
+        run.googleapis.com/startupProbeType: Default
+    spec:
+      containerConcurrency: 40
+      containers:
+      - env:
+        - name: APP_ENV
+          value: staging
+        - name: APP_DEBUG
+          value: '0'
+        - name: LOG_CHANNEL
+          value: stderr
+        - name: AI_DEFAULT
+          value: ai_gateway
+        - name: DB_CONNECTION
+          value: pgsql
+        - name: DB_HOST
+          value: /cloudsql/openagentsgemini:us-central1:l402-aperture-db
+        - name: DB_DATABASE
+          value: openagents_web_staging
+        - name: DB_USERNAME
+          value: openagents_web
+        - name: CACHE_STORE
+          value: redis
+        - name: QUEUE_CONNECTION
+          value: redis
+        - name: SESSION_DRIVER
+          value: redis
+        - name: REDIS_HOST
+          value: 10.163.121.75
+        - name: REDIS_PORT
+          value: '6379'
+        - name: APP_MAINTENANCE_DRIVER
+          value: cache
+        - name: APP_MAINTENANCE_STORE
+          value: database
+        - name: SESSION_DOMAIN
+          value: staging.openagents.com
+        - name: L402_ALLOWLIST_HOSTS
+          value: sats4ai.com,api.sats4ai.com,l402.openagents.com
+        - name: L402_ENFORCE_HOST_ALLOWLIST
+          value: 'false'
+        - name: L402_CREDENTIAL_TTL_SECONDS
+          value: '600'
+        - name: L402_RESPONSE_MAX_BYTES
+          value: '65536'
+        - name: L402_RESPONSE_PREVIEW_BYTES
+          value: '1024'
+        - name: L402_PAYMENT_TIMEOUT_MS
+          value: '12000'
+        - name: L402_INVOICE_PAYER
+          value: spark_wallet
+        - name: L402_DEMO_SATS4AI_URL
+          value: https://sats4ai.com/api/l402/text-generation
+        - name: LND_REST_TLS_VERIFY
+          value: 'true'
+        - name: SPARK_EXECUTOR_BASE_URL
+          value: https://l402-wallet-executor-ezxz4mgdsq-uc.a.run.app
+        - name: SPARK_EXECUTOR_TIMEOUT_MS
+          value: '20000'
+        - name: SPARK_AGENT_WALLET_ID_PREFIX
+          value: oa-stg-user-
+        - name: OA_API_SIGNUP_ENABLED
+          value: 'true'
+        - name: OA_API_SIGNUP_ALLOWED_DOMAINS
+          value: openagents.com
+        - name: APP_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-staging-app-key
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-db-password
+        - name: WORKOS_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-workos-client-id
+        - name: WORKOS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-workos-api-key
+        - name: WORKOS_REDIRECT_URL
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-workos-redirect-url
+        - name: OPENROUTER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-openrouter-api-key
+        - name: AI_GATEWAY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-ai-gateway-api-key
+        - name: OA_SMOKE_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: openagents-web-staging-smoke-secret
+        - name: SPARK_EXECUTOR_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: l402-wallet-executor-auth-token
+        - name: APP_URL
+          value: https://staging.openagents.com
+        - name: ASSET_URL
+          value: https://staging.openagents.com
+        - name: POSTHOG_DISABLED
+          value: 'true'
+        - name: POSTHOG_HOST
+          value: https://us.i.posthog.com
+        - name: SESSION_COOKIE
+          value: openagents-staging-session
+        image: us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:dd035e27f
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        startupProbe:
+          failureThreshold: 1
+          periodSeconds: 240
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 240
+      serviceAccountName: 157437760789-compute@developer.gserviceaccount.com
+      timeoutSeconds: 300
+  traffic:
+  - latestRevision: true
+    percent: 100
+status:
+  address:
+    url: https://openagents-web-staging-ezxz4mgdsq-uc.a.run.app
+  conditions:
+  - lastTransitionTime: '2026-02-18T15:02:26.777698Z'
+    status: 'True'
+    type: Ready
+  - lastTransitionTime: '2026-02-18T15:02:20.989950Z'
+    status: 'True'
+    type: ConfigurationsReady
+  - lastTransitionTime: '2026-02-18T15:02:26.729905Z'
+    status: 'True'
+    type: RoutesReady
+  latestCreatedRevisionName: openagents-web-staging-00037-kdw
+  latestReadyRevisionName: openagents-web-staging-00037-kdw
+  observedGeneration: 37
+  traffic:
+  - latestRevision: true
+    percent: 100
+    revisionName: openagents-web-staging-00037-kdw
+  url: https://openagents-web-staging-ezxz4mgdsq-uc.a.run.app

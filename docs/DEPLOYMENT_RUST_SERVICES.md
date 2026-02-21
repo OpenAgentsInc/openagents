@@ -45,3 +45,4 @@ Cross-environment release validation gate:
 3. Legacy deploy assets remain under archived paths only:
    - `apps/openagents.com/deploy/archived-laravel/`
    - `apps/openagents.com/docs/archived/legacy-laravel-deploy/`
+4. Legacy Laravel archived deploy scripts are freeze-gated (OA-RUST-111 Phase B) and require explicit unfreeze variables + approved ticket metadata before execution.

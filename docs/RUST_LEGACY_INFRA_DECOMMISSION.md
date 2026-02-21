@@ -31,15 +31,29 @@ Remove legacy Laravel infrastructure in controlled phases while preserving produ
 - Re-run Rust matrix in strict mode (`FAIL_ON_REQUIRED_FAILURE=1`).
 - Remove production Laravel resources last.
 
+## Phase execution status
+
+1. Phase A complete (2026-02-21)
+- Report: `docs/reports/2026-02-21-legacy-infra-decommission-phase-a.md`
+- Action: deleted `openagents-migrate-staging`.
+
+2. Phase B in progress (2026-02-21)
+- Report: `docs/reports/2026-02-21-legacy-infra-decommission-phase-b.md`
+- Completed in this phase:
+  - legacy Laravel deploy entrypoints frozen with explicit unfreeze gates.
+  - rollback metadata snapshot captured under `docs/reports/legacy-infra/20260221T195258Z-phase-b/`.
+- Remaining before Phase C:
+  - keep production traffic on `openagents-web` until OA-RUST-112 maintenance-mode cutover window opens.
+
 ## Current disposition map (2026-02-21)
 
 | Resource | Class | Decision | Target phase | Notes |
 | --- | --- | --- | --- | --- |
 | `openagents-web-staging` (Cloud Run service) | legacy staging | keep temporarily | Phase B/C | Still backs `staging.openagents.com` until Rust staging service is live and mapped. |
 | `openagents-migrate-staging` (Cloud Run job) | legacy staging | remove now | Phase A | Deleted in OA-RUST-111 Phase A execution. |
-| `openagents-web` (Cloud Run service) | legacy production | keep | Phase C | Serves `openagents.com` and `next.openagents.com`; delete last. |
+| `openagents-web` (Cloud Run service) | legacy production | keep | Phase C | Serves `openagents.com` and `next.openagents.com`; delete last. Phase B rollback pointer captured. |
 | `openagents-migrate` (Cloud Run job) | legacy production | keep | Phase C | Required by current production Laravel service until cutover complete. |
-| `openagents-maintenance-down` (Cloud Run job) | legacy production | keep temporarily | Phase B/C | Replaced by Rust maintenance mode in OA-RUST-112, then retire. |
+| `openagents-maintenance-down` (Cloud Run job) | legacy production | keep temporarily | Phase B/C | Replaced by Rust maintenance mode in OA-RUST-112, then retire. Phase B rollback pointer captured. |
 | `openagents-runtime-migrate` (Cloud Run job, legacy command shape) | legacy runtime migration | keep temporarily | Phase B/C | Replace with Rust runtime migrate job, then retire legacy job. |
 | `openagents-web` (Artifact Registry repo) | legacy production images | keep | Phase C | Remove after production service deletion and rollback window closes. |
 | `openagents-web-*` secrets | legacy production/staging secrets | keep | Phase C | Remove only after service/job deletion and env migration complete. |

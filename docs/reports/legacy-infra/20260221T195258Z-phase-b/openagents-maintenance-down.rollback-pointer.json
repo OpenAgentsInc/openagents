@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "name": "openagents-maintenance-down"
+  },
+  "spec": {
+    "template": {
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "args": [
+                  "artisan",
+                  "down",
+                  "--secret=<redacted>",
+                  "--retry=60",
+                  "--render=errors.503"
+                ],
+                "command": [
+                  "php"
+                ],
+                "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:72cae86ae"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "status": {
+    "latestCreatedExecution": {
+      "name": "openagents-maintenance-down-5l6kl"
+    }
+  }
+}
