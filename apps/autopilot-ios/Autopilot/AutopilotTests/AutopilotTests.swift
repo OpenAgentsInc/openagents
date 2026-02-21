@@ -243,4 +243,35 @@ struct AutopilotTests {
             #expect(parsed == nil)
         }
     }
+
+    @Test("auth flow state keeps latest send-code challenge and drops stale completion")
+    func authFlowStateDropsStaleSendCompletion() {
+        var flow = CodexAuthFlowState()
+        let first = flow.beginSend(email: "one@openagents.com")
+        let second = flow.beginSend(email: "two@openagents.com")
+
+        let staleResolved = flow.resolveSend(generation: first, challengeID: "challenge-1")
+        let latestResolved = flow.resolveSend(generation: second, challengeID: "challenge-2")
+        #expect(!staleResolved)
+        #expect(latestResolved)
+
+        let verify = flow.beginVerify()
+        #expect(verify?.generation == second)
+        #expect(verify?.challengeID == "challenge-2")
+        #expect(verify?.email == "two@openagents.com")
+    }
+
+    @Test("auth flow state invalidation rejects stale verify responses")
+    func authFlowStateRejectsStaleVerifyResponses() {
+        var flow = CodexAuthFlowState()
+        let generation = flow.beginSend(email: "race@openagents.com")
+        let resolved = flow.resolveSend(generation: generation, challengeID: "challenge-race")
+        #expect(resolved)
+
+        let verify = flow.beginVerify()
+        #expect(verify?.generation == generation)
+
+        flow.invalidate()
+        #expect(!flow.shouldAcceptResponse(generation: generation))
+    }
 }
