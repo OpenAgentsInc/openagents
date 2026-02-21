@@ -122,7 +122,7 @@ core crate.
 ## openagents-relay (relay)
 The relay crate defines the relay protocol message types shared by browser/worker/tunnel clients.
 
-## openagents-runtime (runtime)
+## runtime (runtime)
 The runtime crate provides a pluggable execution environment for agents, including filesystem-like
 mounts, containers, identity, and telemetry hooks.
 

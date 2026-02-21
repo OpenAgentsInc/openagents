@@ -17,17 +17,17 @@ Scope: Gate G7 (`#1766`) production-readiness drills in non-prod (`openagentsgem
 ## Commands Executed
 
 1. Baseline health
-- `apps/openagents-runtime/deploy/khala/check-nonprod-health.sh`
+- `apps/runtime/deploy/khala/check-nonprod-health.sh`
 
 2. Backup/restore drill
-- `apps/openagents-runtime/deploy/khala/run-backup-restore-drill.sh`
+- `apps/runtime/deploy/khala/run-backup-restore-drill.sh`
 
 3. Replay drill (runtime local with deterministic fixtures)
-- `apps/openagents-runtime/deploy/khala/run-runtime-replay-drill.sh`
+- `apps/runtime/deploy/khala/run-runtime-replay-drill.sh`
 
 4. Rollback drill
-- `apps/openagents-runtime/deploy/khala/run-rollback-drill.sh` (dry-run)
-- `OA_KHALA_ROLLBACK_DRILL_APPLY=1 apps/openagents-runtime/deploy/khala/run-rollback-drill.sh`
+- `apps/runtime/deploy/khala/run-rollback-drill.sh` (dry-run)
+- `OA_KHALA_ROLLBACK_DRILL_APPLY=1 apps/runtime/deploy/khala/run-rollback-drill.sh`
 
 ## Outcomes
 
@@ -67,8 +67,8 @@ Rollback:
 
 ## Documentation Updates Landed
 
-- `apps/openagents-runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
-- `apps/openagents-runtime/deploy/khala/README.md`
+- `apps/runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
+- `apps/runtime/deploy/khala/README.md`
 - `docs/plans/active/khala-runtime-codex-master-roadmap.md`
 
 ## Remaining Work

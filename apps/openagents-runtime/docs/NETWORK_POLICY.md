@@ -1,15 +1,15 @@
 # Runtime NetworkPolicy Hardening
 
-`openagents-runtime` enforces ingress restrictions via:
+`runtime` enforces ingress restrictions via:
 
-- `apps/openagents-runtime/deploy/k8s/base/networkpolicy-ingress.yaml`
+- `apps/runtime/deploy/k8s/base/networkpolicy-ingress.yaml`
 
 ## Allowed ingress
 
 1. **BEAM distribution + EPMD**
    - TCP `9000` (distribution)
    - TCP `4369` (epmd)
-   - Source: runtime peers only (`app=openagents-runtime`)
+   - Source: runtime peers only (`app=runtime`)
 
 2. **Internal HTTP API**
    - TCP `4000`
@@ -28,8 +28,8 @@
 ## Validation
 
 - Render manifests:
-  - `kubectl kustomize apps/openagents-runtime/deploy/k8s/base`
+  - `kubectl kustomize apps/runtime/deploy/k8s/base`
 - Verify policy applied:
-  - `kubectl -n <ns> get networkpolicy openagents-runtime-ingress -o yaml`
+  - `kubectl -n <ns> get networkpolicy runtime-ingress -o yaml`
 - Verify smoke pod label compatibility:
-  - `kubectl -n <ns> get job openagents-runtime-smoke -o yaml`
+  - `kubectl -n <ns> get job runtime-smoke -o yaml`

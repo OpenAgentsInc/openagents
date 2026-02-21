@@ -169,7 +169,7 @@ defmodule OpenAgentsRuntime.Tools.Coding.Providers.GitHubAdapter do
         {"authorization", "Bearer #{api_token}"},
         {"accept", "application/vnd.github+json"},
         {"x-github-api-version", "2022-11-28"},
-        {"user-agent", "openagents-runtime"}
+        {"user-agent", "runtime"}
       ]
       |> maybe_put_content_type(operation_spec["method"])
 

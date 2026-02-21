@@ -222,7 +222,7 @@ defmodule OpenAgentsRuntime.Deploy.Smoke do
 
   defp default_base_url do
     namespace = System.get_env("POD_NAMESPACE") || "default"
-    "http://openagents-runtime.#{namespace}.svc.cluster.local"
+    "http://runtime.#{namespace}.svc.cluster.local"
   end
 
   defp normalize_base_url(base_url) do

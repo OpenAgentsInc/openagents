@@ -9,7 +9,7 @@ description = "Sovereign agent spawning, lifecycle, and registry"
 
 [dependencies]
 # OpenAgents crates
-openagents-runtime = { path = "../runtime", default-features = false }
+runtime = { path = "../runtime", default-features = false }
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
 openagents-spark = { path = "../spark" }

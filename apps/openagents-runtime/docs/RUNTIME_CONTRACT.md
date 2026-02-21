@@ -1,6 +1,6 @@
 # OpenAgents Runtime Internal Contract (`/internal/v1/*`)
 
-This document defines the implemented internal control-plane contract between Laravel and `openagents-runtime`.
+This document defines the implemented internal control-plane contract between Laravel and `runtime`.
 
 ## Conventions
 
@@ -94,7 +94,7 @@ Success (`200`):
 ```json
 {
   "status": "ok",
-  "service": "openagents-runtime",
+  "service": "runtime",
   "version": "0.1.0"
 }
 ```
@@ -349,7 +349,7 @@ Request:
     "description": "Custom coding workflow skill",
     "instructions_markdown": "Use coding tools for issue workflows.",
     "allowed_tools": [{"tool_id": "github.custom", "version": 1}],
-    "compatibility": {"runtime": "openagents-runtime"},
+    "compatibility": {"runtime": "runtime"},
     "commercial": {"pricing_model": "free", "currency": "BTC_SATS"}
   }
 }

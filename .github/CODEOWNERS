@@ -7,6 +7,6 @@ proto/** @AtlantisPleb
 docs/protocol/** @AtlantisPleb
 
 # Runtime contract docs/checkers
-apps/openagents-runtime/docs/*CONTRACT*.md @AtlantisPleb
-apps/openagents-runtime/lib/openagents_runtime/contracts/** @AtlantisPleb
-apps/openagents-runtime/lib/mix/tasks/runtime.contract.check.ex @AtlantisPleb
+apps/runtime/docs/*CONTRACT*.md @AtlantisPleb
+apps/runtime/lib/openagents_runtime/contracts/** @AtlantisPleb
+apps/runtime/lib/mix/tasks/runtime.contract.check.ex @AtlantisPleb

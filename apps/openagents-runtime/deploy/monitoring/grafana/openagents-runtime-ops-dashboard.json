@@ -1,6 +1,6 @@
 {
   "id": null,
-  "uid": "openagents-runtime-ops",
+  "uid": "runtime-ops",
   "title": "OpenAgents Runtime Ops",
   "timezone": "browser",
   "schemaVersion": 39,

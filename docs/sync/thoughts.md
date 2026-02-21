@@ -16,7 +16,7 @@ Locked v1 decisions:
 2. Khala is delivery/replay infrastructure only, not an authority write path.
 3. Khala transport is WS-only for live updates (no new SSE lane).
 4. Contracts are proto-first under `proto/openagents/sync/v1/`.
-5. Khala v1 ships inside `apps/openagents-runtime` (same deployable, same DB plane).
+5. Khala v1 ships inside `apps/runtime` (same deployable, same DB plane).
 6. Watermarks are DB-native, monotonic per topic, allocated transactionally.
 7. Stream journal is ordering-first; payload authority lives in read-model tables.
 8. Pointer mode is mandatory: stream rows may omit full payload without protocol change.
@@ -41,19 +41,19 @@ This avoids coupling UI freshness to authority writes and avoids turning sync tr
 Implemented:
 
 - Runtime projector/checkpoint/reprojection modules exist:
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/projector.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/reprojection.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/projection_checkpoint.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/projector.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/reprojection.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/projection_checkpoint.ex`
 - Projection checkpoints migration exists:
-  - `apps/openagents-runtime/priv/repo/migrations/20260219101000_create_runtime_khala_projection_checkpoints.exs`
+  - `apps/runtime/priv/repo/migrations/20260219101000_create_runtime_khala_projection_checkpoints.exs`
 - Runtime event writes already trigger projection integration:
-  - `apps/openagents-runtime/lib/openagents_runtime/runs/run_events.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/workers.ex`
+  - `apps/runtime/lib/openagents_runtime/runs/run_events.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/workers.ex`
 
 Gap:
 
 - Default sink in config remains noop for some environments:
-  - `apps/openagents-runtime/config/config.exs`
+  - `apps/runtime/config/config.exs`
 
 ### Web/mobile/desktop lanes
 
@@ -79,7 +79,7 @@ Current posture:
 
 ### Subsystem placement
 
-Khala v1 runs inside `apps/openagents-runtime`.
+Khala v1 runs inside `apps/runtime`.
 
 Reason:
 
@@ -316,5 +316,5 @@ Load/chaos tests:
 - `docs/ARCHITECTURE.md`
 - `docs/sync/ROADMAP.md`
 - `docs/sync/SURFACES.md`
-- `apps/openagents-runtime/docs/KHALA_SYNC.md`
+- `apps/runtime/docs/KHALA_SYNC.md`
 - `docs/adr/ADR-0030-khala-sync-runtime-owned-ws-proto-first.md`

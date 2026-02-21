@@ -1,12 +1,12 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: openagents-runtime
+  name: runtime
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: StatefulSet
-    name: openagents-runtime
+    name: runtime
   minReplicas: 3
   maxReplicas: 10
   metrics:

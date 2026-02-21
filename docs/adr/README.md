@@ -29,7 +29,7 @@ Important distinction:
 - **Accepted** = we commit to this direction/contract. The ADR is the decision.
 - **Wired/Implemented** = code path exists and is used in production.
 
-An ADR being "Accepted" does **not** mean the code is implemented. For implementation status, check the active codebase (`apps/openagents.com`, `apps/openagents-runtime`, `apps/autopilot-desktop`, `apps/desktop`, `crates`, `proto`, `packages/*`) and [PROJECT_OVERVIEW.md](../PROJECT_OVERVIEW.md).
+An ADR being "Accepted" does **not** mean the code is implemented. For implementation status, check the active codebase (`apps/openagents.com`, `apps/runtime`, `apps/autopilot-desktop`, `apps/desktop`, `crates`, `proto`, `packages/*`) and [PROJECT_OVERVIEW.md](../PROJECT_OVERVIEW.md).
 
 ## When to Write an ADR
 

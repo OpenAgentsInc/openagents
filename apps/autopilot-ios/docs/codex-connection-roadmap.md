@@ -30,7 +30,7 @@ This roadmap references working patterns from `~/code/inbox-autopilot/` (local A
 References:
 
 - `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `proto/README.md`
 

@@ -23,5 +23,5 @@ run_job() {
   kubectl -n "$NAMESPACE" logs "job/$name"
 }
 
-run_job "openagents-runtime-migrate" "$MIGRATION_JOB_MANIFEST" migrate
-run_job "openagents-runtime-smoke" "$SMOKE_JOB_MANIFEST" smoke
+run_job "runtime-migrate" "$MIGRATION_JOB_MANIFEST" migrate
+run_job "runtime-smoke" "$SMOKE_JOB_MANIFEST" smoke

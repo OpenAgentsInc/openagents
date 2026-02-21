@@ -23,7 +23,7 @@ gateway = { path = "../gateway" }
 frlm = { path = "../frlm", features = ["trace-db"] }
 nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
-openagents-runtime = { path = "../runtime", default-features = false }
+runtime = { path = "../runtime", default-features = false }
 openagents-relay = { path = "../relay" }
 spark = { package = "openagents-spark", path = "../spark" }
 

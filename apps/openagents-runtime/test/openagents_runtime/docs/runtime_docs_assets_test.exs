@@ -8,9 +8,9 @@ defmodule OpenAgentsRuntime.Docs.RuntimeDocsAssetsTest do
     deploy_doc = File.read!(Path.join(@docs_dir, "DEPLOY_GCP.md"))
 
     assert deploy_doc =~ "Run migration + smoke gate"
-    assert deploy_doc =~ "openagents-runtime-migrate"
-    assert deploy_doc =~ "openagents-runtime-smoke"
-    assert deploy_doc =~ "rollout undo statefulset/openagents-runtime"
+    assert deploy_doc =~ "runtime-migrate"
+    assert deploy_doc =~ "runtime-smoke"
+    assert deploy_doc =~ "rollout undo statefulset/runtime"
     assert deploy_doc =~ "RUNTIME_SIGNATURE_SECRET"
   end
 

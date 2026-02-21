@@ -12,6 +12,6 @@ resources:
 
 labels:
   - pairs:
-      app.kubernetes.io/name: openagents-runtime
+      app.kubernetes.io/name: runtime
       app.kubernetes.io/part-of: openagents
       app.kubernetes.io/component: runtime

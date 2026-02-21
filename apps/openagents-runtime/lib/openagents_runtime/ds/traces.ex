@@ -7,7 +7,7 @@ defmodule OpenAgentsRuntime.DS.Traces do
   alias OpenAgentsRuntime.Security.Sanitizer
 
   @default_inline_bytes 3_500
-  @default_uri_prefix "gcs://openagents-runtime-ds-traces"
+  @default_uri_prefix "gcs://runtime-ds-traces"
 
   @type capture_opt ::
           {:max_inline_bytes, pos_integer()}

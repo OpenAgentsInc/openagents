@@ -9,7 +9,7 @@ defmodule OpenAgentsRuntimeWeb.HealthControllerTest do
 
     assert %{
              "status" => "ok",
-             "service" => "openagents-runtime",
+             "service" => "runtime",
              "version" => _
            } = json_response(conn, 200)
   end

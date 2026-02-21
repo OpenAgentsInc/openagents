@@ -138,7 +138,7 @@ Description: Move a single high-value route to Rust/WGPUI as the pilot migration
 ### OA-RUST-032 — [WGPUI Web] Remove legacy React/Inertia implementation for migrated pilot route
 Description: Delete the legacy implementation for the pilot route once parity checks and soak tests pass.
 
-## Phase 4: Rust Runtime Authority (`apps/openagents-runtime`)
+## Phase 4: Rust Runtime Authority (`apps/runtime`)
 
 ### OA-RUST-033 — [Runtime Rust] Bootstrap runtime service foundation
 Description: Create Rust runtime service skeleton with core wiring for authority writes, orchestration, and projector pipelines.

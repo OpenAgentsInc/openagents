@@ -38,8 +38,8 @@ Dashboard must set:
 
 Current automation source of truth:
 
-- `apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh`
-- `apps/openagents-runtime/deploy/khala/check-nonprod-health.sh`
+- `apps/runtime/deploy/khala/provision-nonprod-gcp.sh`
+- `apps/runtime/deploy/khala/check-nonprod-health.sh`
 
 ## Admin Key Handling Policy
 
@@ -116,14 +116,14 @@ npx khala import --env-file /tmp/khala-nonprod-self-hosted.env --append "$EXPORT
 
 1. Mirror new Khala backend/dashboard images into Artifact Registry.
 2. Update pinned image references in:
-   - `apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh`
-   - `apps/openagents-runtime/deploy/khala/README.md`
+   - `apps/runtime/deploy/khala/provision-nonprod-gcp.sh`
+   - `apps/runtime/deploy/khala/README.md`
 3. Validate dry-run:
-   - `apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh`
+   - `apps/runtime/deploy/khala/provision-nonprod-gcp.sh`
 4. Apply:
-   - `OA_KHALA_APPLY=1 apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh`
+   - `OA_KHALA_APPLY=1 apps/runtime/deploy/khala/provision-nonprod-gcp.sh`
 5. Verify:
-   - `apps/openagents-runtime/deploy/khala/check-nonprod-health.sh`
+   - `apps/runtime/deploy/khala/check-nonprod-health.sh`
    - `npx khala dev --once --env-file /tmp/khala-nonprod-self-hosted.env`
 6. Export a post-upgrade snapshot.
 
@@ -151,7 +151,7 @@ Data rollback (if required):
 When Khala summary projections drift from runtime truth, rebuild from runtime
 durable history.
 
-Run from `apps/openagents-runtime/`:
+Run from `apps/runtime/`:
 
 ```bash
 mix runtime.khala.reproject --run-id <run_id>
@@ -179,18 +179,18 @@ Projection health metrics to watch during/after rebuild:
 Use the helper scripts for repeatable drills:
 
 - backup/restore drill:
-  - `apps/openagents-runtime/deploy/khala/run-backup-restore-drill.sh`
+  - `apps/runtime/deploy/khala/run-backup-restore-drill.sh`
 - rollback drill (dry-run by default):
-  - `apps/openagents-runtime/deploy/khala/run-rollback-drill.sh`
+  - `apps/runtime/deploy/khala/run-rollback-drill.sh`
 - rollback drill (apply):
-  - `OA_KHALA_ROLLBACK_DRILL_APPLY=1 apps/openagents-runtime/deploy/khala/run-rollback-drill.sh`
+  - `OA_KHALA_ROLLBACK_DRILL_APPLY=1 apps/runtime/deploy/khala/run-rollback-drill.sh`
 - runtime replay drill:
-  - `apps/openagents-runtime/deploy/khala/run-runtime-replay-drill.sh`
+  - `apps/runtime/deploy/khala/run-runtime-replay-drill.sh`
 
 Evidence reports:
 
-- `apps/openagents-runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
-- `apps/openagents-runtime/docs/reports/2026-02-19-khala-g7-backup-restore-replay-rollback-drill.md`
+- `apps/runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
+- `apps/runtime/docs/reports/2026-02-19-khala-g7-backup-restore-replay-rollback-drill.md`
 
 ## Staged Rollout Plan (Internal -> Limited -> Full)
 
@@ -199,7 +199,7 @@ Phase A: Internal users only
 1. Route 100% of OpenAgents staff/admin users to Khala-backed sync surfaces.
 2. Hold period: 24h.
 3. Promotion requirements:
-   - no critical alerts in `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`,
+   - no critical alerts in `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`,
    - rollback drill RTO remains within target.
 
 Phase B: Limited cohort
@@ -272,7 +272,7 @@ Least privilege and network boundaries:
 1. Backend and dashboard run under dedicated service accounts (not default compute SA).
 2. Backend DB connectivity is constrained through the `cloud-sql-proxy` sidecar.
 3. Runtime ingress network policy remains restricted to trusted control-plane clients:
-   - `apps/openagents-runtime/deploy/k8s/base/networkpolicy-ingress.yaml`
+   - `apps/runtime/deploy/k8s/base/networkpolicy-ingress.yaml`
 
 ## MCP Production Access Control
 
@@ -283,7 +283,7 @@ Default posture:
 Gate command:
 
 ```bash
-apps/openagents-runtime/deploy/khala/mcp-production-access-gate.sh
+apps/runtime/deploy/khala/mcp-production-access-gate.sh
 ```
 
 Temporary enablement requirements:
@@ -307,17 +307,17 @@ Runtime sanitization guards secret/PII surfaces across:
 
 Validation tests:
 
-- `apps/openagents-runtime/test/openagents_runtime/security/sanitizer_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/security/sanitization_integration_test.exs`
+- `apps/runtime/test/openagents_runtime/security/sanitizer_test.exs`
+- `apps/runtime/test/openagents_runtime/security/sanitization_integration_test.exs`
 
 ## Security Review Checklist Command
 
 Run this checklist before production rollout:
 
 ```bash
-apps/openagents-runtime/deploy/khala/run-security-review-checklist.sh
+apps/runtime/deploy/khala/run-security-review-checklist.sh
 ```
 
 Current evidence artifact:
 
-- `apps/openagents-runtime/docs/reports/2026-02-19-khala-security-review-checklist.md`
+- `apps/runtime/docs/reports/2026-02-19-khala-security-review-checklist.md`

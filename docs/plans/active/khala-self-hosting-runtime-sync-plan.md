@@ -12,7 +12,7 @@ Execution companion:
 Define how OpenAgents should use self-hosted Khala without weakening runtime
 correctness guarantees:
 
-1. Keep `apps/openagents-runtime` + Postgres as kernel source-of-truth.
+1. Keep `apps/runtime` + Postgres as kernel source-of-truth.
 2. Use Khala as a reactive sync/read-model layer for web/mobile/desktop.
 3. Make Codex admin/observability surfaces consistent across clients.
 
@@ -34,7 +34,7 @@ And OpenAgents context from:
 
 - `docs/local/convo.md` (Khala placement, single-writer, auth flow)
 - `docs/codex/unified-runtime-desktop-plan.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
 
 ## Decisions (Locked)
 
@@ -78,7 +78,7 @@ This gives a clean split:
 
 ### Source-of-truth plane
 
-- `apps/openagents-runtime` writes canonical run/codex events to Postgres.
+- `apps/runtime` writes canonical run/codex events to Postgres.
 - Laravel reads runtime-owned state via internal APIs and read models.
 
 ### Sync plane
@@ -121,10 +121,10 @@ This gives a clean split:
 - Keep Khala backend and SQL in same GCP region.
 - Backup via `npx khala export`; prefer export before upgrade.
 - Deploy scripts/runbook for OpenAgents non-prod:
-  - `apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh`
-  - `apps/openagents-runtime/deploy/khala/check-nonprod-health.sh`
-  - `apps/openagents-runtime/deploy/khala/README.md`
-  - `apps/openagents-runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
+  - `apps/runtime/deploy/khala/provision-nonprod-gcp.sh`
+  - `apps/runtime/deploy/khala/check-nonprod-health.sh`
+  - `apps/runtime/deploy/khala/README.md`
+  - `apps/runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
 
 ## Data Class Mapping
 
@@ -269,7 +269,7 @@ Verification:
 
 - `docs/local/convo.md`
 - `docs/codex/unified-runtime-desktop-plan.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
 - `https://github.com/get-khala/khala-backend/tree/main/self-hosted`
 - `https://docs.khala.dev/cli/background-agents`
 - `https://docs.khala.dev/ai/khala-mcp-server`

@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: openagents-runtime
+  name: runtime
 spec:
-  serviceName: openagents-runtime-headless
+  serviceName: runtime-headless
   replicas: 3
   podManagementPolicy: Parallel
   selector:
     matchLabels:
-      app: openagents-runtime
+      app: runtime
   template:
     metadata:
       labels:
-        app: openagents-runtime
+        app: runtime
     spec:
-      serviceAccountName: openagents-runtime
+      serviceAccountName: runtime
       terminationGracePeriodSeconds: 30
       affinity:
         podAntiAffinity:
@@ -24,10 +24,10 @@ spec:
                 topologyKey: kubernetes.io/hostname
                 labelSelector:
                   matchLabels:
-                    app: openagents-runtime
+                    app: runtime
       containers:
         - name: runtime
-          image: openagents-runtime:latest
+          image: runtime:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -54,11 +54,11 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: RELEASE_NODE
-              value: "openagents-runtime@$(POD_IP)"
+              value: "runtime@$(POD_IP)"
             - name: DNS_CLUSTER_QUERY
-              value: "openagents-runtime-headless.$(POD_NAMESPACE).svc.cluster.local"
+              value: "runtime-headless.$(POD_NAMESPACE).svc.cluster.local"
             - name: PHX_HOST
-              value: "openagents-runtime.$(POD_NAMESPACE).svc.cluster.local"
+              value: "runtime.$(POD_NAMESPACE).svc.cluster.local"
             - name: ECTO_IPV6
               value: "true"
             - name: POOL_SIZE
@@ -66,17 +66,17 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: openagents-runtime-secrets
+                  name: runtime-secrets
                   key: DATABASE_URL
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
-                  name: openagents-runtime-secrets
+                  name: runtime-secrets
                   key: SECRET_KEY_BASE
             - name: RUNTIME_SIGNATURE_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: openagents-runtime-secrets
+                  name: runtime-secrets
                   key: RUNTIME_SIGNATURE_SECRET
           readinessProbe:
             httpGet:

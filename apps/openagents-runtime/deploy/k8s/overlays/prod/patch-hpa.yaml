@@ -1,7 +1,7 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: openagents-runtime
+  name: runtime
 spec:
   minReplicas: 3
   maxReplicas: 12

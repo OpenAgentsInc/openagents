@@ -5,7 +5,7 @@ defmodule OpenAgentsRuntimeWeb.HealthController do
   def show(conn, _params) do
     json(conn, %{
       status: "ok",
-      service: "openagents-runtime",
+      service: "runtime",
       version: to_string(Application.spec(:openagents_runtime, :vsn) || "dev")
     })
   end

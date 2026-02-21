@@ -7,7 +7,7 @@ This document defines the current architecture with **Khala** as the runtime-own
 Covered surfaces:
 
 - `apps/openagents.com/`
-- `apps/openagents-runtime/`
+- `apps/runtime/`
 - `apps/mobile/`
 - `apps/desktop/`
 - `apps/autopilot-ios/`
@@ -22,8 +22,8 @@ Core references:
 - `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
 - `docs/sync/SURFACES.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- `apps/openagents-runtime/docs/KHALA_SYNC.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/KHALA_SYNC.md`
 - `proto/README.md`
 
 ## Topology
@@ -108,7 +108,7 @@ Authority includes:
 
 Owner:
 
-- `apps/openagents-runtime` services/projectors/migrations.
+- `apps/runtime` services/projectors/migrations.
 
 Authority includes:
 
@@ -132,7 +132,7 @@ In either pattern:
 
 ## Khala (Runtime-Owned Sync Plane)
 
-Khala v1 ships inside `apps/openagents-runtime` and shares runtime Postgres for transactional correctness.
+Khala v1 ships inside `apps/runtime` and shares runtime Postgres for transactional correctness.
 
 Khala responsibilities:
 
@@ -166,7 +166,7 @@ Khala protocol model:
 | `apps/inbox-autopilot` | local-first primary, Khala not primary | local daemon + selected APIs | local daemon + selected APIs |
 | `apps/lightning-ops` | no Khala dependency for control-plane lane | internal Laravel control-plane APIs | Laravel internal control-plane APIs |
 | `apps/lightning-wallet-executor` | no Khala dependency | service-local config + Lightning infra | service-local + Lightning infra |
-| `apps/openagents-runtime` | produces and serves Khala stream/read models | runtime Postgres direct | runtime Postgres direct |
+| `apps/runtime` | produces and serves Khala stream/read models | runtime Postgres direct | runtime Postgres direct |
 
 Auth invariant for runtime stream-capable clients:
 
@@ -195,9 +195,9 @@ Auth invariant for runtime stream-capable clients:
 ## Contracts and Observability
 
 - Protocol/schema authority: `proto/`.
-- Runtime contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`.
+- Runtime contract: `apps/runtime/docs/RUNTIME_CONTRACT.md`.
 - Sync architecture and rollout docs: `docs/sync/*`.
-- Runtime operations and telemetry docs: `apps/openagents-runtime/docs/*`.
+- Runtime operations and telemetry docs: `apps/runtime/docs/*`.
 - Lightning operations runbooks: `docs/lightning/runbooks/*`.
 
 ## Change Control

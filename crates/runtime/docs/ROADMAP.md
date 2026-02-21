@@ -444,7 +444,7 @@ Reloading the tab preserves agent state and storage entries via IndexedDB.
 ### Implementation Notes (completed)
 
 - Added `IndexedDbStorage` in `crates/runtime/src/storage.rs` with IndexedDB state/KV stores and transactional ops for state + KV.
-- Wired `BrowserRuntimeConfig::new` to default to `IndexedDbStorage` (`openagents-runtime` DB name) in `crates/runtime/src/browser.rs`.
+- Wired `BrowserRuntimeConfig::new` to default to `IndexedDbStorage` (`runtime` DB name) in `crates/runtime/src/browser.rs`.
 - Added the required IndexedDB `web-sys` feature flags in `crates/runtime/Cargo.toml`.
 
 ### References

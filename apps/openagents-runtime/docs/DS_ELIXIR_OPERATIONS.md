@@ -3,7 +3,7 @@
 Date: 2026-02-19  
 Status: Active runbook (implemented surface)
 
-This runbook covers day-to-day operations for DS-Elixir execution, spend enforcement, pointer rollout, and replay workflows in `apps/openagents-runtime`.
+This runbook covers day-to-day operations for DS-Elixir execution, spend enforcement, pointer rollout, and replay workflows in `apps/runtime`.
 
 ## 1) Operational goals
 
@@ -14,7 +14,7 @@ This runbook covers day-to-day operations for DS-Elixir execution, spend enforce
 
 ## 2) Pre-flight checks
 
-From `apps/openagents-runtime/`:
+From `apps/runtime/`:
 
 ```bash
 mix format --check-formatted
@@ -199,10 +199,10 @@ Primary alert indicators:
 
 Related runbooks:
 
-- `apps/openagents-runtime/docs/OPERATIONS.md`
-- `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
-- `apps/openagents-runtime/docs/OBSERVABILITY.md`
-- `apps/openagents-runtime/docs/REPROJECTION.md`
+- `apps/runtime/docs/OPERATIONS.md`
+- `apps/runtime/docs/OPERATIONS_ALERTING.md`
+- `apps/runtime/docs/OBSERVABILITY.md`
+- `apps/runtime/docs/REPROJECTION.md`
 
 ## 10) Security and data-handling requirements
 
@@ -213,5 +213,5 @@ Related runbooks:
 
 Security policy reference:
 
-- `apps/openagents-runtime/docs/SANITIZATION_POLICY.md`
+- `apps/runtime/docs/SANITIZATION_POLICY.md`
 

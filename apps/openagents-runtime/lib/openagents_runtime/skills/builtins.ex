@@ -166,7 +166,7 @@ defmodule OpenAgentsRuntime.Skills.Builtins do
       "description" =>
         "Plan coding actions, inspect issues, and post approved comments via GitHub.",
       "license" => "Apache-2.0",
-      "compatibility" => %{"runtime" => "openagents-runtime", "tool_pack" => "coding.v1"},
+      "compatibility" => %{"runtime" => "runtime", "tool_pack" => "coding.v1"},
       "instructions_markdown" => "Use GitHub tools for repository issue and PR workflows.",
       "allowed_tools" => [%{"tool_id" => "github.primary", "version" => 1}],
       "scripts" => [],
@@ -188,7 +188,7 @@ defmodule OpenAgentsRuntime.Skills.Builtins do
       "name" => "Resend Comms Skill",
       "description" => "Execute outbound email actions with delivery-state awareness.",
       "license" => "Apache-2.0",
-      "compatibility" => %{"runtime" => "openagents-runtime", "tool_pack" => "comms.v1"},
+      "compatibility" => %{"runtime" => "runtime", "tool_pack" => "comms.v1"},
       "instructions_markdown" =>
         "Use Resend tool-pack for outbound messaging and webhook ingestion.",
       "allowed_tools" => [%{"tool_id" => "resend.primary", "version" => 1}],

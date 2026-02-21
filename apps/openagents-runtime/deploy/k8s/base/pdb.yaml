@@ -1,9 +1,9 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: openagents-runtime
+  name: runtime
 spec:
   minAvailable: 2
   selector:
     matchLabels:
-      app: openagents-runtime
+      app: runtime

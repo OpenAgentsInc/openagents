@@ -7,8 +7,8 @@ resources:
   - ../../base
 
 images:
-  - name: openagents-runtime
-    newName: us-central1-docker.pkg.dev/PROJECT_ID/openagents-runtime/runtime
+  - name: runtime
+    newName: us-central1-docker.pkg.dev/PROJECT_ID/runtime/runtime
     newTag: latest
 
 patches:

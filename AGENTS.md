@@ -28,7 +28,7 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 ### Product/runtime surfaces
 
 - Core web app: `apps/openagents.com/`
-- Runtime: `apps/openagents-runtime/`
+- Runtime: `apps/runtime/`
 - Mobile app: `apps/mobile/`
 - Desktop app: `apps/desktop/`
 - Onyx app: `apps/onyx/`
@@ -95,14 +95,14 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 
 - **Laravel web (core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
 - **Laravel web production deploy/runbooks:** `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md` and `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md` (env/secrets + Cloud Run deploy flow).
-- **Runtime Cloud Run deploy/runbook:** `apps/openagents-runtime/docs/DEPLOY_CLOUD_RUN.md`
+- **Runtime Cloud Run deploy/runbook:** `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
   - Mandatory after each runtime deploy:
     ```bash
     GCP_PROJECT=openagentsgemini \
     GCP_REGION=us-central1 \
-    RUNTIME_SERVICE=openagents-runtime \
-    MIGRATE_JOB=openagents-runtime-migrate \
-    apps/openagents-runtime/deploy/cloudrun/run-migrate-job.sh
+    RUNTIME_SERVICE=runtime \
+    MIGRATE_JOB=runtime-migrate \
+    apps/runtime/deploy/cloudrun/run-migrate-job.sh
     ```
 - Mobile: `apps/mobile/README.md`
 - Desktop: `apps/desktop/README.md`

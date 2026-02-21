@@ -19,7 +19,7 @@ As of 2026-02-19, `docs/plans/` has no Codex-specific plan entry. Runtime and de
 Desktop-first is the default execution mode for Codex.
 
 - The Rust desktop app (`apps/autopilot-desktop/`) is the first-class Codex executor.
-- The Elixir runtime (`apps/openagents-runtime/`) is the authoritative durable control/event ledger.
+- The Elixir runtime (`apps/runtime/`) is the authoritative durable control/event ledger.
 - Laravel (`apps/openagents.com/`) is the authenticated control-plane facade for web/mobile clients.
 - Web/mobile do not own Codex execution; they own admin, visibility, and orchestration surfaces over runtime-backed state.
 
@@ -29,27 +29,27 @@ Cloud-hosted Codex is not deleted, but it is a later adapter mode behind the sam
 
 ### Runtime internal Codex worker contract exists
 
-- Routes: `apps/openagents-runtime/lib/openagents_runtime_web/router.ex`
-- Controller: `apps/openagents-runtime/lib/openagents_runtime_web/controllers/codex_worker_controller.ex`
+- Routes: `apps/runtime/lib/openagents_runtime_web/router.ex`
+- Controller: `apps/runtime/lib/openagents_runtime_web/controllers/codex_worker_controller.ex`
 - Domain/processes:
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/workers.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/worker_process.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/worker_stream_tailer.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/worker.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/worker_event.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/worker_supervisor.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/workers.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/worker_process.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/worker_stream_tailer.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/worker.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/worker_event.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/worker_supervisor.ex`
 - Contract docs:
-  - `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-  - `apps/openagents-runtime/docs/openapi-internal-v1.yaml`
+  - `apps/runtime/docs/RUNTIME_CONTRACT.md`
+  - `apps/runtime/docs/openapi-internal-v1.yaml`
 - DB tables:
   - `runtime.codex_workers`
   - `runtime.codex_worker_events`
-  - Migration: `apps/openagents-runtime/priv/repo/migrations/20260219038000_create_runtime_codex_worker_tables.exs`
+  - Migration: `apps/runtime/priv/repo/migrations/20260219038000_create_runtime_codex_worker_tables.exs`
 
 Current adapter behavior is development-only `in_memory`.
 
-- Adapter behavior: `apps/openagents-runtime/lib/openagents_runtime/codex/adapter.ex`
-- In-memory adapter: `apps/openagents-runtime/lib/openagents_runtime/codex/adapters/in_memory.ex`
+- Adapter behavior: `apps/runtime/lib/openagents_runtime/codex/adapter.ex`
+- In-memory adapter: `apps/runtime/lib/openagents_runtime/codex/adapters/in_memory.ex`
 
 ### Laravel proxy API exists
 
@@ -190,16 +190,16 @@ Work:
 
 Primary files:
 
-- `apps/openagents-runtime/lib/openagents_runtime/codex/worker_supervisor.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/codex/workers.ex`
-- `apps/openagents-runtime/lib/openagents_runtime_web/controllers/codex_worker_controller.ex`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- `apps/openagents-runtime/docs/openapi-internal-v1.yaml`
+- `apps/runtime/lib/openagents_runtime/codex/worker_supervisor.ex`
+- `apps/runtime/lib/openagents_runtime/codex/workers.ex`
+- `apps/runtime/lib/openagents_runtime_web/controllers/codex_worker_controller.ex`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/openapi-internal-v1.yaml`
 
 Verification:
 
-- `cd apps/openagents-runtime && mix test test/openagents_runtime/codex/workers_test.exs`
-- `cd apps/openagents-runtime && mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
+- `cd apps/runtime && mix test test/openagents_runtime/codex/workers_test.exs`
+- `cd apps/runtime && mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
 
 ### Phase 2: Desktop runtime sync client
 
@@ -335,6 +335,6 @@ Runtime snapshot/list heartbeat policy fields:
 Any future Codex architecture change must update:
 
 1. This plan (`docs/codex/unified-runtime-desktop-plan.md`)
-2. Runtime contract docs (`apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`, OpenAPI)
+2. Runtime contract docs (`apps/runtime/docs/RUNTIME_CONTRACT.md`, OpenAPI)
 3. Laravel runtime Codex API docs/routes
 4. Relevant desktop integration docs/code comments

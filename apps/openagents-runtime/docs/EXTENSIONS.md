@@ -4,19 +4,19 @@ Runtime extension activation uses a two-stage validation path:
 
 1. Base extension manifest contract:
    - `docs/protocol/extensions/extension-manifest.schema.v1.json`
-   - Validator: `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex`
+   - Validator: `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex`
 2. Tool-pack specialization (for comms):
    - `docs/protocol/comms/integration-manifest.schema.v1.json`
    - `docs/protocol/comms/tool-pack-contract.v1.json`
-   - Validator: `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/comms_manifest_validator.ex`
+   - Validator: `apps/runtime/lib/openagents_runtime/tools/extensions/comms_manifest_validator.ex`
 3. Tool-pack specialization (for coding/GitHub):
    - `docs/protocol/coding/integration-manifest.schema.v1.json`
    - `docs/protocol/coding/tool-pack-contract.v1.json`
-   - Validator: `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/coding_manifest_validator.ex`
+   - Validator: `apps/runtime/lib/openagents_runtime/tools/extensions/coding_manifest_validator.ex`
 
 Activation entrypoint:
 
-- `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex`
+- `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex`
 
 Validation outcomes are surfaced to operators/control-plane integration points via telemetry:
 

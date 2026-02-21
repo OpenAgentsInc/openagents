@@ -51,7 +51,7 @@ Expected:
 
 Container build:
 
-- `docker build -t openagents-runtime:dev .`
+- `docker build -t runtime:dev .`
 - Cloud Build config: `deploy/cloudbuild.yaml`
 
 Kubernetes manifests:

@@ -15,7 +15,7 @@ Superseded
 ## Superseded By
 
 - `docs/PROJECT_OVERVIEW.md` (current control-plane/runtime ownership)
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md` (current internal runtime API)
+- `apps/runtime/docs/RUNTIME_CONTRACT.md` (current internal runtime API)
 - `docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md` (current deployment architecture)
 
 ## Context

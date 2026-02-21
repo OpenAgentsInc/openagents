@@ -16,7 +16,7 @@ When this process is used correctly, engineers do not wait for outages or parity
 ## Inputs
 
 - Intake records: `docs/plans/active/openclaw-intake/*.md`
-- Parity fixtures: `apps/openagents-runtime/test/fixtures/openclaw/*.json`
+- Parity fixtures: `apps/runtime/test/fixtures/openclaw/*.json`
 - Upstream repository: `https://github.com/openclaw/openclaw.git` (overridable)
 
 ## Command

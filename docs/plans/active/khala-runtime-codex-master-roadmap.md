@@ -22,8 +22,8 @@ Architecture and invariants are defined by:
 - `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- `apps/openagents-runtime/docs/KHALA_SYNC.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/KHALA_SYNC.md`
 
 This roadmap covers:
 
@@ -52,7 +52,7 @@ This roadmap covers:
 5. Codex worker runtime contract exists; desktop/runtime sync remains in-progress.
 6. Gate G1 infra baseline is now live in non-prod (`openagentsgemini/us-central1`)
    with passing checks from
-   `apps/openagents-runtime/deploy/khala/check-nonprod-health.sh`.
+   `apps/runtime/deploy/khala/check-nonprod-health.sh`.
 
 ## Delivery Gates
 
@@ -85,10 +85,10 @@ Backlog:
 
 Verification:
 
-- `cd apps/openagents-runtime && mix ecto.create`
-- `cd apps/openagents-runtime && mix ecto.migrate`
-- `cd apps/openagents-runtime && mix test`
-- `cd apps/openagents-runtime && mix runtime.contract.check`
+- `cd apps/runtime && mix ecto.create`
+- `cd apps/runtime && mix ecto.migrate`
+- `cd apps/runtime && mix test`
+- `cd apps/runtime && mix runtime.contract.check`
 
 Exit criteria:
 
@@ -100,7 +100,7 @@ Exit criteria:
 
 | Surface | Local gate command | Trigger scope | Success criteria |
 |---|---|---|---|
-| Runtime (Elixir) | `cd apps/openagents-runtime && mix ci` | `apps/openagents-runtime/**`, runtime contracts, projections | format + compile + contract + test pass |
+| Runtime (Elixir) | `cd apps/runtime && mix ci` | `apps/runtime/**`, runtime contracts, projections | format + compile + contract + test pass |
 | Web (Laravel) | `cd apps/openagents.com && composer test` | `apps/openagents.com/**` | php feature/unit suites pass |
 | Web Codex API proxy | `cd apps/openagents.com && php artisan test --filter=RuntimeCodexWorkersApiTest` | runtime Codex API integration changes | runtime worker proxy tests pass |
 | Comms replay matrix | `./scripts/comms-security-replay-matrix.sh all` | comms auth/secret/replay changes across Laravel/runtime | both `laravel` and `runtime` lanes pass |
@@ -141,10 +141,10 @@ Backlog:
 
 Implementation assets:
 
-- `apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh`
-- `apps/openagents-runtime/deploy/khala/check-nonprod-health.sh`
-- `apps/openagents-runtime/deploy/khala/README.md`
-- `apps/openagents-runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
+- `apps/runtime/deploy/khala/provision-nonprod-gcp.sh`
+- `apps/runtime/deploy/khala/check-nonprod-health.sh`
+- `apps/runtime/deploy/khala/README.md`
+- `apps/runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
 
 Verification:
 
@@ -374,23 +374,23 @@ Backlog:
 Implementation status (2026-02-19):
 
 - Runtime + projector load/chaos suite expanded with Khala-specific cases:
-  - `apps/openagents-runtime/test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
+  - `apps/runtime/test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
   - sustained run-event burst lag checks,
   - codex worker heartbeat burst checkpoint convergence,
   - sink failure chaos with replay recovery validation.
 - Production threshold artifacts now include Khala lag/drift/error budgets:
-  - `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
-  - `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
-  - `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+  - `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
+  - `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
+  - `apps/runtime/docs/OPERATIONS_ALERTING.md`
 - Load/chaos verification report is tracked at:
-  - `apps/openagents-runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
+  - `apps/runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
 - Backup/restore/replay + rollback drill evidence is tracked at:
-  - `apps/openagents-runtime/docs/reports/2026-02-19-khala-g7-backup-restore-replay-rollback-drill.md`
+  - `apps/runtime/docs/reports/2026-02-19-khala-g7-backup-restore-replay-rollback-drill.md`
 - Drill automation and staged rollout/on-call runbooks are now in place:
-  - `apps/openagents-runtime/deploy/khala/run-backup-restore-drill.sh`
-  - `apps/openagents-runtime/deploy/khala/run-rollback-drill.sh`
-  - `apps/openagents-runtime/deploy/khala/run-runtime-replay-drill.sh`
-  - `apps/openagents-runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
+  - `apps/runtime/deploy/khala/run-backup-restore-drill.sh`
+  - `apps/runtime/deploy/khala/run-rollback-drill.sh`
+  - `apps/runtime/deploy/khala/run-runtime-replay-drill.sh`
+  - `apps/runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
 - Remaining Phase 8 scope:
   - staged cohort rollout execution in production.
 
@@ -417,13 +417,13 @@ Exit criteria:
 Implementation status (2026-02-19):
 
 - Security checklist automation:
-  - `apps/openagents-runtime/deploy/khala/run-security-review-checklist.sh`
+  - `apps/runtime/deploy/khala/run-security-review-checklist.sh`
 - MCP production default-deny gate + temporary enablement controls:
-  - `apps/openagents-runtime/deploy/khala/mcp-production-access-gate.sh`
+  - `apps/runtime/deploy/khala/mcp-production-access-gate.sh`
 - Secret-handling hardening now redacts `admin_key` and `*_admin_key` payload fields
   in runtime sanitization paths.
 - Review evidence and sign-off:
-  - `apps/openagents-runtime/docs/reports/2026-02-19-khala-security-review-checklist.md`
+  - `apps/runtime/docs/reports/2026-02-19-khala-security-review-checklist.md`
 
 ## Observability
 
@@ -436,12 +436,12 @@ Implementation status (2026-02-19):
 
 - Correlation headers are covered Laravel -> runtime and runtime -> projector telemetry:
   - `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
-  - `apps/openagents-runtime/test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
+  - `apps/runtime/test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
 - Monitoring assets now include Khala token mint failure ratio dashboard + alert:
-  - `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
-  - `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
+  - `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
+  - `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
 - Operator runbooks now include correlation walkthrough + token mint failure response:
-  - `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+  - `apps/runtime/docs/OPERATIONS_ALERTING.md`
 
 ## Data Governance
 

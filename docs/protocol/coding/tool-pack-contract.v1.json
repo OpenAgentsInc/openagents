@@ -2,7 +2,7 @@
   "id": "openagents.coding.tool-pack.v1",
   "version": "2026-02-19",
   "tool_pack": "coding.v1",
-  "owner": "openagents-runtime",
+  "owner": "runtime",
   "tools": [
     {
       "tool_name": "coding.github.get_issue",

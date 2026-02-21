@@ -35,8 +35,8 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 
 - `apps/openagents.com/` — core web app (Laravel + Inertia + React).
 - `apps/openagents.com/README.md` — web dev/test/deploy entrypoint.
-- `apps/openagents-runtime/` — Elixir runtime (execution, policy, replay, contracts).
-- `apps/openagents-runtime/README.md` — runtime setup and test entrypoint.
+- `apps/runtime/` — Elixir runtime (execution, policy, replay, contracts).
+- `apps/runtime/README.md` — runtime setup and test entrypoint.
 - `apps/mobile/README.md` — mobile app.
 - `apps/autopilot-desktop/` — Rust desktop Codex app.
 - `apps/desktop/README.md` — Electron desktop Lightning app.
@@ -54,7 +54,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 
 - `docs/autopilot/testing/PROD_E2E_TESTING.md` — production-safe validation flow.
 - `docs/autopilot/testing/TRACE_RETRIEVAL.md` — trace/debug retrieval workflow.
-- `apps/openagents-runtime/docs/DEPLOY_CLOUD_RUN.md` — canonical runtime Cloud Run deploy + migration image-lock runbook.
+- `apps/runtime/docs/DEPLOY_CLOUD_RUN.md` — canonical runtime Cloud Run deploy + migration image-lock runbook.
 - `apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md` — canonical real-app iOS↔desktop handshake gate (runtime-mediated).
 - `docs/autopilot/runbooks/` — operational runbooks.
 - `docs/lightning/runbooks/` — Lightning-specific operational procedures.
@@ -70,10 +70,10 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 ## By Task (Quick Routing)
 
 - If you are changing protocol fields or IDs: start at `docs/protocol/PROTOCOL_SURFACE.md`, then `docs/adr/INDEX.md`.
-- If you are changing runtime execution behavior: start at `apps/openagents-runtime/` plus `docs/execution/REPLAY.md`.
+- If you are changing runtime execution behavior: start at `apps/runtime/` plus `docs/execution/REPLAY.md`.
 - If you are changing web behavior/UI/integrations: start at `apps/openagents.com/` plus `docs/plans/active/laravel-rebuild.md`.
 - If you are changing Codex runtime/desktop integration: start at `docs/codex/unified-runtime-desktop-plan.md`.
-- If you are changing Khala sync integration: start at `docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, `docs/sync/SURFACES.md`, and `apps/openagents-runtime/docs/KHALA_SYNC.md` (for current boundary/migration context).
-- If you are deploying runtime to Cloud Run: run `apps/openagents-runtime/deploy/cloudrun/run-migrate-job.sh` after each deploy (see `apps/openagents-runtime/docs/DEPLOY_CLOUD_RUN.md`).
+- If you are changing Khala sync integration: start at `docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, `docs/sync/SURFACES.md`, and `apps/runtime/docs/KHALA_SYNC.md` (for current boundary/migration context).
+- If you are deploying runtime to Cloud Run: run `apps/runtime/deploy/cloudrun/run-migrate-job.sh` after each deploy (see `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`).
 - If you are changing terminology or naming: update `docs/GLOSSARY.md` first.
 - If you are changing architecture invariants: author/update an ADR in `docs/adr/`.

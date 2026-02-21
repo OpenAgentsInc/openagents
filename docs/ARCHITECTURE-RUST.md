@@ -45,7 +45,7 @@ flowchart LR
 
   subgraph core["Rust Service Plane"]
     edge["openagents.com control service\nRust control API + static host"]
-    runtime["openagents-runtime\nRust execution authority"]
+    runtime["runtime\nRust execution authority"]
     khala["Khala\nRust WS sync + replay"]
     lops["lightning-ops\nRust policy/reconcile"]
     lwe["lightning-wallet-executor\nRust payment executor"]
@@ -87,7 +87,7 @@ flowchart LR
 ### Surviving app roots
 
 - `apps/openagents.com/`: Rust control service + static WGPUI web shell host.
-- `apps/openagents-runtime/`: Rust runtime execution authority.
+- `apps/runtime/`: Rust runtime execution authority.
 - `apps/autopilot-desktop/`: Rust native desktop app with WGPUI pane system; includes former inbox-autopilot capabilities.
 - `apps/autopilot-ios/`: iOS app packaging + host shell for Rust/WGPUI runtime.
 - `apps/lightning-ops/`: Rust service.
@@ -117,7 +117,7 @@ Does not own:
 - Execution event authority.
 - Runtime projector correctness.
 
-### 2) `apps/openagents-runtime/` (Rust execution plane)
+### 2) `apps/runtime/` (Rust execution plane)
 
 Owns:
 

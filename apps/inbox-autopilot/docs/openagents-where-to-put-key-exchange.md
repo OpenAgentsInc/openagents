@@ -24,7 +24,7 @@ This doc looks at the [OpenAgents](https://github.com/OpenAgentsInc/openagents) 
 
 ### 2. Other apps in the monorepo
 
-- **openagents-runtime** (Elixir): Agent execution, tools, skills. Calls Laravel’s internal secret-fetch API when a tool needs a secret; `secrets_ref` in manifests points to `provider: laravel`, `key_id: intsec_*`. It does **not** do OAuth or token storage.
+- **runtime** (Elixir): Agent execution, tools, skills. Calls Laravel’s internal secret-fetch API when a tool needs a secret; `secrets_ref` in manifests points to `provider: laravel`, `key_id: intsec_*`. It does **not** do OAuth or token storage.
 - **autopilot-desktop**, **mobile**, **lightning-ops**, **lightning-wallet-executor**: Clients or specialized services; none own “user integrations” or “OAuth callback for web users.”
 
 So: **Laravel is already the place that owns user identity, session, integrations, and the runtime’s source of secrets.**

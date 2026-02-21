@@ -4,11 +4,11 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
   @project_root Path.expand("../../..", __DIR__)
   @dashboard_path Path.join(
                     @project_root,
-                    "deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json"
+                    "deploy/monitoring/grafana/runtime-ops-dashboard.json"
                   )
   @alerts_path Path.join(
                  @project_root,
-                 "deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml"
+                 "deploy/monitoring/prometheus/runtime-alert-rules.yaml"
                )
 
   test "dashboard includes required runtime operations panels" do

@@ -1,6 +1,6 @@
 # Khala Runtime/Codex Cutover Runbook
 
-Owner: Runtime lane (`apps/openagents-runtime`)  
+Owner: Runtime lane (`apps/runtime`)  
 Scope: Runtime/Codex summary sync cutover from legacy reactive lanes to Khala WS lanes.
 
 This runbook defines rollout stages, gates, rollback, and drill requirements for KHALA-022.

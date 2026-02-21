@@ -35,8 +35,8 @@ Validated staged rollout controls, parity gating, and rollback switches for runt
 
 Runtime parity and sync tests:
 
-- `cd apps/openagents-runtime && mix test test/openagents_runtime/sync/parity_auditor_test.exs test/openagents_runtime/sync/projector_sink_test.exs`
-- `cd apps/openagents-runtime && mix test --only sync_parity`
+- `cd apps/runtime && mix test test/openagents_runtime/sync/parity_auditor_test.exs test/openagents_runtime/sync/projector_sink_test.exs`
+- `cd apps/runtime && mix test --only sync_parity`
 - Runtime full lane checks also passed via commit hook runtime suite.
 
 Mobile lane checks:

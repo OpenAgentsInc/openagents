@@ -21,17 +21,17 @@ Suggested labels (optional): `runtime`, `laravel`, `infra`, `db`, `security`, `s
 
 ## Epic 0: Project scaffolding and repo wiring
 
-1. **[runtime] Scaffold `apps/openagents-runtime` Phoenix/OTP application in monorepo**
-   Create the new Elixir app at `apps/openagents-runtime/` with standard `mix` structure, Phoenix endpoint/router for internal-only APIs, and OTP Application/Supervisor wiring. Ensure the app boots locally with a minimal health route and clean module layout matching the plan’s proposed directories.
+1. **[runtime] Scaffold `apps/runtime` Phoenix/OTP application in monorepo**
+   Create the new Elixir app at `apps/runtime/` with standard `mix` structure, Phoenix endpoint/router for internal-only APIs, and OTP Application/Supervisor wiring. Ensure the app boots locally with a minimal health route and clean module layout matching the plan’s proposed directories.
 
 2. **[runtime] Add Elixir CI checks (format, tests, warnings-as-errors)**
    Add CI scripts/config so every PR runs `mix format --check-formatted`, `mix test`, and fails on warnings (as feasible). This issue also adds baseline static analysis hooks (Creed/Dialyzer optional) and establishes the “contract docs + tests must stay green” discipline early.
 
 3. **[runtime] Add Dockerfile and Cloud Build pipeline for runtime service**
-   Implement `apps/openagents-runtime/Dockerfile` plus `deploy/cloudbuild.yaml` to build/push runtime images tagged by git SHA. Include build args and caching where appropriate, and ensure the container starts with correct `MIX_ENV=prod` config and release mode.
+   Implement `apps/runtime/Dockerfile` plus `deploy/cloudbuild.yaml` to build/push runtime images tagged by git SHA. Include build args and caching where appropriate, and ensure the container starts with correct `MIX_ENV=prod` config and release mode.
 
 4. **[infra] Create Kubernetes manifests for runtime (StatefulSet, services, PDB, HPA skeleton)**
-   Add base manifests for `openagents-runtime` StatefulSet, headless service (for BEAM node naming), ClusterIP service (internal HTTP), PodDisruptionBudget, and initial HPA scaffolding. Keep manifests environment-parameterized (dev/staging/prod) and aligned with your “internal-only” runtime posture.
+   Add base manifests for `runtime` StatefulSet, headless service (for BEAM node naming), ClusterIP service (internal HTTP), PodDisruptionBudget, and initial HPA scaffolding. Keep manifests environment-parameterized (dev/staging/prod) and aligned with your “internal-only” runtime posture.
 
 ---
 

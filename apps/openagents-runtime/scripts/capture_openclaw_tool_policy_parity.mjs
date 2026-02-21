@@ -39,7 +39,7 @@ fixture.meta.upstream.commit = execSync(`git -C ${JSON.stringify(openclawPath)} 
   .trim();
 fixture.meta.upstream.captured_at = new Date().toISOString();
 fixture.meta.upstream.capture_command =
-  "bun apps/openagents-runtime/scripts/capture_openclaw_tool_policy_parity.mjs";
+  "bun apps/runtime/scripts/capture_openclaw_tool_policy_parity.mjs";
 
 for (const testCase of fixture.cases ?? []) {
   const input = testCase.input ?? {};

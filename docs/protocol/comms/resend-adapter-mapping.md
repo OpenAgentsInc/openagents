@@ -1,6 +1,6 @@
 # Resend Adapter Mapping
 
-Runtime adapter: `apps/openagents-runtime/lib/openagents_runtime/tools/comms/providers/resend_adapter.ex`
+Runtime adapter: `apps/runtime/lib/openagents_runtime/tools/comms/providers/resend_adapter.ex`
 
 ## Request Mapping
 

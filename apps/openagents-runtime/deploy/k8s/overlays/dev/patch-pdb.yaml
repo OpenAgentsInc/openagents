@@ -1,6 +1,6 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: openagents-runtime
+  name: runtime
 spec:
   minAvailable: 1

@@ -51,14 +51,14 @@ Normative rules:
    - use `KHALA_AGENT_MODE=anonymous` for remote dev environments,
    - keep MCP production access disabled unless explicitly enabled for a task,
    - require explicit change-control fields and TTL guard via
-     `apps/openagents-runtime/deploy/khala/mcp-production-access-gate.sh`,
+     `apps/runtime/deploy/khala/mcp-production-access-gate.sh`,
    - for self-hosted deployments, use explicit env-file deployment selection
      (`KHALA_SELF_HOSTED_URL`, `KHALA_SELF_HOSTED_ADMIN_KEY`).
 
 ### Schema / Spec Authority
 
 - `proto/` remains Layer-0 schema authority (ADR-0028).
-- Runtime API authority: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`.
+- Runtime API authority: `apps/runtime/docs/RUNTIME_CONTRACT.md`.
 - Codex architecture authority: `docs/codex/unified-runtime-desktop-plan.md`.
 
 ## Scope
@@ -124,8 +124,8 @@ Backward compatibility expectations:
 
 - `docs/local/convo.md`
 - `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`
-- `apps/openagents-runtime/docs/KHALA_SYNC.md`
+- `apps/runtime/docs/KHALA_SYNC.md`
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `docs/codex/webapp-sandbox-and-codex-auth-plan.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
 - `docs/adr/ADR-0028-layer0-proto-canonical-schema.md`

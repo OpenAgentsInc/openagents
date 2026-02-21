@@ -13,8 +13,8 @@ Tool-pack specific specializations:
 
 Runtime validation path:
 
-- Base validator: `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex`
-- Activation registry: `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex`
+- Base validator: `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex`
+- Activation registry: `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex`
 
 Validation errors are machine-readable and use runtime reason taxonomy:
 

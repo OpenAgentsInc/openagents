@@ -1,7 +1,7 @@
 {
   "id": "runtime-policy-reasons.v1",
   "version": "2026-02-19",
-  "owner": "openagents-runtime",
+  "owner": "runtime",
   "domains": [
     "policy_allowed",
     "policy_denied",

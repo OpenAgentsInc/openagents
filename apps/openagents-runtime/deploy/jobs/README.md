@@ -17,8 +17,8 @@ From repo root:
 
 ```bash
 NAMESPACE=staging \
-IMAGE=us-central1-docker.pkg.dev/<project>/openagents-runtime/runtime:<tag> \
-apps/openagents-runtime/deploy/jobs/run-postdeploy-gate.sh
+IMAGE=us-central1-docker.pkg.dev/<project>/runtime/runtime:<tag> \
+apps/runtime/deploy/jobs/run-postdeploy-gate.sh
 ```
 
 ## Smoke coverage
@@ -35,4 +35,4 @@ The smoke job validates:
 - `SECRET_KEY_BASE`
 - `RUNTIME_SIGNATURE_SECRET`
 
-All jobs read these from `openagents-runtime-secrets` in the target namespace.
+All jobs read these from `runtime-secrets` in the target namespace.

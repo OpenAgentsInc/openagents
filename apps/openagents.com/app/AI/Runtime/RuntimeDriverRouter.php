@@ -113,7 +113,7 @@ final class RuntimeDriverRouter
         $runtimeType = strtolower(trim($runtimeType));
 
         return match ($runtimeType) {
-            'elixir', 'openagents-runtime' => 'elixir',
+            'elixir', 'runtime' => 'elixir',
             'legacy', 'laravel', 'openagents.com' => 'legacy',
             default => null,
         };

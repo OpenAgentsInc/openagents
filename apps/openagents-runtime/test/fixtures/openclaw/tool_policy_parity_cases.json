@@ -6,7 +6,7 @@
       "module": "src/agents/tool-policy.ts",
       "commit": "8e1f25631b220f139e79003caecabd11b7e1e748",
       "captured_at": "2026-02-19T08:37:56.422Z",
-      "capture_command": "bun apps/openagents-runtime/scripts/capture_openclaw_tool_policy_parity.mjs"
+      "capture_command": "bun apps/runtime/scripts/capture_openclaw_tool_policy_parity.mjs"
     }
   },
   "cases": [

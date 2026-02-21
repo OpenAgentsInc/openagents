@@ -7,7 +7,7 @@ This document maps the active codebase.
 - `apps/openagents.com/`
   **Core web app and control plane.** Laravel 12 + Inertia + React (TypeScript), Laravel AI SDK–backed chat and tools. See `docs/plans/active/laravel-rebuild.md`.
 
-- `apps/openagents-runtime/`
+- `apps/runtime/`
   **Elixir runtime execution plane.** Long-running run lifecycle, stream-from-log serving, tool orchestration, spend/policy enforcement, DS-Elixir execution, and replay safety.
 
 - `apps/mobile/`
@@ -25,17 +25,17 @@ This document maps the active codebase.
 ## Control-Plane and Runtime Boundary
 
 - `apps/openagents.com` owns public APIs, user auth/session, UI, and operator-facing settings.
-- `apps/openagents-runtime` owns internal runtime correctness concerns: execution leases, durable run events, streaming, policy decisions, spend reservation state, and DS strategy execution.
-- Contributor rule: runtime correctness logic belongs in `apps/openagents-runtime`, not Laravel controllers/models.
+- `apps/runtime` owns internal runtime correctness concerns: execution leases, durable run events, streaming, policy decisions, spend reservation state, and DS strategy execution.
+- Contributor rule: runtime correctness logic belongs in `apps/runtime`, not Laravel controllers/models.
 - Contract review ownership for runtime/proto surfaces is enforced in `.github/CODEOWNERS`.
 
 ## Codex Desktop/Runtime Boundary
 
 - Desktop execution is currently centered in `apps/autopilot-desktop/` and local bridge code in `crates/pylon/`.
-- Runtime exposes internal Codex worker lifecycle APIs in `apps/openagents-runtime` (`/internal/v1/codex/workers*`).
+- Runtime exposes internal Codex worker lifecycle APIs in `apps/runtime` (`/internal/v1/codex/workers*`).
 - Laravel proxies user-scoped Codex worker APIs in `apps/openagents.com` (`/api/runtime/codex/workers*`).
 - Khala (sync engine codename) is the target runtime-owned WS sync subsystem (`docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, `docs/sync/SURFACES.md`).
-- Khala v1 ships inside `apps/openagents-runtime` and shares Postgres for transactional projection+delivery semantics.
+- Khala v1 ships inside `apps/runtime` and shares Postgres for transactional projection+delivery semantics.
 - Khala (if enabled) is projection/sync-only for reactive Codex read models; runtime remains source of truth and single writer for those projections.
 - Canonical Codex architecture plan: `docs/codex/unified-runtime-desktop-plan.md`.
 - Khala self-hosting/sync plan: `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`.
@@ -70,16 +70,16 @@ This document maps the active codebase.
 - `docs/README.md`
   Documentation index and entry points.
 
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
   Internal runtime contract (`/internal/v1/*`).
 
-- `apps/openagents-runtime/docs/OPERATIONS.md`
+- `apps/runtime/docs/OPERATIONS.md`
   Runtime operations and incident runbook.
 
-- `apps/openagents-runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
   DS-Elixir contract surface and invariants.
 
-- `apps/openagents-runtime/docs/DS_ELIXIR_OPERATIONS.md`
+- `apps/runtime/docs/DS_ELIXIR_OPERATIONS.md`
   DS-Elixir operational workflows and replay procedures.
 
 - `docs/autopilot/`
@@ -104,4 +104,4 @@ Legacy references to removed surfaces should be treated as historical:
 - `apps/web/`
 - `apps/autopilot-worker/`
 
-The active web control plane is `apps/openagents.com/`, and runtime execution is `apps/openagents-runtime/`.
+The active web control plane is `apps/openagents.com/`, and runtime execution is `apps/runtime/`.

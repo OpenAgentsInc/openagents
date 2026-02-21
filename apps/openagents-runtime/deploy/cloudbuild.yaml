@@ -4,9 +4,9 @@
 #
 # Run from repo root:
 #   gcloud builds submit \
-#     --config apps/openagents-runtime/deploy/cloudbuild.yaml \
+#     --config apps/runtime/deploy/cloudbuild.yaml \
 #     --substitutions _TAG="$(git rev-parse --short HEAD)" \
-#     apps/openagents-runtime
+#     apps/runtime
 substitutions:
   _TAG: ${SHORT_SHA}
 
@@ -15,24 +15,24 @@ steps:
     args:
       - build
       - -t
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:${_TAG}
       - -t
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:latest
       - .
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:${_TAG}
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:latest
 
 images:
-  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:${_TAG}
-  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-runtime/runtime:latest
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:${_TAG}
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY

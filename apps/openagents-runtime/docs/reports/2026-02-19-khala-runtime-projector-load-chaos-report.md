@@ -12,11 +12,11 @@ Scope: Gate G7 hardening for runtime + Khala projector path (`#1765`)
 
 ## Validation Commands and Outcomes
 
-1. `cd apps/openagents-runtime && mix test test/openagents_runtime/load/runtime_shape_load_test.exs`
+1. `cd apps/runtime && mix test test/openagents_runtime/load/runtime_shape_load_test.exs`
 - Result: PASS
 - Runtime: 4 tests, 0 failures, finished in 4.0s.
 
-2. `cd apps/openagents-runtime && mix test test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
+2. `cd apps/runtime && mix test test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
 - Result: PASS
 - Runtime: 3 tests, 0 failures, finished in 1.6s.
 - Scenario evidence:
@@ -24,11 +24,11 @@ Scope: Gate G7 hardening for runtime + Khala projector path (`#1765`)
   - worker burst: 140 heartbeats + lifecycle events with checkpoint convergence to worker `latest_seq`.
   - chaos: 61 run events persisted while sink returned errors; replay restored checkpoint to latest runtime seq.
 
-3. `cd apps/openagents-runtime && mix test test/openagents_runtime/ops/monitoring_assets_test.exs`
+3. `cd apps/runtime && mix test test/openagents_runtime/ops/monitoring_assets_test.exs`
 - Result: PASS
 - Runtime: 2 tests, 0 failures, finished in 0.07s.
 
-4. `cd apps/openagents-runtime && mix ci`
+4. `cd apps/runtime && mix ci`
 - Result: PASS
 - Runtime: contract check passed; 314 tests, 0 failures, finished in 37.9s.
 

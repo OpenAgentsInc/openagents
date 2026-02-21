@@ -135,8 +135,8 @@ Done when:
 
 Verification:
 
-- `cd apps/openagents-runtime && mix ecto.migrate`
-- `cd apps/openagents-runtime && mix test`
+- `cd apps/runtime && mix ecto.migrate`
+- `cd apps/runtime && mix test`
 
 ### KHALA-007: Per-topic sequence table
 
@@ -154,7 +154,7 @@ Done when:
 
 Verification:
 
-- `cd apps/openagents-runtime && mix test --only sync_watermarks`
+- `cd apps/runtime && mix test --only sync_watermarks`
 
 ### KHALA-008: DB-native watermark allocator
 
@@ -171,7 +171,7 @@ Done when:
 
 Verification:
 
-- `cd apps/openagents-runtime && mix test --only sync`
+- `cd apps/runtime && mix test --only sync`
 
 ### KHALA-009: `OpenAgentsRuntime.Sync.ProjectorSink`
 

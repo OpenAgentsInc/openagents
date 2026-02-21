@@ -1,11 +1,11 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: openagents-runtime-ingress
+  name: runtime-ingress
 spec:
   podSelector:
     matchLabels:
-      app: openagents-runtime
+      app: runtime
   policyTypes:
     - Ingress
   ingress:
@@ -13,7 +13,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: openagents-runtime
+              app: runtime
       ports:
         - protocol: TCP
           port: 4369
