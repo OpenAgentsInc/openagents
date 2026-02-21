@@ -393,6 +393,13 @@ mod tests {
                 "runtime.run_summaries".to_string(),
             ],
             sync_token_default_scopes: vec!["runtime.codex_worker_events".to_string()],
+            route_split_enabled: false,
+            route_split_mode: "legacy".to_string(),
+            route_split_rust_routes: vec!["/chat".to_string()],
+            route_split_cohort_percentage: 0,
+            route_split_salt: "openagents-route-split-v1".to_string(),
+            route_split_force_legacy: false,
+            route_split_legacy_base_url: Some("https://legacy.openagents.test".to_string()),
         };
 
         SyncTokenIssuer::from_config(&config)

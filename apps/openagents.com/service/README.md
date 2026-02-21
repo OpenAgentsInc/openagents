@@ -1,4 +1,4 @@
-# openagents-control-service (OA-RUST-015..018)
+# openagents-control-service (OA-RUST-015..021)
 
 Rust control service scaffold for `apps/openagents.com`.
 
@@ -19,10 +19,14 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/policy/authorize`
   - `GET /api/v1/auth/session`
   - `GET /api/v1/control/status`
+  - `GET /api/v1/control/route-split/status`
+  - `POST /api/v1/control/route-split/override`
+  - `POST /api/v1/control/route-split/evaluate`
   - `POST /api/sync/token`
   - `POST /api/v1/sync/token`
   - `GET /manifest.json` static manifest
   - `GET /assets/*` versioned static asset host
+  - `GET /*` feature-flagged web-shell vs legacy route split entry
 - Request middleware foundations:
   - request ID propagation (`x-request-id`)
   - HTTP trace layer
@@ -52,6 +56,13 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_SYNC_TOKEN_MAX_TTL_SECONDS` (default: `900`)
 - `OA_SYNC_TOKEN_ALLOWED_SCOPES` (default: `runtime.codex_worker_events,runtime.codex_worker_summaries,runtime.run_summaries`)
 - `OA_SYNC_TOKEN_DEFAULT_SCOPES` (default: `runtime.codex_worker_events`)
+- `OA_ROUTE_SPLIT_ENABLED` (`true|false`, default: `false`)
+- `OA_ROUTE_SPLIT_MODE` (`legacy|rust|cohort`, default: `legacy`)
+- `OA_ROUTE_SPLIT_RUST_ROUTES` (CSV route prefixes, default: `/chat,/workspace,/settings,/autopilot`)
+- `OA_ROUTE_SPLIT_COHORT_PERCENTAGE` (`0..100`, default: `0`)
+- `OA_ROUTE_SPLIT_SALT` (stable cohort hash salt, default: `openagents-route-split-v1`)
+- `OA_ROUTE_SPLIT_FORCE_LEGACY` (`true|false`, default: `false`)
+- `OA_ROUTE_SPLIT_LEGACY_BASE_URL` (legacy fallback base URL, e.g. `https://legacy.openagents.com`)
 
 ## Run locally
 
@@ -109,3 +120,11 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 - Request correlation IDs are propagated via `x-request-id` middleware and emitted in structured logs.
 - Audit events are emitted for sensitive control actions (`auth.challenge.requested`, `auth.verify.completed`, `auth.refresh.completed`, `auth.logout.completed`, `auth.active_org.updated`, `sync.token.issued`).
 - Service emits JSON logs by default (`OA_CONTROL_LOG_FORMAT=json`) for machine parsing.
+
+## Route split and rollback
+
+- Route targeting is deterministic per request/cohort key (`x-oa-route-key`) using configured route prefixes and split mode.
+- Fast rollback is supported with authenticated override:
+  - `POST /api/v1/control/route-split/override` with body `{"target":"legacy"}` forces legacy immediately.
+  - `POST /api/v1/control/route-split/override` with body `{"target":"clear"}` returns to configured mode.
+- Route split decisions emit auditable events as `route.split.decision`.
