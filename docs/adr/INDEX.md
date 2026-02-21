@@ -10,7 +10,7 @@ Last updated: 2026-02-21
 3. Active ADR records live only in `docs/adr/`.
 4. Historical ADRs remain in the archive path and are not renumbered.
 
-Next available ADR: **ADR-0002**
+Next available ADR: **ADR-0003**
 
 ## Lifecycle Statuses
 
@@ -27,6 +27,11 @@ Next available ADR: **ADR-0002**
    - Date: 2026-02-21  
    - File: `docs/adr/ADR-0001-rust-only-architecture-baseline.md`  
    - Source issue: `OA-RUST-074` (`#1889`)
+2. `ADR-0002` — Proto-first contract governance  
+   - Status: `Accepted`  
+   - Date: 2026-02-21  
+   - File: `docs/adr/ADR-0002-proto-first-contract-governance.md`  
+   - Source issue: `OA-RUST-075` (`#1890`)
 
 ## Legacy Archive
 
