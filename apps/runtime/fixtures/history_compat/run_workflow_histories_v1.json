@@ -1,0 +1,128 @@
+{
+  "schema": "openagents.runtime.workflow_history_compat.v1",
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "run_happy_path_v1",
+      "description": "Created -> Running -> Succeeded",
+      "run_id": "01951d2a-6c15-7c9f-99c2-cf8ad72a23f0",
+      "created_at": "2026-02-01T00:00:00Z",
+      "worker_id": "desktopw:history-happy",
+      "metadata": {
+        "policy_bundle_id": "policy.history.v1"
+      },
+      "events": [
+        {
+          "seq": 1,
+          "event_type": "run.started",
+          "payload": {
+            "source": "runtime"
+          },
+          "recorded_at": "2026-02-01T00:00:01Z"
+        },
+        {
+          "seq": 2,
+          "event_type": "run.finished",
+          "payload": {
+            "status": "succeeded"
+          },
+          "idempotency_key": "finish:happy",
+          "recorded_at": "2026-02-01T00:00:02Z"
+        }
+      ],
+      "expected": {
+        "final_status": "succeeded",
+        "replay_hash": "sha256:d0f58fa2c0aef7d87ac809d6420852c6fd8f37b8e24fb489b551867323beec69",
+        "trajectory_hash": "sha256:d694384b3f1f8c08b9c855256dd8aa0e3bd954ea77d72e7ee45c8aa1f48da288",
+        "runtime_event_count": 2
+      }
+    },
+    {
+      "id": "run_cancel_flow_v1",
+      "description": "Created -> Running -> Canceling -> Canceled",
+      "run_id": "01951d2a-6c15-7f2f-a9da-d132c2341bc8",
+      "created_at": "2026-02-01T00:10:00Z",
+      "worker_id": "desktopw:history-cancel",
+      "metadata": {
+        "policy_bundle_id": "policy.history.v1"
+      },
+      "events": [
+        {
+          "seq": 1,
+          "event_type": "run.started",
+          "payload": {
+            "source": "runtime"
+          },
+          "recorded_at": "2026-02-01T00:10:01Z"
+        },
+        {
+          "seq": 2,
+          "event_type": "run.cancel_requested",
+          "payload": {
+            "reason": "operator_request"
+          },
+          "recorded_at": "2026-02-01T00:10:02Z"
+        },
+        {
+          "seq": 3,
+          "event_type": "run.finished",
+          "payload": {
+            "status": "canceled"
+          },
+          "idempotency_key": "finish:cancel",
+          "recorded_at": "2026-02-01T00:10:03Z"
+        }
+      ],
+      "expected": {
+        "final_status": "canceled",
+        "replay_hash": "sha256:8c091d9c93711189e51ca37c8f313e3749b0adb8ba7982c7c4e78ba8641c8010",
+        "trajectory_hash": "sha256:54bdc13b9b6a5ab38f6011dd015efb55c538146b0435fd12de7b5994a7705395",
+        "runtime_event_count": 3
+      }
+    },
+    {
+      "id": "run_failure_from_canceling_v1",
+      "description": "Created -> Running -> Canceling -> Failed",
+      "run_id": "01951d2a-6c15-7200-8d40-18ee9542a53f",
+      "created_at": "2026-02-01T00:20:00Z",
+      "worker_id": "desktopw:history-failure",
+      "metadata": {
+        "policy_bundle_id": "policy.history.v2"
+      },
+      "events": [
+        {
+          "seq": 1,
+          "event_type": "run.started",
+          "payload": {
+            "source": "runtime"
+          },
+          "recorded_at": "2026-02-01T00:20:01Z"
+        },
+        {
+          "seq": 2,
+          "event_type": "run.cancel_requested",
+          "payload": {
+            "reason": "user_cancel_then_error"
+          },
+          "recorded_at": "2026-02-01T00:20:02Z"
+        },
+        {
+          "seq": 3,
+          "event_type": "run.finished",
+          "payload": {
+            "status": "failed",
+            "error_code": "tool_timeout"
+          },
+          "idempotency_key": "finish:failure",
+          "recorded_at": "2026-02-01T00:20:03Z"
+        }
+      ],
+      "expected": {
+        "final_status": "failed",
+        "replay_hash": "sha256:70e021633e2df2e1b5cf0919934f60f1a4bc3e4eac1321dd40d858a78f911a31",
+        "trajectory_hash": "sha256:1cef2cc15a31dd60cce2a6cf3cfc2851da685e3701a8c67ceaaab7a7de80b751",
+        "runtime_event_count": 3
+      }
+    }
+  ]
+}

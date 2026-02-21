@@ -32,6 +32,7 @@ Supported lanes:
 - `docs`
 - `proto`
 - `runtime`
+- `runtime-history`
 - `comms`
 - `openclaw`
 - `web-shell`
@@ -41,6 +42,7 @@ Examples:
 
 ```bash
 ./scripts/local-ci.sh runtime
+./scripts/local-ci.sh runtime-history
 ./scripts/local-ci.sh comms
 ./scripts/local-ci.sh web-shell
 ./scripts/local-ci.sh all-rust
@@ -50,6 +52,7 @@ Examples:
 Changed-mode trigger note:
 
 - `comms` lane auto-runs for legacy Laravel/openagents.com surface paths, `apps/runtime/`, comms protocol docs, and comms matrix script changes.
+- `runtime-history` lane auto-runs for Rust runtime history-compat paths (`apps/runtime/src/**`, `apps/runtime/fixtures/history_compat/**`, `apps/runtime/Cargo.toml`, `Cargo.lock`) and enforces deterministic replay compatibility fixtures.
 - Rust control-service path `apps/openagents.com/service/` is intentionally excluded from automatic `comms` lane triggering to keep Rust migration iteration fast.
 - `web-shell` lane auto-runs for `apps/openagents.com/web-shell/**` changes and enforces JS host shim boundary rules.
 - `runtime/comms/openclaw` lanes are skipped by default in `changed` mode and only run when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
