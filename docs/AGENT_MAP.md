@@ -14,6 +14,9 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 
 ### 2) Contracts and architecture authority
 
+- `docs/ARCHITECTURE-RUST.md` — canonical architecture source of truth.
+- `docs/ARCHITECTURE-RUST-ROADMAP.md` — canonical migration sequencing and OA-RUST issue map.
+- `docs/ARCHITECTURE.md` — historical hybrid snapshot (not canonical).
 - `docs/adr/INDEX.md` — architecture decisions and compatibility constraints.
 - `docs/adr/README.md` — Rust-era ADR process and lifecycle.
 - `docs/execution/README.md` — artifact/replay contract entrypoint.
@@ -80,5 +83,5 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - If you are changing Khala sync integration: start at `docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, `docs/sync/SURFACES.md`, and `apps/runtime/docs/KHALA_SYNC.md` (for current boundary/migration context).
 - If you are deploying runtime to Cloud Run: use `apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh` so deploy + migration validation are chained (see `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`).
 - If you are changing terminology or naming: update `docs/GLOSSARY.md` first.
-- If you are changing architecture invariants: author/update an ADR in `docs/adr/`.
+- If you are changing architecture invariants: start with `docs/ARCHITECTURE-RUST.md`, then author/update an ADR in `docs/adr/`.
 - If you are changing Rust migration boundaries/cutover behavior: apply `docs/plans/active/rust-migration-invariant-gates.md`.

@@ -11,6 +11,9 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 - Repository map / ownership: `docs/PROJECT_OVERVIEW.md`
 - Priorities and sequencing: `docs/ROADMAP.md`
 - Vocabulary authority: `docs/GLOSSARY.md`
+- Canonical architecture: `docs/ARCHITECTURE-RUST.md`
+- Canonical migration sequencing: `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- Historical architecture snapshot (non-canonical): `docs/ARCHITECTURE.md`
 - Architecture decisions (invariants/contracts): `docs/adr/INDEX.md`
 - ADR authoring/review process: `docs/adr/README.md`
 - Rust migration invariant gates: `docs/plans/active/rust-migration-invariant-gates.md`

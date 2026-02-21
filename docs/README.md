@@ -1,13 +1,14 @@
 # OpenAgents Documentation Index
 
-This directory tracks the active OpenAgents cross-platform stack.
-Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/runtime/`), iOS (`apps/autopilot-ios`), Rust desktop app (`apps/autopilot-desktop/`), and Onyx local-first notes app (`apps/onyx/`).
+This directory tracks the active OpenAgents cross-platform stack and Rust-only migration path.
+Canonical architecture intent is Rust-only and defined in `ARCHITECTURE-RUST.md` + `ARCHITECTURE-RUST-ROADMAP.md`.
 
 ## Start Here
 
 - Product and mission: `MANIFESTO.md`
-- End-to-end system architecture: `ARCHITECTURE.md`
-- Rust-era architecture target: `ARCHITECTURE-RUST.md`
+- Canonical architecture (Rust-only endstate): `ARCHITECTURE-RUST.md`
+- Canonical migration sequencing/issues: `ARCHITECTURE-RUST-ROADMAP.md`
+- Historical hybrid architecture snapshot: `ARCHITECTURE.md`
 - Progressive disclosure map: `AGENT_MAP.md`
 - Terminology: `GLOSSARY.md`
 - Repository map (current): `PROJECT_OVERVIEW.md`
