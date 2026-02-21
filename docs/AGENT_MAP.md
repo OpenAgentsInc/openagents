@@ -41,7 +41,6 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `apps/runtime/README.md` — runtime setup and test entrypoint.
 - `apps/mobile/README.md` — mobile app.
 - `apps/autopilot-desktop/` — Rust desktop Codex app.
-- `apps/desktop/README.md` — Electron desktop Lightning app.
 - `apps/onyx/` — Rust local-first notes app.
 - `packages/` — shared libraries (`effuse*`, `dse`, `lightning-effect`, `hud`).
 

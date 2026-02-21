@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
 This directory tracks the active OpenAgents cross-platform stack.
-Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/runtime/`), mobile (`apps/mobile`), Rust desktop Codex app (`apps/autopilot-desktop/`), Electron desktop Lightning app (`apps/desktop/`), and Onyx local-first notes app (`apps/onyx/`).
+Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/runtime/`), mobile (`apps/mobile`), Rust desktop app (`apps/autopilot-desktop/`), and Onyx local-first notes app (`apps/onyx/`).
 
 ## Start Here
 
@@ -74,7 +74,6 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Mobile app source: `../apps/mobile/`
 - Rust desktop Codex app source: `../apps/autopilot-desktop/`
 - Rust desktop Codex app local auth/run guide: `../apps/autopilot-desktop/README.md`
-- Electron desktop Lightning app source: `../apps/desktop/`
 - Onyx notes app source: `../apps/onyx/`
 
 ## Local Development
@@ -84,7 +83,6 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Local CI policy + hooks: `LOCAL_CI.md`
 - Mobile local dev: `../apps/mobile/README.md`
 - Rust desktop Codex local dev: `../apps/autopilot-desktop/` — typically `cargo run -p autopilot-desktop`.
-- Electron desktop Lightning local dev: `../apps/desktop/README.md`
 - Storybook and component docs: `STORYBOOK.md`
 
 ## Audits

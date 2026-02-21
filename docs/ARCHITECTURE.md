@@ -9,8 +9,8 @@ Covered surfaces:
 - `apps/openagents.com/`
 - `apps/runtime/`
 - `apps/mobile/`
-- `apps/desktop/`
 - `apps/autopilot-ios/`
+- `apps/autopilot-desktop/`
 - `apps/lightning-ops/`
 - `apps/lightning-wallet-executor/`
 - shared contracts under `proto/` and shared packages
@@ -32,7 +32,7 @@ flowchart LR
   subgraph clients["Client Surfaces"]
     web["openagents.com\nLaravel + Inertia + React"]
     mobile["mobile\nReact Native / Expo"]
-    desktop["desktop\nElectron"]
+    autopilotDesktop["autopilot-desktop\nRust + WGPUI"]
     ios["autopilot-ios\nSwiftUI"]
   end
 
@@ -57,7 +57,7 @@ flowchart LR
 
   web --> laravel
   mobile --> laravel
-  desktop --> laravel
+  autopilotDesktop --> laravel
   ios --> laravel
 
   laravel --> runtime
@@ -157,7 +157,6 @@ Khala protocol model:
 |---|---|---|---|
 | `apps/openagents.com` | feature-gated Khala WS for Codex summaries | WorkOS web auth/session + runtime/Laravel HTTP + `POST /api/sync/token` | Laravel APIs + runtime APIs |
 | `apps/mobile` | feature-gated Khala WS for worker summaries | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: openagents-expo`) + runtime HTTP + `POST /api/sync/token` | Laravel/runtime APIs |
-| `apps/desktop` | feature-gated Khala WS for status summaries | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: openagents-desktop`) + Laravel/runtime HTTP + sync token | Laravel/runtime APIs |
 | `apps/autopilot-desktop` | runtime SSE codex worker stream + runtime sync write lane | WorkOS email-code auth (`POST /api/auth/email`, `POST /api/auth/verify`) + Laravel runtime worker APIs | Laravel/runtime APIs |
 | `apps/autopilot-ios` | runtime SSE remains primary lane | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: autopilot-ios`) + Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
 | `apps/lightning-ops` | no Khala dependency for control-plane lane | internal Laravel control-plane APIs | Laravel internal control-plane APIs |

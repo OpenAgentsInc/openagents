@@ -15,7 +15,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 
 1. Legacy app roots tracked for deletion/fold-in:
    - `apps/mobile`
-   - `apps/desktop`
+   - `apps/desktop` (removed 2026-02-21 via `OA-RUST-053`)
    - `apps/inbox-autopilot` (removed 2026-02-21 via `OA-RUST-052`)
 2. Legacy production runtime stacks still active:
    - Laravel/PHP + React/Inertia in `apps/openagents.com`
@@ -24,7 +24,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
    - 10 packages (`@openagentsinc/*`) requiring migrate/archive/delete decisions
 4. Cross-surface reference volume (current baseline):
    - `apps/mobile` references in `README.md`, `AGENTS.md`, `docs/**`, `scripts/**`: 50
-   - `apps/desktop` references in `README.md`, `AGENTS.md`, `docs/**`, `scripts/**`: 122
+   - `apps/desktop` active-path references: 0 (historical audits/runbooks/plans may retain context)
    - `apps/inbox-autopilot` active-path references: 0 (historical migration/audit docs may retain source-path mentions)
 
 ## A) Legacy App Root Inventory
@@ -32,7 +32,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 | Root | Current stack and key dependency signals | Migration target | Disposition | Owner lane | Primary blockers |
 | --- | --- | --- | --- | --- | --- |
 | `apps/mobile` | Expo/React Native TypeScript app (`apps/mobile/package.json`), uses `@openagentsinc/khala-sync` and runtime HTTP paths | `apps/autopilot-ios` + shared Rust client core | `delete` (after parity) | `owner:ios` | `OA-RUST-054`, `OA-RUST-055`, `OA-RUST-056`, `OA-RUST-057`, `OA-RUST-058`, `OA-RUST-106` |
-| `apps/desktop` | Electron + TypeScript + Effect lane (`apps/desktop/package.json`), pulls `@openagentsinc/effuse*`, `lightning-effect`, `lnd-effect` | `apps/autopilot-desktop` (WGPUI/Rust) + Rust lightning services | `delete` (after capability migration) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-053`, `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
+| `apps/desktop` | Legacy Electron + TypeScript root removed after capability audit | `apps/autopilot-desktop` (WGPUI/Rust) + Rust lightning services | `deleted` (2026-02-21) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-053`, `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
 | `apps/inbox-autopilot` | Standalone local-first app root removed after fold-in | folded into `apps/autopilot-desktop` panes and shared state | `deleted` (2026-02-21) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-052` |
 
 ## B) Legacy Production Runtime Dependency Inventory
@@ -51,14 +51,14 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 | --- | --- | --- | --- | --- | --- |
 | `@openagentsinc/dse` | No direct active app runtime import found in `apps/**` (docs references only) | Rust-native DSE/runtime contracts | `defer` (track and decide in package retirement pass) | `owner:contracts-docs` | `OA-RUST-103`, `OA-RUST-104` |
 | `@openagentsinc/effuse-flow` | No direct active app runtime import found | Rust/WGPUI desktop/web client crates | `archive` (unless active consumer is discovered) | `owner:infra` | `OA-RUST-103` |
-| `@openagentsinc/effuse-panes` | Used by `apps/desktop` renderer and pane layout | WGPUI pane system in `apps/autopilot-desktop` | `migrate` then `delete` | `owner:desktop` | `OA-RUST-050`, `OA-RUST-053`, `OA-RUST-103` |
+| `@openagentsinc/effuse-panes` | Used by legacy `apps/desktop` renderer (root removed) | WGPUI pane system in `apps/autopilot-desktop` | `migrate` then `delete` | `owner:desktop` | `OA-RUST-050`, `OA-RUST-053`, `OA-RUST-103` |
 | `@openagentsinc/effuse-test` | No direct active app runtime import found | Rust test harness equivalents | `archive` | `owner:infra` | `OA-RUST-103`, `OA-RUST-104` |
 | `@openagentsinc/effuse-ui` | No direct active app runtime import found | WGPUI shared UI crates | `archive` | `owner:infra` | `OA-RUST-103` |
-| `@openagentsinc/effuse` | Used by `apps/desktop/src/renderer.ts` | WGPUI Rust runtime | `migrate` then `delete` | `owner:desktop` | `OA-RUST-050`, `OA-RUST-053`, `OA-RUST-103` |
+| `@openagentsinc/effuse` | Used by legacy `apps/desktop` renderer (root removed) | WGPUI Rust runtime | `migrate` then `delete` | `owner:desktop` | `OA-RUST-050`, `OA-RUST-053`, `OA-RUST-103` |
 | `@openagentsinc/hud` | No direct active app runtime import found | Rust observability UI if still needed | `defer` | `owner:infra` | `OA-RUST-103` |
 | `@openagentsinc/khala-sync` | Used by `apps/mobile` and `apps/openagents.com` React paths | Rust Khala clients (`web/desktop/iOS`) | `migrate` then `delete` | `owner:khala` | `OA-RUST-029`, `OA-RUST-045`, `OA-RUST-058`, `OA-RUST-063`, `OA-RUST-103` |
-| `@openagentsinc/lightning-effect` | Used by `apps/desktop`, `apps/lightning-ops`, `apps/lightning-wallet-executor` | Rust lightning services and runtime integrations | `migrate` then `delete` | `owner:infra` | `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
-| `@openagentsinc/lnd-effect` | Used by `apps/desktop` and `lightning-effect` | Rust lightning services | `migrate` then `delete` | `owner:infra` | `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
+| `@openagentsinc/lightning-effect` | Used by legacy `apps/desktop` and current Lightning services | Rust lightning services and runtime integrations | `migrate` then `delete` | `owner:infra` | `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
+| `@openagentsinc/lnd-effect` | Used by legacy `apps/desktop` and `lightning-effect` | Rust lightning services | `migrate` then `delete` | `owner:infra` | `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
 
 ## D) Non-Code Coupling Inventory (Docs, Deploy, CI, Contracts)
 
@@ -81,6 +81,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
    - inbox fold-in and pane parity complete in `apps/autopilot-desktop`.
    - lightning-effect/lnd-effect production lanes migrated to Rust services.
    - legacy Electron operational runbooks archived or superseded.
+   - status: complete (OA-RUST-053).
 3. `apps/inbox-autopilot` deletion gate:
    - inbox domain logic and panes fully folded into desktop Rust lane.
    - repo references removed from canonical docs.

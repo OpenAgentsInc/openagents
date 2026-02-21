@@ -11,7 +11,6 @@ OpenAgents is a multi-surface agent platform with two authority planes and one r
 - `apps/openagents.com/`: Laravel web/control-plane app.
 - `apps/runtime/`: Elixir runtime service.
 - `apps/mobile/`: React Native + Expo app.
-- `apps/desktop/`: Electron app.
 - `apps/autopilot-desktop/`: Rust + WGPUI desktop shell (Codex + inbox workflows).
 - `apps/autopilot-ios/`: Swift/iOS app.
 - `apps/onyx/`: Rust local-first notes app.
@@ -25,7 +24,6 @@ flowchart LR
   subgraph clients["Client Apps"]
     web["openagents.com\nWeb"]
     mobile["mobile\nRN/Expo"]
-    desktop["desktop\nElectron"]
     autopilotDesktop["autopilot-desktop\nRust + WGPUI"]
     ios["autopilot-ios\nSwiftUI"]
   end
@@ -51,7 +49,6 @@ flowchart LR
 
   web --> laravel
   mobile --> laravel
-  desktop --> laravel
   autopilotDesktop --> laravel
   ios --> laravel
 
@@ -104,7 +101,6 @@ Deployment topology:
 |---|---|---|---|
 | `apps/openagents.com` | Khala WS behind `VITE_KHALA_SYNC_ENABLED` for reactive Codex summaries | Laravel/runtime HTTP + `POST /api/sync/token` | Laravel APIs + runtime APIs |
 | `apps/mobile` | Khala WS behind `EXPO_PUBLIC_KHALA_SYNC_ENABLED` for worker summaries | Runtime APIs + `POST /api/sync/token` | Laravel/runtime APIs |
-| `apps/desktop` | Khala WS behind `OA_DESKTOP_KHALA_SYNC_ENABLED` for status lanes | Laravel/runtime HTTP + sync token endpoint | Laravel/runtime APIs |
 | `apps/autopilot-desktop` | Runtime worker stream + consolidated inbox/codex panes | Laravel/runtime HTTP + runtime auth flow | Laravel/runtime APIs |
 | `apps/autopilot-ios` | Not primary today (runtime SSE lane remains) | Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
 | `apps/onyx` | No Khala dependency (local-first storage) | Local vault bootstrap | Local-only data writes |

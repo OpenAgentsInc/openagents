@@ -56,9 +56,8 @@ Hosted dry run:
 
 Local dry run:
 
-- `apps/desktop/tests/l402LocalNodeFlow.integration.test.ts`
-- CLI: `cd apps/desktop && npm run test:l402-local-node-smoke -- --json`
-- Artifact: `output/l402-local-node-smoke-artifact.json`
+- Legacy Electron local-node flow (removed with OA-RUST-053).
+- Historical artifact path (for prior runs): `output/l402-local-node-smoke-artifact.json`
 
 ## Correlation Workflow
 
@@ -102,36 +101,14 @@ Verify:
   - `events.jsonl`
   - `summary.json`
 
-### 2) Local-Node Success
+### 2) Local-Node Success (Legacy Path)
 
-Run:
+The prior Electron local-node rehearsal path was removed with `OA-RUST-053` (`apps/desktop` deletion).
 
-```bash
-cd apps/desktop
-npm run test:l402-local-node-smoke -- --json > ../../output/l402-observability-local.json
-```
+Current operational stance:
 
-Verify:
-
-- `observabilityRecordCount > 0`
-- records include `executionPath=local-node`
-- records include local compatibility fields:
-  - `desktopSessionId`
-  - `desktopRuntimeStatus`
-  - `walletState`
-  - `nodeSyncStatus`
-
-Then run hosted full-flow again to enforce parity with the local artifact:
-
-```bash
-cd apps/lightning-ops
-npm run smoke:full-flow -- --json
-```
-
-Pass condition:
-
-- `parity.localArtifactPresent=true`
-- `parity.localMissingKeys=[]`
+1. Use hosted full-flow rehearsal as the active production gate.
+2. Treat historical local-node artifacts as reference-only evidence until Rust-native local-node parity lanes are reintroduced under active issues.
 
 ### 3) Cache Reuse
 
@@ -195,7 +172,7 @@ cd packages/lnd-effect && npm run typecheck && npm test
 cd packages/lightning-effect && npm test
 cd apps/lightning-ops && npm run typecheck && npm test && npm run smoke:full-flow -- --json
 # apps/autopilot-worker and apps/web removed; run L402 e2e from apps/openagents.com or packages/effuse-test as applicable
-cd apps/desktop && npm run typecheck && npm test && npm run test:l402-local-node-smoke -- --json
+cargo check -p autopilot-desktop
 ```
 
 Store artifacts under `output/` for rehearsal evidence and incident replay.
