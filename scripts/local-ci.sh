@@ -12,6 +12,7 @@ COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/
 OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
 WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
 CROSS_SURFACE_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
+RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|apps/onyx/|scripts/local-ci\.sh$)'
 
 is_truthy() {
   local value="${1:-}"
@@ -171,6 +172,10 @@ run_trigger_tests() {
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
 
+  assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "true"
+  assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
+  assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "docs/README.md" "false"
+
   echo "local-ci trigger tests passed"
 }
 
@@ -225,6 +230,14 @@ run_cross_surface_harness() {
   )
 }
 
+run_workspace_compile() {
+  echo "==> workspace rust compile baseline"
+  (
+    cd "$ROOT_DIR"
+    cargo check --workspace --all-targets
+  )
+}
+
 has_match() {
   local pattern="$1"
   local files="$2"
@@ -235,6 +248,7 @@ has_match() {
 }
 
 run_all() {
+  run_workspace_compile
   run_proto_checks
   run_runtime_history_checks
   run_web_shell_checks
@@ -302,6 +316,10 @@ run_changed() {
     fi
   fi
 
+  if has_match "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "$changed_files"; then
+    run_workspace_compile
+  fi
+
   if [[ "$legacy_lanes_detected" -eq 1 ]]; then
     echo "==> legacy-triggered paths detected; legacy lanes skipped (set OA_LOCAL_CI_ENABLE_LEGACY=1 to enable)"
   fi
@@ -329,6 +347,9 @@ case "$MODE" in
   web-shell)
     run_web_shell_checks
     ;;
+  workspace-compile)
+    run_workspace_compile
+    ;;
   cross-surface)
     run_cross_surface_harness
     ;;
@@ -339,6 +360,7 @@ case "$MODE" in
     run_all
     ;;
   all-rust)
+    run_workspace_compile
     run_proto_checks
     run_runtime_history_checks
     run_web_shell_checks
@@ -347,7 +369,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|comms|openclaw|web-shell|cross-surface|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|comms|openclaw|web-shell|workspace-compile|cross-surface|test-triggers]" >&2
     exit 2
     ;;
 esac
