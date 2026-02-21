@@ -462,6 +462,7 @@ Dependencies: OA-RUST-033, OA-RUST-040, OA-RUST-067.
 
 ### OA-RUST-100 — [Web Service] Remove Laravel/PHP runtime from `apps/openagents.com`
 Description: After route and API parity, remove Laravel/PHP runtime dependencies and finalize `apps/openagents.com` as Rust control service + static WGPUI host.
+Enforcement artifacts: `apps/openagents.com/Dockerfile`, `apps/openagents.com/service/deploy/cloudbuild.yaml`, `apps/openagents.com/service/deploy/deploy-production.sh`, `apps/openagents.com/service/deploy/smoke-control.sh`, `apps/openagents.com/deploy/README.md`, `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md`, `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md`
 Acceptance criteria: `composer`/PHP runtime no longer required for production deploys; control APIs and static hosting are served by Rust service only; rollback plan and migration notes are published.
 Dependencies: OA-RUST-015, OA-RUST-062, OA-RUST-063, OA-RUST-064.
 

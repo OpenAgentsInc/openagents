@@ -198,6 +198,9 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 
 - Full staged canary + rollback SOP: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - Deploy smoke check: `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-health.sh`
+- Control/API/static-host smoke suite:
+  - `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-control.sh`
+  - Optional authenticated checks: set `OPENAGENTS_CONTROL_ACCESS_TOKEN=<token>` for session/token endpoint coverage.
 
 ## Schema Evolution Policy
 

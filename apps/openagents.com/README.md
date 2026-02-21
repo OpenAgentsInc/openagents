@@ -8,6 +8,11 @@ Active web runtime path is Rust-only:
 
 Legacy Laravel/Inertia/React sources remain in-repo only as historical/transition artifacts and are not part of the active runtime lane.
 
+Rust-only container path:
+
+- `apps/openagents.com/Dockerfile` builds the Rust control service and Rust web-shell dist.
+- Legacy PHP/Laravel image recipe is archived at `apps/openagents.com/deploy/archived-laravel/Dockerfile`.
+
 ## Active verification
 
 From repo root:
@@ -36,4 +41,13 @@ Optional helper (no Laravel/Node runtime steps):
 PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service \
 IMAGE=us-central1-docker.pkg.dev/<project>/<repo>/openagents-control-service:<tag> \
 apps/openagents.com/service/deploy/deploy-production.sh
+```
+
+Image build (Cloud Build, Rust-only):
+
+```bash
+gcloud builds submit \
+  --config apps/openagents.com/service/deploy/cloudbuild.yaml \
+  --substitutions _TAG="$(git rev-parse --short HEAD)" \
+  .
 ```
