@@ -7,10 +7,12 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 
 - Product and mission: `MANIFESTO.md`
 - End-to-end system architecture: `ARCHITECTURE.md`
+- Rust-era architecture target: `ARCHITECTURE-RUST.md`
 - Progressive disclosure map: `AGENT_MAP.md`
 - Terminology: `GLOSSARY.md`
 - Repository map (current): `PROJECT_OVERVIEW.md`
 - Current roadmap: `ROADMAP.md`
+- ADR index/process: `adr/INDEX.md`, `adr/README.md`
 - Agent contract and engineering rules: `../AGENTS.md`
 
 ## Control-Plane and Runtime Docs

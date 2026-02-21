@@ -63,6 +63,7 @@ Archive path: `docs/plans/archived/adr-legacy-2026-02-21/`
 
 ### OA-RUST-005 — [Rust Endstate] Reinitialize ADR index and numbering for Rust era
 Description: Create new ADR index, numbering conventions, and templates focused on Rust-only service/client architecture and migration decisions.
+Rust-era ADR process docs: `docs/adr/INDEX.md`, `docs/adr/README.md`, `docs/adr/TEMPLATE.md`
 
 ### OA-RUST-006 — [Rust Endstate] Define migration KPIs and reporting dashboard
 Description: Define measurable migration KPIs (route parity, runtime parity, WS reliability, latency, regression count) and publish a recurring status artifact.

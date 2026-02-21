@@ -12,6 +12,7 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 - Priorities and sequencing: `docs/ROADMAP.md`
 - Vocabulary authority: `docs/GLOSSARY.md`
 - Architecture decisions (invariants/contracts): `docs/adr/INDEX.md`
+- ADR authoring/review process: `docs/adr/README.md`
 - Rust migration invariant gates: `docs/plans/active/rust-migration-invariant-gates.md`
 
 ### Contracts (canonical specs)

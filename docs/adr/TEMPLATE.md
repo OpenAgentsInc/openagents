@@ -2,118 +2,92 @@
 
 ## Status
 
-**Proposed** | Accepted | Superseded | Deprecated
+`Proposed` | `Accepted` | `Superseded` | `Deprecated` | `Archived`
 
 ## Date
 
 YYYY-MM-DD
 
+## Owner Lane
+
+`owner:<lane>`
+
 ## Context
 
-What problem or situation triggered this decision? What forces are at play?
-
-(Keep this section focused on the problem, not the solution.)
+Describe the problem, constraints, and why an ADR is needed now.
 
 ## Decision
 
-State the decision clearly and normatively. This should be quotable.
+State the decision as a clear, normative statement.
 
-Example format:
-> We will use X for Y because Z.
+## Rust-Era Boundary Impact
 
-Be specific about:
-- What is now canonical
-- What is deprecated (if anything)
-- What constraints apply
+Indicate which architecture boundaries are impacted:
 
-### Schema / Spec Authority (if applicable)
+- Control-plane boundary
+- Runtime authority boundary
+- Khala delivery boundary
+- Client/runtime contract boundary
+- Deployment/runtime ops boundary
 
-If this ADR relates to schemas defined elsewhere, link to the canonical spec:
+## Invariant Gate Mapping
 
-- [docs/execution/ARTIFACTS.md](../execution/ARTIFACTS.md) — RECEIPT.json, PR_SUMMARY.md
-- [docs/execution/REPLAY.md](../execution/REPLAY.md) — REPLAY.jsonl
-- [docs/dse/OPTIMIZERS.md](../dse/OPTIMIZERS.md) — Policy bundles
-- [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Protocol schemas
+Map this ADR to migration invariants (`INV-*`) from:
 
-This ADR states *what is canonical* and *compatibility guarantees*, not full schema duplication.
+- `docs/plans/active/rust-migration-invariant-gates.md`
 
-(Delete this section if not applicable.)
+Required:
 
-## Scope
+1. Invariants affected
+2. How the decision preserves or changes each invariant
+3. Follow-up gate requirements
 
-What this ADR covers:
-- ...
+## Compatibility and Migration Plan
 
-What this ADR does NOT cover (non-goals):
-- ...
+1. Backward/forward compatibility expectations.
+2. Rollout sequence and dependency ordering.
+3. Data/schema/protocol migration requirements.
 
-## Invariants / Compatibility
+## Rollback and Failure Impact
 
-What must remain stable:
+1. Rollback trigger conditions.
+2. Rollback procedure.
+3. Residual risk if rollback is incomplete.
 
-| Invariant | Guarantee |
-|-----------|-----------|
-| Filename/path | Stable: `example.json` |
-| Field name | Stable: `step_utility` |
-| Value range | Stable: -1.0 to +1.0 |
+## Verification
 
-Backward compatibility expectations:
-- ...
+List concrete checks required before status moves to `Accepted`.
 
-Versioning rules (if applicable):
-- ...
+Example:
+
+```bash
+./scripts/local-ci.sh changed
+buf lint
+buf breaking --against .git#branch=main,subdir=proto
+```
 
 ## Consequences
 
-What are the results of this decision?
+### Positive
 
-**Positive:**
 - ...
 
-**Negative:**
+### Negative
+
 - ...
 
-**Neutral:**
+### Neutral
+
 - ...
 
 ## Alternatives Considered
 
-1. **Alternative A** — Brief description. Why rejected.
-2. **Alternative B** — Brief description. Why rejected.
-3. **Alternative C** — Brief description. Why rejected.
+1. Alternative A (why rejected)
+2. Alternative B (why rejected)
 
 ## References
 
-- Relevant code path: `path/to/code`
-- [GLOSSARY.md](../GLOSSARY.md) — Canonical terminology
-- [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Protocol details
+- `docs/ARCHITECTURE-RUST.md`
+- `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- Related issue(s): `OA-RUST-...`
 
----
-
-## Optional Sections
-
-### Migration Plan
-
-If this ADR changes existing behavior, describe the migration path.
-
-### Deprecations
-
-List any terms, files, or protocols being deprecated:
-
-| Deprecated | Replacement | Removal Target |
-|------------|-------------|----------------|
-| `old_term` | `new_term` | v2.0 |
-
-### Operational Considerations
-
-**Telemetry:**
-- What must be logged/traced?
-
-**Security/Privacy:**
-- Redaction requirements
-- Secrets handling
-
-**Rollout:**
-- Shadow mode plan
-- Canary requirements
-- Rollback procedure
