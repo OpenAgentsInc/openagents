@@ -8,6 +8,7 @@ This is the canonical production deploy flow for the Cloud Run runtime stack:
 - Migration drift check: `apps/runtime/deploy/cloudrun/check-migration-drift.sh`
 - DB role isolation tooling: `apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh`, `apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh`
 - Script index: `apps/runtime/deploy/cloudrun/README.md`
+- Zero-downtime schema evolution policy: `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`
 
 ## Why this exists
 
@@ -25,6 +26,8 @@ Never run the migrate job directly without first syncing the job image.
 `run-migrate-job.sh` enforces this and attempts `migrate_and_verify!()` first. If the currently deployed runtime image predates that helper, the script detects that specific failure and falls back to `migrate()` for that run so deploys are not blocked during transition.
 
 ## Deploy sequence
+
+0. Confirm this rollout follows the expand/migrate/contract policy and mixed-version gates in `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`.
 
 1. Build and push runtime image.
 
