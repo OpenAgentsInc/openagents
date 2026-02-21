@@ -2,19 +2,63 @@ use serde::{Deserialize, Serialize};
 
 use crate::intent::{CommandIntent, IntentId, QueuedIntent};
 use crate::route::AppRoute;
-use crate::state::{AppState, AuthStatus, StreamStatus};
+use crate::state::{AppState, AuthStatus, AuthUser, SessionSnapshot, StreamStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppAction {
-    BootstrapFromPath { path: String },
-    Navigate { route: AppRoute },
-    AuthStatusChanged { status: AuthStatus },
-    StreamStatusChanged { status: StreamStatus },
-    ActiveWorkerChanged { worker_id: Option<String> },
-    QueueIntent { intent: CommandIntent },
-    IntentFailed { id: IntentId, message: String },
-    IntentCompleted { id: IntentId },
+    BootstrapFromPath {
+        path: String,
+    },
+    Navigate {
+        route: AppRoute,
+    },
+    AuthEmailUpdated {
+        email: Option<String>,
+    },
+    AuthChallengeRequested {
+        email: String,
+    },
+    AuthChallengeAccepted {
+        email: String,
+        challenge_id: String,
+    },
+    AuthVerifyRequested,
+    AuthSessionRestoreRequested,
+    AuthSessionRefreshRequested,
+    AuthSessionEstablished {
+        user: AuthUser,
+        session: SessionSnapshot,
+        token_type: String,
+        access_token: String,
+        refresh_token: String,
+    },
+    AuthReauthRequired {
+        message: String,
+    },
+    AuthSignedOut,
+    AuthFailed {
+        message: String,
+    },
+    AuthStatusChanged {
+        status: AuthStatus,
+    },
+    StreamStatusChanged {
+        status: StreamStatus,
+    },
+    ActiveWorkerChanged {
+        worker_id: Option<String>,
+    },
+    QueueIntent {
+        intent: CommandIntent,
+    },
+    IntentFailed {
+        id: IntentId,
+        message: String,
+    },
+    IntentCompleted {
+        id: IntentId,
+    },
     DrainIntents,
     ClearError,
 }
@@ -39,6 +83,78 @@ pub fn apply_action(state: &mut AppState, action: AppAction) -> ReducerResult {
                 state.route_history.push(state.route.clone());
                 state.route = route;
             }
+            ReducerResult::default()
+        }
+        AppAction::AuthEmailUpdated { email } => {
+            state.auth.email = email;
+            ReducerResult::default()
+        }
+        AppAction::AuthChallengeRequested { email } => {
+            state.auth.status = AuthStatus::SendingCode;
+            state.auth.email = Some(email);
+            state.auth.challenge_id = None;
+            state.auth.last_error = None;
+            ReducerResult::default()
+        }
+        AppAction::AuthChallengeAccepted {
+            email,
+            challenge_id,
+        } => {
+            state.auth.status = AuthStatus::AwaitingCode;
+            state.auth.email = Some(email);
+            state.auth.challenge_id = Some(challenge_id);
+            state.auth.last_error = None;
+            ReducerResult::default()
+        }
+        AppAction::AuthVerifyRequested => {
+            state.auth.status = AuthStatus::VerifyingCode;
+            state.auth.last_error = None;
+            ReducerResult::default()
+        }
+        AppAction::AuthSessionRestoreRequested => {
+            state.auth.status = AuthStatus::SessionRestoring;
+            state.auth.last_error = None;
+            ReducerResult::default()
+        }
+        AppAction::AuthSessionRefreshRequested => {
+            state.auth.status = AuthStatus::SessionRefreshing;
+            state.auth.last_error = None;
+            ReducerResult::default()
+        }
+        AppAction::AuthSessionEstablished {
+            user,
+            session,
+            token_type,
+            access_token,
+            refresh_token,
+        } => {
+            state.auth.status = AuthStatus::SignedIn;
+            state.auth.email = Some(user.email.clone());
+            state.auth.challenge_id = None;
+            state.auth.token_type = Some(token_type);
+            state.auth.access_token = Some(access_token);
+            state.auth.refresh_token = Some(refresh_token);
+            state.auth.user = Some(user);
+            state.auth.session = Some(session);
+            state.auth.last_error = None;
+            ReducerResult::default()
+        }
+        AppAction::AuthReauthRequired { message } => {
+            state.auth.status = AuthStatus::ReauthRequired;
+            state.auth.access_token = None;
+            state.auth.refresh_token = None;
+            state.auth.session = None;
+            state.auth.last_error = Some(message);
+            ReducerResult::default()
+        }
+        AppAction::AuthSignedOut => {
+            let preserved_email = state.auth.email.clone();
+            state.auth = crate::state::AuthState::default();
+            state.auth.email = preserved_email;
+            ReducerResult::default()
+        }
+        AppAction::AuthFailed { message } => {
+            state.auth.last_error = Some(message);
             ReducerResult::default()
         }
         AppAction::AuthStatusChanged { status } => {
