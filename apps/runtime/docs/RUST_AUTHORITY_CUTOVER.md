@@ -9,6 +9,8 @@ This runbook defines how to cut authority writes to the Rust runtime and freeze 
 1. Shadow parity gate passes using `runtime-shadow-harness` (`decision=allow`).
 2. No critical parity diffs in staged scenarios.
 3. Runtime health/readiness and projector recovery checks are green.
+4. DB role isolation verification passes:
+   - `DB_URL=<postgres-url> apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh`
 
 ## Cutover Controls
 

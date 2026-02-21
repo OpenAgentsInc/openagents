@@ -282,6 +282,7 @@ Signoff artifacts: `apps/openagents.com/web-shell/scripts/perf-soak-signoff.sh`,
 
 ### OA-RUST-066 — [Data] Finalize control/runtime DB role isolation policy and tooling
 Description: Implement and validate schema/role isolation so cross-plane writes remain impossible by default.
+Isolation artifacts: `apps/runtime/docs/DB_ROLE_ISOLATION.md`, `apps/runtime/deploy/cloudrun/sql/db-role-isolation.sql`, `apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh`, `apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh`
 
 ### OA-RUST-067 — [Ops] Automate runtime migration job post-deploy and enforce runbook usage
 Description: Ensure every runtime deploy executes migration job consistently and update runbooks/agent guidance to prevent drift.

@@ -23,6 +23,8 @@ RUNTIME_SERVICE="${RUNTIME_SERVICE:-runtime}"
 MIGRATE_JOB="${MIGRATE_JOB:-runtime-migrate}"
 IMAGE="${IMAGE:-}"
 DRY_RUN="${DRY_RUN:-0}"
+VERIFY_DB_ROLE_ISOLATION="${VERIFY_DB_ROLE_ISOLATION:-1}"
+ROLE_ISOLATION_VERIFY_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/verify-db-role-isolation.sh"
 DEFAULT_MIGRATION_EVAL="OpenAgentsRuntime.Release.migrate_and_verify!()"
 FALLBACK_MIGRATION_EVAL="OpenAgentsRuntime.Release.migrate()"
 MIGRATION_EVAL="${MIGRATION_EVAL:-$DEFAULT_MIGRATION_EVAL}"
@@ -182,3 +184,15 @@ fi
 log "Migration succeeded via execution: $EXECUTION_NAME"
 log "Inspect execution logs:"
 echo "gcloud logging read 'resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${MIGRATE_JOB}\" AND labels.\"run.googleapis.com/execution_name\"=\"${EXECUTION_NAME}\"' --project \"${GCP_PROJECT}\" --limit=200 --format='table(timestamp,severity,textPayload)'"
+
+if [[ "$VERIFY_DB_ROLE_ISOLATION" == "1" ]]; then
+  if [[ -x "$ROLE_ISOLATION_VERIFY_SCRIPT" ]]; then
+    if [[ -n "${DB_URL:-}" || -n "${DATABASE_URL:-}" ]]; then
+      DB_URL="${DB_URL:-${DATABASE_URL:-}}" "$ROLE_ISOLATION_VERIFY_SCRIPT"
+    else
+      log "VERIFY_DB_ROLE_ISOLATION=1 but DB_URL/DATABASE_URL is unset; skipping role isolation verification."
+    fi
+  else
+    log "VERIFY_DB_ROLE_ISOLATION=1 but verifier script missing: $ROLE_ISOLATION_VERIFY_SCRIPT"
+  fi
+fi
