@@ -49,6 +49,13 @@ pub enum AppAction {
     ActiveWorkerChanged {
         worker_id: Option<String>,
     },
+    TopicWatermarkUpdated {
+        topic: String,
+        watermark: u64,
+    },
+    TopicWatermarksReset {
+        topics: Vec<String>,
+    },
     QueueIntent {
         intent: CommandIntent,
     },
@@ -167,6 +174,26 @@ pub fn apply_action(state: &mut AppState, action: AppAction) -> ReducerResult {
         }
         AppAction::ActiveWorkerChanged { worker_id } => {
             state.stream.active_worker_id = worker_id;
+            ReducerResult::default()
+        }
+        AppAction::TopicWatermarkUpdated { topic, watermark } => {
+            let current = state
+                .stream
+                .topic_watermarks
+                .get(&topic)
+                .copied()
+                .unwrap_or(0);
+            if watermark > current {
+                state.stream.topic_watermarks.insert(topic, watermark);
+                state.stream.last_seq = state.stream.topic_watermarks.values().copied().max();
+            }
+            ReducerResult::default()
+        }
+        AppAction::TopicWatermarksReset { topics } => {
+            for topic in topics {
+                state.stream.topic_watermarks.remove(&topic);
+            }
+            state.stream.last_seq = state.stream.topic_watermarks.values().copied().max();
             ReducerResult::default()
         }
         AppAction::QueueIntent { intent } => {

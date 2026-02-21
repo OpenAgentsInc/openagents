@@ -6,7 +6,7 @@ Shared route graph, reducer, command-intent state core, and command planning lay
 
 1. `route`: typed route graph + path mapping.
 2. `intent`: typed command-intent queue model.
-3. `state`: deterministic app/auth/stream state model.
+3. `state`: deterministic app/auth/stream state model (including per-topic sync watermarks).
 4. `reducer`: reducer actions + transition application.
 5. `command_bus`: typed intent-to-HTTP adapter mapping, deterministic error taxonomy, retry baseline, and latency metric contract.
 
