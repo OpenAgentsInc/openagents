@@ -32,6 +32,14 @@ Implementation sequencing and issue backlog live in `docs/ARCHITECTURE-RUST-ROAD
 5. Khala remains projection/replay delivery infrastructure, never an authority write path.
 6. WebSocket is the only live sync transport for Khala. No new SSE lanes.
 
+## Non-Goals
+
+- No actor-per-entity authority model.
+- No WebSocket-based command transport.
+- No non-proto schema authority.
+- No cross-plane SQL joins in production code.
+- No implicit in-memory coupling across services in production.
+
 ## Endstate Topology
 
 ```mermaid
@@ -102,6 +110,11 @@ flowchart LR
 
 ## Service Boundaries and Ownership
 
+No implicit coupling rule:
+
+- Production services must not share in-memory state across control, runtime, and Khala boundaries.
+- All cross-boundary interaction occurs via network APIs and proto-defined contracts, even when deployed within the same cluster.
+
 ### 1) `apps/openagents.com/` (Rust control service)
 
 Owns:
@@ -148,6 +161,10 @@ Ordering contract:
 
 ## Data Plane Model
 
+Authority event definition:
+
+- Authority event: any write that mutates canonical state in `control.*` or `runtime.*` schemas.
+
 Two authority planes remain mandatory:
 
 - `control.*` schema (identity/session/control).
@@ -161,6 +178,7 @@ Allowed deployment options:
 Invariant:
 
 - Cross-plane writes are forbidden.
+- Cross-plane SQL joins are prohibited in production code; cross-plane reads must occur via service APIs.
 - Cross-plane interaction happens only through explicit service APIs and proto-defined contracts.
 
 ## UI Runtime Endstate
@@ -242,6 +260,8 @@ Locked behavior:
 2. Read model updates stream via Khala WebSocket subscriptions.
 3. Clients persist per-topic watermarks and resume deterministically.
 4. `stale_cursor` forces snapshot/replay bootstrap and local watermark reset before resuming live tail.
+5. WebSocket transport is never used for authority mutations.
+6. No RPC-style command semantics are permitted over Khala topics.
 
 ## Topic Taxonomy and Scope Grammar
 
@@ -306,6 +326,16 @@ This envelope is mandatory for deterministic replay, forward/backward compatibil
 2. After replay bootstrap completes, delivery is monotonic per topic for an active subscription.
 3. Sequence gaps are permitted during bootstrap/reconnect handling only; steady-state live delivery must be gap-free per topic.
 4. `stale_cursor` requires snapshot/replay bootstrap and local watermark reset before resuming live tail.
+5. Transport-level frame ordering across Khala nodes is not guaranteed; logical ordering is defined exclusively by `(topic, seq)` and enforced by idempotent client apply.
+6. Clients must discard any frame where `seq` is less than or equal to `last_applied` for that topic.
+
+## Logical Guarantees
+
+- Per-topic logical ordering is monotonic by `seq`.
+- Delivery is at-least-once.
+- Client application is idempotent by `(topic, seq)`.
+- Authority writes occur only through authenticated HTTP control/runtime APIs.
+- Replay correctness is verifiable from the `runtime.*` event log and projection checkpoints.
 
 ## Operational Requirements
 
@@ -372,6 +402,20 @@ Primary target remains GCP deployment topology with:
 - Rust Khala sync service as a separately deployable production service (embedding is allowed for local/dev only).
 - Postgres authority planes.
 - Existing Lightning infra integration.
+
+Canonical path:
+
+- The canonical runtime service path is `apps/runtime`; all legacy `apps/openagents-runtime` references are deprecated.
+
+Production deployment invariants:
+
+- Control service, runtime service, and Khala service are independently deployable production units.
+- In-process coupling across control/runtime/Khala boundaries is not permitted in production builds.
+
+Failure semantics:
+
+- Control service unavailability blocks new command issuance and token refresh, but does not invalidate existing Khala subscriptions until session expiry.
+- Runtime unavailability pauses projection updates and replay advancement, but does not mutate control-plane state.
 
 Buildout sequencing, migration gates, ADR reset tasks, and definition-of-done tracking are maintained in `docs/ARCHITECTURE-RUST-ROADMAP.md`.
 
