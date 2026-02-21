@@ -193,3 +193,9 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 
 - Full staged canary + rollback SOP: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - Deploy smoke check: `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-health.sh`
+
+## Schema Evolution Policy
+
+- Zero-downtime expand/migrate/contract policy and mixed-version sequencing:
+  - `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`
+- Apply this playbook for any control/runtime schema or proto contract rollout where old+new binaries may overlap.

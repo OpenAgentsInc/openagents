@@ -23,6 +23,7 @@ Canonical architecture intent is Rust-only and defined in `ARCHITECTURE-RUST.md`
 - Runtime internal API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
 - Runtime operations runbook: `../apps/runtime/docs/OPERATIONS.md`
 - Runtime Cloud Run deploy runbook: `../apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
+- Zero-downtime schema evolution playbook (control + runtime + proto): `SCHEMA_EVOLUTION_PLAYBOOK.md`
 - Runtime restart/reconnect chaos drill runbook: `../apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
 - Runtime WS/auth/stale-cursor incident runbook: `../apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`
   - Canonical deploy + migration command:
