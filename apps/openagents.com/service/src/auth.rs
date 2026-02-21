@@ -10,7 +10,6 @@ use uuid::Uuid;
 use crate::config::Config;
 
 const DEFAULT_DEVICE_ID: &str = "device:unknown";
-const DEFAULT_ORG_ID: &str = "user:1";
 const DEFAULT_CLIENT_NAME: &str = "web";
 
 #[derive(Clone)]
@@ -47,6 +46,7 @@ struct SessionRecord {
     email: String,
     device_id: String,
     token_name: String,
+    active_org_id: String,
     access_token: String,
     refresh_token: String,
     refresh_token_id: String,
@@ -63,6 +63,7 @@ struct UserRecord {
     email: String,
     name: String,
     workos_user_id: String,
+    memberships: Vec<OrgMembership>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -72,6 +73,24 @@ pub enum SessionStatus {
     ReauthRequired,
     Expired,
     Revoked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrgRole {
+    Owner,
+    Admin,
+    Member,
+    Viewer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrgMembership {
+    pub org_id: String,
+    pub org_slug: String,
+    pub role: OrgRole,
+    pub role_scopes: Vec<String>,
+    pub default_org: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +154,8 @@ pub enum AuthError {
     },
     #[error("{message}")]
     Unauthorized { message: String },
+    #[error("{message}")]
+    Forbidden { message: String },
     #[error("{message}")]
     Provider { message: String },
 }
@@ -280,6 +301,17 @@ impl AuthService {
         let mut state = self.state.write().await;
 
         let (user, new_user) = upsert_user(&mut state, verified)?;
+        let active_org_id = user
+            .memberships
+            .iter()
+            .find(|membership| membership.default_org)
+            .map(|membership| membership.org_id.clone())
+            .or_else(|| {
+                user.memberships
+                    .first()
+                    .map(|membership| membership.org_id.clone())
+            })
+            .unwrap_or_else(|| format!("user:{}", user.id));
 
         revoke_existing_sessions_for_token_name(&mut state, &user.id, &token_name);
 
@@ -294,6 +326,7 @@ impl AuthService {
             email: user.email.clone(),
             device_id: token_name.clone(),
             token_name: token_name.clone(),
+            active_org_id,
             access_token: access_token.clone(),
             refresh_token: refresh_token.clone(),
             refresh_token_id: refresh_token_id.clone(),
@@ -378,6 +411,7 @@ impl AuthService {
                 name: user.name,
                 workos_user_id: user.workos_user_id,
             },
+            memberships: user.memberships,
         })
     }
 
@@ -499,18 +533,158 @@ impl AuthService {
             revoked_at: Utc::now(),
         })
     }
+
+    pub async fn set_active_org_by_access_token(
+        &self,
+        access_token: &str,
+        org_id: &str,
+    ) -> Result<SessionBundle, AuthError> {
+        let mut state = self.state.write().await;
+        let session_id = match state.access_index.get(access_token) {
+            Some(value) => value.clone(),
+            None => {
+                return Err(AuthError::Unauthorized {
+                    message: "Unauthenticated.".to_string(),
+                });
+            }
+        };
+
+        let existing = match state.sessions.get(&session_id) {
+            Some(value) => value.clone(),
+            None => {
+                return Err(AuthError::Unauthorized {
+                    message: "Unauthenticated.".to_string(),
+                });
+            }
+        };
+
+        if existing.status != SessionStatus::Active || existing.access_expires_at <= Utc::now() {
+            return Err(AuthError::Unauthorized {
+                message: "Unauthenticated.".to_string(),
+            });
+        }
+
+        let user = match state.users_by_id.get(&existing.user_id) {
+            Some(value) => value.clone(),
+            None => {
+                return Err(AuthError::Unauthorized {
+                    message: "Unauthenticated.".to_string(),
+                });
+            }
+        };
+
+        if !user
+            .memberships
+            .iter()
+            .any(|membership| membership.org_id == org_id)
+        {
+            return Err(AuthError::Forbidden {
+                message: "Requested organization is not available for this user.".to_string(),
+            });
+        }
+
+        let mut updated = existing;
+        updated.active_org_id = org_id.to_string();
+        state.sessions.insert(session_id, updated.clone());
+
+        Ok(SessionBundle {
+            session: SessionView::from_session(&updated),
+            user: AuthUser {
+                id: user.id.clone(),
+                email: user.email.clone(),
+                name: user.name.clone(),
+                workos_user_id: user.workos_user_id.clone(),
+            },
+            memberships: user.memberships.clone(),
+        })
+    }
+
+    pub async fn evaluate_policy_by_access_token(
+        &self,
+        access_token: &str,
+        request: PolicyCheckRequest,
+    ) -> Result<PolicyDecision, AuthError> {
+        let bundle = self.session_from_access_token(access_token).await?;
+        let resolved_org_id = request
+            .org_id
+            .and_then(|value| non_empty(value.trim().to_string()))
+            .unwrap_or_else(|| bundle.session.active_org_id.clone());
+
+        let Some(membership) = bundle
+            .memberships
+            .iter()
+            .find(|membership| membership.org_id == resolved_org_id)
+        else {
+            return Ok(PolicyDecision {
+                allowed: false,
+                resolved_org_id,
+                granted_scopes: Vec::new(),
+                denied_reasons: vec!["org_scope_denied".to_string()],
+            });
+        };
+
+        let mut denied_reasons = Vec::new();
+        let mut granted_scopes = Vec::new();
+
+        for scope in request.required_scopes {
+            let normalized_scope = scope.trim().to_string();
+            if normalized_scope.is_empty() {
+                continue;
+            }
+
+            if scope_allowed(membership, &normalized_scope) {
+                granted_scopes.push(normalized_scope);
+            } else {
+                denied_reasons.push(format!("scope_denied:{normalized_scope}"));
+            }
+        }
+
+        for topic in request.requested_topics {
+            let normalized_topic = topic.trim().to_string();
+            if normalized_topic.is_empty() {
+                continue;
+            }
+
+            if !topic_allowed(&normalized_topic, &bundle.user.id, &resolved_org_id) {
+                denied_reasons.push(format!("topic_denied:{normalized_topic}"));
+            }
+        }
+
+        Ok(PolicyDecision {
+            allowed: denied_reasons.is_empty(),
+            resolved_org_id,
+            granted_scopes,
+            denied_reasons,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct SessionBundle {
     pub session: SessionView,
     pub user: AuthUser,
+    pub memberships: Vec<OrgMembership>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RevocationResult {
     pub session_id: String,
     pub revoked_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PolicyCheckRequest {
+    pub org_id: Option<String>,
+    pub required_scopes: Vec<String>,
+    pub requested_topics: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PolicyDecision {
+    pub allowed: bool,
+    pub resolved_org_id: String,
+    pub granted_scopes: Vec<String>,
+    pub denied_reasons: Vec<String>,
 }
 
 impl SessionView {
@@ -526,7 +700,7 @@ impl SessionView {
             access_expires_at: session.access_expires_at,
             refresh_expires_at: session.refresh_expires_at,
             reauth_required: session.reauth_required,
-            active_org_id: DEFAULT_ORG_ID.to_string(),
+            active_org_id: session.active_org_id.clone(),
         }
     }
 }
@@ -624,14 +798,17 @@ fn upsert_user(
                 verified.first_name.as_deref(),
                 verified.last_name.as_deref(),
             );
+            user.memberships =
+                ensure_default_memberships(&user.id, &email, user.memberships.clone());
             state.users_by_email.insert(email, user_id.clone());
             state.users_by_workos_id.insert(workos_user_id, user_id);
             return Ok((user.clone(), false));
         }
     }
 
+    let user_id = format!("user_{}", Uuid::new_v4().simple());
     let new_user = UserRecord {
-        id: format!("user_{}", Uuid::new_v4().simple()),
+        id: user_id.clone(),
         email: email.clone(),
         name: derived_name(
             &email,
@@ -639,6 +816,7 @@ fn upsert_user(
             verified.last_name.as_deref(),
         ),
         workos_user_id: workos_user_id.clone(),
+        memberships: ensure_default_memberships(&user_id, &email, Vec::new()),
     };
 
     state.users_by_email.insert(email, new_user.id.clone());
@@ -679,6 +857,112 @@ fn derived_name(email: &str, first_name: Option<&str>, last_name: Option<&str>) 
     }
 
     candidate
+}
+
+fn ensure_default_memberships(
+    user_id: &str,
+    email: &str,
+    existing: Vec<OrgMembership>,
+) -> Vec<OrgMembership> {
+    let mut by_org: HashMap<String, OrgMembership> = existing
+        .into_iter()
+        .map(|membership| (membership.org_id.clone(), membership))
+        .collect();
+
+    let personal_org_id = format!("user:{user_id}");
+    by_org
+        .entry(personal_org_id.clone())
+        .or_insert_with(|| OrgMembership {
+            org_id: personal_org_id.clone(),
+            org_slug: format!("user-{user_id}"),
+            role: OrgRole::Owner,
+            role_scopes: owner_role_scopes(),
+            default_org: true,
+        });
+
+    if email.ends_with("@openagents.com") {
+        by_org
+            .entry("org:openagents".to_string())
+            .or_insert_with(|| OrgMembership {
+                org_id: "org:openagents".to_string(),
+                org_slug: "openagents".to_string(),
+                role: OrgRole::Member,
+                role_scopes: member_role_scopes(),
+                default_org: false,
+            });
+    }
+
+    let mut memberships: Vec<OrgMembership> = by_org.into_values().collect();
+    memberships.sort_by(|left, right| left.org_id.cmp(&right.org_id));
+
+    if !memberships.iter().any(|membership| membership.default_org) {
+        if let Some(first) = memberships.first_mut() {
+            first.default_org = true;
+        }
+    }
+
+    memberships
+}
+
+fn owner_role_scopes() -> Vec<String> {
+    vec![
+        "runtime.read".to_string(),
+        "runtime.write".to_string(),
+        "sync.subscribe".to_string(),
+        "policy.evaluate".to_string(),
+        "org.membership.read".to_string(),
+        "org.membership.write".to_string(),
+    ]
+}
+
+fn member_role_scopes() -> Vec<String> {
+    vec![
+        "runtime.read".to_string(),
+        "sync.subscribe".to_string(),
+        "policy.evaluate".to_string(),
+        "org.membership.read".to_string(),
+    ]
+}
+
+fn scope_allowed(membership: &OrgMembership, required_scope: &str) -> bool {
+    match membership.role {
+        OrgRole::Owner | OrgRole::Admin => true,
+        OrgRole::Member | OrgRole::Viewer => membership
+            .role_scopes
+            .iter()
+            .any(|scope| scope == required_scope),
+    }
+}
+
+fn topic_allowed(topic: &str, user_id: &str, org_id: &str) -> bool {
+    if topic.starts_with(&format!("user:{user_id}:")) {
+        return true;
+    }
+
+    let org_prefix = if org_id.starts_with("org:") {
+        format!("{org_id}:")
+    } else {
+        format!("org:{org_id}:")
+    };
+
+    if topic.starts_with(&org_prefix) {
+        return true;
+    }
+
+    if topic.starts_with("run:") {
+        return true;
+    }
+
+    false
+}
+
+fn non_empty(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 #[async_trait]

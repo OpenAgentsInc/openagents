@@ -114,6 +114,7 @@ Auth artifacts: `apps/openagents.com/service/src/auth.rs`, `apps/openagents.com/
 
 ### OA-RUST-017 — [Web Service] Implement org membership and policy API parity
 Description: Port org membership and policy enforcement APIs currently required for runtime access and scoped actions.
+Policy artifacts: `apps/openagents.com/service/src/auth.rs`, `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/README.md`
 
 ### OA-RUST-018 — [Web Service] Implement sync token minting and scope derivation
 Description: Implement secure sync token issuance with topic scope validation for Khala subscriptions across web/desktop/iOS.
