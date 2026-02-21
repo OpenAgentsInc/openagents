@@ -1,6 +1,6 @@
 # Rust Legacy Infra Decommission Plan
 
-Status: active  
+Status: active (Phase C destructive teardown deferred)  
 Owner: `owner:infra`  
 Issue: OA-RUST-111 (`#1936`)
 
@@ -42,35 +42,43 @@ Remove legacy Laravel infrastructure in controlled phases while preserving produ
 - Report: `docs/reports/2026-02-21-legacy-infra-decommission-phase-a.md`
 - Action: deleted `openagents-migrate-staging`.
 
-2. Phase B in progress (2026-02-21)
+2. Phase B complete (2026-02-21)
 - Report: `docs/reports/2026-02-21-legacy-infra-decommission-phase-b.md`
 - Completed in this phase:
   - legacy Laravel deploy entrypoints frozen with explicit unfreeze gates.
   - rollback metadata snapshot captured under `docs/reports/legacy-infra/20260221T195258Z-phase-b/`.
-- Remaining before Phase C:
-  - keep production traffic on `openagents-web` until OA-RUST-112 maintenance-mode cutover window opens.
-  - complete and sign off Laravel DB backup + port evidence.
+  - keep production traffic on Laravel revision until explicit final cutover approval.
 
 3. Pre-Phase C DB backup evidence captured (2026-02-21)
 - Backups created in `gs://openagentsgemini_cloudbuild/backups/laravel/`:
   - `openagents_web-20260221T212513Z.sql.gz`
+  - `openagents_web-20260221T214135Z.sql.gz`
   - `openagents_web_staging-20260221T212513Z.sql.gz`
+  - `openagents_web_staging-20260221T213651Z.sql.gz`
 - Artifact metadata recorded in:
   - `docs/reports/2026-02-21-laravel-db-backup-pre-decom.md`
+
+4. Phase C production-hold update (2026-02-21)
+- Report: `docs/reports/2026-02-21-legacy-infra-decommission-phase-c.md`
+- Current enforced state:
+  - `openagents.com` production traffic pinned to Laravel revision `openagents-web-00097-jr6`.
+  - `staging.openagents.com` mapped to Rust staging lane (`openagents-web-staging`).
+  - legacy production jobs `openagents-migrate` and `openagents-maintenance-down` restored and retained.
+  - destructive legacy teardown remains blocked pending explicit final approval.
 
 ## Current disposition map (2026-02-21)
 
 | Resource | Class | Decision | Target phase | Notes |
 | --- | --- | --- | --- | --- |
-| `openagents-web-staging` (Cloud Run service) | legacy staging | keep temporarily | Phase B/C | Still backs `staging.openagents.com` until Rust staging service is live and mapped. |
+| `openagents-web-staging` (Cloud Run service) | staging lane | keep | Phase C gate | Currently serving Rust staging cutover validation. |
 | `openagents-migrate-staging` (Cloud Run job) | legacy staging | remove now | Phase A | Deleted in OA-RUST-111 Phase A execution. |
-| `openagents-web` (Cloud Run service) | legacy production | keep | Phase C | Serves `openagents.com` and `next.openagents.com`; delete last. Phase B rollback pointer captured. |
-| `openagents-migrate` (Cloud Run job) | legacy production | keep | Phase C | Required by current production Laravel service until cutover complete. |
-| `openagents-maintenance-down` (Cloud Run job) | legacy production | keep temporarily | Phase B/C | Replaced by Rust maintenance mode in OA-RUST-112, then retire. Phase B rollback pointer captured. |
-| `openagents-runtime-migrate` (Cloud Run job, legacy command shape) | legacy runtime migration | keep temporarily | Phase B/C | Replace with Rust runtime migrate job, then retire legacy job. |
+| `openagents-web` (Cloud Run service) | production lane (legacy service name) | keep | Phase C | `openagents.com` traffic currently pinned to Laravel revision `openagents-web-00097-jr6`; delete/migrate only in approved final window. |
+| `openagents-migrate` (Cloud Run job) | legacy production | keep | Phase C | Restored and retained while production remains Laravel-backed. |
+| `openagents-maintenance-down` (Cloud Run job) | legacy production | keep | Phase C | Restored and retained for rollback parity while production remains Laravel-backed. |
+| `openagents-runtime-migrate` (Cloud Run job) | active runtime migration | keep | ongoing | Active runtime migrate job; not a Laravel teardown target in this phase. |
 | `openagents-web` (Artifact Registry repo) | legacy production images | keep | Phase C | Remove after production service deletion and rollback window closes. |
 | `openagents-web-*` secrets | legacy production/staging secrets | keep | Phase C | Remove only after service/job deletion and env migration complete. |
-| `openagents.com -> openagents-web` domain mapping | legacy production route | keep | Phase C | Switch to Rust service during final cutover only. |
+| `openagents.com -> openagents-web` domain mapping | production route | keep | Phase C | Keep mapping stable; move traffic only during approved final cutover. |
 
 ## Inventory commands
 
