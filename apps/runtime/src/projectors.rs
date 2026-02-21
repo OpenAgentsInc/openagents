@@ -586,6 +586,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn duplicate_and_out_of_order_delivery_is_idempotent_by_topic_seq() -> Result<()> {
+        let run_id = Uuid::now_v7();
+        let projector = InMemoryProjectionPipeline::new();
+        let stream = vec![
+            RunEvent {
+                seq: 1,
+                event_type: "run.started".to_string(),
+                payload: json!({"source": "runtime"}),
+                idempotency_key: None,
+                recorded_at: Utc::now(),
+            },
+            // Simulate transport disorder from multi-node fanout.
+            RunEvent {
+                seq: 3,
+                event_type: "run.finished".to_string(),
+                payload: json!({"status": "succeeded"}),
+                idempotency_key: None,
+                recorded_at: Utc::now(),
+            },
+            // Late frame with an older sequence should be discarded.
+            RunEvent {
+                seq: 2,
+                event_type: "run.step.completed".to_string(),
+                payload: json!({"step": 1}),
+                idempotency_key: None,
+                recorded_at: Utc::now(),
+            },
+            // Duplicate frame should be discarded idempotently.
+            RunEvent {
+                seq: 3,
+                event_type: "run.finished".to_string(),
+                payload: json!({"status": "succeeded"}),
+                idempotency_key: None,
+                recorded_at: Utc::now(),
+            },
+        ];
+
+        for event in &stream {
+            projector.apply_run_event(run_id, event).await?;
+        }
+
+        let summary = projector
+            .run_summary(run_id)
+            .await?
+            .ok_or_else(|| anyhow!("missing run summary after idempotent apply"))?;
+        assert_eq!(summary.last_seq, 3);
+        assert_eq!(summary.event_count, 2);
+        assert_eq!(summary.status, "succeeded");
+
+        let topic = format!("run:{run_id}:events");
+        let checkpoint = projector
+            .checkpoint_for_run(run_id)
+            .await?
+            .ok_or_else(|| anyhow!("missing checkpoint for idempotent apply test"))?;
+        assert_eq!(checkpoint.topic, topic);
+        assert_eq!(checkpoint.last_seq, 3);
+
+        let drift = projector
+            .drift_for_topic(&topic)
+            .await?
+            .ok_or_else(|| anyhow!("expected drift report for out-of-order stream"))?;
+        assert_eq!(drift.reason, "sequence_gap");
+        assert_eq!(drift.last_seen_seq, 1);
+        assert_eq!(drift.incoming_seq, 3);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn sequence_gap_records_drift_report() -> Result<()> {
         let run_id = Uuid::now_v7();
         let projector = InMemoryProjectionPipeline::new();

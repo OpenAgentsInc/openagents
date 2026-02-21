@@ -345,26 +345,29 @@ impl FanoutDriver for MemoryFanoutDriver {
         let Some(queue) = topics.get(normalized) else {
             return Ok(Vec::new());
         };
-        if let (Some(oldest), Some(head)) = (queue.messages.front(), queue.messages.back()) {
-            if after_sequence < oldest.sequence.saturating_sub(1) {
+        if let Some((oldest_sequence, head_sequence)) = queue_seq_bounds(queue) {
+            if after_sequence < oldest_sequence.saturating_sub(1) {
                 return Err(FanoutError::StaleCursor {
                     topic: normalized.to_string(),
                     requested_cursor: after_sequence,
-                    oldest_available_cursor: oldest.sequence.saturating_sub(1),
-                    head_cursor: head.sequence,
+                    oldest_available_cursor: oldest_sequence.saturating_sub(1),
+                    head_cursor: head_sequence,
                 });
             }
-            if after_sequence > head.sequence {
+            if after_sequence > head_sequence {
                 return Ok(Vec::new());
             }
         }
-        let messages = queue
+        let mut messages = queue
             .messages
             .iter()
             .filter(|message| message.sequence > after_sequence)
-            .take(effective_limit)
             .cloned()
-            .collect();
+            .collect::<Vec<_>>();
+        // Transport delivery can arrive out-of-order in multi-node topologies; sort by
+        // authoritative sequence so clients receive logical ordering by (topic, seq).
+        messages.sort_by(|a, b| a.sequence.cmp(&b.sequence));
+        messages.truncate(effective_limit);
         Ok(messages)
     }
 
@@ -378,14 +381,14 @@ impl FanoutDriver for MemoryFanoutDriver {
         let Some(queue) = topics.get(normalized) else {
             return Ok(None);
         };
-        let (Some(oldest), Some(head)) = (queue.messages.front(), queue.messages.back()) else {
+        let Some((oldest_sequence, head_sequence)) = queue_seq_bounds(queue) else {
             return Ok(None);
         };
         Ok(Some(FanoutTopicWindow {
             topic: normalized.to_string(),
             topic_class: queue.topic_class.as_str().to_string(),
-            oldest_sequence: oldest.sequence,
-            head_sequence: head.sequence,
+            oldest_sequence,
+            head_sequence,
             queue_depth: queue.messages.len(),
             dropped_messages: queue.dropped_messages,
             publish_rate_limit_per_second: queue.max_publish_per_second,
@@ -402,13 +405,12 @@ impl FanoutDriver for MemoryFanoutDriver {
         let mut windows = topics
             .iter()
             .filter_map(|(topic, queue)| {
-                let oldest = queue.messages.front()?;
-                let head = queue.messages.back()?;
+                let (oldest_sequence, head_sequence) = queue_seq_bounds(queue)?;
                 Some(FanoutTopicWindow {
                     topic: topic.clone(),
                     topic_class: queue.topic_class.as_str().to_string(),
-                    oldest_sequence: oldest.sequence,
-                    head_sequence: head.sequence,
+                    oldest_sequence,
+                    head_sequence,
                     queue_depth: queue.messages.len(),
                     dropped_messages: queue.dropped_messages,
                     publish_rate_limit_per_second: queue.max_publish_per_second,
@@ -451,6 +453,18 @@ impl FanoutDriver for MemoryFanoutDriver {
 
 fn estimate_payload_bytes(payload: &serde_json::Value) -> usize {
     serde_json::to_vec(payload).map_or(0, |bytes| bytes.len())
+}
+
+fn queue_seq_bounds(queue: &TopicQueue) -> Option<(u64, u64)> {
+    let mut iter = queue.messages.iter();
+    let first = iter.next()?;
+    let mut min_seq = first.sequence;
+    let mut max_seq = first.sequence;
+    for message in iter {
+        min_seq = min_seq.min(message.sequence);
+        max_seq = max_seq.max(message.sequence);
+    }
+    Some((min_seq, max_seq))
 }
 
 #[cfg(test)]
@@ -786,6 +800,41 @@ mod tests {
             window.last_violation_reason.as_deref(),
             Some("khala_frame_payload_too_large")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_fanout_returns_logical_seq_order_when_transport_order_is_mixed() -> Result<()> {
+        let fanout = FanoutHub::memory(8);
+        for seq in [2_u64, 1_u64, 3_u64] {
+            fanout
+                .publish(
+                    "run:logical-order:events",
+                    FanoutMessage {
+                        topic: String::new(),
+                        sequence: seq,
+                        kind: "run.step".to_string(),
+                        payload: json!({"seq": seq}),
+                        published_at: chrono::Utc::now(),
+                    },
+                )
+                .await?;
+        }
+
+        let messages = fanout.poll("run:logical-order:events", 0, 10).await?;
+        let sequences = messages
+            .iter()
+            .map(|message| message.sequence)
+            .collect::<Vec<_>>();
+        assert_eq!(sequences, vec![1, 2, 3]);
+
+        let window = fanout
+            .topic_window("run:logical-order:events")
+            .await?
+            .ok_or_else(|| anyhow!("missing topic window"))?;
+        assert_eq!(window.oldest_sequence, 1);
+        assert_eq!(window.head_sequence, 3);
 
         Ok(())
     }
