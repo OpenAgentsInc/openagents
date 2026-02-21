@@ -23,10 +23,15 @@ Rust/WASM bootstrap entrypoint for the OpenAgents web surface.
    - replay resume from persisted topic watermarks
    - stale-cursor reset + reconnect behavior
    - idempotent duplicate/out-of-order watermark handling.
-10. Persists sync state (`openagents.web.sync.v1`) with schema-versioned migration:
-   - topic watermarks + subscribed topic metadata
-   - deterministic resume-after map generation
-   - corruption reset safety path (invalid payload is cleared, boot continues)
+10. Persists sync state in IndexedDB (`openagents.web.sync`) with schema/versioned migration:
+   - `sync_state` store: topic watermarks + subscribed topic metadata
+   - `view_state` store: local projection view state (`active_worker_id`, `last_seq`)
+   - one-time legacy migration from localStorage key `openagents.web.sync.v1`
+   - deterministic resume-after map generation from persisted watermarks
+   - corruption/incompatible payload reset path (indexeddb + legacy key cleared, boot continues)
+
+Migration and recovery runbook:
+- `apps/openagents.com/web-shell/docs/INDEXEDDB_SYNC_PERSISTENCE.md`
 11. Adds Codex thread pilot-route state lane:
    - Rust-owned stream payload decoding for codex worker events
    - token-overlap-safe assistant/reasoning delta assembly

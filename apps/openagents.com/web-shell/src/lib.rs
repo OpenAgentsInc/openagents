@@ -6,7 +6,6 @@ mod codex_thread;
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use std::cell::{Cell, RefCell};
-    use std::collections::BTreeMap;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use futures_util::{FutureExt, SinkExt, StreamExt, pin_mut, select};
@@ -26,8 +25,12 @@ mod wasm {
         apply_watermark, build_phoenix_frame, decode_khala_payload, parse_phoenix_frame,
     };
     use openagents_client_core::sync_persistence::{
-        PersistedSyncState, decode_sync_state, encode_sync_state, normalized_topics,
-        resume_after_map,
+        PersistedSyncState, decode_sync_state, normalized_topics, resume_after_map,
+    };
+    use openagents_client_core::web_sync_storage::{
+        LoadedSyncSnapshot, PersistedSyncSnapshot, PersistedViewState, WEB_SYNC_DB_NAME,
+        clear_sync_snapshot_in_indexeddb, load_sync_snapshot_from_indexeddb,
+        persist_sync_snapshot_to_indexeddb,
     };
     use openagents_ui_core::{ShellCardSpec, draw_shell_backdrop, draw_shell_card};
     use serde::{Deserialize, Serialize};
@@ -503,7 +506,7 @@ mod wasm {
         ensure_codex_chat_dom()?;
 
         let current_path = current_pathname();
-        let persisted_sync_state = restore_persisted_sync_state();
+        let persisted_sync_state = restore_persisted_sync_state().await;
         APP_STATE.with(|state| {
             let mut state = state.borrow_mut();
             let _ = apply_action(
@@ -1607,38 +1610,69 @@ mod wasm {
         persist_sync_state_snapshot_nonfatal_force();
     }
 
-    fn hydrate_stream_state(state: &mut AppState, persisted_sync_state: &PersistedSyncState) {
-        state.stream.topic_watermarks = persisted_sync_state.topic_watermarks.clone();
-        state.stream.last_seq = state.stream.topic_watermarks.values().copied().max();
-        set_subscribed_topics(persisted_sync_state.subscribed_topics.clone());
+    fn hydrate_stream_state(state: &mut AppState, persisted_sync_state: &PersistedSyncSnapshot) {
+        state.stream.topic_watermarks = persisted_sync_state.sync_state.topic_watermarks.clone();
+        state.stream.last_seq = persisted_sync_state
+            .view_state
+            .last_seq
+            .or_else(|| state.stream.topic_watermarks.values().copied().max());
+        state.stream.active_worker_id = persisted_sync_state.view_state.active_worker_id.clone();
+        set_subscribed_topics(persisted_sync_state.sync_state.subscribed_topics.clone());
     }
 
-    fn restore_persisted_sync_state() -> Option<PersistedSyncState> {
-        match load_persisted_sync_state() {
-            Ok(Some((state, migrated))) => {
-                set_subscribed_topics(state.subscribed_topics.clone());
-                if migrated {
-                    if let Err(error) = persist_sync_state_snapshot_from(&state, true) {
+    async fn restore_persisted_sync_state() -> Option<PersistedSyncSnapshot> {
+        match load_sync_snapshot_from_indexeddb(WEB_SYNC_DB_NAME).await {
+            Ok(Some(loaded)) => {
+                if loaded.migrated {
+                    set_boot_phase("booting", "migrated sync persistence payload in IndexedDB");
+                    if let Err(error) =
+                        persist_sync_state_snapshot_from(&loaded.snapshot, true).await
+                    {
                         DIAGNOSTICS
                             .with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
                     }
                 }
-                Some(state)
+                Some(loaded.snapshot)
             }
-            Ok(None) => None,
+            Ok(None) => match load_legacy_sync_state_from_local_storage() {
+                Ok(Some(loaded)) => {
+                    set_boot_phase(
+                        "booting",
+                        "migrating legacy sync persistence from localStorage to IndexedDB",
+                    );
+                    let snapshot = loaded.snapshot;
+                    if let Err(error) = persist_sync_state_snapshot_from(&snapshot, true).await {
+                        DIAGNOSTICS
+                            .with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
+                    } else {
+                        clear_legacy_sync_state_from_local_storage();
+                    }
+                    Some(snapshot)
+                }
+                Ok(None) => None,
+                Err(error) => {
+                    clear_persisted_sync_state();
+                    clear_runtime_sync_state();
+                    set_boot_phase(
+                        "booting",
+                        &format!("resetting invalid legacy sync persistence payload: {error}"),
+                    );
+                    None
+                }
+            },
             Err(error) => {
                 clear_persisted_sync_state();
                 clear_runtime_sync_state();
                 set_boot_phase(
                     "booting",
-                    &format!("resetting invalid sync persistence payload: {error}"),
+                    &format!("resetting invalid indexeddb sync persistence payload: {error}"),
                 );
                 None
             }
         }
     }
 
-    fn load_persisted_sync_state() -> Result<Option<(PersistedSyncState, bool)>, String> {
+    fn load_legacy_sync_state_from_local_storage() -> Result<Option<LoadedSyncSnapshot>, String> {
         let Some(window) = web_sys::window() else {
             return Ok(None);
         };
@@ -1654,35 +1688,57 @@ mod wasm {
         let Some(raw) = raw else {
             return Ok(None);
         };
-        decode_sync_state(&raw)
-            .map(Some)
-            .map_err(|error| format!("failed to decode persisted sync state: {error}"))
+
+        let (sync_state, sync_migrated) = decode_sync_state(&raw)
+            .map_err(|error| format!("failed to decode persisted sync state: {error}"))?;
+        Ok(Some(LoadedSyncSnapshot {
+            snapshot: PersistedSyncSnapshot {
+                sync_state,
+                view_state: PersistedViewState::default(),
+            },
+            migrated: sync_migrated,
+        }))
     }
 
     fn persist_sync_state_snapshot_nonfatal() {
-        if let Err(error) = persist_sync_state_snapshot(false) {
-            DIAGNOSTICS.with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
-        }
+        spawn_local(async move {
+            if let Err(error) = persist_sync_state_snapshot(false).await {
+                DIAGNOSTICS.with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
+            }
+        });
     }
 
     fn persist_sync_state_snapshot_nonfatal_force() {
-        if let Err(error) = persist_sync_state_snapshot(true) {
-            DIAGNOSTICS.with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
-        }
+        spawn_local(async move {
+            if let Err(error) = persist_sync_state_snapshot(true).await {
+                DIAGNOSTICS.with(|diagnostics| diagnostics.borrow_mut().last_error = Some(error));
+            }
+        });
     }
 
-    fn persist_sync_state_snapshot(force: bool) -> Result<(), String> {
-        let snapshot = PersistedSyncState {
-            topic_watermarks: stream_topic_watermarks(),
-            subscribed_topics: subscribed_topics(),
-            updated_at_unix_ms: current_unix_ms(),
-            ..PersistedSyncState::default()
-        };
-        persist_sync_state_snapshot_from(&snapshot, force)
+    async fn persist_sync_state_snapshot(force: bool) -> Result<(), String> {
+        let snapshot = APP_STATE.with(|state| {
+            let state = state.borrow();
+            PersistedSyncSnapshot {
+                sync_state: PersistedSyncState {
+                    topic_watermarks: state.stream.topic_watermarks.clone(),
+                    subscribed_topics: subscribed_topics(),
+                    updated_at_unix_ms: current_unix_ms(),
+                    ..PersistedSyncState::default()
+                },
+                view_state: PersistedViewState {
+                    schema_version: PersistedViewState::default().schema_version,
+                    active_worker_id: state.stream.active_worker_id.clone(),
+                    last_seq: state.stream.last_seq,
+                    updated_at_unix_ms: current_unix_ms(),
+                },
+            }
+        });
+        persist_sync_state_snapshot_from(&snapshot, force).await
     }
 
-    fn persist_sync_state_snapshot_from(
-        snapshot: &PersistedSyncState,
+    async fn persist_sync_state_snapshot_from(
+        snapshot: &PersistedSyncSnapshot,
         force: bool,
     ) -> Result<(), String> {
         let now = current_unix_ms();
@@ -1694,27 +1750,32 @@ mod wasm {
             }
         }
 
-        persist_sync_state(snapshot)?;
+        persist_sync_state(snapshot).await?;
         SYNC_LAST_PERSIST_AT_MS.with(|last| last.set(now));
         Ok(())
     }
 
-    fn persist_sync_state(snapshot: &PersistedSyncState) -> Result<(), String> {
-        let Some(window) = web_sys::window() else {
-            return Err("window is unavailable for sync persistence".to_string());
-        };
-        let storage = window
-            .local_storage()
-            .map_err(|_| "failed to access local storage for sync persistence".to_string())?
-            .ok_or_else(|| "local storage is unavailable for sync persistence".to_string())?;
-        let encoded = encode_sync_state(snapshot)
-            .map_err(|error| format!("failed to encode sync persistence payload: {error}"))?;
-        storage
-            .set_item(SYNC_STATE_STORAGE_KEY, &encoded)
-            .map_err(|_| "failed to persist sync state".to_string())
+    async fn persist_sync_state(snapshot: &PersistedSyncSnapshot) -> Result<(), String> {
+        persist_sync_snapshot_to_indexeddb(WEB_SYNC_DB_NAME, snapshot)
+            .await
+            .map_err(|error| format!("failed to persist indexeddb sync state: {error}"))
     }
 
     fn clear_persisted_sync_state() {
+        clear_legacy_sync_state_from_local_storage();
+        SYNC_LAST_PERSIST_AT_MS.with(|last| last.set(0));
+
+        spawn_local(async move {
+            if let Err(error) = clear_sync_snapshot_in_indexeddb(WEB_SYNC_DB_NAME).await {
+                DIAGNOSTICS.with(|diagnostics| {
+                    diagnostics.borrow_mut().last_error =
+                        Some(format!("failed to clear indexeddb sync state: {error}"));
+                });
+            }
+        });
+    }
+
+    fn clear_legacy_sync_state_from_local_storage() {
         let Some(window) = web_sys::window() else {
             return;
         };
@@ -1725,11 +1786,6 @@ mod wasm {
             return;
         };
         let _ = storage.remove_item(SYNC_STATE_STORAGE_KEY);
-        SYNC_LAST_PERSIST_AT_MS.with(|last| last.set(0));
-    }
-
-    fn stream_topic_watermarks() -> BTreeMap<String, u64> {
-        APP_STATE.with(|state| state.borrow().stream.topic_watermarks.clone())
     }
 
     fn subscribed_topics() -> Vec<String> {

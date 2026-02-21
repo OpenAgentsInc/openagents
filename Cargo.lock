@@ -6950,9 +6950,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64",
+ "js-sys",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

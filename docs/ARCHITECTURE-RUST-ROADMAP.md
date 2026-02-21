@@ -352,6 +352,7 @@ Dependencies: OA-RUST-018, OA-RUST-044.
 
 ### OA-RUST-081 — [WGPUI Web] Implement IndexedDB persistence layer and schema migrations
 Description: Define browser persistence for watermarks and local state using IndexedDB with versioned migrations and corruption handling.
+Enforcement artifacts: `crates/openagents-client-core/src/web_sync_storage.rs`, `apps/openagents.com/web-shell/src/lib.rs`, `apps/openagents.com/web-shell/docs/INDEXEDDB_SYNC_PERSISTENCE.md`, `apps/openagents.com/web-shell/README.md`
 Acceptance criteria: State survives app reload/version upgrade; migration failure triggers safe reset path; no localStorage-only authority state remains.
 Dependencies: OA-RUST-029, OA-RUST-030.
 
