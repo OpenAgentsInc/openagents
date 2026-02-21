@@ -15,6 +15,7 @@ use crate::{
     workers::InMemoryWorkerRegistry,
 };
 
+pub mod artifacts;
 pub mod authority;
 pub mod config;
 pub mod event_log;

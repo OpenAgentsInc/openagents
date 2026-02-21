@@ -33,6 +33,8 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 - `POST /internal/v1/runs` creates a run and appends `run.started`.
 - `POST /internal/v1/runs/:run_id/events` appends runtime events.
 - `GET /internal/v1/runs/:run_id` reads current run state.
+- `GET /internal/v1/runs/:run_id/receipt` returns deterministic runtime receipt artifact.
+- `GET /internal/v1/runs/:run_id/replay` returns deterministic replay JSONL artifact.
 - `GET /internal/v1/projectors/checkpoints/:run_id` reads latest projector checkpoint.
 - `POST /internal/v1/workers` registers worker ownership/lifecycle state.
 - `GET /internal/v1/workers/:worker_id` reads owner-scoped worker state.
@@ -45,6 +47,7 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 1. Runtime event authority now uses a durable JSONL append log; run/projector read models remain in-memory during bootstrap.
 2. Run events are durably appended to `RUNTIME_EVENT_LOG_PATH` (JSONL) before in-memory run projection updates.
 3. Event append requests support idempotency (`idempotency_key`) and optimistic ordering checks (`expected_previous_seq`).
-4. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
-5. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
-6. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+4. Runtime can emit deterministic receipt (`openagents.receipt.v1`) and replay (`REPLAY.jsonl`) artifacts from authoritative run events.
+5. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
+6. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
+7. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.

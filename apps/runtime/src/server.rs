@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{StatusCode, header},
     response::IntoResponse,
     routing::{get, post},
 };
@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
     config::Config,
     orchestration::{OrchestrationError, RuntimeOrchestrator},
@@ -135,6 +136,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/runs", post(start_run))
         .route("/internal/v1/runs/:run_id", get(get_run))
         .route("/internal/v1/runs/:run_id/events", post(append_run_event))
+        .route("/internal/v1/runs/:run_id/receipt", get(get_run_receipt))
+        .route("/internal/v1/runs/:run_id/replay", get(get_run_replay))
         .route(
             "/internal/v1/projectors/checkpoints/:run_id",
             get(get_run_checkpoint),
@@ -233,6 +236,34 @@ async fn get_run(
         .map_err(ApiError::from_orchestration)?
         .ok_or(ApiError::NotFound)?;
     Ok(Json(RunResponse { run }))
+}
+
+async fn get_run_receipt(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<RuntimeReceipt>, ApiError> {
+    let run = state
+        .orchestrator
+        .get_run(run_id)
+        .await
+        .map_err(ApiError::from_orchestration)?
+        .ok_or(ApiError::NotFound)?;
+    let receipt = build_receipt(&run).map_err(ApiError::from_artifacts)?;
+    Ok(Json(receipt))
+}
+
+async fn get_run_replay(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let run = state
+        .orchestrator
+        .get_run(run_id)
+        .await
+        .map_err(ApiError::from_orchestration)?
+        .ok_or(ApiError::NotFound)?;
+    let replay = build_replay_jsonl(&run).map_err(ApiError::from_artifacts)?;
+    Ok(([(header::CONTENT_TYPE, "application/x-ndjson")], replay))
 }
 
 async fn get_run_checkpoint(
@@ -382,6 +413,10 @@ impl ApiError {
             }
             other => Self::Internal(other.to_string()),
         }
+    }
+
+    fn from_artifacts(error: ArtifactError) -> Self {
+        Self::Internal(error.to_string())
     }
 }
 
@@ -711,6 +746,72 @@ mod tests {
             )
             .await?;
         assert_eq!(conflict_append.status(), axum::http::StatusCode::CONFLICT);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_artifact_endpoints_return_receipt_and_replay() -> Result<()> {
+        let app = test_router();
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:artifact-worker",
+                        "metadata": {"policy_bundle_id": "policy.runtime.v1"}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let receipt_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/internal/v1/runs/{run_id}/receipt"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(receipt_response.status(), axum::http::StatusCode::OK);
+        let receipt_json = response_json(receipt_response).await?;
+        assert_eq!(
+            receipt_json
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "openagents.receipt.v1"
+        );
+
+        let replay_response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/internal/v1/runs/{run_id}/replay"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(replay_response.status(), axum::http::StatusCode::OK);
+        let replay_text = String::from_utf8(
+            replay_response
+                .into_body()
+                .collect()
+                .await?
+                .to_bytes()
+                .to_vec(),
+        )?;
+        if !replay_text.contains("\"type\":\"ReplayHeader\"")
+            || !replay_text.contains("\"type\":\"SessionEnd\"")
+        {
+            return Err(anyhow!("replay output missing required sections"));
+        }
 
         Ok(())
     }
