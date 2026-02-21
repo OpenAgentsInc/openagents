@@ -8,25 +8,25 @@ Owners: iOS + Desktop + Runtime + Web teams
 
 Provide an operator-ready, <=10 minute procedure to validate the iOS real-device handshake path:
 
-`ios/handshake` -> runtime stream -> desktop ack -> `desktop/handshake_ack`
+`ios/handshake` -> runtime event append -> Khala websocket delivery -> desktop ack -> `desktop/handshake_ack`
 
 This runbook is for the public Laravel runtime APIs:
 
 - `GET /api/runtime/codex/workers`
 - `GET /api/runtime/codex/workers/{workerId}`
-- `GET /api/runtime/codex/workers/{workerId}/stream`
 - `POST /api/runtime/codex/workers/{workerId}/events`
+- `POST /api/sync/token` (or `POST /api/khala/token` compatibility path)
 
 ## Automated Acceptance Harness (Canonical Gate)
 
 Before manual device validation, run the automated harness suite:
 
 ```bash
-# Runtime handshake stream + cursor continuity acceptance coverage
+# Runtime Khala channel replay/resume acceptance coverage
 cd apps/runtime
-mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs
+mix test test/openagents_runtime_web/channels/sync_channel_test.exs
 
-# Desktop proto-first stream parsing + handshake retry/cursor harness
+# Desktop proto-first Khala frame parsing + handshake retry/watermark harness
 cd /Users/christopherdavid/code/openagents
 cargo test -p autopilot-desktop runtime_codex_proto::tests
 
@@ -84,7 +84,7 @@ Expected:
 
 - Desktop starts normally.
 - Desktop uses persisted WorkOS-issued runtime token and creates/reattaches runtime worker IDs like `desktopw:<thread-id>`.
-- Desktop begins runtime worker heartbeat and stream loops.
+- Desktop begins runtime worker heartbeat and Khala websocket sync loop.
 
 Optional overrides (debug/local):
 
@@ -141,23 +141,18 @@ curl -sS \
   "$OA_BASE/api/runtime/codex/workers/$WORKER_ID" | jq .
 ```
 
-Step 3: In iOS app, tap `Send Handshake`.
+Step 3: In iOS app, verify stream status is `live`, then tap `Send Handshake`.
 
 Expected UI:
 
 - `Handshake: waiting ack (...)` then `success (...)` within 30s.
 
-Step 4: Confirm stream contains both handshake request and desktop ack.
+Step 4: Confirm Khala live updates contain both handshake request and desktop ack.
 
-```bash
-CURSOR=0
-curl -sS -N \
-  -H "Authorization: Bearer $OA_TOKEN" \
-  -H "Accept: text/event-stream" \
-  -H "Last-Event-ID: $CURSOR" \
-  "$OA_BASE/api/runtime/codex/workers/$WORKER_ID/stream?cursor=$CURSOR&tail_ms=15000" \
-  | rg "id: |ios/handshake|desktop/handshake_ack|handshake_id"
-```
+Preferred checks:
+
+1. iOS Debug tab `Recent Events` shows `ios/handshake` then matching `desktop/handshake_ack`.
+2. Desktop logs show handshake ingestion followed by emitted ack.
 
 ## 5. Expected Timeline
 
@@ -166,12 +161,12 @@ curl -sS -N \
    - `source=autopilot-ios`
    - `method=ios/handshake`
    - `handshake_id`, `device_id`, `occurred_at`
-2. Runtime appends durable worker event (`seq=N`) and exposes it on stream.
-3. Desktop stream loop reads event `seq=N`, matches handshake envelope, emits ack event:
+2. Runtime appends durable worker event (`seq=N`) and exposes it on Khala topic `runtime.codex_worker_events`.
+3. Desktop Khala websocket loop reads event `seq=N`, matches handshake envelope, emits ack event:
    - `source=autopilot-desktop`
    - `method=desktop/handshake_ack`
    - same `handshake_id`
-4. Runtime appends ack event (`seq=N+1`) and streams it to iOS.
+4. Runtime appends ack event (`seq=N+1`) and delivers it to iOS over Khala websocket.
 5. iOS marks handshake success only when matching `handshake_id` ack is observed.
 
 ## 6. Correlation and Trace Lookup
@@ -226,9 +221,9 @@ gcloud logging read \
   --project openagentsgemini --limit 50 --format='value(timestamp,textPayload)'
 ```
 
-Stream sequence correlation:
+Khala sequence correlation:
 
-- SSE `id:` equals runtime worker event `seq`.
+- Khala update `watermark` / payload `seq` equals runtime worker event `seq`.
 - Confirm `ios/handshake` appears at `seq=N` and `desktop/handshake_ack` at `seq>N`.
 
 ## 7. Troubleshooting Matrix
@@ -236,23 +231,22 @@ Stream sequence correlation:
 | Symptom | Likely cause | Confirm | Deterministic fix |
 |---|---|---|---|
 | `401` on worker APIs | invalid/expired bearer token | `curl` list workers returns `401` | refresh token, re-save iOS auth token, retry `Load Workers` |
-| `403` on snapshot/stream/events | ownership mismatch | snapshot/stream returns `forbidden` | use same principal scope for iOS token and desktop sync token |
-| handshake timeout (no ack in 30s) | desktop not consuming stream or not synced worker | iOS shows waiting timeout; no `desktop/handshake_ack` in stream | restart desktop with `OPENAGENTS_RUNTIME_SYNC_*`, verify worker ID, reconnect stream |
-| `400 cursor query and Last-Event-ID must match` | cursor/header mismatch | stream response `400 invalid_request` | send same value for `?cursor` and `Last-Event-ID` |
-| `410 stale_cursor` | cursor below retention floor | stream response `410 stale_cursor` | reset cursor to latest snapshot `latest_seq` and reconnect |
+| `403` on snapshot/events/token | ownership mismatch | snapshot/events/token returns `forbidden` | use same principal scope for iOS token and desktop sync token |
+| handshake timeout (no ack in 30s) | desktop not consuming Khala updates or not synced worker | iOS shows waiting timeout; no `desktop/handshake_ack` in recent events | restart desktop with `OPENAGENTS_RUNTIME_SYNC_*`, verify worker ID, reconnect stream |
+| `410 stale_cursor` | watermark below retention floor | Khala `sync:error` code `stale_cursor` | reset local watermark and replay from latest snapshot |
 | repeated duplicate handshake acks missing | handshake already acked by desktop dedupe | stream already contains same `handshake_id` ack | generate a new `handshake_id` (normal behavior) |
 
 ## 8. Release Validation Checklist (Pass/Fail)
 
-- [ ] Automated harness gate passed (`codex_worker_controller_test.exs`, desktop `runtime_codex_proto::tests`, iOS `AutopilotTests`).
+- [ ] Automated harness gate passed (`sync_channel_test.exs`, desktop `runtime_codex_proto::tests`, iOS `AutopilotTests`).
 - [ ] Desktop authenticated via `autopilot-desktop -- auth login` (or equivalent valid runtime sync token source).
 - [ ] iOS app can load workers and select target worker.
 - [ ] iOS stream enters `live` state before handshake attempt.
 - [ ] Sending handshake emits waiting state then success within 30s.
-- [ ] Stream shows both `ios/handshake` and `desktop/handshake_ack` with matching `handshake_id`.
+- [ ] Recent events show both `ios/handshake` and `desktop/handshake_ack` with matching `handshake_id`.
 - [ ] `desktop/handshake_ack` `seq` is strictly greater than `ios/handshake` `seq`.
 - [ ] No `401/403/409/410` errors during happy path.
-- [ ] Correlation data captured (`x-request-id`, optional `traceparent`, `handshake_id`, stream `id` values).
+- [ ] Correlation data captured (`x-request-id`, optional `traceparent`, `handshake_id`, Khala seq/watermark values).
 
 Release decision rule:
 
@@ -266,7 +260,7 @@ Dry-run type: operator procedure walkthrough + contract verification (non-device
 Validation notes:
 
 1. API paths and handshake envelope fields were validated against regression suites:
-   - `cd apps/runtime && mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
+   - `cd apps/runtime && mix test test/openagents_runtime_web/channels/sync_channel_test.exs`
    - `cd apps/openagents.com && php artisan test --filter=RuntimeCodexWorkersApiTest`
    - Result snapshot:
      - runtime suite: `10 tests, 0 failures`

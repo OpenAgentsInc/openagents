@@ -62,7 +62,7 @@ apps/autopilot-ios/
         TokenProvider.swift
       RuntimeCodex/
         RuntimeCodexClient.swift
-        SSEStreamClient.swift
+        KhalaSyncClient.swift
         RuntimeCodexModels.swift
       Khala/
         KhalaTokenClient.swift
@@ -89,7 +89,7 @@ Minimum iOS features:
 
 1. Worker list (`GET /api/runtime/codex/workers`)
 2. Worker snapshot (`GET /api/runtime/codex/workers/{workerId}`)
-3. Worker stream with cursor/tail semantics (`GET /api/runtime/codex/workers/{workerId}/stream`)
+3. Worker live stream via Khala websocket (`POST /api/sync/token` + `/sync/socket/websocket`)
 4. Worker request action (`POST /api/runtime/codex/workers/{workerId}/requests`)
 5. Worker stop action (`POST /api/runtime/codex/workers/{workerId}/stop`)
 
@@ -107,8 +107,8 @@ Use a single `RuntimeCodexClient` in iOS that owns:
 
 1. typed request/response envelopes,
 2. error classification (`auth`, `forbidden`, `conflict`, `invalid`, `network`, `unknown`),
-3. SSE parsing and reconnect with exponential backoff,
-4. cursor advancement and idempotent event merge,
+3. Khala frame parsing/reconnect with exponential backoff,
+4. watermark advancement and idempotent event merge,
 5. header propagation for `x-request-id` and tracing metadata.
 
 Guideline: match semantics from `apps/mobile/app/services/runtimeCodexApi.ts` first, then optimize for Swift ergonomics.
@@ -154,7 +154,7 @@ After Codex worker admin path is stable:
 ### Phase B: Codex Read Path
 
 1. Worker list/snapshot screens.
-2. SSE stream reader with cursor and reconnect logic.
+2. Khala websocket reader with watermark resume and reconnect logic.
 3. Stream event timeline UI.
 
 ### Phase C: Codex Admin Path
@@ -176,7 +176,7 @@ After Codex worker admin path is stable:
 ## Testing Strategy
 
 1. Unit tests for `RuntimeCodexClient` request/response mapping.
-2. SSE parser/reconnect tests with fixture streams.
+2. Khala parser/reconnect tests with fixture update batches.
 3. Integration tests against staging Laravel runtime proxy.
 4. UI tests for worker list/detail/admin flows.
 

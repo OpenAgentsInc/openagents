@@ -97,7 +97,8 @@ type WorkerStopResponse = {
 type StreamState = 'idle' | 'connecting' | 'open' | 'error';
 type SyncTokenResponse = { data: { token: string } };
 
-const khalaSyncEnabled = import.meta.env.VITE_KHALA_SYNC_ENABLED === 'true';
+const KHALA_SUMMARY_TOPIC = 'runtime.codex_worker_summaries';
+const KHALA_EVENTS_TOPIC = 'runtime.codex_worker_events';
 const khalaSyncWsUrl =
     (import.meta.env.VITE_KHALA_SYNC_WS_URL as string | undefined)?.trim() ||
     '';
@@ -328,6 +329,53 @@ function workerSummaryFromSyncPayload(
     };
 }
 
+function workerEventFromSyncUpdate(
+    update: SyncUpdateBatch['updates'][number],
+): StreamEventPayload | null {
+    if (update.topic !== KHALA_EVENTS_TOPIC || !isObjectRecord(update.payload)) {
+        return null;
+    }
+
+    const payload = update.payload;
+    const workerId =
+        typeof payload.workerId === 'string'
+            ? payload.workerId.trim()
+            : typeof payload.worker_id === 'string'
+              ? payload.worker_id.trim()
+              : '';
+    if (workerId === '') {
+        return null;
+    }
+
+    const seq =
+        typeof payload.seq === 'number' && Number.isFinite(payload.seq)
+            ? payload.seq
+            : Number.isFinite(update.doc_version)
+              ? update.doc_version
+              : null;
+    if (seq === null) {
+        return null;
+    }
+
+    return {
+        workerId,
+        seq,
+        eventType:
+            typeof payload.eventType === 'string'
+                ? payload.eventType
+                : typeof payload.event_type === 'string'
+                  ? payload.event_type
+                  : 'unknown',
+        payload: isObjectRecord(payload.payload) ? payload.payload : {},
+        occurredAt:
+            typeof payload.occurredAt === 'string'
+                ? payload.occurredAt
+                : typeof payload.occurred_at === 'string'
+                  ? payload.occurred_at
+                  : new Date().toISOString(),
+    };
+}
+
 export default function AdminIndex() {
     const [workers, setWorkers] = useState<CodexWorkerSummary[]>([]);
     const [workersLoading, setWorkersLoading] = useState(false);
@@ -373,6 +421,11 @@ export default function AdminIndex() {
     const refreshAtRef = useRef(0);
     const streamCursorRef = useRef(0);
     const loadWorkersRef = useRef<() => Promise<void>>(async () => {});
+    const refreshSelectedWorkerRef = useRef<
+        (workerId: string, silent?: boolean) => Promise<void>
+    >(async () => {});
+    const selectedWorkerIdRef = useRef<string | null>(null);
+    const khalaConnectedRef = useRef(false);
     const khalaClientRef = useRef<KhalaSyncClient | null>(null);
 
     const selectedWorkerSummary = useMemo(
@@ -470,28 +523,18 @@ export default function AdminIndex() {
     }, [loadWorkers]);
 
     useEffect(() => {
+        refreshSelectedWorkerRef.current = refreshSelectedWorker;
+    }, [refreshSelectedWorker]);
+
+    useEffect(() => {
+        selectedWorkerIdRef.current = selectedWorkerId;
+    }, [selectedWorkerId]);
+
+    useEffect(() => {
         void loadWorkers();
     }, [loadWorkers]);
 
     useEffect(() => {
-        if (khalaSyncEnabled) {
-            return;
-        }
-
-        const timer = window.setInterval(() => {
-            void loadWorkers();
-        }, 5000);
-
-        return () => {
-            window.clearInterval(timer);
-        };
-    }, [loadWorkers]);
-
-    useEffect(() => {
-        if (!khalaSyncEnabled) {
-            return;
-        }
-
         const wsUrl =
             khalaSyncWsUrl !== ''
                 ? khalaSyncWsUrl
@@ -508,7 +551,7 @@ export default function AdminIndex() {
                     {
                         method: 'POST',
                         body: JSON.stringify({
-                            scopes: ['runtime.codex_worker_summaries'],
+                            scopes: [KHALA_SUMMARY_TOPIC, KHALA_EVENTS_TOPIC],
                         }),
                     },
                 );
@@ -522,95 +565,164 @@ export default function AdminIndex() {
             },
             onUpdateBatch: (batch) => {
                 const summaryUpdates = batch.updates.filter(
-                    (candidate) =>
-                        candidate.topic === 'runtime.codex_worker_summaries',
+                    (candidate) => candidate.topic === KHALA_SUMMARY_TOPIC,
                 );
 
-                if (summaryUpdates.length === 0) {
+                if (summaryUpdates.length > 0) {
+                    if (
+                        summaryUpdates.some(
+                            (candidate) => !isObjectRecord(candidate.payload),
+                        )
+                    ) {
+                        void loadWorkersRef.current();
+                    } else {
+                        setWorkers((previous) => {
+                            const updatesByWorkerId = new Map<
+                                string,
+                                SyncUpdateBatch['updates'][number]
+                            >();
+
+                            for (const update of summaryUpdates) {
+                                if (!isObjectRecord(update.payload)) {
+                                    continue;
+                                }
+
+                                const workerId = inferWorkerId(
+                                    update.payload,
+                                    update.doc_key,
+                                );
+
+                                if (workerId === '') {
+                                    continue;
+                                }
+
+                                const existing = updatesByWorkerId.get(workerId);
+                                if (
+                                    !existing ||
+                                    update.doc_version >= existing.doc_version
+                                ) {
+                                    updatesByWorkerId.set(workerId, update);
+                                }
+                            }
+
+                            if (updatesByWorkerId.size === 0) {
+                                return previous;
+                            }
+
+                            let changed = false;
+                            const seenWorkerIds = new Set<string>();
+
+                            const next = previous.map((worker) => {
+                                seenWorkerIds.add(worker.worker_id);
+                                const update = updatesByWorkerId.get(
+                                    worker.worker_id,
+                                );
+
+                                if (!update) return worker;
+
+                                const merged = workerSummaryFromSyncUpdate(
+                                    update,
+                                    worker,
+                                );
+                                if (!merged) return worker;
+
+                                changed = true;
+                                return merged;
+                            });
+
+                            for (const [workerId, update] of updatesByWorkerId) {
+                                if (seenWorkerIds.has(workerId)) {
+                                    continue;
+                                }
+
+                                const created = workerSummaryFromSyncPayload(
+                                    update,
+                                );
+                                if (!created) {
+                                    continue;
+                                }
+
+                                next.push(created);
+                                changed = true;
+                            }
+
+                            return changed ? next : previous;
+                        });
+                    }
+                }
+
+                const selectedWorkerId = selectedWorkerIdRef.current;
+                if (!selectedWorkerId) {
                     return;
                 }
 
-                if (
-                    summaryUpdates.some(
-                        (candidate) => !isObjectRecord(candidate.payload),
-                    )
-                ) {
-                    void loadWorkersRef.current();
+                const workerEvents = batch.updates
+                    .map(workerEventFromSyncUpdate)
+                    .filter(
+                        (candidate): candidate is StreamEventPayload =>
+                            candidate !== null &&
+                            candidate.workerId === selectedWorkerId,
+                    );
+                if (workerEvents.length === 0) {
                     return;
                 }
 
-                setWorkers((previous) => {
-                    const updatesByWorkerId = new Map<
-                        string,
-                        SyncUpdateBatch['updates'][number]
-                    >();
+                setStreamState('open');
+                setStreamError(null);
 
-                    for (const update of summaryUpdates) {
-                        if (!isObjectRecord(update.payload)) {
+                let maxSeq = streamCursorRef.current;
+                for (const event of workerEvents) {
+                    maxSeq = Math.max(maxSeq, event.seq);
+                }
+                streamCursorRef.current = maxSeq;
+
+                setStreamEvents((previous) => {
+                    const existingSeqs = new Set(
+                        previous.map((entry) => entry.seq),
+                    );
+                    const next = [...previous];
+
+                    for (const event of workerEvents) {
+                        if (existingSeqs.has(event.seq)) {
                             continue;
                         }
 
-                        const workerId = inferWorkerId(
-                            update.payload,
-                            update.doc_key,
-                        );
-
-                        if (workerId === '') {
-                            continue;
-                        }
-
-                        const existing = updatesByWorkerId.get(workerId);
-                        if (
-                            !existing ||
-                            update.doc_version >= existing.doc_version
-                        ) {
-                            updatesByWorkerId.set(workerId, update);
-                        }
+                        next.unshift({
+                            seq: event.seq,
+                            eventType: event.eventType,
+                            payload: event.payload,
+                            occurredAt: event.occurredAt,
+                        });
+                        existingSeqs.add(event.seq);
                     }
 
-                    if (updatesByWorkerId.size === 0) {
-                        return previous;
-                    }
-
-                    let changed = false;
-                    const seenWorkerIds = new Set<string>();
-
-                    const next = previous.map((worker) => {
-                        seenWorkerIds.add(worker.worker_id);
-                        const update = updatesByWorkerId.get(worker.worker_id);
-
-                        if (!update) return worker;
-
-                        const merged = workerSummaryFromSyncUpdate(update, worker);
-                        if (!merged) return worker;
-
-                        changed = true;
-                        return merged;
-                    });
-
-                    for (const [workerId, update] of updatesByWorkerId) {
-                        if (seenWorkerIds.has(workerId)) {
-                            continue;
-                        }
-
-                        const created = workerSummaryFromSyncPayload(update);
-                        if (!created) {
-                            continue;
-                        }
-
-                        next.push(created);
-                        changed = true;
-                    }
-
-                    return changed ? next : previous;
+                    return next.slice(0, 200);
                 });
+
+                const now = Date.now();
+                if (now - refreshAtRef.current > 400) {
+                    refreshAtRef.current = now;
+                    void refreshSelectedWorkerRef.current(selectedWorkerId, true);
+                }
             },
             onStaleCursor: () => {
                 void loadWorkersRef.current();
+                const selectedWorkerId = selectedWorkerIdRef.current;
+                if (selectedWorkerId) {
+                    streamCursorRef.current = 0;
+                    setStreamEvents([]);
+                    setStreamState('connecting');
+                    void refreshSelectedWorkerRef.current(selectedWorkerId, true);
+                }
             },
             onError: (error) => {
                 if (!cancelled) {
+                    khalaConnectedRef.current = false;
                     setWorkersError(error.message);
+                    if (selectedWorkerIdRef.current) {
+                        setStreamState('error');
+                        setStreamError(error.message);
+                    }
                 }
             },
         });
@@ -620,20 +732,31 @@ export default function AdminIndex() {
         void (async () => {
             try {
                 await client.connect();
-                await client.subscribe(['runtime.codex_worker_summaries']);
+                await client.subscribe([KHALA_SUMMARY_TOPIC, KHALA_EVENTS_TOPIC]);
+                khalaConnectedRef.current = true;
+                if (selectedWorkerIdRef.current) {
+                    setStreamState('open');
+                    setStreamError(null);
+                }
             } catch (error) {
                 if (!cancelled) {
                     const message =
                         error instanceof Error
                             ? error.message
                             : 'Failed to connect Khala sync client';
+                    khalaConnectedRef.current = false;
                     setWorkersError(message);
+                    if (selectedWorkerIdRef.current) {
+                        setStreamState('error');
+                        setStreamError(message);
+                    }
                 }
             }
         })();
 
         return () => {
             cancelled = true;
+            khalaConnectedRef.current = false;
             khalaClientRef.current = null;
             void client.disconnect();
         };
@@ -651,107 +774,13 @@ export default function AdminIndex() {
 
         setStreamEvents([]);
         setStreamError(null);
+        setStreamState(khalaConnectedRef.current ? 'open' : 'connecting');
         streamCursorRef.current = Math.max(
             (selectedWorkerSummary?.latest_seq ?? 0) - 1,
             0,
         );
         void loadSnapshot(selectedWorkerId);
     }, [selectedWorkerId, selectedWorkerSummary?.latest_seq, loadSnapshot]);
-
-    useEffect(() => {
-        if (!selectedWorkerId) {
-            return;
-        }
-
-        setStreamState('connecting');
-        const seedCursor = Math.max(streamCursorRef.current, 0);
-        const url = new URL(
-            `/api/runtime/codex/workers/${encodeURIComponent(selectedWorkerId)}/stream`,
-            window.location.origin,
-        );
-
-        url.searchParams.set('cursor', String(seedCursor));
-        url.searchParams.set('tail_ms', '60000');
-
-        const source = new EventSource(url.toString(), {
-            withCredentials: true,
-        });
-
-        source.onopen = () => {
-            setStreamState('open');
-            setStreamError(null);
-        };
-
-        const onCodexWorkerEvent = (event: MessageEvent<string>) => {
-            const parsed = safeJsonParse(event.data);
-            if (!isObjectRecord(parsed)) {
-                return;
-            }
-
-            const payload: StreamEventPayload = {
-                workerId: String(parsed.workerId ?? ''),
-                seq: Number(parsed.seq ?? 0),
-                eventType: String(parsed.eventType ?? 'unknown'),
-                payload: isObjectRecord(parsed.payload) ? parsed.payload : {},
-                occurredAt: String(
-                    parsed.occurredAt ?? new Date().toISOString(),
-                ),
-            };
-
-            if (
-                payload.workerId !== selectedWorkerId ||
-                !Number.isFinite(payload.seq)
-            ) {
-                return;
-            }
-
-            streamCursorRef.current = Math.max(
-                streamCursorRef.current,
-                payload.seq,
-            );
-
-            setStreamEvents((previous) => {
-                if (previous.some((entry) => entry.seq === payload.seq)) {
-                    return previous;
-                }
-
-                const next: StreamEventRecord = {
-                    seq: payload.seq,
-                    eventType: payload.eventType,
-                    payload: payload.payload,
-                    occurredAt: payload.occurredAt,
-                };
-
-                return [next, ...previous].slice(0, 200);
-            });
-
-            const now = Date.now();
-            if (now - refreshAtRef.current > 400) {
-                refreshAtRef.current = now;
-                void refreshSelectedWorker(selectedWorkerId, true);
-            }
-        };
-
-        source.addEventListener(
-            'codex.worker.event',
-            onCodexWorkerEvent as EventListener,
-        );
-
-        source.onerror = () => {
-            setStreamState('error');
-            setStreamError(
-                'Stream interrupted. EventSource will retry automatically.',
-            );
-        };
-
-        return () => {
-            source.removeEventListener(
-                'codex.worker.event',
-                onCodexWorkerEvent as EventListener,
-            );
-            source.close();
-        };
-    }, [selectedWorkerId, refreshSelectedWorker]);
 
     const handleCreateWorker = async () => {
         setCreateBusy(true);
