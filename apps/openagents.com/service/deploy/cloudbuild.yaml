@@ -1,0 +1,41 @@
+# Build and push the openagents.com Rust control-service image.
+#
+# IMPORTANT: submit with repository root context so Cargo workspace metadata is available.
+#
+# Run from repo root:
+#   gcloud builds submit \
+#     --config apps/openagents.com/service/deploy/cloudbuild.yaml \
+#     --substitutions _TAG="$(git rev-parse --short HEAD)" \
+#     .
+substitutions:
+  _TAG: ${SHORT_SHA}
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/openagents.com/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-control-service/control:${_TAG}
+      - -t
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-control-service/control:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-control-service/control:${_TAG}
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-control-service/control:latest
+
+images:
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-control-service/control:${_TAG}
+  - us-central1-docker.pkg.dev/${PROJECT_ID}/openagents-control-service/control:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
