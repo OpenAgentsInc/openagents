@@ -116,12 +116,24 @@ GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
 RUNTIME_SERVICE=runtime \
 MIGRATE_JOB=runtime-migrate \
-apps/runtime/deploy/cloudrun/run-migrate-job.sh
+IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
+apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
 ```
 
-This script enforces the image-lock invariant for migrations:
+This chained script enforces deploy + migration invariants:
+- runtime deploy cannot complete without migration step validation,
 - migrate job image is synced to runtime service image,
 - migration runs with `OpenAgentsRuntime.Release.migrate_and_verify!()`.
+
+Manual/alert drift check:
+
+```bash
+GCP_PROJECT=openagentsgemini \
+GCP_REGION=us-central1 \
+RUNTIME_SERVICE=runtime \
+MIGRATE_JOB=runtime-migrate \
+apps/runtime/deploy/cloudrun/check-migration-drift.sh
+```
 
 ## 7. Rollback policy
 

@@ -23,7 +23,7 @@ Source architecture: `docs/ARCHITECTURE-RUST.md`
 | `INV-06` | Khala is projection/replay delivery only (not authority write path) | Runtime + Khala | Khala writes only sync metadata; authority writes remain runtime/control | Runtime/Khala integration tests and schema ownership review |
 | `INV-07` | Logical ordering by `(topic, seq)` and client idempotent apply | Khala + clients | `seq` oracle and duplicate discard behavior documented/tested | Khala tests + client replay tests (`OA-RUST-029`, `OA-RUST-043`, `OA-RUST-089` gates) |
 | `INV-08` | WorkOS is auth identity provider; control-plane owns authz/session/device revocation | Auth flows | WorkOS auth and control-plane session authority split is preserved | Auth integration tests + flow review (`OA-RUST-078`, `OA-RUST-079`, `OA-RUST-080`) |
-| `INV-09` | Runtime deploy always followed by migrate job | Runtime ops | Deploy evidence includes migration execution | `apps/runtime/deploy/cloudrun/run-migrate-job.sh` |
+| `INV-09` | Runtime deploy always followed by migrate job | Runtime ops | Deploy evidence includes migration execution | `apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh` |
 | `INV-10` | Legacy surfaces are deleted only after mapped parity gates | Migration program | Deletion links to OA-RUST dependencies and inventory gates | `docs/plans/active/rust-migration-legacy-dependency-inventory.md` + roadmap dependency checks |
 
 ## Mandatory PR Checklist (Migration Work)
@@ -82,4 +82,3 @@ Dry-run sample set (direct commits on `main` in lieu of PRs):
 2. `docs/ARCHITECTURE-RUST-ROADMAP.md`
 3. `docs/plans/active/rust-migration-execution-control-plane.md`
 4. `docs/plans/active/rust-migration-legacy-dependency-inventory.md`
-

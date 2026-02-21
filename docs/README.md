@@ -22,13 +22,14 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Runtime internal API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
 - Runtime operations runbook: `../apps/runtime/docs/OPERATIONS.md`
 - Runtime Cloud Run deploy runbook: `../apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
-  - Mandatory post-deploy command:
+  - Canonical deploy + migration command:
     ```bash
     GCP_PROJECT=openagentsgemini \
     GCP_REGION=us-central1 \
     RUNTIME_SERVICE=runtime \
     MIGRATE_JOB=runtime-migrate \
-    apps/runtime/deploy/cloudrun/run-migrate-job.sh
+    IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
+    apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
     ```
 - DS-Elixir runtime contract: `../apps/runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
 - DS-Elixir operations runbook: `../apps/runtime/docs/DS_ELIXIR_OPERATIONS.md`

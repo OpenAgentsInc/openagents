@@ -286,6 +286,7 @@ Isolation artifacts: `apps/runtime/docs/DB_ROLE_ISOLATION.md`, `apps/runtime/dep
 
 ### OA-RUST-067 — [Ops] Automate runtime migration job post-deploy and enforce runbook usage
 Description: Ensure every runtime deploy executes migration job consistently and update runbooks/agent guidance to prevent drift.
+Automation artifacts: `apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh`, `apps/runtime/deploy/cloudrun/run-migrate-job.sh`, `apps/runtime/deploy/cloudrun/check-migration-drift.sh`
 
 ### OA-RUST-068 — [Ops] Add replay drift and projector hash alarms in production
 Description: Add production alarms for projection drift and replay determinism regressions.
