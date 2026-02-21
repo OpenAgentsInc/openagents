@@ -49,6 +49,8 @@ pub fn build_runtime_state(config: Config) -> AppState {
         signing_key: config.sync_token_signing_key.clone(),
         issuer: config.sync_token_issuer.clone(),
         audience: config.sync_token_audience.clone(),
+        require_jti: config.sync_token_require_jti,
+        max_token_age_seconds: config.sync_token_max_age_seconds,
         revoked_jtis: config.sync_revoked_jtis.clone(),
     }));
     AppState::new(config, orchestrator, workers, fanout, sync_auth)
