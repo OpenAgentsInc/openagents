@@ -113,8 +113,7 @@ Execution wiring:
 
 - Install hooks once with `./scripts/install-git-hooks.sh`.
 - Pre-commit runs `./scripts/local-ci.sh changed`.
-- Pre-push runs `./scripts/local-ci.sh changed` (override with
-  `OA_LOCAL_CI_PUSH_MODE=all` when doing full-lane validation).
+- Pre-push is currently a no-op; run `./scripts/local-ci.sh all` manually when doing full-lane validation.
 
 ## Phase 1: Self-Hosted Khala in GCP Non-Prod (G1)
 

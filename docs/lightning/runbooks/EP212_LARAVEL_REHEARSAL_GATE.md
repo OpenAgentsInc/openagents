@@ -29,7 +29,7 @@ Local gate wiring:
 
 - Install hooks: `./scripts/install-git-hooks.sh`
 - Changed-files gate: `./scripts/local-ci.sh changed`
-- Full pre-push gate: `./scripts/local-ci.sh all`
+- Full local gate (manual): `./scripts/local-ci.sh all` (pre-push hook currently disabled)
 
 ## 2) Production Live Smoke Checklist (API + Chat)
 
