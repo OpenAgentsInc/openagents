@@ -28,7 +28,7 @@ pub mod workers;
 
 pub fn build_runtime_state(config: Config) -> AppState {
     let authority = InMemoryRuntimeAuthority::shared();
-    let projectors = InMemoryProjectionPipeline::shared();
+    let projectors = InMemoryProjectionPipeline::shared_from_env();
     let orchestrator = Arc::new(RuntimeOrchestrator::new(authority, projectors));
     let workers = Arc::new(InMemoryWorkerRegistry::new(
         orchestrator.projectors(),

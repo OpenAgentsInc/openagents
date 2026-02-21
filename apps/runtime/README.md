@@ -17,6 +17,7 @@ Environment:
 - `RUNTIME_SERVICE_NAME` (default `runtime`)
 - `RUNTIME_BUILD_SHA` (default `dev`)
 - `RUNTIME_EVENT_LOG_PATH` (default `.runtime-data/runtime-events.jsonl`)
+- `RUNTIME_CHECKPOINT_PATH` (default `.runtime-data/projection-state.json`)
 
 Baseline endpoints:
 
@@ -28,6 +29,8 @@ Baseline endpoints:
 - `GET /internal/v1/runs/:run_id/receipt`
 - `GET /internal/v1/runs/:run_id/replay`
 - `GET /internal/v1/projectors/checkpoints/:run_id`
+- `GET /internal/v1/projectors/run-summary/:run_id`
+- `GET /internal/v1/projectors/drift?topic=<topic>`
 - `POST /internal/v1/workers`
 - `GET /internal/v1/workers/:worker_id?owner_user_id=<id>`
 - `POST /internal/v1/workers/:worker_id/heartbeat`
@@ -53,6 +56,13 @@ Durable event log semantics:
 - `POST /internal/v1/runs/:run_id/events` supports `idempotency_key` and `expected_previous_seq`.
 - Duplicate `idempotency_key` returns idempotent replay without appending duplicate events.
 - `expected_previous_seq` mismatches return `409 conflict`.
+
+Projection checkpoint semantics:
+
+- Projection checkpoints/read-model summaries are persisted to `RUNTIME_CHECKPOINT_PATH`.
+- Recovered projectors resume from persisted checkpoints and apply only new events.
+- Duplicate reprocessing is idempotent (`seq <= last_seq` is ignored).
+- Sequence gaps register drift reports accessible through `/internal/v1/projectors/drift`.
 
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
 

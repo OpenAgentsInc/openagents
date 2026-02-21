@@ -36,6 +36,8 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 - `GET /internal/v1/runs/:run_id/receipt` returns deterministic runtime receipt artifact.
 - `GET /internal/v1/runs/:run_id/replay` returns deterministic replay JSONL artifact.
 - `GET /internal/v1/projectors/checkpoints/:run_id` reads latest projector checkpoint.
+- `GET /internal/v1/projectors/run-summary/:run_id` returns projected run read model.
+- `GET /internal/v1/projectors/drift?topic=<topic>` returns drift detection metadata.
 - `POST /internal/v1/workers` registers worker ownership/lifecycle state.
 - `GET /internal/v1/workers/:worker_id` reads owner-scoped worker state.
 - `POST /internal/v1/workers/:worker_id/heartbeat` updates worker liveness.
@@ -48,6 +50,8 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 2. Run events are durably appended to `RUNTIME_EVENT_LOG_PATH` (JSONL) before in-memory run projection updates.
 3. Event append requests support idempotency (`idempotency_key`) and optimistic ordering checks (`expected_previous_seq`).
 4. Runtime can emit deterministic receipt (`openagents.receipt.v1`) and replay (`REPLAY.jsonl`) artifacts from authoritative run events.
-5. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
-6. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
-7. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+5. Projection checkpoints/read-model summaries are persisted (`RUNTIME_CHECKPOINT_PATH`) and recovered on restart.
+6. Projection apply is idempotent (`seq <= checkpoint.last_seq` no-op) and drift hooks record sequence gaps.
+7. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
+8. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
+9. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.

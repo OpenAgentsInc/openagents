@@ -17,9 +17,9 @@ use crate::{
     config::Config,
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     types::{
-        AppendRunEventRequest, ProjectionCheckpoint, RegisterWorkerRequest, RuntimeRun,
-        StartRunRequest, WorkerHeartbeatRequest, WorkerOwner, WorkerStatus,
-        WorkerStatusTransitionRequest,
+        AppendRunEventRequest, ProjectionCheckpoint, ProjectionDriftReport, RegisterWorkerRequest,
+        RunProjectionSummary, RuntimeRun, StartRunRequest, WorkerHeartbeatRequest, WorkerOwner,
+        WorkerStatus, WorkerStatusTransitionRequest,
     },
     workers::{InMemoryWorkerRegistry, WorkerError, WorkerSnapshot},
 };
@@ -95,10 +95,25 @@ struct CheckpointResponse {
     checkpoint: ProjectionCheckpoint,
 }
 
+#[derive(Debug, Serialize)]
+struct DriftResponse {
+    drift: ProjectionDriftReport,
+}
+
+#[derive(Debug, Serialize)]
+struct RunSummaryResponse {
+    summary: RunProjectionSummary,
+}
+
 #[derive(Debug, Deserialize)]
 struct OwnerQuery {
     owner_user_id: Option<u64>,
     owner_guest_scope: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DriftQuery {
+    topic: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,6 +156,11 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/internal/v1/projectors/checkpoints/:run_id",
             get(get_run_checkpoint),
+        )
+        .route("/internal/v1/projectors/drift", get(get_projector_drift))
+        .route(
+            "/internal/v1/projectors/run-summary/:run_id",
+            get(get_projector_run_summary),
         )
         .route("/internal/v1/workers", post(register_worker))
         .route("/internal/v1/workers/:worker_id", get(get_worker))
@@ -277,6 +297,40 @@ async fn get_run_checkpoint(
         .map_err(ApiError::from_orchestration)?
         .ok_or(ApiError::NotFound)?;
     Ok(Json(CheckpointResponse { checkpoint }))
+}
+
+async fn get_projector_drift(
+    State(state): State<AppState>,
+    Query(query): Query<DriftQuery>,
+) -> Result<Json<DriftResponse>, ApiError> {
+    if query.topic.trim().is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "topic is required for drift lookup".to_string(),
+        ));
+    }
+
+    let drift = state
+        .orchestrator
+        .projectors()
+        .drift_for_topic(&query.topic)
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(DriftResponse { drift }))
+}
+
+async fn get_projector_run_summary(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> Result<Json<RunSummaryResponse>, ApiError> {
+    let summary = state
+        .orchestrator
+        .projectors()
+        .run_summary(run_id)
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(RunSummaryResponse { summary }))
 }
 
 async fn register_worker(
@@ -812,6 +866,75 @@ mod tests {
         {
             return Err(anyhow!("replay output missing required sections"));
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn projector_summary_endpoint_returns_projected_run_state() -> Result<()> {
+        let app = test_router();
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:summary-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.finished",
+                        "payload": {"status": "succeeded"},
+                        "idempotency_key": "summary-finish",
+                        "expected_previous_seq": 1
+                    }))?))?,
+            )
+            .await?;
+
+        let summary_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/internal/v1/projectors/run-summary/{run_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(summary_response.status(), axum::http::StatusCode::OK);
+        let summary_json = response_json(summary_response).await?;
+        assert_eq!(
+            summary_json
+                .pointer("/summary/status")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "succeeded"
+        );
+
+        let drift_not_found = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/projectors/drift?topic=run:missing:events")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(drift_not_found.status(), axum::http::StatusCode::NOT_FOUND);
 
         Ok(())
     }
