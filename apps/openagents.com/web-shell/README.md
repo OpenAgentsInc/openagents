@@ -8,6 +8,7 @@ Rust/WASM bootstrap entrypoint for the OpenAgents web surface.
 2. Starts a deterministic render loop and renders an initial shell frame.
 3. Exposes boot diagnostics (`boot_diagnostics_json`) and an explicit startup error boundary.
 4. Supports forced startup error simulation with `?oa_boot_fail=1`.
+5. Uses `crates/openagents-ui-core` shared tokens/primitives for shell backdrop/card rendering.
 
 ## Build (WASM)
 

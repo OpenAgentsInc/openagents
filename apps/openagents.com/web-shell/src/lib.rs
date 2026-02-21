@@ -4,14 +4,13 @@
 mod wasm {
     use std::cell::RefCell;
 
+    use openagents_ui_core::{ShellCardSpec, draw_shell_backdrop, draw_shell_card};
     use serde::Serialize;
     use wasm_bindgen::JsCast;
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_futures::spawn_local;
     use web_sys::{HtmlCanvasElement, HtmlElement};
-    use wgpui::{
-        Bounds, Hsla, Platform, Quad, Scene, WebPlatform, run_animation_loop, setup_resize_observer,
-    };
+    use wgpui::{Platform, Scene, WebPlatform, run_animation_loop, setup_resize_observer};
 
     thread_local! {
         static APP: RefCell<Option<WebShellApp>> = const { RefCell::new(None) };
@@ -53,19 +52,8 @@ mod wasm {
         fn render_frame(&mut self) -> Result<(), String> {
             self.scene.clear();
             let size = self.platform.logical_size();
-            let background =
-                Quad::new(Bounds::new(0.0, 0.0, size.width, size.height))
-                    .with_background(Hsla::from_hex(0x080A10));
-            self.scene.draw_quad(background);
-
-            let card_width = (size.width * 0.72).min(680.0);
-            let card_height = 180.0;
-            let card_x = ((size.width - card_width) * 0.5).max(24.0);
-            let card_y = ((size.height - card_height) * 0.5).max(24.0);
-            let card = Quad::new(Bounds::new(card_x, card_y, card_width, card_height))
-                .with_background(Hsla::from_hex(0x111827))
-                .with_border(Hsla::from_hex(0x1F2937), 1.0);
-            self.scene.draw_quad(card);
+            draw_shell_backdrop(&mut self.scene, size);
+            let _ = draw_shell_card(&mut self.scene, size, ShellCardSpec::default());
 
             self.platform.render(&self.scene)
         }
@@ -93,9 +81,7 @@ mod wasm {
 
     async fn boot() -> Result<(), String> {
         if should_force_boot_failure() {
-            return Err(
-                "forced startup failure because query contains oa_boot_fail=1".to_string(),
-            );
+            return Err("forced startup failure because query contains oa_boot_fail=1".to_string());
         }
 
         let canvas = ensure_shell_dom()?;

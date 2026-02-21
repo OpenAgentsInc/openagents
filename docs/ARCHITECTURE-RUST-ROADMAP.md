@@ -144,6 +144,7 @@ Boundary artifacts: `apps/openagents.com/web-shell/host/host-shim.js`, `apps/ope
 
 ### OA-RUST-025 — [WGPUI Web] Build shared UI core crate for cross-surface components
 Description: Create shared WGPUI component/theme primitives used by web, desktop, and iOS to prevent UI divergence.
+Shared artifacts: `crates/openagents-ui-core/`, `apps/openagents.com/web-shell/src/lib.rs`, `apps/autopilot-desktop/src/main.rs`
 
 ### OA-RUST-026 — [WGPUI Web] Implement shared app state crate (routes, reducers, command intent)
 Description: Implement route graph, reducer/state machine, and command intents in Rust for deterministic behavior across surfaces.

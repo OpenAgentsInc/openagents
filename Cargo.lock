@@ -1120,6 +1120,7 @@ dependencies = [
  "editor",
  "nostr 0.1.0",
  "openagents-spark",
+ "openagents-ui-core",
  "rand 0.9.2",
  "serde_json",
  "taffy",
@@ -6980,6 +6981,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-ui-core"
+version = "0.1.0"
+dependencies = [
+ "wgpui",
+]
+
+[[package]]
 name = "openagents-utils"
 version = "0.1.0"
 dependencies = [
@@ -6991,6 +6999,7 @@ name = "openagents-web-shell"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "openagents-ui-core",
  "serde",
  "serde_json",
  "wasm-bindgen",
