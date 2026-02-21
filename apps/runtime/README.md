@@ -154,6 +154,8 @@ Container build:
 
 - `docker build -t runtime:dev .`
 - Cloud Build config: `deploy/cloudbuild.yaml`
+- Cloud Run chained deploy + migration command:
+  - `GCP_PROJECT=openagentsgemini GCP_REGION=us-central1 RUNTIME_SERVICE=runtime MIGRATE_JOB=runtime-migrate IMAGE=us-central1-docker.pkg.dev/<project>/runtime/runtime:<tag> apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh`
 
 Kubernetes manifests:
 

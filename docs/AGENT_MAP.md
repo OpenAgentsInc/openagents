@@ -75,7 +75,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - If you are changing web behavior/UI/integrations: start at `apps/openagents.com/` plus `docs/plans/active/laravel-rebuild.md`.
 - If you are changing Codex runtime/desktop integration: start at `docs/codex/unified-runtime-desktop-plan.md`.
 - If you are changing Khala sync integration: start at `docs/sync/thoughts.md`, `docs/sync/ROADMAP.md`, `docs/sync/SURFACES.md`, and `apps/runtime/docs/KHALA_SYNC.md` (for current boundary/migration context).
-- If you are deploying runtime to Cloud Run: run `apps/runtime/deploy/cloudrun/run-migrate-job.sh` after each deploy (see `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`).
+- If you are deploying runtime to Cloud Run: use `apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh` so deploy + migration validation are chained (see `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`).
 - If you are changing terminology or naming: update `docs/GLOSSARY.md` first.
 - If you are changing architecture invariants: author/update an ADR in `docs/adr/`.
 - If you are changing Rust migration boundaries/cutover behavior: apply `docs/plans/active/rust-migration-invariant-gates.md`.

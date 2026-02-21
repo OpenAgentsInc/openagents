@@ -99,13 +99,14 @@ For Effect packages (`packages/dse`, `packages/effuse`, `packages/effuse-test`):
 - **Laravel web (core):** `apps/openagents.com/README.md` (or app root; see `docs/plans/active/laravel-rebuild.md`).
 - **Laravel web production deploy/runbooks:** `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md` and `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md` (env/secrets + Cloud Run deploy flow).
 - **Runtime Cloud Run deploy/runbook:** `apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
-  - Mandatory after each runtime deploy:
+  - Canonical deploy command (deploy + mandatory migration validation):
     ```bash
     GCP_PROJECT=openagentsgemini \
     GCP_REGION=us-central1 \
     RUNTIME_SERVICE=runtime \
     MIGRATE_JOB=runtime-migrate \
-    apps/runtime/deploy/cloudrun/run-migrate-job.sh
+    IMAGE=us-central1-docker.pkg.dev/openagentsgemini/runtime/runtime:<TAG> \
+    apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.sh
     ```
 - iOS: `apps/autopilot-ios/docs/README.md`
 - Desktop: `apps/autopilot-desktop/README.md`
