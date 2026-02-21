@@ -1,0 +1,37 @@
+[package]
+name = "lightning-wallet-executor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "lightning-wallet-executor"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+axum = { version = "0.8.1", features = ["json", "macros"] }
+base64.workspace = true
+bip39 = "2.2.0"
+chrono.workspace = true
+clap.workspace = true
+hex.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+spark = { package = "openagents-spark", path = "../../crates/spark" }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5.2", features = ["util"] }

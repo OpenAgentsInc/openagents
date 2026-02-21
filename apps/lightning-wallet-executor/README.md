@@ -1,25 +1,17 @@
 # lightning-wallet-executor
 
-Effect-first HTTP service for agent-owned Spark wallet execution.
+Rust HTTP service for agent-owned Spark wallet execution.
 
 ## Endpoints
 
 - `GET /healthz`
 - `GET /status`
 - `POST /pay-bolt11`
-
-Request payload for `POST /pay-bolt11`:
-
-```json
-{
-  "requestId": "optional-id",
-  "payment": {
-    "invoice": "lnbc...",
-    "maxAmountMsats": 100000,
-    "host": "sats4ai.com"
-  }
-}
-```
+- `POST /wallets/create`
+- `POST /wallets/status`
+- `POST /wallets/create-invoice`
+- `POST /wallets/pay-bolt11`
+- `POST /wallets/send-spark`
 
 ## Runtime Modes
 
@@ -37,16 +29,18 @@ Request payload for `POST /pay-bolt11`:
   - env: `OA_LIGHTNING_WALLET_MNEMONIC_PROVIDER=env` and `OA_LIGHTNING_WALLET_MNEMONIC=<seed phrase>`
   - gcp: `OA_LIGHTNING_WALLET_MNEMONIC_PROVIDER=gcp` and `OA_LIGHTNING_WALLET_MNEMONIC_SECRET_VERSION=projects/.../secrets/.../versions/latest`
 
-## Auth, Custody, and Rotation Docs
-
-- `apps/lightning-wallet-executor/docs/AUTH_AND_KEY_CUSTODY.md`
-- `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`
-
 ## Commands
 
 ```bash
-npm run typecheck
-npm test
-npm run smoke
-npm run dev
+cargo test --manifest-path apps/lightning-wallet-executor/Cargo.toml
+cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- serve
+cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- smoke
 ```
+
+## Archived TypeScript Lane
+
+Legacy TypeScript/Effect implementation is preserved in:
+
+- `apps/lightning-wallet-executor/archived-ts/`
+
+It is historical only and not used by active runtime paths.

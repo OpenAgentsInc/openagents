@@ -430,7 +430,7 @@ Dependencies: OA-RUST-023, OA-RUST-065.
 
 ### OA-RUST-095 — [Payments] Define wallet-executor auth, key custody, and receipt canonicalization
 Description: Formalize wallet-executor identity/auth channel, secret and key custody/rotation policies, and canonical payment receipt hashing contract.
-Enforcement artifacts: `apps/lightning-wallet-executor/src/runtime/config.ts`, `apps/lightning-wallet-executor/src/http/server.ts`, `apps/lightning-wallet-executor/src/wallet/executor.ts`, `apps/lightning-wallet-executor/src/receipt/canonical.ts`, `apps/lightning-wallet-executor/docs/AUTH_AND_KEY_CUSTODY.md`, `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`, `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`, `proto/openagents/lightning/v1/wallet_executor.proto`
+Enforcement artifacts: `apps/lightning-wallet-executor/src/config.rs`, `apps/lightning-wallet-executor/src/http.rs`, `apps/lightning-wallet-executor/src/service.rs`, `apps/lightning-wallet-executor/src/receipt.rs`, `apps/lightning-wallet-executor/docs/AUTH_AND_KEY_CUSTODY.md`, `apps/lightning-wallet-executor/docs/KEY_ROTATION_RUNBOOK.md`, `docs/adr/ADR-0006-wallet-executor-auth-custody-receipts.md`, `proto/openagents/lightning/v1/wallet_executor.proto`
 Acceptance criteria: Executor auth path is documented and enforced; key rotation runbook exists; receipt proto/hash compatibility tests pass.
 Dependencies: OA-RUST-060, OA-RUST-075.
 
@@ -474,6 +474,7 @@ Dependencies: OA-RUST-060, OA-RUST-066, OA-RUST-095.
 
 ### OA-RUST-102 — [Services] Migrate `apps/lightning-wallet-executor` to Rust
 Description: Port wallet executor HTTP service and payment execution flows to Rust, including Spark/mock modes, auth controls, and deterministic smoke coverage.
+Enforcement artifacts: `apps/lightning-wallet-executor/Cargo.toml`, `apps/lightning-wallet-executor/src/main.rs`, `apps/lightning-wallet-executor/src/http.rs`, `apps/lightning-wallet-executor/src/service.rs`, `apps/lightning-wallet-executor/src/gateway.rs`, `apps/lightning-wallet-executor/src/secrets.rs`, `apps/lightning-wallet-executor/tests/http_server.rs`, `apps/lightning-wallet-executor/README.md`, `apps/lightning-wallet-executor/archived-ts/`, `docs/lightning/deploy/Dockerfile.wallet-executor`, `docs/lightning/runbooks/L402_WALLET_EXECUTOR_DEPLOY_RUNBOOK.md`
 Acceptance criteria: Rust executor passes parity tests in mock and live modes; TS runtime path is removed or archived; receipt/security contracts remain unchanged.
 Dependencies: OA-RUST-060, OA-RUST-066, OA-RUST-095.
 

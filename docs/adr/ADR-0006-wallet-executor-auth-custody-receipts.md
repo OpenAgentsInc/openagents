@@ -93,8 +93,8 @@ Source: `docs/plans/active/rust-migration-invariant-gates.md`
 Required checks:
 
 ```bash
-npm --prefix apps/lightning-wallet-executor run typecheck
-npm --prefix apps/lightning-wallet-executor test
+cargo test --manifest-path apps/lightning-wallet-executor/Cargo.toml
+cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- smoke
 ./scripts/verify-proto-generate.sh
 ```
 
@@ -131,4 +131,3 @@ npm --prefix apps/lightning-wallet-executor test
 - `docs/ARCHITECTURE-RUST.md`
 - `docs/ARCHITECTURE-RUST-ROADMAP.md`
 - Related issue: `OA-RUST-095` / `#1930`
-
