@@ -29,6 +29,8 @@ pub struct FanoutTopicWindow {
     pub topic: String,
     pub oldest_sequence: u64,
     pub head_sequence: u64,
+    pub queue_depth: usize,
+    pub dropped_messages: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -56,6 +58,7 @@ pub trait FanoutDriver: Send + Sync {
         limit: usize,
     ) -> Result<Vec<FanoutMessage>, FanoutError>;
     async fn topic_window(&self, topic: &str) -> Result<Option<FanoutTopicWindow>, FanoutError>;
+    async fn topic_windows(&self, limit: usize) -> Result<Vec<FanoutTopicWindow>, FanoutError>;
     fn driver_name(&self) -> &'static str;
     fn external_hooks(&self) -> Vec<ExternalFanoutHook>;
 }
@@ -93,6 +96,10 @@ impl FanoutHub {
         self.driver.topic_window(topic).await
     }
 
+    pub async fn topic_windows(&self, limit: usize) -> Result<Vec<FanoutTopicWindow>, FanoutError> {
+        self.driver.topic_windows(limit).await
+    }
+
     #[must_use]
     pub fn driver_name(&self) -> &'static str {
         self.driver.driver_name()
@@ -111,6 +118,7 @@ struct MemoryFanoutDriver {
 
 struct TopicQueue {
     messages: VecDeque<FanoutMessage>,
+    dropped_messages: u64,
 }
 
 impl MemoryFanoutDriver {
@@ -135,10 +143,12 @@ impl FanoutDriver for MemoryFanoutDriver {
             .entry(normalized.to_string())
             .or_insert_with(|| TopicQueue {
                 messages: VecDeque::new(),
+                dropped_messages: 0,
             });
         queue.messages.push_back(message);
         while queue.messages.len() > self.capacity {
             let _ = queue.messages.pop_front();
+            queue.dropped_messages = queue.dropped_messages.saturating_add(1);
         }
         Ok(())
     }
@@ -198,7 +208,31 @@ impl FanoutDriver for MemoryFanoutDriver {
             topic: normalized.to_string(),
             oldest_sequence: oldest.sequence,
             head_sequence: head.sequence,
+            queue_depth: queue.messages.len(),
+            dropped_messages: queue.dropped_messages,
         }))
+    }
+
+    async fn topic_windows(&self, limit: usize) -> Result<Vec<FanoutTopicWindow>, FanoutError> {
+        let capped_limit = limit.max(1).min(200);
+        let topics = self.topics.read().await;
+        let mut windows = topics
+            .iter()
+            .filter_map(|(topic, queue)| {
+                let oldest = queue.messages.front()?;
+                let head = queue.messages.back()?;
+                Some(FanoutTopicWindow {
+                    topic: topic.clone(),
+                    oldest_sequence: oldest.sequence,
+                    head_sequence: head.sequence,
+                    queue_depth: queue.messages.len(),
+                    dropped_messages: queue.dropped_messages,
+                })
+            })
+            .collect::<Vec<_>>();
+        windows.sort_by(|a, b| b.head_sequence.cmp(&a.head_sequence));
+        windows.truncate(capped_limit);
+        Ok(windows)
     }
 
     fn driver_name(&self) -> &'static str {
@@ -368,7 +402,50 @@ mod tests {
             .ok_or_else(|| anyhow!("expected topic window"))?;
         assert_eq!(window.oldest_sequence, 3);
         assert_eq!(window.head_sequence, 5);
+        assert_eq!(window.queue_depth, 3);
+        assert_eq!(window.dropped_messages, 2);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_fanout_topic_windows_reports_ranked_queue_state() -> Result<()> {
+        let fanout = FanoutHub::memory(2);
+        for seq in 1..=3 {
+            fanout
+                .publish(
+                    "run:a:events",
+                    FanoutMessage {
+                        topic: String::new(),
+                        sequence: seq,
+                        kind: "run.step".to_string(),
+                        payload: json!({"seq": seq}),
+                        published_at: chrono::Utc::now(),
+                    },
+                )
+                .await?;
+        }
+        fanout
+            .publish(
+                "run:b:events",
+                FanoutMessage {
+                    topic: String::new(),
+                    sequence: 1,
+                    kind: "run.step".to_string(),
+                    payload: json!({"seq": 1}),
+                    published_at: chrono::Utc::now(),
+                },
+            )
+            .await?;
+
+        let windows = fanout.topic_windows(10).await?;
+        assert!(!windows.is_empty());
+        let first = windows
+            .first()
+            .ok_or_else(|| anyhow!("missing first window"))?;
+        assert_eq!(first.topic, "run:a:events");
+        assert_eq!(first.queue_depth, 2);
+        assert_eq!(first.dropped_messages, 1);
         Ok(())
     }
 }
