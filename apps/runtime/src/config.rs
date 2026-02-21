@@ -11,6 +11,8 @@ pub struct Config {
     pub bind_addr: SocketAddr,
     pub build_sha: String,
     pub authority_write_mode: AuthorityWriteMode,
+    pub fanout_driver: String,
+    pub fanout_queue_capacity: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,6 +44,8 @@ pub enum ConfigError {
     BindAddrParse(#[from] AddrParseError),
     #[error("invalid RUNTIME_AUTHORITY_WRITE_MODE: {0}")]
     InvalidAuthorityWriteMode(String),
+    #[error("invalid RUNTIME_FANOUT_QUEUE_CAPACITY: {0}")]
+    InvalidFanoutQueueCapacity(String),
 }
 
 impl Config {
@@ -57,11 +61,19 @@ impl Config {
                 .unwrap_or_else(|_| "rust_active".to_string())
                 .as_str(),
         )?;
+        let fanout_driver =
+            env::var("RUNTIME_FANOUT_DRIVER").unwrap_or_else(|_| "memory".to_string());
+        let fanout_queue_capacity = env::var("RUNTIME_FANOUT_QUEUE_CAPACITY")
+            .unwrap_or_else(|_| "1024".to_string())
+            .parse::<usize>()
+            .map_err(|error| ConfigError::InvalidFanoutQueueCapacity(error.to_string()))?;
         Ok(Self {
             service_name,
             bind_addr,
             build_sha,
             authority_write_mode,
+            fanout_driver,
+            fanout_queue_capacity,
         })
     }
 }

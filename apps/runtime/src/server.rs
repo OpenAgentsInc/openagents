@@ -15,6 +15,7 @@ use crate::{
     artifacts::{ArtifactError, RuntimeReceipt, build_receipt, build_replay_jsonl},
     authority::AuthorityError,
     config::Config,
+    fanout::{ExternalFanoutHook, FanoutHub, FanoutMessage},
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     types::{
         AppendRunEventRequest, ProjectionCheckpoint, ProjectionDriftReport, RegisterWorkerRequest,
@@ -29,6 +30,7 @@ pub struct AppState {
     config: Config,
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
+    fanout: Arc<FanoutHub>,
     started_at: chrono::DateTime<Utc>,
 }
 
@@ -38,11 +40,13 @@ impl AppState {
         config: Config,
         orchestrator: Arc<RuntimeOrchestrator>,
         workers: Arc<InMemoryWorkerRegistry>,
+        fanout: Arc<FanoutHub>,
     ) -> Self {
         Self {
             config,
             orchestrator,
             workers,
+            fanout,
             started_at: Utc::now(),
         }
     }
@@ -56,6 +60,7 @@ struct HealthResponse {
     uptime_seconds: i64,
     authority_write_mode: String,
     authority_writer_active: bool,
+    fanout_driver: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,6 +70,7 @@ struct ReadinessResponse {
     projector_ready: bool,
     workers_ready: bool,
     authority_writer_active: bool,
+    fanout_driver: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,6 +112,25 @@ struct DriftResponse {
 #[derive(Debug, Serialize)]
 struct RunSummaryResponse {
     summary: RunProjectionSummary,
+}
+
+#[derive(Debug, Deserialize)]
+struct FanoutPollQuery {
+    after_seq: Option<u64>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+struct FanoutPollResponse {
+    topic: String,
+    driver: String,
+    messages: Vec<FanoutMessage>,
+}
+
+#[derive(Debug, Serialize)]
+struct FanoutHooksResponse {
+    driver: String,
+    hooks: Vec<ExternalFanoutHook>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,6 +182,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/runs/:run_id/receipt", get(get_run_receipt))
         .route("/internal/v1/runs/:run_id/replay", get(get_run_replay))
         .route(
+            "/internal/v1/khala/topics/:topic/messages",
+            get(get_khala_topic_messages),
+        )
+        .route(
+            "/internal/v1/khala/fanout/hooks",
+            get(get_khala_fanout_hooks),
+        )
+        .route(
             "/internal/v1/projectors/checkpoints/:run_id",
             get(get_run_checkpoint),
         )
@@ -191,6 +224,7 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         uptime_seconds,
         authority_write_mode: state.config.authority_write_mode.as_str().to_string(),
         authority_writer_active: state.config.authority_write_mode.writes_enabled(),
+        fanout_driver: state.fanout.driver_name().to_string(),
     })
 }
 
@@ -211,6 +245,7 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             projector_ready: runtime_readiness.projector_ready,
             workers_ready,
             authority_writer_active: state.config.authority_write_mode.writes_enabled(),
+            fanout_driver: state.fanout.driver_name().to_string(),
         }),
     )
 }
@@ -228,6 +263,7 @@ async fn start_run(
         })
         .await
         .map_err(ApiError::from_orchestration)?;
+    publish_latest_run_event(&state, &run).await?;
     Ok((StatusCode::CREATED, Json(RunResponse { run })))
 }
 
@@ -250,6 +286,7 @@ async fn append_run_event(
         )
         .await
         .map_err(ApiError::from_orchestration)?;
+    publish_latest_run_event(&state, &run).await?;
     Ok(Json(RunResponse { run }))
 }
 
@@ -292,6 +329,39 @@ async fn get_run_replay(
         .ok_or(ApiError::NotFound)?;
     let replay = build_replay_jsonl(&run).map_err(ApiError::from_artifacts)?;
     Ok(([(header::CONTENT_TYPE, "application/x-ndjson")], replay))
+}
+
+async fn get_khala_topic_messages(
+    State(state): State<AppState>,
+    Path(topic): Path<String>,
+    Query(query): Query<FanoutPollQuery>,
+) -> Result<Json<FanoutPollResponse>, ApiError> {
+    if topic.trim().is_empty() {
+        return Err(ApiError::InvalidRequest(
+            "topic is required for khala fanout polling".to_string(),
+        ));
+    }
+    let after_seq = query.after_seq.unwrap_or(0);
+    let limit = query.limit.unwrap_or(100);
+    let messages = state
+        .fanout
+        .poll(&topic, after_seq, limit)
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    Ok(Json(FanoutPollResponse {
+        topic,
+        driver: state.fanout.driver_name().to_string(),
+        messages,
+    }))
+}
+
+async fn get_khala_fanout_hooks(
+    State(state): State<AppState>,
+) -> Result<Json<FanoutHooksResponse>, ApiError> {
+    Ok(Json(FanoutHooksResponse {
+        driver: state.fanout.driver_name().to_string(),
+        hooks: state.fanout.external_hooks(),
+    }))
 }
 
 async fn get_run_checkpoint(
@@ -359,6 +429,7 @@ async fn register_worker(
         })
         .await
         .map_err(ApiError::from_worker)?;
+    publish_worker_snapshot(&state, &snapshot).await?;
     Ok((
         StatusCode::CREATED,
         Json(WorkerResponse { worker: snapshot }),
@@ -397,6 +468,7 @@ async fn heartbeat_worker(
         )
         .await
         .map_err(ApiError::from_worker)?;
+    publish_worker_snapshot(&state, &snapshot).await?;
     Ok(Json(WorkerResponse { worker: snapshot }))
 }
 
@@ -419,6 +491,7 @@ async fn transition_worker(
         )
         .await
         .map_err(ApiError::from_worker)?;
+    publish_worker_snapshot(&state, &snapshot).await?;
     Ok(Json(WorkerResponse { worker: snapshot }))
 }
 
@@ -514,6 +587,53 @@ fn ensure_runtime_write_authority(state: &AppState) -> Result<(), ApiError> {
     }
 }
 
+async fn publish_latest_run_event(state: &AppState, run: &RuntimeRun) -> Result<(), ApiError> {
+    let Some(event) = run.events.last() else {
+        return Ok(());
+    };
+    let topic = format!("run:{}:events", run.id);
+    state
+        .fanout
+        .publish(
+            &topic,
+            FanoutMessage {
+                topic: topic.clone(),
+                sequence: event.seq,
+                kind: event.event_type.clone(),
+                payload: event.payload.clone(),
+                published_at: Utc::now(),
+            },
+        )
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))
+}
+
+async fn publish_worker_snapshot(
+    state: &AppState,
+    snapshot: &WorkerSnapshot,
+) -> Result<(), ApiError> {
+    let topic = format!("worker:{}:lifecycle", snapshot.worker.worker_id);
+    state
+        .fanout
+        .publish(
+            &topic,
+            FanoutMessage {
+                topic: topic.clone(),
+                sequence: snapshot.worker.latest_seq,
+                kind: snapshot.worker.status.as_event_label().to_string(),
+                payload: serde_json::json!({
+                    "worker_id": snapshot.worker.worker_id,
+                    "status": snapshot.worker.status,
+                    "latest_seq": snapshot.worker.latest_seq,
+                    "heartbeat_state": snapshot.liveness.heartbeat_state,
+                }),
+                published_at: Utc::now(),
+            },
+        )
+        .await
+        .map_err(|error| ApiError::Internal(error.to_string()))
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         match self {
@@ -586,6 +706,7 @@ mod tests {
         authority::InMemoryRuntimeAuthority,
         config::{AuthorityWriteMode, Config},
         event_log::DurableEventLog,
+        fanout::FanoutHub,
         orchestration::RuntimeOrchestrator,
         projectors::InMemoryProjectionPipeline,
         workers::InMemoryWorkerRegistry,
@@ -604,6 +725,8 @@ mod tests {
                 bind_addr: loopback_bind_addr(),
                 build_sha: "test".to_string(),
                 authority_write_mode: mode,
+                fanout_driver: "memory".to_string(),
+                fanout_queue_capacity: 64,
             },
             Arc::new(RuntimeOrchestrator::new(
                 Arc::new(InMemoryRuntimeAuthority::with_event_log(
@@ -612,6 +735,7 @@ mod tests {
                 projector_pipeline,
             )),
             Arc::new(InMemoryWorkerRegistry::new(projectors, 120_000)),
+            Arc::new(FanoutHub::memory(64)),
         );
         build_router(state)
     }
@@ -979,6 +1103,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
+        let app = test_router();
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:fanout-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let messages_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(messages_response.status(), axum::http::StatusCode::OK);
+        let messages_json = response_json(messages_response).await?;
+        let first_kind = messages_json
+            .pointer("/messages/0/kind")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        assert_eq!(first_kind, "run.started");
+
+        let hooks_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/fanout/hooks")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(hooks_response.status(), axum::http::StatusCode::OK);
+        let hooks_json = response_json(hooks_response).await?;
+        let hook_count = hooks_json
+            .pointer("/hooks")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, std::vec::Vec::len);
+        assert_eq!(hook_count, 3);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn write_endpoints_are_frozen_when_authority_mode_is_read_only() -> Result<()> {
         let app = test_router_with_mode(AuthorityWriteMode::ReadOnly);
         let response = app
@@ -993,7 +1176,10 @@ mod tests {
                     }))?))?,
             )
             .await?;
-        assert_eq!(response.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
 
         let response_json = response_json(response).await?;
         assert_eq!(

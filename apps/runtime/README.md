@@ -20,6 +20,8 @@ Environment:
 - `RUNTIME_CHECKPOINT_PATH` (default `.runtime-data/projection-state.json`)
 - `RUNTIME_AUTHORITY_WRITE_MODE` (`rust_active|shadow_only|read_only`, default `rust_active`)
 - `LEGACY_RUNTIME_WRITE_FREEZE` (`true|false`) for legacy Elixir write-path freeze
+- `RUNTIME_FANOUT_DRIVER` (currently `memory`)
+- `RUNTIME_FANOUT_QUEUE_CAPACITY` (default `1024`)
 
 Baseline endpoints:
 
@@ -30,6 +32,8 @@ Baseline endpoints:
 - `GET /internal/v1/runs/:run_id`
 - `GET /internal/v1/runs/:run_id/receipt`
 - `GET /internal/v1/runs/:run_id/replay`
+- `GET /internal/v1/khala/topics/:topic/messages?after_seq=<n>&limit=<n>`
+- `GET /internal/v1/khala/fanout/hooks`
 - `GET /internal/v1/projectors/checkpoints/:run_id`
 - `GET /internal/v1/projectors/run-summary/:run_id`
 - `GET /internal/v1/projectors/drift?topic=<topic>`
@@ -77,6 +81,12 @@ Authority cutover controls:
 - Rust authority writes are enabled only when `RUNTIME_AUTHORITY_WRITE_MODE=rust_active`.
 - `shadow_only` or `read_only` modes return `503 write_path_frozen` on Rust write endpoints.
 - Legacy Elixir runtime can be frozen with `LEGACY_RUNTIME_WRITE_FREEZE=true` (returns `410 write_path_frozen` on mutation routes).
+
+Khala fanout seam:
+
+- Runtime writes publish through `FanoutDriver` abstraction (`memory` adapter implemented).
+- Fanout queue is bounded per topic; oldest messages are evicted when capacity is exceeded.
+- `RUNTIME_FANOUT_DRIVER` keeps protocol stable while reserving hooks for `nats`, `redis`, and `postgres_notify` adapters.
 
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
 

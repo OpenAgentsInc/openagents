@@ -9,6 +9,7 @@ use tracing::info;
 use crate::{
     authority::InMemoryRuntimeAuthority,
     config::Config,
+    fanout::FanoutHub,
     orchestration::RuntimeOrchestrator,
     projectors::InMemoryProjectionPipeline,
     server::{AppState, build_router},
@@ -19,6 +20,7 @@ pub mod artifacts;
 pub mod authority;
 pub mod config;
 pub mod event_log;
+pub mod fanout;
 pub mod orchestration;
 pub mod projectors;
 pub mod run_state_machine;
@@ -35,7 +37,8 @@ pub fn build_runtime_state(config: Config) -> AppState {
         orchestrator.projectors(),
         120_000,
     ));
-    AppState::new(config, orchestrator, workers)
+    let fanout = Arc::new(FanoutHub::memory(config.fanout_queue_capacity));
+    AppState::new(config, orchestrator, workers, fanout)
 }
 
 pub fn build_app(config: Config) -> axum::Router {
