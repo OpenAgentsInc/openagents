@@ -118,6 +118,7 @@ Useful commands:
 - `mix format --check-formatted`
 - `mix runtime.contract.check` (validate `docs/` artifacts against implemented `/internal/v1` routes)
 - `mix ci` (format check + compile warnings-as-errors + contract check + test warnings-as-errors)
+- `DB_URL=<postgres-url> apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh` (authority-plane DB role drift check)
 
 ## Local Postgres baseline (Gate G0)
 
@@ -187,3 +188,4 @@ Internal API docs:
 - Reprojection and drift-repair runbook: `docs/REPROJECTION.md`
 - Shadow parity harness runbook: `docs/SHADOW_MODE_PARITY.md`
 - Rust authority cutover runbook: `docs/RUST_AUTHORITY_CUTOVER.md`
+- DB role isolation policy + tooling: `docs/DB_ROLE_ISOLATION.md`

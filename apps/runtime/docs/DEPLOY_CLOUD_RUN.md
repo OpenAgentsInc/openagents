@@ -4,6 +4,7 @@ This is the canonical production deploy flow for the Cloud Run runtime stack:
 
 - Service: `runtime`
 - Migration job: `runtime-migrate`
+- DB role isolation tooling: `apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh`, `apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh`
 
 ## Why this exists
 
@@ -50,7 +51,19 @@ MIGRATE_JOB=runtime-migrate \
 apps/runtime/deploy/cloudrun/run-migrate-job.sh
 ```
 
-4. Confirm no new runtime/web 500s in logs.
+If `DB_URL` is set, `run-migrate-job.sh` runs role-isolation verification automatically (`VERIFY_DB_ROLE_ISOLATION=1` by default).
+
+4. Apply role policy (idempotent) and verify drift status.
+
+```bash
+DB_URL='postgres://...' \
+apps/runtime/deploy/cloudrun/apply-db-role-isolation.sh
+
+DB_URL='postgres://...' \
+apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh
+```
+
+5. Confirm no new runtime/web 500s in logs.
 
 ```bash
 gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="openagents-web" AND httpRequest.status=500' \
