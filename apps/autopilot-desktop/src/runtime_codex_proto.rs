@@ -160,7 +160,9 @@ pub fn extract_ios_user_message(payload: &Value) -> Option<IosUserMessage> {
         return None;
     }
 
-    let params = worker_payload.get("params").and_then(|value| value.as_object());
+    let params = worker_payload
+        .get("params")
+        .and_then(|value| value.as_object());
 
     let message_id = first_non_empty_string(&[
         worker_payload.get("message_id"),
@@ -268,9 +270,9 @@ fn first_non_empty_string(values: &[Option<&Value>]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeCodexStreamEvent, extract_desktop_handshake_ack_id, extract_ios_handshake_id,
-        extract_ios_user_message, handshake_dedupe_key, merge_retry_cursor,
-        parse_runtime_stream_events, stream_event_seq,
+        ProtoWorkerEventEnvelope, RuntimeCodexStreamEvent, WORKER_EVENT_TYPE,
+        extract_desktop_handshake_ack_id, extract_ios_handshake_id, extract_ios_user_message,
+        handshake_dedupe_key, merge_retry_cursor, parse_runtime_stream_events, stream_event_seq,
     };
     use serde_json::{Value, json};
     use std::collections::HashSet;
@@ -503,5 +505,54 @@ event: codex.worker.event\nid: 42\ndata: {\"seq\":42,\"eventType\":\"worker.even
             }
         });
         assert!(extract_ios_user_message(&missing_id).is_none());
+    }
+
+    #[test]
+    fn codex_contract_fixture_is_decodable_by_desktop_parser() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../docs/protocol/fixtures/codex-worker-events-v1.json"
+        ))
+        .expect("codex fixture should be valid JSON");
+
+        let notifications = fixture["notification_events"]
+            .as_array()
+            .expect("notification_events must be an array");
+
+        assert!(notifications.len() >= 10);
+
+        let mut saw_ios_handshake = false;
+        let mut saw_desktop_ack = false;
+        let mut saw_ios_user_message = false;
+
+        for notification in notifications {
+            let seq = notification["seq"]
+                .as_u64()
+                .expect("notification seq must be numeric");
+            let payload = notification["payload"].clone();
+
+            let stream_payload = json!({
+                "seq": seq,
+                "eventType": WORKER_EVENT_TYPE,
+                "payload": payload
+            });
+
+            let parsed = serde_json::from_value::<ProtoWorkerEventEnvelope>(stream_payload.clone())
+                .expect("runtime stream payload should deserialize");
+            assert_eq!(parsed.event_type, WORKER_EVENT_TYPE);
+
+            if extract_ios_handshake_id(&stream_payload).is_some() {
+                saw_ios_handshake = true;
+            }
+            if extract_desktop_handshake_ack_id(&stream_payload).is_some() {
+                saw_desktop_ack = true;
+            }
+            if extract_ios_user_message(&stream_payload).is_some() {
+                saw_ios_user_message = true;
+            }
+        }
+
+        assert!(saw_ios_handshake);
+        assert!(saw_desktop_ack);
+        assert!(saw_ios_user_message);
     }
 }

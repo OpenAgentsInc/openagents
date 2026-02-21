@@ -1,0 +1,255 @@
+syntax = "proto3";
+
+package openagents.codex.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "openagents/codex/v1/sandbox.proto";
+import "openagents/protocol/v1/reasons.proto";
+
+message CodexProjectionEnvelope {
+  string runtime_source = 1;
+  string runtime_run_id = 2;
+  string runtime_worker_id = 3;
+  uint64 runtime_seq = 4;
+  uint64 runtime_seq_end = 5;
+  uint32 projection_version = 6;
+  google.protobuf.Timestamp projected_at = 7;
+}
+
+message CodexWorkerEvent {
+  string worker_id = 1;
+  uint64 seq = 2;
+  string event_type = 3;
+  uint32 event_version = 4;
+  google.protobuf.Timestamp emitted_at = 5;
+  CodexProjectionEnvelope projection = 6;
+
+  oneof payload {
+    CodexWorkerStartedPayload worker_started = 10;
+    CodexWorkerRequestReceivedPayload worker_request_received = 11;
+    CodexWorkerResponsePayload worker_response = 12;
+    CodexWorkerErrorPayload worker_error = 13;
+    CodexWorkerHeartbeatPayload worker_heartbeat = 14;
+    CodexWorkerStoppedPayload worker_stopped = 15;
+    CodexWorkerUnknownPayload unknown = 16;
+  }
+}
+
+message CodexWorkerStartedPayload {
+  string status = 1;
+  CodexSandboxBinding sandbox = 2;
+  google.protobuf.Struct metadata = 3;
+}
+
+message CodexWorkerRequestReceivedPayload {
+  string request_id = 1;
+  string method = 2;
+  string request_version = 3;
+}
+
+message CodexWorkerResponsePayload {
+  string request_id = 1;
+  bool ok = 2;
+  google.protobuf.Struct response = 3;
+}
+
+message CodexWorkerErrorPayload {
+  string request_id = 1;
+  string code = 2;
+  string message = 3;
+  openagents.protocol.v1.ReasonCode reason_code = 4;
+  google.protobuf.Struct response = 5;
+}
+
+message CodexWorkerHeartbeatPayload {
+  string status = 1;
+  google.protobuf.Timestamp observed_at = 2;
+}
+
+message CodexWorkerStoppedPayload {
+  string status = 1;
+  string reason = 2;
+}
+
+message CodexWorkerUnknownPayload {
+  google.protobuf.Struct body = 1;
+}
+
+enum CodexNotificationMethod {
+  CODEX_NOTIFICATION_METHOD_UNSPECIFIED = 0;
+  CODEX_NOTIFICATION_METHOD_THREAD_STARTED = 1;
+  CODEX_NOTIFICATION_METHOD_TURN_STARTED = 2;
+  CODEX_NOTIFICATION_METHOD_TURN_COMPLETED = 3;
+  CODEX_NOTIFICATION_METHOD_TURN_FAILED = 4;
+  CODEX_NOTIFICATION_METHOD_TURN_ABORTED = 5;
+  CODEX_NOTIFICATION_METHOD_TURN_INTERRUPTED = 6;
+  CODEX_NOTIFICATION_METHOD_ITEM_STARTED = 7;
+  CODEX_NOTIFICATION_METHOD_ITEM_COMPLETED = 8;
+  CODEX_NOTIFICATION_METHOD_ITEM_AGENT_MESSAGE_DELTA = 9;
+  CODEX_NOTIFICATION_METHOD_ITEM_REASONING_DELTA = 10;
+  CODEX_NOTIFICATION_METHOD_ITEM_TOOL_OUTPUT_DELTA = 11;
+  CODEX_NOTIFICATION_METHOD_CODEX_ERROR = 12;
+  CODEX_NOTIFICATION_METHOD_IOS_HANDSHAKE = 13;
+  CODEX_NOTIFICATION_METHOD_DESKTOP_HANDSHAKE_ACK = 14;
+  CODEX_NOTIFICATION_METHOD_USER_MESSAGE = 15;
+  CODEX_NOTIFICATION_METHOD_LEGACY_AGENT_MESSAGE_DELTA = 16;
+}
+
+enum CodexItemKind {
+  CODEX_ITEM_KIND_UNSPECIFIED = 0;
+  CODEX_ITEM_KIND_USER_MESSAGE = 1;
+  CODEX_ITEM_KIND_AGENT_MESSAGE = 2;
+  CODEX_ITEM_KIND_REASONING = 3;
+  CODEX_ITEM_KIND_COMMAND_EXECUTION = 4;
+  CODEX_ITEM_KIND_FILE_CHANGE = 5;
+  CODEX_ITEM_KIND_MCP_TOOL_CALL = 6;
+  CODEX_ITEM_KIND_WEB_SEARCH = 7;
+  CODEX_ITEM_KIND_TODO_LIST = 8;
+  CODEX_ITEM_KIND_ERROR = 9;
+}
+
+enum CodexStreamErrorCode {
+  CODEX_STREAM_ERROR_CODE_UNSPECIFIED = 0;
+  CODEX_STREAM_ERROR_CODE_UNAUTHORIZED = 1;
+  CODEX_STREAM_ERROR_CODE_FORBIDDEN = 2;
+  CODEX_STREAM_ERROR_CODE_STALE_CURSOR = 3;
+  CODEX_STREAM_ERROR_CODE_SESSION_EXPIRED = 4;
+  CODEX_STREAM_ERROR_CODE_REAUTH_REQUIRED = 5;
+  CODEX_STREAM_ERROR_CODE_BAD_SUBSCRIPTION = 6;
+  CODEX_STREAM_ERROR_CODE_INTERNAL_ERROR = 7;
+}
+
+message CodexTokenUsage {
+  int64 input_tokens = 1;
+  int64 cached_input_tokens = 2;
+  int64 output_tokens = 3;
+  int64 reasoning_output_tokens = 4;
+}
+
+message CodexReplayMetadata {
+  string topic = 1;
+  uint64 seq = 2;
+  uint64 resume_after = 3;
+  uint64 retention_floor = 4;
+  bool replayed = 5;
+}
+
+message CodexThreadStartedPayload {
+  string thread_id = 1;
+}
+
+message CodexTurnStartedPayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string model = 3;
+  string reasoning_effort = 4;
+}
+
+message CodexTurnCompletedPayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string status = 3;
+  CodexTokenUsage token_usage = 4;
+}
+
+message CodexTurnFailurePayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string status = 3;
+  string message = 4;
+  bool will_retry = 5;
+}
+
+message CodexItemLifecyclePayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string item_id = 3;
+  CodexItemKind item_kind = 4;
+  string item_status = 5;
+  google.protobuf.Struct item = 6;
+}
+
+message CodexTextDeltaPayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string item_id = 3;
+  string delta = 4;
+  int64 summary_index = 5;
+  int64 content_index = 6;
+}
+
+message CodexToolOutputDeltaPayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string item_id = 3;
+  string delta = 4;
+  CodexItemKind item_kind = 5;
+}
+
+message CodexErrorPayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string message = 3;
+  bool will_retry = 4;
+}
+
+message CodexIosHandshakePayload {
+  string handshake_id = 1;
+  string device_id = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message CodexDesktopHandshakeAckPayload {
+  string handshake_id = 1;
+  string desktop_session_id = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message CodexUserMessagePayload {
+  string thread_id = 1;
+  string turn_id = 2;
+  string message_id = 3;
+  string text = 4;
+  string model = 5;
+  string reasoning_effort = 6;
+}
+
+message CodexNotificationUnknownPayload {
+  google.protobuf.Struct body = 1;
+}
+
+message CodexNotificationEnvelope {
+  string worker_id = 1;
+  uint64 seq = 2;
+  CodexNotificationMethod method = 3;
+  string method_text = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+  CodexReplayMetadata replay = 6;
+
+  oneof payload {
+    CodexThreadStartedPayload thread_started = 10;
+    CodexTurnStartedPayload turn_started = 11;
+    CodexTurnCompletedPayload turn_completed = 12;
+    CodexTurnFailurePayload turn_failure = 13;
+    CodexItemLifecyclePayload item_lifecycle = 14;
+    CodexTextDeltaPayload text_delta = 15;
+    CodexToolOutputDeltaPayload tool_output_delta = 16;
+    CodexErrorPayload codex_error = 17;
+    CodexIosHandshakePayload ios_handshake = 18;
+    CodexDesktopHandshakeAckPayload desktop_handshake_ack = 19;
+    CodexUserMessagePayload user_message = 20;
+    CodexNotificationUnknownPayload unknown = 21;
+  }
+}
+
+message CodexStreamError {
+  CodexStreamErrorCode code = 1;
+  string message = 2;
+  uint32 retry_after_ms = 3;
+  bool full_resync_required = 4;
+  bool reauth_required = 5;
+  string topic = 6;
+  uint64 resume_after = 7;
+  uint64 retention_floor = 8;
+}
