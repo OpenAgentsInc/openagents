@@ -8,6 +8,8 @@ pub struct SyncAuthConfig {
     pub signing_key: String,
     pub issuer: String,
     pub audience: String,
+    pub require_jti: bool,
+    pub max_token_age_seconds: u64,
     pub revoked_jtis: HashSet<String>,
 }
 
@@ -58,6 +60,12 @@ pub enum SyncAuthError {
     InvalidToken,
     #[error("sync token expired")]
     TokenExpired,
+    #[error("sync token missing jti")]
+    MissingJti,
+    #[error("sync token missing iat")]
+    MissingIssuedAt,
+    #[error("sync token too old")]
+    TokenTooOld,
     #[error("sync token revoked")]
     TokenRevoked,
     #[error("forbidden topic {topic}")]
@@ -77,6 +85,9 @@ impl SyncAuthError {
             Self::InvalidAuthorizationScheme => "invalid_authorization_scheme",
             Self::InvalidToken => "invalid_token",
             Self::TokenExpired => "token_expired",
+            Self::MissingJti => "missing_jti",
+            Self::MissingIssuedAt => "missing_iat",
+            Self::TokenTooOld => "token_too_old",
             Self::TokenRevoked => "token_revoked",
             Self::ForbiddenTopic { .. } => "forbidden_topic",
             Self::MissingScope { .. } => "missing_scope",
@@ -91,6 +102,9 @@ impl SyncAuthError {
                 | Self::InvalidAuthorizationScheme
                 | Self::InvalidToken
                 | Self::TokenExpired
+                | Self::MissingJti
+                | Self::MissingIssuedAt
+                | Self::TokenTooOld
                 | Self::TokenRevoked
         )
     }
@@ -100,6 +114,8 @@ impl SyncAuthError {
 pub struct SyncAuthorizer {
     decoding_key: DecodingKey,
     validation: Validation,
+    require_jti: bool,
+    max_token_age_seconds: u64,
     revoked_jtis: HashSet<String>,
 }
 
@@ -113,6 +129,8 @@ impl SyncAuthorizer {
         Self {
             decoding_key: DecodingKey::from_secret(config.signing_key.as_bytes()),
             validation,
+            require_jti: config.require_jti,
+            max_token_age_seconds: config.max_token_age_seconds.max(1),
             revoked_jtis: config.revoked_jtis,
         }
     }
@@ -131,6 +149,7 @@ impl SyncAuthorizer {
     }
 
     pub fn authenticate(&self, token: &str) -> Result<SyncPrincipal, SyncAuthError> {
+        let now = chrono::Utc::now().timestamp().max(0) as usize;
         let claims = match decode::<SyncTokenClaims>(token, &self.decoding_key, &self.validation) {
             Ok(decoded) => decoded.claims,
             Err(error) => match error.kind() {
@@ -139,6 +158,15 @@ impl SyncAuthorizer {
             },
         };
 
+        if claims.iat == 0 {
+            return Err(SyncAuthError::MissingIssuedAt);
+        }
+        if now.saturating_sub(claims.iat) > self.max_token_age_seconds as usize {
+            return Err(SyncAuthError::TokenTooOld);
+        }
+        if self.require_jti && claims.jti.trim().is_empty() {
+            return Err(SyncAuthError::MissingJti);
+        }
         if !claims.jti.is_empty() && self.revoked_jtis.contains(&claims.jti) {
             return Err(SyncAuthError::TokenRevoked);
         }
@@ -283,6 +311,8 @@ mod tests {
             signing_key: key.to_string(),
             issuer: "https://openagents.com".to_string(),
             audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 300,
             revoked_jtis: HashSet::from([String::from("revoked-jti")]),
         });
         let claims = SyncTokenClaims {
@@ -310,6 +340,8 @@ mod tests {
             signing_key: key.to_string(),
             issuer: "https://openagents.com".to_string(),
             audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 300,
             revoked_jtis: HashSet::new(),
         });
         let claims = SyncTokenClaims {
@@ -345,5 +377,65 @@ mod tests {
             SyncAuthError::MissingScope { .. } => {}
             other => panic!("expected missing scope, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn missing_jti_is_rejected_when_required() {
+        let key = "sync-test-key";
+        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
+            signing_key: key.to_string(),
+            issuer: "https://openagents.com".to_string(),
+            audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 300,
+            revoked_jtis: HashSet::new(),
+        });
+        let now = Utc::now().timestamp() as usize;
+        let claims = SyncTokenClaims {
+            iss: "https://openagents.com".to_string(),
+            aud: "openagents-sync".to_string(),
+            sub: "user:1".to_string(),
+            exp: now + 60,
+            nbf: now,
+            iat: now,
+            jti: String::new(),
+            oa_user_id: Some(1),
+            oa_org_id: Some("user:1".to_string()),
+            oa_device_id: Some("ios-device".to_string()),
+            oa_sync_scopes: vec!["runtime.run_events".to_string()],
+        };
+        let token = make_token(claims, key);
+        let result = authorizer.authenticate(&token);
+        assert_eq!(result, Err(SyncAuthError::MissingJti));
+    }
+
+    #[test]
+    fn stale_iat_is_rejected_by_max_age_policy() {
+        let key = "sync-test-key";
+        let authorizer = SyncAuthorizer::from_config(SyncAuthConfig {
+            signing_key: key.to_string(),
+            issuer: "https://openagents.com".to_string(),
+            audience: "openagents-sync".to_string(),
+            require_jti: true,
+            max_token_age_seconds: 30,
+            revoked_jtis: HashSet::new(),
+        });
+        let now = Utc::now().timestamp() as usize;
+        let claims = SyncTokenClaims {
+            iss: "https://openagents.com".to_string(),
+            aud: "openagents-sync".to_string(),
+            sub: "user:1".to_string(),
+            exp: now + 3600,
+            nbf: now.saturating_sub(600),
+            iat: now.saturating_sub(600),
+            jti: "old-token-jti".to_string(),
+            oa_user_id: Some(1),
+            oa_org_id: Some("user:1".to_string()),
+            oa_device_id: Some("ios-device".to_string()),
+            oa_sync_scopes: vec!["runtime.run_events".to_string()],
+        };
+        let token = make_token(claims, key);
+        let result = authorizer.authenticate(&token);
+        assert_eq!(result, Err(SyncAuthError::TokenTooOld));
     }
 }

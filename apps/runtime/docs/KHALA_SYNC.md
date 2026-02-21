@@ -146,6 +146,7 @@ Operational entrypoint:
 - Laravel mints short-lived sync tokens (`/api/sync/token`, `/api/khala/token` compatibility).
 - Runtime/Khala validates issuer, audience, expiry, and scoped entitlements.
 - Operator secrets are never issued to end-user clients.
+- WS threat model + anti-replay policy: `apps/runtime/docs/KHALA_WS_THREAT_MODEL.md`
 
 ## Compatibility Gate Model
 

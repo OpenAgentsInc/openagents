@@ -473,6 +473,7 @@ async fn get_khala_topic_messages(
             "topic is required for khala fanout polling".to_string(),
         ));
     }
+    enforce_khala_origin_policy(&state, &headers)?;
     let principal = authorize_khala_topic_access(&state, &headers, &topic).await?;
     let after_seq = query.after_seq.unwrap_or(0);
     let requested_limit = query
@@ -639,6 +640,36 @@ async fn get_khala_fanout_metrics(
         delivery_metrics,
         topic_windows,
     }))
+}
+
+fn enforce_khala_origin_policy(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+    if !state.config.khala_enforce_origin {
+        return Ok(());
+    }
+    let Some(origin_header) = headers.get(header::ORIGIN) else {
+        return Ok(());
+    };
+    let origin = origin_header
+        .to_str()
+        .unwrap_or_default()
+        .trim()
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+    if origin.is_empty() {
+        return Ok(());
+    }
+    if state.config.khala_allowed_origins.contains(&origin) {
+        return Ok(());
+    }
+
+    tracing::warn!(
+        origin = %origin,
+        allowed = ?state.config.khala_allowed_origins,
+        "khala origin denied by policy"
+    );
+    Err(ApiError::KhalaOriginDenied(
+        "origin_not_allowed".to_string(),
+    ))
 }
 
 async fn authorize_khala_topic_access(
@@ -853,6 +884,7 @@ enum ApiError {
     Conflict(String),
     KhalaUnauthorized(String),
     KhalaForbiddenTopic(String),
+    KhalaOriginDenied(String),
     PublishRateLimited {
         retry_after_ms: u64,
         reason_code: String,
@@ -1159,6 +1191,15 @@ impl IntoResponse for ApiError {
                 })),
             )
                 .into_response(),
+            Self::KhalaOriginDenied(reason_code) => (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": "forbidden_origin",
+                    "message": "origin is not allowed for khala access",
+                    "reason_code": reason_code,
+                })),
+            )
+                .into_response(),
             Self::PublishRateLimited {
                 retry_after_ms,
                 reason_code,
@@ -1349,6 +1390,11 @@ mod tests {
             khala_consumer_registry_capacity: 4096,
             khala_reconnect_base_backoff_ms: 400,
             khala_reconnect_jitter_ms: 250,
+            khala_enforce_origin: true,
+            khala_allowed_origins: HashSet::from([
+                "https://openagents.com".to_string(),
+                "https://www.openagents.com".to_string(),
+            ]),
             khala_run_events_publish_rate_per_second: 240,
             khala_worker_lifecycle_publish_rate_per_second: 180,
             khala_codex_worker_events_publish_rate_per_second: 240,
@@ -1360,6 +1406,8 @@ mod tests {
             sync_token_signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
             sync_token_issuer: "https://openagents.com".to_string(),
             sync_token_audience: "openagents-sync".to_string(),
+            sync_token_require_jti: true,
+            sync_token_max_age_seconds: 300,
             sync_revoked_jtis: revoked_for_config,
         };
         mutate_config(&mut config);
@@ -1382,6 +1430,8 @@ mod tests {
                 signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
                 issuer: "https://openagents.com".to_string(),
                 audience: "openagents-sync".to_string(),
+                require_jti: true,
+                max_token_age_seconds: 300,
                 revoked_jtis,
             })),
         );
@@ -2362,6 +2412,112 @@ mod tests {
             "reset_local_watermark_and_replay_bootstrap"
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_origin_policy_denies_untrusted_browser_origins() -> Result<()> {
+        let app = test_router();
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "origin-deny",
+            300,
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:origin-policy-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let denied_response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .header("origin", "https://evil.example.com")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(denied_response.status(), axum::http::StatusCode::FORBIDDEN);
+        let denied_json = response_json(denied_response).await?;
+        assert_eq!(
+            denied_json
+                .pointer("/error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "forbidden_origin"
+        );
+        assert_eq!(
+            denied_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "origin_not_allowed"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_origin_policy_allows_openagents_origin() -> Result<()> {
+        let app = test_router();
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "origin-allow",
+            300,
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:origin-policy-allow-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let allowed_response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .header("origin", "https://openagents.com")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(allowed_response.status(), axum::http::StatusCode::OK);
         Ok(())
     }
 

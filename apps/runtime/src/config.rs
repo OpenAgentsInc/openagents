@@ -24,6 +24,8 @@ pub struct Config {
     pub khala_consumer_registry_capacity: usize,
     pub khala_reconnect_base_backoff_ms: u64,
     pub khala_reconnect_jitter_ms: u64,
+    pub khala_enforce_origin: bool,
+    pub khala_allowed_origins: HashSet<String>,
     pub khala_run_events_publish_rate_per_second: u32,
     pub khala_worker_lifecycle_publish_rate_per_second: u32,
     pub khala_codex_worker_events_publish_rate_per_second: u32,
@@ -35,6 +37,8 @@ pub struct Config {
     pub sync_token_signing_key: String,
     pub sync_token_issuer: String,
     pub sync_token_audience: String,
+    pub sync_token_require_jti: bool,
+    pub sync_token_max_age_seconds: u64,
     pub sync_revoked_jtis: HashSet<String>,
 }
 
@@ -85,10 +89,16 @@ pub enum ConfigError {
     InvalidKhalaReconnectBaseBackoffMs(String),
     #[error("invalid RUNTIME_KHALA_RECONNECT_JITTER_MS: {0}")]
     InvalidKhalaReconnectJitterMs(String),
+    #[error("invalid RUNTIME_KHALA_ENFORCE_ORIGIN: {0}")]
+    InvalidKhalaEnforceOrigin(String),
     #[error("invalid khala publish rate limit setting: {0}")]
     InvalidKhalaPublishRateLimit(String),
     #[error("invalid khala max payload bytes setting: {0}")]
     InvalidKhalaMaxPayloadBytes(String),
+    #[error("invalid RUNTIME_SYNC_TOKEN_REQUIRE_JTI: {0}")]
+    InvalidSyncTokenRequireJti(String),
+    #[error("invalid RUNTIME_SYNC_TOKEN_MAX_AGE_SECONDS: {0}")]
+    InvalidSyncTokenMaxAgeSeconds(String),
 }
 
 impl Config {
@@ -147,6 +157,19 @@ impl Config {
             .unwrap_or_else(|_| "250".to_string())
             .parse::<u64>()
             .map_err(|error| ConfigError::InvalidKhalaReconnectJitterMs(error.to_string()))?;
+        let khala_enforce_origin =
+            parse_bool_env("RUNTIME_KHALA_ENFORCE_ORIGIN", true).map_err(|error| {
+                ConfigError::InvalidKhalaEnforceOrigin(format!(
+                    "RUNTIME_KHALA_ENFORCE_ORIGIN: {error}"
+                ))
+            })?;
+        let khala_allowed_origins = env::var("RUNTIME_KHALA_ALLOWED_ORIGINS")
+            .unwrap_or_else(|_| "https://openagents.com,https://www.openagents.com".to_string())
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(normalize_origin_value)
+            .collect::<HashSet<_>>();
         let parse_publish_rate = |key: &str, default: &str| -> Result<u32, ConfigError> {
             env::var(key)
                 .unwrap_or_else(|_| default.to_string())
@@ -197,6 +220,17 @@ impl Config {
             .unwrap_or_else(|_| "https://openagents.com".to_string());
         let sync_token_audience = env::var("RUNTIME_SYNC_TOKEN_AUDIENCE")
             .unwrap_or_else(|_| "openagents-sync".to_string());
+        let sync_token_require_jti = parse_bool_env("RUNTIME_SYNC_TOKEN_REQUIRE_JTI", true)
+            .map_err(|error| {
+                ConfigError::InvalidSyncTokenRequireJti(format!(
+                    "RUNTIME_SYNC_TOKEN_REQUIRE_JTI: {error}"
+                ))
+            })?;
+        let sync_token_max_age_seconds = env::var("RUNTIME_SYNC_TOKEN_MAX_AGE_SECONDS")
+            .unwrap_or_else(|_| "300".to_string())
+            .parse::<u64>()
+            .map_err(|error| ConfigError::InvalidSyncTokenMaxAgeSeconds(error.to_string()))?
+            .max(1);
         let sync_revoked_jtis = env::var("RUNTIME_SYNC_REVOKED_JTIS")
             .ok()
             .map(|raw| {
@@ -222,6 +256,8 @@ impl Config {
             khala_consumer_registry_capacity,
             khala_reconnect_base_backoff_ms,
             khala_reconnect_jitter_ms,
+            khala_enforce_origin,
+            khala_allowed_origins,
             khala_run_events_publish_rate_per_second,
             khala_worker_lifecycle_publish_rate_per_second,
             khala_codex_worker_events_publish_rate_per_second,
@@ -233,6 +269,8 @@ impl Config {
             sync_token_signing_key,
             sync_token_issuer,
             sync_token_audience,
+            sync_token_require_jti,
+            sync_token_max_age_seconds,
             sync_revoked_jtis,
         })
     }
@@ -258,6 +296,25 @@ impl Config {
             },
         }
     }
+}
+
+fn parse_bool_env(key: &str, default: bool) -> Result<bool, String> {
+    let raw = env::var(key).unwrap_or_else(|_| {
+        if default {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }
+    });
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        other => Err(other.to_string()),
+    }
+}
+
+fn normalize_origin_value(value: &str) -> String {
+    value.trim().trim_end_matches('/').to_ascii_lowercase()
 }
 
 fn parse_authority_write_mode(raw: &str) -> Result<AuthorityWriteMode, ConfigError> {
