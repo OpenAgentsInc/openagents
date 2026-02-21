@@ -21,6 +21,7 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 - HTTP handlers: `apps/runtime/src/server.rs`
 - Boundaries:
   - `apps/runtime/src/authority.rs`
+  - `apps/runtime/src/history_compat.rs`
   - `apps/runtime/src/orchestration.rs`
   - `apps/runtime/src/projectors.rs`
   - `apps/runtime/src/workers.rs`
@@ -60,3 +61,18 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 12. Khala topic polling enforces strict `stale_cursor` semantics (`410` with deterministic replay-floor metadata) and successful poll responses expose replay bootstrap metadata (`oldest_available_cursor`, `head_cursor`, `next_cursor`, `replay_complete`).
 13. Khala topic polling enforces sync token auth, topic scope ACL matrix, worker ownership checks, and deterministic denied-path reason codes.
 14. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+15. Workflow history compatibility fixtures (`apps/runtime/fixtures/history_compat/run_workflow_histories_v1.json`) are replayed by `history_compat` tests to gate deterministic upgrade safety for runtime orchestration behavior.
+
+## History compatibility gate
+
+Run the compatibility harness directly:
+
+```bash
+cargo test -p openagents-runtime-service history_compat::tests
+```
+
+This gate is also wired into local CI via:
+
+```bash
+./scripts/local-ci.sh runtime-history
+```

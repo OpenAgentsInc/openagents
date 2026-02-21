@@ -7,6 +7,7 @@ ENABLE_LEGACY_LANES="${OA_LOCAL_CI_ENABLE_LEGACY:-0}"
 
 PROTO_TRIGGER_PATTERN='^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-generate\.sh$|scripts/verify-rust-proto-crate\.sh$|crates/openagents-proto/)'
 RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
+RUNTIME_HISTORY_TRIGGER_PATTERN='^(apps/runtime/src/|apps/runtime/fixtures/history_compat/|apps/runtime/Cargo\.toml$|Cargo\.lock$)'
 COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
 OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
 WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
@@ -151,6 +152,8 @@ run_trigger_tests() {
 
   assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "apps/runtime/lib/foo.ex" "true"
   assert_trigger "runtime" "$RUNTIME_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "false"
+  assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/src/history_compat.rs" "true"
+  assert_trigger "runtime-history" "$RUNTIME_HISTORY_TRIGGER_PATTERN" "apps/runtime/lib/openagents_runtime/codex/workers.ex" "false"
 
   assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/routes/web.php" "true"
   assert_trigger "comms" "$COMMS_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "false"
@@ -174,6 +177,14 @@ run_runtime_checks() {
     mix compile --warnings-as-errors
     mix runtime.contract.check
     mix test --warnings-as-errors
+  )
+}
+
+run_runtime_history_checks() {
+  echo "==> runtime history compatibility checks"
+  (
+    cd "$ROOT_DIR"
+    cargo test -p openagents-runtime-service history_compat::tests
   )
 }
 
@@ -212,6 +223,7 @@ has_match() {
 
 run_all() {
   run_proto_checks
+  run_runtime_history_checks
   run_web_shell_checks
 
   if legacy_lanes_enabled; then
@@ -235,6 +247,10 @@ run_changed() {
 
   if has_match "$PROTO_TRIGGER_PATTERN" "$changed_files"; then
     run_proto_checks
+  fi
+
+  if has_match "$RUNTIME_HISTORY_TRIGGER_PATTERN" "$changed_files"; then
+    run_runtime_history_checks
   fi
 
   if has_match "$RUNTIME_TRIGGER_PATTERN" "$changed_files"; then
@@ -280,6 +296,9 @@ case "$MODE" in
   runtime)
     run_runtime_checks
     ;;
+  runtime-history)
+    run_runtime_history_checks
+    ;;
   comms)
     run_comms_matrix
     ;;
@@ -297,13 +316,14 @@ case "$MODE" in
     ;;
   all-rust)
     run_proto_checks
+    run_runtime_history_checks
     run_web_shell_checks
     ;;
   changed)
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|comms|openclaw|web-shell|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|comms|openclaw|web-shell|test-triggers]" >&2
     exit 2
     ;;
 esac

@@ -22,6 +22,7 @@ pub mod authority;
 pub mod config;
 pub mod event_log;
 pub mod fanout;
+pub mod history_compat;
 pub mod orchestration;
 pub mod projectors;
 pub mod run_state_machine;
