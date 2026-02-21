@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
     routing::{get, post},
 };
@@ -17,6 +17,7 @@ use crate::{
     config::Config,
     fanout::{ExternalFanoutHook, FanoutError, FanoutHub, FanoutMessage, FanoutTopicWindow},
     orchestration::{OrchestrationError, RuntimeOrchestrator},
+    sync_auth::{AuthorizedKhalaTopic, SyncAuthError, SyncAuthorizer},
     types::{
         AppendRunEventRequest, ProjectionCheckpoint, ProjectionDriftReport, RegisterWorkerRequest,
         RunProjectionSummary, RuntimeRun, StartRunRequest, WorkerHeartbeatRequest, WorkerOwner,
@@ -31,6 +32,7 @@ pub struct AppState {
     orchestrator: Arc<RuntimeOrchestrator>,
     workers: Arc<InMemoryWorkerRegistry>,
     fanout: Arc<FanoutHub>,
+    sync_auth: Arc<SyncAuthorizer>,
     started_at: chrono::DateTime<Utc>,
 }
 
@@ -41,12 +43,14 @@ impl AppState {
         orchestrator: Arc<RuntimeOrchestrator>,
         workers: Arc<InMemoryWorkerRegistry>,
         fanout: Arc<FanoutHub>,
+        sync_auth: Arc<SyncAuthorizer>,
     ) -> Self {
         Self {
             config,
             orchestrator,
             workers,
             fanout,
+            sync_auth,
             started_at: Utc::now(),
         }
     }
@@ -336,6 +340,7 @@ async fn get_run_replay(
 }
 
 async fn get_khala_topic_messages(
+    headers: HeaderMap,
     State(state): State<AppState>,
     Path(topic): Path<String>,
     Query(query): Query<FanoutPollQuery>,
@@ -345,6 +350,7 @@ async fn get_khala_topic_messages(
             "topic is required for khala fanout polling".to_string(),
         ));
     }
+    authorize_khala_topic_access(&state, &headers, &topic).await?;
     let after_seq = query.after_seq.unwrap_or(0);
     let limit = query.limit.unwrap_or(100);
     let window = state
@@ -380,6 +386,68 @@ async fn get_khala_fanout_hooks(
         driver: state.fanout.driver_name().to_string(),
         hooks: state.fanout.external_hooks(),
     }))
+}
+
+async fn authorize_khala_topic_access(
+    state: &AppState,
+    headers: &HeaderMap,
+    topic: &str,
+) -> Result<(), ApiError> {
+    let authorization_header = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    let token = SyncAuthorizer::extract_bearer_token(authorization_header)
+        .map_err(ApiError::from_sync_auth)?;
+    let principal = state
+        .sync_auth
+        .authenticate(token)
+        .map_err(ApiError::from_sync_auth)?;
+    let authorized_topic = state
+        .sync_auth
+        .authorize_topic(&principal, topic)
+        .map_err(ApiError::from_sync_auth)?;
+
+    match authorized_topic {
+        AuthorizedKhalaTopic::WorkerLifecycle { worker_id } => {
+            let owner = WorkerOwner {
+                user_id: principal.user_id,
+                guest_scope: if principal.user_id.is_some() {
+                    None
+                } else {
+                    principal.org_id.clone()
+                },
+            };
+            match state.workers.get_worker(&worker_id, &owner).await {
+                Ok(_) => {}
+                Err(WorkerError::NotFound(_)) | Err(WorkerError::Forbidden(_)) => {
+                    tracing::warn!(
+                        topic,
+                        worker_id,
+                        user_id = principal.user_id,
+                        org_id = ?principal.org_id,
+                        device_id = ?principal.device_id,
+                        "khala auth denied: worker owner mismatch"
+                    );
+                    return Err(ApiError::KhalaForbiddenTopic("owner_mismatch".to_string()));
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        topic,
+                        worker_id,
+                        user_id = principal.user_id,
+                        org_id = ?principal.org_id,
+                        device_id = ?principal.device_id,
+                        reason = %error,
+                        "khala auth denied while validating worker ownership"
+                    );
+                    return Err(ApiError::KhalaForbiddenTopic(error.to_string()));
+                }
+            }
+        }
+        AuthorizedKhalaTopic::RunEvents { .. } | AuthorizedKhalaTopic::CodexWorkerEvents => {}
+    }
+
+    Ok(())
 }
 
 async fn get_run_checkpoint(
@@ -530,6 +598,8 @@ enum ApiError {
     NotFound,
     Forbidden(String),
     Conflict(String),
+    KhalaUnauthorized(String),
+    KhalaForbiddenTopic(String),
     StaleCursor {
         topic: String,
         requested_cursor: u64,
@@ -598,6 +668,17 @@ impl ApiError {
                 oldest_available_cursor,
                 head_cursor,
             },
+        }
+    }
+
+    fn from_sync_auth(error: SyncAuthError) -> Self {
+        let code = error.code();
+        if error.is_unauthorized() {
+            tracing::warn!(reason_code = code, reason = %error, "khala auth denied");
+            Self::KhalaUnauthorized(code.to_string())
+        } else {
+            tracing::warn!(reason_code = code, reason = %error, "khala topic denied");
+            Self::KhalaForbiddenTopic(code.to_string())
         }
     }
 }
@@ -705,6 +786,24 @@ impl IntoResponse for ApiError {
                 })),
             )
                 .into_response(),
+            Self::KhalaUnauthorized(reason_code) => (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "error": "unauthorized",
+                    "message": "khala sync authorization failed",
+                    "reason_code": reason_code,
+                })),
+            )
+                .into_response(),
+            Self::KhalaForbiddenTopic(reason_code) => (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": "forbidden_topic",
+                    "message": "topic subscription is not authorized",
+                    "reason_code": reason_code,
+                })),
+            )
+                .into_response(),
             Self::Conflict(message) => (
                 StatusCode::CONFLICT,
                 Json(serde_json::json!({
@@ -763,6 +862,7 @@ impl IntoResponse for ApiError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::sync::Arc;
 
     use anyhow::{Result, anyhow};
@@ -770,7 +870,9 @@ mod tests {
         body::Body,
         http::{Method, Request},
     };
+    use chrono::Utc;
     use http_body_util::BodyExt;
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     use serde_json::Value;
     use tower::ServiceExt;
 
@@ -782,16 +884,23 @@ mod tests {
         fanout::FanoutHub,
         orchestration::RuntimeOrchestrator,
         projectors::InMemoryProjectionPipeline,
+        sync_auth::{SyncAuthConfig, SyncAuthorizer, SyncTokenClaims},
         workers::InMemoryWorkerRegistry,
     };
+
+    const TEST_SYNC_SIGNING_KEY: &str = "runtime-sync-test-key";
 
     fn loopback_bind_addr() -> std::net::SocketAddr {
         std::net::SocketAddr::from(([127, 0, 0, 1], 0))
     }
 
-    fn test_router_with_mode(mode: AuthorityWriteMode) -> axum::Router {
+    fn test_router_with_mode_and_revoked(
+        mode: AuthorityWriteMode,
+        revoked_jtis: HashSet<String>,
+    ) -> axum::Router {
         let projectors = InMemoryProjectionPipeline::shared();
         let projector_pipeline: Arc<dyn crate::projectors::ProjectionPipeline> = projectors.clone();
+        let revoked_for_config = revoked_jtis.clone();
         let state = AppState::new(
             Config {
                 service_name: "runtime-test".to_string(),
@@ -800,6 +909,10 @@ mod tests {
                 authority_write_mode: mode,
                 fanout_driver: "memory".to_string(),
                 fanout_queue_capacity: 64,
+                sync_token_signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
+                sync_token_issuer: "https://openagents.com".to_string(),
+                sync_token_audience: "openagents-sync".to_string(),
+                sync_revoked_jtis: revoked_for_config,
             },
             Arc::new(RuntimeOrchestrator::new(
                 Arc::new(InMemoryRuntimeAuthority::with_event_log(
@@ -809,8 +922,18 @@ mod tests {
             )),
             Arc::new(InMemoryWorkerRegistry::new(projectors, 120_000)),
             Arc::new(FanoutHub::memory(64)),
+            Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
+                signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
+                issuer: "https://openagents.com".to_string(),
+                audience: "openagents-sync".to_string(),
+                revoked_jtis,
+            })),
         );
         build_router(state)
+    }
+
+    fn test_router_with_mode(mode: AuthorityWriteMode) -> axum::Router {
+        test_router_with_mode_and_revoked(mode, HashSet::new())
     }
 
     fn test_router() -> axum::Router {
@@ -821,6 +944,38 @@ mod tests {
         let collected = response.into_body().collect().await?;
         let bytes = collected.to_bytes();
         Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    fn issue_sync_token(
+        scopes: &[&str],
+        user_id: Option<u64>,
+        org_id: Option<&str>,
+        jti: &str,
+        exp_offset_seconds: i64,
+    ) -> String {
+        let now = Utc::now().timestamp();
+        let claims = SyncTokenClaims {
+            iss: "https://openagents.com".to_string(),
+            aud: "openagents-sync".to_string(),
+            sub: match user_id {
+                Some(value) => format!("user:{value}"),
+                None => "guest:unknown".to_string(),
+            },
+            exp: (now + exp_offset_seconds) as usize,
+            nbf: now as usize,
+            iat: now as usize,
+            jti: jti.to_string(),
+            oa_user_id: user_id,
+            oa_org_id: org_id.map(ToString::to_string),
+            oa_device_id: Some("ios-device".to_string()),
+            oa_sync_scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
+        };
+        encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(TEST_SYNC_SIGNING_KEY.as_bytes()),
+        )
+        .expect("sync token should encode")
     }
 
     #[tokio::test]
@@ -1178,6 +1333,13 @@ mod tests {
     #[tokio::test]
     async fn khala_fanout_endpoints_surface_memory_driver_delivery() -> Result<()> {
         let app = test_router();
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "fanout-ok",
+            300,
+        );
         let create_response = app
             .clone()
             .oneshot(
@@ -1205,6 +1367,7 @@ mod tests {
                     .uri(format!(
                         "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
                     ))
+                    .header("authorization", format!("Bearer {sync_token}"))
                     .body(Body::empty())?,
             )
             .await?;
@@ -1265,6 +1428,13 @@ mod tests {
     #[tokio::test]
     async fn khala_topic_messages_returns_stale_cursor_when_replay_floor_is_missed() -> Result<()> {
         let app = test_router();
+        let sync_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "stale-ok",
+            300,
+        );
         let create_response = app
             .clone()
             .oneshot(
@@ -1309,6 +1479,7 @@ mod tests {
                     .uri(format!(
                         "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
                     ))
+                    .header("authorization", format!("Bearer {sync_token}"))
                     .body(Body::empty())?,
             )
             .await?;
@@ -1328,6 +1499,279 @@ mod tests {
                 .unwrap_or(""),
             "reset_local_watermark_and_replay_bootstrap"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_topic_messages_requires_valid_sync_token() -> Result<()> {
+        let app = test_router();
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:auth-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let missing_auth = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(missing_auth.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let missing_auth_json = response_json(missing_auth).await?;
+        assert_eq!(
+            missing_auth_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "missing_authorization"
+        );
+
+        let expired_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "expired-token",
+            -10,
+        );
+        let expired_auth = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {expired_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(expired_auth.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let expired_json = response_json(expired_auth).await?;
+        assert_eq!(
+            expired_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "token_expired"
+        );
+
+        let revoked_router = test_router_with_mode_and_revoked(
+            AuthorityWriteMode::RustActive,
+            HashSet::from([String::from("revoked-jti")]),
+        );
+        let revoked_create = revoked_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:revoked-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let revoked_create_json = response_json(revoked_create).await?;
+        let revoked_run_id = revoked_create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+        let revoked_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "revoked-jti",
+            300,
+        );
+        let revoked_response = revoked_router
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{revoked_run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {revoked_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(
+            revoked_response.status(),
+            axum::http::StatusCode::UNAUTHORIZED
+        );
+        let revoked_json = response_json(revoked_response).await?;
+        assert_eq!(
+            revoked_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "token_revoked"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_topic_messages_enforce_scope_matrix() -> Result<()> {
+        let app = test_router();
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:scope-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let missing_scope_token = issue_sync_token(
+            &["runtime.codex_worker_events"],
+            Some(1),
+            Some("user:1"),
+            "scope-missing",
+            300,
+        );
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {missing_scope_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(denied.status(), axum::http::StatusCode::FORBIDDEN);
+        let denied_json = response_json(denied).await?;
+        assert_eq!(
+            denied_json
+                .pointer("/error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "forbidden_topic"
+        );
+        assert_eq!(
+            denied_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "missing_scope"
+        );
+
+        let allowed_token = issue_sync_token(
+            &["runtime.run_events"],
+            Some(1),
+            Some("user:1"),
+            "scope-allowed",
+            300,
+        );
+        let allowed = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=10"
+                    ))
+                    .header("authorization", format!("Bearer {allowed_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(allowed.status(), axum::http::StatusCode::OK);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_worker_topic_enforces_owner_scope() -> Result<()> {
+        let app = test_router();
+
+        let create_worker = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:owner-worker",
+                        "owner_user_id": 11,
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_worker.status(), axum::http::StatusCode::CREATED);
+
+        let denied_owner_token = issue_sync_token(
+            &["runtime.codex_worker_events"],
+            Some(22),
+            Some("user:22"),
+            "owner-mismatch",
+            300,
+        );
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/topics/worker:desktop:owner-worker:lifecycle/messages?after_seq=0&limit=10")
+                    .header("authorization", format!("Bearer {denied_owner_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(denied.status(), axum::http::StatusCode::FORBIDDEN);
+        let denied_json = response_json(denied).await?;
+        assert_eq!(
+            denied_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "owner_mismatch"
+        );
+
+        let allowed_owner_token = issue_sync_token(
+            &["runtime.codex_worker_events"],
+            Some(11),
+            Some("user:11"),
+            "owner-allowed",
+            300,
+        );
+        let allowed = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/topics/worker:desktop:owner-worker:lifecycle/messages?after_seq=0&limit=10")
+                    .header("authorization", format!("Bearer {allowed_owner_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(allowed.status(), axum::http::StatusCode::OK);
 
         Ok(())
     }

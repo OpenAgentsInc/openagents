@@ -13,6 +13,7 @@ use crate::{
     orchestration::RuntimeOrchestrator,
     projectors::InMemoryProjectionPipeline,
     server::{AppState, build_router},
+    sync_auth::{SyncAuthConfig, SyncAuthorizer},
     workers::InMemoryWorkerRegistry,
 };
 
@@ -26,6 +27,7 @@ pub mod projectors;
 pub mod run_state_machine;
 pub mod server;
 pub mod shadow;
+pub mod sync_auth;
 pub mod types;
 pub mod workers;
 
@@ -38,7 +40,13 @@ pub fn build_runtime_state(config: Config) -> AppState {
         120_000,
     ));
     let fanout = Arc::new(FanoutHub::memory(config.fanout_queue_capacity));
-    AppState::new(config, orchestrator, workers, fanout)
+    let sync_auth = Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
+        signing_key: config.sync_token_signing_key.clone(),
+        issuer: config.sync_token_issuer.clone(),
+        audience: config.sync_token_audience.clone(),
+        revoked_jtis: config.sync_revoked_jtis.clone(),
+    }));
+    AppState::new(config, orchestrator, workers, fanout, sync_auth)
 }
 
 pub fn build_app(config: Config) -> axum::Router {

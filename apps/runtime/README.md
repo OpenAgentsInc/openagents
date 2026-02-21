@@ -22,6 +22,10 @@ Environment:
 - `LEGACY_RUNTIME_WRITE_FREEZE` (`true|false`) for legacy Elixir write-path freeze
 - `RUNTIME_FANOUT_DRIVER` (currently `memory`)
 - `RUNTIME_FANOUT_QUEUE_CAPACITY` (default `1024`)
+- `RUNTIME_SYNC_TOKEN_SIGNING_KEY` (HS256 key for Khala topic auth checks)
+- `RUNTIME_SYNC_TOKEN_ISSUER` (default `https://openagents.com`)
+- `RUNTIME_SYNC_TOKEN_AUDIENCE` (default `openagents-sync`)
+- `RUNTIME_SYNC_REVOKED_JTIS` (comma-separated revoked token IDs)
 
 Baseline endpoints:
 
@@ -32,7 +36,7 @@ Baseline endpoints:
 - `GET /internal/v1/runs/:run_id`
 - `GET /internal/v1/runs/:run_id/receipt`
 - `GET /internal/v1/runs/:run_id/replay`
-- `GET /internal/v1/khala/topics/:topic/messages?after_seq=<n>&limit=<n>`
+- `GET /internal/v1/khala/topics/:topic/messages?after_seq=<n>&limit=<n>` (requires `Authorization: Bearer <sync-token>`)
 - `GET /internal/v1/khala/fanout/hooks`
 - `GET /internal/v1/projectors/checkpoints/:run_id`
 - `GET /internal/v1/projectors/run-summary/:run_id`
@@ -86,6 +90,10 @@ Khala fanout seam:
 
 - Runtime writes publish through `FanoutDriver` abstraction (`memory` adapter implemented).
 - Fanout queue is bounded per topic; oldest messages are evicted when capacity is exceeded.
+- Khala topic polling enforces token auth + ACL checks:
+  - topic scope matrix (`runtime.run_events`, `runtime.codex_worker_events`, `runtime.worker_lifecycle_events`)
+  - worker topic ownership checks against worker owner
+  - deterministic denied-path reason codes (`missing_authorization`, `invalid_authorization_scheme`, `invalid_token`, `token_expired`, `token_revoked`, `missing_scope`, `forbidden_topic`, `owner_mismatch`)
 - `GET /internal/v1/khala/topics/:topic/messages` enforces deterministic stale-cursor handling:
   - `410 stale_cursor` when `after_seq` is below retained replay floor.
   - response details include `requested_cursor`, `oldest_available_cursor`, `head_cursor`, and recovery hint `reset_local_watermark_and_replay_bootstrap`.
