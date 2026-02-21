@@ -62,6 +62,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 ## Product Surfaces
 
 - Web app runbooks: `autopilot/`
+- Rust web shell source/build: `../apps/openagents.com/web-shell/`
 - Web production E2E testing: `autopilot/testing/PROD_E2E_TESTING.md`
 - Web stream testing: `autopilot/testing/STREAM_TESTING.md`
 - Web trace retrieval and debugging: `autopilot/testing/TRACE_RETRIEVAL.md`

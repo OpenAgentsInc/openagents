@@ -136,6 +136,7 @@ Runbook artifacts: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 
 ### OA-RUST-023 — [WGPUI Web] Create wasm web-shell bootstrap and runtime entrypoint
 Description: Build the browser wasm entrypoint that mounts WGPUI and owns application lifecycle in-process.
+Bootstrap artifacts: `apps/openagents.com/web-shell/Cargo.toml`, `apps/openagents.com/web-shell/src/lib.rs`, `apps/openagents.com/web-shell/build-dist.sh`, `apps/openagents.com/web-shell/README.md`
 
 ### OA-RUST-024 — [WGPUI Web] Implement minimal JS host shim boundary
 Description: Restrict JavaScript to host concerns (bootstrapping/platform API bridges) and enforce no product logic outside Rust.

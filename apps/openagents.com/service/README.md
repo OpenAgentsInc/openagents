@@ -111,6 +111,7 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 
 ## Static cache policy
 
+- Build the web-shell static dist with: `apps/openagents.com/web-shell/build-dist.sh`
 - `GET /manifest.json` is served with `Cache-Control: no-cache, no-store, must-revalidate`.
 - `GET /assets/<hashed-file>` is served with `Cache-Control: public, max-age=31536000, immutable`.
 - `GET /assets/<non-hashed-file>` is served with `Cache-Control: public, max-age=60`.
