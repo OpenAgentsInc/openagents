@@ -6,7 +6,7 @@ use std::{
 
 use thiserror::Error;
 
-use crate::fanout::{FanoutLimitConfig, FanoutTierLimits};
+use crate::fanout::{FanoutLimitConfig, FanoutTierLimits, QosTier};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -30,6 +30,10 @@ pub struct Config {
     pub khala_worker_lifecycle_publish_rate_per_second: u32,
     pub khala_codex_worker_events_publish_rate_per_second: u32,
     pub khala_fallback_publish_rate_per_second: u32,
+    pub khala_run_events_replay_budget_events: u64,
+    pub khala_worker_lifecycle_replay_budget_events: u64,
+    pub khala_codex_worker_events_replay_budget_events: u64,
+    pub khala_fallback_replay_budget_events: u64,
     pub khala_run_events_max_payload_bytes: usize,
     pub khala_worker_lifecycle_max_payload_bytes: usize,
     pub khala_codex_worker_events_max_payload_bytes: usize,
@@ -93,6 +97,8 @@ pub enum ConfigError {
     InvalidKhalaEnforceOrigin(String),
     #[error("invalid khala publish rate limit setting: {0}")]
     InvalidKhalaPublishRateLimit(String),
+    #[error("invalid khala replay budget setting: {0}")]
+    InvalidKhalaReplayBudget(String),
     #[error("invalid khala max payload bytes setting: {0}")]
     InvalidKhalaMaxPayloadBytes(String),
     #[error("invalid RUNTIME_SYNC_TOKEN_REQUIRE_JTI: {0}")]
@@ -179,6 +185,13 @@ impl Config {
                     ConfigError::InvalidKhalaPublishRateLimit(format!("{key}: {error}"))
                 })
         };
+        let parse_replay_budget = |key: &str, default: &str| -> Result<u64, ConfigError> {
+            env::var(key)
+                .unwrap_or_else(|_| default.to_string())
+                .parse::<u64>()
+                .map(|value| value.max(1))
+                .map_err(|error| ConfigError::InvalidKhalaReplayBudget(format!("{key}: {error}")))
+        };
         let parse_max_payload = |key: &str, default: &str| -> Result<usize, ConfigError> {
             env::var(key)
                 .unwrap_or_else(|_| default.to_string())
@@ -200,6 +213,18 @@ impl Config {
         )?;
         let khala_fallback_publish_rate_per_second =
             parse_publish_rate("RUNTIME_KHALA_FALLBACK_PUBLISH_RATE_PER_SECOND", "90")?;
+        let khala_run_events_replay_budget_events =
+            parse_replay_budget("RUNTIME_KHALA_RUN_EVENTS_REPLAY_BUDGET_EVENTS", "20000")?;
+        let khala_worker_lifecycle_replay_budget_events = parse_replay_budget(
+            "RUNTIME_KHALA_WORKER_LIFECYCLE_REPLAY_BUDGET_EVENTS",
+            "10000",
+        )?;
+        let khala_codex_worker_events_replay_budget_events = parse_replay_budget(
+            "RUNTIME_KHALA_CODEX_WORKER_EVENTS_REPLAY_BUDGET_EVENTS",
+            "3000",
+        )?;
+        let khala_fallback_replay_budget_events =
+            parse_replay_budget("RUNTIME_KHALA_FALLBACK_REPLAY_BUDGET_EVENTS", "500")?;
         let khala_run_events_max_payload_bytes =
             parse_max_payload("RUNTIME_KHALA_RUN_EVENTS_MAX_PAYLOAD_BYTES", "262144")?;
         let khala_worker_lifecycle_max_payload_bytes =
@@ -262,6 +287,10 @@ impl Config {
             khala_worker_lifecycle_publish_rate_per_second,
             khala_codex_worker_events_publish_rate_per_second,
             khala_fallback_publish_rate_per_second,
+            khala_run_events_replay_budget_events,
+            khala_worker_lifecycle_replay_budget_events,
+            khala_codex_worker_events_replay_budget_events,
+            khala_fallback_replay_budget_events,
             khala_run_events_max_payload_bytes,
             khala_worker_lifecycle_max_payload_bytes,
             khala_codex_worker_events_max_payload_bytes,
@@ -279,18 +308,26 @@ impl Config {
     pub fn khala_fanout_limits(&self) -> FanoutLimitConfig {
         FanoutLimitConfig {
             run_events: FanoutTierLimits {
+                qos_tier: QosTier::Warm,
+                replay_budget_events: self.khala_run_events_replay_budget_events,
                 max_publish_per_second: self.khala_run_events_publish_rate_per_second,
                 max_payload_bytes: self.khala_run_events_max_payload_bytes,
             },
             worker_lifecycle: FanoutTierLimits {
+                qos_tier: QosTier::Warm,
+                replay_budget_events: self.khala_worker_lifecycle_replay_budget_events,
                 max_publish_per_second: self.khala_worker_lifecycle_publish_rate_per_second,
                 max_payload_bytes: self.khala_worker_lifecycle_max_payload_bytes,
             },
             codex_worker_events: FanoutTierLimits {
+                qos_tier: QosTier::Hot,
+                replay_budget_events: self.khala_codex_worker_events_replay_budget_events,
                 max_publish_per_second: self.khala_codex_worker_events_publish_rate_per_second,
                 max_payload_bytes: self.khala_codex_worker_events_max_payload_bytes,
             },
             fallback: FanoutTierLimits {
+                qos_tier: QosTier::Cold,
+                replay_budget_events: self.khala_fallback_replay_budget_events,
                 max_publish_per_second: self.khala_fallback_publish_rate_per_second,
                 max_payload_bytes: self.khala_fallback_max_payload_bytes,
             },
