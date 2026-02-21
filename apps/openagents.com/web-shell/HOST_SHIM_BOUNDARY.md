@@ -13,14 +13,15 @@ JavaScript in the web shell is host glue only. Product logic authority is Rust.
 1. Load wasm bundle and start Rust entrypoint.
 2. Handle browser-only bootstrap concerns (status text, canvas mount wiring).
 3. Register service worker.
-4. Surface bootstrap failure visibly in browser console/DOM.
+4. Poll static build manifest (`/manifest.json`) for build-skew detection and trigger SW update promotion.
+5. Surface bootstrap/update failure visibly in browser console/DOM.
 
 ## JS Responsibilities (Prohibited)
 
 1. Routing logic (route selection, route-state reducers, feature routes).
 2. Auth/session/token logic.
 3. Product/business state management.
-4. API calls for command/read logic.
+4. API calls for command/read logic (`/api/*` and runtime business endpoints).
 5. Persistent product state in browser storage.
 
 ## Enforcement

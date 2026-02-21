@@ -29,6 +29,7 @@ Rust control service scaffold for `apps/openagents.com`.
   - `POST /api/sync/token`
   - `POST /api/v1/sync/token`
   - `POST /api/runtime/threads/:thread_id/messages` (Codex thread command lane)
+  - `GET /sw.js` service worker script host
   - `GET /manifest.json` static manifest
   - `GET /assets/*` versioned static asset host
   - `GET /*` feature-flagged web-shell vs legacy route split entry
@@ -122,8 +123,11 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 
 - Build the web-shell static dist with: `apps/openagents.com/web-shell/build-dist.sh`
 - `GET /manifest.json` is served with `Cache-Control: no-cache, no-store, must-revalidate`.
+- `GET /sw.js` is served with `Cache-Control: no-cache, no-store, must-revalidate`.
 - `GET /assets/<hashed-file>` is served with `Cache-Control: public, max-age=31536000, immutable`.
 - `GET /assets/<non-hashed-file>` is served with `Cache-Control: public, max-age=60`.
+- SW pinning/rollback release order and recovery runbook:
+  - `apps/openagents.com/service/docs/SW_ASSET_PINNING_ROLLBACK_RUNBOOK.md`
 
 ## Observability baseline
 

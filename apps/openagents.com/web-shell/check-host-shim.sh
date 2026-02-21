@@ -16,10 +16,44 @@ if [[ -z "${host_js_files}" ]]; then
 fi
 
 while IFS= read -r file; do
-  if rg -n -i '\b(fetch|xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >/dev/null; then
-    echo "error: host shim must not contain product state/network primitives (${file})" >&2
-    rg -n -i '\b(fetch|xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >&2
-    exit 1
+  filename="$(basename "${file}")"
+
+  if [[ "${filename}" == "host-shim.js" ]]; then
+    if rg -n -i '\b(xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >/dev/null; then
+      echo "error: host shim contains prohibited state/network primitives (${file})" >&2
+      rg -n -i '\b(xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >&2
+      exit 1
+    fi
+
+    if rg -n -i '\bfetch\s*\(' "${file}" >/dev/null; then
+      if ! rg -n '/manifest\.json' "${file}" >/dev/null; then
+        echo "error: host shim fetch usage must be limited to static manifest polling (${file})" >&2
+        rg -n -i '\bfetch\s*\(' "${file}" >&2
+        exit 1
+      fi
+      if rg -n '/api/' "${file}" >/dev/null; then
+        echo "error: host shim must not fetch product API routes (${file})" >&2
+        rg -n '/api/' "${file}" >&2
+        exit 1
+      fi
+    fi
+  elif [[ "${filename}" == "sw-template.js" ]]; then
+    if rg -n -i '\b(xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >/dev/null; then
+      echo "error: service-worker template contains prohibited state/network primitives (${file})" >&2
+      rg -n -i '\b(xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >&2
+      exit 1
+    fi
+    if rg -n '/api/' "${file}" >/dev/null; then
+      echo "error: service-worker template must not reference product API routes (${file})" >&2
+      rg -n '/api/' "${file}" >&2
+      exit 1
+    fi
+  else
+    if rg -n -i '\b(fetch|xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >/dev/null; then
+      echo "error: host helper must not contain product state/network primitives (${file})" >&2
+      rg -n -i '\b(fetch|xmlhttprequest|axios|localstorage|sessionstorage|document\.cookie)\b' "${file}" >&2
+      exit 1
+    fi
   fi
 
   if rg -n -i '\b(auth|session|token|route(state|r)?|feature(flag)?|business)\b' "${file}" >/dev/null; then

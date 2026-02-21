@@ -358,6 +358,7 @@ Dependencies: OA-RUST-029, OA-RUST-030.
 
 ### OA-RUST-082 — [WGPUI Web] Implement service worker asset pinning and rollback policy
 Description: Add service worker/update controls for JS/WASM artifact pinning, compatibility-aware updates, and rollback-safe cache invalidation.
+Enforcement artifacts: `apps/openagents.com/web-shell/build-dist.sh`, `apps/openagents.com/web-shell/host/host-shim.js`, `apps/openagents.com/web-shell/host/sw-template.js`, `apps/openagents.com/web-shell/host/update-policy.js`, `apps/openagents.com/web-shell/scripts/sw-policy-verify.sh`, `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/docs/SW_ASSET_PINNING_ROLLBACK_RUNBOOK.md`
 Acceptance criteria: Stale asset skew is detectable; rollback to previous bundle is supported without protocol deadlock; release runbook includes update order.
 Dependencies: OA-RUST-019, OA-RUST-023.
 

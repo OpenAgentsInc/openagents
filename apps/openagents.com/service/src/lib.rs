@@ -248,6 +248,7 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
             post(route_split_evaluate),
         )
         .route("/api/v1/sync/token", post(sync_token))
+        .route("/sw.js", get(static_service_worker))
         .route("/manifest.json", get(static_manifest))
         .route("/assets/*path", get(static_asset))
         .route("/*path", get(web_shell_entry))
@@ -388,6 +389,16 @@ async fn static_manifest(
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
     let manifest_path = state.config.static_dir.join("manifest.json");
     let response = build_static_response(&manifest_path, CACHE_MANIFEST)
+        .await
+        .map_err(map_static_error)?;
+    Ok(response)
+}
+
+async fn static_service_worker(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let service_worker_path = state.config.static_dir.join("sw.js");
+    let response = build_static_response(&service_worker_path, CACHE_MANIFEST)
         .await
         .map_err(map_static_error)?;
     Ok(response)
@@ -1932,6 +1943,30 @@ mod tests {
         let request = Request::builder()
             .uri("/manifest.json")
             .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_MANIFEST)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn service_worker_script_uses_no_store_cache_header() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("sw.js"),
+            "self.addEventListener('install', () => {});",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder().uri("/sw.js").body(Body::empty())?;
         let response = app.oneshot(request).await?;
 
         assert_eq!(response.status(), StatusCode::OK);
