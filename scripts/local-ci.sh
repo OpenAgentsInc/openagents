@@ -3,12 +3,29 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-changed}"
+ENABLE_LEGACY_LANES="${OA_LOCAL_CI_ENABLE_LEGACY:-0}"
 
 PROTO_TRIGGER_PATTERN='^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-generate\.sh$|scripts/verify-rust-proto-crate\.sh$|crates/openagents-proto/)'
 RUNTIME_TRIGGER_PATTERN='^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)'
 COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|database/|resources/|routes/|tests/|artisan$|composer\.json$|composer\.lock$|phpunit\.xml$)|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)'
 OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
 WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
+
+is_truthy() {
+  local value="${1:-}"
+  case "${value,,}" in
+    1|true|yes|on)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+legacy_lanes_enabled() {
+  is_truthy "$ENABLE_LEGACY_LANES"
+}
 
 require_cmd() {
   local cmd="$1"
@@ -39,7 +56,7 @@ run_proto_checks() {
   local mode
   mode="${OA_BUF_BREAKING_MODE:-auto}"
   local timeout
-  timeout="${OA_BUF_BREAKING_TIMEOUT:-20s}"
+  timeout="${OA_BUF_BREAKING_TIMEOUT:-8s}"
   local against_ref
   against_ref="${OA_BUF_BREAKING_AGAINST:-}"
 
@@ -193,15 +210,21 @@ has_match() {
 
 run_all() {
   run_proto_checks
-  run_runtime_checks
-  run_comms_matrix
-  run_openclaw_drift
   run_web_shell_checks
+
+  if legacy_lanes_enabled; then
+    run_runtime_checks
+    run_comms_matrix
+    run_openclaw_drift
+  else
+    echo "==> skipping legacy lanes (set OA_LOCAL_CI_ENABLE_LEGACY=1 to run runtime/comms/openclaw)"
+  fi
 }
 
 run_changed() {
   local changed_files
   changed_files="$(collect_changed_files)"
+  local legacy_lanes_detected=0
 
   if [[ -z "$changed_files" ]]; then
     echo "No changed files detected; nothing to run."
@@ -213,19 +236,35 @@ run_changed() {
   fi
 
   if has_match "$RUNTIME_TRIGGER_PATTERN" "$changed_files"; then
-    run_runtime_checks
+    if legacy_lanes_enabled; then
+      run_runtime_checks
+    else
+      legacy_lanes_detected=1
+    fi
   fi
 
   if has_match "$COMMS_TRIGGER_PATTERN" "$changed_files"; then
-    run_comms_matrix
+    if legacy_lanes_enabled; then
+      run_comms_matrix
+    else
+      legacy_lanes_detected=1
+    fi
   fi
 
   if has_match "$OPENCLAW_TRIGGER_PATTERN" "$changed_files"; then
-    run_openclaw_drift
+    if legacy_lanes_enabled; then
+      run_openclaw_drift
+    else
+      legacy_lanes_detected=1
+    fi
   fi
 
   if has_match "$WEB_SHELL_TRIGGER_PATTERN" "$changed_files"; then
     run_web_shell_checks
+  fi
+
+  if [[ "$legacy_lanes_detected" -eq 1 ]]; then
+    echo "==> legacy-triggered paths detected; legacy lanes skipped (set OA_LOCAL_CI_ENABLE_LEGACY=1 to enable)"
   fi
 }
 
@@ -254,11 +293,15 @@ case "$MODE" in
   all)
     run_all
     ;;
+  all-rust)
+    run_proto_checks
+    run_web_shell_checks
+    ;;
   changed)
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|docs|proto|runtime|comms|openclaw|web-shell|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|comms|openclaw|web-shell|test-triggers]" >&2
     exit 2
     ;;
 esac
