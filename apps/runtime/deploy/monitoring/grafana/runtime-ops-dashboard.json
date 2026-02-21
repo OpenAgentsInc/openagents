@@ -166,6 +166,18 @@
           "legendFormat": "token mint failure ratio"
         }
       ]
+    },
+    {
+      "id": 14,
+      "title": "Khala Projection Hash Mismatch Incidents (10m)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 64},
+      "targets": [
+        {
+          "expr": "sum(increase(openagents_runtime_khala_projection_drift_count{reason_class=~\"summary_hash_mismatch|hash_and_lag_drift\"}[10m]))",
+          "legendFormat": "hash mismatch incidents"
+        }
+      ]
     }
   ]
 }

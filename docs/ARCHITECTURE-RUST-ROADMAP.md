@@ -290,6 +290,7 @@ Automation artifacts: `apps/runtime/deploy/cloudrun/deploy-runtime-and-migrate.s
 
 ### OA-RUST-068 — [Ops] Add replay drift and projector hash alarms in production
 Description: Add production alarms for projection drift and replay determinism regressions.
+Alarm artifacts: `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`, `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`, `apps/runtime/docs/OPERATIONS_ALERTING.md`
 
 ### OA-RUST-069 — [Testing] Build cross-surface e2e harness (web/desktop/iOS)
 Description: Add one contract test harness that verifies shared behavior against a single runtime contract set.
