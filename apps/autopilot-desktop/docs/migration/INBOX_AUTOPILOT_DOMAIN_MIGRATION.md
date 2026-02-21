@@ -5,24 +5,24 @@ Date: 2026-02-21
 
 ## Goal
 
-Fold reusable inbox-autopilot mailbox policy/draft/audit domain logic into desktop-owned shared Rust crates so `autopilot-desktop` can consume that logic without depending on `apps/inbox-autopilot`.
+Fold reusable inbox-autopilot mailbox policy/draft/audit domain logic into desktop-owned shared Rust crates so `autopilot-desktop` can consume that logic without depending on the legacy standalone inbox-autopilot app root (removed in `OA-RUST-052`).
 
 ## Source to Target Mapping
 
 1. Thread policy classification
-   - Source: `apps/inbox-autopilot/daemon/src/pipeline.rs` (`classify_thread`)
+   - Source: legacy inbox-autopilot daemon pipeline (`classify_thread`) from git history
    - Target: `crates/autopilot-inbox-domain/src/lib.rs` (`classify_thread`)
 
 2. Draft composition templates
-   - Source: `apps/inbox-autopilot/daemon/src/pipeline.rs` (`compose_local_draft`, style inference)
+   - Source: legacy inbox-autopilot daemon pipeline (`compose_local_draft`, style inference) from git history
    - Target: `crates/autopilot-inbox-domain/src/lib.rs` (`compose_local_draft`, `infer_style_signature_from_bodies`)
 
 3. Draft quality scoring
-   - Source: `apps/inbox-autopilot/daemon/src/quality.rs`
+   - Source: legacy inbox-autopilot daemon quality module from git history
    - Target: `crates/autopilot-inbox-domain/src/lib.rs` (`build_draft_quality_report`, quality structs)
 
 4. Domain enums and parse helpers
-   - Source: `apps/inbox-autopilot/daemon/src/types.rs` + `apps/inbox-autopilot/daemon/src/db.rs`
+   - Source: legacy inbox-autopilot daemon types/db modules from git history
    - Target: `crates/autopilot-inbox-domain/src/lib.rs`
    - Included:
      - `ThreadCategory`, `RiskTier`, `PolicyDecision`, `DraftStatus`
@@ -31,19 +31,17 @@ Fold reusable inbox-autopilot mailbox policy/draft/audit domain logic into deskt
 
 ## Current Consumers
 
-1. Inbox daemon
-   - `apps/inbox-autopilot/daemon/src/pipeline.rs` now imports classification/draft logic from `autopilot-inbox-domain`.
-   - `apps/inbox-autopilot/daemon/src/db.rs` now imports parse/string conversion helpers and shared domain structs from `autopilot-inbox-domain`.
-   - `apps/inbox-autopilot/daemon/src/quality.rs` now re-exports shared quality report logic from `autopilot-inbox-domain`.
+1. Desktop app
+   - `apps/autopilot-desktop/src/inbox_domain.rs` consumes shared domain crate directly for category classification and draft preview generation.
 
-2. Desktop app
-   - `apps/autopilot-desktop/src/inbox_domain.rs` now consumes shared domain crate directly for category classification and draft preview generation.
+2. Historical producer (removed root)
+   - Legacy inbox-autopilot daemon implementation remains recoverable via git history for provenance/reference only.
 
 ## Ownership
 
 1. Shared domain logic authority: `crates/autopilot-inbox-domain`.
 2. Desktop integration authority: `apps/autopilot-desktop`.
-3. Legacy daemon remains a consumer only and should not become the source-of-truth for duplicated domain helpers again.
+3. Legacy daemon is removed; no new source-of-truth drift back into removed app roots.
 
 ## OA-RUST-051 Route Integration Follow-up
 

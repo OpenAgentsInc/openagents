@@ -1,9 +1,0 @@
-.DS_Store
-
-# Rust build output
-daemon/target/
-
-# Local Xcode user state
-Inbox Autopilot/Inbox Autopilot.xcodeproj/project.xcworkspace/xcuserdata/
-Inbox Autopilot/Inbox Autopilot.xcodeproj/xcuserdata/
-*.xcuserstate
