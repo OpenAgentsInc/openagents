@@ -18,10 +18,12 @@ use tower_http::trace::TraceLayer;
 
 pub mod auth;
 pub mod config;
+pub mod observability;
 pub mod sync_token;
 
 use crate::auth::{AuthError, AuthService, PolicyCheckRequest, SessionBundle};
 use crate::config::Config;
+use crate::observability::{AuditEvent, Observability};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -34,6 +36,7 @@ const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
 struct AppState {
     config: Arc<Config>,
     auth: AuthService,
+    observability: Observability,
     sync_token_issuer: SyncTokenIssuer,
     started_at: SystemTime,
 }
@@ -122,11 +125,16 @@ struct SyncTokenRequestPayload {
 }
 
 pub fn build_router(config: Config) -> Router {
+    build_router_with_observability(config, Observability::default())
+}
+
+pub fn build_router_with_observability(config: Config, observability: Observability) -> Router {
     let auth = AuthService::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
     let state = AppState {
         config: Arc::new(config),
         auth,
+        observability,
         sync_token_issuer,
         started_at: SystemTime::now(),
     };
@@ -358,13 +366,27 @@ fn is_hashed_asset_path(path: &str) -> bool {
 
 async fn send_email_code(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<SendEmailCodeRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
     let challenge = state
         .auth
         .start_challenge(payload.email)
         .await
         .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.challenge.requested", request_id.clone())
+            .with_attribute("provider", state.auth.provider_name())
+            .with_attribute(
+                "email_domain",
+                email_domain(&challenge.email).unwrap_or_else(|| "unknown".to_string()),
+            ),
+    );
+    state
+        .observability
+        .increment_counter("auth.challenge.requested", &request_id);
 
     let cookie = challenge_cookie(
         &challenge.challenge_id,
@@ -388,6 +410,7 @@ async fn verify_email_code(
     headers: HeaderMap,
     Json(payload): Json<VerifyEmailCodeRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
     let challenge_id = payload
         .challenge_id
         .and_then(non_empty)
@@ -418,6 +441,19 @@ async fn verify_email_code(
         )
         .await
         .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.verify.completed", request_id.clone())
+            .with_user_id(verified.user.id.clone())
+            .with_session_id(verified.session.session_id.clone())
+            .with_org_id(verified.session.active_org_id.clone())
+            .with_device_id(verified.session.device_id.clone())
+            .with_attribute("provider", state.auth.provider_name())
+            .with_attribute("new_user", verified.new_user.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("auth.verify.completed", &request_id);
 
     let clear_cookie = clear_cookie(CHALLENGE_COOKIE_NAME);
 
@@ -517,6 +553,7 @@ async fn set_active_org(
     headers: HeaderMap,
     Json(payload): Json<SetActiveOrgRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
     let access_token =
         bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
@@ -530,6 +567,17 @@ async fn set_active_org(
         .set_active_org_by_access_token(&access_token, &normalized_org_id)
         .await
         .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.active_org.updated", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(bundle.session.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("auth.active_org.updated", &request_id);
 
     let response = serde_json::json!({
         "ok": true,
@@ -572,6 +620,7 @@ async fn sync_token(
     headers: HeaderMap,
     Json(payload): Json<SyncTokenRequestPayload>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
     let access_token =
         bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
 
@@ -628,6 +677,20 @@ async fn sync_token(
         ));
     }
 
+    state.observability.audit(
+        AuditEvent::new("sync.token.issued", request_id.clone())
+            .with_user_id(session.user.id.clone())
+            .with_session_id(session.session.session_id.clone())
+            .with_org_id(session.session.active_org_id.clone())
+            .with_device_id(session.session.device_id.clone())
+            .with_attribute("scope_count", issued.scopes.len().to_string())
+            .with_attribute("topic_count", issued.granted_topics.len().to_string())
+            .with_attribute("expires_in", issued.expires_in.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("sync.token.issued", &request_id);
+
     Ok((StatusCode::OK, Json(serde_json::json!({ "data": issued }))))
 }
 
@@ -636,6 +699,7 @@ async fn refresh_session(
     headers: HeaderMap,
     Json(payload): Json<RefreshSessionRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
     let token = payload
         .refresh_token
         .and_then(non_empty)
@@ -649,6 +713,18 @@ async fn refresh_session(
         .refresh_session(&token, rotate)
         .await
         .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.refresh.completed", request_id.clone())
+            .with_user_id(refreshed.session.user_id.clone())
+            .with_session_id(refreshed.session.session_id.clone())
+            .with_org_id(refreshed.session.active_org_id.clone())
+            .with_device_id(refreshed.session.device_id.clone())
+            .with_attribute("rotated_refresh_token", rotate.to_string()),
+    );
+    state
+        .observability
+        .increment_counter("auth.refresh.completed", &request_id);
 
     let response = serde_json::json!({
         "ok": true,
@@ -670,14 +746,32 @@ async fn logout_session(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
     let access_token =
         bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+
+    let bundle = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
 
     let revoked = state
         .auth
         .revoke_session_by_access_token(&access_token)
         .await
         .map_err(map_auth_error)?;
+
+    state.observability.audit(
+        AuditEvent::new("auth.logout.completed", request_id.clone())
+            .with_user_id(bundle.user.id.clone())
+            .with_session_id(revoked.session_id.clone())
+            .with_org_id(bundle.session.active_org_id.clone())
+            .with_device_id(bundle.session.device_id.clone()),
+    );
+    state
+        .observability
+        .increment_counter("auth.logout.completed", &request_id);
 
     let response = serde_json::json!({
         "ok": true,
@@ -868,6 +962,21 @@ fn extract_cookie_value(headers: &HeaderMap, cookie_name: &str) -> Option<String
     None
 }
 
+fn request_id(headers: &HeaderMap) -> String {
+    header_string(headers, "x-request-id")
+        .and_then(non_empty)
+        .unwrap_or_else(|| format!("req_{}", uuid::Uuid::new_v4().simple()))
+}
+
+fn email_domain(email: &str) -> Option<String> {
+    let domain = email.split('@').nth(1)?.trim();
+    if domain.is_empty() {
+        None
+    } else {
+        Some(domain.to_string())
+    }
+}
+
 fn header_string(headers: &HeaderMap, key: &str) -> Option<String> {
     headers
         .get(key)
@@ -914,6 +1023,7 @@ fn header_value(raw: &str) -> Result<HeaderValue, (StatusCode, Json<ApiErrorResp
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     use anyhow::Result;
     use axum::body::Body;
@@ -925,7 +1035,9 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::build_router;
+    use crate::build_router_with_observability;
     use crate::config::Config;
+    use crate::observability::{Observability, RecordingAuditSink};
     use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST};
 
     fn test_config(static_dir: PathBuf) -> Config {
@@ -1488,6 +1600,74 @@ mod tests {
             .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
         let sync_response = app.oneshot(sync_request).await?;
         assert_eq!(sync_response.status(), StatusCode::UNAUTHORIZED);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn audit_events_include_request_correlation_and_identity_fields() -> Result<()> {
+        let static_dir = tempdir()?;
+        let sink = Arc::new(RecordingAuditSink::default());
+        let app = build_router_with_observability(
+            test_config(static_dir.path().to_path_buf()),
+            Observability::new(sink.clone()),
+        );
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("x-request-id", "req-auth-email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"audit@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("x-request-id", "req-auth-verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let sync_request = Request::builder()
+            .method("POST")
+            .uri("/api/sync/token")
+            .header("x-request-id", "req-sync-token")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"scopes":["runtime.codex_worker_events"]}"#))?;
+        let sync_response = app.oneshot(sync_request).await?;
+        assert_eq!(sync_response.status(), StatusCode::OK);
+
+        let events = sink.events();
+        let verify_event = events
+            .iter()
+            .find(|event| event.event_name == "auth.verify.completed")
+            .expect("missing auth.verify.completed event");
+        assert_eq!(verify_event.request_id, "req-auth-verify");
+        assert_eq!(verify_event.outcome, "success");
+        assert!(verify_event.user_id.is_some());
+        assert!(verify_event.session_id.is_some());
+        assert!(verify_event.org_id.is_some());
+        assert!(verify_event.device_id.is_some());
+
+        let sync_event = events
+            .iter()
+            .find(|event| event.event_name == "sync.token.issued")
+            .expect("missing sync.token.issued event");
+        assert_eq!(sync_event.request_id, "req-sync-token");
+        assert_eq!(sync_event.outcome, "success");
+        assert!(sync_event.attributes.contains_key("scope_count"));
+        assert!(sync_event.attributes.contains_key("topic_count"));
+        assert!(sync_event.attributes.contains_key("expires_in"));
 
         Ok(())
     }

@@ -23,7 +23,7 @@ tokio.workspace = true
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "request-id", "timeout", "trace"] }
 tracing.workspace = true
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid.workspace = true
 
 [dev-dependencies]

@@ -31,6 +31,7 @@ Rust control service scaffold for `apps/openagents.com`.
 
 - `OA_CONTROL_BIND_ADDR` (default: `127.0.0.1:8787`)
 - `OA_CONTROL_LOG_FILTER` (default: `info`)
+- `OA_CONTROL_LOG_FORMAT` (`json|pretty`, default: `json`)
 - `OA_CONTROL_STATIC_DIR` (default: `../web-shell/dist`)
 - `OA_AUTH_PROVIDER_MODE` (`auto|workos|mock`, default: `auto`)
 - `WORKOS_CLIENT_ID` (used when WorkOS provider is active)
@@ -102,3 +103,9 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 - `GET /manifest.json` is served with `Cache-Control: no-cache, no-store, must-revalidate`.
 - `GET /assets/<hashed-file>` is served with `Cache-Control: public, max-age=31536000, immutable`.
 - `GET /assets/<non-hashed-file>` is served with `Cache-Control: public, max-age=60`.
+
+## Observability baseline
+
+- Request correlation IDs are propagated via `x-request-id` middleware and emitted in structured logs.
+- Audit events are emitted for sensitive control actions (`auth.challenge.requested`, `auth.verify.completed`, `auth.refresh.completed`, `auth.logout.completed`, `auth.active_org.updated`, `sync.token.issued`).
+- Service emits JSON logs by default (`OA_CONTROL_LOG_FORMAT=json`) for machine parsing.
