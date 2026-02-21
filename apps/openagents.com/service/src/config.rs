@@ -23,6 +23,10 @@ const DEFAULT_SYNC_TOKEN_MAX_TTL_SECONDS: u32 = 900;
 const DEFAULT_SYNC_ALLOWED_SCOPES: &str =
     "runtime.codex_worker_events,runtime.codex_worker_summaries,runtime.run_summaries";
 const DEFAULT_SYNC_DEFAULT_SCOPES: &str = "runtime.codex_worker_events";
+const DEFAULT_ROUTE_SPLIT_MODE: &str = "legacy";
+const DEFAULT_ROUTE_SPLIT_RUST_ROUTES: &str = "/chat,/workspace,/settings,/autopilot";
+const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 0;
+const DEFAULT_ROUTE_SPLIT_SALT: &str = "openagents-route-split-v1";
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -48,6 +52,13 @@ pub struct Config {
     pub sync_token_max_ttl_seconds: u32,
     pub sync_token_allowed_scopes: Vec<String>,
     pub sync_token_default_scopes: Vec<String>,
+    pub route_split_enabled: bool,
+    pub route_split_mode: String,
+    pub route_split_rust_routes: Vec<String>,
+    pub route_split_cohort_percentage: u8,
+    pub route_split_salt: String,
+    pub route_split_force_legacy: bool,
+    pub route_split_legacy_base_url: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -184,6 +195,45 @@ impl Config {
                 .unwrap_or_else(|| DEFAULT_SYNC_DEFAULT_SCOPES.to_string()),
         );
 
+        let route_split_enabled = env::var("OA_ROUTE_SPLIT_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false);
+
+        let route_split_mode = env::var("OA_ROUTE_SPLIT_MODE")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_ROUTE_SPLIT_MODE.to_string())
+            .trim()
+            .to_lowercase();
+
+        let route_split_rust_routes = parse_csv(
+            env::var("OA_ROUTE_SPLIT_RUST_ROUTES")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_ROUTE_SPLIT_RUST_ROUTES.to_string()),
+        );
+
+        let route_split_cohort_percentage = env::var("OA_ROUTE_SPLIT_COHORT_PERCENTAGE")
+            .ok()
+            .and_then(|value| value.parse::<u8>().ok())
+            .unwrap_or(DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE)
+            .min(100);
+
+        let route_split_salt = env::var("OA_ROUTE_SPLIT_SALT")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_ROUTE_SPLIT_SALT.to_string());
+
+        let route_split_force_legacy = env::var("OA_ROUTE_SPLIT_FORCE_LEGACY")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false);
+
+        let route_split_legacy_base_url = env::var("OA_ROUTE_SPLIT_LEGACY_BASE_URL")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty());
+
         Ok(Self {
             bind_addr,
             log_filter,
@@ -207,6 +257,13 @@ impl Config {
             sync_token_max_ttl_seconds,
             sync_token_allowed_scopes,
             sync_token_default_scopes,
+            route_split_enabled,
+            route_split_mode,
+            route_split_rust_routes,
+            route_split_cohort_percentage,
+            route_split_salt,
+            route_split_force_legacy,
+            route_split_legacy_base_url,
         })
     }
 }

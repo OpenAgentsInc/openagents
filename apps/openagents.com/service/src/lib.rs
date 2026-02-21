@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{SecondsFormat, Utc};
@@ -19,11 +19,13 @@ use tower_http::trace::TraceLayer;
 pub mod auth;
 pub mod config;
 pub mod observability;
+pub mod route_split;
 pub mod sync_token;
 
 use crate::auth::{AuthError, AuthService, PolicyCheckRequest, SessionBundle};
 use crate::config::Config;
 use crate::observability::{AuditEvent, Observability};
+use crate::route_split::{RouteSplitDecision, RouteSplitService, RouteTarget};
 use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 
 const SERVICE_NAME: &str = "openagents-control-service";
@@ -37,6 +39,7 @@ struct AppState {
     config: Arc<Config>,
     auth: AuthService,
     observability: Observability,
+    route_split: RouteSplitService,
     sync_token_issuer: SyncTokenIssuer,
     started_at: SystemTime,
 }
@@ -124,17 +127,31 @@ struct SyncTokenRequestPayload {
     device_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RouteSplitOverrideRequest {
+    target: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RouteSplitEvaluateRequest {
+    path: String,
+    #[serde(default)]
+    cohort_key: Option<String>,
+}
+
 pub fn build_router(config: Config) -> Router {
     build_router_with_observability(config, Observability::default())
 }
 
 pub fn build_router_with_observability(config: Config, observability: Observability) -> Router {
     let auth = AuthService::from_config(&config);
+    let route_split = RouteSplitService::from_config(&config);
     let sync_token_issuer = SyncTokenIssuer::from_config(&config);
     let state = AppState {
         config: Arc::new(config),
         auth,
         observability,
+        route_split,
         sync_token_issuer,
         started_at: SystemTime::now(),
     };
@@ -155,9 +172,22 @@ pub fn build_router_with_observability(config: Config, observability: Observabil
         .route("/api/sync/token", post(sync_token))
         .route("/api/v1/auth/session", get(current_session))
         .route("/api/v1/control/status", get(control_status))
+        .route(
+            "/api/v1/control/route-split/status",
+            get(route_split_status),
+        )
+        .route(
+            "/api/v1/control/route-split/override",
+            post(route_split_override),
+        )
+        .route(
+            "/api/v1/control/route-split/evaluate",
+            post(route_split_evaluate),
+        )
         .route("/api/v1/sync/token", post(sync_token))
         .route("/manifest.json", get(static_manifest))
         .route("/assets/*path", get(static_asset))
+        .route("/*path", get(web_shell_entry))
         .with_state(state)
         .layer(
             ServiceBuilder::new()
@@ -254,6 +284,150 @@ async fn static_asset(
         .await
         .map_err(map_static_error)?;
     Ok(response)
+}
+
+async fn web_shell_entry(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let path = uri.path();
+    if path.starts_with("/api/") {
+        return Err(static_not_found(format!("Route '{}' was not found.", path)));
+    }
+
+    let request_id = request_id(&headers);
+    let cohort_key = resolve_route_cohort_key(&headers);
+    let decision = state.route_split.evaluate(path, &cohort_key).await;
+
+    emit_route_split_decision_audit(
+        &state,
+        &request_id,
+        &decision,
+        headers
+            .get("user-agent")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default(),
+    );
+
+    match decision.target {
+        RouteTarget::RustShell => {
+            let entry_path = state.config.static_dir.join("index.html");
+            let response = build_static_response(&entry_path, CACHE_MANIFEST)
+                .await
+                .map_err(map_static_error)?;
+            Ok(response)
+        }
+        RouteTarget::Legacy => {
+            let redirect = state
+                .route_split
+                .legacy_redirect_url(path, uri.query())
+                .ok_or_else(|| {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(ApiErrorResponse {
+                            message: "Legacy route target is not configured.".to_string(),
+                            error: ApiErrorDetail {
+                                code: "legacy_route_unavailable",
+                                message: "Legacy route target is not configured.".to_string(),
+                            },
+                            errors: None,
+                        }),
+                    )
+                })?;
+            Ok(Redirect::temporary(&redirect).into_response())
+        }
+    }
+}
+
+async fn route_split_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let status = state.route_split.status().await;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "data": status }))))
+}
+
+async fn route_split_override(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RouteSplitOverrideRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let request_id = request_id(&headers);
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    let session = state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    let normalized_target = payload.target.trim().to_lowercase();
+    let override_target = match normalized_target.as_str() {
+        "legacy" => Some(RouteTarget::Legacy),
+        "rust" | "rust_shell" => Some(RouteTarget::RustShell),
+        "clear" | "default" => None,
+        _ => {
+            return Err(validation_error(
+                "target",
+                "Target must be one of: legacy, rust, clear.",
+            ));
+        }
+    };
+
+    state.route_split.set_override_target(override_target).await;
+    let status = state.route_split.status().await;
+
+    state.observability.audit(
+        AuditEvent::new("route.split.override.updated", request_id.clone())
+            .with_user_id(session.user.id)
+            .with_session_id(session.session.session_id)
+            .with_org_id(session.session.active_org_id)
+            .with_device_id(session.session.device_id)
+            .with_attribute("target", normalized_target),
+    );
+    state
+        .observability
+        .increment_counter("route.split.override.updated", &request_id);
+
+    Ok((StatusCode::OK, Json(serde_json::json!({ "data": status }))))
+}
+
+async fn route_split_evaluate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RouteSplitEvaluateRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let access_token =
+        bearer_token(&headers).ok_or_else(|| unauthorized_error("Unauthenticated."))?;
+    state
+        .auth
+        .session_from_access_token(&access_token)
+        .await
+        .map_err(map_auth_error)?;
+
+    if payload.path.trim().is_empty() {
+        return Err(validation_error("path", "Path is required."));
+    }
+
+    let cohort_key = payload
+        .cohort_key
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| resolve_route_cohort_key(&headers));
+
+    let decision = state.route_split.evaluate(&payload.path, &cohort_key).await;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "data": decision })),
+    ))
 }
 
 async fn build_static_response(
@@ -795,6 +969,7 @@ async fn control_status(
         .session_from_access_token(&access_token)
         .await
         .map_err(map_auth_error)?;
+    let route_split_status = state.route_split.status().await;
 
     let response = serde_json::json!({
         "data": {
@@ -802,6 +977,7 @@ async fn control_status(
             "authProvider": state.auth.provider_name(),
             "activeOrgId": bundle.session.active_org_id,
             "memberships": bundle.memberships,
+            "routeSplit": route_split_status,
         }
     });
 
@@ -977,6 +1153,44 @@ fn email_domain(email: &str) -> Option<String> {
     }
 }
 
+fn resolve_route_cohort_key(headers: &HeaderMap) -> String {
+    header_string(headers, "x-oa-route-key")
+        .or_else(|| header_string(headers, "x-device-id"))
+        .or_else(|| header_string(headers, "x-forwarded-for"))
+        .or_else(|| header_string(headers, "user-agent"))
+        .and_then(non_empty)
+        .unwrap_or_else(|| "anonymous".to_string())
+}
+
+fn emit_route_split_decision_audit(
+    state: &AppState,
+    request_id: &str,
+    decision: &RouteSplitDecision,
+    user_agent: &str,
+) {
+    let mut event = AuditEvent::new("route.split.decision", request_id.to_string())
+        .with_attribute("path", decision.path.clone())
+        .with_attribute(
+            "target",
+            match decision.target {
+                RouteTarget::Legacy => "legacy".to_string(),
+                RouteTarget::RustShell => "rust_shell".to_string(),
+            },
+        )
+        .with_attribute("reason", decision.reason.clone())
+        .with_attribute("cohort_key", decision.cohort_key.clone())
+        .with_attribute("user_agent", user_agent.to_string());
+
+    if let Some(bucket) = decision.cohort_bucket {
+        event = event.with_attribute("cohort_bucket", bucket.to_string());
+    }
+
+    state.observability.audit(event);
+    state
+        .observability
+        .increment_counter("route.split.decision", request_id);
+}
+
 fn header_string(headers: &HeaderMap, key: &str) -> Option<String> {
     headers
         .get(key)
@@ -1069,6 +1283,13 @@ mod tests {
                 "runtime.run_summaries".to_string(),
             ],
             sync_token_default_scopes: vec!["runtime.codex_worker_events".to_string()],
+            route_split_enabled: true,
+            route_split_mode: "cohort".to_string(),
+            route_split_rust_routes: vec!["/chat".to_string(), "/workspace".to_string()],
+            route_split_cohort_percentage: 100,
+            route_split_salt: "route-split-test-salt".to_string(),
+            route_split_force_legacy: false,
+            route_split_legacy_base_url: Some("https://legacy.openagents.test".to_string()),
         }
     }
 
@@ -1668,6 +1889,108 @@ mod tests {
         assert!(sync_event.attributes.contains_key("scope_count"));
         assert!(sync_event.attributes.contains_key("topic_count"));
         assert!(sync_event.attributes.contains_key("expires_in"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_serves_rust_shell_and_audits_decision() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+
+        let sink = Arc::new(RecordingAuditSink::default());
+        let app = build_router_with_observability(
+            test_config(static_dir.path().to_path_buf()),
+            Observability::new(sink.clone()),
+        );
+
+        let request = Request::builder()
+            .uri("/chat/thread-1")
+            .header("x-request-id", "req-route-split")
+            .header("x-oa-route-key", "user:route")
+            .header("user-agent", "autopilot-ios")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await?.to_bytes();
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("rust shell"));
+
+        let events = sink.events();
+        let decision_event = events
+            .iter()
+            .find(|event| event.event_name == "route.split.decision")
+            .expect("missing route.split.decision audit event");
+        assert_eq!(decision_event.request_id, "req-route-split");
+        assert_eq!(
+            decision_event
+                .attributes
+                .get("target")
+                .map(String::as_str)
+                .unwrap_or_default(),
+            "rust_shell"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_override_supports_fast_rollback_to_legacy() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let send_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/email")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"email":"routes@openagents.com"}"#))?;
+        let send_response = app.clone().oneshot(send_request).await?;
+        let cookie = cookie_value(&send_response).unwrap_or_default();
+
+        let verify_request = Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header("content-type", "application/json")
+            .header("x-client", "autopilot-ios")
+            .header("cookie", cookie)
+            .body(Body::from(r#"{"code":"123456"}"#))?;
+        let verify_response = app.clone().oneshot(verify_request).await?;
+        let verify_body = read_json(verify_response).await?;
+        let token = verify_body["token"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+
+        let override_request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/control/route-split/override")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"target":"legacy"}"#))?;
+        let override_response = app.clone().oneshot(override_request).await?;
+        assert_eq!(override_response.status(), StatusCode::OK);
+
+        let route_request = Request::builder()
+            .uri("/chat/thread-1")
+            .header("x-oa-route-key", "user:route")
+            .body(Body::empty())?;
+        let route_response = app.oneshot(route_request).await?;
+        assert_eq!(route_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            route_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("https://legacy.openagents.test/chat/thread-1")
+        );
 
         Ok(())
     }
