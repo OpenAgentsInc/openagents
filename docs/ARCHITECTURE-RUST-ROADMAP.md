@@ -310,6 +310,7 @@ Canonical routing artifacts: `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE-RUST.md`
 
 ### OA-RUST-073 — [Release Gate] Endstate readiness review and go/no-go decision
 Description: Validate all mandatory endstate outcomes, reliability gates, and parity requirements before declaring migration complete.
+Decision artifacts: `docs/audits/OA-RUST-073-ENDSTATE-READINESS-REVIEW-2026-02-21.md`, `docs/audits/OA-RUST-073-GO-NO-GO-DECISION-2026-02-21.md`
 
 ## Phase 10: New ADR Set (Rust Era)
 
