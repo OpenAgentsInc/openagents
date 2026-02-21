@@ -1,8 +1,13 @@
-# Storybook (historical)
+# Storybook Status
 
-The Effuse-based storybook and visual regression suite lived in the former **apps/web** app, which has been removed. The repo no longer includes that storybook.
+Status: archived legacy workflow.
 
-For the current web app:
+OpenAgents no longer runs the legacy `apps/web` Storybook stack.
 
-- **apps/openagents.com** — Laravel + Inertia + React. Component docs and local dev: see `apps/openagents.com/README.md`.
-- **packages/effuse-test** — E2E runner now targets `apps/openagents.com` (default `--project ../../apps/openagents.com`). Visual snapshot baselines: `apps/openagents.com/tests/visual/storybook/` (if added).
+Current UI verification lanes are Rust-native:
+
+1. `apps/openagents.com/web-shell/scripts/perf-budget-gate.sh`
+2. `apps/openagents.com/web-shell/check-host-shim.sh`
+3. `scripts/run-cross-surface-contract-harness.sh`
+
+Historical Storybook material was archived to backroom in OA-RUST-113.

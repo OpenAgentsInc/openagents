@@ -22,7 +22,7 @@
 
 - Control-plane namespaces that need runtime HTTP access must set:
   - `openagents.io/control-plane=true`
-- Pods requiring runtime HTTP access outside the default Laravel selectors can set:
+- Pods requiring runtime HTTP access outside the default control-service selectors can set:
   - `openagents.io/runtime-http-client=true`
 
 ## Validation
