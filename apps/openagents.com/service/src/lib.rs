@@ -1372,7 +1372,13 @@ mod tests {
             sync_token_default_scopes: vec!["runtime.codex_worker_events".to_string()],
             route_split_enabled: true,
             route_split_mode: "cohort".to_string(),
-            route_split_rust_routes: vec!["/chat".to_string(), "/workspace".to_string()],
+            route_split_rust_routes: vec![
+                "/chat".to_string(),
+                "/workspace".to_string(),
+                "/account".to_string(),
+                "/settings".to_string(),
+                "/admin".to_string(),
+            ],
             route_split_cohort_percentage: 100,
             route_split_salt: "route-split-test-salt".to_string(),
             route_split_force_legacy: false,
@@ -2084,6 +2090,37 @@ mod tests {
                 .unwrap_or_default(),
             "rust_shell"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn route_split_serves_management_route_prefixes_in_rust_cohort() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("index.html"),
+            "<!doctype html><html><body>rust shell</body></html>",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        for path in ["/account/session", "/settings/profile", "/admin"] {
+            let request = Request::builder()
+                .uri(path)
+                .header("x-oa-route-key", "user:route")
+                .body(Body::empty())?;
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "unexpected status for {path}"
+            );
+            let body = response.into_body().collect().await?.to_bytes();
+            let html = String::from_utf8_lossy(&body);
+            assert!(
+                html.contains("rust shell"),
+                "management route was not served by rust shell: {path}"
+            );
+        }
 
         Ok(())
     }

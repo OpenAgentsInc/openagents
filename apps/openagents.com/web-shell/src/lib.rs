@@ -50,6 +50,8 @@ mod wasm {
         static SYNC_RUNTIME_STATE: RefCell<SyncRuntimeState> = RefCell::new(SyncRuntimeState::default());
         static SYNC_LAST_PERSIST_AT_MS: Cell<u64> = const { Cell::new(0) };
         static CODEX_THREAD_STATE: RefCell<CodexThreadState> = RefCell::new(CodexThreadState::default());
+        static MANAGEMENT_SURFACE_STATE: RefCell<ManagementSurfaceState> = RefCell::new(ManagementSurfaceState::default());
+        static MANAGEMENT_SURFACE_LOADING: Cell<bool> = const { Cell::new(false) };
         static CODEX_SEND_CLICK_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(None) };
         static CODEX_INPUT_KEYDOWN_HANDLER: RefCell<Option<Closure<dyn FnMut(web_sys::KeyboardEvent)>>> = const { RefCell::new(None) };
     }
@@ -67,12 +69,73 @@ mod wasm {
     const CODEX_CHAT_ROOT_ID: &str = "openagents-web-shell-chat";
     const CODEX_CHAT_HEADER_ID: &str = "openagents-web-shell-chat-header";
     const CODEX_CHAT_MESSAGES_ID: &str = "openagents-web-shell-chat-messages";
+    const CODEX_CHAT_COMPOSER_ID: &str = "openagents-web-shell-chat-composer";
     const CODEX_CHAT_INPUT_ID: &str = "openagents-web-shell-chat-input";
     const CODEX_CHAT_SEND_ID: &str = "openagents-web-shell-chat-send";
 
     #[derive(Debug, Clone, Default)]
     struct SyncRuntimeState {
         subscribed_topics: Vec<String>,
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct ManagementSurfaceState {
+        loaded_session_id: Option<String>,
+        memberships: Vec<MembershipRecord>,
+        active_org_id: Option<String>,
+        route_split_status: Option<RouteSplitStatus>,
+        last_error: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct MembershipsResponse {
+        data: MembershipsPayload,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct MembershipsPayload {
+        #[serde(rename = "activeOrgId")]
+        active_org_id: String,
+        memberships: Vec<MembershipRecord>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct MembershipRecord {
+        #[serde(rename = "orgId")]
+        org_id: String,
+        #[serde(rename = "orgSlug")]
+        org_slug: String,
+        role: String,
+        #[serde(rename = "roleScopes")]
+        role_scopes: Vec<String>,
+        #[serde(rename = "defaultOrg")]
+        default_org: bool,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RouteSplitStatusResponse {
+        data: RouteSplitStatus,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RouteSplitStatus {
+        enabled: bool,
+        mode: String,
+        #[serde(rename = "cohort_percentage")]
+        #[serde(alias = "cohortPercentage")]
+        cohort_percentage: u8,
+        #[serde(rename = "rust_routes")]
+        #[serde(alias = "rustRoutes")]
+        rust_routes: Vec<String>,
+        #[serde(rename = "force_legacy")]
+        #[serde(alias = "forceLegacy")]
+        force_legacy: bool,
+        #[serde(rename = "legacy_base_url")]
+        #[serde(alias = "legacyBaseUrl")]
+        legacy_base_url: Option<String>,
+        #[serde(rename = "override_target")]
+        #[serde(alias = "overrideTarget")]
+        override_target: Option<String>,
     }
 
     #[derive(Debug, Clone, Serialize)]
@@ -438,6 +501,7 @@ mod wasm {
             let pending_intents = state.intent_queue.len();
             update_diagnostics_from_state(route_path, pending_intents);
         });
+        schedule_management_surface_refresh();
         render_codex_chat_dom();
 
         set_boot_phase("booting", "initializing GPU platform");
@@ -629,8 +693,11 @@ mod wasm {
                     let mut state = state.borrow_mut();
                     let _ = apply_action(&mut state, AppAction::Navigate { route });
                     update_diagnostics_from_state(state.route.to_path(), state.intent_queue.len());
-                    sync_thread_route_from_state(&state);
                 });
+                let state = snapshot_state();
+                sync_thread_route_from_state(&state);
+                schedule_management_surface_refresh();
+                render_codex_chat_dom();
                 Ok(())
             }
         }
@@ -657,7 +724,7 @@ mod wasm {
                     access_token: tokens.access_token,
                     refresh_token: tokens.refresh_token,
                 });
-                queue_intent(CommandIntent::ConnectStream { worker_id: None });
+                on_auth_session_established();
                 Ok(())
             }
             Err(error) if error.is_unauthorized() => match refresh_then_hydrate(tokens).await {
@@ -669,13 +736,14 @@ mod wasm {
                         access_token: hydrated.access_token,
                         refresh_token: hydrated.refresh_token,
                     });
-                    queue_intent(CommandIntent::ConnectStream { worker_id: None });
+                    on_auth_session_established();
                     Ok(())
                 }
                 Err(refresh_error) => {
                     clear_persisted_tokens();
                     clear_persisted_sync_state();
                     clear_runtime_sync_state();
+                    reset_management_surface_state();
                     apply_auth_action(AppAction::AuthReauthRequired {
                         message: "Reauthentication required.".to_string(),
                     });
@@ -690,6 +758,7 @@ mod wasm {
         apply_auth_action(AppAction::AuthSessionRestoreRequested);
 
         let Some(tokens) = load_tokens().or_else(auth_tokens_from_state) else {
+            reset_management_surface_state();
             apply_auth_action(AppAction::AuthSignedOut);
             return Ok(());
         };
@@ -708,7 +777,7 @@ mod wasm {
                     access_token: tokens.access_token,
                     refresh_token: tokens.refresh_token,
                 });
-                queue_intent(CommandIntent::ConnectStream { worker_id: None });
+                on_auth_session_established();
                 Ok(())
             }
             Err(error) => {
@@ -722,13 +791,14 @@ mod wasm {
                                 access_token: snapshot.access_token,
                                 refresh_token: snapshot.refresh_token,
                             });
-                            queue_intent(CommandIntent::ConnectStream { worker_id: None });
+                            on_auth_session_established();
                             Ok(())
                         }
                         Err(refresh_error) => {
                             clear_persisted_tokens();
                             clear_persisted_sync_state();
                             clear_runtime_sync_state();
+                            reset_management_surface_state();
                             apply_auth_action(AppAction::AuthReauthRequired {
                                 message: "Session expired. Sign in again.".to_string(),
                             });
@@ -771,7 +841,7 @@ mod wasm {
             access_token: next_tokens.access_token,
             refresh_token: next_tokens.refresh_token,
         });
-        queue_intent(CommandIntent::ConnectStream { worker_id: None });
+        on_auth_session_established();
         Ok(())
     }
 
@@ -787,6 +857,7 @@ mod wasm {
         clear_persisted_tokens();
         clear_persisted_sync_state();
         clear_runtime_sync_state();
+        reset_management_surface_state();
         stop_khala_stream();
         apply_auth_action(AppAction::AuthSignedOut);
         Ok(())
@@ -822,6 +893,12 @@ mod wasm {
             let _ = apply_action(&mut state, action);
             update_diagnostics_from_state(state.route.to_path(), state.intent_queue.len());
         });
+        render_codex_chat_dom();
+    }
+
+    fn on_auth_session_established() {
+        queue_intent(CommandIntent::ConnectStream { worker_id: None });
+        schedule_management_surface_refresh();
     }
 
     async fn refresh_then_hydrate(
@@ -1267,14 +1344,138 @@ mod wasm {
             chat.borrow_mut()
                 .set_thread_id(thread_id_from_route(&state.route));
         });
-        render_codex_chat_dom();
     }
 
     fn thread_id_from_route(route: &AppRoute) -> Option<String> {
         match route {
             AppRoute::Chat { thread_id } => thread_id.clone(),
-            AppRoute::Home | AppRoute::Workers | AppRoute::Settings | AppRoute::Debug => None,
+            AppRoute::Home
+            | AppRoute::Workers
+            | AppRoute::Account { .. }
+            | AppRoute::Settings { .. }
+            | AppRoute::Admin { .. }
+            | AppRoute::Debug => None,
         }
+    }
+
+    fn route_is_management_surface(route: &AppRoute) -> bool {
+        matches!(
+            route,
+            AppRoute::Account { .. } | AppRoute::Settings { .. } | AppRoute::Admin { .. }
+        )
+    }
+
+    fn reset_management_surface_state() {
+        MANAGEMENT_SURFACE_LOADING.with(|loading| loading.set(false));
+        MANAGEMENT_SURFACE_STATE.with(|state| {
+            *state.borrow_mut() = ManagementSurfaceState::default();
+        });
+    }
+
+    fn schedule_management_surface_refresh() {
+        let (access_token, session_id, route) = APP_STATE.with(|state| {
+            let state = state.borrow();
+            (
+                state.auth.access_token.clone(),
+                state
+                    .auth
+                    .session
+                    .as_ref()
+                    .map(|session| session.session_id.clone()),
+                state.route.clone(),
+            )
+        });
+
+        let Some(access_token) = access_token else {
+            return;
+        };
+        let Some(session_id) = session_id else {
+            return;
+        };
+        if access_token.trim().is_empty() {
+            return;
+        }
+        if !route_is_management_surface(&route) {
+            return;
+        }
+
+        let already_loaded = MANAGEMENT_SURFACE_STATE.with(|state| {
+            let state = state.borrow();
+            state.loaded_session_id.as_deref() == Some(session_id.as_str())
+                && state.last_error.is_none()
+        });
+        if already_loaded {
+            return;
+        }
+
+        let already_loading = MANAGEMENT_SURFACE_LOADING.with(|loading| {
+            if loading.get() {
+                true
+            } else {
+                loading.set(true);
+                false
+            }
+        });
+        if already_loading {
+            return;
+        }
+
+        spawn_local(async move {
+            let result = fetch_management_surface_state(&access_token, &session_id).await;
+            MANAGEMENT_SURFACE_LOADING.with(|loading| loading.set(false));
+            MANAGEMENT_SURFACE_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                match result {
+                    Ok(snapshot) => {
+                        *state = snapshot;
+                    }
+                    Err(error) => {
+                        state.loaded_session_id = Some(session_id.clone());
+                        state.last_error = Some(error.message.clone());
+                    }
+                }
+            });
+            render_codex_chat_dom();
+        });
+    }
+
+    async fn fetch_management_surface_state(
+        access_token: &str,
+        session_id: &str,
+    ) -> Result<ManagementSurfaceState, ControlApiError> {
+        let memberships_request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: "/api/orgs/memberships".to_string(),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        let memberships: MembershipsResponse =
+            send_json_request(&memberships_request, &AppState::default()).await?;
+
+        let route_split_request = HttpCommandRequest {
+            method: HttpMethod::Get,
+            path: "/api/v1/control/route-split/status".to_string(),
+            body: None,
+            auth: AuthRequirement::None,
+            headers: vec![(
+                "authorization".to_string(),
+                format!("Bearer {access_token}"),
+            )],
+        };
+        let route_split: RouteSplitStatusResponse =
+            send_json_request(&route_split_request, &AppState::default()).await?;
+
+        Ok(ManagementSurfaceState {
+            loaded_session_id: Some(session_id.to_string()),
+            memberships: memberships.data.memberships,
+            active_org_id: Some(memberships.data.active_org_id),
+            route_split_status: Some(route_split.data),
+            last_error: None,
+        })
     }
 
     fn ingest_codex_thread_payload(payload: &serde_json::Value) {
@@ -2011,6 +2212,7 @@ mod wasm {
                 .map_err(|_| "failed to create codex composer".to_string())?
                 .dyn_into::<HtmlElement>()
                 .map_err(|_| "codex composer is not HtmlElement".to_string())?;
+            composer.set_id(CODEX_CHAT_COMPOSER_ID);
             composer
                 .style()
                 .set_property("display", "flex")
@@ -2153,19 +2355,23 @@ mod wasm {
             return;
         };
 
-        let thread_id = active_thread_id();
-        if thread_id.is_none() {
+        let (route, auth_state) = APP_STATE.with(|state| {
+            let state = state.borrow();
+            (state.route.clone(), state.auth.clone())
+        });
+        let management_state = MANAGEMENT_SURFACE_STATE.with(|state| state.borrow().clone());
+        let management_loading = MANAGEMENT_SURFACE_LOADING.with(Cell::get);
+
+        let thread_id = thread_id_from_route(&route);
+        let is_management_route = route_is_management_surface(&route);
+        if thread_id.is_none() && !is_management_route {
             let _ = root.style().set_property("display", "none");
             return;
         }
-        let _ = root.style().set_property("display", "flex");
 
         if let Some(header) = document.get_element_by_id(CODEX_CHAT_HEADER_ID) {
             if let Ok(header) = header.dyn_into::<HtmlElement>() {
-                header.set_inner_text(&format!(
-                    "Codex Thread {}",
-                    thread_id.unwrap_or_else(|| "chat".to_string())
-                ));
+                header.set_inner_text(&route_header_title(&route));
             }
         }
 
@@ -2177,6 +2383,43 @@ mod wasm {
         };
         messages_container.set_inner_html("");
 
+        let Some(composer) = document
+            .get_element_by_id(CODEX_CHAT_COMPOSER_ID)
+            .and_then(|element| element.dyn_into::<HtmlElement>().ok())
+        else {
+            return;
+        };
+
+        if let Some(thread_id) = thread_id {
+            let _ = root.style().set_property("display", "flex");
+            let _ = composer.style().set_property("display", "flex");
+            render_codex_thread_messages(&document, &messages_container);
+            messages_container.set_scroll_top(messages_container.scroll_height());
+            if thread_id.is_empty() {
+                let _ = messages_container.style().set_property("opacity", "0.9");
+            } else {
+                let _ = messages_container.style().set_property("opacity", "1");
+            }
+            return;
+        }
+
+        let _ = root.style().set_property("display", "flex");
+        let _ = composer.style().set_property("display", "none");
+        render_management_surface_messages(
+            &document,
+            &messages_container,
+            &route,
+            &auth_state,
+            &management_state,
+            management_loading,
+        );
+        messages_container.set_scroll_top(0);
+    }
+
+    fn render_codex_thread_messages(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+    ) {
         CODEX_THREAD_STATE.with(|state| {
             for message in &state.borrow().messages {
                 let Ok(row) = document.create_element("div") else {
@@ -2234,8 +2477,249 @@ mod wasm {
                 let _ = messages_container.append_child(&row);
             }
         });
+    }
 
-        messages_container.set_scroll_top(messages_container.scroll_height());
+    fn render_management_surface_messages(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        route: &AppRoute,
+        auth_state: &openagents_app_state::AuthState,
+        management_state: &ManagementSurfaceState,
+        loading: bool,
+    ) {
+        let cards = management_surface_cards(route, auth_state, management_state, loading);
+        for card in cards {
+            append_management_card(document, messages_container, card);
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum ManagementCardTone {
+        Neutral,
+        Info,
+        Success,
+        Warning,
+        Error,
+    }
+
+    struct ManagementCard {
+        title: String,
+        body: String,
+        tone: ManagementCardTone,
+    }
+
+    fn management_surface_cards(
+        route: &AppRoute,
+        auth_state: &openagents_app_state::AuthState,
+        management_state: &ManagementSurfaceState,
+        loading: bool,
+    ) -> Vec<ManagementCard> {
+        let mut cards = vec![ManagementCard {
+            title: "Route".to_string(),
+            body: route.to_path(),
+            tone: ManagementCardTone::Info,
+        }];
+
+        let auth_tone = if auth_state.has_active_session() {
+            ManagementCardTone::Success
+        } else {
+            ManagementCardTone::Warning
+        };
+        cards.push(ManagementCard {
+            title: "Auth".to_string(),
+            body: format!("{:?}", auth_state.status),
+            tone: auth_tone,
+        });
+
+        if let Some(user) = &auth_state.user {
+            cards.push(ManagementCard {
+                title: "User".to_string(),
+                body: format!("{} <{}>", user.name, user.email),
+                tone: ManagementCardTone::Neutral,
+            });
+        }
+
+        if let Some(session) = &auth_state.session {
+            cards.push(ManagementCard {
+                title: "Session".to_string(),
+                body: format!(
+                    "id: {}\norg: {}\ndevice: {}\nstatus: {:?}",
+                    session.session_id, session.active_org_id, session.device_id, session.status
+                ),
+                tone: ManagementCardTone::Neutral,
+            });
+        }
+
+        if loading {
+            cards.push(ManagementCard {
+                title: "Data".to_string(),
+                body: "Loading account/admin context from control service.".to_string(),
+                tone: ManagementCardTone::Info,
+            });
+        } else if let Some(error) = management_state.last_error.as_ref() {
+            cards.push(ManagementCard {
+                title: "Data Load Error".to_string(),
+                body: error.clone(),
+                tone: ManagementCardTone::Error,
+            });
+        } else if !management_state.memberships.is_empty() {
+            let memberships = management_state
+                .memberships
+                .iter()
+                .map(|membership| {
+                    let default_tag = if membership.default_org {
+                        " [default]"
+                    } else {
+                        ""
+                    };
+                    format!(
+                        "{} ({}) role={}{} scopes={}",
+                        membership.org_slug,
+                        membership.org_id,
+                        membership.role,
+                        default_tag,
+                        membership.role_scopes.join("|")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            cards.push(ManagementCard {
+                title: "Org Memberships".to_string(),
+                body: memberships,
+                tone: ManagementCardTone::Neutral,
+            });
+        }
+
+        if let AppRoute::Admin { .. } = route {
+            if has_admin_access(route, auth_state, management_state) {
+                if let Some(route_split_status) = management_state.route_split_status.as_ref() {
+                    cards.push(ManagementCard {
+                        title: "Route Split".to_string(),
+                        body: format!(
+                            "enabled: {}\nmode: {}\ncohort: {}%\nroutes: {}\noverride: {}\nforce_legacy: {}\nlegacy_base: {}",
+                            route_split_status.enabled,
+                            route_split_status.mode,
+                            route_split_status.cohort_percentage,
+                            route_split_status.rust_routes.join(","),
+                            route_split_status
+                                .override_target
+                                .clone()
+                                .unwrap_or_else(|| "none".to_string()),
+                            route_split_status.force_legacy,
+                            route_split_status
+                                .legacy_base_url
+                                .clone()
+                                .unwrap_or_else(|| "none".to_string()),
+                        ),
+                        tone: ManagementCardTone::Info,
+                    });
+                }
+            } else {
+                cards.push(ManagementCard {
+                    title: "Admin Guard".to_string(),
+                    body: "Access denied for /admin route. Owner/Admin membership on the active org is required."
+                        .to_string(),
+                    tone: ManagementCardTone::Error,
+                });
+            }
+        }
+
+        cards
+    }
+
+    fn has_admin_access(
+        route: &AppRoute,
+        auth_state: &openagents_app_state::AuthState,
+        management_state: &ManagementSurfaceState,
+    ) -> bool {
+        if !matches!(route, AppRoute::Admin { .. }) {
+            return true;
+        }
+
+        let Some(active_org_id) = auth_state
+            .session
+            .as_ref()
+            .map(|session| session.active_org_id.as_str())
+            .or_else(|| management_state.active_org_id.as_deref())
+        else {
+            return false;
+        };
+
+        management_state.memberships.iter().any(|membership| {
+            membership.org_id == active_org_id
+                && matches!(membership.role.as_str(), "owner" | "admin")
+        })
+    }
+
+    fn route_header_title(route: &AppRoute) -> String {
+        match route {
+            AppRoute::Chat {
+                thread_id: Some(thread_id),
+            } => format!("Codex Thread {thread_id}"),
+            AppRoute::Chat { thread_id: None } => "Codex Thread".to_string(),
+            AppRoute::Account { section } => match section {
+                Some(section) => format!("Account / {section}"),
+                None => "Account".to_string(),
+            },
+            AppRoute::Settings { section } => match section {
+                Some(section) => format!("Settings / {section}"),
+                None => "Settings".to_string(),
+            },
+            AppRoute::Admin { section } => match section {
+                Some(section) => format!("Admin / {section}"),
+                None => "Admin".to_string(),
+            },
+            AppRoute::Workers => "Workers".to_string(),
+            AppRoute::Debug => "Debug".to_string(),
+            AppRoute::Home => "OpenAgents".to_string(),
+        }
+    }
+
+    fn append_management_card(
+        document: &web_sys::Document,
+        messages_container: &HtmlElement,
+        card: ManagementCard,
+    ) {
+        let Ok(row) = document.create_element("div") else {
+            return;
+        };
+        let Ok(row) = row.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = row.style().set_property("display", "flex");
+        let _ = row.style().set_property("width", "100%");
+        let _ = row.style().set_property("justify-content", "flex-start");
+
+        let Ok(bubble) = document.create_element("div") else {
+            return;
+        };
+        let Ok(bubble) = bubble.dyn_into::<HtmlElement>() else {
+            return;
+        };
+        let _ = bubble.style().set_property("max-width", "92%");
+        let _ = bubble.style().set_property("padding", "10px 12px");
+        let _ = bubble.style().set_property("border-radius", "12px");
+        let _ = bubble.style().set_property("white-space", "pre-wrap");
+        let _ = bubble.style().set_property("line-height", "1.4");
+        let _ = bubble.style().set_property("font-size", "14px");
+        let _ = bubble.style().set_property(
+            "font-family",
+            "ui-monospace, SFMono-Regular, Menlo, monospace",
+        );
+
+        let (bg, fg) = match card.tone {
+            ManagementCardTone::Neutral => ("#111827", "#e5e7eb"),
+            ManagementCardTone::Info => ("#0f172a", "#bfdbfe"),
+            ManagementCardTone::Success => ("#052e16", "#bbf7d0"),
+            ManagementCardTone::Warning => ("#3f2f0a", "#fde68a"),
+            ManagementCardTone::Error => ("#3f1d1d", "#fecaca"),
+        };
+        let _ = bubble.style().set_property("background", bg);
+        let _ = bubble.style().set_property("color", fg);
+        bubble.set_inner_text(&format!("{}\n{}", card.title, card.body));
+
+        let _ = row.append_child(&bubble);
+        let _ = messages_container.append_child(&row);
     }
 
     fn ensure_shell_dom() -> Result<HtmlCanvasElement, String> {
