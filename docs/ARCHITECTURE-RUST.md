@@ -87,7 +87,7 @@ flowchart LR
 ### Surviving app roots
 
 - `apps/openagents.com/`: Rust control service + static WGPUI web shell host.
-- `apps/runtime/`: Rust runtime execution authority.
+- `apps/runtime/`: Rust runtime execution authority (canonical path; deprecated `apps/openagents-runtime` references are not allowed).
 - `apps/autopilot-desktop/`: Rust native desktop app with WGPUI pane system; includes former inbox-autopilot capabilities.
 - `apps/autopilot-ios/`: iOS app packaging + host shell for Rust/WGPUI runtime.
 - `apps/lightning-ops/`: Rust service.
