@@ -35,6 +35,14 @@ export type SyncErrorPayload = Readonly<{
   [key: string]: unknown;
 }>;
 
+export type KhalaFrame = Readonly<{
+  topic: SyncTopic;
+  seq: number;
+  kind: string;
+  payload_bytes: string;
+  schema_version: number;
+}>;
+
 export type CachedDocument = Readonly<{
   topic: SyncTopic;
   docKey: string;

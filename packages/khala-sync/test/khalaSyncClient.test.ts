@@ -78,6 +78,9 @@ const requireFrame = (socket: FakeSocket, index: number): PhoenixFrame => {
   return frame;
 };
 
+const encodeFramePayload = (payload: unknown): string =>
+  Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
+
 describe("KhalaSyncClient", () => {
   it("subscribes with resume watermark and applies update batches", async () => {
     const sockets: FakeSocket[] = [];
@@ -238,6 +241,109 @@ describe("KhalaSyncClient", () => {
     expect(cached?.docVersion).toBe(9);
     expect(cached?.payload).toEqual({ status: "running" });
     expect(client.getWatermark("runtime.codex_worker_summaries")).toBe(10);
+  });
+
+  it("applies replay/live/stale-cursor via khala frame envelope", async () => {
+    const sockets: FakeSocket[] = [];
+    const staleEvents: Array<unknown> = [];
+    const store = new MemoryWatermarkStore({
+      "runtime.codex_worker_summaries": 11,
+    });
+
+    const client = new KhalaSyncClient({
+      url: "wss://openagents.test/sync/socket/websocket",
+      tokenProvider: async () => "sync-token-frame",
+      watermarkStore: store,
+      socketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      onStaleCursor: (payload) => staleEvents.push(payload),
+    });
+
+    const connectPromise = client.connect();
+    await waitFor(() => sockets.length >= 1);
+    const socket = requireSocket(sockets, 0);
+    socket.open();
+
+    await waitFor(() => socket.sentFrames().length >= 1);
+    const joinRef = requireFrame(socket, 0)[1] as string;
+    socket.emitFrame([null, joinRef, "sync:v1", "phx_reply", { status: "ok", response: {} }]);
+    await connectPromise;
+
+    const subscribePromise = client.subscribe(["runtime.codex_worker_summaries"]);
+    await waitFor(() => socket.sentFrames().length >= 2);
+    const subscribeRef = requireFrame(socket, 1)[1] as string;
+    socket.emitFrame([
+      null,
+      subscribeRef,
+      "sync:v1",
+      "phx_reply",
+      {
+        status: "ok",
+        response: {
+          current_watermarks: [{ topic: "runtime.codex_worker_summaries", watermark: 11 }],
+        },
+      },
+    ]);
+    await subscribePromise;
+
+    const replayPayload = {
+      updates: [
+        {
+          topic: "runtime.codex_worker_summaries",
+          doc_key: "worker:4",
+          doc_version: 12,
+          payload: { status: "running" },
+          watermark: 12,
+          hydration_required: false,
+        },
+      ],
+      replay_complete: false,
+      head_watermarks: [{ topic: "runtime.codex_worker_summaries", watermark: 15 }],
+    };
+
+    socket.emitFrame([
+      null,
+      null,
+      "sync:v1",
+      "sync:frame",
+      {
+        topic: "runtime.codex_worker_summaries",
+        seq: 12,
+        kind: "KHALA_FRAME_KIND_UPDATE_BATCH",
+        payload_bytes: encodeFramePayload(replayPayload),
+        schema_version: 1,
+      },
+    ]);
+
+    expect(client.getWatermark("runtime.codex_worker_summaries")).toBe(12);
+    expect(client.getDocument("worker:4")?.docVersion).toBe(12);
+
+    const stalePayload = {
+      code: "stale_cursor",
+      full_resync_required: true,
+      stale_topics: [{ topic: "runtime.codex_worker_summaries", retention_floor: 13 }],
+    };
+
+    socket.emitFrame([
+      null,
+      null,
+      "sync:v1",
+      "sync:frame",
+      {
+        topic: "runtime.codex_worker_summaries",
+        seq: 0,
+        kind: "KHALA_FRAME_KIND_ERROR",
+        payload_bytes: encodeFramePayload(stalePayload),
+        schema_version: 1,
+      },
+    ]);
+
+    await waitFor(() => staleEvents.length === 1);
+    expect(client.getWatermark("runtime.codex_worker_summaries")).toBe(0);
+    expect((await store.load(["runtime.codex_worker_summaries"]))["runtime.codex_worker_summaries"]).toBeUndefined();
   });
 
   it("handles stale_cursor and auto-resumes on reconnect", async () => {

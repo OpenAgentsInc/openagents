@@ -30,9 +30,15 @@ Client -> server:
 Server -> client:
 
 - `sync:subscribed` (`Subscribed`)
+- `sync:frame` (`KhalaFrame`) **canonical envelope**
 - `sync:update_batch` (`UpdateBatch`)
 - `sync:heartbeat` (`Heartbeat`)
 - `sync:error` (`Error`)
+
+Compatibility note:
+
+- `sync:frame` is the canonical server->client envelope for replay/live/error delivery.
+- Legacy event payloads (`sync:update_batch`, `sync:heartbeat`, `sync:error`) remain for transition compatibility and carry equivalent content.
 
 ## Encoding Rules
 
@@ -41,6 +47,8 @@ Server -> client:
 3. `payload` in `Update` is base64-encoded bytes in JSON transport.
 4. `payload_hash` in `Update` is base64-encoded bytes in JSON transport.
 5. Watermarks and versions are represented as JSON numbers where safe; string fallback is allowed if a client platform cannot safely represent `uint64`.
+6. `KhalaFrame.payload_bytes` is base64-encoded protobuf-bytes field; v1 transport payload is JSON-encoded payload bytes for the frame kind.
+7. `KhalaFrame.schema_version` starts at `1` and must be validated by clients before decoding payload bytes.
 
 ## Message Mapping
 
@@ -48,6 +56,7 @@ Server -> client:
 |---|---|---|
 | `sync:subscribe` | `Subscribe` | `topics[]`, optional `resume_after[]`, optional `request_id` |
 | `sync:subscribed` | `Subscribed` | `subscription_id`, `current_watermarks[]` |
+| `sync:frame` | `KhalaFrame` | `topic`, `seq`, `kind`, `payload_bytes`, `schema_version` |
 | `sync:update_batch` | `UpdateBatch` | `updates[]`, `replay_complete`, `head_watermarks[]` |
 | `sync:heartbeat` | `Heartbeat` | `watermarks[]` |
 | `sync:error` | `Error` | `code`, `message`, optional `retry_after_ms`, optional `full_resync_required` |
@@ -71,6 +80,13 @@ Replay behavior:
 1. On `sync:subscribe`, server replays `watermark > resume_after` for each topic.
 2. Server emits one or more `sync:update_batch` events.
 3. When caught up to head, `replay_complete=true` is emitted and channel transitions to live updates.
+
+Frame behavior (v1):
+
+1. Replay/live payloads are emitted as `sync:frame` with `kind=KHALA_FRAME_KIND_UPDATE_BATCH`.
+2. Error payloads (including stale cursor) are emitted as `sync:frame` with `kind=KHALA_FRAME_KIND_ERROR`.
+3. `seq` is monotonic by topic and represents the highest watermark included in the frame payload.
+4. Clients must discard frames with `seq <= last_applied(topic)`.
 
 ## Pointer Mode Behavior
 
@@ -162,9 +178,40 @@ Current runtime payload shape for stale cursor (`sync:error` event and subscribe
 }
 ```
 
+## Example: Khala Frame (Replay/Live)
+
+```json
+{
+  "event": "sync:frame",
+  "payload": {
+    "topic": "runtime.codex_worker_summaries",
+    "seq": 1043,
+    "kind": "KHALA_FRAME_KIND_UPDATE_BATCH",
+    "payload_bytes": "eyJ1cGRhdGVzIjpbeyJ0b3BpYyI6InJ1bnRpbWUuY29kZXhfd29ya2VyX3N1bW1hcmllcyIsImRvY19rZXkiOiJvcmdfMTIzOndvcmtlcl80NTYiLCJkb2NfdmVyc2lvbiI6MjIsInBheWxvYWQiOnsic3RhdHVzIjoicnVubmluZyJ9LCJ3YXRlcm1hcmsiOjEwNDMsInBheWxvYWRfaGFzaCI6IjNxbTdtUT09IiwiaHlkcmF0aW9uX3JlcXVpcmVkIjpmYWxzZX1dLCJyZXBsYXlfY29tcGxldGUiOmZhbHNlLCJoZWFkX3dhdGVybWFya3MiOlt7InRvcGljIjoicnVudGltZS5jb2RleF93b3JrZXJfc3VtbWFyaWVzIiwid2F0ZXJtYXJrIjoxMDQ5fV19",
+    "schema_version": 1
+  }
+}
+```
+
+## Example: Khala Frame (Stale Cursor Error)
+
+```json
+{
+  "event": "sync:frame",
+  "payload": {
+    "topic": "runtime.run_summaries",
+    "seq": 0,
+    "kind": "KHALA_FRAME_KIND_ERROR",
+    "payload_bytes": "eyJjb2RlIjoic3RhbGVfY3Vyc29yIiwibWVzc2FnZSI6ImN1cnNvciBpcyBvbGRlciB0aGFuIHJldGVudGlvbiBmbG9vciIsImZ1bGxfcmVzeW5jX3JlcXVpcmVkIjp0cnVlLCJzdGFsZV90b3BpY3MiOlt7InRvcGljIjoicnVudGltZS5ydW5fc3VtbWFyaWVzIiwicmVzdW1lX2FmdGVyIjoxMCwicmV0ZW50aW9uX2Zsb29yIjo0Mn1dfQ==",
+    "schema_version": 1
+  }
+}
+```
+
 ## References
 
 - `proto/openagents/sync/v1/sync.proto`
 - `proto/openagents/sync/v1/topics.proto`
 - `proto/openagents/sync/v1/errors.proto`
+- `docs/protocol/fixtures/khala-frame-v1.json`
 - `docs/sync/thoughts.md`

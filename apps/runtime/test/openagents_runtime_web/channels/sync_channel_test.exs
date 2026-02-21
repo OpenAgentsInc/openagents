@@ -169,6 +169,14 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       "head_watermarks" => [%{"topic" => @run_topic, "watermark" => 3}]
     }
 
+    assert_push "sync:frame", replay_frame
+    assert replay_frame["topic"] == @run_topic
+    assert replay_frame["seq"] == 3
+    assert replay_frame["kind"] == "KHALA_FRAME_KIND_UPDATE_BATCH"
+    assert replay_frame["schema_version"] == 1
+    assert {:ok, replay_payload} = decode_frame_payload(replay_frame)
+    assert replay_payload["replay_complete"] == true
+
     assert Enum.map(replay_updates, & &1["watermark"]) == [2, 3]
 
     assert_reply ref, :ok, %{
@@ -186,6 +194,14 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       "replay_complete" => true,
       "head_watermarks" => [%{"topic" => @run_topic, "watermark" => 4}]
     }
+
+    assert_push "sync:frame", live_frame
+    assert live_frame["topic"] == @run_topic
+    assert live_frame["seq"] == 4
+    assert live_frame["kind"] == "KHALA_FRAME_KIND_UPDATE_BATCH"
+    assert live_frame["schema_version"] == 1
+    assert {:ok, live_payload} = decode_frame_payload(live_frame)
+    assert %{"updates" => [%{"watermark" => 4}]} = live_payload
 
     assert live_update["watermark"] == 4
     assert live_update["payload"]["value"] == "four"
@@ -317,6 +333,15 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
         }
       ]
     }
+
+    assert_push "sync:frame", stale_frame
+    assert stale_frame["kind"] == "KHALA_FRAME_KIND_ERROR"
+    assert stale_frame["topic"] == @run_topic
+    assert stale_frame["seq"] == 0
+    assert stale_frame["schema_version"] == 1
+    assert {:ok, stale_payload} = decode_frame_payload(stale_frame)
+    assert stale_payload["code"] == "stale_cursor"
+    assert stale_payload["full_resync_required"] == true
 
     assert_reply ref, :error, %{
       "code" => "stale_cursor",
@@ -451,5 +476,15 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
 
       handler_id
     end)
+  end
+
+  defp decode_frame_payload(%{"payload_bytes" => encoded_payload})
+       when is_binary(encoded_payload) do
+    with {:ok, decoded_bytes} <- Base.decode64(encoded_payload),
+         {:ok, decoded_payload} <- Jason.decode(decoded_bytes) do
+      {:ok, decoded_payload}
+    else
+      _error -> {:error, :invalid_payload}
+    end
   end
 end
