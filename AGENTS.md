@@ -13,6 +13,7 @@ This file is a **map**, not a manual. Start here, then follow links for deeper s
 - Vocabulary authority: `docs/GLOSSARY.md`
 - Canonical architecture: `docs/ARCHITECTURE-RUST.md`
 - Canonical migration sequencing: `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- Canonical Rust deploy/process matrix: `docs/DEPLOYMENT_RUST_SERVICES.md`
 - Historical architecture snapshot (non-canonical): `docs/ARCHITECTURE.md`
 - Architecture decisions (invariants/contracts): `docs/adr/INDEX.md`
 - ADR authoring/review process: `docs/adr/README.md`

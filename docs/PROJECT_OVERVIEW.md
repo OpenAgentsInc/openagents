@@ -46,6 +46,7 @@ This map reflects canonical Rust-only architecture boundaries.
 
 - `docs/ARCHITECTURE-RUST.md`
 - `docs/ARCHITECTURE-RUST-ROADMAP.md`
+- `docs/DEPLOYMENT_RUST_SERVICES.md`
 - `docs/README.md`
 - `docs/ROADMAP.md`
 - `docs/AGENT_MAP.md`

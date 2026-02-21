@@ -44,3 +44,7 @@ Legacy TypeScript/Effect implementation is preserved in:
 - `apps/lightning-wallet-executor/archived-ts/`
 
 It is historical only and not used by active runtime paths.
+
+## Deployment posture
+
+`lightning-wallet-executor` is Rust-only. Canonical execution is the Rust service binary (`cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- serve`). Legacy TypeScript/Node deploy commands are non-canonical.

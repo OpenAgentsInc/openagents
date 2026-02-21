@@ -71,7 +71,7 @@ apps/runtime/deploy/cloudrun/verify-db-role-isolation.sh
 4. Confirm no new runtime/web 500s in logs.
 
 ```bash
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="openagents-web" AND httpRequest.status=500' \
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="openagents-control-service" AND httpRequest.status=500' \
   --project openagentsgemini --freshness=10m --limit=20
 
 gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="runtime" AND severity>=ERROR' \

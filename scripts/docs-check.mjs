@@ -155,6 +155,41 @@ for (const file of canonicalDocs) {
   })
 }
 
+// 5) Guard active deploy docs from legacy deploy commands/service names.
+const deployDocs = [
+  "docs/DEPLOYMENT_RUST_SERVICES.md",
+  "apps/openagents.com/docs/GCP_DEPLOY_PLAN.md",
+  "apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md",
+  "apps/openagents.com/deploy/README.md",
+  "apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md",
+  "apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md",
+  "apps/runtime/docs/DEPLOY_CLOUD_RUN.md",
+  "apps/runtime/deploy/cloudrun/README.md",
+]
+
+const legacyDeployPatterns = [
+  { pattern: /\bopenagents-web(?!-shell)\b/, label: "legacy service name openagents-web" },
+  { pattern: /\bopenagents-migrate\b/, label: "legacy job name openagents-migrate" },
+  { pattern: /\bphp artisan\b/i, label: "legacy php artisan command" },
+  { pattern: /\bmix test\b/i, label: "legacy mix test command" },
+  { pattern: /\bnpm run\b/i, label: "legacy npm run command" },
+]
+
+for (const file of deployDocs) {
+  if (!trackedSet.has(file)) continue
+  const lines = fs.readFileSync(file, "utf8").split("\n")
+  lines.forEach((line, index) => {
+    for (const rule of legacyDeployPatterns) {
+      if (rule.pattern.test(line) && !historicalQualifierRe.test(line)) {
+        errors.push({
+          file,
+          message: `legacy deploy reference without historical qualifier at line ${index + 1}: ${rule.label}`,
+        })
+      }
+    }
+  })
+}
+
 if (errors.length) {
   const byFile = new Map()
   for (const e of errors) {

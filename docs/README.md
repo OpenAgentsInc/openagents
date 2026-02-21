@@ -3,6 +3,7 @@
 Canonical architecture is Rust-only:
 - `ARCHITECTURE-RUST.md`
 - `ARCHITECTURE-RUST-ROADMAP.md`
+- `DEPLOYMENT_RUST_SERVICES.md`
 
 `ARCHITECTURE.md` is historical context only.
 
@@ -18,9 +19,10 @@ Canonical architecture is Rust-only:
 
 ## Core Service Docs
 
+- Rust deploy/process matrix: `DEPLOYMENT_RUST_SERVICES.md`
 - Rust control service runbook: `../apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - Rust runtime API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
-- Runtime operations: `../apps/runtime/docs/OPERATIONS.md`
+- Runtime observability and operations: `../apps/runtime/docs/OBSERVABILITY.md`
 - Runtime deploy and migration gate: `../apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
 - Runtime WS threat model: `../apps/runtime/docs/KHALA_WS_THREAT_MODEL.md`
 - Runtime reconnect/chaos drills: `../apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
