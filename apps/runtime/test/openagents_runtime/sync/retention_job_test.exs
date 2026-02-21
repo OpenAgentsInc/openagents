@@ -49,6 +49,14 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
 
     assert topic_measurements.count == 1
 
+    assert topic_metadata.topic_class in [
+             "durable_summary",
+             "high_churn_events",
+             "ephemeral_notifications"
+           ]
+
+    assert topic_metadata.snapshot in ["enabled", "disabled"]
+
     remaining =
       from(event in StreamEvent,
         where: event.topic == ^@run_topic,
@@ -57,6 +65,71 @@ defmodule OpenAgentsRuntime.Sync.RetentionJobTest do
       |> Repo.all()
 
     assert remaining == [2]
+  end
+
+  test "run_once applies per-topic retention windows and compaction metadata" do
+    now = ~U[2026-02-20 12:00:00.000000Z]
+
+    insert_stream_event(@run_topic, 1, DateTime.add(now, -7_200, :second))
+    insert_stream_event(@worker_events_topic, 1, DateTime.add(now, -7_200, :second))
+
+    topic_policies = %{
+      @run_topic => %{
+        retention_seconds: 10_800,
+        topic_class: "durable_summary",
+        compaction_mode: "tail_prune_with_snapshot_rehydrate",
+        snapshot: %{
+          enabled: true,
+          format: "openagents.sync.snapshot.v1",
+          schema_version: 1,
+          cadence_seconds: 300,
+          source_table: "runtime.sync_run_summaries"
+        }
+      },
+      @worker_events_topic => %{
+        retention_seconds: 3_600,
+        topic_class: "high_churn_events",
+        compaction_mode: "tail_prune_without_snapshot",
+        snapshot: %{enabled: false}
+      }
+    }
+
+    summary =
+      RetentionJob.run_once(
+        now: now,
+        batch_size: 10,
+        topic_policies: topic_policies
+      )
+
+    assert summary.deleted == 1
+    assert summary.oldest_retained[@run_topic] == 1
+    assert summary.oldest_retained[@worker_events_topic] == nil
+
+    assert summary.topic_stats[@run_topic].retention_seconds == 10_800
+    assert summary.topic_stats[@run_topic].deleted == 0
+    assert summary.topic_stats[@run_topic].compaction_mode == "tail_prune_with_snapshot_rehydrate"
+    assert is_map(summary.topic_stats[@run_topic].snapshot)
+
+    assert summary.topic_stats[@worker_events_topic].retention_seconds == 3_600
+    assert summary.topic_stats[@worker_events_topic].deleted == 1
+    assert summary.topic_stats[@worker_events_topic].snapshot == nil
+
+    remaining_run =
+      from(event in StreamEvent,
+        where: event.topic == ^@run_topic,
+        select: event.watermark
+      )
+      |> Repo.all()
+
+    remaining_worker_events =
+      from(event in StreamEvent,
+        where: event.topic == ^@worker_events_topic,
+        select: event.watermark
+      )
+      |> Repo.all()
+
+    assert remaining_run == [1]
+    assert remaining_worker_events == []
   end
 
   test "run_once reports nil oldest watermark for empty topic streams" do

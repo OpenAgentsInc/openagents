@@ -376,6 +376,7 @@ Dependencies: OA-RUST-083.
 
 ### OA-RUST-085 — [Khala] Define retention, compaction, and snapshotting policy
 Description: Establish explicit per-topic retention windows, compaction rules, and snapshot generation strategy to keep replay bounded.
+Enforcement artifacts: `apps/runtime/lib/openagents_runtime/sync/topic_policy.ex`, `apps/runtime/lib/openagents_runtime/sync/retention_job.ex`, `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/config/config.exs`, `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`, `apps/runtime/test/openagents_runtime/sync/retention_job_test.exs`, `apps/runtime/test/openagents_runtime/sync/topic_policy_test.exs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`
 Acceptance criteria: Retention policy exists for all topic classes; snapshot format/versioning is documented; automated tests verify replay correctness across compaction boundaries.
 Dependencies: OA-RUST-038, OA-RUST-043.
 

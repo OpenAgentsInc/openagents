@@ -56,8 +56,8 @@ High-cardinality keys explicitly prohibited from metric labels:
 - `[:openagents_runtime, :sync, :stream, :append]`
   - Khala stream journal append outcomes
 - `[:openagents_runtime, :sync, :retention, ...]`
-  - `:cycle` (deleted row counts per retention pass)
-  - `:topic` (oldest retained watermark visibility by topic)
+  - `:cycle` (deleted row counts + topic count per retention pass)
+  - `:topic` (per-topic deleted counts, stale-risk, oldest/head watermark, topic class, snapshot capability)
 - `[:openagents_runtime, :sync, :socket, ...]`
   - `:connection` (connect/disconnect counts + active connection gauge source)
   - `:heartbeat` (server/client heartbeat traffic)
