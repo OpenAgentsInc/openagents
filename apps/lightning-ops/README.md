@@ -1,134 +1,89 @@
-# lightning-ops
+# lightning-ops (Rust)
 
-Effect-native operational service for hosted L402 gateway workflows.
+Rust-native operational CLI/service for hosted L402 gateway workflows.
 
-## Scope in Phase 2A
+This is the canonical runtime lane for `apps/lightning-ops`.
 
-- Pull hosted paywall control-plane state from Laravel internal API.
-- Compile deterministic `aperture.yaml` artifacts + stable `configHash`.
-- Validate route/policy state and emit typed diagnostics.
-- Persist compile/deployment intent records to the API-backed control-plane authority.
+Legacy TypeScript/Effect implementation is archived under:
+
+- `apps/lightning-ops/archived-ts/`
 
 ## Commands
 
+From repo root:
+
 ```bash
-npm run typecheck
-npm test
-npm run smoke:compile -- --json
-npm run smoke:security -- --json
-npm run smoke:settlement -- --json
-npm run smoke:full-flow -- --json
-npm run compile:api
-npm run reconcile:api
-npm run smoke:staging -- --json
-npm run smoke:ep212-routes -- --json --mode mock
-npm run smoke:ep212-full-flow -- --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:compile --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- compile:api --json
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- reconcile:api --json
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:security --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:settlement --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:observability --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:staging --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:full-flow --json --mode mock --allow-missing-local-artifact
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:ep212-routes --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:ep212-full-flow --json --mode mock
 ```
 
-`smoke:compile -- --json` prints machine-readable JSON with:
+## Output shape
+
+`smoke:compile` / `compile:api` emit:
 
 - `configHash`
 - `ruleCount`
 - `valid`
+- `deploymentStatus`
+- `deploymentId`
+- `diagnostics[]`
 
-`smoke:staging -- --json` emits reconcile output with:
+`reconcile:api` / `smoke:staging --mode api` emit:
 
-- `challengeOk`
-- `proxyOk`
+- `requestId`
+- `executionPath`
 - `configHash`
 - `deploymentStatus`
+- `challengeOk`
+- `proxyOk`
+- `healthOk`
 
-`smoke:ep212-routes -- --json --mode live` verifies the two episode routes on `l402.openagents.com`:
+`smoke:full-flow` and `smoke:ep212-full-flow` always write:
 
-- route A (`/ep212/premium-signal`): challenge shape + paid success (`status 200`)
-- route B (`/ep212/expensive-signal`): challenge shape + over-cap policy block (no payment call)
+- `events.jsonl`
+- `summary.json`
 
-`smoke:ep212-full-flow -- --json --mode mock` runs a deterministic buyer-flow harness with local fixtures:
+Default artifact directories:
 
-- sats4ai-compatible paid request (`Authorization: L402 <macaroon>:<preimage>`)
-- sats4ai cache hit (no second payment)
-- OpenAgents route paid success
-- over-cap policy block before payment
+- `output/lightning-ops/full-flow/<requestId>/`
+- `output/lightning-ops/ep212-full-flow/<requestId>/`
 
-It always writes machine-readable artifacts:
+## Environment variables
 
-- `events.jsonl` (ordered stage events)
-- `summary.json` (result with payer-call and cache assertions)
+API-backed mode (`--mode api`) requires:
 
-`smoke:settlement -- --json` emits deterministic settlement ingest output with:
-
-- `settlementIds`
-- `paymentProofRefs`
-- `correlationRefs` (request/task/route correlation tuples)
-
-`smoke:security -- --json` verifies security controls with machine-readable output:
-
-- fail-closed credential validation
-- global pause/owner kill-switch denial behavior
-- rotation/revocation/activation lifecycle + recovery state
-
-`smoke:full-flow -- --json` executes the hosted-path end-to-end harness and writes:
-
-- `events.jsonl` (ordered stage events)
-- `summary.json` (machine-readable pass/fail + coverage summary)
-- parity checks against local-node smoke artifact correlation keys
-
-Default artifact paths:
-
-- hosted output: `output/lightning-ops/full-flow/<requestId>/`
-- local-node parity source: `output/l402-local-node-smoke-artifact.json`
-
-Override flags:
-
-- `--artifact-dir <path>`
-- `--local-artifact <path>`
-- `--allow-missing-local-artifact` (disables strict local parity requirement)
-
-Environment variables for API-backed operation:
-
-- `OA_LIGHTNING_OPS_API_BASE_URL` (for example `https://openagents.com`)
-- `OA_LIGHTNING_OPS_SECRET`
-
-Laravel API-side requirement for API mode:
-
-- `apps/openagents.com` must set `OA_LIGHTNING_OPS_SECRET` (same value as `apps/lightning-ops`).
-
-Control-plane mode selection:
-
-- `OA_LIGHTNING_OPS_CONTROL_PLANE_MODE=api|mock` (default: `api` for control-plane smoke/compile commands)
-- Per-command override still works with `--mode ...`.
-
-Environment variables for hosted staging smoke (`--mode api`). **Gateway URLs default** to `https://l402.openagents.com` and `https://l402.openagents.com/staging` (in `staging-reconcile.sh` and in the smoke program). You only need to set:
-
-- `OA_LIGHTNING_OPS_SECRET`
 - `OA_LIGHTNING_OPS_API_BASE_URL`
+- `OA_LIGHTNING_OPS_SECRET`
 
-Optional overrides:
+Gateway probe defaults (can be overridden):
 
-- `OA_LIGHTNING_OPS_GATEWAY_BASE_URL`, `OA_LIGHTNING_OPS_CHALLENGE_URL`, `OA_LIGHTNING_OPS_PROXY_URL`
-- `OA_LIGHTNING_OPS_GATEWAY_OPS_TOKEN`, `OA_LIGHTNING_OPS_GATEWAY_HEALTH_PATH`, `OA_LIGHTNING_OPS_PROXY_AUTHORIZATION_HEADER`
+- `OA_LIGHTNING_OPS_GATEWAY_BASE_URL` (default `https://l402.openagents.com`)
+- `OA_LIGHTNING_OPS_CHALLENGE_URL` (default `https://l402.openagents.com/staging`)
+- `OA_LIGHTNING_OPS_PROXY_URL` (default `https://l402.openagents.com/staging`)
+- `OA_LIGHTNING_OPS_GATEWAY_HEALTH_PATH` (default `/healthz`)
+- `OA_LIGHTNING_OPS_GATEWAY_OPS_TOKEN` (optional)
+- `OA_LIGHTNING_OPS_PROXY_AUTHORIZATION_HEADER` (optional)
 
-Environment variables for `smoke:ep212-routes -- --mode live`:
+EP212 live smoke overrides:
 
-- `OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL` (required)
-- `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN` (optional)
-- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `60000`)
-- `OA_LIGHTNING_OPS_EP212_ROUTE_A_URL` (optional, default `https://l402.openagents.com/ep212/premium-signal`)
-- `OA_LIGHTNING_OPS_EP212_ROUTE_B_URL` (optional, default `https://l402.openagents.com/ep212/expensive-signal`)
-- `OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS` (optional, default `100000`)
+- `OA_LIGHTNING_OPS_EP212_ROUTE_A_URL`
+- `OA_LIGHTNING_OPS_EP212_ROUTE_B_URL`
+- `OA_LIGHTNING_OPS_EP212_SATS4AI_URL`
 
-Additional environment variables for `smoke:ep212-full-flow -- --mode live`:
+## Verification
 
-- `OA_LIGHTNING_OPS_EP212_SATS4AI_URL` (optional, default `https://sats4ai.com/api/l402/text-generation`)
-- `OA_LIGHTNING_OPS_EP212_ROUTE_A_URL` (optional, default `https://l402.openagents.com/ep212/premium-signal`)
-- `OA_LIGHTNING_OPS_EP212_ROUTE_B_URL` (optional, default `https://l402.openagents.com/ep212/expensive-signal`)
-- `OA_LIGHTNING_OPS_EP212_MAX_SPEND_MSATS` (optional, default `100000`)
-- `OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL` (required for `--mode live`)
-- `OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN` (optional)
-- `OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS` (optional, default `60000`)
+From repo root:
 
-Example: copy `env.staging.example` to `.env.staging`, set the two required vars, then `source .env.staging && ./scripts/staging-reconcile.sh`.
-
-**Full operator checklist (reconcile, CI, product, changing Aperture routes):** `docs/lightning/status/20260212-0753-status.md` §12.
-
-Default `smoke:staging` mode is deterministic in-memory (`--mode mock`) so CI can run non-interactively.
+```bash
+cargo test --manifest-path apps/lightning-ops/Cargo.toml
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:compile --json --mode mock
+cargo run --manifest-path apps/lightning-ops/Cargo.toml -- smoke:staging --json --mode mock
+```

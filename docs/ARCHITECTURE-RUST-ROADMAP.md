@@ -468,6 +468,7 @@ Dependencies: OA-RUST-015, OA-RUST-062, OA-RUST-063, OA-RUST-064.
 
 ### OA-RUST-101 — [Services] Migrate `apps/lightning-ops` to Rust
 Description: Port `apps/lightning-ops` service logic from TypeScript/Effect to Rust while preserving policy/reconcile behavior and operator diagnostics.
+Enforcement artifacts: `apps/lightning-ops/Cargo.toml`, `apps/lightning-ops/src/main.rs`, `apps/lightning-ops/scripts/staging-reconcile.sh`, `apps/lightning-ops/README.md`, `apps/lightning-ops/archived-ts/`
 Acceptance criteria: Rust service reaches feature parity for compile/reconcile/smoke workflows; TypeScript runtime path is removed or archived; ops runbooks point to Rust service only.
 Dependencies: OA-RUST-060, OA-RUST-066, OA-RUST-095.
 
