@@ -94,6 +94,7 @@ These tables are runtime-owned and are not Laravel authority tables.
 - Summary topics provide snapshot bootstrap metadata (`openagents.sync.snapshot.v1`) in stale-cursor responses.
 - Event-only topics remain tail-only replay (no snapshot bootstrap source).
 - Runtime stale-cursor responses carry deterministic `reason_codes` (`retention_floor_breach`, `replay_budget_exceeded`) plus `qos_tier` and `replay_budget_events`.
+- Runtime applies fair topic slicing per principal when multiple topics are active, plus deterministic slow-consumer eviction for repeated lag.
 
 ## Publish and Frame Limits (OA-RUST-088)
 
@@ -130,6 +131,7 @@ Operator visibility:
 
 - Per-topic violation counters and last reason are exposed in Khala fanout topic windows (`/internal/v1/khala/fanout/hooks` and `/internal/v1/khala/fanout/metrics`).
 - Topic windows include `qos_tier`, `replay_budget_events`, `stale_cursor_budget_exceeded_count`, and `stale_cursor_retention_floor_count`.
+- Delivery metrics include fairness-limited poll counts (`fairness_limited_polls`) and slow-consumer evictions.
 
 ## Rebuild Posture
 

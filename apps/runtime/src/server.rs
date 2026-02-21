@@ -90,6 +90,7 @@ struct KhalaDeliveryControl {
     total_polls: AtomicU64,
     throttled_polls: AtomicU64,
     limited_polls: AtomicU64,
+    fairness_limited_polls: AtomicU64,
     slow_consumer_evictions: AtomicU64,
     served_messages: AtomicU64,
 }
@@ -99,6 +100,7 @@ struct KhalaDeliveryMetricsSnapshot {
     total_polls: u64,
     throttled_polls: u64,
     limited_polls: u64,
+    fairness_limited_polls: u64,
     slow_consumer_evictions: u64,
     served_messages: u64,
     active_consumers: usize,
@@ -118,6 +120,10 @@ impl KhalaDeliveryControl {
 
     fn record_limit_capped(&self) {
         self.limited_polls.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_fairness_limited(&self) {
+        self.fairness_limited_polls.fetch_add(1, Ordering::Relaxed);
     }
 
     fn record_slow_consumer_eviction(&self) {
@@ -145,6 +151,7 @@ impl KhalaDeliveryControl {
             total_polls: self.total_polls.load(Ordering::Relaxed),
             throttled_polls: self.throttled_polls.load(Ordering::Relaxed),
             limited_polls: self.limited_polls.load(Ordering::Relaxed),
+            fairness_limited_polls: self.fairness_limited_polls.load(Ordering::Relaxed),
             slow_consumer_evictions: self.slow_consumer_evictions.load(Ordering::Relaxed),
             served_messages: self.served_messages.load(Ordering::Relaxed),
             active_consumers,
@@ -234,6 +241,9 @@ struct FanoutPollResponse {
     replay_complete: bool,
     limit_applied: usize,
     limit_capped: bool,
+    fairness_applied: bool,
+    active_topic_count: usize,
+    outbound_queue_limit: usize,
     consumer_lag: Option<u64>,
     slow_consumer_strikes: u32,
     slow_consumer_max_strikes: u32,
@@ -480,7 +490,24 @@ async fn get_khala_topic_messages(
         .limit
         .unwrap_or(state.config.khala_poll_default_limit)
         .max(1);
-    let limit = requested_limit.min(state.config.khala_poll_max_limit);
+    let principal_key = khala_principal_key(&principal);
+    let active_topic_count = {
+        let prefix = format!("{principal_key}|");
+        let consumers = state.khala_delivery.consumers.lock().await;
+        consumers
+            .keys()
+            .filter(|key| key.starts_with(prefix.as_str()))
+            .count()
+    };
+    let mut limit = requested_limit
+        .min(state.config.khala_poll_max_limit)
+        .min(state.config.khala_outbound_queue_limit);
+    let mut fairness_applied = false;
+    if active_topic_count >= 2 && limit > state.config.khala_fair_topic_slice_limit {
+        limit = state.config.khala_fair_topic_slice_limit;
+        fairness_applied = true;
+        state.khala_delivery.record_fairness_limited();
+    }
     let limit_capped = requested_limit > limit;
     if limit_capped {
         state.khala_delivery.record_limit_capped();
@@ -601,6 +628,9 @@ async fn get_khala_topic_messages(
         replay_complete,
         limit_applied: limit,
         limit_capped,
+        fairness_applied,
+        active_topic_count,
+        outbound_queue_limit: state.config.khala_outbound_queue_limit,
         consumer_lag,
         slow_consumer_strikes,
         slow_consumer_max_strikes: state.config.khala_slow_consumer_max_strikes,
@@ -1083,7 +1113,7 @@ fn fanout_window_details(
     }
 }
 
-fn khala_consumer_key(principal: &SyncPrincipal, topic: &str) -> String {
+fn khala_principal_key(principal: &SyncPrincipal) -> String {
     let user = principal
         .user_id
         .map(|value| format!("user:{value}"))
@@ -1096,7 +1126,11 @@ fn khala_consumer_key(principal: &SyncPrincipal, topic: &str) -> String {
         .device_id
         .clone()
         .unwrap_or_else(|| "device:none".to_string());
-    format!("{topic}|{user}|{org}|{device}")
+    format!("{user}|{org}|{device}")
+}
+
+fn khala_consumer_key(principal: &SyncPrincipal, topic: &str) -> String {
+    format!("{}|{topic}", khala_principal_key(principal))
 }
 
 fn deterministic_jitter_ms(seed_key: &str, cursor: u64, max_jitter_ms: u64) -> u64 {
@@ -1404,6 +1438,8 @@ mod tests {
             fanout_queue_capacity: 64,
             khala_poll_default_limit: 100,
             khala_poll_max_limit: 200,
+            khala_outbound_queue_limit: 200,
+            khala_fair_topic_slice_limit: 50,
             khala_poll_min_interval_ms: 250,
             khala_slow_consumer_lag_threshold: 300,
             khala_slow_consumer_max_strikes: 3,
@@ -1964,6 +2000,20 @@ mod tests {
                 .unwrap_or(false),
             false
         );
+        assert_eq!(
+            messages_json
+                .pointer("/fairness_applied")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(true),
+            false
+        );
+        assert_eq!(
+            messages_json
+                .pointer("/outbound_queue_limit")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            200
+        );
 
         let hooks_response = app
             .clone()
@@ -2091,6 +2141,178 @@ mod tests {
                 .and_then(serde_json::Value::as_u64)
                 .is_some()
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_topic_messages_apply_fair_slice_when_principal_tracks_multiple_topics()
+    -> Result<()> {
+        let app = build_test_router_with_config(
+            AuthorityWriteMode::RustActive,
+            HashSet::new(),
+            |config| {
+                config.khala_poll_min_interval_ms = 1;
+                config.khala_poll_default_limit = 50;
+                config.khala_poll_max_limit = 50;
+                config.khala_outbound_queue_limit = 50;
+                config.khala_fair_topic_slice_limit = 2;
+            },
+        );
+        let sync_token = issue_sync_token(
+            &["runtime.run_events", "runtime.worker_lifecycle_events"],
+            Some(1),
+            Some("user:1"),
+            "fair-slice",
+            300,
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:fair-run-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        for index in 2..=12 {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/internal/v1/runs/{run_id}/events"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                            "event_type": "run.step",
+                            "payload": {"step": index},
+                            "expected_previous_seq": index - 1
+                        }))?))?,
+                )
+                .await?;
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+        }
+
+        let worker_id = "desktop:fairness-worker";
+        let register_worker = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/workers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": worker_id,
+                        "owner_user_id": 1,
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(register_worker.status(), axum::http::StatusCode::CREATED);
+
+        let heartbeat_worker = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/workers/{worker_id}/heartbeat"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "owner_user_id": 1,
+                        "metadata_patch": {"pulse": true}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat_worker.status(), axum::http::StatusCode::OK);
+
+        let warmup_run_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=0&limit=50"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(warmup_run_poll.status(), axum::http::StatusCode::OK);
+        let warmup_run_json = response_json(warmup_run_poll).await?;
+        assert_eq!(
+            warmup_run_json
+                .pointer("/fairness_applied")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(true),
+            false
+        );
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        let warmup_worker_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/worker:{worker_id}:lifecycle/messages?after_seq=0&limit=50"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(warmup_worker_poll.status(), axum::http::StatusCode::OK);
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        let fair_poll = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/internal/v1/khala/topics/run:{run_id}:events/messages?after_seq=1&limit=50"
+                    ))
+                    .header("authorization", format!("Bearer {sync_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fair_poll.status(), axum::http::StatusCode::OK);
+        let fair_json = response_json(fair_poll).await?;
+        assert_eq!(
+            fair_json
+                .pointer("/fairness_applied")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            true
+        );
+        assert_eq!(
+            fair_json
+                .pointer("/active_topic_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            2
+        );
+        assert_eq!(
+            fair_json
+                .pointer("/limit_applied")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default(),
+            2
+        );
+        let delivered_count = fair_json
+            .pointer("/messages")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, std::vec::Vec::len);
+        assert_eq!(delivered_count, 2);
 
         Ok(())
     }
