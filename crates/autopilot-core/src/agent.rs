@@ -6,7 +6,7 @@
 //! On native platforms, the agent uses DSPy-powered planning for optimizable
 //! structured outputs. On WASM, it falls back to legacy prompt-based planning.
 
-use openagents_runtime::{
+use runtime::{
     Agent, AgentConfig, AgentContext, AgentEnv, AgentState, TickResult, Trigger, error::Result,
     types::Timestamp,
 };
@@ -105,7 +105,7 @@ pub struct AutopilotConfig {
 impl AgentConfig for AutopilotConfig {
     fn validate(&self) -> Result<()> {
         if self.model.is_empty() {
-            return Err(openagents_runtime::error::AgentError::Tick(
+            return Err(runtime::error::AgentError::Tick(
                 "invalid config: model cannot be empty".to_string(),
             ));
         }

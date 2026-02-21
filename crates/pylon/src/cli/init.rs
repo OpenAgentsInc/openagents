@@ -1,7 +1,7 @@
 //! pylon init - Initialize provider identity
 
 use clap::Args;
-use openagents_runtime::UnifiedIdentity;
+use runtime::UnifiedIdentity;
 
 /// Arguments for the init command
 #[derive(Args)]

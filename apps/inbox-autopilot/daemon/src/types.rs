@@ -2,6 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use autopilot_inbox_domain::{
+    DraftQualityReport, DraftStatus, PolicyDecision, RiskTier, ThreadCategory,
+};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PrivacyMode {
@@ -18,80 +22,6 @@ pub enum AttachmentStorageMode {
     #[default]
     Metadata,
     Full,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RiskTier {
-    Low,
-    Medium,
-    High,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum ThreadCategory {
-    Scheduling,
-    ReportDelivery,
-    FindingsClarification,
-    Pricing,
-    ComplaintDispute,
-    LegalInsurance,
-    Other,
-}
-
-impl ThreadCategory {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Scheduling => "scheduling",
-            Self::ReportDelivery => "report_delivery",
-            Self::FindingsClarification => "findings_clarification",
-            Self::Pricing => "pricing",
-            Self::ComplaintDispute => "complaint_dispute",
-            Self::LegalInsurance => "legal_insurance",
-            Self::Other => "other",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PolicyDecision {
-    DraftOnly,
-    SendWithApproval,
-    Blocked,
-}
-
-impl PolicyDecision {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::DraftOnly => "draft_only",
-            Self::SendWithApproval => "send_with_approval",
-            Self::Blocked => "blocked",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum DraftStatus {
-    Pending,
-    Approved,
-    Rejected,
-    NeedsHuman,
-    Sent,
-}
-
-impl DraftStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Approved => "approved",
-            Self::Rejected => "rejected",
-            Self::NeedsHuman => "needs_human",
-            Self::Sent => "sent",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,36 +216,4 @@ pub struct TemplateSuggestion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateMineResponse {
     pub suggestions: Vec<TemplateSuggestion>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DraftQualitySampleResult {
-    pub thread_id: String,
-    pub category: ThreadCategory,
-    pub edit_ratio: f32,
-    pub minimal_edit: bool,
-    pub draft_word_count: usize,
-    pub sent_word_count: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DraftQualityCategorySummary {
-    pub category: ThreadCategory,
-    pub samples: usize,
-    pub minimal_edit_count: usize,
-    pub minimal_edit_rate: f32,
-    pub average_edit_ratio: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DraftQualityReport {
-    pub generated_at: DateTime<Utc>,
-    pub threshold: f32,
-    pub target_rate: f32,
-    pub total_samples: usize,
-    pub total_minimal_edit: usize,
-    pub total_minimal_edit_rate: f32,
-    pub target_met: bool,
-    pub categories: Vec<DraftQualityCategorySummary>,
-    pub samples: Vec<DraftQualitySampleResult>,
 }

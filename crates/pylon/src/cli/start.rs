@@ -4,7 +4,7 @@
 
 use clap::{Args, ValueEnum};
 use compute::domain::DomainEvent;
-use openagents_runtime::UnifiedIdentity;
+use runtime::UnifiedIdentity;
 use std::time::Instant;
 use tokio::sync::broadcast;
 

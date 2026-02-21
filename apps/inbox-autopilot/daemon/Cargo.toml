@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 aes-gcm = "0.10"
 anyhow = "1.0"
+autopilot-inbox-domain = { path = "../../../crates/autopilot-inbox-domain" }
 axum = { version = "0.7", features = ["macros"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde", "clock"] }

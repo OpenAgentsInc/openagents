@@ -16,7 +16,7 @@ use wasm_bindgen_futures::spawn_local;
 use crate::agent::{AutopilotAgent, AutopilotConfig};
 
 #[cfg(target_arch = "wasm32")]
-use openagents_runtime::{AgentId, BrowserRuntime, BrowserRuntimeConfig};
+use runtime::{AgentId, BrowserRuntime, BrowserRuntimeConfig};
 
 #[cfg(target_arch = "wasm32")]
 use std::sync::OnceLock;

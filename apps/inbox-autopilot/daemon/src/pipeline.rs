@@ -1,8 +1,12 @@
 use crate::config::Config;
-use crate::db::{ClassificationDecision, Database, NewDraft, privacy_mode_to_str};
+use crate::db::{Database, NewDraft, privacy_mode_to_str};
 use crate::error::ApiError;
-use crate::types::{GenerateDraftResponse, PolicyDecision, PrivacyMode, RiskTier, ThreadCategory};
+use crate::types::{GenerateDraftResponse, PrivacyMode};
 use anyhow::Context;
+use autopilot_inbox_domain::{
+    PolicyDecision, RiskTier, ThreadCategory, classify_thread, compose_local_draft,
+    infer_style_signature_from_bodies, risk_to_str,
+};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -44,7 +48,8 @@ impl DraftPipeline {
 
         let settings = db.settings().map_err(ApiError::internal)?;
         let recent_sent = db.recent_sent_messages(40).map_err(ApiError::internal)?;
-        let style_signature = infer_style_signature(&recent_sent);
+        let style_signature =
+            infer_style_signature_from_bodies(recent_sent.iter().map(|item| item.body.as_str()));
 
         let local_body = compose_local_draft(
             decision.category,
@@ -157,185 +162,6 @@ impl DraftPipeline {
             .filter(|text| !text.trim().is_empty())
             .context("openai returned empty content")?;
         Ok(content)
-    }
-}
-
-fn classify_thread(subject: &str, body: &str, snippet: &str) -> ClassificationDecision {
-    let text = format!(
-        "{}\n{}\n{}",
-        subject.to_lowercase(),
-        body.to_lowercase(),
-        snippet.to_lowercase()
-    );
-    let mut reason_codes = Vec::new();
-
-    let (category, risk, policy) = if contains_any(
-        &text,
-        &[
-            "lawsuit",
-            "attorney",
-            "lawyer",
-            "insurance",
-            "claim",
-            "subpoena",
-        ],
-    ) {
-        reason_codes.push("keyword_legal".to_string());
-        (
-            ThreadCategory::LegalInsurance,
-            RiskTier::High,
-            PolicyDecision::Blocked,
-        )
-    } else if contains_any(
-        &text,
-        &["complaint", "dispute", "angry", "escalate", "unhappy"],
-    ) {
-        reason_codes.push("keyword_complaint".to_string());
-        (
-            ThreadCategory::ComplaintDispute,
-            RiskTier::High,
-            PolicyDecision::DraftOnly,
-        )
-    } else if contains_any(
-        &text,
-        &["price", "pricing", "quote", "cost", "invoice", "discount"],
-    ) {
-        reason_codes.push("keyword_pricing".to_string());
-        (
-            ThreadCategory::Pricing,
-            RiskTier::Medium,
-            PolicyDecision::DraftOnly,
-        )
-    } else if contains_any(
-        &text,
-        &["schedule", "calendar", "availability", "meet", "reschedule"],
-    ) {
-        reason_codes.push("keyword_scheduling".to_string());
-        (
-            ThreadCategory::Scheduling,
-            RiskTier::Low,
-            PolicyDecision::SendWithApproval,
-        )
-    } else if contains_any(
-        &text,
-        &["report", "deliverable", "attached", "results", "summary"],
-    ) {
-        reason_codes.push("keyword_report_delivery".to_string());
-        (
-            ThreadCategory::ReportDelivery,
-            RiskTier::Low,
-            PolicyDecision::SendWithApproval,
-        )
-    } else if contains_any(
-        &text,
-        &["clarify", "clarification", "follow up", "question"],
-    ) {
-        reason_codes.push("keyword_clarification".to_string());
-        (
-            ThreadCategory::FindingsClarification,
-            RiskTier::Medium,
-            PolicyDecision::SendWithApproval,
-        )
-    } else {
-        reason_codes.push("fallback_other".to_string());
-        (
-            ThreadCategory::Other,
-            RiskTier::Medium,
-            PolicyDecision::DraftOnly,
-        )
-    };
-
-    ClassificationDecision {
-        category,
-        risk,
-        policy,
-        reason_codes,
-    }
-}
-
-fn contains_any(text: &str, terms: &[&str]) -> bool {
-    terms.iter().any(|term| text.contains(term))
-}
-
-fn compose_local_draft(
-    category: ThreadCategory,
-    subject: &str,
-    inbound_body: &str,
-    scheduling_template: Option<&str>,
-    report_template: Option<&str>,
-    signature: Option<&str>,
-    style_signature: &str,
-) -> String {
-    let base = match category {
-        ThreadCategory::Scheduling => scheduling_template
-            .map(ToString::to_string)
-            .unwrap_or_else(|| {
-                "Thanks for reaching out. I can do Tuesday at 10:00 AM PT or Wednesday at 2:00 PM PT. Let me know which works best for you.".to_string()
-            }),
-        ThreadCategory::ReportDelivery => report_template
-            .map(ToString::to_string)
-            .unwrap_or_else(|| {
-                "Thanks for your note. I have attached the requested report and key findings summary. Please let me know if you want a quick walkthrough call.".to_string()
-            }),
-        ThreadCategory::FindingsClarification => {
-            "Thanks for the follow-up. Happy to clarify. The key point is that the findings reflect the latest data pull and we can review details together on a short call if helpful.".to_string()
-        }
-        ThreadCategory::Pricing => {
-            "Thanks for asking about pricing. I can confirm options once I verify scope and deliverables. I will send a detailed quote shortly.".to_string()
-        }
-        ThreadCategory::ComplaintDispute => {
-            "Thanks for flagging this. I understand the concern and want to resolve it quickly. I’m reviewing details now and will follow up with concrete next steps shortly.".to_string()
-        }
-        ThreadCategory::LegalInsurance => {
-            "Thanks for your message. I have flagged this for manual legal review and will respond after that review is complete.".to_string()
-        }
-        ThreadCategory::Other => {
-            "Thanks for reaching out. I reviewed your message and will get back to you with next steps shortly.".to_string()
-        }
-    };
-
-    let inbound_excerpt: String = inbound_body.chars().take(220).collect();
-    let signature_block = signature
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| format!("\n\n{value}"))
-        .unwrap_or_default();
-
-    format!(
-        "Subject context: {subject}\n\n{base}\n\nReference: {inbound_excerpt}\n\n{style_signature}{signature_block}"
-    )
-}
-
-fn infer_style_signature(messages: &[crate::types::MessageRecord]) -> String {
-    if messages.is_empty() {
-        return "Best,".to_string();
-    }
-
-    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for message in messages.iter().take(20) {
-        let lowercase = message.body.to_lowercase();
-        if lowercase.contains("thanks,") {
-            *counts.entry("Thanks,").or_insert(0) += 1;
-        }
-        if lowercase.contains("best,") {
-            *counts.entry("Best,").or_insert(0) += 1;
-        }
-        if lowercase.contains("regards,") {
-            *counts.entry("Regards,").or_insert(0) += 1;
-        }
-    }
-
-    counts
-        .into_iter()
-        .max_by_key(|(_, count)| *count)
-        .map(|(signoff, _)| signoff.to_string())
-        .unwrap_or_else(|| "Best,".to_string())
-}
-
-fn risk_to_str(risk: RiskTier) -> &'static str {
-    match risk {
-        RiskTier::Low => "low",
-        RiskTier::Medium => "medium",
-        RiskTier::High => "high",
     }
 }
 

@@ -10,6 +10,7 @@ members = [
     "crates/ai-server",
     "crates/arrow",
     "crates/autopilot_app",
+    "crates/autopilot-inbox-domain",
     "crates/autopilot_ui",
     "crates/autopilot",
     "crates/autopilot-core",
@@ -180,6 +181,7 @@ dsrs = { path = "crates/dsrs" }
 dsrs-macros = { path = "crates/dsrs-macros" }
 openagents-utils = { path = "crates/openagents-utils" }
 ai-server = { path = "crates/ai-server" }
+autopilot-inbox-domain = { path = "crates/autopilot-inbox-domain" }
 
 # External crates
 anyhow = "1.0.86"

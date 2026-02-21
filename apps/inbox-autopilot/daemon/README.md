@@ -2,6 +2,10 @@
 
 Local Rust daemon for Inbox Autopilot.
 
+Shared inbox mailbox policy/draft/audit domain logic is imported from:
+
+- `crates/autopilot-inbox-domain`
+
 ## Run
 
 ```bash

@@ -2,6 +2,20 @@
 
 Native Rust/WGPUI desktop app for Codex runtime workflows.
 
+## Inbox Domain Integration
+
+Inbox mailbox policy/draft/audit domain logic now lives in shared crate:
+
+- `crates/autopilot-inbox-domain`
+
+Desktop consumes this domain crate directly via:
+
+- `apps/autopilot-desktop/src/inbox_domain.rs`
+
+Migration mapping details:
+
+- `apps/autopilot-desktop/docs/migration/INBOX_AUTOPILOT_DOMAIN_MIGRATION.md`
+
 ## WorkOS Email-Code Auth (Runtime Sync)
 
 Desktop runtime sync now uses the same email-code auth flow as iOS.

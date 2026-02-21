@@ -1,0 +1,12 @@
+[package]
+name = "autopilot-inbox-domain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Shared inbox domain logic for desktop and inbox daemon"
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }

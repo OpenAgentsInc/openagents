@@ -41,12 +41,12 @@ use futures::{SinkExt, StreamExt};
 use moltbook::{CommentSort, CreateCommentRequest, MoltbookClient, MoltbookError, PostSort};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
-use openagents_runtime::UnifiedIdentity;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
 use reqwest::{Client as HttpClient, Method};
+use runtime::UnifiedIdentity;
 use rusqlite::{Connection, params};
 use serde_json::{Map, Value, json};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
@@ -64,6 +64,7 @@ use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey
 use winit::window::{CursorIcon, Window, WindowId};
 
 mod full_auto;
+mod inbox_domain;
 mod runtime_auth;
 mod runtime_codex_proto;
 
@@ -1367,6 +1368,7 @@ fn main() -> Result<()> {
         .with_target(false)
         .init();
     let _ = rustls::crypto::ring::default_provider().install_default();
+    inbox_domain::warm_inbox_domain_bridge();
 
     if let Some(command) = cli.command {
         return run_cli_command(command);

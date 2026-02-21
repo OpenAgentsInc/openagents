@@ -5,7 +5,7 @@ use crate::config::PylonConfig;
 use compute::backends::{AgentRegistry, BackendRegistry};
 use compute::domain::DomainEvent;
 use compute::services::{DvmConfig, DvmService, RelayService};
-use openagents_runtime::UnifiedIdentity;
+use runtime::UnifiedIdentity;
 use spark::{Network as SparkNetwork, SparkWallet, WalletConfig};
 use std::sync::Arc;
 use thiserror::Error;
