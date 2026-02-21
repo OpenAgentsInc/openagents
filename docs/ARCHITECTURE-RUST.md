@@ -37,14 +37,14 @@ Implementation sequencing and issue backlog live in `docs/ARCHITECTURE-RUST-ROAD
 ```mermaid
 flowchart LR
   subgraph surfaces["Client Surfaces (Rust + WGPUI)"]
-    web["openagents.com web app\nWGPUI (WASM)"]
+    web["openagents.com web shell\nWGPUI (WASM)"]
     desktop["autopilot-desktop\nWGPUI native panes\n(Codex + Inbox unified)"]
     ios["autopilot-ios\nWGPUI-driven Rust core\n(thin iOS host only)"]
     onyx["onyx\nRust local-first app"]
   end
 
   subgraph core["Rust Service Plane"]
-    edge["openagents.com service\nRust edge/control API + static host"]
+    edge["openagents.com control service\nRust control API + static host"]
     runtime["openagents-runtime\nRust execution authority"]
     khala["Khala\nRust WS sync + replay"]
     lops["lightning-ops\nRust policy/reconcile"]
@@ -86,7 +86,7 @@ flowchart LR
 
 ### Surviving app roots
 
-- `apps/openagents.com/`: Rust edge/control-plane service + static WGPUI web host.
+- `apps/openagents.com/`: Rust control service + static WGPUI web shell host.
 - `apps/openagents-runtime/`: Rust runtime execution authority.
 - `apps/autopilot-desktop/`: Rust native desktop app with WGPUI pane system; includes former inbox-autopilot capabilities.
 - `apps/autopilot-ios/`: iOS app packaging + host shell for Rust/WGPUI runtime.
@@ -102,14 +102,14 @@ flowchart LR
 
 ## Service Boundaries and Ownership
 
-### 1) `apps/openagents.com/` (Rust edge/control plane)
+### 1) `apps/openagents.com/` (Rust control service)
 
 Owns:
 
-- WorkOS integration as the canonical identity and primary authentication source of truth.
-- Control-plane auth/session, org membership, and API policy surfaces derived from WorkOS identity state.
+- WorkOS is the canonical identity/authentication provider.
+- OpenAgents control-plane is authoritative for authorization, sessions, device management, org membership, and revocation, derived from WorkOS identity.
 - Sync token minting and scope derivation.
-- Public API gateway behavior.
+- Public control API gateway behavior.
 - Static hosting for WGPUI WASM bundles.
 
 Does not own:
@@ -129,17 +129,22 @@ Does not own:
 
 - User identity/session authority records.
 
-### 3) Khala (Rust, runtime-owned sync subsystem)
+### 3) Khala (Rust sync service, runtime-owned contracts)
 
 Owns:
 
 - Topic watermarks.
 - Replay journal.
 - Subscription/replay/live fanout semantics.
+- Delivery enforcement for per-topic monotonic stream behavior after replay bootstrap.
 
 Does not own:
 
 - Any authority writes for control or runtime domains.
+
+Ordering contract:
+
+- `seq` allocation is performed transactionally in runtime Postgres and is the single ordering oracle.
 
 ## Data Plane Model (unchanged in concept, Rust in implementation)
 
@@ -176,7 +181,7 @@ No product/business logic remains in React Native, Electron, SwiftUI view logic,
 
 ### `openagents.com` implementation (in-process Rust WGPUI on web)
 
-The web app runs Rust UI logic in-process inside the browser (WASM). The Rust/WGPUI runtime owns rendering state, route state, and command/subscription orchestration exactly like desktop, with only a minimal JavaScript host shim.
+The web shell runs Rust UI logic in-process inside the browser (WASM). The Rust/WGPUI runtime owns rendering state, route state, and command/subscription orchestration exactly like desktop, with only a minimal JavaScript host shim.
 
 Runtime model:
 
@@ -198,11 +203,11 @@ Proposed crate split for the web surface:
 3. `crates/openagents-proto-client`: proto-generated wire clients + domain mapping adapters.
 4. `crates/openagents-khala-client`: WS session/reconnect/resume logic, topic subscriptions, replay bootstrap.
 5. `apps/openagents.com/web-shell`: wasm entrypoint and browser host adapters.
-6. `apps/openagents.com/service`: Rust edge/control API service + static asset host.
+6. `apps/openagents.com/service`: Rust control API service + static asset host.
 
 Client data flow on web:
 
-1. Command path: WGPUI action -> Rust command bus -> HTTPS API call (edge/runtime) -> authority write -> ack/result.
+1. Command path: WGPUI action -> Rust command bus -> HTTPS API call (control service/runtime service) -> authority write -> ack/result.
 2. Read path: Rust Khala WS client receives `KhalaFrame` stream -> reducer applies ordered projection updates -> WGPUI rerender.
 3. Resume path: local watermark cache + subscription resume -> replay gap fill -> live tail.
 
@@ -210,7 +215,7 @@ Build and release shape:
 
 1. Build wasm bundle from shared Rust app crates (`wasm32-unknown-unknown`).
 2. Produce content-hashed JS/WASM assets and static manifest.
-3. Rust edge service serves static assets and control APIs from one deployable unit.
+3. Rust control service serves static assets and control APIs from one deployable unit.
 4. Runtime/Khala deploy independently; web bundle pins protocol compatibility versions at build time.
 
 SSR and first-paint strategy:
@@ -233,10 +238,16 @@ Endstate inbox architecture:
 
 Locked behavior:
 
-1. Commands/mutations go through authenticated HTTP/gRPC APIs on edge/runtime services.
+1. Commands/mutations go through authenticated HTTP APIs (protobuf or strict JSON mapping). gRPC is permitted for internal service-to-service only.
 2. Read model updates stream via Khala WebSocket subscriptions.
 3. Clients persist per-topic watermarks and resume deterministically.
 4. `stale_cursor` forces full bootstrap refresh and watermark reset.
+
+## Topic Taxonomy and Scope Grammar
+
+1. Topic names follow deterministic prefixes (for example `user:{user_id}:runs`, `org:{org_id}:workers`, `run:{run_id}:events`).
+2. Sync scope claims are derived from validated topic prefix grammar, not arbitrary free-form strings.
+3. Auth decisions are evaluated against user/org/device ownership and topic prefix policy before subscription is accepted.
 
 ## Protocol and Contract Governance
 
@@ -262,11 +273,11 @@ Prohibited anti-pattern:
 
 ## Auth and Identity Flow (Rust Endstate)
 
-1. Client authenticates through WorkOS-driven control-plane auth at edge APIs.
-2. Edge validates WorkOS identity/session claims and maps them to OpenAgents control-plane authorization state.
-3. Edge returns OpenAgents access token and rotating refresh token bound to a stable `device_id`.
+1. Client authenticates through WorkOS-driven control-plane auth at control service APIs.
+2. Control service validates WorkOS identity/session claims and maps them to OpenAgents control-plane authorization state.
+3. Control service returns OpenAgents access token and rotating refresh token bound to a stable `device_id`.
 4. Refresh token rotation is mandatory; old refresh token IDs become revoked as soon as a new token is issued.
-5. Client requests sync token from edge with explicit topic scopes and device/session context.
+5. Client requests sync token from control service with explicit topic scopes and device/session context.
 6. Client connects to Khala WS using sync token; Khala enforces topic ACL and ownership checks before subscription.
 7. If session/device access is revoked, Khala actively evicts live sockets and returns `reauth_required` semantics on reconnect.
 
@@ -289,37 +300,47 @@ Khala keeps proto-first transport frames with an explicit envelope for replay st
 
 This envelope is mandatory for deterministic replay, forward/backward compatibility, and cross-target decoder parity (native + wasm + iOS host bridges).
 
-## Compatibility and Version Policy (Required)
+## Khala Delivery Contract
+
+1. Delivery is at-least-once; clients must apply events idempotently by `(topic, seq)`.
+2. After replay bootstrap completes, delivery is monotonic per topic for an active subscription.
+3. Sequence gaps are permitted during bootstrap/reconnect handling only; steady-state live delivery must be gap-free per topic.
+4. `stale_cursor` requires snapshot/replay bootstrap and local watermark reset before resuming live tail.
+
+## Operational Requirements
+
+### Compatibility and Version Policy
 
 1. `schema_version` is enforced as a negotiated compatibility contract between client and server, not a passive metadata field.
-2. Edge and Khala enforce minimum supported client versions for safety-critical protocol changes.
+2. Control service and Khala enforce minimum supported client versions for safety-critical protocol changes.
 3. Compatibility windows are explicit and time-bounded; out-of-window clients receive deterministic upgrade-required responses.
 4. Replay window semantics and cursor behavior changes must ship with compatibility gates and migration handling.
 
-## Khala Retention, Compaction, and Delivery Semantics (Required)
+### Khala Retention, Compaction, and Delivery Semantics
 
-1. Per-topic ordering is authoritative by `seq`, with Postgres/runtime authority as the ordering oracle across multi-node Khala deployment.
-2. Delivery semantics are at-least-once; clients must apply frames idempotently by topic/sequence.
-3. Retention windows are explicit per topic/QoS tier, with replay budget limits and operator-visible cost controls.
-4. Long-lived topics require periodic snapshot/compaction so replay remains bounded and affordable.
-5. `stale_cursor` is raised by deterministic policy (expired retention, compaction boundary, or invalid cursor lineage), not ad hoc failure.
-6. Slow-consumer policy is explicit: bounded per-connection buffers, fairness across topics, and forced resync/disconnect behavior when limits are exceeded.
+1. Per-topic ordering is authoritative by `seq`, with runtime Postgres as the ordering oracle across multi-node Khala deployment.
+2. Retention windows are explicit per topic/QoS tier, with replay budget limits and operator-visible cost controls.
+3. Long-lived topics require periodic snapshot/compaction so replay remains bounded and affordable.
+4. `stale_cursor` is raised by deterministic policy (expired retention, compaction boundary, or invalid cursor lineage), not ad hoc failure.
+5. Slow-consumer policy is explicit: bounded per-connection buffers, fairness across topics, and forced resync/disconnect behavior when limits are exceeded.
 
-## Web WASM Persistence and Update Policy (Required)
+### Web WASM Persistence and Update Policy
 
 1. Web state/watermarks persist in IndexedDB with schema-versioned migrations.
 2. Bundle updates require asset pinning and service worker rollout rules to avoid JS/WASM/protocol skew.
-3. Offline mode behavior is explicit per route (read-only cached state vs online-required hard fail).
-4. Rollback behavior must include persisted-state migration safety for downgraded bundles.
+3. Each client bundle advertises `client_build_id`; server endpoints publish `min_build_id` and compatible protocol range.
+4. Client includes build metadata in API/WS handshake; out-of-window build IDs receive explicit upgrade-required responses.
+5. Offline mode behavior is explicit per route (read-only cached state vs online-required hard fail).
+6. Rollback behavior must include persisted-state migration safety for downgraded bundles.
 
-## WS Security and Audit Policy (Required)
+### WS Security and Audit Policy
 
 1. Sync tokens include short TTLs and anti-replay controls (`jti`, nonce discipline, revocation checks).
 2. Browser WS connections enforce allowed origin policy and reject invalid cross-origin handshake attempts.
 3. Subscription attempts (allow/deny) and WS auth failures are auditable events in control/runtime observability lanes.
 4. Topic join authorization is enforced continuously for session validity, not only at first connection.
 
-## Observability and SLO Baseline (Required)
+### Observability and SLO Baseline
 
 1. Khala golden signals: active connections, reconnect rate, join rate, replay lag, replay duration, stale-cursor rate.
 2. Delivery health metrics: outbound queue depth, dropped frames, slow-consumer disconnects, per-topic throughput.
@@ -333,6 +354,7 @@ This envelope is mandatory for deterministic replay, forward/backward compatibil
 - Control intent remains in control-plane authority data.
 - Settlement execution remains externalized to wallet executor + Lightning infra.
 - Khala may stream derived operational summaries; it never becomes settlement authority.
+- Wallet executor is never an identity authority; it acts only on explicit, auditable control-plane instructions and returns signed receipts.
 - Wallet executor identity/authentication, key custody, secret rotation, and payment receipt canonicalization are explicit ADR-governed requirements.
 
 ## Onyx Integration Contract (Required)
@@ -345,9 +367,9 @@ This envelope is mandatory for deterministic replay, forward/backward compatibil
 
 Primary target remains GCP deployment topology with:
 
-- Rust edge/control service.
+- Rust control service.
 - Rust runtime service.
-- Rust Khala sync service (or runtime-embedded subsystem).
+- Rust Khala sync service as a separately deployable production service (embedding is allowed for local/dev only).
 - Postgres authority planes.
 - Existing Lightning infra integration.
 
@@ -367,7 +389,7 @@ Rivet's core thesis is valuable for BEAM replacement work: long-lived stateful u
      - `~/code/rivet/docs/engine/GUARD.md`
      - `~/code/rivet/docs/engine/HIBERNATING_WS.md`
    - Use in OpenAgents:
-     - stable WS reconnect/resume behavior at edge/Khala boundaries
+     - stable WS reconnect/resume behavior at control-service/Khala boundaries
      - lifecycle handling across deploy/restart/sleep conditions
      - reduced reconnect storms under load
 
@@ -410,7 +432,7 @@ OpenAgents authority remains Postgres planes (`control.*`, `runtime.*`), with pr
 ### Guardrails
 
 1. Preserve OpenAgents topic/watermark semantics and `stale_cursor` recovery contracts.
-2. Preserve OpenAgents edge auth/scope/ownership enforcement model.
+2. Preserve OpenAgents control-service auth/scope/ownership enforcement model.
 3. Keep adoption incremental behind feature flags and bounded rollout plans.
 4. Record each harvested subsystem decision as a Rust-era ADR with rationale and rollback path.
 
