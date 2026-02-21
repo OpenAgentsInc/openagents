@@ -1068,6 +1068,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "autopilot-core",
+ "autopilot-inbox-domain",
  "autopilot_app",
  "autopilot_ui",
  "chrono",
@@ -1096,6 +1097,14 @@ dependencies = [
  "wgpu",
  "wgpui",
  "winit",
+]
+
+[[package]]
+name = "autopilot-inbox-domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
 ]
 
 [[package]]

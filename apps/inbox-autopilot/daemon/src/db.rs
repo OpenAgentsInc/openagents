@@ -1,10 +1,14 @@
 use crate::types::{
     AttachmentStorageMode, AuditResponse, DraftRecord, DraftStatus, EventRecord, MessageRecord,
-    PolicyDecision, PrivacyMode, RiskTier, SettingsResponse, TemplateSuggestion, ThreadCategory,
-    ThreadDetailResponse, ThreadSummary,
+    PrivacyMode, SettingsResponse, TemplateSuggestion, ThreadCategory, ThreadDetailResponse,
+    ThreadSummary,
 };
 use crate::vault::Vault;
 use anyhow::{Context, Result};
+use autopilot_inbox_domain::{
+    ClassificationDecision, DraftQualitySample, parse_draft_status, parse_policy, parse_risk_tier,
+    parse_thread_category, risk_to_str,
+};
 use chrono::{DateTime, TimeZone, Utc};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -49,27 +53,11 @@ pub struct UpsertMessage {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClassificationDecision {
-    pub category: ThreadCategory,
-    pub risk: RiskTier,
-    pub policy: PolicyDecision,
-    pub reason_codes: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
 pub struct NewDraft {
     pub thread_id: String,
     pub body: String,
     pub source_summary: String,
     pub model_used: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DraftQualitySample {
-    pub thread_id: String,
-    pub category: ThreadCategory,
-    pub generated_draft: String,
-    pub sent_reply: String,
 }
 
 #[derive(Clone)]
@@ -901,8 +889,8 @@ impl Database {
             return Ok(None);
         };
 
-        let category = category_str.as_deref().and_then(parse_category);
-        let risk = risk_str.as_deref().and_then(parse_risk);
+        let category = category_str.as_deref().and_then(parse_thread_category);
+        let risk = risk_str.as_deref().and_then(parse_risk_tier);
         let policy = policy_str.as_deref().and_then(parse_policy);
         let similar_thread_ids: Vec<String> = similar_json
             .as_deref()
@@ -1218,11 +1206,11 @@ fn row_to_thread_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadSumm
     let category = row
         .get::<_, Option<String>>(4)?
         .as_deref()
-        .and_then(parse_category);
+        .and_then(parse_thread_category);
     let risk = row
         .get::<_, Option<String>>(5)?
         .as_deref()
-        .and_then(parse_risk);
+        .and_then(parse_risk_tier);
     let policy = row
         .get::<_, Option<String>>(6)?
         .as_deref()
@@ -1255,56 +1243,6 @@ fn row_to_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<EventRecord> {
 
 pub fn ts_to_datetime(ts: i64) -> DateTime<Utc> {
     Utc.timestamp_opt(ts, 0).single().unwrap_or_else(Utc::now)
-}
-
-pub fn parse_category(raw: &str) -> Option<ThreadCategory> {
-    match raw {
-        "scheduling" => Some(ThreadCategory::Scheduling),
-        "report_delivery" => Some(ThreadCategory::ReportDelivery),
-        "findings_clarification" => Some(ThreadCategory::FindingsClarification),
-        "pricing" => Some(ThreadCategory::Pricing),
-        "complaint_dispute" => Some(ThreadCategory::ComplaintDispute),
-        "legal_insurance" => Some(ThreadCategory::LegalInsurance),
-        "other" => Some(ThreadCategory::Other),
-        _ => None,
-    }
-}
-
-pub fn parse_risk(raw: &str) -> Option<RiskTier> {
-    match raw {
-        "low" => Some(RiskTier::Low),
-        "medium" => Some(RiskTier::Medium),
-        "high" => Some(RiskTier::High),
-        _ => None,
-    }
-}
-
-pub fn risk_to_str(risk: RiskTier) -> &'static str {
-    match risk {
-        RiskTier::Low => "low",
-        RiskTier::Medium => "medium",
-        RiskTier::High => "high",
-    }
-}
-
-pub fn parse_policy(raw: &str) -> Option<PolicyDecision> {
-    match raw {
-        "draft_only" => Some(PolicyDecision::DraftOnly),
-        "send_with_approval" => Some(PolicyDecision::SendWithApproval),
-        "blocked" => Some(PolicyDecision::Blocked),
-        _ => None,
-    }
-}
-
-pub fn parse_draft_status(raw: &str) -> Option<DraftStatus> {
-    match raw {
-        "pending" => Some(DraftStatus::Pending),
-        "approved" => Some(DraftStatus::Approved),
-        "rejected" => Some(DraftStatus::Rejected),
-        "needs_human" => Some(DraftStatus::NeedsHuman),
-        "sent" => Some(DraftStatus::Sent),
-        _ => None,
-    }
 }
 
 pub fn parse_privacy_mode(raw: &str) -> Option<PrivacyMode> {

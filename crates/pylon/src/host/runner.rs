@@ -7,7 +7,7 @@ use crate::db::PylonDb;
 use crate::db::agents::{Agent, LifecycleState};
 use agent::AgentRegistry;
 use anyhow::{Result, anyhow};
-use openagents_runtime::UnifiedIdentity;
+use runtime::UnifiedIdentity;
 use std::collections::HashMap;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;

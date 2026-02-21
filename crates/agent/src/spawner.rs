@@ -10,8 +10,8 @@ use nostr::nip_sa::{
 };
 use nostr::{Event, EventTemplate, finalize_event};
 use nostr_client::RelayConnection;
-use openagents_runtime::UnifiedIdentity;
 use openagents_spark::{SparkWallet, WalletConfig};
+use runtime::UnifiedIdentity;
 use std::time::Duration;
 use thiserror::Error;
 
