@@ -18,6 +18,7 @@ It moves implementation steps out of the architecture definition and expands the
 4. Khala remains WS-only for live sync in endstate.
 5. Rivet is harvested for subsystem patterns, not adopted wholesale as platform authority.
 6. WorkOS remains the canonical identity provider and authentication source of truth.
+7. Runtime path naming is canonicalized to `apps/runtime` (deprecated `apps/openagents-runtime` references are not allowed).
 
 ## How To Use This For GitHub Issues Later
 
