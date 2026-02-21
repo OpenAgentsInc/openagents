@@ -5,8 +5,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
-    AppEvent, MoltbookCommentSummary, MoltbookPostSummary, MoltbookProfileSummary,
-    RuntimeAuthStateView, SessionId, ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId,
+    AppEvent, InboxAuditEntry, InboxSnapshot, InboxThreadSummary, MoltbookCommentSummary,
+    MoltbookPostSummary, MoltbookProfileSummary, RuntimeAuthStateView, SessionId, ThreadSnapshot,
+    ThreadSummary, UserAction, WorkspaceId,
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
@@ -105,6 +106,14 @@ const NIP90_PANE_WIDTH: f32 = 640.0;
 const NIP90_PANE_HEIGHT: f32 = 520.0;
 const AUTH_PANE_WIDTH: f32 = 620.0;
 const AUTH_PANE_HEIGHT: f32 = 500.0;
+const INBOX_LIST_PANE_WIDTH: f32 = 640.0;
+const INBOX_LIST_PANE_HEIGHT: f32 = 560.0;
+const INBOX_THREAD_PANE_WIDTH: f32 = 660.0;
+const INBOX_THREAD_PANE_HEIGHT: f32 = 560.0;
+const INBOX_APPROVALS_PANE_WIDTH: f32 = 560.0;
+const INBOX_APPROVALS_PANE_HEIGHT: f32 = 520.0;
+const INBOX_AUDIT_PANE_WIDTH: f32 = 680.0;
+const INBOX_AUDIT_PANE_HEIGHT: f32 = 560.0;
 const MOLTBOOK_PANE_WIDTH: f32 = 560.0;
 const MOLTBOOK_PANE_HEIGHT: f32 = 520.0;
 const MOLTBOOK_POST_PANE_WIDTH: f32 = 640.0;
@@ -122,7 +131,8 @@ const HOTBAR_SLOT_THREADS: u8 = 4;
 const AGENT_DELTA_ALIAS_CACHE_LIMIT: usize = 2048;
 const HOTBAR_SLOT_MOLTBOOK: u8 = 5;
 const HOTBAR_SLOT_AUTH: u8 = 6;
-const HOTBAR_CHAT_SLOT_START: u8 = 7;
+const HOTBAR_SLOT_INBOX: u8 = 7;
+const HOTBAR_CHAT_SLOT_START: u8 = 8;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const GRID_DOT_DISTANCE: f32 = 32.0;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
@@ -195,6 +205,7 @@ impl AppViewModel {
             AppEvent::MoltbookProfileLoaded { .. } => {}
             AppEvent::ThreadsUpdated { .. } => {}
             AppEvent::ThreadLoaded { .. } => {}
+            AppEvent::InboxUpdated { .. } => {}
             AppEvent::FileOpened { .. } => {}
             AppEvent::FileOpenFailed { .. } => {}
             AppEvent::FileSaved { .. } => {}
@@ -490,6 +501,10 @@ enum PaneKind {
     Chat,
     Events,
     Threads,
+    InboxList,
+    InboxThread,
+    InboxApprovals,
+    InboxAudit,
     FileEditor,
     Auth,
     Identity,
@@ -508,6 +523,7 @@ enum HotbarAction {
     FocusPane(String),
     ToggleEvents,
     ToggleThreads,
+    ToggleInboxList,
     ToggleFileEditor,
     ToggleAuth,
     ToggleIdentity,
@@ -774,6 +790,26 @@ pub struct MinimalRoot {
     threads_next_cursor: Option<String>,
     thread_entries: Vec<ThreadEntryView>,
     pending_thread_open: Rc<RefCell<Option<String>>>,
+    inbox: InboxPaneState,
+    inbox_refresh_button: Button,
+    inbox_refresh_bounds: Bounds,
+    inbox_open_thread_button: Button,
+    inbox_open_thread_bounds: Bounds,
+    inbox_open_approvals_button: Button,
+    inbox_open_approvals_bounds: Bounds,
+    inbox_open_audit_button: Button,
+    inbox_open_audit_bounds: Bounds,
+    inbox_approve_button: Button,
+    inbox_approve_bounds: Bounds,
+    inbox_reject_button: Button,
+    inbox_reject_bounds: Bounds,
+    pending_inbox_refresh: Rc<RefCell<bool>>,
+    pending_inbox_select_thread: Rc<RefCell<Option<String>>>,
+    pending_inbox_open_thread_pane: Rc<RefCell<bool>>,
+    pending_inbox_open_approvals_pane: Rc<RefCell<bool>>,
+    pending_inbox_open_audit_pane: Rc<RefCell<bool>>,
+    pending_inbox_approve: Rc<RefCell<bool>>,
+    pending_inbox_reject: Rc<RefCell<bool>>,
     file_editor: FileEditorPaneState,
     runtime_auth: RuntimeAuthStateView,
     runtime_auth_email_input: TextInput,
@@ -1022,6 +1058,44 @@ struct FileEditorPaneState {
     pending_split: Rc<RefCell<Option<SplitDirection>>>,
     pending_open_requests: Vec<PendingOpenRequest>,
     pending_open_dispatches: Vec<PathBuf>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct InboxPaneState {
+    threads: Vec<InboxThreadSummary>,
+    selected_thread_id: Option<String>,
+    audit_log: Vec<InboxAuditEntry>,
+    source: Option<String>,
+    list_row_bounds: Vec<(String, Bounds)>,
+}
+
+impl InboxPaneState {
+    fn apply_snapshot(&mut self, snapshot: InboxSnapshot, source: String) {
+        self.threads = snapshot.threads;
+        self.selected_thread_id = snapshot.selected_thread_id;
+        self.audit_log = snapshot.audit_log;
+        self.source = Some(source);
+        self.list_row_bounds.clear();
+    }
+
+    fn selected_thread(&self) -> Option<&InboxThreadSummary> {
+        let selected_id = self.selected_thread_id.as_deref()?;
+        self.threads.iter().find(|thread| thread.id == selected_id)
+    }
+
+    fn pending_threads(&self) -> Vec<&InboxThreadSummary> {
+        self.threads
+            .iter()
+            .filter(|thread| thread.pending_approval)
+            .collect()
+    }
+
+    fn row_at(&self, point: Point) -> Option<String> {
+        self.list_row_bounds
+            .iter()
+            .find(|(_, bounds)| bounds.contains(point))
+            .map(|(thread_id, _)| thread_id.clone())
+    }
 }
 
 impl ChatPaneState {
@@ -1609,7 +1683,11 @@ impl ChatPaneState {
                         .or_else(|| params.get("item_id"))
                         .and_then(|id| id.as_str());
                     if let Some(item_id) = item_id {
-                        self.append_agent_delta_from_source(AgentDeltaSource::Modern, item_id, delta);
+                        self.append_agent_delta_from_source(
+                            AgentDeltaSource::Modern,
+                            item_id,
+                            delta,
+                        );
                     }
                 }
             }
@@ -1622,7 +1700,11 @@ impl ChatPaneState {
                         .or_else(|| msg.get("itemId"))
                         .and_then(|id| id.as_str());
                     if let Some(item_id) = item_id {
-                        self.append_agent_delta_from_source(AgentDeltaSource::Legacy, item_id, delta);
+                        self.append_agent_delta_from_source(
+                            AgentDeltaSource::Legacy,
+                            item_id,
+                            delta,
+                        );
                     }
                 }
             }
@@ -2776,6 +2858,73 @@ impl MinimalRoot {
             });
 
         let pending_thread_open = Rc::new(RefCell::new(None));
+        let pending_inbox_refresh = Rc::new(RefCell::new(false));
+        let pending_inbox_refresh_click = pending_inbox_refresh.clone();
+        let inbox_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_inbox_refresh_click.borrow_mut() = true;
+            });
+
+        let pending_inbox_open_thread_pane = Rc::new(RefCell::new(false));
+        let pending_inbox_open_thread_click = pending_inbox_open_thread_pane.clone();
+        let inbox_open_thread_button = Button::new("Thread")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_inbox_open_thread_click.borrow_mut() = true;
+            });
+
+        let pending_inbox_open_approvals_pane = Rc::new(RefCell::new(false));
+        let pending_inbox_open_approvals_click = pending_inbox_open_approvals_pane.clone();
+        let inbox_open_approvals_button = Button::new("Approvals")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_inbox_open_approvals_click.borrow_mut() = true;
+            });
+
+        let pending_inbox_open_audit_pane = Rc::new(RefCell::new(false));
+        let pending_inbox_open_audit_click = pending_inbox_open_audit_pane.clone();
+        let inbox_open_audit_button = Button::new("Audit")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_inbox_open_audit_click.borrow_mut() = true;
+            });
+
+        let pending_inbox_approve = Rc::new(RefCell::new(false));
+        let pending_inbox_approve_click = pending_inbox_approve.clone();
+        let inbox_approve_button = Button::new("Approve")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_inbox_approve_click.borrow_mut() = true;
+            });
+
+        let pending_inbox_reject = Rc::new(RefCell::new(false));
+        let pending_inbox_reject_click = pending_inbox_reject.clone();
+        let inbox_reject_button = Button::new("Needs Human")
+            .variant(ButtonVariant::Danger)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_inbox_reject_click.borrow_mut() = true;
+            });
+
+        let pending_inbox_select_thread = Rc::new(RefCell::new(None));
         let file_editor = FileEditorPaneState::new();
 
         let pending_runtime_auth_send = Rc::new(RefCell::new(false));
@@ -3072,6 +3221,26 @@ impl MinimalRoot {
             threads_next_cursor: None,
             thread_entries: Vec::new(),
             pending_thread_open,
+            inbox: InboxPaneState::default(),
+            inbox_refresh_button,
+            inbox_refresh_bounds: Bounds::ZERO,
+            inbox_open_thread_button,
+            inbox_open_thread_bounds: Bounds::ZERO,
+            inbox_open_approvals_button,
+            inbox_open_approvals_bounds: Bounds::ZERO,
+            inbox_open_audit_button,
+            inbox_open_audit_bounds: Bounds::ZERO,
+            inbox_approve_button,
+            inbox_approve_bounds: Bounds::ZERO,
+            inbox_reject_button,
+            inbox_reject_bounds: Bounds::ZERO,
+            pending_inbox_refresh,
+            pending_inbox_select_thread,
+            pending_inbox_open_thread_pane,
+            pending_inbox_open_approvals_pane,
+            pending_inbox_open_audit_pane,
+            pending_inbox_approve,
+            pending_inbox_reject,
             file_editor,
             runtime_auth: RuntimeAuthStateView::default(),
             runtime_auth_email_input,
@@ -3344,6 +3513,9 @@ impl MinimalRoot {
                     .set_title(&pane_id, format!("Thread {}", thread.id));
                 self.session_to_pane.insert(session_id, pane_id.clone());
                 self.thread_to_pane.insert(thread.id, pane_id);
+            }
+            AppEvent::InboxUpdated { snapshot, source } => {
+                self.inbox.apply_snapshot(snapshot, source);
             }
             AppEvent::FileOpened { path, contents } => {
                 self.file_editor.set_contents(path, contents);
@@ -3639,6 +3811,106 @@ impl MinimalRoot {
                 dismissable: true,
             }
         });
+    }
+
+    fn toggle_inbox_list_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store
+            .toggle_pane("inbox-list", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            INBOX_LIST_PANE_WIDTH,
+                            INBOX_LIST_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "inbox-list".to_string(),
+                    kind: PaneKind::InboxList,
+                    title: "Inbox".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
+    }
+
+    fn toggle_inbox_thread_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store
+            .toggle_pane("inbox-thread", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            INBOX_THREAD_PANE_WIDTH,
+                            INBOX_THREAD_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "inbox-thread".to_string(),
+                    kind: PaneKind::InboxThread,
+                    title: "Inbox Thread".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
+    }
+
+    fn toggle_inbox_approvals_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store
+            .toggle_pane("inbox-approvals", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            INBOX_APPROVALS_PANE_WIDTH,
+                            INBOX_APPROVALS_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "inbox-approvals".to_string(),
+                    kind: PaneKind::InboxApprovals,
+                    title: "Inbox Approvals".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
+    }
+
+    fn toggle_inbox_audit_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store
+            .toggle_pane("inbox-audit", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            INBOX_AUDIT_PANE_WIDTH,
+                            INBOX_AUDIT_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "inbox-audit".to_string(),
+                    kind: PaneKind::InboxAudit,
+                    title: "Inbox Audit".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
     }
 
     fn toggle_file_editor_pane(&mut self, screen: Size) {
@@ -4075,6 +4347,15 @@ impl MinimalRoot {
                 if self.pane_store.is_active("threads") {
                     if let Some(handler) = self.send_handler.as_mut() {
                         handler(UserAction::ThreadsRefresh);
+                    }
+                }
+                true
+            }
+            HotbarAction::ToggleInboxList => {
+                self.toggle_inbox_list_pane(screen);
+                if self.pane_store.is_active("inbox-list") {
+                    if let Some(handler) = self.send_handler.as_mut() {
+                        handler(UserAction::InboxRefresh);
                     }
                 }
                 true
@@ -4639,6 +4920,96 @@ impl MinimalRoot {
                             }
                             handled |= refresh_handled || load_more_handled || entries_handled;
                         }
+                        PaneKind::InboxList => {
+                            let refresh_handled = matches!(
+                                self.inbox_refresh_button.event(
+                                    event,
+                                    self.inbox_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let open_thread_handled = matches!(
+                                self.inbox_open_thread_button.event(
+                                    event,
+                                    self.inbox_open_thread_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let open_approvals_handled = matches!(
+                                self.inbox_open_approvals_button.event(
+                                    event,
+                                    self.inbox_open_approvals_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let open_audit_handled = matches!(
+                                self.inbox_open_audit_button.event(
+                                    event,
+                                    self.inbox_open_audit_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let mut row_handled = false;
+                            if let InputEvent::MouseDown {
+                                button: MouseButton::Left,
+                                ..
+                            } = event
+                            {
+                                if let Some(thread_id) = self.inbox.row_at(self.cursor_position) {
+                                    *self.pending_inbox_select_thread.borrow_mut() =
+                                        Some(thread_id);
+                                    row_handled = true;
+                                }
+                            }
+                            handled |= refresh_handled
+                                || open_thread_handled
+                                || open_approvals_handled
+                                || open_audit_handled
+                                || row_handled;
+                        }
+                        PaneKind::InboxThread => {
+                            let open_approvals_handled = matches!(
+                                self.inbox_open_approvals_button.event(
+                                    event,
+                                    self.inbox_open_approvals_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let open_audit_handled = matches!(
+                                self.inbox_open_audit_button.event(
+                                    event,
+                                    self.inbox_open_audit_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= open_approvals_handled || open_audit_handled;
+                        }
+                        PaneKind::InboxApprovals => {
+                            let approve_handled = matches!(
+                                self.inbox_approve_button.event(
+                                    event,
+                                    self.inbox_approve_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let reject_handled = matches!(
+                                self.inbox_reject_button.event(
+                                    event,
+                                    self.inbox_reject_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= approve_handled || reject_handled;
+                        }
+                        PaneKind::InboxAudit => {}
                         PaneKind::FileEditor => {
                             let path_handled = matches!(
                                 self.file_editor.path_input.event(
@@ -5378,6 +5749,95 @@ impl MinimalRoot {
             self.open_thread_from_list(thread_id);
         }
 
+        let should_inbox_refresh = {
+            let mut pending = self.pending_inbox_refresh.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_inbox_refresh {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::InboxRefresh);
+            }
+        }
+
+        let selected_thread = {
+            let mut pending = self.pending_inbox_select_thread.borrow_mut();
+            pending.take()
+        };
+        if let Some(thread_id) = selected_thread {
+            self.inbox.selected_thread_id = Some(thread_id.clone());
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::InboxSelectThread { thread_id });
+            }
+        }
+
+        let should_open_thread_pane = {
+            let mut pending = self.pending_inbox_open_thread_pane.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_open_thread_pane {
+            self.toggle_inbox_thread_pane(self.screen_size());
+        }
+
+        let should_open_approvals_pane = {
+            let mut pending = self.pending_inbox_open_approvals_pane.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_open_approvals_pane {
+            self.toggle_inbox_approvals_pane(self.screen_size());
+        }
+
+        let should_open_audit_pane = {
+            let mut pending = self.pending_inbox_open_audit_pane.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_open_audit_pane {
+            self.toggle_inbox_audit_pane(self.screen_size());
+            if let (Some(thread_id), Some(handler)) = (
+                self.inbox.selected_thread_id.clone(),
+                self.send_handler.as_mut(),
+            ) {
+                handler(UserAction::InboxLoadAudit { thread_id });
+            }
+        }
+
+        let should_inbox_approve = {
+            let mut pending = self.pending_inbox_approve.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_inbox_approve {
+            if let (Some(thread_id), Some(handler)) = (
+                self.inbox.selected_thread_id.clone(),
+                self.send_handler.as_mut(),
+            ) {
+                handler(UserAction::InboxApproveDraft { thread_id });
+            }
+        }
+
+        let should_inbox_reject = {
+            let mut pending = self.pending_inbox_reject.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_inbox_reject {
+            if let (Some(thread_id), Some(handler)) = (
+                self.inbox.selected_thread_id.clone(),
+                self.send_handler.as_mut(),
+            ) {
+                handler(UserAction::InboxRejectDraft { thread_id });
+            }
+        }
+
         let should_tree_refresh = self.file_editor.take_pending_tree_refresh();
         if should_tree_refresh {
             if self.file_editor.workspace_root.is_some() {
@@ -5610,6 +6070,15 @@ impl MinimalRoot {
             .any(|entry| entry.open_button.is_hovered())
         {
             Cursor::Pointer
+        } else if self.inbox_refresh_button.is_hovered()
+            || self.inbox_open_thread_button.is_hovered()
+            || self.inbox_open_approvals_button.is_hovered()
+            || self.inbox_open_audit_button.is_hovered()
+            || (self.inbox_approve_button.is_hovered() && !self.inbox_approve_button.is_disabled())
+            || (self.inbox_reject_button.is_hovered() && !self.inbox_reject_button.is_disabled())
+            || self.inbox.row_at(self.cursor_position).is_some()
+        {
+            Cursor::Pointer
         } else if (self.runtime_auth_send_button.is_hovered()
             && !self.runtime_auth_send_button.is_disabled())
             || (self.runtime_auth_verify_button.is_hovered()
@@ -5710,6 +6179,13 @@ impl Component for MinimalRoot {
         self.copy_bounds = Bounds::ZERO;
         self.threads_refresh_bounds = Bounds::ZERO;
         self.threads_load_more_bounds = Bounds::ZERO;
+        self.inbox_refresh_bounds = Bounds::ZERO;
+        self.inbox_open_thread_bounds = Bounds::ZERO;
+        self.inbox_open_approvals_bounds = Bounds::ZERO;
+        self.inbox_open_audit_bounds = Bounds::ZERO;
+        self.inbox_approve_bounds = Bounds::ZERO;
+        self.inbox_reject_bounds = Bounds::ZERO;
+        self.inbox.list_row_bounds.clear();
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
         self.moltbook_refresh_bounds = Bounds::ZERO;
@@ -5791,6 +6267,10 @@ impl Component for MinimalRoot {
                 }
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
                 PaneKind::Threads => paint_threads_pane(self, content_bounds, cx),
+                PaneKind::InboxList => paint_inbox_list_pane(self, content_bounds, cx),
+                PaneKind::InboxThread => paint_inbox_thread_pane(self, content_bounds, cx),
+                PaneKind::InboxApprovals => paint_inbox_approvals_pane(self, content_bounds, cx),
+                PaneKind::InboxAudit => paint_inbox_audit_pane(self, content_bounds, cx),
                 PaneKind::FileEditor => paint_file_editor_pane(self, content_bounds, cx),
                 PaneKind::Auth => paint_auth_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
@@ -5876,6 +6356,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_AUTH, HotbarAction::ToggleAuth);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_INBOX, "IN", "Inbox")
+                .active(self.pane_store.is_active("inbox-list")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_INBOX, HotbarAction::ToggleInboxList);
 
         // DVM History + NIP-90 panes disabled for now (keep code around).
         // items.push(
@@ -8463,6 +8950,462 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
     }
 }
 
+fn paint_inbox_list_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let header_height = 24.0;
+    let content_width = bounds.size.width - padding * 2.0;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+    let items = [ColumnItem::Fixed(header_height), ColumnItem::Flex(1.0)];
+    let bounds_list = column_bounds(content_bounds, &items, 8.0);
+    let header_bounds = *bounds_list.get(0).unwrap_or(&content_bounds);
+    let list_bounds = *bounds_list.get(1).unwrap_or(&content_bounds);
+    let button_gap = 8.0;
+    let refresh_width = 76.0;
+    let thread_width = 74.0;
+    let approvals_width = 92.0;
+    let audit_width = 74.0;
+    let has_selected = root.inbox.selected_thread().is_some();
+    let font_size = theme::font_size::XS;
+
+    root.inbox_refresh_bounds = Bounds::ZERO;
+    root.inbox_open_thread_bounds = Bounds::ZERO;
+    root.inbox_open_approvals_bounds = Bounds::ZERO;
+    root.inbox_open_audit_bounds = Bounds::ZERO;
+    root.inbox.list_row_bounds.clear();
+
+    let row_items = [
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(thread_width),
+        wgpui::RowItem::fixed(approvals_width),
+        wgpui::RowItem::fixed(audit_width),
+        wgpui::RowItem::fixed(refresh_width),
+    ];
+    let header_row_bounds = aligned_row_bounds(
+        header_bounds,
+        header_height,
+        &row_items,
+        button_gap,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+
+    let title_bounds = *header_row_bounds.get(0).unwrap_or(&header_bounds);
+    root.inbox_open_thread_bounds = *header_row_bounds.get(1).unwrap_or(&header_bounds);
+    root.inbox_open_approvals_bounds = *header_row_bounds.get(2).unwrap_or(&header_bounds);
+    root.inbox_open_audit_bounds = *header_row_bounds.get(3).unwrap_or(&header_bounds);
+    root.inbox_refresh_bounds = *header_row_bounds.get(4).unwrap_or(&header_bounds);
+
+    Text::new("INBOX")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(title_bounds, cx);
+
+    root.inbox_open_thread_button.set_disabled(!has_selected);
+    root.inbox_open_approvals_button.set_disabled(!has_selected);
+    root.inbox_open_audit_button.set_disabled(!has_selected);
+    root.inbox_open_thread_button
+        .paint(root.inbox_open_thread_bounds, cx);
+    root.inbox_open_approvals_button
+        .paint(root.inbox_open_approvals_bounds, cx);
+    root.inbox_open_audit_button
+        .paint(root.inbox_open_audit_bounds, cx);
+    root.inbox_refresh_button
+        .paint(root.inbox_refresh_bounds, cx);
+
+    if root.inbox.threads.is_empty() {
+        Text::new("No inbox threads available.")
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(list_bounds, cx);
+        return;
+    }
+
+    let row_height = 54.0;
+    let row_gap = 8.0;
+    let heights: Vec<f32> = root.inbox.threads.iter().map(|_| row_height).collect();
+    let row_bounds = stack_bounds(list_bounds, &heights, row_gap);
+    let selected_id = root.inbox.selected_thread_id.as_deref();
+    let max_subject_chars = ((list_bounds.size.width / (font_size * 0.55)).floor() as usize).max(8);
+    let max_meta_chars = ((list_bounds.size.width / (font_size * 0.52)).floor() as usize).max(8);
+
+    for (thread, row_bounds) in root.inbox.threads.iter().zip(row_bounds.into_iter()) {
+        let selected = selected_id == Some(thread.id.as_str());
+        let background = if selected {
+            theme::bg::CODE
+        } else {
+            theme::bg::MUTED
+        };
+        let border = if selected {
+            theme::accent::PRIMARY
+        } else {
+            theme::border::DEFAULT
+        };
+        cx.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(background)
+                .with_border(border, 1.0)
+                .with_corner_radius(8.0),
+        );
+
+        root.inbox
+            .list_row_bounds
+            .push((thread.id.clone(), row_bounds));
+
+        let inner_bounds = Bounds::new(
+            row_bounds.origin.x + 10.0,
+            row_bounds.origin.y + 8.0,
+            (row_bounds.size.width - 20.0).max(0.0),
+            (row_bounds.size.height - 16.0).max(0.0),
+        );
+        let rows = column_bounds(
+            inner_bounds,
+            &[
+                ColumnItem::Fixed(font_size * 1.35),
+                ColumnItem::Fixed(font_size * 1.25),
+            ],
+            4.0,
+        );
+        let subject_bounds = *rows.first().unwrap_or(&inner_bounds);
+        let meta_bounds = *rows.get(1).unwrap_or(&inner_bounds);
+        let subject = truncate_line(thread.subject.trim(), max_subject_chars);
+        let pending = if thread.pending_approval {
+            "pending approval"
+        } else {
+            "ready"
+        };
+        let meta = truncate_line(
+            format!(
+                "{} · {} · {} · {} · {}",
+                thread.from_address, thread.category, thread.risk, thread.policy, pending
+            )
+            .as_str(),
+            max_meta_chars,
+        );
+
+        Text::new(subject)
+            .font_size(font_size)
+            .bold()
+            .no_wrap()
+            .color(theme::text::PRIMARY)
+            .paint(subject_bounds, cx);
+        Text::new(meta)
+            .font_size(font_size)
+            .no_wrap()
+            .color(theme::text::MUTED)
+            .paint(meta_bounds, cx);
+    }
+}
+
+fn paint_inbox_thread_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let header_height = 24.0;
+    let content_width = bounds.size.width - padding * 2.0;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+    let items = [ColumnItem::Fixed(header_height), ColumnItem::Flex(1.0)];
+    let bounds_list = column_bounds(content_bounds, &items, 8.0);
+    let header_bounds = *bounds_list.get(0).unwrap_or(&content_bounds);
+    let body_bounds = *bounds_list.get(1).unwrap_or(&content_bounds);
+    let font_size = theme::font_size::XS;
+
+    let row_items = [
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(96.0),
+        wgpui::RowItem::fixed(78.0),
+    ];
+    let header_row_bounds = aligned_row_bounds(
+        header_bounds,
+        header_height,
+        &row_items,
+        8.0,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+    let title_bounds = *header_row_bounds.get(0).unwrap_or(&header_bounds);
+    root.inbox_open_approvals_bounds = *header_row_bounds.get(1).unwrap_or(&header_bounds);
+    root.inbox_open_audit_bounds = *header_row_bounds.get(2).unwrap_or(&header_bounds);
+
+    Text::new("THREAD")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(title_bounds, cx);
+
+    let has_selected = root.inbox.selected_thread().is_some();
+    root.inbox_open_approvals_button.set_disabled(!has_selected);
+    root.inbox_open_audit_button.set_disabled(!has_selected);
+    root.inbox_open_approvals_button
+        .paint(root.inbox_open_approvals_bounds, cx);
+    root.inbox_open_audit_button
+        .paint(root.inbox_open_audit_bounds, cx);
+
+    let Some(thread) = root.inbox.selected_thread().cloned() else {
+        Text::new("Select a thread from Inbox to inspect details.")
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(body_bounds, cx);
+        return;
+    };
+
+    let lines = [
+        format!("Subject: {}", thread.subject),
+        format!("From: {}", thread.from_address),
+        format!(
+            "Category: {} · Risk: {} · Policy: {}",
+            thread.category, thread.risk, thread.policy
+        ),
+        format!("Updated: {}", thread.updated_at),
+        format!("Snippet: {}", thread.snippet),
+        "Draft preview".to_string(),
+    ];
+
+    let mut y = body_bounds.origin.y;
+    for line in lines {
+        let mut text = Text::new(line)
+            .font_size(font_size)
+            .color(theme::text::PRIMARY);
+        if y == body_bounds.origin.y {
+            text = text.bold();
+        }
+        let (_, line_height) = text.size_hint_with_width(body_bounds.size.width);
+        let line_height = line_height.unwrap_or(font_size * 1.3);
+        if y + line_height > body_bounds.origin.y + body_bounds.size.height {
+            return;
+        }
+        let line_bounds = Bounds::new(
+            body_bounds.origin.x,
+            y,
+            body_bounds.size.width,
+            line_height.max(font_size * 1.2),
+        );
+        text.paint(line_bounds, cx);
+        y += line_height + 6.0;
+    }
+
+    let mut draft_text = Text::new(thread.draft_preview)
+        .font_size(font_size)
+        .color(theme::text::MUTED);
+    let (_, draft_height) = draft_text.size_hint_with_width(body_bounds.size.width);
+    let draft_height = draft_height.unwrap_or(font_size * 1.3);
+    let remaining = (body_bounds.origin.y + body_bounds.size.height - y).max(0.0);
+    let draft_bounds = Bounds::new(
+        body_bounds.origin.x,
+        y,
+        body_bounds.size.width,
+        draft_height.min(remaining),
+    );
+    draft_text.paint(draft_bounds, cx);
+}
+
+fn paint_inbox_approvals_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let header_height = 24.0;
+    let content_width = bounds.size.width - padding * 2.0;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+    let items = [ColumnItem::Fixed(header_height), ColumnItem::Flex(1.0)];
+    let bounds_list = column_bounds(content_bounds, &items, 8.0);
+    let header_bounds = *bounds_list.get(0).unwrap_or(&content_bounds);
+    let body_bounds = *bounds_list.get(1).unwrap_or(&content_bounds);
+    let font_size = theme::font_size::XS;
+
+    let row_items = [
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(90.0),
+        wgpui::RowItem::fixed(112.0),
+    ];
+    let header_row_bounds = aligned_row_bounds(
+        header_bounds,
+        header_height,
+        &row_items,
+        8.0,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+    let title_bounds = *header_row_bounds.get(0).unwrap_or(&header_bounds);
+    root.inbox_approve_bounds = *header_row_bounds.get(1).unwrap_or(&header_bounds);
+    root.inbox_reject_bounds = *header_row_bounds.get(2).unwrap_or(&header_bounds);
+
+    Text::new("APPROVALS")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(title_bounds, cx);
+
+    let selected = root.inbox.selected_thread();
+    let has_selected = selected.is_some();
+    root.inbox_approve_button.set_disabled(!has_selected);
+    root.inbox_reject_button.set_disabled(!has_selected);
+    root.inbox_approve_button
+        .paint(root.inbox_approve_bounds, cx);
+    root.inbox_reject_button.paint(root.inbox_reject_bounds, cx);
+
+    let pending_threads = root.inbox.pending_threads();
+    let pending_summary = format!(
+        "Pending approvals: {} of {}",
+        pending_threads.len(),
+        root.inbox.threads.len()
+    );
+    Text::new(pending_summary)
+        .font_size(font_size)
+        .color(theme::text::MUTED)
+        .paint(
+            Bounds::new(
+                body_bounds.origin.x,
+                body_bounds.origin.y,
+                body_bounds.size.width,
+                font_size * 1.4,
+            ),
+            cx,
+        );
+
+    let mut y = body_bounds.origin.y + font_size * 1.6 + 8.0;
+    if let Some(thread) = selected {
+        let status = if thread.pending_approval {
+            "Pending human approval"
+        } else {
+            "Approved"
+        };
+        let selected_line = format!("Selected: {} ({status})", thread.subject);
+        let mut selected_text = Text::new(selected_line)
+            .font_size(font_size)
+            .color(theme::text::PRIMARY)
+            .bold();
+        let (_, selected_h) = selected_text.size_hint_with_width(body_bounds.size.width);
+        let selected_h = selected_h.unwrap_or(font_size * 1.3);
+        selected_text.paint(
+            Bounds::new(body_bounds.origin.x, y, body_bounds.size.width, selected_h),
+            cx,
+        );
+        y += selected_h + 6.0;
+        let preview = truncate_line(thread.draft_preview.trim(), 220);
+        Text::new(preview)
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(
+                    body_bounds.origin.x,
+                    y,
+                    body_bounds.size.width,
+                    font_size * 1.4,
+                ),
+                cx,
+            );
+        y += font_size * 1.7 + 8.0;
+    } else {
+        Text::new("Select a thread first.")
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(
+                    body_bounds.origin.x,
+                    y,
+                    body_bounds.size.width,
+                    font_size * 1.4,
+                ),
+                cx,
+            );
+        y += font_size * 1.7 + 8.0;
+    }
+
+    if pending_threads.is_empty() {
+        Text::new("No drafts currently awaiting approval.")
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(
+                    body_bounds.origin.x,
+                    y,
+                    body_bounds.size.width,
+                    font_size * 1.4,
+                ),
+                cx,
+            );
+        return;
+    }
+
+    for thread in pending_threads.into_iter().take(8) {
+        if y >= body_bounds.origin.y + body_bounds.size.height {
+            break;
+        }
+        let line = truncate_line(
+            format!(
+                "• {} · {} · {}",
+                thread.subject, thread.from_address, thread.updated_at
+            )
+            .as_str(),
+            120,
+        );
+        Text::new(line)
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(
+                    body_bounds.origin.x,
+                    y,
+                    body_bounds.size.width,
+                    font_size * 1.4,
+                ),
+                cx,
+            );
+        y += font_size * 1.5 + 2.0;
+    }
+}
+
+fn paint_inbox_audit_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let header_height = 24.0;
+    let content_width = bounds.size.width - padding * 2.0;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+    let items = [ColumnItem::Fixed(header_height), ColumnItem::Flex(1.0)];
+    let bounds_list = column_bounds(content_bounds, &items, 8.0);
+    let header_bounds = *bounds_list.get(0).unwrap_or(&content_bounds);
+    let body_bounds = *bounds_list.get(1).unwrap_or(&content_bounds);
+    let font_size = theme::font_size::XS;
+
+    let source = root.inbox.source.as_deref().unwrap_or("unknown");
+    Text::new(format!("AUDIT · {}", source))
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(header_bounds, cx);
+
+    if root.inbox.audit_log.is_empty() {
+        Text::new("No inbox audit entries yet.")
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(body_bounds, cx);
+        return;
+    }
+
+    let mut y = body_bounds.origin.y;
+    for entry in root.inbox.audit_log.iter().rev().take(20) {
+        if y >= body_bounds.origin.y + body_bounds.size.height {
+            break;
+        }
+        let line = truncate_line(
+            format!(
+                "{} · {} · {} · {}",
+                entry.created_at, entry.thread_id, entry.action, entry.detail
+            )
+            .as_str(),
+            170,
+        );
+        Text::new(line)
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(
+                    body_bounds.origin.x,
+                    y,
+                    body_bounds.size.width,
+                    font_size * 1.4,
+                ),
+                cx,
+            );
+        y += font_size * 1.5 + 2.0;
+    }
+}
+
 fn paint_file_editor_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = FILE_EDITOR_PANEL_PADDING;
     let gap = FILE_EDITOR_PANEL_GAP;
@@ -10338,6 +11281,17 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::ThreadsRefresh => "ThreadsRefresh".to_string(),
             UserAction::ThreadsLoadMore { .. } => "ThreadsLoadMore".to_string(),
             UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),
+            UserAction::InboxRefresh => "InboxRefresh".to_string(),
+            UserAction::InboxSelectThread { thread_id } => {
+                format!("InboxSelectThread ({thread_id})")
+            }
+            UserAction::InboxApproveDraft { thread_id } => {
+                format!("InboxApproveDraft ({thread_id})")
+            }
+            UserAction::InboxRejectDraft { thread_id } => {
+                format!("InboxRejectDraft ({thread_id})")
+            }
+            UserAction::InboxLoadAudit { thread_id } => format!("InboxLoadAudit ({thread_id})"),
             UserAction::OpenFile { path } => format!("OpenFile ({path})"),
             UserAction::SaveFile { path, .. } => format!("SaveFile ({path})"),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
@@ -10407,6 +11361,13 @@ fn format_event(event: &AppEvent) -> String {
             }
         }
         AppEvent::ThreadLoaded { thread, .. } => format!("ThreadLoaded ({})", thread.id),
+        AppEvent::InboxUpdated { snapshot, source } => {
+            format!(
+                "InboxUpdated ({} threads, source {})",
+                snapshot.threads.len(),
+                source
+            )
+        }
         AppEvent::FileOpened { path, .. } => format!("FileOpened ({})", path.display()),
         AppEvent::FileOpenFailed { path, error } => {
             format!("FileOpenFailed ({}: {})", path.display(), error)
@@ -10850,5 +11811,92 @@ mod tests {
             .get("msg-1")
             .expect("agent stream should exist");
         assert_eq!(stream.source(), "go go ");
+    }
+
+    #[test]
+    fn inbox_list_toggle_opens_and_closes_pane() {
+        let mut root = MinimalRoot::new();
+        let screen = Size::new(1280.0, 720.0);
+
+        root.toggle_inbox_list_pane(screen);
+        let pane = root
+            .pane_store
+            .pane("inbox-list")
+            .expect("pane should open");
+        assert_eq!(pane.kind, PaneKind::InboxList);
+
+        root.toggle_inbox_list_pane(screen);
+        assert!(root.pane_store.pane("inbox-list").is_none());
+    }
+
+    #[test]
+    fn inbox_snapshot_event_updates_state() {
+        let mut root = MinimalRoot::new();
+        let snapshot = InboxSnapshot {
+            threads: vec![
+                InboxThreadSummary {
+                    id: "thread-1".to_string(),
+                    subject: "Subject".to_string(),
+                    from_address: "sender@example.com".to_string(),
+                    snippet: "snippet".to_string(),
+                    category: "ops".to_string(),
+                    risk: "low".to_string(),
+                    policy: "send_with_approval".to_string(),
+                    draft_preview: "draft".to_string(),
+                    pending_approval: true,
+                    updated_at: "2026-02-21T00:00:00Z".to_string(),
+                },
+                InboxThreadSummary {
+                    id: "thread-2".to_string(),
+                    subject: "Subject 2".to_string(),
+                    from_address: "sender2@example.com".to_string(),
+                    snippet: "snippet 2".to_string(),
+                    category: "sales".to_string(),
+                    risk: "medium".to_string(),
+                    policy: "draft_only".to_string(),
+                    draft_preview: "draft 2".to_string(),
+                    pending_approval: false,
+                    updated_at: "2026-02-21T00:00:01Z".to_string(),
+                },
+            ],
+            selected_thread_id: Some("thread-1".to_string()),
+            audit_log: vec![InboxAuditEntry {
+                thread_id: "thread-1".to_string(),
+                action: "select_thread".to_string(),
+                detail: "selected".to_string(),
+                created_at: "2026-02-21T00:00:02Z".to_string(),
+            }],
+        };
+
+        root.apply_event(AppEvent::InboxUpdated {
+            snapshot,
+            source: "test".to_string(),
+        });
+
+        assert_eq!(root.inbox.threads.len(), 2);
+        assert_eq!(
+            root.inbox
+                .selected_thread()
+                .map(|thread| thread.id.as_str()),
+            Some("thread-1")
+        );
+        assert_eq!(root.inbox.pending_threads().len(), 1);
+        assert_eq!(root.inbox.audit_log.len(), 1);
+        assert_eq!(root.inbox.source.as_deref(), Some("test"));
+    }
+
+    #[test]
+    fn inbox_row_hit_testing_returns_thread_id() {
+        let mut inbox = InboxPaneState::default();
+        inbox.list_row_bounds = vec![(
+            "thread-hit".to_string(),
+            Bounds::new(10.0, 20.0, 100.0, 30.0),
+        )];
+
+        assert_eq!(
+            inbox.row_at(Point::new(50.0, 35.0)).as_deref(),
+            Some("thread-hit")
+        );
+        assert!(inbox.row_at(Point::new(200.0, 200.0)).is_none());
     }
 }
