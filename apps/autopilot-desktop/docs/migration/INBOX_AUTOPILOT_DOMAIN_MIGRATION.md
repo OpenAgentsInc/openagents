@@ -44,3 +44,13 @@ Fold reusable inbox-autopilot mailbox policy/draft/audit domain logic into deskt
 1. Shared domain logic authority: `crates/autopilot-inbox-domain`.
 2. Desktop integration authority: `apps/autopilot-desktop`.
 3. Legacy daemon remains a consumer only and should not become the source-of-truth for duplicated domain helpers again.
+
+## OA-RUST-051 Route Integration Follow-up
+
+1. Codex and Inbox now share one desktop command/event lane through `UserAction` + `AppEvent` in `crates/autopilot_app`.
+2. Desktop shell maintains a single cross-domain route state (`DesktopRouteState`) that tracks:
+   - active surface (`Codex`, `Inbox`, or `Mixed`)
+   - active Codex thread context
+   - selected Inbox thread context
+   - active Inbox pane route
+3. Route state is recomputed on pane/navigation/input/event transitions in `crates/autopilot_ui`, ensuring Codex and Inbox state stay coordinated inside one WGPUI shell.
