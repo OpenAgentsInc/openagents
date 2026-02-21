@@ -59,11 +59,27 @@ Run gates manually before pushing when needed:
 `./scripts/local-ci.sh proto` enforces:
 
 - `buf lint`
-- `buf breaking --against '.git#branch=main,subdir=proto'` (or `origin/main`)
 - `./scripts/verify-proto-generate.sh` (Rust-only proto generation verification; compatibility alias)
 
 Rust generation command used by the alias:
 - `./scripts/verify-rust-proto-crate.sh`
+
+Rust proto verification modes:
+
+- `OA_PROTO_VERIFY_MODE=fast` (default): single build snapshot + proto crate tests.
+- `OA_PROTO_VERIFY_MODE=strict`: double-build deterministic snapshot check + proto crate tests.
+
+`buf breaking` behavior is controlled with modes:
+
+- `OA_BUF_BREAKING_MODE=auto` (default): run breaking check with timeout, but skip on transient remote/rate-limit errors so local dev is not blocked.
+- `OA_BUF_BREAKING_MODE=strict`: fail on any breaking-check error (for release/hard gates).
+- `OA_BUF_BREAKING_MODE=off`: skip breaking checks.
+
+Optional timeout override:
+
+```bash
+OA_BUF_BREAKING_TIMEOUT=45s ./scripts/local-ci.sh proto
+```
 
 This lane is also invoked automatically by `changed` mode whenever `proto/`,
 `buf.yaml`, `buf.gen.yaml`, `scripts/verify-proto-generate.sh`,
@@ -75,11 +91,23 @@ Breaking baseline override:
 OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,subdir=proto' ./scripts/local-ci.sh proto
 ```
 
+Strict mode example:
+
+```bash
+OA_BUF_BREAKING_MODE=strict OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,subdir=proto' ./scripts/local-ci.sh proto
+```
+
+Strict proto determinism example:
+
+```bash
+OA_PROTO_VERIFY_MODE=strict ./scripts/verify-rust-proto-crate.sh
+```
+
 ## Proto Remediation
 
 If proto CI fails:
 
-1. Run `git fetch origin main` (required for `buf breaking` baseline).
+1. Run `git fetch origin main` (required for strict `buf breaking` baseline checks).
 2. Fix lint errors from `buf lint`.
 3. If the change is intended and additive, keep field numbers stable and avoid
    renames/removals.

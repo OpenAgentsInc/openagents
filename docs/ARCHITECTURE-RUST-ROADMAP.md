@@ -100,6 +100,7 @@ Gate artifacts: `scripts/local-ci.sh`, `scripts/verify-proto-generate.sh`, `scri
 
 ### OA-RUST-014 — [Proto] Add wire-to-domain conversion test harness
 Description: Add tests validating `TryFrom`/`From` conversions between proto wire types and Rust domain models, including invalid payload behavior.
+Harness artifacts: `crates/openagents-proto/tests/conversion_harness.rs`, `crates/openagents-proto/tests/fixtures/conversion-harness-v1.json`, `crates/openagents-proto/src/lib.rs`
 
 ## Phase 2: Rust Control Service (`apps/openagents.com/service`)
 

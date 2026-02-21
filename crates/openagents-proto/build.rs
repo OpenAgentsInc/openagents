@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     proto_files.sort();
 
     println!("cargo:rerun-if-changed={}", proto_root.display());
+    println!("cargo:rerun-if-env-changed=OA_PROTO_SNAPSHOT_PATH");
     for proto in &proto_files {
         println!("cargo:rerun-if-changed={}", proto.display());
     }
