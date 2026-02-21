@@ -2,7 +2,7 @@
 
 Date: 2026-02-20  
 Status: Active program  
-Owner lanes: Runtime, Web, Mobile, Desktop, Infra, Protocol
+Owner lanes: Runtime, Web, iOS, Desktop, Infra, Protocol
 
 Khala is the OpenAgents runtime-owned sync engine.
 
@@ -24,7 +24,7 @@ Deliver a production-grade, Postgres-backed, WebSocket sync lane for runtime rea
 1. Runtime projector/checkpoint/reprojection stack exists.
 2. Runtime default sink is noop in some env configs.
 3. Laravel token endpoints exist at `/api/khala/token` and `/api/sync/token`.
-4. Web/mobile/desktop have feature-gated Khala lanes.
+4. Web/iOS/desktop have Khala lanes with staged rollout controls.
 5. Lightning control-plane lane uses API/mock transport and does not require Khala as authority transport.
 
 ## Status Legend
@@ -360,7 +360,7 @@ Verification:
 
 - web integration tests + staging smoke.
 
-### KHALA-019: Mobile Codex integration behind flag
+### KHALA-019: iOS Codex integration behind flag
 
 Status: In Progress  
 Depends on: KHALA-017
@@ -376,7 +376,7 @@ Done when:
 
 Verification:
 
-- `cd apps/mobile && bun run compile && bun run test`
+- `xcodebuild -project apps/autopilot-ios/Autopilot/Autopilot.xcodeproj -scheme Autopilot -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test -only-testing:AutopilotTests`
 
 ### KHALA-020: Desktop status integration behind flag
 
@@ -437,7 +437,7 @@ Depends on: KHALA-022
 
 Scope:
 
-- Remove legacy client providers/config from migrated web/mobile/desktop paths.
+- Remove legacy client providers/config from migrated web/iOS/desktop paths.
 - Keep compatibility only for non-migrated surfaces during rollback window.
 
 Done when:
@@ -475,7 +475,7 @@ Depends on: KHALA-026
 - `khala-sync`
 - `khala-runtime`
 - `khala-web`
-- `khala-mobile`
+- `khala-ios`
 - `khala-desktop`
 - `khala-lightning`
 - `khala-proto`

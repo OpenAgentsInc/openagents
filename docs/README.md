@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
 This directory tracks the active OpenAgents cross-platform stack.
-Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/runtime/`), mobile (`apps/mobile`), Rust desktop app (`apps/autopilot-desktop/`), and Onyx local-first notes app (`apps/onyx/`).
+Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/runtime/`), iOS (`apps/autopilot-ios`), Rust desktop app (`apps/autopilot-desktop/`), and Onyx local-first notes app (`apps/onyx/`).
 
 ## Start Here
 
@@ -71,7 +71,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Web trace retrieval and debugging: `autopilot/testing/TRACE_RETRIEVAL.md`
 - iOS/desktop runtime handshake runbook: `../apps/autopilot-ios/docs/real-device-codex-handshake-runbook.md`
 - Pane system docs: `autopilot/reference/EFFUSE_PANES.md`
-- Mobile app source: `../apps/mobile/`
+- iOS app source: `../apps/autopilot-ios/`
 - Rust desktop Codex app source: `../apps/autopilot-desktop/`
 - Rust desktop Codex app local auth/run guide: `../apps/autopilot-desktop/README.md`
 - Onyx notes app source: `../apps/onyx/`
@@ -81,7 +81,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Laravel web (control plane): `../apps/openagents.com/` — see `plans/active/laravel-rebuild.md`; typically `cd apps/openagents.com && composer run dev`.
 - Elixir runtime (execution): `../apps/runtime/` — `cd apps/runtime && mix phx.server`.
 - Local CI policy + hooks: `LOCAL_CI.md`
-- Mobile local dev: `../apps/mobile/README.md`
+- iOS local dev: `../apps/autopilot-ios/docs/README.md`
 - Rust desktop Codex local dev: `../apps/autopilot-desktop/` — typically `cargo run -p autopilot-desktop`.
 - Storybook and component docs: `STORYBOOK.md`
 

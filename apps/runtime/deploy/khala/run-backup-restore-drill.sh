@@ -8,7 +8,7 @@ PROJECT_ID="${PROJECT_ID:-openagentsgemini}"
 REGION="${REGION:-us-central1}"
 KHALA_BACKEND_SERVICE="${KHALA_BACKEND_SERVICE:-oa-khala-backend-nonprod}"
 KHALA_ADMIN_KEY_SECRET="${KHALA_ADMIN_KEY_SECRET:-oa-khala-nonprod-admin-key}"
-KHALA_CLI_DIR="${KHALA_CLI_DIR:-$REPO_ROOT/apps/mobile}"
+KHALA_CLI_DIR="${KHALA_CLI_DIR:-$REPO_ROOT/apps/openagents.com}"
 DRILL_OUTPUT_DIR="${DRILL_OUTPUT_DIR:-/tmp}"
 
 require_cmd() {

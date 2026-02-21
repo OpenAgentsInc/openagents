@@ -10,8 +10,8 @@ This document maps the active codebase.
 - `apps/runtime/`
   **Elixir runtime execution plane.** Long-running run lifecycle, stream-from-log serving, tool orchestration, spend/policy enforcement, DS-Elixir execution, and replay safety.
 
-- `apps/mobile/`
-  Mobile app surface.
+- `apps/autopilot-ios/`
+  Native iOS app surface for Codex/runtime administration.
 
 - `apps/autopilot-desktop/`
   Rust desktop app for local Codex execution and native Autopilot UI/runtime loops.
@@ -100,6 +100,7 @@ Legacy references to removed surfaces should be treated as historical:
 
 - `apps/web/`
 - `apps/autopilot-worker/`
+- `apps/mobile/`
 - `apps/desktop/`
 
 The active web control plane is `apps/openagents.com/`, and runtime execution is `apps/runtime/`.

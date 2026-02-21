@@ -8,7 +8,6 @@ Covered surfaces:
 
 - `apps/openagents.com/`
 - `apps/runtime/`
-- `apps/mobile/`
 - `apps/autopilot-ios/`
 - `apps/autopilot-desktop/`
 - `apps/lightning-ops/`
@@ -31,7 +30,6 @@ Core references:
 flowchart LR
   subgraph clients["Client Surfaces"]
     web["openagents.com\nLaravel + Inertia + React"]
-    mobile["mobile\nReact Native / Expo"]
     autopilotDesktop["autopilot-desktop\nRust + WGPUI"]
     ios["autopilot-ios\nSwiftUI"]
   end
@@ -56,7 +54,6 @@ flowchart LR
   end
 
   web --> laravel
-  mobile --> laravel
   autopilotDesktop --> laravel
   ios --> laravel
 
@@ -156,9 +153,8 @@ Khala protocol model:
 | App | Khala usage | Bootstrap + auth | Authority writes |
 |---|---|---|---|
 | `apps/openagents.com` | feature-gated Khala WS for Codex summaries | WorkOS web auth/session + runtime/Laravel HTTP + `POST /api/sync/token` | Laravel APIs + runtime APIs |
-| `apps/mobile` | feature-gated Khala WS for worker summaries | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: openagents-expo`) + runtime HTTP + `POST /api/sync/token` | Laravel/runtime APIs |
 | `apps/autopilot-desktop` | runtime SSE codex worker stream + runtime sync write lane | WorkOS email-code auth (`POST /api/auth/email`, `POST /api/auth/verify`) + Laravel runtime worker APIs | Laravel/runtime APIs |
-| `apps/autopilot-ios` | runtime SSE remains primary lane | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: autopilot-ios`) + Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
+| `apps/autopilot-ios` | Khala WS lane for Codex worker events + replay | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: autopilot-ios`) + Laravel/runtime HTTP + `POST /api/sync/token` | Laravel/runtime APIs |
 | `apps/lightning-ops` | no Khala dependency for control-plane lane | internal Laravel control-plane APIs | Laravel internal control-plane APIs |
 | `apps/lightning-wallet-executor` | no Khala dependency | service-local config + Lightning infra | service-local + Lightning infra |
 | `apps/runtime` | produces and serves Khala stream/read models | runtime Postgres direct | runtime Postgres direct |
@@ -166,7 +162,7 @@ Khala protocol model:
 Auth invariant for runtime stream-capable clients:
 
 - client login uses WorkOS email-code flow via Laravel (`/api/auth/email` -> `/api/auth/verify`),
-- verify response includes bearer token for recognized runtime-stream clients (iOS/mobile/desktop),
+- verify response includes bearer token for recognized runtime-stream clients (iOS/desktop/web),
 - client auth state is considered valid for runtime/sync lanes only when bearer token is present,
 - worker stream visibility is scoped by authenticated user ownership in runtime/Laravel proxy boundaries.
 

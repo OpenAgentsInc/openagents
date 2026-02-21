@@ -14,7 +14,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 ## Inventory Summary
 
 1. Legacy app roots tracked for deletion/fold-in:
-   - `apps/mobile`
+   - `apps/mobile` (removed 2026-02-21 via `OA-RUST-058`)
    - `apps/desktop` (removed 2026-02-21 via `OA-RUST-053`)
    - `apps/inbox-autopilot` (removed 2026-02-21 via `OA-RUST-052`)
 2. Legacy production runtime stacks still active:
@@ -23,7 +23,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 3. TypeScript runtime package lane under `packages/*`:
    - 10 packages (`@openagentsinc/*`) requiring migrate/archive/delete decisions
 4. Cross-surface reference volume (current baseline):
-   - `apps/mobile` references in `README.md`, `AGENTS.md`, `docs/**`, `scripts/**`: 50
+   - `apps/mobile` active-path references: 0 (historical audit/status docs may retain source-path mentions)
    - `apps/desktop` active-path references: 0 (historical audits/runbooks/plans may retain context)
    - `apps/inbox-autopilot` active-path references: 0 (historical migration/audit docs may retain source-path mentions)
 
@@ -31,7 +31,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 
 | Root | Current stack and key dependency signals | Migration target | Disposition | Owner lane | Primary blockers |
 | --- | --- | --- | --- | --- | --- |
-| `apps/mobile` | Expo/React Native TypeScript app (`apps/mobile/package.json`), uses `@openagentsinc/khala-sync` and runtime HTTP paths | `apps/autopilot-ios` + shared Rust client core | `delete` (after parity) | `owner:ios` | `OA-RUST-054`, `OA-RUST-055`, `OA-RUST-056`, `OA-RUST-057`, `OA-RUST-058`, `OA-RUST-106` |
+| `apps/mobile` | Legacy Expo/React Native TypeScript root removed after iOS parity gates | `apps/autopilot-ios` + shared Rust client core | `deleted` (2026-02-21) | `owner:ios` | `OA-RUST-054`, `OA-RUST-055`, `OA-RUST-056`, `OA-RUST-057`, `OA-RUST-058`, `OA-RUST-106` |
 | `apps/desktop` | Legacy Electron + TypeScript root removed after capability audit | `apps/autopilot-desktop` (WGPUI/Rust) + Rust lightning services | `deleted` (2026-02-21) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-053`, `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
 | `apps/inbox-autopilot` | Standalone local-first app root removed after fold-in | folded into `apps/autopilot-desktop` panes and shared state | `deleted` (2026-02-21) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-052` |
 
@@ -56,7 +56,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 | `@openagentsinc/effuse-ui` | No direct active app runtime import found | WGPUI shared UI crates | `archive` | `owner:infra` | `OA-RUST-103` |
 | `@openagentsinc/effuse` | Used by legacy `apps/desktop` renderer (root removed) | WGPUI Rust runtime | `migrate` then `delete` | `owner:desktop` | `OA-RUST-050`, `OA-RUST-053`, `OA-RUST-103` |
 | `@openagentsinc/hud` | No direct active app runtime import found | Rust observability UI if still needed | `defer` | `owner:infra` | `OA-RUST-103` |
-| `@openagentsinc/khala-sync` | Used by `apps/mobile` and `apps/openagents.com` React paths | Rust Khala clients (`web/desktop/iOS`) | `migrate` then `delete` | `owner:khala` | `OA-RUST-029`, `OA-RUST-045`, `OA-RUST-058`, `OA-RUST-063`, `OA-RUST-103` |
+| `@openagentsinc/khala-sync` | Used by legacy mobile root (now removed) and `apps/openagents.com` React paths | Rust Khala clients (`web/desktop/iOS`) | `migrate` then `delete` | `owner:khala` | `OA-RUST-029`, `OA-RUST-045`, `OA-RUST-058`, `OA-RUST-063`, `OA-RUST-103` |
 | `@openagentsinc/lightning-effect` | Used by legacy `apps/desktop` and current Lightning services | Rust lightning services and runtime integrations | `migrate` then `delete` | `owner:infra` | `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
 | `@openagentsinc/lnd-effect` | Used by legacy `apps/desktop` and `lightning-effect` | Rust lightning services | `migrate` then `delete` | `owner:infra` | `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
 
@@ -77,6 +77,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
    - iOS shared Rust core parity complete.
    - iOS auth/session and background watermark behavior verified.
    - docs/sync surfaces updated.
+   - status: complete (OA-RUST-058).
 2. `apps/desktop` deletion gate:
    - inbox fold-in and pane parity complete in `apps/autopilot-desktop`.
    - lightning-effect/lnd-effect production lanes migrated to Rust services.

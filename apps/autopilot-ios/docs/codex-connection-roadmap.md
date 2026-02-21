@@ -47,7 +47,7 @@ Primary references:
 
 - `apps/openagents.com/app/Http/Controllers/Api/RuntimeCodexWorkersController.php`
 - `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`
-- `apps/mobile/app/services/runtimeCodexApi.ts`
+- legacy Expo mobile API client parity reference (removed root; use git history)
 - `apps/autopilot-desktop/src/main.rs`
 
 ## Lessons to Reuse from inbox-autopilot
@@ -235,7 +235,7 @@ Work:
 
 Reference parity:
 
-- `apps/mobile/app/services/runtimeCodexApi.ts`
+- legacy Expo mobile API client parity reference (removed root; use git history)
 - `/Users/christopherdavid/code/inbox-autopilot/Inbox Autopilot/Inbox Autopilot/DaemonAPIClient.swift`
 
 Exit criteria:
@@ -260,7 +260,7 @@ Work:
 Reference parity:
 
 - `apps/openagents.com/resources/js/pages/admin/index.tsx`
-- `apps/mobile/app/screens/CodexWorkersScreen.tsx`
+- legacy Expo mobile UI parity reference (removed root; use git history)
 
 Exit criteria:
 
