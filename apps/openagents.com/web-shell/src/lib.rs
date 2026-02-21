@@ -86,6 +86,10 @@ mod wasm {
     const AUTH_VERIFY_ID: &str = "openagents-web-shell-auth-verify";
     const AUTH_RESTORE_ID: &str = "openagents-web-shell-auth-restore";
     const AUTH_LOGOUT_ID: &str = "openagents-web-shell-auth-logout";
+    const DOM_READY_BUDGET_MS: u64 = 450;
+    const GPU_INIT_BUDGET_MS: u64 = 1_600;
+    const FIRST_FRAME_BUDGET_MS: u64 = 2_200;
+    const BOOT_TOTAL_BUDGET_MS: u64 = 2_500;
 
     #[derive(Debug, Clone, Default)]
     struct SyncRuntimeState {
@@ -177,6 +181,14 @@ mod wasm {
         phase: String,
         detail: String,
         frames_rendered: u64,
+        boot_started_at_unix_ms: Option<u64>,
+        dom_ready_latency_ms: Option<u64>,
+        gpu_init_latency_ms: Option<u64>,
+        first_frame_latency_ms: Option<u64>,
+        boot_total_latency_ms: Option<u64>,
+        render_backend: Option<String>,
+        capability_mode: Option<String>,
+        budget_breaches: Vec<String>,
         route_path: String,
         pending_intents: usize,
         command_total: u64,
@@ -193,6 +205,14 @@ mod wasm {
                 phase: "idle".to_string(),
                 detail: "web shell not started".to_string(),
                 frames_rendered: 0,
+                boot_started_at_unix_ms: None,
+                dom_ready_latency_ms: None,
+                gpu_init_latency_ms: None,
+                first_frame_latency_ms: None,
+                boot_total_latency_ms: None,
+                render_backend: None,
+                capability_mode: None,
+                budget_breaches: Vec::new(),
                 route_path: "/".to_string(),
                 pending_intents: 0,
                 command_total: 0,
@@ -502,6 +522,20 @@ mod wasm {
             return Err("forced startup failure because query contains oa_boot_fail=1".to_string());
         }
 
+        let boot_started_at = Instant::now();
+        let boot_started_at_unix_ms = now_unix_ms();
+        DIAGNOSTICS.with(|state| {
+            let mut state = state.borrow_mut();
+            state.boot_started_at_unix_ms = Some(boot_started_at_unix_ms);
+            state.dom_ready_latency_ms = None;
+            state.gpu_init_latency_ms = None;
+            state.first_frame_latency_ms = None;
+            state.boot_total_latency_ms = None;
+            state.render_backend = None;
+            state.capability_mode = detect_gpu_mode_hint();
+            state.budget_breaches.clear();
+        });
+
         let canvas = ensure_shell_dom()?;
         ensure_codex_chat_dom()?;
 
@@ -538,8 +572,29 @@ mod wasm {
         schedule_management_surface_refresh();
         render_codex_chat_dom();
 
+        let dom_ready_latency_ms =
+            u64::try_from(boot_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        record_boot_milestone(
+            "dom_ready_latency_ms",
+            dom_ready_latency_ms,
+            DOM_READY_BUDGET_MS,
+        );
+
         set_boot_phase("booting", "initializing GPU platform");
+        let gpu_init_started_at = Instant::now();
         let platform = WebPlatform::init_on_canvas(canvas).await?;
+        let gpu_init_latency_ms =
+            u64::try_from(gpu_init_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        record_boot_milestone(
+            "gpu_init_latency_ms",
+            gpu_init_latency_ms,
+            GPU_INIT_BUDGET_MS,
+        );
+        let backend_name = platform.backend_name().to_string();
+        DIAGNOSTICS.with(|state| {
+            let mut state = state.borrow_mut();
+            state.render_backend = Some(backend_name);
+        });
         let app = WebShellApp::new(platform);
 
         setup_resize_observer(app.platform.canvas(), || {
@@ -555,7 +610,8 @@ mod wasm {
         });
 
         set_boot_phase("ready", "render loop active");
-        run_animation_loop(|| {
+        let boot_start_for_render = boot_started_at;
+        run_animation_loop(move || {
             APP.with(|cell| {
                 if let Some(app) = cell.borrow_mut().as_mut() {
                     if let Err(error) = app.render_frame() {
@@ -565,6 +621,23 @@ mod wasm {
                     DIAGNOSTICS.with(|state| {
                         let mut state = state.borrow_mut();
                         state.frames_rendered = state.frames_rendered.saturating_add(1);
+                        if state.frames_rendered == 1 {
+                            let first_frame_latency_ms =
+                                u64::try_from(boot_start_for_render.elapsed().as_millis())
+                                    .unwrap_or(u64::MAX);
+                            state.first_frame_latency_ms = Some(first_frame_latency_ms);
+                            state.boot_total_latency_ms = Some(first_frame_latency_ms);
+                            if first_frame_latency_ms > FIRST_FRAME_BUDGET_MS {
+                                state.budget_breaches.push(format!(
+                                    "first_frame_latency_ms>{FIRST_FRAME_BUDGET_MS} (actual={first_frame_latency_ms})"
+                                ));
+                            }
+                            if first_frame_latency_ms > BOOT_TOTAL_BUDGET_MS {
+                                state.budget_breaches.push(format!(
+                                    "boot_total_latency_ms>{BOOT_TOTAL_BUDGET_MS} (actual={first_frame_latency_ms})"
+                                ));
+                            }
+                        }
                     });
                 }
             });
@@ -3419,6 +3492,36 @@ mod wasm {
                 }
             }
         }
+    }
+
+    fn record_boot_milestone(metric_name: &str, actual_ms: u64, budget_ms: u64) {
+        DIAGNOSTICS.with(|state| {
+            let mut state = state.borrow_mut();
+            match metric_name {
+                "dom_ready_latency_ms" => state.dom_ready_latency_ms = Some(actual_ms),
+                "gpu_init_latency_ms" => state.gpu_init_latency_ms = Some(actual_ms),
+                _ => {}
+            }
+            if actual_ms > budget_ms {
+                state
+                    .budget_breaches
+                    .push(format!("{metric_name}>{budget_ms} (actual={actual_ms})"));
+            }
+        });
+    }
+
+    fn detect_gpu_mode_hint() -> Option<String> {
+        let window = web_sys::window()?;
+        let value = js_sys::Reflect::get(&window, &JsValue::from_str("__OA_GPU_MODE__")).ok()?;
+        let mode = value.as_string()?.trim().to_ascii_lowercase();
+        if mode.is_empty() { None } else { Some(mode) }
+    }
+
+    fn now_unix_ms() -> u64 {
+        let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+            return 0;
+        };
+        u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
     }
 
     fn should_force_boot_failure() -> bool {

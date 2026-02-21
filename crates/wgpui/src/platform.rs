@@ -30,15 +30,63 @@ pub fn default_surface_config(
     }
 }
 
+#[cfg(feature = "web")]
+pub(crate) fn is_webgpu_reliable_user_agent(user_agent: &str) -> bool {
+    // Linux desktop WebGPU remains unstable in Chromium for our supported matrix.
+    !(user_agent.contains("Linux") && !user_agent.contains("Android"))
+}
+
+#[cfg(all(test, feature = "web"))]
+mod webgpu_policy_tests {
+    use super::is_webgpu_reliable_user_agent;
+
+    #[test]
+    fn linux_desktop_is_marked_unreliable() {
+        assert!(!is_webgpu_reliable_user_agent(
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        ));
+    }
+
+    #[test]
+    fn android_linux_is_allowed() {
+        assert!(is_webgpu_reliable_user_agent(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36",
+        ));
+    }
+
+    #[test]
+    fn macos_is_allowed() {
+        assert!(is_webgpu_reliable_user_agent(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) AppleWebKit/605.1.15",
+        ));
+    }
+}
+
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub mod web {
     use super::*;
     use crate::renderer::Renderer;
+    use js_sys::Reflect;
     use std::cell::RefCell;
     use std::rc::Rc;
     use wasm_bindgen::JsCast;
-    use wasm_bindgen::prelude::*;
+    use wasm_bindgen::{JsValue, prelude::*};
     use web_sys::HtmlCanvasElement;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum WebBackendKind {
+        WebGpu,
+        WebGl2,
+    }
+
+    impl WebBackendKind {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::WebGpu => "webgpu",
+                Self::WebGl2 => "webgl2",
+            }
+        }
+    }
 
     pub struct WebPlatform {
         canvas: HtmlCanvasElement,
@@ -50,6 +98,7 @@ pub mod web {
         text_system: TextSystem,
         scale_factor: f32,
         logical_size: Size,
+        backend: WebBackendKind,
     }
 
     impl WebPlatform {
@@ -81,7 +130,7 @@ pub mod web {
             canvas.set_height(physical_height);
 
             // Try WebGPU first, fall back to WebGL2 if it fails
-            let (device, queue, surface, adapter) =
+            let (device, queue, surface, adapter, backend) =
                 Self::try_init_gpu(&canvas, physical_width, physical_height).await?;
 
             let surface_caps = surface.get_capabilities(&adapter);
@@ -130,10 +179,26 @@ pub mod web {
                 text_system,
                 scale_factor,
                 logical_size,
+                backend,
             })
         }
 
         fn is_webgpu_reliable() -> bool {
+            if let Some(forced) = Self::forced_backend_hint() {
+                match forced {
+                    WebBackendKind::WebGpu => {
+                        web_sys::console::log_1(&"Forcing WebGPU backend by host hint".into());
+                        return true;
+                    }
+                    WebBackendKind::WebGl2 => {
+                        web_sys::console::log_1(
+                            &"Forcing WebGL2 backend by host hint (WebGPU skipped)".into(),
+                        );
+                        return false;
+                    }
+                }
+            }
+
             // Check if we're on a platform where WebGPU is known to work
             // Linux WebGPU is experimental and often broken in Chromium
             let window = match web_sys::window() {
@@ -143,13 +208,23 @@ pub mod web {
             let navigator = window.navigator();
             let user_agent = navigator.user_agent().unwrap_or_default();
 
-            // Skip WebGPU on Linux - it's experimental and often broken
-            if user_agent.contains("Linux") && !user_agent.contains("Android") {
+            if !super::is_webgpu_reliable_user_agent(&user_agent) {
                 web_sys::console::log_1(&"Skipping WebGPU on Linux (experimental)".into());
                 return false;
             }
 
             true
+        }
+
+        fn forced_backend_hint() -> Option<WebBackendKind> {
+            let window = web_sys::window()?;
+            let value = Reflect::get(&window, &JsValue::from_str("__OA_GPU_MODE__")).ok()?;
+            let mode = value.as_string()?.trim().to_ascii_lowercase();
+            match mode.as_str() {
+                "webgpu" => Some(WebBackendKind::WebGpu),
+                "webgl2" | "webgl" => Some(WebBackendKind::WebGl2),
+                _ => None,
+            }
         }
 
         async fn try_init_gpu(
@@ -162,6 +237,7 @@ pub mod web {
                 wgpu::Queue,
                 wgpu::Surface<'static>,
                 wgpu::Adapter,
+                WebBackendKind,
             ),
             String,
         > {
@@ -170,14 +246,26 @@ pub mod web {
                 if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::BROWSER_WEBGPU).await
                 {
                     web_sys::console::log_1(&"Using WebGPU backend".into());
-                    return Ok(result);
+                    return Ok((
+                        result.0,
+                        result.1,
+                        result.2,
+                        result.3,
+                        WebBackendKind::WebGpu,
+                    ));
                 }
             }
 
             // Fall back to WebGL2
             web_sys::console::log_1(&"Using WebGL2 backend".into());
             if let Ok(result) = Self::try_backend(canvas, wgpu::Backends::GL).await {
-                return Ok(result);
+                return Ok((
+                    result.0,
+                    result.1,
+                    result.2,
+                    result.3,
+                    WebBackendKind::WebGl2,
+                ));
             }
 
             Err("Failed to initialize GPU".to_string())
@@ -240,6 +328,14 @@ pub mod web {
 
         pub fn canvas(&self) -> &HtmlCanvasElement {
             &self.canvas
+        }
+
+        pub fn backend_kind(&self) -> WebBackendKind {
+            self.backend
+        }
+
+        pub fn backend_name(&self) -> &'static str {
+            self.backend.as_str()
         }
 
         pub fn render_scene(&mut self, scene: &Scene) -> Result<(), String> {

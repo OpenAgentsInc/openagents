@@ -219,6 +219,8 @@ run_web_shell_checks() {
   (
     cd "$ROOT_DIR"
     ./apps/openagents.com/web-shell/check-host-shim.sh
+    ./apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
+    ./apps/openagents.com/web-shell/scripts/perf-budget-gate.sh
   )
 }
 

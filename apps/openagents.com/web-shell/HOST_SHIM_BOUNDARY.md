@@ -14,7 +14,8 @@ JavaScript in the web shell is host glue only. Product logic authority is Rust.
 2. Handle browser-only bootstrap concerns (status text, canvas mount wiring).
 3. Register service worker.
 4. Poll static build manifest (`/manifest.json`) for build-skew detection and trigger SW update promotion.
-5. Surface bootstrap/update failure visibly in browser console/DOM.
+5. Evaluate browser GPU capability policy (`webgpu`/`webgl2`/`limited`) and pass host mode hint to wasm startup.
+6. Surface bootstrap/update failure visibly in browser console/DOM.
 
 ## JS Responsibilities (Prohibited)
 
@@ -37,4 +38,5 @@ The boundary check fails if host shim JS includes prohibited primitives/keywords
 ## Files in Scope
 
 - Host shim JS: `apps/openagents.com/web-shell/host/host-shim.js`
+- Capability policy JS: `apps/openagents.com/web-shell/host/capability-policy.js`
 - Rust wasm entrypoint: `apps/openagents.com/web-shell/src/lib.rs`

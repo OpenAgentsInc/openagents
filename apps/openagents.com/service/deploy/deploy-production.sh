@@ -28,6 +28,8 @@ if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
   echo "[deploy] verify rust control-service + rust web-shell"
   cargo test --manifest-path "${SERVICE_DIR}/Cargo.toml"
   cargo check -p openagents-web-shell --target wasm32-unknown-unknown
+  "${APP_DIR}/web-shell/scripts/sw-policy-verify.sh"
+  "${APP_DIR}/web-shell/scripts/perf-budget-gate.sh"
 fi
 
 echo "[deploy] deploy no-traffic revision image=${IMAGE}"
