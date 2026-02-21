@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=./phase-b-freeze-guard.sh
+source "${SCRIPT_DIR}/phase-b-freeze-guard.sh"
+
 DOCS_REPO="${DOCS_REPO:-${HOME}/code/docs}"
 DOCS_BRANCH="${DOCS_BRANCH:-main}"
 DOCS_OPENAPI_PATH="${DOCS_OPENAPI_PATH:-api/openapi.json}"

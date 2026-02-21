@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "name": "openagents-migrate"
+  },
+  "spec": {
+    "template": {
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "args": [
+                  "artisan",
+                  "migrate",
+                  "--force"
+                ],
+                "command": [
+                  "php"
+                ],
+                "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-web/laravel:latest"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "status": {
+    "latestCreatedExecution": {
+      "name": "openagents-migrate-mw2pd"
+    }
+  }
+}

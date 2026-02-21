@@ -18,5 +18,6 @@ Legacy Laravel deploy assets were archived for audit-only reference under:
 
 - `apps/openagents.com/deploy/archived-laravel/`
 - including legacy Dockerfile: `apps/openagents.com/deploy/archived-laravel/Dockerfile`
+- freeze policy: `apps/openagents.com/deploy/archived-laravel/README.md`
 
 Do not use archived assets for production deploys.
