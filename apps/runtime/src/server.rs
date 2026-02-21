@@ -1526,6 +1526,17 @@ mod tests {
         jti: &str,
         exp_offset_seconds: i64,
     ) -> String {
+        issue_sync_token_for_surface(scopes, user_id, org_id, jti, exp_offset_seconds, "ios")
+    }
+
+    fn issue_sync_token_for_surface(
+        scopes: &[&str],
+        user_id: Option<u64>,
+        org_id: Option<&str>,
+        jti: &str,
+        exp_offset_seconds: i64,
+        client_surface: &str,
+    ) -> String {
         let now = Utc::now().timestamp();
         let claims = SyncTokenClaims {
             iss: "https://openagents.com".to_string(),
@@ -1541,6 +1552,7 @@ mod tests {
             oa_user_id: user_id,
             oa_org_id: org_id.map(ToString::to_string),
             oa_device_id: Some("ios-device".to_string()),
+            oa_client_surface: Some(client_surface.to_string()),
             oa_sync_scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
         };
         encode(
@@ -3092,6 +3104,51 @@ mod tests {
             )
             .await?;
         assert_eq!(allowed.status(), axum::http::StatusCode::OK);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_onyx_surface_is_limited_to_run_event_topics() -> Result<()> {
+        let app = test_router();
+
+        let onyx_token = issue_sync_token_for_surface(
+            &["runtime.run_events", "runtime.codex_worker_events"],
+            Some(1),
+            Some("user:1"),
+            "onyx-surface-policy",
+            300,
+            "onyx",
+        );
+
+        let run_allowed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/topics/run:019c7f93:events/messages?after_seq=0&limit=10")
+                    .header("authorization", format!("Bearer {onyx_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(run_allowed.status(), axum::http::StatusCode::OK);
+
+        let worker_denied = app
+            .oneshot(
+                Request::builder()
+                    .uri("/internal/v1/khala/topics/worker:desktop:owner-worker:lifecycle/messages?after_seq=0&limit=10")
+                    .header("authorization", format!("Bearer {onyx_token}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(worker_denied.status(), axum::http::StatusCode::FORBIDDEN);
+        let denied_json = response_json(worker_denied).await?;
+        assert_eq!(
+            denied_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "surface_policy_denied"
+        );
 
         Ok(())
     }

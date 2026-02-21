@@ -406,9 +406,18 @@ This envelope is mandatory for deterministic replay, forward/backward compatibil
 
 ## Onyx Integration Contract (Required)
 
-1. Onyx consumes only explicitly allowed control/runtime APIs documented as public integration surfaces.
-2. Onyx identity binding (shared user/org vs delegated identity) is explicitly defined and enforced by control-plane policy.
-3. Offline behavior and sync expectations for Onyx are documented separately from core Codex client guarantees.
+Normative contract:
+
+1. `docs/protocol/onyx-integration-contract-v1.md`
+2. `docs/adr/ADR-0007-onyx-integration-surface-and-non-goals.md`
+
+Required constraints:
+
+1. Onyx uses WorkOS-authenticated control-plane sessions; control-plane is authoritative for Onyx authorization, device binding, and revocation.
+2. Onyx sync tokens are user/device bound and surface-attributed (`oa_client_surface=onyx`).
+3. Onyx Khala subscriptions are restricted to `run:{run_id}:events` lanes in v1.
+4. Onyx is explicitly denied from `runtime.codex_worker_events`, `worker:{worker_id}:lifecycle`, and any command/mutation semantics over WS topics.
+5. Offline behavior and local-first note editing guarantees are separate from Codex admin/control guarantees.
 
 ## Deployment and Operations
 
