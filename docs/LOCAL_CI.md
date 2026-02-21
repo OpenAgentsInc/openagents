@@ -16,7 +16,7 @@ From repository root:
 This configures:
 
 - `.githooks/pre-commit` -> `scripts/local-ci.sh changed`
-- `.githooks/pre-push` -> `scripts/local-ci.sh changed`
+- `.githooks/pre-push` -> no-op (checks intentionally disabled for now)
 
 ## Local CI Entrypoint
 
@@ -39,6 +39,17 @@ Examples:
 ```bash
 ./scripts/local-ci.sh runtime
 ./scripts/local-ci.sh comms
+./scripts/local-ci.sh all
+```
+
+## Push Policy (Current)
+
+Pre-push checks are intentionally disabled.
+
+Run gates manually before pushing when needed:
+
+```bash
+./scripts/local-ci.sh changed
 ./scripts/local-ci.sh all
 ```
 
@@ -71,7 +82,6 @@ If proto CI fails:
 
 ```bash
 OA_SKIP_LOCAL_CI=1 git commit -m "..."
-OA_SKIP_LOCAL_CI=1 git push
 ```
 
 If bypassing, run equivalent lane commands manually before merge.

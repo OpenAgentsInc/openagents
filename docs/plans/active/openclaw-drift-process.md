@@ -55,7 +55,7 @@ Report summary includes:
 
 ## Cadence
 
-- Local pre-push gate via `scripts/local-ci.sh all`
+- Local manual gate via `scripts/local-ci.sh all` (pre-push hook currently disabled)
 - On-demand via `scripts/openclaw-drift-report.sh`
 - Optional operator cron job in trusted infrastructure
 - On changes to intake records, parity fixtures, or drift script

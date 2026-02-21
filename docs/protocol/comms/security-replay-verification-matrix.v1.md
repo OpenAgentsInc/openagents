@@ -6,8 +6,8 @@ This matrix is the release gate for comms security, policy replayability, and cr
 
 - Entrypoint: `scripts/comms-security-replay-matrix.sh all`
 - Required lanes: `laravel`, `runtime`
-- Hook path: `.githooks/pre-push` via `scripts/local-ci.sh all`
-- Gate rule: all lanes must pass before merge/deploy.
+- Push hook: pre-push checks are currently disabled
+- Gate rule: run `./scripts/local-ci.sh all` (or `scripts/comms-security-replay-matrix.sh all`) and ensure all lanes pass before merge/deploy.
 
 ## Verification Lanes
 
