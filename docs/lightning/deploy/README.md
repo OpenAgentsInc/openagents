@@ -43,5 +43,5 @@ gcloud builds submit --config docs/lightning/deploy/cloudbuild-aperture.yaml \
 
 - **Dockerfile.aperture** – Multi-stage build from Lightning Labs Aperture source (Go 1.24); no Docker Hub dependency.
 - **cloudbuild-aperture.yaml** – Cloud Build config to build and push to Artifact Registry repo `l402`.
-- **Dockerfile.wallet-executor** – Node-based build for `apps/lightning-wallet-executor` (Spark wallet execution service).
+- **Dockerfile.wallet-executor** – Rust multi-stage build for `apps/lightning-wallet-executor` (Spark wallet execution service).
 - **cloudbuild-wallet-executor.yaml** – Cloud Build config to build and push wallet executor image to Artifact Registry repo `l402`.

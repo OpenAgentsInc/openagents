@@ -1,8 +1,8 @@
 # L402 Wallet Executor Deploy Runbook
 
 Status: Active  
-Date: 2026-02-12  
-Scope: Deploy `apps/lightning-wallet-executor` to Cloud Run and wire `apps/web` Worker runtime.
+Date: 2026-02-21  
+Scope: Deploy Rust `apps/lightning-wallet-executor` to Cloud Run and wire `apps/openagents.com` runtime secrets.
 
 ## 1. Overview
 
@@ -43,6 +43,13 @@ Cloud Run secret env mappings:
 From repo root:
 
 ```bash
+cargo test --manifest-path apps/lightning-wallet-executor/Cargo.toml
+cargo run --manifest-path apps/lightning-wallet-executor/Cargo.toml -- smoke
+```
+
+Then build/push:
+
+```bash
 gcloud builds submit --project openagentsgemini \
   --config docs/lightning/deploy/cloudbuild-wallet-executor.yaml \
   --substitutions _TAG="$(git rev-parse --short HEAD)" .
@@ -72,12 +79,12 @@ gcloud run deploy l402-wallet-executor \
   --max-instances 2
 ```
 
-## 5. Wire `apps/web` Worker Runtime
+## 5. Wire `apps/openagents.com` Runtime
 
 Set Cloudflare Worker secrets for `autopilot-web`:
 
 ```bash
-cd apps/web
+cd apps/openagents.com
 printf '%s' 'https://<l402-wallet-executor-url>' | npx wrangler secret put OA_LIGHTNING_WALLET_EXECUTOR_BASE_URL --name autopilot-web
 printf '%s' '<same-bearer-token-as-gcp-secret>' | npx wrangler secret put OA_LIGHTNING_WALLET_EXECUTOR_AUTH_TOKEN --name autopilot-web
 printf '%s' '60000' | npx wrangler secret put OA_LIGHTNING_WALLET_EXECUTOR_TIMEOUT_MS --name autopilot-web

@@ -6,6 +6,7 @@ members = [
     "apps/openagents.com/web-shell",
     "apps/runtime",
     "apps/lightning-ops",
+    "apps/lightning-wallet-executor",
     "crates/adjutant",
     "crates/agent",
     "crates/ai-server",
