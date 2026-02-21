@@ -6908,6 +6908,7 @@ dependencies = [
  "chrono",
  "hmac",
  "http-body-util",
+ "mime_guess",
  "reqwest",
  "serde",
  "serde_json",

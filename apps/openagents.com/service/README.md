@@ -21,7 +21,8 @@ Rust control service scaffold for `apps/openagents.com`.
   - `GET /api/v1/control/status`
   - `POST /api/sync/token`
   - `POST /api/v1/sync/token`
-  - `GET /assets/*` static host skeleton
+  - `GET /manifest.json` static manifest
+  - `GET /assets/*` versioned static asset host
 - Request middleware foundations:
   - request ID propagation (`x-request-id`)
   - HTTP trace layer
@@ -85,6 +86,9 @@ curl -sS -H "authorization: Bearer ${ACCESS_TOKEN}" \
   -H 'content-type: application/json' \
   -d '{"scopes":["runtime.codex_worker_events"]}' \
   http://127.0.0.1:8787/api/sync/token | jq
+
+curl -i http://127.0.0.1:8787/manifest.json
+curl -i http://127.0.0.1:8787/assets/app-<contenthash>.js
 ```
 
 ## Test
@@ -92,3 +96,9 @@ curl -sS -H "authorization: Bearer ${ACCESS_TOKEN}" \
 ```bash
 cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 ```
+
+## Static cache policy
+
+- `GET /manifest.json` is served with `Cache-Control: no-cache, no-store, must-revalidate`.
+- `GET /assets/<hashed-file>` is served with `Cache-Control: public, max-age=31536000, immutable`.
+- `GET /assets/<non-hashed-file>` is served with `Cache-Control: public, max-age=60`.

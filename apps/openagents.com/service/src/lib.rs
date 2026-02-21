@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use axum::extract::State;
-use axum::http::header::{AUTHORIZATION, COOKIE, SET_COOKIE};
+use axum::body::Body;
+use axum::extract::{Path, State};
+use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -12,7 +14,6 @@ use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
-use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
 pub mod auth;
@@ -25,6 +26,9 @@ use crate::sync_token::{SyncTokenError, SyncTokenIssueRequest, SyncTokenIssuer};
 
 const SERVICE_NAME: &str = "openagents-control-service";
 const CHALLENGE_COOKIE_NAME: &str = "oa_magic_challenge";
+const CACHE_IMMUTABLE_ONE_YEAR: &str = "public, max-age=31536000, immutable";
+const CACHE_SHORT_LIVED: &str = "public, max-age=60";
+const CACHE_MANIFEST: &str = "no-cache, no-store, must-revalidate";
 
 #[derive(Clone)]
 struct AppState {
@@ -127,8 +131,6 @@ pub fn build_router(config: Config) -> Router {
         started_at: SystemTime::now(),
     };
 
-    let static_service = ServeDir::new(state.config.static_dir.clone());
-
     Router::new()
         .route("/", get(root))
         .route("/healthz", get(health))
@@ -146,7 +148,8 @@ pub fn build_router(config: Config) -> Router {
         .route("/api/v1/auth/session", get(current_session))
         .route("/api/v1/control/status", get(control_status))
         .route("/api/v1/sync/token", post(sync_token))
-        .nest_service("/assets", static_service)
+        .route("/manifest.json", get(static_manifest))
+        .route("/assets/*path", get(static_asset))
         .with_state(state)
         .layer(
             ServiceBuilder::new()
@@ -199,6 +202,158 @@ async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
             static_dir,
         }),
     )
+}
+
+async fn static_manifest(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let manifest_path = state.config.static_dir.join("manifest.json");
+    let response = build_static_response(&manifest_path, CACHE_MANIFEST)
+        .await
+        .map_err(map_static_error)?;
+    Ok(response)
+}
+
+async fn static_asset(
+    State(state): State<AppState>,
+    Path(path): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiErrorResponse>)> {
+    let relative_path = normalize_static_path(&path)
+        .ok_or_else(|| static_not_found(format!("Asset '{}' was not found.", path)))?;
+
+    let static_root = state.config.static_dir.as_path();
+    let preferred = static_root.join("assets").join(&relative_path);
+    let fallback = static_root.join(&relative_path);
+
+    let asset_path = if preferred.is_file() {
+        preferred
+    } else if fallback.is_file() {
+        fallback
+    } else {
+        return Err(static_not_found(format!(
+            "Asset '{}' was not found.",
+            relative_path
+        )));
+    };
+
+    let cache_control = if is_hashed_asset_path(&relative_path) {
+        CACHE_IMMUTABLE_ONE_YEAR
+    } else {
+        CACHE_SHORT_LIVED
+    };
+
+    let response = build_static_response(&asset_path, cache_control)
+        .await
+        .map_err(map_static_error)?;
+    Ok(response)
+}
+
+async fn build_static_response(
+    file_path: &FsPath,
+    cache_control: &'static str,
+) -> Result<axum::response::Response, StaticResponseError> {
+    let bytes = tokio::fs::read(file_path).await.map_err(|source| {
+        if source.kind() == std::io::ErrorKind::NotFound {
+            StaticResponseError::NotFound(format!(
+                "Static file '{}' was not found.",
+                file_path.display()
+            ))
+        } else {
+            StaticResponseError::Io(source)
+        }
+    })?;
+
+    let content_type = mime_guess::from_path(file_path).first_or_octet_stream();
+    let mut response = axum::response::Response::new(Body::from(bytes));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_str(content_type.as_ref())
+            .map_err(|_| StaticResponseError::InvalidHeader(content_type.to_string()))?,
+    );
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(cache_control));
+
+    Ok(response)
+}
+
+#[derive(Debug, thiserror::Error)]
+enum StaticResponseError {
+    #[error("{0}")]
+    NotFound(String),
+    #[error("static file read failed: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("invalid header value '{0}'")]
+    InvalidHeader(String),
+}
+
+fn map_static_error(error: StaticResponseError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        StaticResponseError::NotFound(message) => static_not_found(message),
+        StaticResponseError::Io(_) | StaticResponseError::InvalidHeader(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiErrorResponse {
+                message: "Failed to serve static asset.".to_string(),
+                error: ApiErrorDetail {
+                    code: "static_asset_error",
+                    message: "Failed to serve static asset.".to_string(),
+                },
+                errors: None,
+            }),
+        ),
+    }
+}
+
+fn static_not_found(message: String) -> (StatusCode, Json<ApiErrorResponse>) {
+    (
+        StatusCode::NOT_FOUND,
+        Json(ApiErrorResponse {
+            message: message.clone(),
+            error: ApiErrorDetail {
+                code: "not_found",
+                message,
+            },
+            errors: None,
+        }),
+    )
+}
+
+fn normalize_static_path(path: &str) -> Option<String> {
+    let trimmed = path.trim().trim_start_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut normalized_parts = Vec::new();
+    for part in trimmed.split('/') {
+        let segment = part.trim();
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return None;
+        }
+        normalized_parts.push(segment);
+    }
+
+    Some(normalized_parts.join("/"))
+}
+
+fn is_hashed_asset_path(path: &str) -> bool {
+    let Some(file_name) = FsPath::new(path)
+        .file_name()
+        .and_then(|value| value.to_str())
+    else {
+        return false;
+    };
+
+    let Some((stem, _ext)) = file_name.rsplit_once('.') else {
+        return false;
+    };
+
+    let Some((_, hash_part)) = stem.rsplit_once('-') else {
+        return false;
+    };
+
+    hash_part.len() >= 8 && hash_part.chars().all(|char| char.is_ascii_alphanumeric())
 }
 
 async fn send_email_code(
@@ -762,7 +917,7 @@ mod tests {
 
     use anyhow::Result;
     use axum::body::Body;
-    use axum::http::header::SET_COOKIE;
+    use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, SET_COOKIE};
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
     use serde_json::Value;
@@ -771,6 +926,7 @@ mod tests {
 
     use crate::build_router;
     use crate::config::Config;
+    use crate::{CACHE_IMMUTABLE_ONE_YEAR, CACHE_MANIFEST};
 
     fn test_config(static_dir: PathBuf) -> Config {
         let bind_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
@@ -856,6 +1012,82 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = read_json(response).await?;
         assert_eq!(body["status"], "ready");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn static_hashed_asset_uses_immutable_cache_header() -> Result<()> {
+        let static_dir = tempdir()?;
+        let assets_dir = static_dir.path().join("assets");
+        std::fs::create_dir_all(&assets_dir)?;
+        std::fs::write(
+            assets_dir.join("app-0a1b2c3d4e5f.js"),
+            "console.log('openagents');",
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/assets/app-0a1b2c3d4e5f.js")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_IMMUTABLE_ONE_YEAR)
+        );
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("text/javascript"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn manifest_uses_no_store_cache_header() -> Result<()> {
+        let static_dir = tempdir()?;
+        std::fs::write(
+            static_dir.path().join("manifest.json"),
+            r#"{"app":"assets/app-0a1b2c3d4e5f.js"}"#,
+        )?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/manifest.json")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some(CACHE_MANIFEST)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn static_asset_rejects_path_traversal_segments() -> Result<()> {
+        let static_dir = tempdir()?;
+        let app = build_router(test_config(static_dir.path().to_path_buf()));
+
+        let request = Request::builder()
+            .uri("/assets/../manifest.json")
+            .body(Body::empty())?;
+        let response = app.oneshot(request).await?;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = read_json(response).await?;
+        assert_eq!(body["error"]["code"], "not_found");
         Ok(())
     }
 
