@@ -25,6 +25,8 @@ Baseline endpoints:
 - `POST /internal/v1/runs`
 - `POST /internal/v1/runs/:run_id/events`
 - `GET /internal/v1/runs/:run_id`
+- `GET /internal/v1/runs/:run_id/receipt`
+- `GET /internal/v1/runs/:run_id/replay`
 - `GET /internal/v1/projectors/checkpoints/:run_id`
 - `POST /internal/v1/workers`
 - `GET /internal/v1/workers/:worker_id?owner_user_id=<id>`
