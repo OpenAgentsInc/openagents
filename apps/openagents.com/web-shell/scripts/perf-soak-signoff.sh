@@ -24,9 +24,18 @@ VERIFY_P95_BUDGET_MS="${VERIFY_P95_BUDGET_MS:-250}"
 SYNC_TOKEN_P95_BUDGET_MS="${SYNC_TOKEN_P95_BUDGET_MS:-250}"
 SOAK_ERRORS_BUDGET="${SOAK_ERRORS_BUDGET:-0}"
 RSS_GROWTH_BUDGET_KB="${RSS_GROWTH_BUDGET_KB:-51200}"
+JS_ASSET_BUDGET_BYTES="${JS_ASSET_BUDGET_BYTES:-380000}"
+WASM_ASSET_BUDGET_BYTES="${WASM_ASSET_BUDGET_BYTES:-5500000}"
+HOST_SHIM_BUDGET_BYTES="${HOST_SHIM_BUDGET_BYTES:-12000}"
+WASM_GZIP_BUDGET_BYTES="${WASM_GZIP_BUDGET_BYTES:-1900000}"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "error: jq is required" >&2
+  exit 1
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "error: node is required" >&2
   exit 1
 fi
 
@@ -41,11 +50,30 @@ fi
 
 JS_PATH="$(jq -r '.entry.js' "${MANIFEST_PATH}")"
 WASM_PATH="$(jq -r '.entry.wasm' "${MANIFEST_PATH}")"
+HOST_SHIM_PATH="$(jq -r '.entry.hostShim' "${MANIFEST_PATH}")"
 BUILD_ID="$(jq -r '.buildId' "${MANIFEST_PATH}")"
-if [[ -z "${JS_PATH}" || "${JS_PATH}" == "null" || -z "${WASM_PATH}" || "${WASM_PATH}" == "null" ]]; then
-  echo "error: manifest missing entry.js/entry.wasm" >&2
+if [[ -z "${JS_PATH}" || "${JS_PATH}" == "null" || -z "${WASM_PATH}" || "${WASM_PATH}" == "null" || -z "${HOST_SHIM_PATH}" || "${HOST_SHIM_PATH}" == "null" ]]; then
+  echo "error: manifest missing entry.js/entry.wasm/entry.hostShim" >&2
   exit 1
 fi
+
+JS_FILE="${DIST_DIR}/${JS_PATH}"
+WASM_FILE="${DIST_DIR}/${WASM_PATH}"
+HOST_SHIM_FILE="${DIST_DIR}/${HOST_SHIM_PATH}"
+
+for required_file in "${JS_FILE}" "${WASM_FILE}" "${HOST_SHIM_FILE}"; do
+  if [[ ! -f "${required_file}" ]]; then
+    echo "error: dist asset missing: ${required_file}" >&2
+    exit 1
+  fi
+done
+
+node --test "${WEB_SHELL_DIR}/host/capability-policy.test.mjs" >/dev/null
+
+JS_ASSET_BYTES="$(wc -c < "${JS_FILE}" | tr -d ' ')"
+WASM_ASSET_BYTES="$(wc -c < "${WASM_FILE}" | tr -d ' ')"
+HOST_SHIM_BYTES="$(wc -c < "${HOST_SHIM_FILE}" | tr -d ' ')"
+WASM_GZIP_BYTES="$(gzip -9 -c "${WASM_FILE}" | wc -c | tr -d ' ')"
 
 SERVICE_LOG="$(mktemp -t openagents-web-shell-signoff.XXXX.log)"
 cleanup() {
@@ -220,6 +248,10 @@ if awk -v a="${SYNC_P95_MS}" -v b="${SYNC_TOKEN_P95_BUDGET_MS}" 'BEGIN{exit !(a>
 if [[ "${SOAK_ERRORS}" -gt "${SOAK_ERRORS_BUDGET}" ]]; then BUDGET_FAILS+=("soak.errors>${SOAK_ERRORS_BUDGET}"); fi
 if [[ "${AUTH_ERRORS}" -gt 0 ]]; then BUDGET_FAILS+=("auth_churn.errors>0"); fi
 if [[ "${RSS_GROWTH_KB}" -gt "${RSS_GROWTH_BUDGET_KB}" ]]; then BUDGET_FAILS+=("rss_growth_kb>${RSS_GROWTH_BUDGET_KB}"); fi
+if [[ "${JS_ASSET_BYTES}" -gt "${JS_ASSET_BUDGET_BYTES}" ]]; then BUDGET_FAILS+=("assets.js_bytes>${JS_ASSET_BUDGET_BYTES}"); fi
+if [[ "${WASM_ASSET_BYTES}" -gt "${WASM_ASSET_BUDGET_BYTES}" ]]; then BUDGET_FAILS+=("assets.wasm_bytes>${WASM_ASSET_BUDGET_BYTES}"); fi
+if [[ "${HOST_SHIM_BYTES}" -gt "${HOST_SHIM_BUDGET_BYTES}" ]]; then BUDGET_FAILS+=("assets.host_shim_bytes>${HOST_SHIM_BUDGET_BYTES}"); fi
+if [[ "${WASM_GZIP_BYTES}" -gt "${WASM_GZIP_BUDGET_BYTES}" ]]; then BUDGET_FAILS+=("assets.wasm_gzip_bytes>${WASM_GZIP_BUDGET_BYTES}"); fi
 
 PASS=true
 if [[ "${#BUDGET_FAILS[@]}" -gt 0 ]]; then
@@ -262,6 +294,10 @@ jq -n \
   --argjson rss_max_kb "${RSS_MAX_KB}" \
   --argjson rss_avg_kb "${RSS_AVG_KB}" \
   --argjson rss_growth_kb "${RSS_GROWTH_KB}" \
+  --argjson js_asset_bytes "${JS_ASSET_BYTES}" \
+  --argjson wasm_asset_bytes "${WASM_ASSET_BYTES}" \
+  --argjson host_shim_bytes "${HOST_SHIM_BYTES}" \
+  --argjson wasm_gzip_bytes "${WASM_GZIP_BYTES}" \
   --argjson budgets "$(jq -n \
     --argjson root_p95_ms "${ROOT_P95_BUDGET_MS}" \
     --argjson manifest_p95_ms "${MANIFEST_P95_BUDGET_MS}" \
@@ -270,7 +306,11 @@ jq -n \
     --argjson sync_p95_ms "${SYNC_TOKEN_P95_BUDGET_MS}" \
     --argjson soak_errors "${SOAK_ERRORS_BUDGET}" \
     --argjson rss_growth_kb "${RSS_GROWTH_BUDGET_KB}" \
-    '{root_p95_ms:$root_p95_ms, manifest_p95_ms:$manifest_p95_ms, wasm_p95_ms:$wasm_p95_ms, auth_verify_p95_ms:$verify_p95_ms, sync_token_p95_ms:$sync_p95_ms, soak_errors:$soak_errors, rss_growth_kb:$rss_growth_kb}')" \
+    --argjson js_asset_bytes "${JS_ASSET_BUDGET_BYTES}" \
+    --argjson wasm_asset_bytes "${WASM_ASSET_BUDGET_BYTES}" \
+    --argjson host_shim_bytes "${HOST_SHIM_BUDGET_BYTES}" \
+    --argjson wasm_gzip_bytes "${WASM_GZIP_BUDGET_BYTES}" \
+    '{root_p95_ms:$root_p95_ms, manifest_p95_ms:$manifest_p95_ms, wasm_p95_ms:$wasm_p95_ms, auth_verify_p95_ms:$verify_p95_ms, sync_token_p95_ms:$sync_p95_ms, soak_errors:$soak_errors, rss_growth_kb:$rss_growth_kb, js_asset_bytes:$js_asset_bytes, wasm_asset_bytes:$wasm_asset_bytes, host_shim_bytes:$host_shim_bytes, wasm_gzip_bytes:$wasm_gzip_bytes}')" \
   '{
     timestamp: $timestamp,
     build_id: $build_id,
@@ -281,7 +321,13 @@ jq -n \
       boot: {
         root: { p95_ms: ($root_p95_ms|tonumber), avg_ms: ($root_avg_ms|tonumber), max_ms: ($root_max_ms|tonumber) },
         manifest: { p95_ms: ($manifest_p95_ms|tonumber), avg_ms: ($manifest_avg_ms|tonumber) },
-        wasm_asset: { p95_ms: ($wasm_p95_ms|tonumber), avg_ms: ($wasm_avg_ms|tonumber) }
+        wasm_asset: { p95_ms: ($wasm_p95_ms|tonumber), avg_ms: ($wasm_avg_ms|tonumber) },
+        asset_sizes: {
+          js_bytes: $js_asset_bytes,
+          wasm_bytes: $wasm_asset_bytes,
+          host_shim_bytes: $host_shim_bytes,
+          wasm_gzip_bytes: $wasm_gzip_bytes
+        }
       },
       interaction: {
         auth_verify: { p95_ms: ($verify_p95_ms|tonumber), avg_ms: ($verify_avg_ms|tonumber) },

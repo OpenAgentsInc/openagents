@@ -7089,6 +7089,7 @@ dependencies = [
  "futures-util",
  "gloo-net",
  "gloo-timers",
+ "js-sys",
  "openagents-app-state",
  "openagents-client-core",
  "openagents-ui-core",

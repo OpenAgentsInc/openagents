@@ -59,6 +59,7 @@ This writes:
 - `apps/openagents.com/web-shell/dist/assets/openagents_web_shell.js`
 - `apps/openagents.com/web-shell/dist/assets/openagents_web_shell_bg.wasm`
 - `apps/openagents.com/web-shell/dist/assets/host-shim.js`
+- `apps/openagents.com/web-shell/dist/assets/capability-policy.js`
 
 Service-worker pinning + skew verification:
 
@@ -74,10 +75,17 @@ OA-RUST-065 harness:
 apps/openagents.com/web-shell/scripts/perf-soak-signoff.sh
 ```
 
+Fast local/release gate:
+
+```bash
+apps/openagents.com/web-shell/scripts/perf-budget-gate.sh
+```
+
 Artifacts:
 
 - `apps/openagents.com/web-shell/perf/latest.json`
 - `apps/openagents.com/web-shell/perf/signoff-<timestamp>.json`
+- Policy: `apps/openagents.com/web-shell/docs/WASM_BOOT_PERFORMANCE_POLICY.md`
 
 ## JS Host Boundary
 
@@ -89,6 +97,12 @@ Enforcement check:
 
 ```bash
 apps/openagents.com/web-shell/check-host-shim.sh
+```
+
+Compatibility + capability policy tests:
+
+```bash
+apps/openagents.com/web-shell/scripts/sw-policy-verify.sh
 ```
 
 ## Browser smoke test

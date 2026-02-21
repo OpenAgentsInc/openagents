@@ -6,6 +6,7 @@ APP_DIR="${SCRIPT_DIR}"
 OUT_DIR="${APP_DIR}/dist"
 ASSETS_DIR="${OUT_DIR}/assets"
 HOST_SHIM_TEMPLATE="${APP_DIR}/host/host-shim.js"
+CAPABILITY_POLICY_TEMPLATE="${APP_DIR}/host/capability-policy.js"
 SW_TEMPLATE="${APP_DIR}/host/sw-template.js"
 
 rm -rf "${OUT_DIR}"
@@ -13,6 +14,11 @@ mkdir -p "${ASSETS_DIR}"
 
 if [[ ! -f "${HOST_SHIM_TEMPLATE}" ]]; then
   echo "error: host shim template not found at ${HOST_SHIM_TEMPLATE}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${CAPABILITY_POLICY_TEMPLATE}" ]]; then
+  echo "error: capability policy template not found at ${CAPABILITY_POLICY_TEMPLATE}" >&2
   exit 1
 fi
 
@@ -38,7 +44,7 @@ SYNC_SCHEMA_MAX="${OA_SYNC_SCHEMA_MAX:-1}"
 ROLLBACK_BUILD_IDS="${OA_ROLLBACK_BUILD_IDS:-}"
 export ROLLBACK_BUILD_IDS
 
-PINNED_ASSETS_JSON='["/index.html","/assets/openagents_web_shell.js","/assets/openagents_web_shell_bg.wasm","/assets/host-shim.js"]'
+PINNED_ASSETS_JSON='["/index.html","/assets/openagents_web_shell.js","/assets/openagents_web_shell_bg.wasm","/assets/host-shim.js","/assets/capability-policy.js"]'
 
 ROLLBACK_CACHE_NAMES_JSON="$(python3 - <<'PY'
 import json
@@ -62,6 +68,8 @@ build_id = sys.argv[3]
 template = template_path.read_text(encoding="utf-8")
 out_path.write_text(template.replace("__OA_BUILD_ID__", build_id), encoding="utf-8")
 PY
+
+cp "${CAPABILITY_POLICY_TEMPLATE}" "${ASSETS_DIR}/capability-policy.js"
 
 python3 - <<'PY' "${SW_TEMPLATE}" "${OUT_DIR}/sw.js" "${BUILD_ID}" "${PINNED_ASSETS_JSON}" "${ROLLBACK_CACHE_NAMES_JSON}"
 import pathlib

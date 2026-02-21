@@ -134,6 +134,11 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 - `GET /assets/<non-hashed-file>` is served with `Cache-Control: public, max-age=60`.
 - SW pinning/rollback release order and recovery runbook:
   - `apps/openagents.com/service/docs/SW_ASSET_PINNING_ROLLBACK_RUNBOOK.md`
+- WASM boot budgets/capability fallback policy:
+  - `apps/openagents.com/web-shell/docs/WASM_BOOT_PERFORMANCE_POLICY.md`
+- Required verification gates:
+  - `apps/openagents.com/web-shell/scripts/sw-policy-verify.sh`
+  - `apps/openagents.com/web-shell/scripts/perf-budget-gate.sh`
 
 ## Compatibility negotiation policy
 

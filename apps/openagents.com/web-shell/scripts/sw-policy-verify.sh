@@ -8,6 +8,7 @@ DIST_DIR="${APP_DIR}/dist"
 "${APP_DIR}/build-dist.sh"
 
 node --test "${APP_DIR}/host/update-policy.test.mjs"
+node --test "${APP_DIR}/host/capability-policy.test.mjs"
 
 python3 - <<'PY' "${DIST_DIR}/manifest.json" "${DIST_DIR}/sw.js" "${DIST_DIR}/assets/host-shim.js"
 import json

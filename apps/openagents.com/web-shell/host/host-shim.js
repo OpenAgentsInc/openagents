@@ -1,9 +1,26 @@
 import init from "./openagents_web_shell.js";
 import { evaluateBuildSkew, parseCompatibilityManifest } from "./update-policy.js";
+import {
+  evaluateGpuCapability,
+  parseGpuModeOverride,
+} from "./capability-policy.js";
 
 const STATUS_ID = "openagents-web-shell-status";
 const CURRENT_BUILD_ID = "__OA_BUILD_ID__";
 const BUILD_SKEW_PROMOTION_TIMEOUT_MS = 4_000;
+
+function detectWebGl2Support() {
+  try {
+    const canvas = document.createElement("canvas");
+    const context =
+      canvas.getContext("webgl2") ||
+      canvas.getContext("experimental-webgl2");
+    return Boolean(context);
+  } catch (error) {
+    console.warn("webgl2 capability probe failed", error);
+    return false;
+  }
+}
 
 function setStatus(text, isError = false) {
   const status = document.getElementById(STATUS_ID);
@@ -149,7 +166,29 @@ function registerServiceWorker() {
 }
 
 async function boot() {
-  setStatus("Boot: loading wasm entrypoint");
+  const modeOverride = parseGpuModeOverride(window.location.search);
+  const capability = evaluateGpuCapability({
+    modeOverride,
+    hasWebGpu: Boolean(navigator.gpu),
+    hasWebGl2: detectWebGl2Support(),
+    userAgent: navigator.userAgent || "",
+  });
+
+  window.__OA_GPU_MODE__ = capability.mode;
+  window.__OA_GPU_REASON__ = capability.reason;
+
+  if (capability.mode === "limited") {
+    setStatus(
+      "Boot error: this browser lacks required WebGPU/WebGL2 capability.",
+      true,
+    );
+    console.error("openagents web shell capability failure", capability);
+    return;
+  }
+
+  setStatus(
+    `Boot: loading wasm entrypoint (${capability.mode}, ${capability.reason})`,
+  );
   const registration = await registerServiceWorker();
   const blockedForSkew = await enforceBuildCompatibility(registration);
   if (blockedForSkew) {
