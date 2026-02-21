@@ -302,6 +302,7 @@ Drill artifacts: `apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh`, `
 
 ### OA-RUST-071 — [Ops] Publish incident runbooks for WS/auth/stale-cursor failures
 Description: Publish operator runbooks for the highest-risk runtime/Khala failure classes.
+Runbook artifacts: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md`, `apps/runtime/docs/reports/2026-02-21-ws-auth-stale-cursor-tabletop.md`
 
 ### OA-RUST-072 — [Docs] Mark `docs/ARCHITECTURE.md` historical or replace with Rust architecture
 Description: Complete architecture documentation transition so legacy architecture docs cannot be mistaken for current target.

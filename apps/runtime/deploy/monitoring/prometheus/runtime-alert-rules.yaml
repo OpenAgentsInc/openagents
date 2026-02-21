@@ -141,6 +141,39 @@ spec:
             description: Runtime replay/rebuild path for Khala projections is failing.
             runbook: apps/runtime/docs/OPERATIONS_ALERTING.md#khala-projection-replay
 
+        - alert: OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh
+          expr: sum(rate(openagents_runtime_sync_socket_auth_count{status="error"}[5m])) / clamp_min(sum(rate(openagents_runtime_sync_socket_auth_count[5m])), 1) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            service: runtime
+          annotations:
+            summary: Sync socket auth failures exceeded 5%
+            description: Khala websocket auth rejects are elevated.
+            runbook: apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-a-ws-auth-and-token-failures
+
+        - alert: OpenAgentsRuntimeSyncSocketTimeoutRateHigh
+          expr: sum(rate(openagents_runtime_sync_socket_timeout_count{status="timeout"}[5m])) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            service: runtime
+          annotations:
+            summary: Sync socket timeout rate is elevated
+            description: Live websocket sessions are timing out above expected baseline.
+            runbook: apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-b-ws-reconnect-and-timeout-storm
+
+        - alert: OpenAgentsRuntimeSyncStaleCursorSpike
+          expr: sum(increase(openagents_runtime_sync_replay_catchup_duration_ms_count{status="stale_cursor"}[10m])) > 20
+          for: 5m
+          labels:
+            severity: warning
+            service: runtime
+          annotations:
+            summary: Stale cursor incidents spiked
+            description: Clients are reconnecting below retention floor and require resnapshot.
+            runbook: apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-c-stale_cursor-spike
+
         - alert: OpenAgentsKhalaTokenMintFailureRatioHigh
           expr: ((sum(rate(openagents_laravel_khala_token_mint_total{result="error"}[10m])) or vector(0)) / clamp_min((sum(rate(openagents_laravel_khala_token_mint_total[10m])) or vector(0)), 1)) > 0.01
           for: 15m

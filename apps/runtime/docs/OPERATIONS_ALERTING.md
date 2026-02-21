@@ -141,6 +141,37 @@ Prometheus rule artifact:
   2. Split failures by class (`authz_denied`, `signing_error`, `upstream_unavailable`) in Laravel logs.
   3. Validate Khala auth key rotation state and runtime bridge config alignment.
   4. If failure ratio stays elevated, pause rollout of new subscription clients and use runtime fallback polling paths.
+  5. Follow incident playbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-a-ws-auth-and-token-failures`
+
+### Sync socket auth failure ratio
+
+- Alert: `OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh`
+- Threshold: sync socket auth failure ratio > 5% for 10m
+- Action:
+  1. Inspect auth rejection reason mix (`unknown_kid`, `claim_mismatch`, `token_expired`, `missing_token`).
+  2. Validate sync token signing key parity between control-plane minting and runtime verifier config.
+  3. Rehearse auth guard behavior with `mix test test/openagents_runtime/sync/jwt_verifier_test.exs --only chaos_drill`.
+  4. Follow incident playbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-a-ws-auth-and-token-failures`
+
+### Sync socket timeout rate
+
+- Alert: `OpenAgentsRuntimeSyncSocketTimeoutRateHigh`
+- Threshold: timeout rate > 0.05/s over 10m
+- Action:
+  1. Check websocket connection/reconnect churn and heartbeat settings.
+  2. Validate there is no deploy-induced reconnect storm.
+  3. Rehearse reconnect handling via `mix test test/openagents_runtime_web/channels/sync_channel_test.exs --only chaos_drill`.
+  4. Follow incident playbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-b-ws-reconnect-and-timeout-storm`
+
+### Sync stale cursor spike
+
+- Alert: `OpenAgentsRuntimeSyncStaleCursorSpike`
+- Threshold: stale cursor incidents > 20 over 10m
+- Action:
+  1. Inspect retention-floor and stale topic distribution in sync error payloads.
+  2. Validate client resnapshot/watermark-reset behavior.
+  3. Confirm retention horizon has not regressed.
+  4. Follow incident playbook: `apps/runtime/docs/INCIDENT_WS_AUTH_RECONNECT_STALE_CURSOR.md#incident-c-stale_cursor-spike`
 
 ### End-to-end request correlation walkthrough
 

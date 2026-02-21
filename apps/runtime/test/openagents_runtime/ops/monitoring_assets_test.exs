@@ -30,7 +30,10 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "Khala Projection Drift Incidents (10m)",
       "Khala Projection Replay Errors (15m)",
       "Khala Token Mint Failure Ratio",
-      "Khala Projection Hash Mismatch Incidents (10m)"
+      "Khala Projection Hash Mismatch Incidents (10m)",
+      "Sync Socket Auth Failure Ratio",
+      "Sync Socket Timeout Rate",
+      "Sync Stale Cursor Incidents (10m)"
     ]
 
     Enum.each(required_titles, fn title ->
@@ -71,6 +74,9 @@ defmodule OpenAgentsRuntime.Ops.MonitoringAssetsTest do
       "OpenAgentsRuntimeKhalaProjectionDriftIncidentsHigh",
       "OpenAgentsRuntimeKhalaProjectionHashMismatchDetected",
       "OpenAgentsRuntimeKhalaProjectionReplayFailures",
+      "OpenAgentsRuntimeSyncSocketAuthFailureRatioHigh",
+      "OpenAgentsRuntimeSyncSocketTimeoutRateHigh",
+      "OpenAgentsRuntimeSyncStaleCursorSpike",
       "OpenAgentsKhalaTokenMintFailureRatioHigh"
     ]
 

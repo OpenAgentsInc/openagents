@@ -29,6 +29,7 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     khala_projection_write_failure: [:projection, :reason_class],
     khala_projection_drift: [:projection, :reason_class],
     khala_projection_replay: [:scope, :result],
+    sync_socket_auth: [:status, :reason_class],
     sync_socket_connection: [:action, :status],
     sync_socket_heartbeat: [:status],
     sync_socket_reconnect: [:status],
@@ -140,6 +141,7 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       summary("openagents_runtime.khala.projection.replay.duration_ms",
         tags: tags_for(:khala_projection_replay)
       ),
+      counter("openagents_runtime.sync.socket.auth.count", tags: tags_for(:sync_socket_auth)),
       counter("openagents_runtime.sync.socket.connection.count",
         tags: tags_for(:sync_socket_connection)
       ),

@@ -36,6 +36,7 @@ defmodule OpenAgentsRuntime.Telemetry.MetricsTest do
     assert Map.has_key?(allowlist, :khala_projection_write_failure)
     assert Map.has_key?(allowlist, :khala_projection_drift)
     assert Map.has_key?(allowlist, :khala_projection_replay)
+    assert Map.has_key?(allowlist, :sync_socket_auth)
     assert Map.has_key?(allowlist, :sync_socket_connection)
     assert Map.has_key?(allowlist, :sync_socket_heartbeat)
     assert Map.has_key?(allowlist, :sync_socket_reconnect)
