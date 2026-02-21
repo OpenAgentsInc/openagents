@@ -165,6 +165,10 @@ No `/internal/v1/*` endpoint is designated as a projection ingest API.
 
 Projection publishing is a runtime-internal concern implemented by runtime-owned writers.
 
+Ordering and delivery contract authority:
+
+- `apps/runtime/docs/KHALA_ORDERING_DELIVERY_CONTRACT.md`
+
 For rollout sequencing:
 
 - `docs/sync/thoughts.md`
