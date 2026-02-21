@@ -96,6 +96,7 @@ Codegen artifacts: `crates/openagents-proto/`, `scripts/verify-rust-proto-crate.
 
 ### OA-RUST-013 — [Proto] Enforce buf lint/breaking/generate gates in local CI lanes
 Description: Wire proto compatibility gates into local CI so breaking schema changes cannot land without explicit versioned evolution.
+Gate artifacts: `scripts/local-ci.sh`, `scripts/verify-proto-generate.sh`, `scripts/verify-rust-proto-crate.sh`, `docs/LOCAL_CI.md`
 
 ### OA-RUST-014 — [Proto] Add wire-to-domain conversion test harness
 Description: Add tests validating `TryFrom`/`From` conversions between proto wire types and Rust domain models, including invalid payload behavior.
