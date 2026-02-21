@@ -2,6 +2,27 @@
 
 `proto/` is the canonical Layer-0 contract source for shared runtime/control-plane/client protocol semantics.
 
+## Decision Lock (2026-02-21)
+
+Proto remains the source of truth for all boundary-crossing contracts, including the Rust-only endstate.
+
+Required policy:
+
+1. Cross-process and client/server contracts are proto-first.
+2. Rust wire types are generated from proto.
+3. Rust-native types are domain-layer only and must map to/from proto types explicitly.
+4. Serde JSON types are never the authority contract (debug and interoperability use only).
+
+Recommended layering:
+
+1. Wire layer (`proto` generated types).
+2. Domain layer (Rust invariants/state machine types).
+3. Explicit conversion boundary (`TryFrom`/`From` mappings).
+
+Khala-specific requirement:
+
+- Use an explicit envelope model with stable fields (topic, sequence, kind, payload bytes, schema version) to preserve replay and compatibility semantics.
+
 ## Versioning Policy
 
 - Additive-only changes in-place for v1 packages:
@@ -30,6 +51,7 @@
 Initial generation targets configured in `buf.gen.yaml`:
 - TypeScript (`generated/ts`)
 - PHP (`generated/php`)
+- Rust (required by policy; generation path to remain configured in lockstep with Rust service/client rollout)
 
 Policy:
 - Generated artifacts under `generated/` are **not checked into git**.

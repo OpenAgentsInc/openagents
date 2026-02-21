@@ -192,10 +192,25 @@ Locked behavior:
 
 ## Protocol and Contract Governance
 
-- `proto/` remains canonical for all cross-surface contracts.
-- Rust code generation is mandatory for all app/service consumers.
-- Any JSON transport payloads must be strict mappings from proto-defined schemas.
-- No language-local schema authority is allowed.
+`proto/` remains canonical for all cross-surface contracts and is the source of truth even in the Rust-only endstate.
+
+Locked policy:
+
+1. All cross-process and client/server contracts are proto-first.
+2. Rust code generation from proto is mandatory for app and service consumers.
+3. Rust-native types are allowed for internal state machines/render models only, not as wire authority.
+4. Any JSON transport payloads must be strict mappings from proto-defined schemas (debug/interop only).
+5. No language-local schema authority is allowed.
+
+Required layering:
+
+1. Wire layer: proto-generated Rust types (`proto/openagents/*`).
+2. Domain layer: Rust-native structs/enums with invariants and helper behavior.
+3. Mapping boundary: explicit `TryFrom`/`From` conversion code between wire and domain.
+
+Prohibited anti-pattern:
+
+- “types-first in Rust” for Khala/runtime/control contracts.
 
 ## Auth and Identity Flow (Rust Endstate)
 
@@ -204,6 +219,18 @@ Locked behavior:
 3. Client requests sync token from edge with explicit topic scopes.
 4. Client connects to Khala WS using sync token.
 5. Khala enforces topic ACL and ownership checks before subscription.
+
+## Khala Frame Envelope (Rust Endstate)
+
+Khala keeps proto-first transport frames with an explicit envelope for replay stability:
+
+- `topic`
+- `seq`
+- `kind`
+- `payload_bytes`
+- `schema_version`
+
+This envelope is mandatory for deterministic replay, forward/backward compatibility, and cross-target decoder parity (native + wasm + iOS host bridges).
 
 ## Lightning and Payment Architecture (Rust Endstate)
 
