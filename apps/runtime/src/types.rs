@@ -62,6 +62,36 @@ pub struct ProjectionCheckpoint {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProjectionDriftReport {
+    pub topic: String,
+    pub expected_next_seq: u64,
+    pub last_seen_seq: u64,
+    pub incoming_seq: u64,
+    pub reason: String,
+    pub detected_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RunProjectionSummary {
+    pub run_id: String,
+    pub status: String,
+    pub last_seq: u64,
+    pub event_count: u64,
+    pub projection_hash: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkerProjectionSummary {
+    pub worker_id: String,
+    pub status: String,
+    pub last_seq: u64,
+    pub event_count: u64,
+    pub projection_hash: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkerStatus {
