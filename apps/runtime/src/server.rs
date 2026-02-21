@@ -853,6 +853,20 @@ enum ApiError {
     Conflict(String),
     KhalaUnauthorized(String),
     KhalaForbiddenTopic(String),
+    PublishRateLimited {
+        retry_after_ms: u64,
+        reason_code: String,
+        topic: String,
+        topic_class: String,
+        max_publish_per_second: u32,
+    },
+    PayloadTooLarge {
+        reason_code: String,
+        topic: String,
+        topic_class: String,
+        payload_bytes: usize,
+        max_payload_bytes: usize,
+    },
     RateLimited {
         retry_after_ms: u64,
         reason_code: String,
@@ -920,7 +934,7 @@ impl ApiError {
     fn from_fanout(error: FanoutError) -> Self {
         match error {
             FanoutError::InvalidTopic => {
-                Self::InvalidRequest("topic is required for khala fanout polling".to_string())
+                Self::InvalidRequest("topic is required for khala fanout operations".to_string())
             }
             FanoutError::StaleCursor {
                 topic,
@@ -933,6 +947,52 @@ impl ApiError {
                 oldest_available_cursor,
                 head_cursor,
             },
+            FanoutError::PublishRateLimited {
+                topic,
+                topic_class,
+                reason_code,
+                max_publish_per_second,
+                retry_after_ms,
+            } => {
+                tracing::warn!(
+                    topic,
+                    topic_class,
+                    reason_code,
+                    max_publish_per_second,
+                    retry_after_ms,
+                    "khala publish rate limit triggered"
+                );
+                Self::PublishRateLimited {
+                    retry_after_ms,
+                    reason_code,
+                    topic,
+                    topic_class,
+                    max_publish_per_second,
+                }
+            }
+            FanoutError::FramePayloadTooLarge {
+                topic,
+                topic_class,
+                reason_code,
+                payload_bytes,
+                max_payload_bytes,
+            } => {
+                tracing::warn!(
+                    topic,
+                    topic_class,
+                    reason_code,
+                    payload_bytes,
+                    max_payload_bytes,
+                    "khala publish payload exceeds frame-size limit"
+                );
+                Self::PayloadTooLarge {
+                    reason_code,
+                    topic,
+                    topic_class,
+                    payload_bytes,
+                    max_payload_bytes,
+                }
+            }
         }
     }
 
@@ -1034,7 +1094,7 @@ async fn publish_latest_run_event(state: &AppState, run: &RuntimeRun) -> Result<
             },
         )
         .await
-        .map_err(|error| ApiError::Internal(error.to_string()))
+        .map_err(ApiError::from_fanout)
 }
 
 async fn publish_worker_snapshot(
@@ -1060,7 +1120,7 @@ async fn publish_worker_snapshot(
             },
         )
         .await
-        .map_err(|error| ApiError::Internal(error.to_string()))
+        .map_err(ApiError::from_fanout)
 }
 
 impl IntoResponse for ApiError {
@@ -1096,6 +1156,44 @@ impl IntoResponse for ApiError {
                     "error": "forbidden_topic",
                     "message": "topic subscription is not authorized",
                     "reason_code": reason_code,
+                })),
+            )
+                .into_response(),
+            Self::PublishRateLimited {
+                retry_after_ms,
+                reason_code,
+                topic,
+                topic_class,
+                max_publish_per_second,
+            } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({
+                    "error": "rate_limited",
+                    "message": "khala publish rate limit exceeded",
+                    "reason_code": reason_code,
+                    "retry_after_ms": retry_after_ms,
+                    "topic": topic,
+                    "topic_class": topic_class,
+                    "max_publish_per_second": max_publish_per_second,
+                })),
+            )
+                .into_response(),
+            Self::PayloadTooLarge {
+                reason_code,
+                topic,
+                topic_class,
+                payload_bytes,
+                max_payload_bytes,
+            } => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(serde_json::json!({
+                    "error": "payload_too_large",
+                    "message": "khala frame payload exceeds configured limit",
+                    "reason_code": reason_code,
+                    "topic": topic,
+                    "topic_class": topic_class,
+                    "payload_bytes": payload_bytes,
+                    "max_payload_bytes": max_payload_bytes,
                 })),
             )
                 .into_response(),
@@ -1251,12 +1349,22 @@ mod tests {
             khala_consumer_registry_capacity: 4096,
             khala_reconnect_base_backoff_ms: 400,
             khala_reconnect_jitter_ms: 250,
+            khala_run_events_publish_rate_per_second: 240,
+            khala_worker_lifecycle_publish_rate_per_second: 180,
+            khala_codex_worker_events_publish_rate_per_second: 240,
+            khala_fallback_publish_rate_per_second: 90,
+            khala_run_events_max_payload_bytes: 256 * 1024,
+            khala_worker_lifecycle_max_payload_bytes: 64 * 1024,
+            khala_codex_worker_events_max_payload_bytes: 128 * 1024,
+            khala_fallback_max_payload_bytes: 64 * 1024,
             sync_token_signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
             sync_token_issuer: "https://openagents.com".to_string(),
             sync_token_audience: "openagents-sync".to_string(),
             sync_revoked_jtis: revoked_for_config,
         };
         mutate_config(&mut config);
+        let fanout_limits = config.khala_fanout_limits();
+        let fanout_capacity = config.fanout_queue_capacity;
         let state = AppState::new(
             config,
             Arc::new(RuntimeOrchestrator::new(
@@ -1266,7 +1374,10 @@ mod tests {
                 projector_pipeline,
             )),
             Arc::new(InMemoryWorkerRegistry::new(projectors, 120_000)),
-            Arc::new(FanoutHub::memory(64)),
+            Arc::new(FanoutHub::memory_with_limits(
+                fanout_capacity,
+                fanout_limits,
+            )),
             Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
                 signing_key: TEST_SYNC_SIGNING_KEY.to_string(),
                 issuer: "https://openagents.com".to_string(),
@@ -2023,6 +2134,154 @@ mod tests {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or(""),
             "advance_cursor_or_rebootstrap"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_publish_rate_limit_returns_deterministic_error() -> Result<()> {
+        let app = build_test_router_with_config(
+            AuthorityWriteMode::RustActive,
+            HashSet::new(),
+            |config| {
+                config.khala_run_events_publish_rate_per_second = 1;
+                config.khala_run_events_max_payload_bytes = 64 * 1024;
+            },
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:publish-rate-limit-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let append_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.step",
+                        "payload": {"step": 2},
+                        "expected_previous_seq": 1
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(
+            append_response.status(),
+            axum::http::StatusCode::TOO_MANY_REQUESTS
+        );
+        let append_json = response_json(append_response).await?;
+        assert_eq!(
+            append_json
+                .pointer("/error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "rate_limited"
+        );
+        assert_eq!(
+            append_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "khala_publish_rate_limited"
+        );
+        assert_eq!(
+            append_json
+                .pointer("/topic_class")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "run_events"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn khala_payload_limit_returns_payload_too_large_error() -> Result<()> {
+        let app = build_test_router_with_config(
+            AuthorityWriteMode::RustActive,
+            HashSet::new(),
+            |config| {
+                config.khala_run_events_publish_rate_per_second = 50;
+                config.khala_run_events_max_payload_bytes = 80;
+            },
+        );
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:payload-limit-worker",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(create_response.status(), axum::http::StatusCode::CREATED);
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let append_response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.step",
+                        "payload": {"blob": "this payload is intentionally much larger than eighty bytes to trigger the khala frame-size guard"},
+                        "expected_previous_seq": 1
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(
+            append_response.status(),
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE
+        );
+        let append_json = response_json(append_response).await?;
+        assert_eq!(
+            append_json
+                .pointer("/error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "payload_too_large"
+        );
+        assert_eq!(
+            append_json
+                .pointer("/reason_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "khala_frame_payload_too_large"
+        );
+        assert_eq!(
+            append_json
+                .pointer("/topic_class")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "run_events"
         );
 
         Ok(())

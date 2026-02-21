@@ -95,6 +95,37 @@ These tables are runtime-owned and are not Laravel authority tables.
 - Event-only topics remain tail-only replay (no snapshot bootstrap source).
 - Live delivery fairness is enforced with per-connection queue bounds + topic-slice drain scheduling; slow consumers are throttled/disconnected deterministically.
 
+## Publish and Frame Limits (OA-RUST-088)
+
+Runtime enforces topic-class publish and frame-size limits in the Rust fanout hub before frames are accepted into the delivery queue.
+
+Topic classes:
+
+- `run_events` (`run:<run_id>:events`)
+- `worker_lifecycle` (`worker:<worker_id>:lifecycle`)
+- `codex_worker_events` (`runtime.codex_worker_events`)
+- `fallback` (any other topic pattern)
+
+Environment controls:
+
+- `RUNTIME_KHALA_RUN_EVENTS_PUBLISH_RATE_PER_SECOND`
+- `RUNTIME_KHALA_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND`
+- `RUNTIME_KHALA_CODEX_WORKER_EVENTS_PUBLISH_RATE_PER_SECOND`
+- `RUNTIME_KHALA_FALLBACK_PUBLISH_RATE_PER_SECOND`
+- `RUNTIME_KHALA_RUN_EVENTS_MAX_PAYLOAD_BYTES`
+- `RUNTIME_KHALA_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES`
+- `RUNTIME_KHALA_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES`
+- `RUNTIME_KHALA_FALLBACK_MAX_PAYLOAD_BYTES`
+
+Deterministic violation reason codes:
+
+- `khala_publish_rate_limited` (HTTP 429 on publish path)
+- `khala_frame_payload_too_large` (HTTP 413 on publish path)
+
+Operator visibility:
+
+- Per-topic violation counters and last reason are exposed in Khala fanout topic windows (`/internal/v1/khala/fanout/hooks` and `/internal/v1/khala/fanout/metrics`).
+
 ## Rebuild Posture
 
 If projection drift is detected:

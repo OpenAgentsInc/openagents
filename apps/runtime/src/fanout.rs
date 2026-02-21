@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -27,16 +28,135 @@ pub struct ExternalFanoutHook {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FanoutTopicWindow {
     pub topic: String,
+    pub topic_class: String,
     pub oldest_sequence: u64,
     pub head_sequence: u64,
     pub queue_depth: usize,
     pub dropped_messages: u64,
+    pub publish_rate_limit_per_second: u32,
+    pub max_payload_bytes: usize,
+    pub publish_rate_limited_count: u64,
+    pub frame_size_rejected_count: u64,
+    pub last_violation_reason: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FanoutTierLimits {
+    pub max_publish_per_second: u32,
+    pub max_payload_bytes: usize,
+}
+
+impl FanoutTierLimits {
+    #[must_use]
+    pub fn normalized(&self) -> Self {
+        Self {
+            max_publish_per_second: self.max_publish_per_second.max(1),
+            max_payload_bytes: self.max_payload_bytes.max(1),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FanoutLimitConfig {
+    pub run_events: FanoutTierLimits,
+    pub worker_lifecycle: FanoutTierLimits,
+    pub codex_worker_events: FanoutTierLimits,
+    pub fallback: FanoutTierLimits,
+}
+
+impl Default for FanoutLimitConfig {
+    fn default() -> Self {
+        Self {
+            run_events: FanoutTierLimits {
+                max_publish_per_second: 240,
+                max_payload_bytes: 256 * 1024,
+            },
+            worker_lifecycle: FanoutTierLimits {
+                max_publish_per_second: 180,
+                max_payload_bytes: 64 * 1024,
+            },
+            codex_worker_events: FanoutTierLimits {
+                max_publish_per_second: 240,
+                max_payload_bytes: 128 * 1024,
+            },
+            fallback: FanoutTierLimits {
+                max_publish_per_second: 90,
+                max_payload_bytes: 64 * 1024,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TopicClass {
+    RunEvents,
+    WorkerLifecycle,
+    CodexWorkerEvents,
+    Other,
+}
+
+impl TopicClass {
+    fn from_topic(topic: &str) -> Self {
+        if topic == "runtime.codex_worker_events" {
+            return Self::CodexWorkerEvents;
+        }
+        if topic.starts_with("run:") && topic.ends_with(":events") {
+            return Self::RunEvents;
+        }
+        if topic.starts_with("worker:") && topic.ends_with(":lifecycle") {
+            return Self::WorkerLifecycle;
+        }
+        Self::Other
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::RunEvents => "run_events",
+            Self::WorkerLifecycle => "worker_lifecycle",
+            Self::CodexWorkerEvents => "codex_worker_events",
+            Self::Other => "fallback",
+        }
+    }
+}
+
+impl FanoutLimitConfig {
+    fn limits_for_topic(&self, topic: &str) -> (TopicClass, FanoutTierLimits) {
+        let topic_class = TopicClass::from_topic(topic);
+        let limits = match topic_class {
+            TopicClass::RunEvents => self.run_events.clone(),
+            TopicClass::WorkerLifecycle => self.worker_lifecycle.clone(),
+            TopicClass::CodexWorkerEvents => self.codex_worker_events.clone(),
+            TopicClass::Other => self.fallback.clone(),
+        }
+        .normalized();
+        (topic_class, limits)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum FanoutError {
     #[error("invalid fanout topic")]
     InvalidTopic,
+    #[error(
+        "publish rate limited for topic {topic} ({topic_class}): limit={max_publish_per_second} retry_after_ms={retry_after_ms} reason={reason_code}"
+    )]
+    PublishRateLimited {
+        topic: String,
+        topic_class: String,
+        reason_code: String,
+        max_publish_per_second: u32,
+        retry_after_ms: u64,
+    },
+    #[error(
+        "frame payload too large for topic {topic} ({topic_class}): payload_bytes={payload_bytes} max_payload_bytes={max_payload_bytes} reason={reason_code}"
+    )]
+    FramePayloadTooLarge {
+        topic: String,
+        topic_class: String,
+        reason_code: String,
+        payload_bytes: usize,
+        max_payload_bytes: usize,
+    },
     #[error(
         "stale cursor for topic {topic}: requested={requested_cursor} oldest={oldest_available_cursor} head={head_cursor}"
     )]
@@ -71,8 +191,13 @@ pub struct FanoutHub {
 impl FanoutHub {
     #[must_use]
     pub fn memory(capacity: usize) -> Self {
+        Self::memory_with_limits(capacity, FanoutLimitConfig::default())
+    }
+
+    #[must_use]
+    pub fn memory_with_limits(capacity: usize, limits: FanoutLimitConfig) -> Self {
         Self {
-            driver: Arc::new(MemoryFanoutDriver::new(capacity)),
+            driver: Arc::new(MemoryFanoutDriver::new(capacity, limits)),
         }
     }
 
@@ -114,18 +239,28 @@ impl FanoutHub {
 struct MemoryFanoutDriver {
     topics: RwLock<HashMap<String, TopicQueue>>,
     capacity: usize,
+    limits: FanoutLimitConfig,
 }
 
 struct TopicQueue {
     messages: VecDeque<FanoutMessage>,
     dropped_messages: u64,
+    topic_class: TopicClass,
+    max_publish_per_second: u32,
+    max_payload_bytes: usize,
+    publish_window_start: Instant,
+    publish_window_count: u32,
+    publish_rate_limited_count: u64,
+    frame_size_rejected_count: u64,
+    last_violation_reason: Option<String>,
 }
 
 impl MemoryFanoutDriver {
-    fn new(capacity: usize) -> Self {
+    fn new(capacity: usize, limits: FanoutLimitConfig) -> Self {
         Self {
             topics: RwLock::new(HashMap::new()),
             capacity: capacity.max(1),
+            limits,
         }
     }
 }
@@ -139,12 +274,54 @@ impl FanoutDriver for MemoryFanoutDriver {
         }
         message.topic = normalized.to_string();
         let mut topics = self.topics.write().await;
-        let queue = topics
-            .entry(normalized.to_string())
-            .or_insert_with(|| TopicQueue {
+        let queue = topics.entry(normalized.to_string()).or_insert_with(|| {
+            let (topic_class, limits) = self.limits.limits_for_topic(normalized);
+            TopicQueue {
                 messages: VecDeque::new(),
                 dropped_messages: 0,
+                topic_class,
+                max_publish_per_second: limits.max_publish_per_second,
+                max_payload_bytes: limits.max_payload_bytes,
+                publish_window_start: Instant::now(),
+                publish_window_count: 0,
+                publish_rate_limited_count: 0,
+                frame_size_rejected_count: 0,
+                last_violation_reason: None,
+            }
+        });
+        let payload_bytes = estimate_payload_bytes(&message.payload);
+        if payload_bytes > queue.max_payload_bytes {
+            queue.frame_size_rejected_count = queue.frame_size_rejected_count.saturating_add(1);
+            let reason_code = "khala_frame_payload_too_large";
+            queue.last_violation_reason = Some(reason_code.to_string());
+            return Err(FanoutError::FramePayloadTooLarge {
+                topic: normalized.to_string(),
+                topic_class: queue.topic_class.as_str().to_string(),
+                reason_code: reason_code.to_string(),
+                payload_bytes,
+                max_payload_bytes: queue.max_payload_bytes,
             });
+        }
+        let now = Instant::now();
+        if now.duration_since(queue.publish_window_start) >= Duration::from_secs(1) {
+            queue.publish_window_start = now;
+            queue.publish_window_count = 0;
+        }
+        if queue.publish_window_count >= queue.max_publish_per_second {
+            queue.publish_rate_limited_count = queue.publish_rate_limited_count.saturating_add(1);
+            let reason_code = "khala_publish_rate_limited";
+            queue.last_violation_reason = Some(reason_code.to_string());
+            let elapsed = now.duration_since(queue.publish_window_start);
+            let retry_after_ms = 1_000_u64.saturating_sub(elapsed.as_millis().min(1_000) as u64);
+            return Err(FanoutError::PublishRateLimited {
+                topic: normalized.to_string(),
+                topic_class: queue.topic_class.as_str().to_string(),
+                reason_code: reason_code.to_string(),
+                max_publish_per_second: queue.max_publish_per_second,
+                retry_after_ms,
+            });
+        }
+        queue.publish_window_count = queue.publish_window_count.saturating_add(1);
         queue.messages.push_back(message);
         while queue.messages.len() > self.capacity {
             let _ = queue.messages.pop_front();
@@ -206,10 +383,16 @@ impl FanoutDriver for MemoryFanoutDriver {
         };
         Ok(Some(FanoutTopicWindow {
             topic: normalized.to_string(),
+            topic_class: queue.topic_class.as_str().to_string(),
             oldest_sequence: oldest.sequence,
             head_sequence: head.sequence,
             queue_depth: queue.messages.len(),
             dropped_messages: queue.dropped_messages,
+            publish_rate_limit_per_second: queue.max_publish_per_second,
+            max_payload_bytes: queue.max_payload_bytes,
+            publish_rate_limited_count: queue.publish_rate_limited_count,
+            frame_size_rejected_count: queue.frame_size_rejected_count,
+            last_violation_reason: queue.last_violation_reason.clone(),
         }))
     }
 
@@ -223,10 +406,16 @@ impl FanoutDriver for MemoryFanoutDriver {
                 let head = queue.messages.back()?;
                 Some(FanoutTopicWindow {
                     topic: topic.clone(),
+                    topic_class: queue.topic_class.as_str().to_string(),
                     oldest_sequence: oldest.sequence,
                     head_sequence: head.sequence,
                     queue_depth: queue.messages.len(),
                     dropped_messages: queue.dropped_messages,
+                    publish_rate_limit_per_second: queue.max_publish_per_second,
+                    max_payload_bytes: queue.max_payload_bytes,
+                    publish_rate_limited_count: queue.publish_rate_limited_count,
+                    frame_size_rejected_count: queue.frame_size_rejected_count,
+                    last_violation_reason: queue.last_violation_reason.clone(),
                 })
             })
             .collect::<Vec<_>>();
@@ -260,12 +449,16 @@ impl FanoutDriver for MemoryFanoutDriver {
     }
 }
 
+fn estimate_payload_bytes(payload: &serde_json::Value) -> usize {
+    serde_json::to_vec(payload).map_or(0, |bytes| bytes.len())
+}
+
 #[cfg(test)]
 mod tests {
     use anyhow::{Result, anyhow};
     use serde_json::json;
 
-    use super::{FanoutError, FanoutHub, FanoutMessage};
+    use super::{FanoutError, FanoutHub, FanoutLimitConfig, FanoutMessage, FanoutTierLimits};
 
     #[tokio::test]
     async fn memory_fanout_preserves_order() -> Result<()> {
@@ -446,6 +639,154 @@ mod tests {
         assert_eq!(first.topic, "run:a:events");
         assert_eq!(first.queue_depth, 2);
         assert_eq!(first.dropped_messages, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_fanout_enforces_publish_rate_limits_per_topic_class() -> Result<()> {
+        let fanout = FanoutHub::memory_with_limits(
+            8,
+            FanoutLimitConfig {
+                run_events: FanoutTierLimits {
+                    max_publish_per_second: 1,
+                    max_payload_bytes: 1024,
+                },
+                worker_lifecycle: FanoutTierLimits {
+                    max_publish_per_second: 1,
+                    max_payload_bytes: 1024,
+                },
+                codex_worker_events: FanoutTierLimits {
+                    max_publish_per_second: 1,
+                    max_payload_bytes: 1024,
+                },
+                fallback: FanoutTierLimits {
+                    max_publish_per_second: 1,
+                    max_payload_bytes: 1024,
+                },
+            },
+        );
+        fanout
+            .publish(
+                "run:burst:events",
+                FanoutMessage {
+                    topic: String::new(),
+                    sequence: 1,
+                    kind: "run.step".to_string(),
+                    payload: json!({"seq": 1}),
+                    published_at: chrono::Utc::now(),
+                },
+            )
+            .await?;
+        let denied = fanout
+            .publish(
+                "run:burst:events",
+                FanoutMessage {
+                    topic: String::new(),
+                    sequence: 2,
+                    kind: "run.step".to_string(),
+                    payload: json!({"seq": 2}),
+                    published_at: chrono::Utc::now(),
+                },
+            )
+            .await;
+        match denied {
+            Err(FanoutError::PublishRateLimited {
+                topic,
+                reason_code,
+                max_publish_per_second,
+                ..
+            }) => {
+                assert_eq!(topic, "run:burst:events");
+                assert_eq!(reason_code, "khala_publish_rate_limited");
+                assert_eq!(max_publish_per_second, 1);
+            }
+            other => return Err(anyhow!("expected publish rate limit error, got {other:?}")),
+        }
+
+        let window = fanout
+            .topic_window("run:burst:events")
+            .await?
+            .ok_or_else(|| anyhow!("missing topic window after publish rate limit"))?;
+        assert_eq!(window.publish_rate_limited_count, 1);
+        assert_eq!(
+            window.last_violation_reason.as_deref(),
+            Some("khala_publish_rate_limited")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn memory_fanout_enforces_payload_size_limits() -> Result<()> {
+        let fanout = FanoutHub::memory_with_limits(
+            8,
+            FanoutLimitConfig {
+                run_events: FanoutTierLimits {
+                    max_publish_per_second: 10,
+                    max_payload_bytes: 32,
+                },
+                worker_lifecycle: FanoutTierLimits {
+                    max_publish_per_second: 10,
+                    max_payload_bytes: 32,
+                },
+                codex_worker_events: FanoutTierLimits {
+                    max_publish_per_second: 10,
+                    max_payload_bytes: 32,
+                },
+                fallback: FanoutTierLimits {
+                    max_publish_per_second: 10,
+                    max_payload_bytes: 32,
+                },
+            },
+        );
+        fanout
+            .publish(
+                "run:frame:events",
+                FanoutMessage {
+                    topic: String::new(),
+                    sequence: 1,
+                    kind: "run.step".to_string(),
+                    payload: json!({"ok": true}),
+                    published_at: chrono::Utc::now(),
+                },
+            )
+            .await?;
+        let denied = fanout
+            .publish(
+                "run:frame:events",
+                FanoutMessage {
+                    topic: String::new(),
+                    sequence: 2,
+                    kind: "run.step".to_string(),
+                    payload: json!({"payload": "this payload is intentionally too large"}),
+                    published_at: chrono::Utc::now(),
+                },
+            )
+            .await;
+        match denied {
+            Err(FanoutError::FramePayloadTooLarge {
+                topic,
+                reason_code,
+                max_payload_bytes,
+                ..
+            }) => {
+                assert_eq!(topic, "run:frame:events");
+                assert_eq!(reason_code, "khala_frame_payload_too_large");
+                assert_eq!(max_payload_bytes, 32);
+            }
+            other => return Err(anyhow!("expected payload too large error, got {other:?}")),
+        }
+
+        let window = fanout
+            .topic_window("run:frame:events")
+            .await?
+            .ok_or_else(|| anyhow!("missing topic window after payload rejection"))?;
+        assert_eq!(window.frame_size_rejected_count, 1);
+        assert_eq!(
+            window.last_violation_reason.as_deref(),
+            Some("khala_frame_payload_too_large")
+        );
+
         Ok(())
     }
 }
