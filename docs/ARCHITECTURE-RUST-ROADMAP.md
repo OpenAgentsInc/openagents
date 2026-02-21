@@ -1,6 +1,6 @@
 # OpenAgents Rust-Only Architecture Roadmap
 
-Status: Draft issue backlog source (do not create issues yet)
+Status: Active execution backlog (GitHub-tracked)
 Last updated: 2026-02-21
 Owner: Architecture / Runtime / Client platform
 
@@ -20,9 +20,18 @@ It moves implementation steps out of the architecture definition and expands the
 6. WorkOS remains the canonical identity provider and authentication source of truth.
 7. Runtime path naming is canonicalized to `apps/runtime` (deprecated `apps/openagents-runtime` references are not allowed).
 
-## How To Use This For GitHub Issues Later
+## Execution Control Plane
 
-When ready, each item below can be created with `gh issue create`.
+- Board: `https://github.com/orgs/OpenAgentsInc/projects/12`
+- Usage, labels, swimlanes, and owner map:
+  `docs/plans/active/rust-migration-execution-control-plane.md`
+
+## GitHub Tracking Notes
+
+`OA-RUST-001` through `OA-RUST-107` are tracked as GitHub issues.
+
+For new roadmap additions, use `gh issue create` and apply required labels from the
+execution control-plane conventions.
 
 Suggested command pattern:
 

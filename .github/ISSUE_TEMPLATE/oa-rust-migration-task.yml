@@ -1,0 +1,149 @@
+name: OA-RUST Migration Task
+description: Create a Rust migration backlog item with required ownership and triage metadata.
+title: "OA-RUST-XXX: "
+labels:
+  - roadmap
+  - planning
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for new Rust migration tasks. Required metadata must match the execution control-plane rules:
+        `docs/plans/active/rust-migration-execution-control-plane.md`
+
+  - type: dropdown
+    id: owner_lane
+    attributes:
+      label: Owner lane
+      description: Choose the owning migration lane (maps to `owner:*` labels).
+      options:
+        - owner:openagents.com
+        - owner:runtime
+        - owner:khala
+        - owner:desktop
+        - owner:ios
+        - owner:infra
+        - owner:contracts-docs
+    validations:
+      required: true
+
+  - type: input
+    id: dri
+    attributes:
+      label: DRI
+      description: GitHub handle for accountable implementer (for example `@AtlantisPleb`).
+      placeholder: "@AtlantisPleb"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase label
+      description: Choose exactly one `phase:*` label.
+      options:
+        - phase:01-foundation
+        - phase:02-proto
+        - phase:03-control-service
+        - phase:04-wgpui-web-foundation
+        - phase:05-runtime-rust
+        - phase:06-khala
+        - phase:07-desktop-consolidation
+        - phase:08-ios-shared-core
+        - phase:09-web-cutover
+        - phase:10-data-reliability
+        - phase:11-adrs
+        - phase:12-hardening
+        - phase:13-closure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk label
+      description: Choose exactly one `risk:*` label.
+      options:
+        - risk:low
+        - risk:medium
+        - risk:high
+        - risk:critical
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deps_class
+    attributes:
+      label: Dependency class label
+      description: Choose exactly one `deps:*` label.
+      options:
+        - deps:none
+        - deps:single
+        - deps:multi
+        - deps:external
+    validations:
+      required: true
+
+  - type: textarea
+    id: area_labels
+    attributes:
+      label: Area labels to apply
+      description: Include exactly one `area:*` label.
+      placeholder: |
+        area:runtime
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List blocking OA-RUST issue IDs and external dependencies.
+      placeholder: |
+        OA-RUST-015
+        OA-RUST-021
+        external: GCP IAM update
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this issue exists.
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: Single success outcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: In Scope
+      description: Flat bullet list of implementation scope.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Measurable completion criteria.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Commands/tests/checks that prove completion.
+    validations:
+      required: true
+
