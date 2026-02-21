@@ -394,7 +394,7 @@ Done when:
 
 Verification:
 
-- `cd apps/desktop && npm run typecheck && npm test`
+- `cargo check -p autopilot-desktop && cargo test -p autopilot_ui`
 
 ## Epic 6: Parity, Cutover, and Cleanup
 

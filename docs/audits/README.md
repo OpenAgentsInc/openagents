@@ -7,3 +7,4 @@ Architecture and technical audits.
 - `docs/audits/AUTOPILOT_CONTEXT_AND_TOOL_REPLAY_AUDIT_2026-02-15.md`
 - `docs/audits/KHALA_USAGE_AND_PROTO_SYNC_ENGINE_AUDIT_2026-02-20.md`
 - `docs/audits/APPS_PROTO_FIRST_AUDIT_2026-02-20.md`
+- `docs/audits/OA-RUST-053-DESKTOP-LEGACY-CAPABILITY-AUDIT-2026-02-21.md`

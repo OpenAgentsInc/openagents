@@ -16,9 +16,6 @@ This document maps the active codebase.
 - `apps/autopilot-desktop/`
   Rust desktop app for local Codex execution and native Autopilot UI/runtime loops.
 
-- `apps/desktop/`
-  Electron desktop surface for local execution boundaries (including Lightning executor workflows).
-
 - `apps/onyx/`
   Rust local-first notes app (WGPUI + local vault storage).
 
@@ -103,5 +100,6 @@ Legacy references to removed surfaces should be treated as historical:
 
 - `apps/web/`
 - `apps/autopilot-worker/`
+- `apps/desktop/`
 
 The active web control plane is `apps/openagents.com/`, and runtime execution is `apps/runtime/`.
