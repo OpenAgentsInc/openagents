@@ -65,16 +65,23 @@ Current files:
 Initial generation targets configured in `buf.gen.yaml`:
 - TypeScript (`generated/ts`)
 - PHP (`generated/php`)
-- Rust (required by policy; generation path to remain configured in lockstep with Rust service/client rollout)
+- Rust via workspace crate `crates/openagents-proto` (build-driven generation from `proto/`)
 
 Policy:
 - Generated artifacts under `generated/` are **not checked into git**.
 - CI enforces generation viability for TS/PHP targets using `scripts/verify-proto-generate.sh`.
+- Rust wire generation determinism is verified with `scripts/verify-rust-proto-crate.sh`.
 
 Local verification command (canonical):
 
 ```bash
 ./scripts/verify-proto-generate.sh
+```
+
+Rust crate verification command:
+
+```bash
+./scripts/verify-rust-proto-crate.sh
 ```
 
 Optional manual local generation (for inspection only):

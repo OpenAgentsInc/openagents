@@ -132,6 +132,10 @@ The spark crate integrates Breez Spark payments for OpenAgents wallets and compu
 ## openagents-utils
 The openagents-utils crate provides shared utility helpers used across the workspace.
 
+## openagents-proto
+The openagents-proto crate provides generated Rust wire contracts from `proto/openagents/*/v1/*`
+and explicit wire-to-domain boundary examples used by Rust services and clients.
+
 ## protocol
 The protocol crate provides typed job schemas with deterministic hashing, provenance, and
 verification strategies for the OpenAgents swarm.

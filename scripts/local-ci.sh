@@ -52,6 +52,7 @@ run_proto_checks() {
     buf breaking --against "$against_ref"
 
     ./scripts/verify-proto-generate.sh
+    ./scripts/verify-rust-proto-crate.sh
   )
 }
 
@@ -107,7 +108,7 @@ run_changed() {
     return 0
   fi
 
-  if has_match '^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-generate\.sh$)' "$changed_files"; then
+  if has_match '^(proto/|buf\.yaml$|buf\.gen\.yaml$|scripts/verify-proto-generate\.sh$|scripts/verify-rust-proto-crate\.sh$|crates/openagents-proto/)' "$changed_files"; then
     run_proto_checks
   fi
 
