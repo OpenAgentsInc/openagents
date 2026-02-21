@@ -33,6 +33,7 @@ Supported lanes:
 - `runtime`
 - `comms`
 - `openclaw`
+- `test-triggers`
 
 Examples:
 
@@ -59,10 +60,20 @@ Run gates manually before pushing when needed:
 
 - `buf lint`
 - `buf breaking --against '.git#branch=main,subdir=proto'` (or `origin/main`)
-- `./scripts/verify-proto-generate.sh`
+- `./scripts/verify-proto-generate.sh` (Rust-only proto generation verification; compatibility alias)
+
+Rust generation command used by the alias:
+- `./scripts/verify-rust-proto-crate.sh`
 
 This lane is also invoked automatically by `changed` mode whenever `proto/`,
-`buf.yaml`, `buf.gen.yaml`, or `scripts/verify-proto-generate.sh` changes.
+`buf.yaml`, `buf.gen.yaml`, `scripts/verify-proto-generate.sh`,
+`scripts/verify-rust-proto-crate.sh`, or `crates/openagents-proto/` changes.
+
+Breaking baseline override:
+
+```bash
+OA_BUF_BREAKING_AGAINST='.git#branch=origin/main,subdir=proto' ./scripts/local-ci.sh proto
+```
 
 ## Proto Remediation
 
@@ -77,6 +88,14 @@ If proto CI fails:
 5. Re-run:
    - `./scripts/local-ci.sh proto`
    - `./scripts/local-ci.sh changed`
+
+## Changed-Mode Trigger Tests
+
+To validate changed-file lane routing logic:
+
+```bash
+./scripts/local-ci.sh test-triggers
+```
 
 ## Temporary Bypass (Use Sparingly)
 
