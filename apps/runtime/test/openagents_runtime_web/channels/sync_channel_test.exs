@@ -25,6 +25,8 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
   @reconnect_event [:openagents_runtime, :sync, :socket, :reconnect]
   @timeout_event [:openagents_runtime, :sync, :socket, :timeout]
   @revocation_event [:openagents_runtime, :sync, :socket, :revocation]
+  @queue_event [:openagents_runtime, :sync, :socket, :queue]
+  @slow_consumer_event [:openagents_runtime, :sync, :socket, :slow_consumer]
   @lag_event [:openagents_runtime, :sync, :replay, :lag]
   @catchup_event [:openagents_runtime, :sync, :replay, :catchup]
 
@@ -758,6 +760,113 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert catchup_measurements.duration_ms >= 0
   end
 
+  test "fair drain scheduling prevents hot topics from starving lower-volume topics" do
+    old_batch_size = Application.get_env(:openagents_runtime, :khala_sync_replay_batch_size)
+
+    old_fair_tick =
+      Application.get_env(:openagents_runtime, :khala_sync_fair_drain_topics_per_tick)
+
+    Application.put_env(:openagents_runtime, :khala_sync_replay_batch_size, 1)
+    Application.put_env(:openagents_runtime, :khala_sync_fair_drain_topics_per_tick, 1)
+
+    on_exit(fn ->
+      Application.put_env(:openagents_runtime, :khala_sync_replay_batch_size, old_batch_size)
+
+      Application.put_env(
+        :openagents_runtime,
+        :khala_sync_fair_drain_topics_per_tick,
+        old_fair_tick
+      )
+    end)
+
+    token =
+      valid_sync_jwt(oa_sync_scopes: [@run_topic, @worker_topic])
+
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    subscribe_ref = push(socket, "sync:subscribe", %{"topics" => [@run_topic, @worker_topic]})
+    assert_reply subscribe_ref, :ok, _reply
+
+    Enum.each(1..20, fn watermark ->
+      insert_stream_event(@run_topic, watermark, %{"value" => "run-#{watermark}"})
+    end)
+
+    insert_stream_event(@worker_topic, 1, %{"value" => "worker-1"})
+
+    :ok = Notifier.broadcast_stream_event(@run_topic, 20)
+    :ok = Notifier.broadcast_stream_event(@worker_topic, 1)
+
+    assert_push "sync:update_batch", %{"updates" => [first_update | _rest]}
+    assert first_update["topic"] == @run_topic
+
+    assert_push "sync:update_batch", %{"updates" => [second_update | _rest]}
+    assert second_update["topic"] == @worker_topic
+  end
+
+  test "slow consumer overflow triggers deterministic disconnect policy" do
+    old_queue_limit = Application.get_env(:openagents_runtime, :khala_sync_outbound_queue_limit)
+
+    old_fair_tick =
+      Application.get_env(:openagents_runtime, :khala_sync_fair_drain_topics_per_tick)
+
+    old_max_strikes =
+      Application.get_env(:openagents_runtime, :khala_sync_slow_consumer_max_strikes)
+
+    Application.put_env(:openagents_runtime, :khala_sync_outbound_queue_limit, 1)
+    Application.put_env(:openagents_runtime, :khala_sync_fair_drain_topics_per_tick, 1)
+    Application.put_env(:openagents_runtime, :khala_sync_slow_consumer_max_strikes, 1)
+
+    telemetry_refs = attach_sync_telemetry(self())
+
+    on_exit(fn ->
+      Application.put_env(:openagents_runtime, :khala_sync_outbound_queue_limit, old_queue_limit)
+
+      Application.put_env(
+        :openagents_runtime,
+        :khala_sync_fair_drain_topics_per_tick,
+        old_fair_tick
+      )
+
+      Application.put_env(
+        :openagents_runtime,
+        :khala_sync_slow_consumer_max_strikes,
+        old_max_strikes
+      )
+
+      Enum.each(telemetry_refs, &:telemetry.detach/1)
+    end)
+
+    token =
+      valid_sync_jwt(oa_sync_scopes: [@run_topic, @worker_topic])
+
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    subscribe_ref = push(socket, "sync:subscribe", %{"topics" => [@run_topic, @worker_topic]})
+    assert_reply subscribe_ref, :ok, _reply
+
+    Process.unlink(socket.channel_pid)
+    monitor_ref = Process.monitor(socket.channel_pid)
+
+    insert_stream_event(@run_topic, 1, %{"value" => "run"})
+    insert_stream_event(@worker_topic, 1, %{"value" => "worker"})
+    :ok = Notifier.broadcast_stream_event(@run_topic, 1)
+    :ok = Notifier.broadcast_stream_event(@worker_topic, 1)
+
+    assert_push "sync:error", %{
+      "code" => "slow_consumer",
+      "action" => "disconnect",
+      "queue_limit" => 1,
+      "full_resync_required" => true
+    }
+
+    assert_receive {:sync_slow_consumer, %{count: 1},
+                    %{reason_class: "queue_overflow", action: "disconnect"}}
+
+    assert_receive {:DOWN, ^monitor_ref, :process, _pid, _reason}, 500
+  end
+
   @tag :chaos_drill
   test "heartbeat roundtrip and timeout handling" do
     old_interval = Application.get_env(:openagents_runtime, :khala_sync_heartbeat_interval_ms)
@@ -826,6 +935,9 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
       {"sync-timeout-#{System.unique_integer([:positive])}", @timeout_event, :sync_timeout},
       {"sync-revocation-#{System.unique_integer([:positive])}", @revocation_event,
        :sync_revocation},
+      {"sync-queue-#{System.unique_integer([:positive])}", @queue_event, :sync_queue},
+      {"sync-slow-consumer-#{System.unique_integer([:positive])}", @slow_consumer_event,
+       :sync_slow_consumer},
       {"sync-lag-#{System.unique_integer([:positive])}", @lag_event, :sync_lag},
       {"sync-catchup-#{System.unique_integer([:positive])}", @catchup_event, :sync_catchup}
     ]

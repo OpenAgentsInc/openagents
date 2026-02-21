@@ -73,6 +73,14 @@ Stale cursor behavior:
   - `stale_topics[]`
   - `snapshot_plan` (format + per-topic snapshot metadata for snapshot-capable topics)
 
+Fairness and slow-consumer behavior:
+
+- Live fanout uses a bounded per-connection pending-topic queue.
+- Drain scheduler processes a capped number of topics per tick (`khala_sync_fair_drain_topics_per_tick`) to avoid hot-topic starvation.
+- Queue overflow triggers deterministic `slow_consumer` policy:
+  - first phase: throttle/drop signal
+  - terminal phase (after strike threshold): disconnect with reconnect guidance
+
 ## Observability
 
 New telemetry metric families in `OpenAgentsRuntime.Telemetry.Metrics`:
@@ -80,6 +88,8 @@ New telemetry metric families in `OpenAgentsRuntime.Telemetry.Metrics`:
 - `openagents_runtime.sync.retention.cycle.*`
 - `openagents_runtime.sync.retention.topic.*`
 - `openagents_runtime.sync.replay.budget.*`
+- `openagents_runtime.sync.socket.queue.*`
+- `openagents_runtime.sync.socket.slow_consumer.*`
 
 Topic-level telemetry tags:
 

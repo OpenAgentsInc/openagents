@@ -34,6 +34,8 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     sync_socket_heartbeat: [:status],
     sync_socket_reconnect: [:status],
     sync_socket_timeout: [:status],
+    sync_socket_queue: [:event_type, :status],
+    sync_socket_slow_consumer: [:status, :reason_class, :action],
     sync_replay_lag: [:event_type, :status],
     sync_replay_budget: [:event_type, :status, :qos_tier, :reason_class],
     sync_replay_catchup: [:status],
@@ -160,6 +162,18 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       ),
       counter("openagents_runtime.sync.socket.timeout.count",
         tags: tags_for(:sync_socket_timeout)
+      ),
+      counter("openagents_runtime.sync.socket.queue.count", tags: tags_for(:sync_socket_queue)),
+      last_value("openagents_runtime.sync.socket.queue.depth",
+        measurement: :queue_depth,
+        tags: tags_for(:sync_socket_queue)
+      ),
+      counter("openagents_runtime.sync.socket.slow_consumer.count",
+        tags: tags_for(:sync_socket_slow_consumer)
+      ),
+      summary("openagents_runtime.sync.socket.slow_consumer.queue_depth",
+        measurement: :queue_depth,
+        tags: tags_for(:sync_socket_slow_consumer)
       ),
       summary("openagents_runtime.sync.replay.lag_events", tags: tags_for(:sync_replay_lag)),
       counter("openagents_runtime.sync.replay.budget.count", tags: tags_for(:sync_replay_budget)),
