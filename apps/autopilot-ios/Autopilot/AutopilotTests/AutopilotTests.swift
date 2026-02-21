@@ -229,6 +229,16 @@ struct AutopilotTests {
         }
     }
 
+    @Test("rust bridge enforces ffi contract version when symbols are loaded")
+    func rustBridgeFFIContractVersionGate() {
+        if RustClientCoreBridge.isAvailable {
+            #expect(RustClientCoreBridge.isContractVersionCompatible)
+            #expect(RustClientCoreBridge.ffiContractVersion == RustClientCoreBridge.expectedContractVersion)
+        } else {
+            #expect(RustClientCoreBridge.ffiContractVersion == nil || !RustClientCoreBridge.isContractVersionCompatible)
+        }
+    }
+
     @Test("rust bridge khala parser preserves frame contract when symbols are loaded")
     func rustBridgeKhalaParserParity() {
         let raw = "[\"1\",\"2\",\"sync:v1\",\"sync:heartbeat\",{\"watermarks\":[{\"topic\":\"runtime.codex_worker_events\",\"watermark\":33}]}]"

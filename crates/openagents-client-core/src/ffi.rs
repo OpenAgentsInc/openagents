@@ -8,6 +8,8 @@ use crate::codex_worker::extract_desktop_handshake_ack_id;
 use crate::command::normalize_thread_message_text;
 use crate::khala_protocol::parse_phoenix_frame;
 
+pub const OA_CLIENT_CORE_FFI_CONTRACT_VERSION: u32 = 1;
+
 fn with_c_string_input(input: *const c_char) -> Option<String> {
     if input.is_null() {
         return None;
@@ -125,11 +127,21 @@ pub unsafe extern "C" fn oa_client_core_free_string(raw: *mut c_char) {
     let _ = unsafe { CString::from_raw(raw) };
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn oa_client_core_ffi_contract_version() -> u32 {
+    OA_CLIENT_CORE_FFI_CONTRACT_VERSION
+}
+
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
+    use std::ptr;
+
     use super::{
-        extract_desktop_ack_id_json, normalize_email_string, normalize_message_text_string,
-        normalize_verification_code_string, parse_khala_frame_json,
+        OA_CLIENT_CORE_FFI_CONTRACT_VERSION, extract_desktop_ack_id_json, normalize_email_string,
+        normalize_message_text_string, normalize_verification_code_string,
+        oa_client_core_ffi_contract_version, oa_client_core_normalize_email,
+        parse_khala_frame_json,
     };
 
     #[test]
@@ -164,5 +176,24 @@ mod tests {
         let parsed = parse_khala_frame_json(raw).expect("frame should parse");
         assert!(parsed.contains("\"sync:v1\""));
         assert!(parsed.contains("\"sync:heartbeat\""));
+    }
+
+    #[test]
+    fn ffi_contract_version_export_is_stable() {
+        assert_eq!(OA_CLIENT_CORE_FFI_CONTRACT_VERSION, 1);
+        assert_eq!(
+            oa_client_core_ffi_contract_version(),
+            OA_CLIENT_CORE_FFI_CONTRACT_VERSION
+        );
+    }
+
+    #[test]
+    fn ffi_returns_null_for_invalid_pointer_input() {
+        // SAFETY: null input pointer is intentionally exercised and checked for null output.
+        let result = unsafe { oa_client_core_normalize_email(ptr::null()) };
+        assert!(result.is_null());
+
+        let embedded_nul = CString::new("test\0value").err();
+        assert!(embedded_nul.is_some());
     }
 }

@@ -10,8 +10,11 @@ enum RustClientCoreBridge {
         let payload: JSONValue
     }
 
+    private static let expectedFFIContractVersion: UInt32 = 1
+
     private typealias TransformFunction = @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
     private typealias FreeFunction = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
+    private typealias ContractVersionFunction = @convention(c) () -> UInt32
 
     private struct Symbols {
         let normalizeEmail: TransformFunction?
@@ -20,6 +23,7 @@ enum RustClientCoreBridge {
         let extractDesktopHandshakeAckID: TransformFunction?
         let parseKhalaFrame: TransformFunction?
         let freeString: FreeFunction?
+        let ffiContractVersion: ContractVersionFunction?
 
         static func load() -> Symbols {
             let handle = dlopen(nil, RTLD_NOW)
@@ -45,12 +49,32 @@ enum RustClientCoreBridge {
                     as: TransformFunction.self
                 ),
                 parseKhalaFrame: loadSymbol("oa_client_core_parse_khala_frame", as: TransformFunction.self),
-                freeString: loadSymbol("oa_client_core_free_string", as: FreeFunction.self)
+                freeString: loadSymbol("oa_client_core_free_string", as: FreeFunction.self),
+                ffiContractVersion: loadSymbol(
+                    "oa_client_core_ffi_contract_version",
+                    as: ContractVersionFunction.self
+                )
             )
         }
     }
 
     private static let symbols = Symbols.load()
+
+    static var expectedContractVersion: UInt32 {
+        expectedFFIContractVersion
+    }
+
+    static var ffiContractVersion: UInt32? {
+        symbols.ffiContractVersion?()
+    }
+
+    static var isContractVersionCompatible: Bool {
+        guard let version = ffiContractVersion else {
+            return false
+        }
+
+        return version == expectedFFIContractVersion
+    }
 
     static var isAvailable: Bool {
         symbols.normalizeEmail != nil
@@ -59,6 +83,8 @@ enum RustClientCoreBridge {
             && symbols.extractDesktopHandshakeAckID != nil
             && symbols.parseKhalaFrame != nil
             && symbols.freeString != nil
+            && symbols.ffiContractVersion != nil
+            && isContractVersionCompatible
     }
 
     static func normalizeEmail(_ value: String) -> String? {

@@ -12,6 +12,7 @@ LEGACY_COMMS_TRIGGER_PATTERN='^(apps/openagents\.com/(app/|bootstrap/|config/|da
 LEGACY_OPENCLAW_TRIGGER_PATTERN='^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)'
 WEB_SHELL_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/)'
 CROSS_SURFACE_TRIGGER_PATTERN='^(apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS\.md$|docs/autopilot/testing/cross-surface-contract-scenarios\.json$|scripts/run-cross-surface-contract-harness\.sh$)'
+IOS_RUST_CORE_TRIGGER_PATTERN='^(apps/autopilot-ios/|crates/openagents-client-core/|apps/autopilot-ios/scripts/build-rust-client-core\.sh$|apps/autopilot-ios/scripts/verify-rust-client-core-reproducibility\.sh$)'
 RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN='^(Cargo\.toml$|Cargo\.lock$|crates/|apps/openagents\.com/service/|apps/openagents\.com/web-shell/|apps/autopilot-desktop/|apps/autopilot-ios/|apps/runtime/src/|apps/runtime/Cargo\.toml$|apps/runtime/tests?/|apps/lightning-ops/|apps/lightning-wallet-executor/|apps/onyx/|scripts/local-ci\.sh$)'
 
 is_truthy() {
@@ -172,6 +173,10 @@ run_trigger_tests() {
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "apps/autopilot-desktop/src/main.rs" "true"
   assert_trigger "cross-surface" "$CROSS_SURFACE_TRIGGER_PATTERN" "scripts/local-ci.sh" "false"
 
+  assert_trigger "ios-rust-core" "$IOS_RUST_CORE_TRIGGER_PATTERN" "apps/autopilot-ios/scripts/build-rust-client-core.sh" "true"
+  assert_trigger "ios-rust-core" "$IOS_RUST_CORE_TRIGGER_PATTERN" "crates/openagents-client-core/src/ffi.rs" "true"
+  assert_trigger "ios-rust-core" "$IOS_RUST_CORE_TRIGGER_PATTERN" "apps/runtime/src/main.rs" "false"
+
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "apps/openagents.com/service/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "crates/openagents-proto/src/lib.rs" "true"
   assert_trigger "workspace-compile" "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "docs/README.md" "false"
@@ -231,6 +236,23 @@ run_cross_surface_harness() {
   )
 }
 
+run_ios_rust_core_checks() {
+  echo "==> iOS rust client-core deterministic packaging checks"
+  (
+    cd "$ROOT_DIR"
+    ./apps/autopilot-ios/scripts/build-rust-client-core.sh --clean
+    cargo test -p openagents-client-core
+  )
+}
+
+run_ios_rust_core_repro_checks() {
+  echo "==> iOS rust client-core reproducibility checks"
+  (
+    cd "$ROOT_DIR"
+    ./apps/autopilot-ios/scripts/verify-rust-client-core-reproducibility.sh
+  )
+}
+
 run_workspace_compile() {
   echo "==> workspace rust compile baseline"
   (
@@ -254,6 +276,7 @@ run_all_rust() {
   run_proto_checks
   run_runtime_history_checks
   run_web_shell_checks
+  run_ios_rust_core_checks
 }
 
 run_all() {
@@ -316,6 +339,11 @@ run_changed() {
     fi
   fi
 
+  if has_match "$IOS_RUST_CORE_TRIGGER_PATTERN" "$changed_files"; then
+    run_ios_rust_core_checks
+    run_ios_rust_core_repro_checks
+  fi
+
   if has_match "$RUST_WORKSPACE_COMPILE_TRIGGER_PATTERN" "$changed_files"; then
     run_workspace_compile
   fi
@@ -353,6 +381,10 @@ case "$MODE" in
   cross-surface)
     run_cross_surface_harness
     ;;
+  ios-rust-core)
+    run_ios_rust_core_checks
+    run_ios_rust_core_repro_checks
+    ;;
   test-triggers)
     run_trigger_tests
     ;;
@@ -374,7 +406,7 @@ case "$MODE" in
     run_changed
     ;;
   *)
-    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-openclaw|web-shell|workspace-compile|cross-surface|test-triggers]" >&2
+    echo "Usage: scripts/local-ci.sh [changed|all|all-rust|docs|proto|runtime|runtime-history|legacy-comms|legacy-openclaw|web-shell|workspace-compile|cross-surface|ios-rust-core|test-triggers]" >&2
     exit 2
     ;;
 esac

@@ -504,6 +504,7 @@ Dependencies: OA-RUST-048, OA-RUST-058, OA-RUST-062, OA-RUST-072.
 
 ### OA-RUST-107 — [iOS Platform] Add deterministic Rust core packaging pipeline for iOS host
 Description: Add reproducible Rust-to-iOS packaging (FFI boundary, artifacts, build scripts) so iOS business/sync logic runs in shared Rust core with Swift limited to host integration.
+Enforcement artifacts: `apps/autopilot-ios/scripts/build-rust-client-core.sh`, `apps/autopilot-ios/scripts/verify-rust-client-core-reproducibility.sh`, `apps/autopilot-ios/docs/rust-client-core-integration.md`, `apps/autopilot-ios/Autopilot/Autopilot/RustClientCoreBridge.swift`, `crates/openagents-client-core/src/ffi.rs`, `scripts/local-ci.sh`, `docs/LOCAL_CI.md`
 Acceptance criteria: iOS build pipeline consumes versioned Rust artifacts deterministically; shared Rust client core owns sync/business logic paths; Swift host boundary is documented and minimal.
 Dependencies: OA-RUST-054, OA-RUST-055, OA-RUST-056.
 
