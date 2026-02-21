@@ -436,6 +436,8 @@ Buildout sequencing, migration gates, ADR reset tasks, and definition-of-done tr
 
 ## Rivet Rust Integration Exploration (for BEAM Replacement)
 
+Authority ADR: `docs/adr/ADR-0004-rivet-harvest-posture-and-adoption-boundaries.md`
+
 Rivet is high-signal for the Rust migration when treated as a source of patterns and subsystem ideas, not as OpenAgents' core platform model.
 
 Rivet's core thesis is valuable for BEAM replacement work: long-lived stateful units with realtime delivery, durability, workflows, and hibernation-friendly lifecycle behavior. OpenAgents should selectively harvest these ideas while keeping its own authority boundaries intact.
