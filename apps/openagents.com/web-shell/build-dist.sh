@@ -44,7 +44,7 @@ SYNC_SCHEMA_MAX="${OA_SYNC_SCHEMA_MAX:-1}"
 ROLLBACK_BUILD_IDS="${OA_ROLLBACK_BUILD_IDS:-}"
 export ROLLBACK_BUILD_IDS
 
-PINNED_ASSETS_JSON='["/index.html","/assets/openagents_web_shell.js","/assets/openagents_web_shell_bg.wasm","/assets/host-shim.js","/assets/capability-policy.js"]'
+PINNED_ASSETS_JSON='["/index.html","/assets/openagents_web_shell.js","/assets/openagents_web_shell_bg.wasm","/assets/host-shim.js","/assets/capability-policy.js","/assets/update-policy.js"]'
 
 ROLLBACK_CACHE_NAMES_JSON="$(python3 - <<'PY'
 import json
@@ -70,6 +70,7 @@ out_path.write_text(template.replace("__OA_BUILD_ID__", build_id), encoding="utf
 PY
 
 cp "${CAPABILITY_POLICY_TEMPLATE}" "${ASSETS_DIR}/capability-policy.js"
+cp "${APP_DIR}/host/update-policy.js" "${ASSETS_DIR}/update-policy.js"
 
 python3 - <<'PY' "${SW_TEMPLATE}" "${OUT_DIR}/sw.js" "${BUILD_ID}" "${PINNED_ASSETS_JSON}" "${ROLLBACK_CACHE_NAMES_JSON}"
 import pathlib
@@ -96,7 +97,7 @@ cat > "${OUT_DIR}/index.html" <<'HTML'
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenAgents Web Shell</title>
+    <title>OpenAgents</title>
     <style>
       html, body {
         margin: 0;
