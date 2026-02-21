@@ -7,6 +7,7 @@ Entry points:
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json` (canonical runtime policy reason taxonomy)
 - `docs/protocol/LAYER0_PROTOBUF_MAPPING.md` (proto3 Layer-0 mapping guidance for JSON/SSE)
 - `docs/protocol/OA_SYNC_WS_MAPPING.md` (Khala sync proto-to-WS mapping)
+- `docs/protocol/fixtures/khala-frame-v1.json` (Khala envelope replay/live/stale-cursor fixtures)
 - `proto/openagents/lightning/v1/control_plane.proto` (Lightning control-plane schema authority)
 - `proto/README.md` (proto package layout + generation verification policy)
 - `proto/PACKAGE_MAP.md` (Rust-era proto package ownership + placement rules)

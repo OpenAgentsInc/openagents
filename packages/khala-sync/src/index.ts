@@ -1,5 +1,6 @@
 export type {
   CachedDocument,
+  KhalaFrame,
   KhalaClientError,
   KhalaClientOptions,
   KhalaClientStatus,

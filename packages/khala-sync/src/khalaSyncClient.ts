@@ -1,6 +1,7 @@
 import { MemoryWatermarkStore } from "./watermarkStore";
 import type {
   CachedDocument,
+  KhalaFrame,
   KhalaClientError,
   KhalaClientOptions,
   KhalaClientStatus,
@@ -25,6 +26,11 @@ const SOCKET_OPEN = 1;
 const DEFAULT_RECONNECT_MIN_DELAY_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 const DEFAULT_TOPIC = "sync:v1";
+const SUPPORTED_FRAME_SCHEMA_VERSION = 1;
+
+const FRAME_KIND_UPDATE_BATCH = "KHALA_FRAME_KIND_UPDATE_BATCH";
+const FRAME_KIND_HEARTBEAT = "KHALA_FRAME_KIND_HEARTBEAT";
+const FRAME_KIND_ERROR = "KHALA_FRAME_KIND_ERROR";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -82,6 +88,18 @@ const defaultSocketFactory: KhalaSocketFactory = (url: string): WebSocketLike =>
 const toBackoffDelayMs = (attempt: number, minMs: number, maxMs: number): number => {
   const power = Math.max(0, Math.floor(attempt));
   return Math.min(maxMs, minMs * Math.pow(2, power));
+};
+
+const decodeBase64 = (value: string): string | null => {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(value, "base64").toString("utf8");
+  }
+
+  if (typeof atob !== "undefined") {
+    return atob(value);
+  }
+
+  return null;
 };
 
 export class KhalaSyncClient {
@@ -314,6 +332,11 @@ export class KhalaSyncClient {
       return;
     }
 
+    if (event === "sync:frame") {
+      this.handleKhalaFrame(payload);
+      return;
+    }
+
     if (event === "sync:update_batch") {
       this.handleUpdateBatch(payload);
       return;
@@ -329,6 +352,50 @@ export class KhalaSyncClient {
       const watermarks = toTopicWatermarks(heartbeatPayload.watermarks);
       this.options.onHeartbeat?.(watermarks);
       return;
+    }
+  }
+
+  private handleKhalaFrame(payload: unknown): void {
+    const frame = this.parseKhalaFrame(payload);
+    if (!frame) {
+      this.options.onError?.(
+        this.toClientError("bad_frame", "invalid khala frame envelope", undefined, payload),
+      );
+      return;
+    }
+
+    const decodedPayload = decodeBase64(frame.payload_bytes);
+    if (decodedPayload === null) {
+      this.options.onError?.(
+        this.toClientError("bad_frame_payload", "unable to decode khala frame payload bytes"),
+      );
+      return;
+    }
+
+    let parsedPayload: unknown;
+    try {
+      parsedPayload = JSON.parse(decodedPayload) as unknown;
+    } catch {
+      this.options.onError?.(
+        this.toClientError("bad_frame_payload", "invalid khala frame payload json"),
+      );
+      return;
+    }
+
+    if (frame.kind === FRAME_KIND_UPDATE_BATCH) {
+      this.handleUpdateBatch(parsedPayload);
+      return;
+    }
+
+    if (frame.kind === FRAME_KIND_ERROR) {
+      this.handleSyncError(parsedPayload);
+      return;
+    }
+
+    if (frame.kind === FRAME_KIND_HEARTBEAT) {
+      const heartbeatPayload = isObject(parsedPayload) ? parsedPayload : {};
+      const watermarks = toTopicWatermarks(heartbeatPayload.watermarks);
+      this.options.onHeartbeat?.(watermarks);
     }
   }
 
@@ -473,6 +540,33 @@ export class KhalaSyncClient {
     if (ref !== null && typeof ref !== "string") return null;
 
     return [joinRef, ref, topic, event, payload];
+  }
+
+  private parseKhalaFrame(payload: unknown): KhalaFrame | null {
+    if (!isObject(payload)) return null;
+
+    const topic = typeof payload.topic === "string" ? payload.topic.trim() : "";
+    const seq = toNonNegativeInteger(payload.seq);
+    const kind = typeof payload.kind === "string" ? payload.kind.trim() : "";
+    const payloadBytes =
+      typeof payload.payload_bytes === "string" ? payload.payload_bytes.trim() : "";
+    const schemaVersion = toNonNegativeInteger(payload.schema_version);
+
+    if (topic === "" || seq === null || kind === "" || payloadBytes === "" || schemaVersion === null) {
+      return null;
+    }
+
+    if (schemaVersion !== SUPPORTED_FRAME_SCHEMA_VERSION) {
+      return null;
+    }
+
+    return {
+      topic,
+      seq,
+      kind,
+      payload_bytes: payloadBytes,
+      schema_version: schemaVersion,
+    };
   }
 
   private scheduleReconnect(): void {

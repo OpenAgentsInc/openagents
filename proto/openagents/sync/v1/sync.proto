@@ -47,3 +47,19 @@ message Error {
   uint32 retry_after_ms = 3;
   bool full_resync_required = 4;
 }
+
+enum KhalaFrameKind {
+  KHALA_FRAME_KIND_UNSPECIFIED = 0;
+  KHALA_FRAME_KIND_SUBSCRIBED = 1;
+  KHALA_FRAME_KIND_UPDATE_BATCH = 2;
+  KHALA_FRAME_KIND_HEARTBEAT = 3;
+  KHALA_FRAME_KIND_ERROR = 4;
+}
+
+message KhalaFrame {
+  string topic = 1;
+  uint64 seq = 2;
+  KhalaFrameKind kind = 3;
+  bytes payload_bytes = 4;
+  uint32 schema_version = 5;
+}

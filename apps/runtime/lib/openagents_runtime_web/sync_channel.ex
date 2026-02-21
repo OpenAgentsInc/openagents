@@ -6,6 +6,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   use OpenAgentsRuntimeWeb, :channel
 
   alias OpenAgentsRuntime.Sync.ConnectionTracker
+  alias OpenAgentsRuntime.Sync.KhalaFrame
   alias OpenAgentsRuntime.Sync.Notifier
   alias OpenAgentsRuntime.Sync.Replay
   alias OpenAgentsRuntime.Sync.StreamEvent
@@ -107,6 +108,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
         emit_catchup_duration(started_at_ms, "stale_cursor")
         error_payload = stale_cursor_payload(stale_topics)
         push(socket, "sync:error", error_payload)
+        push_khala_frame(socket, stale_cursor_topic(stale_topics), 0, :error, error_payload)
         {:reply, {:error, error_payload}, socket}
     end
   end
@@ -251,7 +253,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     })
 
     if events != [] do
-      push(socket, "sync:update_batch", %{
+      payload = %{
         "updates" => Enum.map(events, &stream_event_to_update/1),
         "replay_complete" => replay_complete,
         "head_watermarks" => [
@@ -260,7 +262,17 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
             "watermark" => head_watermark
           }
         ]
-      })
+      }
+
+      push(socket, "sync:update_batch", payload)
+
+      push_khala_frame(
+        socket,
+        topic,
+        frame_seq(events, next_watermark),
+        :update_batch,
+        payload
+      )
     end
 
     if replay_complete do
@@ -497,4 +509,25 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
       "stale_topics" => stale_topics
     }
   end
+
+  defp push_khala_frame(socket, topic, seq, kind, payload) do
+    case KhalaFrame.build(topic, seq, kind, payload) do
+      {:ok, frame} ->
+        push(socket, "sync:frame", frame)
+
+      {:error, _reason} ->
+        :ok
+    end
+  end
+
+  defp frame_seq(events, fallback) when is_list(events) do
+    events
+    |> Enum.map(& &1.watermark)
+    |> Enum.max(fn -> fallback end)
+  end
+
+  defp stale_cursor_topic([%{"topic" => topic} | _rest]) when is_binary(topic) and topic != "",
+    do: topic
+
+  defp stale_cursor_topic(_stale_topics), do: "sync.unspecified"
 end
