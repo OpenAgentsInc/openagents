@@ -21,6 +21,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     @Published var streamState: StreamState = .idle
+    @Published private(set) var streamLifecycle = KhalaLifecycleSnapshot()
     @Published var handshakeState: HandshakeState = .idle
     @Published var statusMessage: String?
     @Published var errorMessage: String?
@@ -49,9 +50,12 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var processedCodexEventSeqOrder: [Int] = []
     private var hasAttemptedAutoConnect = false
     private var khalaRefCounter: Int = 0
+    private var reconnectAttempt: Int = 0
+    private var reconnectWindowStartedAt: Date?
 
     private let defaults: UserDefaults
     private let now: () -> Date
+    private let randomUnit: () -> Double
 
     private let tokenKey = "autopilot.ios.codex.authToken"
     private let emailKey = "autopilot.ios.codex.email"
@@ -63,7 +67,8 @@ final class CodexHandshakeViewModel: ObservableObject {
     private static let khalaWorkerEventsTopic = "runtime.codex_worker_events"
     private static let khalaChannelTopic = "sync:v1"
     private static let khalaHeartbeatIntervalNS: UInt64 = 20_000_000_000
-    private static let streamReconnectSleepNS: UInt64 = 500_000_000
+    private static let reconnectPolicy = KhalaReconnectPolicy.default
+    private static let maxReconnectEventHistory = 24
     private static let seqCacheLimit = 8_192
     private static let iso8601Parsers: [ISO8601DateFormatter] = {
         let withFractional = ISO8601DateFormatter()
@@ -128,9 +133,16 @@ final class CodexHandshakeViewModel: ObservableObject {
         return !isSendingCode && !isVerifyingCode
     }
 
-    init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
+    @Published private(set) var streamLifecycleEvents: [String] = []
+
+    init(
+        defaults: UserDefaults = .standard,
+        now: @escaping () -> Date = Date.init,
+        randomUnit: @escaping () -> Double = { Double.random(in: 0.0...1.0) }
+    ) {
         self.defaults = defaults
         self.now = now
+        self.randomUnit = randomUnit
 
         let savedEmail = defaults.string(forKey: emailKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let savedToken = defaults.string(forKey: tokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -269,6 +281,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         activeStreamWorkerID = nil
         handshakeTimeoutTask?.cancel()
         handshakeTimeoutTask = nil
+        resetReconnectTracking()
 
         authToken = ""
         defaults.removeObject(forKey: tokenKey)
@@ -481,6 +494,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         activeKhalaSocket = nil
         activeStreamWorkerID = nil
         streamState = .idle
+        resetReconnectTracking()
+        recordLifecycleEvent("stream_disconnect_manual")
     }
 
     private func restartStreamIfReady(resetCursor: Bool) {
@@ -493,6 +508,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             activeKhalaSocket = nil
             activeStreamWorkerID = nil
             streamState = .idle
+            resetReconnectTracking()
             return
         }
 
@@ -510,6 +526,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
         activeKhalaSocket = nil
         activeStreamWorkerID = workerID
+        resetReconnectTracking()
 
         if resetCursor {
             recentEvents = []
@@ -531,8 +548,18 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         streamState = .connecting
         statusMessage = "Connecting stream for \(shortWorkerID(workerID)) over Khala WS..."
+        recordLifecycleEvent("stream_connect_start worker=\(shortWorkerID(workerID))")
 
         while !Task.isCancelled {
+            streamLifecycle.connectAttempts += 1
+            let inReconnect = reconnectAttempt > 0
+            if inReconnect {
+                streamLifecycle.reconnectAttempts += 1
+                streamState = .reconnecting
+            } else {
+                streamState = .connecting
+            }
+
             do {
                 let syncToken = try await client.mintSyncToken(scopes: [Self.khalaWorkerEventsTopic])
                 let socketURL = try client.syncWebSocketURL(token: syncToken.token)
@@ -552,6 +579,20 @@ final class CodexHandshakeViewModel: ObservableObject {
                 streamState = .live
                 errorMessage = nil
                 statusMessage = "Stream live for \(shortWorkerID(workerID))."
+                streamLifecycle.successfulSessions += 1
+                if reconnectAttempt > 0 {
+                    streamLifecycle.recoveredSessions += 1
+                    if let reconnectStartedAt = reconnectWindowStartedAt {
+                        streamLifecycle.lastRecoveryLatencyMs = max(
+                            0,
+                            Int(now().timeIntervalSince(reconnectStartedAt) * 1000.0)
+                        )
+                    }
+                }
+                recordLifecycleEvent(
+                    "stream_live worker=\(shortWorkerID(workerID)) reconnect_attempts=\(reconnectAttempt)"
+                )
+                resetReconnectTracking()
 
                 let heartbeatTask = Task { [weak self] in
                     await self?.runKhalaHeartbeatLoop(socket: socket, joinRef: joinRef)
@@ -586,19 +627,52 @@ final class CodexHandshakeViewModel: ObservableObject {
 
                 if let runtimeError = error as? RuntimeCodexApiError,
                    runtimeError.code == .auth || runtimeError.status == 401 {
+                    streamLifecycle.lastDisconnectReason = .unauthorized
+                    recordLifecycleEvent("stream_unauthorized worker=\(shortWorkerID(workerID))")
                     streamState = .idle
                     activeStreamWorkerID = nil
                     errorMessage = "Khala stream unauthorized. Stay signed in, then reload workers."
                     statusMessage = nil
+                    resetReconnectTracking()
                     return
                 } else {
+                    if reconnectAttempt == 0 {
+                        reconnectWindowStartedAt = now()
+                    }
+                    reconnectAttempt += 1
+                    let reason = KhalaReconnectClassifier.classify(error)
+                    streamLifecycle.lastDisconnectReason = reason
+                    let backoffMs = Self.reconnectPolicy.delayMs(
+                        attempt: reconnectAttempt,
+                        jitterUnit: randomUnit()
+                    )
+                    streamLifecycle.lastBackoffMs = backoffMs
+                    recordLifecycleEvent(
+                        "stream_reconnect_scheduled worker=\(shortWorkerID(workerID)) reason=\(reason.rawValue) attempt=\(reconnectAttempt) delay_ms=\(backoffMs)"
+                    )
                     streamState = .reconnecting
                     errorMessage = formatError(error)
-                    statusMessage = "Khala stream reconnecting for \(shortWorkerID(workerID))..."
-                    try? await Task.sleep(nanoseconds: Self.streamReconnectSleepNS)
+                    statusMessage =
+                        "Khala stream reconnecting for \(shortWorkerID(workerID)) (attempt \(reconnectAttempt), \(backoffMs)ms)..."
+                    try? await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)
                 }
             }
         }
+    }
+
+    private func resetReconnectTracking() {
+        reconnectAttempt = 0
+        reconnectWindowStartedAt = nil
+        streamLifecycle.lastBackoffMs = 0
+        streamLifecycle.lastRecoveryLatencyMs = 0
+    }
+
+    private func recordLifecycleEvent(_ message: String) {
+        let stamped = "\(iso8601(now())) \(message)"
+        if streamLifecycleEvents.count >= Self.maxReconnectEventHistory {
+            streamLifecycleEvents.removeFirst(streamLifecycleEvents.count - Self.maxReconnectEventHistory + 1)
+        }
+        streamLifecycleEvents.append(stamped)
     }
 
     private func khalaJoin(

@@ -6,6 +6,7 @@
 //
 
 import Testing
+import Foundation
 @testable import Autopilot
 
 struct AutopilotTests {
@@ -179,5 +180,35 @@ struct AutopilotTests {
         #expect(ignoreModernAfterLegacy.selectedSource == .legacyContent)
         #expect(!ignoreModernAfterLegacy.shouldAccept)
         #expect(!ignoreModernAfterLegacy.shouldReset)
+    }
+
+    @Test("khala reconnect policy uses bounded exponential backoff with jitter")
+    func khalaReconnectPolicyUsesBoundedBackoff() {
+        let policy = KhalaReconnectPolicy.default
+
+        let first = policy.delayMs(attempt: 1, jitterUnit: 0.0)
+        let second = policy.delayMs(attempt: 2, jitterUnit: 0.0)
+        let third = policy.delayMs(attempt: 3, jitterUnit: 0.0)
+        let capped = policy.delayMs(attempt: 32, jitterUnit: 0.0)
+        let jittered = policy.delayMs(attempt: 4, jitterUnit: 1.0)
+
+        #expect(first == 250)
+        #expect(second == 500)
+        #expect(third == 1_000)
+        #expect(capped == 8_000)
+        #expect(jittered == 3_000)
+    }
+
+    @Test("khala reconnect classifier maps failure classes consistently")
+    func khalaReconnectClassifierMapsFailureClasses() {
+        let unauthorized = RuntimeCodexApiError(message: "unauthorized", code: .auth, status: 401)
+        let staleCursor = RuntimeCodexApiError(message: "stale_cursor", code: .conflict, status: 409)
+        let streamClosed = RuntimeCodexApiError(message: "khala_stream_closed", code: .network, status: nil)
+        let gatewayRestart = NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)
+
+        #expect(KhalaReconnectClassifier.classify(unauthorized) == .unauthorized)
+        #expect(KhalaReconnectClassifier.classify(staleCursor) == .staleCursor)
+        #expect(KhalaReconnectClassifier.classify(streamClosed) == .streamClosed)
+        #expect(KhalaReconnectClassifier.classify(gatewayRestart) == .gatewayRestart)
     }
 }
