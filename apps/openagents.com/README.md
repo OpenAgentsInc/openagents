@@ -1,65 +1,39 @@
-# openagents.com (Laravel)
+# openagents.com (Rust Control Service + Rust Web Shell)
 
-**Core web control-plane app** for OpenAgents: Laravel 12 + Inertia + React (TypeScript), WorkOS auth, Laravel Boost.
+Active web runtime path is Rust-only:
 
-- **Plan:** `docs/plans/active/laravel-rebuild.md` (from repo root: `../../docs/plans/active/laravel-rebuild.md`)
-- **Verification:** `composer test`, `composer lint`, `npm run build`
+- Control/API service: `apps/openagents.com/service` (`openagents-control-service`)
+- Web UI runtime: `apps/openagents.com/web-shell` (Rust/WASM)
+- Shared UI/state crates under `crates/` (`openagents-ui-core`, `openagents-app-state`, etc.)
 
-## Local development
+Legacy Laravel/Inertia/React sources remain in-repo only as historical/transition artifacts and are not part of the active runtime lane.
 
-### Option A: Laravel Herd (recommended for `.test` domain)
+## Active verification
 
-From this directory (`apps/openagents.com`):
-
-```bash
-herd link openagents.com   # one-time: use link, not park, so Herd uses public/ as doc root
-herd secure openagents.com # one-time: TLS for https://openagents.com.test
-```
-
-Set in `.env`: `APP_URL=https://openagents.com.test`
-
-Then in one terminal: `npm run dev` (Vite). Herd serves PHP; open **https://openagents.com.test** in the browser.
-
-### Option B: Artisan serve
+From repo root:
 
 ```bash
-composer run dev
+cargo test --manifest-path apps/openagents.com/service/Cargo.toml
+cargo check -p openagents-web-shell --target wasm32-unknown-unknown
 ```
 
-Or: `php artisan serve` in one terminal and `npm run dev` in another. Use **http://localhost:8000** and `APP_URL=http://localhost:8000` in `.env`.
+## Active deploy path
 
-## Production deploy
-
-Deploy via `deploy/deploy-production.sh` so Cloud Build must succeed before Cloud Run rollout:
+1. Build Rust web-shell dist:
 
 ```bash
-cd apps/openagents.com
-PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-web deploy/deploy-production.sh
+apps/openagents.com/web-shell/build-dist.sh
 ```
 
-The script runs `npm install` in the app directory before uploading to Cloud Build so `package-lock.json` is in sync with `package.json` (Cloud Build uses `npm ci`, which requires an exact match). If `package-lock.json` changes, commit and push it after a successful deploy.
+2. Deploy/control rollout via Rust service runbooks:
 
-This path is enforced as:
+- `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- `apps/openagents.com/docs/20260221-route-cutover-default-rust.md`
 
-1. Cloud Build Docker image build (Dockerfile runs `npm run build` in the `node_build` stage).
-2. If Vite build fails, image build fails and deploy stops.
-3. Only a successful image is deployed to Cloud Run.
-
-## Stack
-
-- Laravel 12, Inertia, React (TS), Vite
-- WorkOS auth
-- Laravel Wayfinder (typed routes/actions)
-- Pest for PHP tests
-
-## Staging smoke checks
-
-Run deploy smoke checks against staging:
+Optional helper (no Laravel/Node runtime steps):
 
 ```bash
-OPENAGENTS_BASE_URL="https://staging.openagents.com" ./deploy/smoke/health.sh
-SMOKE_SECRET="$(gcloud secrets versions access latest --secret openagents-web-staging-smoke-secret --project openagentsgemini)" OPENAGENTS_BASE_URL="https://staging.openagents.com" OA_SMOKE_SECRET="$SMOKE_SECRET" ./deploy/smoke/stream.sh
-OPENAGENTS_BASE_URL="https://staging.openagents.com" OA_SMOKE_ADMIN_EMAIL="chris@openagents.com" ./deploy/smoke/paywall-e2e.sh
+PROJECT=openagentsgemini REGION=us-central1 SERVICE=openagents-control-service \
+IMAGE=us-central1-docker.pkg.dev/<project>/<repo>/openagents-control-service:<tag> \
+apps/openagents.com/service/deploy/deploy-production.sh
 ```
-
-`paywall-e2e.sh` is intentionally staging-safe and refuses non-staging URLs unless `OA_SMOKE_ALLOW_NON_STAGING=1` is set.
