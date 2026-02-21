@@ -17,7 +17,7 @@ This runbook remains required after default-router switch (`OA_ROUTE_SPLIT_MODE=
 3. `gcloud` CLI is authenticated with deploy permissions.
 4. Control-service smoke checks are green:
    - `cargo test -p openagents-control-service`
-   - `apps/openagents.com/deploy/smoke/health.sh` against target environment base URL.
+   - `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-health.sh`
 
 ## Required Environment
 

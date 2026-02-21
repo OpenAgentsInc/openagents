@@ -153,3 +153,4 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
 ## Canary Runbook
 
 - Full staged canary + rollback SOP: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- Deploy smoke check: `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-health.sh`
