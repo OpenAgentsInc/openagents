@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    authority::AuthorityError,
     config::Config,
     orchestration::{OrchestrationError, RuntimeOrchestrator},
     types::{
@@ -74,6 +75,8 @@ struct AppendRunEventBody {
     event_type: String,
     #[serde(default)]
     payload: serde_json::Value,
+    idempotency_key: Option<String>,
+    expected_previous_seq: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -210,6 +213,8 @@ async fn append_run_event(
             AppendRunEventRequest {
                 event_type: body.event_type,
                 payload: body.payload,
+                idempotency_key: body.idempotency_key,
+                expected_previous_seq: body.expected_previous_seq,
             },
         )
         .await
@@ -337,6 +342,7 @@ async fn get_worker_checkpoint(
 enum ApiError {
     NotFound,
     Forbidden(String),
+    Conflict(String),
     InvalidRequest(String),
     Internal(String),
 }
@@ -351,6 +357,13 @@ impl ApiError {
             OrchestrationError::RunStateMachine(state_error) => {
                 Self::InvalidRequest(state_error.to_string())
             }
+            OrchestrationError::Authority(AuthorityError::SequenceConflict {
+                expected_previous_seq,
+                actual_previous_seq,
+                ..
+            }) => Self::Conflict(format!(
+                "expected_previous_seq {expected_previous_seq} does not match actual previous seq {actual_previous_seq}"
+            )),
             other => Self::Internal(other.to_string()),
         }
     }
@@ -407,6 +420,14 @@ impl IntoResponse for ApiError {
                 })),
             )
                 .into_response(),
+            Self::Conflict(message) => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "conflict",
+                    "message": message,
+                })),
+            )
+                .into_response(),
             Self::InvalidRequest(message) => (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
@@ -442,8 +463,9 @@ mod tests {
 
     use super::{AppState, build_router};
     use crate::{
-        authority::InMemoryRuntimeAuthority, config::Config, orchestration::RuntimeOrchestrator,
-        projectors::InMemoryProjectionPipeline, workers::InMemoryWorkerRegistry,
+        authority::InMemoryRuntimeAuthority, config::Config, event_log::DurableEventLog,
+        orchestration::RuntimeOrchestrator, projectors::InMemoryProjectionPipeline,
+        workers::InMemoryWorkerRegistry,
     };
 
     fn loopback_bind_addr() -> std::net::SocketAddr {
@@ -460,7 +482,9 @@ mod tests {
                 build_sha: "test".to_string(),
             },
             Arc::new(RuntimeOrchestrator::new(
-                InMemoryRuntimeAuthority::shared(),
+                Arc::new(InMemoryRuntimeAuthority::with_event_log(
+                    DurableEventLog::new_memory(),
+                )),
                 projector_pipeline,
             )),
             Arc::new(InMemoryWorkerRegistry::new(projectors, 120_000)),
@@ -605,6 +629,88 @@ mod tests {
             invalid_transition.status(),
             axum::http::StatusCode::BAD_REQUEST
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn append_run_event_supports_idempotency_and_sequence_conflicts() -> Result<()> {
+        let app = test_router();
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/internal/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "worker_id": "desktop:worker-idempotency",
+                        "metadata": {}
+                    }))?))?,
+            )
+            .await?;
+        let create_json = response_json(create_response).await?;
+        let run_id = create_json
+            .pointer("/run/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| anyhow!("missing run id"))?
+            .to_string();
+
+        let first_append = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.step.completed",
+                        "payload": {"step": 1},
+                        "idempotency_key": "step-1",
+                        "expected_previous_seq": 1
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(first_append.status(), axum::http::StatusCode::OK);
+
+        let second_append = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.step.completed",
+                        "payload": {"step": 1},
+                        "idempotency_key": "step-1",
+                        "expected_previous_seq": 1
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(second_append.status(), axum::http::StatusCode::OK);
+        let second_json = response_json(second_append).await?;
+        let event_count = second_json
+            .pointer("/run/events")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, std::vec::Vec::len);
+        assert_eq!(event_count, 2);
+
+        let conflict_append = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/internal/v1/runs/{run_id}/events"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                        "event_type": "run.step.completed",
+                        "payload": {"step": 2},
+                        "idempotency_key": "step-2",
+                        "expected_previous_seq": 1
+                    }))?))?,
+            )
+            .await?;
+        assert_eq!(conflict_append.status(), axum::http::StatusCode::CONFLICT);
 
         Ok(())
     }

@@ -65,6 +65,8 @@ impl RuntimeOrchestrator {
             AppendRunEventRequest {
                 event_type: "run.started".to_string(),
                 payload: serde_json::json!({"source": "runtime"}),
+                idempotency_key: None,
+                expected_previous_seq: None,
             },
         )
         .await
@@ -92,9 +94,17 @@ impl RuntimeOrchestrator {
 
         let event = self
             .authority
-            .append_event(run_id, trimmed.to_string(), request.payload)
+            .append_event(
+                run_id,
+                trimmed.to_string(),
+                request.payload,
+                request.idempotency_key,
+                request.expected_previous_seq,
+            )
             .await?;
-        self.projectors.apply_run_event(run_id, &event).await?;
+        self.projectors
+            .apply_run_event(run_id, &event.event)
+            .await?;
         if let Some(outcome) = transition_outcome {
             let _updated = self
                 .authority

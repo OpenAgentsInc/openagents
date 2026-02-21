@@ -25,6 +25,7 @@ pub struct RunEvent {
     pub seq: u64,
     pub event_type: String,
     pub payload: Value,
+    pub idempotency_key: Option<String>,
     pub recorded_at: DateTime<Utc>,
 }
 
@@ -49,6 +50,8 @@ pub struct StartRunRequest {
 pub struct AppendRunEventRequest {
     pub event_type: String,
     pub payload: Value,
+    pub idempotency_key: Option<String>,
+    pub expected_previous_seq: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

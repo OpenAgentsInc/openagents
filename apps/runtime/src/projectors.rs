@@ -136,6 +136,7 @@ mod tests {
                     seq: 1,
                     event_type: "run.started".to_string(),
                     payload: json!({"ok": true}),
+                    idempotency_key: None,
                     recorded_at: Utc::now(),
                 },
             )
@@ -147,6 +148,7 @@ mod tests {
                     seq: 2,
                     event_type: "run.step.completed".to_string(),
                     payload: json!({"step": 1}),
+                    idempotency_key: None,
                     recorded_at: Utc::now(),
                 },
             )
