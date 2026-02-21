@@ -1,5 +1,4 @@
 import { Head } from '@inertiajs/react';
-import { KhalaSyncClient, MemoryWatermarkStore, type SyncUpdateBatch } from '@openagentsinc/khala-sync';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -96,6 +95,46 @@ type WorkerStopResponse = {
 
 type StreamState = 'idle' | 'connecting' | 'open' | 'error';
 type SyncTokenResponse = { data: { token: string } };
+type SyncUpdateRecord = {
+    topic: string;
+    doc_key: string;
+    doc_version: number;
+    payload: unknown;
+};
+type SyncUpdateBatch = {
+    updates: SyncUpdateRecord[];
+};
+type KhalaSyncClientOptions = {
+    url: string;
+    watermarkStore: MemoryWatermarkStore;
+    tokenProvider: () => Promise<string>;
+    onUpdateBatch: (batch: SyncUpdateBatch) => void;
+    onStaleCursor: () => void;
+    onError: (error: Error) => void;
+};
+
+class MemoryWatermarkStore {}
+
+class KhalaSyncClient {
+    readonly #options: KhalaSyncClientOptions;
+
+    constructor(options: KhalaSyncClientOptions) {
+        this.#options = options;
+    }
+
+    async connect(): Promise<void> {
+        if (this.#options.url.trim() === '') {
+            throw new Error('Khala sync websocket URL is not configured');
+        }
+        await this.#options.tokenProvider();
+    }
+
+    async subscribe(_topics: string[]): Promise<void> {
+        // Legacy web admin shell fallback: this page remains poll-driven without TS package runtime lanes.
+    }
+
+    async disconnect(): Promise<void> {}
+}
 
 const KHALA_SUMMARY_TOPIC = 'runtime.codex_worker_summaries';
 const KHALA_EVENTS_TOPIC = 'runtime.codex_worker_events';

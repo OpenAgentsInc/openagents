@@ -480,6 +480,7 @@ Dependencies: OA-RUST-060, OA-RUST-066, OA-RUST-095.
 
 ### OA-RUST-103 — [Packages] Retire legacy TypeScript package runtime lanes
 Description: Migrate or archive `packages/*` TypeScript runtime dependencies (Effuse/khala-sync/lightning-effect family) so no production-critical runtime paths depend on Node/TypeScript execution.
+Enforcement artifacts: `docs/audits/OA-RUST-103-PACKAGE-DISPOSITION-2026-02-21.md`, `apps/openagents.com/package.json`, `apps/openagents.com/package-lock.json`, `apps/openagents.com/resources/js/pages/admin/index.tsx`, `scripts/verify.sh`
 Acceptance criteria: Remaining TS packages are either archived or explicitly non-production tooling; production runtimes import Rust crates only; dependency graph audit is documented.
 Dependencies: OA-RUST-053, OA-RUST-058, OA-RUST-063, OA-RUST-101, OA-RUST-102.
 

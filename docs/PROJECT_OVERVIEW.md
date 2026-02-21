@@ -39,23 +39,11 @@ This document maps the active codebase.
 
 ## Shared Packages
 
-- `packages/effuse/`
-  Effect-oriented runtime and orchestration utilities used across app surfaces.
+- `packages/`
+  Legacy TypeScript package lanes are retired/archived from active runtime surfaces (`OA-RUST-103`).
 
-- `packages/effuse-panes/`
-  Pane/window primitives and controllers.
-
-- `packages/effuse-test/`
-  E2E and runtime test tooling.
-
-- `packages/effuse-ui/` and `packages/effuse-flow/`
-  UI and flow helpers used by product surfaces.
-
-- `packages/dse/` and `packages/hud/`
-  DSE visualization and HUD components.
-
-- `packages/lightning-effect/`
-  Effect-first Lightning and L402 contracts, services, adapters, and layers shared across app surfaces.
+- `crates/`
+  Active shared Rust workspace for runtime, protocol, UI, and service contracts.
 
 ## Rust Workspace
 

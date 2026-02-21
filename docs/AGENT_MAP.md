@@ -45,7 +45,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 - `apps/autopilot-ios/docs/README.md` — iOS app docs and runbooks.
 - `apps/autopilot-desktop/` — Rust desktop Codex app.
 - `apps/onyx/` — Rust local-first notes app.
-- `packages/` — shared libraries (`effuse*`, `dse`, `lightning-effect`, `hud`).
+- `packages/` — removed from active runtime surfaces (legacy TS lanes retired/archived).
 
 ### 4) Plans, specs, and implementation tracking
 
