@@ -32,6 +32,7 @@ Environment:
 - `OA_COMPAT_KHALA_MAX_CLIENT_BUILD_ID` (optional upper support window)
 - `OA_COMPAT_KHALA_MIN_SCHEMA_VERSION` (default: `1`)
 - `OA_COMPAT_KHALA_MAX_SCHEMA_VERSION` (default: `1`)
+- `khala_sync_topic_policies` (runtime config map in `config/config.exs`) defines per-topic retention windows, compaction mode, and snapshot metadata source.
 
 Baseline endpoints:
 
@@ -201,6 +202,7 @@ Internal API docs:
 - DS-Elixir runtime contract: `docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
 - DS-Elixir operations runbook: `docs/DS_ELIXIR_OPERATIONS.md`
 - Khala sync-layer integration boundary: `docs/KHALA_SYNC.md`
+- Khala retention/compaction/snapshot policy: `docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`
 - Observability + telemetry guardrails: `docs/OBSERVABILITY.md`
 - Dashboards + alerts runbook: `docs/OPERATIONS_ALERTING.md`
 - Load/chaos validation suite: `docs/LOAD_TESTING.md`

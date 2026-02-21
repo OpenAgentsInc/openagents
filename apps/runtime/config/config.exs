@@ -23,6 +23,44 @@ config :openagents_runtime,
   khala_sync_retention_interval_ms: 60_000,
   khala_sync_retention_horizon_seconds: 86_400,
   khala_sync_retention_batch_size: 5_000,
+  khala_sync_topic_policies: %{
+    "runtime.run_summaries" => %{
+      topic_class: "durable_summary",
+      retention_seconds: 604_800,
+      compaction_mode: "tail_prune_with_snapshot_rehydrate",
+      snapshot: %{
+        enabled: true,
+        format: "openagents.sync.snapshot.v1",
+        schema_version: 1,
+        cadence_seconds: 300,
+        source_table: "runtime.sync_run_summaries"
+      }
+    },
+    "runtime.codex_worker_summaries" => %{
+      topic_class: "durable_summary",
+      retention_seconds: 259_200,
+      compaction_mode: "tail_prune_with_snapshot_rehydrate",
+      snapshot: %{
+        enabled: true,
+        format: "openagents.sync.snapshot.v1",
+        schema_version: 1,
+        cadence_seconds: 120,
+        source_table: "runtime.sync_codex_worker_summaries"
+      }
+    },
+    "runtime.codex_worker_events" => %{
+      topic_class: "high_churn_events",
+      retention_seconds: 86_400,
+      compaction_mode: "tail_prune_without_snapshot",
+      snapshot: %{enabled: false}
+    },
+    "runtime.notifications" => %{
+      topic_class: "ephemeral_notifications",
+      retention_seconds: 43_200,
+      compaction_mode: "tail_prune_without_snapshot",
+      snapshot: %{enabled: false}
+    }
+  },
   khala_sync_replay_batch_size: 200,
   khala_sync_heartbeat_interval_ms: 15_000,
   khala_sync_heartbeat_timeout_ms: 60_000,

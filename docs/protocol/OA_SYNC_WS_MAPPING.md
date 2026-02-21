@@ -168,6 +168,22 @@ Current runtime payload shape for stale cursor (`sync:error` event and subscribe
   "code": "stale_cursor",
   "message": "cursor is older than retention floor",
   "full_resync_required": true,
+  "snapshot_plan": {
+    "format": "openagents.sync.snapshot.v1",
+    "topics": [
+      {
+        "topic": "runtime.run_summaries",
+        "head_watermark": 42,
+        "snapshot": {
+          "topic": "runtime.run_summaries",
+          "format": "openagents.sync.snapshot.v1",
+          "schema_version": 1,
+          "cadence_seconds": 300,
+          "source_table": "runtime.sync_run_summaries"
+        }
+      }
+    ]
+  },
   "stale_topics": [
     {
       "topic": "runtime.run_summaries",

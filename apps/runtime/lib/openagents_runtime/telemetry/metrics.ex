@@ -36,6 +36,8 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
     sync_socket_timeout: [:status],
     sync_replay_lag: [:event_type, :status],
     sync_replay_catchup: [:status],
+    sync_retention_cycle: [:status],
+    sync_retention_topic: [:event_type, :status, :topic_class, :snapshot],
     sync_parity_cycle: [:status],
     sync_parity_entity: [:status, :reason_class, :event_type]
   }
@@ -162,6 +164,28 @@ defmodule OpenAgentsRuntime.Telemetry.Metrics do
       summary("openagents_runtime.sync.replay.catchup_duration_ms",
         measurement: :duration_ms,
         tags: tags_for(:sync_replay_catchup)
+      ),
+      counter("openagents_runtime.sync.retention.cycle.count",
+        tags: tags_for(:sync_retention_cycle)
+      ),
+      summary("openagents_runtime.sync.retention.cycle.deleted",
+        measurement: :deleted,
+        tags: tags_for(:sync_retention_cycle)
+      ),
+      summary("openagents_runtime.sync.retention.cycle.topics",
+        measurement: :topics,
+        tags: tags_for(:sync_retention_cycle)
+      ),
+      counter("openagents_runtime.sync.retention.topic.count",
+        tags: tags_for(:sync_retention_topic)
+      ),
+      summary("openagents_runtime.sync.retention.topic.deleted",
+        measurement: :deleted,
+        tags: tags_for(:sync_retention_topic)
+      ),
+      summary("openagents_runtime.sync.retention.topic.stale_risk",
+        measurement: :stale_risk,
+        tags: tags_for(:sync_retention_topic)
       ),
       counter("openagents_runtime.sync.parity.cycle.count",
         tags: tags_for(:sync_parity_cycle)

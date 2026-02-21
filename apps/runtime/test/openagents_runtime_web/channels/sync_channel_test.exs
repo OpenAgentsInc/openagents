@@ -464,6 +464,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert_push "sync:error", %{
       "code" => "stale_cursor",
       "full_resync_required" => true,
+      "snapshot_plan" => snapshot_plan,
       "stale_topics" => [
         %{
           "topic" => @run_topic,
@@ -472,6 +473,14 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
         }
       ]
     }
+
+    assert snapshot_plan["format"] == "openagents.sync.snapshot.v1"
+
+    assert [%{"topic" => @run_topic, "head_watermark" => 2, "snapshot" => snapshot_metadata}] =
+             snapshot_plan["topics"]
+
+    assert snapshot_metadata["format"] == "openagents.sync.snapshot.v1"
+    assert snapshot_metadata["source_table"] == "runtime.sync_run_summaries"
 
     assert_push "sync:frame", stale_frame
     assert stale_frame["kind"] == "KHALA_FRAME_KIND_ERROR"
@@ -485,6 +494,9 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert_reply ref, :error, %{
       "code" => "stale_cursor",
       "full_resync_required" => true,
+      "snapshot_plan" => %{
+        "format" => "openagents.sync.snapshot.v1"
+      },
       "stale_topics" => [
         %{
           "topic" => @run_topic,

@@ -11,6 +11,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
   alias OpenAgentsRuntime.Sync.Replay
   alias OpenAgentsRuntime.Sync.SessionRevocation
   alias OpenAgentsRuntime.Sync.StreamEvent
+  alias OpenAgentsRuntime.Sync.TopicPolicy
   alias OpenAgentsRuntime.Telemetry.Events
 
   @known_topics MapSet.new([
@@ -557,11 +558,37 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     do: max(oldest_watermark - 1, 0)
 
   defp stale_cursor_payload(stale_topics) do
+    snapshot_topics =
+      stale_topics
+      |> Enum.flat_map(fn
+        %{"topic" => topic} when is_binary(topic) and topic != "" ->
+          case TopicPolicy.snapshot_metadata(topic) do
+            %{} = snapshot ->
+              [
+                %{
+                  "topic" => topic,
+                  "head_watermark" => Replay.head_watermark(topic),
+                  "snapshot" => snapshot
+                }
+              ]
+
+            nil ->
+              []
+          end
+
+        _other ->
+          []
+      end)
+
     %{
       "code" => "stale_cursor",
       "message" => "cursor is older than retention floor",
       "full_resync_required" => true,
-      "stale_topics" => stale_topics
+      "stale_topics" => stale_topics,
+      "snapshot_plan" => %{
+        "format" => "openagents.sync.snapshot.v1",
+        "topics" => snapshot_topics
+      }
     }
   end
 
