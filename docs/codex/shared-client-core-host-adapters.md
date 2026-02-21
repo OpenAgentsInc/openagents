@@ -2,7 +2,7 @@
 
 Status: Active
 Owner: OA-RUST migration lane
-Related issue: OA-RUST-054 (`#1869`)
+Related issues: OA-RUST-054 (`#1869`), OA-RUST-055 (`#1870`)
 
 ## Goal
 
@@ -15,6 +15,8 @@ Source of truth lives in `crates/openagents-client-core/`.
 Modules:
 - `auth`: input normalization + auth/session transport interfaces.
 - `command`: command input normalization + command transport interface.
+- `codex_worker`: worker-event handshake envelope decoding shared by desktop + iOS bridge.
+- `ffi`: C-ABI bridge exports for iOS host integration.
 - `khala_protocol`: Phoenix/Khala frame parsing, update/error decoding, watermark and replay helpers.
 - `sync_persistence`: persisted topic watermark schema + migration codec.
 
@@ -32,8 +34,9 @@ Modules:
 - Keep desktop-specific session routing/handshake dispatch in desktop app layer.
 
 ### iOS (`apps/autopilot-ios`)
-- Swift host remains platform shell for now.
-- Next step (OA-RUST-055): consume the same `openagents-client-core` modules through Rust packaging/FFI bridge.
+- Swift host consumes shared Rust client core through `RustClientCoreBridge.swift` and C-ABI bridge symbols from `openagents-client-core`.
+- Rust-owned on iOS path: auth/code normalization, command text normalization, desktop handshake-ack extraction, Khala frame parsing.
+- Artifact build script: `apps/autopilot-ios/scripts/build-rust-client-core.sh`.
 - iOS host must own only platform concerns (lifecycle, backgrounding hooks, push/notifications, secure keychain bridge) while auth/sync/business rules move into Rust core.
 
 ## Invariants
@@ -48,4 +51,5 @@ Modules:
 Minimum checks for any adapter change:
 - `cargo test -p openagents-client-core`
 - `cargo test -p openagents-web-shell`
-- `cargo check -p autopilot-desktop`
+- `cargo test -p autopilot-desktop runtime_codex_proto`
+- `xcodebuild -project apps/autopilot-ios/Autopilot/Autopilot.xcodeproj -scheme Autopilot -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test`

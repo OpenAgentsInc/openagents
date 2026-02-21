@@ -211,4 +211,36 @@ struct AutopilotTests {
         #expect(KhalaReconnectClassifier.classify(streamClosed) == .streamClosed)
         #expect(KhalaReconnectClassifier.classify(gatewayRestart) == .gatewayRestart)
     }
+
+    @Test("rust bridge normalization matches shared core semantics when symbols are loaded")
+    func rustBridgeNormalizationParity() {
+        let email = RustClientCoreBridge.normalizeEmail("  ChrIS@OpenAgents.com ")
+        let code = RustClientCoreBridge.normalizeVerificationCode("Code: 123 456.")
+        let message = RustClientCoreBridge.normalizeMessageText("  who are you?  ")
+
+        if RustClientCoreBridge.isAvailable {
+            #expect(email == "chris@openagents.com")
+            #expect(code == "123456")
+            #expect(message == "who are you?")
+        } else {
+            #expect(email == nil)
+            #expect(code == nil)
+            #expect(message == nil)
+        }
+    }
+
+    @Test("rust bridge khala parser preserves frame contract when symbols are loaded")
+    func rustBridgeKhalaParserParity() {
+        let raw = "[\"1\",\"2\",\"sync:v1\",\"sync:heartbeat\",{\"watermarks\":[{\"topic\":\"runtime.codex_worker_events\",\"watermark\":33}]}]"
+        let parsed = RustClientCoreBridge.parseKhalaFrame(raw: raw)
+
+        if RustClientCoreBridge.isAvailable {
+            #expect(parsed != nil)
+            #expect(parsed?.topic == "sync:v1")
+            #expect(parsed?.event == "sync:heartbeat")
+            #expect(parsed?.payload.objectValue?["watermarks"]?.arrayValue?.count == 1)
+        } else {
+            #expect(parsed == nil)
+        }
+    }
 }

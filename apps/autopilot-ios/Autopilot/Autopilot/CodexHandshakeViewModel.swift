@@ -101,8 +101,8 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     var canSendMessage: Bool {
-        let trimmed = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        let normalized = normalizeMessageText(messageDraft)
+        guard !normalized.isEmpty else {
             return false
         }
         guard isAuthenticated else {
@@ -126,7 +126,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     var canVerifyAuthCode: Bool {
-        let normalizedCode = verificationCode.replacingOccurrences(of: " ", with: "")
+        let normalizedCode = normalizeVerificationCode(verificationCode)
         guard !normalizedCode.isEmpty else {
             return false
         }
@@ -232,7 +232,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
-        let normalizedCode = verificationCode.replacingOccurrences(of: " ", with: "")
+        let normalizedCode = normalizeVerificationCode(verificationCode)
         guard !normalizedCode.isEmpty else {
             errorMessage = "Enter your verification code first."
             return
@@ -408,8 +408,8 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     func sendUserMessage() async {
-        let trimmed = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        let normalizedMessage = normalizeMessageText(messageDraft)
+        guard !normalizedMessage.isEmpty else {
             return
         }
 
@@ -449,7 +449,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         // Optimistic local echo so mobile feels instant while runtime stream catches up.
         appendUserMessage(
-            trimmed,
+            normalizedMessage,
             dedupeKey: "local:\(messageID)",
             threadID: nil,
             turnID: nil,
@@ -464,7 +464,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             "occurred_at": .string(occurredAt),
             "params": .object([
                 "message_id": .string(messageID),
-                "text": .string(trimmed),
+                "text": .string(normalizedMessage),
                 "sent_from": .string("autopilot-ios"),
             ]),
         ]
@@ -473,7 +473,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             try await client.ingestWorkerEvent(workerID: workerID, eventType: "worker.event", payload: payload)
             statusMessage = "Sent to \(shortWorkerID(workerID))."
         } catch {
-            messageDraft = trimmed
+            messageDraft = normalizedMessage
             errorMessage = formatError(error)
             statusMessage = nil
         }
@@ -980,6 +980,16 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     private func parseKhalaFrame(raw: String) -> KhalaFrame? {
+        if let parsedByRust = RustClientCoreBridge.parseKhalaFrame(raw: raw) {
+            return KhalaFrame(
+                joinRef: parsedByRust.joinRef,
+                ref: parsedByRust.ref,
+                topic: parsedByRust.topic,
+                event: parsedByRust.event,
+                payload: parsedByRust.payload
+            )
+        }
+
         guard let data = raw.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data, options: []),
               let frameArray = parsed as? [Any],
@@ -2173,7 +2183,18 @@ final class CodexHandshakeViewModel: ObservableObject {
     }
 
     private func normalizeEmail(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        RustClientCoreBridge.normalizeEmail(value)
+            ?? value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func normalizeVerificationCode(_ value: String) -> String {
+        RustClientCoreBridge.normalizeVerificationCode(value)
+            ?? value.replacingOccurrences(of: " ", with: "")
+    }
+
+    private func normalizeMessageText(_ value: String) -> String {
+        RustClientCoreBridge.normalizeMessageText(value)
+            ?? value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func isValidEmail(_ value: String) -> Bool {
