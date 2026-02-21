@@ -67,6 +67,7 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 15. Workflow history compatibility fixtures (`apps/runtime/fixtures/history_compat/run_workflow_histories_v1.json`) are replayed by `history_compat` tests to gate deterministic upgrade safety for runtime orchestration behavior.
 16. Khala polling applies bounded backpressure policy: capped poll limits, minimum poll interval guard, slow-consumer strike/eviction policy, and deterministic reconnect jitter hints.
 17. Delivery telemetry includes queue depth, dropped-message counts, poll throttle counters, and recent disconnect causes for operational triage.
+18. Khala publish paths enforce topic-class publish-rate and payload-size limits with deterministic violation reason codes.
 
 ## Khala backpressure policy defaults
 
@@ -80,6 +81,14 @@ Runtime config variables controlling Khala delivery policy:
 - `RUNTIME_KHALA_CONSUMER_REGISTRY_CAPACITY` (default `4096`)
 - `RUNTIME_KHALA_RECONNECT_BASE_BACKOFF_MS` (default `400`)
 - `RUNTIME_KHALA_RECONNECT_JITTER_MS` (default `250`)
+- `RUNTIME_KHALA_RUN_EVENTS_PUBLISH_RATE_PER_SECOND` (default `240`)
+- `RUNTIME_KHALA_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND` (default `180`)
+- `RUNTIME_KHALA_CODEX_WORKER_EVENTS_PUBLISH_RATE_PER_SECOND` (default `240`)
+- `RUNTIME_KHALA_FALLBACK_PUBLISH_RATE_PER_SECOND` (default `90`)
+- `RUNTIME_KHALA_RUN_EVENTS_MAX_PAYLOAD_BYTES` (default `262144`)
+- `RUNTIME_KHALA_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES` (default `65536`)
+- `RUNTIME_KHALA_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES` (default `131072`)
+- `RUNTIME_KHALA_FALLBACK_MAX_PAYLOAD_BYTES` (default `65536`)
 
 Policy behavior:
 
@@ -87,6 +96,8 @@ Policy behavior:
 2. Polls faster than `RUNTIME_KHALA_POLL_MIN_INTERVAL_MS` return `429 rate_limited` with `retry_after_ms`.
 3. Consumers with repeated lag above threshold are evicted with deterministic `409 slow_consumer_evicted` recovery details.
 4. Reconnect guidance includes deterministic jitter (`recommended_reconnect_backoff_ms`) to reduce reconnect herd spikes.
+5. Publish bursts above topic-class rate limits return `429 rate_limited` with reason code `khala_publish_rate_limited`.
+6. Publish frames above topic-class payload limits return `413 payload_too_large` with reason code `khala_frame_payload_too_large`.
 
 ## History compatibility gate
 

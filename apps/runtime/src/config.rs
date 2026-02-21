@@ -6,6 +6,8 @@ use std::{
 
 use thiserror::Error;
 
+use crate::fanout::{FanoutLimitConfig, FanoutTierLimits};
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub service_name: String,
@@ -22,6 +24,14 @@ pub struct Config {
     pub khala_consumer_registry_capacity: usize,
     pub khala_reconnect_base_backoff_ms: u64,
     pub khala_reconnect_jitter_ms: u64,
+    pub khala_run_events_publish_rate_per_second: u32,
+    pub khala_worker_lifecycle_publish_rate_per_second: u32,
+    pub khala_codex_worker_events_publish_rate_per_second: u32,
+    pub khala_fallback_publish_rate_per_second: u32,
+    pub khala_run_events_max_payload_bytes: usize,
+    pub khala_worker_lifecycle_max_payload_bytes: usize,
+    pub khala_codex_worker_events_max_payload_bytes: usize,
+    pub khala_fallback_max_payload_bytes: usize,
     pub sync_token_signing_key: String,
     pub sync_token_issuer: String,
     pub sync_token_audience: String,
@@ -75,6 +85,10 @@ pub enum ConfigError {
     InvalidKhalaReconnectBaseBackoffMs(String),
     #[error("invalid RUNTIME_KHALA_RECONNECT_JITTER_MS: {0}")]
     InvalidKhalaReconnectJitterMs(String),
+    #[error("invalid khala publish rate limit setting: {0}")]
+    InvalidKhalaPublishRateLimit(String),
+    #[error("invalid khala max payload bytes setting: {0}")]
+    InvalidKhalaMaxPayloadBytes(String),
 }
 
 impl Config {
@@ -133,6 +147,46 @@ impl Config {
             .unwrap_or_else(|_| "250".to_string())
             .parse::<u64>()
             .map_err(|error| ConfigError::InvalidKhalaReconnectJitterMs(error.to_string()))?;
+        let parse_publish_rate = |key: &str, default: &str| -> Result<u32, ConfigError> {
+            env::var(key)
+                .unwrap_or_else(|_| default.to_string())
+                .parse::<u32>()
+                .map(|value| value.max(1))
+                .map_err(|error| {
+                    ConfigError::InvalidKhalaPublishRateLimit(format!("{key}: {error}"))
+                })
+        };
+        let parse_max_payload = |key: &str, default: &str| -> Result<usize, ConfigError> {
+            env::var(key)
+                .unwrap_or_else(|_| default.to_string())
+                .parse::<usize>()
+                .map(|value| value.max(1))
+                .map_err(|error| {
+                    ConfigError::InvalidKhalaMaxPayloadBytes(format!("{key}: {error}"))
+                })
+        };
+        let khala_run_events_publish_rate_per_second =
+            parse_publish_rate("RUNTIME_KHALA_RUN_EVENTS_PUBLISH_RATE_PER_SECOND", "240")?;
+        let khala_worker_lifecycle_publish_rate_per_second = parse_publish_rate(
+            "RUNTIME_KHALA_WORKER_LIFECYCLE_PUBLISH_RATE_PER_SECOND",
+            "180",
+        )?;
+        let khala_codex_worker_events_publish_rate_per_second = parse_publish_rate(
+            "RUNTIME_KHALA_CODEX_WORKER_EVENTS_PUBLISH_RATE_PER_SECOND",
+            "240",
+        )?;
+        let khala_fallback_publish_rate_per_second =
+            parse_publish_rate("RUNTIME_KHALA_FALLBACK_PUBLISH_RATE_PER_SECOND", "90")?;
+        let khala_run_events_max_payload_bytes =
+            parse_max_payload("RUNTIME_KHALA_RUN_EVENTS_MAX_PAYLOAD_BYTES", "262144")?;
+        let khala_worker_lifecycle_max_payload_bytes =
+            parse_max_payload("RUNTIME_KHALA_WORKER_LIFECYCLE_MAX_PAYLOAD_BYTES", "65536")?;
+        let khala_codex_worker_events_max_payload_bytes = parse_max_payload(
+            "RUNTIME_KHALA_CODEX_WORKER_EVENTS_MAX_PAYLOAD_BYTES",
+            "131072",
+        )?;
+        let khala_fallback_max_payload_bytes =
+            parse_max_payload("RUNTIME_KHALA_FALLBACK_MAX_PAYLOAD_BYTES", "65536")?;
         let khala_poll_max_limit = khala_poll_max_limit.max(1);
         let khala_poll_default_limit = khala_poll_default_limit.max(1).min(khala_poll_max_limit);
         let khala_slow_consumer_max_strikes = khala_slow_consumer_max_strikes.max(1);
@@ -168,11 +222,41 @@ impl Config {
             khala_consumer_registry_capacity,
             khala_reconnect_base_backoff_ms,
             khala_reconnect_jitter_ms,
+            khala_run_events_publish_rate_per_second,
+            khala_worker_lifecycle_publish_rate_per_second,
+            khala_codex_worker_events_publish_rate_per_second,
+            khala_fallback_publish_rate_per_second,
+            khala_run_events_max_payload_bytes,
+            khala_worker_lifecycle_max_payload_bytes,
+            khala_codex_worker_events_max_payload_bytes,
+            khala_fallback_max_payload_bytes,
             sync_token_signing_key,
             sync_token_issuer,
             sync_token_audience,
             sync_revoked_jtis,
         })
+    }
+
+    #[must_use]
+    pub fn khala_fanout_limits(&self) -> FanoutLimitConfig {
+        FanoutLimitConfig {
+            run_events: FanoutTierLimits {
+                max_publish_per_second: self.khala_run_events_publish_rate_per_second,
+                max_payload_bytes: self.khala_run_events_max_payload_bytes,
+            },
+            worker_lifecycle: FanoutTierLimits {
+                max_publish_per_second: self.khala_worker_lifecycle_publish_rate_per_second,
+                max_payload_bytes: self.khala_worker_lifecycle_max_payload_bytes,
+            },
+            codex_worker_events: FanoutTierLimits {
+                max_publish_per_second: self.khala_codex_worker_events_publish_rate_per_second,
+                max_payload_bytes: self.khala_codex_worker_events_max_payload_bytes,
+            },
+            fallback: FanoutTierLimits {
+                max_publish_per_second: self.khala_fallback_publish_rate_per_second,
+                max_payload_bytes: self.khala_fallback_max_payload_bytes,
+            },
+        }
     }
 }
 

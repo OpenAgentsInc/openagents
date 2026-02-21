@@ -40,7 +40,10 @@ pub fn build_runtime_state(config: Config) -> AppState {
         orchestrator.projectors(),
         120_000,
     ));
-    let fanout = Arc::new(FanoutHub::memory(config.fanout_queue_capacity));
+    let fanout = Arc::new(FanoutHub::memory_with_limits(
+        config.fanout_queue_capacity,
+        config.khala_fanout_limits(),
+    ));
     let sync_auth = Arc::new(SyncAuthorizer::from_config(SyncAuthConfig {
         signing_key: config.sync_token_signing_key.clone(),
         issuer: config.sync_token_issuer.clone(),
