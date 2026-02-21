@@ -34,50 +34,55 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
 
   @impl true
   def join("sync:v1", _params, socket) do
-    if socket.assigns[:sync_reauth_required] == true do
-      reason =
-        socket.assigns[:sync_reauth_reason]
-        |> case do
-          value when is_binary(value) and value != "" -> value
-          _other -> "session_revoked"
-        end
+    cond do
+      socket.assigns[:sync_reauth_required] == true ->
+        reason =
+          socket.assigns[:sync_reauth_reason]
+          |> case do
+            value when is_binary(value) and value != "" -> value
+            _other -> "session_revoked"
+          end
 
-      Events.emit(@revocation_event, %{count: 1}, %{
-        component: "sync_channel",
-        status: "reauth_required",
-        reason_class: reason,
-        result: "join_denied"
-      })
+        Events.emit(@revocation_event, %{count: 1}, %{
+          component: "sync_channel",
+          status: "reauth_required",
+          reason_class: reason,
+          result: "join_denied"
+        })
 
-      {:error,
-       %{
-         "code" => "reauth_required",
-         "message" => "session access was revoked; sign in again",
-         "reauth_required" => true,
-         "reason" => reason
-       }}
-    else
-      now_ms = monotonic_ms()
-      allowed_topics = socket.assigns[:allowed_topics] || []
-      active_connections = ConnectionTracker.increment()
+        {:error,
+         %{
+           "code" => "reauth_required",
+           "message" => "session access was revoked; sign in again",
+           "reauth_required" => true,
+           "reason" => reason
+         }}
 
-      response = %{
-        "subscription_id" => subscription_id(socket),
-        "allowed_topics" => allowed_topics,
-        "current_watermarks" => []
-      }
+      compatibility_failure?(socket.assigns[:sync_compatibility_failure]) ->
+        {:error, socket.assigns[:sync_compatibility_failure]}
 
-      emit_connection("connect", active_connections, "ok")
-      SessionRevocation.register_connection(socket.assigns[:sync_session_id], self())
+      true ->
+        now_ms = monotonic_ms()
+        allowed_topics = socket.assigns[:allowed_topics] || []
+        active_connections = ConnectionTracker.increment()
 
-      {:ok, response,
-       socket
-       |> assign(:subscription_id, response["subscription_id"])
-       |> assign(:subscribed_topics, MapSet.new())
-       |> assign(:topic_watermarks, %{})
-       |> assign(:connected_at_ms, now_ms)
-       |> assign(:last_client_heartbeat_ms, now_ms)
-       |> assign(:heartbeat_ref, schedule_heartbeat_tick(heartbeat_interval_ms()))}
+        response = %{
+          "subscription_id" => subscription_id(socket),
+          "allowed_topics" => allowed_topics,
+          "current_watermarks" => []
+        }
+
+        emit_connection("connect", active_connections, "ok")
+        SessionRevocation.register_connection(socket.assigns[:sync_session_id], self())
+
+        {:ok, response,
+         socket
+         |> assign(:subscription_id, response["subscription_id"])
+         |> assign(:subscribed_topics, MapSet.new())
+         |> assign(:topic_watermarks, %{})
+         |> assign(:connected_at_ms, now_ms)
+         |> assign(:last_client_heartbeat_ms, now_ms)
+         |> assign(:heartbeat_ref, schedule_heartbeat_tick(heartbeat_interval_ms()))}
     end
   end
 
@@ -580,4 +585,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannel do
     do: topic
 
   defp stale_cursor_topic(_stale_topics), do: "sync.unspecified"
+
+  defp compatibility_failure?(failure) when is_map(failure), do: true
+  defp compatibility_failure?(_failure), do: false
 end

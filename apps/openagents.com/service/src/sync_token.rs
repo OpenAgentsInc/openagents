@@ -404,6 +404,12 @@ mod tests {
             runtime_sync_revoke_path: "/internal/v1/sync/sessions/revoke".to_string(),
             runtime_signature_secret: None,
             runtime_signature_ttl_seconds: 60,
+            compat_control_enforced: false,
+            compat_control_protocol_version: "openagents.control.v1".to_string(),
+            compat_control_min_client_build_id: "00000000T000000Z".to_string(),
+            compat_control_max_client_build_id: None,
+            compat_control_min_schema_version: 1,
+            compat_control_max_schema_version: 1,
         };
 
         SyncTokenIssuer::from_config(&config)

@@ -370,6 +370,7 @@ Dependencies: OA-RUST-008, OA-RUST-075, OA-RUST-076.
 
 ### OA-RUST-084 — [Protocol] Enforce minimum client version in control service and Khala
 Description: Implement minimum supported client version checks and coordinated rollout controls in control-plane APIs and websocket handshake flow.
+Enforcement artifacts: `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/src/config.rs`, `apps/openagents.com/service/README.md`, `apps/runtime/lib/openagents_runtime_web/sync_socket.ex`, `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/config/config.exs`, `apps/runtime/config/runtime.exs`, `apps/runtime/test/openagents_runtime_web/channels/sync_channel_test.exs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`, `apps/runtime/docs/KHALA_SYNC.md`
 Acceptance criteria: Min-version gates are configurable per environment; older clients receive deterministic upgrade path responses; telemetry captures rejection reasons.
 Dependencies: OA-RUST-083.
 

@@ -6971,6 +6971,7 @@ dependencies = [
  "hmac",
  "http-body-util",
  "mime_guess",
+ "openagents-client-core",
  "reqwest",
  "serde",
  "serde_json",

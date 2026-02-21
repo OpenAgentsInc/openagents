@@ -73,6 +73,12 @@ Rust control service scaffold for `apps/openagents.com`.
 - `OA_RUNTIME_SYNC_REVOKE_PATH` (default: `/internal/v1/sync/sessions/revoke`)
 - `OA_RUNTIME_SIGNATURE_SECRET` (optional shared runtime internal-signature secret; when unset revocation propagation is skipped)
 - `OA_RUNTIME_SIGNATURE_TTL_SECONDS` (default: `60`)
+- `OA_COMPAT_CONTROL_ENFORCED` (`true|false`, default: `false`)
+- `OA_COMPAT_CONTROL_PROTOCOL_VERSION` (default: `openagents.control.v1`)
+- `OA_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID` (default: `00000000T000000Z`)
+- `OA_COMPAT_CONTROL_MAX_CLIENT_BUILD_ID` (optional upper support window)
+- `OA_COMPAT_CONTROL_MIN_SCHEMA_VERSION` (default: `1`)
+- `OA_COMPAT_CONTROL_MAX_SCHEMA_VERSION` (default: `1`)
 
 ## Run locally
 
@@ -136,6 +142,11 @@ cargo test --manifest-path apps/openagents.com/service/Cargo.toml
   - `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
 - Khala WS mapping reference:
   - `docs/protocol/OA_SYNC_WS_MAPPING.md`
+- Control API compatibility headers:
+  - `x-oa-client-build-id`
+  - `x-oa-protocol-version`
+  - `x-oa-schema-version`
+- When control compatibility enforcement is enabled, unsupported requests return `426 Upgrade Required` with deterministic `compatibility` failure payloads.
 
 ## Observability baseline
 

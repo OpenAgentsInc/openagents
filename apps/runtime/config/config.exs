@@ -57,6 +57,12 @@ config :openagents_runtime, :khala_sync_auth,
   audience: "openagents-sync",
   claims_version: "oa_sync_claims_v1",
   allowed_algs: ["HS256"],
+  compat_enforced: false,
+  compat_protocol_version: "khala.ws.v1",
+  compat_min_client_build_id: "00000000T000000Z",
+  compat_max_client_build_id: nil,
+  compat_min_schema_version: 1,
+  compat_max_schema_version: 1,
   hs256_keys: %{
     "sync-auth-v1" => "dev-sync-signing-key"
   }
