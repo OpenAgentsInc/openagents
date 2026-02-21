@@ -1,0 +1,11 @@
+[package]
+name = "openagents-ui-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Shared WGPUI UI-core tokens and primitives for OpenAgents surfaces"
+
+[dependencies]
+wgpui = { path = "../wgpui", default-features = false }

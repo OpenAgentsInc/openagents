@@ -12,6 +12,7 @@ use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
 use nostr::derive_keypair;
 use openagents_spark::SparkSigner;
+use openagents_ui_core::tokens::palette as ui_palette;
 use rand::RngCore;
 use serde_json::Value;
 use taffy::prelude::{AlignItems, JustifyContent};
@@ -1068,7 +1069,7 @@ impl ChatPaneState {
         let pending_submit = pending_sends.clone();
         let input = TextInput::new()
             .placeholder("Send message to Codex…")
-            .background(theme::bg::APP)
+            .background(ui_palette::canvas_bg())
             .border_color(theme::border::DEFAULT)
             .border_color_focused(theme::border::FOCUS)
             .text_color(theme::text::PRIMARY)

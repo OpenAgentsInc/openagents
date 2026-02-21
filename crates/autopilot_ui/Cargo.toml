@@ -11,6 +11,7 @@ description = "Shared WGPUI surfaces for Autopilot"
 autopilot_app = { path = "../autopilot_app" }
 editor = { path = "../editor" }
 wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
+openagents-ui-core = { path = "../openagents-ui-core" }
 serde_json = { workspace = true }
 taffy = "0.9"
 nostr = { path = "../nostr/core" }
