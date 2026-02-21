@@ -1,0 +1,241 @@
+[
+  {
+    "apiVersion": "domains.cloudrun.com/v1",
+    "kind": "DomainMapping",
+    "metadata": {
+      "annotations": {
+        "run.googleapis.com/operation-id": "306ddaa9-b81b-4907-ac6d-82c03491da83",
+        "serving.knative.dev/creator": "chris@openagents.com",
+        "serving.knative.dev/lastModifier": "chris@openagents.com"
+      },
+      "creationTimestamp": "2026-02-12T17:58:00.617468Z",
+      "generation": 1,
+      "labels": {
+        "cloud.googleapis.com/location": "us-central1",
+        "run.googleapis.com/overrideAt": "2026-02-12T17:58:04.333Z"
+      },
+      "name": "l402.openagents.com",
+      "namespace": "157437760789",
+      "resourceVersion": "AAZKpQQA/vI",
+      "selfLink": "/apis/domains.cloudrun.com/v1/namespaces/157437760789/domainmappings/l402.openagents.com",
+      "uid": "6055bb21-9370-41d3-9163-4f6e4acb11bc"
+    },
+    "spec": {
+      "routeName": "l402-aperture"
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-02-12T18:54:17.497330Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastTransitionTime": "2026-02-12T18:54:17.497330Z",
+          "status": "True",
+          "type": "CertificateProvisioned"
+        },
+        {
+          "lastTransitionTime": "2026-02-12T17:58:07.238956Z",
+          "status": "True",
+          "type": "DomainRoutable"
+        }
+      ],
+      "mappedRouteName": "l402-aperture",
+      "observedGeneration": 1,
+      "resourceRecords": [
+        {
+          "name": "l402",
+          "rrdata": "ghs.googlehosted.com.",
+          "type": "CNAME"
+        }
+      ]
+    }
+  },
+  {
+    "apiVersion": "domains.cloudrun.com/v1",
+    "kind": "DomainMapping",
+    "metadata": {
+      "annotations": {
+        "run.googleapis.com/operation-id": "e70ca749-eba5-4f0f-a1fd-b7e415a2952d",
+        "serving.knative.dev/creator": "chris@openagents.com",
+        "serving.knative.dev/lastModifier": "chris@openagents.com"
+      },
+      "creationTimestamp": "2026-02-16T05:58:50.186822Z",
+      "generation": 1,
+      "labels": {
+        "cloud.googleapis.com/location": "us-central1",
+        "run.googleapis.com/overrideAt": "2026-02-16T05:58:54.050Z"
+      },
+      "name": "next.openagents.com",
+      "namespace": "157437760789",
+      "resourceVersion": "AAZK6sepimk",
+      "selfLink": "/apis/domains.cloudrun.com/v1/namespaces/157437760789/domainmappings/next.openagents.com",
+      "uid": "380adfe8-9157-40d2-92bd-293ee2dd54fc"
+    },
+    "spec": {
+      "routeName": "openagents-web"
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-02-16T06:08:12.843625Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastTransitionTime": "2026-02-16T06:08:12.843625Z",
+          "status": "True",
+          "type": "CertificateProvisioned"
+        },
+        {
+          "lastTransitionTime": "2026-02-16T05:58:56.117950Z",
+          "status": "True",
+          "type": "DomainRoutable"
+        }
+      ],
+      "mappedRouteName": "openagents-web",
+      "observedGeneration": 1,
+      "resourceRecords": [
+        {
+          "name": "next",
+          "rrdata": "ghs.googlehosted.com.",
+          "type": "CNAME"
+        }
+      ]
+    }
+  },
+  {
+    "apiVersion": "domains.cloudrun.com/v1",
+    "kind": "DomainMapping",
+    "metadata": {
+      "annotations": {
+        "run.googleapis.com/operation-id": "a1b353bf-cca3-4fbe-a7d3-b4af65af2d02",
+        "serving.knative.dev/creator": "chris@openagents.com",
+        "serving.knative.dev/lastModifier": "chris@openagents.com"
+      },
+      "creationTimestamp": "2026-02-16T21:42:13.212217Z",
+      "generation": 1,
+      "labels": {
+        "cloud.googleapis.com/location": "us-central1",
+        "run.googleapis.com/overrideAt": "2026-02-16T21:42:16.931Z"
+      },
+      "name": "openagents.com",
+      "namespace": "157437760789",
+      "resourceVersion": "AAZK9/h8qeM",
+      "selfLink": "/apis/domains.cloudrun.com/v1/namespaces/157437760789/domainmappings/openagents.com",
+      "uid": "f97b4c84-8eb5-42d2-af80-3488fbc0c91a"
+    },
+    "spec": {
+      "routeName": "openagents-web"
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-02-16T21:52:26.560995Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastTransitionTime": "2026-02-16T21:52:26.560995Z",
+          "status": "True",
+          "type": "CertificateProvisioned"
+        },
+        {
+          "lastTransitionTime": "2026-02-16T21:42:18.304712Z",
+          "status": "True",
+          "type": "DomainRoutable"
+        }
+      ],
+      "mappedRouteName": "openagents-web",
+      "observedGeneration": 1,
+      "resourceRecords": [
+        {
+          "rrdata": "216.239.32.21",
+          "type": "A"
+        },
+        {
+          "rrdata": "216.239.34.21",
+          "type": "A"
+        },
+        {
+          "rrdata": "216.239.36.21",
+          "type": "A"
+        },
+        {
+          "rrdata": "216.239.38.21",
+          "type": "A"
+        },
+        {
+          "rrdata": "2001:4860:4802:32::15",
+          "type": "AAAA"
+        },
+        {
+          "rrdata": "2001:4860:4802:34::15",
+          "type": "AAAA"
+        },
+        {
+          "rrdata": "2001:4860:4802:36::15",
+          "type": "AAAA"
+        },
+        {
+          "rrdata": "2001:4860:4802:38::15",
+          "type": "AAAA"
+        }
+      ]
+    }
+  },
+  {
+    "apiVersion": "domains.cloudrun.com/v1",
+    "kind": "DomainMapping",
+    "metadata": {
+      "annotations": {
+        "run.googleapis.com/operation-id": "3039792e-899c-4c73-a1f1-474283dc5f36",
+        "serving.knative.dev/creator": "chris@openagents.com",
+        "serving.knative.dev/lastModifier": "chris@openagents.com"
+      },
+      "creationTimestamp": "2026-02-17T09:10:19.258693Z",
+      "generation": 1,
+      "labels": {
+        "cloud.googleapis.com/location": "us-central1",
+        "run.googleapis.com/overrideAt": "2026-02-17T09:10:22.782Z"
+      },
+      "name": "staging.openagents.com",
+      "namespace": "157437760789",
+      "resourceVersion": "AAZLAYmYQXA",
+      "selfLink": "/apis/domains.cloudrun.com/v1/namespaces/157437760789/domainmappings/staging.openagents.com",
+      "uid": "de39746b-8720-4b64-9fb7-9d0107bb72a2"
+    },
+    "spec": {
+      "routeName": "openagents-web-staging"
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-02-17T09:17:15.771248Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastTransitionTime": "2026-02-17T09:17:15.771248Z",
+          "status": "True",
+          "type": "CertificateProvisioned"
+        },
+        {
+          "lastTransitionTime": "2026-02-17T09:10:24.182182Z",
+          "status": "True",
+          "type": "DomainRoutable"
+        }
+      ],
+      "mappedRouteName": "openagents-web-staging",
+      "observedGeneration": 1,
+      "resourceRecords": [
+        {
+          "name": "staging",
+          "rrdata": "ghs.googlehosted.com.",
+          "type": "CNAME"
+        }
+      ]
+    }
+  }
+]
