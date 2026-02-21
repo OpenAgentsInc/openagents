@@ -375,7 +375,7 @@ Directive d-008 builds economic infrastructure for agent commerce through a unif
 
 **The Bazaar: An Open Market for Agent Work.** The Bazaar is our agentic compute marketplace—the product name for what this section describes. The name invokes Eric S. Raymond's "Cathedral and the Bazaar": open participation, many parallel contributors, fast iteration, ideas competing in public, value emerging from the crowd. Contributors monetize their coding agents by completing verifiable work products (patches, reviews, indexes). Autopilot is the first buyer, creating a demand floor. Contributors earn Bitcoin for work that passes verification.
 
-The Bazaar promises: open entry (anyone can supply work), price discovery (market-based pricing, not opaque SaaS tiers), composability (jobs, skills, and providers mix and match), proof/provenance (receipts, logs, reputation), and fluid routing (the system chooses the best stall for the job). **Not reselling models—clearing work.** See [docs/bazaar/BAZAAR.md](docs/bazaar/BAZAAR.md) for the full specification.
+The Bazaar promises: open entry (anyone can supply work), price discovery (market-based pricing, not opaque SaaS tiers), composability (jobs, skills, and providers mix and match), proof/provenance (receipts, logs, reputation), and fluid routing (the system chooses the best stall for the job). **Not reselling models—clearing work.** See [crates/dsrs/docs/MARKETPLACE.md](../crates/dsrs/docs/MARKETPLACE.md) for the detailed marketplace specification.
 
 The mechanics of compute acquisition illustrate how the entire stack works. When an agent needs inference, it publishes a NIP-90 job request (kind 5050) to Nostr relays. Providers subscribe, see requests, bid, execute, and publish results (kind 6050). Before submitting, the agent's CostTracker checks budget against quoted price—if the quote exceeds daily or session budget, the request blocks. If approved, the agent pays via its threshold-protected Spark wallet, the provider executes, and the cost records against a running tally across all backends: cloud APIs, local inference, and decentralized DVMs.
 
@@ -529,7 +529,7 @@ PerformanceTracker maintains rolling accuracy windows (default: 50 decisions) pe
 
 Decision pipelines drive this: ComplexityPipeline classifies task complexity (Low/Medium/High/VeryHigh), DelegationPipeline chooses execution path (codex/rlm/local_tools), RlmTriggerPipeline decides when recursive analysis is needed. Each pipeline is a DSPy module that can be optimized independently, promoting modularity and targeted improvement.
 
-See [crates/dsrs/docs/DSPY_ROADMAP.md](./crates/dsrs/docs/DSPY_ROADMAP.md) for the full implementation roadmap.
+See [crates/dsrs/docs/DSPY_ROADMAP.md](../crates/dsrs/docs/DSPY_ROADMAP.md) for the full implementation roadmap.
 
 The skills layer treats agent capabilities as products with versioning, licensing, and revenue splits. Developers who create useful skills publish to the marketplace, set terms and pricing, and earn revenue when others use them. The marketplace signer enforces license compliance before participating in threshold signatures authorizing purchases, ensuring creators are compensated and terms respected.
 

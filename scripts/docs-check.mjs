@@ -108,6 +108,53 @@ for (const dir of Array.from(topDirs).sort()) {
   }
 }
 
+// 4) Guard canonical docs from stale active-surface claims.
+const canonicalDocs = [
+  "README.md",
+  "AGENTS.md",
+  "docs/README.md",
+  "docs/PROJECT_OVERVIEW.md",
+  "docs/AGENT_MAP.md",
+  "docs/ROADMAP.md",
+]
+
+const historicalQualifierRe = /\b(legacy|historical|archived|removed|deleted|deprecated|non-canonical)\b/i
+const staleSurfaceRules = [
+  { pattern: /apps\/mobile\//, label: "apps/mobile/" },
+  { pattern: /apps\/desktop\//, label: "apps/desktop/" },
+  { pattern: /apps\/inbox-autopilot\//, label: "apps/inbox-autopilot/" },
+  { pattern: /apps\/openagents-runtime\//, label: "apps/openagents-runtime/" },
+]
+
+const staleRuntimeClaimRules = [
+  { pattern: /\bLaravel 12 \+ Inertia \+ React\b/, label: "Laravel web runtime claim" },
+  { pattern: /\bElixir runtime\b/i, label: "Elixir runtime claim" },
+  { pattern: /\bmix phx\.server\b/, label: "mix runtime command claim" },
+]
+
+for (const file of canonicalDocs) {
+  if (!trackedSet.has(file)) continue
+  const lines = fs.readFileSync(file, "utf8").split("\n")
+  lines.forEach((line, index) => {
+    for (const rule of staleSurfaceRules) {
+      if (rule.pattern.test(line) && !historicalQualifierRe.test(line)) {
+        errors.push({
+          file,
+          message: `stale surface reference without historical qualifier at line ${index + 1}: ${rule.label}`,
+        })
+      }
+    }
+    for (const rule of staleRuntimeClaimRules) {
+      if (rule.pattern.test(line) && !historicalQualifierRe.test(line)) {
+        errors.push({
+          file,
+          message: `stale runtime claim at line ${index + 1}: ${rule.label}`,
+        })
+      }
+    }
+  })
+}
+
 if (errors.length) {
   const byFile = new Map()
   for (const e of errors) {
