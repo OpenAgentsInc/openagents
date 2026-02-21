@@ -5,6 +5,10 @@ Last updated: 2026-02-21
 
 This is the canonical deploy/process map for active Rust service lanes.
 
+Cross-environment release validation gate:
+
+- `docs/RUST_STAGING_PROD_VALIDATION.md`
+
 ## Canonical deploy entrypoints
 
 1. `openagents-control-service` (production)
@@ -36,7 +40,7 @@ This is the canonical deploy/process map for active Rust service lanes.
 ## Non-canonical lanes
 
 1. `openagents-web` and `openagents-migrate` are legacy Laravel resources and are not canonical deploy targets for new rollouts.
-2. Laravel/PHP (`php artisan`), Elixir (`mix test`), and Node deploy commands are not canonical for active Rust service deployment.
+2. Legacy Laravel/PHP (`php artisan`), legacy Elixir (`mix test`), and legacy Node deploy commands are not canonical for active Rust service deployment.
 3. Legacy deploy assets remain under archived paths only:
    - `apps/openagents.com/deploy/archived-laravel/`
    - `apps/openagents.com/docs/archived/legacy-laravel-deploy/`

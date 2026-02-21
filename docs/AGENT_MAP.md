@@ -47,6 +47,7 @@ Historical only:
 ## Operations and Testing
 
 - `docs/LOCAL_CI.md`
+- `docs/RUST_STAGING_PROD_VALIDATION.md`
 - `docs/autopilot/testing/PROD_E2E_TESTING.md`
 - `docs/autopilot/testing/TRACE_RETRIEVAL.md`
 - `docs/autopilot/testing/CROSS_SURFACE_CONTRACT_HARNESS.md`
