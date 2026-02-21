@@ -55,6 +55,12 @@ pub enum KhalaEventPayload {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeStreamEvent {
+    pub id: Option<u64>,
+    pub payload: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum WatermarkDecision {
     Advanced { next: u64 },
     Duplicate,
@@ -125,6 +131,69 @@ pub fn apply_watermark(current: u64, incoming: u64) -> WatermarkDecision {
     } else {
         WatermarkDecision::OutOfOrder { current, incoming }
     }
+}
+
+pub fn sync_error_code(payload: &Value) -> Option<String> {
+    payload
+        .as_object()
+        .and_then(|object| object.get("code"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
+
+pub fn extract_runtime_stream_events(
+    payload: &Value,
+    expected_topic: &str,
+    worker_id: &str,
+) -> Vec<RuntimeStreamEvent> {
+    let updates = payload
+        .as_object()
+        .and_then(|object| object.get("updates"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    updates
+        .into_iter()
+        .filter_map(|update| {
+            let update_object = update.as_object()?;
+            let topic = update_object.get("topic")?.as_str()?;
+            if topic != expected_topic {
+                return None;
+            }
+
+            let stream_payload = update_object.get("payload")?.as_object()?;
+            let event_worker_id = stream_payload
+                .get("workerId")
+                .and_then(Value::as_str)
+                .or_else(|| stream_payload.get("worker_id").and_then(Value::as_str))?;
+            if event_worker_id != worker_id {
+                return None;
+            }
+
+            let payload = Value::Object(stream_payload.clone());
+            let seq = stream_payload
+                .get("seq")
+                .and_then(Value::as_u64)
+                .or_else(|| update_object.get("watermark").and_then(Value::as_u64));
+
+            Some(RuntimeStreamEvent { id: seq, payload })
+        })
+        .collect()
+}
+
+pub fn runtime_stream_event_seq(event: &RuntimeStreamEvent) -> Option<u64> {
+    event
+        .id
+        .or_else(|| event.payload.get("seq").and_then(Value::as_u64))
+}
+
+#[must_use]
+pub fn merge_retry_cursor(current: Option<u64>, failed_seq: u64) -> u64 {
+    let replay_cursor = failed_seq.saturating_sub(1);
+    current
+        .map(|cursor| cursor.min(replay_cursor))
+        .unwrap_or(replay_cursor)
 }
 
 fn decode_sync_frame_payload(payload: &Value) -> Option<KhalaEventPayload> {
@@ -293,8 +362,7 @@ mod tests {
         let batch = if let KhalaEventPayload::UpdateBatch(batch) = decoded {
             batch
         } else {
-            assert!(false, "expected update batch payload");
-            return;
+            panic!("expected update batch payload");
         };
         assert_eq!(batch.updates.len(), 1);
         assert_eq!(batch.updates[0].watermark, 12);
@@ -321,33 +389,77 @@ mod tests {
                 ]
             }),
         );
+
         let frame = parse_phoenix_frame(&raw).expect("frame should parse");
-        let decoded = decode_khala_payload(&frame).expect("payload should decode");
-        let error = if let KhalaEventPayload::Error(error) = decoded {
+        let payload = decode_khala_payload(&frame).expect("payload should decode");
+
+        let error = if let KhalaEventPayload::Error(error) = payload {
             error
         } else {
-            assert!(false, "expected error payload");
-            return;
+            panic!("expected error payload");
         };
+
         assert_eq!(error.code, "stale_cursor");
         assert!(error.full_resync_required);
         assert_eq!(error.stale_topics.len(), 1);
-        assert_eq!(error.stale_topics[0].retention_floor, 20);
+        assert_eq!(error.stale_topics[0].resume_after, 11);
     }
 
     #[test]
-    fn watermark_decision_detects_duplicate_and_out_of_order() {
+    fn apply_watermark_advances_only_on_increase() {
         assert_eq!(
-            apply_watermark(5, 6),
-            WatermarkDecision::Advanced { next: 6 }
+            apply_watermark(4, 9),
+            WatermarkDecision::Advanced { next: 9 }
         );
-        assert_eq!(apply_watermark(5, 5), WatermarkDecision::Duplicate);
+        assert_eq!(apply_watermark(9, 9), WatermarkDecision::Duplicate);
         assert_eq!(
-            apply_watermark(5, 3),
+            apply_watermark(9, 7),
             WatermarkDecision::OutOfOrder {
-                current: 5,
-                incoming: 3
+                current: 9,
+                incoming: 7,
             }
         );
+    }
+
+    #[test]
+    fn extract_runtime_stream_events_filters_by_topic_and_worker() {
+        let payload = json!({
+            "updates": [
+                {
+                    "topic": "runtime.codex_worker_events",
+                    "watermark": 12,
+                    "payload": {
+                        "workerId": "desktopw:shared",
+                        "seq": 12,
+                        "eventType": "worker.event"
+                    }
+                },
+                {
+                    "topic": "runtime.codex_worker_events",
+                    "watermark": 13,
+                    "payload": {
+                        "workerId": "desktopw:other",
+                        "seq": 13
+                    }
+                }
+            ]
+        });
+
+        let events = extract_runtime_stream_events(
+            &payload,
+            "runtime.codex_worker_events",
+            "desktopw:shared",
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, Some(12));
+        assert_eq!(runtime_stream_event_seq(&events[0]), Some(12));
+    }
+
+    #[test]
+    fn merge_retry_cursor_prefers_oldest_replay_position() {
+        assert_eq!(merge_retry_cursor(None, 50), 49);
+        assert_eq!(merge_retry_cursor(Some(32), 50), 32);
+        assert_eq!(merge_retry_cursor(Some(49), 12), 11);
+        assert_eq!(merge_retry_cursor(Some(0), 0), 0);
     }
 }

@@ -2,10 +2,6 @@
 
 #[cfg(any(target_arch = "wasm32", test))]
 mod codex_thread;
-#[cfg(any(target_arch = "wasm32", test))]
-mod khala_protocol;
-#[cfg(any(target_arch = "wasm32", test))]
-mod sync_persistence;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {
@@ -23,6 +19,16 @@ mod wasm {
         StreamStatus, apply_action, classify_http_error, command_latency_metric,
         map_intent_to_http,
     };
+    use openagents_client_core::auth::{normalize_email, normalize_verification_code};
+    use openagents_client_core::command::normalize_thread_message_text;
+    use openagents_client_core::khala_protocol::{
+        KhalaEventPayload, PhoenixFrame, SyncErrorPayload, TopicWatermark, WatermarkDecision,
+        apply_watermark, build_phoenix_frame, decode_khala_payload, parse_phoenix_frame,
+    };
+    use openagents_client_core::sync_persistence::{
+        PersistedSyncState, decode_sync_state, encode_sync_state, normalized_topics,
+        resume_after_map,
+    };
     use openagents_ui_core::{ShellCardSpec, draw_shell_backdrop, draw_shell_card};
     use serde::{Deserialize, Serialize};
     use wasm_bindgen::JsCast;
@@ -32,14 +38,6 @@ mod wasm {
     use wgpui::{Platform, Scene, WebPlatform, run_animation_loop, setup_resize_observer};
 
     use crate::codex_thread::CodexThreadState;
-    use crate::khala_protocol::{
-        KhalaEventPayload, SyncErrorPayload, TopicWatermark, WatermarkDecision, apply_watermark,
-        build_phoenix_frame, decode_khala_payload, parse_phoenix_frame,
-    };
-    use crate::sync_persistence::{
-        PersistedSyncState, decode_sync_state, encode_sync_state, normalized_topics,
-        resume_after_map,
-    };
 
     thread_local! {
         static APP: RefCell<Option<WebShellApp>> = const { RefCell::new(None) };
@@ -798,16 +796,8 @@ mod wasm {
         thread_id: String,
         text: String,
     ) -> Result<(), ControlApiError> {
-        let normalized = text.trim().to_string();
-        if normalized.is_empty() {
-            return Err(ControlApiError {
-                status_code: 422,
-                code: Some("validation_error".to_string()),
-                message: "Message text is required.".to_string(),
-                kind: CommandErrorKind::Validation,
-                retryable: false,
-            });
-        }
+        let normalized =
+            normalize_thread_message_text(&text).map_err(command_input_validation_error)?;
 
         let state = snapshot_state();
         let intent = CommandIntent::SendThreadMessage {
@@ -1168,9 +1158,7 @@ mod wasm {
         apply_khala_frame(&frame)
     }
 
-    fn apply_khala_frame(
-        frame: &crate::khala_protocol::PhoenixFrame,
-    ) -> Result<(), ControlApiError> {
+    fn apply_khala_frame(frame: &PhoenixFrame) -> Result<(), ControlApiError> {
         let Some(payload) = decode_khala_payload(frame) else {
             return Ok(());
         };
@@ -1583,9 +1571,10 @@ mod wasm {
     }
 
     async fn post_send_code(email: &str) -> Result<SendCodeResponse, ControlApiError> {
+        let normalized_email = normalize_email(email).map_err(auth_input_validation_error)?;
         let state = snapshot_state();
         let intent = CommandIntent::StartAuthChallenge {
-            email: email.to_string(),
+            email: normalized_email,
         };
         let request = plan_http_request(&intent, &state)?;
         send_json_request(&request, &state).await
@@ -1595,10 +1584,12 @@ mod wasm {
         code: &str,
         challenge_id: Option<&str>,
     ) -> Result<VerifyCodeResponse, ControlApiError> {
+        let normalized_code =
+            normalize_verification_code(code).map_err(auth_input_validation_error)?;
         let mut state = snapshot_state();
         state.auth.challenge_id = challenge_id.map(ToString::to_string);
         let intent = CommandIntent::VerifyAuthCode {
-            code: code.to_string(),
+            code: normalized_code,
         };
         let request = plan_http_request(&intent, &state)?;
         send_json_request(&request, &state).await
@@ -1801,6 +1792,30 @@ mod wasm {
             code: Some("storage_error".to_string()),
             message,
             kind: CommandErrorKind::Unknown,
+            retryable: false,
+        }
+    }
+
+    fn auth_input_validation_error(
+        error: openagents_client_core::auth::AuthInputError,
+    ) -> ControlApiError {
+        ControlApiError {
+            status_code: 422,
+            code: Some("validation_error".to_string()),
+            message: error.to_string(),
+            kind: CommandErrorKind::Validation,
+            retryable: false,
+        }
+    }
+
+    fn command_input_validation_error(
+        error: openagents_client_core::command::CommandInputError,
+    ) -> ControlApiError {
+        ControlApiError {
+            status_code: 422,
+            code: Some("validation_error".to_string()),
+            message: error.to_string(),
+            kind: CommandErrorKind::Validation,
             retryable: false,
         }
     }

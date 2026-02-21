@@ -26,6 +26,7 @@ autopilot_ui = { path = "../../crates/autopilot_ui" }
 autopilot-core = { path = "../../crates/autopilot-core" }
 autopilot-inbox-domain = { path = "../../crates/autopilot-inbox-domain" }
 codex-client = { path = "../../crates/codex-client" }
+openagents-client-core = { path = "../../crates/openagents-client-core" }
 serde_json = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }
