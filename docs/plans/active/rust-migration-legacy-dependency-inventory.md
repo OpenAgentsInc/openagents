@@ -16,7 +16,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 1. Legacy app roots tracked for deletion/fold-in:
    - `apps/mobile`
    - `apps/desktop`
-   - `apps/inbox-autopilot`
+   - `apps/inbox-autopilot` (removed 2026-02-21 via `OA-RUST-052`)
 2. Legacy production runtime stacks still active:
    - Laravel/PHP + React/Inertia in `apps/openagents.com`
    - Elixir/Phoenix in `apps/runtime`
@@ -25,7 +25,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 4. Cross-surface reference volume (current baseline):
    - `apps/mobile` references in `README.md`, `AGENTS.md`, `docs/**`, `scripts/**`: 50
    - `apps/desktop` references in `README.md`, `AGENTS.md`, `docs/**`, `scripts/**`: 122
-   - `apps/inbox-autopilot` references in same scope: 15
+   - `apps/inbox-autopilot` active-path references: 0 (historical migration/audit docs may retain source-path mentions)
 
 ## A) Legacy App Root Inventory
 
@@ -33,7 +33,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 | --- | --- | --- | --- | --- | --- |
 | `apps/mobile` | Expo/React Native TypeScript app (`apps/mobile/package.json`), uses `@openagentsinc/khala-sync` and runtime HTTP paths | `apps/autopilot-ios` + shared Rust client core | `delete` (after parity) | `owner:ios` | `OA-RUST-054`, `OA-RUST-055`, `OA-RUST-056`, `OA-RUST-057`, `OA-RUST-058`, `OA-RUST-106` |
 | `apps/desktop` | Electron + TypeScript + Effect lane (`apps/desktop/package.json`), pulls `@openagentsinc/effuse*`, `lightning-effect`, `lnd-effect` | `apps/autopilot-desktop` (WGPUI/Rust) + Rust lightning services | `delete` (after capability migration) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-053`, `OA-RUST-101`, `OA-RUST-102`, `OA-RUST-103` |
-| `apps/inbox-autopilot` | Standalone local-first app; Rust daemon (`apps/inbox-autopilot/daemon/Cargo.toml`) + separate app/docs | Fold into `apps/autopilot-desktop` panes and shared state | `delete` (after fold-in) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-052`, `OA-RUST-105` |
+| `apps/inbox-autopilot` | Standalone local-first app root removed after fold-in | folded into `apps/autopilot-desktop` panes and shared state | `deleted` (2026-02-21) | `owner:desktop` | `OA-RUST-049`, `OA-RUST-050`, `OA-RUST-051`, `OA-RUST-052` |
 
 ## B) Legacy Production Runtime Dependency Inventory
 
@@ -84,6 +84,7 @@ Every item is classified with a disposition and mapped to prerequisite OA-RUST i
 3. `apps/inbox-autopilot` deletion gate:
    - inbox domain logic and panes fully folded into desktop Rust lane.
    - repo references removed from canonical docs.
+   - status: complete (OA-RUST-052).
 
 ## Inventory Update Checklist
 
@@ -99,4 +100,3 @@ Use this checklist whenever migration status changes:
    ```
 3. Reconcile this inventory against current OA-RUST issue state.
 4. Update blocker mapping and disposition when an OA-RUST issue closes.
-

@@ -11,7 +11,6 @@ Covered surfaces:
 - `apps/mobile/`
 - `apps/desktop/`
 - `apps/autopilot-ios/`
-- `apps/inbox-autopilot/`
 - `apps/lightning-ops/`
 - `apps/lightning-wallet-executor/`
 - shared contracts under `proto/` and shared packages
@@ -35,7 +34,6 @@ flowchart LR
     mobile["mobile\nReact Native / Expo"]
     desktop["desktop\nElectron"]
     ios["autopilot-ios\nSwiftUI"]
-    inbox["inbox-autopilot\nSwiftUI + local daemon"]
   end
 
   subgraph core["Control + Runtime"]
@@ -61,7 +59,6 @@ flowchart LR
   mobile --> laravel
   desktop --> laravel
   ios --> laravel
-  inbox -.->|integration lane| laravel
 
   laravel --> runtime
   laravel --> khala
@@ -163,7 +160,6 @@ Khala protocol model:
 | `apps/desktop` | feature-gated Khala WS for status summaries | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: openagents-desktop`) + Laravel/runtime HTTP + sync token | Laravel/runtime APIs |
 | `apps/autopilot-desktop` | runtime SSE codex worker stream + runtime sync write lane | WorkOS email-code auth (`POST /api/auth/email`, `POST /api/auth/verify`) + Laravel runtime worker APIs | Laravel/runtime APIs |
 | `apps/autopilot-ios` | runtime SSE remains primary lane | WorkOS email-code (`/api/auth/email` -> `/api/auth/verify`, `X-Client: autopilot-ios`) + Laravel/runtime HTTP + SSE | Laravel/runtime APIs |
-| `apps/inbox-autopilot` | local-first primary, Khala not primary | local daemon + selected APIs | local daemon + selected APIs |
 | `apps/lightning-ops` | no Khala dependency for control-plane lane | internal Laravel control-plane APIs | Laravel internal control-plane APIs |
 | `apps/lightning-wallet-executor` | no Khala dependency | service-local config + Lightning infra | service-local + Lightning infra |
 | `apps/runtime` | produces and serves Khala stream/read models | runtime Postgres direct | runtime Postgres direct |
