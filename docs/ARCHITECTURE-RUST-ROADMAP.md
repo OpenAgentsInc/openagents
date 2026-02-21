@@ -364,6 +364,7 @@ Dependencies: OA-RUST-019, OA-RUST-023.
 
 ### OA-RUST-083 — [Protocol] Define compatibility negotiation and support window policy
 Description: Publish ADR-level compatibility rules for `schema_version`, server/client negotiation behavior, and supported-version window policy.
+Enforcement artifacts: `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`, `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`, `docs/protocol/fixtures/compatibility-negotiation-v1.json`, `crates/openagents-client-core/src/compatibility.rs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`
 Acceptance criteria: Compatibility matrix is documented; negotiation failures return explicit upgrade errors; policy is referenced by control service and Khala services.
 Dependencies: OA-RUST-008, OA-RUST-075, OA-RUST-076.
 

@@ -361,6 +361,7 @@ This envelope is mandatory for deterministic replay, forward/backward compatibil
 2. Control service and Khala enforce minimum supported client versions for safety-critical protocol changes.
 3. Compatibility windows are explicit and time-bounded; out-of-window clients receive deterministic upgrade-required responses.
 4. Replay window semantics and cursor behavior changes must ship with compatibility gates and migration handling.
+5. Canonical negotiation matrix and failure code contract are governed by `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md` and `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`.
 
 ### Khala Retention, Compaction, and Delivery Semantics
 

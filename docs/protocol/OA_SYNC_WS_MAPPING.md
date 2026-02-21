@@ -19,6 +19,29 @@ This document maps `proto/openagents/sync/v1/*.proto` messages to the Phoenix Ch
 - HS256 is active with `kid` keyring rotation (current + previous keys).
 - Claim checks include issuer/audience/claims_version and topic scopes (`oa_sync_scopes`).
 
+## Compatibility Negotiation (v1)
+
+Khala join/subscribe paths follow the shared compatibility policy:
+
+- `docs/adr/ADR-0005-compatibility-negotiation-and-support-window-policy.md`
+- `docs/protocol/COMPATIBILITY_NEGOTIATION_POLICY.md`
+
+Required client metadata for negotiation:
+
+1. `client_build_id`
+2. `protocol_version`
+3. `schema_version`
+
+Deterministic compatibility failure codes:
+
+- `invalid_client_build`
+- `unsupported_protocol_version`
+- `unsupported_schema_version`
+- `upgrade_required`
+- `unsupported_client_build`
+
+Failure payloads must include active support-window metadata (`min_client_build_id`, `max_client_build_id`, schema min/max, protocol version) so clients can deterministically block reconnect loops and prompt upgrade.
+
 ## Event Names
 
 Client -> server:
