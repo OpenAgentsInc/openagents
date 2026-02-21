@@ -10,6 +10,7 @@ This is the canonical production deploy flow for the Cloud Run runtime stack:
 - Script index: `apps/runtime/deploy/cloudrun/README.md`
 - Zero-downtime schema evolution policy: `docs/SCHEMA_EVOLUTION_PLAYBOOK.md`
 - Control + Khala shadow parity harness: `apps/runtime/docs/CONTROL_KHALA_SHADOW_PARITY.md`
+- Shared staging/prod release matrix: `docs/RUST_STAGING_PROD_VALIDATION.md`
 
 ## Why this exists
 

@@ -84,6 +84,21 @@ OPENAGENTS_CONTROL_ACCESS_TOKEN=<token> \
 apps/openagents.com/service/deploy/smoke-control.sh
 ```
 
+## Staging/Prod validation matrix gate
+
+Before promoting staging changes toward production, run the shared Rust matrix:
+
+```bash
+CONTROL_SERVICE=openagents-control-service-staging \
+RUNTIME_SERVICE=runtime \
+MIGRATE_JOB=runtime-migrate \
+STAGING_CONTROL_BASE_URL=https://staging.openagents.com \
+PROD_CONTROL_BASE_URL=https://openagents.com \
+scripts/release/validate-rust-cutover.sh
+```
+
+Canonical matrix spec: `docs/RUST_STAGING_PROD_VALIDATION.md`.
+
 ## Rollback
 
 Use standard canary rollback against staging service:

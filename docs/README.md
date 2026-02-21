@@ -20,6 +20,7 @@ Canonical architecture is Rust-only:
 ## Core Service Docs
 
 - Rust deploy/process matrix: `DEPLOYMENT_RUST_SERVICES.md`
+- Rust staging/prod validation gate: `RUST_STAGING_PROD_VALIDATION.md`
 - Rust control service runbook: `../apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
 - Rust runtime API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
 - Runtime observability and operations: `../apps/runtime/docs/OBSERVABILITY.md`

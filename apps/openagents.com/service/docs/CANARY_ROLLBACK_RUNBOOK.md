@@ -18,6 +18,9 @@ This runbook remains required after default-router switch (`OA_ROUTE_SPLIT_MODE=
 4. Control-service smoke checks are green:
    - `cargo test -p openagents-control-service`
    - `OPENAGENTS_BASE_URL=https://<target-host> apps/openagents.com/service/deploy/smoke-health.sh`
+5. Shared Rust validation matrix is executed for current staging/prod baseline:
+   - `scripts/release/validate-rust-cutover.sh`
+   - Spec: `docs/RUST_STAGING_PROD_VALIDATION.md`
 
 ## Required Environment
 
