@@ -52,12 +52,16 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var khalaRefCounter: Int = 0
     private var reconnectAttempt: Int = 0
     private var reconnectWindowStartedAt: Date?
+    private var authFlowState = CodexAuthFlowState()
 
     private let defaults: UserDefaults
     private let now: () -> Date
     private let randomUnit: () -> Double
 
     private let tokenKey = "autopilot.ios.codex.authToken"
+    private let refreshTokenKey = "autopilot.ios.codex.refreshToken"
+    private let tokenTypeKey = "autopilot.ios.codex.tokenType"
+    private let sessionIDKey = "autopilot.ios.codex.sessionID"
     private let emailKey = "autopilot.ios.codex.email"
     private let selectedWorkerIDKey = "autopilot.ios.codex.selectedWorkerID"
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
@@ -85,6 +89,9 @@ final class CodexHandshakeViewModel: ObservableObject {
             isAuthenticated = !authToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
+    private var refreshToken: String
+    private var tokenType: String
+    private var sessionID: String?
 
     private struct KhalaFrame {
         let joinRef: String?
@@ -130,6 +137,9 @@ final class CodexHandshakeViewModel: ObservableObject {
         guard !normalizedCode.isEmpty else {
             return false
         }
+        guard authFlowState.pendingChallengeID != nil else {
+            return false
+        }
         return !isSendingCode && !isVerifyingCode
     }
 
@@ -146,10 +156,16 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         let savedEmail = defaults.string(forKey: emailKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let savedToken = defaults.string(forKey: tokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let savedRefreshToken = defaults.string(forKey: refreshTokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let savedTokenType = defaults.string(forKey: tokenTypeKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Bearer"
+        let savedSessionID = defaults.string(forKey: sessionIDKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let savedWorkerEventsWatermark = max(0, defaults.integer(forKey: khalaWorkerEventsWatermarkKey))
 
         self.email = savedEmail
         self.authToken = savedToken
+        self.refreshToken = savedRefreshToken
+        self.tokenType = savedTokenType
+        self.sessionID = savedSessionID?.isEmpty == true ? nil : savedSessionID
         self.khalaWorkerEventsWatermark = savedWorkerEventsWatermark
         self.isAuthenticated = !savedToken.isEmpty
         self.authState = savedToken.isEmpty
@@ -182,6 +198,10 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
+        guard await ensureSessionParityOnLaunch() else {
+            return
+        }
+
         await refreshWorkers()
     }
 
@@ -203,6 +223,7 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         // Always start a fresh email-code session so server-side guest routes are not blocked by stale cookies.
         RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
+        let generation = authFlowState.beginSend(email: normalizedEmail)
 
         authState = .sendingCode
         isSendingCode = true
@@ -213,14 +234,22 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         do {
-            try await makeAuthClient().sendEmailCode(email: normalizedEmail)
-            email = normalizedEmail
-            defaults.set(normalizedEmail, forKey: emailKey)
+            let challenge = try await makeAuthClient().sendEmailCode(email: normalizedEmail)
+            guard authFlowState.resolveSend(generation: generation, challengeID: challenge.challengeID) else {
+                return
+            }
+
+            email = challenge.email
+            defaults.set(challenge.email, forKey: emailKey)
             verificationCode = ""
-            authState = .codeSent(email: normalizedEmail)
+            authState = .codeSent(email: challenge.email)
             nextCodeSendAllowedAt = now().addingTimeInterval(30)
-            statusMessage = "Code sent to \(normalizedEmail)."
+            statusMessage = "Code sent to \(challenge.email)."
         } catch {
+            guard authFlowState.shouldAcceptResponse(generation: generation) else {
+                return
+            }
+            authFlowState.invalidate()
             authState = .signedOut
             errorMessage = formatError(error)
             statusMessage = nil
@@ -237,6 +266,10 @@ final class CodexHandshakeViewModel: ObservableObject {
             errorMessage = "Enter your verification code first."
             return
         }
+        guard let verifyContext = authFlowState.beginVerify() else {
+            errorMessage = "Request a new sign-in code first."
+            return
+        }
 
         authState = .verifying
         isVerifyingCode = true
@@ -247,33 +280,46 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         do {
-            let session = try await makeAuthClient().verifyEmailCode(code: normalizedCode)
-            authToken = session.token
-            defaults.set(session.token, forKey: tokenKey)
-
-            if let sessionEmail = session.email?.trimmingCharacters(in: .whitespacesAndNewlines), !sessionEmail.isEmpty {
-                email = sessionEmail
+            let session = try await makeAuthClient().verifyEmailCode(
+                code: normalizedCode,
+                challengeID: verifyContext.challengeID
+            )
+            guard authFlowState.shouldAcceptResponse(generation: verifyContext.generation) else {
+                return
             }
-            defaults.set(email, forKey: emailKey)
-
+            applyAuthSession(session, preferredEmail: verifyContext.email)
+            authFlowState.invalidate()
             verificationCode = ""
-            authState = .authenticated(email: email.isEmpty ? nil : email)
             statusMessage = "Signed in to OpenAgents."
             errorMessage = nil
 
             await refreshWorkers()
         } catch {
+            guard authFlowState.shouldAcceptResponse(generation: verifyContext.generation) else {
+                return
+            }
             // If another verify request already succeeded, ignore late/stale failures.
             if isAuthenticated {
                 return
             }
-            authState = .codeSent(email: email)
+            authState = .codeSent(email: verifyContext.email)
             errorMessage = formatError(error)
             statusMessage = nil
         }
     }
 
     func signOut() {
+        let accessTokenForRevocation = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !accessTokenForRevocation.isEmpty {
+            Task.detached {
+                let client = RuntimeCodexClient(
+                    baseURL: Self.defaultBaseURL,
+                    authToken: accessTokenForRevocation
+                )
+                try? await client.logoutSession()
+            }
+        }
+
         streamTask?.cancel()
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
@@ -283,8 +329,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         handshakeTimeoutTask = nil
         resetReconnectTracking()
 
-        authToken = ""
-        defaults.removeObject(forKey: tokenKey)
+        clearSessionTokens()
         khalaWorkerEventsWatermark = 0
         defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
         RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
@@ -292,6 +337,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         isVerifyingCode = false
         isSendingMessage = false
         nextCodeSendAllowedAt = nil
+        authFlowState.invalidate()
 
         workers = []
         selectedWorkerID = nil
@@ -343,6 +389,11 @@ final class CodexHandshakeViewModel: ObservableObject {
                 await self?.sendHandshake()
             }
         } catch {
+            if shouldAttemptAuthRecovery(after: error),
+               await refreshSessionFromStoredToken() != nil {
+                await refreshWorkers()
+                return
+            }
             errorMessage = formatError(error)
             statusMessage = nil
         }
@@ -396,6 +447,11 @@ final class CodexHandshakeViewModel: ObservableObject {
             statusMessage = "Handshake sent to \(shortWorkerID(workerID)). Waiting for desktop ack..."
             scheduleHandshakeTimeout(handshakeID: handshakeID, seconds: 30)
         } catch {
+            if shouldAttemptAuthRecovery(after: error),
+               await refreshSessionFromStoredToken() != nil {
+                await sendHandshake()
+                return
+            }
             handshakeState = .failed(message: formatError(error))
             errorMessage = formatError(error)
             statusMessage = nil
@@ -473,6 +529,12 @@ final class CodexHandshakeViewModel: ObservableObject {
             try await client.ingestWorkerEvent(workerID: workerID, eventType: "worker.event", payload: payload)
             statusMessage = "Sent to \(shortWorkerID(workerID))."
         } catch {
+            if shouldAttemptAuthRecovery(after: error),
+               await refreshSessionFromStoredToken() != nil {
+                messageDraft = normalizedMessage
+                await sendUserMessage()
+                return
+            }
             messageDraft = normalizedMessage
             errorMessage = formatError(error)
             statusMessage = nil
@@ -2166,6 +2228,110 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         return String(workerID.prefix(20)) + "..."
+    }
+
+    private func applyAuthSession(_ session: RuntimeCodexAuthSession, preferredEmail: String?) {
+        authToken = session.token
+        defaults.set(session.token, forKey: tokenKey)
+
+        let normalizedRefreshToken = session.refreshToken?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        refreshToken = normalizedRefreshToken
+        if normalizedRefreshToken.isEmpty {
+            defaults.removeObject(forKey: refreshTokenKey)
+        } else {
+            defaults.set(normalizedRefreshToken, forKey: refreshTokenKey)
+        }
+
+        let normalizedTokenType = session.tokenType?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Bearer"
+        tokenType = normalizedTokenType
+        defaults.set(normalizedTokenType, forKey: tokenTypeKey)
+
+        if let sessionID = session.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sessionID.isEmpty {
+            self.sessionID = sessionID
+            defaults.set(sessionID, forKey: sessionIDKey)
+        }
+
+        if let sessionEmail = session.email?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !sessionEmail.isEmpty {
+            email = sessionEmail
+        } else if let preferredEmail,
+                  !preferredEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            email = preferredEmail
+        }
+        defaults.set(email, forKey: emailKey)
+
+        authState = .authenticated(email: email.isEmpty ? nil : email)
+    }
+
+    private func clearSessionTokens() {
+        authToken = ""
+        refreshToken = ""
+        tokenType = "Bearer"
+        sessionID = nil
+        defaults.removeObject(forKey: tokenKey)
+        defaults.removeObject(forKey: refreshTokenKey)
+        defaults.removeObject(forKey: tokenTypeKey)
+        defaults.removeObject(forKey: sessionIDKey)
+    }
+
+    private func shouldAttemptAuthRecovery(after error: Error) -> Bool {
+        guard let runtimeError = error as? RuntimeCodexApiError else {
+            return false
+        }
+        return runtimeError.code == .auth
+    }
+
+    private func refreshSessionFromStoredToken() async -> RuntimeCodexAuthSession? {
+        let normalizedRefreshToken = refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedRefreshToken.isEmpty else {
+            return nil
+        }
+
+        do {
+            let refreshed = try await makeAuthClient().refreshSession(refreshToken: normalizedRefreshToken)
+            applyAuthSession(refreshed, preferredEmail: email)
+            return refreshed
+        } catch {
+            clearSessionTokens()
+            authState = .signedOut
+            return nil
+        }
+    }
+
+    private func ensureSessionParityOnLaunch() async -> Bool {
+        guard let client = makeClient() else {
+            return false
+        }
+
+        do {
+            let session = try await client.currentSession()
+            sessionID = session.sessionID
+            defaults.set(session.sessionID, forKey: sessionIDKey)
+
+            if session.reauthRequired || session.status != "active" {
+                guard await refreshSessionFromStoredToken() != nil else {
+                    authState = .signedOut
+                    return false
+                }
+            }
+            return true
+        } catch {
+            guard shouldAttemptAuthRecovery(after: error) else {
+                statusMessage = "Session check deferred."
+                return true
+            }
+
+            guard await refreshSessionFromStoredToken() != nil else {
+                authState = .signedOut
+                errorMessage = "Session expired. Please sign in again."
+                return false
+            }
+
+            return true
+        }
     }
 
     private func makeAuthClient() -> RuntimeCodexClient {

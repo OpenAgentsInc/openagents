@@ -40,20 +40,32 @@ final class RuntimeCodexClient {
         URLCache.shared.removeAllCachedResponses()
     }
 
-    func sendEmailCode(email: String) async throws {
-        let _: AuthSendCodeResponse = try await requestJSON(
+    func sendEmailCode(email: String) async throws -> RuntimeCodexAuthChallenge {
+        let response: AuthSendCodeResponse = try await requestJSON(
             path: "/api/auth/email",
             method: "POST",
             body: AuthSendCodeRequest(email: email),
             headers: ["X-Client": "autopilot-ios"]
         )
+
+        let challengeID = (response.challengeID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !challengeID.isEmpty else {
+            throw RuntimeCodexApiError(message: "auth_challenge_missing", code: .auth, status: 401)
+        }
+
+        let normalizedEmail = (response.email ?? email).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedEmail.isEmpty else {
+            throw RuntimeCodexApiError(message: "auth_email_missing", code: .auth, status: 401)
+        }
+
+        return RuntimeCodexAuthChallenge(challengeID: challengeID, email: normalizedEmail)
     }
 
-    func verifyEmailCode(code: String) async throws -> RuntimeCodexAuthSession {
+    func verifyEmailCode(code: String, challengeID: String?) async throws -> RuntimeCodexAuthSession {
         let response: AuthVerifyResponse = try await requestJSON(
             path: "/api/auth/verify",
             method: "POST",
-            body: AuthVerifyRequest(code: code),
+            body: AuthVerifyRequest(code: code, challengeID: challengeID),
             headers: ["X-Client": "autopilot-ios"]
         )
 
@@ -65,7 +77,66 @@ final class RuntimeCodexClient {
         return RuntimeCodexAuthSession(
             userID: response.userID?.value ?? response.user?.id?.value,
             email: response.user?.email,
-            token: normalizedToken
+            tokenType: response.tokenType,
+            token: normalizedToken,
+            refreshToken: response.refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+            sessionID: response.sessionID,
+            accessExpiresAt: nil,
+            refreshExpiresAt: nil
+        )
+    }
+
+    func refreshSession(refreshToken: String) async throws -> RuntimeCodexAuthSession {
+        let response: RefreshSessionResponse = try await requestJSON(
+            path: "/api/auth/refresh",
+            method: "POST",
+            body: RefreshSessionRequest(refreshToken: refreshToken, rotateRefreshToken: true)
+        )
+
+        let normalizedToken = response.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedToken.isEmpty else {
+            throw RuntimeCodexApiError(message: "auth_token_missing", code: .auth, status: 401)
+        }
+
+        let normalizedRefreshToken = response.refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedRefreshToken.isEmpty else {
+            throw RuntimeCodexApiError(message: "refresh_token_missing", code: .auth, status: 401)
+        }
+
+        return RuntimeCodexAuthSession(
+            userID: nil,
+            email: nil,
+            tokenType: response.tokenType,
+            token: normalizedToken,
+            refreshToken: normalizedRefreshToken,
+            sessionID: response.sessionID,
+            accessExpiresAt: response.accessExpiresAt,
+            refreshExpiresAt: response.refreshExpiresAt
+        )
+    }
+
+    func currentSession() async throws -> RuntimeCodexSessionSnapshot {
+        let response: SessionResponse = try await requestJSON(
+            path: "/api/auth/session",
+            method: "GET",
+            body: Optional<EmptyRequest>.none
+        )
+
+        return RuntimeCodexSessionSnapshot(
+            sessionID: response.data.session.sessionID,
+            userID: response.data.session.userID,
+            deviceID: response.data.session.deviceID,
+            status: response.data.session.status,
+            reauthRequired: response.data.session.reauthRequired,
+            activeOrgID: response.data.session.activeOrgID
+        )
+    }
+
+    func logoutSession() async throws {
+        let _: AuthLogoutResponse = try await requestJSON(
+            path: "/api/auth/logout",
+            method: "POST",
+            body: Optional<EmptyRequest>.none
         )
     }
 
@@ -328,22 +399,43 @@ private struct AuthSendCodeRequest: Encodable {
 private struct AuthSendCodeResponse: Decodable {
     let ok: Bool?
     let status: String?
+    let email: String?
+    let challengeID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case status
+        case email
+        case challengeID = "challengeId"
+    }
 }
 
 private struct AuthVerifyRequest: Encodable {
     let code: String
+    let challengeID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case challengeID = "challenge_id"
+    }
 }
 
 private struct AuthVerifyResponse: Decodable {
     let ok: Bool?
     let userID: LossyString?
+    let tokenType: String?
     let token: String?
+    let refreshToken: String?
+    let sessionID: String?
     let user: AuthVerifyUser?
 
     enum CodingKeys: String, CodingKey {
         case ok
         case userID = "userId"
+        case tokenType = "tokenType"
         case token
+        case refreshToken = "refreshToken"
+        case sessionID = "sessionId"
         case user
     }
 }
@@ -351,6 +443,65 @@ private struct AuthVerifyResponse: Decodable {
 private struct AuthVerifyUser: Decodable {
     let id: LossyString?
     let email: String?
+}
+
+private struct RefreshSessionRequest: Encodable {
+    let refreshToken: String
+    let rotateRefreshToken: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case refreshToken = "refresh_token"
+        case rotateRefreshToken = "rotate_refresh_token"
+    }
+}
+
+private struct RefreshSessionResponse: Decodable {
+    let tokenType: String?
+    let token: String
+    let refreshToken: String
+    let sessionID: String?
+    let accessExpiresAt: String?
+    let refreshExpiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case tokenType = "tokenType"
+        case token
+        case refreshToken = "refreshToken"
+        case sessionID = "sessionId"
+        case accessExpiresAt = "accessExpiresAt"
+        case refreshExpiresAt = "refreshExpiresAt"
+    }
+}
+
+private struct SessionResponse: Decodable {
+    let data: SessionPayload
+}
+
+private struct SessionPayload: Decodable {
+    let session: SessionData
+}
+
+private struct SessionData: Decodable {
+    let sessionID: String
+    let userID: String
+    let deviceID: String
+    let status: String
+    let reauthRequired: Bool
+    let activeOrgID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "sessionId"
+        case userID = "userId"
+        case deviceID = "deviceId"
+        case status
+        case reauthRequired = "reauthRequired"
+        case activeOrgID = "activeOrgId"
+    }
+}
+
+private struct AuthLogoutResponse: Decodable {
+    let ok: Bool?
+    let status: String?
 }
 
 private struct SyncTokenRequest: Encodable {

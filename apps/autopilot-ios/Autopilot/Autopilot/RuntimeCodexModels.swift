@@ -380,7 +380,71 @@ enum RuntimeCodexProto {
 struct RuntimeCodexAuthSession: Equatable {
     let userID: String?
     let email: String?
+    let tokenType: String?
     let token: String
+    let refreshToken: String?
+    let sessionID: String?
+    let accessExpiresAt: String?
+    let refreshExpiresAt: String?
+}
+
+struct RuntimeCodexAuthChallenge: Equatable {
+    let challengeID: String
+    let email: String
+}
+
+struct RuntimeCodexSessionSnapshot: Equatable {
+    let sessionID: String
+    let userID: String
+    let deviceID: String
+    let status: String
+    let reauthRequired: Bool
+    let activeOrgID: String?
+}
+
+struct CodexAuthVerifyContext: Equatable {
+    let generation: UInt64
+    let challengeID: String
+    let email: String
+}
+
+struct CodexAuthFlowState: Equatable {
+    private(set) var generation: UInt64 = 0
+    private(set) var pendingEmail: String?
+    private(set) var pendingChallengeID: String?
+
+    mutating func beginSend(email: String) -> UInt64 {
+        generation &+= 1
+        pendingEmail = email
+        pendingChallengeID = nil
+        return generation
+    }
+
+    mutating func resolveSend(generation: UInt64, challengeID: String) -> Bool {
+        guard generation == self.generation else {
+            return false
+        }
+        pendingChallengeID = challengeID
+        return true
+    }
+
+    func beginVerify() -> CodexAuthVerifyContext? {
+        guard let email = pendingEmail,
+              let challengeID = pendingChallengeID else {
+            return nil
+        }
+        return CodexAuthVerifyContext(generation: generation, challengeID: challengeID, email: email)
+    }
+
+    func shouldAcceptResponse(generation: UInt64) -> Bool {
+        generation == self.generation
+    }
+
+    mutating func invalidate() {
+        generation &+= 1
+        pendingEmail = nil
+        pendingChallengeID = nil
+    }
 }
 
 struct RuntimeCodexSyncToken: Decodable, Equatable {
