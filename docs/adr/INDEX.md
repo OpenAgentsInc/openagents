@@ -1,24 +1,43 @@
-# ADR Index (Rust-Era Reset)
+# ADR Index (Rust Era)
 
-Status: reset in progress (OA-RUST-004 complete, OA-RUST-005 follows)
+Status: Active
 Last updated: 2026-02-21
 
-## Active ADR Set
+## Numbering Policy
 
-No active Rust-era ADRs have been reissued in this directory yet.
+1. Rust-era ADR numbering restarts at `ADR-0001`.
+2. Numbers are monotonic and never reused once published.
+3. Active ADR records live only in `docs/adr/`.
+4. Historical ADRs remain in the archive path and are not renumbered.
 
-`OA-RUST-005` reinitializes numbering and publishes the new active ADR index.
+Next available ADR: **ADR-0001**
 
-## Legacy ADR Archive
+## Lifecycle Statuses
 
-The pre-reset ADR corpus was archived on 2026-02-21 to:
+- `Proposed`
+- `Accepted`
+- `Superseded`
+- `Deprecated`
+- `Archived`
+
+## Active ADRs
+
+No Rust-era ADRs are published yet. Add the first accepted/proposed ADR here once authored.
+
+## Legacy Archive
+
+Pre-reset ADR corpus (archived by OA-RUST-004):
 
 - `docs/plans/archived/adr-legacy-2026-02-21/`
-- Legacy index snapshot: `docs/plans/archived/adr-legacy-2026-02-21/INDEX.md`
-- Legacy process/readme snapshot: `docs/plans/archived/adr-legacy-2026-02-21/README.md`
+- Catalog: `docs/plans/archived/adr-legacy-2026-02-21/CATALOG.md`
+- Removed placeholder ADR stubs: `docs/plans/archived/adr-rust-stubs-2026-02-21/`
 
-Use the archive for historical context only; it is not the active authority for Rust-era architecture decisions.
+Legacy ADRs are historical context only and not authoritative for Rust-era architecture decisions.
 
-## Next Action
+## Authoring Process
 
-- Complete `OA-RUST-005` to publish new Rust-era ADR-0001+ records and update this index.
+Use:
+
+1. `docs/adr/README.md` for workflow/review process.
+2. `docs/adr/TEMPLATE.md` for new ADR content.
+3. `docs/plans/active/rust-migration-invariant-gates.md` for invariant gate mapping required in ADR rationale.

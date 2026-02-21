@@ -15,6 +15,7 @@ This repo is designed for **progressive disclosure**: start from stable entry po
 ### 2) Contracts and architecture authority
 
 - `docs/adr/INDEX.md` — architecture decisions and compatibility constraints.
+- `docs/adr/README.md` — Rust-era ADR process and lifecycle.
 - `docs/execution/README.md` — artifact/replay contract entrypoint.
 - `docs/execution/ARTIFACTS.md` — `PR_SUMMARY.md` + `RECEIPT.json`.
 - `docs/execution/REPLAY.md` — `REPLAY.jsonl` event contract.
