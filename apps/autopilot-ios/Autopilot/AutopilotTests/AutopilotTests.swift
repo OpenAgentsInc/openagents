@@ -274,4 +274,97 @@ struct AutopilotTests {
         flow.invalidate()
         #expect(!flow.shouldAcceptResponse(generation: generation))
     }
+
+    @Test("resume checkpoint store isolates watermarks by namespace and worker")
+    func resumeCheckpointStoreNamespacesWatermarks() {
+        var store = CodexResumeCheckpointStore()
+        let topic = "runtime.codex_worker_events"
+
+        store.upsert(
+            namespace: "device:ios-1|user:user-1",
+            workerID: "desktopw:shared",
+            topic: topic,
+            watermark: 12,
+            sessionID: "session-1",
+            updatedAt: "2026-02-21T10:00:00Z"
+        )
+        store.upsert(
+            namespace: "device:ios-1|user:user-1",
+            workerID: "desktopw:shared",
+            topic: topic,
+            watermark: 8,
+            sessionID: "session-1",
+            updatedAt: "2026-02-21T10:00:01Z"
+        )
+        store.upsert(
+            namespace: "device:ios-1|user:user-2",
+            workerID: "desktopw:shared",
+            topic: topic,
+            watermark: 4,
+            sessionID: "session-2",
+            updatedAt: "2026-02-21T10:00:02Z"
+        )
+
+        #expect(store.watermark(namespace: "device:ios-1|user:user-1", workerID: "desktopw:shared", topic: topic) == 12)
+        #expect(store.watermark(namespace: "device:ios-1|user:user-2", workerID: "desktopw:shared", topic: topic) == 4)
+        #expect(store.watermark(namespace: "device:ios-1|user:user-1", workerID: "desktopw:other", topic: topic) == 0)
+    }
+
+    @Test("resume checkpoint store topic reset is scoped and deterministic")
+    func resumeCheckpointStoreResetTopic() {
+        var store = CodexResumeCheckpointStore()
+        let namespace = "device:ios-2|user:user-10"
+        let workerID = "desktopw:shared"
+
+        store.upsert(
+            namespace: namespace,
+            workerID: workerID,
+            topic: "runtime.codex_worker_events",
+            watermark: 40,
+            sessionID: "session-a",
+            updatedAt: "2026-02-21T10:10:00Z"
+        )
+        store.upsert(
+            namespace: namespace,
+            workerID: workerID,
+            topic: "runtime.other_topic",
+            watermark: 9,
+            sessionID: "session-a",
+            updatedAt: "2026-02-21T10:10:01Z"
+        )
+
+        store.resetTopic(
+            namespace: namespace,
+            workerID: workerID,
+            topic: "runtime.codex_worker_events",
+            updatedAt: "2026-02-21T10:10:02Z"
+        )
+
+        #expect(store.watermark(namespace: namespace, workerID: workerID, topic: "runtime.codex_worker_events") == 0)
+        #expect(store.watermark(namespace: namespace, workerID: workerID, topic: "runtime.other_topic") == 9)
+    }
+
+    @Test("lifecycle resume state rejects stale foreground generations")
+    func lifecycleResumeStateRejectsStaleGenerations() {
+        var state = CodexLifecycleResumeState()
+
+        let firstBackground = state.markBackground()
+        #expect(state.shouldAccept(generation: firstBackground))
+
+        let firstResume = state.beginForegroundResume()
+        #expect(firstResume != nil)
+        #expect(!state.shouldAccept(generation: firstBackground))
+
+        let secondBackground = state.markBackground()
+        #expect(secondBackground != firstBackground)
+
+        let secondResume = state.beginForegroundResume()
+        #expect(secondResume != nil)
+        #expect(secondResume != firstResume)
+
+        state.invalidate()
+        if let secondResume {
+            #expect(!state.shouldAccept(generation: secondResume))
+        }
+    }
 }

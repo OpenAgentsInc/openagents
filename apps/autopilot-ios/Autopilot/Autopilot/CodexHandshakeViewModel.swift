@@ -53,6 +53,9 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var reconnectAttempt: Int = 0
     private var reconnectWindowStartedAt: Date?
     private var authFlowState = CodexAuthFlowState()
+    private var lifecycleResumeState = CodexLifecycleResumeState()
+    private var isBackgroundPaused = false
+    private var resumeCheckpointStore: CodexResumeCheckpointStore
 
     private let defaults: UserDefaults
     private let now: () -> Date
@@ -62,10 +65,12 @@ final class CodexHandshakeViewModel: ObservableObject {
     private let refreshTokenKey = "autopilot.ios.codex.refreshToken"
     private let tokenTypeKey = "autopilot.ios.codex.tokenType"
     private let sessionIDKey = "autopilot.ios.codex.sessionID"
+    private let authUserIDKey = "autopilot.ios.codex.authUserID"
     private let emailKey = "autopilot.ios.codex.email"
     private let selectedWorkerIDKey = "autopilot.ios.codex.selectedWorkerID"
     private let deviceIDKey = "autopilot.ios.codex.deviceID"
     private let khalaWorkerEventsWatermarkKey = "autopilot.ios.codex.khala.workerEventsWatermark"
+    private let khalaResumeStoreKey = "autopilot.ios.codex.khala.resumeStore.v1"
 
     private static let defaultBaseURL = URL(string: "https://openagents.com")!
     private static let khalaWorkerEventsTopic = "runtime.codex_worker_events"
@@ -92,6 +97,7 @@ final class CodexHandshakeViewModel: ObservableObject {
     private var refreshToken: String
     private var tokenType: String
     private var sessionID: String?
+    private var authUserID: String?
 
     private struct KhalaFrame {
         let joinRef: String?
@@ -159,27 +165,73 @@ final class CodexHandshakeViewModel: ObservableObject {
         let savedRefreshToken = defaults.string(forKey: refreshTokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let savedTokenType = defaults.string(forKey: tokenTypeKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Bearer"
         let savedSessionID = defaults.string(forKey: sessionIDKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let savedAuthUserID = defaults.string(forKey: authUserIDKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let savedWorkerEventsWatermark = max(0, defaults.integer(forKey: khalaWorkerEventsWatermarkKey))
+        let savedSelectedWorkerID = defaults.string(forKey: selectedWorkerIDKey)
+
+        let loadedResumeStore: CodexResumeCheckpointStore
+        if let data = defaults.data(forKey: "autopilot.ios.codex.khala.resumeStore.v1"),
+           let decodedStore = try? JSONDecoder().decode(CodexResumeCheckpointStore.self, from: data) {
+            loadedResumeStore = decodedStore
+        } else {
+            loadedResumeStore = CodexResumeCheckpointStore()
+        }
+
+        let resolvedDeviceID: String
+        if let existingDeviceID = defaults.string(forKey: deviceIDKey), !existingDeviceID.isEmpty {
+            resolvedDeviceID = existingDeviceID
+        } else {
+            let newDeviceID = UUID().uuidString.lowercased()
+            defaults.set(newDeviceID, forKey: deviceIDKey)
+            resolvedDeviceID = newDeviceID
+        }
+
+        let normalizedAuthUserID = savedAuthUserID?.isEmpty == true ? nil : savedAuthUserID
+        let normalizedSessionID = savedSessionID?.isEmpty == true ? nil : savedSessionID
+        let resumeNamespace = Self.resumeNamespace(
+            deviceID: resolvedDeviceID,
+            authUserID: normalizedAuthUserID,
+            email: savedEmail
+        )
+        let resumeWatermark: Int = {
+            guard let workerID = savedSelectedWorkerID else {
+                return 0
+            }
+            return loadedResumeStore.watermark(
+                namespace: resumeNamespace,
+                workerID: workerID,
+                topic: Self.khalaWorkerEventsTopic
+            )
+        }()
+        let initialWatermark = max(savedWorkerEventsWatermark, resumeWatermark)
 
         self.email = savedEmail
         self.authToken = savedToken
         self.refreshToken = savedRefreshToken
         self.tokenType = savedTokenType
-        self.sessionID = savedSessionID?.isEmpty == true ? nil : savedSessionID
-        self.khalaWorkerEventsWatermark = savedWorkerEventsWatermark
+        self.sessionID = normalizedSessionID
+        self.authUserID = normalizedAuthUserID
+        self.resumeCheckpointStore = loadedResumeStore
+        self.khalaWorkerEventsWatermark = initialWatermark
         self.isAuthenticated = !savedToken.isEmpty
         self.authState = savedToken.isEmpty
             ? .signedOut
             : .authenticated(email: savedEmail.isEmpty ? nil : savedEmail)
 
-        self.selectedWorkerID = defaults.string(forKey: selectedWorkerIDKey)
+        self.selectedWorkerID = savedSelectedWorkerID
+        self.deviceID = resolvedDeviceID
 
-        if let existingDeviceID = defaults.string(forKey: deviceIDKey), !existingDeviceID.isEmpty {
-            self.deviceID = existingDeviceID
-        } else {
-            let newDeviceID = UUID().uuidString.lowercased()
-            defaults.set(newDeviceID, forKey: deviceIDKey)
-            self.deviceID = newDeviceID
+        // Migrate any legacy single-watermark value into namespaced checkpoint storage.
+        if initialWatermark > resumeWatermark, let workerID = savedSelectedWorkerID {
+            resumeCheckpointStore.upsert(
+                namespace: resumeNamespace,
+                workerID: workerID,
+                topic: Self.khalaWorkerEventsTopic,
+                watermark: initialWatermark,
+                sessionID: normalizedSessionID,
+                updatedAt: iso8601(now())
+            )
+            persistResumeCheckpointStore()
         }
     }
 
@@ -203,6 +255,19 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         await refreshWorkers()
+    }
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        switch phase {
+        case .background:
+            handleDidEnterBackground()
+        case .active:
+            handleDidBecomeActive()
+        case .inactive:
+            break
+        @unknown default:
+            break
+        }
     }
 
     func sendEmailCode() async {
@@ -310,10 +375,11 @@ final class CodexHandshakeViewModel: ObservableObject {
 
     func signOut() {
         let accessTokenForRevocation = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseURL = Self.defaultBaseURL
         if !accessTokenForRevocation.isEmpty {
-            Task.detached {
+            Task {
                 let client = RuntimeCodexClient(
-                    baseURL: Self.defaultBaseURL,
+                    baseURL: baseURL,
                     authToken: accessTokenForRevocation
                 )
                 try? await client.logoutSession()
@@ -328,8 +394,11 @@ final class CodexHandshakeViewModel: ObservableObject {
         handshakeTimeoutTask?.cancel()
         handshakeTimeoutTask = nil
         resetReconnectTracking()
+        let namespaceToRemove = currentResumeNamespace
 
         clearSessionTokens()
+        resumeCheckpointStore.removeNamespace(namespaceToRemove)
+        persistResumeCheckpointStore()
         khalaWorkerEventsWatermark = 0
         defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
         RuntimeCodexClient.clearSessionCookies(baseURL: Self.defaultBaseURL)
@@ -338,6 +407,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         isSendingMessage = false
         nextCodeSendAllowedAt = nil
         authFlowState.invalidate()
+        lifecycleResumeState.invalidate()
+        isBackgroundPaused = false
 
         workers = []
         selectedWorkerID = nil
@@ -546,10 +617,13 @@ final class CodexHandshakeViewModel: ObservableObject {
             selectedWorkerID = worker.workerID
         }
 
+        isBackgroundPaused = false
+        lifecycleResumeState.invalidate()
         restartStreamIfReady(resetCursor: false)
     }
 
     func disconnectStream() {
+        persistCurrentWorkerCheckpointIfPossible()
         streamTask?.cancel()
         streamTask = nil
         activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
@@ -557,6 +631,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         activeStreamWorkerID = nil
         streamState = .idle
         resetReconnectTracking()
+        isBackgroundPaused = false
+        lifecycleResumeState.invalidate()
         recordLifecycleEvent("stream_disconnect_manual")
     }
 
@@ -573,6 +649,8 @@ final class CodexHandshakeViewModel: ObservableObject {
             resetReconnectTracking()
             return
         }
+
+        syncWatermarkFromResumeStore(for: workerID)
 
         let isSameWorkerStream =
             activeStreamWorkerID == workerID
@@ -598,6 +676,60 @@ final class CodexHandshakeViewModel: ObservableObject {
 
         streamTask = Task { [weak self] in
             await self?.runStreamLoop(workerID: workerID)
+        }
+    }
+
+    private func handleDidEnterBackground() {
+        _ = lifecycleResumeState.markBackground()
+        guard !isBackgroundPaused else {
+            return
+        }
+        isBackgroundPaused = true
+        persistCurrentWorkerCheckpointIfPossible()
+        streamTask?.cancel()
+        streamTask = nil
+        activeKhalaSocket?.cancel(with: .normalClosure, reason: nil)
+        activeKhalaSocket = nil
+        activeStreamWorkerID = nil
+        streamState = .idle
+        resetReconnectTracking()
+        recordLifecycleEvent("stream_paused_background")
+    }
+
+    private func handleDidBecomeActive() {
+        guard isBackgroundPaused else {
+            return
+        }
+        isBackgroundPaused = false
+        guard let generation = lifecycleResumeState.beginForegroundResume() else {
+            return
+        }
+
+        Task { [weak self] in
+            await self?.resumeAfterForeground(generation: generation)
+        }
+    }
+
+    private func resumeAfterForeground(generation: UInt64) async {
+        guard lifecycleResumeState.shouldAccept(generation: generation) else {
+            return
+        }
+        guard isAuthenticated else {
+            return
+        }
+
+        guard await ensureSessionParityOnLaunch() else {
+            return
+        }
+        guard lifecycleResumeState.shouldAccept(generation: generation) else {
+            return
+        }
+
+        if selectedWorkerID != nil || preferredWorker(from: workers) != nil {
+            restartStreamIfReady(resetCursor: false)
+            statusMessage = "Resumed Codex stream."
+        } else {
+            await refreshWorkers()
         }
     }
 
@@ -737,9 +869,8 @@ final class CodexHandshakeViewModel: ObservableObject {
         streamLifecycleEvents.append(stamped)
     }
 
-    private func resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: String) {
-        khalaWorkerEventsWatermark = 0
-        defaults.removeObject(forKey: khalaWorkerEventsWatermarkKey)
+    private func resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: String, workerID: String) {
+        persistWatermark(0, topic: Self.khalaWorkerEventsTopic, workerID: workerID, allowDecrease: true)
         recordLifecycleEvent("stale_cursor_reset reason=\(reason)")
     }
 
@@ -837,7 +968,7 @@ final class CodexHandshakeViewModel: ObservableObject {
                 processKhalaUpdateBatch(frame.payload, workerID: workerID)
 
             case "sync:error":
-                throw khalaSyncError(from: frame.payload)
+                throw khalaSyncError(from: frame.payload, workerID: workerID)
 
             case "phx_reply":
                 guard frame.ref == expectedRef else {
@@ -870,7 +1001,10 @@ final class CodexHandshakeViewModel: ObservableObject {
                 case "forbidden_topic":
                     throw RuntimeCodexApiError(message: message, code: .forbidden, status: 403)
                 case "stale_cursor":
-                    resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: "server_reply")
+                    resetKhalaWorkerEventsWatermarkForReplayBootstrap(
+                        reason: "server_reply",
+                        workerID: workerID
+                    )
                     throw RuntimeCodexApiError(message: message, code: .conflict, status: 409)
                 default:
                     throw RuntimeCodexApiError(message: message, code: .unknown, status: nil)
@@ -897,7 +1031,7 @@ final class CodexHandshakeViewModel: ObservableObject {
             processKhalaUpdateBatch(frame.payload, workerID: workerID)
 
         case "sync:error":
-            throw khalaSyncError(from: frame.payload)
+            throw khalaSyncError(from: frame.payload, workerID: workerID)
 
         case "phx_error":
             throw RuntimeCodexApiError(
@@ -926,8 +1060,11 @@ final class CodexHandshakeViewModel: ObservableObject {
             }
 
             if let watermark = updateObject["watermark"]?.intValue, watermark > khalaWorkerEventsWatermark {
-                khalaWorkerEventsWatermark = watermark
-                defaults.set(watermark, forKey: khalaWorkerEventsWatermarkKey)
+                persistWatermark(
+                    watermark,
+                    topic: Self.khalaWorkerEventsTopic,
+                    workerID: workerID
+                )
             }
 
             guard let streamPayload = updateObject["payload"]?.objectValue else {
@@ -971,7 +1108,7 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
     }
 
-    private func khalaSyncError(from payload: JSONValue) -> RuntimeCodexApiError {
+    private func khalaSyncError(from payload: JSONValue, workerID: String) -> RuntimeCodexApiError {
         guard let object = payload.objectValue else {
             return RuntimeCodexApiError(
                 message: "khala_sync_error",
@@ -994,7 +1131,10 @@ final class CodexHandshakeViewModel: ObservableObject {
         }
 
         if code == "stale_cursor" {
-            resetKhalaWorkerEventsWatermarkForReplayBootstrap(reason: "sync_error_payload")
+            resetKhalaWorkerEventsWatermarkForReplayBootstrap(
+                reason: "sync_error_payload",
+                workerID: workerID
+            )
             return RuntimeCodexApiError(message: message, code: .conflict, status: 409)
         }
 
@@ -2115,16 +2255,111 @@ final class CodexHandshakeViewModel: ObservableObject {
             return
         }
 
-        khalaWorkerEventsWatermark = projectionSeq
-        defaults.set(projectionSeq, forKey: khalaWorkerEventsWatermarkKey)
+        persistWatermark(
+            projectionSeq,
+            topic: Self.khalaWorkerEventsTopic,
+            workerID: workerID
+        )
     }
 
     private func storeSelection() {
         if let selectedWorkerID {
             defaults.set(selectedWorkerID, forKey: selectedWorkerIDKey)
+            syncWatermarkFromResumeStore(for: selectedWorkerID)
         } else {
             defaults.removeObject(forKey: selectedWorkerIDKey)
         }
+    }
+
+    private var currentResumeNamespace: String {
+        Self.resumeNamespace(
+            deviceID: deviceID,
+            authUserID: authUserID,
+            email: email
+        )
+    }
+
+    private static func resumeNamespace(deviceID: String, authUserID: String?, email: String?) -> String {
+        let normalizedUserID = authUserID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !normalizedUserID.isEmpty {
+            return "device:\(deviceID)|user:\(normalizedUserID)"
+        }
+
+        let normalizedEmail = (email ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if !normalizedEmail.isEmpty {
+            return "device:\(deviceID)|email:\(normalizedEmail)"
+        }
+
+        return "device:\(deviceID)|anonymous"
+    }
+
+    private func persistResumeCheckpointStore() {
+        guard let encoded = try? JSONEncoder().encode(resumeCheckpointStore) else {
+            return
+        }
+        defaults.set(encoded, forKey: khalaResumeStoreKey)
+    }
+
+    private func persistWatermark(
+        _ watermark: Int,
+        topic: String,
+        workerID: String,
+        allowDecrease: Bool = false
+    ) {
+        let normalized = max(0, watermark)
+        let current = max(0, khalaWorkerEventsWatermark)
+        if allowDecrease {
+            khalaWorkerEventsWatermark = normalized
+        } else {
+            khalaWorkerEventsWatermark = max(current, normalized)
+        }
+        defaults.set(khalaWorkerEventsWatermark, forKey: khalaWorkerEventsWatermarkKey)
+
+        if allowDecrease && khalaWorkerEventsWatermark == 0 {
+            resumeCheckpointStore.resetTopic(
+                namespace: currentResumeNamespace,
+                workerID: workerID,
+                topic: topic,
+                updatedAt: iso8601(now())
+            )
+        } else {
+            resumeCheckpointStore.upsert(
+                namespace: currentResumeNamespace,
+                workerID: workerID,
+                topic: topic,
+                watermark: khalaWorkerEventsWatermark,
+                sessionID: sessionID,
+                updatedAt: iso8601(now())
+            )
+        }
+        persistResumeCheckpointStore()
+    }
+
+    private func syncWatermarkFromResumeStore(for workerID: String) {
+        let stored = resumeCheckpointStore.watermark(
+            namespace: currentResumeNamespace,
+            workerID: workerID,
+            topic: Self.khalaWorkerEventsTopic
+        )
+        guard stored > khalaWorkerEventsWatermark else {
+            return
+        }
+        khalaWorkerEventsWatermark = stored
+        defaults.set(stored, forKey: khalaWorkerEventsWatermarkKey)
+    }
+
+    private func persistCurrentWorkerCheckpointIfPossible() {
+        guard let workerID = activeStreamWorkerID ?? selectedWorkerID,
+              !workerID.isEmpty else {
+            return
+        }
+        persistWatermark(
+            khalaWorkerEventsWatermark,
+            topic: Self.khalaWorkerEventsTopic,
+            workerID: workerID
+        )
     }
 
     private func selectedWorkerLatestSeq(workerID: String) -> Int {
@@ -2254,6 +2489,12 @@ final class CodexHandshakeViewModel: ObservableObject {
             defaults.set(sessionID, forKey: sessionIDKey)
         }
 
+        if let userID = session.userID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !userID.isEmpty {
+            authUserID = userID
+            defaults.set(userID, forKey: authUserIDKey)
+        }
+
         if let sessionEmail = session.email?.trimmingCharacters(in: .whitespacesAndNewlines),
            !sessionEmail.isEmpty {
             email = sessionEmail
@@ -2262,6 +2503,9 @@ final class CodexHandshakeViewModel: ObservableObject {
             email = preferredEmail
         }
         defaults.set(email, forKey: emailKey)
+        if let workerID = selectedWorkerID, !workerID.isEmpty {
+            syncWatermarkFromResumeStore(for: workerID)
+        }
 
         authState = .authenticated(email: email.isEmpty ? nil : email)
     }
@@ -2271,10 +2515,12 @@ final class CodexHandshakeViewModel: ObservableObject {
         refreshToken = ""
         tokenType = "Bearer"
         sessionID = nil
+        authUserID = nil
         defaults.removeObject(forKey: tokenKey)
         defaults.removeObject(forKey: refreshTokenKey)
         defaults.removeObject(forKey: tokenTypeKey)
         defaults.removeObject(forKey: sessionIDKey)
+        defaults.removeObject(forKey: authUserIDKey)
     }
 
     private func shouldAttemptAuthRecovery(after error: Error) -> Bool {
@@ -2310,6 +2556,8 @@ final class CodexHandshakeViewModel: ObservableObject {
             let session = try await client.currentSession()
             sessionID = session.sessionID
             defaults.set(session.sessionID, forKey: sessionIDKey)
+            authUserID = session.userID
+            defaults.set(session.userID, forKey: authUserIDKey)
 
             if session.reauthRequired || session.status != "active" {
                 guard await refreshSessionFromStoredToken() != nil else {
