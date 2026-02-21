@@ -1,0 +1,29 @@
+[package]
+name = "openagents-control-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+axum = "0.7"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "request-id", "timeout", "trace"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+anyhow.workspace = true
+http-body-util = "0.1"
+tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }
+
+[[bin]]
+name = "openagents-control-service"
+path = "src/main.rs"

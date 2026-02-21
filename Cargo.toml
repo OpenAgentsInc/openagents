@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "apps/autopilot-desktop",
+    "apps/openagents.com/service",
     "crates/adjutant",
     "crates/agent",
     "crates/ai-server",
