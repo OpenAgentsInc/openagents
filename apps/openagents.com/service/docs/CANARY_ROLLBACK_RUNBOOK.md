@@ -98,7 +98,10 @@ gcloud logging read \
 5. Route split endpoints succeed for authenticated operators:
    - `GET /api/v1/control/route-split/status`
    - `POST /api/v1/control/route-split/evaluate`
-6. Audit event stream includes:
+6. Billing/lightning operator route checks succeed for Rust-targeted cohorts:
+   - route evaluate for `/l402/paywalls` returns Rust target in intended cohort.
+   - `POST /api/policy/authorize` returns expected allow/deny semantics for operator scopes.
+7. Audit event stream includes:
    - `auth.verify.completed`
    - `sync.token.issued`
    - `route.split.decision`

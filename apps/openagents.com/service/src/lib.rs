@@ -1377,6 +1377,8 @@ mod tests {
                 "/workspace".to_string(),
                 "/account".to_string(),
                 "/settings".to_string(),
+                "/l402".to_string(),
+                "/billing".to_string(),
                 "/admin".to_string(),
             ],
             route_split_cohort_percentage: 100,
@@ -2103,7 +2105,13 @@ mod tests {
         )?;
         let app = build_router(test_config(static_dir.path().to_path_buf()));
 
-        for path in ["/account/session", "/settings/profile", "/admin"] {
+        for path in [
+            "/account/session",
+            "/settings/profile",
+            "/l402/paywalls",
+            "/billing/deployments",
+            "/admin",
+        ] {
             let request = Request::builder()
                 .uri(path)
                 .header("x-oa-route-key", "user:route")

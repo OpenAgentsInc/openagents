@@ -4,7 +4,7 @@ Shared route graph, reducer, command-intent state core, and command planning lay
 
 ## Modules
 
-1. `route`: typed route graph + path mapping (chat/workers/account/settings/admin/debug).
+1. `route`: typed route graph + path mapping (chat/workers/account/settings/billing/admin/debug).
 2. `intent`: typed command-intent queue model.
 3. `state`: deterministic app/auth/stream state model (including per-topic sync watermarks).
 4. `reducer`: reducer actions + transition application.
