@@ -1,6 +1,6 @@
 # Rust Runtime Service Foundation
 
-Status: Introduced by OA-RUST-033.
+Status: Introduced by OA-RUST-033 and expanded by OA-RUST-034.
 
 This document defines the initial Rust runtime service footprint inside `apps/runtime`.
 
@@ -9,6 +9,7 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 1. Provide a buildable Rust runtime service entrypoint in `apps/runtime`.
 2. Establish module boundaries for authority writes, orchestration, and projectors.
 3. Expose baseline health/readiness and runtime contract smoke routes.
+4. Port worker lifecycle authority basics (registration, heartbeat, status transitions).
 
 ## Current shape
 
@@ -20,6 +21,7 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
   - `apps/runtime/src/authority.rs`
   - `apps/runtime/src/orchestration.rs`
   - `apps/runtime/src/projectors.rs`
+  - `apps/runtime/src/workers.rs`
   - `apps/runtime/src/types.rs`
 
 ## Endpoint contract (foundation scope)
@@ -30,6 +32,11 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 - `POST /internal/v1/runs/:run_id/events` appends runtime events.
 - `GET /internal/v1/runs/:run_id` reads current run state.
 - `GET /internal/v1/projectors/checkpoints/:run_id` reads latest projector checkpoint.
+- `POST /internal/v1/workers` registers worker ownership/lifecycle state.
+- `GET /internal/v1/workers/:worker_id` reads owner-scoped worker state.
+- `POST /internal/v1/workers/:worker_id/heartbeat` updates worker liveness.
+- `POST /internal/v1/workers/:worker_id/status` applies deterministic status transitions.
+- `GET /internal/v1/workers/:worker_id/checkpoint` reads worker lifecycle projection checkpoint.
 
 ## Operational notes
 

@@ -117,4 +117,9 @@ impl RuntimeOrchestrator {
             projector_ready: self.projectors.is_ready(),
         }
     }
+
+    #[must_use]
+    pub fn projectors(&self) -> Arc<dyn ProjectionPipeline> {
+        Arc::clone(&self.projectors)
+    }
 }

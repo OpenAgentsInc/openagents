@@ -12,6 +12,7 @@ use crate::{
     orchestration::RuntimeOrchestrator,
     projectors::InMemoryProjectionPipeline,
     server::{AppState, build_router},
+    workers::InMemoryWorkerRegistry,
 };
 
 pub mod authority;
@@ -20,12 +21,17 @@ pub mod orchestration;
 pub mod projectors;
 pub mod server;
 pub mod types;
+pub mod workers;
 
 pub fn build_runtime_state(config: Config) -> AppState {
     let authority = InMemoryRuntimeAuthority::shared();
     let projectors = InMemoryProjectionPipeline::shared();
     let orchestrator = Arc::new(RuntimeOrchestrator::new(authority, projectors));
-    AppState::new(config, orchestrator)
+    let workers = Arc::new(InMemoryWorkerRegistry::new(
+        orchestrator.projectors(),
+        120_000,
+    ));
+    AppState::new(config, orchestrator, workers)
 }
 
 pub fn build_app(config: Config) -> axum::Router {
