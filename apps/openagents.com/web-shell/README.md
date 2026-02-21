@@ -27,6 +27,10 @@ Rust/WASM bootstrap entrypoint for the OpenAgents web surface.
    - topic watermarks + subscribed topic metadata
    - deterministic resume-after map generation
    - corruption reset safety path (invalid payload is cleared, boot continues)
+11. Adds Codex thread pilot-route state lane:
+   - Rust-owned stream payload decoding for codex worker events
+   - token-overlap-safe assistant/reasoning delta assembly
+   - user/system message dedupe policy compatible with replay/resume
 
 ## Build (WASM)
 
@@ -82,3 +86,5 @@ Auth helper exports available from wasm module:
 - `auth_logout()`
 - `khala_connect()`
 - `khala_disconnect()`
+- `codex_send_message(text: String)`
+- `codex_thread_state_json()`
