@@ -8,6 +8,7 @@ This is the canonical deploy/process map for active Rust service lanes.
 Cross-environment release validation gate:
 
 - `docs/RUST_STAGING_PROD_VALIDATION.md`
+- Legacy teardown policy: `docs/RUST_LEGACY_INFRA_DECOMMISSION.md`
 
 ## Canonical deploy entrypoints
 
