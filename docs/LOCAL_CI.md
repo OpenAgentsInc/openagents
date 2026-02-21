@@ -28,6 +28,7 @@ Supported lanes:
 
 - `changed` (default)
 - `all`
+- `all-rust`
 - `docs`
 - `proto`
 - `runtime`
@@ -42,6 +43,7 @@ Examples:
 ./scripts/local-ci.sh runtime
 ./scripts/local-ci.sh comms
 ./scripts/local-ci.sh web-shell
+./scripts/local-ci.sh all-rust
 ./scripts/local-ci.sh all
 ```
 
@@ -50,6 +52,7 @@ Changed-mode trigger note:
 - `comms` lane auto-runs for legacy Laravel/openagents.com surface paths, `apps/runtime/`, comms protocol docs, and comms matrix script changes.
 - Rust control-service path `apps/openagents.com/service/` is intentionally excluded from automatic `comms` lane triggering to keep Rust migration iteration fast.
 - `web-shell` lane auto-runs for `apps/openagents.com/web-shell/**` changes and enforces JS host shim boundary rules.
+- `runtime/comms/openclaw` lanes are skipped by default in `changed` mode and only run when `OA_LOCAL_CI_ENABLE_LEGACY=1`.
 
 ## Push Policy (Current)
 
@@ -59,6 +62,7 @@ Run gates manually before pushing when needed:
 
 ```bash
 ./scripts/local-ci.sh changed
+OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh changed
 ./scripts/local-ci.sh all
 ```
 
@@ -88,6 +92,8 @@ Optional timeout override:
 ```bash
 OA_BUF_BREAKING_TIMEOUT=45s ./scripts/local-ci.sh proto
 ```
+
+Default `buf breaking` timeout in auto mode is `8s` to avoid slowing Rust issue throughput during migration.
 
 This lane is also invoked automatically by `changed` mode whenever `proto/`,
 `buf.yaml`, `buf.gen.yaml`, `scripts/verify-proto-generate.sh`,
@@ -140,3 +146,12 @@ OA_SKIP_LOCAL_CI=1 git commit -m "..."
 ```
 
 If bypassing, run equivalent lane commands manually before merge.
+
+## Legacy Lane Opt-In
+
+When you need runtime/comms/openclaw legacy gates during migration, opt in explicitly:
+
+```bash
+OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh changed
+OA_LOCAL_CI_ENABLE_LEGACY=1 ./scripts/local-ci.sh all
+```
