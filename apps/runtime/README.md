@@ -86,6 +86,10 @@ Khala fanout seam:
 
 - Runtime writes publish through `FanoutDriver` abstraction (`memory` adapter implemented).
 - Fanout queue is bounded per topic; oldest messages are evicted when capacity is exceeded.
+- `GET /internal/v1/khala/topics/:topic/messages` enforces deterministic stale-cursor handling:
+  - `410 stale_cursor` when `after_seq` is below retained replay floor.
+  - response details include `requested_cursor`, `oldest_available_cursor`, `head_cursor`, and recovery hint `reset_local_watermark_and_replay_bootstrap`.
+  - successful responses include replay bootstrap metadata: `oldest_available_cursor`, `head_cursor`, `next_cursor`, `replay_complete`.
 - `RUNTIME_FANOUT_DRIVER` keeps protocol stable while reserving hooks for `nats`, `redis`, and `postgres_notify` adapters.
 
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
