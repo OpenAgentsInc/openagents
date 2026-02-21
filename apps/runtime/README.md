@@ -16,6 +16,7 @@ Environment:
 - `RUNTIME_BIND_ADDR` (default `127.0.0.1:4100`)
 - `RUNTIME_SERVICE_NAME` (default `runtime`)
 - `RUNTIME_BUILD_SHA` (default `dev`)
+- `RUNTIME_EVENT_LOG_PATH` (default `.runtime-data/runtime-events.jsonl`)
 
 Baseline endpoints:
 
@@ -43,6 +44,13 @@ Run state machine semantics:
 
 - Supported statuses: `created`, `running`, `canceling`, `canceled`, `succeeded`, `failed`.
 - Runtime validates event-driven transitions (for example `run.started`, `run.cancel_requested`, `run.finished`) and rejects illegal transitions with `400 invalid_request`.
+
+Durable event log semantics:
+
+- Run events are appended to a durable JSONL event log before in-memory projection updates.
+- `POST /internal/v1/runs/:run_id/events` supports `idempotency_key` and `expected_previous_seq`.
+- Duplicate `idempotency_key` returns idempotent replay without appending duplicate events.
+- `expected_previous_seq` mismatches return `409 conflict`.
 
 Legacy Elixir/Phoenix runtime is still present for staged migration issues and should be treated as transitional.
 

@@ -11,6 +11,7 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 3. Expose baseline health/readiness and runtime contract smoke routes.
 4. Port worker lifecycle authority basics (registration, heartbeat, status transitions).
 5. Enforce deterministic run state transitions for replay-safe runtime events.
+6. Introduce durable append-only runtime event log with idempotency/ordering safeguards.
 
 ## Current shape
 
@@ -41,7 +42,9 @@ This document defines the initial Rust runtime service footprint inside `apps/ru
 
 ## Operational notes
 
-1. Storage is currently in-memory and intentionally ephemeral for bootstrap validation.
-2. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
-3. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
-4. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.
+1. Runtime event authority now uses a durable JSONL append log; run/projector read models remain in-memory during bootstrap.
+2. Run events are durably appended to `RUNTIME_EVENT_LOG_PATH` (JSONL) before in-memory run projection updates.
+3. Event append requests support idempotency (`idempotency_key`) and optimistic ordering checks (`expected_previous_seq`).
+4. Run transitions are validated against a deterministic state machine (`created -> running -> terminal/canceling` lanes) before events are accepted.
+5. Runtime authority persistence and full projector parity are delivered in follow-on OA-RUST issues.
+6. Existing Elixir runtime remains present as the migration source until cutover milestones are complete.

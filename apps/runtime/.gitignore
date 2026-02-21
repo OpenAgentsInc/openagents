@@ -21,7 +21,7 @@ erl_crash.dump
 
 # Temporary files, for example, from tests.
 /tmp/
+/.runtime-data/
 
 # Ignore package tarball (built via "mix hex.build").
 openagents_runtime-*.tar
-
