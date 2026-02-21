@@ -1,7 +1,7 @@
 # Autopilot Trace Retrieval (Khala + Worker Logs)
 
 > Legacy scope: this trace retrieval contract is for the former `apps/web` + Khala stack.
-> For current web/runtime trace workflows, see `apps/openagents.com/README.md` and runtime docs in `apps/openagents-runtime/docs/`.
+> For current web/runtime trace workflows, see `apps/openagents.com/README.md` and runtime docs in `apps/runtime/docs/`.
 
 This document describes what trace data is persisted for a thread, what is **not** persisted in Khala, and how an agent can fetch traces programmatically.
 

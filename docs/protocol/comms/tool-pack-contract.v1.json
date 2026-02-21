@@ -2,7 +2,7 @@
   "id": "openagents.comms.tool-pack.v1",
   "version": "2026-02-19",
   "tool_pack": "comms.v1",
-  "owner": "openagents-runtime",
+  "owner": "runtime",
   "tools": [
     {
       "tool_name": "comms.send",

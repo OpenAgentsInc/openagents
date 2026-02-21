@@ -7,7 +7,7 @@ Scope: Add an Elixir-based agent runtime to `~/code/openagents` while keeping `a
 
 ## Progress snapshot (updated 2026-02-18)
 
-Delivered in `apps/openagents-runtime`:
+Delivered in `apps/runtime`:
 
 - Runtime app scaffold, CI workflow, Docker/Cloud Build, and GKE manifest skeletons.
 - Internal contract docs and OpenAPI artifact.
@@ -50,7 +50,7 @@ Just as importantly, the BEAM model supports the operational quality required by
 
 OpenAgents previously implemented a substantial DSPy-inspired DSE layer in the now-removed `apps/web` stack (`8c460f956` removal commit; key prior integration state in `42700ddef`, plus tool replay hardening in `c79250a58`). That implementation already validated critical behavior-shaping primitives: stable signature IDs, artifact-pinned strategy selection (`direct.v1` and `rlm_lite.v1`), deterministic budget envelopes, canary policy selection, prediction receipts/traces, and compile/promote loops with rollback.
 
-This plan carries those primitives forward into Elixir as DS-Elixir inside `apps/openagents-runtime`. The goal is to preserve what worked in DSE while removing the previous coupling constraints. DS-Elixir is therefore a first-class subsystem in this runtime plan because autonomous execution quality depends on explicit contracts for inference behavior, not only on process supervision.
+This plan carries those primitives forward into Elixir as DS-Elixir inside `apps/runtime`. The goal is to preserve what worked in DSE while removing the previous coupling constraints. DS-Elixir is therefore a first-class subsystem in this runtime plan because autonomous execution quality depends on explicit contracts for inference behavior, not only on process supervision.
 
 DS-Elixir constraints adopted in this plan:
 
@@ -125,12 +125,12 @@ References:
 
 Create a new OTP/Phoenix app:
 
-- `apps/openagents-runtime/`
+- `apps/runtime/`
 
 Proposed structure:
 
 ```text
-apps/openagents-runtime/
+apps/runtime/
   README.md
   mix.exs
   mix.lock
@@ -222,12 +222,12 @@ Touch points:
 ## Docs/runbooks to add in openagents repo
 
 - `docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md` (this file)
-- `apps/openagents-runtime/README.md`
-- `apps/openagents-runtime/docs/DEPLOY_GCP.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- `apps/openagents-runtime/docs/OPERATIONS.md`
-- `apps/openagents-runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
-- `apps/openagents-runtime/docs/DS_ELIXIR_OPERATIONS.md`
+- `apps/runtime/README.md`
+- `apps/runtime/docs/DEPLOY_GCP.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/OPERATIONS.md`
+- `apps/runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/DS_ELIXIR_OPERATIONS.md`
 - `docs/PROJECT_OVERVIEW.md` update with new app
 - `docs/README.md` update with new runtime docs links
 - `docs/plans/active/elixir-ds-runtime-integration-addendum.md`
@@ -244,7 +244,7 @@ Laravel (`apps/openagents.com`) keeps:
 - Product/business APIs (profile, tokens, admin pages, etc.)
 - Existing DB read models consumed by UI/API
 
-Elixir (`apps/openagents-runtime`) owns:
+Elixir (`apps/runtime`) owns:
 
 - Long-running agent process lifecycle
 - Frame-based inference loop
@@ -952,9 +952,9 @@ Recommended initial range:
 ## Kubernetes BEAM cluster spec (concrete)
 
 1. StatefulSet + headless service:
-   - StatefulSet name: `openagents-runtime`
-   - Headless service: `openagents-runtime-headless`
-   - Pod DNS pattern: `openagents-runtime-<ordinal>.openagents-runtime-headless.openagents-runtime.svc.cluster.local`
+   - StatefulSet name: `runtime`
+   - Headless service: `runtime-headless`
+   - Pod DNS pattern: `runtime-<ordinal>.runtime-headless.runtime.svc.cluster.local`
 
 2. Node identity:
    - Set node name from pod DNS (long names).
@@ -978,7 +978,7 @@ Recommended initial range:
 
 - GKE mode: Standard
 - Region: `us-central1`
-- Runtime namespace: `openagents-runtime`
+- Runtime namespace: `runtime`
 - Node pools:
   - `runtime-general` for API/runtime nodes
   - optional `runtime-jobs` pool for heavy compaction/reprojection jobs
@@ -1009,14 +1009,14 @@ Project/region aligned with current app:
 
 GKE workloads:
 
-1. `openagents-runtime` StatefulSet
+1. `runtime` StatefulSet
    - Internal API + runtime supervisors
    - Stable pod identities for BEAM node membership
-2. `openagents-runtime-migrate` Kubernetes Job
+2. `runtime-migrate` Kubernetes Job
    - One-off DB migrations per release
-3. `openagents-runtime-maintenance` CronJobs
+3. `runtime-maintenance` CronJobs
    - Compaction backfills, projection reconciliation, periodic integrity scans
-4. Optional `openagents-runtime-worker` Deployment/StatefulSet
+4. Optional `runtime-worker` Deployment/StatefulSet
    - If we split API-facing workload from heavy autonomous/background workloads
 
 Backing services:
@@ -1030,7 +1030,7 @@ Backing services:
 
 ## Ingress
 
-`openagents-runtime` runtime API should be internal/private:
+`runtime` runtime API should be internal/private:
 
 - Internal L7/L4 load balancer fronting GKE service
 - VPC-private service routing from Laravel web service(s) to runtime service
@@ -1057,10 +1057,10 @@ This dual layer protects against misconfigured ingress and replay.
 
 Create dedicated secrets:
 
-- `openagents-runtime-db-password`
-- `openagents-runtime-internal-signing-key`
-- `openagents-runtime-openrouter-api-key` (if needed)
-- `openagents-runtime-ai-gateway-api-key` (if needed)
+- `runtime-db-password`
+- `runtime-internal-signing-key`
+- `runtime-openrouter-api-key` (if needed)
+- `runtime-ai-gateway-api-key` (if needed)
 - tool-specific creds as runtime grows
 
 ## CI/CD and build pipeline in monorepo
@@ -1069,26 +1069,26 @@ Create dedicated secrets:
 
 Add:
 
-- `apps/openagents-runtime/Dockerfile`
-- `apps/openagents-runtime/deploy/cloudbuild.yaml`
+- `apps/runtime/Dockerfile`
+- `apps/runtime/deploy/cloudbuild.yaml`
 
 Cloud Build submit path:
 
 ```bash
 gcloud builds submit \
-  --config apps/openagents-runtime/deploy/cloudbuild.yaml \
+  --config apps/runtime/deploy/cloudbuild.yaml \
   --substitutions _TAG="$(git rev-parse --short HEAD)" \
-  apps/openagents-runtime
+  apps/runtime
 ```
 
 ## Deploy scripts
 
 Add:
 
-- `apps/openagents-runtime/deploy/deploy-production.sh`
-- `apps/openagents-runtime/deploy/apply-production-env.sh` (same pattern as Laravel app)
-- `apps/openagents-runtime/deploy/smoke/health.sh`
-- `apps/openagents-runtime/deploy/smoke/stream.sh`
+- `apps/runtime/deploy/deploy-production.sh`
+- `apps/runtime/deploy/apply-production-env.sh` (same pattern as Laravel app)
+- `apps/runtime/deploy/smoke/health.sh`
+- `apps/runtime/deploy/smoke/stream.sh`
 
 ## Runtime migration command
 
@@ -1384,12 +1384,12 @@ Telemetry cardinality guardrails:
 
 Commands:
 
-- `cd apps/openagents-runtime && mix deps.get`
-- `cd apps/openagents-runtime && mix test`
-- `cd apps/openagents-runtime && mix format --check-formatted`
-- `cd apps/openagents-runtime && mix credo` (if enabled)
-- `cd apps/openagents-runtime && mix dialyzer` (phase 2+)
-- `cd apps/openagents-runtime && mix test --warnings-as-errors`
+- `cd apps/runtime && mix deps.get`
+- `cd apps/runtime && mix test`
+- `cd apps/runtime && mix format --check-formatted`
+- `cd apps/runtime && mix credo` (if enabled)
+- `cd apps/runtime && mix dialyzer` (phase 2+)
+- `cd apps/runtime && mix test --warnings-as-errors`
 
 ## Laravel integration tests
 
@@ -1534,7 +1534,7 @@ Mitigation:
 
 Initial GKE sizing (starting point, tune with load tests):
 
-- `openagents-runtime` StatefulSet
+- `runtime` StatefulSet
   - Replicas: 3
   - CPU request/limit: `1000m/2000m`
   - Memory request/limit: `2Gi/4Gi`
@@ -1552,9 +1552,9 @@ Scaling policy:
 
 ## Concrete execution checklist
 
-1. Scaffold `apps/openagents-runtime` with Phoenix/OTP.
+1. Scaffold `apps/runtime` with Phoenix/OTP.
 2. Add runtime API contract doc and generated OpenAPI for internal endpoints.
-3. Add deploy assets under `apps/openagents-runtime/deploy`.
+3. Add deploy assets under `apps/runtime/deploy`.
 4. Deploy runtime service to GCP in internal-only mode.
 5. Add Laravel runtime client + config flags.
 6. Implement frame-only ingestion contract (`/runs/{runId}/frames`) with idempotent `frameId`.
@@ -1600,7 +1600,7 @@ Scaling policy:
 ## Decision log
 
 - 2026-02-18: Chose runtime-only migration (no web rewrite).
-- 2026-02-18: Chose monorepo placement `apps/openagents-runtime`.
+- 2026-02-18: Chose monorepo placement `apps/runtime`.
 - 2026-02-18: Chose GKE Standard + StatefulSet BEAM clustering as primary production architecture.
 - 2026-02-18: Preserved SSE AI SDK compatibility as migration invariant.
 - 2026-02-18: Added DS-Elixir as first-class runtime subsystem to preserve proven DSE behavior controls.

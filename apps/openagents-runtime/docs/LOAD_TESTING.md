@@ -4,8 +4,8 @@ This suite validates production-shaped runtime behavior for concurrency, streami
 
 ## Test Suite
 
-- `apps/openagents-runtime/test/openagents_runtime/load/runtime_shape_load_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
+- `apps/runtime/test/openagents_runtime/load/runtime_shape_load_test.exs`
+- `apps/runtime/test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
 
 Scenarios covered:
 
@@ -19,7 +19,7 @@ Scenarios covered:
 
 ## Run Commands
 
-From `apps/openagents-runtime/`:
+From `apps/runtime/`:
 
 - `mix test test/openagents_runtime/load/runtime_shape_load_test.exs`
 - `mix test test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
@@ -45,12 +45,12 @@ From `apps/openagents-runtime/`:
 
 ## Latest Report
 
-- `apps/openagents-runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
+- `apps/runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
 
 ## Relationship to Operations
 
 Alert and dashboard artifacts for these failure modes:
 
-- `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
-- `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
-- `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+- `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
+- `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
+- `apps/runtime/docs/OPERATIONS_ALERTING.md`

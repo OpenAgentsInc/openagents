@@ -1,11 +1,11 @@
 # Runtime Monitoring Assets
 
-This directory contains baseline dashboards and alert rules for `openagents-runtime`.
+This directory contains baseline dashboards and alert rules for `runtime`.
 
 ## Artifacts
 
-- Grafana dashboard: `grafana/openagents-runtime-ops-dashboard.json`
-- Prometheus rules: `prometheus/openagents-runtime-alert-rules.yaml`
+- Grafana dashboard: `grafana/runtime-ops-dashboard.json`
+- Prometheus rules: `prometheus/runtime-alert-rules.yaml`
 
 ## Coverage
 
@@ -25,9 +25,9 @@ This directory contains baseline dashboards and alert rules for `openagents-runt
 
 ## Runbook
 
-- Operations + thresholds: `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
-- End-to-end correlation walkthrough: `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md#end-to-end-request-correlation-walkthrough`
-- Telemetry contract and label guardrails: `apps/openagents-runtime/docs/OBSERVABILITY.md`
+- Operations + thresholds: `apps/runtime/docs/OPERATIONS_ALERTING.md`
+- End-to-end correlation walkthrough: `apps/runtime/docs/OPERATIONS_ALERTING.md#end-to-end-request-correlation-walkthrough`
+- Telemetry contract and label guardrails: `apps/runtime/docs/OBSERVABILITY.md`
 
 ## Notes
 

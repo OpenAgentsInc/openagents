@@ -25,7 +25,7 @@ This replaces ad hoc copy/paste with an explicit intake pipeline.
 
 OpenAgents runtime direction is now clear:
 
-- Elixir runtime (`apps/openagents-runtime`) owns long-running execution, tools, durable event logs, policy, and replayability.
+- Elixir runtime (`apps/runtime`) owns long-running execution, tools, durable event logs, policy, and replayability.
 - Laravel (`apps/openagents.com`) remains control plane + product surface.
 
 OpenClaw has a mature capability surface in exactly the areas OpenAgents needs next:
@@ -118,9 +118,9 @@ Prioritized mapping from OpenClaw to OpenAgents:
 
 | Capability cluster | OpenClaw references | Layer | OpenAgents destination | Decision |
 |---|---|---|---|---|
-| Tool policy pipeline (profiles, allow/deny, provider-specific filters, plugin groups) | `src/agents/tool-policy.ts`, `src/agents/tool-policy-pipeline.ts`, `src/agents/pi-tools.policy.ts` | `Kernel + Control plane` | `apps/openagents-runtime/lib/openagents_runtime/tools/policy/*` + Laravel admin/config controls | Port to Elixir core; Laravel as control-plane editor |
+| Tool policy pipeline (profiles, allow/deny, provider-specific filters, plugin groups) | `src/agents/tool-policy.ts`, `src/agents/tool-policy-pipeline.ts`, `src/agents/pi-tools.policy.ts` | `Kernel + Control plane` | `apps/runtime/lib/openagents_runtime/tools/policy/*` + Laravel admin/config controls | Port to Elixir core; Laravel as control-plane editor |
 | Optional tool gating + plugin tool metadata | `src/plugins/tools.ts`, `src/plugins/registry.ts` | `Kernel` | Runtime tool registry + policy resolver | Port core logic; keep plugin loading model adapted |
-| Hook lifecycle (before/after tool call, prompt/model hooks, message hooks) | `src/plugins/types.ts`, `src/plugins/hooks.ts`, `src/plugins/hook-runner-global.ts` | `Kernel` | `apps/openagents-runtime/lib/openagents_runtime/hooks/*` | Port as runtime extension seam, event-log integrated |
+| Hook lifecycle (before/after tool call, prompt/model hooks, message hooks) | `src/plugins/types.ts`, `src/plugins/hooks.ts`, `src/plugins/hook-runner-global.ts` | `Kernel` | `apps/runtime/lib/openagents_runtime/hooks/*` | Port as runtime extension seam, event-log integrated |
 | Loop detection and no-progress circuit breaker | `src/agents/tool-loop-detection.ts`, `src/agents/pi-tools.before-tool-call.ts` | `Kernel` | Runtime execution guardrails in run executor/tool task state machine | Port now (high value for autonomous stability) |
 | Web/network safety guard (SSRF, DNS pinning, redirect controls) | `src/infra/net/fetch-guard.ts`, `src/infra/net/ssrf.ts`, `src/agents/tools/web-fetch.ts` | `Kernel` | Runtime tool adapters for any outbound HTTP tooling | Port early before expanding external integrations |
 | Plugin manifest + schema validation | `docs/plugins/manifest.md`, `src/plugins/manifest.ts`, `src/plugins/manifest-registry.ts`, `src/plugins/schema-validator.ts` | `Protocol + Kernel + Control plane` | OpenAgents integration manifest format + runtime validation + Laravel UI forms | Adapt model; preserve strict validation behavior |
@@ -135,7 +135,7 @@ Deprioritized for now:
 
 ## Where Imported Code Goes
 
-### 1) Runtime canonical behavior (`apps/openagents-runtime`)
+### 1) Runtime canonical behavior (`apps/runtime`)
 
 Primary landing zone for imported logic:
 

@@ -21,4 +21,4 @@ Recommended pattern:
 ## Where to Implement
 
 - Compiler/runtime metric code: `packages/dse/src/`
-- Domain-specific eval harnesses: `apps/openagents.com/`, `apps/openagents-runtime/`, `packages/effuse-test/`, and targeted runtime scripts in `scripts/`.
+- Domain-specific eval harnesses: `apps/openagents.com/`, `apps/runtime/`, `packages/effuse-test/`, and targeted runtime scripts in `scripts/`.

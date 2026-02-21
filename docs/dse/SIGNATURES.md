@@ -29,4 +29,4 @@ Examples:
 ## Where to Implement
 
 - DSE signatures/modules: `packages/dse/`
-- Runtime policy/catalog wiring: `apps/openagents-runtime/` and `apps/openagents.com/` (for user-facing orchestration)
+- Runtime policy/catalog wiring: `apps/runtime/` and `apps/openagents.com/` (for user-facing orchestration)

@@ -28,8 +28,8 @@ Status: `active`
 - Platform variance: `core_shared`
 - Target platforms (if `client_specific` or `hybrid`): n/a
 - Destination code areas:
-  - `apps/openagents-runtime/lib/openagents_runtime/tools/comms/*`
-  - `apps/openagents-runtime/lib/openagents_runtime/integrations/comms/*`
+  - `apps/runtime/lib/openagents_runtime/tools/comms/*`
+  - `apps/runtime/lib/openagents_runtime/integrations/comms/*`
   - `apps/openagents.com/resources/js/pages/settings/integrations/*`
   - `docs/protocol/comms/*` (or proto layer-0 contracts once adopted)
 - Routing justification:
@@ -39,7 +39,7 @@ Status: `active`
 
 ## Parity and Verification Plan
 
-- Fixture source: canonical comms policy/decision fixtures under `apps/openagents-runtime/test/fixtures/openclaw/comms/*`
+- Fixture source: canonical comms policy/decision fixtures under `apps/runtime/test/fixtures/openclaw/comms/*`
 - Canonical expected behavior: deterministic allow/deny outcomes with stable reason codes and receipt events.
 - Verification harnesses: runtime parity tests + Laravel feature tests + cross-system integration tests.
 - Required tests/lint/build:

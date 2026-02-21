@@ -27,8 +27,8 @@ Status: `active`
 - Platform variance: `core_shared`
 - Target platforms (if `client_specific` or `hybrid`): n/a
 - Destination code areas:
-  - `apps/openagents-runtime/lib/openagents_runtime/tools/coding/*`
-  - `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/coding_manifest_validator.ex`
+  - `apps/runtime/lib/openagents_runtime/tools/coding/*`
+  - `apps/runtime/lib/openagents_runtime/tools/extensions/coding_manifest_validator.ex`
   - `docs/protocol/coding/*`
   - `apps/openagents.com/app/AI/Runtime/*` (follow-up integration authoring surface)
 - Routing justification:
@@ -38,7 +38,7 @@ Status: `active`
 
 ## Parity and Verification Plan
 
-- Fixture source: runtime contract tests under `apps/openagents-runtime/test/openagents_runtime/tools/coding/*`.
+- Fixture source: runtime contract tests under `apps/runtime/test/openagents_runtime/tools/coding/*`.
 - Canonical expected behavior: deterministic allow/deny outcomes with stable reason codes and receipt events for read/write GitHub operations.
 - Verification harnesses: runtime unit tests + manifest registry contract checks + runtime contract convergence checks.
 - Required tests/lint/build:

@@ -13,5 +13,5 @@ Canonical cross-system references:
 
 - `docs/codex/unified-runtime-desktop-plan.md`
 - `docs/codex/webapp-sandbox-and-codex-auth-plan.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
 - `proto/README.md`

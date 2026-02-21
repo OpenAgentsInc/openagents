@@ -3,11 +3,11 @@
 Date: 2026-02-19  
 Status: Active contract (implemented surface)
 
-This document defines the canonical DS-Elixir runtime contract implemented in `apps/openagents-runtime`.
+This document defines the canonical DS-Elixir runtime contract implemented in `apps/runtime`.
 
 ## 1) Scope and ownership
 
-`openagents-runtime` is the writer/enforcer for DS execution state. Laravel remains control-plane/UI and reads DS outcomes through receipts, events, and projections.
+`runtime` is the writer/enforcer for DS execution state. Laravel remains control-plane/UI and reads DS outcomes through receipts, events, and projections.
 
 Contract ownership split:
 
@@ -30,19 +30,19 @@ Primary contract sources:
 - `proto/openagents/protocol/v1/receipts.proto`
 - `proto/openagents/protocol/v1/reasons.proto`
 - `docs/protocol/reasons/runtime-policy-reason-codes.v1.json`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
 
 Module-to-contract bindings:
 
-- Signature catalog + hashing: `apps/openagents-runtime/lib/openagents_runtime/ds/signatures/catalog.ex`
-- Predict orchestration: `apps/openagents-runtime/lib/openagents_runtime/ds/predict.ex`
-- Structured workflows (`llm_task` + timeline map/reduce): `apps/openagents-runtime/lib/openagents_runtime/ds/workflows/structured_tasks.ex`
-- Receipts: `apps/openagents-runtime/lib/openagents_runtime/ds/receipts.ex`
-- Policy evaluation and taxonomy: `apps/openagents-runtime/lib/openagents_runtime/ds/policy_evaluator.ex`, `apps/openagents-runtime/lib/openagents_runtime/ds/policy_reason_codes.ex`
-- Traces: `apps/openagents-runtime/lib/openagents_runtime/ds/traces.ex`
-- Pointer selection + canary rollout: `apps/openagents-runtime/lib/openagents_runtime/ds/policy_registry.ex`
-- Pointer audit + promotion/rollback: `apps/openagents-runtime/lib/openagents_runtime/ds/compile/promote_service.ex`
-- Proto-derived boundary adapters: `apps/openagents-runtime/lib/openagents_runtime/contracts/layer0_type_adapters.ex`
+- Signature catalog + hashing: `apps/runtime/lib/openagents_runtime/ds/signatures/catalog.ex`
+- Predict orchestration: `apps/runtime/lib/openagents_runtime/ds/predict.ex`
+- Structured workflows (`llm_task` + timeline map/reduce): `apps/runtime/lib/openagents_runtime/ds/workflows/structured_tasks.ex`
+- Receipts: `apps/runtime/lib/openagents_runtime/ds/receipts.ex`
+- Policy evaluation and taxonomy: `apps/runtime/lib/openagents_runtime/ds/policy_evaluator.ex`, `apps/runtime/lib/openagents_runtime/ds/policy_reason_codes.ex`
+- Traces: `apps/runtime/lib/openagents_runtime/ds/traces.ex`
+- Pointer selection + canary rollout: `apps/runtime/lib/openagents_runtime/ds/policy_registry.ex`
+- Pointer audit + promotion/rollback: `apps/runtime/lib/openagents_runtime/ds/compile/promote_service.ex`
+- Proto-derived boundary adapters: `apps/runtime/lib/openagents_runtime/contracts/layer0_type_adapters.ex`
 
 ## 4) Signature contract
 
@@ -165,10 +165,10 @@ Required spend safety properties:
 
 Enforcement modules:
 
-- `apps/openagents-runtime/lib/openagents_runtime/spend/authorizations.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/spend/reservations.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/spend/policy.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/tools/tool_runner.ex`
+- `apps/runtime/lib/openagents_runtime/spend/authorizations.ex`
+- `apps/runtime/lib/openagents_runtime/spend/reservations.ex`
+- `apps/runtime/lib/openagents_runtime/spend/policy.ex`
+- `apps/runtime/lib/openagents_runtime/tools/tool_runner.ex`
 
 ## 7) Artifact pointer contract (immutability + rollout)
 
@@ -213,21 +213,21 @@ Storage policy:
 - Inline payload when serialized trace size is under threshold (`max_inline_bytes`).
 - External pointer when over threshold:
   - `storage = external`
-  - immutable `artifact_uri` (default `gcs://openagents-runtime-ds-traces/...`)
+  - immutable `artifact_uri` (default `gcs://runtime-ds-traces/...`)
   - payload summary retained inline
 
 Sanitization policy:
 
 - Trace payloads are sanitized before storage/reference.
-- See `apps/openagents-runtime/docs/SANITIZATION_POLICY.md`.
+- See `apps/runtime/docs/SANITIZATION_POLICY.md`.
 
 ## 9) Compile/eval contract
 
 Compile modules:
 
-- `apps/openagents-runtime/lib/openagents_runtime/ds/compile/dataset_exporter.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/ds/compile/compile_service.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/ds/compile/promote_service.ex`
+- `apps/runtime/lib/openagents_runtime/ds/compile/dataset_exporter.ex`
+- `apps/runtime/lib/openagents_runtime/ds/compile/compile_service.ex`
+- `apps/runtime/lib/openagents_runtime/ds/compile/promote_service.ex`
 
 Compile/eval tables:
 
@@ -261,17 +261,17 @@ Required compatibility rules:
 
 Primary contract coverage:
 
-- `apps/openagents-runtime/test/openagents_runtime/ds/signatures/catalog_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/ds/predict_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/ds/workflows/structured_tasks_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/ds/policy_registry_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/ds/policy_evaluator_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/ds/compile/dataset_exporter_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/ds/compile/compile_service_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/ds/compile/promote_service_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/signatures/catalog_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/predict_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/workflows/structured_tasks_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/policy_registry_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/policy_evaluator_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/compile/dataset_exporter_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/compile/compile_service_test.exs`
+- `apps/runtime/test/openagents_runtime/ds/compile/promote_service_test.exs`
 
 Spend policy and settlement coverage:
 
-- `apps/openagents-runtime/test/openagents_runtime/spend/authorizations_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/spend/reservations_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/tools/tool_runner_execution_test.exs`
+- `apps/runtime/test/openagents_runtime/spend/authorizations_test.exs`
+- `apps/runtime/test/openagents_runtime/spend/reservations_test.exs`
+- `apps/runtime/test/openagents_runtime/tools/tool_runner_execution_test.exs`

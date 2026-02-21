@@ -6,7 +6,7 @@ Depends on: `docs/plans/active/elixir-agent-runtime-gcp-implementation-plan.md`
 
 ## Purpose
 
-This addendum specifies how OpenAgents ports proven DSE behavior controls from the removed `apps/web` stack into the new Elixir runtime (`apps/openagents-runtime`) as DS-Elixir.
+This addendum specifies how OpenAgents ports proven DSE behavior controls from the removed `apps/web` stack into the new Elixir runtime (`apps/runtime`) as DS-Elixir.
 
 The main runtime plan defines infrastructure and migration flow. This document defines the DS-Elixir contract surface, migration map, and rollout sequencing.
 

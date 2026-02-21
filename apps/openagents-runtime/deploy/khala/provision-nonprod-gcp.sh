@@ -268,4 +268,4 @@ echo "  Backend:   ${KHALA_BACKEND_SERVICE} (${BACKEND_URL})"
 echo "  Dashboard: ${KHALA_DASHBOARD_SERVICE} (${DASHBOARD_URL})"
 echo
 echo "Next step:"
-echo "  apps/openagents-runtime/deploy/khala/check-nonprod-health.sh"
+echo "  apps/runtime/deploy/khala/check-nonprod-health.sh"

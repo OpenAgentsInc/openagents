@@ -62,7 +62,7 @@ defmodule OpenAgentsRuntime.Skills.RegistryTest do
                  "name" => "Registry Skill",
                  "description" => "compiled skill",
                  "instructions_markdown" => "Run coding operations safely.",
-                 "compatibility" => %{"runtime" => "openagents-runtime"},
+                 "compatibility" => %{"runtime" => "runtime"},
                  "allowed_tools" => [%{"tool_id" => tool_id, "version" => 1}],
                  "scripts" => [%{"path" => "scripts/run.sh", "description" => "runner"}],
                  "references" => [%{"path" => "references/readme.md"}],

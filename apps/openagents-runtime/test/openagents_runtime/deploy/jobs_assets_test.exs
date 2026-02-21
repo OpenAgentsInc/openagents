@@ -43,8 +43,8 @@ defmodule OpenAgentsRuntime.Deploy.JobsAssetsTest do
     script_path = Path.join(@jobs_dir, "run-postdeploy-gate.sh")
     script = File.read!(script_path)
     assert String.starts_with?(script, "#!/usr/bin/env bash")
-    assert script =~ "openagents-runtime-migrate"
-    assert script =~ "openagents-runtime-smoke"
+    assert script =~ "runtime-migrate"
+    assert script =~ "runtime-smoke"
   end
 
   defp first_container(job_doc) do

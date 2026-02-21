@@ -5,7 +5,7 @@ This document explains how sovereign agents request NIP-90 compute using the run
 ## Overview
 
 Sovereign agents are **customers** in the NIP-90 compute marketplace. The agent runner uses
-`openagents-runtime` to handle the full request lifecycle:
+`runtime` to handle the full request lifecycle:
 
 1. Query NIP-89 handler info (provider discovery)
 2. Submit a NIP-90 job request with a USD-denominated max bid

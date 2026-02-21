@@ -8,6 +8,6 @@ Artifacts:
 - `docs/protocol/coding/integration-manifest.schema.v1.json`
 
 Runtime implementation surfaces:
-- `apps/openagents-runtime/lib/openagents_runtime/tools/coding/kernel.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/tools/coding/providers/github_adapter.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/coding_manifest_validator.ex`
+- `apps/runtime/lib/openagents_runtime/tools/coding/kernel.ex`
+- `apps/runtime/lib/openagents_runtime/tools/coding/providers/github_adapter.ex`
+- `apps/runtime/lib/openagents_runtime/tools/extensions/coding_manifest_validator.ex`

@@ -6,13 +6,13 @@ This runbook defines the baseline operational thresholds for the Elixir runtime.
 
 Grafana dashboard artifact:
 
-- `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
+- `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
 
 ## Alert Rules
 
 Prometheus rule artifact:
 
-- `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
+- `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
 
 ## Alert Matrix
 
@@ -141,13 +141,13 @@ Use this flow to trace one worker action across browser -> Laravel -> runtime ->
 2. Confirm Laravel forwarded the same headers to runtime.
    - Proxy contract: `apps/openagents.com/tests/Feature/Api/RuntimeCodexWorkersApiTest.php`.
 3. Confirm runtime response carries an `x-request-id` for runtime-side log correlation.
-   - Internal API contract: `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`.
+   - Internal API contract: `apps/runtime/docs/RUNTIME_CONTRACT.md`.
 4. Locate runtime telemetry for projector writes and verify metadata carries forwarded correlation IDs.
    - Event family: `[:openagents_runtime, :khala, :projection, :write]`.
-   - Correlation contract: `apps/openagents-runtime/docs/OBSERVABILITY.md`.
+   - Correlation contract: `apps/runtime/docs/OBSERVABILITY.md`.
 5. Validate project health in Grafana/Prometheus while tracing the same time window.
-   - Dashboard: `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`.
-   - Alerts: `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`.
+   - Dashboard: `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`.
+   - Alerts: `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`.
 
 ### Parity failure class spikes
 

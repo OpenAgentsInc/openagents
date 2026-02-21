@@ -20,7 +20,7 @@ run_laravel() {
 run_runtime() {
   echo "==> Runtime comms security/replay lane"
   (
-    cd "${ROOT_DIR}/apps/openagents-runtime"
+    cd "${ROOT_DIR}/apps/runtime"
     mix test --warnings-as-errors \
       test/openagents_runtime/tools/comms/kernel_test.exs \
       test/openagents_runtime/tools/comms/providers/resend_adapter_test.exs \

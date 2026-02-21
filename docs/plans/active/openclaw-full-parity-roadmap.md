@@ -17,19 +17,19 @@ Define the exact path to "100% OpenClaw parity" in OpenAgents, including what we
 
 The recent parity wave was implemented through issues `#1740` through `#1746`, with duplicate issue numbers `#1734` through `#1739` closed quickly after triage so the execution sequence stayed single-tracked. This work also built directly on the earlier fixture-harness issue `#1716`, which established the baseline ingestion and parity capture shape before milestone execution began. The actual implementation path followed the intended milestone order and landed in commits `017faeedb`, `00e10514b`, `5982934cb`, `da32fdc6d`, `70e2826e8`, `6e400d5f8`, and `ba77b4abc`, each one mapped to a single parity milestone and verified before the next one started. This means the roadmap is no longer aspirational for M1 through M7; it is now an operations and maintenance document describing what was shipped, how it works in production, and where remaining parity risk still exists.
 
-The tool policy milestone moved OpenAgents from helper-level parity into full pipeline parity by adding a runtime policy pipeline that composes profile, provider, global, agent, and group scopes with deterministic warning behavior for unknown allowlist entries. The implementation was anchored in `apps/openagents-runtime/lib/openagents_runtime/tools/policy/openclaw_tool_policy_pipeline.ex`, with fixture-driven parity coverage expanded through `apps/openagents-runtime/test/fixtures/openclaw/tool_policy_parity_cases.json` and the capture script in `apps/openagents-runtime/scripts/capture_openclaw_tool_policy_parity.mjs`. The effect of this work is that policy decisions are now computed in a layered, reproducible way that matches OpenClaw semantics, and policy outcomes remain receipt-visible for downstream auditing.
+The tool policy milestone moved OpenAgents from helper-level parity into full pipeline parity by adding a runtime policy pipeline that composes profile, provider, global, agent, and group scopes with deterministic warning behavior for unknown allowlist entries. The implementation was anchored in `apps/runtime/lib/openagents_runtime/tools/policy/openclaw_tool_policy_pipeline.ex`, with fixture-driven parity coverage expanded through `apps/runtime/test/fixtures/openclaw/tool_policy_parity_cases.json` and the capture script in `apps/runtime/scripts/capture_openclaw_tool_policy_parity.mjs`. The effect of this work is that policy decisions are now computed in a layered, reproducible way that matches OpenClaw semantics, and policy outcomes remain receipt-visible for downstream auditing.
 
-The loop and circuit-breaker milestone then made run continuation deterministic under no-progress conditions by adding OpenClaw-equivalent detectors in `apps/openagents-runtime/lib/openagents_runtime/runs/loop_detection.ex` and integrating the decision point directly into executor frame processing in `apps/openagents-runtime/lib/openagents_runtime/runs/executor.ex`. The runtime now emits `run.loop_detected` with detector metadata and transitions to a terminal failed state using reason class `loop_detected` before new unsafe work is started. This eliminated the previous gap where repeated tool/model churn could continue without a deterministic breaker event.
+The loop and circuit-breaker milestone then made run continuation deterministic under no-progress conditions by adding OpenClaw-equivalent detectors in `apps/runtime/lib/openagents_runtime/runs/loop_detection.ex` and integrating the decision point directly into executor frame processing in `apps/runtime/lib/openagents_runtime/runs/executor.ex`. The runtime now emits `run.loop_detected` with detector metadata and transitions to a terminal failed state using reason class `loop_detected` before new unsafe work is started. This eliminated the previous gap where repeated tool/model churn could continue without a deterministic breaker event.
 
-The hook lifecycle milestone introduced a controlled extension seam through `apps/openagents-runtime/lib/openagents_runtime/hooks/runner.ex`, with typed phases for model resolution, prompt build, tool call boundaries, and message persistence boundaries. The ordering contract is deterministic by priority and identifier, merge behavior for modifying phases is explicit, and bounded failure behavior is encoded so hook exceptions surface as receipt-visible errors rather than taking down execution semantics. The runtime now records both successful hook applications and hook failures as durable run events, which means replay and incident analysis can reconstruct hook influence without reading transient logs.
+The hook lifecycle milestone introduced a controlled extension seam through `apps/runtime/lib/openagents_runtime/hooks/runner.ex`, with typed phases for model resolution, prompt build, tool call boundaries, and message persistence boundaries. The ordering contract is deterministic by priority and identifier, merge behavior for modifying phases is explicit, and bounded failure behavior is encoded so hook exceptions surface as receipt-visible errors rather than taking down execution semantics. The runtime now records both successful hook applications and hook failures as durable run events, which means replay and incident analysis can reconstruct hook influence without reading transient logs.
 
-The network guard milestone established a single outbound HTTP security seam in `apps/openagents-runtime/lib/openagents_runtime/tools/network/guarded_http.ex` and wired comms provider execution to pass through that seam. The guard applies private and metadata endpoint blocking, allowlist checks, DNS pinning across redirects, and bounded redirect controls with deterministic reason codes, and those reasons are preserved in provider results so policy evaluation can make explicit deny decisions with the original SSRF context still attached. The rollout is controlled by `OA_RUNTIME_GUARDED_OUTBOUND_HTTP_ENABLED`, which keeps enforcement switchable while preserving a single implementation path.
+The network guard milestone established a single outbound HTTP security seam in `apps/runtime/lib/openagents_runtime/tools/network/guarded_http.ex` and wired comms provider execution to pass through that seam. The guard applies private and metadata endpoint blocking, allowlist checks, DNS pinning across redirects, and bounded redirect controls with deterministic reason codes, and those reasons are preserved in provider results so policy evaluation can make explicit deny decisions with the original SSRF context still attached. The rollout is controlled by `OA_RUNTIME_GUARDED_OUTBOUND_HTTP_ENABLED`, which keeps enforcement switchable while preserving a single implementation path.
 
-The manifest parity milestone generalized extension validation from comms-only logic to a registry-based runtime activation contract. The strict validator in `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex` now enforces required identity and schema fields and emits machine-readable validation failures, and `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex` performs base validation plus pack-specific checks before activation is allowed. This shifted extension loading from permissive runtime assumptions to explicit contract enforcement that can be surfaced in both runtime telemetry and control-plane operator views.
+The manifest parity milestone generalized extension validation from comms-only logic to a registry-based runtime activation contract. The strict validator in `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex` now enforces required identity and schema fields and emits machine-readable validation failures, and `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex` performs base validation plus pack-specific checks before activation is allowed. This shifted extension loading from permissive runtime assumptions to explicit contract enforcement that can be surfaced in both runtime telemetry and control-plane operator views.
 
-The structured workflow milestone delivered DS-native orchestration parity by implementing `llm_task.v1` and `timeline_map_reduce.v1` workflows in `apps/openagents-runtime/lib/openagents_runtime/ds/workflows/structured_tasks.ex` and expanding signatures in `apps/openagents-runtime/lib/openagents_runtime/ds/signatures/catalog.ex`. The workflows enforce typed inputs and outputs, bounded step and budget controls, and deterministic workflow receipts that include strategy identifiers, trace references, and replay hashes. This is the part of parity that replaced prompt-glue orchestration with runtime-governed DS behavior so map/reduce style execution can be inspected, replayed, and budget-audited.
+The structured workflow milestone delivered DS-native orchestration parity by implementing `llm_task.v1` and `timeline_map_reduce.v1` workflows in `apps/runtime/lib/openagents_runtime/ds/workflows/structured_tasks.ex` and expanding signatures in `apps/runtime/lib/openagents_runtime/ds/signatures/catalog.ex`. The workflows enforce typed inputs and outputs, bounded step and budget controls, and deterministic workflow receipts that include strategy identifiers, trace references, and replay hashes. This is the part of parity that replaced prompt-glue orchestration with runtime-governed DS behavior so map/reduce style execution can be inspected, replayed, and budget-audited.
 
-The observability and drift-hardening milestone completed parity failure telemetry by adding `apps/openagents-runtime/lib/openagents_runtime/telemetry/parity.ex` and class-specific emission paths for `policy`, `loop`, `network`, `manifest`, and `workflow` failures. Metrics stayed cardinality-safe through controlled tags in `apps/openagents-runtime/lib/openagents_runtime/telemetry/metrics.ex`, and drift automation was hardened by upgrading `scripts/openclaw-drift-report.sh` and local gate wiring in `scripts/local-ci.sh` to support strict actionable gating. In practical terms, parity drift is no longer silent because local CI can now fail on actionable rows and produce direct follow-up issue commands.
+The observability and drift-hardening milestone completed parity failure telemetry by adding `apps/runtime/lib/openagents_runtime/telemetry/parity.ex` and class-specific emission paths for `policy`, `loop`, `network`, `manifest`, and `workflow` failures. Metrics stayed cardinality-safe through controlled tags in `apps/runtime/lib/openagents_runtime/telemetry/metrics.ex`, and drift automation was hardened by upgrading `scripts/openclaw-drift-report.sh` and local gate wiring in `scripts/local-ci.sh` to support strict actionable gating. In practical terms, parity drift is no longer silent because local CI can now fail on actionable rows and produce direct follow-up issue commands.
 
 ## Core decision: what "100% parity" means here
 
@@ -39,7 +39,7 @@ It does **not** mean cloning every OpenClaw product surface (gateway channels, l
 
 ## Constraints
 
-1. OpenAgents runtime remains authoritative for execution semantics (`apps/openagents-runtime`).
+1. OpenAgents runtime remains authoritative for execution semantics (`apps/runtime`).
 2. Laravel remains control plane and product surface (`apps/openagents.com`).
 3. Replayability and receipt visibility are non-negotiable (`docs/execution/README.md`, `docs/protocol/README.md`).
 4. Imported behavior must preserve OpenAgents security invariants and DS policy receipts.
@@ -82,14 +82,14 @@ It does **not** mean cloning every OpenClaw product surface (gateway channels, l
 
 | Capability cluster | OpenAgents status | Evidence | Gap to parity |
 |---|---|---|---|
-| Tool policy pipeline parity | Implemented | `apps/openagents-runtime/lib/openagents_runtime/tools/policy/openclaw_tool_policy_pipeline.ex`, `apps/openagents-runtime/test/openagents_runtime/parity/openclaw_tool_policy_parity_test.exs`, `apps/openagents-runtime/docs/OPENCLAW_POLICY_PARITY_REPORT.md` | Keep upstream fixture SHA pinning current and refresh parity vectors on drift |
-| Loop detection + circuit breaker | Implemented | `apps/openagents-runtime/lib/openagents_runtime/runs/loop_detection.ex`, `apps/openagents-runtime/lib/openagents_runtime/runs/executor.ex`, `apps/openagents-runtime/test/openagents_runtime/runs/loop_detection_test.exs` | Tune detector thresholds under production load traces without changing deterministic reason taxonomy |
-| Hook lifecycle runner | Implemented | `apps/openagents-runtime/lib/openagents_runtime/hooks/runner.ex`, `apps/openagents-runtime/lib/openagents_runtime/runs/executor.ex`, `apps/openagents-runtime/test/openagents_runtime/hooks/runner_test.exs` | Expand hook catalogue only through typed contracts and replay-safe event emission |
-| SSRF + fetch guard seam | Implemented (feature-gated) | `apps/openagents-runtime/lib/openagents_runtime/tools/network/guarded_http.ex`, `apps/openagents-runtime/lib/openagents_runtime/tools/comms/providers/resend_adapter.ex`, `apps/openagents-runtime/test/openagents_runtime/tools/network/guarded_http_test.exs` | Continue rollout hardening and ensure all future runtime HTTP egress uses guarded seam only |
-| Integration manifest validation | Implemented | `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex`, `apps/openagents-runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex`, `docs/protocol/extensions/extension-manifest.schema.v1.json` | Add more pack-specific validators as new extension families are onboarded |
-| Memory compaction model | Partial/strong | `apps/openagents-runtime/lib/openagents_runtime/memory/*` | Align provider-slot abstraction and expansion ergonomics with OpenClaw memory-provider patterns |
-| Structured orchestration (`llm-task`/Lobster shape) | Implemented for core workflows | `apps/openagents-runtime/lib/openagents_runtime/ds/workflows/structured_tasks.ex`, `apps/openagents-runtime/lib/openagents_runtime/ds/signatures/catalog.ex`, `apps/openagents-runtime/test/openagents_runtime/ds/workflows/structured_tasks_test.exs` | Broaden strategy coverage and add workflow families only when contract and budget semantics are explicit |
-| Observability parity + drift hardening | Implemented | `apps/openagents-runtime/lib/openagents_runtime/telemetry/parity.ex`, `apps/openagents-runtime/lib/openagents_runtime/telemetry/metrics.ex`, `scripts/openclaw-drift-report.sh`, `docs/plans/active/openclaw-drift-process.md` | Resolve current actionable drift rows and maintain strict CI drift gate discipline |
+| Tool policy pipeline parity | Implemented | `apps/runtime/lib/openagents_runtime/tools/policy/openclaw_tool_policy_pipeline.ex`, `apps/runtime/test/openagents_runtime/parity/openclaw_tool_policy_parity_test.exs`, `apps/runtime/docs/OPENCLAW_POLICY_PARITY_REPORT.md` | Keep upstream fixture SHA pinning current and refresh parity vectors on drift |
+| Loop detection + circuit breaker | Implemented | `apps/runtime/lib/openagents_runtime/runs/loop_detection.ex`, `apps/runtime/lib/openagents_runtime/runs/executor.ex`, `apps/runtime/test/openagents_runtime/runs/loop_detection_test.exs` | Tune detector thresholds under production load traces without changing deterministic reason taxonomy |
+| Hook lifecycle runner | Implemented | `apps/runtime/lib/openagents_runtime/hooks/runner.ex`, `apps/runtime/lib/openagents_runtime/runs/executor.ex`, `apps/runtime/test/openagents_runtime/hooks/runner_test.exs` | Expand hook catalogue only through typed contracts and replay-safe event emission |
+| SSRF + fetch guard seam | Implemented (feature-gated) | `apps/runtime/lib/openagents_runtime/tools/network/guarded_http.ex`, `apps/runtime/lib/openagents_runtime/tools/comms/providers/resend_adapter.ex`, `apps/runtime/test/openagents_runtime/tools/network/guarded_http_test.exs` | Continue rollout hardening and ensure all future runtime HTTP egress uses guarded seam only |
+| Integration manifest validation | Implemented | `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_validator.ex`, `apps/runtime/lib/openagents_runtime/tools/extensions/manifest_registry.ex`, `docs/protocol/extensions/extension-manifest.schema.v1.json` | Add more pack-specific validators as new extension families are onboarded |
+| Memory compaction model | Partial/strong | `apps/runtime/lib/openagents_runtime/memory/*` | Align provider-slot abstraction and expansion ergonomics with OpenClaw memory-provider patterns |
+| Structured orchestration (`llm-task`/Lobster shape) | Implemented for core workflows | `apps/runtime/lib/openagents_runtime/ds/workflows/structured_tasks.ex`, `apps/runtime/lib/openagents_runtime/ds/signatures/catalog.ex`, `apps/runtime/test/openagents_runtime/ds/workflows/structured_tasks_test.exs` | Broaden strategy coverage and add workflow families only when contract and budget semantics are explicit |
+| Observability parity + drift hardening | Implemented | `apps/runtime/lib/openagents_runtime/telemetry/parity.ex`, `apps/runtime/lib/openagents_runtime/telemetry/metrics.ex`, `scripts/openclaw-drift-report.sh`, `docs/plans/active/openclaw-drift-process.md` | Resolve current actionable drift rows and maintain strict CI drift gate discipline |
 
 ## Milestones
 
@@ -111,8 +111,8 @@ Scope:
 - Keep decisions receipt-visible in DS evaluator.
 
 Primary locations:
-- `apps/openagents-runtime/lib/openagents_runtime/tools/policy/*`
-- `apps/openagents-runtime/test/openagents_runtime/parity/*`
+- `apps/runtime/lib/openagents_runtime/tools/policy/*`
+- `apps/runtime/test/openagents_runtime/parity/*`
 
 ### M2: Loop detection parity
 
@@ -123,9 +123,9 @@ Scope:
   - additional OpenClaw-equivalent detector reason classes
 
 Primary locations:
-- `apps/openagents-runtime/lib/openagents_runtime/runs/*`
-- `apps/openagents-runtime/lib/openagents_runtime/tools/*`
-- `apps/openagents-runtime/lib/openagents_runtime/ds/policy_reason_codes.ex`
+- `apps/runtime/lib/openagents_runtime/runs/*`
+- `apps/runtime/lib/openagents_runtime/tools/*`
+- `apps/runtime/lib/openagents_runtime/ds/policy_reason_codes.ex`
 
 ### M3: Hook lifecycle parity
 
@@ -139,9 +139,9 @@ Scope:
 - Force side-effecting hooks to emit receipt-visible events.
 
 Primary locations:
-- `apps/openagents-runtime/lib/openagents_runtime/hooks/*` (new)
-- `apps/openagents-runtime/lib/openagents_runtime/runs/*`
-- `apps/openagents-runtime/lib/openagents_runtime/ds/*`
+- `apps/runtime/lib/openagents_runtime/hooks/*` (new)
+- `apps/runtime/lib/openagents_runtime/runs/*`
+- `apps/runtime/lib/openagents_runtime/ds/*`
 
 ### M4: Network guard parity
 
@@ -155,7 +155,7 @@ Scope:
 - Block ad hoc outbound HTTP outside this seam.
 
 Primary locations:
-- `apps/openagents-runtime/lib/openagents_runtime/tools/network/*` (new)
+- `apps/runtime/lib/openagents_runtime/tools/network/*` (new)
 - tool adapters that perform HTTP fetches
 
 ### M5: Manifest/extension parity
@@ -182,9 +182,9 @@ Scope:
 - Implement as runtime signatures/jobs, not shell-coupled subprocess tools.
 
 Primary locations:
-- `apps/openagents-runtime/lib/openagents_runtime/ds/signatures/*`
-- `apps/openagents-runtime/lib/openagents_runtime/ds/predict.ex`
-- `apps/openagents-runtime/lib/openagents_runtime/ds/compile/*`
+- `apps/runtime/lib/openagents_runtime/ds/signatures/*`
+- `apps/runtime/lib/openagents_runtime/ds/predict.ex`
+- `apps/runtime/lib/openagents_runtime/ds/compile/*`
 
 ### M7: Observability parity + drift hardening
 
@@ -193,8 +193,8 @@ Scope:
 - Keep OpenClaw drift checks active and actionable with issue generation workflow.
 
 Primary locations:
-- `apps/openagents-runtime/lib/openagents_runtime/telemetry/*`
-- `apps/openagents-runtime/docs/OBSERVABILITY.md`
+- `apps/runtime/lib/openagents_runtime/telemetry/*`
+- `apps/runtime/docs/OBSERVABILITY.md`
 - `docs/plans/active/openclaw-drift-process.md`
 - `docs/plans/active/openclaw-drift-report.md`
 
@@ -204,7 +204,7 @@ Run at minimum after each milestone:
 
 ```bash
 # Runtime tests (including parity fixtures)
-cd apps/openagents-runtime
+cd apps/runtime
 mix test
 
 # Contract convergence checks
@@ -235,7 +235,7 @@ Success criteria:
 
 ## How to use the shipped parity surface
 
-The current parity surface is designed to be exercised through the runtime harness first and then observed through receipts and telemetry, rather than treated as a black box. In daily engineering work, the most reliable entry point is to run the runtime test harness in `apps/openagents-runtime`, then run contract checks, and finally regenerate drift output from repository root so policy, workflow, extension, and observability paths are all validated together. Teams integrating new runtime tools should route outbound HTTP through `OpenAgentsRuntime.Tools.Network.GuardedHTTP`, register extension manifests through `OpenAgentsRuntime.Tools.Extensions.ManifestRegistry`, and rely on DS structured workflows for bounded orchestration instead of ad hoc control loops. Operator usage should treat parity telemetry as the first debugging source because failure classes are now normalized across policy denials, loop breaks, network blocks, manifest rejection, and workflow errors.
+The current parity surface is designed to be exercised through the runtime harness first and then observed through receipts and telemetry, rather than treated as a black box. In daily engineering work, the most reliable entry point is to run the runtime test harness in `apps/runtime`, then run contract checks, and finally regenerate drift output from repository root so policy, workflow, extension, and observability paths are all validated together. Teams integrating new runtime tools should route outbound HTTP through `OpenAgentsRuntime.Tools.Network.GuardedHTTP`, register extension manifests through `OpenAgentsRuntime.Tools.Extensions.ManifestRegistry`, and rely on DS structured workflows for bounded orchestration instead of ad hoc control loops. Operator usage should treat parity telemetry as the first debugging source because failure classes are now normalized across policy denials, loop breaks, network blocks, manifest rejection, and workflow errors.
 
 The intended usage pattern for control-plane and runtime collaboration is to let Laravel continue owning authoring and operator UX while runtime enforces canonical behavior and emits machine-readable evidence of what happened. When a policy decision or workflow branch is questioned, the answer should come from run events and receipts rather than from informal logs, because that is the path that preserves replayability and future regression testing. The same principle applies to extension onboarding: manifests should be iterated against schema contracts before activation, and any validation failure should be treated as a contract mismatch rather than a runtime exception to work around.
 

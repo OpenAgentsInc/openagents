@@ -73,7 +73,7 @@ impl BrowserRuntimeConfig {
             container_policy,
             compute_budget: budget.clone(),
             container_budget: budget,
-            storage: Arc::new(IndexedDbStorage::new("openagents-runtime")),
+            storage: Arc::new(IndexedDbStorage::new("runtime")),
             signer: Arc::new(InMemorySigner::new()),
         }
     }

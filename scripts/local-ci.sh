@@ -58,7 +58,7 @@ run_proto_checks() {
 run_runtime_checks() {
   echo "==> runtime checks"
   (
-    cd "$ROOT_DIR/apps/openagents-runtime"
+    cd "$ROOT_DIR/apps/runtime"
     mix format --check-formatted
     mix compile --warnings-as-errors
     mix runtime.contract.check
@@ -111,15 +111,15 @@ run_changed() {
     run_proto_checks
   fi
 
-  if has_match '^(apps/openagents-runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)' "$changed_files"; then
+  if has_match '^(apps/runtime/|proto/|buf\.yaml$|buf\.gen\.yaml$)' "$changed_files"; then
     run_runtime_checks
   fi
 
-  if has_match '^(apps/openagents\.com/|apps/openagents-runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)' "$changed_files"; then
+  if has_match '^(apps/openagents\.com/|apps/runtime/|docs/protocol/comms/|scripts/comms-security-replay-matrix\.sh$)' "$changed_files"; then
     run_comms_matrix
   fi
 
-  if has_match '^(docs/plans/active/openclaw-intake/|apps/openagents-runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)' "$changed_files"; then
+  if has_match '^(docs/plans/active/openclaw-intake/|apps/runtime/test/fixtures/openclaw/|scripts/openclaw-drift-report\.sh$)' "$changed_files"; then
     run_openclaw_drift
   fi
 }

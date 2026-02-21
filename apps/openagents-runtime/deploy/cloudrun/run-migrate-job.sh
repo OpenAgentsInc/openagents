@@ -19,8 +19,8 @@ require_command gcloud
 
 GCP_PROJECT="${GCP_PROJECT:-openagentsgemini}"
 GCP_REGION="${GCP_REGION:-us-central1}"
-RUNTIME_SERVICE="${RUNTIME_SERVICE:-openagents-runtime}"
-MIGRATE_JOB="${MIGRATE_JOB:-openagents-runtime-migrate}"
+RUNTIME_SERVICE="${RUNTIME_SERVICE:-runtime}"
+MIGRATE_JOB="${MIGRATE_JOB:-runtime-migrate}"
 IMAGE="${IMAGE:-}"
 DRY_RUN="${DRY_RUN:-0}"
 DEFAULT_MIGRATION_EVAL="OpenAgentsRuntime.Release.migrate_and_verify!()"

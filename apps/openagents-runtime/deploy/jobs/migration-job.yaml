@@ -1,9 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: openagents-runtime-migrate
+  name: runtime-migrate
   labels:
-    app.kubernetes.io/name: openagents-runtime
+    app.kubernetes.io/name: runtime
     app.kubernetes.io/component: migration
 spec:
   backoffLimit: 2
@@ -11,13 +11,13 @@ spec:
   template:
     metadata:
       labels:
-        app: openagents-runtime-migrate
+        app: runtime-migrate
     spec:
       restartPolicy: OnFailure
-      serviceAccountName: openagents-runtime
+      serviceAccountName: runtime
       containers:
         - name: migrate
-          image: openagents-runtime:latest
+          image: runtime:latest
           imagePullPolicy: IfNotPresent
           command:
             - bin/openagents_runtime
@@ -29,15 +29,15 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: openagents-runtime-secrets
+                  name: runtime-secrets
                   key: DATABASE_URL
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
-                  name: openagents-runtime-secrets
+                  name: runtime-secrets
                   key: SECRET_KEY_BASE
             - name: RUNTIME_SIGNATURE_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: openagents-runtime-secrets
+                  name: runtime-secrets
                   key: RUNTIME_SIGNATURE_SECRET

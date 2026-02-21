@@ -18,7 +18,7 @@ Primary inputs reviewed:
   - `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md`
   - `docs/plans/active/khala-self-hosting-runtime-sync-plan.md`
   - `docs/plans/active/khala-runtime-codex-master-roadmap.md`
-  - `apps/openagents-runtime/docs/KHALA_SYNC.md`
+  - `apps/runtime/docs/KHALA_SYNC.md`
   - runtime, web, mobile, desktop, lightning-ops source files listed throughout this audit
 - Khala upstream local clone:
   - `/Users/christopherdavid/code/khala/README.md`
@@ -47,28 +47,28 @@ Key conclusion:
 
 ## Current Khala Usage (Code Audit)
 
-## 1) Runtime (`apps/openagents-runtime`) - projection/sync integration
+## 1) Runtime (`apps/runtime`) - projection/sync integration
 
 Architecture intent is explicit and consistent:
 
-- `apps/openagents-runtime/docs/KHALA_SYNC.md` declares runtime as source-of-truth and Khala as projection-only.
+- `apps/runtime/docs/KHALA_SYNC.md` declares runtime as source-of-truth and Khala as projection-only.
 - `docs/adr/ADR-0029-khala-sync-layer-and-codex-agent-mode.md` locks single-writer projection and Laravel auth bridge.
 
 Implemented runtime pieces:
 
 - Projector + sinks:
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/projector.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/sink.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/http_sink.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/noop_sink.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/projector.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/sink.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/http_sink.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/noop_sink.ex`
 - Checkpoints + replay:
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/projection_checkpoint.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/khala/reprojection.ex`
-  - `apps/openagents-runtime/lib/mix/tasks/runtime.khala.reproject.ex`
-  - `apps/openagents-runtime/priv/repo/migrations/20260219101000_create_runtime_khala_projection_checkpoints.exs`
+  - `apps/runtime/lib/openagents_runtime/khala/projection_checkpoint.ex`
+  - `apps/runtime/lib/openagents_runtime/khala/reprojection.ex`
+  - `apps/runtime/lib/mix/tasks/runtime.khala.reproject.ex`
+  - `apps/runtime/priv/repo/migrations/20260219101000_create_runtime_khala_projection_checkpoints.exs`
 - Event append hooks trigger projection:
-  - `apps/openagents-runtime/lib/openagents_runtime/runs/run_events.ex`
-  - `apps/openagents-runtime/lib/openagents_runtime/codex/workers.ex`
+  - `apps/runtime/lib/openagents_runtime/runs/run_events.ex`
+  - `apps/runtime/lib/openagents_runtime/codex/workers.ex`
 
 Important implementation details:
 
@@ -80,7 +80,7 @@ Important implementation details:
 
 Operational caveat found:
 
-- Default runtime sink is `NoopSink` in `apps/openagents-runtime/config/config.exs`.
+- Default runtime sink is `NoopSink` in `apps/runtime/config/config.exs`.
 - `HttpSink` exists, but this repo does not show runtime env wiring in `config/runtime.exs` to switch sink per environment.
 - Khala mutation targets (`runtime:upsertRunSummary`, `runtime:upsertCodexWorkerSummary`) are configured in sink defaults, but matching Khala function definitions are not present in this repo.
 

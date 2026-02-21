@@ -5,9 +5,9 @@ Operational procedures for day-to-day runtime management and incident response.
 ## 1. Daily checks
 
 ```bash
-kubectl -n <NAMESPACE> get pods -l app=openagents-runtime
-kubectl -n <NAMESPACE> get hpa openagents-runtime
-kubectl -n <NAMESPACE> get job openagents-runtime-smoke
+kubectl -n <NAMESPACE> get pods -l app=runtime
+kubectl -n <NAMESPACE> get hpa runtime
+kubectl -n <NAMESPACE> get job runtime-smoke
 ```
 
 Expected outcome:
@@ -18,11 +18,11 @@ Expected outcome:
 ## 2. Observability surfaces
 
 - Dashboard asset:
-  - `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
+  - `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
 - Alert rules:
-  - `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
+  - `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
 - Alert thresholds/runbook:
-  - `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+  - `apps/runtime/docs/OPERATIONS_ALERTING.md`
 
 ## 3. Incident triage checklist
 
@@ -39,7 +39,7 @@ Expected outcome:
 Commands:
 
 ```bash
-kubectl -n <NAMESPACE> logs -l app=openagents-runtime --since=15m | rg "stream"
+kubectl -n <NAMESPACE> logs -l app=runtime --since=15m | rg "stream"
 ```
 
 Actions:
@@ -52,7 +52,7 @@ Actions:
 Commands:
 
 ```bash
-kubectl -n <NAMESPACE> logs -l app=openagents-runtime --since=15m | rg "lease"
+kubectl -n <NAMESPACE> logs -l app=runtime --since=15m | rg "lease"
 ```
 
 Actions:
@@ -65,7 +65,7 @@ Actions:
 Commands:
 
 ```bash
-kubectl -n <NAMESPACE> logs -l app=openagents-runtime --since=15m | rg "tool"
+kubectl -n <NAMESPACE> logs -l app=runtime --since=15m | rg "tool"
 ```
 
 Actions:
@@ -103,8 +103,8 @@ Rotation flow:
 
 ```bash
 NAMESPACE=<NAMESPACE> \
-IMAGE=us-central1-docker.pkg.dev/<PROJECT_ID>/openagents-runtime/runtime:<TAG> \
-apps/openagents-runtime/deploy/jobs/run-postdeploy-gate.sh
+IMAGE=us-central1-docker.pkg.dev/<PROJECT_ID>/runtime/runtime:<TAG> \
+apps/runtime/deploy/jobs/run-postdeploy-gate.sh
 ```
 
 Use this after deploys and after infra/security changes.
@@ -114,9 +114,9 @@ Cloud Run production flow:
 ```bash
 GCP_PROJECT=openagentsgemini \
 GCP_REGION=us-central1 \
-RUNTIME_SERVICE=openagents-runtime \
-MIGRATE_JOB=openagents-runtime-migrate \
-apps/openagents-runtime/deploy/cloudrun/run-migrate-job.sh
+RUNTIME_SERVICE=runtime \
+MIGRATE_JOB=runtime-migrate \
+apps/runtime/deploy/cloudrun/run-migrate-job.sh
 ```
 
 This script enforces the image-lock invariant for migrations:
@@ -125,12 +125,12 @@ This script enforces the image-lock invariant for migrations:
 
 ## 7. Rollback policy
 
-- Primary rollback: `kubectl rollout undo statefulset/openagents-runtime`.
+- Primary rollback: `kubectl rollout undo statefulset/runtime`.
 - Schema rollback: manual + explicit migration version; treat as last resort.
 
 ## 8. Validation commands
 
-From `apps/openagents-runtime/`:
+From `apps/runtime/`:
 
 - `mix ci`
 - `mix test test/openagents_runtime/deploy/jobs_assets_test.exs`
@@ -144,7 +144,7 @@ Before runtime-adjacent integration work, verify local DB + runtime baseline:
 ```bash
 pg_isready -h localhost -p 5432
 PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -Atc "select datname from pg_database where datname in ('openagents_runtime_dev','openagents_runtime_test') order by datname;"
-cd apps/openagents-runtime
+cd apps/runtime
 mix ecto.create
 mix ecto.migrate
 mix test

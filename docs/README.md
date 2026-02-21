@@ -1,7 +1,7 @@
 # OpenAgents Documentation Index
 
 This directory tracks the active OpenAgents cross-platform stack.
-Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/openagents-runtime/`), mobile (`apps/mobile`), Rust desktop Codex app (`apps/autopilot-desktop/`), Electron desktop Lightning app (`apps/desktop/`), and Onyx local-first notes app (`apps/onyx/`).
+Current product surfaces: web control plane (`apps/openagents.com/`), Elixir runtime (`apps/runtime/`), mobile (`apps/mobile`), Rust desktop Codex app (`apps/autopilot-desktop/`), Electron desktop Lightning app (`apps/desktop/`), and Onyx local-first notes app (`apps/onyx/`).
 
 ## Start Here
 
@@ -16,19 +16,19 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 ## Control-Plane and Runtime Docs
 
 - Runtime architecture plan: `plans/active/elixir-agent-runtime-gcp-implementation-plan.md`
-- Runtime internal API contract: `../apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- Runtime operations runbook: `../apps/openagents-runtime/docs/OPERATIONS.md`
-- Runtime Cloud Run deploy runbook: `../apps/openagents-runtime/docs/DEPLOY_CLOUD_RUN.md`
+- Runtime internal API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
+- Runtime operations runbook: `../apps/runtime/docs/OPERATIONS.md`
+- Runtime Cloud Run deploy runbook: `../apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
   - Mandatory post-deploy command:
     ```bash
     GCP_PROJECT=openagentsgemini \
     GCP_REGION=us-central1 \
-    RUNTIME_SERVICE=openagents-runtime \
-    MIGRATE_JOB=openagents-runtime-migrate \
-    apps/openagents-runtime/deploy/cloudrun/run-migrate-job.sh
+    RUNTIME_SERVICE=runtime \
+    MIGRATE_JOB=runtime-migrate \
+    apps/runtime/deploy/cloudrun/run-migrate-job.sh
     ```
-- DS-Elixir runtime contract: `../apps/openagents-runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
-- DS-Elixir operations runbook: `../apps/openagents-runtime/docs/DS_ELIXIR_OPERATIONS.md`
+- DS-Elixir runtime contract: `../apps/runtime/docs/DS_ELIXIR_RUNTIME_CONTRACT.md`
+- DS-Elixir operations runbook: `../apps/runtime/docs/DS_ELIXIR_OPERATIONS.md`
 
 ## Codex Architecture
 
@@ -68,7 +68,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 ## Local Development
 
 - Laravel web (control plane): `../apps/openagents.com/` — see `plans/active/laravel-rebuild.md`; typically `cd apps/openagents.com && composer run dev`.
-- Elixir runtime (execution): `../apps/openagents-runtime/` — `cd apps/openagents-runtime && mix phx.server`.
+- Elixir runtime (execution): `../apps/runtime/` — `cd apps/runtime && mix phx.server`.
 - Local CI policy + hooks: `LOCAL_CI.md`
 - Mobile local dev: `../apps/mobile/README.md`
 - Rust desktop Codex local dev: `../apps/autopilot-desktop/` — typically `cargo run -p autopilot-desktop`.

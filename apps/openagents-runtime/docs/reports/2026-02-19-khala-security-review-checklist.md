@@ -6,11 +6,11 @@ Scope: `#1767` Khala/runtime/codex security hardening verification
 ## Checklist Commands
 
 1. MCP production gate default deny
-- `apps/openagents-runtime/deploy/khala/mcp-production-access-gate.sh`
+- `apps/runtime/deploy/khala/mcp-production-access-gate.sh`
 - Expected: non-zero exit with default-deny message.
 
 2. Security review automation
-- `apps/openagents-runtime/deploy/khala/run-security-review-checklist.sh`
+- `apps/runtime/deploy/khala/run-security-review-checklist.sh`
 
 ## Checklist Results
 
@@ -38,8 +38,8 @@ Sanitization hardening now explicitly redacts Khala admin-key-style fields:
 
 Validated in:
 
-- `apps/openagents-runtime/test/openagents_runtime/security/sanitizer_test.exs`
-- `apps/openagents-runtime/test/openagents_runtime/security/sanitization_integration_test.exs`
+- `apps/runtime/test/openagents_runtime/security/sanitizer_test.exs`
+- `apps/runtime/test/openagents_runtime/security/sanitization_integration_test.exs`
 
 ## Sign-Off
 

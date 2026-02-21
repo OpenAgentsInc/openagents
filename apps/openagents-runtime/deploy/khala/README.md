@@ -37,13 +37,13 @@ Source images for mirror refresh:
 ## Dry-run
 
 ```bash
-apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh
+apps/runtime/deploy/khala/provision-nonprod-gcp.sh
 ```
 
 ## Apply
 
 ```bash
-OA_KHALA_APPLY=1 apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh
+OA_KHALA_APPLY=1 apps/runtime/deploy/khala/provision-nonprod-gcp.sh
 ```
 
 Optional overrides:
@@ -56,13 +56,13 @@ KHALA_BACKEND_SERVICE=oa-khala-backend-nonprod \
 KHALA_DASHBOARD_SERVICE=oa-khala-dashboard-nonprod \
 KHALA_PROXY_IMAGE=gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.19.0 \
 OA_KHALA_APPLY=1 \
-apps/openagents-runtime/deploy/khala/provision-nonprod-gcp.sh
+apps/runtime/deploy/khala/provision-nonprod-gcp.sh
 ```
 
 ## Health verification
 
 ```bash
-apps/openagents-runtime/deploy/khala/check-nonprod-health.sh
+apps/runtime/deploy/khala/check-nonprod-health.sh
 ```
 
 This validates:
@@ -78,33 +78,33 @@ This validates:
 Day-2 operations (admin key policy, export/import backup validation, upgrade and
 rollback flow) are documented in:
 
-- `apps/openagents-runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
+- `apps/runtime/deploy/khala/OPERATIONS_RUNBOOK.md`
 
 ## Gate G7 drill helpers
 
 Backup/restore drill:
 
 ```bash
-apps/openagents-runtime/deploy/khala/run-backup-restore-drill.sh
+apps/runtime/deploy/khala/run-backup-restore-drill.sh
 ```
 
 Rollback drill (dry-run by default):
 
 ```bash
-apps/openagents-runtime/deploy/khala/run-rollback-drill.sh
+apps/runtime/deploy/khala/run-rollback-drill.sh
 ```
 
 Rollback drill (apply):
 
 ```bash
 OA_KHALA_ROLLBACK_DRILL_APPLY=1 \
-apps/openagents-runtime/deploy/khala/run-rollback-drill.sh
+apps/runtime/deploy/khala/run-rollback-drill.sh
 ```
 
 Runtime replay drill:
 
 ```bash
-apps/openagents-runtime/deploy/khala/run-runtime-replay-drill.sh
+apps/runtime/deploy/khala/run-runtime-replay-drill.sh
 ```
 
 ## Security hardening helpers
@@ -112,17 +112,17 @@ apps/openagents-runtime/deploy/khala/run-runtime-replay-drill.sh
 Security review checklist:
 
 ```bash
-apps/openagents-runtime/deploy/khala/run-security-review-checklist.sh
+apps/runtime/deploy/khala/run-security-review-checklist.sh
 ```
 
 MCP production access gate (default deny):
 
 ```bash
-apps/openagents-runtime/deploy/khala/mcp-production-access-gate.sh
+apps/runtime/deploy/khala/mcp-production-access-gate.sh
 ```
 
 Drill evidence/reporting artifacts:
 
-- `apps/openagents-runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
-- `apps/openagents-runtime/docs/reports/2026-02-19-khala-g7-backup-restore-replay-rollback-drill.md`
-- `apps/openagents-runtime/docs/reports/2026-02-19-khala-security-review-checklist.md`
+- `apps/runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
+- `apps/runtime/docs/reports/2026-02-19-khala-g7-backup-restore-replay-rollback-drill.md`
+- `apps/runtime/docs/reports/2026-02-19-khala-security-review-checklist.md`

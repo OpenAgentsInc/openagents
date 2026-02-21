@@ -18,7 +18,7 @@ The migration must avoid a big-bang cutover, keep current surfaces functional, a
 
 Khala is the codename for the new OpenAgents sync engine.
 
-> Khala v1 will ship as a runtime-owned subsystem inside `apps/openagents-runtime`, using WebSockets (Phoenix Channels) only for live sync, with proto-first contracts under `proto/openagents/sync/v1`.
+> Khala v1 will ship as a runtime-owned subsystem inside `apps/runtime`, using WebSockets (Phoenix Channels) only for live sync, with proto-first contracts under `proto/openagents/sync/v1`.
 
 Normative constraints:
 
@@ -57,7 +57,7 @@ What this ADR does NOT cover:
 | Invariant | Guarantee |
 |-----------|-----------|
 | Authority | Runtime + Postgres remain source of truth |
-| Khala deployment | v1 is in-process with `apps/openagents-runtime` |
+| Khala deployment | v1 is in-process with `apps/runtime` |
 | Khala transport | WS-only for new sync lane |
 | Watermark scope | Monotonic per-topic sequence in Postgres |
 | Replay correctness | Resume from durable journal by topic/watermark |

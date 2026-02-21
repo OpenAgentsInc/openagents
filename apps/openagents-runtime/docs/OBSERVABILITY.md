@@ -1,6 +1,6 @@
 # Runtime Observability
 
-This document defines the telemetry contract for `openagents-runtime` with explicit cardinality guardrails.
+This document defines the telemetry contract for `runtime` with explicit cardinality guardrails.
 
 ## Cardinality Policy
 
@@ -108,6 +108,6 @@ Failure classes and primary emitters:
 
 ## Dashboards and alerts
 
-- Dashboard artifact: `apps/openagents-runtime/deploy/monitoring/grafana/openagents-runtime-ops-dashboard.json`
-- Alert rules: `apps/openagents-runtime/deploy/monitoring/prometheus/openagents-runtime-alert-rules.yaml`
-- Operator runbook: `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+- Dashboard artifact: `apps/runtime/deploy/monitoring/grafana/runtime-ops-dashboard.json`
+- Alert rules: `apps/runtime/deploy/monitoring/prometheus/runtime-alert-rules.yaml`
+- Operator runbook: `apps/runtime/docs/OPERATIONS_ALERTING.md`

@@ -42,6 +42,6 @@ Recommended side effect tags:
 
 These are the highest-signal locations to look for tool contracts/handlers:
 - `apps/openagents.com/app/AI/Tools/` (web control-plane tool contracts + handlers)
-- `apps/openagents-runtime/lib/openagents_runtime/` (runtime execution orchestration)
+- `apps/runtime/lib/openagents_runtime/` (runtime execution orchestration)
 - `packages/lightning-effect/` and `packages/dse/` (shared typed contracts/services)
 - `crates/` (desktop/local execution tool surfaces)

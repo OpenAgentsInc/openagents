@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 INTAKE_DIR="$ROOT_DIR/docs/plans/active/openclaw-intake"
 REPORT_PATH="$ROOT_DIR/docs/plans/active/openclaw-drift-report.md"
-FIXTURE_PATH="$ROOT_DIR/apps/openagents-runtime/test/fixtures/openclaw/tool_policy_parity_cases.json"
+FIXTURE_PATH="$ROOT_DIR/apps/runtime/test/fixtures/openclaw/tool_policy_parity_cases.json"
 
 OPENCLAW_UPSTREAM_URL="${OPENCLAW_UPSTREAM_URL:-https://github.com/openclaw/openclaw.git}"
 OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE="${OPENCLAW_DRIFT_FAIL_ON_ACTIONABLE:-0}"

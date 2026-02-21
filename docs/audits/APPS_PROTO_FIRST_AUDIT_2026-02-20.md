@@ -6,7 +6,7 @@ This audit measures how proto-first each app under `apps/` is today.
 
 Included apps:
 
-- `apps/openagents-runtime`
+- `apps/runtime`
 - `apps/openagents.com`
 - `apps/mobile`
 - `apps/desktop`
@@ -52,11 +52,11 @@ This follows:
    - `scripts/verify-proto-generate.sh`
    - `buf.gen.yaml`
 3. Only runtime currently runs strong proto convergence checks in code.
-   - `apps/openagents-runtime/lib/openagents_runtime/contracts/layer0_proto_contract.ex`
-   - `apps/openagents-runtime/lib/mix/tasks/runtime.contract.check.ex`
+   - `apps/runtime/lib/openagents_runtime/contracts/layer0_proto_contract.ex`
+   - `apps/runtime/lib/mix/tasks/runtime.contract.check.ex`
 4. Khala wire docs define proto enums/messages, but runtime and SDK still largely use string topics/error codes in implementation.
    - `docs/protocol/OA_SYNC_WS_MAPPING.md`
-   - `apps/openagents-runtime/lib/openagents_runtime_web/sync_channel.ex`
+   - `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`
    - `packages/khala-sync/src/types.ts`
 5. `apps/autopilot-desktop` is confirmed WGPUI-based in active code and builds as such.
    - `apps/autopilot-desktop/Cargo.toml`
@@ -67,7 +67,7 @@ This follows:
 
 | App | Proto-First Level | Current state |
 |---|---|---|
-| `apps/openagents-runtime` | `P3` | Strong proto enforcement at boundaries; sync wire implementation still string-based in key places |
+| `apps/runtime` | `P3` | Strong proto enforcement at boundaries; sync wire implementation still string-based in key places |
 | `apps/lightning-ops` | `P2` | Proto-compatible adapters and tests exist, but Effect schemas in `contracts.ts` remain local authority |
 | `apps/openagents.com` | `P1` | Proto-aware architecture, but API/UI contracts are still hand-authored DTOs and manual JSON shapes |
 | `apps/mobile` | `P1` | Uses Khala and runtime APIs, but worker/sync models are hand-authored TS types |
@@ -80,24 +80,24 @@ This follows:
 
 ## Per-App Analysis
 
-## 1) `apps/openagents-runtime` (`P3`)
+## 1) `apps/runtime` (`P3`)
 
 Evidence of proto-first enforcement:
 
 - Runtime checks convergence with proto artifacts:
-  - `apps/openagents-runtime/lib/openagents_runtime/contracts/layer0_proto_contract.ex`
-  - `apps/openagents-runtime/lib/mix/tasks/runtime.contract.check.ex`
+  - `apps/runtime/lib/openagents_runtime/contracts/layer0_proto_contract.ex`
+  - `apps/runtime/lib/mix/tasks/runtime.contract.check.ex`
 - Runtime adapters are proto-derived and validate payload compatibility:
-  - `apps/openagents-runtime/lib/openagents_runtime/contracts/layer0_type_adapters.ex`
+  - `apps/runtime/lib/openagents_runtime/contracts/layer0_type_adapters.ex`
 - Tests enforce reason/proto/json convergence:
-  - `apps/openagents-runtime/test/openagents_runtime/contracts/policy_reason_contract_test.exs`
-  - `apps/openagents-runtime/test/openagents_runtime/contracts/layer0_proto_contract_test.exs`
+  - `apps/runtime/test/openagents_runtime/contracts/policy_reason_contract_test.exs`
+  - `apps/runtime/test/openagents_runtime/contracts/layer0_proto_contract_test.exs`
 
 Remaining gap to `P4`:
 
 - Sync channel and tests still operate on string topics and string error codes, not generated `openagents.sync.v1` enums:
-  - `apps/openagents-runtime/lib/openagents_runtime_web/sync_channel.ex`
-  - `apps/openagents-runtime/test/openagents_runtime_web/channels/sync_channel_test.exs`
+  - `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`
+  - `apps/runtime/test/openagents_runtime_web/channels/sync_channel_test.exs`
 
 ## 2) `apps/lightning-ops` (`P2`)
 

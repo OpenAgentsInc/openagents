@@ -1,10 +1,10 @@
 # Khala Sync Layer Integration
 
-This document defines how `openagents-runtime` implements Khala as a runtime-owned sync subsystem.
+This document defines how `runtime` implements Khala as a runtime-owned sync subsystem.
 
 ## Authority Boundary
 
-`openagents-runtime` remains the source of truth for:
+`runtime` remains the source of truth for:
 
 - run/worker event logs and sequencing,
 - policy and spend decisions,

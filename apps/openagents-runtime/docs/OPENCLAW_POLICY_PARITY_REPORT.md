@@ -22,7 +22,7 @@ This report tracks fixture parity for imported OpenClaw tool-policy helpers and 
 OpenClaw outputs are captured directly from the OpenClaw TypeScript implementation via:
 
 ```bash
-bun apps/openagents-runtime/scripts/capture_openclaw_tool_policy_parity.mjs
+bun apps/runtime/scripts/capture_openclaw_tool_policy_parity.mjs
 ```
 
 The script imports OpenClaw functions from the local checkout, evaluates all fixture cases, and writes `expected_openclaw` results back into the fixture file.
@@ -42,7 +42,7 @@ Current case count: `9`
 ## Verification Command
 
 ```bash
-cd apps/openagents-runtime
+cd apps/runtime
 mix test test/openagents_runtime/parity/openclaw_tool_policy_parity_test.exs
 ```
 

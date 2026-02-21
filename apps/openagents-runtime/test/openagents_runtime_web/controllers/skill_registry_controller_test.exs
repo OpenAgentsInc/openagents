@@ -66,7 +66,7 @@ defmodule OpenAgentsRuntimeWeb.SkillRegistryControllerTest do
         "name" => "Registry Skill",
         "description" => "skill for controller test",
         "instructions_markdown" => "Use the tool for coding operations.",
-        "compatibility" => %{"runtime" => "openagents-runtime"},
+        "compatibility" => %{"runtime" => "runtime"},
         "allowed_tools" => [%{"tool_id" => tool_id, "version" => 1}],
         "commercial" => %{"pricing_model" => "free", "currency" => "BTC_SATS"}
       }

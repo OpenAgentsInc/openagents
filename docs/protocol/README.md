@@ -25,8 +25,8 @@ Related:
 - Contract-governed paths include:
   - `proto/**`
   - `docs/protocol/**`
-  - `apps/openagents-runtime/docs/*CONTRACT*.md`
-  - `apps/openagents-runtime/lib/openagents_runtime/contracts/**`
-  - `apps/openagents-runtime/lib/mix/tasks/runtime.contract.check.ex`
+  - `apps/runtime/docs/*CONTRACT*.md`
+  - `apps/runtime/lib/openagents_runtime/contracts/**`
+  - `apps/runtime/lib/mix/tasks/runtime.contract.check.ex`
 - Branch protection follow-up:
   - Ensure required code-owner reviews are enabled for `main` in repository settings.

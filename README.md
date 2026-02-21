@@ -2,14 +2,14 @@
 
 OpenAgents is a multi-surface agent platform with two authority planes and one runtime-owned sync plane:
 
-- `apps/openagents-runtime/`: execution authority (runs, worker lifecycle, receipts, replay).
+- `apps/runtime/`: execution authority (runs, worker lifecycle, receipts, replay).
 - `apps/openagents.com/`: identity/session/control-plane authority and public API gateway.
 - **Khala**: runtime-owned WebSocket sync + replay lane for read-model delivery.
 
 ## Product Surfaces
 
 - `apps/openagents.com/`: Laravel web/control-plane app.
-- `apps/openagents-runtime/`: Elixir runtime service.
+- `apps/runtime/`: Elixir runtime service.
 - `apps/mobile/`: React Native + Expo app.
 - `apps/desktop/`: Electron app.
 - `apps/autopilot-ios/`: Swift/iOS app.
@@ -84,7 +84,7 @@ The boundary is defined by **ownership and write authority**, not by whether inf
 | Plane | Owner | Authority Data | Direct Writers |
 |---|---|---|---|
 | Laravel Postgres | `apps/openagents.com` | users/sessions/profile, API tokens, `l402_control_plane_*` tables, admin/control-plane persistence | Laravel services/controllers only |
-| Runtime Postgres | `apps/openagents-runtime` | run events, worker events, replay artifacts, runtime read models, Khala tables (`runtime.sync_*`) | Runtime services/projectors/sync components only |
+| Runtime Postgres | `apps/runtime` | run events, worker events, replay artifacts, runtime read models, Khala tables (`runtime.sync_*`) | Runtime services/projectors/sync components only |
 
 Allowed cross-plane interaction:
 
@@ -125,8 +125,8 @@ Deployment topology:
 - `docs/sync/thoughts.md`
 - `docs/sync/ROADMAP.md`
 - `docs/sync/SURFACES.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- `apps/openagents-runtime/docs/KHALA_SYNC.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/KHALA_SYNC.md`
 
 ## Quick Start (Web)
 

@@ -30,8 +30,8 @@ This document defines the hosted sandbox side of that same direction:
 OpenAgents already runs substantial GCP infrastructure:
 
 - Laravel web control plane on Cloud Run (`apps/openagents.com/docs/GCP_DEPLOY_PLAN.md`)
-- Runtime deploy on GKE (`apps/openagents-runtime/docs/DEPLOY_GCP.md`)
-- Runtime ingress hardening and network policy (`apps/openagents-runtime/docs/NETWORK_POLICY.md`)
+- Runtime deploy on GKE (`apps/runtime/docs/DEPLOY_GCP.md`)
+- Runtime ingress hardening and network policy (`apps/runtime/docs/NETWORK_POLICY.md`)
 - Existing Cloud Run and GCE Lightning/Bitcoin infra (`docs/lightning/status/20260215-current-status.md`)
 
 This means we can define a first-party sandbox backend without introducing a new cloud footprint.
@@ -54,7 +54,7 @@ This means we can define a first-party sandbox backend without introducing a new
 
 Control-path remains:
 
-`Web/Mobile -> apps/openagents.com (Laravel) -> apps/openagents-runtime (internal contract) -> sandbox backend adapter`
+`Web/Mobile -> apps/openagents.com (Laravel) -> apps/runtime (internal contract) -> sandbox backend adapter`
 
 Runtime Codex worker contract remains authoritative:
 
@@ -277,7 +277,7 @@ To make hosted backends first-class in current runtime contract, add:
 
 1. `openagents-web` (Cloud Run)
    - user-facing admin/API for Codex worker operations.
-2. `openagents-runtime` (GKE)
+2. `runtime` (GKE)
    - adapter routing, ownership checks, durable events.
 3. `openagents-sandbox-*` workloads (GKE)
    - isolated execution workloads for Codex workers.
@@ -363,9 +363,9 @@ Selection should be deterministic and policy-driven:
 
 - Web deploy topology: `apps/openagents.com/docs/GCP_DEPLOY_PLAN.md`
 - Web production env/secrets: `apps/openagents.com/docs/PRODUCTION_ENV_AND_SECRETS.md`
-- Runtime deploy on GKE: `apps/openagents-runtime/docs/DEPLOY_GCP.md`
-- Runtime network hardening: `apps/openagents-runtime/docs/NETWORK_POLICY.md`
-- Runtime observability: `apps/openagents-runtime/docs/OBSERVABILITY.md`
+- Runtime deploy on GKE: `apps/runtime/docs/DEPLOY_GCP.md`
+- Runtime network hardening: `apps/runtime/docs/NETWORK_POLICY.md`
+- Runtime observability: `apps/runtime/docs/OBSERVABILITY.md`
 - Existing GCP Lightning/Bitcoin estate: `docs/lightning/status/20260215-current-status.md`
 - Canonical Codex direction: `docs/codex/unified-runtime-desktop-plan.md`
 - OpenCode auth mechanics (archived deep-dive): `docs/plans/archived/codex/opencode-codex-auth.md`

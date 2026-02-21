@@ -110,8 +110,8 @@ dependencies = [
  "hex",
  "nostr 0.1.0",
  "nostr-client",
- "openagents-runtime",
  "openagents-spark",
+ "runtime",
  "serde",
  "serde_json",
  "tempfile",
@@ -1047,10 +1047,10 @@ dependencies = [
  "gloo-net",
  "js-sys",
  "octocrab",
- "openagents-runtime",
  "pylon",
  "regex",
  "reqwest",
+ "runtime",
  "serde",
  "serde_json",
  "tempfile",
@@ -1079,11 +1079,11 @@ dependencies = [
  "moltbook",
  "nostr 0.1.0",
  "nostr-client",
- "openagents-runtime",
  "openagents-spark",
  "pollster 0.4.0",
  "pylon",
  "reqwest",
+ "runtime",
  "rusqlite",
  "rustls",
  "serde",
@@ -6918,46 +6918,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "openagents-runtime"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "base64",
- "bech32",
- "bitcoin",
- "clap",
- "compute",
- "dsrs",
- "futures",
- "getrandom 0.2.16",
- "hex",
- "js-sys",
- "metrics",
- "nostr 0.1.0",
- "nostr-client",
- "openagents-spark",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tracing",
- "urlencoding",
- "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "worker",
-]
-
-[[package]]
 name = "openagents-spark"
 version = "0.1.0"
 dependencies = [
@@ -7796,11 +7756,11 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "openagents-relay",
- "openagents-runtime",
  "openagents-spark",
  "rcgen",
  "reqwest",
  "rpassword",
+ "runtime",
  "rusqlite",
  "rustls",
  "rustls-pemfile",
@@ -8580,6 +8540,46 @@ checksum = "a7cc970b249fbe527d6e02e0a227762c9108b2f49d81094fe357ffc6d14d7f6f"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64",
+ "bech32",
+ "bitcoin",
+ "clap",
+ "compute",
+ "dsrs",
+ "futures",
+ "getrandom 0.2.16",
+ "hex",
+ "js-sys",
+ "metrics",
+ "nostr 0.1.0",
+ "nostr-client",
+ "openagents-spark",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tracing",
+ "urlencoding",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "worker",
 ]
 
 [[package]]

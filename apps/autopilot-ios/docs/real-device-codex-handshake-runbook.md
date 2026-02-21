@@ -23,7 +23,7 @@ Before manual device validation, run the automated harness suite:
 
 ```bash
 # Runtime handshake stream + cursor continuity acceptance coverage
-cd apps/openagents-runtime
+cd apps/runtime
 mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs
 
 # Desktop proto-first stream parsing + handshake retry/cursor harness
@@ -214,7 +214,7 @@ Correlate by `x-request-id` and `handshake_id`:
 Kubernetes runtime logs:
 
 ```bash
-kubectl -n <RUNTIME_NAMESPACE> logs -l app=openagents-runtime --since=30m \
+kubectl -n <RUNTIME_NAMESPACE> logs -l app=runtime --since=30m \
   | rg "$XRID|$HANDSHAKE_ID|desktop/handshake_ack|ios/handshake"
 ```
 
@@ -266,7 +266,7 @@ Dry-run type: operator procedure walkthrough + contract verification (non-device
 Validation notes:
 
 1. API paths and handshake envelope fields were validated against regression suites:
-   - `cd apps/openagents-runtime && mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
+   - `cd apps/runtime && mix test test/openagents_runtime_web/controllers/codex_worker_controller_test.exs`
    - `cd apps/openagents.com && php artisan test --filter=RuntimeCodexWorkersApiTest`
    - Result snapshot:
      - runtime suite: `10 tests, 0 failures`
@@ -279,8 +279,8 @@ Validation notes:
 ## 10. References
 
 - `apps/autopilot-ios/docs/codex-connection-roadmap.md`
-- `apps/openagents-runtime/docs/RUNTIME_CONTRACT.md`
-- `apps/openagents-runtime/docs/OBSERVABILITY.md`
-- `apps/openagents-runtime/docs/OPERATIONS_ALERTING.md`
+- `apps/runtime/docs/RUNTIME_CONTRACT.md`
+- `apps/runtime/docs/OBSERVABILITY.md`
+- `apps/runtime/docs/OPERATIONS_ALERTING.md`
 - `docs/autopilot/testing/PROD_E2E_TESTING.md` (legacy trace-retrieval background)
 - `docs/autopilot/testing/TRACE_RETRIEVAL.md` (legacy trace-retrieval background)
