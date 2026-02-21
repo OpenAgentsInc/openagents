@@ -16,6 +16,7 @@ Scenarios covered:
 5. Sustained runtime event bursts with bounded Khala projection lag.
 6. Codex worker heartbeat bursts with projection checkpoint convergence.
 7. Khala sink failure chaos with replay-based projection recovery.
+8. Runtime/Khala restart-reconnect chaos drills (forced reconnect, stale cursor, token-expiry reconnect guard).
 
 ## Run Commands
 
@@ -24,6 +25,7 @@ From `apps/runtime/`:
 - `mix test test/openagents_runtime/load/runtime_shape_load_test.exs`
 - `mix test test/openagents_runtime/load/khala_projection_load_chaos_test.exs`
 - `mix test --include load`
+- `apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh`
 
 ## What to inspect
 
@@ -46,6 +48,8 @@ From `apps/runtime/`:
 ## Latest Report
 
 - `apps/runtime/docs/reports/2026-02-19-khala-runtime-projector-load-chaos-report.md`
+- `apps/runtime/docs/reports/2026-02-21-runtime-khala-restart-reconnect-chaos-report.md`
+- Restart/reconnect drill runbook: `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
 
 ## Relationship to Operations
 

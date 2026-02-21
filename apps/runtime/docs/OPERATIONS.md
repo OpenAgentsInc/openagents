@@ -148,6 +148,12 @@ From `apps/runtime/`:
 - `mix test test/openagents_runtime/deploy/jobs_assets_test.exs`
 - `mix test test/openagents_runtime/deploy/network_policy_assets_test.exs`
 - `mix test test/openagents_runtime/deploy/smoke_test.exs`
+- `apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh`
+
+Restart/reconnect chaos drill evidence:
+
+- Runbook: `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
+- Latest report: `apps/runtime/docs/reports/2026-02-21-runtime-khala-restart-reconnect-chaos-report.md`
 
 ## 9. Gate G0 local baseline verification
 

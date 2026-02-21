@@ -173,6 +173,7 @@ defmodule OpenAgentsRuntime.Load.RuntimeShapeLoadTest do
   end
 
   @tag :load
+  @tag :chaos_drill
   test "janitor recovery after executor loss supports cursor resume without gaps" do
     run_id = unique_run_id("load_recover")
     thread_id = "thread_#{run_id}"

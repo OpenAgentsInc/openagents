@@ -298,6 +298,7 @@ Harness artifacts: `scripts/run-cross-surface-contract-harness.sh`, `docs/autopi
 
 ### OA-RUST-070 — [Reliability] Run restart/reconnect chaos drills for Khala/runtime
 Description: Validate reconnect/resume behavior through controlled failure drills and document remediations.
+Drill artifacts: `apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh`, `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`, `apps/runtime/docs/reports/2026-02-21-runtime-khala-restart-reconnect-chaos-report.md`
 
 ### OA-RUST-071 — [Ops] Publish incident runbooks for WS/auth/stale-cursor failures
 Description: Publish operator runbooks for the highest-risk runtime/Khala failure classes.

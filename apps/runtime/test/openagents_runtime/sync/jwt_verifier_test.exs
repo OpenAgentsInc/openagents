@@ -36,6 +36,7 @@ defmodule OpenAgentsRuntime.Sync.JwtVerifierTest do
     assert {:error, {:claim_mismatch, :aud}} = JwtVerifier.verify_and_claims(token)
   end
 
+  @tag :chaos_drill
   test "verify_and_claims rejects expired token" do
     now = System.system_time(:second)
     token = valid_sync_jwt(now: now - 600, ttl_seconds: 300, oa_sync_scopes: [@run_topic])

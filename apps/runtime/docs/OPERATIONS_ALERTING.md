@@ -173,6 +173,17 @@ Use this flow to trace one worker action across browser -> Laravel -> runtime ->
      - `workflow` -> DS structured workflow receipts + step receipts
   3. If class spike follows upstream parity import, run OpenClaw drift report and open ingestion follow-up issue.
 
+## Restart/Reconnect Chaos Rehearsal Gate
+
+Run the restart/reconnect chaos drill before runtime/Khala promotion and after reconnect-related code changes:
+
+- `apps/runtime/scripts/run-restart-reconnect-chaos-drills.sh`
+
+Runbook/report references:
+
+- `apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
+- `apps/runtime/docs/reports/2026-02-21-runtime-khala-restart-reconnect-chaos-report.md`
+
 ## Guardrails
 
 - High-cardinality identifiers stay in logs/traces, never metric labels.

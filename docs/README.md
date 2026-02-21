@@ -22,6 +22,7 @@ Current product surfaces: web control plane (`apps/openagents.com/`), Elixir run
 - Runtime internal API contract: `../apps/runtime/docs/RUNTIME_CONTRACT.md`
 - Runtime operations runbook: `../apps/runtime/docs/OPERATIONS.md`
 - Runtime Cloud Run deploy runbook: `../apps/runtime/docs/DEPLOY_CLOUD_RUN.md`
+- Runtime restart/reconnect chaos drill runbook: `../apps/runtime/docs/RESTART_RECONNECT_CHAOS.md`
   - Canonical deploy + migration command:
     ```bash
     GCP_PROJECT=openagentsgemini \

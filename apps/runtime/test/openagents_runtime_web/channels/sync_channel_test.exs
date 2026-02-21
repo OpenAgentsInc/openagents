@@ -207,6 +207,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert live_update["payload"]["value"] == "four"
   end
 
+  @tag :chaos_drill
   test "reconnect with resume watermark replays only missing events" do
     insert_stream_event(@run_topic, 1, %{"value" => "one"})
     insert_stream_event(@run_topic, 2, %{"value" => "two"})
@@ -253,6 +254,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     }
   end
 
+  @tag :chaos_drill
   test "forced socket drop reconnect resumes without gaps" do
     insert_stream_event(@run_topic, 1, %{"value" => "one"})
     insert_stream_event(@run_topic, 2, %{"value" => "two"})
@@ -303,6 +305,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     }
   end
 
+  @tag :chaos_drill
   test "subscribe returns stale_cursor after retention purge simulation" do
     now = ~U[2026-02-20 12:00:00.000000Z]
 
@@ -356,6 +359,67 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     }
   end
 
+  @tag :chaos_drill
+  test "reconnect with expired token fails and fresh token resumes stream" do
+    now = System.system_time(:second)
+
+    insert_stream_event(@run_topic, 1, %{"value" => "one"})
+    insert_stream_event(@run_topic, 2, %{"value" => "two"})
+    insert_stream_event(@run_topic, 3, %{"value" => "three"})
+
+    token = valid_sync_jwt(oa_sync_scopes: [@run_topic], now: now, ttl_seconds: 900)
+    assert {:ok, socket} = connect(SyncSocket, %{"token" => token})
+    assert {:ok, _reply, socket} = subscribe_and_join(socket, SyncChannel, "sync:v1")
+
+    subscribe_ref = push(socket, "sync:subscribe", %{"topics" => [@run_topic]})
+
+    assert_push "sync:update_batch", %{
+      "updates" => initial_updates,
+      "head_watermarks" => [%{"topic" => @run_topic, "watermark" => 3}]
+    }
+
+    assert Enum.map(initial_updates, & &1["watermark"]) == [1, 2, 3]
+    assert_reply subscribe_ref, :ok, _reply
+
+    Process.unlink(socket.channel_pid)
+    :ok = close(socket)
+
+    insert_stream_event(@run_topic, 4, %{"value" => "four"})
+    insert_stream_event(@run_topic, 5, %{"value" => "five"})
+
+    expired_token =
+      valid_sync_jwt(
+        oa_sync_scopes: [@run_topic],
+        now: now - 1_200,
+        ttl_seconds: 300
+      )
+
+    assert :error = connect(SyncSocket, %{"token" => expired_token})
+
+    fresh_token = valid_sync_jwt(oa_sync_scopes: [@run_topic], now: now + 1, ttl_seconds: 900)
+    assert {:ok, reconnect_socket} = connect(SyncSocket, %{"token" => fresh_token})
+
+    assert {:ok, _reply, reconnect_socket} =
+             subscribe_and_join(reconnect_socket, SyncChannel, "sync:v1")
+
+    reconnect_ref =
+      push(reconnect_socket, "sync:subscribe", %{
+        "topics" => [@run_topic],
+        "resume_after" => %{@run_topic => 3}
+      })
+
+    assert_push "sync:update_batch", %{
+      "updates" => reconnect_updates,
+      "head_watermarks" => [%{"topic" => @run_topic, "watermark" => 5}]
+    }
+
+    assert Enum.map(reconnect_updates, & &1["watermark"]) == [4, 5]
+
+    assert_reply reconnect_ref, :ok, %{
+      "current_watermarks" => [%{"topic" => @run_topic, "watermark" => 5}]
+    }
+  end
+
   test "subscribe emits reconnect/lag/catch-up telemetry" do
     insert_stream_event(@run_topic, 1, %{"value" => "one"})
     insert_stream_event(@run_topic, 2, %{"value" => "two"})
@@ -394,6 +458,7 @@ defmodule OpenAgentsRuntimeWeb.SyncChannelTest do
     assert catchup_measurements.duration_ms >= 0
   end
 
+  @tag :chaos_drill
   test "heartbeat roundtrip and timeout handling" do
     old_interval = Application.get_env(:openagents_runtime, :khala_sync_heartbeat_interval_ms)
     old_timeout = Application.get_env(:openagents_runtime, :khala_sync_heartbeat_timeout_ms)
