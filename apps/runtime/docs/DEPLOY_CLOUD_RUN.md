@@ -20,11 +20,10 @@ We previously hit a production incident where the migration job stayed pinned to
 Before every migration run:
 
 1. `runtime-migrate` image must equal the currently deployed runtime service image.
-2. Migration execution must run `OpenAgentsRuntime.Release.migrate_and_verify!()`.
+2. Migration execution must run the Rust binary command `runtime-migrate`.
 
 Never run the migrate job directly without first syncing the job image.
-
-`run-migrate-job.sh` enforces this and attempts `migrate_and_verify!()` first. If the currently deployed runtime image predates that helper, the script detects that specific failure and falls back to `migrate()` for that run so deploys are not blocked during transition.
+`run-migrate-job.sh` enforces this image-lock + execution path.
 
 ## Deploy sequence
 
@@ -37,7 +36,7 @@ Never run the migrate job directly without first syncing the job image.
 gcloud builds submit \
   --config apps/runtime/deploy/cloudbuild.yaml \
   --substitutions _TAG="$(git rev-parse --short HEAD)" \
-  apps/runtime
+  .
 ```
 
 2. Deploy runtime and run mandatory migration validation using the chained script.

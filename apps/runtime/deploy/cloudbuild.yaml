@@ -1,12 +1,12 @@
 # Build and push the OpenAgents runtime image.
 #
-# IMPORTANT: submit with context limited to the runtime app directory.
+# IMPORTANT: submit with repository root context so Cargo workspace metadata is available.
 #
 # Run from repo root:
 #   gcloud builds submit \
 #     --config apps/runtime/deploy/cloudbuild.yaml \
 #     --substitutions _TAG="$(git rev-parse --short HEAD)" \
-#     apps/runtime
+#     .
 substitutions:
   _TAG: ${SHORT_SHA}
 
@@ -14,6 +14,8 @@ steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - build
+      - -f
+      - apps/runtime/Dockerfile
       - -t
       - us-central1-docker.pkg.dev/${PROJECT_ID}/runtime/runtime:${_TAG}
       - -t

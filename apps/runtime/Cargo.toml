@@ -17,12 +17,14 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
 tower = "0.5"
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid.workspace = true
 hex.workspace = true
 jsonwebtoken = "9"
+reqwest.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
@@ -33,3 +35,11 @@ tower = { version = "0.5", features = ["util"] }
 [[bin]]
 name = "openagents-runtime-service"
 path = "src/main.rs"
+
+[[bin]]
+name = "runtime-migrate"
+path = "src/bin/runtime-migrate.rs"
+
+[[bin]]
+name = "runtime-smoke"
+path = "src/bin/runtime-smoke.rs"

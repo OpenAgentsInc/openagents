@@ -346,7 +346,7 @@ Dependencies: OA-RUST-016, OA-RUST-018.
 
 ### OA-RUST-080 — [Auth/Khala] Enforce live WS eviction on session invalidation
 Description: Propagate session revocation to active Khala sockets so unauthorized sessions are disconnected and forced through reauth.
-Enforcement artifacts: `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/src/config.rs`, `apps/runtime/lib/openagents_runtime/sync/session_revocation.ex`, `apps/runtime/lib/openagents_runtime_web/sync_socket.ex`, `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/lib/openagents_runtime_web/controllers/sync_session_controller.ex`
+Enforcement artifacts: `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/src/config.rs`, `apps/runtime/src/server.rs`, `apps/runtime/src/sync_auth.rs`, `apps/runtime/docs/KHALA_SYNC.md`
 Acceptance criteria: Revoked sessions are evicted within bounded latency; reconnect returns deterministic `reauth_required` behavior; end-to-end tests cover revoke-during-stream.
 Dependencies: OA-RUST-018, OA-RUST-044.
 
@@ -370,13 +370,13 @@ Dependencies: OA-RUST-008, OA-RUST-075, OA-RUST-076.
 
 ### OA-RUST-084 — [Protocol] Enforce minimum client version in control service and Khala
 Description: Implement minimum supported client version checks and coordinated rollout controls in control-plane APIs and websocket handshake flow.
-Enforcement artifacts: `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/src/config.rs`, `apps/openagents.com/service/README.md`, `apps/runtime/lib/openagents_runtime_web/sync_socket.ex`, `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/config/config.exs`, `apps/runtime/config/runtime.exs`, `apps/runtime/test/openagents_runtime_web/channels/sync_channel_test.exs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`, `apps/runtime/docs/KHALA_SYNC.md`
+Enforcement artifacts: `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/src/config.rs`, `apps/openagents.com/service/README.md`, `apps/runtime/src/server.rs`, `apps/runtime/src/config.rs`, `apps/runtime/src/sync_auth.rs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`, `apps/runtime/docs/KHALA_SYNC.md`
 Acceptance criteria: Min-version gates are configurable per environment; older clients receive deterministic upgrade path responses; telemetry captures rejection reasons.
 Dependencies: OA-RUST-083.
 
 ### OA-RUST-085 — [Khala] Define retention, compaction, and snapshotting policy
 Description: Establish explicit per-topic retention windows, compaction rules, and snapshot generation strategy to keep replay bounded.
-Enforcement artifacts: `apps/runtime/lib/openagents_runtime/sync/topic_policy.ex`, `apps/runtime/lib/openagents_runtime/sync/retention_job.ex`, `apps/runtime/lib/openagents_runtime_web/sync_channel.ex`, `apps/runtime/config/config.exs`, `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`, `apps/runtime/test/openagents_runtime/sync/retention_job_test.exs`, `apps/runtime/test/openagents_runtime/sync/topic_policy_test.exs`, `docs/protocol/OA_SYNC_WS_MAPPING.md`
+Enforcement artifacts: `apps/runtime/src/fanout.rs`, `apps/runtime/src/config.rs`, `apps/runtime/src/server.rs`, `apps/runtime/docs/KHALA_RETENTION_COMPACTION_SNAPSHOT_POLICY.md`, `docs/protocol/OA_SYNC_WS_MAPPING.md`
 Acceptance criteria: Retention policy exists for all topic classes; snapshot format/versioning is documented; automated tests verify replay correctness across compaction boundaries.
 Dependencies: OA-RUST-038, OA-RUST-043.
 
@@ -456,6 +456,7 @@ Dependencies: OA-RUST-012, OA-RUST-013, OA-RUST-075.
 
 ### OA-RUST-099 — [Runtime] Replace Elixir runtime app scaffolding with Rust service scaffolding
 Description: Complete runtime migration by removing `mix`/Phoenix execution dependencies from `apps/runtime` and replacing them with Rust service entrypoints, build scripts, tests, and deploy runbooks.
+Enforcement artifacts: `apps/runtime/src/main.rs`, `apps/runtime/src/bin/runtime-migrate.rs`, `apps/runtime/src/bin/runtime-smoke.rs`, `apps/runtime/sql/migrations/0001_runtime_sync_bootstrap.sql`, `apps/runtime/Dockerfile`, `apps/runtime/deploy/cloudrun/run-migrate-job.sh`, `apps/runtime/deploy/jobs/migration-job.yaml`, `apps/runtime/deploy/jobs/smoke-job.yaml`, `apps/runtime/README.md`, `scripts/local-ci.sh`
 Acceptance criteria: `apps/runtime` builds/tests via Cargo-only workflow; no production runtime dependency on `mix`/Phoenix remains; runtime deploy docs are Rust-native.
 Dependencies: OA-RUST-033, OA-RUST-040, OA-RUST-067.
 
