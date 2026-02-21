@@ -1,0 +1,336 @@
+syntax = "proto3";
+
+package openagents.runtime.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "openagents/protocol/v1/reasons.proto";
+
+enum RuntimeRunStatus {
+  RUNTIME_RUN_STATUS_UNSPECIFIED = 0;
+  RUNTIME_RUN_STATUS_CREATED = 1;
+  RUNTIME_RUN_STATUS_RUNNING = 2;
+  RUNTIME_RUN_STATUS_CANCELING = 3;
+  RUNTIME_RUN_STATUS_CANCELED = 4;
+  RUNTIME_RUN_STATUS_SUCCEEDED = 5;
+  RUNTIME_RUN_STATUS_FAILED = 6;
+}
+
+enum RuntimeWorkerStatus {
+  RUNTIME_WORKER_STATUS_UNSPECIFIED = 0;
+  RUNTIME_WORKER_STATUS_RUNNING = 1;
+  RUNTIME_WORKER_STATUS_STOPPED = 2;
+  RUNTIME_WORKER_STATUS_FAILED = 3;
+}
+
+enum RuntimeErrorCode {
+  RUNTIME_ERROR_CODE_UNSPECIFIED = 0;
+  RUNTIME_ERROR_CODE_UNAUTHORIZED = 1;
+  RUNTIME_ERROR_CODE_FORBIDDEN = 2;
+  RUNTIME_ERROR_CODE_INVALID_REQUEST = 3;
+  RUNTIME_ERROR_CODE_NOT_FOUND = 4;
+  RUNTIME_ERROR_CODE_CONFLICT = 5;
+  RUNTIME_ERROR_CODE_STALE_CURSOR = 6;
+  RUNTIME_ERROR_CODE_INTERNAL_ERROR = 7;
+}
+
+message RuntimeError {
+  RuntimeErrorCode code = 1;
+  string message = 2;
+  repeated string details = 3;
+  uint32 retry_after_ms = 4;
+  bool full_resync_required = 5;
+}
+
+message RuntimeRun {
+  string run_id = 1;
+  string thread_id = 2;
+  RuntimeRunStatus status = 3;
+  string owner_user_ref = 4;
+  string owner_guest_scope = 5;
+  uint64 latest_seq = 6;
+  string terminal_reason_class = 7;
+  string terminal_reason = 8;
+  google.protobuf.Timestamp terminal_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message RuntimeRunLifecycleTransition {
+  string run_id = 1;
+  RuntimeRunStatus from_status = 2;
+  RuntimeRunStatus to_status = 3;
+  string transition_event_type = 4;
+  string reason_class = 5;
+  string reason = 6;
+  google.protobuf.Timestamp transitioned_at = 7;
+  uint64 latest_seq = 8;
+}
+
+message RuntimeRunEvent {
+  string run_id = 1;
+  uint64 seq = 2;
+  string event_type = 3;
+  google.protobuf.Timestamp emitted_at = 4;
+
+  oneof payload {
+    RuntimeRunStartedPayload run_started = 10;
+    RuntimeTextDeltaPayload text_delta = 11;
+    RuntimeToolCallPayload tool_call = 12;
+    RuntimeToolResultPayload tool_result = 13;
+    RuntimeRunFinishedPayload run_finished = 14;
+    RuntimeRunCancelRequestedPayload run_cancel_requested = 15;
+    RuntimeRunExecutorLostPayload run_executor_lost = 16;
+    RuntimeRunLoopDetectedPayload run_loop_detected = 17;
+    RuntimeRunFrameConsumedPayload run_frame_consumed = 18;
+    RuntimeRunUnknownPayload unknown = 19;
+  }
+}
+
+message RuntimeRunStartedPayload {
+  string actor = 1;
+}
+
+message RuntimeTextDeltaPayload {
+  string delta = 1;
+  string frame_id = 2;
+}
+
+message RuntimeToolCallPayload {
+  string tool_call_id = 1;
+  string tool_name = 2;
+  google.protobuf.Struct input = 3;
+}
+
+message RuntimeToolResultPayload {
+  string tool_call_id = 1;
+  string tool_name = 2;
+  string state = 3;
+  openagents.protocol.v1.ReasonCode reason_code = 4;
+  google.protobuf.Struct output = 5;
+}
+
+message RuntimeRunFinishedPayload {
+  RuntimeRunStatus status = 1;
+  string reason_class = 2;
+  string reason = 3;
+  openagents.protocol.v1.ReasonCode reason_code = 4;
+}
+
+message RuntimeRunCancelRequestedPayload {
+  string reason = 1;
+  string requested_by = 2;
+  google.protobuf.Timestamp requested_at = 3;
+}
+
+message RuntimeRunExecutorLostPayload {
+  string lease_owner = 1;
+  uint64 observed_progress_seq = 2;
+  string reason = 3;
+}
+
+message RuntimeRunLoopDetectedPayload {
+  string detector = 1;
+  string level = 2;
+  string reason_code_text = 3;
+  string message = 4;
+  string frame_id = 5;
+}
+
+message RuntimeRunFrameConsumedPayload {
+  string frame_id = 1;
+  string frame_type = 2;
+}
+
+message RuntimeRunUnknownPayload {
+  google.protobuf.Struct body = 1;
+}
+
+message RuntimeWorker {
+  string worker_id = 1;
+  RuntimeWorkerStatus status = 2;
+  uint64 latest_seq = 3;
+  string workspace_ref = 4;
+  string codex_home_ref = 5;
+  string adapter = 6;
+  string owner_user_ref = 7;
+  string owner_guest_scope = 8;
+  google.protobuf.Struct metadata = 9;
+  google.protobuf.Timestamp started_at = 10;
+  google.protobuf.Timestamp stopped_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+  google.protobuf.Timestamp last_heartbeat_at = 13;
+}
+
+message RuntimeProjectionCheckpoint {
+  string projection_name = 1;
+  string entity_id = 2;
+  string document_id = 3;
+  uint64 last_runtime_seq = 4;
+  uint64 lag_events = 5;
+  string projection_status = 6;
+  string projection_version = 7;
+  google.protobuf.Timestamp last_projected_at = 8;
+}
+
+message RuntimeWorkerSnapshot {
+  RuntimeWorker worker = 1;
+  RuntimeProjectionCheckpoint projection_checkpoint = 2;
+}
+
+message RuntimeWorkerEvent {
+  string worker_id = 1;
+  uint64 seq = 2;
+  string event_type = 3;
+  google.protobuf.Timestamp emitted_at = 4;
+
+  oneof payload {
+    RuntimeWorkerStartedPayload worker_started = 10;
+    RuntimeWorkerRequestReceivedPayload worker_request_received = 11;
+    RuntimeWorkerResponsePayload worker_response = 12;
+    RuntimeWorkerErrorPayload worker_error = 13;
+    RuntimeWorkerHeartbeatPayload worker_heartbeat = 14;
+    RuntimeWorkerStoppedPayload worker_stopped = 15;
+    RuntimeWorkerUnknownPayload unknown = 16;
+  }
+}
+
+message RuntimeWorkerStartedPayload {
+  RuntimeWorkerStatus status = 1;
+  google.protobuf.Struct metadata = 2;
+}
+
+message RuntimeWorkerRequestReceivedPayload {
+  string request_id = 1;
+  string method = 2;
+}
+
+message RuntimeWorkerResponsePayload {
+  string request_id = 1;
+  bool ok = 2;
+  google.protobuf.Struct response = 3;
+}
+
+message RuntimeWorkerErrorPayload {
+  string request_id = 1;
+  string code = 2;
+  string message = 3;
+  openagents.protocol.v1.ReasonCode reason_code = 4;
+  google.protobuf.Struct response = 5;
+}
+
+message RuntimeWorkerHeartbeatPayload {
+  RuntimeWorkerStatus status = 1;
+  google.protobuf.Timestamp observed_at = 2;
+}
+
+message RuntimeWorkerStoppedPayload {
+  RuntimeWorkerStatus status = 1;
+  string reason = 2;
+}
+
+message RuntimeWorkerUnknownPayload {
+  google.protobuf.Struct body = 1;
+}
+
+message RuntimePolicyDecision {
+  string policy_id = 1;
+  string authorization_id = 2;
+  string authorization_mode = 3;
+  string decision = 4;
+  openagents.protocol.v1.ReasonCode reason_code = 5;
+  string reason_code_text = 6;
+  string reason_codes_version = 7;
+  string evaluation_hash = 8;
+  string compiled_id = 9;
+  string strategy_id = 10;
+  string artifact_variant = 11;
+  int32 canary_percent = 12;
+  int32 rollout_bucket = 13;
+}
+
+message RuntimeBudgetSummary {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 total_tokens = 3;
+  int64 spent_sats = 4;
+  int64 reserved_sats = 5;
+  int64 remaining_sats = 6;
+}
+
+message RuntimeTimingSummary {
+  google.protobuf.Timestamp started_at = 1;
+  google.protobuf.Timestamp completed_at = 2;
+  int64 latency_ms = 3;
+}
+
+message RuntimePredictReceipt {
+  string receipt_id = 1;
+  string run_id = 2;
+  string signature_id = 3;
+  string strategy_id = 4;
+  string compiled_id = 5;
+  string schema_hash = 6;
+  string prompt_hash = 7;
+  string program_hash = 8;
+  string params_hash = 9;
+  string output_hash = 10;
+  RuntimePolicyDecision policy = 11;
+  RuntimeBudgetSummary budget = 12;
+  RuntimeTimingSummary timing = 13;
+  string trace_ref = 14;
+  string trace_hash = 15;
+  string trace_storage = 16;
+  string trace_artifact_uri = 17;
+  string catalog_version = 18;
+  google.protobuf.Struct output_preview = 19;
+}
+
+message RuntimeReplayArtifact {
+  string artifact_id = 1;
+  string run_id = 2;
+  uint64 first_seq = 3;
+  uint64 last_seq = 4;
+  uint64 event_count = 5;
+  string replay_hash = 6;
+  string storage_ref = 7;
+  string compression = 8;
+  uint32 chunk_count = 9;
+  google.protobuf.Timestamp generated_at = 10;
+}
+
+message RuntimeRunSnapshotResult {
+  RuntimeRun run = 1;
+}
+
+message RuntimeRunStreamResult {
+  string run_id = 1;
+  uint64 latest_seq = 2;
+  bool stale_cursor = 3;
+  uint64 retention_floor = 4;
+}
+
+message RuntimeWorkerSnapshotResult {
+  RuntimeWorkerSnapshot snapshot = 1;
+}
+
+message RuntimeWorkerRequestResult {
+  string worker_id = 1;
+  string request_id = 2;
+  bool ok = 3;
+  google.protobuf.Struct response = 4;
+  uint64 latest_seq = 5;
+}
+
+message RuntimeResultEnvelope {
+  bool ok = 1;
+  RuntimeError error = 2;
+
+  oneof result {
+    RuntimeRunSnapshotResult run_snapshot = 10;
+    RuntimeRunStreamResult run_stream = 11;
+    RuntimeWorkerSnapshotResult worker_snapshot = 12;
+    RuntimeWorkerRequestResult worker_request = 13;
+    RuntimePredictReceipt predict_receipt = 14;
+    RuntimeReplayArtifact replay_artifact = 15;
+  }
+}

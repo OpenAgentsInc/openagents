@@ -80,6 +80,7 @@ Description: Define/lock `KhalaFrame` envelope fields (`topic`, `seq`, `kind`, `
 
 ### OA-RUST-009 — [Proto] Finalize runtime orchestration contracts
 Description: Define run lifecycle, worker lifecycle, and durable receipt/replay proto messages used by runtime authority and clients.
+Contract artifacts: `proto/openagents/runtime/v1/orchestration.proto`, `docs/protocol/fixtures/runtime-orchestration-v1.json`
 
 ### OA-RUST-010 — [Proto] Finalize control-plane auth/session/scope contracts
 Description: Define control-plane messages for auth/session, org membership, WorkOS identity mapping, and sync token scope derivation used by web, desktop, and iOS.

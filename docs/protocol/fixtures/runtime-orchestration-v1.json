@@ -1,0 +1,122 @@
+{
+  "schema": "openagents.runtime.v1.orchestration",
+  "schema_version": 1,
+  "run_lifecycle_transitions": [
+    {
+      "run_id": "run_001",
+      "from_status": "RUNTIME_RUN_STATUS_CREATED",
+      "to_status": "RUNTIME_RUN_STATUS_RUNNING",
+      "transition_event_type": "run.started",
+      "latest_seq": 1
+    },
+    {
+      "run_id": "run_001",
+      "from_status": "RUNTIME_RUN_STATUS_RUNNING",
+      "to_status": "RUNTIME_RUN_STATUS_CANCELING",
+      "transition_event_type": "run.cancel_requested",
+      "latest_seq": 5
+    },
+    {
+      "run_id": "run_001",
+      "from_status": "RUNTIME_RUN_STATUS_CANCELING",
+      "to_status": "RUNTIME_RUN_STATUS_CANCELED",
+      "transition_event_type": "run.finished",
+      "reason_class": "cancel_requested",
+      "latest_seq": 6
+    },
+    {
+      "run_id": "run_002",
+      "from_status": "RUNTIME_RUN_STATUS_RUNNING",
+      "to_status": "RUNTIME_RUN_STATUS_SUCCEEDED",
+      "transition_event_type": "run.finished",
+      "reason_class": "completed",
+      "latest_seq": 9
+    },
+    {
+      "run_id": "run_003",
+      "from_status": "RUNTIME_RUN_STATUS_RUNNING",
+      "to_status": "RUNTIME_RUN_STATUS_FAILED",
+      "transition_event_type": "run.finished",
+      "reason_class": "loop_detected",
+      "latest_seq": 12
+    }
+  ],
+  "worker_lifecycle_events": [
+    {
+      "worker_id": "codexw_123",
+      "event_type": "worker.started",
+      "status": "RUNTIME_WORKER_STATUS_RUNNING",
+      "seq": 1
+    },
+    {
+      "worker_id": "codexw_123",
+      "event_type": "worker.heartbeat",
+      "status": "RUNTIME_WORKER_STATUS_RUNNING",
+      "seq": 2
+    },
+    {
+      "worker_id": "codexw_123",
+      "event_type": "worker.stopped",
+      "status": "RUNTIME_WORKER_STATUS_STOPPED",
+      "seq": 3,
+      "reason": "stop_requested"
+    }
+  ],
+  "runtime_predict_receipt": {
+    "receipt_id": "rcpt_001",
+    "run_id": "run_001",
+    "signature_id": "sig.runtime.v1",
+    "strategy_id": "direct.v1",
+    "compiled_id": "compiled_001",
+    "schema_hash": "sha256:1111",
+    "prompt_hash": "sha256:2222",
+    "program_hash": "sha256:3333",
+    "params_hash": "sha256:4444",
+    "output_hash": "sha256:5555",
+    "policy": {
+      "decision": "allowed",
+      "reason_code": "REASON_CODE_POLICY_ALLOWED_DEFAULT",
+      "reason_codes_version": "runtime-policy-reason-codes.v1"
+    },
+    "budget": {
+      "total_tokens": 128,
+      "spent_sats": 21,
+      "remaining_sats": 79
+    },
+    "timing": {
+      "latency_ms": 840
+    }
+  },
+  "runtime_replay_artifact": {
+    "artifact_id": "replay_001",
+    "run_id": "run_001",
+    "first_seq": 1,
+    "last_seq": 6,
+    "event_count": 6,
+    "replay_hash": "sha256:abcdef",
+    "storage_ref": "gs://openagents-runtime-replay/run_001/replay.jsonl",
+    "compression": "gzip",
+    "chunk_count": 1
+  },
+  "result_envelope_examples": [
+    {
+      "ok": true,
+      "result_type": "run_snapshot",
+      "run_id": "run_001"
+    },
+    {
+      "ok": true,
+      "result_type": "worker_request",
+      "worker_id": "codexw_123",
+      "request_id": "req_123"
+    },
+    {
+      "ok": false,
+      "error": {
+        "code": "RUNTIME_ERROR_CODE_STALE_CURSOR",
+        "message": "cursor is older than retention floor",
+        "full_resync_required": true
+      }
+    }
+  ]
+}

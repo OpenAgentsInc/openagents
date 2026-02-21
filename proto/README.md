@@ -39,6 +39,7 @@ Rust-era package ownership and placement rules are defined in:
 
 Current files:
 
+- `proto/openagents/runtime/v1/orchestration.proto`
 - `proto/openagents/protocol/v1/reasons.proto`
 - `proto/openagents/protocol/v1/events.proto`
 - `proto/openagents/protocol/v1/receipts.proto`
