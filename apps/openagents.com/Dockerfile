@@ -18,8 +18,7 @@ RUN curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
 COPY Cargo.toml Cargo.lock ./
 COPY proto ./proto
 COPY crates ./crates
-COPY apps/openagents.com/service ./apps/openagents.com/service
-COPY apps/openagents.com/web-shell ./apps/openagents.com/web-shell
+COPY apps ./apps
 
 RUN apps/openagents.com/web-shell/build-dist.sh
 RUN cargo build --release --manifest-path apps/openagents.com/service/Cargo.toml

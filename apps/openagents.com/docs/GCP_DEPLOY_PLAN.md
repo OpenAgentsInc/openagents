@@ -8,6 +8,7 @@ The active production web deploy path is Rust-only:
 - Deploy helper: `apps/openagents.com/service/deploy/deploy-production.sh`
 - Staging deploy helper: `apps/openagents.com/service/deploy/deploy-staging.sh`
 - Canary/rollback runbook: `apps/openagents.com/service/docs/CANARY_ROLLBACK_RUNBOOK.md`
+- Maintenance cutover runbook: `apps/openagents.com/service/docs/MAINTENANCE_MODE_CUTOVER_RUNBOOK.md`
 - Staging runbook: `apps/openagents.com/service/docs/STAGING_DEPLOY_RUNBOOK.md`
 - Cloud Build config: `apps/openagents.com/service/deploy/cloudbuild.yaml`
 - Runtime image recipe: `apps/openagents.com/Dockerfile` (Rust-only)

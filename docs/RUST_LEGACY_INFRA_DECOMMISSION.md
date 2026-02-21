@@ -15,6 +15,9 @@ Remove legacy Laravel infrastructure in controlled phases while preserving produ
    - `scripts/release/validate-rust-cutover.sh`
    - `docs/RUST_STAGING_PROD_VALIDATION.md`
 3. Capture before/after inventory artifacts for each decommission action.
+4. Capture fresh Laravel database backups and complete data-port verification before any Phase C deletion:
+   - `scripts/release/backup-laravel-db.sh`
+   - verify target Rust runtime/control stores can ingest required legacy data before destructive actions.
 
 ## Phases
 
@@ -29,6 +32,8 @@ Remove legacy Laravel infrastructure in controlled phases while preserving produ
 3. Phase C: final cutover + production deletion
 - Activate maintenance mode (OA-RUST-112 flow).
 - Re-run Rust matrix in strict mode (`FAIL_ON_REQUIRED_FAILURE=1`).
+- Re-run Laravel DB backup script and record backup URIs in release evidence.
+- Execute/verify Laravel-to-Rust data port checks.
 - Remove production Laravel resources last.
 
 ## Phase execution status
@@ -44,6 +49,14 @@ Remove legacy Laravel infrastructure in controlled phases while preserving produ
   - rollback metadata snapshot captured under `docs/reports/legacy-infra/20260221T195258Z-phase-b/`.
 - Remaining before Phase C:
   - keep production traffic on `openagents-web` until OA-RUST-112 maintenance-mode cutover window opens.
+  - complete and sign off Laravel DB backup + port evidence.
+
+3. Pre-Phase C DB backup evidence captured (2026-02-21)
+- Backups created in `gs://openagentsgemini_cloudbuild/backups/laravel/`:
+  - `openagents_web-20260221T212513Z.sql.gz`
+  - `openagents_web_staging-20260221T212513Z.sql.gz`
+- Artifact metadata recorded in:
+  - `docs/reports/2026-02-21-laravel-db-backup-pre-decom.md`
 
 ## Current disposition map (2026-02-21)
 

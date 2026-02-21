@@ -29,6 +29,10 @@ const DEFAULT_ROUTE_SPLIT_COHORT_PERCENTAGE: u8 = 100;
 const DEFAULT_ROUTE_SPLIT_SALT: &str = "openagents-route-split-v1";
 const DEFAULT_RUNTIME_SYNC_REVOKE_PATH: &str = "/internal/v1/sync/sessions/revoke";
 const DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS: u64 = 60;
+const DEFAULT_MAINTENANCE_MODE_ENABLED: bool = false;
+const DEFAULT_MAINTENANCE_BYPASS_COOKIE_NAME: &str = "oa_maintenance_bypass";
+const DEFAULT_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS: u64 = 900;
+const DEFAULT_MAINTENANCE_ALLOWED_PATHS: &str = "/healthz,/readyz";
 const DEFAULT_COMPAT_CONTROL_ENFORCED: bool = false;
 const DEFAULT_COMPAT_CONTROL_PROTOCOL_VERSION: &str = "openagents.control.v1";
 const DEFAULT_COMPAT_CONTROL_MIN_CLIENT_BUILD_ID: &str = "00000000T000000Z";
@@ -70,6 +74,11 @@ pub struct Config {
     pub runtime_sync_revoke_path: String,
     pub runtime_signature_secret: Option<String>,
     pub runtime_signature_ttl_seconds: u64,
+    pub maintenance_mode_enabled: bool,
+    pub maintenance_bypass_token: Option<String>,
+    pub maintenance_bypass_cookie_name: String,
+    pub maintenance_bypass_cookie_ttl_seconds: u64,
+    pub maintenance_allowed_paths: Vec<String>,
     pub compat_control_enforced: bool,
     pub compat_control_protocol_version: String,
     pub compat_control_min_client_build_id: String,
@@ -272,6 +281,35 @@ impl Config {
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(DEFAULT_RUNTIME_SIGNATURE_TTL_SECONDS);
 
+        let maintenance_mode_enabled = env::var("OA_MAINTENANCE_MODE_ENABLED")
+            .ok()
+            .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(DEFAULT_MAINTENANCE_MODE_ENABLED);
+
+        let maintenance_bypass_token = env::var("OA_MAINTENANCE_BYPASS_TOKEN")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let maintenance_bypass_cookie_name = env::var("OA_MAINTENANCE_BYPASS_COOKIE_NAME")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_MAINTENANCE_BYPASS_COOKIE_NAME.to_string());
+
+        let maintenance_bypass_cookie_ttl_seconds =
+            env::var("OA_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_MAINTENANCE_BYPASS_COOKIE_TTL_SECONDS)
+                .max(60);
+
+        let maintenance_allowed_paths = parse_csv(
+            env::var("OA_MAINTENANCE_ALLOWED_PATHS")
+                .ok()
+                .unwrap_or_else(|| DEFAULT_MAINTENANCE_ALLOWED_PATHS.to_string()),
+        );
+
         let compat_control_enforced = env::var("OA_COMPAT_CONTROL_ENFORCED")
             .ok()
             .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
@@ -337,6 +375,11 @@ impl Config {
             runtime_sync_revoke_path,
             runtime_signature_secret,
             runtime_signature_ttl_seconds,
+            maintenance_mode_enabled,
+            maintenance_bypass_token,
+            maintenance_bypass_cookie_name,
+            maintenance_bypass_cookie_ttl_seconds,
+            maintenance_allowed_paths,
             compat_control_enforced,
             compat_control_protocol_version,
             compat_control_min_client_build_id,

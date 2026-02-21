@@ -13,7 +13,7 @@ Define the canonical staging deployment flow for the Rust control service + Rust
 1. `gcloud` auth is valid for project `openagentsgemini`.
 2. Artifact image exists for target tag.
 3. Staging service exists (default `openagents-control-service-staging`).
-4. Domain mapping points `staging.openagents.com` to the staging service.
+4. Domain mapping for `staging.openagents.com` is verified (or an explicit Cloud Run service URL override is used while cert/domain mapping is pending).
 5. Required staging secrets/env are present.
 
 ## Required staging env and secrets
@@ -66,23 +66,52 @@ gcloud beta run domain-mappings describe \
   --domain staging.openagents.com
 ```
 
+Expected for domain-based staging smoke:
+
+1. `spec.routeName: openagents-control-service-staging`
+2. `Ready=True`
+3. `CertificateProvisioned=True`
+
+If certificate/domain mapping is pending, use the staging Cloud Run URL as `OPENAGENTS_BASE_URL` for validation and record the domain-mapping status in the deploy report.
+
 ## Smoke checks
 
 ```bash
-OPENAGENTS_BASE_URL=https://staging.openagents.com \
+OPENAGENTS_BASE_URL=${OPENAGENTS_BASE_URL:-https://staging.openagents.com} \
 apps/openagents.com/service/deploy/smoke-health.sh
 
-OPENAGENTS_BASE_URL=https://staging.openagents.com \
+OPENAGENTS_BASE_URL=${OPENAGENTS_BASE_URL:-https://staging.openagents.com} \
 apps/openagents.com/service/deploy/smoke-control.sh
 ```
 
 Optional authenticated smoke checks:
 
 ```bash
-OPENAGENTS_BASE_URL=https://staging.openagents.com \
+OPENAGENTS_BASE_URL=${OPENAGENTS_BASE_URL:-https://staging.openagents.com} \
 OPENAGENTS_CONTROL_ACCESS_TOKEN=<token> \
 apps/openagents.com/service/deploy/smoke-control.sh
 ```
+
+Maintenance-window smoke checks:
+
+```bash
+OPENAGENTS_BASE_URL=${OPENAGENTS_BASE_URL:-https://staging.openagents.com} \
+OPENAGENTS_MAINTENANCE_BYPASS_TOKEN=<token> \
+apps/openagents.com/service/deploy/smoke-control.sh
+```
+
+Maintenance mode enable/disable helper:
+
+```bash
+PROJECT=openagentsgemini \
+REGION=us-central1 \
+SERVICE=openagents-control-service-staging \
+apps/openagents.com/service/deploy/maintenance-mode.sh status
+```
+
+Canonical maintenance cutover runbook:
+
+- `apps/openagents.com/service/docs/MAINTENANCE_MODE_CUTOVER_RUNBOOK.md`
 
 ## Staging/Prod validation matrix gate
 

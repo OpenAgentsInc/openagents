@@ -10,6 +10,10 @@ Related issues: OA-RUST-020, OA-RUST-021, OA-RUST-022, OA-RUST-062
 Provide deterministic canary rollout and rollback steps for the Rust control service before major traffic shifts.
 This runbook remains required after default-router switch (`OA_ROUTE_SPLIT_MODE=rust`) so route-level rollback stays fast and tested.
 
+Maintenance-mode cutover/bypass procedure is documented in:
+
+- `apps/openagents.com/service/docs/MAINTENANCE_MODE_CUTOVER_RUNBOOK.md`
+
 ## Preconditions
 
 1. Rust control service image built and available in Artifact Registry.
