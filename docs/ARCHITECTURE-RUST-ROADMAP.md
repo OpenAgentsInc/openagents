@@ -110,6 +110,7 @@ Bootstrap artifacts: `apps/openagents.com/service/Cargo.toml`, `apps/openagents.
 
 ### OA-RUST-016 — [Web Service] Implement auth/session API parity
 Description: Port auth/session endpoints and token lifecycle semantics required by current clients while keeping WorkOS as identity/auth source of truth, preserving security and audit invariants.
+Auth artifacts: `apps/openagents.com/service/src/auth.rs`, `apps/openagents.com/service/src/lib.rs`, `apps/openagents.com/service/src/config.rs`, `apps/openagents.com/service/README.md`
 
 ### OA-RUST-017 — [Web Service] Implement org membership and policy API parity
 Description: Port org membership and policy enforcement APIs currently required for runtime access and scoped actions.

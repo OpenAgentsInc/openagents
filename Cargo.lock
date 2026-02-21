@@ -6902,8 +6902,11 @@ name = "openagents-control-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
+ "chrono",
  "http-body-util",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
@@ -6913,6 +6916,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
