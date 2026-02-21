@@ -76,6 +76,38 @@ Rules:
 2. Each method MUST validate required params before execution.
 3. Missing/invalid required params MUST produce `invalid_request` error code.
 
+## Worker Targeting Semantics (v1)
+
+Target resolution follows:
+1. `worker_id` selects the worker lane.
+2. `session_id` (if provided in request params/metadata) selects desktop app-session inside that worker.
+3. `thread_id` (method-specific) selects Codex thread inside the resolved session.
+
+Resolution priority:
+1. Explicit request target (`session_id`, `thread_id`) wins.
+2. Worker metadata mapping (`metadata.session_id`, `metadata.thread_id`) is next.
+3. For `:shared` workers, use runtime-maintained active session/thread mapping if present.
+
+Method requirements:
+1. `thread/start`: session target required; thread id is created by server.
+2. `thread/resume`: session target required, resume thread id required.
+3. `turn/start`: session + thread target required.
+4. `turn/interrupt`: session + thread target required; active turn id required by app-server contract.
+5. `thread/list`: session target required; thread id not required.
+6. `thread/read`: session + thread target required.
+
+Stale/missing target behavior:
+1. Missing required session mapping -> `worker_unavailable`.
+2. Missing required thread mapping for method -> `invalid_request`.
+3. Thread/session mapping mismatch or stale attachment -> `conflict`.
+4. Responses SHOULD include `details.current_session_id` and/or `details.current_thread_id` when known.
+
+Backward-compatible `:shared` worker fallback:
+1. If exactly one active desktop session mapping exists, route there.
+2. If zero active mappings exist, return `worker_unavailable`.
+3. If multiple active mappings exist and request does not specify `session_id`, return `conflict` (ambiguous target).
+4. Existing `ios/user_message` lane remains supported and routes via the current active mapping.
+
 ## Receipt Envelopes
 
 A control request has exactly one terminal receipt keyed by `(worker_id, request_id)`:
